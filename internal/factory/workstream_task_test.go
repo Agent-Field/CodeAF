@@ -45,10 +45,10 @@ var byPriya = TaskEventBy{Kind: TaskByPerson, ID: "priya", Name: "priya"}
 
 func TestOnlyTheOwnerAnswersAnAsk(t *testing.T) {
 	task := asking(afiTask("t1", "marco"), taskNow)
-	if _, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "priya", Edit: true}, byPriya, "", taskIDs(), taskNow); !errors.Is(err, ErrTaskNotAnswerer) {
+	if _, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "priya", Edit: true}, byPriya, Standin{}, taskIDs(), taskNow); !errors.Is(err, ErrTaskNotAnswerer) {
 		t.Fatalf("priya answered marco's Ask: %v", err)
 	}
-	ch, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byPriya, "", taskIDs(), taskNow)
+	ch, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "marco", Edit: true}, byPriya, Standin{}, taskIDs(), taskNow)
 	if err != nil || ch.Task.Ask != nil || ch.Task.AnsweredBy.ID != "marco" || ch.Events[0].Kind != TaskEventAnswered || ch.Events[0].Option != "publish" {
 		t.Fatalf("marco's answer: %+v %v", ch, err)
 	}
@@ -57,14 +57,14 @@ func TestOnlyTheOwnerAnswersAnAsk(t *testing.T) {
 func TestWithOwnerEveryoneTheFirstAnswerDecidesAndIsRecorded(t *testing.T) {
 	task := asking(afiTask("t1", ""), taskNow)
 	task.Owner = TaskOwner{Kind: TaskOwnerEveryone}
-	if MayAnswer(task, TaskActor{Handle: "abir", Edit: false}, "", taskNow) {
+	if MayAnswer(task, TaskActor{Handle: "abir", Edit: false}, Standin{ID: ""}, taskNow) {
 		t.Fatal("someone who only views answered")
 	}
-	ch, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "abir", Edit: true}, byPriya, "", taskIDs(), taskNow)
+	ch, err := AnswerTask(task, "", "publish", "", TaskActor{Handle: "abir", Edit: true}, byPriya, Standin{}, taskIDs(), taskNow)
 	if err != nil || ch.Task.AnsweredBy == nil || ch.Task.AnsweredBy.ID != "abir" {
 		t.Fatalf("abir's answer: %+v %v", ch.Task.AnsweredBy, err)
 	}
-	if _, err := AnswerTask(ch.Task, "", "publish", "", TaskActor{Handle: "santosh", Edit: true}, byPriya, "", taskIDs(), taskNow); !errors.Is(err, ErrTaskNoAsk) {
+	if _, err := AnswerTask(ch.Task, "", "publish", "", TaskActor{Handle: "santosh", Edit: true}, byPriya, Standin{}, taskIDs(), taskNow); !errors.Is(err, ErrTaskNoAsk) {
 		t.Fatalf("a second answer was taken: %v", err)
 	}
 }
@@ -73,13 +73,13 @@ func TestAnAskUnansweredForADayAlsoGoesToTheFallback(t *testing.T) {
 	young := asking(afiTask("t1", "marco"), taskNow.Add(-TaskFallbackAfter+time.Minute))
 	old := asking(afiTask("t2", "marco"), taskNow.Add(-TaskFallbackAfter))
 	lena := TaskActor{Handle: "lena", Edit: true}
-	if MayAnswer(young, lena, "lena", taskNow) {
+	if MayAnswer(young, lena, Standin{ID: "lena"}, taskNow) {
 		t.Fatal("the fallback answered before a day")
 	}
-	if !MayAnswer(old, lena, "lena", taskNow) {
+	if !MayAnswer(old, lena, Standin{ID: "lena"}, taskNow) {
 		t.Fatal("the fallback cannot answer a day-old Ask")
 	}
-	if MayAnswer(old, lena, "", taskNow) {
+	if MayAnswer(old, lena, Standin{ID: ""}, taskNow) {
 		t.Fatal("with no fallback, a day changes nothing")
 	}
 }

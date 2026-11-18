@@ -167,6 +167,17 @@ func (w TaskWrite) Put(t factory.WorkstreamTask, rev int) error {
 	// What a task holds for one reader is filled when it is read, never kept.
 	t.ForYou, t.Run, t.Queue = nil, nil, nil
 	t.AsksFirst = ""
+	if t.Ask != nil && t.Ask.CoveredBy != nil {
+		a := *t.Ask
+		a.CoveredBy = nil
+		t.Ask = &a
+	}
+	if len(t.Asks) > 0 {
+		t.Asks = append([]factory.TaskAsk(nil), t.Asks...)
+		for i := range t.Asks {
+			t.Asks[i].CoveredBy = nil
+		}
+	}
 	doc, err := json.Marshal(t)
 	if err != nil {
 		return err

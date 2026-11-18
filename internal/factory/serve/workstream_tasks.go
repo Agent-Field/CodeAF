@@ -84,14 +84,24 @@ func taskDefaultOwner(ws factory.OrgWorkstream) factory.TaskOwner {
 	return factory.TaskOwner{Kind: factory.TaskOwnerEveryone}
 }
 
-// taskFallback is the workstream's "If unanswered for a day" person
-// (rules.fallback), "" for none: an Ask unanswered for a day goes to them
-// too.
-func taskFallback(ws factory.OrgWorkstream) string {
-	if f := ws.RulesOrDefault().Fallback; f != nil {
-		return f.ID
+// taskFallback is who answers for a decider in ws (rules.fallback, after
+// rules.fallback_after_hours): an Ask that waits that long goes to them too.
+func taskFallback(ws factory.OrgWorkstream) factory.Standin {
+	return factory.StandinFor(ws.RulesOrDefault())
+}
+
+// fillRead writes what tasks of ws say when they are read and never keep:
+// which will ask first under the rule, and who answers for a decider whose
+// Ask has waited past the rules' wait.
+func (h *Handler) fillRead(ws factory.OrgWorkstream, tasks []factory.WorkstreamTask) {
+	rules := ws.RulesOrDefault()
+	factory.FillAsksFirst(rules, tasks)
+	s := factory.StandinFor(rules)
+	name := ""
+	if s.ID != "" {
+		name = h.personNames()(s.ID)
 	}
-	return ""
+	factory.FillCoveredBy(s, name, tasks, h.clock())
 }
 
 func (h *Handler) newTaskID(prefix string) func() string {
@@ -189,7 +199,7 @@ func (h *Handler) listWorkstreamTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.fillForYou(ws, v, all)
-	factory.FillAsksFirst(ws.RulesOrDefault(), all)
+	h.fillRead(ws, all)
 	h.write(w, http.StatusOK, api.WorkstreamTasks{Tasks: all})
 }
 
@@ -217,7 +227,7 @@ func (h *Handler) getWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if ws, v, t, _, ok := h.oneTask(w, r); ok {
 		one := []factory.WorkstreamTask{t}
 		h.fillForYou(ws, v, one)
-		factory.FillAsksFirst(ws.RulesOrDefault(), one)
+		h.fillRead(ws, one)
 		h.write(w, http.StatusOK, one[0])
 	}
 }

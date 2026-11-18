@@ -212,6 +212,10 @@ type Handler struct {
 	ordersMu     sync.Mutex
 	ordersTimer  *time.Timer
 	ordersClosed bool
+	// chaseTimer wakes every [inviteChaseEvery] to ask the owners of tasks
+	// that wait on someone invited who has not joined (invite_chase.go). It
+	// shares ordersMu and ordersClosed with the orders' timer.
+	chaseTimer *time.Timer
 	// workerSettled is when a runner's request last settled the floor
 	// ([Handler.workerSettleDue]).
 	workerSettleMu sync.Mutex
@@ -403,6 +407,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.jobScreens()
 	h.scheduleJobTimer()
 	h.scheduleOrderTimer()
+	h.scheduleInviteChase()
 	if config.Store != nil {
 		h.setupMu.Lock()
 		if saved, err := h.loadSetup("local"); err == nil {

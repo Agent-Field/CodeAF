@@ -39,7 +39,7 @@ func TestAnAgentThatCannotDoATaskAsksTheOwnerInsteadOfFailing(t *testing.T) {
 	answer := func(id, option string) factory.WorkstreamTask {
 		t.Helper()
 		cur, _ := d.task(ctx, id)
-		ch, err := factory.AnswerTask(cur, "", option, "", factory.TaskActor{Handle: "mia", Edit: true}, factory.TaskEventBy{Kind: factory.TaskByPerson, ID: "mia", Name: "Priya"}, "", func() string { return "e1" }, o.h.clock())
+		ch, err := factory.AnswerTask(cur, "", option, "", factory.TaskActor{Handle: "mia", Edit: true}, factory.TaskEventBy{Kind: factory.TaskByPerson, ID: "mia", Name: "Priya"}, factory.Standin{}, func() string { return "e1" }, o.h.clock())
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -37,6 +37,7 @@ func (h *Handler) workHome(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
+		h.fillRead(ws, tasks)
 		out.Tasks = append(out.Tasks, tasks...)
 		out.Workstreams = append(out.Workstreams, api.WorkHomeRow{WorkstreamSummary: workstreamSummary(ws, workstreamCount{}, v), People: h.workstreamPeople(ws, h.personNames())})
 		for _, p := range h.workstreamPeople(ws, h.personNames()) {
@@ -61,6 +62,7 @@ func (h *Handler) workOverview(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	h.fillRead(ws, tasks)
 	out := api.WorkOverview{StandingOrders: []api.WorkstreamOrder{}, Tasks: tasks, Steps: map[string][]string{}, Previews: map[string]string{}, Children: []api.WorkstreamSummary{}, People: h.workstreamPeople(ws, h.personNames()), Decisions: nameDecisions(nonNil(ws.Decisions), h.personNames()), Files: []factory.WorkstreamFile{}, AskedOf: []api.WorkRequest{}}
 	orders, err := h.config.Store.WorkstreamOrders(ws.ID)
 	if h.failed(w, err) {
