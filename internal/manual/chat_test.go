@@ -159,6 +159,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"was the picture that failed still charged", "making-pictures-audio-and-video"},
 		{"change only the sky in this photo and keep the rest", "making-pictures-audio-and-video"},
 		{"edit one region of my picture with a mask", "making-pictures-audio-and-video"},
+		{"can pulling a connector into a sheet change anything in my account", "accounts"},
 		{"what can you do", "what-i-can-do"},
 		{"my task had uncommitted edits when I moved the chat to another machine, are they lost", "home"},
 		{"does a task's working copy come along when I continue a chat here", "home"},

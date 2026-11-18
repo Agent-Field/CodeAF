@@ -2854,6 +2854,7 @@ The optional `plugins` hello feature enables these methods. They use
 | `plugins.connect_key` | `in.PluginKeyParams` | `PluginKeyResult` |
 | `plugins.set_capability` | `in.PluginCapabilityParams` | `Empty` |
 | `plugins.disconnect` | `in.PluginDisconnectParams` | `Empty` |
+| `plugins.read_csv` | `in.PluginReadCSVParams` | `PluginReadCSVResult` |
 
 `plugins.list` returns `{plugins, providers, featured, featured_words}`.
 Each plugin has `id, name, kind, category, blurb, connected, key_checkable`, and optionally
@@ -2919,6 +2920,22 @@ A shape failure reaches no vendor, a refusal retains at most 120 characters,
 and a missing answer saves nothing. Key values never appear in replies.
 `plugins.disconnect {id, account?}` uses the existing disconnect path.
 The optional account must match the stored account.
+
+`plugins.read_csv {id, query?, max_bytes?}` answers `{csv}`: one read of a
+connected plugin as CSV text, header row first, for a sheet tab's pull from a
+connector. An engine that serves it announces the feature `plugins.read_csv`.
+The read is a model with that one plugin's read-only tools and no others: a
+served tool only when the server marks it read-only, Google's and Slack's
+reading tools, and a key account's raw call for `get` alone, judged again on
+every call. A capability the person turned off stays off. `query` is the
+source's own words for what to read; empty reads the account's main records.
+`max_bytes` (default and most 64 MB) bounds the answer, which is refused rather
+than cut. The answer must parse as a CSV with every row as wide as the header.
+Errors carry a reason for the person as their message: `refused` (nothing that
+only reads, a query that needs more than reading, an answer that is not a CSV),
+`too_large`, `signed_out`, and `bad_params` for a missing `id` or a negative `max_bytes`.
+The engine logs neither the rows nor the reason. The whole read is bounded at
+85 seconds and 12 model rounds.
 
 `settings.set` accepts `when_plan_paused: {[provider]: policy}`, where policy
 is `wait` or `use pay-as-you-go`. It changes the existing persisted source
