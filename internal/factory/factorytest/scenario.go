@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -91,6 +92,10 @@ type Scenario struct {
 	// stopAgent is the scripted main agent's turn on a stop
 	// ([Scenario.StopAgent], scenario_stops.go).
 	stopAgent func(it factory.Item, wait factory.Wait) (said string, err error)
+	// stopTurns counts the scripted main agent's turns still running. A turn
+	// that pressed its decision has moved the job before it returns, so the
+	// job alone cannot say the turn is over ([Scenario.Settle]).
+	stopTurns atomic.Int32
 	// machine is the name the worker attaches as; a scenario changes it to
 	// stand for another computer.
 	machine string
@@ -947,6 +952,9 @@ func (s *Scenario) Settle() factory.Item {
 		retrying := it.Recovery != nil && (it.Recovery.State == "waiting" || it.Recovery.State == "queued") && factory.RecoveryBlockReason(it) == ""
 		rest := false
 		_, handed := factory.HandedOver(it)
+		// A main agent's turn still running is not rest, even after its
+		// decision moved the job: what it does next is part of this event.
+		handed = handed || s.stopTurns.Load() > 0
 		switch {
 		case handed:
 			// A stop its main agent holds is not at rest: the agent's one turn

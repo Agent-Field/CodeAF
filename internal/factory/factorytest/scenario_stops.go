@@ -41,6 +41,11 @@ func (s *Scenario) stopped(ctx context.Context, it factory.Item, wait factory.Wa
 		err  error
 	}
 	done := make(chan answer, 1)
+	// Counted until the service has its answer or gives the turn up, not
+	// until the turn's own code ends: one that never returns is the service's
+	// to time out, and the scenario must still come to rest.
+	s.stopTurns.Add(1)
+	defer s.stopTurns.Add(-1)
 	go func() {
 		said, err := turn(it, wait)
 		done <- answer{said, err}
