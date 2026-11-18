@@ -460,7 +460,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.team_delete` | `in.OrgTeamParams` | `Empty` |
 | `factory.team_member_add` | `in.OrgTeamMemberParams` | `OrgTeam` |
 | `factory.team_member_remove` | `in.OrgTeamMemberParams` | `OrgTeam` |
-| `factory.org_workstreams` | `in.OrgConn` | `OrgWorkstreams` |
+| `factory.org_workstreams` | `in.OrgWorkstreamsParams` | `OrgWorkstreams` |
 | `factory.org_workstream` | `in.OrgWorkstreamParams` | `OrgWorkstream` |
 | `factory.org_workstream_create` | `in.OrgWorkstreamCreateParams` | `OrgWorkstream` |
 | `factory.org_workstream_update` | `in.OrgWorkstreamUpdateParams` | `OrgWorkstream` |
@@ -763,7 +763,8 @@ caller's session: `factory.teams` `GET /v1/teams`, `factory.team_create {name}`
 `POST /v1/teams`, `factory.team_rename {team, name}` `PATCH /v1/teams/{id}`,
 `factory.team_delete {team}` `DELETE /v1/teams/{id}`, `factory.team_member_add` and
 `factory.team_member_remove {team, handle}` `PUT`/`DELETE /v1/teams/{id}/members/{handle}`;
-`factory.org_workstreams` `GET /v1/workstreams`, `factory.org_workstream {id}`,
+`factory.org_workstreams {archived?}` `GET /v1/workstreams` (`?archived=1` when
+archived is true, which adds the archived rows; hello word `org_workstreams_archived`), `factory.org_workstream {id}`,
 `factory.org_workstream_create` `POST /v1/workstreams`, `factory.org_workstream_update
 {id, rev, ...patch}` `PATCH` with `If-Match: rev`, `factory.org_workstream_delete {id}`,
 `factory.org_workstream_owner {id, kind, owner}` `PUT .../owner`,

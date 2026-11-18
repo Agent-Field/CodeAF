@@ -115,7 +115,7 @@ Archive is in the workstream's More menu (…). It takes the workstream off the 
 
 Archive asks first only when it has to; otherwise it archives at once, with Undo for 5 seconds:
 
-- **Tasks still running.** The question says how many will stop ("2 running tasks will stop."). Archive stops them the way a task's own Stop does: each shows "Stopped by you". Tasks that are up next or waiting keep their state.
+- **Tasks still running.** "Archive Launch plan?" says how many stop ("2 tasks are running; they stop."), with Cancel and Archive. An agent's task paused on someone's answer counts as running. Archive stops them the way a task's own Stop does: each shows "Stopped by you". Tasks that are up next, and a person's task waiting on someone, keep their state.
 - **A workstream inside another.** Under "Keep these files in Pantry:" it lists what it holds, every one ticked; untick what Pantry should not show. Folders and its own Decisions are not offered. Nothing moves: each ticked one stays in the archived workstream, and Pantry gains a shortcut to it.
 
 The toast then says what happened, for example "Archived Meal planner · 3 files kept in Pantry". Undo brings the workstream back; tasks it stopped stay stopped, and the shortcuts stay in the parent.

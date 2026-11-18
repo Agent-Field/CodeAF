@@ -189,9 +189,12 @@ func (o *orgServer) serveTeams(w http.ResponseWriter, r *http.Request, rest []st
 func (o *orgServer) serveStreams(w http.ResponseWriter, r *http.Request, rest []string) {
 	switch {
 	case len(rest) == 0 && r.Method == http.MethodGet:
+		// As the real server does: archived rows only when ?archived=1 asks.
 		list := []appwire.OrgWorkstreamSummary{}
 		for _, s := range o.streams {
-			list = append(list, s.OrgWorkstreamSummary)
+			if s.ArchivedAt == "" || r.URL.Query().Get("archived") == "1" {
+				list = append(list, s.OrgWorkstreamSummary)
+			}
 		}
 		orgJSON(w, 200, map[string]any{"workstreams": list})
 	case len(rest) == 0 && r.Method == http.MethodPost, len(rest) == 1 && rest[0] == "import" && r.Method == http.MethodPost:
@@ -462,6 +465,38 @@ func TestOrgWorkstreamsForwardToTheServer(t *testing.T) {
 		t.Fatalf("sent\n%v\nwant\n%v", got, want)
 	}
 	wire.neverSaid(testHostToken)
+}
+
+// AN ARCHIVED WORKSTREAM CAN BE FOUND AGAIN (SIM D1): the plain list, which
+// every shared reader uses, leaves it out, and archived:true asks the server
+// for it with ?archived=1, so the Archived list and its count come from the
+// server and survive the desk restarting.
+func TestOrgWorkstreamsArchivedAsksTheServer(t *testing.T) {
+	o, wire, id := attachOrg(t)
+	var live, gone appwire.OrgWorkstream
+	wire.must("factory.org_workstream_create", map[string]any{"connection": id, "name": "Docs revamp"}, &live)
+	wire.must("factory.org_workstream_create", map[string]any{"connection": id, "name": "AgentField launch"}, &gone)
+	wire.must("factory.org_workstream_delete", map[string]any{"connection": id, "id": gone.ID}, nil)
+	o.since()
+
+	var plain, all appwire.OrgWorkstreams
+	wire.must("factory.org_workstreams", map[string]any{"connection": id}, &plain)
+	if len(plain.Workstreams) != 1 || plain.Workstreams[0].ID != live.ID {
+		t.Fatalf("the plain list showed an archived row: %+v", plain.Workstreams)
+	}
+	wire.must("factory.org_workstreams", map[string]any{"connection": id, "archived": true}, &all)
+	var archived []string
+	for _, w := range all.Workstreams {
+		if w.ArchivedAt != "" {
+			archived = append(archived, w.Name)
+		}
+	}
+	if strings.Join(archived, ",") != "AgentField launch" {
+		t.Fatalf("archived rows = %v in %+v", archived, all.Workstreams)
+	}
+	if got, want := strings.Join(o.since(), "|"), "GET /v1/workstreams|GET /v1/workstreams?archived=1"; got != want {
+		t.Fatalf("sent %s, want %s", got, want)
+	}
 }
 
 // AN ID NEVER CLIMBS OUT OF ITS SEGMENT: a malformed id, handle, owner or
