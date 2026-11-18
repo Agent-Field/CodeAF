@@ -24,7 +24,12 @@ func (s *Scenario) StopAgent(turn func(it factory.Item, wait factory.Wait) (said
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stopAgent = turn
+	s.asking.Store(turn != nil)
 }
+
+// asksMainAgent says the scenario has a main agent's turn scripted, which is
+// what asks a stop's main agent on its factory.
+func (s *Scenario) asksMainAgent(factory.Item) bool { return s.asking.Load() }
 
 // stopped is serve's Config.Stopped on the scenario's factory. A turn the
 // service gives up on (its deadline, the service closing) is left to end by

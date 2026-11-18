@@ -540,3 +540,32 @@ func TestTryOnceMoreCarriesInstructions(t *testing.T) {
 		}
 	}
 }
+
+// A STOP NOBODY CAN ASK ABOUT IS NEVER HANDED OVER. A job with no main agent
+// to ask (no conversation of its own, or a factory whose runner is off) waits
+// on its person in the write that makes the stop, with no handoff written to
+// be ended later; a factory that can ask hands the same stop over.
+func TestAStopNobodyCanAskAboutStaysWithThePerson(t *testing.T) {
+	question := func(asked MainAgentAsked) Item {
+		before := handStored(handRun(AutonomyAuto))
+		it := before
+		it.State, it.QKind, it.Question = StateNeedsYou, QKindStep, "test asks: which table?"
+		it.Asking = &Asked{Stage: "test", Question: "which table?", With: AskedYou}
+		it.Stream = &Stream{Cur: 1, Phases: []Phase{it.Stream.Phases[0], {Name: "test", Kind: StageChat, State: PhaseWaiting, Round: 2}}}
+		SettleWaitAsking(before, &it, watchT0.Add(time.Minute), asked)
+		return it
+	}
+	nobody := question(func(Item) bool { return false })
+	if nobody.Handoff != nil || nobody.Wait.key() != "you:answer" {
+		t.Fatalf("a stop nobody can ask about: wait %s, handoff %+v", nobody.Wait.key(), nobody.Handoff)
+	}
+	// The main agent may still decide it if the person then asks it.
+	if ManagerStop(nobody) != StopQuestion {
+		t.Fatalf("the stop with the person is %q", ManagerStop(nobody))
+	}
+	for name, asked := range map[string]MainAgentAsked{"asks": func(Item) bool { return true }, "nil": nil} {
+		if it := question(asked); it.Handoff == nil || it.Wait.Who != WaitMainAgent {
+			t.Fatalf("%s: a stop a main agent can be asked about reads %s", name, it.Wait.key())
+		}
+	}
+}

@@ -65,6 +65,9 @@ type Store struct {
 	root         string
 	outputPolicy func() (int, int)
 	observer     atomic.Pointer[func(before, after factory.Item)]
+	// asked says whose main agents can be asked about a stop now
+	// ([Store.AskMainAgent]); nil asks every job's.
+	asked atomic.Pointer[factory.MainAgentAsked]
 	// shared is the last [Store.ListShared], reused while the floor is unchanged.
 	shared sharedList
 	// clock is the store's now. A test may hold it still; it is nil in every
@@ -365,7 +368,7 @@ func (st *Store) Save(it factory.Item) error {
 			it.Failure = current.Item.Failure
 		}
 		factory.NoteWait(current.Item, &it, st.now())
-		factory.SettleWait(current.Item, &it, st.now())
+		factory.SettleWaitAsking(current.Item, &it, st.now(), st.mainAgentAsked())
 		st.retainOutput(&it)
 		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
@@ -495,6 +498,26 @@ func (st *Store) ObserveWrites(fn func(before, after factory.Item)) {
 	st.observer.Store(&fn)
 }
 
+// AskMainAgent tells the store whose main agents its host can ask about a
+// stop now. A write that makes a stop on a job asked says no for leaves it
+// with the job's person at once, instead of handing it to a main agent
+// nobody will ask ([factory.SettleWaitAsking]). It is called under the job's
+// lock, so it must not write the store. Nil asks every job's.
+func (st *Store) AskMainAgent(asked factory.MainAgentAsked) {
+	if asked == nil {
+		st.asked.Store(nil)
+		return
+	}
+	st.asked.Store(&asked)
+}
+
+func (st *Store) mainAgentAsked() factory.MainAgentAsked {
+	if p := st.asked.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
 func (st *Store) tellWritten(before, after factory.Item) {
 	if fn := st.observer.Load(); fn != nil && *fn != nil {
 		(*fn)(before, after)
@@ -593,7 +616,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		factory.RecordIssueTouch(before, &it)
 		factory.NoteChanges(before, &it, now)
 		factory.NoteWait(before, &it, now)
-		factory.SettleWait(before, &it, now)
+		factory.SettleWaitAsking(before, &it, now, st.mainAgentAsked())
 		st.retainOutput(&it)
 		rev := current.Revision
 		if mode.bump {

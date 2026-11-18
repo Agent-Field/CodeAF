@@ -167,9 +167,22 @@ func (w Wait) same(o Wait) bool {
 // it. Every store write calls it, so no road that moves a job has to remember
 // to say what the job now waits on.
 func SettleWait(before Item, it *Item, now time.Time) {
+	SettleWaitAsking(before, it, now, nil)
+}
+
+// MainAgentAsked says whether a job's main agent can be asked about a stop
+// now: the job has a conversation of its own, and its factory spends on it
+// by itself. Nil is a factory that can always ask.
+type MainAgentAsked func(Item) bool
+
+// SettleWaitAsking is [SettleWait] on a factory that says, by asked, whose
+// main agents can be asked now. A STOP NOBODY CAN BE ASKED ABOUT IS NEVER
+// HANDED OVER: it is the person's in the write that makes it, with no handoff
+// to end later ([settleHandoff]).
+func SettleWaitAsking(before Item, it *Item, now time.Time, asked MainAgentAsked) {
 	// A stop the main agent may decide is handed to it in the same write
 	// (handoff.go), before the wait is read.
-	settleHandoff(before, it, now)
+	settleHandoff(before, it, now, asked)
 	w := WaitOf(*it)
 	if prior := before.Wait; prior != nil && prior.same(w) && !prior.Since.IsZero() {
 		w.Since = prior.Since

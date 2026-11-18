@@ -362,7 +362,13 @@ func managerOffers(it Item) []Offer {
 // the same thing before this write (one saved before handoffs, or one whose
 // handoff ended) stays with them: nothing here takes a stop back from a
 // person.
-func settleHandoff(before Item, it *Item, now time.Time) {
+//
+// NOR IS A STOP NOBODY CAN ASK ABOUT. A job with no main agent to ask (asked
+// says no: it has no conversation of its own, or its factory's runner is off
+// and spends nothing by itself) waits on its person at once. Handing it over
+// only for the service to hand it back would write the job twice more, and a
+// person answering it meanwhile would find it moved under them.
+func settleHandoff(before Item, it *Item, now time.Time, asked MainAgentAsked) {
 	// Nearly every write is of a job on no stop with no record to keep: only
 	// a job that needs someone can be on one.
 	if it.Handoff == nil && JobState(*it) != "needs_you" {
@@ -393,6 +399,9 @@ func settleHandoff(before Item, it *Item, now time.Time) {
 	}
 	it.Handoff = h
 	if before.Wait == nil || (h != nil && h.Wait != "") || standingStop(before) == key || !ManagerFirst(*it, under) {
+		return
+	}
+	if asked != nil && !asked(*it) {
 		return
 	}
 	next := Handoff{Wait: key, At: now}

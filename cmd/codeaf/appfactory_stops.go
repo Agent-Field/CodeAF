@@ -85,7 +85,7 @@ func (s *shapeTurns) Stopped(ctx context.Context, it factory.Item, wait factory.
 // nothing by itself, and the stop goes straight to the person. So does the
 // stop of a job that has no conversation of its own: it has no main agent.
 func (h *appFactoryHost) stopped(ctx context.Context, it factory.Item, wait factory.Wait) (string, error) {
-	if !h.readsOn() || strings.TrimSpace(it.Talk) == "" {
+	if !h.asksMainAgent(it) {
 		return "", serve.ErrNotAsked
 	}
 	source, raw, ok := h.parentSource()
@@ -103,6 +103,16 @@ func (h *appFactoryHost) stopped(ctx context.Context, it factory.Item, wait fact
 	turns.refusal = source.Refusal
 	turns.liveOK = factoryLiveOK(raw, h.profile)
 	return turns.Stopped(ctx, it, wait, runDoor(h.floor, h.workspace, h.profile))
+}
+
+// asksMainAgent says this host would ask the job's main agent about a stop
+// now: its runner is on and the job has a conversation of its own. The store
+// asks it in the write that makes a stop ([store.Store.AskMainAgent]), so a
+// stop nobody would be asked about is the person's at once, with no handoff
+// written and then ended. It reads the host under loopMu only, which nothing
+// holds while it writes the store.
+func (h *appFactoryHost) asksMainAgent(it factory.Item) bool {
+	return strings.TrimSpace(it.Talk) != "" && h.readsOn()
 }
 
 // stopHanded has the service look at its jobs when a write hands a stop to a

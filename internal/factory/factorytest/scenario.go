@@ -92,6 +92,9 @@ type Scenario struct {
 	// stopAgent is the scripted main agent's turn on a stop
 	// ([Scenario.StopAgent], scenario_stops.go).
 	stopAgent func(it factory.Item, wait factory.Wait) (said string, err error)
+	// asking says a turn is scripted; the store reads it under a job's lock,
+	// where mu may not be taken ([Scenario.asksMainAgent]).
+	asking atomic.Bool
 	// deciding counts the main agent's turns on a stop the service is
 	// waiting on now.
 	deciding atomic.Int32
@@ -262,6 +265,9 @@ func (s *Scenario) openStores() {
 	}
 	s.useComputer(scenarioMachine)
 	s.Store.ObserveWrites(s.observe)
+	// A scenario with no turn scripted asks nobody, as an app whose runner is
+	// off asks nobody: its stops are the person's at once ([Scenario.StopAgent]).
+	s.Store.AskMainAgent(s.asksMainAgent)
 	s.source = factorygithub.New(s.GitHub, []string{scenarioOwner + "/" + scenarioRepo}, s.clock.Now)
 }
 
