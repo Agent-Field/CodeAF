@@ -355,14 +355,31 @@ Each factory has one manager of its own beside the jobs' managers, titled "Facto
 
 - `running`: jobs running or queued to run, each with its step and `steps N of M done`. A job whose pull request is still open, resting or running a Follow PR repair, reads "following its pull request (Follow PR)", on Follow PR; a shipped job with nothing left to follow reads "done".
 - `queue`: jobs not started yet, most urgent first (p0 before p1), then oldest.
-- `waiting`: jobs that need you. `shipped`: jobs shipped today, with their pull requests and changes, to sum up what shipped.
+- `waiting`: every job that waits on you, the ones you put away included. `needs_you`: the jobs that wait on you now, the longest wait first, each with what it asks.
+- `shipped`: jobs shipped today, with their pull requests and changes, to sum up what shipped.
 - `all`, `oldest`, `cheapest`, `risky`, or one job in full with `item`.
 
-When you ask ("start the oldest p1", "make #12 urgent"), it starts that one job or sets its priority (p0 to p3) through the job page's own Start and priority, as you. It never stops, ships, merges or posts, and it can select jobs as a proposal you take or leave.
+When you ask ("start the oldest p1", "make #12 urgent"), it starts that one job or sets its priority (p0 to p3) through the job page's own Start and priority, as you. A start that would carry a job past an approve step needs your own words in that message. It can select jobs as a proposal you take or leave. It never stops or drops a job, and it ships, merges and posts nothing on its own judgment (see the Factory manager acts for you).
+
+## the Factory manager acts for you — what is waiting on me, approve it, merge it, answer its question from the Factory manager
+
+Every row the Factory manager reads says who the job waits on, from the wait the factory stores on each job: you and for what ("waits on the person to approve the plan"), its main agent ("handed to its main agent, which is deciding what to do"), GitHub, a computer, or nobody while work is under way. A job the factory found stalled says "stalled" and why. The row lists what the job accepts from you now ("accepts from the person: approve, task") and public acts that wait for your yes ("waiting for approval to post 2 replies"). One job read with `item` says what it asks, the choices its question lists, and each waiting act in the words that would be posted.
+
+When you ask, it presses one action the job accepts from you, as you, through the job page's own door: `approve`, `answer`, `reject_plan`, `accept_step`, `acts_approve`, `acts_decline`, `merge`, `pr_ready`, `retry_publish`, `resume`, `resume_pipeline`, `resume_auto`, `rerun_step`, `start`, `task` and `raise_budget` (to 5, 10, 20 or 30 USD, or the job's next budget).
+
+The factory checks this itself, in Manual and in Auto. A press on a turn you did not write in answers "Nothing changed: you press a job's action only when the person asks for it, and nothing in this turn came from them." An action the job does not accept now is refused with what it does accept, such as "does not accept merge now. It waits on GitHub (a review)." A question that lists choices (a step out of rounds: `try_once_more`, `send_back`, `accept`) takes only a choice, never other words. Stopping a job, `spend_answer` and `publish_anyway` stay on the job page, and so do an approval a rule asks you for, one that names someone else, and an approve step only a person passes. Ask it to show you what would be posted before you approve public acts.
+
+## tell a job's main agent through the Factory manager — pass my words to a job, ask the job's manager to rebase from the Factory manager
+
+"Tell #12 to rebase on main": the Factory manager passes your words to that job's main agent (its manager), which gets one turn of its own conversation and answers, and the Factory manager relays the answer. The note the main agent reads begins "The person told the Factory manager, for you:". The turn is charged to the job's budget and is stopped after 3 minutes; what the main agent did before that stands.
+
+It is refused, and nothing is passed on, when the message was not yours, when the job has no main agent conversation yet (one is made when the job starts or when you open the job's chat), when the job is finished or you stopped it, and when its budget is spent. A main agent in the middle of a turn of its own is not interrupted: the words are not passed on, and you ask again.
+
+That turn is the factory's, not you speaking in the job's conversation. So outside Auto the main agent cannot push, approve publication, mark the pull request ready or approve public acts on it, and in Auto as in Manual it never merges on it. Ask the Factory manager to press those for you, or do them on the job page. Passing words on and pressing need the desktop app; a terminal window answers that it cannot.
 
 ## the Factory manager counts — how many jobs are running, how many repos are active, how many pull requests merged this week
 
-Every `factory_floor` answer but `item` and `repos` says the whole factory's counts by state on its first line, such as `in the factory: 2 running, 1 waiting on the person, 40 new`, so a how-many question is answered by one read, whichever was asked for. An ask nothing answers, and a day nothing shipped, say the counts too. The counts are of the factory and never of the rows listed, which stop at 50.
+Every `factory_floor` answer but `item` and `repos` says the whole factory's counts by state on its first line, such as `in the factory: 2 running, 1 waiting on the person, 40 new`, so a how-many question is answered by one read, whichever was asked for. Each job is counted once, and who it waits on comes first: a job that waits on you is "waiting on the person" whatever its state (a landed job waiting for approval, a published one ready to merge), one you put away is "put away by the person", and one whose stop its main agent holds is "with a main agent". An ask nothing answers, and a day nothing shipped, say the counts too. The counts are of the factory and never of the rows listed, which stop at 50.
 
 - `repos`: every repository with its jobs counted by state, the one with work in hand first: `acme/api · 6 open: 1 running, 1 waiting on the person, 4 new · 3 done`. The first line says how many repositories have jobs, how many have open jobs, and how many have a job running, queued, waiting or following a pull request.
 - `shipped` with `days`: jobs shipped over that many days, today included (1 is today and the default, at most 90), newest first, each with the day it shipped. The first line counts the pull requests merged among them.
@@ -371,7 +388,7 @@ The Factory manager is not limited to `factory_floor`. The desktop app starts ea
 
 ## the Factory manager did not answer, takes forever, stop does nothing, clear the Factory manager's conversation, archived Factory manager
 
-One `factory_floor` read waits at most 20 seconds on the factory, and a start, a priority or a selection 60 seconds; after that the tool answers "the factory did not answer within 20 seconds" (or 60) and the turn goes on, and a stop returns it at once. A start or priority that got no answer in time says it may still take effect, so the job is read again before it is asked for twice. A selection that got none says "whether anything was selected is not known; read the factory again", never that nothing changed.
+One `factory_floor` read waits at most 20 seconds on the factory, and a start, a priority or a selection 60 seconds (a press too); after that the tool answers "the factory did not answer within 20 seconds" (or 60) and the turn goes on, and a stop returns it at once. A start or priority that got no answer in time says it may still take effect, so the job is read again before it is asked for twice. A selection that got none says "whether anything was selected is not known; read the factory again", never that nothing changed. Words passed to a job's main agent wait for its whole turn, which is stopped after 3 minutes.
 
 The app's Stop is bounded. It interrupts the turn, and a turn that has still not let go ten seconds later is let go of by the engine: it ends "Stopped by you" and the next message opens an ordinary turn. A turn the factory itself is driving (a running stage, or the factory asking a job's manager a question in a chat you have open) is only interrupted, because the factory is still reading it; the job's own Stop ends it.
 

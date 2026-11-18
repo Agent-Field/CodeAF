@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,11 +22,14 @@ import (
 // The app's factory.foreman_open opens the foreman ([appBackend.FactoryForemanOpen]):
 // ONE conversation per factory home, the factory-wide manager. It is never the
 // runner. It reads every job through `factory_floor` (queued, running, waiting
-// on the person, shipped today), proposes by selecting items, and starts or
-// prioritises one job when the person asks, through the job page's own Start
-// and priority ([seamFloorDoor.StartItem]). It never stops, ships, merges or
-// posts, and its belt has no verb that could. It reads only the floor of the
-// home it belongs to.
+// on the person, shipped today, and what each job waits on), proposes by
+// selecting items, and acts on one job when the person asks: it starts or
+// prioritises it through the job page's own Start and priority
+// ([seamFloorDoor.StartItem]), presses an action the job offers the person,
+// and passes their words to the job's main agent (factory_foreman_press.go).
+// It never stops or drops a job, and it ships, merges and posts nothing on its
+// own judgment: each of those is a press the person asked for in the turn. It
+// reads only the floor of the home it belongs to.
 //
 // Like an item's own conversation (factory_talk.go) it is OPTIONAL AND NEVER
 // MADE BY DEFAULT: the first open makes it, every later open answers the same
@@ -62,7 +66,7 @@ const foremanEarlierTitle = "Factory manager (earlier)"
 // and the manual quote the same words. It is kept free of the characters a
 // journal line escapes (angle brackets, double quotes), so the conversation's
 // file holds it as written and can be searched for it.
-const foremanOpening = "You are the foreman of this factory, its factory-wide manager. Every job, its state, its step and its pull request come through factory_floor: read it before you answer what is running, what waits, what is queued, what shipped or how many jobs a repository has, and never answer those from memory. A message from the person may start with blocks the app writes. One tagged afi-now is the app's present state: the time, the factory's counts, what waits on the person ('Waiting on you' is the person, never you), what is running, what was made today and what was noticed lately. One tagged app-places says where things are in the app, for when the person asks where to find or do something. They are the app's, not the person's words, and were true when the message was sent: answer from them what they say, read factory_floor for what they do not, and never quote them back. Anything else the person asks, answer as any assistant would, with your other tools. Start a job or set its priority with factory_floor only when the person asks for it here, naming the job by its ref. Propose what to take on by selecting jobs. Never stop, ship, merge or post. Name jobs by their ref."
+const foremanOpening = "You are the foreman of this factory, its factory-wide manager. Every job, its state, its step and its pull request come through factory_floor: read it before you answer what is running, what waits, what is queued, what shipped or how many jobs a repository has, and never answer those from memory. A message from the person may start with blocks the app writes. One tagged afi-now is the app's present state: the time, the factory's counts, what waits on the person ('Waiting on you' is the person, never you), what is running, what was made today and what was noticed lately. One tagged app-places says where things are in the app, for when the person asks where to find or do something. They are the app's, not the person's words, and were true when the message was sent: answer from them what they say, read factory_floor for what they do not, and never quote them back. Anything else the person asks, answer as any assistant would, with your other tools. Each job's row says what the job waits on and what it accepts from the person now; ask needs_you for the jobs that wait on the person, the one that has waited longest first. Start a job or set its priority with factory_floor only when the person asks for it here, naming the job by its ref. When the person asks you to act on a job (approve it, answer its question, merge it, mark its pull request ready, approve or decline what it would post, give it a task), press that one action for them with press; it is refused unless their own message in this turn asked for it and the job accepts it now. Before you approve what a job would post or change, show the person exactly what it is. When the person has words for one job's main agent, pass them on with tell and relay what it answers. That turn is not the person speaking in the job's own conversation, so outside Auto the job's main agent cannot push, approve, mark ready or merge on it: never promise that it will. Propose what to take on by selecting jobs. Never stop or drop a job, and never press, ship, merge or post on your own judgment. Name jobs by their ref."
 
 // floorDoor is `factory_floor`'s door over the store, or nil.
 //
@@ -131,11 +135,25 @@ type seamFloorDoor struct {
 
 // StartItem is the foreman's start of one job: the job page's Start, sent as
 // the person through the app's press when there is one, and otherwise the
-// job manager's own start ([startItem]) on this machine's floor.
-func (d seamFloorDoor) StartItem(ctx context.Context, id int) (string, error) {
+// job manager's own start ([startItem]) on this machine's floor. said is the
+// person's own words in the running turn.
+//
+// GOING PAST AN APPROVE STEP IS THE PERSON'S, as it is for the job's own
+// manager ([seamRunDoor.StartRun], [factory.ManagerMay]): [startItem] answers
+// yes to a job held at one, so on a turn the person did not speak in it is
+// refused. The Factory manager is not the job's manager, so Auto's standing
+// yes is not its to use either: it needs the person's words in every mode. A
+// launch and a resume approve nothing and are not held.
+func (d seamFloorDoor) StartItem(ctx context.Context, id int, said string) (string, error) {
 	it, err := d.st.Get(id)
 	if err != nil {
 		return "", err
+	}
+	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove && !factory.StoppedByPerson(it) && strings.TrimSpace(said) == "" {
+		if err := factory.ManagerMay(it, factory.ManagerPassStep, false); err != nil {
+			return "", err
+		}
+		return "", errors.New(foremanPassStepRefusal)
 	}
 	if press := appLocalPress.Load(); press != nil && it.State == factory.StateNew {
 		if err := (*press)(ctx, id, factoryVerbStart, guardBody{}); err != nil {

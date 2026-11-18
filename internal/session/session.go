@@ -2567,8 +2567,9 @@ type Config struct {
 	RepairStage bool
 
 	// Floor is the foreman's door onto the whole floor (tools_floor.go): the
-	// floor's read and its marks. NIL IS NO DOOR: `factory_floor` is off the
-	// belt. It is set only on the foreman's own conversation (cmd/codeaf's
+	// floor's read and its marks, and, when the door is also a [FloorActor]
+	// or a [FloorHand], what the foreman does on the person's word. NIL IS NO
+	// DOOR: `factory_floor` is off the belt. It is set only on the foreman's own conversation (cmd/codeaf's
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
 

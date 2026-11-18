@@ -144,6 +144,18 @@ func managerMayPress(it factory.Item, p session.ManagerPress) error {
 // The factory checks the caller may approve the job and records who overrode
 // which finding on the job's history.
 func pressAutoResume(ctx context.Context, press *localJobPress, it factory.Item, words string) (string, error) {
+	found, err := sendAutoResume(ctx, press, it, words)
+	if err != nil {
+		return "", err
+	}
+	return "Auto resumed, as the person: it carries on past " + found + ", and the job's history records the override. A new failing check pauses it again. This confirms the override, not the publication; read factory_status for the outcome.", nil
+}
+
+// sendAutoResume is the press itself, for every caller that makes it (the
+// job's manager here, the factory's own manager in factory_foreman_press.go):
+// the rule on the job as saved, then the one verb with the person's words. It
+// answers the findings the override carries the job past.
+func sendAutoResume(ctx context.Context, press *localJobPress, it factory.Item, words string) (string, error) {
 	if !factory.OffersAutoResume(it) {
 		return "", errors.New("Nothing changed: Auto is not paused on a failing check")
 	}
@@ -160,7 +172,7 @@ func pressAutoResume(ctx context.Context, press *localJobPress, it factory.Item,
 		}
 		return "", fmt.Errorf("Nothing changed: %w", err)
 	}
-	return "Auto resumed, as the person: it carries on past " + found + ", and the job's history records the override. A new failing check pauses it again. This confirms the override, not the publication; read factory_status for the outcome.", nil
+	return found, nil
 }
 
 // pressOfferMerge shows the person the job page's Merge card again, through
@@ -201,48 +213,8 @@ func pressPRDecisionBy(ctx context.Context, press *localJobPress, it factory.Ite
 	if pr == nil {
 		pr = &factory.PullRequest{}
 	}
-	switch action {
-	case session.ActionMarkReady:
-		if !factory.OffersMarkReady(it) {
-			return "", errors.New("Nothing changed: this job has no open draft pull request to mark ready")
-		}
-	case session.ActionApprove:
-		if !factory.OffersPublishApproval(it) {
-			return "", errors.New("Nothing changed: no publication waits on an approval")
-		}
-		// ONLY A PERSON PASSES A PERSON'S APPROVE STEP: the manager never
-		// presses it, even with the person's words.
-		if st, _, ok := factory.WaitingGateStage(it); ok && factory.PersonOnly(st) {
-			return "", errors.New("Nothing changed: only a person can pass this approval; they press Approve on the job page")
-		}
-	case session.ActionMerge:
-		if v := factory.MergeOffered(it); !v.OK {
-			return "", errors.New("Nothing changed: merge is not offered: " + v.Why)
-		}
-	default:
-		return "", errors.New("Nothing changed: unknown action")
-	}
-	if press == nil {
-		return "", errNoPress
-	}
-	var err error
-	switch action {
-	case session.ActionMarkReady:
-		err = (*press)(ctx, it.ID, "pr-ready", guardBody{})
-	case session.ActionApprove:
-		err = (*press)(ctx, it.ID, factoryVerbApprove, api.Approve{Commit: it.HeadCommit})
-	default:
-		err = (*press)(ctx, it.ID, factoryVerbMerge, struct {
-			Commit string      `json:"commit,omitempty"`
-			Expect *api.Expect `json:"expect,omitempty"`
-		}{Commit: pr.HeadSHA})
-	}
-	if err != nil {
-		var wire *appwire.Error
-		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
-			return "", err
-		}
-		return "", fmt.Errorf("Nothing changed: %w", err)
+	if err := sendPRDecision(ctx, press, it, action); err != nil {
+		return "", err
 	}
 	if action == session.ActionApprove {
 		if !said {
@@ -267,3 +239,63 @@ func pressPRDecisionBy(ctx context.Context, press *localJobPress, it factory.Ite
 	}
 	return fmt.Sprintf("Merge pressed for pull request #%d, as the person. It waits out its Undo window (%s) on the job page, then the factory checks the gate again and merges the approved commit. This confirms the press, not the merge; read factory_status for the outcome.", pr.Number, factory.MergeUndo), nil
 }
+
+// sendPRDecision is the press itself, for every caller that makes it (the
+// job's manager above, the factory's own manager in
+// factory_foreman_press.go): the decision checked against the job as saved,
+// then the one verb with the body its handler expects. An approval names the
+// job's head commit and a merge the pull request's head, so each acts on what
+// was read.
+func sendPRDecision(ctx context.Context, press *localJobPress, it factory.Item, action string) error {
+	pr := it.PullRequest
+	if pr == nil {
+		pr = &factory.PullRequest{}
+	}
+	switch action {
+	case session.ActionMarkReady:
+		if !factory.OffersMarkReady(it) {
+			return errors.New("Nothing changed: this job has no open draft pull request to mark ready")
+		}
+	case session.ActionApprove:
+		if !factory.OffersPublishApproval(it) {
+			return errors.New("Nothing changed: no publication waits on an approval")
+		}
+		// ONLY A PERSON PASSES A PERSON'S APPROVE STEP: the manager never
+		// presses it, even with the person's words.
+		if st, _, ok := factory.WaitingGateStage(it); ok && factory.PersonOnly(st) {
+			return errors.New(personOnlyApproval)
+		}
+	case session.ActionMerge:
+		if v := factory.MergeOffered(it); !v.OK {
+			return errors.New("Nothing changed: merge is not offered: " + v.Why)
+		}
+	default:
+		return errors.New("Nothing changed: unknown action")
+	}
+	if press == nil {
+		return errNoPress
+	}
+	var err error
+	switch action {
+	case session.ActionMarkReady:
+		err = (*press)(ctx, it.ID, "pr-ready", guardBody{})
+	case session.ActionApprove:
+		err = (*press)(ctx, it.ID, factoryVerbApprove, api.Approve{Commit: it.HeadCommit})
+	default:
+		err = (*press)(ctx, it.ID, factoryVerbMerge, struct {
+			Commit string      `json:"commit,omitempty"`
+			Expect *api.Expect `json:"expect,omitempty"`
+		}{Commit: pr.HeadSHA})
+	}
+	if err != nil {
+		var wire *appwire.Error
+		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
+			return err
+		}
+		return fmt.Errorf("Nothing changed: %w", err)
+	}
+	return nil
+}
+
+// personOnlyApproval is an approval only a person passes, asked of a manager.
+const personOnlyApproval = "Nothing changed: only a person can pass this approval; they press Approve on the job page"

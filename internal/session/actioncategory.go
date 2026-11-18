@@ -223,7 +223,10 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		"calendar_list", "workspace_snapshots",
 		// A manager looking at its team: the states, and a member's page.
 		"team_status", "team_read",
-		// The foreman reading the factory floor (a mark is a proposal, not a change).
+		// The foreman reading the factory floor (a mark is a proposal, not a
+		// change). THE FAMILY IS BY NAME ALONE, so it stays the one most of
+		// its calls are: a press or words passed on for the person are the
+		// same tool, and their own result lines say what changed.
 		"factory_floor", "factory_status":
 		return ActionRead
 

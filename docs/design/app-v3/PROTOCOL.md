@@ -2737,11 +2737,19 @@ Only the factory this engine serves is accepted; any other is `not_found`, as
 
 The Factory manager reads only the floor of the factory home it belongs to, through
 `factory_floor`: `ask` is `running`, `queue` (not started, most urgent then
-oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
-`risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
+oldest), `waiting`, `needs_you` (waiting on the person now, longest wait
+first), `shipped` (shipped today, with pull requests and changes),
+`risky`, `cheapest`, `oldest`, `all` or `item`. Every row says the job's stored
+wait and the actions it offers the person (the job's `wait` and `offers`). When the person asks, `start`
 starts one job and `priority` (`p0`–`p3`, with `item`) sets one job's priority,
 each through the same factory verb the job page's own Start and priority send,
-as the person. It never stops, ships, merges or posts. `repos` lists every
+as the person. `press` (with `item`) sends, as the person, the job verb of one
+action the job offers them now (approve, answer, merge, pr-ready, acts_approve,
+task and the rest), and `tell` (with `item`) gives the job's main agent one turn
+of its own conversation with the person's words. Both are refused on a turn
+that carries no words of the person's own. No new wire method or event is
+involved: the desk sees the job change as it does after its own buttons. It
+never stops or drops a job. `repos` lists every
 repository with its jobs counted by state, `shipped` takes `days` (1 is today
 and the default, at most 90) and counts the pull requests merged, and every
 answer but `item` and `repos` says the whole factory's counts by state on its
