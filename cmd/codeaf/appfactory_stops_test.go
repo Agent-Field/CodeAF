@@ -83,7 +83,7 @@ func TestTheStopTurnHandsTheStopToTheMainAgent(t *testing.T) {
 	for _, want := range []string{
 		"This job stopped, and the stop is yours to decide before its person is asked: test is not green after 2 rounds",
 		"Waits on: you, the manager, to decide this stop first. If you do not settle it, the person is asked to answer the question.",
-		"Accepted from you now: another_round, send_back, rerun, accept, hand_to_person.",
+		"Accepted from you now: task, another_round, send_back, rerun, accept, hand_to_person.",
 		"Its log's last lines: ",
 		"line h wrapped",
 		"A step used its rounds without finishing.",
