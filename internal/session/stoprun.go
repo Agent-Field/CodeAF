@@ -457,7 +457,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 				}
 			}
 		}
-		merge, changed = keptWork(run.tree, run.title, changed, a.signsGitWork())
+		merge, changed = keptWork(run.tree, run.title, changed, a.signsGitWork().ranOn(run.crewWorker()))
 		if merge != mergeInPlace {
 			report += " · " + beltStoppedWhere(run.tree.branch, run.ground, changed)
 		}

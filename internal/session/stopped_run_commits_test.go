@@ -76,6 +76,58 @@ func TestAStoppedRunNamesWorkTheWorkerAlreadyCommitted(t *testing.T) {
 	}
 }
 
+// stoppedRunSignTrailer stops the run the fixture built and answers the
+// trailer block of the commit its kept branch holds, for the run's worker and
+// the conversation's model named. An empty worker is a run nobody named.
+func stoppedRunSignTrailer(t *testing.T, chat, worker string) string {
+	t.Helper()
+	agent, _, conversation, _ := stoppableBeltRun(t, 71)
+	agent.mu.Lock()
+	agent.model = chat
+	agent.mu.Unlock()
+	if worker != "" {
+		agent.beltMu.Lock()
+		agent.beltRun.worker = worker
+		agent.beltMu.Unlock()
+	}
+	if _, err := agent.Cancel(CancelTask + ":71"); err != nil {
+		t.Fatal(err)
+	}
+	beltRunWaitFor(t, "the stopped run to settle", func() bool {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		return agent.beltRun == nil
+	})
+	rows := agent.graph().runRows(71)
+	if len(rows) != 1 || rows[0].Branch == "" {
+		t.Fatalf("the stopped run names no kept branch: %+v", rows)
+	}
+	return gitOut(t, conversation, "log", "-1", "--format=%(trailers:only)", rows[0].Branch)
+}
+
+// A stopped run's kept commit is signed by the model that did the work, never
+// the conversation's own model. The landing road already names its worker
+// (keepHome's ranOn(signedModel(node))); the stop road skipped the override.
+func TestAStoppedRunsCommitNamesItsWorkerNotTheChatModel(t *testing.T) {
+	trailer := stoppedRunSignTrailer(t, "deepseek/deepseek-v4-flash-latest", "z-ai/glm-5.3-flash")
+	if !strings.Contains(trailer, "glm-5.3-flash") {
+		t.Fatalf("the kept commit does not name the worker model z-ai/glm-5.3-flash:\n%s", trailer)
+	}
+	if strings.Contains(trailer, "deepseek-v4-flash-latest") {
+		t.Fatalf("the kept commit names the conversation's model deepseek/deepseek-v4-flash-latest:\n%s", trailer)
+	}
+}
+
+// A run nobody named a worker for keeps the conversation's model, the way an
+// unnamed landing node does: the override only replaces the model when there
+// is one to name.
+func TestAStoppedRunWithoutANamedWorkerKeepsTheChatModel(t *testing.T) {
+	trailer := stoppedRunSignTrailer(t, "deepseek/deepseek-v4-flash-latest", "")
+	if !strings.Contains(trailer, "deepseek-v4-flash-latest") {
+		t.Fatalf("the kept commit lost the conversation's model for an unnamed worker:\n%s", trailer)
+	}
+}
+
 // A stop uses the same history rule as a landing: commits that cancelled
 // their file changes still leave work on a branch the person can inspect.
 func TestAStoppedRunNamesCommittedThenRevertedWork(t *testing.T) {
