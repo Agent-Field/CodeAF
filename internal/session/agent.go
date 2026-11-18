@@ -2347,7 +2347,11 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// there must be no window in which a Submit could start a turn and
 			// have the follow-up land behind it, out of the order the person
 			// typed them in.
+			var retired []Question
 			if next, ok := a.nextFollowUpLocked(completed); ok {
+				// THE PERSON'S QUEUED WORDS ARE THEIR REPLY once their turn
+				// starts, as a sent message's are (said below, after the unlock).
+				retired = a.personClosesQuestionsLocked(next.message)
 				// context.Background rather than the finished turn's: the
 				// Submit that would have carried a context never happened, and
 				// a follow-up inheriting a cancelled one would end before it
@@ -2374,6 +2378,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// their transcript and silence, which is what they asked for.
 			}
 			a.mu.Unlock()
+			a.sayTheQuestionsCameDown(retired)
 			// AND NO QUESTION OF THE MODEL'S OWN OUTLIVES THE TURN THAT RAISED
 			// IT UNLESS IT SAID IT WOULD. It is [Agent.handBackUnsettled]'s law
 			// one lane over: a ratify nobody answered and a question somebody
@@ -2471,6 +2476,10 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	}
 
 	a.mu.Lock()
+	// WHAT THE PERSON'S WORDS TOOK DOWN IS SAID AFTER THE LOCK, as submitUser
+	// says it: the deferred call runs after the unlock below it.
+	var retired []Question
+	defer func() { a.sayTheQuestionsCameDown(retired) }()
 	defer a.mu.Unlock()
 	if a.closed {
 		return nil, errors.New("session: agent is closed")
@@ -2490,6 +2499,10 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	if err := a.railBlockLocked(); err != nil {
 		return refuseOn(stream, err), nil
 	}
+	// A FOLLOW-UP FROM THE PERSON'S OWN DOOR IS THEIR REPLY, as a sent message
+	// is, and it is taken only once the message is accepted: a refused one
+	// closes nothing. A queued one is taken when its turn starts, in the drain.
+	retired = a.personClosesQuestionsLocked(user)
 	return a.startTurnLocked(context.Background(), user, stream), nil
 }
 

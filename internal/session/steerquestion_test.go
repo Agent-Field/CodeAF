@@ -397,6 +397,90 @@ func TestATurnTheEngineOpensLeavesTheQuestionsStanding(t *testing.T) {
 	}
 }
 
+// A FOLLOW-UP FROM THE PERSON'S OWN DOOR IS THEIR REPLY TOO. The TUI's queued
+// message and a remote client's follow-up are the person's words as a sent
+// message is, so the question they left standing comes down, with the same
+// reason, whether the follow-up starts a turn at once or waits for the running
+// one to end. The same words handed on by an engine caller are nobody's reply,
+// and the question stands.
+func TestAFollowUpClosesTheQuestionsLeftStandingOnlyFromThePersonsOwnDoor(t *testing.T) {
+	said := func(words string) step {
+		return func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(words), nil }
+	}
+	for _, door := range []struct {
+		name   string
+		closes bool
+		send   func(*Agent) (<-chan Event, error)
+	}{
+		{"the person's own door", true, func(a *Agent) (<-chan Event, error) { return a.FollowUpMessage(Submission{Text: "go with grey"}) }},
+		{"an engine caller's", false, func(a *Agent) (<-chan Event, error) { return a.FollowUp("go with grey") }},
+	} {
+		for _, queued := range []bool{false, true} {
+			name := door.name + ", sent when idle"
+			if queued {
+				name = door.name + ", queued behind a running turn"
+			}
+			t.Run(name, func(t *testing.T) {
+				release := make(chan struct{})
+				running := make(chan struct{})
+				hold := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+					close(running)
+					select {
+					case <-release:
+					case <-ctx.Done():
+					}
+					return textResponse("noted"), nil
+				}
+				after := []step{said("grey, then")}
+				if queued {
+					after = []step{hold, said("grey, then")}
+				}
+				rig := leaveAQuestionStanding(t, after...)
+				var turn <-chan Event
+				if queued {
+					// A turn the engine opened is running: it closes nothing.
+					note := userText("the factory has work for you")
+					note.factoryWork = true
+					events, err := rig.agent.submitUser(watchedContext(rig.agent), note)
+					if err != nil {
+						t.Fatal(err)
+					}
+					<-running
+					queuedTurn, err := door.send(rig.agent)
+					if err != nil {
+						t.Fatal(err)
+					}
+					close(release)
+					collect(t, events)
+					turn = queuedTurn
+				} else {
+					var err error
+					if turn, err = door.send(rig.agent); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if door.closes {
+					gone := waitForAsk(t, rig.asks, EventQuestionWithdrawn)
+					if gone.Question.Withdrawn == nil || gone.Question.Withdrawn.Reason != askTalkedPastReason {
+						t.Fatalf("the withdrawal reads %+v, want %q", gone.Question.Withdrawn, askTalkedPastReason)
+					}
+				}
+				collect(t, turn)
+				open := rig.agent.OpenQuestions()
+				switch {
+				case door.closes && len(open) != 0:
+					t.Fatalf("the person's follow-up left %d question(s) standing: %+v", len(open), open)
+				case !door.closes && len(open) != 1:
+					t.Fatalf("an engine caller's follow-up closed the person's question: %d left, want 1", len(open))
+				}
+				if decisions := rig.agent.Decisions(); len(decisions) != 0 {
+					t.Fatalf("a question nobody answered was recorded as a decision: %+v", decisions)
+				}
+			})
+		}
+	}
+}
+
 // AN ANSWERED QUESTION IS NOT TALKED PAST. The person answers, then types
 // something else: the answer's receipt can still change it, because the new
 // message closes what is still asked and leaves what they already decided.
