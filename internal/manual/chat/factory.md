@@ -322,6 +322,10 @@ A comment from someone without write access to the repository is marked untruste
 
 One call takes at most 20 acts, and one that lacks what its kind needs (a reply's thread and text, a base change's branch) is sent back with nothing proposed.
 
+A push is not kept as an act. `push` and `open_pr` are the publish approval of checked work: in Manual it stays with you, and your yes to it also approves the acts waiting beside it; in Auto the manager gives it, except where Auto itself stopped (a claim not shown, an incomplete proof, a rule that asks first), and then it is yours. With nothing checked and ready, a push is refused: **Nothing is checked and ready to push.** `merge` only shows you the Merge card again. Mark ready works as soon as the pull request is open.
+
+A post is sent once. If GitHub does not answer, the act is tried again after 30 seconds, 2 minutes, 5 minutes and 15 minutes, and then fails with the reason on the job's log. An act cut off by a restart is marked failed and never sent again: **The factory restarted while this was being sent; check the pull request before trying again.** A later repair push rewrites the pull request's description, so an edit to it does not outlast the next push.
+
 ## give a delegate a task in the checkout — factory_task, fix what a reviewer asked for, rebase on main, do it now
 
 For work no step covers, the manager puts a delegate to work in the checkout with plain instructions (`factory_task`): update the pull request for what a reviewer asked, fix something you asked for, rebase or merge the base branch in.
@@ -348,6 +352,10 @@ When a job stops, its manager hears first and settles what it can (`factory_answ
 After two extra rounds on one step, that step's next stop comes straight to you. These never come to the manager: approving public acts in Manual, merging, the budget, a decision you put away, a take-over, "bring a computer online", and a question a step marked as for a person only.
 
 While the manager holds a stop, the job reads as running, with **The main agent is deciding what to do.** Your own answers stay open: you can still act, and whoever is second is told it is already settled. The manager gets one turn. If the job has not moved when the turn ends, if the turn fails, or after five minutes, the stop is yours, and the job's log says **The main agent could not settle this.** with its reason. Each decision is on the log as **Main agent: another round · …** (or sent back, ran the step again, accepted the step as it stands, resumed the pipeline, retried publishing, went back to waiting on GitHub). A task the manager sends to a job that stands at a stop counts as one of its two extra rounds. Only a stop that is new is handed over: a job that was already waiting on you stays with you.
+
+A stop that is already yours answers a hand-over with **This stop is already with the person**. A third task from the manager on one stop is refused, as a third round is.
+
+A step the manager or you accepted as it stands no longer blocks the publish approval: what it left unshown is listed on the pull request under **Accepted as it stands:**. Checked work with a claim that still stands is not an approval to give: the job asks you to decide, and takes sending it back with what to change, Resume pipeline on an open pull request, or, in Auto, telling Auto to carry on.
 
 ## the Factory manager — the factory's own manager, what's running, start the oldest p1, what did we ship today, the foreman
 

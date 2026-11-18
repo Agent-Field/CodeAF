@@ -365,6 +365,8 @@ func pressDoor(handler http.Handler, st *store.Store, it factory.Item, action st
 		return post("resume", nil), true
 	case factory.DoResumePipeline:
 		return post("control", map[string]any{"mode": "resume_pipeline"}), true
+	case factory.DoRequestChanges:
+		return post("request_changes", map[string]any{"words": "Show the claim the proof left out."}), true
 	case factory.DoResumeAuto:
 		return post(serve.ResumeAutoVerb, map[string]any{}), true
 	case factory.DoRaiseBudget:

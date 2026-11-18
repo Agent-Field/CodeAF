@@ -78,6 +78,9 @@ const (
 	DoResume         = "resume"
 	DoResumePipeline = "resume_pipeline"
 	DoResumeAuto     = "resume_auto"
+	// DoRequestChanges sends landed work back to be changed, with the
+	// person's words.
+	DoRequestChanges = "request_changes"
 	DoRaiseBudget    = "raise_budget"
 	DoStart          = "start"
 	// The two answers to public acts that wait: one yes or one no for all.
@@ -404,6 +407,15 @@ func youWait(it Item) Wait {
 	case "approval_step":
 		return you(ActApproveStep, it.Question)
 	case "approval_proof":
+		// A CLAIM NOT SHOWN IS NOT AN APPROVAL TO GIVE. The approve door
+		// refuses checked work with a finding that still stands, so the job
+		// used to read "approve" over a button that did nothing. It asks for
+		// a decision instead, and offers what its doors take: send the work
+		// back, resume the pipeline on an open pull request, or tell Auto to
+		// carry on past the finding.
+		if proofBlocked(it) {
+			return you(ActDecide, firstNonEmpty(AutonomyBlockReason(it), proofBlockedWords(it)))
+		}
 		if f := it.FollowUp; f != nil && f.State == "ready_approval" {
 			return you(ActApproveReady, f.Reason)
 		}
@@ -464,6 +476,26 @@ func youWait(it Item) Wait {
 		}
 	}
 	return you(ActDecide, firstNonEmpty(it.Question, "This job needs you."))
+}
+
+// proofBlocked says the job's checked work waits for its publish approval
+// with a finding that still stands: the approve door refuses it (run's
+// ApprovalRefused), whoever presses.
+func proofBlocked(it Item) bool {
+	if it.State != StateLanded || it.Publishing || len(FailingFindings(it)) == 0 {
+		return false
+	}
+	a := JobApproval(it)
+	return a != nil && a.Kind == "proof" && a.State == "waiting"
+}
+
+// proofBlockedWords says a blocked proof to its person, in Manual.
+func proofBlockedWords(it Item) string {
+	n := len(FailingFindings(it))
+	if n == 1 {
+		return "The proof has a claim not shown, so this cannot be published as it stands. Send it back with what to change."
+	}
+	return "The proof has " + itoa(n) + " claims not shown, so this cannot be published as it stands. Send it back with what to change."
 }
 
 // budgetLeft says the job may spend more: it has no budget, or has not
@@ -538,7 +570,14 @@ func OffersOf(it Item) []Offer {
 	if (state == "queued" || state == "running") && it.Stream != nil && it.Stream.Paused && !it.Publishing {
 		add(OfferByYou, DoResume)
 	}
-	if a := JobApproval(it); a != nil && a.State == "waiting" {
+	if proofBlocked(it) {
+		// Sending the work back is the door that always takes a landed job
+		// with a finding ([proofBlocked]); a pull request that is open takes
+		// Resume pipeline, offered below.
+		if pr := it.PullRequest; pr == nil || pr.State != PROpen {
+			add(OfferByYou, DoRequestChanges)
+		}
+	} else if a := JobApproval(it); a != nil && a.State == "waiting" {
 		add(OfferByYou, DoApprove)
 		// THE MANAGER IS OFFERED ONLY WHAT IT MAY PRESS BY ITSELF
 		// ([ManagerMay]): outside Auto a publish approval is the person's,
@@ -689,7 +728,7 @@ var moves = map[string][]string{
 	ActRetryPublish:   {DoRetryPublish},
 	ActComputer:       {DoRerunStep, DoAnswer},
 	ActResume:         {DoResume, DoResumePipeline},
-	ActDecide:         {DoResumePipeline, DoRerunStep, DoAnswer, DoResumeAuto, DoRaiseBudget},
+	ActDecide:         {DoResumePipeline, DoRerunStep, DoAnswer, DoResumeAuto, DoRaiseBudget, DoRequestChanges},
 	ActApproveActs:    {DoActsApprove, DoActsDecline},
 }
 

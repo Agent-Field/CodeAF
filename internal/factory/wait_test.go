@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -261,5 +262,47 @@ func TestAFailedStepWithTheBudgetSpentWaitsOnTheBudget(t *testing.T) {
 	SettleWait(Item{}, &it, time.Now())
 	if it.Wait.key() != "you:retry" || !Offered(it, OfferByYou, DoRerunStep) {
 		t.Fatalf("with the budget raised: wait = %s, offers %v; want you:retry with rerun_step", it.Wait.key(), it.Offers)
+	}
+}
+
+// Checked work with a claim not shown is not an approval to give: the approve
+// door refuses it. The job asks for a decision and offers what its doors take.
+func TestAProofWithAFindingAsksForADecisionNotAnApproval(t *testing.T) {
+	now := time.Now()
+	blocked := func(mode string) Item {
+		it := waitRun(StateLanded, Phase{Name: "proof", Kind: StageChat, State: PhaseDone})
+		it.Autonomy, it.Assignee = mode, "sam"
+		it.Proof = []Claim{{Text: "tests pass", OK: true}}
+		it.Policy = []Claim{{Text: "FINDING: secrets in config", Medium: "policy"}}
+		SettleWait(Item{}, &it, now)
+		return it
+	}
+	manual := blocked(AutonomyManual)
+	if manual.Wait.key() != "you:decide" || !strings.Contains(manual.Wait.Words, "claim not shown") {
+		t.Fatalf("Manual: wait = %s %q", manual.Wait.key(), manual.Wait.Words)
+	}
+	if Offered(manual, OfferByYou, DoApprove) || !Offered(manual, OfferByYou, DoRequestChanges) {
+		t.Fatalf("Manual: offers %v; want request_changes and no approve", manual.Offers)
+	}
+	if err := WaitFault(manual); err != nil {
+		t.Fatal(err)
+	}
+	auto := blocked(AutonomyAuto)
+	if auto.Wait.key() != "you:decide" || !strings.HasPrefix(auto.Wait.Words, "Repository policy needs attention") {
+		t.Fatalf("Auto: wait = %s %q", auto.Wait.key(), auto.Wait.Words)
+	}
+	if Offered(auto, OfferByYou, DoApprove) || !Offered(auto, OfferByYou, DoResumeAuto) || !Offered(auto, OfferByYou, DoRequestChanges) {
+		t.Fatalf("Auto: offers %v; want resume_auto, request_changes and no approve", auto.Offers)
+	}
+	if err := WaitFault(auto); err != nil {
+		t.Fatal(err)
+	}
+	// With every claim shown it is the approval it always was.
+	clean := waitRun(StateLanded, Phase{Name: "proof", Kind: StageChat, State: PhaseDone})
+	clean.Autonomy, clean.Assignee = AutonomyManual, "sam"
+	clean.Proof = []Claim{{Text: "tests pass", OK: true}}
+	SettleWait(Item{}, &clean, now)
+	if clean.Wait.key() != "you:approve_publish" || !Offered(clean, OfferByYou, DoApprove) || Offered(clean, OfferByYou, DoRequestChanges) {
+		t.Fatalf("clean: wait = %s, offers %v", clean.Wait.key(), clean.Offers)
 	}
 }
