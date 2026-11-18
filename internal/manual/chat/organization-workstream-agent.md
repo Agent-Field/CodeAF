@@ -39,9 +39,9 @@ With `workstream_pages` it reads the workstream (name, purpose, budget, document
 
 It cannot run commands, read or change a repository, open files on a computer, start or stop Factory work, search the web or remember things between workstreams. `driver` mode runs the agent on a person's laptop with that laptop's tools instead, and then it has none of the workstream's.
 
-## can Afi draw a canvas in an organization — slides, social cards, a one-page plan, posters
+## can Afi draw a canvas in an organization — slides, social cards, a short plan, posters
 
-Yes. In an organization workstream, the server's Afi draws canvases with `ws_canvas`, the same `canvas` commands and the same canvas guide your own Afi uses on your computer, so an organization's canvas is made to the same standard: the whole set written in one pass, its colours and fonts kept as the canvas's tokens, only the facts you gave it. Ask in the Afi pane ("make a social launch card set", "a one-page plan for the launch on a canvas"). Anything visual goes on a canvas, never into a document.
+Yes. In an organization workstream, the server's Afi draws canvases with `ws_canvas`, the same `canvas` commands and the same canvas guide your own Afi uses on your computer, so an organization's canvas is made to the same standard: the whole set written in one pass, its colours and fonts kept as the canvas's tokens, only the facts you gave it. Ask in the Afi pane ("make a social launch card set", "a short plan for the launch on a canvas"). Anything visual goes on a canvas, never into a document.
 
 A canvas Afi makes is in the workstream's **Files and canvases**, shown as made by Afi for the person who asked, where everyone in the workstream sees it and the canvas updates live for anyone who has it open. Made while Afi does a task, it is under that task's **Result**, and a canvas it only looked at is linked to the task on the canvas itself ("Used by"). Afi can also work on a canvas a person made in the workstream: rename it, add frames and pages, set its colours and fonts.
 
@@ -55,7 +55,9 @@ When Afi changes something for you, it changes only what you asked, and its answ
 
 ## Afi's task cards — where is what Afi planned, nothing happened yet, Afi proposes, Add 2 tasks, untick a card, who is told
 
-On an organization's workstream, when what you ask for would involve someone else (a person does or owns it), carry a due date, or be a plan of 5 to 8 deliverables, Afi does not make it straight away. It proposes it in your pane as cards, all at once: each card has a tick, its title, who does it (Afi or a person), its owner, its due date and its checklist, and you can untick a card or change it. **Nothing is made and nobody is told until you press "Add 2 tasks"** (with the number ticked); the line under the button names who will be told. Then the ticked cards are made by you, with your rights, marked as coming from Afi, in Up next; five or more share one plan, which waits for one press of Start. The cards then say "Added 2 tasks · Lena is told", and the button is gone: a set of cards is added once.
+On an organization's workstream, Afi proposes smaller sets of tasks in its pane as editable cards, each with a tick, title and fact controls for Done by, Owner, Due and Group. Untick or edit them, then press **Add 2 tasks** (the number ticked). The line names who will be told. Until Add, these cards make no tasks. Once added, the cards show the receipt and cannot be added twice.
+
+Five or more tasks arrive as a named plan in your Inbox instead of cards in the pane. The pane shows one receipt with **Open Inbox**. The tasks share a batch group, are owned by the requester and stay Up next until **Start**. The Inbox shows the plan while every task is still Up next; starting one removes it from Plans to start.
 
 Something only for you, with no date, Afi simply makes and names in its answer. A typo or anything under half an hour it does itself. Your cards are private to you, like the rest of your pane. Afi only proposes in an app that draws the cards; Afi working on its own never proposes.
 

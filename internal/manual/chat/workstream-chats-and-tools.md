@@ -7,7 +7,7 @@ Use **New chat** in the Chats header to open a private conversation. What you an
 | What | Who sees it |
 | --- | --- |
 | What you and a chat say to each other, and its Asks | you only |
-| A chat's name, owner, state, last activity and task count | everyone in the workstream, where the server lists them |
+| A chat's name and state in Chats | you only |
 | The tasks and files a chat makes | everyone in the workstream |
 | One line on a task when your private request changed it | everyone in the workstream |
 | Your chats in My space, their names included | you only |
@@ -32,13 +32,13 @@ A click on a chat opens it in place, inside the Chats tab, with its own box. Ope
 
 Yes, yours, and nobody else's. Inside a Personal workstream, Afi carries one more tool than the chats do: `ws_chats`. With it Afi lists your chats in that workstream (each one's name, whether it is waiting on you, working or resting, and its latest line) and reads what was said in one lately. Ask Afi "what is Launch post doing?" or "which of my chats needs me?" and it reads them to answer.
 
-Your teammates and their Afi cannot read your chat messages. The optional shared listing exposes only the chat metadata described above. Afi does not copy what it reads there into a task, a comment or a file; the one line a private request leaves on a task is still the only trace.
+Your teammates and their Afi cannot read your chat messages. Others see the tasks and files a chat made, never its messages. Afi does not copy what it reads there into a task, a comment or a file; the one line a private request leaves on a task is still the only trace.
 
 On an organization's workstream Afi does not have `ws_chats`: it never reads your chats there.
 
 ## Can I start a chat in an organization's workstream — yes, on the organization's server
 
-When the organization's server keeps people's chats (one that also gives you My space), an organization's Chats tab starts chats like a Personal one. Each runs on the organization's server, never on this computer, is private to you in what is said, and what it makes reaches the workstream's Files. Others in the workstream see its name and state, never what is said.
+When the organization's server keeps people's chats (one that also gives you My space), an organization's Chats tab starts chats like a Personal one. Each runs on the organization's server, never on this computer, is private to you in what is said, and what it makes reaches the workstream's Files. Others in the workstream see what it makes as tasks and files, never what is said.
 
 On an organization's server that does not keep chats, the Chats tab has no box to start one, and says: "Chats aren't started in an organization's workstream: one would run on this computer, where what it makes never reaches Files and Afi can't read it. Ask Afi or add a task instead." Afi's pane works there as always, and a task you add is kept on the organization's server for everyone in the workstream. A chat you started there before that change is still listed on its Chats tab.
 
