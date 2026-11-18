@@ -400,3 +400,23 @@ func TestStartAllNamesEveryAgentDoersReadyTask(t *testing.T) {
 		t.Fatalf("start all names %v, want %v", got, want)
 	}
 }
+
+func TestWordsAnswerEventKeepsQuestionAndAnswerDistinct(t *testing.T) {
+	task := asking(afiTask("t1", "marco"), taskNow)
+	task.Ask.Title = "Is the changelog frozen?"
+	ch, err := AnswerTask(task, "", "", "Frozen · SDK tests pass", TaskActor{Handle: "marco", Edit: true}, TaskEventBy{Kind: TaskByPerson, ID: "marco", Name: "Marco"}, Standin{}, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(ch.Events[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["question"] != "Is the changelog frozen?" || got["answer"] != "Frozen · SDK tests pass" {
+		t.Fatalf("answer event lost its separate words: %s", b)
+	}
+}

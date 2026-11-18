@@ -85,3 +85,7 @@ Choosing Canvas in the New sheet follows the window you are in. In an organizati
 ## Reading a document — title, Afi, Tasks can read this, actions
 
 A document shows its kind and change facts above its title. The title appears once, at 22 on 28; document text is 14 on 22. Below the title, facts say what Afi may change and whether tasks can read it. **Tasks can read this** changes that permission where you can edit. The document's actions are in the header’s ⋯ menu, and its tab carries the file's name. Comments on passages work as before. Afi's one box sits below the content, never over the last line.
+
+## Files count and Changed by names
+
+The Files tab and All files heading count the same actual files, including files inside folded folders and inherited files. Folders and the automatically kept Decisions row are navigation, not extra files. Opening a folder does not change the total. Changed by and a document's details use display names, such as Marco and Lena, rather than lower-case handles.

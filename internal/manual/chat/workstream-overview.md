@@ -10,7 +10,7 @@ The one box says “Ask Afi, or give it work in …”, with the workstream’s 
 
 Empty sections are not drawn. Each section’s heading has a button to its full list. Waiting on you shows at most three Asks, then the remaining count and “Open in Inbox”. One Ask is open already. With several, they start as rows; opening a row shows its answers in place and closes the previous one. Answers are offered only in the open Ask, never on a summary row. The recommended answer comes first, then the others, then “Tell it…” and “Later”. “Tell it…” opens Afi with the question ready in its box. Interrupted work that needs you stays reachable here too.
 
-Running shows at most four tasks that agents are working on, each with its current step. A person’s task does not appear as Running. Up next shows four tasks, ordered by nearest due date, with undated tasks last. “All tasks” opens Tasks; there is no “Show 4” expansion button. Done lately shows two completed tasks with one line of the result; open one to read the task.
+Running shows at most four tasks that agents are working on, each with its current step. A person’s task does not appear as Running. Up next shows four tasks, ordered by nearest due date, with undated tasks last. “All tasks” opens Tasks; there is no “Show 4” expansion button. Done lately shows at most two completed tasks with one line of the result, and its heading counts those visible rows; open one to read the task.
 
 ## People, Decisions, Files and a smaller window
 
