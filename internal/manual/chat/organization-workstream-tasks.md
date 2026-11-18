@@ -163,9 +163,9 @@ A comment that reaches you shows in your Inbox under "Comments for you", with th
 
 This works in an organization workstream. A Personal workstream has only you in it, so nothing there is for anyone else.
 
-## someone left the workstream — who gets their tasks, handed to the fallback
+## someone left the workstream — who gets their tasks, handed to me, the remover, or the fallback
 
-When a person is removed from an organization workstream, each of their unfinished tasks there (and in every workstream inside it) is handed to the workstream's fallback person ("If unanswered for a day"), or to the person who looks after the workstream when there is none. The thread says "Handed to mia". Done tasks keep who did them, and a person's own checkbox task moves with the hand-off. Anyone who can edit can hand a task on again by hand.
+When a person is removed from an organization workstream, each of their unfinished tasks there (and in every workstream inside it) is handed to whoever removed them, so it is theirs to hand on. Someone who takes themselves out leaves their tasks to the workstream's fallback person, or to the person who looks after the workstream when there is none. The thread says "Handed to Mia", by name. Done tasks keep who did them, and a person's own checkbox task moves with the hand-off. Anyone who can edit can hand a task on again by hand.
 
 Someone removed from the whole organization is different: the tasks they owned go to the admin who removed them, into that admin's **Handed to you**, to hand on. A task given to someone invited who has not joined yet waits until they join.
 

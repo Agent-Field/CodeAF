@@ -11,7 +11,7 @@ import (
 // A PERSON WHO LEAVES HANDS THEIR OPEN WORK ON: abir's unfinished tasks go to
 // the fallback (mia), with "Handed to mia" in each thread; done work keeps
 // who did it, and santosh's own tasks are untouched.
-func TestAPersonWhoLeavesHandsTheirOpenTasksToTheFallback(t *testing.T) {
+func TestAPersonWhoLeavesHandsTheirOpenTasksToTheRemover(t *testing.T) {
 	o := newWSOrg(t)
 	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
 	path := "/v1/workstreams/" + ws.ID
@@ -36,10 +36,11 @@ func TestAPersonWhoLeavesHandsTheirOpenTasksToTheFallback(t *testing.T) {
 	for _, x := range o.tasks(t, "santosh", path) {
 		by[x.ID] = x
 	}
-	if got := by[open.ID]; got.Owner.ID != "mia" || got.Rev != open.Rev+1 {
+	// The person who removed them takes their open work, not the fallback.
+	if got := by[open.ID]; got.Owner.ID != "santosh" || got.Rev != open.Rev+1 {
 		t.Fatalf("abir's open task = %+v", got.Owner)
 	}
-	if got := by[tick.ID]; got.Owner.ID != "mia" || got.DoneBy.ID != "mia" {
+	if got := by[tick.ID]; got.Owner.ID != "santosh" || got.DoneBy.ID != "santosh" {
 		t.Fatalf("abir's person task = owner %+v done by %+v", got.Owner, got.DoneBy)
 	}
 	if got := by[done.ID]; got.Owner.ID != "abir" {
@@ -50,7 +51,7 @@ func TestAPersonWhoLeavesHandsTheirOpenTasksToTheFallback(t *testing.T) {
 	}
 	var events api.WorkstreamTaskEvents
 	o.do(t, "santosh", "GET", path+"/tasks/"+open.ID+"/events", -1, nil, 200, &events)
-	if n := len(events.Events); n == 0 || events.Events[n-1].Kind != factory.TaskEventHanded || events.Events[n-1].Text != "Handed to mia" {
+	if n := len(events.Events); n == 0 || events.Events[n-1].Kind != factory.TaskEventHanded || events.Events[n-1].Text != "Handed to Priya Nair" {
 		t.Fatalf("the thread does not say who took it: %+v", events.Events)
 	}
 }

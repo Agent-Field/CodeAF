@@ -157,7 +157,7 @@ func TestAChildFoldsBackIntoAHeading(t *testing.T) {
 
 // Removing a person tells the tasks lane who left and who takes their work:
 // the fallback, else the steward.
-func TestRemovingAPersonHandsTheirWorkToTheFallback(t *testing.T) {
+func TestRemovingAPersonHandsTheirWorkToTheRemover(t *testing.T) {
 	o := newWSOrg(t)
 	var got struct {
 		ws      []string
@@ -181,7 +181,8 @@ func TestRemovingAPersonHandsTheirWorkToTheFallback(t *testing.T) {
 	o.do(t, "santosh", "PATCH", path, shared.Workstream.Rev, api.WorkstreamPatch{Rules: &rules}, 200, nil)
 	out := []factory.Share{{Kind: "person", ID: "mia", Role: "edit"}}
 	o.do(t, "santosh", "PUT", path+"/shares", -1, api.WorkstreamSharesPut{Shares: &out}, 200, nil)
-	if !slices.Equal(got.removed, []string{"abir"}) || got.to != "mia" || !slices.Equal(got.ws, []string{pantry.ID, meal.ID}) {
+	// The remover takes it (screen 16), even with a fallback set.
+	if !slices.Equal(got.removed, []string{"abir"}) || got.to != "santosh" || !slices.Equal(got.ws, []string{pantry.ID, meal.ID}) {
 		t.Fatalf("removed = %+v", got)
 	}
 }

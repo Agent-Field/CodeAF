@@ -2237,25 +2237,26 @@ func firstLines(s string, most int) string {
 // the workstream (removed, by normalized handle): the rules' fallback, else
 // the steward. Done work keeps who did it; a task nobody left is unchanged
 // (false). The thread says "Handed to <to>", as a hand-off by hand does.
-func HandOn(t WorkstreamTask, removed map[string]bool, to string, by TaskEventBy, newID func() string, now time.Time) (WorkstreamTask, []WorkstreamTaskEvent, bool) {
+func HandOn(t WorkstreamTask, removed map[string]bool, to, name string, by TaskEventBy, newID func() string, now time.Time) (WorkstreamTask, []WorkstreamTaskEvent, bool) {
 	to = NormalizeHandle(to)
+	name = firstNonEmpty(name, to)
 	if t.State == TaskDone || to == "" || removed[to] {
 		return t, nil, false
 	}
 	changed := false
 	if t.Owner.Kind == TaskOwnerPerson && removed[NormalizeHandle(t.Owner.ID)] {
-		t.Owner, changed = TaskOwner{Kind: TaskOwnerPerson, ID: to, Name: to}, true
+		t.Owner, changed = TaskOwner{Kind: TaskOwnerPerson, ID: to, Name: name}, true
 		t.HandedBy = handedBy(t.Owner, by)
 	}
 	if t.DoneBy.Kind == TaskByPerson && removed[NormalizeHandle(t.DoneBy.ID)] {
-		t.DoneBy, changed = TaskDoneBy{Kind: TaskByPerson, ID: to, Name: to}, true
+		t.DoneBy, changed = TaskDoneBy{Kind: TaskByPerson, ID: to, Name: name}, true
 	}
 	if !changed {
 		return t, nil, false
 	}
 	stamp := now.UTC().Format(time.RFC3339Nano)
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
-	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + to}}, true
+	return t, []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventHanded, Text: "Handed to " + name}}, true
 }
 
 // TaskRequest is a request into a workstream: what is wanted, and the work

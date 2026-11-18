@@ -12,7 +12,7 @@ Only the person who looks after the workstream (its steward — the person who m
 
 ## removing a person from a workstream — what happens to someone's open tasks when I remove them from a workstream
 
-Removing a person (or a team they were in through) hands their open tasks in that workstream, and in every workstream inside it, to the fallback person ("If unanswered for a day"). With no fallback set, they go to the person who looks after the workstream.
+Removing a person (or a team they were in through) offers their open tasks in that workstream, and in every workstream inside it, to you, the person who removed them: each becomes yours, its thread says "Handed to <you>", and you can hand it on from there. Finished work keeps who did it. Someone who takes themselves out leaves their tasks to the fallback person, or with none set, to the person who looks after the workstream.
 
 ## the amber dot and number on the Work list — how many things are waiting on me in each workstream
 
@@ -22,7 +22,7 @@ Nothing waiting draws nothing: no dot, no "0". Amber means only "waiting on you"
 
 ## owner of incoming work, and the fallback person — who is asked
 
-"Owner of incoming work" owns tasks nobody asked for directly, such as ones the Factory creates: a named person. Everyone is no longer offered there, because a task has one owner; a workstream that already has Everyone keeps it until someone picks a person (then the first person to answer decides, and the task records who answered). It starts as the person who made the workstream. The fallback person is also asked when a task's question waits unanswered (see "who answers when the decider is away"), and takes the open tasks of anyone removed.
+"Owner of incoming work" owns tasks nobody asked for directly, such as ones the Factory creates: a named person. Everyone is no longer offered there, because a task has one owner; a workstream that already has Everyone keeps it until someone picks a person (then the first person to answer decides, and the task records who answered). It starts as the person who made the workstream. The fallback person is also asked when a task's question waits unanswered (see "who answers when the decider is away"), and takes the open tasks of anyone who leaves by themselves.
 
 ## who answers when the decider is away — on holiday, out sick, not answering, a stand-in, cover for someone
 

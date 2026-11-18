@@ -202,8 +202,8 @@ func (h *Handler) peopleOf(ws factory.OrgWorkstream) map[string]bool {
 }
 
 // WorkstreamPeopleRemoved is told, after a save, who left a workstream (and
-// every workstream inside it) and who takes their open work: the rules'
-// fallback, else the steward. The task list sets it to hand their open
+// every workstream inside it) and who takes their open work: the person who
+// removed them, else the rules' fallback, else the steward. The task list sets it to hand their open
 // tasks on; nil hands nothing.
 var WorkstreamPeopleRemoved func(h *Handler, r *http.Request, ws []string, removed []string, to string)
 
@@ -223,9 +223,17 @@ func (h *Handler) peopleChanged(r *http.Request, before, after factory.OrgWorkst
 		return
 	}
 	sort.Strings(removed)
+	// REMOVING SOMEONE OFFERS THEIR TASKS TO THE REMOVER (build spec v2,
+	// screen 16): whoever took them out is the one who knows where their work
+	// goes next, and it arrives in their Inbox to hand on. A remover no longer
+	// in it (they took themselves out) leaves it to the fallback, else the
+	// steward, as before.
 	to := after.StewardHandle()
 	if rules := after.RulesOrDefault(); rules.Fallback != nil && rules.Fallback.ID != "" {
 		to = rules.Fallback.ID
+	}
+	if who := factory.NormalizeHandle(h.orgActor(r)); who != "" && has[who] {
+		to = who
 	}
 	ids := append([]string{after.ID}, factory.ChildrenOf(all, after.ID)...)
 	WorkstreamPeopleRemoved(h, r, ids, removed, to)
