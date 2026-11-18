@@ -233,6 +233,35 @@ type TaskAsk struct {
 	// when answered, rather than saying running with nothing behind it.
 	// Absent, the answered task runs, as an agent's own Ask always has.
 	Then string `json:"then,omitempty"`
+	// Reversible is whether whatever the answer lets happen can be undone
+	// (OWNER-DECISIONS 2026-11-17 §13). WHOEVER RAISES THE ASK SETS IT: an
+	// agent is told to set it honestly, and a person's Ask is false unless
+	// they say otherwise. Only a reversible Ask joins the Inbox's "Quick, and
+	// can be undone" group and its "Accept Afi's answer on all", and only its
+	// answer is kept in WorkstreamTask.Undoable, to be undone from the task.
+	Reversible bool `json:"reversible,omitempty"`
+}
+
+// TaskAnswered is one answer given to a reversible Ask, kept on the task so
+// whoever gave it can undo it (TaskPatch.UndoAnswer): the Ask as it was, the
+// answer, who gave it and when, and the decision it kept.
+type TaskAnswered struct {
+	Ask      TaskAsk   `json:"ask"`
+	Option   string    `json:"option,omitempty"`
+	Answer   string    `json:"answer"`
+	By       PersonRef `json:"by"`
+	At       string    `json:"at"`
+	Decision string    `json:"decision,omitempty"`
+}
+
+// TaskUndoableMost is how many answers a task keeps to undo; the oldest goes
+// first. Ten is more than any task has had open at once.
+const TaskUndoableMost = 10
+
+// TaskAskHand hands one open Ask to another decider (TaskPatch.AskHand).
+type TaskAskHand struct {
+	Ask string    `json:"ask"`
+	To  PersonRef `json:"to"`
 }
 
 // TaskView is one person's view on someone else's Ask.
@@ -429,6 +458,10 @@ type WorkstreamTask struct {
 	UpdatedAt  string          `json:"updated_at"`
 	DoneAt     string          `json:"done_at,omitempty"`
 	AnsweredBy *PersonRef      `json:"answered_by,omitempty"`
+	// Undoable are the answers given to its reversible Asks, oldest first, at
+	// most TaskUndoableMost: each can be undone from the task by whoever gave
+	// it, which opens the Ask again (TaskPatch.UndoAnswer).
+	Undoable []TaskAnswered `json:"undoable,omitempty"`
 	// HandedBy is who last handed the task to its owner, when that was
 	// someone other than the owner themselves, so the new owner's Inbox can
 	// say "handed to you by Marco" (SPEC "Handing work on"). Cleared when the
@@ -929,6 +962,18 @@ type TaskPatch struct {
 	AddAsk *TaskAsk `json:"add_ask,omitempty"`
 	// AskLater is Later on one of Asks, by its decider.
 	AskLater *TaskAskLater `json:"ask_later,omitempty"`
+	// AskHand hands an open Ask to someone else to decide, by its decider
+	// ("Hand to someone else" in the Inbox). The caller checks the new decider
+	// is in the workstream.
+	AskHand *TaskAskHand `json:"ask_hand,omitempty"`
+	// UndoAnswer undoes the answer given to a reversible Ask, by the Ask's id
+	// (WorkstreamTask.Undoable): the Ask is open again, the task waits on it,
+	// and the decision the answer kept is withdrawn (TaskChange.Withdrawn).
+	UndoAnswer string `json:"undo_answer,omitempty"`
+	// TakeBack is the owner taking a task back from the agent doing it ("Take
+	// it back" in Running for you): Done by becomes the owner, the agent
+	// stops, and what it made stays.
+	TakeBack bool `json:"take_back,omitempty"`
 	// Assumed adds lines to what the agent decided without asking.
 	Assumed []string `json:"assumed,omitempty"`
 	// Overturn is the id of one of Assumed that Send back overturns, with
@@ -971,6 +1016,9 @@ type TaskChange struct {
 	// Decisions are what the change settled, for the workstream's Decisions:
 	// an answered Ask, or a request that changed shared work.
 	Decisions []WorkstreamDecision
+	// Withdrawn are the ids of decisions the change takes back: the one an
+	// undone answer kept (TaskPatch.UndoAnswer).
+	Withdrawn []string
 }
 
 // ApplyPatch changes t by p for actor a, under the rules, and answers the
@@ -1020,6 +1068,38 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		t.Owner = *p.Owner
 		t.HandedBy = handedBy(t.Owner, by)
 		event(TaskEventHanded, "Handed to "+ownerWords(t.Owner))
+	}
+	if p.TakeBack {
+		// TAKE IT BACK (build spec v2, screen 2): the owner does it now. The
+		// agent stops (the caller ends its run once the task is not running),
+		// what it made stays, and the task waits in Up next on its owner's
+		// checkbox, or on whatever a person still asks of it.
+		switch {
+		case p.DoneBy != nil || p.State != nil:
+			return TaskChange{}, TaskInvalid("take it back is its own change: send it without a doer or a state")
+		case !a.owns(t) || t.Owner.Kind != TaskOwnerPerson:
+			return TaskChange{}, TaskRefused("only the task's owner takes it back")
+		case !AgentDoes(t):
+			return TaskChange{}, TaskInvalid("no agent is doing this task, so there is nothing to take back")
+		case t.State == TaskDone:
+			return TaskChange{}, TaskRefused("this task is done: send it back first, then change who does it")
+		}
+		from := DoerWords(t.DoneBy)
+		t.DoneBy = TaskDoneBy{Kind: TaskByPerson, ID: NormalizeHandle(t.Owner.ID), Name: firstNonEmpty(t.Owner.Name, t.Owner.ID)}
+		// The agent's own Ask goes with it: nobody is left to act on its
+		// answer. A person's Ask stays, and the task keeps waiting on it.
+		if t.Ask != nil && (t.Ask.By == nil || t.Ask.By.Kind != TaskByPerson) {
+			t.Ask = nil
+		}
+		t.Asks = slices.DeleteFunc(slices.Clone(t.Asks), func(x TaskAsk) bool { return x.By == nil || x.By.Kind != TaskByPerson })
+		if len(t.Asks) == 0 {
+			t.Asks = nil
+		}
+		t.State, t.StateReason, t.StoppedBy = TaskUpNext, "", nil
+		if t.Ask != nil || len(t.Asks) > 0 {
+			t.State = TaskNeeds
+		}
+		event(TaskEventHanded, firstNonEmpty(by.Name, by.ID)+" took it back from "+from+". What it made stays")
 	}
 	if p.DoneBy != nil && *p.DoneBy != t.DoneBy {
 		// CHANGE WHO DOES IT (org-space DESIGN §4.5). The brief, the results
@@ -1177,6 +1257,85 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		t.Asks = slices.Clone(t.Asks)
 		t.Asks[i].LaterUntil = strings.TrimSpace(l.Until)
 	}
+	var withdrawn []string
+	if h := p.AskHand; h != nil {
+		// HAND TO SOMEONE ELSE (build spec v2, screen 1) changes who decides
+		// one open Ask, and nothing else: the task, its owner and the Ask's
+		// words stay. The task's own Ask becomes one of its Asks, decided by
+		// the new person, because the owner still owns the task.
+		ask, i, ok := findAsk(t, strings.TrimSpace(h.Ask))
+		if !ok || strings.TrimSpace(h.Ask) == "" {
+			return TaskChange{}, ErrTaskNoAsk
+		}
+		decides := a.owns(t)
+		if i >= 0 {
+			decides = ask.Decider != nil && a.Handle != "" && NormalizeHandle(ask.Decider.ID) == a.Handle
+		}
+		if !decides {
+			return TaskChange{}, TaskRefused("only whoever decides this Ask hands it to someone else")
+		}
+		to := PersonRef{ID: NormalizeHandle(h.To.ID), Name: strings.TrimSpace(h.To.Name)}
+		switch {
+		case to.ID == "":
+			return TaskChange{}, TaskInvalid("an Ask is handed to one person")
+		case to.ID == a.Handle:
+			return TaskChange{}, TaskInvalid("you already decide this Ask")
+		}
+		ask.Decider, ask.LaterUntil = &to, ""
+		if i < 0 {
+			t.Ask = nil
+			t.Asks = append(slices.Clone(t.Asks), ask)
+		} else {
+			t.Asks = slices.Clone(t.Asks)
+			t.Asks[i] = ask
+		}
+		event(TaskEventState, firstNonEmpty(by.Name, by.ID)+" handed “"+ask.Title+"” to "+firstNonEmpty(to.Name, to.ID)+" to decide")
+	}
+	if id := strings.TrimSpace(p.UndoAnswer); id != "" {
+		// UNDO AN ANSWER (OWNER-DECISIONS 2026-11-17 §13): only a reversible
+		// Ask's answer, only by whoever gave it, and only while the task is
+		// not done (a done task is sent back instead). The Ask opens again
+		// as it was asked, the task waits on it, and its decision is withdrawn.
+		k := slices.IndexFunc(t.Undoable, func(x TaskAnswered) bool { return x.Ask.ID == id })
+		if k < 0 {
+			return TaskChange{}, TaskInvalid("that answer cannot be undone")
+		}
+		ans := t.Undoable[k]
+		switch {
+		case NormalizeHandle(ans.By.ID) != a.Handle:
+			return TaskChange{}, TaskRefused("only " + firstNonEmpty(ans.By.Name, ans.By.ID) + " can undo their answer")
+		case t.State == TaskDone:
+			return TaskChange{}, TaskRefused("this task is done: send it back instead")
+		}
+		if _, _, open := findAsk(t, id); open {
+			return TaskChange{}, TaskInvalid("that Ask is open already")
+		}
+		ask := ans.Ask
+		ask.LaterUntil, ask.Then = "", ""
+		if t.State != TaskNeeds {
+			ask.Then = t.State
+		}
+		if ask.Decider == nil && t.Ask != nil {
+			// The owner's Ask slot is taken by a newer one: this one waits
+			// beside it, decided by whoever answered it.
+			who := ans.By
+			ask.Decider = &who
+		}
+		if ask.Decider == nil {
+			t.Ask, t.AnsweredBy = &ask, nil
+		} else {
+			t.Asks = append(slices.Clone(t.Asks), ask)
+		}
+		t.Undoable = slices.Delete(slices.Clone(t.Undoable), k, k+1)
+		if len(t.Undoable) == 0 {
+			t.Undoable = nil
+		}
+		t.State = TaskNeeds
+		if ans.Decision != "" {
+			withdrawn = append(withdrawn, ans.Decision)
+		}
+		event(TaskEventState, firstNonEmpty(by.Name, by.ID)+" undid the answer “"+ans.Answer+"”: “"+ask.Title+"” is open again")
+	}
 	if len(p.Assumed) > 0 {
 		t.Assumed = slices.Clone(t.Assumed)
 		for _, line := range p.Assumed {
@@ -1278,7 +1437,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	}
 	switch {
 	case t.State == TaskDone && before.State != TaskDone:
-		t.DoneAt, t.Ask, t.Asks = stamp, nil, nil
+		t.DoneAt, t.Ask, t.Asks, t.Undoable = stamp, nil, nil, nil
 	case t.State != TaskDone:
 		t.DoneAt = ""
 	}
@@ -1293,7 +1452,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	}
 	t.Rev++
 	t.UpdatedAt = stamp
-	ch := TaskChange{Task: t, Events: events}
+	ch := TaskChange{Task: t, Events: events, Withdrawn: withdrawn}
 	if t.State == TaskDone && before.State != TaskDone {
 		ch.Released = Released(t.ID, replaced(all, t), by, newID, now)
 	}
@@ -1478,8 +1637,22 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 	}
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
 	ch := TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option}}}
-	if d, ok := answerDecision(t, ask, opt, words, who, "dc_"+newID(), now); ok {
+	d, kept := answerDecision(t, ask, opt, words, who, "dc_"+newID(), now)
+	if kept {
 		ch.Decisions = append(ch.Decisions, d)
+	}
+	if ask.Reversible && t.State != TaskDone {
+		// A REVERSIBLE ASK'S ANSWER CAN BE UNDONE FROM ITS TASK: kept here
+		// with the decision it made, so the undo withdraws exactly that one.
+		keep := TaskAnswered{Ask: ask, Option: option, Answer: strings.Join(nonEmpty(chose, words), " · "), By: who, At: stamp}
+		if kept {
+			keep.Decision = d.ID
+		}
+		list := append(slices.Clone(ch.Task.Undoable), keep)
+		if len(list) > TaskUndoableMost {
+			list = list[len(list)-TaskUndoableMost:]
+		}
+		ch.Task.Undoable = list
 	}
 	return ch, nil
 }

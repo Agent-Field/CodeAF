@@ -97,6 +97,14 @@ var WorkstreamWorkRules = "You are inside a workstream: tasks and files everyone
 	"- An Ask has exactly one decider: the task's owner. Give each answer the decision it settles, in one line (decides).\n" +
 	WorkstreamWordsRule
 
+// WSAskReversibleRule is what ws_task_update's ask.reversible tells the
+// agent (OWNER-DECISIONS 2026-11-17 §13). A reversible Ask joins the owner's
+// "Quick, and can be undone" group, where one press accepts the recommended
+// answer on all of them, so the agent must say yes only when it is true.
+const WSAskReversibleRule = "Whether what the answer lets you do can be undone with nothing lost but a little time (a wording, a draft, an order of work). " +
+	"Say true ONLY when that is honestly so: the owner may accept your recommended answer on every such Ask at once without reading each. " +
+	"Anything published, sent, posted, paid for, deleted, or against a decision is false."
+
 // WorkstreamTaskSmallestMinutes is the least work a task may hold (OWNER-DECISIONS
 // 2026-11-17 §7): anything smaller is done in the reply or is a step of a task.
 const WorkstreamTaskSmallestMinutes = 30
@@ -186,7 +194,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`},"required":["title","request"],"additionalProperties":false}`)},
 	{Name: WSTaskUpdateTool, Category: "edit",
 		Description: "Change a task this chat does: its state, its result, the check of the result against the request, or an Ask for its owner. " +
-			"Only the task's owner answers an Ask; put your recommendation first and mark it recommended. " +
+			"Only the task's owner answers an Ask; put your recommendation first and mark it recommended, and set reversible honestly. " +
 			"Before calling a task done, check the result against each acceptance line and say what you checked in check, and leave handoff: what you made, what you assumed, what the next task should know. Done without a handoff is refused. " +
 			"The workstream's rule \"" + factory.AsksBeforePublishingRule + "\" binds you unless it says otherwise: before a task publishes, sends, posts or pays, make it ready and raise an ask to the owner. " +
 			"When you cannot do the task (an input is missing, or it needs something you lack, such as the web), do not set failed: raise an ask to the owner saying what you lack, with options such as \"Paste their text\", \"Do it myself\" and \"Drop it\". A failed state you set becomes that question to the owner. " +
@@ -203,7 +211,8 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"handoff":{"type":"string","maxLength":` + strconv.Itoa(factory.TaskHandoffMost) + `,"description":"With done: two to four lines on what you made, what you assumed, and what the next task should know. It goes to every task that builds on this one."},` +
 			`"results":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"file":{"type":"string"},"url":{"type":"string"},"label":{"type":"string","maxLength":200}},"additionalProperties":false}},` +
 			`"ask":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":200},"detail":{"type":"string","maxLength":1000},` +
-			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"},"decides":{"type":"string","maxLength":300,"description":"The decision this answer records, as one plain statement: \"The March notes go on the website\"."}},"required":["label"],"additionalProperties":false}}},` +
+			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"},"decides":{"type":"string","maxLength":300,"description":"The decision this answer records, as one plain statement: \"The March notes go on the website\"."}},"required":["label"],"additionalProperties":false}},` +
+			`"reversible":{"type":"boolean","description":"` + WSAskReversibleRule + `"}},` +
 			`"required":["title","options"],"additionalProperties":false},` +
 			`"waiting_on":{"type":"array","items":{"type":"string"},"maxItems":20},` +
 			`"due":{"type":"string","pattern":"^([0-9]{4}-[0-9]{2}-[0-9]{2})?$"},` +
