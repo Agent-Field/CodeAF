@@ -8,13 +8,13 @@ The one box says “Ask Afi, or give it work in …”, with the workstream’s 
 
 ## Waiting on you, Running, Up next and Done lately at 268 tasks
 
-Empty sections are not drawn. Each section’s heading has a button to its full list. Waiting on you shows at most three Asks, then the remaining count and “Open in Inbox”. One Ask is open already. With several, they start as rows; opening a row shows its answers in place and closes the previous one. Answers are offered only in the open Ask, never on a summary row. Interrupted work that needs you stays reachable here too.
+Empty sections are not drawn. Each section’s heading has a button to its full list. Waiting on you shows at most three Asks, then the remaining count and “Open in Inbox”. One Ask is open already. With several, they start as rows; opening a row shows its answers in place and closes the previous one. Answers are offered only in the open Ask, never on a summary row. The recommended answer comes first, then the others, then “Tell it…” and “Later”. “Tell it…” opens Afi with the question ready in its box. Interrupted work that needs you stays reachable here too.
 
 Running shows at most four tasks that agents are working on, each with its current step. A person’s task does not appear as Running. Up next shows four tasks, ordered by nearest due date, with undated tasks last. “All tasks” opens Tasks; there is no “Show 4” expansion button. Done lately shows two completed tasks with one line of the result; open one to read the task.
 
 ## People, Decisions, Files and a smaller window
 
-The side column is 280 points wide and has at most three blocks. People is one row of faces, with each person once. Decisions shows two saved decisions, each clamped to two lines; “All decisions” opens the searchable list. Files shows three names; “All files” opens Files. At a 1190×773 window the side column follows the main column.
+The side column is 280 points wide and has at most three blocks. People shows six readable faces in one row, with the remaining count beside them and their names on hover. Decisions shows two saved decisions, each clamped to two lines; “All decisions” opens the searchable Decisions list, with its own heading and a back link to Overview. The Overview tab is not underlined while Decisions is open. Files shows three names; “All files” opens Files. At 1190×773 the side column remains beside the narrower main column. Below 1100 points of window width it follows the main column.
 
 ## An empty workstream, its plan and Start
 
