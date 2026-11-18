@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -18,6 +19,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
 	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/identity"
@@ -567,6 +570,188 @@ func TestLiveTransferC6BackAgainFetchesOnlyWhatIsMissing(t *testing.T) {
 	t.Logf("first move: %d requests, %d bytes; taking back: %d requests, %d bytes, A lacked %d", firstStats.Requests, firstStats.BytesDown, back1.Requests, back1.BytesDown, lacking)
 }
 
+// C20: a file changed on B while B holds the chat is in A's folder after A
+// takes the chat back, and stays there when B takes the chat again. Found in a
+// hand test on the hosted relay with storage off: A's transcript had every turn
+// B ran and the "Everything as you left it" line, but a README edited on B from
+// a shell was still the original on A, and when B took the chat from A once more
+// the edit was gone from both computers.
+// The edit is made outside any tool call, then B runs two more turns, with a
+// tool call in them or as plain conversation; A takes the chat back while B
+// still runs, with A's window left open (as the hand test did) or not.
+func TestLiveTransferC20AFileChangedOnBSurvivesTheRoundTrip(t *testing.T) {
+	for _, c := range []struct {
+		name         string
+		windowOnA    bool // A's window stays open while B has the chat
+		toolsInTurns bool
+		staleHome    bool // A takes from a Home list read before B's last turns
+		storage      bool // sync storage is approved: the road that was there before live transfer
+	}{
+		{"A's window quit, turns that run a tool", false, true, false, false},
+		{"A's window open, plain turns", true, false, false, false},
+		{"Home on A is a turn behind", false, true, true, false},
+		{"storage approved, A's window open, plain turns", true, false, false, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := newLiveRig(t)
+			if c.storage {
+				r.approveStorage()
+			}
+			// The hand test's project was a git repository, and the engine reads one differently.
+			if _, err := exec.LookPath("git"); err == nil {
+				if out, err := exec.Command("git", "-C", r.work, "init", "-q").CombinedOutput(); err != nil {
+					t.Fatalf("git init: %v: %s", err, out)
+				}
+			}
+			a := liveChat(t, r)
+			if !c.windowOnA {
+				mustNil(t, a.drive.Close(context.Background()))
+			}
+			took := liveTake(t, r)
+			workB := workspaceOf(took.Taken.Cell.Root)
+
+			b := r.openSeated(r.b, r.engB, took.Taken.Cell, workB, nameB, nil, cellstore.WithPipeline(), cellstore.WithWarmCapture())
+			headBefore := headOf(t, took.Taken.Cell)
+			var staleListing directory.Listing
+			if c.staleHome {
+				// B's first turn is the last thing Home on A has seen.
+				b.mustSay("a turn Home has seen")
+				mustNil(t, executor.Drain(context.Background(), b.seat))
+				waitFor(t, "the directory to hold B's turn", func() bool {
+					head, err := cellstore.Head(took.Taken.Cell)
+					return err == nil && head != nil && r.directoryHead(r.cell.ID) == head.Turn.ID
+				})
+				var err error
+				staleListing, err = r.a.Dir.List(context.Background())
+				mustNil(t, err)
+				headBefore = headOf(t, took.Taken.Cell)
+			}
+			// A shell edit outside any tool call, then two turns.
+			f, err := os.OpenFile(filepath.Join(workB, "README.md"), os.O_WRONLY|os.O_APPEND, 0)
+			mustNil(t, err)
+			_, err = f.WriteString("edited on B\n")
+			mustNil(t, err)
+			mustNil(t, f.Close())
+			for _, text := range []string{"first turn on B", "second turn on B"} {
+				if c.toolsInTurns {
+					b.mustSay(text)
+				} else {
+					appendTo(t, transcriptOf(b.cell), fmt.Sprintf(`{"type":"message","role":"assistant","content":%q}`+"\n", text))
+				}
+				mustNil(t, executor.Drain(context.Background(), b.seat))
+			}
+			waitFor(t, "B's turns to reach the directory", func() bool {
+				head, err := cellstore.Head(took.Taken.Cell)
+				return err == nil && head != nil && head.Turn.ID != headBefore && r.directoryHead(r.cell.ID) == head.Turn.ID
+			})
+			edit := func(where string) {
+				t.Helper()
+				if got, _ := os.ReadFile(filepath.Join(where, "README.md")); !strings.HasSuffix(string(got), "edited on B\n") {
+					t.Fatalf("README.md in %s = %q; want B's edit in it", where, got)
+				}
+			}
+			if got, _ := os.ReadFile(filepath.Join(r.work, "README.md")); strings.HasSuffix(string(got), "edited on B\n") {
+				t.Fatal("A's README already has B's edit before A took the chat back")
+			}
+			if c.staleHome {
+				// Home on A was listed before B's last turn reached the directory;
+				// the take uses that record, as a take from Home does.
+				r.a.RememberViews(staleListing)
+			}
+
+			back, err := r.continuerA().Take(context.Background(), r.cell.ID)
+			if err != nil {
+				t.Fatalf("A could not take the chat back: %v", err)
+			}
+			if back.Wait != nil {
+				mustNil(t, back.Wait(context.Background()))
+			}
+			if raw, _ := os.ReadFile(transcriptOf(r.cell)); !strings.Contains(string(raw), "second turn on B") {
+				t.Fatal("B's turns did not reach A")
+			}
+			sameTree(t, "the tree on A", readTree(t, workB), readTree(t, r.work))
+			edit(r.work)
+
+			// A opens the chat it took back and the next move goes to B again.
+			again := r.openOn(r.a, r.engine, back.Taken.Cell, r.work, nameA)
+			again.mustSay("a turn back on A")
+			waitFor(t, "A's turn to reach the directory", func() bool {
+				head, err := cellstore.Head(back.Taken.Cell)
+				return err == nil && head != nil && r.directoryHead(r.cell.ID) == head.Turn.ID
+			})
+			second, err := r.continuerB().Take(context.Background(), r.cell.ID)
+			if err != nil {
+				t.Fatalf("B could not take the chat again: %v", err)
+			}
+			if second.Wait != nil {
+				mustNil(t, second.Wait(context.Background()))
+			}
+			edit(workspaceOf(second.Taken.Cell.Root))
+			edit(r.work)
+		})
+	}
+}
+
+// C21: a file B changed by hand and never saved in a turn is not thrown away
+// when B takes the chat again. A takes the chat back while the edit sits only in
+// B's folder, so A cannot have it; B's next take must keep it, in B's folder or
+// as turns kept apart, as it does for any edit that was never sent. The hand test
+// lost it: B's folder came back with the original file and nothing was kept.
+// The same scene runs on the storage road, where nothing here is new, so a
+// difference between the two is the change's doing.
+func TestLiveTransferC21AnEditNeverSavedIsKeptWhenBTakesTheChatAgain(t *testing.T) {
+	for _, road := range []string{"live transfer", "storage approved"} {
+		t.Run(road, func(t *testing.T) {
+			r := newLiveRig(t)
+			if road == "storage approved" {
+				r.approveStorage()
+			}
+			a := liveChat(t, r)
+			mustNil(t, a.drive.Close(context.Background()))
+			took := liveTake(t, r)
+			workB := workspaceOf(took.Taken.Cell.Root)
+			b := r.openSeated(r.b, r.engB, took.Taken.Cell, workB, nameB, nil, cellstore.WithPipeline(), cellstore.WithWarmCapture())
+			b.mustSay("a turn on B")
+			mustNil(t, executor.Drain(context.Background(), b.seat))
+			waitFor(t, "B's turn to reach the directory", func() bool {
+				head, err := cellstore.Head(took.Taken.Cell)
+				return err == nil && head != nil && r.directoryHead(r.cell.ID) == head.Turn.ID
+			})
+
+			// The edit is made by hand, after B's last seal, and nothing seals it.
+			f, err := os.OpenFile(filepath.Join(workB, "README.md"), os.O_WRONLY|os.O_APPEND, 0)
+			mustNil(t, err)
+			_, err = f.WriteString("edited on B\n")
+			mustNil(t, err)
+			mustNil(t, f.Close())
+
+			back, err := r.continuerA().Take(context.Background(), r.cell.ID)
+			if err != nil {
+				t.Fatalf("A could not take the chat back: %v", err)
+			}
+			if back.Wait != nil {
+				mustNil(t, back.Wait(context.Background()))
+			}
+			again, err := r.continuerB().Take(context.Background(), r.cell.ID)
+			if err != nil {
+				t.Fatalf("B could not take the chat again: %v", err)
+			}
+			if again.Wait != nil {
+				mustNil(t, again.Wait(context.Background()))
+			}
+			kept := uint32(0)
+			if again.KeptBranch != nil {
+				_, kept = again.KeptBranch()
+			}
+			got, _ := os.ReadFile(filepath.Join(workspaceOf(again.Taken.Cell.Root), "README.md"))
+			t.Logf("%s: B's README after taking again = %q; kept turns = %d", road, got, kept)
+			if !strings.HasSuffix(string(got), "edited on B\n") && kept == 0 && again.KeptTurns == 0 {
+				t.Fatalf("B's edit was thrown away: README = %q and nothing was kept", got)
+			}
+		})
+	}
+}
+
 // C17: with three computers, C takes a chat from B while A, which had the chat
 // first, is off. Every object comes from B (its own publishes and the copies it
 // kept of what A sent it), and A is never asked.
@@ -873,6 +1058,89 @@ func TestLiveTransferC8TheOffSwitch(t *testing.T) {
 	_, err = r.a.Drive(context.Background(), r.engine, other, DriveOptions{DeviceName: nameA})
 	if !errors.Is(err, wireauth.ErrStorageOff) {
 		t.Fatalf("Drive with the switch off = %v; want today's storage-off refusal", err)
+	}
+}
+
+// C8, after a chat was shared live: the switch is off on a computer that has
+// already shared a chat, and the marker that says its frames wait for the relay
+// does not keep live transfer going there. Found in a hand test: the taker had
+// shared a chat the hour before, and with CODEAF_LIVE_TRANSFER=off it still
+// fetched the other computer's newest turns through that computer's door.
+func TestLiveTransferC8TheOffSwitchWinsOnAComputerThatSharedAChat(t *testing.T) {
+	ctx := context.Background()
+	r := newLiveRig(t)
+	a := liveChat(t, r)
+	mustNil(t, a.drive.Close(ctx))
+	took := liveTake(t, r)
+	// B has the chat and shares it in turn, so both computers carry the marker.
+	b := r.openOn(r.b, r.engB, took.Taken.Cell, workspaceOf(took.Taken.Cell.Root), nameB)
+	b.mustSay("a turn written on B")
+	r.durable(r.cell.ID, took.Taken.Cell)
+	if !livePending(r.homeA) || !livePending(r.homeB) {
+		t.Fatalf("the pending marker is missing (A %v, B %v)", livePending(r.homeA), livePending(r.homeB))
+	}
+
+	// The taker has the switch off: A takes the chat back and is refused in
+	// words, and makes no request of B's door.
+	t.Setenv(LiveTransferVar, "off")
+	dials, dialed := r.wire.dials(), len(r.sourcesOf(r.a.Device.ID()))
+	_, err := r.continuerA().Take(ctx, r.cell.ID)
+	if !errors.Is(err, syncwords.ErrLiveTransferOff) {
+		t.Fatalf("a take with the switch off on a computer that shared a chat = %v; want the live-transfer-off sentence", err)
+	}
+	if n := r.wire.dials() - dials; n != 0 {
+		t.Fatalf("the take made %d dials with the switch off", n)
+	}
+	if n := len(r.sourcesOf(r.a.Device.ID())) - dialed; n != 0 {
+		t.Fatalf("the take opened %d tunnels to a door with the switch off", n)
+	}
+	if bare := r.a.chatScope("probe"); bare.release != nil {
+		t.Fatal("the chat scope of a computer with the switch off is the live composite")
+	}
+
+	// The holder has the switch off: its door does not start again, and a
+	// taker that has the switch on is told the computer is not on.
+	stopFilesDoor(r.homeB)
+	registrations := r.wire.registrations()
+	r.b.ensureFilesDoor()
+	stop := StartLiveTransfer(ctx, r.homeB)
+	time.Sleep(10 * liveDoorLockPoll)
+	stop()
+	filesDoors.Lock()
+	_, running := filesDoors.runs[r.homeB]
+	filesDoors.Unlock()
+	if running || r.wire.registrations() != registrations {
+		t.Fatalf("the files door of a computer with the switch off is up (running %v, %d new registrations)", running, r.wire.registrations()-registrations)
+	}
+	t.Setenv(LiveTransferVar, "")
+	if err := func() error { _, err := r.continuerA().Take(ctx, r.cell.ID); return err }(); !errors.Is(err, syncwords.ErrHolderOffline) {
+		t.Fatalf("a take while the holder's door is off = %v; want the holder-offline sentence", err)
+	}
+}
+
+// The surfaces that say why a chat did not sync ask the home alone whether live
+// transfer is carrying chats, without a request: it answers yes while storage is
+// closed and another computer is paired, and no once the switch is off or storage
+// is approved, which is when the old sentence is the true one.
+func TestLiveTransferForHomeAnswersFromLocalFiles(t *testing.T) {
+	r := newLiveRig(t)
+	if !LiveTransferForHome(r.homeA) || !LiveTransferForHome(r.homeB) {
+		t.Fatal("live transfer is not reported as carrying chats on two paired computers with storage closed")
+	}
+	t.Run("the switch is off", func(t *testing.T) {
+		t.Setenv(LiveTransferVar, "off")
+		if LiveTransferForHome(r.homeA) {
+			t.Fatal("live transfer is reported as carrying chats with the switch off")
+		}
+	})
+	r.approveStorage()
+	if LiveTransferForHome(r.homeA) {
+		t.Fatal("live transfer is reported as carrying chats once storage is approved")
+	}
+	binding := deviceBindingFor(r.b.Relay, r.b.Identity, r.b.Device)
+	mustNil(t, os.Remove(othersPath(r.homeB, binding)))
+	if LiveTransferForHome(r.homeB) {
+		t.Fatal("live transfer is reported as carrying chats on a computer with nobody to send to")
 	}
 }
 

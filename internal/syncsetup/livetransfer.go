@@ -106,6 +106,10 @@ func liveReadyAt(home string) bool {
 	return liveTransferActive(home, relay.URL, id.ID(), statErr == nil)
 }
 
+// LiveTransferForHome is [Sync.LiveTransfer] for a caller that has only the home,
+// answered from local files and without a request.
+func LiveTransferForHome(home string) bool { return liveReadyAt(home) }
+
 // liveReady is [liveTransferActive] for the storage waiter, answered from what
 // its check has just read. A state of "off" is only ever reported for a relay
 // that gates storage, so the identity and the saved answer are not read a second
@@ -213,12 +217,26 @@ func livePending(home string) bool {
 	return err == nil
 }
 
+// liveCarries says this computer's chat sync goes through the live composite and
+// its files door: live transfer is carrying chats now, or frames it shared live
+// are still waiting for a relay that has since begun to store them.
+//
+// THE OFF SWITCH WINS OVER THE MARKER. The marker outlives the account's
+// storage being closed, so a computer that shared a chat once keeps it for as
+// long as the backfill has not finished; reading the marker alone kept the
+// composite and the door alive on a computer whose person had said off, and it
+// fetched a chat through another computer's door with the switch off. The
+// backfill itself only uploads to the relay and needs neither.
+func (s *Sync) liveCarries() bool {
+	return s.LiveTransfer() || liveTransferEnabled() && livePending(s.Home)
+}
+
 // chatScope is scope for the one chat sync every door shares. When live
 // transfer carries chats, or frames this computer shared live are still
 // waiting to reach a relay that now stores, the store under it is the live
 // composite; in every other case it is exactly the plain scope.
 func (s *Sync) chatScope(name string) *Scope {
-	if !s.LiveTransfer() && !livePending(s.Home) {
+	if !s.liveCarries() {
 		return s.scope(name)
 	}
 	c := &blobstore.Counters{}
@@ -249,7 +267,7 @@ type doorRun struct {
 // running. Which process of the home actually registers is decided by the lock
 // inside the door, so every codeaf process may call this.
 func (s *Sync) ensureFilesDoor() {
-	if !s.LiveTransfer() && !livePending(s.Home) {
+	if !s.liveCarries() {
 		return
 	}
 	filesDoors.Lock()

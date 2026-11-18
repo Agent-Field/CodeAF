@@ -190,6 +190,13 @@ func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, devi
 // openObserved is openOn with an observer on the seat, the way the door gives a
 // chat the machine that keeps the record of what it ran.
 func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer) *openChat {
+	return h.openSeated(s, eng, c, work, device, obs)
+}
+
+// openSeated is openObserved with options on the seat: the chat surface opens
+// its seat with a pipeline and a warm capture, which a test of what a running
+// chat captures between tool calls has to do as well.
+func (h *twoHomes) openSeated(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer, opts ...cellstore.SeatOption) *openChat {
 	h.t.Helper()
 	eng.Workspace = work
 	title := func() string { m, _ := session.LoadMeta(c.Root); return m.Title }
@@ -199,7 +206,7 @@ func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work
 	}
 	h.t.Cleanup(func() { _ = drive.Close(context.Background()) })
 	seat, err := cellstore.SeatOver(executor.HostBound, c, work, obs, nil,
-		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) })
+		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) }, opts...)
 	if err != nil {
 		h.t.Fatal(err)
 	}
