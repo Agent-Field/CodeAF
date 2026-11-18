@@ -19,8 +19,8 @@ in this conversation — see "Can a task or a harness make media?" below.
 
 Yes, with `generate_image`, when a drawing model is available.
 
-Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`,
-`model`, `n`.
+Arguments: `prompt` (required), `reference_paths`, `mask_path`, `aspect_ratio`,
+`size`, `path`, `model`, `n`.
 
 The picture is written to a file, and the result codeaf reads is one line naming
 it — **the whole path, absolute, from the root** — like:
@@ -130,6 +130,29 @@ gif, up to 10MB each** — and anything else is refused by name, e.g.
 The useful part: **the path `generate_image` just returned is itself a valid
 reference**, so codeaf can pass its own last render back in and iterate — a
 diagram redrawn until it is right, a character kept the same across pictures.
+
+## Can you change just one part of a picture, with a mask or a selected region?
+
+Yes — `generate_image` with `mask_path` beside `reference_paths`. The mask is a
+picture **the same size as the first reference**: white where the picture may
+change, black where it must stay. The prompt says what to put there ("a red
+sofa", "clear sky"). `n` still asks for several variants of the same edit.
+
+How faithfully the rest is kept depends on the model, and **the result says
+which happened** on a line after the path:
+
+- A model whose catalog entry publishes a mask setting gets a real mask:
+  `The mask was sent as a real mask: only its white area was open to change.`
+- Every other model gets the mask as one more reference picture, with words
+  saying what it is: `This model takes no real mask, so the mask was sent as a
+  guide picture beside the source: the change may reach past the white area.
+  Look at the result before you build on it.`
+
+Refused before anything is paid for: a mask with no `reference_paths`
+(`mask_path needs the picture it masks, given as the first of reference_paths`),
+a mask that cannot be read, and a mask of another size
+(`the mask is 8×8 and the picture it masks (art/room.png) is 4×3`). A mask is
+png, jpeg, webp or gif, up to 10MB, like any reference.
 
 ## Can you use a different model for one picture, sound or video?
 

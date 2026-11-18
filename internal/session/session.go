@@ -2123,6 +2123,12 @@ type Config struct {
 	// reads, so a picked model is capability-checked exactly as a default is.
 	MediaPick func(modality, word string) (string, error)
 
+	// MediaMasks answers whether an image model takes a real mask, from the
+	// catalog's published knobs (generate_image's mask_path,
+	// tools_image_mask.go). Nil answers no for every model, which sends a mask
+	// as a guide picture and says so — never a field a model may drop.
+	MediaMasks func(model string) bool
+
 	// DocumentEngine is the rung read_document climbs to (tools_doc.go): the
 	// person's document_engine row, one of auto, local, free or ocr
 	// (config.DocumentEngines), resolved by the surface exactly as the search

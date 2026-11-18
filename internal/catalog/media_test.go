@@ -1021,3 +1021,22 @@ func TestMediaStateSaysWhetherTheDedicatedListingsApplyAtAll(t *testing.T) {
 		t.Errorf("an unread OpenRouter catalog = %+v, want applicable and unconfirmed", s)
 	}
 }
+
+// A mask knob is read however the listing spells it, and an explicit no is no.
+func TestAnImageModelTakesAMaskOnlyWhenItsListingPublishesOne(t *testing.T) {
+	for _, testCase := range []struct {
+		knobs string
+		want  bool
+	}{
+		{`{"n":{"max":4}}`, false},
+		{`{"n":{"max":4},"mask":{"type":"image"}}`, true},
+		{`{"mask":true}`, true},
+		{`{"mask":false,"n":{"max":1}}`, false},
+		{`{"mask":null,"n":{"max":1}}`, false},
+	} {
+		params := imageParams([]byte(testCase.knobs))
+		if got := params != nil && params.Mask; got != testCase.want {
+			t.Errorf("%s: mask = %v, want %v", testCase.knobs, got, testCase.want)
+		}
+	}
+}

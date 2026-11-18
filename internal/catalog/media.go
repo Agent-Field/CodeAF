@@ -89,6 +89,10 @@ type MediaParams struct {
 	MaxInputReferences int `json:"max_input_references,omitempty"`
 	// MaxOutputs is how many images one request may return.
 	MaxOutputs int `json:"max_outputs,omitempty"`
+	// Mask says the model publishes a `mask` knob: it takes a real mask beside
+	// its first reference and edits only the area the mask opens. False is the
+	// ordinary answer and means unpublished, never "known not to".
+	Mask bool `json:"mask,omitempty"`
 }
 
 // MediaKind is what a catalog knows about one dedicated listing.
@@ -633,25 +637,46 @@ func imageRow(raw json.RawMessage) (Model, bool) {
 
 // imageParams reads the supported_parameters object: each knob is an enum with
 // values, a range with bounds, or a boolean.
+//
+// EACH KNOB IS DECODED ON ITS OWN. A knob published as a bare boolean does not
+// fit the enum-or-range shape, and decoding the whole object into that shape at
+// once would let one such knob throw away every other knob of the row.
 func imageParams(raw json.RawMessage) *MediaParams {
-	var knobs map[string]struct {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) == 0 {
+		return nil
+	}
+	type knob struct {
 		Values []string `json:"values"`
 		Max    *float64 `json:"max"`
 	}
-	if json.Unmarshal(raw, &knobs) != nil || len(knobs) == 0 {
-		return nil
+	read := func(name string) knob {
+		var k knob
+		_ = json.Unmarshal(fields[name], &k)
+		return k
 	}
 	params := MediaParams{
-		Resolutions:  cleanList(knobs["resolution"].Values),
-		AspectRatios: cleanList(knobs["aspect_ratio"].Values),
+		Resolutions:  cleanList(read("resolution").Values),
+		AspectRatios: cleanList(read("aspect_ratio").Values),
 	}
-	if max := knobs["input_references"].Max; max != nil && *max > 0 && *max < 1000 {
+	if max := read("input_references").Max; max != nil && *max > 0 && *max < 1000 {
 		params.MaxInputReferences = int(*max)
 	}
-	if max := knobs["n"].Max; max != nil && *max > 0 && *max < 1000 {
+	if max := read("n").Max; max != nil && *max > 0 && *max < 1000 {
 		params.MaxOutputs = int(*max)
 	}
+	params.Mask = imageMaskKnob(fields["mask"])
 	return &params
+}
+
+// imageMaskKnob reads the `mask` knob: named at all is a yes, whatever shape
+// its description takes, and an explicit false or null is no knob.
+func imageMaskKnob(value json.RawMessage) bool {
+	switch strings.TrimSpace(string(value)) {
+	case "", "null", "false":
+		return false
+	}
+	return true
 }
 
 // ImageEndpointPrices is the lazy, single-model price door for an image

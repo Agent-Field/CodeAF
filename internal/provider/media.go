@@ -89,6 +89,13 @@ type ImageRequest struct {
 	AspectRatio     string           `json:"aspect_ratio,omitempty"`
 	OutputFormat    string           `json:"output_format"`
 	InputReferences []ImageReference `json:"input_references,omitempty"`
+	// Mask is a real mask for the first of InputReferences: white where the
+	// picture may change, black where it must stay. It is sent ONLY to a model
+	// whose catalog row publishes a `mask` knob; every other model is sent the
+	// mask as one more reference with words that say what it is (the session's
+	// generate_image decides which), because a field a model does not take is
+	// either refused or silently dropped, and both would lie about the edit.
+	Mask *ImageReference `json:"mask,omitempty"`
 }
 
 type GeneratedImage struct {
