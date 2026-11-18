@@ -36,7 +36,11 @@ type WorkstreamProposeDoor interface {
 // the tool, so it is given only beside it.
 var WorkstreamCardsRule = "- Propose, then add. When the tasks you would make involve someone else (a person does or owns one), carry a due date, or are a plan of " + strconv.Itoa(WorkstreamPlanFewest) + " or more, " +
 	"propose them all in ONE call to " + WSTaskProposeTool + " instead of making them: the person sees them as cards, unticks or changes them, and presses Add, and nothing is made until then. " +
-	"Then say in one line what you proposed and who will be told when it is added; never also make the same tasks with ws_task_create, and never say they exist yet. " +
+	"A plan of " + strconv.Itoa(WorkstreamPlanFewest) + " or more goes to their Inbox as a plan that waits for Start. " +
+	"Then say in one line what you proposed and who does each; never also make the same tasks with ws_task_create. " +
+	// YOUR WORDS OUTLIVE THE CARDS' STATE (sim v3 D5): "nothing exists until you press Add" still stood under the
+	// card after Add, and under a plan already running. The card says added or started; the reply never does.
+	"The cards say for themselves whether they were added or started, and your reply stays on the page after that, so never say whether the tasks exist yet and never tell them to press Add or Start. " +
 	"One task that is only yours and theirs, with no date, you make with ws_task_create and name in your reply.\n"
 
 var workstreamProposeTool = WorkstreamWorkTool{Name: WSTaskProposeTool, Category: "read",

@@ -68,10 +68,16 @@ func (d *agentDoor) wsTaskPropose(ctx context.Context, args json.RawMessage) (an
 		Kind: api.AgentEntryCards, Tool: "ws_task_propose", Cards: &cards, Text: cardsWords(cards),
 	})
 	said := fmt.Sprintf("Shown to them as %d card%s. Nothing is made until they press Add %d task%s", n, pluralS(n), n, pluralS(n))
-	if told := d.h.cardsTold(cards, d.asker); told != "" {
-		said += "; then " + told + " " + isAre(told) + " told"
+	if n >= cardsPlanAt {
+		said = fmt.Sprintf("Shown to them as a plan of %d tasks: it goes to their Inbox and nothing starts until they press Start there", n)
 	}
-	return said + ". Say what you proposed in one line; never say the tasks exist yet.", nil
+	if told := d.h.cardsTold(cards, d.asker); told != "" {
+		said += "; " + told + " " + isAre(told) + " told when it is added"
+	}
+	// YOUR WORDS OUTLIVE THE CARDS' STATE (sim v3 D5): a reply that said
+	// "nothing exists until you press Add" still stood under the card after
+	// Add, and under a plan already running. The card says added or started.
+	return said + ". Say in one line what you proposed and who does each. The card shows whether it was added or started, and your reply stays on the page after that: never say whether the tasks exist, and never tell them to press Add or Start.", nil
 }
 
 // checkCards is a proposal held to the rules, its names made handles: one to

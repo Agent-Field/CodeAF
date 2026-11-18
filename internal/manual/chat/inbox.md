@@ -28,7 +28,11 @@ Under the answers are "Later" and "Hand to someone else". Later puts the Ask awa
 
 ## the box under an open Ask — Or tell Afi something else, Or reply to Santosh
 
-Below an open Ask is one box. On an Ask Afi or a chat raised it reads "Or tell Afi something else" and sends your words to the agent on the task, as an answer in your own words. On an Ask a person raised it reads "Or reply to Santosh" and sends your words to them as your answer.
+Below an open Ask is one box. On an Ask Afi or a chat raised it reads "Or tell Afi something else" and sends your words to the agent on the task, as an answer in your own words; the Ask's "Tell it…" puts the caret there. On an Ask a person raised it reads "Or reply to Santosh" and sends your words to them as your answer. A person's Ask has "Reply…" instead, which puts the caret in that box: it never offers "Tell it…", because there is no agent to tell, only the person who asked.
+
+## Due and late — tasks due today or overdue, not tasks with no due date
+
+"Due and late" lists the tasks you own whose due date is today or already past, the late ones first. Each row says how late it is ("2 days late") or "Today". Its count is the same number. A task with no due date, or one due tomorrow or later, is not in it and does not count, however many you have: find those in the workstream's Tasks, under Up next. Selecting a row opens the task on the right.
 
 ## Running for you — tasks you own that an agent runs, Take it back and Stop
 
@@ -38,7 +42,7 @@ Running for you lists the tasks you own that an agent is working on, across ever
 
 ## the first day — Plans to start and Set up in the Inbox
 
-On your first day the Inbox shows "Plans to start", one row per workstream whose plan from Afi has not started ("AgentField 0.9 launch: 6 first tasks"). Its pane is the plan with who does each task ("Start the first six tasks?"); "Start 5" starts what can run now, and "Change the plan" opens the workstream. Below it, for an organization's admin, "Set up" lists what is still to connect: "Connect a repository" ("The factory needs one before it can fix or build anything") and "Add what Afi should know". Each item leaves the group when it is done, or when you press "Not now". This is the only place set-up items appear; there is no separate set-up page.
+On your first day the Inbox shows "Plans to start", one row per workstream whose plan from Afi has not started ("AgentField 0.9 launch: 6 first tasks"). Its pane is the plan with who does each task. Its title counts only what Start would run ("Start the first three tasks?"), "Start 3" starts those, and a line says why the others wait ("The other four: three are for people to do, one waits on another task."). When nothing in the plan can start, for example when people do every task, the title is "Nothing in this plan can start", the line says why ("People do all seven tasks, and each is already up next for whoever does it."), and there is no Start button. "Change the plan" opens the workstream. On the workstream's Overview the same plan asks "Start 3 tasks in First plan?" with those three ticked, or says "Nothing in First plan can start" with no Start. Below it, for an organization's admin, "Set up" lists what is still to connect: "Connect a repository" ("The factory needs one before it can fix or build anything") and "Add what Afi should know". Each item leaves the group when it is done, or when you press "Not now". This is the only place set-up items appear; there is no separate set-up page.
 
 ## a teammate's first Inbox — who added you
 
