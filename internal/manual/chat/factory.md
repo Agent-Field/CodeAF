@@ -1665,3 +1665,7 @@ closed-issue handling. A dropped job still refuses its conversations.
 
 Jobs already marked by earlier page views keep their marks. codeaf cannot safely
 infer which old marks came only from viewing, so this fix does not migrate them.
+
+## A selected task's side panel follows its current step
+
+The All jobs side panel reads the selected job's live details through the same source as its own job page. Its current step and round change while work continues. A publication pause keeps the publishing failure's remedy once; it does not repeat “retry publishing” after a remedy that already says it.

@@ -18,3 +18,11 @@ func TestAStartHoldGivesNoReasonAutoStopped(t *testing.T) {
 		t.Fatalf("a label hold's reason changed to %q", why)
 	}
 }
+
+func TestPublishPauseDoesNotRepeatItsRemedy(t *testing.T) {
+	said := "Connect GitHub in Settings, then Retry publishing."
+	got := AutonomyBlockReason(Item{Autonomy: AutonomyAuto, State: StateNeedsYou, Cap: 5, PublishError: said})
+	if got != "Publication failed: "+said {
+		t.Fatalf("publish pause repeats the remedy: %q", got)
+	}
+}

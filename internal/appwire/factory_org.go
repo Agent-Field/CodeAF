@@ -138,11 +138,17 @@ type OrgPage struct {
 
 // OrgDecision is one decision a workstream keeps.
 type OrgDecision struct {
-	ID    string `json:"id"`
-	Text  string `json:"text"`
-	State string `json:"state"`
-	At    string `json:"at,omitempty"`
-	By    string `json:"by,omitempty"`
+	// Provenance survives the bridge so a decision keeps its question, answer and people distinct.
+	ByName     string          `json:"by_name,omitempty"`
+	From       json.RawMessage `json:"from,omitempty"`
+	ReplacedBy string          `json:"replaced_by,omitempty"`
+	ChangedBy  json.RawMessage `json:"changed_by,omitempty"`
+	ChangedAt  string          `json:"changed_at,omitempty"`
+	ID         string          `json:"id"`
+	Text       string          `json:"text"`
+	State      string          `json:"state"`
+	At         string          `json:"at,omitempty"`
+	By         string          `json:"by,omitempty"`
 }
 
 // OrgSource is one thing a workstream draws on.

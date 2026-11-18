@@ -50,3 +50,7 @@ A conflict Ask offers two answers. "Keep the decision" is recommended: the decis
 ## Assumed — what the agent decided without asking, and Send back
 
 Ask before, or do and tell after. Cheap, reversible choices that go against no decision an agent makes itself, and lists them on the task under "Assumed · Done without asking", one line each ("Left out two fixes that only affect the team"). Anything else it asks first, as an Ask on the task, unless the workstream lets Afi decide that kind of question without asking: then it is listed under Assumed too, saying so. Anyone in the workstream can overturn an assumption with "Send back…" beside it: you say why, and finished work goes back to whoever did it, with "instead of …" and your reason in its thread. That is the only way to overturn one; a comment does not.
+
+## An answered Ask keeps the question and answer separate
+
+A words answer is recorded as “Marco answered ‘the question’: the answer”, rather than a choice of an option. The task thread keeps the question separate from the answer. Decisions shows the question above the answer, followed by the person's display name and when it was answered. The organization's connection preserves these fields on their way to the desk.

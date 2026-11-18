@@ -632,6 +632,9 @@ type TaskOffer struct {
 
 // WorkstreamTaskEvent is one line of a task's thread.
 type WorkstreamTaskEvent struct {
+	// Question and Answer retain the two parts of an answered Ask for every surface.
+	Question  string      `json:"question,omitempty"`
+	Answer    string      `json:"answer,omitempty"`
 	ID        string      `json:"id"`
 	Task      string      `json:"task"`
 	At        string      `json:"at"`
@@ -1771,7 +1774,7 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 		t = answerInviteChase(t, option, who)
 	}
 	t.Rev, t.UpdatedAt = t.Rev+1, stamp
-	ch := TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option}}}
+	ch := TaskChange{Task: t, Events: []WorkstreamTaskEvent{{ID: newID(), Task: t.ID, At: stamp, By: by, Kind: TaskEventAnswered, Text: text, Option: option, Question: ask.Title, Answer: strings.TrimSpace(strings.Join(nonEmpty(chose, words), " · "))}}}
 	d, kept := answerDecision(t, ask, opt, words, who, "dc_"+newID(), now)
 	if kept {
 		ch.Decisions = append(ch.Decisions, d)

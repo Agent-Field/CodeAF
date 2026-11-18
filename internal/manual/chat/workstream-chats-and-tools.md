@@ -117,3 +117,7 @@ Such a conversation cannot set up work on a clock either. Asked to do something 
 Open Decisions from the Overview side block or the first row in Files. New answered Asks show the question with its answer underneath, plus who, when and where it came from. Search finds questions and answers; results group into This week and Earlier. Older records keep their saved decision text, and a replaced decision stays greyed. When Afi or a chat says it recorded or proposed a decision, that is where it is.
 
 Afi and the chats talk in the words you see on the screen. They name a task by its title, a file by its name and a person by their name. They never quote an id (a long string such as `tk_5afd…`), a tool or field name, or a draft number such as "Overview v3", because Files keeps only the current text. They also never talk about "the system" or a window. The places they point you to are Tasks, Chats and Files. If a reply still quotes an id, ask for the task by its title and they will find it.
+
+## A failed tool step says what failed
+
+A failed step in an organization's chat says what could not finish, such as “Couldn't read a canvas”. Its failure is written in words as well as marked in colour.

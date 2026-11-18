@@ -47,3 +47,7 @@ What is still missing is a "Set up" group in the Inbox, under Waiting on you, fo
 - **Add what Afi should know** · "A brief, pricing, your brand voice. They go in the Library and every workstream can read them." · **Add files**, which opens the organization's Library. Only where the server keeps a Library.
 
 Each row goes when it is done, or when you press "Not now", which puts it away on this computer for good.
+
+## The first account starts the organization
+
+The first-account link opens “Start your organization”, with “Create account” to create the organization's first account. It is not an invitation to an existing organization and does not ask you to create an operator account. The organization's sidebar has no GitHub-star promotion.
