@@ -44,8 +44,10 @@ import (
 const appDismissedWords = "Dismissed by the person without a decision; raise it again later if it is still needed."
 
 // appDismissedNote is the words a dismissed question's answer carries to its
-// lane, where the lane passes words on.
-const appDismissedNote = "Dismissed from the Inbox without an answer."
+// lane, where the lane passes words on. It says plainly that the person put the
+// question away and decided nothing, so no lane reads it as a no, a change or a
+// rule about later requests.
+const appDismissedNote = "Dismissed from the Inbox without an answer: the person put the question away and decided nothing. This says nothing about later requests."
 
 // appCrewDismissed is the crew asks this app dismissed, so the packet's
 // closing says dismissed rather than decided.
@@ -259,7 +261,7 @@ func (b *appBackend) dismissQuestion(agent, ask string) error {
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	b.locked(func() { live.answered[ask] = appAnsweredMark + appwire.ResolvedDismissed })
-	resolved := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: safe, Picked: []string{safe}, Change: appDismissedNote}
+	resolved := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: safe, Picked: []string{safe}, Change: appDismissedNote, Dismissed: true}
 	if err := live.conn.Conv.ResolveQuestion(resolved); err != nil {
 		b.locked(func() { delete(live.answered, ask) })
 		return appEngineError(err)
