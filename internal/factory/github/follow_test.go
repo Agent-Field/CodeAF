@@ -282,3 +282,34 @@ func TestConversationReviewReadFailureCannotLeaveHealthyStatus(t *testing.T) {
 		t.Fatalf("did not recover: %+v", got.FollowUp)
 	}
 }
+
+// A description a public act edits while the read is in flight is the
+// newer receipt: the read that started before it never writes the old
+// description back.
+func TestPollCannotRestoreAnOldDescriptionAfterAnEdit(t *testing.T) {
+	st := openStore(t)
+	it, err := st.Create(factory.Item{Repo: "acme/api", Kind: factory.KindIssue, State: factory.StateShipped, Publish: "pr", PullRequest: &factory.PullRequest{Number: 7, State: factory.PROpen, HeadSHA: "head", BaseBranch: "main", Body: "Old words."}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newMemAPI(time.Now())
+	m.followed = map[string]forge.Pull{"acme/api#7": {Number: 7, State: "open", HeadSHA: "head", Base: "main", Body: "Old words."}}
+	m.runs = map[string][]forge.CheckRun{"head": {{Name: "test", Status: "completed", Conclusion: "success"}}}
+	s := New(publishRacingAPI{m, func() {
+		if err := st.Update(it.ID, func(cur *factory.Item) error {
+			pr := *cur.PullRequest
+			pr.Body = "New words."
+			cur.PullRequest = &pr
+			return nil
+		}); err != nil {
+			t.Error(err)
+		}
+	}}, nil, nil)
+	if err := followOpened(context.Background(), s, st); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.Get(it.ID)
+	if got.PullRequest.Body != "New words." {
+		t.Fatalf("late poll restored the description %q", got.PullRequest.Body)
+	}
+}

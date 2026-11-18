@@ -410,9 +410,9 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			if item.PullRequest.HeadSHA != it.PullRequest.HeadSHA || item.PullRequest.Draft != it.PullRequest.Draft || item.PullRequest.State != it.PullRequest.State {
 				return nil
 			}
-			// Nor a base or a title a public act changed while this read was
-			// in flight: the next read carries them.
-			if item.PullRequest.BaseBranch != it.PullRequest.BaseBranch || item.PullRequest.Title != it.PullRequest.Title {
+			// Nor a base, a title or a description a public act changed while
+			// this read was in flight: the next read carries them.
+			if item.PullRequest.BaseBranch != it.PullRequest.BaseBranch || item.PullRequest.Title != it.PullRequest.Title || item.PullRequest.Body != it.PullRequest.Body {
 				return nil
 			}
 			cp := next
