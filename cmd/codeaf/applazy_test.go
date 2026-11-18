@@ -167,13 +167,13 @@ func TestAppLazyStartupLeavesCrashAdmissionToRecovery(t *testing.T) {
 	}
 	r.b.startCloseWatch()
 	r.clock.advance(t, 0)
-	resumed, _ := r.conv.counts()
-	if resumed != 1 {
-		t.Fatalf("recovery resumed %d times, want 1", resumed)
-	}
-	run.locked(func() { opening = run.recovering[r.id] })
+	// RECOVERY STILL OWNS THE CRASH, AND NOW LEAVES IT FOR THE PERSON: the chat
+	// reads Interrupted with Continue and nothing resumes by itself (OWNER-
+	// DECISIONS 2026-11-17 §12); before, recovery resumed it once, unasked.
+	r.wantInterrupted(t)
+	run.locked(func() { opening = run.opening[r.id] })
 	if opening {
-		t.Fatal("completed recovery still blocks future traffic")
+		t.Fatal("crew traffic opened a chat that waits for Continue")
 	}
 }
 
