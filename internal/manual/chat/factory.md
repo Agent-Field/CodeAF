@@ -263,7 +263,7 @@ In a Git repository, banking a recipe commits the change as `codeaf <agentfield-
 
 Banking a recipe never writes into a folder held by a running program. A separate change worktree can still be written when it is outside that hold. If the change has to be saved in the held checkout, nothing is written: wait for that run to end, or stop it, then bank the line again. A Git error and your confirmation do not bypass this check.
 
-The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval) `factory_status` (read current saved progress and its pending decision), and `factory_answer` (answer the temporary inbox question, save an exact persisted step reply, or send a waiting plan back with your requested changes; send critical decisions to you; and, when you ask, press the job page's Merge, Mark ready or publication approval). The factory's own manager, opened from the app, has `factory_floor` (see the factory's own manager). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
+The conversation that manages an item also has `factory_run` (shape its run), `factory_start` (start, resume or continue it when you ask), `factory_follow_pr` (request maintenance of the same open PR after publication approval), `factory_status` (read current saved progress, its pending decision, the public acts that wait and the open review threads), `factory_answer` (answer the temporary inbox question, save an exact persisted step reply, or send a waiting plan back with your requested changes; send critical decisions to you; settle a stop; and, when you ask, press the job page's Merge, Mark ready or publication approval), `factory_act` (propose public acts on the job's pull request) and `factory_task` (send a delegate into the job's checkout). The factory's own manager, opened from the app, has `factory_floor` (see the factory's own manager). These are absent from every other conversation, from `--once` runs and from windows over `--host` or `--at`.
 
 ## what a job's manager knows — "nothing waiting", Auto gates, step count, can't read the pull request
 
@@ -274,7 +274,78 @@ A job's manager answers job facts from `factory_status`, the job as the factory 
 - the pull request the factory opened: its number, link, draft or ready, the change (files, +/−), checks and review state, as the factory last read them. The manager's shell has no GitHub token by design; it answers from these facts instead of saying it cannot read the pull request.
 - what waits on you after the pull request: `Mark pull request #N ready for review?`, `Merge pull request #N?`, `Approve publishing this job's checked work?`, or why Merge is not offered yet. Whether Merge is offered comes from the same merge check the job page's Merge card reads, so the two always agree. After "mark it ready" the manager's answer says what the page offers now, read again after the press.
 
+- the public acts that wait for your yes and the latest carried out, and the pull request's open review threads by id (see public acts from the manager).
+
 Say "merge it", "mark it ready" or "approve it" in the manager's chat and it presses that decision for you, as you, through the job page's own door; a decision that is not offered is refused with the page's reason. A terminal chat has no signed-in factory connection to press with and says so; press it on the job page.
+
+## what a job's manager may do by itself — Manual and Auto, who pushes, who replies on GitHub, who merges
+
+The mode, Manual or Auto, decides what the manager may do without you. A public act is anything that leaves your computer: a push, the pull request and its edits, a reply on GitHub.
+
+| | Manual | Auto |
+| --- | --- | --- |
+| Accept the plan (go past an approve step) | you | the manager |
+| Push, open the draft pull request, edit its title or body, change its base | you | the manager |
+| Mark the pull request ready | you | the manager |
+| Reply to a review thread (posted as you) | you | the manager |
+| Another round, work sent back, rerun a step, a task for a delegate | the manager | the manager |
+| Accept a check's finding, with a recorded reason | the manager | the manager |
+| Merge | you | you |
+| Raise the budget; stop or drop the job | you | you |
+
+- **Manual:** the manager shows you exactly what will go public and waits. Nothing is posted until you say yes.
+- **Auto:** the manager carries the act out, and the job's log gets one line for each.
+- **Merge is always yours.** The manager shows you the Merge card and presses Merge only when you tell it to in its chat.
+
+The factory checks this itself, not the manager's instructions. On a turn you did not speak in (a step's question, a stall, a stop handed over) the manager cannot merge in any mode, and outside Auto cannot approve publication, mark the pull request ready, approve public acts or go past an approve step. A job with no saved mode, one you took over and one you stopped count as not in Auto. In Auto the manager still does not approve past what Auto itself stopped at (a failing finding, a rule that asks first, a named approver, a spent budget).
+
+The refusals begin "Nothing changed: merging is the person's alone, in Manual and in Auto" and "Nothing changed: this job is not in Auto, so approving publication is the person's" (or "marking the pull request ready", "approving public acts", "going past an approve step").
+
+## public acts from the manager — factory_act, reply to a review comment, push, change the base, "Posted by a WorkAF factory agent"
+
+The manager proposes public acts on the job's pull request with `factory_act`: one call carries every act of a round and one line of why. The kinds:
+
+- `push` publishes the job's checked commits to its branch; `open_pr` opens its draft pull request.
+- `edit_pr` changes the title, the body or both; `change_base` changes the branch it merges into.
+- `mark_ready` takes it out of draft.
+- `reply` answers one review thread, named by its id from `factory_status`; `comment` posts on the pull request.
+- `resolve_thread` marks a review thread resolved; `rerequest_review` asks reviewers to look again; `rerun_checks` runs the failed GitHub checks again.
+- `merge` never merges. It only shows you the Merge card again.
+
+In Manual the acts wait for your yes and nothing is sent before it: the manager tells you so and shows you the text that will be posted. Say yes in its chat and it approves the whole set (`factory_answer` with `action=approve_acts`); say no and it drops them (`action=decline_acts`). In Auto the factory carries them out and logs each one.
+
+A reply or a comment is posted under your own GitHub name, and ends with the line "Posted by a WorkAF factory agent." The job's log records what was posted and where.
+
+`factory_status` lists the pull request's open threads and comments for the manager, at most 15, each by its id (`inline:<number>` for a comment on a line, `conversation:<number>` for one on the pull request) with the start of its text. Resolved threads are left out.
+
+A comment from someone without write access to the repository is marked untrusted in what the manager reads. The manager may answer it, but changes code on it only with your word.
+
+One call takes at most 20 acts, and one that lacks what its kind needs (a reply's thread and text, a base change's branch) is sent back with nothing proposed.
+
+## give a delegate a task in the checkout — factory_task, fix what a reviewer asked for, rebase on main, do it now
+
+For work no step covers, the manager puts a delegate to work in the checkout with plain instructions (`factory_task`): update the pull request for what a reviewer asked, fix something you asked for, rebase or merge the base branch in.
+
+- The task runs when the round in progress ends, or at once when nothing is running. Tell the manager not to wait ("do it now") and it interrupts the round in progress instead.
+- If the task changes files, the checks that had passed run again.
+- Anything public that follows, a push or a reply, keeps the mode's rule: carried out in Auto, waiting for your yes in Manual.
+
+The manager may give a task in Manual and in Auto. It says the task was taken, or why it was refused, in the factory's words.
+
+## a stopped job goes to its manager first — another round, send back, rerun, accept, hand it to you
+
+When a job stops, its manager hears first and settles what it can (`factory_answer`):
+
+- `another_round`: the stopped step gets one more round with the manager's instructions (out of rounds, or a check found something to fix).
+- `send_back`: the work goes back to the step before, with why.
+- `rerun`: a step runs again as it was asked (a failed step, results that were not saved).
+- `accept`: a check's finding or a step's result is taken as it stands, with the manager's reason recorded where you see it.
+- `resume_pipeline`: Follow PR runs another round on the open pull request (it reached its limit, hit a conflict, or a reviewer asked for changes).
+- `retry_publish`: a publish you already approved is tried again after it failed.
+- `wait_github`: the job goes back to waiting on GitHub.
+- `hand_to_person`: the stop is yours, with one plain sentence of why. This is always allowed.
+
+After two extra rounds on one step, that step's next stop comes straight to you. These never come to the manager: approving public acts in Manual, merging, the budget, a decision you put away, a take-over, "bring a computer online", and a question a step marked as for a person only.
 
 ## the Factory manager — the factory's own manager, what's running, start the oldest p1, what did we ship today, the foreman
 
@@ -732,7 +803,8 @@ rule as Merge. The PR immediately reads ready after GitHub confirms it; there
 is no wait for the next poll. This is an explicit human decision, with no
 model review, automatic retry or Undo window. You can also tell the job's
 manager "mark it ready" in its chat; it presses the same Mark ready as you
-(`factory_answer` with `action=mark_ready`), only when you ask.
+(`factory_answer` with `action=mark_ready`). In Manual it does so only on a
+turn where you asked; in Auto it may mark the pull request ready itself.
 
 A PR that is already ready, closed, or missing cannot be marked ready. If the
 job changed since you read it, read it again first. If the outcome is uncertain,
@@ -744,7 +816,7 @@ It does not merge the PR or enable auto-merge.
 
 A job whose pull request is open has **Merge**. Only its assignee may press it, and pressing waits five seconds with **Undo** before anything is sent. Then the runner that holds the assignee's GitHub account reads the pull request again and merges it, handing GitHub the exact commit, so a branch that moved is refused. The job is done when the pull request reads merged.
 
-One check, in code, decides every merge; no model does. Ask the job's manager in its chat to merge ("merge it"), or whether it is ready to, and it shows you the Merge card again, as it stands now (`factory_answer` with `action=offer_merge`), or tells you why merge is not offered. It presses Merge (`action=merge`) only when you then tell it to: the same press as the button, as you, with the same five-second Undo, refused in the same words. It never merges on its own judgment, in Auto or Manual. The check refuses, in these words, when:
+One check, in code, decides every merge; no model does. Ask the job's manager in its chat to merge ("merge it"), or whether it is ready to, and it shows you the Merge card again, as it stands now (`factory_answer` with `action=offer_merge`), or tells you why merge is not offered. It presses Merge (`action=merge`) only when you then tell it to: the same press as the button, as you, with the same five-second Undo, refused in the same words. It never merges on its own judgment, in Auto or Manual: a merge asked for on a turn you did not speak in is refused. The check refuses, in these words, when:
 
 - the pull request has commits you did not approve (a push after the proof was approved needs the proof approved again);
 - the pull request is a draft, or has conflicts, or GitHub has not said whether it can merge yet;
@@ -823,8 +895,9 @@ Factory checks the job's remaining budget before queuing the retry.
 **Accept as is** takes a stuck Test, Review or Proof step as it stands, and the
 job carries on. It is offered when the step reported what it found and fell
 short of its rule: a check still failing, a finding still open, a claim not
-shown. Typing `accept` in the manager chat does the same. Only the job's person
-can accept; a manager cannot. Each check that was still failing is kept on the
+shown. Typing `accept` in the manager chat does the same. The job's manager
+can also accept when the stop is handed to it, with a reason that is recorded
+where you see it. Each check that was still failing is kept on the
 step as accepted, a later step is not stopped by that same failure, and the
 pull request lists what was accepted. A new or different failure still stops
 the job. Plan and Write cannot be accepted, nor can a step that never reported.

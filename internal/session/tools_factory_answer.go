@@ -47,19 +47,12 @@ type InboxDoor interface {
 	SendOn(ctx context.Context, conversation, why string) (string, error)
 }
 
-// ManagerPRDecider presses the job page's post-PR decisions for the person who
-// asked in the manager's conversation: Merge, or Mark ready on a draft. It is
-// the door the job page's own buttons take, so the factory checks the same
-// permission and the same merge gate; the manager gains no power the person
-// does not have. action is ActionMerge, ActionMarkReady, ActionApprove (the
-// job's publication approval), ActionResume or ActionOfferMerge (the Merge card
-// shown to the person again).
-type ManagerPRDecider interface {
-	DecidePR(ctx context.Context, conversation, action, words string) (string, error)
-}
-
 // The post-PR actions `factory_answer` takes, spelled once for the schema,
-// the status lines (internal/factory's manager_facts.go) and the door.
+// the status lines (internal/factory's manager_facts.go) and the door. Each is
+// pressed through the conversation's [ManagerPresser], the door the job
+// page's own buttons take, so the factory checks the same permission and the
+// same merge gate. The decisions on a stop are beside [ManagerPress]
+// (tools_factory_manager.go).
 const (
 	ActionMerge     = "merge"
 	ActionMarkReady = "mark_ready"
@@ -84,10 +77,28 @@ const (
 const factoryAnswerDescription = "Reply to a step question. During a temporary inbox turn, answer the supplied question. On an ordinary manager turn, read factory_status and pass its question_id to save the person's answer or delegated engineering choice durably; a stale question is refused. To send a waiting plan back with requested changes, use action=reject_plan and put the person's words in answer. When the person asks here to merge the pull request, or whether it is ready to merge, read factory_status first: when it says the person is asked to merge, use action=offer_merge with their words in answer, which shows them the Merge card again, updated; when it says merge is not offered, tell them why in its words and offer nothing. Use action=merge only when the person, with the card shown, tells you here to merge it now. When factory_status says the person is asked to mark the pull request ready, and the person asks for exactly that here, use action=mark_ready with their words in answer, and action=approve when it says publishing waits on their approval; when it says Auto is paused on a failing check and the person asks here to resume or continue, use action=resume with their words in answer; never on your own judgment. Never promise a state change before an accepted tool result. If an action fails, explain plainly that it did not happen, without tool names or internal identifiers; if the outcome is uncertain, say it is unconfirmed and read status before retrying. " +
 	"answer is your answer in words, and the step goes on with it at once: answer yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. " +
 	"ask_person is one line of why, and sends the question to the person in this conversation; the step waits for their answer. " +
-	"Send it to the person when it turns on taste, scope, risk, credentials or access, money, or anything the issue and the recipe do not say. Never guess an answer to spare them."
+	"Send it to the person when it turns on taste, scope, risk, credentials or access, money, or anything the issue and the recipe do not say. Never guess an answer to spare them." +
+	" " + factoryAnswerStops
+
+// factoryAnswerStops is the description's part on a stop handed to the
+// manager and on what it may press by itself. It is here, and in
+// factory_status, because a job made before these actions keeps the brief it
+// was made with.
+const factoryAnswerStops = "A stop that is not a step's question comes to you first too (factory_status says the job waits on you, the manager). Settle it with one action, your instructions or reason in answer: " +
+	"another_round, when a step ran out of rounds or a check found something you want fixed: the step gets one more round with your instructions; " +
+	"send_back, when the fault is in the step before: the work goes back to it, with why; " +
+	"rerun, when a step failed or its results were not saved: the step runs again as it was asked (step names it); " +
+	"accept, when a check's finding or a step's result is fine as it stands: it is taken, with your reason recorded where the person sees it; " +
+	"resume_pipeline, when Follow PR stopped (its limit, a scope question, a conflict, a reviewer asking for changes): it runs another round on the open pull request with your instructions; " +
+	"retry_publish, when a publish the person already approved failed: it is tried again; " +
+	"wait_github, when nothing is yours to do and the pull request waits on its checks or a review; " +
+	"hand_to_person, for anything you cannot settle and for money, access, taste or risk: the stop goes to the person with one plain sentence of why, and it is always allowed. After two extra rounds on one step its next stop goes to the person. " +
+	"approve_acts approves the public acts that wait for a yes, and decline_acts drops them, with why in answer. " +
+	"What you may press is checked in code. merge is pressed only on a turn where the person told you to merge, in Manual and in Auto. In Manual, approve, mark_ready and approve_acts are pressed only on a turn where the person said so in their own words; in Auto you may press them yourself. A turn the factory started carries no words of theirs."
 
 const factoryAnswerSchemaJSON = `{"type":"object","properties":{` +
-	`"action":{"type":"string","enum":["answer","reject_plan","merge","mark_ready","approve","resume","offer_merge"],"description":"Default answer saves a step reply. reject_plan sends only a waiting plan back with answer as the requested changes; never approves or continues it. offer_merge shows the person the job page's Merge card again, updated, when they ask to merge or whether it is ready; it merges nothing. merge presses Merge on the job's pull request, mark_ready marks its draft ready for review, approve approves publishing the checked work and resume tells Auto to carry on past the failing checks it paused on, each only when factory_status offers it and the person asked for it; answer carries the person's words."},` +
+	`"action":{"type":"string","enum":["answer","reject_plan","merge","mark_ready","approve","resume","offer_merge","another_round","send_back","rerun","accept","resume_pipeline","retry_publish","wait_github","hand_to_person","approve_acts","decline_acts"],"description":"Default answer saves a step reply. reject_plan sends only a waiting plan back with answer as the requested changes; never approves or continues it. offer_merge shows the person the job page's Merge card again, updated, when they ask to merge or whether it is ready; it merges nothing. merge presses Merge on the job's pull request, mark_ready marks its draft ready for review, approve approves publishing the checked work and resume tells Auto to carry on past the failing checks it paused on, each only when factory_status offers it and the person asked for it; answer carries the person's words. On a stop handed to you: another_round, send_back, rerun (with step), accept, resume_pipeline, retry_publish, wait_github or hand_to_person, with your instructions or reason in answer. approve_acts and decline_acts answer the public acts that wait for a yes."},` +
+	`"step":{"type":"string","description":"The step a decision on a stop is about, by its name: the step rerun runs again. Leave it out for the step the job stopped on."},` +
 	`"question_id":{"type":"string","description":"The exact pending question_id returned by factory_status, required for a persisted step reply or a plan send-back outside a temporary inbox turn."},` +
 	`"answer":{"type":"string","description":"Your answer in words, for the step."},` +
 	`"ask_person":{"type":"string","description":"One line of why the person decides it."}` +
@@ -105,6 +116,7 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Action     string `json:"action"`
+				Step       string `json:"step"`
 				QuestionID string `json:"question_id"`
 				Answer     string `json:"answer"`
 				AskPerson  string `json:"ask_person"`
@@ -116,6 +128,15 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 			}
 			answer := strings.Join(strings.Fields(parsed.Answer), " ")
 			why := strings.Join(strings.Fields(parsed.AskPerson), " ")
+			if needs, ok := stopDecisions[parsed.Action]; ok {
+				// A DECISION ON A STOP carries the manager's own words, and is
+				// never also a question sent to the person.
+				if why != "" || (needs && answer == "") {
+					return factoryAnswerFailure("Nothing changed: " + parsed.Action + " needs your instructions or reason in answer, and no ask_person."), true, nil
+				}
+				line, bad := a.press(ctx, ManagerPress{Action: parsed.Action, Step: strings.TrimSpace(parsed.Step), Words: strings.TrimSpace(parsed.Answer)})
+				return line, bad, nil
+			}
 			if (answer == "") == (why == "") {
 				return answerNeedsOne, true, nil
 			}
@@ -131,7 +152,7 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 				return line, false, nil
 			}
 			if parsed.Action == ActionResume {
-				d, ok := a.runDoorForTurn().(ManagerPRDecider)
+				d, ok := a.runDoorForTurn().(ManagerPresser)
 				if !ok || answer == "" || why != "" {
 					return factoryAnswerFailure("Nothing changed: resuming Auto needs the person's words in answer, on an ordinary manager turn."), true, nil
 				}
@@ -141,20 +162,28 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 				// note, factory work, a wake — cannot resume anything.
 				said := a.turnPersonWords()
 				if said == "" {
-					return factoryAnswerFailure("Nothing changed: only the person can tell Auto to carry on, and nothing in this turn came from them."), true, nil
+					return factoryAnswerFailure(factory.ManagerResumeRefusal), true, nil
 				}
-				line, err := d.DecidePR(ctx, a.config.SessionFile, ActionResume, said)
+				line, err := d.Press(ctx, a.config.SessionFile, ManagerPress{Action: ActionResume, Words: said, Said: said})
 				if err != nil {
 					return factoryAnswerFailure(err.Error()), true, nil
 				}
 				return line, false, nil
 			}
 			if parsed.Action == ActionMerge || parsed.Action == ActionMarkReady || parsed.Action == ActionApprove || parsed.Action == ActionOfferMerge {
-				d, ok := a.runDoorForTurn().(ManagerPRDecider)
+				d, ok := a.runDoorForTurn().(ManagerPresser)
 				if !ok || answer == "" || why != "" {
 					return factoryAnswerFailure("Nothing changed: merging, offering the merge, marking ready or approving publication needs the person's words in answer, on an ordinary manager turn."), true, nil
 				}
-				line, err := d.DecidePR(ctx, a.config.SessionFile, parsed.Action, answer)
+				// MERGING IS THE PERSON'S IN EVERY MODE, so it is refused here
+				// before the door is asked, and again at the door, which also
+				// holds approve and mark_ready to the job's mode
+				// (internal/factory's manager_authority.go).
+				said := a.turnPersonWords()
+				if parsed.Action == ActionMerge && said == "" {
+					return factoryAnswerFailure(factory.ManagerMergeRefusal), true, nil
+				}
+				line, err := d.Press(ctx, a.config.SessionFile, ManagerPress{Action: parsed.Action, Words: answer, Said: said})
 				if err != nil {
 					return factoryAnswerFailure(err.Error()), true, nil
 				}

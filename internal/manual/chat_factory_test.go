@@ -184,3 +184,55 @@ func TestFactoryRepositoryRefreshHelp(t *testing.T) {
 	}
 	t.Fatal("repository refresh help was not found")
 }
+
+// WHAT A JOB'S MANAGER MAY DO IS REACHED BY THE ASKER'S WORDS: who pushes and
+// replies in each mode, what a public act is and whose name a reply carries,
+// the task a delegate is given, and where a stop goes first. Each section
+// states the fact that makes the answer true, in the factory's own words.
+func TestTheManagersAuthorityQuestionsReachTheirSections(t *testing.T) {
+	asked := []struct {
+		question string
+		title    string
+		says     []string
+	}{
+		{
+			question: "can the job's manager push in Manual",
+			title:    "what a job's manager may do by itself",
+			says: []string{"| Merge | you | you |", "Nothing is posted until you say yes", "The factory checks this itself",
+				"Nothing changed: merging is the person's alone, in Manual and in Auto", "Nothing changed: this job is not in Auto, so approving publication is the person's"},
+		},
+		{
+			question: "does the manager reply to a review comment on GitHub as me",
+			title:    "public acts from the manager",
+			says: []string{"`factory_act`", "Posted by a WorkAF factory agent.", "`merge` never merges", "action=approve_acts", "action=decline_acts",
+				"marked untrusted", "only with your word", "at most 20 acts", "`inline:<number>`", "`conversation:<number>`"},
+		},
+		{
+			question: "ask the manager to rebase on main",
+			title:    "give a delegate a task in the checkout",
+			says:     []string{"`factory_task`", "the checks that had passed run again", "do it now", "waiting for your yes in Manual"},
+		},
+		{
+			question: "the job ran out of rounds, what does the manager do",
+			title:    "a stopped job goes to its manager first",
+			says:     []string{"`another_round`", "`send_back`", "`rerun`", "`accept`", "`resume_pipeline`", "`retry_publish`", "`wait_github`", "`hand_to_person`", "After two extra rounds on one step"},
+		},
+	}
+	for _, ask := range asked {
+		reached := false
+		for _, section := range Chat().Search(ask.question, DefaultResults) {
+			if section.Page != "factory" || !strings.Contains(section.Title, ask.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range ask.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", ask.question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			t.Errorf("%q did not reach factory › %s", ask.question, ask.title)
+		}
+	}
+}

@@ -32,6 +32,12 @@ import (
 //
 // ONLY THE APP HAS THAT DOOR. A terminal chat or a window over --host has no
 // signed-in factory connection to send it through, and is told so in words.
+//
+// EVERY PRESS GOES THROUGH [seamRunDoor.Press], which holds the owner's
+// authority table of 2026-11-17 before anything is sent: a merge only on the
+// person's word, and outside Auto an approval only on it too. The public
+// acts, the open task and the decisions on a stop are in
+// factory_manager_acts.go.
 
 // localJobPress posts one job verb to this machine's factory as the person.
 type localJobPress func(ctx context.Context, job int, verb string, body any) error
@@ -53,20 +59,66 @@ func installAppLocalPress(b *appBackend) func() {
 // errNoPress is a press asked where no signed-in factory connection is.
 var errNoPress = errors.New("Nothing changed: this window has no signed-in connection to the factory to press it with; the person can press it on the job page")
 
-// DecidePR is `factory_answer`'s merge and mark_ready for the conversation
-// that manages the job: refused in words unless the job page offers it now.
-func (d seamRunDoor) DecidePR(ctx context.Context, conversation, action, words string) (string, error) {
+// Press is every press the manager's tools make (`factory_answer`,
+// `factory_act`, `factory_task`) for the conversation that manages the job:
+// refused in words unless the manager may press it and the job offers it now.
+//
+// THE AUTHORITY TABLE IS HELD HERE, ONCE, FOR EVERY TOOL ([managerMayPress]):
+// what the manager may press by itself depends on the job's mode and on
+// whether the person spoke in this turn, and no choice of tool or of words
+// gets round it.
+func (d seamRunDoor) Press(ctx context.Context, conversation string, p session.ManagerPress) (string, error) {
 	it, err := d.managed(conversation)
 	if err != nil {
+		return "", fmt.Errorf("Nothing changed: %w", err)
+	}
+	if err := managerMayPress(it, p); err != nil {
 		return "", err
 	}
-	if action == session.ActionResume {
-		return pressAutoResume(ctx, appLocalPress.Load(), it, words)
+	press := appLocalPress.Load()
+	reread := func() (factory.Item, error) { return d.managed(conversation) }
+	switch p.Action {
+	case session.ActionResume:
+		return pressAutoResume(ctx, press, it, p.Said)
+	case session.ActionOfferMerge:
+		return pressOfferMerge(ctx, press, it)
+	case session.ActionMerge, session.ActionMarkReady, session.ActionApprove:
+		return pressPRDecisionBy(ctx, press, it, p.Action, strings.TrimSpace(p.Said) != "", reread)
+	case session.ActionAct:
+		return pressActs(ctx, press, it, p.Acts, p.Words, reread)
+	case session.ActionTask:
+		return pressTask(ctx, press, it, p.Words, p.Now)
+	case session.ActionApproveActs:
+		return pressActsApprove(ctx, press, it, strings.TrimSpace(p.Said) != "", reread)
+	case session.ActionDeclineActs:
+		return pressActsDecline(ctx, press, it, p.Words)
 	}
-	if action == session.ActionOfferMerge {
-		return pressOfferMerge(ctx, appLocalPress.Load(), it)
+	if _, ok := managerDecisions[p.Action]; ok {
+		return pressManagerDecision(ctx, press, it, p.Action, p.Step, p.Words)
 	}
-	return pressPRDecision(ctx, appLocalPress.Load(), it, action, func() (factory.Item, error) { return d.managed(conversation) })
+	return "", errors.New("Nothing changed: unknown action")
+}
+
+// managerMayPress holds one press to the authority table
+// ([factory.ManagerMay]): merging and resuming a paused Auto are pressed only
+// on a turn the person spoke in; outside Auto so are approving publication,
+// marking the pull request ready and approving proposed acts. Everything else
+// is the manager's in both modes.
+func managerMayPress(it factory.Item, p session.ManagerPress) error {
+	said := strings.TrimSpace(p.Said) != ""
+	switch p.Action {
+	case session.ActionMerge:
+		return factory.ManagerMay(it, factory.ManagerMerge, said)
+	case session.ActionResume:
+		return factory.ManagerMay(it, factory.ManagerResumeAuto, said)
+	case session.ActionApprove:
+		return factory.ManagerMay(it, factory.ManagerApprove, said)
+	case session.ActionMarkReady:
+		return factory.ManagerMay(it, factory.ManagerMarkReady, said)
+	case session.ActionApproveActs:
+		return factory.ManagerMay(it, factory.ManagerApproveActs, said)
+	}
+	return nil
 }
 
 // pressAutoResume tells a job's Auto to carry on past the failing checks it
@@ -118,6 +170,15 @@ func pressOfferMerge(ctx context.Context, press *localJobPress, it factory.Item)
 // pressPRDecision checks the decision against the job as saved and presses it.
 // reread reads the job again after a press that changes what the page offers.
 func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item, action string, reread func() (factory.Item, error)) (string, error) {
+	return pressPRDecisionBy(ctx, press, it, action, true, reread)
+}
+
+// pressPRDecisionBy is [pressPRDecision] knowing whose decision it was: said
+// is whether the person spoke in the turn. An approval the manager gave by
+// itself in Auto is not said back as the person's. THE FACTORY STILL RECORDS
+// IT UNDER THE PERSON'S SIGN-IN: the app's own factory has one credential, and
+// the approve door carries no word for who asked.
+func pressPRDecisionBy(ctx context.Context, press *localJobPress, it factory.Item, action string, said bool, reread func() (factory.Item, error)) (string, error) {
 	pr := it.PullRequest
 	if pr == nil {
 		pr = &factory.PullRequest{}
@@ -166,6 +227,9 @@ func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item,
 		return "", fmt.Errorf("Nothing changed: %w", err)
 	}
 	if action == session.ActionApprove {
+		if !said {
+			return fmt.Sprintf("Publication approved by you, as Auto allows. It waits out its Undo window (%s) on the job page, then the factory publishes the checked work. This confirms the approval, not the publication; read factory_status for the outcome, and tell the person you approved it.", factory.ApprovalUndo), nil
+		}
 		return fmt.Sprintf("Publication approved, as the person. It waits out its Undo window (%s) on the job page, then the factory publishes the checked work. This confirms the approval, not the publication; read factory_status for the outcome.", factory.ApprovalUndo), nil
 	}
 	if action == session.ActionMarkReady {

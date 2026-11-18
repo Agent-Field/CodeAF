@@ -246,7 +246,10 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionBrowse
 
 	// Moving bytes or state from one place to another.
-	case "workspace_restore", "workspace_merge", stagePRBaseSyncToolName:
+	case "workspace_restore", "workspace_merge", stagePRBaseSyncToolName,
+		// A job's manager putting its work on the pull request: a push, an
+		// edit, a reply (tools_factory_manager.go).
+		"factory_act":
 		return ActionTransfer
 
 	// Saying something to a person.
@@ -264,7 +267,9 @@ func ActionCategoryForTool(tool string) ActionCategory {
 	case "propose_task", "quick_task", "divide_work", "workspace_fork", "automation",
 		// A manager starting a member or ending its turn, or deciding what a
 		// member asked it.
-		"team_start", "team_stop", "team_decide", "team_add", "team_remove", "team_dissolve":
+		"team_start", "team_stop", "team_decide", "team_add", "team_remove", "team_dissolve",
+		// A job's manager sending a delegate into the job's checkout.
+		"factory_task":
 		return ActionCoordinate
 
 	// Keeping the account of the work rather than doing it. `items` is a quick

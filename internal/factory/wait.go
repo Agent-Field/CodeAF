@@ -528,7 +528,10 @@ func OffersOf(it Item) []Offer {
 	}
 	if a := JobApproval(it); a != nil && a.State == "waiting" {
 		add(OfferByYou, DoApprove)
-		if a.Kind == "proof" && WaitingApprover(it) == "" {
+		// THE MANAGER IS OFFERED ONLY WHAT IT MAY PRESS BY ITSELF
+		// ([ManagerMay]): outside Auto a publish approval is the person's,
+		// and the manager presses it only as them, on their word.
+		if a.Kind == "proof" && WaitingApprover(it) == "" && ManagerMay(it, ManagerApprove, false) == nil {
 			add(OfferByMainAgent, DoApprove)
 		}
 	}
@@ -573,7 +576,10 @@ func OffersOf(it Item) []Offer {
 	}
 	if OffersMarkReady(it) && !it.Publishing {
 		add(OfferByYou, DoMarkReady)
-		add(OfferByMainAgent, DoMarkReady)
+		// The same rule as the publish approval above ([ManagerMay]).
+		if ManagerMay(it, ManagerMarkReady, false) == nil {
+			add(OfferByMainAgent, DoMarkReady)
+		}
 	}
 	if MergeOffered(it).OK {
 		add(OfferByYou, DoMerge)

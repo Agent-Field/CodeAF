@@ -47,10 +47,10 @@ func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
 	if !ok {
 		t.Fatal("the floor's run door cannot start")
 	}
-	if _, err := door.StartRun(context.Background(), filepath.Join(t.TempDir(), "other.jsonl")); !errors.Is(err, errNotAManager) {
+	if _, err := door.StartRun(context.Background(), filepath.Join(t.TempDir(), "other.jsonl"), ""); !errors.Is(err, errNotAManager) {
 		t.Fatalf("another conversation started the item: %v", err)
 	}
-	line, err := door.StartRun(context.Background(), talk)
+	line, err := door.StartRun(context.Background(), talk, "")
 	if err != nil || line != ref+" started" {
 		t.Fatalf("start answered %q, %v", line, err)
 	}
@@ -61,12 +61,22 @@ func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
 	if held.QKind != factory.QKindApprove {
 		t.Fatalf("held on %q, not the approve step", held.QKind)
 	}
-	line, err = door.StartRun(context.Background(), talk)
+	// GOING PAST AN APPROVE STEP IS HELD TO THE AUTHORITY TABLE. This job is in
+	// Auto with no budget, which Auto itself stops at for the person, so a
+	// turn they did not speak in is refused and the run stays held; their
+	// word passes it.
+	if _, err := door.StartRun(context.Background(), talk, ""); err == nil || !strings.HasPrefix(err.Error(), "Nothing changed: Auto stopped here for the person, and nothing in this turn came from them.") {
+		t.Fatalf("a turn with no person words went past the approve step: %v", err)
+	}
+	if still, _ := g.st.Get(id); still.State != factory.StateNeedsYou || still.QKind != factory.QKindApprove {
+		t.Fatalf("the refused start moved the job: %s %q", still.State, still.QKind)
+	}
+	line, err = door.StartRun(context.Background(), talk, "yes, continue")
 	if err != nil || !strings.HasPrefix(line, ref+" went past") {
 		t.Fatalf("continue answered %q, %v", line, err)
 	}
 	g.waitFor(t, id, factory.StateLanded)
-	if _, err := door.StartRun(context.Background(), talk); err == nil || !strings.Contains(err.Error(), "has landed") {
+	if _, err := door.StartRun(context.Background(), talk, ""); err == nil || !strings.Contains(err.Error(), "has landed") {
 		t.Fatalf("a landed item started again: %v", err)
 	}
 	if !door.(session.RunManagerDoor).Manages(talk) {
@@ -108,7 +118,7 @@ func TestFactoryStartAndTheHeaderStartTakeTheSamePath(t *testing.T) {
 
 	door := runDoor(st, "", profile).(session.RunStarter)
 	var needs factory.NeedsCheckout
-	if _, err := door.StartRun(context.Background(), talk); !errors.As(err, &needs) || err.Error() != want {
+	if _, err := door.StartRun(context.Background(), talk, ""); !errors.As(err, &needs) || err.Error() != want {
 		t.Fatalf("factory_start with no way to a checkout = %v", err)
 	}
 
@@ -132,7 +142,7 @@ func TestFactoryStartAndTheHeaderStartTakeTheSamePath(t *testing.T) {
 
 	t.Setenv("GH_TOKEN", "tok-secret")
 	it, _ := st.Get(id)
-	if line, err := door.StartRun(context.Background(), talk); err != nil || line != it.Ref()+" started" {
+	if line, err := door.StartRun(context.Background(), talk, ""); err != nil || line != it.Ref()+" started" {
 		t.Fatalf("factory_start the runner will clone for = %q, %v", line, err)
 	}
 	if got, _ := st.Get(id); got.State != factory.StateQueued {

@@ -41,7 +41,7 @@ const (
 	stallAskSeen  = "First seen %s ago; this is turn %d of %d on it."
 	stallAskLog   = "Its log's last lines: %s"
 	stallAskNoLog = "Its log has no lines."
-	stallAskTail  = "Read factory_status for the job and its pull request as they stand now. If a tool you already have moves the job within its own rules, use it now and say in one sentence what you did. Never merge. Approve publication or mark the pull request ready only when factory_status says the job is in Auto; in Manual those are the person's. If nothing you may do moves it, say in one or two plain sentences what the person must decide: the job then waits on them, with your reason on its log."
+	stallAskTail  = "Read factory_status for the job and its pull request as they stand now. You may settle it yourself: answer a step's question, give a step another round, send work back, run a step again, accept a check's finding with a reason, send a delegate on a task (factory_task) or propose public acts on the pull request (factory_act). In Auto public acts are carried out; outside Auto they wait for the person's yes, and so do approving publication and marking the pull request ready. Never merge. If something you may do moves the job, do it now and say in one sentence what you did. If nothing you may do moves it, say in one or two plain sentences what the person must decide: the job then waits on them, with your reason on its log."
 	stallAskYours = "The job already waits on the person to decide; say only what has changed since your last look."
 )
 

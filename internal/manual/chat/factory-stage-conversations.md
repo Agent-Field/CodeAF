@@ -396,6 +396,13 @@ runner gives it no second turn on the same words. Say `start` and the manager st
 with `factory_start`; it starts the job only when you ask. It never clones the repository
 itself: the runner clones it when the job starts.
 
+The manager can also send a delegate into the checkout for work no step covers
+(`factory_task`) and propose public acts on the pull request, such as a push or a reply to a
+review comment (`factory_act`). In Manual a public act waits for your yes; in Auto the
+manager carries it out; it never merges on its own. Outside Auto, `factory_start` goes past
+an approve step only on a turn where you said so. See "what a job's manager may do by
+itself" in the factory page.
+
 ## step cost across rounds, resumed work and the job total
 
 A step's cost includes every priced round once. Resuming an interrupted round

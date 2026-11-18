@@ -159,6 +159,12 @@ func (a *Agent) factoryTools() []bare.Tool {
 		if a.config.mayStart() {
 			tools = append(tools, a.factoryStartTool())
 		}
+		// `factory_act` and `factory_task` (tools_factory_manager.go), the
+		// manager's public acts and its open task, ride on the same door
+		// where that door can press.
+		if a.config.mayPress() {
+			tools = append(tools, a.factoryActTool(), a.factoryTaskTool())
+		}
 	}
 	return tools
 }

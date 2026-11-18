@@ -11,36 +11,66 @@ import (
 
 type prDecisionDoor struct {
 	savedManagerDoor
-	action, words string
+	action, words, said string
+	pressed             []ManagerPress
+	refuse              error
 }
 
-func (d *prDecisionDoor) DecidePR(_ context.Context, _, action, words string) (string, error) {
-	d.action, d.words = action, words
+func (d *prDecisionDoor) Press(_ context.Context, _ string, p ManagerPress) (string, error) {
+	d.action, d.words, d.said = p.Action, p.Words, p.Said
+	d.pressed = append(d.pressed, p)
+	if d.refuse != nil {
+		return "", d.refuse
+	}
 	return "Merge pressed for pull request #161", nil
 }
 
-// "MERGE IT" IN THE MANAGER'S CHAT PRESSES THE JOB PAGE'S MERGE. On the live
-// audit the manager had no verb for the post-PR card and said nothing was
-// waiting; factory_answer's merge and mark_ready reach the door the page's
-// buttons take, with the person's words, and nothing else answers for them.
+// "MARK IT READY" AND "APPROVE IT" IN THE MANAGER'S CHAT PRESS THE JOB PAGE'S
+// OWN DECISIONS, through the one door every manager press takes, and the
+// press carries the person's own words of the turn beside the model's: the
+// door reads authority from them, never from what the model wrote.
 func TestFactoryAnswerMergeAndMarkReadyReachThePRDecisionDoor(t *testing.T) {
-	for _, action := range []string{ActionMerge, ActionMarkReady, ActionApprove} {
+	for _, action := range []string{ActionMarkReady, ActionApprove} {
 		d := &prDecisionDoor{}
 		a := &Agent{config: Config{FactoryRun: d}}
-		out, bad, err := a.factoryAnswerTool().Execute(context.Background(), json.RawMessage(`{"action":"`+action+`","answer":"merge it"}`))
-		if err != nil || bad || !strings.Contains(out, "#161") || d.action != action || d.words != "merge it" || d.answers != 0 {
-			t.Fatalf("%s: %q bad=%v err=%v door=%+v", action, out, bad, err, d)
+		out, bad, err := a.factoryAnswerTool().Execute(context.Background(), json.RawMessage(`{"action":"`+action+`","answer":"the person said yes"}`))
+		if err != nil || bad || !strings.Contains(out, "#161") || d.action != action || d.words != "the person said yes" || d.said != "" || d.answers != 0 {
+			t.Fatalf("%s on a turn with no person words: %q bad=%v err=%v door=%+v", action, out, bad, err, d)
+		}
+		a.personWords = "yes, go ahead"
+		if _, bad, _ = a.factoryAnswerTool().Execute(context.Background(), json.RawMessage(`{"action":"`+action+`","answer":"the person said yes"}`)); bad || d.said != "yes, go ahead" {
+			t.Fatalf("%s did not carry the person's own words: bad=%v door=%+v", action, bad, d)
 		}
 	}
 	// A door that cannot press is told so in words, and nothing is answered.
 	d := &savedManagerDoor{}
 	a := &Agent{config: Config{FactoryRun: d}}
+	a.personWords = "merge it"
 	out, bad, _ := a.factoryAnswerTool().Execute(context.Background(), json.RawMessage(`{"action":"merge","answer":"merge it"}`))
 	if !bad || !strings.Contains(out, "Nothing changed") || d.answers != 0 {
 		t.Fatalf("a door with no press: %q bad=%v answers=%d", out, bad, d.answers)
 	}
 	if !strings.Contains(factoryAnswerSchemaJSON, `"merge","mark_ready","approve"`) {
 		t.Fatal("the schema does not offer merge and mark_ready")
+	}
+}
+
+// MERGING IS THE PERSON'S IN EVERY MODE. `factory_answer` with action=merge
+// reaches the door only on a turn the person spoke in; a turn the engine
+// started is refused before the door is asked, whatever the model writes in
+// answer, and the refusal says how the person merges.
+func TestFactoryAnswerMergeNeedsThePersonsOwnWordsInTheTurn(t *testing.T) {
+	d := &prDecisionDoor{}
+	a := &Agent{config: Config{FactoryRun: d}}
+	args := json.RawMessage(`{"action":"merge","answer":"the person told me to merge it"}`)
+	out, bad, err := a.factoryAnswerTool().Execute(context.Background(), args)
+	if err != nil || !bad || len(d.pressed) != 0 || !strings.Contains(out, "merging is the person's alone") || !strings.Contains(out, "Merge card") {
+		t.Fatalf("a turn with no person words merged: %q bad=%v err=%v pressed=%+v", out, bad, err, d.pressed)
+	}
+	a.personWords = "merge it now"
+	out, bad, err = a.factoryAnswerTool().Execute(context.Background(), args)
+	if err != nil || bad || d.action != ActionMerge || d.said != "merge it now" || !strings.Contains(out, "#161") {
+		t.Fatalf("the person's merge: %q bad=%v err=%v door=%+v", out, bad, err, d)
 	}
 }
 
@@ -59,7 +89,7 @@ func TestFactoryAnswerResumeCarriesOnlyThePersonsOwnWords(t *testing.T) {
 
 	a.personWords = "carry on, that finding is a false alarm"
 	out, bad, err = a.factoryAnswerTool().Execute(context.Background(), args)
-	if err != nil || bad || d.action != ActionResume || d.words != "carry on, that finding is a false alarm" {
+	if err != nil || bad || d.action != ActionResume || d.words != "carry on, that finding is a false alarm" || d.said != d.words {
 		t.Fatalf("the person's resume: %q bad=%v err=%v door=%+v", out, bad, err, d)
 	}
 	if !strings.Contains(factoryAnswerSchemaJSON, `"approve","resume"`) {
