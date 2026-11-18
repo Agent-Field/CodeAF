@@ -251,12 +251,14 @@ func TestAloneRefusesBeforeTheCode(t *testing.T) {
 func TestCancelAfterTheAnswerIsNotConfirmed(t *testing.T) {
 	r, hostile := hostileRig(t)
 	hostile.on(5, swallow)
-	sent := hostile.reachedMessage(4)
+	// Stop once B's confirmation (message 5) is lost, not once A's answer
+	// (message 4) is posted: stopping then can end the mailbox before B reads it.
+	lost := hostile.reachedMessage(5)
 	a := newScreen()
 	offer := startOffer(t, r, bounded(t, time.Minute), Grant{Identity: r.a}, a)
 	code := a.nextCode(t)
 	go func() {
-		<-sent
+		<-lost
 		offer.stop()
 	}()
 	if _, err := Join(bounded(t, 20*time.Second), r.route, joiningAt(r.homeB), code.Shown(), newScreen()); err != nil {
