@@ -110,7 +110,11 @@ func foldSnapshot(tx *sql.Tx, from, to string) ([]foldTable, error) {
 
 // FoldWorkstream moves a leaf workstream whole, or restores a receipt. The
 // caller's guard runs under the transaction lock, against the current copies.
-func (st *Store) FoldWorkstream(from, to string, undo bool, now time.Time, guard func(factory.OrgWorkstream, factory.OrgWorkstream) error) (factory.OrgWorkstream, error) {
+//
+// note, when a fold (not an Undo) has one, is the Decisions line it leaves in
+// the destination. It is written in the same transaction, before the receipt
+// is taken, so Undo's restore removes it and does not read it as a later edit.
+func (st *Store) FoldWorkstream(from, to string, undo bool, now time.Time, guard func(factory.OrgWorkstream, factory.OrgWorkstream) error, note *factory.WorkstreamDecision) (factory.OrgWorkstream, error) {
 	if _, err := st.filesDB(true); err != nil {
 		return factory.OrgWorkstream{}, err
 	}
@@ -242,6 +246,9 @@ func (st *Store) FoldWorkstream(from, to string, undo bool, now time.Time, guard
 			b.Pages = append(b.Pages, p)
 		}
 		b.Decisions = append(b.Decisions, a.Decisions...)
+		if note != nil {
+			b.Decisions = append(b.Decisions, *note)
+		}
 		b.Sources = append(b.Sources, a.Sources...)
 		for _, j := range a.Jobs {
 			if !slices.Contains(b.Jobs, j) {

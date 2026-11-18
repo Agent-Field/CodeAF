@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -59,6 +60,11 @@ func TestAPersonWhoLeavesHandsTheirOpenTasksToTheFallback(t *testing.T) {
 // read it is left alone, and a change that is only a rename flags nothing.
 func TestChangingAFileARunningTaskReadAsksItsOwnerWhetherToCarryOn(t *testing.T) {
 	o, path := taskOrg(t, "edit")
+	// A task made running is started, so the server needs something to run it.
+	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		<-ctx.Done()
+		return AgentTurnEnd{}, nil
+	})
 	running := o.task(t, "abir", path, api.TaskCreate{Title: "Build the meal grid", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}, State: factory.TaskRunning})
 	waiting := o.task(t, "abir", path, api.TaskCreate{Title: "Later", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
 	var doc api.WorkstreamFile

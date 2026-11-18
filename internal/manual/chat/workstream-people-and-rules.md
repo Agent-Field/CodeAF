@@ -102,7 +102,7 @@ A message sent while this computer cannot reach the model is kept, not failed: i
 
 ## Fold a workstream into another, and Undo
 
-On a workstream's own tabs, More → **Fold…** opens a sheet to choose another open workstream in the same space. Fold moves its tasks, folders, files and decisions into the destination. Your chats follow on this desk and remain private. The destination keeps its people, rules and existing launch plan. Undo returns the source's saved plan too. The folded workstream disappears from Work and Archived.
+On a workstream's own tabs, More → **Fold…** opens a sheet to choose another open workstream in the same space. Fold moves its tasks, folders, files and decisions into the destination. Your chats follow on this desk and remain private. The destination keeps its people, rules and existing launch plan. Undo returns the source's saved plan too. The folded workstream disappears from Work and Archived. In an organization the destination's Decisions gains one line saying who folded what into it ("Marco folded “Launch swag” into this workstream"), and Undo takes that line away with the rest.
 
 Stop working tasks first. If the source contains other workstreams, fold those first. You must look after both workstreams in an organization; older servers without Fold do not offer it.
 

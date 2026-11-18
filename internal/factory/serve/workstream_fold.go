@@ -51,7 +51,16 @@ func (h *Handler) foldWorkstreamPatch(w http.ResponseWriter, r *http.Request, ws
 		}
 		return nil
 	}
-	result, err := h.config.Store.FoldWorkstream(from, to, undo, h.clock().UTC(), guard)
+	// A FOLD LEAVES ONE DECISIONS LINE IN THE WORKSTREAM IT FOLDED INTO, the
+	// way a move in from My space does; Undo takes it back with the rest.
+	var note *factory.WorkstreamDecision
+	if !undo {
+		who := factory.PersonRef{ID: v.Handle, Name: h.personNames()(v.Handle)}
+		if d, ok := factory.FoldDecision(ws.Name, who, "dc_"+h.newTaskID("")(), h.clock().UTC()); ok {
+			note = &d
+		}
+	}
+	result, err := h.config.Store.FoldWorkstream(from, to, undo, h.clock().UTC(), guard, note)
 	if err != nil {
 		if errors.Is(err, store.ErrFoldInvalid) {
 			h.fail(w, http.StatusUnprocessableEntity, err.Error())
@@ -94,7 +103,7 @@ func (h *Handler) foldWorkstreamPatch(w http.ResponseWriter, r *http.Request, ws
 			pid := renamed[i]
 			_ = ds.Rename("ws/"+b+"/page/"+pid, "ws/"+a+"/page/"+pid)
 		}
-		_, rollbackErr := h.config.Store.FoldWorkstream(from, to, !undo, h.clock().UTC(), func(x, y factory.OrgWorkstream) error { return nil })
+		_, rollbackErr := h.config.Store.FoldWorkstream(from, to, !undo, h.clock().UTC(), func(x, y factory.OrgWorkstream) error { return nil }, nil)
 		if rollbackErr != nil {
 			h.failed(w, rollbackErr)
 			return

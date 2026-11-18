@@ -20,7 +20,7 @@ func TestFoldMovesWorkAndUndoRestoresBothWorkstreams(t *testing.T) {
 	if len(movedTasks) != 1 || movedTasks[0].ID != task.ID || movedTasks[0].WS != b.ID {
 		t.Fatalf("moved tasks = %+v", movedTasks)
 	}
-	if got.ID != b.ID || len(got.Decisions) != 1 {
+	if got.ID != b.ID || len(got.Decisions) != 2 {
 		t.Fatalf("fold answer = %+v", got)
 	}
 	o.do(t, "santosh", "GET", "/v1/workstreams/"+a.ID, -1, nil, 404, nil)
