@@ -2,7 +2,7 @@
 
 ## what the Inbox is — the first place the app opens, its six sections
 
-The Inbox is where everything that needs you arrives, Personal and each organization you are signed in to. It is the first place the app opens. On the left it lists six sections, each with its count: "Waiting on you", "Due and late", "Sent back", "Comments for you", "Running for you" and "Waiting on others". Only Waiting on you is amber, because amber means something waits on you. A section with nothing in it shows no number. In the middle is the list for the section you chose; on the right, the item you selected, open. The Inbox opens with the first row selected.
+The Inbox is where everything that needs you arrives, Personal and each organization you are signed in to. It is the first place the app opens. On the left it lists six sections, each with its count: "Waiting on you", "Due and late", "Sent back", "Comments for you", "Running for you" and "Waiting on others". Only Waiting on you is amber, because amber means something waits on you. A section with nothing in it shows no number. In the middle is the list for the section you chose; on the right, the item you selected, open. The Inbox opens with the first row selected. In Personal, under the six sections, "Chats asking you" lists the questions this computer's chats are waiting on, with their own search and Waiting, Later and Done today; a row opens the chat at its question.
 
 ## Waiting on you — Blocking work, Quick and can be undone, Can wait
 
@@ -38,8 +38,8 @@ Running for you lists the tasks you own that an agent is working on, across ever
 
 ## the first day — Plans to start and Set up in the Inbox
 
-On your first day the Inbox shows "Plans to start", one row per workstream whose plan from Afi has not started ("AgentField 0.9 launch: 6 first tasks"). Its pane is the plan with who does each task; "Start 5" starts what can run now. Below it, "Set up" lists what is still to connect, such as "Connect a repository" ("The factory needs one before it can fix or build anything"). Each item leaves the group when it is done, or when you dismiss it. This is the only place set-up items appear; there is no separate set-up page.
+On your first day the Inbox shows "Plans to start", one row per workstream whose plan from Afi has not started ("AgentField 0.9 launch: 6 first tasks"). Its pane is the plan with who does each task ("Start the first six tasks?"); "Start 5" starts what can run now, and "Change the plan" opens the workstream. Below it, for an organization's admin, "Set up" lists what is still to connect: "Connect a repository" ("The factory needs one before it can fix or build anything") and "Add what Afi should know". Each item leaves the group when it is done, or when you press "Not now". This is the only place set-up items appear; there is no separate set-up page.
 
 ## a teammate's first Inbox — who added you
 
-Someone added to an organization opens on their Inbox with one line saying who added them ("Santosh added you to AgentField"), how many workstreams and which team, and "Got it" to put it away. Below it are their Asks, the tasks handed to them under "Handed to you", and their own Set up items, such as "Connect your GitHub". They see only the workstreams they are in, and their Afi and chats are private to them.
+Someone added to an organization opens on their Inbox with one line saying who added them ("Santosh added you to AgentField"), how many workstreams and which team, and "Got it" to put it away. Below it are their Asks and the tasks handed to them under "Handed to you". They see only the workstreams they are in, and their Afi and chats are private to them.

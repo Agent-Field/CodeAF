@@ -41,9 +41,9 @@ Afi's set-up runs on the organization's server, with the organization's model ke
 
 ## still to set up — connect a repository, add what Afi should know
 
-An organization's **Work** page starts with **Still to set up** while something is missing:
+What is still missing is a "Set up" group in the Inbox, under Waiting on you, for the organization's admin (there is no Work page and no "Still to set up" block any more). Selecting a row opens it beside the list:
 
 - **Connect a repository** · "The factory needs one before it can fix or build anything." · **Connect GitHub**, which opens the organization's Repos page.
 - **Add what Afi should know** · "A brief, pricing, your brand voice. They go in the Library and every workstream can read them." · **Add files**, which opens the organization's Library. Only where the server keeps a Library.
 
-Each row goes when it is done, and the block goes when both are.
+Each row goes when it is done, or when you press "Not now", which puts it away on this computer for good.

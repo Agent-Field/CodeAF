@@ -70,7 +70,7 @@ A task can carry more than one Ask — approval by several people is several Ask
 
 If the owner is Everyone, anyone who can edit the workstream may answer; the first answer decides, a second is refused with "this question was already answered", and the task records who answered. A question left unanswered for a day also goes to the workstream's fallback person, if it has one: every one of the task's Asks, the decision check's included, appears under Waiting on you in the fallback person's Inbox and gets buttons on the task page.
 
-Every Ask you decide reaches you, not only the task's own: a task's second and third Ask, and the Ask the decision check raises when work goes against a decision, each get their own row under Waiting on you in the Inbox (alike ones can be answered together), and each counts in the Work list's amber number for that workstream.
+Every Ask you decide reaches you, not only the task's own: a task's second and third Ask, and the Ask the decision check raises when work goes against a decision, each get their own row under Waiting on you in the Inbox, and each counts in the Work list's amber number for that workstream.
 
 ## Why the Inbox has an amber dot — what counts as waiting on you
 
