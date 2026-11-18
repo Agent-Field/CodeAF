@@ -27,3 +27,7 @@ A batch still waiting in Up next appears as a plan on Overview. A tick selects a
 “Handed to you” lists tasks someone handed you. Opening one removes that handoff from this computer's Work page for your account; the task remains in its workstream.
 
 The Work rail nests children under their parent. “Archived · N” sits below the live list and opens the archive. A filtered or archived-only list does not say “No workstreams yet”.
+
+## Find an archived workstream again — Archived list, Bring back
+
+In an organization the archive is kept on its server, so “Archived · N” and the Archived list survive a refresh or a restart and include what someone else archived, limited to workstreams you belong to. Each row in the Archived list has **Bring back**, which returns it to the Work list for everyone; opening the row and choosing Bring back in More does the same. No other list (Work, the Inbox, search pickers, requests) shows an archived workstream. An engine older than this lists only what this computer archived.

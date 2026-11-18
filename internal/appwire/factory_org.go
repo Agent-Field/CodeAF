@@ -37,6 +37,11 @@ const (
 	FeatureOrgTeams       = "org_teams"
 	FeatureOrgWorkstreams = "org_workstreams"
 	FeatureOrgRoles       = "org_roles"
+	// FeatureOrgWorkstreamsArchived says factory.org_workstreams takes
+	// archived: an older engine drops the word and answers only live rows, so
+	// the desk counts and lists the archive from the server only where hello
+	// says this.
+	FeatureOrgWorkstreamsArchived = "org_workstreams_archived"
 )
 
 // OrgRequest is one built request to an organization's server: the method,
@@ -214,6 +219,15 @@ type OrgSharePreview struct {
 type OrgConn struct {
 	Connection string `json:"connection"`
 	Factory    string `json:"factory,omitempty"`
+}
+
+// OrgWorkstreamsParams is factory.org_workstreams's ask. Archived asks for the
+// archived rows as well as the live ones (`?archived=1`): every list reader
+// leaves it off, so an archived workstream never reappears among the live
+// ones, and only the Archived list sets it.
+type OrgWorkstreamsParams struct {
+	OrgConn
+	Archived bool `json:"archived,omitempty"`
 }
 
 func (c OrgConn) id() (string, error) {
@@ -476,6 +490,7 @@ func withFactoryOrgFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(FactoryOrg); ok {
 		hello = withFeature(hello, FeatureOrgTeams)
 		hello = withFeature(hello, FeatureOrgWorkstreams)
+		hello = withFeature(hello, FeatureOrgWorkstreamsArchived)
 		hello = withFeature(hello, "org_workstream_fold_undo")
 		hello = withFeature(hello, FeatureOrgRoles)
 		hello = withFeature(hello, FeatureOrgAgentRunner)
@@ -602,7 +617,12 @@ func init() {
 	methods["factory.team_member_add"] = filled(orgMethod[OrgTeamMemberParams, OrgTeam]("factory.team_member_add", member(http.MethodPut)), team)
 	methods["factory.team_member_remove"] = filled(orgMethod[OrgTeamMemberParams, OrgTeam]("factory.team_member_remove", member(http.MethodDelete)), team)
 
-	methods["factory.org_workstreams"] = filled(orgMethod[OrgConn, OrgWorkstreams]("factory.org_workstreams", func(OrgConn) (OrgRequest, error) {
+	methods["factory.org_workstreams"] = filled(orgMethod[OrgWorkstreamsParams, OrgWorkstreams]("factory.org_workstreams", func(p OrgWorkstreamsParams) (OrgRequest, error) {
+		// The server leaves archived workstreams out unless asked, so an
+		// archive lives on the server and survives a restart of the desk.
+		if p.Archived {
+			return OrgRequest{Method: http.MethodGet, Path: "/v1/workstreams?archived=1"}, nil
+		}
 		return OrgRequest{Method: http.MethodGet, Path: "/v1/workstreams"}, nil
 	}), func(w *OrgWorkstreams) { w.Workstreams = summaries(w.Workstreams) })
 	methods["factory.org_workstream"] = filled(orgMethod[OrgWorkstreamParams, OrgWorkstream]("factory.org_workstream", func(p OrgWorkstreamParams) (OrgRequest, error) {
