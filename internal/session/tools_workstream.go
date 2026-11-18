@@ -94,12 +94,25 @@ func init() { glossField[WorkstreamPagesTool] = "ask" }
 // mayWorkstream says this conversation is a workstream's server agent.
 func (c Config) mayWorkstream() bool { return c.Workstream != nil }
 
+// AllWorkDoor reads the person's accessible workstreams without widening writes.
+type AllWorkDoor interface {
+	AllWorkAvailable() bool
+	AllWork(context.Context) (string, error)
+}
+
 // workstreamTool reads and writes the workstream through [Config.Workstream].
 func (a *Agent) workstreamTool() bare.Tool {
+	scope, scoped := a.config.Workstream.(AllWorkDoor)
+	scoped = scoped && scope.AllWorkAvailable()
+	description, schema := workstreamPagesDescription, workstreamPagesSchemaJSON()
+	if scoped {
+		description += " In My space, ask all_work reads all workstreams you can access and their tasks. It is read-only; writes still go to My space."
+		schema = strings.Replace(schema, `"enum":["read"`, `"enum":["all_work","read"`, 1)
+	}
 	return bare.Tool{
 		Name:        WorkstreamPagesTool,
-		Description: workstreamPagesDescription,
-		Schema:      json.RawMessage(workstreamPagesSchemaJSON()),
+		Description: description,
+		Schema:      json.RawMessage(schema),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var p struct {
 				Ask   string `json:"ask"`
@@ -114,6 +127,15 @@ func (a *Agent) workstreamTool() bare.Tool {
 			door := a.config.Workstream
 			page := strings.TrimSpace(p.Page)
 			switch strings.ToLower(strings.TrimSpace(p.Ask)) {
+			case "all_work":
+				if !scoped {
+					return "All my work is available from Afi in My space.", true, nil
+				}
+				text, err := scope.AllWork(ctx)
+				if err != nil {
+					return "Could not read all work: " + oneLine(err.Error()), true, nil
+				}
+				return text, false, nil
 			case wsAskRead:
 				ws, err := door.Workstream(ctx)
 				if err != nil {

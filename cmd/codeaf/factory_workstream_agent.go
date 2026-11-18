@@ -426,6 +426,9 @@ func factoryWorkstreamAgentTurnSystem(turn serve.AgentTurn) string {
 	var system string
 	if turn.Space {
 		system = factoryMySpaceAgentSystem(turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
+		if scope, ok := turn.Door.(session.AllWorkDoor); ok && scope.AllWorkAvailable() {
+			system += "\n\nLooking at: All my work. When asked about work, use workstream_pages with ask all_work to read across every workstream this person can access. Never infer that they have no work from My space holding no tasks. This scope only reads; what you make stays in My space."
+		}
 	} else {
 		system = factoryWorkstreamAgentSystem(turn.Name, turn.Asker, workstreamDoorKeepsWork(turn.Door), turn.Now, turn.TZ)
 		if workstreamDoorKeepsCanvases(turn.Door) {

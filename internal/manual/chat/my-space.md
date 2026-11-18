@@ -39,3 +39,9 @@ A chat never moves: it stays private. What the chat made does move.
 ## What My space cannot do yet
 
 My space holds no crews, and it has no Library of its own: the organization's Library is shared by everyone in it (see "The organization's Library"). Your Personal agents and Library never appear in an organization window.
+
+## What is all my work — Afi looks across workstreams from My space
+
+In My space, Afi's pane says **Looking at: All my work**. Ask “what is all my work?” to read across the workstreams you can access in this organization, including their tasks, owners, state and waiting questions. This is a read-only view: it does not let Afi change another workstream from My space. Workstreams you cannot access and other people's private spaces stay private. Your Personal work outside this organization is separate.
+
+A named chat in My space still reads its own space. The wider view belongs to Afi's pane.
