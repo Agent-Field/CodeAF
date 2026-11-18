@@ -56,6 +56,12 @@ const (
 	// Execution the waiting execution, Decision the control plane's word,
 	// Words the person's and By their handle.
 	SignalAgentField = "agentfield_answer"
+	// SignalTask carries an extra task added while the runner was in the
+	// middle of a round ([Doors.Task]): ID is the name of the task's step,
+	// Words its instructions and By who asked. The runner puts it before
+	// its next round or step; one that never hears of it loses nothing,
+	// because the job itself holds the task for the next pull.
+	SignalTask = "task"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.

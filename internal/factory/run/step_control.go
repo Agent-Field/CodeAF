@@ -75,8 +75,9 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]
+			// An extra task that waits after the step keeps its instructions (task.go).
 			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending,
-				RoundCosts: p.RoundCosts, Result: p.Result}
+				RoundCosts: p.RoundCosts, Result: p.Result, Task: p.Task}
 			if len(p.RoundCosts) > 0 {
 				s.Phases[i].Round = p.Round + 1
 			}

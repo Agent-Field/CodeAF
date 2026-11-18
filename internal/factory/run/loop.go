@@ -85,6 +85,8 @@ type floorLoop struct {
 	// extra are phases a send-back appended, by name, which are not in the
 	// item's stages: their ask is kept here because a phase's note changes.
 	extra map[int]map[string]factory.Stage
+	// tasks is what is kept about extra tasks (task.go).
+	tasks taskFloor
 
 	// sayMu keeps each item's manager lines in order (manager.go): owed are
 	// the lines a conversation could not take yet, and retrying says a retry
@@ -232,6 +234,7 @@ func (r *Runner) Launch(id int) error {
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
 	delete(lp.extra, id)
+	lp.tasks.forget(id)
 	lp.mu.Unlock()
 
 	// THE MANAGER IS MADE BEFORE THE RUN IS, and what the person told it
@@ -608,6 +611,9 @@ func (lp *floorLoop) drive(c *loopCtl) {
 		go lp.watchTalk(c, watching)
 	}
 	for {
+		// No round is under way here, so a task asked for meanwhile goes in
+		// front of the next step, and a finished one is settled (task.go).
+		lp.tasksBetween(c)
 		lp.retailTail(c)
 		it, err := lp.r.opts.Store.Get(c.id)
 		if err != nil || it.Stream == nil {
@@ -654,6 +660,11 @@ func nextPhase(ph []factory.Phase) int {
 // stage a send-back made.
 func (lp *floorLoop) stageAt(it factory.Item, i int) (factory.Stage, int) {
 	ph := it.Stream.Phases[i]
+	// An extra task is its own stage: its instructions, whatever its note
+	// says by now (task.go).
+	if factory.IsTask(ph) {
+		return factory.TaskStage(ph), -1
+	}
 	if j := factory.StageIndex(it.Stages, ph.Name); j >= 0 {
 		return it.Stages[j], j
 	}
@@ -1122,6 +1133,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	for {
 		if !lp.held(c) {
 			return false
+		}
+		// A task asked for while the last round ran goes first: this step
+		// waits at the round it was about to start (task.go).
+		if lp.taskTurn(c, i, round, limit) {
+			return true
 		}
 		if !lp.capCheck(c, i, name, -1) {
 			return false
@@ -2208,19 +2224,28 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 
 // retail rebuilds the phases after phase i from the item's stages as they
 // now stand: what has run stays as it ran, and the tail is compiled again.
+//
+// A TASK THAT WAITS IN THE TAIL STAYS IN IT ([factory.KeepTasks]): it is not
+// one of the job's stages, and a step edit is no word to drop it. A tail
+// laid after a task is laid from the last stage's phase before it.
 func retail(it factory.Item, phases []factory.Phase, i int) []factory.Phase {
 	out := append([]factory.Phase(nil), phases[:i+1]...)
-	from := factory.StageIndex(it.Stages, phases[i].Name)
-	if from < 0 {
+	anchor := i
+	for anchor > 0 && factory.IsTask(phases[anchor]) {
+		anchor--
+	}
+	from := factory.StageIndex(it.Stages, phases[anchor].Name)
+	if from < 0 || factory.IsTask(phases[anchor]) {
 		return append(out, phases[i+1:]...)
 	}
+	var laid []factory.Phase
 	for _, s := range it.Stages[from+1:] {
 		if !runsIn(it, s) {
 			continue
 		}
-		out = append(out, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
+		laid = append(laid, factory.Phase{Name: s.Name, Kind: kindOf(s), State: factory.PhasePending, Note: s.Ask})
 	}
-	return out
+	return append(out, factory.KeepTasks(phases[i+1:], laid)...)
 }
 
 // makesSheet says whether a stage's claims go on the proof sheet: the proof
@@ -2774,6 +2799,9 @@ func (r *Runner) revive(it factory.Item) error {
 		c.revived = i + 1
 	}
 	lp.ctls[id] = c
+	// A task put into the run since this runner last ran it moved the steps
+	// after it, and the kept results move with them (task.go).
+	lp.rekey(id, it.Stream.Phases)
 	if lp.results[id] == nil {
 		// WHAT THE STEPS BEFORE LEFT comes back from the item, where each
 		// round's result was kept, with the notes they left.
@@ -3172,21 +3200,8 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	for k := 2; phaseNamed(s.Phases, name) || factory.StageIndex(it.Stages, name) >= 0; k++ {
 		name = "prove" + strconv.Itoa(k) // one word, as every stage name is
 	}
-	at := 0
-	for k, p := range s.Phases {
-		if p.State == factory.PhaseDone || p.State == factory.PhaseSkipped {
-			at = k + 1
-		}
-	}
-	ph := factory.Phase{Name: name, Kind: factory.StageChat, State: factory.PhasePending, Note: words}
-	s.Phases = append(s.Phases[:at:at], append([]factory.Phase{ph}, s.Phases[at:]...)...)
-	s.Cur = at
-	s.Ended = time.Time{}
-	it.State = factory.StateQueued
-	it.PublishStatus, it.Publishing = nil, false
-	it.PublishError = ""
-	// The checks stay for the new step to build on; the person's override was for the run that is over.
-	it.Overrides = nil
+	// An extra task on a landed job takes the same road (task.go).
+	requeueLanded(it, factory.Phase{Name: name, Kind: factory.StageChat, State: factory.PhasePending, Note: words})
 	loopSay(it, now, "said", "changes requested: "+words)
 	return name, nil
 }
@@ -3330,16 +3345,26 @@ func tailPhases(it factory.Item, phases []factory.Phase) ([]factory.Phase, bool)
 			last = i
 		}
 	}
+	tasks := false
 	for _, p := range phases[last+1:] {
+		// A task in the tail is kept where it is ([retail]); any other phase
+		// the stages do not name leaves the tail alone.
+		if factory.IsTask(p) {
+			tasks = true
+			continue
+		}
 		if factory.StageIndex(it.Stages, p.Name) < 0 {
 			return phases, false
 		}
 	}
 	var out []factory.Phase
 	if last < 0 {
+		if tasks {
+			return phases, false
+		}
 		out = loopPhases(it)
 	} else {
-		if factory.StageIndex(it.Stages, phases[last].Name) < 0 {
+		if factory.StageIndex(it.Stages, phases[last].Name) < 0 && !factory.IsTask(phases[last]) {
 			return phases, false
 		}
 		out = retail(it, phases, last)

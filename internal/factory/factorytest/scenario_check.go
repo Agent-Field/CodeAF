@@ -354,6 +354,8 @@ func pressDoor(handler http.Handler, st *store.Store, it factory.Item, action st
 		return post(api.ActsApproveVerb, map[string]any{}), true
 	case factory.DoActsDecline:
 		return post(api.ActsDeclineVerb, map[string]any{"words": "Not this."}), true
+	case factory.DoTask:
+		return post("task", api.Task{Words: "Add a note on the ledger's rounding to the README.", By: api.TaskByYou}), true
 	}
 	return Pressed{}, false
 }

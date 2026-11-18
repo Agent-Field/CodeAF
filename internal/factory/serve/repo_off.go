@@ -29,6 +29,8 @@ var offVerbs = map[string]bool{
 	"sync": true, "issue_comment": true, "pr-ready": true,
 	// Public acts on the job's pull request, and the yes that sends them.
 	api.ActVerb: true, api.ActsApproveVerb: true,
+	// A task sends a delegate to work on the job (task.go).
+	"task": true,
 }
 
 // repoSwitch is the switch the store keeps. A factory with no store of its

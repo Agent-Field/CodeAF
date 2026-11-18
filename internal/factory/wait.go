@@ -82,6 +82,9 @@ const (
 	// The two answers to public acts that wait: one yes or one no for all.
 	DoActsApprove = "acts_approve"
 	DoActsDecline = "acts_decline"
+	// DoTask sends a delegate into the job's checkout on an extra task
+	// (task.go).
+	DoTask = "task"
 )
 
 // Who may take an offer.
@@ -309,7 +312,14 @@ func runningWait(it Item) Wait {
 	if a := it.Asking; a != nil && a.With == AskedManager {
 		return Wait{Who: WaitMainAgent, What: a.Stage, Words: a.Question}
 	}
-	return Wait{Who: WaitWorking, What: waitStep(it)}
+	// A task that is queued for a runner or running is the step the job is
+	// on, so the wait names it. One that waits behind the round running now
+	// is said in the wait's words (task.go).
+	w := Wait{Who: WaitWorking, What: waitStep(it)}
+	if i, ok := WaitingTask(it); ok && it.Stream.Cur != i {
+		w.Words = "A task runs when this round ends."
+	}
+	return w
 }
 
 // githubWhat names what a watched pull request waits on at the forge.
@@ -616,6 +626,14 @@ func OffersOf(it Item) []Offer {
 		if Automatic(it) {
 			add(OfferByMainAgent, DoActsApprove)
 		}
+	}
+	// A TASK IS OFFERED WHEREVER ITS OWN RULES TAKE ONE ([TaskRefusal]), to the
+	// person and to the manager alike. No wait asks for one, so it is a move
+	// of none ([moves]): a job that offers only a task still offers its
+	// person nothing that does what it waits on them for.
+	if TaskRefusal(it, DoTask) == nil {
+		add(OfferByYou, DoTask)
+		add(OfferByMainAgent, DoTask)
 	}
 	return out
 }

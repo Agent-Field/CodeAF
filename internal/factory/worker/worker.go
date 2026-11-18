@@ -461,6 +461,24 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		}
 	})
 	defer o.Runner.SetStepBegin(it.ID, nil)
+	// BETWEEN TWO ROUNDS THE RUNNER HEARS THE FACTORY AT ONCE, not at its next
+	// beat: a task sent while a round ran is then placed at that round's end
+	// (run's SetBoundary). The beat is made by this loop, which owns every
+	// beat, and the runner waits for it.
+	boundary := make(chan chan struct{})
+	o.Runner.SetBoundary(it.ID, func(ctx context.Context) {
+		heard := make(chan struct{})
+		select {
+		case boundary <- heard:
+		case <-ctx.Done():
+			return
+		}
+		select {
+		case <-heard:
+		case <-ctx.Done():
+		}
+	})
+	defer o.Runner.SetBoundary(it.ID, nil)
 	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
@@ -502,6 +520,17 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		<-reporterDone
 	}()
 	busy := false
+	// lost is the end of a job whose beat said the lease is gone.
+	lost := func() {
+		j.drop()
+		if !j.wasStopped() {
+			cancel()
+			<-reporterDone
+			if !j.handBack() {
+				o.keepHandBack(j.lease)
+			}
+		}
+	}
 	// Wait for the withdrawn drive to release its executor before resuming
 	// the saved round, so replacement execution cannot overlap its cleanup.
 	const retryEvery = time.Second
@@ -621,16 +650,16 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 			if !busy {
 				queue(func() reportResult { return reportResult{alive: j.flush(ctx)} })
 			}
+		case heard := <-boundary:
+			alive := j.beat(ctx)
+			close(heard)
+			if !alive {
+				lost()
+				return
+			}
 		case <-beat.C:
 			if !j.beat(ctx) {
-				j.drop()
-				if !j.wasStopped() {
-					cancel()
-					<-reporterDone
-					if !j.handBack() {
-						o.keepHandBack(j.lease)
-					}
-				}
+				lost()
 				return
 			}
 		}
@@ -920,6 +949,8 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 			effectErr = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
 			effectErr = r.Steer(j.id, s.Words)
+		case lease.SignalTask:
+			effectErr = r.Task(j.id, s.ID, s.Words, s.By)
 		case lease.SignalAgentField:
 			// A PERSON ANSWERED THE RUN'S PAUSE ON THE FACTORY. This runner
 			// started the run, so it carries the answer to the control plane;

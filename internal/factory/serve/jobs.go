@@ -1165,6 +1165,9 @@ func (h *Handler) settleJobs(approvalsOnly bool, held []lease.Lease) {
 	if err != nil {
 		return
 	}
+	// A task kept for the round after the one that just ended starts here,
+	// before Auto approves what that round landed (task.go).
+	pending = h.prepareHeldTasks(pending, held)
 	pending, err = h.prepareAutomaticRepairs(pending)
 	if err != nil {
 		return

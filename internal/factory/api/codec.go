@@ -1241,7 +1241,7 @@ func steps(it factory.Item) []Step {
 	j := 0
 	for i, st := range stages {
 		for j < len(phases) && phases[j].Name != st.Name && factory.StageIndex(stages[i:], phases[j].Name) < 0 {
-			out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
+			out = append(out, runStep(Step{StepDef: phaseDef(phases[j])}, phases[j]))
 			j++
 		}
 		s := Step{StepDef: fromStage(st), State: StepPending, InPipeline: true}
@@ -1255,7 +1255,7 @@ func steps(it factory.Item) []Step {
 		out = append(out, s)
 	}
 	for ; j < len(phases); j++ {
-		out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
+		out = append(out, runStep(Step{StepDef: phaseDef(phases[j])}, phases[j]))
 	}
 	out = withAgentFieldSteps(it, out)
 	// A persisted decision owns the current step even if an older worker
@@ -1269,6 +1269,18 @@ func steps(it factory.Item) []Step {
 		}
 	}
 	return out
+}
+
+// phaseDef is the definition of a step the run holds and the pipeline does
+// not. AN EXTRA TASK CARRIES ITS INSTRUCTIONS AS THE STEP'S ASK AND WHO ASKED
+// AS ITS BY (factory's task.go), in the fields every step already has, so a
+// reader shows it like any step and [toPhase] reads the task back.
+func phaseDef(p factory.Phase) StepDef {
+	def := StepDef{Name: p.Name, Kind: string(p.Kind)}
+	if t := p.Task; t != nil {
+		def.Ask, def.By = t.Words, t.By
+	}
+	return def
 }
 
 func runStep(s Step, p factory.Phase) Step {
@@ -1405,6 +1417,11 @@ func toPhase(s Step) factory.Phase {
 	}
 	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), SkipReason: s.SkipReason, Note: s.Note,
 		Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
+	// A step of the run that is no step of the pipeline and has an ask is an
+	// extra task ([phaseDef]). A call of an AgentField run is never one.
+	if !s.InPipeline && strings.TrimSpace(s.Ask) != "" && kind != string(factory.StageAgentField) && s.Target == "" {
+		p.Task = &factory.TaskAsk{Words: s.Ask, By: s.By}
+	}
 	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
 	// reader's job, and a pull from an older factory, carry only the step's
 	// result line, which is read as it always was (no done, no notes, no claims).

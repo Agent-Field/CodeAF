@@ -30,6 +30,11 @@ func AsksBeforeStep(it Item, i int) bool {
 	if p.Kind == StageGate || p.State != PhasePending || p.Round > 0 || it.FollowUp != nil || p.Name == FollowPRStep {
 		return false
 	}
+	// An extra task was asked for in so many words; nobody is asked again
+	// before it runs (task.go).
+	if IsTask(p) {
+		return false
+	}
 	return PreviousWork(ph, i) >= 0 && !answeredByApprove(it, i)
 }
 

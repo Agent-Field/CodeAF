@@ -64,6 +64,9 @@ const (
 	// withdraw an approval the way a drop does.
 	Released       = "released"
 	RequestChanges = "request_changes"
+	// Tasked is an extra task sent into a job's checkout (factory's task.go),
+	// by its person or, with an agent as the actor, by its main agent.
+	Tasked = "tasked"
 	// PRMerged and PRClosed are the poll noticing a pull request this factory
 	// opened. The handle, when GitHub named one, is who merged it.
 	PRMerged = "pr_merged"
@@ -219,6 +222,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 func validate(e Event) error {
 	switch e.Kind {
 	case ContextSet:
+	case Tasked:
 	case RunAsNew, StopAfterStepChanged, StepEdited, StepStopped, StepRerun, HandOffNotNow, Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BudgetChanged, Undone, Started, Held, Resumed, Stopped, AutoStarted, AskedFirst, Routed, RepoSet, Approved, Answered, Posted, Took, Dropped, ClosedLocally, Restored, Released, RequestChanges, PRMerged, PRClosed, SourceClosed, MergeAsked, MergeQueued, MergeRefused, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked, OperatorClaimed, GitHubGranted, PRReady, PRActed, ActsApproved, ActsDeclined:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
@@ -230,6 +234,7 @@ func validate(e Event) error {
 	}
 	switch e.Verb {
 	case "set context":
+	case "sent a task":
 	case "ran as new", "edited steps", "reran step", "put away hand-off", "started", "held", "resumed", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "brought back", "unassigned", "requested changes", "merged", "closed", "closed locally", "pressed merge", "sent merge", "refused merge", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "changed budget", "changed spending stop", "undone", "claimed factory", "granted GitHub read access", "marked ready for review", "routed", "set repository",
 		"edited pull request", "changed base", "replied", "commented", "resolved review thread", "asked for review", "reran checks", "approved public acts", "declined public acts":
 	default:

@@ -379,6 +379,9 @@ type Phase struct {
 	// Passed is who passed an approve step, once it is done ([StampPassed]);
 	// nil on every other step, and again once the step waits or is sent back.
 	Passed *Passed `json:",omitempty"`
+	// Task is set on the phase of an extra task (task.go): its instructions
+	// and who gave them. Nil on every step of the pipeline.
+	Task *TaskAsk `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in

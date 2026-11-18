@@ -54,6 +54,11 @@ type PRFollowUp struct {
 	Request         string            `json:"request,omitempty"`
 	AutoPush        bool              `json:"auto_push,omitempty"`
 	PublishConsent  string            `json:"publish_consent,omitempty"`
+
+	// Next is the request of the round after the one running now: the tasks
+	// asked for while it ran (task.go). The service keeps it; a runner's
+	// report never carries it.
+	Next string `json:"next,omitempty"`
 }
 type CIRepairResult struct {
 	Decision  string           `json:"decision"`

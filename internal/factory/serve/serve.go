@@ -309,6 +309,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/audit", h.audit)
 	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
+	h.taskRoutes()
 	h.scoutRoutes()
 	h.readRoutes()
 	h.workerRoutes()
