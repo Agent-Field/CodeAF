@@ -47,6 +47,29 @@ func TestATaskWaitsOnEveryAskAndEachHasOneDecider(t *testing.T) {
 	}
 }
 
+// An answer in words alone is recorded as the answer to the Ask, never as the
+// Ask's own line: an agent's Ask titled with the trouble it found must not
+// become a decision that the trouble is settled.
+func TestAnAnswerInWordsIsKeptAsTheAnswerNotTheAsksLine(t *testing.T) {
+	task := asking(afiTask("tk_1", "marco"), taskNow)
+	ch, err := ApplyPatch(task, TaskPatch{AddAsk: &TaskAsk{Title: "The release notes pasted were placeholder text, not the notes", Decider: &PersonRef{ID: "priya", Name: "Priya"},
+		Options: []TaskAskOption{{ID: "o1", Label: "Paste them again", Decides: "The notes are pasted again"}}}}, TaskActor{Handle: "marco", Edit: true}, byMarco, nil, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err = AnswerTask(ch.Task, ch.Task.Asks[0].ID, "", "Release notes, 1.0: the control plane is GA. Draft from this.", TaskActor{Handle: "priya", Edit: true}, byPriya, Standin{}, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "Asked “The release notes pasted were placeholder text, not the notes”, answered: Release notes, 1.0: the control plane is GA. Draft from this."
+	if len(ch.Decisions) != 1 || ch.Decisions[0].Text != want {
+		t.Fatalf("decision = %+v", ch.Decisions)
+	}
+	if from := ch.Decisions[0].From; from.Answer != "Release notes, 1.0: the control plane is GA. Draft from this." {
+		t.Fatalf("answer = %q", from.Answer)
+	}
+}
+
 // A view is one line per person, replaced, never the decider's own.
 func TestOthersAttachOneViewEachAndTheDeciderNone(t *testing.T) {
 	task := asking(afiTask("tk_1", "marco"), taskNow)
