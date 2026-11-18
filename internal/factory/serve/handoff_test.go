@@ -471,6 +471,38 @@ func TestManagerDecideRefusesWhatIsNotTheMainAgents(t *testing.T) {
 	}
 }
 
+// A REPOSITORY THAT IS OFF IS NOT WORKED ON BY THE MAIN AGENT EITHER. The
+// person's Resume is refused for a job of a repository that is off, so the
+// main agent's decision to resume the pipeline is refused in the same words
+// and writes nothing; turned back on, the same decision is taken.
+func TestManagerDecideResumePipelineIsRefusedOnARepoThatIsOff(t *testing.T) {
+	f := newStopFloor(t, false)
+	failed := f.stopped(factory.AutonomyManual, func(it *factory.Item) {
+		it.State = factory.StateNeedsYou
+		it.Publish = "pr"
+		it.PullRequest = &factory.PullRequest{Number: 9, State: factory.PROpen, HeadSHA: "abc"}
+		it.Stream.Phases[1].State = factory.PhaseFailed
+		it.Failure = &factory.Failure{Step: "test", Code: factory.CodeToolError, Summary: "the build broke", At: time.Now()}
+	})
+	if err := f.st.SetRepos([]string{"acme/docs"}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := f.st.Revision(failed.ID)
+	w := f.press(failed.ID, `{"decision":"resume_pipeline","words":"carry on"}`)
+	if want := factory.RepoOffWords("acme/api"); w.Code != 409 || refusal(w) != want {
+		t.Fatalf("%d %s, want 409 saying %q", w.Code, w.Body, want)
+	}
+	if after, _ := f.st.Revision(failed.ID); after != before {
+		t.Fatalf("a refused decision wrote the job: revision %d to %d", before, after)
+	}
+	if err := f.st.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := f.press(failed.ID, `{"decision":"resume_pipeline","words":"carry on"}`); w.Code != 200 {
+		t.Fatalf("with the repository on again: %d %s", w.Code, w.Body)
+	}
+}
+
 // HANDING A STOP TO THE PERSON ENDS THE HANDOFF WITH THE REASON on the job's
 // log, and the turn that follows writes nothing over it.
 func TestManagerDecideHandsAStopToThePersonWithItsReason(t *testing.T) {

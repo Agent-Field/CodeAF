@@ -85,7 +85,9 @@ func (h *Handler) managerDecide(w http.ResponseWriter, r *http.Request, it facto
 	if decision == factory.DecideRerun && step == "" {
 		step = stopped
 	}
-	if (decision == factory.DecideRerun || decision == factory.DecideRetryPublish) && h.refuseOff(w, factory.RepoOf(it), factory.JobState(it)) {
+	// RESUMING THE PIPELINE CARRIES THE JOB ON FROM A PAUSE as the person's
+	// `resume` does, which a repository that is off refuses (repo_off.go).
+	if (decision == factory.DecideRerun || decision == factory.DecideRetryPublish || decision == factory.DecideResumePipeline) && h.refuseOff(w, factory.RepoOf(it), factory.JobState(it)) {
 		return
 	}
 	held := it.Handoff
