@@ -116,6 +116,6 @@ Such a conversation cannot set up work on a clock either. Asked to do something 
 
 ## where is the Decisions panel — Decisions is the first row in Files; why Afi names a task, not its id
 
-There is no Decisions panel. Decisions is the first row in a workstream's Files: it opens the list the workstream builds itself, one line per decision with who made it, where it came from and when, and a replaced decision stays there greyed. When Afi or a chat says it recorded or proposed a decision, that is where it is.
+Open Decisions from the Overview side block or the first row in Files. New answered Asks show the question with its answer underneath, plus who, when and where it came from. Search finds questions and answers; results group into This week and Earlier. Older records keep their saved decision text, and a replaced decision stays greyed. When Afi or a chat says it recorded or proposed a decision, that is where it is.
 
 Afi and the chats talk in the words you see on the screen. They name a task by its title, a file by its name and a person by their name. They never quote an id (a long string such as `tk_5afd…`), a tool or field name, or a draft number such as "Overview v3", because Files keeps only the current text. They also never talk about "the system" or a window. The places they point you to are Tasks, Chats and Files. If a reply still quotes an id, ask for the task by its title and they will find it.

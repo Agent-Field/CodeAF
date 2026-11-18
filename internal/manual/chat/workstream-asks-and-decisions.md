@@ -22,14 +22,14 @@ On an Ask you do not decide, the card has no buttons for you; it says who decide
 
 ## the Decisions list — what records itself, and where to find it
 
-Decisions is the first row in a workstream's Files. It opens the list the workstream builds itself; nobody writes it. A decision is recorded when:
+Open Decisions from the Overview side block or the first row in a workstream's Files. It opens the list the workstream builds itself; nobody writes it. A decision is recorded when:
 
 - an Ask is answered (made by whoever answered it);
 - a request changes shared work — the request's one line on the task, and what it settles (made by whoever asked);
 - a rule is set in People and rules (made by whoever set it);
 - another workstream is folded into this one: "Marco folded “Launch swag” into this workstream" (made by whoever folded it; Undo removes it).
 
-One decision is one row: the same words from the same person, while that decision is still kept, are not recorded again, so answering several identical Asks together, or one request noted on six tasks, keeps a single decision, and the decision check asks its maker about it once. A rule is recorded each time it is set. Each row is the decision in one line, who made it, where it came from (the first task it came from), and when. All or Mine filters the list. A click on a row opens the task or Ask it came from. It is the workstream's shared memory: how one person's agents know what another person decided. Agents read it with `ws_decisions`.
+One decision is one row: the same words from the same person, while that decision is still kept, are not recorded again, so answering several identical Asks together, or one request noted on six tasks, keeps a single decision, and the decision check asks its maker about it once. A rule is recorded each time it is set. Each new answered Ask shows its original question with the answer underneath, who answered, when, and where it came from. Older records that did not keep those words show the saved decision. Search matches questions, answers and the source. This week and Earlier group the results; All or Mine filters the list. A click on a row opens the task or Ask it came from. It is the workstream's shared memory: how one person's agents know what another person decided. Agents read it with `ws_decisions`.
 
 ## withdraw or replace a decision — only the person who made it
 
