@@ -613,6 +613,28 @@ func ApproveActs(it *Item, who string, withPush bool, now time.Time) int {
 	return n
 }
 
+// HoldActsToPush makes the approved acts named by ids the pressed push's own:
+// they follow it, and come back to wait if it is undone ([SettleActs]), as
+// acts approved with the publish approval do ([ApproveActs]). The acts asked
+// for in the same call as a push that was pressed are written to follow it
+// ("Fixed in the new commit"), so an Undo of that push must not send them
+// without it. An act that does not follow a push is left as it is.
+func HoldActsToPush(it *Item, ids []string) {
+	var acts []PublicAct
+	for i, a := range it.Acts {
+		if a.State != ActApproved || a.AfterPush == "" || a.WithPush || !slices.Contains(ids, a.ID) {
+			continue
+		}
+		if acts == nil {
+			acts = append([]PublicAct(nil), it.Acts...)
+		}
+		acts[i].WithPush = true
+	}
+	if acts != nil {
+		it.Acts = acts
+	}
+}
+
 // DeclineActs declines every act that waits, with the person's words, and
 // answers how many. A declined act is never sent.
 func DeclineActs(it *Item, words string, now time.Time) int {

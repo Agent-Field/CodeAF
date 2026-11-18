@@ -771,6 +771,46 @@ func TestPushPressesOrWaitsOnThePublishApproval(t *testing.T) {
 	}
 }
 
+// THE ACTS OF A CALL THAT PRESSED THE PUSH ARE HELD TO IT. A reply written to
+// go with a push ("Fixed in the new commit") must not be posted when the
+// person Undoes that push inside its window: it goes back to waiting for the
+// person, and nothing is sent, whoever pressed the push and in whatever mode.
+func TestActsAskedInTheCallThatPressedAPushAreHeldBackWhenItsUndone(t *testing.T) {
+	for _, c := range []struct{ name, mode, by string }{
+		{"the manager's push in Auto", factory.AutonomyAuto, factory.ActByMainAgent},
+		{"the person's own push in Manual", factory.AutonomyManual, factory.ActByYou},
+	} {
+		f := newActsFloor(t)
+		it := f.job(c.mode, func(it *factory.Item) {
+			it.State = factory.StateLanded
+			it.HeadCommit = strings.Repeat("2", 40)
+			it.FollowUp = &factory.PRFollowUp{Kind: "pr", State: "waiting_approval", HeadSHA: actsHead, Reason: "Repair and proof passed locally; updating the existing PR."}
+			it.Proof = []factory.Claim{{Text: "works", OK: true}}
+			it.Stream.Phases[0].State = factory.PhaseDone
+		})
+		status, answer, words := f.post(it.ID, api.ActVerb, ask(c.by, api.ActAsk{Kind: factory.ActKindPush}, replyAsk("Fixed in the new commit.")))
+		if status != http.StatusOK || answer.Results[0].State != api.ActPressed || answer.Results[1].State != factory.ActApproved {
+			t.Fatalf("%s: status %d %s, answer %+v", c.name, status, words, answer)
+		}
+		got := f.item(it.ID)
+		if got.Approval == nil || got.Approval.State != "approving" || len(got.Acts) != 1 || got.Acts[0].State != factory.ActApproved || got.Acts[0].AfterPush != got.HeadCommit {
+			t.Fatalf("%s: approval %+v, acts %+v", c.name, got.Approval, got.Acts)
+		}
+		// THE PERSON UNDOES THE PUSH inside its window.
+		if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.Approval = nil; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		f.h.settleActs([]factory.Item{f.item(it.ID)})
+		got = f.item(it.ID)
+		if len(got.Acts) != 1 || got.Acts[0].State != factory.ActProposed || got.Acts[0].ApprovedBy != "" || got.Acts[0].AfterPush != "" {
+			t.Fatalf("%s, after Undo: act %+v, want it waiting for the person", c.name, got.Acts)
+		}
+		if _, due := factory.NextAct(got, f.clock()); due || len(f.github.Writes()) != 0 {
+			t.Fatalf("%s: the reply was due or sent after the push was undone: %q", c.name, f.github.Writes())
+		}
+	}
+}
+
 // THE MAIN AGENT'S PUSH IN AUTO IS AUTO'S, and so are the acts it carries:
 // the approval reads automatic, the acts that waited beside it are approved
 // as the main agent's, and the person who authorized the press keeps Undo.

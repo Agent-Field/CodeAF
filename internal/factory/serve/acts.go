@@ -168,9 +168,25 @@ func (h *Handler) act(w http.ResponseWriter, r *http.Request, it factory.Item) {
 				again[i] = clean
 			}
 			before := len(factory.ProposedActs(*cur))
+			had := make(map[string]bool, len(cur.Acts))
+			for _, a := range cur.Acts {
+				had[a.ID] = true
+			}
 			var err error
 			if stored, err = factory.AddActs(cur, again, by, body.Why, now); err != nil {
 				return err
+			}
+			if press {
+				// THE ACTS OF A CALL THAT PRESSED THE PUSH ARE HELD TO IT: the
+				// push went first, so they follow it, and an Undo of it takes
+				// them back to waiting instead of sending them without it.
+				var fresh []string
+				for _, a := range stored {
+					if !had[a.ID] {
+						fresh = append(fresh, a.ID)
+					}
+				}
+				factory.HoldActsToPush(cur, fresh)
 			}
 			if waiting := factory.ProposedActs(*cur); len(waiting) > before {
 				logAct(cur, now, "ask", "Waiting for your approval: "+factory.ActsSummary(waiting)+".")
