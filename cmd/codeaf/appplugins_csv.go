@@ -29,7 +29,10 @@ func (b *appBackend) ReadPluginCSV(p appwire.PluginReadCSVParams) (appwire.Plugi
 	settings := proc.Settings
 	// The roles are the person's own, read from their profile; a repository's
 	// pins have no say over a read that belongs to no repository.
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = b.crewProfile()
+	}
 	source, err := v3RolesSource(home, b.crewProfile())
 	if err != nil {
 		return appwire.PluginReadCSVResult{}, appEngineError(err)

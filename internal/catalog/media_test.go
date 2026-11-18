@@ -1033,10 +1033,19 @@ func TestAnImageModelTakesAMaskOnlyWhenItsListingPublishesOne(t *testing.T) {
 		{`{"mask":true}`, true},
 		{`{"mask":false,"n":{"max":1}}`, false},
 		{`{"mask":null,"n":{"max":1}}`, false},
+		{`{"mask":"false"}`, false},
+		{`{"mask":0}`, false},
+		{`{"mask":{"supported":false}}`, false},
+		{`{"mask":{"supported":true}}`, true},
 	} {
 		params := imageParams([]byte(testCase.knobs))
 		if got := params != nil && params.Mask; got != testCase.want {
 			t.Errorf("%s: mask = %v, want %v", testCase.knobs, got, testCase.want)
 		}
+	}
+	// A model in both listings keeps the dedicated listing's mask knob.
+	merged := mergeParams(&MediaParams{MaxOutputs: 2}, &MediaParams{Mask: true})
+	if !merged.Mask || merged.MaxOutputs != 2 {
+		t.Errorf("merged = %+v, want the mask knob kept beside the rest", merged)
 	}
 }

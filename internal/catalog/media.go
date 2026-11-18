@@ -362,6 +362,9 @@ func mergeParams(have, add *MediaParams) *MediaParams {
 	if add.MaxOutputs > 0 {
 		merged.MaxOutputs = add.MaxOutputs
 	}
+	if add.Mask {
+		merged.Mask = true
+	}
 	return &merged
 }
 
@@ -669,12 +672,26 @@ func imageParams(raw json.RawMessage) *MediaParams {
 	return &params
 }
 
-// imageMaskKnob reads the `mask` knob: named at all is a yes, whatever shape
-// its description takes, and an explicit false or null is no knob.
+// imageMaskKnob reads the `mask` knob. Only a bare true or a described knob (an
+// object) is a yes, and an object that says it is not supported is a no:
+// a wrong yes sends a mask field the model drops without a word, while a wrong
+// no costs only a guide picture the result owns up to.
 func imageMaskKnob(value json.RawMessage) bool {
-	switch strings.TrimSpace(string(value)) {
-	case "", "null", "false":
+	trimmed := strings.TrimSpace(string(value))
+	if trimmed == "true" {
+		return true
+	}
+	if !strings.HasPrefix(trimmed, "{") {
 		return false
+	}
+	var described map[string]json.RawMessage
+	if json.Unmarshal(value, &described) != nil {
+		return false
+	}
+	for _, field := range []string{"supported", "enabled"} {
+		if said, named := described[field]; named && strings.TrimSpace(string(said)) != "true" {
+			return false
+		}
 	}
 	return true
 }

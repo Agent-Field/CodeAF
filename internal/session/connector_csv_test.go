@@ -122,3 +122,31 @@ func maxOr(n int64) int64 {
 	}
 	return n
 }
+
+// Google's read belt is its reading tools: sending and inviting are absent, and
+// so is a reading tool the person turned off.
+func TestAGoogleReadBeltHoldsOnlyItsReadingTools(t *testing.T) {
+	hub := &fakeHub{connected: true, account: "you@example.test"}
+	hub.says("google", "calendar-read", connect.StateOff)
+	agent, _ := newCSVReader(t, hub)
+	service, _ := agent.service("google")
+	tools, err := agent.connectorReadTools(context.Background(), service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(toolNames(tools), ","); got != "gmail_search,gmail_read" {
+		t.Fatalf("google read belt = %s, want gmail_search,gmail_read", got)
+	}
+}
+
+// A reply the model's ceiling cut is refused even when it parses as a CSV.
+func TestACutReplyIsNeverASheet(t *testing.T) {
+	hub := servedHub(servedList())
+	agent, _ := newCSVReader(t, hub, func(context.Context, []ai.Message) (*ai.Response, error) {
+		response := textResponse("Deal ID,Amount\nD-2,300\n")
+		response.Choices[0].FinishReason = "length"
+		return response, nil
+	})
+	_, err := agent.readConnectorCSV(context.Background(), "notion", "deals", 0)
+	csvRefusal(t, err, ConnectorCSVRefused, "longer than the model could write in one reply")
+}

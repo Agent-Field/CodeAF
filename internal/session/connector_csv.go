@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -70,6 +71,8 @@ Use the tools to find what the request asks for, then answer with the CSV and no
 - one line per record, every line with the same number of fields;
 - comma-separated, with a field quoted in double quotes when it holds a comma, a quote or a line break, and a quote inside a field doubled;
 - no commentary, no explanation, no code fence.
+
+A tool answer that says it was shortened holds only part of what was asked: ask again for the rest in smaller pages, the way the tool's own parameters allow. If you cannot read every record the request covers, do not answer with part of them.
 
 If the request cannot be met by reading this account, or would need anything other than reading, answer with one line that starts with ` + "`" + connectorCSVRefusal + "`" + ` followed by the reason in plain words for the person.`
 
@@ -192,6 +195,11 @@ func (a *Agent) readConnectorCSV(ctx context.Context, id, query string, maxBytes
 			return "", connectorCSVRefused("the model returned no answer")
 		}
 		message := response.Choices[0].Message
+		// A REPLY CUT AT THE MODEL'S CEILING IS NEVER A SHEET. Cut on a row
+		// boundary it would parse cleanly and land as the whole export.
+		if provider.FinishReason(response) == "length" {
+			return "", connectorCSVRefused("the answer from %s was longer than the model could write in one reply; ask for fewer rows or columns", service.Name)
+		}
 		if len(message.ToolCalls) == 0 {
 			return connectorCSVAnswer(messageContentText(message), maxBytes)
 		}
@@ -258,12 +266,32 @@ func (a *Agent) connectorReadTools(ctx context.Context, service connectStatus) (
 			reads = append(reads, tool)
 			continue
 		}
-		if approval.ActsInThePersonsName(tool.Name, json.RawMessage(`{}`)) {
+		// AN ALLOWLIST, NOT A DENYLIST. A family tool is on the read belt only
+		// when the capability that owns it is declared and does not act, so a
+		// tool added to a family later, and missing from the approval table,
+		// is left off rather than armed by default.
+		if !a.ownedByAReadingCapability(service.ID, tool.Name) ||
+			approval.ActsInThePersonsName(tool.Name, json.RawMessage(`{}`)) {
 			continue
 		}
 		reads = append(reads, tool)
 	}
 	return reads, nil
+}
+
+// ownedByAReadingCapability reports that a family tool's owning capability is
+// declared for the account and is one that only looks.
+func (a *Agent) ownedByAReadingCapability(service, tool string) bool {
+	owner := a.connect.ToolCapability(service, tool)
+	if owner == "" {
+		return false
+	}
+	for _, capability := range a.connect.Capabilities(service) {
+		if capability.ID == owner {
+			return !capability.Acts
+		}
+	}
+	return false
 }
 
 func connectorAddress(service connectStatus) string {
