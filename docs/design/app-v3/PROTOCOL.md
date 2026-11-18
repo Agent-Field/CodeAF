@@ -1444,6 +1444,32 @@ has none.
   collaborator); `pr.reviews[]` gains `association` and `untrusted`; `pr.title`
   is the pull request's title once an act has edited it.
 
+An extra task (no hello word yet). `POST /v1/jobs/{id}/task` with `{words,
+now?, by?, expect?}` sends a delegate into the job's checkout with `words` as
+its instructions; `by` is `main_agent` or `you`. It answers `{factory, step,
+runs}`: `step` is the step it runs as (`task`, `task2`, …, or `followpr` on a
+job whose pull request is open) and `runs` is `now` or `after_round`. A
+refusal is 409 with the reason in `error`. A task step is on the job's `steps`
+with its instructions as `ask` and who asked as `by`; a task that waits for a
+running Follow PR round is `follow_up.next`. `offers` carries `task` wherever
+one is taken.
+
+A stop the job's manager decides first (no hello word yet). A job that stops
+on something its manager may decide (out of rounds, a step's question, a failed
+step, results not saved, a failed publish that was approved, a Follow PR stop)
+stores `wait: {who: "main_agent", what: <the action the person would be asked
+for>, deadline}` and is read by the app as running, with `state_presentation`
+`{kind: "running", title: "Running", detail: "The main agent is deciding what
+to do."}` and no `needs_you`; `wait` and `offers` stay as stored. When the
+manager's one turn has not moved the job, the job reads as it would have:
+`needs_you`, and `wait.who` `you`. `POST /v1/jobs/{id}/manager_decide` with
+`{decision, step?, words?}` is the manager's decision: `another_round`,
+`send_back`, `rerun`, `accept`, `resume_pipeline`, `retry_publish`,
+`wait_github` or `hand_to_person`. A decision that does not fit the stop, a
+third time the manager puts one step back to work, and any stop that is the
+person's alone (an approval of something public in Manual, the merge, the
+budget, a take-over) are refused with 409 and a sentence in `error`.
+
 An engine whose hello carries the feature `factory.estimate` reads an issue
 with a complexity rubric and measures cost from its own finished jobs; a model
 never writes a price. A job's `triage.rubric` is `{scope, clarity, coupling,
