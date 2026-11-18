@@ -626,13 +626,76 @@ func TestAutoApprovedActsWaitAgainWhenTheJobLeavesAuto(t *testing.T) {
 	}
 }
 
+// AN ACT APPROVED AS IT IS ADDED FOLLOWS ONLY A PUSH ALREADY UNDER WAY. In
+// Manual the person's own act never waits on a push approval that merely
+// waits beside it, which they may never give, and Auto's does not either; a
+// push already pressed or going out goes first. One that followed a pressed
+// push the person then undid goes out without it.
+func TestAnActAddedApprovedFollowsOnlyAPushUnderWay(t *testing.T) {
+	for _, c := range []struct{ mode, by string }{{AutonomyManual, ActByYou}, {AutonomyAuto, ActByMainAgent}} {
+		it := pushWaiting(actJob(c.mode))
+		if !OffersPublishApproval(it) {
+			t.Fatal("the push does not wait")
+		}
+		got, err := AddActs(&it, cleaned(t, it, PublicAct{Kind: ActKindComment, Text: "On it."}), c.by, "", actNow)
+		if err != nil || got[0].State != ActApproved || got[0].AfterPush != "" || got[0].WithPush {
+			t.Fatalf("%s: added beside a waiting push: %+v, err %v", c.by, got, err)
+		}
+		if next, ok := NextAct(it, actNow); !ok || next.ID != got[0].ID {
+			t.Fatalf("%s: the act waits on a push it was not approved with", c.by)
+		}
+		// The push is never approved and a new round lands another commit:
+		// the act is not failed for a push it never followed.
+		it.HeadCommit = strings.Repeat("3", 40)
+		if SettleActs(&it, actNow) || it.Acts[0].State != ActApproved {
+			t.Fatalf("%s: after the commit changed: %+v", c.by, it.Acts[0])
+		}
+	}
+	for name, under := range map[string]func(*Item){
+		"pressed":    func(it *Item) { it.Approval = &Approval{Kind: "proof", State: "approving", Commit: it.HeadCommit} },
+		"publishing": func(it *Item) { it.Publishing, it.State = true, StateQueued },
+	} {
+		it := pushWaiting(actJob(AutonomyManual))
+		under(&it)
+		got, _ := AddActs(&it, cleaned(t, it, PublicAct{Kind: ActKindComment, Text: "On it."}), ActByYou, "", actNow)
+		if got[0].AfterPush != it.HeadCommit || got[0].WithPush {
+			t.Fatalf("%s: added beside a push under way: %+v", name, got[0])
+		}
+		if _, ok := NextAct(it, actNow); ok {
+			t.Fatalf("%s: the act is due before the push under way", name)
+		}
+		// ApproveActs on its own follows the same push.
+		mine := pushWaiting(actJob(AutonomyManual))
+		_, _ = AddActs(&mine, cleaned(t, mine, reply("inline:501", "Renamed it.")), ActByMainAgent, "", actNow)
+		under(&mine)
+		ApproveActs(&mine, "me", false, actNow)
+		if a := mine.Acts[0]; a.AfterPush != mine.HeadCommit || a.WithPush {
+			t.Fatalf("%s: approved on its own beside a push under way: %+v", name, a)
+		}
+	}
+	// The person undoes the pressed push: it only waits again, and the act
+	// approved on its own goes out without it.
+	it := pushWaiting(actJob(AutonomyManual))
+	it.Approval = &Approval{Kind: "proof", State: "approving", Commit: it.HeadCommit}
+	_, _ = AddActs(&it, cleaned(t, it, PublicAct{Kind: ActKindComment, Text: "On it."}), ActByYou, "", actNow)
+	it.Approval = nil // Undo
+	if !SettleActs(&it, actNow) || it.Acts[0].State != ActApproved || it.Acts[0].AfterPush != "" {
+		t.Fatalf("after Undo: %+v", it.Acts[0])
+	}
+	if _, ok := NextAct(it, actNow); !ok {
+		t.Fatal("the act still waits on the undone push")
+	}
+}
+
 // An act written to follow a push that will never go out is not sent.
 func TestAnActWhosePushNeverHappensFails(t *testing.T) {
 	it := pushWaiting(actJob(AutonomyAuto))
+	it.Approval = &Approval{Kind: "proof", State: "approving", Automatic: true, Commit: it.HeadCommit}
 	got, _ := AddActs(&it, cleaned(t, it, reply("inline:501", "Fixed in the next push.")), ActByMainAgent, "", actNow)
 	if got[0].State != ActApproved || got[0].AfterPush != it.HeadCommit {
-		t.Fatalf("Auto beside a waiting push: %+v", got[0])
+		t.Fatalf("Auto beside a pressed push: %+v", got[0])
 	}
+	it.Approval = nil
 	// The work was sent back and a new round landed another commit.
 	it.HeadCommit = strings.Repeat("3", 40)
 	if !SettleActs(&it, actNow) || it.Acts[0].State != ActFailed || it.Acts[0].Error != ActPushGone {

@@ -491,7 +491,7 @@ func AddActs(it *Item, acts []PublicAct, by, why string, now time.Time) ([]Publi
 		a.By, a.Why, a.At, a.State = by, strings.TrimSpace(PublicText(why)), now.UTC(), state
 		if state == ActApproved {
 			a.ApprovedBy = by
-			a.AfterPush = pendingPush(*it)
+			a.AfterPush = followedPush(*it, false)
 		}
 		next = append(next, a)
 		out = append(out, a)
@@ -516,12 +516,16 @@ func actID(job int, now time.Time, i int, a PublicAct) string {
 	return fmt.Sprintf("act_%x", sum[:4])
 }
 
-// pendingPush is the commit of the push the job has waiting or under way, ""
-// for none: a publish approval waiting or inside its Undo window, or the
-// publish itself. An act approved meanwhile follows that push.
-func pendingPush(it Item) string {
+// followedPush is the commit of the push an act approved now waits for, ""
+// for none. AN ACT FOLLOWS ONLY A PUSH IT WAS APPROVED WITH, OR ONE ALREADY
+// UNDER WAY: the publish itself, or the publish approval already pressed
+// ([PushRoad]). One approved with the publish approval's own yes (withPush)
+// also follows that approval while it waits. One approved on its own, by the
+// person or by Auto, never waits for an approval that merely waits beside
+// it: that push may never be approved.
+func followedPush(it Item, withPush bool) string {
 	a := it.Approval
-	if OffersPublishApproval(it) || it.Publishing || a != nil && a.Kind == "proof" && a.State == "approving" {
+	if it.Publishing || a != nil && a.Kind == "proof" && a.State == "approving" || withPush && OffersPublishApproval(it) {
 		return it.HeadCommit
 	}
 	return ""
@@ -588,20 +592,18 @@ func ProposedActs(it Item) []PublicAct {
 // withPush says the yes is the publish approval's own: the acts then follow
 // that push, and come back to wait if it is undone ([SettleActs]). AN ACT
 // APPROVED ON ITS OWN DOES NOT WAIT FOR A PUSH that waits beside it: that
-// push may never be approved, and the act was not approved with it.
+// push may never be approved, and the act was not approved with it. It
+// follows only a push already under way ([followedPush]).
 func ApproveActs(it *Item, who string, withPush bool, now time.Time) int {
 	n := 0
 	acts := append([]PublicAct(nil), it.Acts...)
-	after := ""
-	if withPush {
-		after = pendingPush(*it)
-	}
+	after := followedPush(*it, withPush)
 	for i := range acts {
 		if acts[i].State != ActProposed {
 			continue
 		}
 		acts[i].State, acts[i].ApprovedBy, acts[i].Error = ActApproved, who, ""
-		acts[i].AfterPush, acts[i].WithPush = after, after != ""
+		acts[i].AfterPush, acts[i].WithPush = after, withPush && after != ""
 		acts[i].Tries, acts[i].NextAt = 0, time.Time{}
 		n++
 	}
@@ -774,7 +776,8 @@ func waitWithActs(it Item, w Wait) Wait {
 //   - An act that waits for a push runs once that push has landed: the write
 //     that records the publish lets it go ([Item.MarkPublishing]).
 //   - An act approved with the push approval comes back to wait when that
-//     approval does (the person pressed Undo, or the door refused it).
+//     approval does (the person pressed Undo, or the door refused it). One
+//     approved on its own that followed the push goes out without it.
 //   - An act whose push will never happen (the job's checked commit is now
 //     another one) fails, and says so: it was written to follow that push.
 func SettleActs(it *Item, now time.Time) bool {
@@ -818,6 +821,10 @@ func SettleActs(it *Item, now time.Time) bool {
 			a.State, a.Error, a.DoneAt, changed = ActFailed, ActPushGone, now.UTC(), true
 		case a.WithPush && OffersPublishApproval(*it):
 			a.State, a.ApprovedBy, a.AfterPush, a.WithPush, changed = ActProposed, "", "", false, true
+		case OffersPublishApproval(*it):
+			// The push it followed was undone and only waits again: an act
+			// approved on its own does not wait on it.
+			a.AfterPush, changed = "", true
 		}
 	}
 	if changed {
