@@ -316,6 +316,7 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	}
 	now := h.clock().UTC()
 	var made factory.WorkstreamTask
+	woke := false
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
 		return
@@ -332,8 +333,38 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		return tw.Put(made, 0)
+		if made.State != factory.TaskRunning {
+			return tw.Put(made, 0)
+		}
+		// A TASK MADE RUNNING IS STARTED, BY THE SAME DOOR AS START. It is
+		// kept up next and then started in the same write, so its doer is
+		// woken and its thread says who started it; a start the doer cannot
+		// take keeps nothing and says why. It used to be kept as running with
+		// nothing behind it, until it failed as stopped reporting back
+		// (blackmac fill v2).
+		made.State = factory.TaskUpNext
+		if err := tw.Put(made, 0); err != nil {
+			return err
+		}
+		running := factory.TaskRunning
+		out, err := factory.ApplyPatch(made, factory.TaskPatch{State: &running}, taskActor(v, ws), h.taskBy(r, v), append(slices.Clone(all), made), h.newTaskID("te_"), now)
+		if err != nil {
+			return err
+		}
+		if err := keepTask(tw, out.Task, made.Rev); err != nil {
+			return err
+		}
+		if err := tw.Append(ws.ID, out.Events...); err != nil {
+			return err
+		}
+		made, woke = out.Task, true
+		return h.wakeTaskDoer(ws, made, v.Handle)
 	})
+	if woke && err != nil && !wakeRefused(err) {
+		// The write failed after the doer took the task: nothing says it is
+		// running, so nothing may be.
+		h.stopTaskTurn(ws.ID, made.ID)
+	}
 	if h.taskRefused(w, err) {
 		return
 	}
@@ -412,6 +443,17 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.DoneBy = &d
+	}
+	if p.Ask != nil && p.Ask.Decider != nil && p.Ask.Decider.ID != "" {
+		// An Ask that names its decider goes to them (factory.ApplyPatch),
+		// so they are checked the way add_ask's are.
+		d, err := h.checkDecider(ws, *p.Ask.Decider)
+		if h.taskRefused(w, err) {
+			return
+		}
+		ask := *p.Ask
+		ask.Decider = &d
+		p.Ask = &ask
 	}
 	if p.AddAsk != nil && p.AddAsk.Decider != nil {
 		// An Ask names ONE decider in the workstream (workstream_task_asks.go).

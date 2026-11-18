@@ -22,8 +22,10 @@ import (
 //   - ONLY THE OWNER ANSWERS AN ASK. With owner Everyone, anyone who can edit
 //     the workstream may, the first answer decides, and AnsweredBy records who.
 //     An Ask unanswered for a day is also the workstream's fallback person's.
-//   - ONLY THE OWNER TICKS A PERSON TASK. Ticking it releases the tasks that
-//     wait on it.
+//   - ONLY THE OWNER OR THE PERSON DOING IT TICKS A PERSON TASK. Ticking it
+//     releases the tasks that wait on it. A task Afi's cards made for someone
+//     else is owned by whoever pressed Add and done by the person named, who
+//     works it without its being handed over first (blackmac fill v2).
 //   - WAITING ON IS THE ONLY ORDERING TOOL: tasks of the same workstream, never
 //     itself, never a circle.
 //   - A REPLY ON A DONE TASK REOPENS IT, so the history stays one thread.
@@ -623,7 +625,8 @@ func MayAnswer(t WorkstreamTask, a TaskActor, fallback string, now time.Time) bo
 	return fallback != "" && NormalizeHandle(fallback) == a.Handle && AskPastFallback(t, now)
 }
 
-// MayTick is whether a may tick (or untick) t: a person task, by its owner.
+// MayTick is whether a may tick (or untick) t: a person task, by its owner
+// or by the person named as its doer.
 // MayStop is whether a may stop or move t: its owner, or whoever looks after
 // the workstream (Workstreams final spec, "Who can do what"). Anyone else who
 // edits comments, hands it on or sends it back, and asks them to stop it.
@@ -632,7 +635,34 @@ func MayStop(t WorkstreamTask, a TaskActor) bool {
 }
 
 func MayTick(t WorkstreamTask, a TaskActor) bool {
-	return t.DoneBy.Kind == TaskByPerson && a.owns(t)
+	if t.DoneBy.Kind != TaskByPerson {
+		return false
+	}
+	return a.owns(t) || (a.Edit && a.Handle != "" && NormalizeHandle(t.DoneBy.ID) == a.Handle)
+}
+
+// askToDecider routes a new Ask that names its decider to that decider. The
+// task's own Ask is its owner's, so an "ask" naming someone else is raised as
+// one of the task's Asks to them (add_ask), and one naming the owner stays the
+// task's own. A FIRST ASK GOES TO THE DECIDER THAT WAS NAMED: it used to go to
+// the owner whoever it named, so "Priya asks Marco" landed in Priya's own
+// Inbox (blackmac fill v2). An answer or a "later" on the open Ask (its id)
+// is left alone.
+func askToDecider(t WorkstreamTask, p TaskPatch) TaskPatch {
+	if p.Ask == nil || p.ClearAsk || p.AddAsk != nil || p.Ask.Decider == nil || strings.TrimSpace(p.Ask.Decider.ID) == "" {
+		return p
+	}
+	if t.Ask != nil && p.Ask.ID != "" && t.Ask.ID == p.Ask.ID {
+		return p
+	}
+	ask := *p.Ask
+	if t.Owner.Kind == TaskOwnerPerson && NormalizeHandle(t.Owner.ID) == NormalizeHandle(ask.Decider.ID) {
+		ask.Decider = nil
+		p.Ask = &ask
+		return p
+	}
+	p.Ask, p.AddAsk = nil, &ask
+	return p
 }
 
 // IsJobTask is whether id names a Factory job's task, and which job.
@@ -957,6 +987,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	if !a.Edit {
 		return TaskChange{}, ErrTaskNotOwner
 	}
+	p = askToDecider(t, p)
 	stamp := now.UTC().Format(time.RFC3339Nano)
 	before := t
 	asker := a.Handle != "" && NormalizeHandle(t.CreatedBy.ID) == a.Handle
@@ -1219,7 +1250,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 			return TaskChange{}, ErrTaskNotStopper
 		}
 		if t.DoneBy.Kind == TaskByPerson && !MayTick(t, a) && !back {
-			return TaskChange{}, TaskRefused("only the task's owner ticks it")
+			return TaskChange{}, TaskRefused("only the task's owner or the person doing it ticks it")
 		}
 		t.State = *p.State
 		if back {

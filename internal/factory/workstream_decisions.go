@@ -51,6 +51,10 @@ const (
 	// (org-space DESIGN §2.2): "Priya moved “Launch canvas” in from their
 	// space".
 	DecisionFromMove = "move"
+	// DecisionFromFold is a person folding one workstream into another: "Marco
+	// folded “Launch swag” into this workstream". Undo takes it back with the
+	// rest of the fold.
+	DecisionFromFold = "fold"
 )
 
 // MoveUndoWindow is how long after a move from My space its mover may take the
@@ -62,7 +66,7 @@ const MoveUndoWindow = 30 * time.Second
 // Ask on Draft the March release notes", "from her request on Refresh the
 // store screenshots", "People and rules".
 type DecisionFrom struct {
-	Kind      string `json:"kind" jsonschema:"enum=ask,enum=request,enum=rule,enum=move"`
+	Kind      string `json:"kind" jsonschema:"enum=ask,enum=request,enum=rule,enum=move,enum=fold"`
 	Task      string `json:"task,omitempty"`
 	TaskTitle string `json:"task_title,omitempty"`
 	Ask       string `json:"ask,omitempty"`
@@ -319,6 +323,19 @@ func MoveDecision(names, files []string, who PersonRef, id string, now time.Time
 	}
 	text := firstNonEmpty(who.Name, who.ID) + " moved " + what + " in from their space"
 	return newDecision(id, text, who, &DecisionFrom{Kind: DecisionFromMove, Files: slices.Clone(files)}, now), true
+}
+
+// FoldDecision is the one line folding the workstream named folded into
+// another records there: "Marco folded “Launch swag” into this workstream".
+// It is kept inside the fold's own write, so the fold's Undo, which puts every
+// row back as it was, removes it too.
+func FoldDecision(folded string, who PersonRef, id string, now time.Time) (WorkstreamDecision, bool) {
+	folded = strings.TrimSpace(folded)
+	if folded == "" || who.ID == "" {
+		return WorkstreamDecision{}, false
+	}
+	text := firstNonEmpty(who.Name, who.ID) + " folded “" + folded + "” into this workstream"
+	return newDecision(id, text, who, &DecisionFrom{Kind: DecisionFromFold}, now), true
 }
 
 // UndoableMove is the index of the move decision in ds that handle made at
