@@ -148,8 +148,9 @@ type Config struct {
 	// GitHubHTTPClient permits a fake transport while keeping production URLs fixed.
 	GitHubHTTPClient *http.Client
 	// ActsClient, when set, is the GitHub client public acts are carried out
-	// with for a sign-in (acts.go), in place of the real one: a whole-factory
-	// test supplies its own forge. Nil is GitHub itself.
+	// with for a sign-in (acts.go), and the pull request marked ready with
+	// (pr_ready.go), in place of the real one: a whole-factory test supplies
+	// its own forge. Nil is GitHub itself.
 	ActsClient func(token string) factorygithub.API
 	// Now supplies the session clock, including pruning at startup.
 	Now func() time.Time

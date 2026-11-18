@@ -284,6 +284,9 @@ var (
 	// decide: it moved on, its person settled it, or the stop was never the
 	// main agent's.
 	ErrNoManagerStop = errors.New("Nothing to decide: this job is not on a stop the main agent may decide. It may already be settled, or it is the person's (an approval, the merge, the budget, a take-over)")
+	// ErrStopWithPerson is a stop the main agent asks to hand to the person
+	// that is theirs already.
+	ErrStopWithPerson = errors.New("This stop is already with the person")
 	// ErrManagerRoundsUsed is a step the main agent has put back to work as
 	// often as it may.
 	ErrManagerRoundsUsed = fmt.Errorf("The main agent has already put this step back to work %d times since the person last moved the job. The next move is the person's", ManagerRoundsMost)
@@ -307,6 +310,13 @@ func ManagerDecides(it Item, decision string) error {
 	if !found {
 		if len(fits) == 0 {
 			return ErrNoManagerStop
+		}
+		// A STOP ALREADY WITH THE PERSON HAS NOTHING LEFT TO HAND OVER. Handing
+		// a stop on is the one decision the main agent is told it may always
+		// make, so it is answered with what is true and not with a list of
+		// other decisions to try.
+		if decision == DecideHandToPerson {
+			return ErrStopWithPerson
 		}
 		return fmt.Errorf("%s does not fit this stop. It takes: %s", decision, strings.Join(fits, ", "))
 	}

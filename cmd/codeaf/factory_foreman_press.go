@@ -159,7 +159,7 @@ func (d seamFloorDoor) Tell(ctx context.Context, id int, words, said string) (st
 	}
 	it, err := d.st.Get(id)
 	if err != nil {
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	ref := it.Ref()
 	switch {
@@ -173,7 +173,7 @@ func (d seamFloorDoor) Tell(ctx context.Context, id int, words, said string) (st
 		return "", fmt.Errorf("Nothing changed: the person stopped %s, so the factory gives its main agent no turn. They can start it again, or say it in the job's own chat", ref)
 	}
 	if err := factoryrun.CheckWriteAccess(it, "chat"); err != nil {
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	// THE TURN IS CHARGED TO THE JOB, so a job whose budget is spent takes
 	// none: the budget is read where the job's own chat reads it.
@@ -216,7 +216,7 @@ func (d seamFloorDoor) Press(ctx context.Context, id int, p session.FloorPress, 
 	}
 	it, err := d.st.Get(id)
 	if err != nil {
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	ref := it.Ref()
 	if slices.Contains(session.FloorPressElsewhere, p.Action) {
@@ -246,7 +246,7 @@ func (d seamFloorDoor) Press(ctx context.Context, id int, p session.FloorPress, 
 		}
 		version, err := d.st.Revision(it.ID)
 		if err != nil {
-			return "", fmt.Errorf("Nothing changed: %w", err)
+			return "", pressRefused(err)
 		}
 		if err := pressed(ctx, press, it.ID, "reject_plan", api.RejectPlan{Words: words, Expect: &api.Expect{Version: &version, State: api.StateNeedsYou}}); err != nil {
 			return "", err
@@ -478,10 +478,10 @@ func (d seamFloorDoor) foremanResume(ctx context.Context, press *localJobPress, 
 	}
 	desk, err := lease.Open(d.st, lease.Options{})
 	if err != nil {
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	if err := lease.NewDoors(desk).RetryPausedRecovery(it.ID, it.Talk, it.PausedRecoveryQuestion, words, rand.Text()); err != nil {
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	return fmt.Sprintf("%s is taken up again, as the person: the decision they had put away is lifted. Read %s again for what it does next.", ref, ref), nil
 }

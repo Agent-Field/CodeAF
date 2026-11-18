@@ -29,6 +29,10 @@ type Delegate struct {
 	// heard is what each round was told beside its brief, as "step#round:
 	// words": the notes its job carried and the request of a Follow PR round.
 	heard []string
+	// shown is what each Follow PR round was handed of GitHub, as
+	// "step#round: text": the details the factory captured for it and the
+	// pull request's review feedback (run's freshFollowContext).
+	shown []string
 }
 
 // Round is one scripted round of a step.
@@ -105,6 +109,20 @@ func (d *Delegate) Heard(step string, round int, words string) bool {
 	return false
 }
 
+// Shown says some Follow PR round was handed text of GitHub's that holds
+// words: in the details the factory captured for the round, or in the pull
+// request's review feedback as the job stored it.
+func (d *Delegate) Shown(words string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, text := range d.shown {
+		if strings.Contains(text, words) {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *Delegate) notes() []string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -156,6 +174,13 @@ func (d *Delegate) Run(ctx context.Context, job run.Job) (factory.StageResult, e
 	}
 	for _, words := range told {
 		d.heard = append(d.heard, fmt.Sprintf("%s#%d: %s", job.Stage.Name, job.Round, words))
+	}
+	if f := job.Item.FollowUp; f != nil && factory.IsCIRepairStage(job.Stage) {
+		text := f.Details
+		if pr := job.Item.PullRequest; pr != nil {
+			text += "\n" + pr.Feedback
+		}
+		d.shown = append(d.shown, fmt.Sprintf("%s#%d: %s", job.Stage.Name, job.Round, text))
 	}
 	d.mu.Unlock()
 	round, scripted := d.take(job.Stage.Name)

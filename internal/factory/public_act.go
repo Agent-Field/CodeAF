@@ -253,6 +253,15 @@ func PushRoad(it Item, by string) (road, words string, err error) {
 		}
 		break
 	}
+	// WHAT AUTO ITSELF STOPPED AT IS THE PERSON'S, BY THIS ROAD TOO. The
+	// manager's own approve is refused wherever Auto would not approve
+	// ([ManagerMay]: a failing finding, proof that is incomplete, an approval
+	// that failed, a job with no owner). Its push is the same approval asked
+	// for through another tool, and is held to the same rule, so choosing
+	// `push` over `approve` gets round nothing.
+	if why := AutonomyBlockReason(it); why != "" {
+		return RoadWaiting, "Auto stopped here for the person. " + why, nil
+	}
 	return RoadPress, "", nil
 }
 

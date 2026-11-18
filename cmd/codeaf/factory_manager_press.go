@@ -56,6 +56,37 @@ func installAppLocalPress(b *appBackend) func() {
 	return func() { appLocalPress.CompareAndSwap(&press, nil) }
 }
 
+// pressAnswer is what the factory answered a press it did not take, as the
+// manager's tool reads it back. It prints lead and THE FACTORY'S OWN SENTENCE,
+// and still unwraps to the wire's error for a caller that asks its code.
+type pressAnswer struct {
+	lead string
+	wire *appwire.Error
+}
+
+func (p pressAnswer) Error() string { return p.lead + p.wire.Message }
+func (p pressAnswer) Unwrap() error { return p.wire }
+
+// pressRefused is the error of a press the factory did not take. A refusal
+// reads "Nothing changed: " and the factory's sentence. A write whose outcome
+// is not known is no refusal: it keeps the factory's sentence with no lead,
+// and the tool tells the model it was not confirmed.
+//
+// THE WIRE'S CODE WORD IS NEVER PART OF THE SENTENCE. The wire's error prints
+// "conflict: …" or "bad_params: …", the app's own word for the kind of
+// answer. The tools tell the model to say a refusal to the person in the
+// factory's words, so until this the code word was read to them with it.
+func pressRefused(err error) error {
+	var wire *appwire.Error
+	if !errors.As(err, &wire) {
+		return fmt.Errorf("Nothing changed: %w", err)
+	}
+	if wire.Code == appwire.CodeUncertain {
+		return pressAnswer{wire: wire}
+	}
+	return pressAnswer{lead: "Nothing changed: ", wire: wire}
+}
+
 // errNoPress is a press asked where no signed-in factory connection is.
 var errNoPress = errors.New("Nothing changed: this window has no signed-in connection to the factory to press it with; the person can press it on the job page")
 
@@ -166,11 +197,7 @@ func sendAutoResume(ctx context.Context, press *localJobPress, it factory.Item, 
 	if err := (*press)(ctx, it.ID, serve.ResumeAutoVerb, struct {
 		Words string `json:"words,omitempty"`
 	}{words}); err != nil {
-		var wire *appwire.Error
-		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
-			return "", err
-		}
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	return found, nil
 }
@@ -188,11 +215,7 @@ func pressOfferMerge(ctx context.Context, press *localJobPress, it factory.Item)
 		return "", errNoPress
 	}
 	if err := (*press)(ctx, it.ID, serve.OfferMergeVerb, guardBody{}); err != nil {
-		var wire *appwire.Error
-		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
-			return "", err
-		}
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	return fmt.Sprintf("The Merge card for pull request #%d is shown to the person again on the job page, as it stands now. Nothing is merged: the merge stays their press on that card, with its Undo window.", it.PullRequest.Number), nil
 }
@@ -217,6 +240,17 @@ func pressPRDecisionBy(ctx context.Context, press *localJobPress, it factory.Ite
 		return "", err
 	}
 	if action == session.ActionApprove {
+		// THE SAME APPROVAL PASSES THE FINAL REVIEW, which marks the draft
+		// ready and publishes nothing. The line says which it was: read back
+		// as "publishes the checked work", the manager told the person a push
+		// was on its way.
+		if w := it.Wait; w != nil && w.Action == factory.ActApproveReady {
+			whose := "as the person"
+			if !said {
+				whose = "by you, as Auto allows"
+			}
+			return fmt.Sprintf("Approved, %s: the final review's result stands, and the pull request is marked ready for review when the Undo window (%s) on the job page closes. Nothing is pushed or merged. This confirms the approval, not the outcome; read factory_status for that.", whose, factory.ApprovalUndo), nil
+		}
 		if !said {
 			return fmt.Sprintf("Publication approved by you, as Auto allows. It waits out its Undo window (%s) on the job page, then the factory publishes the checked work. This confirms the approval, not the publication; read factory_status for the outcome, and tell the person you approved it.", factory.ApprovalUndo), nil
 		}
@@ -288,11 +322,7 @@ func sendPRDecision(ctx context.Context, press *localJobPress, it factory.Item, 
 		}{Commit: pr.HeadSHA})
 	}
 	if err != nil {
-		var wire *appwire.Error
-		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
-			return err
-		}
-		return fmt.Errorf("Nothing changed: %w", err)
+		return pressRefused(err)
 	}
 	return nil
 }

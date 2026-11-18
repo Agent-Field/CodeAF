@@ -207,7 +207,7 @@ func TestTheManagersPressesSendTheWireContractsVerbsAndBodies(t *testing.T) {
 			{Kind: session.ActPush},
 		}}, "act",
 			`{"acts":[{"kind":"reply","thread":"inline:77","text":"Renamed it.\n\nThanks."},{"kind":"edit_pr","title":"Fix the ledger double count","body":"Counts each refund once."},{"kind":"change_base","base":"release/2"},{"kind":"rerequest_review","reviewers":["kim"]},{"kind":"push"}],"by":"main_agent","why":"the reviewer's note is addressed"}`,
-			"Proposed: 5 public acts (reply, edit_pr, change_base, rerequest_review, push). This job is not in Auto, so nothing is sent until the person approves. Tell them exactly that, and show them the text that will be posted."},
+			"Proposed: 4 public acts (reply, edit_pr, change_base, rerequest_review). This job is not in Auto, so nothing is sent until the person approves. Tell them exactly that, and show them the text that will be posted. They approve by saying yes here. " + pushUnread},
 		{session.ManagerPress{Action: session.ActionTask, Words: "Rebase on main.\nRun the ledger tests.", Said: "rebase it"}, "task",
 			`{"words":"Rebase on main.\nRun the ledger tests.","now":false,"by":"main_agent"}`, "It runs when the round in progress ends"},
 		{session.ManagerPress{Action: session.ActionTask, Words: "Fix the typo.", Now: true}, "task",

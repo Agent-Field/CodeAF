@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -74,21 +73,30 @@ var managerDecisions = map[string]string{
 	session.ActionWaitGitHub:     "The job goes back to waiting on GitHub.",
 }
 
-// pressed sends one verb and reads its refusal as the other presses do: an
-// uncertain write is kept as it is, anything else is "Nothing changed".
+// pressed sends one verb and reads its refusal as the other presses do
+// ([pressRefused]): an uncertain write is not a refusal, anything else is
+// "Nothing changed" and the factory's sentence.
 func pressed(ctx context.Context, press *localJobPress, job int, verb string, body any) error {
 	if press == nil {
 		return errNoPress
 	}
 	if err := (*press)(ctx, job, verb, body); err != nil {
-		var wire *appwire.Error
-		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
-			return err
-		}
-		return fmt.Errorf("Nothing changed: %w", err)
+		return pressRefused(err)
 	}
 	return nil
 }
+
+// What `factory_act` reads back about a push, which is the publish approval
+// and never an act the factory keeps.
+const (
+	// pushPressed is a push the manager's ask approved: Auto lets it.
+	pushPressed = "The push is approved by you, as Auto allows. It goes out when its Undo window closes; tell the person you approved it."
+	// pushWaits follows why a push was left waiting on a person.
+	pushWaits = "It goes out when publishing is approved; factory_status says who approves it and how."
+	// pushUnread is a push the factory took whose road the job as last read
+	// does not show.
+	pushUnread = "The push is with the factory; read factory_status for where it stands."
+)
 
 // pressActs proposes public acts on the job's pull request as the manager.
 //
@@ -113,14 +121,39 @@ func pressActs(ctx context.Context, press *localJobPress, it factory.Item, acts 
 	}
 	var lines []string
 	if len(send) > 0 {
+		// A PUSH IS NOT KEPT AS AN ACT: it is the publish approval, pressed or
+		// left waiting ([factory.PushRoad]). What the factory will do with it
+		// is read from the job as it stood before the press, as the factory
+		// read it, so the line says which.
+		var kept []session.PublicAct
+		pushes := 0
+		for _, act := range send {
+			if act.Kind == session.ActPush || act.Kind == session.ActOpenPR {
+				pushes++
+				continue
+			}
+			kept = append(kept, act)
+		}
+		road, roadWords, roadErr := factory.PushRoad(it, factory.ActByMainAgent)
 		if err := pressed(ctx, press, it.ID, factoryVerbAct, actBody{Acts: send, By: byMainAgent, Why: why}); err != nil {
 			return "", err
 		}
-		what := actsWords(send)
-		if factory.Automatic(it) {
-			lines = append(lines, "Accepted: "+what+". This job is in Auto, so the factory carries this out now and writes each act to the job's log. Nothing is posted until factory_status shows it done.")
-		} else {
-			lines = append(lines, "Proposed: "+what+". This job is not in Auto, so nothing is sent until the person approves. Tell them exactly that, and show them the text that will be posted. They approve by saying yes here.")
+		if len(kept) > 0 {
+			what := actsWords(kept)
+			if factory.Automatic(it) {
+				lines = append(lines, "Accepted: "+what+". This job is in Auto, so the factory carries this out now and writes each act to the job's log. Nothing is posted until factory_status shows it done.")
+			} else {
+				lines = append(lines, "Proposed: "+what+". This job is not in Auto, so nothing is sent until the person approves. Tell them exactly that, and show them the text that will be posted. They approve by saying yes here.")
+			}
+		}
+		switch {
+		case pushes == 0:
+		case roadErr != nil:
+			lines = append(lines, pushUnread)
+		case road == factory.RoadPress:
+			lines = append(lines, pushPressed)
+		default:
+			lines = append(lines, "The push was not sent. "+roadWords+" "+pushWaits)
 		}
 		if reread != nil {
 			if now, err := reread(); err == nil {

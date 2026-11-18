@@ -66,6 +66,15 @@ func (h *Handler) taskJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 		h.refuse(w, status, refused.Error(), reason, "", nil, factory.JobState(it))
 		return
 	}
+	// THE MAIN AGENT'S LIMIT IS A REFUSAL, NOT A FAULT. A task it sends to a
+	// stop it has already put back to work as often as it may is refused by
+	// the same rule as its other decisions (factory's task_handoff.go). That
+	// error is not a [factory.TaskRefused], so it used to leave here as a 500,
+	// which the app reads as "this may have happened".
+	if errors.Is(err, factory.ErrManagerRoundsUsed) {
+		h.refuse(w, http.StatusConflict, err.Error(), "conflict", "", nil, factory.JobState(it))
+		return
+	}
 	if h.failed(w, err) {
 		return
 	}

@@ -157,13 +157,13 @@ func (d seamFloorDoor) StartItem(ctx context.Context, id int, said string) (stri
 	}
 	if press := appLocalPress.Load(); press != nil && it.State == factory.StateNew {
 		if err := (*press)(ctx, id, factoryVerbStart, guardBody{}); err != nil {
-			return "", fmt.Errorf("Nothing changed: %w", err)
+			return "", pressRefused(err)
 		}
 		return fmt.Sprintf(sayStartLaunched, it.Ref()), nil
 	}
 	line, err := startItem(d.st, d.workspace, d.profileDir, it)
 	if err != nil {
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	return line, nil
 }
@@ -182,7 +182,7 @@ func (d seamFloorDoor) SetPriority(ctx context.Context, id int, value string) (s
 	if err := (*press)(ctx, id, factoryVerbPriority, struct {
 		Priority string `json:"priority"`
 	}{value}); err != nil {
-		return "", fmt.Errorf("Nothing changed: %w", err)
+		return "", pressRefused(err)
 	}
 	return fmt.Sprintf("%s is now %s (%s)", it.Ref(), factory.PriorityShort(value), value), nil
 }

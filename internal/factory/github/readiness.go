@@ -219,7 +219,16 @@ func (s *Source) MarkReady(ctx context.Context, it factory.Item) (factory.PullRe
 	if pr == nil || pr.Number <= 0 || pr.State != factory.PROpen || !pr.Draft {
 		return factory.PullRequest{}, fmt.Errorf("this job has no open draft pull request")
 	}
-	if err := a.MarkDraftPullReady(ctx, owner, name, pr.Number, pr.HeadSHA); err != nil {
+	// A PULL REQUEST NOT READ SINCE IT WAS OPENED HAS NO HEAD ON THE JOB YET.
+	// The job offers Mark ready from the moment the pull request is open, and
+	// GitHub is asked to mark exactly the head named. Until the first read
+	// that head is the commit the job itself published; with "" every press
+	// in that window was refused as "head moved".
+	head := pr.HeadSHA
+	if head == "" {
+		head = it.HeadCommit
+	}
+	if err := a.MarkDraftPullReady(ctx, owner, name, pr.Number, head); err != nil {
 		return factory.PullRequest{}, err
 	}
 	ready := *pr

@@ -173,10 +173,11 @@ func latestRoundCarries(it Item, f CheckOverride) bool {
 // proved in other words, so Auto never pushed the fix.
 
 // FindingStands says a sheet row is a failing finding that still blocks: it
-// fails, no override of the person's covers it, and no later round replaced
-// it ([FindingReplaced]).
+// fails, no override of the person's covers it, no later round replaced it
+// ([FindingReplaced]), and the step that reports it was not taken as it
+// stands ([FindingAccepted]).
 func FindingStands(it Item, kind string, cl Claim) bool {
-	return !cl.OK && !ClaimOverridden(it, kind, cl) && !FindingReplaced(it, kind, cl)
+	return !cl.OK && !ClaimOverridden(it, kind, cl) && !FindingReplaced(it, kind, cl) && !FindingAccepted(it, kind, cl)
 }
 
 // FindingReplaced says a failing sheet row is an old verdict: no step's latest

@@ -3,7 +3,6 @@ package serve
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -184,7 +183,7 @@ func (h *Handler) carryOut(w http.ResponseWriter, r *http.Request, it factory.It
 	case factory.DecideHandToPerson:
 		return door(h.config.Store.Update(it.ID, func(cur *factory.Item) error {
 			if !factory.EndHandoff(cur, words, h.clock()) {
-				return errors.New("This stop is already with the person")
+				return factory.ErrStopWithPerson
 			}
 			return nil
 		}))

@@ -687,14 +687,20 @@ func (h *Handler) sendAct(ctx context.Context, it factory.Item, act factory.Publ
 	}
 	ctx, cancel := context.WithTimeout(ctx, actFor)
 	defer cancel()
-	var client factorygithub.API
+	return factorygithub.New(h.forgeFor(token), []string{factory.RepoOf(it)}, h.clock).Act(ctx, it, act)
+}
+
+// forgeFor is the GitHub client a person's public act is carried out with for
+// their sign-in: the configured one of a whole-factory test
+// ([Config.ActsClient]), else GitHub itself. Marking a pull request ready
+// through the person's own door (pr_ready.go) is such an act and reads it too,
+// so a test that carries acts out on its own forge marks ready there as well.
+func (h *Handler) forgeFor(token string) factorygithub.API {
 	if h.config.ActsClient != nil {
-		client = h.config.ActsClient(token)
-	} else {
-		httpClient := h.githubClient()
-		client = forge.NewClient(token).WithHTTPClient(&httpClient)
+		return h.config.ActsClient(token)
 	}
-	return factorygithub.New(client, []string{factory.RepoOf(it)}, h.clock).Act(ctx, it, act)
+	httpClient := h.githubClient()
+	return forge.NewClient(token).WithHTTPClient(&httpClient)
 }
 
 // actsToken is the GitHub sign-in the job's acts are carried out with: its

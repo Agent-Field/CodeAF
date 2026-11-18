@@ -36,16 +36,19 @@ func (s *Scenario) stopped(ctx context.Context, it factory.Item, wait factory.Wa
 	if turn == nil {
 		return "", serve.ErrNotAsked
 	}
+	// THE JOB IS NOT AT REST WHILE THE SERVICE WAITS ON THIS TURN
+	// ([Scenario.Settle]). A decision moves the job in one write and says so
+	// on its log and its record in later ones, and the script's own line
+	// after the press runs later still. A scenario that took the job as
+	// settled at the first of those read a turn that had not ended: its press
+	// not yet answered, its log line not yet written.
+	s.deciding.Add(1)
+	defer s.deciding.Add(-1)
 	type answer struct {
 		said string
 		err  error
 	}
 	done := make(chan answer, 1)
-	// Counted until the service has its answer or gives the turn up, not
-	// until the turn's own code ends: one that never returns is the service's
-	// to time out, and the scenario must still come to rest.
-	s.stopTurns.Add(1)
-	defer s.stopTurns.Add(-1)
 	go func() {
 		said, err := turn(it, wait)
 		done <- answer{said, err}
