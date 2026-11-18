@@ -1403,8 +1403,9 @@ waiting on you, as any reply that asks you something is.
 **An update that is waiting on work already out is left alone too.** "I've started the
 render and will report when it lands" is not sent back while a background command, watch
 or render it started is still running, while this request's work is with a task that is
-still going, or while a task of this conversation is still out: the ending wakes the
-conversation by itself (see the next section).
+still going, or while a task of this conversation is still out. That work reports by
+itself when it ends: a landing that owes you an answer wakes one short reply, and a quiet
+one only writes its dim line (see *Finishing a task's work stays in this conversation*).
 
 Only a note the model marked as an update counts. An ordinary answer that happens to say
 what it might do next ends the reply as it always did, and the reader described above is
