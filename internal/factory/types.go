@@ -556,6 +556,11 @@ type PullRequest struct {
 	// ([ActKindEditPR]): a later push keeps it instead of putting the job's
 	// own title back. Empty is a title nobody edited here.
 	Title string `json:",omitempty"`
+	// Body is the pull request's description once a public act has edited
+	// it, the person's or the manager's: a later repair push leaves it as it
+	// is instead of writing the proof over it. Empty is a description nobody
+	// edited here.
+	Body string `json:",omitempty"`
 }
 
 // PRFilesMost is how many of a pull request's files the factory keeps on the

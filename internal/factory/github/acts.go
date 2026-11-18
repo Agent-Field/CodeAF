@@ -116,8 +116,15 @@ func (s *Source) Act(ctx context.Context, it factory.Item, a factory.PublicAct) 
 			return ActDone{}, writeFailure(err, "edit this pull request", false)
 		}
 		done := ActDone{URL: live.URL, Words: "Edited the pull request's " + editedWords(a) + "."}
-		if title := a.Title; title != "" {
-			done.Change = func(p *factory.PullRequest) { p.Title = title }
+		if title, body := a.Title, a.Body; title != "" || body != "" {
+			done.Change = func(p *factory.PullRequest) {
+				if title != "" {
+					p.Title = title
+				}
+				if body != "" {
+					p.Body = body
+				}
+			}
 		}
 		return done, nil
 	case factory.ActKindChangeBase:

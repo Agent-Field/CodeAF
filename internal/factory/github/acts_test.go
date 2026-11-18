@@ -246,8 +246,42 @@ func TestActEditKeepsTheNewTitleOnTheJob(t *testing.T) {
 	}
 	// An edit of the description alone leaves the title as it is.
 	body, err := src.Act(context.Background(), it, act(t, it, factory.PublicAct{Kind: factory.ActKindEditPR, Body: "What changed."}))
-	if err != nil || body.Change != nil || f.Writes()[2] != `PATCH /pulls/7 {"body":"What changed."}` {
+	if err != nil || f.Writes()[2] != `PATCH /pulls/7 {"body":"What changed."}` {
 		t.Fatalf("description edit: %+v, err %v, writes %v", body, err, f.Writes())
+	}
+	edited := *it.PullRequest
+	body.Change(&edited)
+	if edited.Body != "What changed." || edited.Title != "Balance the ledger on every write" {
+		t.Fatalf("stored after the description edit: title %q, body %q", edited.Title, edited.Body)
+	}
+}
+
+// AN EDITED DESCRIPTION IS NOT UNDONE BY THE NEXT REPAIR PUSH. Follow PR's
+// push used to write the proof over whatever the description said; once a
+// public act has edited it, the push sends the title alone.
+func TestARepairPushKeepsAnEditedDescription(t *testing.T) {
+	f, src, it := actsFixture(t)
+	done, err := src.Act(context.Background(), it, act(t, it, factory.PublicAct{Kind: factory.ActKindEditPR, Body: "What changed, in the person's words."}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr := *it.PullRequest
+	done.Change(&pr)
+	it.PullRequest = &pr
+	if err := src.UpdatePRBody(context.Background(), it, "Proof: go test ./... passed."); err != nil {
+		t.Fatal(err)
+	}
+	writes := f.Writes()
+	if len(writes) != 2 || writes[1] != `PATCH /pulls/7 {"title":"Keep the ledger balanced"}` {
+		t.Fatalf("the repair push sent %v", writes)
+	}
+	// A description nobody edited still gets the proof.
+	f2, src2, plain := actsFixture(t)
+	if err := src2.UpdatePRBody(context.Background(), plain, "Proof: go test ./... passed."); err != nil {
+		t.Fatal(err)
+	}
+	if w := f2.Writes(); len(w) != 1 || !strings.Contains(w[0], `"body":"Proof: go test ./... passed."`) {
+		t.Fatalf("an unedited description: %v", w)
 	}
 }
 

@@ -66,7 +66,7 @@ func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p fo
 // they stay out of the key, and a key made before they were kept still
 // matches.
 func reviewedFacts(pr factory.PullRequest) factory.PullRequest {
-	pr.Title = ""
+	pr.Title, pr.Body = "", ""
 	items := make([]factory.PRFeedback, len(pr.FeedbackItems))
 	for i, f := range pr.FeedbackItems {
 		items[i] = factory.PRFeedback{ID: f.ID, Revision: f.Revision, Resolved: f.Resolved, External: f.External}

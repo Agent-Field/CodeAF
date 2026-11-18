@@ -67,6 +67,11 @@ func (s *Source) followPR(ctx context.Context, owner, repo string, number int, p
 	if prev != nil && prev.Title != "" {
 		out.Title = p.Title
 	}
+	// So is a description one edited: the next push leaves it alone. One
+	// someone emptied by hand since is still one a push leaves alone.
+	if prev != nil && prev.Body != "" {
+		out.Body = firstOf(p.Body, prev.Body)
+	}
 	// Terminal metadata is authoritative even when optional APIs are unavailable.
 	// A merged or closed pull request costs no file read, but keeps the list
 	// the job already holds for that same head: what the merge put on the
