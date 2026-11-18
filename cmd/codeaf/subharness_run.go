@@ -9,11 +9,13 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/substore"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -146,6 +148,15 @@ func runSubharnessCommand(args []string) error {
 	if err != nil {
 		return err
 	}
+	// THE HARNESS'S OWN FILES LAND OUTSIDE THE WORKSPACE, like on every other
+	// door: the turn recorder and the .obs spills go to codeaf's state root,
+	// keyed by the workspace's name the way `codeaf plan run` keys its own,
+	// not into the person's directory as untracked files (#1758).
+	scratchRoot := home.Join("scratch", filepath.Base(space.Root()))
+	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
+		return err
+	}
+	space = space.WithScratch(scratchRoot)
 	web := exec.NewWeb()
 	// The toolbox is opened HERE, above the registry, rather than beside the env
 	// below: it is what a bundle's tool guard is checked against, and the guards

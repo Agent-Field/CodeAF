@@ -10,6 +10,7 @@ import (
 	osexec "os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -321,5 +322,89 @@ func TestExecBinaryNamesItsKeptBranchAndVerdict(t *testing.T) {
 	}
 	if got := fields["kept_branch"]; got != "work-branch" {
 		t.Fatalf("kept_branch = %v, want work-branch\n%s", got, fields)
+	}
+}
+
+// fakeOpenRouterScriptedFile answers the first completion with one bash tool
+// call that writes a file into the workspace, and the next one with a finished
+// answer. The shape is the wire's own: a non-streamed choice whose message
+// carries tool_calls, then a plain stop.
+func fakeOpenRouterScriptedFile(t *testing.T, file string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.Contains(request.URL.Path, "/models") {
+			_, _ = writer.Write([]byte(`{"data":[]}`))
+			return
+		}
+		var envelope struct {
+			Messages []struct {
+				Role string `json:"role"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&envelope); err != nil {
+			http.Error(writer, err.Error(), http.StatusBadRequest)
+			return
+		}
+		toolTurn := len(envelope.Messages) == 0 || envelope.Messages[len(envelope.Messages)-1].Role != "tool"
+		var body string
+		if toolTurn {
+			arguments, _ := json.Marshal(map[string]string{"cmd": "printf wrote-by-the-smoke-run > " + file})
+			body = `{"choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant",` +
+				`"content":"","tool_calls":[{"id":"call-1","type":"function","function":{"name":"sh",` +
+				`"arguments":` + strconv.Quote(string(arguments)) + `}}]}}],` +
+				`"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}`
+		} else {
+			body = `{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant",` +
+				`"content":"the file is written"}}],` +
+				`"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}`
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(body))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// THE ISSUE'S OWN ACCEPTANCE, END TO END ON THE BINARY: one exec in a fresh
+// git repository, then `git status --porcelain` — empty, because the run's
+// machinery (the turn recorder, the .obs spills) went to the state root and
+// not to the directory the person named.
+func TestExecBinaryLeavesTheWorkspaceGitClean(t *testing.T) {
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	server := fakeOpenRouter(t)
+	env, _ := smokeEnv(t, server.URL)
+	repo := gitRepoForExec(t)
+
+	stdout, stderr, code := runSmoke(t, binary, env, "reply with ok\n",
+		"exec", "--json", "-w", repo, "--turns", "3", "--budget", "20000", "--timeout", "120")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if dirty := workspaceStatus(t, repo); strings.TrimSpace(dirty) != "" {
+		t.Fatalf("exec left the person's workspace dirty:\n%s", dirty)
+	}
+	for _, machinery := range []string{".codeaf", ".obs"} {
+		if _, err := os.Stat(filepath.Join(repo, machinery)); err == nil {
+			t.Fatalf("exec left its own %s directory in the person's workspace", machinery)
+		}
+	}
+}
+
+// AND AFTER A RUN THAT ACTUALLY EDITS SOMETHING: the workspace holds exactly
+// the work the worker did and nothing else — one written file, and no
+// machinery beside it.
+func TestExecBinaryEditingOneFileLeavesExactlyThatFile(t *testing.T) {
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	repo := gitRepoForExec(t)
+	server := fakeOpenRouterScriptedFile(t, filepath.Join(repo, "written.txt"))
+	env, _ := smokeEnv(t, server.URL)
+
+	stdout, stderr, code := runSmoke(t, binary, env, "write the file\n",
+		"exec", "--json", "-w", repo, "--turns", "5", "--budget", "20000", "--timeout", "120")
+	if code != 0 {
+		t.Fatalf("exit %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if dirty := workspaceStatus(t, repo); strings.TrimSpace(dirty) != "?? written.txt" {
+		t.Fatalf("the workspace holds %q, want exactly the one file the worker wrote\nstdout:\n%s\nstderr:\n%s", dirty, stdout, stderr)
 	}
 }

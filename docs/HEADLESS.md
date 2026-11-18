@@ -428,7 +428,7 @@ harness passes anything with newlines in it.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--dir dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. `-w` is the shorthand and keeps working forever. |
+| `--dir dir` | `.` | The directory the worker works in, created if missing. Its scratch lands outside it, under the state root — see below. `-w` is the shorthand and keeps working forever. |
 | `--system text` | empty | The working method, passed as the task's contract. |
 | `--max-turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
 | `--token-budget N` | `220000` | Token budget for the whole run. Crossing it buys a bounded landing rather than a kill, so the effective ceiling is the budget, plus a fifth of it for the landing, plus the overshoot of the turn crossing the budget and of the final landing turn. Hitting it exits `3`. |
@@ -585,10 +585,14 @@ again.
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing
   notices the work was bigger than one worker.
-- **Scratch lands in `--dir`.** `exec` gives the worker no separate scratch
-  directory, so the harness's own machinery — `.codeaf/`, `.obs/` — is written
-  into the workspace beside the work product. Point `--dir` at a directory you
-  are willing to have written into, not at a repository you want left clean.
+- **Scratch lands outside `--dir`.** The harness's own machinery — the turn
+  recorder (`.codeaf/trace/`), its stream sidecar, and any `.obs/` spills — is
+  written to `<state root>/scratch/<workspace name>`, keyed by the workspace's
+  name, and later runs in the same directory append to the recorders they
+  already wrote. The working directory holds only what the worker did, so
+  `git status` after a run shows exactly the work product. `CODEAF_HOME` moves
+  the state root, and with it the scratch home; point it at a runner temp dir
+  for CI. Point `--dir` at the directory you want edited in place.
 
 `exec` still reads the state root for two things: the model catalog cache and,
 if you have one there, a persisted API key. `CODEAF_HOME` moves both.

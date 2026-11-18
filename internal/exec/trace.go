@@ -115,10 +115,11 @@ func streamName(leaf string) string {
 	return filepath.Join(traceDir, fmt.Sprintf("%s.stream.ndjson", pathSlug(leaf)))
 }
 
-// patchName is where a node's own change set is written out in full, beside the
-// recorder and under the same git-excluded directory — a patch file written into
-// the workspace would be part of the next diff, and the engine's auditor would
-// correctly refuse to ship it. One spelling, for [streamName]'s reason.
+// patchName is where a node's own change set is written out in full, beside
+// the recorder and under the same directory outside the workspace — a patch
+// file written into the workspace would be part of the next diff, and the
+// engine's auditor would correctly refuse to ship it. One spelling, for
+// [streamName]'s reason.
 func patchName(leaf string) string {
 	return filepath.Join(traceDir, fmt.Sprintf("%s.patch", pathSlug(leaf)))
 }

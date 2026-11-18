@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -158,6 +160,18 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	// THE HARNESS'S OWN FILES LAND OUTSIDE THE WORKSPACE, like on every other
+	// door. Scratch defaulted to the workspace root here — the one caller that
+	// never named one — so the turn recorder, the patch and the .obs spills
+	// were written into the person's directory as untracked files (#1758), and
+	// a later `git add -A` published them. They go to codeaf's state root,
+	// keyed by the workspace's name the way `codeaf plan run` keys its own, so
+	// a resumed run appends to the recorders it already wrote.
+	scratchRoot := home.Join("scratch", filepath.Base(space.Root()))
+	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
+		return err
+	}
+	space = space.WithScratch(scratchRoot)
 	// AN EXEC RUN'S COMMANDS ARE FENCED to its workspace (fence.go). The seat
 	// replaces the host seat the context was opened with.
 	fence, err := unattendedFence(space.Root(), settings.ProfileDir)
