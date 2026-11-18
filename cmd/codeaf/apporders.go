@@ -525,11 +525,22 @@ func (b *appBackend) answerOrderAsk(askID, option string) (bool, error) {
 	if err := appValidateOrderAnswer(askID, option); err != nil {
 		return true, err
 	}
-	_, err = b.OrderVerdict(r.AutomationID, run, option)
-	if err == nil {
-		appOrderAnswered.Store(run, option)
+	// THE MARK IS WRITTEN BEFORE THE ANSWER, as [appBackend.dismissOrderRun]
+	// writes its own: an orders poll that lands between the answer and a mark
+	// written after it closes the ask as answered elsewhere, and the late mark
+	// then sits in the map for good. A refused answer puts back what it found:
+	// a second press before the poll is refused, and the first press's mark
+	// must stay.
+	was, marked := appOrderAnswered.Swap(run, option)
+	if _, err := b.OrderVerdict(r.AutomationID, run, option); err != nil {
+		if marked {
+			appOrderAnswered.CompareAndSwap(run, option, was)
+		} else {
+			appOrderAnswered.CompareAndDelete(run, option)
+		}
+		return true, err
 	}
-	return true, err
+	return true, nil
 }
 
 func appValidateOrderAnswer(id, option string) error {
@@ -655,13 +666,18 @@ func (b *appBackend) sayOrderAsksFrom(store *automation.Store, open map[int64]ap
 		// AN ANSWER GIVEN ELSEWHERE READS AS ANSWERED, in the words every other
 		// Inbox item answered elsewhere leaves ([appReceipt]); only a run that
 		// stopped waiting with no answer is no longer needed.
+		// AND ONE ANSWERED HERE SAYS SO, in the words an answer here leaves on any
+		// other Inbox item, rather than leaving with no receipt at all.
 		receipt := appwire.Entry{}
-		if answeredElsewhere {
+		switch {
+		case answeredElsewhere:
 			receipt.Text = appReceipt(appwire.ClosedByElsewhere, closed.Option, &session.Answer{}, now)
-		} else if closed.By != appwire.ClosedByApp {
+		case closed.By != appwire.ClosedByApp:
 			receipt.Text = "No longer needed · " + now.Format("15:04")
-		} else if closed.Option == appwire.ResolvedDismissed {
+		case closed.Option == appwire.ResolvedDismissed:
 			receipt.Text = appDismissedReceipt(now)
+		default:
+			receipt.Text = appReceipt(appwire.ClosedByApp, closed.Option, nil, now)
 		}
 		b.inboxResolved(appInboxID(ask.Agent, ask.ID), receipt)
 	}

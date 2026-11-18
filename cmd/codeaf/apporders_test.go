@@ -325,3 +325,66 @@ func TestAppOrderRunAnsweredElsewhereReadsAsAnswered(t *testing.T) {
 		})
 	}
 }
+
+// A RUN ANSWERED HERE LEAVES THE INBOX WITH ITS RECEIPT, and the mark that says
+// so is the app's from before the answer: a second press refused before the
+// next poll keeps it, and an answer refused outright leaves no mark behind.
+func TestAppOrderRunAnsweredHereLeavesWithItsReceipt(t *testing.T) {
+	backend, rec, store := ordersBackend(t)
+	transcript := filepath.Join(t.TempDir(), "places", "proj", "abcd1234", "transcript.jsonl")
+	a, err := store.Create(automation.Automation{
+		Title: "weekly update", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+		Action: automation.Action{Do: "draft the weekly update"}, Workspace: t.TempDir(),
+		Status: automation.StatusProposed, Trust: automation.TrustAsksFirst,
+		Origin: automation.Origin{Transcript: transcript},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Ratify(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.QueueAsking(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, id := appAgentID(transcript), appOrderAskID(run.ID)
+	open := map[int64]appwire.Ask{}
+	backend.sayOrderAsks(store, open)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		opened, ok := data.(appwire.AskOpened)
+		return ok && opened.Ask.ID == id
+	})
+	if handled, err := backend.answerOrderAsk(id, appwire.VerdictSkip); !handled || err != nil {
+		t.Fatalf("answer = %v, %v", handled, err)
+	}
+	// A second press before the poll is refused, and the first press's mark stays.
+	if _, err := backend.answerOrderAsk(id, appwire.VerdictSkip); err == nil {
+		t.Fatal("a run already answered was answered again")
+	}
+	backend.sayOrderAsks(store, open)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		closed, ok := data.(appwire.AskClosed)
+		return ok && closed.ID == id && closed.By == appwire.ClosedByApp && closed.Option == appwire.VerdictSkip
+	})
+	i := rec.waitFor(t, time.Second, func(event string, data any) bool {
+		resolved, ok := data.(appwire.InboxResolvedEvent)
+		return ok && resolved.ID == appInboxID(agent, id)
+	})
+	rec.mu.Lock()
+	resolved := rec.data[i].(appwire.InboxResolvedEvent)
+	rec.mu.Unlock()
+	if resolved.By != appwire.ClosedByApp || !strings.HasPrefix(resolved.Receipt, "Answered · you · ") {
+		t.Fatalf("a run answered here resolved as %+v", resolved)
+	}
+	if _, left := appOrderAnswered.Load(run.ID); left {
+		t.Fatal("the closed run's mark was left in the map")
+	}
+	// Refused outright, with no answer before it: no mark is left behind.
+	if _, err := backend.answerOrderAsk(id, appwire.VerdictGo); err == nil {
+		t.Fatal("a run no longer asking took an answer")
+	}
+	if _, left := appOrderAnswered.Load(run.ID); left {
+		t.Fatal("a refused answer left its mark in the map")
+	}
+}
