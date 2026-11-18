@@ -254,6 +254,13 @@ func PushRoad(it Item, by string) (road, words string, err error) {
 		}
 		break
 	}
+	// AN APPROVAL ONLY A PERSON PASSES IS NOT AUTO'S EITHER, nor is one Auto
+	// passes on the manager's judgement before it has said yes
+	// ([ManagerMayPass]). The manager's press is Auto's approval, which the
+	// service would hand back to the person once its Undo window closed.
+	if !ManagerMayPass(it) {
+		return RoadWaiting, "This approval is the person's, or Auto's only once the manager's judgement says yes.", nil
+	}
 	// WHAT AUTO ITSELF STOPPED AT IS THE PERSON'S, BY THIS ROAD TOO. The
 	// manager's own approve is refused wherever Auto would not approve
 	// ([ManagerMay]: a failing finding, proof that is incomplete, an approval

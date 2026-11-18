@@ -32,3 +32,20 @@ func TestPushRoadIsNotAWayRoundWhatAutoStoppedAt(t *testing.T) {
 		}
 	}
 }
+
+// AN APPROVAL ONLY A PERSON PASSES IS NOT THE MANAGER'S TO PUSH. Its push in
+// Auto is Auto's approval, which Auto never gives at a `pass: person` step, so
+// it leaves the approval waiting on the person; their own push presses it.
+func TestPushRoadLeavesAPersonsApprovalToThePerson(t *testing.T) {
+	it := pushWaiting(actJob(AutonomyAuto))
+	it.Stages = []Stage{{Name: "write", Kind: StageChat, On: true}, {Name: ApproveName, Kind: StageGate, On: true, Pass: PassPerson}}
+	if ManagerMayPass(it) {
+		t.Fatal("the fixture's approval is not the person's")
+	}
+	if road, words, err := PushRoad(it, ActByMainAgent); err != nil || road != RoadWaiting || !strings.Contains(words, "the person's") {
+		t.Fatalf("the manager's push took road %q with %q (%v)", road, words, err)
+	}
+	if road, _, err := PushRoad(it, ActByYou); err != nil || road != RoadPress {
+		t.Fatalf("the person's own push took road %q (%v)", road, err)
+	}
+}
