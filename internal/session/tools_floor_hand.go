@@ -51,6 +51,11 @@ type FloorPress struct {
 	Choice string
 	// Budget is the new budget in USD, for raise_budget.
 	Budget float64
+	// TurnAt is when the running turn began. The door uses it to tell acts the
+	// person has had a chance to read from acts proposed since their words.
+	// It is not part of what the person asked for, so it is never printed
+	// beside it.
+	TurnAt time.Time `json:"-"`
 }
 
 // floorPresses is every action a job can offer its person, in the order the
@@ -117,6 +122,7 @@ func (a *Agent) floorPress(ctx context.Context, item int, p FloorPress) (string,
 	if refusal != "" {
 		return refusal, true, nil
 	}
+	p.TurnAt = a.managerTurnAt()
 	line, err := floorWithin(ctx, floorActWait, func(ctx context.Context) (string, error) {
 		return hand.Press(ctx, it.ID, p, said)
 	})

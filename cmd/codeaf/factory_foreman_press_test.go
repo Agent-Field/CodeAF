@@ -308,6 +308,52 @@ func TestTheFactoryManagerLeavesAHeldApprovalToItsPerson(t *testing.T) {
 	}
 }
 
+// THE PERSON'S YES IS FOR WHAT THEY HAVE READ, AND THE FACTORY MANAGER'S TOO.
+// Approving the acts, or the publication that carries them, presses nothing
+// when a job's main agent proposed an act after the person's words opened this
+// turn: they have not read it. An act proposed before is theirs to approve,
+// and in Auto the job's main agent carries its own.
+func TestTheFactoryManagerMayNotApproveActsProposedSinceThePersonSpoke(t *testing.T) {
+	st, web, profile := talkLab(t)
+	sent := fakePress(t, nil)
+	hand := foremanHand(t, st, web, profile)
+	began := time.Now()
+	for _, c := range []struct {
+		name     string
+		shape    func(*factory.Item)
+		press    string
+		verb     string
+		mode     string
+		proposed time.Time
+		pressed  bool
+	}{
+		{"acts, proposed since the person spoke", hasDraftPullRequest, factory.DoActsApprove, "acts_approve", factory.AutonomyManual, began.Add(time.Second), false},
+		{"acts, proposed before the person spoke", hasDraftPullRequest, factory.DoActsApprove, "acts_approve", factory.AutonomyManual, began.Add(-time.Minute), true},
+		{"publication, acts proposed since the person spoke", waitsOnPublishApproval, factory.DoApprove, "approve", factory.AutonomyManual, began.Add(time.Second), false},
+		{"publication, acts proposed before the person spoke", waitsOnPublishApproval, factory.DoApprove, "approve", factory.AutonomyManual, began.Add(-time.Minute), true},
+		{"publication in Auto", waitsOnPublishApproval, factory.DoApprove, "approve", factory.AutonomyAuto, began.Add(time.Second), true},
+	} {
+		id, _ := managedJob(t, st, func(it *factory.Item) {
+			c.shape(it)
+			it.Autonomy = c.mode
+			it.Acts = []factory.PublicAct{{ID: "a1", Kind: factory.ActKindReply, Text: "Fixed in the new commit.", By: factory.ActByMainAgent, State: factory.ActProposed, At: c.proposed}}
+		})
+		*sent = nil
+		_, err := hand.Press(context.Background(), id, session.FloorPress{Action: c.press, TurnAt: began}, "yes, do it")
+		switch {
+		case c.pressed && (err != nil || len(*sent) != 1 || (*sent)[0].verb != c.verb || (*sent)[0].job != id):
+			t.Errorf("%s: %v, sent %+v; want %s pressed", c.name, err, *sent, c.verb)
+		case !c.pressed && (err == nil || !strings.HasPrefix(err.Error(), "Nothing changed: ") || !strings.Contains(err.Error(), "have not read them yet") || len(*sent) != 0):
+			t.Errorf("%s: %v, sent %+v; want a refusal and nothing sent", c.name, err, *sent)
+		}
+		if got, err := st.Get(id); err != nil {
+			t.Fatal(err)
+		} else if len(got.Acts) != 1 || got.Acts[0].State != factory.ActProposed {
+			t.Errorf("%s: the act is %+v, want it still proposed", c.name, got.Acts)
+		}
+	}
+}
+
 // A DECISION THE PERSON PUT AWAY IS TAKEN UP AGAIN through the door the job's
 // own chat takes it up by: the factory's resume verb refuses such a job, so
 // nothing is pressed, and the job goes on with the person's words on it.

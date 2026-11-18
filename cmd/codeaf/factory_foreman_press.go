@@ -55,6 +55,9 @@ import (
 const (
 	foremanPressElsewhere = "Nothing changed: %s is a choice the person makes on the job page; you cannot press it from here."
 	foremanNotOffered     = "Nothing changed: %s does not accept %s now. %s"
+	// foremanUnreadActs is an approval that would carry acts the job's main
+	// agent proposed after the person's words in this turn.
+	foremanUnreadActs = "Nothing changed: %s's main agent proposed public acts after the person's words in this turn, so they have not read them yet. Read the job again, show them exactly what will be posted or changed, and press when they answer."
 	// foremanPassStepRefusal is a start that would carry a job past an
 	// approve step on a turn the person did not speak in.
 	foremanPassStepRefusal = "Nothing changed: going past an approve step is the person's, and nothing in this turn came from them. They approve it on the job page, or by asking you here."
@@ -224,6 +227,13 @@ func (d seamFloorDoor) Press(ctx context.Context, id int, p session.FloorPress, 
 	}
 	if !factory.OffersPerson(it, p.Action) {
 		return "", fmt.Errorf(foremanNotOffered, ref, p.Action, factory.FloorWaitLine(it))
+	}
+	// THE PERSON'S YES IS FOR WHAT THEY HAVE READ. Approving the acts, or the
+	// publication that carries them (serve's approveActsWithPush), is held to
+	// the rule the job's manager is held to: outside Auto, acts proposed since
+	// the person's words opened this turn are not theirs to have approved.
+	if (p.Action == factory.DoActsApprove || (p.Action == factory.DoApprove && factory.OffersPublishApproval(it))) && actsUnread(it, p.TurnAt) {
+		return "", fmt.Errorf(foremanUnreadActs, ref)
 	}
 	press := appLocalPress.Load()
 	words := strings.TrimSpace(p.Words)

@@ -288,6 +288,41 @@ func TestManagerJoinManualReplyWaitsForThePersonsYes(t *testing.T) {
 	}
 }
 
+// MANUAL: THE PUBLISH APPROVAL IS THE ACTS' APPROVAL TOO. The person says
+// "approve publishing" while the push waits; the manager proposes a reply and
+// then presses the approval in that same turn. The approval would approve the
+// reply the person never read, so it is refused and nothing changes: the push
+// waits, the reply is still proposed, nothing is posted. On the person's next
+// turn, after they have read it, their yes pushes and posts it.
+func TestManagerJoinManualPublishApprovalDoesNotCarryAReplyProposedInTheSameTurn(t *testing.T) {
+	j, thread, it := joinReviewed(t, factory.AutonomyManual)
+	if it.Wait.Action != factory.ActApprovePublish {
+		t.Fatalf("Manual did not wait to push the repair: %s\n%s", factorytest.WaitKey(it), j.s.Story())
+	}
+	pushes := writesOf(j.s, "push ")
+	turn := j.turn("approve publishing")
+	it = j.s.Do("the manager proposes a reply in the turn the person asked to publish", func() {
+		turn.must(joinActs("answer bob", joinReply(thread, "Fixed in the new commit.")))
+	})
+	if len(it.Acts) != 1 || it.Acts[0].State != factory.ActProposed {
+		t.Fatalf("the reply is %+v\n%s", it.Acts, j.s.Story())
+	}
+	turn.refused(session.ManagerPress{Action: session.ActionApprove, Words: "they said to approve publishing"}, "you proposed these in this same turn")
+	it = j.s.Do("the service is looked at again", func() { j.s.Settle() })
+	if it.Wait.Action != factory.ActApprovePublish || len(it.Acts) != 1 || it.Acts[0].State != factory.ActProposed || writesOf(j.s, "push ") != pushes || len(j.s.GitHub.Posted()) != 0 {
+		t.Fatalf("a refused approval still did something: %s, acts %+v, writes %v\n%s", factorytest.WaitKey(it), it.Acts, j.s.GitHub.Writes(), j.s.Story())
+	}
+	// THE NEXT TURN IS AFTER THE PERSON HAS READ IT.
+	it = j.s.Do("the person has read the reply and says yes", func() {
+		j.turn("yes, publish it with the reply").must(session.ManagerPress{Action: session.ActionApprove, Words: "they said yes to the push and the reply"})
+		j.s.Settle()
+		j.s.ActsSent()
+	})
+	if writesOf(j.s, "push ") != pushes+1 || len(j.s.GitHub.Posted()) != 1 || len(it.Acts) != 1 || it.Acts[0].State != factory.ActDone {
+		t.Fatalf("the approved push and reply did not go out: %v, acts %+v\n%s", j.s.GitHub.Writes(), it.Acts, j.s.Story())
+	}
+}
+
 // MANUAL: DECLINED ACTS ARE NEVER SENT, and the manager may decline by
 // itself: a no sends nothing, so it needs no word of the person's.
 func TestManagerJoinDeclinedActsAreNeverSent(t *testing.T) {

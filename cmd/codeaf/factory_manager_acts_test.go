@@ -428,3 +428,51 @@ func TestTheManagerMayNotApproveActsItProposedInTheSameTurn(t *testing.T) {
 		}
 	}
 }
+
+// THE PUBLISH APPROVAL IS THE SAME YES AS APPROVING THE ACTS THAT WAIT BESIDE
+// THE PUSH (serve's approveActsWithPush), so outside Auto the manager may not
+// press it in a turn where it proposed an act: the reply would go out with
+// the push, and the person never read it. The act stays proposed and the
+// refusal tells the manager what to do instead; an act proposed before the
+// person spoke can be approved with it.
+func TestTheManagerMayNotApprovePublicationWhileItsActsAreUnreadFromTheSameTurn(t *testing.T) {
+	st, web, _ := talkLab(t)
+	sent := fakePress(t, nil)
+	door, ok := runDoor(st, web, "").(session.ManagerPresser)
+	if !ok {
+		t.Fatal("the floor's run door cannot press")
+	}
+	began := time.Now()
+	for _, c := range []struct {
+		name     string
+		mode     string
+		proposed time.Time // zero: no act waits
+		pressed  bool
+	}{
+		{"Manual, reply proposed in this turn", factory.AutonomyManual, began.Add(time.Second), false},
+		{"Manual, reply proposed before the person spoke", factory.AutonomyManual, began.Add(-time.Minute), true},
+		{"Manual, nothing proposed", factory.AutonomyManual, time.Time{}, true},
+		{"Auto, reply proposed in this turn", factory.AutonomyAuto, began.Add(time.Second), true},
+	} {
+		id, talk := managedJob(t, st, func(it *factory.Item) {
+			waitsOnPublishApproval(it)
+			it.Autonomy = c.mode
+			if !c.proposed.IsZero() {
+				it.Acts = []factory.PublicAct{{ID: "a1", Kind: factory.ActKindReply, Text: "Fixed in the new commit.", By: factory.ActByMainAgent, State: factory.ActProposed, At: c.proposed}}
+			}
+		})
+		*sent = nil
+		_, err := door.Press(context.Background(), talk, session.ManagerPress{Action: session.ActionApprove, Words: "they said to publish", Said: "yes, publish it", TurnAt: began})
+		switch {
+		case c.pressed && (err != nil || len(*sent) != 1 || (*sent)[0].verb != "approve" || (*sent)[0].job != id):
+			t.Errorf("%s: %v, sent %+v; want approve pressed", c.name, err, *sent)
+		case !c.pressed && (err == nil || err.Error() != managerSameTurnRefusal || len(*sent) != 0):
+			t.Errorf("%s: %v, sent %+v; want the same-turn refusal and nothing sent", c.name, err, *sent)
+		}
+		if got, err := st.Get(id); err != nil {
+			t.Fatal(err)
+		} else if !c.proposed.IsZero() && (len(got.Acts) != 1 || got.Acts[0].State != factory.ActProposed) {
+			t.Errorf("%s: the act is %+v, want it still proposed", c.name, got.Acts)
+		}
+	}
+}

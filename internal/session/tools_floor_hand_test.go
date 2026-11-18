@@ -213,6 +213,7 @@ func TestTheForemansItemReadSaysTheWaitInFull(t *testing.T) {
 type handFloorDoor struct {
 	*fakeFloorDoor
 	pressed []string
+	turnAts []time.Time
 	told    []string
 	refuse  error
 	stuck   chan struct{}
@@ -221,6 +222,7 @@ type handFloorDoor struct {
 func (d *handFloorDoor) Press(ctx context.Context, id int, p FloorPress, said string) (string, error) {
 	raw, _ := json.Marshal(p)
 	d.pressed = append(d.pressed, itoaFloor(id)+" "+string(raw)+" said="+said)
+	d.turnAts = append(d.turnAts, p.TurnAt)
 	if d.refuse != nil {
 		return "", d.refuse
 	}
@@ -257,6 +259,23 @@ func handCall(t *testing.T, door FloorDoor, said, args string) (string, bool) {
 		t.Fatal(err)
 	}
 	return text, isErr
+}
+
+// THE FOREMAN'S PRESS TELLS THE DOOR WHEN ITS TURN BEGAN, so the door can tell
+// public acts the person had a chance to read from acts a job's main agent
+// proposed since their words.
+func TestTheForemansPressCarriesTheStartOfTheTurnToTheDoor(t *testing.T) {
+	door := &handFloorDoor{fakeFloorDoor: waitLab(t)}
+	began := time.Date(2026, 11, 18, 9, 30, 0, 0, time.UTC)
+	agent := &Agent{config: Config{Workspace: t.TempDir(), Floor: door}, personWords: "approve #1", teamTurnAt: began}
+	for _, args := range []string{`{"item":1,"press":"approve"}`, `{"item":6,"press":"acts_approve"}`} {
+		if text, isErr, err := agent.factoryFloorTool().Execute(context.Background(), json.RawMessage(args)); err != nil || isErr {
+			t.Fatalf("%s = %q bad=%v err=%v", args, text, isErr, err)
+		}
+	}
+	if len(door.turnAts) != 2 || !door.turnAts[0].Equal(began) || !door.turnAts[1].Equal(began) {
+		t.Errorf("the door was told the turn began at %v, want %v", door.turnAts, began)
+	}
 }
 
 // A PRESS AND WORDS FOR A MAIN AGENT NEED THE PERSON'S OWN WORDS IN THE TURN.

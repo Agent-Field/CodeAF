@@ -130,15 +130,15 @@ func (d seamRunDoor) Press(ctx context.Context, conversation string, p session.M
 	return "", errors.New("Nothing changed: unknown action")
 }
 
+// managerSameTurnRefusal is the manager approving, outside Auto, acts it
+// proposed in the same turn.
+const managerSameTurnRefusal = "Nothing changed: you proposed these in this same turn, so the person has not read them yet. Show them exactly what will be posted or changed, and approve when they answer."
+
 // managerMayPress holds one press to the authority table
 // ([factory.ManagerMay]): merging and resuming a paused Auto are pressed only
 // on a turn the person spoke in; outside Auto so are approving publication,
 // marking the pull request ready and approving proposed acts. Everything else
 // is the manager's in both modes.
-// managerSameTurnRefusal is the manager approving, outside Auto, acts it
-// proposed in the same turn.
-const managerSameTurnRefusal = "Nothing changed: you proposed these in this same turn, so the person has not read them yet. Show them exactly what will be posted or changed, and approve when they answer."
-
 func managerMayPress(it factory.Item, p session.ManagerPress) error {
 	said := strings.TrimSpace(p.Said) != ""
 	switch p.Action {
@@ -146,28 +146,48 @@ func managerMayPress(it factory.Item, p session.ManagerPress) error {
 		return factory.ManagerMay(it, factory.ManagerMerge, said)
 	case session.ActionResume:
 		return factory.ManagerMay(it, factory.ManagerResumeAuto, said)
-	case session.ActionApprove:
-		return factory.ManagerMay(it, factory.ManagerApprove, said)
 	case session.ActionMarkReady:
 		return factory.ManagerMay(it, factory.ManagerMarkReady, said)
+	case session.ActionApprove:
+		if err := factory.ManagerMay(it, factory.ManagerApprove, said); err != nil {
+			return err
+		}
+		// THE PUBLISH APPROVAL CARRIES THE ACTS THAT WAIT BESIDE THE PUSH
+		// (serve's approveActsWithPush), so it is the same yes as approving
+		// them and is held to the same rule: a reply proposed in this turn
+		// would go out with the push the person approved.
+		if factory.OffersPublishApproval(it) && actsUnread(it, p.TurnAt) {
+			return errors.New(managerSameTurnRefusal)
+		}
+		return nil
 	case session.ActionApproveActs:
 		if err := factory.ManagerMay(it, factory.ManagerApproveActs, said); err != nil {
 			return err
 		}
-		// THE PERSON'S YES IS FOR WHAT THEY HAVE READ. Outside Auto, acts the
-		// manager proposed in this same turn have not been shown to them yet:
-		// their words opened the turn before the acts existed. Without this
-		// the manager could propose a reply and approve it in one breath.
-		if !factory.Automatic(it) && !p.TurnAt.IsZero() {
-			for _, act := range factory.ProposedActs(it) {
-				if !act.At.Before(p.TurnAt) {
-					return errors.New(managerSameTurnRefusal)
-				}
-			}
+		if actsUnread(it, p.TurnAt) {
+			return errors.New(managerSameTurnRefusal)
 		}
 		return nil
 	}
 	return nil
+}
+
+// actsUnread says whether, outside Auto, the job holds a proposed act that
+// began in the turn that started at turnAt. THE PERSON'S YES IS FOR WHAT THEY
+// HAVE READ: outside Auto, acts proposed in this same turn have not been shown
+// to them yet, because their words opened the turn before the acts existed.
+// Without this the manager could propose a reply and approve it in one breath.
+// A zero turnAt says nothing is known of the turn, so nothing is held back.
+func actsUnread(it factory.Item, turnAt time.Time) bool {
+	if factory.Automatic(it) || turnAt.IsZero() {
+		return false
+	}
+	for _, act := range factory.ProposedActs(it) {
+		if !act.At.Before(turnAt) {
+			return true
+		}
+	}
+	return false
 }
 
 // pressAutoResume tells a job's Auto to carry on past the failing checks it

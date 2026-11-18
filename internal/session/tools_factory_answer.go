@@ -183,7 +183,9 @@ func (a *Agent) factoryAnswerTool() bare.Tool {
 				if parsed.Action == ActionMerge && said == "" {
 					return factoryAnswerFailure(factory.ManagerMergeRefusal), true, nil
 				}
-				line, err := d.Press(ctx, a.config.SessionFile, ManagerPress{Action: parsed.Action, Words: answer, Said: said})
+				// TurnAt lets the door hold an approval to what the person has
+				// read: acts proposed in this turn go out with it unseen.
+				line, err := d.Press(ctx, a.config.SessionFile, ManagerPress{Action: parsed.Action, Words: answer, Said: said, TurnAt: a.managerTurnAt()})
 				if err != nil {
 					return factoryAnswerFailure(err.Error()), true, nil
 				}

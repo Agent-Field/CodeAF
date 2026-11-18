@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -52,6 +53,24 @@ func TestFactoryAnswerMergeAndMarkReadyReachThePRDecisionDoor(t *testing.T) {
 	}
 	if !strings.Contains(factoryAnswerSchemaJSON, `"merge","mark_ready","approve"`) {
 		t.Fatal("the schema does not offer merge and mark_ready")
+	}
+}
+
+// THE DOOR HOLDS AN APPROVAL TO WHAT THE PERSON HAS READ, and it can only do
+// that if it is told when the turn began: approving publication also approves
+// the public acts that wait beside the push, so a press that names no turn
+// start would let a reply proposed in this turn go out unseen.
+func TestFactoryAnswerApprovalCarriesTheStartOfTheTurnToTheDoor(t *testing.T) {
+	began := time.Date(2026, 11, 18, 9, 30, 0, 0, time.UTC)
+	for _, action := range []string{ActionApprove, ActionMarkReady, ActionMerge} {
+		d := &prDecisionDoor{}
+		a := &Agent{config: Config{FactoryRun: d}, personWords: "yes, go ahead", teamTurnAt: began}
+		if _, bad, err := a.factoryAnswerTool().Execute(context.Background(), json.RawMessage(`{"action":"`+action+`","answer":"the person said yes"}`)); err != nil || bad || len(d.pressed) != 1 {
+			t.Fatalf("%s: bad=%v err=%v pressed=%+v", action, bad, err, d.pressed)
+		}
+		if got := d.pressed[0].TurnAt; !got.Equal(began) {
+			t.Errorf("%s reached the door with the turn starting at %v, want %v", action, got, began)
+		}
 	}
 }
 
