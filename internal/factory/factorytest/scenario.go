@@ -88,6 +88,9 @@ type Scenario struct {
 	quit   func()
 	// mainAgent is the scripted main agent ([Scenario.MainAgent]).
 	mainAgent func(q factory.Asked) (answer, why string)
+	// stopAgent is the scripted main agent's turn on a stop
+	// ([Scenario.StopAgent], scenario_stops.go).
+	stopAgent func(it factory.Item, wait factory.Wait) (said string, err error)
 	// machine is the name the worker attaches as; a scenario changes it to
 	// stand for another computer.
 	machine string
@@ -370,6 +373,8 @@ func (s *Scenario) open() {
 	config := serve.Config{
 		Address: "http://test", Store: s.Store, Record: s.Record, Now: s.clock.Now,
 		PullWait: 300 * time.Millisecond, LeaseOptions: lease.Options{Now: s.clock.Now},
+		// The main agent's turn on a stop it may decide (scenario_stops.go).
+		Stopped: s.stopped,
 	}
 	// A scenario whose person is signed in to GitHub says so (scenario_acts.go).
 	if s.configure != nil {
@@ -941,7 +946,12 @@ func (s *Scenario) Settle() factory.Item {
 		}
 		retrying := it.Recovery != nil && (it.Recovery.State == "waiting" || it.Recovery.State == "queued") && factory.RecoveryBlockReason(it) == ""
 		rest := false
+		_, handed := factory.HandedOver(it)
 		switch {
+		case handed:
+			// A stop its main agent holds is not at rest: the agent's one turn
+			// is on its way or under way, and ends in a decision or in the
+			// stop handed to the person (scenario_stops.go).
 		case held:
 			// A held job rests only parked on its person: the runner's round
 			// is waiting for an answer and the service has heard so, or the

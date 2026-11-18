@@ -147,8 +147,10 @@ func TestFollowPRBudgetRecoveryTerminalPendingAndRestartMatrix(t *testing.T) {
 	}
 }
 
+// Manual alone is no block any more: the retry of an interrupted step is
+// never the person's ([RecoveryBlockReason]). A take-over still is.
 func TestBudgetRecoveryCannotEraseCriticalDecisionsOrHumanPause(t *testing.T) {
-	for _, block := range []string{"critical", "human pause", "takeover", "manual", "publishing", "attempts"} {
+	for _, block := range []string{"critical", "human pause", "takeover", "publishing", "attempts"} {
 		t.Run(block, func(t *testing.T) {
 			now := time.Now()
 			it := followItem()
@@ -165,8 +167,6 @@ func TestBudgetRecoveryCannotEraseCriticalDecisionsOrHumanPause(t *testing.T) {
 				it.Stream.Paused = true
 			case "takeover":
 				it.Manual = true
-			case "manual":
-				it.Autonomy = AutonomyManual
 			case "publishing":
 				it.Publishing = true
 			case "attempts":

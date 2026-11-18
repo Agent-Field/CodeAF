@@ -159,6 +159,12 @@ func StallOf(it Item, facts WatchFacts, now time.Time) *Stall {
 			return stall(StallGitHub, "GitHub has not been read for this pull request in over "+plainMinutes(WaitGitHubFor)+".")
 		}
 	case WaitMainAgent:
+		// A STOP HANDED TO THE MAIN AGENT IS NEVER A STALL (handoff.go): the
+		// service ends its handoff when the turn does or its deadline passes,
+		// and the stop is then the person's, with no back-off.
+		if _, held := HandedOver(it); held {
+			return nil
+		}
 		if late(w.Deadline) {
 			return stall(StallMainAgent, "The manager did not answer "+firstNonEmpty(w.What, "the step")+"'s question in time.")
 		}
@@ -265,6 +271,15 @@ func WatchAt(it Item, facts WatchFacts, now time.Time) time.Time {
 		}
 		return w.Deadline
 	case WaitMainAgent:
+		// A stop handed to the main agent that has had no turn yet is looked at
+		// now, to give it; one that has is looked at when it is due back with
+		// its person ([HandoffDue]).
+		if _, held := HandedOver(it); held {
+			if it.Handoff.Turns == 0 {
+				return now
+			}
+			return HandoffDue(it)
+		}
 		return w.Deadline
 	case WaitRunner:
 		if facts.Busy {

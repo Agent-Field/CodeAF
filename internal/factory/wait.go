@@ -30,7 +30,8 @@ const (
 	// WaitYou is the person: one action of theirs moves the job.
 	WaitYou = "you"
 	// WaitMainAgent is a stop the job's manager holds: a step's question it
-	// has been given a turn on.
+	// has been given a turn on, or a stop it may decide that was handed to it
+	// before the person is asked (handoff.go).
 	WaitMainAgent = "main_agent"
 	// WaitRunner is a job queued for a computer or a slot.
 	WaitRunner = "runner"
@@ -100,7 +101,8 @@ type Wait struct {
 	// Action is what the person is asked for; set only when Who is you.
 	Action string `json:"action,omitempty"`
 	// What narrows the wait: the step that is running, "publishing",
-	// "merging", "checks", "review".
+	// "merging", "checks", "review". For a stop handed to the main agent it
+	// is the action its person would be asked for ("answer", "retry").
 	What string `json:"what,omitempty"`
 	// Words says the wait in a line a person reads.
 	Words string `json:"words,omitempty"`
@@ -162,6 +164,9 @@ func (w Wait) same(o Wait) bool {
 // it. Every store write calls it, so no road that moves a job has to remember
 // to say what the job now waits on.
 func SettleWait(before Item, it *Item, now time.Time) {
+	// A stop the main agent may decide is handed to it in the same write
+	// (handoff.go), before the wait is read.
+	settleHandoff(before, it, now)
 	w := WaitOf(*it)
 	if prior := before.Wait; prior != nil && prior.same(w) && !prior.Since.IsZero() {
 		w.Since = prior.Since
@@ -272,7 +277,14 @@ func waitUnderActs(it Item) Wait {
 	case "running":
 		return runningWait(it)
 	}
-	return youWait(it)
+	w := youWait(it)
+	// A STOP THE MAIN AGENT MAY DECIDE IS THE MAIN AGENT'S FIRST (handoff.go):
+	// while its handoff stands the job reads "main_agent" with the action the
+	// person would be asked for and the same words, and "you" once it is over.
+	if handed(it, w) {
+		return Wait{Who: WaitMainAgent, What: w.Action, Words: w.Words}
+	}
+	return w
 }
 
 // waitStep is the step the job is on, by its one word.
@@ -639,8 +651,16 @@ func OffersOf(it Item) []Offer {
 	// person nothing that does what it waits on them for.
 	if TaskRefusal(it, DoTask) == nil {
 		add(OfferByYou, DoTask)
-		add(OfferByMainAgent, DoTask)
+		// On a stop the main agent has already put back to work as often as
+		// it may, a task is one more round and is the person's
+		// (task_handoff.go).
+		if ManagerTaskRefusal(it) == nil {
+			add(OfferByMainAgent, DoTask)
+		}
 	}
+	// The decisions the main agent may take on the stop the job is on
+	// (handoff.go). The person's offers stay as they are: they may still act.
+	out = append(out, managerOffers(it)...)
 	return out
 }
 
@@ -772,6 +792,10 @@ func WaitLine(it Item) string {
 		line = "Waits on: a computer to run it."
 	case WaitMainAgent:
 		line = "Waits on: you, the manager, to answer " + firstNonEmpty(w.What, "the step") + "'s question."
+		// A stop handed over (handoff.go) names what the person would be asked.
+		if under, held := HandedOver(it); held {
+			line = "Waits on: you, the manager, to decide this stop first. If you do not settle it, the person is asked to " + firstNonEmpty(actionWords[under.Action], under.Action) + "."
+		}
 	case WaitYou:
 		line = "Waits on: the person, to " + firstNonEmpty(actionWords[w.Action], w.Action) + "."
 		if w.PutAway {

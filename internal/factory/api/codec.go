@@ -113,6 +113,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 var Lost = map[string]string{
 	"JobContext.Markdown":         "attachment text is private to worker admission; ordinary job and queue reads carry only title and source",
 	"Item.Stall":                  "service-owned: the watchdog's record of a stalled wait and its manager turns; readers see the wait it becomes (wait.who you, action decide)",
+	"Item.Handoff":                "service-owned: the main agent's hold on the stop the job is on and its count of rounds given; readers see the wait it makes (wait.who main_agent, then you) and the offers by main_agent",
 	"Item.PausedRecoveryQuestion": "the service owns the paused decision identity; readers see the paused presentation",
 	"Item.LastRecoveryResume":     "the service's private acknowledgment for a repeated chat retry",
 	"Item.Passing":                "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",

@@ -66,6 +66,14 @@ func AddTask(it *factory.Item, by, words string, held, now bool, at time.Time) (
 	if err := factory.TaskRefusal(*it, words); err != nil {
 		return factory.TaskAdded{}, err
 	}
+	// The main agent's task on a stop it may decide is one more round, under
+	// the same limit as its other decisions (factory's task_handoff.go).
+	if factory.TaskBy(by) == factory.TaskByMainAgent {
+		if err := factory.ManagerTaskRefusal(*it); err != nil {
+			return factory.TaskAdded{}, err
+		}
+		factory.NoteManagerTask(it)
+	}
 	added := factory.TaskAdded{Road: factory.TaskRoad(*it, held, now), By: factory.TaskBy(by), Step: factory.FollowPRStep}
 	switch added.Road {
 	case factory.TaskRunsFollowNext:

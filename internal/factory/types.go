@@ -908,6 +908,10 @@ type Item struct {
 	// that wait for the person's yes, those the service is carrying out, and
 	// the last few that are over.
 	Acts []PublicAct `json:",omitempty"`
+	// Handoff is the main agent's hold on the stop the job is on, and its
+	// count of the rounds it has given ([Handoff]). The store keeps it with
+	// the wait ([SettleWait]); the service gives the turn and ends it.
+	Handoff *Handoff `json:",omitempty"`
 	// ManagerAnswer confirms the last durable decision independently of lease delivery.
 	ManagerAnswer *ManagerAnswer `json:",omitempty"`
 	// Briefs are the job's brief versions ([BriefVersion]), oldest first, at
@@ -1270,22 +1274,22 @@ type Asked struct {
 }
 
 // The reasons a step's question goes straight to the person, said where the
-// manager's own reason would be ([Asked.Why]).
+// manager's own reason would be ([Asked.Why]). WhyManualAsksYou is no longer
+// given: it stays for the questions a job saved in Manual still carries.
 const (
 	WhyManualAsksYou = "Manual: every step question comes to you"
 	WhyOnlyAPerson   = "the step said only a person can answer this"
 )
 
 // PersonFirst is why a step's question skips the job's manager and goes
-// straight to the person, "" when the manager answers first as usual. A job
-// in Manual sends every step question to its person; a question the step
-// marked as needing a person goes to them in every mode. Neither reads a
-// pipeline's or a step's name.
-func PersonFirst(it Item, q Asked) string {
-	switch {
-	case it.Autonomy == AutonomyManual:
-		return WhyManualAsksYou
-	case q.Person:
+// straight to the person, "" when the manager answers first as usual. Only a
+// question the step marked as needing a person does, in every mode. A STEP'S
+// QUESTION GOES TO THE MANAGER FIRST IN MANUAL TOO (the owner's decision of
+// 2026-11-17): Manual keeps the plan and everything public for the person,
+// and a question about the work is neither. It reads no pipeline's or step's
+// name.
+func PersonFirst(_ Item, q Asked) string {
+	if q.Person {
 		return WhyOnlyAPerson
 	}
 	return ""

@@ -216,21 +216,38 @@ func IsContinue(yes bool, words string) bool {
 }
 
 // OutOfAttemptsChoice reads a person's answer to a step that used its rounds.
-// yes, or the word try_once_more, runs one more round. send_back returns to
-// the previous step. accept takes the step as it stands, where the job
-// offers it ([OffersAccept]). Anything else cancels the job.
+// yes, or the word try_once_more, runs one more round, and try_once_more:
+// with words after it runs that round with them as its instructions
+// ([RoundNote]). send_back returns to the previous step. accept takes the
+// step as it stands, where the job offers it ([OffersAccept]). Anything else
+// cancels the job.
 func OutOfAttemptsChoice(yes bool, words string) string {
 	w := strings.ToLower(strings.TrimSpace(words))
 	switch {
 	case w == ChoiceAccept:
 		return ChoiceAccept
-	case w == ChoiceTryOnceMore || w == "yes" || (yes && (w == "" || w == "yes")):
+	case w == ChoiceTryOnceMore || strings.HasPrefix(w, ChoiceTryOnceMore+":") || w == "yes" || (yes && (w == "" || w == "yes")):
 		return ChoiceTryOnceMore
 	case w == ChoiceSendBack || strings.HasPrefix(w, ChoiceSendBack+":"):
 		return ChoiceSendBack
 	default:
 		return ChoiceCancel
 	}
+}
+
+// RoundNote is what an answer that gives a step another round says to that
+// round: the text after try_once_more:, or the words themselves when they are
+// no token. The bare word and a plain yes say nothing.
+func RoundNote(words string) string {
+	w := strings.TrimSpace(words)
+	low := strings.ToLower(w)
+	switch {
+	case low == ChoiceTryOnceMore || low == "yes":
+		return ""
+	case strings.HasPrefix(low, ChoiceTryOnceMore+":"):
+		return strings.TrimSpace(w[len(ChoiceTryOnceMore)+1:])
+	}
+	return w
 }
 
 // SendBackReason is the text after send_back:, or the words themselves when

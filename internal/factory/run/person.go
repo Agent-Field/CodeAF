@@ -275,8 +275,9 @@ func AnswerUnheld(it *factory.Item, yes bool, words string, now time.Time) error
 			}
 			setPhaseState(ph, factory.PhasePending, now)
 			ph.Chat = ""
+			words = factory.RoundNote(words)
 		}
-		if words = strings.TrimSpace(words); words != "" && words != factory.ChoiceTryOnceMore && !strings.EqualFold(words, "yes") {
+		if words = strings.TrimSpace(words); words != "" {
 			it.Notes = append(it.Notes, words)
 		}
 		it.Question, it.QKind, it.Asking = "", "", nil

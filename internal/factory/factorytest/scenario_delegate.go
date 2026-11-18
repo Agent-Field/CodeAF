@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -25,6 +26,9 @@ type Delegate struct {
 	always map[string]Round
 	// Ran is every round run, oldest first, as "step#round".
 	Ran []string
+	// heard is what each round was told beside its brief, as "step#round:
+	// words": the notes its job carried and the request of a Follow PR round.
+	heard []string
 }
 
 // Round is one scripted round of a step.
@@ -86,6 +90,27 @@ func (d *Delegate) Rounds(step string) int {
 	return n
 }
 
+// Heard says a round of step was told words: in its notes, or as the request
+// of a Follow PR round. round 0 is any round of the step.
+func (d *Delegate) Heard(step string, round int, words string) bool {
+	lead := step + "#"
+	if round > 0 {
+		lead = fmt.Sprintf("%s#%d:", step, round)
+	}
+	for _, told := range d.notes() {
+		if strings.HasPrefix(told, lead) && strings.Contains(told, words) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *Delegate) notes() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]string(nil), d.heard...)
+}
+
 func (d *Delegate) ran() []string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -125,6 +150,13 @@ func NeedsYou(words string) *factory.StageResult {
 func (d *Delegate) Run(ctx context.Context, job run.Job) (factory.StageResult, error) {
 	d.mu.Lock()
 	d.Ran = append(d.Ran, fmt.Sprintf("%s#%d", job.Stage.Name, job.Round))
+	told := append([]string(nil), job.Notes...)
+	if f := job.Item.FollowUp; f != nil && f.Request != "" {
+		told = append(told, f.Request)
+	}
+	for _, words := range told {
+		d.heard = append(d.heard, fmt.Sprintf("%s#%d: %s", job.Stage.Name, job.Round, words))
+	}
 	d.mu.Unlock()
 	round, scripted := d.take(job.Stage.Name)
 	if round.entered != nil {

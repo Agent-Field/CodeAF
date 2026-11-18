@@ -587,20 +587,22 @@ func TestReplayAPublishThePullRequestMovedPastNamesFollowPR(t *testing.T) {
 }
 
 // 15. A RUNNER THAT DIES IN THE MIDDLE OF A ROUND. The random runs found two
-// stalls here. In Manual the job stops on "Runner went offline mid-step", and
-// the job offered an answer the answer door refused ("not waiting on you"):
-// only a lost publish takes one. In Auto the service plans its own retry a
-// few seconds on, and for those seconds the job read "retry" and offered a
-// rerun that the retry then refused as "not run yet".
+// stalls here. In Manual the job stopped on "Runner went offline mid-step",
+// and the job offered an answer the answer door refused ("not waiting on
+// you"): only a lost publish takes one. In Auto the service plans its own
+// retry a few seconds on, and for those seconds the job read "retry" and
+// offered a rerun that the retry then refused as "not run yet".
 //
-// In Manual the wait must offer the rerun and no answer, and the rerun must
-// run. In Auto the job must wait on a runner, with a deadline, and the retry
-// must run by itself.
+// MANUAL NOW RETRIES AS AUTO DOES: running an interrupted step again is never
+// the person's (factory.RecoveryBlockReason, the owner's authority table of
+// 2026-11-17). In both modes the job must wait on a runner, with a deadline,
+// and the retry must run by itself. What a lost step offers once its retries
+// are used up is held by the rules' own tests (factory's wait_test.go).
 func TestReplayARunnerDiesInTheMiddleOfARound(t *testing.T) {
 	t.Parallel()
 	both(t, func(t *testing.T, mode string) {
 		s := Opened(t, mode)
-		s.Quiet = mode == factory.AutonomyAuto
+		s.Quiet = true
 		var killed bool
 		it := s.Do("a check fails and the runner dies in the middle of the round", func() {
 			killed = s.KillRunnerMidRound(func() {
@@ -614,27 +616,14 @@ func TestReplayARunnerDiesInTheMiddleOfARound(t *testing.T) {
 		if it.Failure == nil || it.Failure.Code != factory.CodeMachineLost {
 			t.Fatalf("not the stall: failure %+v\n%s", it.Failure, s.Story())
 		}
-		if mode == factory.AutonomyAuto {
-			// Held still, the job is seen in the seconds before its retry.
-			if it.Wait.Who != factory.WaitRunner || it.Wait.Deadline.IsZero() {
-				t.Fatalf("wait = %s with deadline %v, want a runner and a deadline\n%s", waitKey(it), it.Wait.Deadline, s.Story())
-			}
-			s.Quiet = false
-			it = s.Do("the retry's wait is over", nil)
-			if followRounds(s) != 2 || it.Failure != nil {
-				t.Fatalf("the retry did not run: %d rounds, failure %+v\n%s", followRounds(s), it.Failure, s.Story())
-			}
-			return
+		// Held still, the job is seen in the seconds before its retry.
+		if it.Wait.Who != factory.WaitRunner || it.Wait.Deadline.IsZero() {
+			t.Fatalf("wait = %s with deadline %v, want a runner and a deadline\n%s", waitKey(it), it.Wait.Deadline, s.Story())
 		}
-		if it.Wait.Who != factory.WaitYou || it.Wait.Action != factory.ActComputer {
-			t.Fatalf("wait = %s, want you:computer\n%s", waitKey(it), s.Story())
-		}
-		if factory.Offered(it, factory.OfferByYou, factory.DoAnswer) || !factory.Offered(it, factory.OfferByYou, factory.DoRerunStep) {
-			t.Fatalf("offers %v, want the rerun and no answer\n%s", it.Offers, s.Story())
-		}
-		it = s.Do("the person runs the step again", func() { s.MustPress(factory.DoRerunStep) })
+		s.Quiet = false
+		it = s.Do("the retry's wait is over", nil)
 		if followRounds(s) != 2 || it.Failure != nil {
-			t.Fatalf("the rerun did not run: %d rounds, failure %+v\n%s", followRounds(s), it.Failure, s.Story())
+			t.Fatalf("the retry did not run: %d rounds, failure %+v\n%s", followRounds(s), it.Failure, s.Story())
 		}
 	})
 }

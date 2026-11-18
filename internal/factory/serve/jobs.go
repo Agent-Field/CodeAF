@@ -60,6 +60,8 @@ func (h *Handler) jobVerbs() {
 	h.postJob("undo", stored, h.undoJob)
 	// Public acts on the job's pull request: act, acts_approve, acts_decline.
 	h.registerActs()
+	// The main agent's decision on a stop it may decide (manager_decide.go).
+	h.postJob(ManagerDecideVerb, stored, h.managerDecide)
 }
 
 // startJob is start_now and run: every refusal, then one write, then the

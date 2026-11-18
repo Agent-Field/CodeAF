@@ -15,19 +15,23 @@ func Automatic(it Item) bool {
 	return !StoppedByPerson(it) && it.Autonomy == AutonomyAuto && !it.Manual && !RecoveryPaused(it)
 }
 
-// AsksBeforeStep says Manual holds phase i for the person's word before its
-// first round. Only an explicit Manual asks: a record with no saved mode keeps
-// its pipeline's own approve steps. Start is the word for the first step, an
-// approve step just passed is the word for the step after it, and a step that
-// has run once (a retry, a send-back) is the same step, not a new one. Follow PR
-// has its own door: Manual asks before each repair push.
-func AsksBeforeStep(it Item, i int) bool {
+// AsksBeforePost says Manual holds phase i, a post step, for the person's word
+// before its first round. A POST STEP IS A PUBLIC ACT: it comments, labels,
+// opens or closes on GitHub, and in Manual nothing public goes out without
+// the person. It is what is left of Manual's hold before every step, which
+// the owner dropped on 2026-11-17: every other step now runs on.
+//
+// Only an explicit Manual asks: a record with no saved mode keeps its
+// pipeline's own approve steps. An approve step just passed is the word for
+// the post after it, and a post that has run once (a retry, a send-back) is
+// the same step, not a new one.
+func AsksBeforePost(it Item, i int) bool {
 	if it.Autonomy != AutonomyManual || it.Stream == nil || i < 0 || i >= len(it.Stream.Phases) {
 		return false
 	}
 	ph := it.Stream.Phases
 	p := ph[i]
-	if p.Kind == StageGate || p.State != PhasePending || p.Round > 0 || it.FollowUp != nil || p.Name == FollowPRStep {
+	if p.Kind != StagePost || p.State != PhasePending || p.Round > 0 || it.FollowUp != nil {
 		return false
 	}
 	// An extra task was asked for in so many words; nobody is asked again

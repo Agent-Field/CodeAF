@@ -126,6 +126,14 @@ func (h *Handler) watchJobs(items []factory.Item, facts *watchFacts, now time.Ti
 			}
 			continue
 		}
+		// A stop the main agent holds is given its one turn, or handed back
+		// (handoff.go). It is never a stall.
+		if _, held := factory.HandedOver(it); held && it.Wait != nil && it.Wait.Who == factory.WaitMainAgent {
+			if h.watchHandoff(it, now) {
+				wrote = true
+			}
+			continue
+		}
 		stall := factory.StallOf(it, facts.of(it), now)
 		if stall != nil && stall.Kind == factory.StallWait {
 			// A WAIT STORED WRONG IS PUT RIGHT BY WRITING THE JOB: the store sets

@@ -409,17 +409,14 @@ func TestWaitNamesATask(t *testing.T) {
 	}
 }
 
-// Manual's hold before a step never holds a task, and a no at an approval
-// sends back the step the pipeline ran, never a task.
+// Manual's hold (now only before a post step) never holds a task, and a no at
+// an approval sends back the step the pipeline ran, never a task.
 func TestATaskIsNotHeldAndNotSentBackTo(t *testing.T) {
 	it := taskJob(StateQueued, PhasePending)
 	it.Autonomy = AutonomyManual
 	it.Stream.Phases[1].Round = 0
-	if !AsksBeforeStep(it, 1) {
-		t.Fatal("the fixture's write step is not held in Manual; the test proves nothing")
-	}
 	it.Stream.Phases = InsertPhase(it.Stream.Phases, 1, TaskPhase(it, TaskByYou, "Add the note."))
-	if AsksBeforeStep(it, 1) {
+	if AsksBeforePost(it, 1) {
 		t.Fatal("Manual holds a task before it runs")
 	}
 	it.Stream.Phases[1].State = PhaseDone

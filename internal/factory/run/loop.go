@@ -893,10 +893,11 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 	return lp.back(c, i, prev, a.words)
 }
 
-// askBeforeStep is Manual's word before step i. A yes leaves the step running,
-// so the drive loop's next pass runs it without asking again; a no sends back
-// the work before it. Either way the drive loop carries on from the store.
-func (lp *floorLoop) askBeforeStep(c *loopCtl, i int, name string) bool {
+// askBeforePost is Manual's word before post step i. A yes leaves the step
+// running, so the drive loop's next pass runs it without asking again; a no
+// sends back the work before it. Either way the drive loop carries on from
+// the store.
+func (lp *floorLoop) askBeforePost(c *loopCtl, i int, name string) bool {
 	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.NextStepQuestion(name), factory.PhaseWaiting, "", "")
 	if !ok {
 		return false
@@ -1110,8 +1111,14 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	if !lp.allowRound(c, st) {
 		return false
 	}
-	if factory.AsksBeforeStep(it, i) {
-		return lp.askBeforeStep(c, i, name)
+	// MANUAL NO LONGER HOLDS A STEP FOR THE PERSON'S WORD BEFORE IT RUNS (the
+	// owner's decision of 2026-11-17). Manual is about the plan and about
+	// anything public: the pipeline's approve steps and every public approval
+	// still ask, and the steps between them run on. A post step IS a public
+	// act (it comments, labels, opens or closes on GitHub), so Manual still
+	// asks before one.
+	if factory.AsksBeforePost(it, i) {
+		return lp.askBeforePost(c, i, name)
 	}
 
 	exec := lp.r.opts.Exec[kindOf(st)]
@@ -1354,7 +1361,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				lp.stop(c)
 				return false
 			}
-			if words := strings.TrimSpace(a.words); words != "" && words != factory.ChoiceTryOnceMore && !strings.EqualFold(words, "yes") {
+			if words := factory.RoundNote(a.words); words != "" {
 				lp.addNote(c.id, words)
 			}
 			continue
@@ -1512,11 +1519,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				lp.stop(c)
 				return false
 			}
-			words := a.words
-			if token := strings.ToLower(strings.TrimSpace(words)); token == factory.ChoiceTryOnceMore || token == "yes" {
-				words = ""
-			}
-			lp.addNote(c.id, words)
+			lp.addNote(c.id, factory.RoundNote(a.words))
 			round++
 			limit = max(limit, round)
 			_ = lp.write(c, func(it *factory.Item) error { it.Stream.Phases[i].RoundLimit = limit; return nil })

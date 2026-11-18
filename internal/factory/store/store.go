@@ -726,6 +726,10 @@ func nextDoc(before doc, it factory.Item, revision int) doc {
 	// The watchdog's record of a stall is its own bookkeeping about the same
 	// facts: sighting one must not make a person's press on the job stale.
 	prior.Stall, next.Stall = nil, nil
+	// So is the main agent's hold on a stop (factory's handoff.go): handing a
+	// stop over, counting its turn or handing it back must not make a
+	// person's press on the job stale.
+	prior.Handoff, next.Handoff = nil, nil
 	return doc{Revision: revision,
 		BudgetRevision: revisionSince(before.BudgetRevision, revision, before.Item.Cap != it.Cap),
 		ActionRevision: revisionSince(before.ActionRevision, revision, !sameAction(prior, next)),

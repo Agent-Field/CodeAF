@@ -70,6 +70,11 @@ func (s *Scenario) Faults() []string {
 		if w.Deadline.IsZero() {
 			faults = append(faults, "waits on "+w.Who+" with no deadline")
 		}
+		// THE PERSON MAY STILL ACT WHILE THE MAIN AGENT HOLDS A STOP: every
+		// action the job offers them is still taken by its door.
+		if _, handed := factory.HandedOver(it); handed {
+			faults = append(faults, s.personFaults(it)...)
+		}
 	}
 	return faults
 }
@@ -102,6 +107,7 @@ func (s *Scenario) observe(before, after factory.Item) {
 	if after.ID != s.Job || before.Wait == nil || after.Wait == nil {
 		return
 	}
+	s.stopHanded(before, after)
 	if waitKey(before) == waitKey(after) && !before.Wait.Since.Equal(after.Wait.Since) {
 		s.mu.Lock()
 		s.clockFaults = append(s.clockFaults, fmt.Sprintf("a write left the wait at %s and moved its clock from %s to %s", waitKey(after), before.Wait.Since.Format(time.RFC3339Nano), after.Wait.Since.Format(time.RFC3339Nano)))
@@ -228,7 +234,22 @@ func (s *Scenario) copyFactory() *factoryCopy {
 	if err != nil {
 		s.T.Fatal(err)
 	}
-	c.handler = serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, Now: c.clock.Now, LeaseOptions: lease.Options{Now: c.clock.Now}})
+	c.handler = serve.New(seam, serve.Config{Address: "http://test", Store: st, Record: history, Now: c.clock.Now, LeaseOptions: lease.Options{Now: c.clock.Now},
+		Stopped: stillDeciding})
+	// A stop the main agent holds is held on the copy too, by an agent that
+	// is still deciding, so a press there is the person's press beside it.
+	if cur, err := st.Get(s.Job); err == nil {
+		if _, handed := factory.HandedOver(cur); handed && cur.Handoff.Turns > 0 {
+			_ = st.Annotate(s.Job, func(it *factory.Item) error {
+				if it.Handoff != nil {
+					h := *it.Handoff
+					h.Turns, h.TurnAt = 0, time.Time{}
+					it.Handoff = &h
+				}
+				return nil
+			})
+		}
+	}
 	return c
 }
 

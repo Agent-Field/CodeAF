@@ -58,6 +58,16 @@ type Config struct {
 	// context that ends when the service closes. Nil is a factory with no
 	// manager to ask: a stall then goes straight to the job's person.
 	Stalled func(ctx context.Context, it factory.Item, stall factory.Stall) (said string, err error)
+	// Stopped gives the main agent of a job its one turn on a stop it may
+	// decide (handoff.go): the host puts the stop to the job's own
+	// conversation, which carries its decision out through the manager_decide
+	// door, and answers what the main agent said. wait is what the person
+	// would be asked for. It is called off the settle pass, one turn at a
+	// time for a job, under a context that ends at the handoff's deadline or
+	// when the service closes. Nil is a factory with no main agent: every
+	// stop then goes straight to the job's person. A host with nobody to ask
+	// just now answers [ErrNotAsked].
+	Stopped func(ctx context.Context, it factory.Item, wait factory.Wait) (said string, err error)
 	// Scout is Look closer on this factory (scout.Door.Look): nil when the
 	// factory has no model to look with, and the route then says so.
 	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
@@ -646,8 +656,16 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	// One token lookup for the whole list. Presenting each job would otherwise
 	// ask again, and the host's answer can start a process.
 	r = h.rememberHostToken(r)
+	held := false
 	for i := range q.Jobs {
+		was := q.Jobs[i].NeedsYou
 		h.presentJob(r, &q.Jobs[i])
+		held = held || (was != nil && q.Jobs[i].NeedsYou == nil)
+	}
+	// A stop its main agent holds leaves the needs-you groups with the cards
+	// (api.PresentMainAgentHold).
+	if held {
+		api.RegroupNeedsYou(&q)
 	}
 	h.repoCheckouts(r.Context(), q.Repos)
 	summarize := h.summaries(r)

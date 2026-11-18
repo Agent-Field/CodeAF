@@ -234,6 +234,9 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 		// A stalled job is reported to its manager, one turn of its own
 		// conversation (appfactory_watchdog.go).
 		Stalled: h.stalled,
+		// A stop the main agent may decide is handed to it first, one turn of
+		// the job's own conversation (appfactory_stops.go).
+		Stopped: h.stopped,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			if h.rules != nil {
 				return h.rules(ctx, repo, dir)
