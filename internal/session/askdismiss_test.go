@@ -73,3 +73,65 @@ func TestDismissingALaterQuestionTellsTheModelAtItsNextStep(t *testing.T) {
 		t.Fatalf("the next request did not tell the model: %q", carried)
 	}
 }
+
+// A DISMISSAL WHILE NOTHING RUNS IS OWED TO THE NEXT TURN, NOT QUEUED AS WORK.
+// The note waits beside the queues rather than on steering, so the idle
+// session can still be handed off, and the next turn carries it.
+func TestDismissingWhileIdleLeavesTheSessionIdleAndTellsTheNextTurn(t *testing.T) {
+	var carried []string
+	rig := leaveAQuestionStanding(t, func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		carried = userLines(messages)
+		return textResponse("noted"), nil
+	})
+	question := rig.agent.OpenQuestions()[0]
+	if err := rig.agent.DismissQuestion(question.Token()); err != nil {
+		t.Fatal(err)
+	}
+	waitForAsk(t, rig.asks, EventQuestionWithdrawn)
+	if queued := steeringQueue(rig.agent); len(queued) != 0 {
+		t.Fatalf("an idle dismissal queued work on steering: %q", queued)
+	}
+	rig.agent.mu.Lock()
+	held := len(rig.agent.heldNotes)
+	rig.agent.mu.Unlock()
+	if held != 1 {
+		t.Fatalf("%d notes held for the next turn, want the dismissal", held)
+	}
+	collect(t, mustSubmit(t, rig.agent, "what next"))
+	if !strings.Contains(strings.Join(carried, "\n"), `Your question "Which colour for the hall?": `+askDismissed) {
+		t.Fatalf("the next turn did not carry the dismissal: %q", carried)
+	}
+	rig.agent.mu.Lock()
+	held = len(rig.agent.heldNotes)
+	rig.agent.mu.Unlock()
+	if held != 0 {
+		t.Fatalf("%d notes still held after the turn that read them", held)
+	}
+}
+
+// A NOTE OWED TO THE NEXT TURN DOES NOT HOLD AN IDLE SESSION. The hand-off
+// gate reads idle before and after it, and the next turn still reads it.
+func TestANoteForTheNextTurnLeavesAnIdleSessionReadyForHandoff(t *testing.T) {
+	var carried string
+	completer := &scriptedCompleter{steps: []step{func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		carried = userTextIn(messages)
+		return textResponse("hello"), nil
+	}}}
+	agent, _ := newTestAgent(t, completer, nil)
+	if !agent.idleForHandoff() {
+		t.Fatal("a fresh session is not idle for hand-off")
+	}
+	if !agent.enqueueNextTurnNote(`Your question "Which colour?": ` + askDismissed) {
+		t.Fatal("the note was refused")
+	}
+	if !agent.idleForHandoff() {
+		t.Fatal("a note owed to the next turn kept the idle session from being handed off")
+	}
+	if count := conversationRequests(completer); count != 0 {
+		t.Fatalf("the note started %d turns, want none", count)
+	}
+	collect(t, mustSubmit(t, agent, "hello"))
+	if !strings.Contains(carried, askDismissed) {
+		t.Fatalf("the next turn's request did not carry the note: %q", carried)
+	}
+}

@@ -145,7 +145,7 @@ func (a *Agent) sayTheQuestionsCameDown(taken []Question) {
 		// A call parked on it reads [askTalkedPast]; one nothing waited on is
 		// told at the model's next step, as a dismissed one is.
 		if q.Later || len(q.Blocking.Tasks) > 0 {
-			a.enqueueAmbientNote("Your question \"" + strings.TrimSpace(q.Head) + "\": " + askTalkedPastNote)
+			a.enqueueNextTurnNote("Your question \"" + strings.TrimSpace(q.Head) + "\": " + askTalkedPastNote)
 		}
 	}
 }

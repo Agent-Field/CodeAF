@@ -3714,6 +3714,13 @@ type Agent struct {
 	// loop recovery and task control are instructions for the next step, not
 	// periodic telemetry.
 	ambient []userMessage
+	// heldNotes is step guidance owed to the NEXT turn, queued while no turn
+	// was running ([Agent.enqueueNextTurnNote]): a question the person
+	// dismissed or talked past while the session sat idle. It is not a queue
+	// anything is waiting on, so unlike steering and ambient it does not keep
+	// the session from being handed off idle ([Agent.idleForHandoff]); the turn
+	// that opens next moves it onto steering, and its first step reads it.
+	heldNotes []userMessage
 	// settling is the acknowledgements this conversation's record has earned and
 	// not yet sent: news whose sender is owed an answer once the record holds it
 	// rather than when the queue took it ([durableDelivery]). They are held here

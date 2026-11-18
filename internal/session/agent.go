@@ -2095,6 +2095,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.rebindClientLocked(a.model)
 	a.stopJobWakeLocked()
 	a.running = true
+	a.takeHeldNotesLocked()
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.runnerTurn = user.runner
 	// The person's words belong to the turn they open; a woken turn answering a
@@ -3327,11 +3328,14 @@ func (a *Agent) rememberPersonLocked(user userMessage, kept ai.Message) func() {
 // messages not yet in it — after a boundary that let messages go
 // ([presentationIndex.retain]).
 func (a *Agent) retainPresentationLocked() {
-	queued := make([]ai.Message, 0, len(a.steering)+len(a.ambient)+len(a.followups))
+	queued := make([]ai.Message, 0, len(a.steering)+len(a.ambient)+len(a.heldNotes)+len(a.followups))
 	for _, user := range a.steering {
 		queued = append(queued, user.message)
 	}
 	for _, user := range a.ambient {
+		queued = append(queued, user.message)
+	}
+	for _, user := range a.heldNotes {
 		queued = append(queued, user.message)
 	}
 	for _, follow := range a.followups {
@@ -4253,6 +4257,53 @@ func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 // guidance is an instruction for the next model step and stays on steering.
 func (a *Agent) enqueueAmbientNote(text string) {
 	a.enqueueNote(userText(text))
+}
+
+// enqueueNextTurnNote is step guidance about something THE PERSON did that
+// the model must hear, and that nobody is waiting on: a question they
+// dismissed or talked past (askdismiss.go, steerquestion.go).
+//
+// WHILE A TURN RUNS it is [Agent.enqueueAmbientNote]: the steering queue,
+// read at the model's next step. WHILE NONE RUNS it is held for the next turn
+// instead ([Agent.heldNotes]). A note on steering in an idle session is work
+// the session looks like it still owes, so it would keep the session from
+// being handed off idle until somebody happened to type; and the seat check
+// [Agent.enqueueNote] makes would drop it outright on a seat that cannot work
+// right now, when nothing is written until a turn opens, and that turn makes
+// its own check.
+//
+// The choice is made under the lock the turn's start and end take, so the note
+// cannot land on steering in the instant after the last drain of a turn.
+func (a *Agent) enqueueNextTurnNote(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	note := userText(text)
+	note.message = textMessage("user", text)
+	note.authored = true
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return false
+	}
+	if a.running {
+		a.steering = append(a.steering, note)
+	} else {
+		a.heldNotes = append(a.heldNotes, note)
+	}
+	return true
+}
+
+// takeHeldNotesLocked moves the notes held for the next turn onto steering,
+// where the turn now opening reads them at its first step. The caller holds
+// a.mu and is starting that turn.
+func (a *Agent) takeHeldNotesLocked() {
+	if len(a.heldNotes) == 0 {
+		return
+	}
+	a.steering = append(a.steering, a.heldNotes...)
+	a.heldNotes = nil
 }
 
 // enqueueAmbient is the boundary-held context queue's one door. It mirrors
