@@ -46,9 +46,15 @@ type taskFloor struct {
 	// carried are the tasks, by name, whose following step has been handed
 	// its conversation back.
 	carried map[int]map[string]bool
+	// checked are the finished tasks, by name, whose change this runner has
+	// looked at ([floorLoop.settleTasks]). A run that starts afresh keeps
+	// them: a task checked in an earlier drive of the job is not checked
+	// again, until it begins again.
+	checked map[int]map[string]bool
 }
 
-// forget drops everything kept about a job's tasks: its run starts afresh.
+// forget drops everything kept about a job's tasks but which it has checked:
+// its run starts afresh.
 func (t *taskFloor) forget(id int) {
 	delete(t.queued, id)
 	delete(t.before, id)
@@ -363,6 +369,7 @@ func (lp *floorLoop) taskBegins(c *loopCtl, it factory.Item, ph factory.Phase) {
 		lp.tasks.before[c.id] = map[string]string{}
 	}
 	lp.tasks.before[c.id][ph.Name] = key
+	delete(lp.tasks.checked[c.id], ph.Name)
 	lp.mu.Unlock()
 }
 
@@ -434,33 +441,65 @@ func (lp *floorLoop) placeTasks(c *loopCtl, i, round, limit int) bool {
 // a task that changed files sends the checks that had passed round again
 // ([floorLoop.afterTask]), and one that changed nothing leaves the job where
 // it was.
+//
+// A TASK THAT FINISHED WHERE THIS RUNNER DID NOT SEE IT BEGIN IS TAKEN AS
+// CHANGED. Its checkout as it began is kept only in memory, and only for the
+// drive that began it: a restart, or a job let go and pulled again, between
+// the task's end and this look loses it. A finished task this runner has not
+// checked, with nothing but tasks finished after it, is checked again rather
+// than not at all ([checkMissed]).
 func (lp *floorLoop) settleTasks(c *loopCtl) {
-	lp.mu.Lock()
-	kept := len(lp.tasks.before[c.id])
-	lp.mu.Unlock()
-	if kept == 0 {
-		return
-	}
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil || it.Stream == nil {
 		return
 	}
-	for _, ph := range it.Stream.Phases {
+	phases := it.Stream.Phases
+	for i, ph := range phases {
 		if !factory.IsTask(ph) || ph.State != factory.PhaseDone {
 			continue
 		}
 		lp.mu.Lock()
 		before, ok := lp.tasks.before[c.id][ph.Name]
 		delete(lp.tasks.before[c.id], ph.Name)
+		checked := lp.tasks.checked[c.id][ph.Name]
 		lp.mu.Unlock()
-		if !ok {
+		if !ok && (checked || !checkMissed(phases, i)) {
 			continue
 		}
 		// A checkout that could not be read, then or now, is taken as changed:
 		// checks run again for nothing rather than not at all.
 		after := lp.checkoutNow(it)
-		lp.afterTask(c, ph.Name, before == "" || after == "" || after != before)
+		lp.afterTask(c, ph.Name, !ok || before == "" || after == "" || after != before)
+		lp.mu.Lock()
+		if lp.tasks.checked == nil {
+			lp.tasks.checked = map[int]map[string]bool{}
+		}
+		if lp.tasks.checked[c.id] == nil {
+			lp.tasks.checked[c.id] = map[string]bool{}
+		}
+		lp.tasks.checked[c.id][ph.Name] = true
+		lp.mu.Unlock()
 	}
+}
+
+// checkMissed says the finished task at i may have had no check: nothing but
+// tasks has finished after it, and the run goes on after it. Once its check
+// has run, the steps it sent round again come before it, or a step after it
+// has finished.
+func checkMissed(phases []factory.Phase, i int) bool {
+	next := nextPhase(phases)
+	if next < 0 {
+		next = len(phases)
+	}
+	if next <= i {
+		return false
+	}
+	for k := i + 1; k < next; k++ {
+		if !factory.IsTask(phases[k]) {
+			return false
+		}
+	}
+	return true
 }
 
 // afterTask is what follows a finished task. THE CHECKS THAT HAD PASSED RUN

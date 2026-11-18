@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -460,6 +461,78 @@ func TestAStepCutByATaskCarriesOnInItsChat(t *testing.T) {
 	}
 	if len(write.CarryOn) != 1 || !strings.Contains(write.CarryOn[0], "an extra task ran in this checkout: Add the rounding note.") || !strings.Contains(write.CarryOn[0], "It reported: task went fine") {
 		t.Fatalf("write was not told of the task: %q", write.CarryOn)
+	}
+}
+
+// A TASK THAT FINISHED BEFORE A RESTART IS STILL CHECKED. The checkout as the
+// task began was kept in the memory of the runner that ran it; a runner that
+// takes the job on with the task finished and its check not yet run cannot
+// tell what it changed, so it takes it as changed and sends the checks that
+// had passed round again, rather than skipping them. A task this runner has
+// already checked is not checked again on its next drive.
+func TestATaskFinishedBeforeARestartIsStillChecked(t *testing.T) {
+	var run taskRun
+	g := newRig(t, map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			run.note(job)
+			return done(job.Stage.Name + " went fine"), nil
+		}),
+	}, nil)
+	review := chat("review")
+	review.Until = factory.UntilClean
+	id := g.add("one", chat("plan"), review, chat("write"))
+	task := factory.NamedTaskPhase("task", factory.TaskByMainAgent, "Add the rounding note.")
+	task.State, task.Round, task.Result = factory.PhaseDone, 1, &factory.StageResult{Done: true, Output: "added the note"}
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		// The job as a runner pulls it after the one that ran the task went
+		// away: the task finished, its check never ran.
+		it.State = factory.StateRunning
+		it.Stream = &factory.Stream{Paused: true, Cur: 3, Phases: []factory.Phase{
+			{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Output: "the plan"}},
+			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Output: "clean"}},
+			task,
+			{Name: "write", Kind: factory.StageChat, State: factory.PhasePending},
+		}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Hold(id, false); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateLanded)
+	if got := run.rounds(); !slices.Equal(got, []string{"review#2", "write#1"}) {
+		t.Fatalf("rounds ran as %v; want the review checked again before write", got)
+	}
+	if !strings.Contains(fmt.Sprint(it.Stream.Log), "task changed files. Checking again from review.") {
+		t.Fatalf("the log does not say the task was checked: %v", it.Stream.Log)
+	}
+}
+
+// checkMissed is true only for a finished task nothing but tasks has finished
+// after, on a run that goes on after it.
+func TestCheckMissedOnlyForATaskWithNothingFinishedAfterIt(t *testing.T) {
+	task := func(state factory.PhaseState) factory.Phase {
+		ph := factory.NamedTaskPhase("task", factory.TaskByYou, "x")
+		ph.State = state
+		return ph
+	}
+	step := func(name string, state factory.PhaseState) factory.Phase {
+		return factory.Phase{Name: name, Kind: factory.StageChat, State: state}
+	}
+	for name, c := range map[string]struct {
+		phases []factory.Phase
+		want   bool
+	}{
+		"next step pending":       {[]factory.Phase{step("review", factory.PhaseDone), task(factory.PhaseDone), step("write", factory.PhasePending)}, true},
+		"the step it cut":         {[]factory.Phase{task(factory.PhaseDone), step("write", factory.PhaseRunning)}, true},
+		"a task after it":         {[]factory.Phase{task(factory.PhaseDone), task(factory.PhaseDone), step("write", factory.PhasePending)}, true},
+		"a step after it done":    {[]factory.Phase{task(factory.PhaseDone), step("write", factory.PhaseDone), step("test", factory.PhasePending)}, false},
+		"checks sent round again": {[]factory.Phase{step("review", factory.PhasePending), task(factory.PhaseDone), step("write", factory.PhasePending)}, false},
+	} {
+		if got := checkMissed(c.phases, slices.IndexFunc(c.phases, factory.IsTask)); got != c.want {
+			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
 	}
 }
 
