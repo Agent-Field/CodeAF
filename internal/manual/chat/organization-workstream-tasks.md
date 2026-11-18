@@ -141,6 +141,12 @@ A task's Activity and comments is one thread everyone in the workstream sees: wh
 
 A private conversation with Afi stays private. If something you ask Afi there changes shared work, the task gets one line ("Priya asked Afi to keep it under 300 words"), never the conversation. "Post this to the task" adds Afi's answer to the thread, marked as posted by you.
 
+## Afi posted a long comment, where did Afi's draft go — what Afi makes is a file, the one line with Open
+
+What Afi or a chat makes on a task is a file, never a long comment. A comment from an agent is a line or two. When one writes more than 400 characters or more than 3 lines on a task's thread, the words are kept as a document in the workstream's Files instead, made by that task and named by its first heading or else by the task's title, and the thread gets one line: the agent's mark, "Afi made" and the document's name, with Open. Open shows the document in place, where you can read it, edit it and comment on its passages; it is also listed under the task's Result.
+
+This holds on your own computer and on an organization's server alike. A person's comment is never turned into a file.
+
 ## attach a file in a comment, and Attach to the task from Afi's pane
 
 - **In a comment**: the **+** in a task's comment box picks files from your computer; they show as chips you can take off before sending. Sending adds them to Files, attaches them to the task (its **Uses**), and ends the comment with "Attached Interview notes.pdf". Nothing is uploaded until you send, so a comment you give up leaves nothing behind. Someone who only views the workstream has no **+**.

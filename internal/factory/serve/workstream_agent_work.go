@@ -644,7 +644,9 @@ func (d *agentDoor) wsTaskComment(ctx context.Context, args json.RawMessage) (an
 		return nil, err
 	}
 	kind := firstNonEmpty(a.Kind, factory.TaskEventComment)
-	most := 2000
+	// A long comment is not refused: it is kept as a file (keepAsFile), so
+	// the words are never lost to a limit the model did not see coming.
+	most := factory.TaskCommentWordsMost
 	if kind == factory.TaskEventRequestNote {
 		most = 300
 	}
@@ -666,8 +668,12 @@ func (d *agentDoor) wsTaskComment(ctx context.Context, args json.RawMessage) (an
 		return nil, fmt.Errorf("invalid arguments: kind is comment, offer or request_note, not %q", kind)
 	}
 	id := strings.TrimSpace(a.Task)
-	if _, err := d.task(ctx, id); err != nil {
+	t, err := d.task(ctx, id)
+	if err != nil {
 		return nil, err
+	}
+	if kind == factory.TaskEventComment && factory.TaskCommentTooLong(text) {
+		return d.keepAsFile(ctx, t, a.Text)
 	}
 	raw, err := d.call(ctx, d.h.commentWorkstreamTask, http.MethodPost, "/v1/workstreams/"+d.id+"/tasks/"+url.PathEscape(id)+"/comment", map[string]string{"tid": id}, api.TaskComment{TaskNote: note}, -1)
 	if err != nil {
@@ -685,6 +691,37 @@ func (d *agentDoor) wsTaskComment(ctx context.Context, args json.RawMessage) (an
 		said = "Left the one line on the task."
 	}
 	return map[string]any{"said": said, "event": ev.ID}, nil
+}
+
+// keepAsFile keeps a long comment as a document the task made, and leaves
+// the one "made" line on its thread. WHAT AN AGENT MAKES IS A FILE (build
+// spec v2, priority 1): a draft posted as a comment could not be opened,
+// edited, suggested on or read by the next task, and buried every person's
+// comment under it.
+func (d *agentDoor) keepAsFile(ctx context.Context, t factory.WorkstreamTask, markdown string) (any, error) {
+	name := factory.MadeFileName(markdown, t.Title)
+	raw, err := d.call(ctx, d.h.createWorkstreamFile, http.MethodPost, "/v1/workstreams/"+d.id+"/files", nil,
+		api.FileNew{Kind: factory.FileDocument, Name: name, FromTask: t.ID, BodyMD: markdown,
+			MadeBy: &factory.FileMaker{Kind: factory.MakerAfi, Name: "Afi"}}, -1)
+	if err != nil {
+		return nil, err
+	}
+	var f factory.WorkstreamFile
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return nil, err
+	}
+	d.wrote.note(f.ID)
+	note := factory.TaskNote{Kind: factory.TaskEventMade, Text: f.Name, File: f.ID}
+	raw, err = d.call(ctx, d.h.commentWorkstreamTask, http.MethodPost, "/v1/workstreams/"+d.id+"/tasks/"+url.PathEscape(t.ID)+"/comment", map[string]string{"tid": t.ID}, api.TaskComment{TaskNote: note}, -1)
+	if err != nil {
+		return nil, err
+	}
+	var ev factory.WorkstreamTaskEvent
+	if err := json.Unmarshal(raw, &ev); err != nil {
+		return nil, err
+	}
+	said := fmt.Sprintf("That was too long for a comment, so it is kept as the document %q in Files, made by this task; the thread has one line naming it. Write only a line or two as a comment.", f.Name)
+	return map[string]any{"said": said, "event": ev.ID, "file": fileBrief(f)}, nil
 }
 
 // ── files ──
