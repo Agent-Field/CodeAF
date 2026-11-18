@@ -2,9 +2,9 @@
 
 ## Request access to sync storage — turn on sync storage, why don't my chats sync to my other computer
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing does not turn it on. New chats, files and saved keys stay on this computer; the relay refuses even encrypted uploads. Existing stored frames stay readable and nothing is deleted.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing does not turn it on. Saved keys stay on this computer, and no chat or file content is uploaded; the relay refuses even encrypted uploads. A chat can still move live between your paired computers while both are running codeaf: see *Move a chat while sync storage is off*. Existing stored frames stay readable and nothing is deleted.
 
-Pairing, seeing your devices and `--at` still work while the other computer is on. With storage off, new chat turns cannot be continued on another computer while the first is off, recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced keys, preferences and shared memories also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
+Pairing, seeing your devices and `--at` still work while the other computer is on. With storage off, new chat turns cannot be continued on another computer while the first is off (live transfer needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
 
 After pairing, open **Settings → Devices → sync storage**. When it says **off**, press **enter** (`enter request access`). This opens a pre-filled GitHub issue; the panel also shows the request code and link if no browser opens. The request code is your identity id (`id_` followed by 32 hex digits). Approval is tied to this identity id. It is safe to post publicly and grants nothing by itself.
 
@@ -19,6 +19,14 @@ Before any answer, the three hosted addresses on *Hosted relay or your own relay
 Eligible serving processes check after their first home-state round; chat windows check at launch and after `/status` in chat, and every ten minutes while a relay that reports storage is off (or a hosted address is still unknown). Storage on or an answer without the field stops requests. Once approval is read, waiting chats and uploads start within a minute without a restart. Opening a chat never waits for a relay reading. A revoked or removed device stops approval polling.
 
 Pairing asks for the storage answer once alongside its other finishing work, with a best-effort budget of about 1.5 seconds. A timely on or off answer is saved for other open windows before pairing finishes. A timeout, failed ask or absent field leaves the saved answer untouched and adds no sentence.
+
+## Does the sync service keep my chat when I move it without sync storage — what a live transfer leaves behind
+
+While hosted sync storage is off and a chat moves by live transfer, the sync service keeps no chat or file content: the encrypted bytes pass through while both of your computers are running codeaf and are never written to the service. Everything stays encrypted end to end.
+
+The service does hold a directory record for the chat, the same kind of thing pairing already stores: its id, which computer has it, times, whether it is held, and the sealed keys that only your own computers can open. That record leaves the title and the folder empty, so the service holds no chat name and no folder name. The list on your other computer shows the chat as `untitled` until you take it there.
+
+`CODEAF_LIVE_TRANSFER=off` restores the previous behaviour: while storage is off, chats stay on the computer that has them. Live transfer does nothing when storage is approved or with a self-hosted sync service. *Move a chat while sync storage is off* has the steps.
 
 ## Does the relay store my chats — what is on the relay's disk
 

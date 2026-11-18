@@ -213,7 +213,7 @@ requires updating both ends before retrying.
 
 ## The task copy could not be sent
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Task copies wait for hosted sync storage approval (Settings → Devices → sync storage); chats can still move live, but a task copy is sent through that storage. A self-hosted sync service with `--store` needs no request.
 
 `the task copy changed while it was being sent; try again` keeps the copy here.
 Finish or pause the edits, then retry the task.

@@ -2,7 +2,7 @@
 
 ## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+While hosted sync storage is off, a chat still moves live between your paired computers when both are running codeaf; see *Move a chat while sync storage is off*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -12,7 +12,7 @@ There is no account and no password to log in with. You pair: a code on one scre
 
 Use a code shown on a screen you own.
 
-The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them only when sync storage is on.
+The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them when sync storage is on, and move live while both computers are running codeaf when it is off (*Move a chat while sync storage is off*).
 
 This page is the code way. A new computer can also ask to join and be approved from a link, with a four-digit check: the page *Adding a computer to your devices, approving it, and removing it* tells it.
 
@@ -37,18 +37,14 @@ The code is good for 10 minutes. It works once.
 ## Share my conversation with my other computer
 
 Pair the computers with `/pair` or `codeaf pair`. A computer with submitted
-chats requires `--replace`. On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage). By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), **Continue here** moves a conversation to the other computer. With `idle handoff` on, an idle chat lets go about 2 seconds after going idle once saved to the sync service, and an explicitly released chat opens directly on the other computer (Enter on terminal Home, or `agents.open` on `can_open` rows in the app) with no Continue-here step; **Move here** or **Continue here** moves one another computer still holds or whose hold merely lapsed, including when its holder was working.
+chats requires `--replace`. By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), **Continue here** moves a conversation to the other computer. With `idle handoff` on, an idle chat lets go about 2 seconds after going idle once saved to the sync service, and an explicitly released chat opens directly on the other computer (Enter on terminal Home, or `agents.open` on `can_open` rows in the app) with no Continue-here step; **Move here** or **Continue here** moves one another computer still holds or whose hold merely lapsed, including when its holder was working.
 
 ## Sync my chats — get my chats on my other computer, how to sync between paired computers
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
-Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired computers through the saved or hosted relay when storage is on. `CODEAF_SYNC_URL=off` stops relay traffic. A never-paired home sends no relay requests.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired computers through the saved or hosted relay when storage is on. While hosted storage is off, a chat moves live when both computers are running codeaf (*Move a chat while sync storage is off*). `CODEAF_SYNC_URL=off` stops relay traffic. A never-paired home sends no relay requests.
 
 ## Do older chats sync after pairing — independent copies and untouched originals
-
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Older chats become movable through independent copies after pairing; their original layout and files stay untouched for older builds. Chats active in the last 30 days are prepared in the background, and opening any other older chat here prepares its copy so it appears on the other computer regardless of its age. A never-paired home sends no relay requests.
 
@@ -203,11 +199,9 @@ too many pairings from this network; wait 7 min
 
 ## What the pairing shares — the other computer holds everything this one holds
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; saved chats and vault content still need enabled sync storage to copy.
+**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; vault content still needs enabled sync storage to copy; chats move live while both computers are running codeaf even when it is off.
 
 It is not a view of your chats. It is a copy of you. Pair only a computer you own and trust.
 
@@ -297,7 +291,7 @@ writes made after the replacement was installed.
 
 ## I got a new laptop — move my chats to a new machine
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+While hosted sync storage is off, a chat still moves live between your paired computers when both are running codeaf; see *Move a chat while sync storage is off*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -305,7 +299,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 2. On the new computer, run `codeaf pair <code>`, or type `/pair <code>` in the chat, or type the code on the first screen.
 3. Compare the three words. Answer `y` on the old computer.
 
-The new computer now has your identity. If both computers are on the same relay and storage is enabled, chats sync between them. Read *Sync your chats between machines* in the terminal page for the sync settings.
+The new computer now has your identity. If both computers are on the same relay and storage is enabled, chats sync between them; while hosted storage is off, a chat moves live when both computers are running codeaf. Read *Sync your chats between machines* in the terminal page for the sync settings.
 
 There is no phone app for continuing chats. A phone browser can open the `/p/` pairing-link page, but that page only shows the approval command and a link for a computer with codeaf installed; it does not turn the browser into a paired device. Use a supported desktop or server build to pair and continue chats.
 
@@ -381,7 +375,7 @@ The first-run line about the hosted relay is said once, when chats are first cop
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Your chats live on your own computer first. When sync storage is enabled they are also copied, sealed,
-to the relay, so your other computers can open them. Which relay is one setting,
+to the relay, so your other computers can open them. While hosted storage is off, a chat can still move live, sealed, from the computer that has it to the one taking it while both are running codeaf, and nothing is stored. Which relay is one setting,
 `CODEAF_SYNC_URL`, and there is no sign-in and no account:
 
 - **Unset** uses this build's channel relay when it has one — `https://codeaf.agentfield.ai/fabric` on stable releases and release candidates, `https://caf-fabric-staging.instrument-santosh.workers.dev` on staging builds, and `https://caf-fabric-dev.instrument-santosh.workers.dev` on dev builds and local builds from source — and says so once, in one
@@ -398,8 +392,6 @@ to the relay, so your other computers can open them. Which relay is one setting,
   nothing else changes.
 
 ## Is my code private on the relay — encrypted chats, files and visible metadata
-
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 **Is my code private?** Everything a chat holds, its turns and the files it saved, is sealed
 on your computer with a key only your own computers have, before it is sent. The relay keeps
@@ -489,8 +481,6 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 ## Which door do I use — pairing, --at or --host
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 - **The same chats on both computers:** pair them with `/pair`. This page.
@@ -500,8 +490,6 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 
 ## Moving chats on Windows — vault permissions, refused names, symlinks, hard links, WSL and every build
-
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -543,8 +531,6 @@ and existing remote access still work. Use a build carrying the newer engine, or
 
 ## Does a CA certificate bundle stay out as a private key — cacert.pem
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 A PEM certificate bundle containing only `BEGIN CERTIFICATE` blocks is kept in saved history and can move with the workspace. A `.pem` suffix alone does not make it a private key. Files containing PEM private-key headers (including encrypted keys and OpenSSH keys), PuTTY private keys, and PKCS#12 key containers are withheld; a PEM containing both certificates and a private key is withheld too. The same folder exclusions still apply: a certificate inside an install folder left behind for rebuilding is rebuilt with that folder.
@@ -584,12 +570,10 @@ Once this computer has its own saved pairing keys, a sent turn, tracked work, a 
 
 ## What happens to chats made with chat --once before the first pairing?
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 If this computer has no saved pairing keys yet — for example it has only ever run `codeaf chat --once` — those chats are kept when it first pairs without `--replace`, and pairing does not discard or hide them. They are not sent at the moment of pairing. The next time codeaf's window opens on this computer, each one is saved for syncing and appears on your other computers' Home, where it can be continued (or opened directly when `idle handoff` is turned on, because no computer holds it).
 
 A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.
 
 ## Why pairing alone does not copy saved chats — sync storage access
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move live between your paired computers while both are running codeaf (*Move a chat while sync storage is off*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

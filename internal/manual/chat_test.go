@@ -3693,6 +3693,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},
+		// LIVE TRANSFER: with hosted sync storage off a chat still moves between
+		// paired computers while both are running codeaf. The words are the wish
+		// (move it without storage), the worry (does the other one have to be on),
+		// the refusal sentence they will read, and the one row that looks wrong.
+		{"can I move a chat without sync storage", "continuing-a-chat-on-another-computer"},
+		{"does my other computer need to be on to continue a chat", "continuing-a-chat-on-another-computer"},
+		{"how do I turn off live transfer", "continuing-a-chat-on-another-computer"},
+		{"why does a chat show as untitled on my other computer", "continuing-a-chat-on-another-computer"},
+		{"continue here says another computer is not on right now", "continuing-a-chat-on-another-computer"},
+		{"what is live transfer", "continuing-a-chat-on-another-computer"},
+		{"CODEAF_LIVE_TRANSFER", "continuing-a-chat-on-another-computer"},
+		{"can a third computer take a chat from my second one while the first is off", "continuing-a-chat-on-another-computer"},
+		{"what still waits for sync storage approval when live transfer is on", "continuing-a-chat-on-another-computer"},
+		{"does the sync service store my chat when I move it without sync storage", "relay-what-it-stores-and-sees"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
