@@ -28,13 +28,25 @@ const (
 	managerActsRecent  = 6
 )
 
-// managerActsOf reads the job's public acts, oldest first.
-//
-// THIS IS THE ONE PLACE THE STATUS MEETS THE JOB'S ACTS RECORD. The record
-// (Item.Acts) is built by the public-acts work in another change; until the
-// two meet this answers none, and every line below is written from what it
-// returns, so connecting it is this function's body and nothing else.
-var managerActsOf = func(Item) []ManagerAct { return nil }
+// managerActsOf reads the job's public acts, oldest first: each said in the
+// record's own words ([ActWords]), a reply or a comment with the text that
+// will be posted, and a finished one with what it did or why it was not sent.
+// It is a variable so the status tests can put acts of their own in.
+var managerActsOf = func(it Item) []ManagerAct {
+	out := make([]ManagerAct, 0, len(it.Acts))
+	for _, a := range it.Acts {
+		words := ActWords(a)
+		if text := strings.TrimSpace(a.Text); text != "" {
+			words += ": " + text
+		}
+		result := a.Result
+		if a.State == ActFailed {
+			result = a.Error
+		}
+		out = append(out, ManagerAct{State: a.State, Words: words, Result: result})
+	}
+	return out
+}
 
 // ManagerActsWords is the job's public acts as lines a person reads: the ones
 // that wait for approval, each said in full, then the latest few that were
@@ -105,6 +117,15 @@ func ManagerThreads(it Item) (lines []string, more int) {
 			continue
 		}
 		line := item.ID
+		// Who wrote it, from the record and not from the text: a commenter
+		// with no write access is said so here, where the manager picks the
+		// thread to answer.
+		if by := strings.TrimSpace(item.By); by != "" {
+			line += " · by @" + strings.TrimPrefix(by, "@")
+			if item.Untrusted {
+				line += " (untrusted: no write access)"
+			}
+		}
 		if text := feedbackText(pr.Feedback, item.ID); text != "" {
 			line += " · " + text
 		}
