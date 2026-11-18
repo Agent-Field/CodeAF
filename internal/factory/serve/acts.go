@@ -143,7 +143,7 @@ func (h *Handler) act(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	}
 	now := h.clock().UTC()
 	if press {
-		if status, words := h.pressPublish(r, it, body.Why); status >= 300 {
+		if status, words := h.pressPublish(r, it, by, body.Why); status >= 300 {
 			h.refuse(w, status, firstWords(words, "The push approval was refused."), "act_refused", "", nil, factory.JobState(it))
 			return
 		}
@@ -235,15 +235,15 @@ func actStateWords(a factory.PublicAct) string {
 }
 
 // pressPublish presses the job's waiting publish approval through the approve
-// door itself, with every check that door makes, and answers its status and,
-// for a refusal, its words.
-func (h *Handler) pressPublish(r *http.Request, it factory.Item, words string) (int, string) {
+// door itself, with every check that door makes, for by, and answers its
+// status and, for a refusal, its words.
+func (h *Handler) pressPublish(r *http.Request, it factory.Item, by, words string) (int, string) {
 	raw, _ := json.Marshal(api.Approve{Commit: it.HeadCommit, Words: words})
 	inner := r.Clone(r.Context())
 	inner.Body = io.NopCloser(bytes.NewReader(raw))
 	inner.ContentLength = int64(len(raw))
 	w := &replayWriter{header: make(http.Header)}
-	h.approve(w, inner, it)
+	h.approveAs(w, inner, it, by)
 	if w.status() < 300 {
 		return w.status(), ""
 	}
@@ -427,7 +427,10 @@ func approveActsWithPush(cur *factory.Item, who string, now time.Time) {
 	if len(waiting) == 0 {
 		return
 	}
-	factory.ApproveActs(cur, factory.NormalizeHandle(who), true, now)
+	if who != factory.ActByMainAgent {
+		who = factory.NormalizeHandle(who)
+	}
+	factory.ApproveActs(cur, who, true, now)
 	logAct(cur, now, "said", "Approved with the push: "+factory.ActsSummary(waiting)+". Carried out once the push has landed.")
 }
 

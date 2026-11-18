@@ -771,6 +771,51 @@ func TestPushPressesOrWaitsOnThePublishApproval(t *testing.T) {
 	}
 }
 
+// THE MAIN AGENT'S PUSH IN AUTO IS AUTO'S, and so are the acts it carries:
+// the approval reads automatic, the acts that waited beside it are approved
+// as the main agent's, and the person who authorized the press keeps Undo.
+// Switching to Manual then withdraws the push and puts the acts back to wait.
+func TestTheManagersAutoPushIsCreditedToTheMainAgent(t *testing.T) {
+	f := newActsFloor(t)
+	it := f.job(factory.AutonomyManual, func(it *factory.Item) {
+		it.State = factory.StateLanded
+		it.HeadCommit = strings.Repeat("2", 40)
+		it.FollowUp = &factory.PRFollowUp{Kind: "pr", State: "waiting_approval", HeadSHA: actsHead, Reason: "Repair and proof passed locally; updating the existing PR."}
+		it.Proof = []factory.Claim{{Text: "works", OK: true}}
+		it.Stream.Phases[0].State = factory.PhaseDone
+	})
+	// A reply proposed in Manual waits beside the push.
+	if status, answer, words := f.post(it.ID, api.ActVerb, ask(factory.ActByMainAgent, replyAsk("Fixed in the next push."))); status != http.StatusOK || answer.Results[0].State != factory.ActProposed {
+		t.Fatalf("status %d %s, answer %+v", status, words, answer)
+	}
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error { cur.Autonomy = factory.AutonomyAuto; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	status, answer, words := f.post(it.ID, api.ActVerb, ask(factory.ActByMainAgent, api.ActAsk{Kind: factory.ActKindPush}))
+	if status != http.StatusOK || answer.Results[0].State != api.ActPressed {
+		t.Fatalf("status %d %s, answer %+v", status, words, answer)
+	}
+	got := f.item(it.ID)
+	if a := got.Approval; a == nil || a.State != "approving" || !a.Automatic || a.DecidedBy != "me" {
+		t.Fatalf("approval %+v", got.Approval)
+	}
+	if a := got.Acts[0]; a.State != factory.ActApproved || a.ApprovedBy != factory.ActByMainAgent || !a.WithPush || a.AfterPush != got.HeadCommit {
+		t.Fatalf("act %+v", a)
+	}
+	// Manual withdraws Auto's push, and Auto's yes on the act with it.
+	if err := f.st.Update(it.ID, func(cur *factory.Item) error {
+		cur.Autonomy = factory.AutonomyManual
+		cur.Approval = nil
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.h.settleActs([]factory.Item{f.item(it.ID)})
+	if got = f.item(it.ID); got.Acts[0].State != factory.ActProposed || got.Acts[0].ApprovedBy != "" || len(f.github.Writes()) != 0 {
+		t.Fatalf("after Manual: %+v", got.Acts[0])
+	}
+}
+
 // MERGE IS NEVER CARRIED OUT HERE: the job offers it to its person again.
 func TestMergeIsOnlyEverOffered(t *testing.T) {
 	f := newActsFloor(t)

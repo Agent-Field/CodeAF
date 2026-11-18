@@ -1043,6 +1043,15 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 
 // approve persists a five-second decision before any runner or publish door opens.
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	h.approveAs(w, r, it, factory.ActByYou)
+}
+
+// approveAs is [Handler.approve] pressed for by: the person, or the job's
+// main agent pressing the push in Auto ([Handler.pressPublish]). THE MAIN
+// AGENT'S PRESS IS AUTO'S APPROVAL, recorded as Auto's and withdrawn by
+// Manual like any other, and the acts it carries are approved as the main
+// agent's. The person who authorizes the press keeps its Undo.
+func (h *Handler) approveAs(w http.ResponseWriter, r *http.Request, it factory.Item, by string) {
 	if h.config.Store == nil {
 		h.commitApproval(w, r, it)
 		return
@@ -1080,7 +1089,8 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 		h.fail(w, 422, "approval requires an assignee")
 		return
 	}
-	a.Automatic = false
+	byManager := by == factory.ActByMainAgent
+	a.Automatic = byManager
 	a.Error = ""
 	a.State = "approving"
 	a.DecidedBy = who
@@ -1101,7 +1111,11 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 			cur.MergePolicy = pinned
 			// The same yes covers the public acts that wait beside the push;
 			// they are carried out once it has landed (acts.go).
-			approveActsWithPush(cur, who, a.At)
+			actsBy := who
+			if byManager {
+				actsBy = factory.ActByMainAgent
+			}
+			approveActsWithPush(cur, actsBy, a.At)
 		}
 		return nil
 	})) {
