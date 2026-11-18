@@ -36,7 +36,7 @@ When an agent finishes a task it leaves a **hand-off note**: two to four lines o
 
 ## the agent can't do a task — it asks you instead of failing: Paste what it needs, Do it myself (take it back), Drop it
 
-When the agent doing a task can't go on because an input is missing, or the task needs something it doesn't have (Afi on an organization's server has no web, so it can't open live store views), it doesn't mark the task Failed. It asks the task's owner. The task waits under Waiting on someone with the question "Can you give Afi what it needs?", its reason in its own words, and three answers:
+When the agent doing a task can't go on because an input is missing, or the task needs something it doesn't have (Afi on an organization's server has no web, so it can't open live store content), it doesn't mark the task Failed. It asks the task's owner. The task waits under Waiting on someone with the question "Can you give Afi what it needs?", its reason in its own words, and three answers:
 
 - **Paste what it needs**: write or paste what it lacks (their text, the figures) with the answer. The task runs again with your words.
 - **Do it myself**: you take it back. Done by becomes you, and the task is your own checkbox in Up next; what the agent made stays in the task.
