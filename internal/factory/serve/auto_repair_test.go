@@ -65,6 +65,37 @@ func TestAPolicyFindingInAutoStartsARepairInsteadOfAPause(t *testing.T) {
 	}
 }
 
+// A SEND-BACK THAT FAILS IS SAID ON THE JOB: the attempt is still counted, and
+// the door's error is on the job's log and activity, not dropped.
+func TestAFailedAutoRepairSendBackIsSaidOnTheJob(t *testing.T) {
+	f := newV2Jobs(t)
+	f.h.Close()
+	f.seam.SendBack = func(id int, words string) error { return fmt.Errorf("the runner's door is closed") }
+	f.h = serve.New(f.seam, f.cfg)
+	it := f.create(t, landedAutoFinding())
+
+	f.read(t, it)
+	saved, err := f.st.Get(it.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Stream.AutoRepairs != 1 {
+		t.Fatalf("repairs counted %d", saved.Stream.AutoRepairs)
+	}
+	want := "Auto could not send the work back for its repair: the runner's door is closed"
+	logged := false
+	for _, l := range saved.Stream.Log {
+		logged = logged || l.Text == want && l.Tone == "fail"
+	}
+	noted := false
+	for _, e := range saved.Activity {
+		noted = noted || e.What == want
+	}
+	if !logged || !noted {
+		t.Fatalf("the failed send-back is not on the job: log %v, activity %v", saved.Stream.Log, saved.Activity)
+	}
+}
+
 // MANUAL IS UNCHANGED: the landed job waits for the person's approval with its
 // finding on the sheet, and nothing is sent back.
 func TestAPolicyFindingInManualStillWaitsForThePerson(t *testing.T) {

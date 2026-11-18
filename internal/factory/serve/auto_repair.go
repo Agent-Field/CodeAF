@@ -49,8 +49,16 @@ func (h *Handler) prepareAutomaticRepairs(items []factory.Item) ([]factory.Item,
 		}
 		if !r.OnPR {
 			// The runner's own door puts the prove step after the last
-			// finished one and queues the job, as Request changes does.
-			_ = h.seam.SendBack(candidate.ID, r.Words())
+			// finished one and queues the job, as Request changes does. A
+			// send-back that fails is still the attempt counted above, and it
+			// is said on the job, never dropped.
+			if err := h.seam.SendBack(candidate.ID, r.Words()); err != nil {
+				now := h.clock().UTC()
+				_ = h.config.Store.Update(candidate.ID, func(cur *factory.Item) error {
+					logAct(cur, now, "fail", autoRepairFailed+err.Error())
+					return nil
+				})
+			}
 		}
 		if fresh, e := h.config.Store.Get(candidate.ID); e == nil {
 			items[i] = fresh
@@ -58,6 +66,10 @@ func (h *Handler) prepareAutomaticRepairs(items []factory.Item) ([]factory.Item,
 	}
 	return items, nil
 }
+
+// autoRepairFailed leads the line a failed Auto repair send-back leaves on the
+// job's log and activity; the door's error follows it.
+const autoRepairFailed = "Auto could not send the work back for its repair: "
 
 // errNoRepair leaves a job its read said was due as it is: it moved, or no
 // door can run the repair.
