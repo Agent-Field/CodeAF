@@ -687,6 +687,42 @@ func TestAnActAddedApprovedFollowsOnlyAPushUnderWay(t *testing.T) {
 	}
 }
 
+// A DECISION PUT AWAY IS NOT LEAVING AUTO. Acts the main agent approved in
+// Auto are not sent while the person has the job's decision paused, and keep
+// their yes through it: once the job is resumed they go out.
+func TestAutoApprovedActsStayApprovedThroughAPausedDecision(t *testing.T) {
+	it := actJob(AutonomyAuto)
+	it.Talk = "talk-7"
+	_, _ = AddActs(&it, cleaned(t, it, reply("inline:501", "Renamed it.")), ActByMainAgent, "", actNow)
+	if it.Acts[0].State != ActApproved || it.Acts[0].ApprovedBy != ActByMainAgent {
+		t.Fatalf("Auto did not approve: %+v", it.Acts[0])
+	}
+	if !CanPauseDecision(it) {
+		t.Fatal("the job's decision cannot be paused")
+	}
+	PauseDecision(&it, 3)
+	if !RecoveryPaused(it) || Automatic(it) {
+		t.Fatal("the decision is not paused")
+	}
+	if _, ok := NextAct(it, actNow); ok {
+		t.Fatal("an act is sent while the decision is paused")
+	}
+	if SettleActs(&it, actNow) {
+		t.Fatalf("a paused decision changed the act: %+v", it.Acts[0])
+	}
+	if a := it.Acts[0]; a.State != ActApproved || a.ApprovedBy != ActByMainAgent {
+		t.Fatalf("Auto's yes lapsed on a paused decision: %+v", a)
+	}
+	// Resume.
+	it.PausedRecoveryQuestion = ""
+	if SettleActs(&it, actNow) {
+		t.Fatalf("Resume changed the act: %+v", it.Acts[0])
+	}
+	if next, ok := NextAct(it, actNow); !ok || next.ID != it.Acts[0].ID || next.ApprovedBy != ActByMainAgent {
+		t.Fatal("Auto's act is not sent after Resume")
+	}
+}
+
 // An act written to follow a push that will never go out is not sent.
 func TestAnActWhosePushNeverHappensFails(t *testing.T) {
 	it := pushWaiting(actJob(AutonomyAuto))

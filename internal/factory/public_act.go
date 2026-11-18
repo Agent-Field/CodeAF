@@ -833,10 +833,14 @@ func SettleActs(it *Item, now time.Time) bool {
 	return changed
 }
 
-// autoYesLapsed says a is an approved act whose yes was Auto's, on a job no
-// longer in Auto: it is not sent, and waits for the person instead.
+// autoYesLapsed says a is an approved act whose yes was Auto's, on a job that
+// truly left Auto: switched to Manual (or to no saved mode), taken over, or
+// stopped by its person. It is not sent, and waits for the person instead. A
+// decision the person put away ([RecoveryPaused]) is not leaving Auto, though
+// [Automatic] is false meanwhile: nothing is sent while it is paused
+// ([ActsRefusal]), and the yes still holds once it is resumed.
 func autoYesLapsed(it Item, a PublicAct) bool {
-	return a.State == ActApproved && a.ApprovedBy == ActByMainAgent && !Automatic(it)
+	return a.State == ActApproved && a.ApprovedBy == ActByMainAgent && (it.Autonomy != AutonomyAuto || it.Manual || StoppedByPerson(it))
 }
 
 // NextAct is the act the service carries out next on the job at now, and
