@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Inbox items clear reliably; Auto resumes past and repairs findings; Follow PR syncs the live base
+title: Inbox items clear reliably; Factory jobs store their wait; stops go to the main agent first
 pr: 2694
 surface: [app, engine, factory]
 invalidates:
@@ -17,7 +17,16 @@ invalidates:
   - "Was true: Follow PR's base sync merged the pull request's recorded base_sha, which the forge refreshes only on a push. Is true now: it merges the base branch's live head on origin (PullRequest.BaseBranch, on the wire as pr.base_branch), falling back to the recorded base when the live head cannot be had; the job's history names each base that comes in once."
   - "Was true: publication required the forge's recorded base_sha to equal the base Follow PR synced. Is true now: it accepts a synced base newer than the forge's recorded one as long as it contains it; a forge base past the synced one still refuses, and the approved head must still include the base."
   - "Was true: a Follow PR repair that passed its checks waited behind the conflict it resolves, so nothing pushed it. Is true now: the waiting update outranks the pull request's conflict or changes requested and is the job's proof approval, which Auto records and publishes."
+  - "Was true: a Factory job's wait was inferred from its state each time it was read, so a job could rest with nobody acting and nothing said. Is true now: every job stores what it waits on and who must act (Wait, Offers, settled by SettleWait), and a watchdog reports a job that stalls to its main agent."
+  - "Was true: a stop (a failed check, a refused step) paused the job for the person. Is true now: every stop the job's main agent may decide goes to it first (manager_decide); it settles it or hands it to the person, and while it decides the job reads Running, \"The main agent is deciding what to do.\" Its decisions are never credited to the person."
+  - "Was true: the job's steps decided what a person could do on the job's pull request. Is true now: a job carries out public acts on its own pull request at any step (factory_act: push, reply, rebase, swap the base, edit the title or body); Manual asks the person before anything goes public, Auto acts and logs it, and neither merges. A reply carries a footer saying a WorkAF factory agent posted it."
+  - "Was true: a delegate could be sent into a job's checkout only by a step. Is true now: factory_task sends one at any step; what the manager may press is held in code (factory.ManagerMay)."
+  - "Was true: the Factory manager read jobs only through their states. Is true now: it reads every job's wait, presses an action the job offers, and passes the person's words to a job's main agent (tell, press)."
+  - "Was true: a job's main agent could raise the hand-this-to-the-factory card on any turn, including one its team's replies started. Is true now: on a job's own chat factory_add proposes a new job only on a turn the person started; otherwise the agent names the finding in its reply."
 ---
 
 These are the engine half of the desktop app's review fixes (Agent-Field/codeaf-desk), which call `inbox.dismiss`
 and the resume door.
+
+The Factory half (stored waits, the watchdog, public acts, stops decided by the main agent first) keeps a job's main
+agent and its delegates, and never stops the person from doing on the pull request what they could ask any agent for.
