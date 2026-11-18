@@ -1374,6 +1374,34 @@ the tree; a green check can stand in for the reader, while a red one is carried 
 Having no configured reader is an absence, not a failed call, and never runs checks on its
 own — see *Leaving it running on its own* in *starting codeaf*.
 
+## A progress update is never where a reply stops — it said "next I write the slides" and stopped, the deck was left blank, it ended on an update
+
+**codeaf puts an interim note to you — a result so far, a blocker, a decision — on screen
+between its steps,** and the model marks that note as an update rather than an answer. An
+update says more work is coming, so it is never where a reply ends.
+
+**If the model sends an update and then calls no tool, the reply is sent back to do the
+work it announced.** This needs no second reader and happens on any reply, short or long,
+typed or woken. The update stays on screen, one dim line follows it:
+
+```
+it sent a progress update and stopped · asking it to go on
+```
+
+and the model continues in the same reply. It is told that, if the work really is
+finished, it should say so as a final answer instead.
+
+**It happens at most twice in one reply.** A model that answers each nudge with another
+promise has the reply end on its third, rather than spending a request on every sentence
+of it.
+
+**An update that ends by asking you something is left alone.** If it finishes with a
+question mark it is waiting on you, exactly as any other reply that asks you something.
+
+Only a note the model marked as an update counts. An ordinary answer that happens to say
+what it might do next ends the reply as it always did, and the reader described above is
+what decides whether that kind of reply is carried on.
+
 ## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 
 **A reply that ends while something IT started is still running is never carried on.** A

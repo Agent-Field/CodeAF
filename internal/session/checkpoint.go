@@ -792,8 +792,9 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 
 // IsCarryOnNotice says whether a notice's words are the line the harness says
 // as it sends a stopped turn back to work: the completion check's carry-on
-// ([checkpointCarryOnNote]) or one of the two nudges ([checkpointLoadNudgeNote],
-// [checkpointAskNudgeNote]). It is the ONE reading of those three lines, for
+// ([checkpointCarryOnNote]) or one of the three nudges ([checkpointLoadNudgeNote],
+// [checkpointAskNudgeNote], [checkpointUpdateNudgeNote]). It is the ONE reading
+// of those four lines, for
 // [IsNoChangeReply]'s reason.
 //
 // THEY ARE SAID FOR THE MOMENT THEY ARE SAID IN. None is written into the
@@ -807,7 +808,7 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // these, and every surface keeps them.
 func IsCarryOnNotice(text string) bool {
 	switch strings.TrimSpace(text) {
-	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote:
+	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote:
 		return true
 	}
 	return false
@@ -899,6 +900,25 @@ const checkpointLoadNudgeNote = "it loaded a tool and stopped before using it ·
 // checkpointAskNudgeNote is the line a person reads when a turn is sent back
 // for an `ask` the gate refused and the model never made again.
 const checkpointAskNudgeNote = "its question was refused and it stopped without asking again · asking it to go on"
+
+// checkpointUpdateNudgeNote is the line a person reads when a turn is sent back
+// for stopping on an interim update ([UserUpdatePrefix]). The update itself
+// stays on screen; this says only that the work it announced is still coming.
+const checkpointUpdateNudgeNote = "it sent a progress update and stopped · asking it to go on"
+
+// checkpointUpdateNudgeLead is that continuation. It is one fixed sentence,
+// matched whole by [isContinuationContext], because it names nothing that
+// varies: the update the model wrote is already the message right before it.
+const checkpointUpdateNudgeLead = "[carry on] Your last reply began with `" + UserUpdatePrefix + "`, which marks an interim " +
+	"note between tool calls, and it made no tool call, so the work it describes has not been done. " +
+	"Continue in this same turn with the next tool call. If the work is in fact finished, give the final answer without the marker."
+
+// checkpointUpdateNudgeCap is how many times one turn is sent back for ending
+// on an update. TWO, and not the load nudge's once, because the second stop is
+// the model declaring AGAIN that it is not finished — but a third is a model
+// that answers every nudge with another promise, and the turn ends on it
+// rather than spending a request per sentence of it.
+const checkpointUpdateNudgeCap = 2
 
 // checkpointAskNudgeLead is that continuation, carrying the refusal itself so
 // the model has the fix in front of it rather than in its history.
@@ -1099,6 +1119,10 @@ type checkpointMeter struct {
 	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
 	// that has decided, and a second nudge would be an argument.
 	loadNudged bool
+	// updateNudges is how many times this turn has been sent back for ending
+	// on a reply its own model marked as interim ([UserUpdatePrefix]), bounded
+	// by [checkpointUpdateNudgeCap].
+	updateNudges int
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -3416,6 +3440,34 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 			meter.loadNudged = true
 			hub.send(Event{Kind: EventNotice, Text: checkpointAskNudgeNote})
 			a.record(textMessage("user", checkpointAskNudgeLead(refusal)))
+			return true, false
+		}
+	}
+	// A TURN THAT ENDS ON A REPLY ITS OWN MODEL MARKED AS INTERIM IS SENT BACK,
+	// AND THIS COSTS NO READER EITHER.
+	//
+	// The system prompt gives the model one marker, [UserUpdatePrefix], for a
+	// note to the person BETWEEN tool calls, and says a final answer carries
+	// none. A reply that opens with it and calls nothing has therefore said, in
+	// the protocol and not in prose, that it is not the end — and the loop used
+	// to end the turn on it anyway, because the only stop condition is "no tool
+	// call". Measured on 2026-11-18 (connected-canvas eval run 5, board-deck):
+	// deepseek-v4.1-flash set a deck's tokens, added five empty slide frames,
+	// wrote "[update] … Next I write each slide's HTML in one pass" and the turn
+	// sealed with every slide blank. It had happened in runs 3 and 4 too.
+	//
+	// The reader below could not catch it: a turn the person typed is never
+	// read ([Agent.checkpoints]), which is right for a reply in words and wrong
+	// for one the model has itself declared unfinished. So this sits beside the
+	// load nudge, above that gate, and reads the marker exactly as the display
+	// does ([UserFacingUpdate]: a LEADING marker only, never a mention) — no
+	// guessing at what "next I will" means in any language. An update that ends
+	// by asking the person something is waiting, as everywhere in this file.
+	if meter != nil && ctx.Err() == nil && meter.updateNudges < checkpointUpdateNudgeCap && !endsAskingThePerson(said) {
+		if _, interim := UserFacingUpdate(said); interim {
+			meter.updateNudges++
+			hub.send(Event{Kind: EventNotice, Text: checkpointUpdateNudgeNote})
+			a.record(textMessage("user", checkpointUpdateNudgeLead))
 			return true, false
 		}
 	}
