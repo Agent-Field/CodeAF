@@ -446,8 +446,8 @@ func (lp *floorLoop) placeTasks(c *loopCtl, i, round, limit int) bool {
 // CHANGED. Its checkout as it began is kept only in memory, and only for the
 // drive that began it: a restart, or a job let go and pulled again, between
 // the task's end and this look loses it. A finished task this runner has not
-// checked, with nothing but tasks finished after it, is checked again rather
-// than not at all ([checkMissed]).
+// checked, with nothing but tasks finished after it and no check run again
+// since it finished, is checked again rather than not at all ([checkMissed]).
 func (lp *floorLoop) settleTasks(c *loopCtl) {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil || it.Stream == nil {
@@ -463,7 +463,7 @@ func (lp *floorLoop) settleTasks(c *loopCtl) {
 		delete(lp.tasks.before[c.id], ph.Name)
 		checked := lp.tasks.checked[c.id][ph.Name]
 		lp.mu.Unlock()
-		if !ok && (checked || !checkMissed(phases, i)) {
+		if !ok && (checked || !checkMissed(it.Stages, phases, i)) {
 			continue
 		}
 		// A checkout that could not be read, then or now, is taken as changed:
@@ -483,10 +483,13 @@ func (lp *floorLoop) settleTasks(c *loopCtl) {
 }
 
 // checkMissed says the finished task at i may have had no check: nothing but
-// tasks has finished after it, and the run goes on after it. Once its check
-// has run, the steps it sent round again come before it, or a step after it
-// has finished.
-func checkMissed(phases []factory.Phase, i int) bool {
+// tasks has finished after it, the run goes on after it, and none of the
+// checks its change sends round again ([factory.CheckAgainFrom]) has begun a
+// round since it finished. Once its check has run, the steps it sent round
+// again come before it, or one of them began again after the task ended, or
+// a step after it has finished. The record says so across a restart, where
+// the runner's memory of what it checked does not.
+func checkMissed(stages []factory.Stage, phases []factory.Phase, i int) bool {
 	next := nextPhase(phases)
 	if next < 0 {
 		next = len(phases)
@@ -497,6 +500,15 @@ func checkMissed(phases []factory.Phase, i int) bool {
 	for k := i + 1; k < next; k++ {
 		if !factory.IsTask(phases[k]) {
 			return false
+		}
+	}
+	// A task with no end recorded leaves nothing to compare: checked again
+	// for nothing rather than not at all.
+	if ended := phases[i].At; !ended.IsZero() {
+		for k := factory.CheckAgainFrom(stages, phases, i); k < i; k++ {
+			if !factory.IsTask(phases[k]) && phases[k].Started.After(ended) {
+				return false
+			}
 		}
 	}
 	return true

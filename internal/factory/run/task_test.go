@@ -509,6 +509,49 @@ func TestATaskFinishedBeforeARestartIsStillChecked(t *testing.T) {
 	}
 }
 
+// A task whose checks already ran again before the runner went away is not
+// checked a second time after the restart: the record says the review began
+// a round after the task ended, and the write step goes on from there.
+func TestATaskWhoseChecksRanAgainIsNotCheckedAgainAfterARestart(t *testing.T) {
+	var run taskRun
+	g := newRig(t, map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			run.note(job)
+			return done(job.Stage.Name + " went fine"), nil
+		}),
+	}, nil)
+	review := chat("review")
+	review.Until = factory.UntilClean
+	id := g.add("one", chat("plan"), review, chat("write"))
+	ended := time.Now().Add(-time.Hour)
+	task := factory.NamedTaskPhase("task", factory.TaskByMainAgent, "Add the rounding note.")
+	task.State, task.Round, task.At, task.Result = factory.PhaseDone, 1, ended, &factory.StageResult{Done: true, Output: "added the note"}
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		// The job as a runner pulls it after the one that ran the task, and
+		// the review the task sent round again, went away.
+		it.State = factory.StateRunning
+		it.Stream = &factory.Stream{Paused: true, Cur: 3, Phases: []factory.Phase{
+			{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Started: ended.Add(-2 * time.Hour), At: ended.Add(-90 * time.Minute), Result: &factory.StageResult{Done: true, Output: "the plan"}},
+			{Name: "review", Kind: factory.StageChat, State: factory.PhaseDone, Round: 2, Started: ended.Add(time.Minute), At: ended.Add(2 * time.Minute), Result: &factory.StageResult{Done: true, Output: "clean"}},
+			task,
+			{Name: "write", Kind: factory.StageChat, State: factory.PhasePending},
+		}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Hold(id, false); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateLanded)
+	if got := run.rounds(); !slices.Equal(got, []string{"write#1"}) {
+		t.Fatalf("rounds ran as %v; want only write, the review already checked the task", got)
+	}
+	if strings.Contains(fmt.Sprint(it.Stream.Log), "Checking again") {
+		t.Fatalf("the task was checked again after the restart: %v", it.Stream.Log)
+	}
+}
+
 // checkMissed is true only for a finished task nothing but tasks has finished
 // after, on a run that goes on after it.
 func TestCheckMissedOnlyForATaskWithNothingFinishedAfterIt(t *testing.T) {
@@ -530,7 +573,33 @@ func TestCheckMissedOnlyForATaskWithNothingFinishedAfterIt(t *testing.T) {
 		"a step after it done":    {[]factory.Phase{task(factory.PhaseDone), step("write", factory.PhaseDone), step("test", factory.PhasePending)}, false},
 		"checks sent round again": {[]factory.Phase{step("review", factory.PhasePending), task(factory.PhaseDone), step("write", factory.PhasePending)}, false},
 	} {
-		if got := checkMissed(c.phases, slices.IndexFunc(c.phases, factory.IsTask)); got != c.want {
+		if got := checkMissed(nil, c.phases, slices.IndexFunc(c.phases, factory.IsTask)); got != c.want {
+			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+	// A check the task sends round again that began a round after the task
+	// ended has checked it; one that began before has not.
+	review := chat("review")
+	review.Until = factory.UntilClean
+	stages := []factory.Stage{review, chat("write")}
+	ended := time.Date(2026, 11, 18, 9, 0, 0, 0, time.UTC)
+	done := task(factory.PhaseDone)
+	done.At = ended
+	for name, c := range map[string]struct {
+		started time.Time
+		taskAt  time.Time
+		want    bool
+	}{
+		"review began after the task":  {ended.Add(time.Minute), ended, false},
+		"review began before the task": {ended.Add(-time.Minute), ended, true},
+		"review with no start kept":    {time.Time{}, ended, true},
+		"task with no end kept":        {ended.Add(time.Minute), time.Time{}, true},
+	} {
+		rv := step("review", factory.PhaseDone)
+		rv.Started = c.started
+		tk := done
+		tk.At = c.taskAt
+		if got := checkMissed(stages, []factory.Phase{rv, tk, step("write", factory.PhaseRunning)}, 1); got != c.want {
 			t.Errorf("%s: %v, want %v", name, got, c.want)
 		}
 	}
