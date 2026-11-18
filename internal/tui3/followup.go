@@ -146,7 +146,7 @@ func (a *app) sendFollowFrom(agent Agent, spoken, line string, pastes []pasteChi
 		if err := waitModelSelection(ctx, agent); err != nil {
 			return followMsg{text: line, pastes: pastes, demoted: demoted, err: err, call: call}
 		}
-		ch, err := agent.FollowUp(spoken)
+		ch, err := followUpAsPerson(agent, spoken)
 		return followMsg{text: line, pastes: pastes, demoted: demoted, ch: ch, err: err, call: call}
 	}
 }

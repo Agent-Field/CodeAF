@@ -1447,7 +1447,8 @@ type userMessage struct {
 	// clarification, so ownership is checked at its tools rather than admission.
 	answer bool
 	// fromPerson marks a new message the person sent through one of their own
-	// doors (Submit, SubmitMessage, SubmitImage, SubmitComposed). Their reply
+	// doors (Submit, SubmitMessage, SubmitImage, SubmitComposed, SteerMessage,
+	// FollowUpMessage). Their reply
 	// closes every question this agent still has open (steerquestion.go's
 	// [Agent.personClosesQuestionsLocked]); engine notes, briefs, setup and
 	// answers to a question never set it.
@@ -2103,7 +2104,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	if !user.answersPerson {
 		a.personWords = ""
 	}
-	if user.fromPerson || user.steer != nil {
+	if user.fromPerson {
 		a.personWords = user.text()
 	}
 	a.teamTurnAt = time.Now()
@@ -2428,8 +2429,14 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 // A follow-up queued while nothing is running starts immediately: there is no
 // turn end coming to drain it, and a message that sat in a queue until the
 // person happened to ask something else would be a silent hold.
+//
+// THE WORDS ARE NOT THE PERSON'S BY THIS DOOR. An engine caller hands words on
+// through it too (a factory stage's delivery falls back to it), so the turn it
+// opens does not count as one the person started. The person's own doors —
+// a queued message from a surface, a remote client's follow-up — come by
+// [Agent.FollowUpMessage], which does.
 func (a *Agent) FollowUp(text string) (<-chan Event, error) {
-	return a.followUpMarked(text, nil, "")
+	return a.followUpMarked(text, nil, "", false)
 }
 
 // FollowUpMessage is [Agent.FollowUp] for a door that knows more about the
@@ -2437,19 +2444,24 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 // model reads Text when its turn comes, and the record keeps the mark on the
 // message's own line. A mark that does not fit refuses the message whole,
 // before anything is queued.
+//
+// It is THE PERSON'S door, marked or not: the turn the message opens is one
+// they started ([userMessage.fromPerson]), so the tools that act only on the
+// person's own words read them from it.
 func (a *Agent) FollowUpMessage(message Submission) (<-chan Event, error) {
 	message.proven = a.provenCreation(message.Creation)
 	mark, err := message.mark()
 	if err != nil {
 		return nil, err
 	}
-	return a.followUpMarked(message.Text, mark, "")
+	return a.followUpMarked(message.Text, mark, "", true)
 }
 
 // followUpMarked is FollowUp's body with the person's mark beside the words,
-// and the one tool the turn must call first when it owes one
-// ([Agent.FollowUpRequiring]).
-func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCall string) (<-chan Event, error) {
+// the one tool the turn must call first when it owes one
+// ([Agent.FollowUpRequiring]), and whether the words came by one of the
+// person's own doors.
+func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCall string, fromPerson bool) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -2470,6 +2482,7 @@ func (a *Agent) followUpMarked(text string, person *messagePresentation, mustCal
 	user := userText(text)
 	user.person = person
 	user.mustCall = mustCall
+	user.fromPerson = fromPerson
 	if a.running {
 		a.followups = append(a.followups, followUp{message: user, stream: stream})
 		return stream.out, nil

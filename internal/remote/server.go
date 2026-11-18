@@ -3000,9 +3000,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		switch {
 		case args.marked() && !ok:
 			return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
-		case args.marked() || (ok && args.Creation != nil):
-			// A creation context rides to a door that keeps it; a door that
-			// cannot queues the words and the team stays unknown.
+		case ok:
+			// A FOLLOW-UP BY THIS WIRE IS THE PERSON'S, marked or not, and the
+			// agent's mark door is its person door ([session.Agent.FollowUpMessage]):
+			// plain FollowUp is also an engine door and counts nobody. A creation
+			// context rides to it too; a door that cannot keep one queues the
+			// words and the team stays unknown.
 			events, err = door(args.submission())
 		default:
 			events, err = agent.FollowUp(args.Text)
@@ -3048,13 +3051,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if args.composed() {
 			return nil, errors.New("engine: a correction carries no pictures; send them as a message")
 		}
-		if args.marked() {
-			door, ok := steerMarksDoor(agent)
-			if !ok {
-				return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
-			}
+		door, ok := steerMarksDoor(agent)
+		switch {
+		case args.marked() && !ok:
+			return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
+		case args.marked():
 			events, err = door(args.submission())
-		} else {
+		case ok:
+			// A CORRECTION BY THIS WIRE IS THE PERSON'S, marked or not, and the
+			// agent's mark door is its person door ([session.Agent.SteerMessage]):
+			// plain Steer is also the engine's and runners' door and counts
+			// nobody. The words go alone, as they did by Steer.
+			events, err = door(session.Submission{Text: args.Text})
+		default:
 			events, err = agent.Steer(args.Text)
 		}
 		return s.stream(MethodSteer, args.Text, events, err)
