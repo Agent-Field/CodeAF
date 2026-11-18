@@ -14,7 +14,7 @@ A workstream's Tasks tab is the shared list of its work; everyone in the workstr
 
 A task has a title, a few lines saying what is wanted (the request), a brief when an agent does it (see "a task's brief"), its owner, who does it, where it came from (a chat, a person, the Factory, a standing order), its state, what it waits on, an optional due date, an optional heading that groups it, the files or links it made, the files it uses, and an optional checklist of its steps. There are no sub-tasks, priorities, estimates or custom fields: steps of one piece of work go on its checklist.
 
-The list's sections are always in this order: Waiting on you, Waiting on others, Running, Up next, Done. Empty sections are absent. Everyone shows all the work; Mine shows what you own, do, or need to answer. Work that ended without finishing sits in the appropriate waiting section, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
+The list's sections are always in this order: Waiting on you, Waiting on others, Running, Up next, Done. Empty sections are absent. Under the Open chip, Up next and Done are folded rows at the foot with their counts ("› Up next 18", "› Done 221"); press one to open it. Waiting on you shows three tasks, then "3 more". The first group in the list starts open and every later group starts folded, until you open it. Everyone shows all the work; Mine shows what you own, do, or need to answer. Work that ended without finishing sits in the appropriate waiting section, in the app's words: Failed (with its reason), Interrupted, Stopped by you (to whoever pressed Stop; everyone else reads "Stopped by Marco"), Didn't report back. A heading such as "Release 2.4" or "Factory" sits in the most urgent section any of its tasks is in, with all its tasks under it.
 
 ## a task's brief — goal, deliverable, acceptance, inputs and constraints, so another agent can do it cold
 
@@ -44,21 +44,29 @@ When the agent doing a task can't go on because an input is missing, or the task
 
 The agent may offer its own answers instead, such as "Paste their text". None of these answers is kept in the workstream's decisions. Failed is kept for errors: a run that broke off (the model refused, the connection dropped) still says Failed, with why.
 
-## read tasks side by side with the arrow keys — the split Tasks list
+## find a task — search tasks, filter tasks by state with the chips, Person and Group filters
 
-With at least 1100 pixels of content width and Afi's pane closed, Tasks shows a 500-pixel list beside the selected task. When there is no current selection, the first task waiting on you is selected; if none is waiting on you, the first visible task is selected. Click another row to read it beside the list. With focus in the list, Up and Down move through the visible tasks without pressing Back. Running rows show their current step when the runner supplies one.
+The Tasks tab's row holds **Search n tasks** beside Everyone and Mine. Search matches titles and people (who does a task and who owns it), ignoring case. Under the tabs are the state chips, with their counts: **Open** (the default: everything not done), **Waiting on you**, **Running**, **Up next** and **Done**. A chip other than Open shows only its tasks, open and unfolded. **Person** and **Group** at the chips' right narrow the list to the tasks one person does or owns, or one group's. The counts follow the search and the filters. Nothing matching reads "Nothing matches · clear the search or pick Open". The chip, the search and the filters last while the tab is open; the list comes back on Open, unfiltered.
+
+With no task open, a row is one line: the mark, the title, then three columns, the group, who does it, and its state ("4m", "due Fri", "waits on 1").
+
+## read tasks side by side with the arrow keys — the split Tasks list, 420 wide
+
+A task opens only when you pick its row. With at least 1100 pixels of content width and Afi's pane closed, the picked task opens beside a 420-pixel list, and picking another row swaps it. Beside a task the rows are narrow: a title wraps to two lines before it is cut, and who does it is their face only (the name shows when you point at it). The state chips step aside while a task is open beside the list, unless a filter is on. With focus in the list, Up and Down move through the visible tasks without pressing Back. Running rows show their current step when the runner supplies one.
+
+Two icon buttons sit at the top right of the open task: **Open as its own tab** and **More** (⋯). Nothing on the task is ever wider than its pane; its controls wrap instead.
 
 ## open a task — how do I go back to the task list after opening a task, Open as its own tab
 
-Below 1100 pixels of content width, or while Afi's pane is open, selecting a task opens it in place, inside the Tasks tab. The workstream's header and tabs stay, and a bar shows the task's name, “‹ Tasks”, “Open as its own tab”, and the task's More (⋯). Escape, “‹ Tasks”, or pressing the Tasks tab again returns to the same list position. A task opened from the Inbox, a file's “Made by task”, “Used by” or “From” line, or a chat's list of what it made opens in the same workstream's Tasks tab.
+Below 1100 pixels of content width, or while Afi's pane is open, selecting a task opens it in place, inside the Tasks tab. The workstream's header and tabs stay, and a bar shows “‹ Tasks”, the task's name, and the same two icon buttons: Open as its own tab and More (⋯). Escape, “‹ Tasks”, or pressing the Tasks tab again returns to the same list position. A task opened from the Inbox, a file's “Made by task”, “Used by” or “From” line, or a chat's list of what it made opens in the same workstream's Tasks tab.
 
 “Open as its own tab” shows the task alone in the window's one preview tab: opening another task replaces it unless you pinned it or worked in it. In the Tasks list, Command-click (Control-click on Linux) toggles selection instead. A chat keeps its own tab.
 
 ## select several tasks — shift click, command click, bulk Done by, Give to Afi
 
-Shift-click selects the visible range from the first selected task. Command-click, or Control-click on Linux, adds or removes a task. Shift with Up or Down extends a selection. Folded tasks are not included. A selection of several tasks replaces the task page with their titles and shared controls. Its checkboxes select tasks; they never mark them done. Clear returns to reading one task.
+Shift-click selects the visible range from the first selected task. Command-click, or Control-click on Linux, adds or removes a task. Shift with Up or Down extends a selection. Folded tasks are not included. A selection of several tasks stays marked in the list, and the pane says "3 tasks selected" with the controls they share: Done by, Owner, Due and Group, then "Only what all three allow". A row's checkbox selects or unselects it; it never marks it done. Clear returns to reading one task. One task is never a selection, so changing one task's Done by asks no question first.
 
-Done by offers only choices every selected task allows: the owner or workstream steward can change a doer, but completed tasks and Factory tasks cannot be handed over here. The choices are Afi, your chats in this workstream, You, and its people. Named agents and the Factory are not offered as replacements. Choosing a doer shows “Give these N to Afi” (or the chosen name), the consequences, Give and Cancel. The owner is unchanged. Ready agent tasks start through the normal Start door; unfinished waits stay Up next. If one task is refused, the others are still handed over. The selection names each refused task and its reason; the list refreshes before you retry. The What happens section names a task’s predicted ask-first step when the workstream supplies one, from its ask rule.
+Done by offers only choices every selected task allows: the owner or workstream steward can change a doer, but completed tasks and Factory tasks cannot be handed over here. The choices are Afi, your chats in this workstream, You, and its people. Named agents and the Factory are not offered as replacements. Choosing a doer shows “Give these N to Afi” (or the chosen name), the consequences, Give and Cancel. The owner is unchanged. Ready agent tasks start through the normal Start door; unfinished waits stay Up next. If one task is refused, the others are still handed over. The selection names each refused task and its reason; the list refreshes before you retry. The What happens section names a task’s predicted ask-first step when the workstream supplies one, from its ask rule. Past five tasks those lines are counted instead ("6 will ask you first, before anything is published or sent").
 
 A Personal workstream keeps its tasks on this computer; an organization workstream keeps them on the organization's server. They behave the same.
 
@@ -97,8 +105,8 @@ When Afi makes a task it names who does it: Afi, a person in the workstream by n
 ## tick a person task, change the owner, move it to another workstream
 
 - Tick: a person's task is ticked by its owner or by the person doing it ("only the task's owner or the person doing it ticks it" otherwise). A task made for Marco, by you or by Add on Afi's cards, stays yours to answer for, and Marco ticks its checklist and marks it done, with no hand-over first. Ticking it unblocks the tasks that were waiting only on it: a person's task loses its "waiting on", and an Afi or chat task starts by itself (see *a workstream task starts automatically*) or, where it waits for a person's Start, stays in Up next with the line "Ready to start: <the ticked task> is done".
-- Change the owner: the **Owner** control under the title (it was "Hand to someone", then More › Change the owner). Anyone who can edit the workstream changes a task's owner to another person: anyone named on the workstream, or in one of the teams it is shared with. A task always has one owner, so Add task and the Owner control never offer Everyone (a task made with owner Everyone before keeps it until handed on). The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing. Who does the work is a separate choice; see *change who does a task*.
-- Move: More › Move moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting. Only the task's owner or whoever looks after the workstream moves it.
+- Change the owner: the **Owner** control under the title, or More › **Hand to someone**, which lists the workstream's other people. Anyone who can edit the workstream changes a task's owner to another person: anyone named on the workstream, or in one of the teams it is shared with. A task always has one owner, so Add task and the Owner control never offer Everyone (a task made with owner Everyone before keeps it until handed on). The thread says "Handed to Marco", and Marco's Inbox row says "handed to you by Priya". Taking a task yourself is not a hand-over and says nothing. Who does the work is a separate choice; see *change who does a task*.
+- Move: More › **Move to another workstream** moves a task, with its whole conversation, to another workstream you can edit. Tasks that waited on it here stop waiting. Only the task's owner or whoever looks after the workstream moves it.
 - Send back: see *send a done task back* below.
 
 Reading tasks needs view on the workstream; adding, commenting, handing on and sending back need edit.
@@ -141,9 +149,15 @@ A task's Activity and comments is one thread everyone in the workstream sees: wh
 
 A private conversation with Afi stays private. If something you ask Afi there changes shared work, the task gets one line ("Priya asked Afi to keep it under 300 words"), never the conversation. "Post this to the task" adds Afi's answer to the thread, marked as posted by you.
 
+## Afi posted a long comment, where did Afi's draft go — what Afi makes is a file, the one line with Open
+
+What Afi or a chat makes on a task is a file, never a long comment. A comment from an agent is a line or two. When one writes more than 400 characters or more than 3 lines on a task's thread, the words are kept as a document in the workstream's Files instead, made by that task and named by its first heading or else by the task's title, and the thread gets one line: the agent's mark, "Afi made" and the document's name, with Open. Open shows the document in place, where you can read it, edit it and comment on its passages; it is also listed under the task's Result.
+
+This holds on your own computer and on an organization's server alike. A person's comment is never turned into a file.
+
 ## attach a file in a comment, and Attach to the task from Afi's pane
 
-- **In a comment**: the **+** in a task's comment box picks files from your computer; they show as chips you can take off before sending. Sending adds them to Files, attaches them to the task (its **Uses**), and ends the comment with "Attached Interview notes.pdf". Nothing is uploaded until you send, so a comment you give up leaves nothing behind. Someone who only views the workstream has no **+**.
+- **In a comment**: **Attach** (the paperclip at the end of a task's comment box) picks files from your computer; they show above the box as chips you can take off before sending. Sending adds them to Files, attaches them to the task, and ends the comment with "Attached Interview notes.pdf". Nothing is uploaded until you send, so a comment you give up leaves nothing behind. Someone who only views the workstream has no Attach.
 - **From Afi's pane**: with a task in front of you, Afi's latest answer can go two ways. "Post this to the task" puts the words on the thread. **Attach to the task** makes them a document in Files, named from the answer's first line, made by Afi for you and listed under the task's **Result**; the thread says "Attached “Brief for Lena”, drafted with Afi". Either way your conversation with Afi stays private.
 - A task Afi made from your pane says "Added by Afi for you" (or "for Marco") in its facts, never that Afi is a chat.
 
@@ -169,19 +183,18 @@ When a person is removed from an organization workstream, each of their unfinish
 
 Someone removed from the whole organization is different: the tasks they owned go to the admin who removed them, into that admin's **Handed to you**, to hand on. A task given to someone invited who has not joined yet waits until they join.
 
-## attach a file to a task — + Attach, drag a file onto a task, what a task uses, Remove from this task
+## attach a file to a task — Attach in the comment box, drag a file onto a task, what a task uses
 
-A task's page lists what it made (**Result**, or **Files** on a person's task) and, under it, what it **uses**: the files its doer reads as inputs. A file the task made is never listed twice.
+A task's page lists what it made (**Result**, or **Files** on a person's task). There is no **Uses** list on the page any more, and no Remove from this task: what a task reads is linked to it on the file instead.
 
-- **Attach** at the right of the **Uses** heading picks a file from this workstream's Files, or from the workstream it sits inside, or **Upload a file…** from your computer. A file already attached is greyed and says "Attached"; one the task made says "Made here".
+- **Attach** at the end of the task's comment box uploads files from your computer with your comment (see *attach a file in a comment*).
 - **Drag a file onto a task**: a row dragged from Files onto a task's row in Tasks, or onto its open page, attaches it. A file dragged from your computer onto a task is added to Files first, then attached ("Added to Files and attached").
-- **Remove from this task** shows when you point at a Uses row. It only takes the task off the file; the file stays in Files. What a task made cannot be removed from it.
 
 The link lives on the file: its facts in Files say "Used by" the task, and a document's or a canvas's page says "Made by task …" and "Used by …" (or "Used by 2 tasks", which lists them), each opening the task. When a file a running task uses changes, the task asks its owner whether to carry on. Someone the workstream is shared with to view sees what is attached but has no Attach and no Remove.
 
 ## Afi links files to the task by itself — what a task's run reads and makes
 
-When Afi or a chat does a task, nobody has to attach its files. Every file of this workstream it reads is attached to the task, under **Uses**, and every document or canvas it makes is the task's own, under **Result**, made by that task. A file from the workstream this one sits inside is read but not attached, because it belongs to that workstream's tasks. Talking to Afi in your own pane, outside a task's run, links nothing by itself. Pages read through `workstream_pages` count as inputs too: `read` shows every page's start and marks those pages; `page` marks the one it reads. What the run linked can be removed from the task like anything attached by hand.
+When Afi or a chat does a task, nobody has to attach its files. Every file of this workstream it reads is linked to the task (the file's facts say "Used by" it), and every document or canvas it makes is the task's own, under **Result**, made by that task. A file from the workstream this one sits inside is read but not attached, because it belongs to that workstream's tasks. Talking to Afi in your own pane, outside a task's run, links nothing by itself. Pages read through `workstream_pages` count as inputs too: `read` shows every page's start and marks those pages; `page` marks the one it reads. The task's page does not list what it read; the file's own page does.
 
 ## a canvas on a task — its live picture, open it inside the task, Open beside
 
@@ -189,7 +202,9 @@ A canvas a task made or uses shows a small picture of its first page, repainted 
 
 ## a task's result — read the document without opening it, Result above Request, Checked against
 
-A task's page reads, top to bottom: its question for you (the Ask), then **Result**, then the hand-off note, then **Request** (or its **Brief**), the **Checklist**, what it **Uses**, and **Activity and comments**. Result sits above Request because once work is done, what was made matters more than what was asked.
+A task's page reads, top to bottom: the state line ("Afi is doing this · waiting on you"), the title, the fact controls (Done by, Owner, Due, Group), the **Waiting on** row, its question for you (the Ask), then **Result** with the first lines of what it made, the doer's **Checked** line, the hand-off note, **Assumed**, then **Request** (or its **Brief**) cut to six lines with **More** to read the rest, the **Checklist**, and **Activity and comments**. Result sits above Request because once work is done, what was made matters more than what was asked.
+
+**Activity and comments** has a switch at its right: **All**, or **Comments only**, which keeps people's comments and what was posted to the thread and hides the run's own lines. The page ends in one box, **Comment …**, with the faces of who hears it: the task's owner unless that is you, and anyone you @name.
 
 The first document an agent's task made is shown inside Result: its name, where it is in Files and **Open**, then its heading and first few lines, so you can read it without leaving the task. **Open** is for editing it. Anything else the task made (more files, a canvas's picture, a pull request) is a row under it. A document that cannot be read shows only its line with Open.
 
@@ -201,12 +216,12 @@ A task made with a brief shows it under **Brief**: the request as a summary, the
 
 When the doer finishes, the two to four lines it leaves for the next task show as **Hand-off** under the Result. A task with no note shows none.
 
-## a checklist inside a task — steps, not sub-tasks, tick a step, 2/5
+## a checklist inside a task — steps, not sub-tasks, tick a step, 2/5, where did Add a step go
 
 A task can carry a **checklist**: the steps of that one piece of work ("Outline", "First draft", "Check the numbers"), each one line that is ticked or not. A step is not a task: it has no owner, due date or page of its own. Work someone else does, or work delivered on its own, is a separate task instead.
 
 - Afi writes the checklist when it makes a task for steps of one deliverable, and ticks each line as it finishes it while doing the task.
-- On the task page the **Checklist** sits under the request. Anyone who can edit the workstream ticks or unticks a line, adds one with **Add a step**, rewords one by clicking it, or removes one. Someone it is shared with to view sees the lines and cannot tick them.
+- On the task page the **Checklist** sits under the request. Anyone who can edit the workstream ticks or unticks a line, rewords one by clicking it, or removes one. There is no Add a step: the steps are the doer's, written with the task, and a task without steps shows no checklist. Someone it is shared with to view sees the lines and cannot tick them.
 - The task's row in Tasks shows how far it is, "2/5", among its dim counts; a task without a checklist shows none.
 
 A checklist holds at most 30 lines of up to 200 characters each; past that the work is more than one task.
@@ -257,11 +272,19 @@ To change what a task asks for instead, edit its request; to have it done again 
 
 ## due date — pick any day; change it on the task
 
-A task can carry one due date, any day at all. Add task's Due opens a month with Today, Tomorrow and In a week above it; the arrows on the month move between months, and the keyboard moves a day or a week with the arrows and a month with Page Up and Page Down. On the task page its owner presses the due date in the line of facts, or uses More › "Add a due date…", to change or clear it. A missed date reads "Due Nov 21 · 2 days late".
+A task can carry one due date, any day at all. Add task's Due opens a month with Today, Tomorrow and In a week above it; the arrows on the month move between months, and the keyboard moves a day or a week with the arrows and a month with Page Up and Page Down. On the task page its owner presses **Due** in the fact controls under the title to change or clear it. A missed date reads "Due Nov 21 · 2 days late".
 
-## set what a task waits on — More › Waiting on
+## set what a task waits on — the Waiting on row, Change, Wait on a task
 
-On the task page, its owner opens More › Waiting on and ticks the tasks it should wait on (or unticks one to stop waiting). The menu lists what it already waits on, then the workstream's open tasks, newest first; a task that would make a circle is never offered, and the Factory's own issues stay out of it. The facts line then reads "Waiting on: …", and the task that waits shows "Then: …" on the other.
+Under a task's fact controls, **Waiting on** is a row: one line per task it waits on, with that task's mark, title and state ("done", "running", "up next", or the person doing it). Its owner presses **Change** (or **Wait on a task** when it waits on no task yet) and ticks the tasks it should wait on, or unticks one to stop waiting. The menu lists what it already waits on, then the workstream's open tasks, newest first; a task that would make a circle is never offered, and the Factory's own issues stay out of it. The task that waits shows "Then: …" on the other. Someone who cannot change it sees the row only when the task waits on something.
+
+## add a task by hand — Add task, the row at the top of the list
+
+**Add task** in the workstream's header opens a row at the top of Tasks, and the button looks pressed while the row is open. The row has a title field, then the same four controls a task has: **Done by** (Afi unless you pick someone), **Owner** (you), **Due** and **Group** (an existing group, none, or New group…), with **Cancel** and **Add task** at the end of the line. One line under it says what Add will do: "Afi starts it when you add it. It asks before anything is published or sent." for Afi or a chat, "It goes in your Tasks. Nothing starts by itself." for you, or "Marco sees it in their Tasks when you add it." Return adds it; Escape lets it go. Anything bigger than one task is better asked of Afi.
+
+## a task's More menu (⋯) — Mark done, Hand to someone, Move to another workstream, Stop, Delete
+
+The ⋯ at the top right of a task holds verbs only, in this order: **Mark done**, **Hand to someone**, **Move to another workstream**, **Stop**; then **Ask someone**, **Send a request to** and **Delete**. A verb shows only to someone allowed to do it. Who does it, the owner, the due date and what it waits on are the controls under the title, never the menu, and **Send back…** is on a done task's own line.
 
 ## why my task says Interrupted — codeaf restarted while it was running
 

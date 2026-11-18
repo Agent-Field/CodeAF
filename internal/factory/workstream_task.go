@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
@@ -78,7 +79,52 @@ const (
 	TaskEventHanded      = "handed"
 	TaskEventMoved       = "moved"
 	TaskEventChecked     = "checked"
+	// TaskEventMade is the one line a long piece of an agent's output leaves
+	// on the thread once it has been kept as a document: its File is the
+	// document, and the line reads as its name with Open (build spec v2, P1).
+	TaskEventMade = "made"
 )
+
+// TaskCommentLongest and TaskCommentLines are how much an agent may write
+// on a task's thread as a comment. WHAT AN AGENT MAKES IS A FILE: anything
+// longer is kept as a document made by the task, and the thread gets one
+// line naming it (build spec v2, priority 1: Afi posted whole drafts as
+// comments, and the thread became the only copy of the work).
+const (
+	TaskCommentLongest = 400
+	TaskCommentLines   = 3
+	// TaskCommentWordsMost is the most ws_task_comment takes in one call;
+	// past TaskCommentLongest it is kept as a document, not posted.
+	TaskCommentWordsMost = 16000
+)
+
+// MadeFileName names the document a long comment is kept as: its first
+// Markdown heading when it opens with one, otherwise the task's title.
+func MadeFileName(markdown, taskTitle string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(markdown), "\n")
+	if h := strings.TrimSpace(strings.TrimLeft(first, "#")); strings.HasPrefix(first, "#") && h != "" {
+		return cutName(h)
+	}
+	if t := strings.TrimSpace(taskTitle); t != "" {
+		return cutName(t)
+	}
+	return "Notes"
+}
+
+func cutName(s string) string {
+	if r := []rune(s); len(r) > 120 {
+		return strings.TrimSpace(string(r[:120]))
+	}
+	return s
+}
+
+// TaskCommentTooLong reports whether text is more than an agent may leave
+// on a thread as a comment: over [TaskCommentLongest] characters or
+// [TaskCommentLines] lines.
+func TaskCommentTooLong(text string) bool {
+	text = strings.TrimSpace(text)
+	return utf8.RuneCountInString(text) > TaskCommentLongest || strings.Count(text, "\n")+1 > TaskCommentLines
+}
 
 // The states of an offer.
 const (
@@ -603,6 +649,8 @@ type WorkstreamTaskEvent struct {
 	// workstream's people: the comment reaches each of them (SPEC "A comment
 	// with @name reaches that person").
 	Mentions []string `json:"mentions,omitempty"`
+	// File is, on a "made" event, the id of the document the line names.
+	File string `json:"file,omitempty"`
 }
 
 // TaskInvalid is a task the store will not keep, answered 422.
@@ -1795,9 +1843,11 @@ type TaskNote struct {
 	Kind string `json:"kind,omitempty"`
 	// Decision is, on a request_note, what the request settles for shared
 	// work in one line; it is kept in the workstream's Decisions.
-	Decision  string `json:"decision,omitempty"`
-	Text      string `json:"text"`
-	OfferFor  string `json:"offer_for,omitempty"`
+	Decision string `json:"decision,omitempty"`
+	Text     string `json:"text"`
+	OfferFor string `json:"offer_for,omitempty"`
+	// File is, on a "made" line, the document it names.
+	File      string `json:"file,omitempty"`
 	Steps     int    `json:"steps,omitempty"`
 	DurationS int    `json:"duration_s,omitempty"`
 }
@@ -1832,6 +1882,13 @@ func Note(t WorkstreamTask, n TaskNote, a TaskActor, by TaskEventBy, thread []Wo
 			return TaskChange{}, TaskInvalid("an offer hangs under a comment on the same task")
 		}
 		ev.Offer = &TaskOffer{ForEvent: n.OfferFor, State: OfferOpen}
+	case TaskEventMade:
+		if by.Kind == TaskByPerson {
+			return TaskChange{}, TaskInvalid("only an agent's work leaves a made line")
+		}
+		if ev.File = strings.TrimSpace(n.File); ev.File == "" {
+			return TaskChange{}, TaskInvalid("a made line names the file it made")
+		}
 	default:
 		return TaskChange{}, taskInvalidf("%q is not a line a thread takes", n.Kind)
 	}
