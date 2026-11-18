@@ -347,6 +347,8 @@ When a job stops, its manager hears first and settles what it can (`factory_answ
 
 After two extra rounds on one step, that step's next stop comes straight to you. These never come to the manager: approving public acts in Manual, merging, the budget, a decision you put away, a take-over, "bring a computer online", and a question a step marked as for a person only.
 
+While the manager holds a stop, the job reads as running, with **The main agent is deciding what to do.** Your own answers stay open: you can still act, and whoever is second is told it is already settled. The manager gets one turn. If the job has not moved when the turn ends, if the turn fails, or after five minutes, the stop is yours, and the job's log says **The main agent could not settle this.** with its reason. Each decision is on the log as **Main agent: another round · …** (or sent back, ran the step again, accepted the step as it stands, resumed the pipeline, retried publishing, went back to waiting on GitHub). A task the manager sends to a job that stands at a stop counts as one of its two extra rounds. Only a stop that is new is handed over: a job that was already waiting on you stays with you.
+
 ## the Factory manager — the factory's own manager, what's running, start the oldest p1, what did we ship today, the foreman
 
 Each factory has one manager of its own beside the jobs' managers, titled "Factory manager" (its team address is `@foreman`). The app opens it with `factory.foreman_open`; the first open makes the conversation and every later one opens the same. A factory manager made under the older title "foreman" keeps its conversation and is renamed when it next opens. It reads only the jobs of the factory home it belongs to, through `factory_floor`:
