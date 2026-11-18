@@ -844,7 +844,7 @@ Pairing and live `--at` access work while hosted sync storage is off. Hosted sto
 
 ## Sync storage is off — a notice in an open chat
 
-A paired account with storage off, when live transfer is off or unavailable (see *Turn off live transfer*), sees `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices` once when that chat first tries to sync. If access is withdrawn after syncing starts, the chat shows it once again. This appears in the window showing the chat, including an already-open window. Your chats keep saving on this computer.
+A paired account with storage off sees one of two notices once when a chat first tries to sync. While live transfer carries your chats it says `chats move live between your computers while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)`, because the chats are not stuck and only what needs the sync service's storage waits. When live transfer is off or unavailable (see *Turn off live transfer*), it says `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. If access is withdrawn after syncing starts, the chat shows it once again. This appears in the window showing the chat, including an already-open window. Your chats keep saving on this computer.
 
 ## Starting after an upgrade — standing orders and rules from an earlier version
 

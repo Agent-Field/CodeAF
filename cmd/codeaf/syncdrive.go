@@ -232,6 +232,12 @@ func (b *driveBook) renewalsOf(id string) *liveDrive {
 	return b.drive[id]
 }
 
+func init() {
+	// A computer whose chats move live is told the refusal for closed storage in
+	// the words that are true there (chatlist.StorageOffSentence).
+	chatlist.LiveCarriesChats = func() bool { return syncsetup.LiveTransferForHome(home.Dir()) }
+}
+
 // sayRefusal tells the person what the relay refused when it refused this
 // device outright (removed from the fleet, replaced, over its limit) and
 // answers true, so the chat runs unsynced with the reason on screen instead
@@ -508,7 +514,7 @@ func (n *driveNotices) say(line string) {
 func (n *driveNotices) clearStorageOff() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.last == chatlist.RelayStorageOff {
+	if n.last == chatlist.RelayStorageOff || n.last == chatlist.RelayStorageOffLive {
 		n.last = ""
 	}
 }

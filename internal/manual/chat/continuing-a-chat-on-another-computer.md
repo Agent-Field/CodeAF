@@ -48,7 +48,7 @@ Set the environment variable `CODEAF_LIVE_TRANSFER=off` before starting codeaf t
 
 It changes nothing when sync storage is approved or when you use a self-hosted sync service: those behave exactly as before. It is not a Settings row, and it does not turn off pairing, `--at` or anything else. With sync off (`CODEAF_SYNC_URL=off`) nothing leaves the computer, so there is no live transfer either.
 
-A computer with live transfer off that meets a chat living only on another computer says so in a plain sentence instead of waiting. Set it on each computer where you want the previous behaviour.
+A computer with live transfer off that meets a chat living only on another computer says so in a plain sentence instead of waiting. The switch holds on a computer that already shared chats live too: while it is off, that computer neither answers for those chats nor fetches a chat from another computer. Set it on each computer where you want the previous behaviour.
 
 ## Idle chats release their hold — open on another paired computer, even when the first is off
 
@@ -663,7 +663,7 @@ A current window understands the earlier outage and removed-computer notices too
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats do not wait: with live transfer a chat and its files move between your paired computers while both are running codeaf, so a chat on a computer that is off cannot be taken until codeaf runs there again (*Continue here says the computer that has this chat is not on*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Existing saved content remains readable; turning storage off deletes nothing.
 
-When live transfer is off or unavailable (`CODEAF_LIVE_TRANSFER=off`, or no other paired computer), chats stay on their computer and the refusal is `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. Once approval is read in the background, waiting chats start within a minute without restarting.
+While live transfer carries your chats, the notice about closed storage says `chats move live between your computers while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)`. When live transfer is off or unavailable (`CODEAF_LIVE_TRANSFER=off`, or no other paired computer), chats stay on their computer and the refusal is `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. Once approval is read in the background, waiting chats start within a minute without restarting.
 
 ## Changing thinking or model settings after idle release
 

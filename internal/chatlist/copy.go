@@ -9,6 +9,28 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
+// RelayStorageOffLive is the refusal for closed storage on a computer whose
+// chats move live (internal/syncsetup/livetransfer.go): what is true there is
+// that chats are not stuck, and that what still needs the relay's storage waits.
+const RelayStorageOffLive = "chats move live between your computers while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)"
+
+// LiveCarriesChats answers whether live transfer is carrying this computer's
+// chats now. The program that owns the home sets it at startup; nothing that
+// leaves it unset (a test of the sentences, a library user) is told anything
+// but the ordinary refusal.
+var LiveCarriesChats func() bool
+
+// StorageOffSentence is what a refusal for storage that is closed says. ONE
+// PLACE DECIDES IT, because the same refusal reaches the person from the start
+// page, from a chat's notices and from the app, and a computer whose chats move
+// live must not tell them on one surface that they stay put.
+func StorageOffSentence() string {
+	if carries := LiveCarriesChats; carries != nil && carries() {
+		return RelayStorageOffLive
+	}
+	return RelayStorageOff
+}
+
 // The frozen sentences. Every surface takes its words
 // from here so a respelling happens once.
 const (

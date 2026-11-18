@@ -3707,6 +3707,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can a third computer take a chat from my second one while the first is off", "continuing-a-chat-on-another-computer"},
 		{"what still waits for sync storage approval when live transfer is on", "continuing-a-chat-on-another-computer"},
 		{"does the sync service store my chat when I move it without sync storage", "relay-what-it-stores-and-sees"},
+		{"what does the sync storage is off notice in a chat say when live transfer is on", "starting-codeaf"},
+		{"does the live transfer switch still apply on a computer that already shared a chat", "continuing-a-chat-on-another-computer"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
