@@ -50,7 +50,7 @@ Delete asks first, because it cannot be undone: "Delete “Brief”?", saying th
 
 ## History — an earlier copy of a document or canvas, Restore, version history, undo a change
 
-Personal documents and canvases keep a History. On a Personal document it is History in the document's ⋯ menu; on a canvas it is the History button in the canvas's header. Organization document documents have no History or Restore action in this release. History lists the earlier copies in plain words — what changed it, when, and who ("Updated · Nov 9 · by Lena"), with **current** on the copy the document holds now — never as a number or an id.
+Personal documents and canvases keep a History. On a Personal document it is History in the document's ⋯ menu; on a canvas it is the History button in the canvas's header. Organization documents have no History or Restore action in this release. History lists the earlier copies in plain words — what changed it, when, and who ("Updated · Nov 9 · by Lena"), with **current** on the copy the document holds now — never as a number or an id.
 
 In a Personal document, choosing an earlier copy shows its words in the document, read-only; **Compare with now** lays today's words under it. **Restore this version** brings it back: the restored words become the newest copy, and the words it replaced stay in History, so nothing is lost. Restoring needs the right to edit, and a document's unsaved typing saved first.
 
