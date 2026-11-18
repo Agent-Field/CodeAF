@@ -3562,6 +3562,56 @@ A child reads the overall ask for requirements it owns. Delegation instructions
 for the parent remain the parent's coordination work; a child repeats them only
 when its own work order assigns coordination.
 
+## Can a task run several tools in one step — the script tool, CODEAF_TASK_SCRIPT
+
+A task worker on the bash belt can carry a `script` tool. The worker writes a
+short JavaScript program that calls its other tools, and only what the program
+prints or returns goes back to the model. One step can make several calls and
+keep only the lines that matter from a large result.
+
+The tool is off by default while it is measured. Start codeaf with
+`CODEAF_TASK_SCRIPT=on` to give task workers the tool; any other value, or
+none, leaves it off. A conversation never carries it, and neither does a task
+on the older node belt (`CODEAF_TASK_BELT=node`).
+
+- Each call goes through the same approval rules as a call the worker makes
+  directly. A refused call fails inside the script with the refusal's text.
+- A script cannot call `script`, `propose_subharness`, `ask`,
+  `request_secret`, `propose_task`, `quick_task`, `divide_work`,
+  `team_start`, `start_chat`, `automation` or `factory_add`. Asking the person
+  something and starting work stay steps the model takes itself.
+- Inside a script, `bash` answers the command's output, its exit code and
+  whether the output was cut. A script sees up to 1 MiB of one command's
+  output, and a non-zero exit does not fail the script. A command that timed
+  out or was stopped fails inside the script with bash's own words.
+- Every other tool answers its text, as the worker would read it; a script
+  that knows a tool answers JSON parses it itself.
+- A script is not Node.js: there is no `require`, `fs`, `process`, network
+  or clock. It reaches files and commands only through tools, mostly
+  `await tools.bash({command: "..."})`.
+- A script stops after 200 tool calls, 10 minutes or 16 MiB of output, and
+  says which limit it reached. A call turned away for its own arguments never
+  ran and does not count toward the 200.
+- What the script returns is cut to the usual result limit, with the whole
+  output saved to a file the result names.
+- Up to 4 calls run at the same time; more wait their turn. When a script
+  ends, calls still running are cancelled.
+- A script is one step of the task: it counts once against the task's step
+  limit and in the step count the worker and the task's room show, and the
+  task's page and its live view list the calls it made under it, indented.
+
+## The script tool in a conversation — CODEAF_CHAT_SCRIPT
+
+Start codeaf with `CODEAF_CHAT_SCRIPT=on` to put the same `script` tool on the
+conversation's own tools, as a separate experiment from `CODEAF_TASK_SCRIPT`.
+Any other value, or none, leaves it off. It changes nothing for tasks: each
+switch arms one side only.
+
+The chat's script follows the same rules as a task's. Each call it makes goes
+through the approval rules, so a call that needs your approval stops the script
+until you answer, up to the script's 10 minutes. The calls are drawn indented
+under the script in the conversation.
+
 ## Where does my task work
 
 An ordinary code task works in its own copy of the repository the work is about,

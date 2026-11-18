@@ -243,8 +243,12 @@ type PlanTaskModel struct {
 // imports this one, so the step line is decoded here from the same JSON shape.
 // The two must move together, and the run engine's own file is the definition.
 type PlanStep struct {
-	Kind        string   `json:"kind"`
-	Step        int      `json:"step"`
+	Kind string `json:"kind"`
+	Step int    `json:"step"`
+	// Tool is the action the step took, as internal/run's Step records it;
+	// empty on records written before the field and on the belt's bash steps
+	// a surface draws the way it always has.
+	Tool        string   `json:"tool,omitempty"`
 	Command     string   `json:"command"`
 	Observation string   `json:"observation,omitempty"`
 	FullOutput  string   `json:"full_output,omitempty"`
@@ -267,6 +271,20 @@ type PlanStep struct {
 	// PURPOSE: its absence is false, so a step from an engine built before the
 	// field, and a step no display facts were made for, draws its head as it did.
 	ObservationHeadWithheld bool `json:"observation_head_withheld,omitempty"`
+	// Calls are the tool calls a script step made, mirrored from
+	// internal/run's StepCall; a page hangs them under the step.
+	Calls []PlanCall `json:"calls,omitempty"`
+}
+
+// PlanCall is one call a script step made: the session's mirror of
+// internal/run's StepCall, with the same JSON names.
+type PlanCall struct {
+	Tool        string `json:"tool"`
+	Command     string `json:"command"`
+	Observation string `json:"observation,omitempty"`
+	ExitCode    *int   `json:"exit_code,omitempty"`
+	Failed      bool   `json:"failed,omitempty"`
+	NotRun      bool   `json:"not_run,omitempty"`
 }
 
 // PlanCommandPart is one quote-aware command part and the facts only the

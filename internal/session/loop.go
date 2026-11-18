@@ -3610,6 +3610,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// not held on the Agent, and the context is the one thing already threaded
 	// from the turn down into every Execute.
 	ctx = withEpisode(ctx, ep)
+	ctx = withEventHub(ctx, hub)
 
 	// THE ARGUMENTS ARE RENDERED ONCE PER CALL, HERE, and the string is carried
 	// to every event this batch sends about that call — the begin it sends here,
@@ -3630,20 +3631,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	}
 	for index, call := range calls {
 		rendered[index] = argsText(call)
-		service, serviceName := a.serviceOf(call.Function.Name), ""
-		if service != "" {
-			serviceName = a.serviceName(service)
-		}
-		hub.send(a.clientToolEvent(Event{
-			Kind:        EventToolBegin,
-			Tool:        call.Function.Name,
-			Hint:        a.gloss(call),
-			Args:        rendered[index],
-			CallID:      call.ID,
-			Batch:       batch,
-			Service:     service,
-			ServiceName: serviceName,
-		}))
+		hub.send(a.toolBeginEvent(call, rendered[index], batch))
 	}
 
 	// THE NARRATOR ARMS BESIDE THE WORK, not after a long silence. A half-second
@@ -3750,49 +3738,73 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// tool more than once, because neither its name nor completion order identifies
 	// the row.
 	for index, call := range calls {
-		if results[index].isError {
-			a.sendBeltStep(ctx, hub, Event{
-				Kind:   EventToolFailed,
-				Err:    results[index].err,
-				Tool:   call.Function.Name,
-				Hint:   clip(firstLine(results[index].text), hintLimit),
-				Args:   rendered[index],
-				Output: capOutput(results[index].text),
-				CallID: call.ID,
-				Exit:   resultExit(results[index].text),
-				// WHOSE FAILURE THIS WAS travels with it. Everything counting
-				// steps out of band — the runner's no-progress ledger above all —
-				// reads events and not results, so a fact kept only on the result
-				// is a fact no counter can act on (withdrawn.go).
-				HarnessMade: results[index].harness,
-				// AN ATTEMPTED ACTION A DOOR REFUSED is the one harness-made
-				// answer with a veto's author on it ([episode.preAction]); a
-				// correction about the reply's form has none.
-				Refused: results[index].harness && results[index].refusedBy != "",
-				// AND WHETHER THE TOOL TURNED THE ARGUMENTS AWAY BEFORE IT RAN, as a
-				// typed fact from the handler's own validation return.
-				RejectedBeforeRun: results[index].rejected,
-				ToolInvoked:       results[index].invoked,
-				MediaAttempt:      results[index].attempt,
-			})
-			continue
-		}
-		// A successful tool's hint is empty: the result belongs to the model,
-		// and the person already read what the call was going to do. Output is
-		// there for a person who asks to see it anyway.
-		a.sendBeltStep(ctx, hub, Event{
-			Kind:         EventToolEnd,
-			ToolInvoked:  results[index].invoked,
-			MediaAttempt: results[index].attempt,
-			ToolProcess:  results[index].process,
-			Tool:         call.Function.Name,
-			Args:         rendered[index],
-			Output:       capOutput(results[index].text),
-			CallID:       call.ID,
-			Exit:         resultExit(results[index].text),
-		})
+		a.sendBeltStep(ctx, hub, toolEndEvent(call, rendered[index], results[index]))
 	}
 	return results
+}
+
+// toolBeginEvent is one call's begin, the same for a call the model made and
+// one a script made (tool_script.go), so the two rows carry the same facts.
+func (a *Agent) toolBeginEvent(call ai.ToolCall, rendered, batch string) Event {
+	service, serviceName := a.serviceOf(call.Function.Name), ""
+	if service != "" {
+		serviceName = a.serviceName(service)
+	}
+	return a.clientToolEvent(Event{
+		Kind:        EventToolBegin,
+		Tool:        call.Function.Name,
+		Hint:        a.gloss(call),
+		Args:        rendered,
+		CallID:      call.ID,
+		Batch:       batch,
+		Service:     service,
+		ServiceName: serviceName,
+	})
+}
+
+// toolEndEvent is one call's end, built from its result — one builder for the
+// batch and for a script's calls, so a field added here reaches both.
+func toolEndEvent(call ai.ToolCall, rendered string, result toolResult) Event {
+	if result.isError {
+		return Event{
+			Kind:   EventToolFailed,
+			Err:    result.err,
+			Tool:   call.Function.Name,
+			Hint:   clip(firstLine(result.text), hintLimit),
+			Args:   rendered,
+			Output: capOutput(result.text),
+			CallID: call.ID,
+			Exit:   resultExit(result.text),
+			// WHOSE FAILURE THIS WAS travels with it. Everything counting
+			// steps out of band — the runner's no-progress ledger above all —
+			// reads events and not results, so a fact kept only on the result
+			// is a fact no counter can act on (withdrawn.go).
+			HarnessMade: result.harness,
+			// AN ATTEMPTED ACTION A DOOR REFUSED is the one harness-made
+			// answer with a veto's author on it ([episode.preAction]); a
+			// correction about the reply's form has none.
+			Refused: result.harness && result.refusedBy != "",
+			// AND WHETHER THE TOOL TURNED THE ARGUMENTS AWAY BEFORE IT RAN, as a
+			// typed fact from the handler's own validation return.
+			RejectedBeforeRun: result.rejected,
+			ToolInvoked:       result.invoked,
+			MediaAttempt:      result.attempt,
+		}
+	}
+	// A successful tool's hint is empty: the result belongs to the model,
+	// and the person already read what the call was going to do. Output is
+	// there for a person who asks to see it anyway.
+	return Event{
+		Kind:         EventToolEnd,
+		ToolInvoked:  result.invoked,
+		MediaAttempt: result.attempt,
+		ToolProcess:  result.process,
+		Tool:         call.Function.Name,
+		Args:         rendered,
+		Output:       capOutput(result.text),
+		CallID:       call.ID,
+		Exit:         resultExit(result.text),
+	}
 }
 
 // resultExitRe is the status line a shell call's result ends with when its

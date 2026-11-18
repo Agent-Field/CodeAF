@@ -1029,6 +1029,12 @@ type Event struct {
 	// the same field with two answers.
 	CallID string
 
+	// Parent is the id of the script call this call was made from, on the
+	// begin and end of a call a script made (tool_script.go), and empty on
+	// every call the model made itself. A reader that counts the model's steps
+	// skips a call with a parent: the step is the script.
+	Parent string `json:"Parent,omitempty"`
+
 	// Exit is the exit code a call's result reports, on EventToolEnd and
 	// EventToolFailed, and nil when it reports none.
 	Exit *int `json:"Exit,omitempty"`
@@ -2465,6 +2471,16 @@ type Config struct {
 	// arms of the comparison run from one binary
 	//.
 	bashBelt bool
+
+	// script arms the script tool on a bash-belt worker. It is set with
+	// bashBelt, from CODEAF_TASK_SCRIPT, and read only through
+	// [Config.mayScript].
+	script bool
+
+	// chatScript arms the script tool on a conversation's own belt. [New] sets
+	// it from CODEAF_CHAT_SCRIPT, so a child built inside a session never has
+	// it, and it is read only through [Config.mayChatScript].
+	chatScript bool
 
 	// reviseDesign is the one extra hand a design thread has, and the whole of
 	// what puts revise_design on its belt (tools_harness.go). It carries the

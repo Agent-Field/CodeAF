@@ -63,6 +63,9 @@ func (a *Agent) bashBelt() []bare.Tool {
 	if hand := a.branchBash(); hand.Name != "" {
 		tools = append(tools, hand)
 	}
+	if a.config.mayScript() {
+		tools = append(tools, a.scriptTool())
+	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	// ASK IS OFF THIS BELT. A bash-belt worker coordinates through the plan CLI
 	// and reports through `plandb done`; there is no consent gate to reach the
@@ -162,6 +165,13 @@ func (a *Agent) truncatingBash(inner bare.Tool) bare.Tool {
 				if g := a.graph(); g != nil {
 					g.planPulse()
 				}
+			}
+			// A SCRIPT'S BASH IS CUT AT THE SCRIPT'S WIDTH, because the
+			// script reads it before the model does (tool_script.go).
+			if probe := scriptBashFrom(ctx); probe != nil {
+				cut, truncated, path := a.cutBashAt(text, scriptBashBytes, scriptSpillName)
+				probe.cut(truncated, path)
+				return cut, isError, nil
 			}
 			return a.cutBashResult(text), isError, nil
 		},

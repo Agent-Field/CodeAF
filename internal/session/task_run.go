@@ -8008,6 +8008,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// never be handed the belt, and at the landing's gate, which keeps the
 		// experiment's work unaudited (workTaskNode).
 		bashBelt: bashExperiment,
+		// AND THE SCRIPT TOOL'S SWITCH, read where a plan run's worker reads it
+		// (bashbelt_worker.go): a task chat starts is a task worker too, and
+		// only [Config.mayScript] decides whether this belt carries it.
+		script: bashExperiment && scriptAsked(),
 		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
 		//
 		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this
