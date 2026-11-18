@@ -316,3 +316,17 @@ func TestServerAgentTaskRunLinksItsFilesAndTicksItsChecklist(t *testing.T) {
 		t.Fatalf("a chat's file was linked to a task: %+v", f)
 	}
 }
+
+func TestWorkstreamPageReadMarksTaskUses(t *testing.T) {
+	o := newWSOrg(t)
+	ws := o.create(t, "santosh", api.WorkstreamNew{Name: "Pantry"})
+	var notes api.WorkstreamFile
+	o.do(t, "santosh", "POST", "/v1/workstreams/"+ws.ID+"/files", -1, api.FileNew{Kind: "document", Name: "Notes", BodyMD: "Inputs"}, 201, &notes)
+	run := &agentDoor{h: o.h, id: ws.ID, asker: "santosh", runTask: "task1"}
+	run.ReadPages(context.Background(), []string{notes.PageID})
+	var list api.WorkstreamFiles
+	o.do(t, "santosh", "GET", "/v1/workstreams/"+ws.ID+"/files", -1, nil, 200, &list)
+	if got := fileNamed(t, list.Files, "Notes").UsedBy; !slices.Equal(got, []string{"task1"}) {
+		t.Fatalf("Uses = %v", got)
+	}
+}

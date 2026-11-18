@@ -1152,3 +1152,24 @@ func (d *agentDoor) wsTaskConflict(ctx context.Context, args json.RawMessage) (a
 	}
 	return map[string]any{"task": taskBrief(t), "asked": asked}, nil
 }
+
+// ReadPages records the pages the workstream tool actually showed the model.
+// Reading the workstream elsewhere must not mark its whole page list as inputs.
+func (d *agentDoor) ReadPages(ctx context.Context, ids []string) {
+	if d.runTask == "" {
+		return
+	}
+	ws, err := d.Workstream(ctx)
+	if err != nil {
+		return
+	}
+	files, err := d.h.foldFiles(ws)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		if f.DeletedAt == nil && f.PageID != "" && slices.Contains(ids, f.PageID) {
+			d.usedByTask(ctx, f, ws)
+		}
+	}
+}

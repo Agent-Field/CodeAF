@@ -545,6 +545,9 @@ func (h *Handler) patchCanvas(w http.ResponseWriter, r *http.Request) {
 		c = h.touchCanvas(c, v)
 		h.publishCanvasSeq(api.EventCanvasChanged, c, v.Handle, out.Seq)
 	}
+	if body.Trashed != nil {
+		h.publishCanvasFiles(c, v.Handle, *body.Trashed)
+	}
 	h.writeCanvas(w, r, http.StatusOK, c, v)
 }
 
@@ -601,6 +604,7 @@ func (h *Handler) deleteCanvas(w http.ResponseWriter, r *http.Request) {
 	_ = os.RemoveAll(filepath.Join(h.config.Canvas.Root, c.ID))
 	h.dropCanvasDocs(c.ID, nodes, nil)
 	h.publishCanvas(r.Context(), api.EventCanvasRemoved, &c, c, v.Handle)
+	h.publishCanvasFiles(c, v.Handle, true)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1065,4 +1069,25 @@ func (h *Handler) canvasEventForViewer(r *http.Request, e live.Event) (live.Even
 	}
 	e.Data = data
 	return e, true
+}
+
+// publishCanvasFiles tells an open Files list to read its canvas links again
+// after trash, restore or permanent removal, without changing those links.
+func (h *Handler) publishCanvasFiles(c factory.OrgCanvas, by string, gone bool) {
+	if c.Workstream == "" {
+		return
+	}
+	ws, ok, err := h.config.Store.Workstream(c.Workstream)
+	if err != nil || !ok {
+		return
+	}
+	files, err := h.config.Store.WorkstreamFiles(ws.ID)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		if f.CanvasID == c.ID {
+			h.publishWorkstreamPart(ws, api.PartFiles, f.ID, by, f.Rev, gone)
+		}
+	}
 }

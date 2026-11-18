@@ -177,11 +177,11 @@ The link lives on the file: its facts in Files say "Used by" the task, and a doc
 
 ## Afi links files to the task by itself — what a task's run reads and makes
 
-When Afi or a chat does a task, nobody has to attach its files. Every file of this workstream it reads is attached to the task, under **Uses**, and every document or canvas it makes is the task's own, under **Result**, made by that task. A file from the workstream this one sits inside is read but not attached, because it belongs to that workstream's tasks. Talking to Afi in your own pane, outside a task's run, links nothing by itself. What the run linked can be removed from the task like anything attached by hand.
+When Afi or a chat does a task, nobody has to attach its files. Every file of this workstream it reads is attached to the task, under **Uses**, and every document or canvas it makes is the task's own, under **Result**, made by that task. A file from the workstream this one sits inside is read but not attached, because it belongs to that workstream's tasks. Talking to Afi in your own pane, outside a task's run, links nothing by itself. Pages read through `workstream_pages` count as inputs too: `read` shows every page's start and marks those pages; `page` marks the one it reads. What the run linked can be removed from the task like anything attached by hand.
 
 ## a canvas on a task — its live picture, open it inside the task, Open beside
 
-A canvas a task made or uses shows as a small picture of the whole board, repainted a moment after anyone changes it. Clicking it opens the canvas inside the task, with a bar naming the task to go back (Escape too) and **Open beside** to put it in the window's preview tab. On an organization's canvas the picture stays the plain board ground until this computer can draw it; the canvas itself still opens.
+A canvas a task made or uses shows a small picture of its first page, repainted a moment after anyone changes it. Clicking it opens the canvas inside the task, with a bar naming the task to go back (Escape too) and **Open beside** to put it in the window's preview tab. Organization canvases use the same reader as the open canvas, so their real first page appears too.
 
 ## a task's result — read the document without opening it, Result above Request, Checked against
 
@@ -304,6 +304,10 @@ On an organization workstream, Afi's work on a task runs on the organization's s
 - A run that stops reporting for a minute while the server is up becomes **Didn't report back**, with "Afi stopped reporting back while working on it. Press Start to run it again."
 
 **Start on a task that says Running with nothing working on it starts it again**: its page shows **Start again** with "Nothing is working on it", and its activity says "Started again by <name>: nothing was working on it". Start on a task Afi really is working on changes nothing.
+
+## deleting a canvas removes it from Files too
+
+An organization canvas moved to the trash no longer appears in live Files. Restoring the canvas brings its file back with its task links. Permanently deleting the canvas removes it from live Files as well.
 
 ## delete a workstream task, Undo a deletion, and keep the files it made
 

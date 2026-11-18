@@ -14,10 +14,14 @@ type fakeWorkstreamDoor struct {
 	ws      factory.OrgWorkstream
 	written []string
 	decided []string
+	reads   []string
 }
 
 func (f *fakeWorkstreamDoor) Workstream(context.Context) (factory.OrgWorkstream, error) {
 	return f.ws, nil
+}
+func (f *fakeWorkstreamDoor) ReadPages(_ context.Context, pages []string) {
+	f.reads = append(f.reads, pages...)
 }
 func (f *fakeWorkstreamDoor) WritePage(_ context.Context, page, title, body string) (string, error) {
 	f.written = append(f.written, page+"|"+title+"|"+body)
@@ -72,6 +76,9 @@ func TestWorkstreamPagesReadsAndWritesThroughTheDoor(t *testing.T) {
 	}
 	if _, failed = call(`{"ask":"page","page":"pg_9"}`); !failed {
 		t.Fatal("an unknown page was read")
+	}
+	if strings.Join(door.reads, ";") != "pg_1;pg_1" {
+		t.Fatalf("page reads were not recorded: %v", door.reads)
 	}
 	if _, failed = call(`{"ask":"write","body":"x"}`); !failed {
 		t.Fatal("a write with no page was taken")
