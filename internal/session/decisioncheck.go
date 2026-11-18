@@ -413,8 +413,13 @@ func guardFile(ctx context.Context, args json.RawMessage, str func(string) strin
 		maker := firstNonBlank(c.Decision.ByName, c.Decision.By, "whoever made it")
 		against = append(against, "“"+c.Decision.Text+"” ("+maker+"'s decision; "+c.Why+")")
 	}
+	// WHO IS ASKED IS THE DOOR'S TO SAY, NOT THIS LINE'S. On a Personal
+	// workstream the Ask is the person's own whoever made the decision, and a
+	// line that said "asks whoever made the decision" had the model tell the
+	// person Priya was asked while the card said only they could answer
+	// (live2/E6b B2). The task's create answers who was asked ([conflictAsked]).
 	return "Nothing written: this goes against " + strings.Join(against, " and ") +
-		". Write nothing shared that goes against it. Make a task for this work with ws_task_create: the app pauses it and asks whoever made the decision, and you tell the person you are talking to who was asked.", true, nil
+		". Write nothing shared that goes against it. Make a task for this work with ws_task_create: the app pauses it on an Ask, and its answer says who was asked; tell the person you are talking to exactly that, and name nobody else as asked.", true, nil
 }
 
 // conflictAsked is who the door says it asked, in words for the model: the

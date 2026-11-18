@@ -3108,6 +3108,7 @@ and the reply is empty.
 | `compaction.ended` | `CompactionEnded` |
 | `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |
+| `crew.item` | `CrewItemEvent` |
 | `crew.log` | `CrewLogEvent` |
 | `crew.proposal.delta` | `CrewProposalDelta` |
 | `crew.removed` | `CrewRemoved` |

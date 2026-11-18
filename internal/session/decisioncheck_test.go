@@ -119,6 +119,11 @@ func TestADocumentAgainstADecisionIsNotWritten(t *testing.T) {
 	if !isErr || !strings.HasPrefix(out, "Nothing written") || strings.Contains(strings.Join(f.calls, ","), WSFileCreateTool) {
 		t.Fatalf("calls %v, out %q", f.calls, out)
 	}
+	// Who is asked is the task's answer to say, never the decision's maker by
+	// default: on Personal the Ask is the person's own (live2/E6b B2).
+	if strings.Contains(out, "asks whoever made") || strings.Contains(out, "Priya is asked") || !strings.Contains(out, "its answer says who was asked") {
+		t.Fatalf("the refusal names who is asked itself: %q", out)
+	}
 }
 
 // A CONFLICT THAT COULD NOT BE ASKED IS NOT SAID TO BE (live2/E6b): the work

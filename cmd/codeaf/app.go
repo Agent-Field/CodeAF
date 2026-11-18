@@ -164,6 +164,11 @@ func runApp(args []string) error {
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
 	backend.startKeyHealth()
+	// A CREW MANAGER THAT MOVED OUT OF THE APP IS STILL WOKEN by its members'
+	// replies (appteamresume.go).
+	defer backend.armAppTeamResume()()
+	// And its manager can link what the crew made (appteamlink.go).
+	defer backend.armAppTeamLink()()
 	// A QUIT DOES NOT WAIT OUT A RECEIPT'S SCHEDULE (internal/provider's
 	// receipt_hurry.go): Close hurries them, and the process half's close waits
 	// at most [appQuitReceiptWait] for what is still owed.

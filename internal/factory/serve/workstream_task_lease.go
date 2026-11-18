@@ -195,8 +195,9 @@ func (h *Handler) sweepTaskRuns() {
 			switch {
 			case leased && l.Queued && l.Owner != me && last.Before(since) && now.Sub(since) >= taskRestartSettle:
 				// It was waiting for its place, not working: it waits again,
-				// with nothing to say on its thread.
-				_ = h.startTaskRun(ws, t, l.Starter, l.Words, l.Resumes, false)
+				// with nothing to say on its thread, and a run an answer
+				// started is still that run (D1's answered, kept on the lease).
+				_ = h.startTaskRun(ws, t, l.Starter, l.Words, l.Resumes, l.Answered)
 			case (!leased || l.Owner != me) && last.Before(since) && now.Sub(since) >= taskRestartSettle:
 				h.settleCutRun(ws, t, l, leased)
 			case now.Sub(last) >= taskNoReportAfter:

@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS task_runs (
 	words   TEXT NOT NULL DEFAULT '',
 	queued  INTEGER NOT NULL DEFAULT 0,
 	usd     REAL NOT NULL DEFAULT 0,
+	answered INTEGER NOT NULL DEFAULT 0,
 	PRIMARY KEY (ws, task)
 );
 `
@@ -57,6 +58,11 @@ type TaskRun struct {
 	Queued bool
 	// USD is what the run has spent so far.
 	USD float64
+	// Answered is a queued run an answer to the task's Ask started (D1): a
+	// restart that queues it again still runs it as one that goes on with
+	// what the earlier run made, not as a fresh start judged on its own
+	// writes alone.
+	Answered bool
 }
 
 // PutTaskRun keeps r as its task's lease, in place of any it had.
@@ -99,10 +105,11 @@ func (w TaskWrite) DropRun(ws, task string) error { return dropTaskRun(w.tx, ws,
 func (w TaskWrite) PutRun(r TaskRun) error { return putTaskRun(w.tx, r) }
 
 func putTaskRun(tx *sql.Tx, r TaskRun) error {
-	_, err := tx.Exec(`INSERT INTO task_runs (ws, task, owner, starter, started, beat, resumes, words, queued, usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := tx.Exec(`INSERT INTO task_runs (ws, task, owner, starter, started, beat, resumes, words, queued, usd, answered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (ws, task) DO UPDATE SET owner = excluded.owner, starter = excluded.starter, started = excluded.started,
-		beat = excluded.beat, resumes = excluded.resumes, words = excluded.words, queued = excluded.queued, usd = excluded.usd`,
-		r.WS, r.Task, r.Owner, r.Starter, r.Started, r.Beat, r.Resumes, r.Words, r.Queued, r.USD)
+		beat = excluded.beat, resumes = excluded.resumes, words = excluded.words, queued = excluded.queued, usd = excluded.usd,
+		answered = excluded.answered`,
+		r.WS, r.Task, r.Owner, r.Starter, r.Started, r.Beat, r.Resumes, r.Words, r.Queued, r.USD, r.Answered)
 	return err
 }
 
@@ -113,7 +120,7 @@ func (st *Store) TaskRuns() ([]TaskRun, error) {
 	if err != nil || db == nil {
 		return nil, err
 	}
-	rows, err := db.Query(`SELECT ws, task, owner, starter, started, beat, resumes, words, queued, usd FROM task_runs ORDER BY started`)
+	rows, err := db.Query(`SELECT ws, task, owner, starter, started, beat, resumes, words, queued, usd, answered FROM task_runs ORDER BY started`)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +128,7 @@ func (st *Store) TaskRuns() ([]TaskRun, error) {
 	var out []TaskRun
 	for rows.Next() {
 		var r TaskRun
-		if err := rows.Scan(&r.WS, &r.Task, &r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes, &r.Words, &r.Queued, &r.USD); err != nil {
+		if err := rows.Scan(&r.WS, &r.Task, &r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes, &r.Words, &r.Queued, &r.USD, &r.Answered); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -136,10 +143,34 @@ func (st *Store) TaskRunOf(ws, task string) (TaskRun, bool, error) {
 		return TaskRun{}, false, err
 	}
 	r := TaskRun{WS: ws, Task: task}
-	err = db.QueryRow(`SELECT owner, starter, started, beat, resumes, words, queued, usd FROM task_runs WHERE ws = ? AND task = ?`, ws, task).
-		Scan(&r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes, &r.Words, &r.Queued, &r.USD)
+	err = db.QueryRow(`SELECT owner, starter, started, beat, resumes, words, queued, usd, answered FROM task_runs WHERE ws = ? AND task = ?`, ws, task).
+		Scan(&r.Owner, &r.Starter, &r.Started, &r.Beat, &r.Resumes, &r.Words, &r.Queued, &r.USD, &r.Answered)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TaskRun{}, false, nil
 	}
 	return r, err == nil, err
+}
+
+// addTaskRunsAnswered gives a task_runs table made before answered existed
+// that column, once.
+func addTaskRunsAnswered(db *sql.DB) error {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info('task_runs')`)
+	if err != nil {
+		return err
+	}
+	has := false
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		has = has || name == "answered"
+	}
+	rows.Close()
+	if has {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE task_runs ADD COLUMN answered INTEGER NOT NULL DEFAULT 0`)
+	return err
 }

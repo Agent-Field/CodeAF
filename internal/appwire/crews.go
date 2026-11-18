@@ -13,7 +13,10 @@ import (
 
 // The crews' events.
 const (
-	EventCrewLog         = "crew.log"
+	EventCrewLog = "crew.log"
+	// EventCrewItem is an item linked to a crew: by the person over
+	// crews.link, or by the crew's manager with team_link.
+	EventCrewItem        = "crew.item"
 	EventDecisionOpened  = "decision.opened"
 	EventDecisionChanged = "decision.changed"
 	EventMemberChanged   = "member.changed"
@@ -363,6 +366,9 @@ type Proposal struct {
 type (
 	CrewLogEvent struct {
 		Line LogLine `json:"line"`
+	}
+	CrewItemEvent struct {
+		Item CrewItem `json:"item"`
 	}
 	DecisionEvent struct {
 		Decision Decision `json:"decision"`

@@ -374,7 +374,22 @@ on one waits for you.
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
 | `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
 | `team_dissolve` | takes back a team that has never held anyone but its manager, when you decline it; the team is forgotten and the conversation goes on alone. Only offered while the team is that empty (see **Cancel a team nobody joined**) | no |
+| `team_link` | records a file, pull request, issue or job the crew made as the crew's work, so the desktop app lists it with the crew (see **Link what the crew made**) | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
+
+## Link what the crew made — team_link, add a file or pull request to the crew
+
+A manager records what its crew produced with `team_link`: `ref` is a file path (relative to
+the manager's folder, or absolute; it must exist and be a file), a pull request or issue URL,
+or a job id, and `kind` says which (`file`, `pr`, `issue`, `job`; a file by default). `title`
+is how the app names it (a file's own name by default). It answers
+`Linked <ref> to "<crew>" as <kind>; the app lists it with the crew's work.` and the item
+appears in the crew's work in the desktop app at once. Linking the same thing twice keeps one
+item.
+
+The tool is only on a manager's belt where something can keep the record: in the desktop app,
+or in an engine started for it. A manager in a terminal chat has no `team_link`, and its
+members never have it; a member hands its files to the manager, which links them.
 
 ## Adding existing sessions and removing members through the manager
 
@@ -536,8 +551,25 @@ working, that is straight away. When it is idle, it depends on the kind of messa
   already ran. Replies arriving within a few seconds are gathered into one turn.
 
 A member no window has open is opened by codeaf in the background so it can run, and a window
-that opens it later joins the running conversation. When that cannot be done, the traffic says
-`could not wake @web:` and why, and the message waits for the member's next turn.
+that opens it later joins the running conversation. A manager that moved to another window, and
+whose window has since closed, is woken the same way: in the desktop app it is brought back to
+the app and run there.
+
+## could not wake ◆ — a wake that cannot be delivered is kept, not dropped
+
+When a wake cannot be delivered (the conversation is held by a window that is closing, or
+nothing on this computer can open it yet), the traffic says it once:
+`could not wake ◆: <why>; codeaf keeps the wake and starts it as soon as it can be reached`
+(or `could not wake @web: …`). The message itself is never lost: it waits in the traffic, and
+codeaf tries the wake again, first after 15 seconds and then on a doubling wait of at most five
+minutes, until the conversation runs. A retry that fails again says nothing more. If a window
+opens the conversation first, that window picks up the waiting messages and the retries stop.
+
+codeaf stops trying only when there is nothing left to wake, and says so:
+`stopped trying to wake ◆: its crew is closed`, `…: it is no longer in the crew`, or
+`…: its transcript is no longer on this machine`. A retry is kept by the running codeaf
+process; one that quits before the wake is delivered leaves the messages waiting for the
+conversation's next turn.
 
 Every wake is a line in the traffic, `◆ woke @web` or `@web woke ◆`, so the Traffic shows why a
 conversation is running. A wake spends through the same limits a turn you start does, and two

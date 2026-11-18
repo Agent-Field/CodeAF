@@ -170,6 +170,10 @@ func (st *Store) wsDB(create bool) (*sql.DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
 	}
+	if err := addTaskRunsAnswered(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
+	}
 	if err := st.migrateWorkstreams(db); err != nil {
 		_ = db.Close()
 		return nil, err

@@ -179,3 +179,52 @@ func TestATaskWaitingForItsPlaceWaitsAgainAfterARestart(t *testing.T) {
 		t.Fatalf("it was asked %+v", asked)
 	}
 }
+
+// AN ANSWERED RUN WAITING FOR ITS PLACE IS STILL AN ANSWERED RUN AFTER A
+// RESTART (L6 #2750 note on D1 #2767). Afi wrote a draft and asked; the answer
+// started a run that had to queue, and the server restarted before it got its
+// place. The run the restart queued again only replies, as an answered run
+// does, so it is judged on the draft the asking run wrote: Done, never Failed.
+// The lease is what carries "answered" across the restart.
+func TestAnAnsweredRunWaitingForItsPlaceKeepsItsAnswerAcrossARestart(t *testing.T) {
+	o, path := taskOrg(t, "edit")
+	wsID := strings.TrimPrefix(path, "/v1/workstreams/")
+	o.serverMode(t, func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		d := turn.Door.(workDoor)
+		if _, err := d.Work(ctx, "ws_file_create", json.RawMessage(`{"name":"Notes","markdown":"# Notes\n\nA draft."}`)); err != nil {
+			return AgentTurnEnd{}, err
+		}
+		_, err := d.Work(ctx, "ws_task_update", json.RawMessage(`{"task":"`+turn.Task.ID+`","ask":{"title":"Keep the draft?","options":[{"label":"Keep"},{"label":"Hold"}]}}`))
+		return AgentTurnEnd{}, err
+	})
+	tk := o.task(t, "santosh", path, api.TaskCreate{Title: "Release notes", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+tk.ID, tk.Rev, map[string]any{"state": "running"}, 200, nil)
+	o.settle()
+	if got := o.one(t, path, tk.ID); got.State != factory.TaskNeeds {
+		t.Fatalf("the asking run left %+v", got)
+	}
+	// The answer's run queued, then the server went away before it ran.
+	setRunningByAgent(t, o, wsID, tk.ID)
+	if err := o.st.PutTaskRun(store.TaskRun{WS: wsID, Task: tk.ID, Owner: "srv_gone", Starter: "santosh", Started: o.now.Format(time.RFC3339Nano),
+		Beat: o.now.Format(time.RFC3339Nano), Words: "Keep", Queued: true, Answered: true}); err != nil {
+		t.Fatal(err)
+	}
+	if l, ok, err := o.st.TaskRunOf(wsID, tk.ID); err != nil || !ok || !l.Answered {
+		t.Fatalf("the lease did not keep answered: %+v %v %v", l, ok, err)
+	}
+	o.h.Close()
+	o.now = o.now.Add(time.Second)
+	cfg := o.cfg
+	cfg.WorkstreamAgent = func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		_, err := turn.Door.(workDoor).Work(ctx, "ws_task_comment", json.RawMessage(`{"task":"`+turn.Task.ID+`","text":"Kept the draft, as answered."}`))
+		return AgentTurnEnd{}, err
+	}
+	o.h = New(o.seam, cfg)
+	t.Cleanup(o.h.Close)
+	o.now = o.now.Add(taskRestartSettle)
+	o.h.sweepTaskRuns()
+	o.settle()
+	if got := o.one(t, path, tk.ID); got.State != factory.TaskDone {
+		t.Fatalf("an answered run queued across a restart ended %q (%q)", got.State, got.StateReason)
+	}
+}
