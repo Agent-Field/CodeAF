@@ -46,8 +46,15 @@ var teamRouseRetry = 15 * time.Second
 
 // teamRouseRetryMax is the longest a queued wake waits between tries: five
 // minutes is how stale a reply may get before a manager that has become
-// reachable is woken on it.
-const teamRouseRetryMax = 5 * time.Minute
+// reachable is woken on it. A var for the same reason as [teamRouseRetry];
+// both are read under teamWatchClockMu.
+var teamRouseRetryMax = 5 * time.Minute
+
+func teamRouseLongestWait() time.Duration {
+	teamWatchClockMu.RLock()
+	defer teamWatchClockMu.RUnlock()
+	return teamRouseRetryMax
+}
 
 // teamRouseKept is what the first failure's Traffic line adds, so the rail
 // does not read a wake that is still owed as one that was given up on.
@@ -76,6 +83,9 @@ var rouseQueue struct {
 	mu      sync.Mutex
 	pending map[string]*queuedRouse
 	running bool
+	// nudge wakes the goroutine's sleep when a wake is queued, so one due
+	// sooner than the wake it is sleeping for is not left waiting behind it.
+	nudge chan struct{}
 }
 
 // queueRouse keeps member's wake and reports whether its failure is to be
@@ -98,6 +108,13 @@ func queueRouse(profile, teamID string, member teams.Member, reason string) bool
 	}
 	wait := teamRouseFirstWait()
 	rouseQueue.pending[file] = &queuedRouse{profile: profile, teamID: teamID, member: member, due: time.Now().Add(wait), wait: wait, said: reason}
+	if rouseQueue.nudge == nil {
+		rouseQueue.nudge = make(chan struct{}, 1)
+	}
+	select {
+	case rouseQueue.nudge <- struct{}{}:
+	default:
+	}
 	if !rouseQueue.running {
 		rouseQueue.running = true
 		guard.Go("team rouse queue", runRouseQueue)
@@ -132,7 +149,7 @@ func runRouseQueue() {
 			return
 		}
 		now := time.Now()
-		next := now.Add(teamRouseRetryMax)
+		next := now.Add(teamRouseLongestWait())
 		var due []string
 		for file, owed := range rouseQueue.pending {
 			if !owed.due.After(now) {
@@ -141,18 +158,21 @@ func runRouseQueue() {
 				next = owed.due
 			}
 		}
+		nudge := rouseQueue.nudge
 		rouseQueue.mu.Unlock()
 		for _, file := range due {
 			retryRouse(file)
 		}
 		if len(due) == 0 {
-			sleep := time.Until(next)
-			if poll := teamRouseFirstWait(); sleep > poll {
-				// A wake queued meanwhile may be due sooner than the one
-				// slept for; the poll is never longer than a first wait.
-				sleep = poll
+			// A wake queued meanwhile may be due sooner than the one slept
+			// for, so queueing one ends the sleep and the next look is taken
+			// from the queue as it now stands.
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-timer.C:
+			case <-nudge:
+				timer.Stop()
 			}
-			time.Sleep(sleep)
 		}
 	}
 }
@@ -181,8 +201,8 @@ func retryRouse(file string) {
 		return
 	}
 	owed.wait *= 2
-	if owed.wait > teamRouseRetryMax {
-		owed.wait = teamRouseRetryMax
+	if longest := teamRouseLongestWait(); owed.wait > longest {
+		owed.wait = longest
 	}
 	owed.due = time.Now().Add(owed.wait)
 }

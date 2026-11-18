@@ -71,15 +71,15 @@ func (a *Agent) teamLinkTools() []bare.Tool {
 	return []bare.Tool{{Name: teamLinkToolName, Description: teamLinkDescription, Schema: json.RawMessage(teamLinkSchema), Execute: a.teamLinkTool}}
 }
 
-func (a *Agent) teamLinkTool(_ context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) teamLinkTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var p struct {
 		Ref   string `json:"ref"`
 		Kind  string `json:"kind"`
 		Title string `json:"title"`
 		Team  string `json:"team"`
 	}
-	if err := json.Unmarshal(args, &p); err != nil {
-		return "team_link needs ref: " + err.Error(), true, nil
+	if err := decodeToolArguments(args, &p); err != nil {
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	door := teamLinker.Load()
 	if door == nil {
