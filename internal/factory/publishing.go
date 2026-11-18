@@ -33,4 +33,8 @@ func (it *Item) MarkPublishing(state, code, detail string, now time.Time) {
 	if pr := it.PullRequest; pr != nil {
 		it.PublishStatus.PR = &PublishedPR{Number: pr.Number, URL: pr.URL}
 	}
+	// The push landed: the acts approved with it go out now (public_act.go).
+	if state == "opened" {
+		releaseActsAfterPush(it, it.HeadCommit)
+	}
 }

@@ -501,14 +501,60 @@ func TestActsApprovedBesideAPushFollowIt(t *testing.T) {
 	if _, ok := NextAct(it, actNow); ok {
 		t.Fatal("the act is due during the push")
 	}
-	// It lands: the act runs.
-	it.Publishing, it.State, it.PublishStatus = false, StateShipped, &Publishing{State: "opened"}
+	// A publish status that reads opened is not what lets it go: only the
+	// write that records this publish is.
+	stale := it
+	stale.Publishing, stale.State, stale.PublishStatus = false, StateShipped, &Publishing{State: "opened"}
+	if SettleActs(&stale, actNow) || stale.Acts[0].AfterPush != commit {
+		t.Fatalf("an old publish status freed the act: %+v", stale.Acts[0])
+	}
+	// It lands, in the write that records the publish: the act runs.
+	it.Publishing, it.State = false, StateShipped
+	it.MarkPublishing("opened", "", "", actNow)
 	it.FollowUp.State = "watching"
-	if !SettleActs(&it, actNow) || it.Acts[0].AfterPush != "" {
+	if it.Acts[0].AfterPush != "" || it.Acts[0].WithPush {
 		t.Fatalf("the landed push did not free the act: %+v", it.Acts[0])
+	}
+	if SettleActs(&it, actNow) {
+		t.Fatalf("settling a freed act changed it: %+v", it.Acts[0])
 	}
 	if next, ok := NextAct(it, actNow); !ok || next.ID != a.ID {
 		t.Fatal("the act is not due after the push landed")
+	}
+}
+
+// AN ACT APPROVED ON ITS OWN WHILE A PUSH WAITS DOES NOT WAIT FOR THAT PUSH.
+// The push may never be approved, and a new commit would fail an act that
+// was never meant to follow it.
+func TestActsApprovedOnTheirOwnBesideAPushDoNotFollowIt(t *testing.T) {
+	it := pushWaiting(actJob(AutonomyManual))
+	_, _ = AddActs(&it, cleaned(t, it, reply("inline:501", "Renamed it.")), ActByMainAgent, "", actNow)
+	if n := ApproveActs(&it, "me", false, actNow); n != 1 {
+		t.Fatalf("approved %d", n)
+	}
+	a := it.Acts[0]
+	if a.State != ActApproved || a.AfterPush != "" || a.WithPush {
+		t.Fatalf("approved on its own beside a push: %+v", a)
+	}
+	if next, ok := NextAct(it, actNow); !ok || next.ID != a.ID {
+		t.Fatal("an act approved on its own waits for a push it was not approved with")
+	}
+	// The push is never approved: a new round lands another commit, and the
+	// act is still sent, not failed for a push it never followed.
+	it.HeadCommit = strings.Repeat("3", 40)
+	if SettleActs(&it, actNow) || it.Acts[0].State != ActApproved {
+		t.Fatalf("after the commit changed: %+v", it.Acts[0])
+	}
+	// The publish of an unrelated commit lets go only what followed it.
+	follows := pushWaiting(actJob(AutonomyManual))
+	_, _ = AddActs(&follows, cleaned(t, follows, reply("inline:501", "Fixed in the next push.")), ActByMainAgent, "", actNow)
+	follows.Approval = &Approval{Kind: "proof", State: "approving", Commit: follows.HeadCommit}
+	ApproveActs(&follows, "me", true, actNow)
+	pushed := follows.HeadCommit
+	follows.HeadCommit = strings.Repeat("4", 40)
+	follows.MarkPublishing("opened", "", "", actNow)
+	if follows.Acts[0].AfterPush != pushed {
+		t.Fatalf("the publish of another commit freed the act: %+v", follows.Acts[0])
 	}
 }
 
@@ -522,16 +568,61 @@ func TestUndoOfThePushApprovalPutsItsActsBackToWait(t *testing.T) {
 	if !SettleActs(&it, actNow) || it.Acts[0].State != ActProposed || it.Acts[0].ApprovedBy != "" || it.Acts[0].AfterPush != "" {
 		t.Fatalf("after Undo: %+v", it.Acts[0])
 	}
-	// An act the person approved on its own keeps its yes, and still waits
-	// for the push.
+	// An act the person approved on its own keeps its yes when the push
+	// approval is undone: it never depended on that push.
 	own := pushWaiting(actJob(AutonomyManual))
-	_, _ = AddActs(&own, cleaned(t, own, reply("inline:501", "Fixed in the next push.")), ActByMainAgent, "", actNow)
+	_, _ = AddActs(&own, cleaned(t, own, reply("inline:501", "Renamed it.")), ActByMainAgent, "", actNow)
 	ApproveActs(&own, "me", false, actNow)
-	if a := own.Acts[0]; a.State != ActApproved || a.AfterPush != own.HeadCommit || a.WithPush {
+	if a := own.Acts[0]; a.State != ActApproved || a.AfterPush != "" || a.WithPush {
 		t.Fatalf("approved on its own beside a push: %+v", a)
 	}
 	if SettleActs(&own, actNow) {
 		t.Fatalf("a waiting push changed it: %+v", own.Acts[0])
+	}
+}
+
+// AUTO'S YES LAPSES WITH AUTO. An act the main agent approved in Auto that has
+// not gone out comes back to wait for the person once they switch to Manual
+// or take the job over; the person's own yes stays.
+func TestAutoApprovedActsWaitAgainWhenTheJobLeavesAuto(t *testing.T) {
+	for name, leave := range map[string]func(*Item){
+		"manual":     func(it *Item) { it.Autonomy = AutonomyManual },
+		"taken over": func(it *Item) { it.Manual = true },
+	} {
+		it := actJob(AutonomyAuto)
+		_, _ = AddActs(&it, cleaned(t, it, reply("inline:501", "Renamed it.")), ActByMainAgent, "", actNow)
+		_, _ = AddActs(&it, cleaned(t, it, PublicAct{Kind: ActKindComment, Text: "On it."}), ActByYou, "", actNow)
+		if it.Acts[0].State != ActApproved || it.Acts[0].ApprovedBy != ActByMainAgent {
+			t.Fatalf("%s: Auto did not approve: %+v", name, it.Acts[0])
+		}
+		leave(&it)
+		// Not sent even before a settle has looked at it.
+		if next, ok := NextAct(it, actNow); ok || !ActsDueAt(it, actNow).IsZero() {
+			t.Fatalf("%s: Auto's act is still due: %+v", name, next)
+		}
+		if !SettleActs(&it, actNow) {
+			t.Fatalf("%s: nothing changed", name)
+		}
+		if a := it.Acts[0]; a.State != ActProposed || a.ApprovedBy != "" || a.AfterPush != "" || a.WithPush {
+			t.Fatalf("%s: Auto's act after leaving Auto: %+v", name, a)
+		}
+		if a := it.Acts[1]; a.State != ActApproved || a.ApprovedBy != ActByYou {
+			t.Fatalf("%s: the person's own act lost its yes: %+v", name, a)
+		}
+		if waiting := ProposedActs(it); len(waiting) != 1 || waiting[0].ID != it.Acts[0].ID {
+			t.Fatalf("%s: waiting %+v", name, waiting)
+		}
+		if SettleActs(&it, actNow) {
+			t.Errorf("%s: settled twice", name)
+		}
+	}
+	// An Auto act approved with an Auto push follows the same rule.
+	pushed := pushWaiting(actJob(AutonomyAuto))
+	_, _ = AddActs(&pushed, cleaned(t, pushed, reply("inline:501", "Fixed in the next push.")), ActByMainAgent, "", actNow)
+	pushed.Approval = &Approval{Kind: "proof", State: "approving", Automatic: true, Commit: pushed.HeadCommit}
+	pushed.Autonomy = AutonomyManual
+	if !SettleActs(&pushed, actNow) || pushed.Acts[0].State != ActProposed || pushed.Acts[0].AfterPush != "" {
+		t.Fatalf("after Manual beside a push: %+v", pushed.Acts[0])
 	}
 }
 

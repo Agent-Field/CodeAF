@@ -124,8 +124,9 @@ type PublicAct struct {
 	URL    string    `json:"url,omitempty"`
 	DoneAt time.Time `json:"done_at,omitzero"`
 	// AfterPush is the commit whose push the act waits for: it was approved
-	// while that push was waiting or under way, and runs once it has landed.
-	// WithPush says the yes it has is the push approval's own.
+	// together with that push, and runs once it has landed. The write that
+	// records the publish lets it go ([Item.MarkPublishing]). WithPush says
+	// the yes it has is the push approval's own.
 	AfterPush string `json:"after_push,omitempty"`
 	WithPush  bool   `json:"with_push,omitempty"`
 	// Tries is how many times it was tried while GitHub did not answer, and
@@ -519,12 +520,27 @@ func pendingPush(it Item) string {
 	return ""
 }
 
-// pushLanded says the publish of commit went out: the job shipped on it and
-// its last publish reads opened. The pull request's own head is not asked,
-// because someone else may have pushed on top since.
-func pushLanded(it Item, commit string) bool {
-	p := it.PublishStatus
-	return !it.Publishing && it.State == StateShipped && it.HeadCommit == commit && p != nil && p.State == "opened"
+// releaseActsAfterPush lets go every act that waited for the push of commit:
+// that push has landed. It is called in the write that records the publish
+// ([Item.MarkPublishing]), so whether the push landed is never read back
+// later from what the job's publish status says by then.
+func releaseActsAfterPush(it *Item, commit string) {
+	if commit == "" {
+		return
+	}
+	var acts []PublicAct
+	for i, a := range it.Acts {
+		if a.AfterPush != commit || a.Finished() {
+			continue
+		}
+		if acts == nil {
+			acts = append([]PublicAct(nil), it.Acts...)
+		}
+		acts[i].AfterPush, acts[i].WithPush = "", false
+	}
+	if acts != nil {
+		it.Acts = acts
+	}
 }
 
 // pruneActs keeps every act that is not over and the last [ActsKept] that are.
@@ -563,17 +579,22 @@ func ProposedActs(it Item) []PublicAct {
 
 // ApproveActs approves every act that waits, as who, and answers how many.
 // withPush says the yes is the publish approval's own: the acts then follow
-// that push, and come back to wait if it is undone ([SettleActs]).
+// that push, and come back to wait if it is undone ([SettleActs]). AN ACT
+// APPROVED ON ITS OWN DOES NOT WAIT FOR A PUSH that waits beside it: that
+// push may never be approved, and the act was not approved with it.
 func ApproveActs(it *Item, who string, withPush bool, now time.Time) int {
 	n := 0
 	acts := append([]PublicAct(nil), it.Acts...)
-	after := pendingPush(*it)
+	after := ""
+	if withPush {
+		after = pendingPush(*it)
+	}
 	for i := range acts {
 		if acts[i].State != ActProposed {
 			continue
 		}
 		acts[i].State, acts[i].ApprovedBy, acts[i].Error = ActApproved, who, ""
-		acts[i].AfterPush, acts[i].WithPush = after, withPush && after != ""
+		acts[i].AfterPush, acts[i].WithPush = after, after != ""
 		acts[i].Tries, acts[i].NextAt = 0, time.Time{}
 		n++
 	}
@@ -740,7 +761,11 @@ func waitWithActs(it Item, w Wait) Wait {
 //
 //   - A job that ended, or that its person stopped, sends nothing more: an
 //     act that waited is declined and an approved one fails, each saying why.
-//   - An act that waits for a push runs once that push has landed.
+//   - AN ACT AUTO APPROVED IS AUTO'S ONLY WHILE THE JOB IS IN AUTO. Once the
+//     person switches to Manual or takes the job over, an act the main agent
+//     approved and that has not gone out comes back to wait for them.
+//   - An act that waits for a push runs once that push has landed: the write
+//     that records the publish lets it go ([Item.MarkPublishing]).
 //   - An act approved with the push approval comes back to wait when that
 //     approval does (the person pressed Undo, or the door refused it).
 //   - An act whose push will never happen (the job's checked commit is now
@@ -773,12 +798,15 @@ func SettleActs(it *Item, now time.Time) bool {
 			a.DoneAt, changed = now.UTC(), true
 			continue
 		}
+		if autoYesLapsed(*it, *a) {
+			a.State, a.ApprovedBy, a.AfterPush, a.WithPush, changed = ActProposed, "", "", false, true
+			a.Error, a.Tries, a.NextAt = "", 0, time.Time{}
+			continue
+		}
 		if a.State != ActApproved || a.AfterPush == "" {
 			continue
 		}
 		switch {
-		case pushLanded(*it, a.AfterPush):
-			a.AfterPush, a.WithPush, changed = "", false, true
 		case it.HeadCommit != a.AfterPush && !it.Publishing:
 			a.State, a.Error, a.DoneAt, changed = ActFailed, ActPushGone, now.UTC(), true
 		case a.WithPush && OffersPublishApproval(*it):
@@ -789,6 +817,12 @@ func SettleActs(it *Item, now time.Time) bool {
 		it.Acts = pruneActs(acts)
 	}
 	return changed
+}
+
+// autoYesLapsed says a is an approved act whose yes was Auto's, on a job no
+// longer in Auto: it is not sent, and waits for the person instead.
+func autoYesLapsed(it Item, a PublicAct) bool {
+	return a.State == ActApproved && a.ApprovedBy == ActByMainAgent && !Automatic(it)
 }
 
 // NextAct is the act the service carries out next on the job at now, and
@@ -806,7 +840,7 @@ func NextAct(it Item, now time.Time) (PublicAct, bool) {
 		if a.State != ActApproved {
 			continue
 		}
-		if a.AfterPush != "" || now.Before(a.NextAt) {
+		if a.AfterPush != "" || now.Before(a.NextAt) || autoYesLapsed(it, a) {
 			return PublicAct{}, false
 		}
 		return a, true
@@ -828,7 +862,7 @@ func ActsDueAt(it Item, now time.Time) time.Time {
 			return now
 		case a.State != ActApproved:
 			continue
-		case a.AfterPush != "" || it.Publishing:
+		case a.AfterPush != "" || it.Publishing || autoYesLapsed(it, a):
 			return time.Time{}
 		case now.Before(a.NextAt):
 			return a.NextAt
