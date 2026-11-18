@@ -90,8 +90,8 @@ func TestAppInboxDismissClosesTheQuestionWithNothingDecided(t *testing.T) {
 	if err := backend.DismissInbox(consentItem); err != nil {
 		t.Fatal(err)
 	}
-	if answer := <-answered; answer.Key != "3" || answer.Change != appDismissedNote {
-		t.Fatalf("the permission was answered %+v, want deny with the dismissal", answer)
+	if answer := <-answered; answer.Key != "3" || answer.Change != appDismissedNote || !answer.Dismissed {
+		t.Fatalf("the permission was answered %+v, want the answer that changes nothing, marked dismissed", answer)
 	}
 	if got := resolvedEvent(t, rec, consentItem); got.By != appwire.ResolvedDismissed || !strings.HasPrefix(got.Receipt, "Dismissed · you · ") {
 		t.Fatalf("the permission resolved as %+v", got)
