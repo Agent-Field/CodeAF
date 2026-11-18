@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: Org tasks made running start, doers tick their own tasks, Asks reach their decider, and Fold records a decision
+title: Org tasks made running start, doers tick their tasks, Asks reach their decider, Fold records it
 pr: 2796
 surface: [factory, engine]
 invalidates:
