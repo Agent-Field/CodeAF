@@ -948,13 +948,17 @@ const checkpointNotesNudgeLead = "[carry on] codeaf asked you for a note between
 // after the person's own words, after a real tool result or after a carry-on
 // answers that, not the request for a note. A reply that is only
 // [NoChangeReply] answers a carry-on and is never this shape.
+//
+// AND THE REPLY MUST HAVE THE SHAPE THAT WAS ASKED FOR ([readsAsAShortNote]):
+// a short note, not an answer laid out for the person. Position alone sent
+// back every finished summary that happened to land right after the request.
 func answeredNotesAdvice(messages []ai.Message) bool {
 	last := len(messages) - 1
 	if last < 1 || messages[last].Role != "assistant" || len(messages[last].ToolCalls) > 0 {
 		return false
 	}
 	said := strings.TrimSpace(partsText(messages[last]))
-	if said == "" || IsNoChangeReply(said) {
+	if said == "" || IsNoChangeReply(said) || !readsAsAShortNote(said) {
 		return false
 	}
 	for index := last - 1; index >= 0; index-- {
@@ -976,6 +980,69 @@ func answeredNotesAdvice(messages []ai.Message) bool {
 		}
 	}
 	return false
+}
+
+// noteParagraphLimit is how many paragraphs a reply may run to and still be
+// read as the short note the harness asked for ([readsAsAShortNote]).
+const noteParagraphLimit = 2
+
+// readsAsAShortNote reports whether a reply has the shape of the note the
+// silent ladder and the `[held]` demand ask for — "a short visible note" — and
+// not the shape of an answer composed for the person.
+//
+// IT IS READ OFF THE LAYOUT AND NOT OFF THE WORDS, so it holds in every
+// language the person writes in: a reply of more than [noteParagraphLimit]
+// paragraphs, or one with a list item, a heading or a table row, is laid out
+// for somebody to read, and that is an answer, not a note between tool calls.
+//
+// Measured on the connected-canvas qloop, deepseek-v4.1-flash, baseline to run
+// 9: each of the sixteen finished answers written right after a request for a
+// note had three or more paragraphs or a list, and position alone sent back
+// every one of them that ran after #2831 (six, all answered [NoChangeReply]).
+// Three of the four unmarked stalls were one or two plain paragraphs ("Where I
+// am: … Next: make two charts") and are still sent back. THE FOURTH IS THE
+// PRICE: a stall that set out its plan as a numbered list reads as an answer
+// and ends the turn, as every reply did before #2831. A short finished answer
+// still reads as a note and costs the one short call [NoChangeReply] keeps.
+func readsAsAShortNote(said string) bool {
+	paragraphs, inParagraph := 0, false
+	for _, line := range strings.Split(said, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			inParagraph = false
+			continue
+		}
+		if laidOutLine(line) {
+			return false
+		}
+		if !inParagraph {
+			paragraphs++
+			inParagraph = true
+		}
+	}
+	return paragraphs <= noteParagraphLimit
+}
+
+// laidOutLine reports whether one trimmed line is Markdown structure — a list
+// item, a heading or a table row — rather than running prose.
+func laidOutLine(line string) bool {
+	switch {
+	case strings.HasPrefix(line, "|"):
+		return true
+	case strings.HasPrefix(line, "#"):
+		return strings.HasPrefix(strings.TrimLeft(line, "#"), " ")
+	case strings.HasPrefix(line, "- "), strings.HasPrefix(line, "* "),
+		strings.HasPrefix(line, "+ "), strings.HasPrefix(line, "• "):
+		return true
+	}
+	digits := 0
+	for digits < len(line) && line[digits] >= '0' && line[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 || digits+1 >= len(line) {
+		return false
+	}
+	return (line[digits] == '.' || line[digits] == ')') && line[digits+1] == ' '
 }
 
 // checkpointAskNudgeLead is that continuation, carrying the refusal itself so
@@ -3605,13 +3672,16 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		// transparent background" — each the very next reply after a `[silent]`
 		// note or a `[held]` answer, with nothing built.
 		//
-		// IT IS READ OFF THE TRANSCRIPT AND NOT OFF THE WORDS ([answeredNotesAdvice]),
-		// which is this block's law: no guessing at what "next I will" means.
-		// The price of that is a reply that really was the final answer, written
-		// right after a note was asked for, being asked once more — so the
-		// continuation offers [NoChangeReply], which ends the turn on the answer
-		// already given and draws nothing ([answeredNoteUnchanged]). One short
-		// call on a narrow shape, against a turn that otherwise built nothing.
+		// IT IS READ OFF THE TRANSCRIPT AND THE LAYOUT, NOT OFF THE WORDS
+		// ([answeredNotesAdvice]), which is this block's law: no guessing at what
+		// "next I will" means. An answer laid out for the person — paragraphs,
+		// a list — is not the short note that was asked for and is never sent
+		// back ([readsAsAShortNote]). The price is a SHORT reply that really was
+		// the final answer, written right after a note was asked for, being
+		// asked once more — so the continuation offers [NoChangeReply], which
+		// ends the turn on the answer already given and draws nothing
+		// ([answeredNoteUnchanged]). One short call on a narrow shape, against a
+		// turn that otherwise built nothing.
 		//
 		// IT SHARES THE UPDATE'S BUDGET, so the two together send one reply back
 		// at most [checkpointUpdateNudgeCap] times: both are the same stop — an

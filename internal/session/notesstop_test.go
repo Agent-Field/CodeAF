@@ -168,6 +168,94 @@ func TestAFinalAnswerAfterTheNoteRequestEndsOnTheToken(t *testing.T) {
 	}
 }
 
+// The finished answers position alone sent back, as deepseek-v4.1-flash wrote
+// them on the connected-canvas qloop (run 9), each the very next reply after
+// the `[silent]` note and each answered [NoChangeReply] when it was asked again.
+var finishedAnswersAfterTheNoteRequest = map[string]string{
+	"spring-ad t2": "Done.\n\n- Headline enlarged from 72px to 104px, still brand serif P052 in cream `#F0E5D2`.\n" +
+		"- **\"from $12\"** added directly under it, same brand serif at 44px, bottom-left; both sit 48 px off the left and bottom edges.\n\n" +
+		"Rendered and re-checked: nothing cut off, no layout problems.\n\n" +
+		"One honest note: at this size \"Spring Menu\" is ~636 px wide, and the coffee cup sits in the center-left where the line lands, " +
+		"so the right end of the headline grazes the cup base. Nothing is illegible (the band keeps it crisp), but if you want the cup fully clear, " +
+		"the fix is to stack the headline as two lines — \"Spring\" over \"Menu\" — so it fits the clean left column. Say the word and I'll switch it.",
+	"spring-launch t1": "Built the board.\n\n" +
+		"It's the **Spring launch** board — one tracker on the canvas next to the launch notes, with 14 tasks across three lanes the person drags cards between:\n\n" +
+		"- **Build** (7): offline sync code-freeze (20 Mar) and beta to 500 users (24 Mar) with Tomás; help-center articles and sync-conflict macros with Jonah; launch video, blog post and press list with Priya.\n" +
+		"- **Final checks** (4): iOS widget App Store review submit (7 Apr, Tomás), train 6 support agents (7 Apr, Jonah), bank legal sign-off (31 Mar, Aisha), bank co-announcement with Mesa CU and Harbor Bank (Aisha).\n" +
+		"- **Launch day** (3): public launch of Ledger 3.0, Product Hunt, and the 120k-user email — all 14 Apr, Product Hunt and the email with Priya.\n\n" +
+		"Every card has a State (Planned/Doing/Done) to track progress; the board groups by Phase, and can switch to a Timeline view from the toolbar since the dates are all there. Owners and dates come straight from your notes.\n\n" +
+		"Two things you may want to fill: the launch-day email has no owner yet (Priya owns the other launch-day items), and Maya (product) has no tasks in the notes — I didn't invent any. Several Build items also have no date.\n\n" +
+		"workaf://canvas/cv_rvk6fqgh4n6c#f_2zjjcz2ufsnp",
+}
+
+// AN ANSWER LAID OUT FOR THE PERSON IS NOT THE NOTE, WHEREVER IT SITS. Each
+// replay is the measured false positive: the quiet stretch, the `[silent]`
+// note, the finished summary in reply — and the turn now ends on it with no
+// second request and no dim line telling the person it stopped early.
+func TestAFinishedAnswerLaidOutForThePersonIsNotSentBack(t *testing.T) {
+	for name, final := range finishedAnswersAfterTheNoteRequest {
+		t.Run(name, func(t *testing.T) {
+			steps := silentStretch()
+			quiet := len(steps)
+			steps = append(steps,
+				func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(final), nil },
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return textResponse("unreachable: the turn should have ended on the answer"), nil
+				},
+			)
+			var ran atomic.Int64
+			completer := &scriptedCompleter{steps: steps}
+			agent := loopAgent(t, completer, runCounter("look", &ran))
+			events, err := agent.Submit(context.Background(), "make the headline bigger and add from $12 under it")
+			if err != nil {
+				t.Fatalf("Submit: %v", err)
+			}
+			collected := collect(t, events)
+			if got, want := completer.requests(), quiet+1; got != want {
+				t.Fatalf("the loop made %d requests; want %d — the finished answer ends the turn", got, want)
+			}
+			asked := completer.request(quiet)
+			if last := asked[len(asked)-1]; last.Role != "user" || !strings.HasPrefix(messageText(last), silentNoteOpening) {
+				t.Fatalf("the answer replied to %s %q; want the silent ladder's note", last.Role, messageText(last))
+			}
+			if saidSomething(noticeTexts(collected), checkpointNotesNudgeNote) {
+				t.Errorf("a finished answer was sent back; notices were %q", noticeTexts(collected))
+			}
+			if strings.Contains(transcriptText(agent), checkpointNotesNudgeLead) {
+				t.Errorf("the continuation reached the record:\n%s", transcriptText(agent))
+			}
+		})
+	}
+}
+
+// readsAsAShortNote tells the short note that was asked for from an answer
+// laid out for the person by layout alone, in any language.
+func TestReadsAsAShortNoteReadsTheLayout(t *testing.T) {
+	for name, row := range map[string]struct {
+		said string
+		want bool
+	}{
+		"the baseline stall, two paragraphs": {stalledNote + "\n\nNext: make two charts from the Summary ranges.", true},
+		"the run 5 stall, one paragraph": {"Learned: the Spring ad is a 1280×800 photo, no text on it yet. Next I'm checking whether the logo PNG " +
+			"has a transparent background, then I'll set the brand tokens and add the headline.", true},
+		"a short finished answer":            {"Rota built: the week of 23 to 29 November is filled as far as the hours allow.", true},
+		"a note in Chinese":                  {"已读完表格，汇总页已建好。\n\n下一步：做两个图表。", true},
+		"a number that opens a sentence":     {"2024 was the last year with a Q4 dip. #3 on the list is next.", true},
+		"three paragraphs":                   {"Date now reads 14 March.\n\nEverything else is unchanged.\n\nThe PDF is re-exported.", false},
+		"three paragraphs in Chinese":        {"日期已改为3月14日。\n\n其他不变。\n\nPDF已重新导出。", false},
+		"a bulleted answer in one paragraph": {"Done.\n- Headline 104px\n- from $12 under it", false},
+		"a numbered list":                    {"Key findings now read:\n1. Revenue 3,802.\n2. Enterprise led growth.", false},
+		"a heading":                          {"## Spring launch\nBoard built with 14 tasks.", false},
+		"a table":                            {"| Store | Cost |\n| --- | --- |\n| Pinecone | 3,100 |", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := readsAsAShortNote(row.said); got != row.want {
+				t.Errorf("readsAsAShortNote(%q) = %v; want %v", row.said, got, row.want)
+			}
+		})
+	}
+}
+
 // AND NOTHING IS SPENT WHERE THE SHAPE IS NOT THERE. An ordinary final answer
 // and a question to the person end the turn on the first reply when no note was
 // asked for; a question to the person ends it even right after the request
@@ -236,13 +324,14 @@ func TestAnsweredNotesAdviceReadsOnlyTheReplyToTheRequest(t *testing.T) {
 		messages []ai.Message
 		want     bool
 	}{
-		"after the silent note":         {[]ai.Message{person, silent, note}, true},
-		"after the held demand":         {[]ai.Message{person, held, note}, true},
-		"after a real tool result":      {[]ai.Message{person, result, note}, false},
-		"after the person":              {[]ai.Message{silent, person, note}, false},
-		"after the notes nudge itself":  {[]ai.Message{silent, note, textMessage("user", checkpointNotesNudgeLead), note}, false},
-		"the token after the silent":    {[]ai.Message{person, silent, textMessage("assistant", NoChangeReply)}, false},
-		"an empty reply after the note": {[]ai.Message{person, silent, textMessage("assistant", "  ")}, false},
+		"after the silent note":            {[]ai.Message{person, silent, note}, true},
+		"after the held demand":            {[]ai.Message{person, held, note}, true},
+		"after a real tool result":         {[]ai.Message{person, result, note}, false},
+		"after the person":                 {[]ai.Message{silent, person, note}, false},
+		"after the notes nudge itself":     {[]ai.Message{silent, note, textMessage("user", checkpointNotesNudgeLead), note}, false},
+		"the token after the silent":       {[]ai.Message{person, silent, textMessage("assistant", NoChangeReply)}, false},
+		"an empty reply after the note":    {[]ai.Message{person, silent, textMessage("assistant", "  ")}, false},
+		"a laid-out answer after the note": {[]ai.Message{person, silent, textMessage("assistant", finishedAnswersAfterTheNoteRequest["spring-launch t1"])}, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := answeredNotesAdvice(row.messages); got != row.want {
