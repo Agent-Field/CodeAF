@@ -175,6 +175,15 @@ func StateLogin() (string, error) {
 	return osLogin()
 }
 
+// Kept says the state root was moved for a home the person keeps, the desktop
+// app's `--home`, and not for a disposable one: [KeepLogin] recorded their login
+// home beside it. A folder codeaf keeps outside the state root on a person's
+// behalf lives where it would for the person's own home, not inside this one,
+// because a kept home is backed up and a person opens it; a disposable home takes
+// everything with it ([Moved]). A record a test binary was merely handed is not
+// one, for the reason [Login] gives.
+func Kept() bool { return keptLogin() != "" }
+
 // OwnLogin is the home directory whose .codeaf/skills is codeaf's own user
 // skills folder for a scan of the login home dir. Under `codeaf app --home`
 // that is the app's folder when dir is the person's login home; a scan of any
