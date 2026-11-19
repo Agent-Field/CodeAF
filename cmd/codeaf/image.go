@@ -80,6 +80,7 @@ func runImage(args []string) error {
 		DefaultModel: defaultModel,
 		Pick:         v3MediaPick(models),
 		AspectRatios: v3MediaAspects(models),
+		MaxOutputs:   v3MediaOutputs(models),
 		Workspace:    mustWorkspace(),
 		Directory:    session.ImagesDir(session.Place{}, mustWorkspace()),
 		Account:      accountBilledUsage,

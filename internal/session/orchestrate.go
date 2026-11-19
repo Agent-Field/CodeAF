@@ -1239,6 +1239,8 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		MediaModel:                 parent.MediaModel,
 		MediaPick:                  parent.MediaPick,
 		MediaMasks:                 parent.MediaMasks,
+		MediaAspects:               parent.MediaAspects,
+		MediaOutputs:               parent.MediaOutputs,
 		DocumentEngine:             parent.DocumentEngine,
 	})
 	if err != nil {

@@ -2134,6 +2134,12 @@ type Config struct {
 	// Nil passes every shape through untouched, which is what it always did.
 	MediaAspects func(model string) []string
 
+	// MediaOutputs answers how many pictures one request to an image model may
+	// return, from the catalog's published `n` knob (generate_image's n,
+	// tools_image_split.go); zero when the model published none. Nil asks once
+	// and splits only on a refusal about the count.
+	MediaOutputs func(model string) int
+
 	// DocumentEngine is the rung read_document climbs to (tools_doc.go): the
 	// person's document_engine row, one of auto, local, free or ocr
 	// (config.DocumentEngines), resolved by the surface exactly as the search
