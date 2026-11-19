@@ -1239,6 +1239,24 @@ script reached through a Makefile, or a path built at run time can still reach w
 account can reach. Treat it as stopping an agent from taking the obvious routes, and do not
 run an agent you do not trust on a machine holding credentials you care about.
 
+## My API key in a CODEAF_HOME or temp home — is a profile outside ~/.codeaf protected?
+
+Yes. The credential refusal covers the profile codeaf is actually using, wherever it lives:
+the default `~/.codeaf`, a folder `CODEAF_HOME` points at (a temporary test home included),
+a `CODEAF_PROFILE_DIR` profile, a home reached through a symlink, and a relative read such as
+`cat config.json` from inside that folder. A command line that sets `CODEAF_HOME` or
+`CODEAF_PROFILE_DIR` itself, as in `CODEAF_HOME=/tmp/h cat /tmp/h/config.json`, has that folder
+treated as a profile too.
+
+Any file named `config.json` whose top level holds a non-empty `api_key` is refused in any
+folder, so a profile copied into a test folder codeaf was never told about is still a key file.
+A project's own `config.json` with no key in it reads normally.
+
+This holds on every door an agent uses: the chat, `codeaf exec` and the unattended runs built
+on it, and a saved harness. The agent reads back
+`Blocked: this call reaches for a credential (a login, key or token): <what>.` and never the
+file's contents.
+
 ## What a refused call looks like to the model
 
 Every refusal is an ordinary error result the model can act on. It is never a

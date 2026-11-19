@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -258,6 +259,12 @@ func v3HarnessToolBridges(workspace string, seams session.HarnessBeltSeams) v3Ha
 		tool, ok := belt[name]
 		if !ok {
 			return "", fmt.Errorf("there is no tool named %q on this surface", name)
+		}
+		// The credential floor is asked here because nothing between a saved
+		// harness and this registry asks it: the chat's own consent path does,
+		// and a harness's tool.call and agent.loop reach the tools without it.
+		if read, hit := approval.DefaultCredentialScope(workspace).Read(name, payload); hit {
+			return "", errors.New(read.Message())
 		}
 		text, failed, err := tool.Execute(ctx, payload)
 		if err != nil {
