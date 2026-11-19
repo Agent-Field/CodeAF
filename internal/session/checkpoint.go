@@ -131,6 +131,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -980,6 +981,73 @@ func answeredNotesAdvice(messages []ai.Message) bool {
 		}
 	}
 	return false
+}
+
+// checkedWhatItChanged reports whether this turn, since the person spoke,
+// asked a question of a picture of its work after a step that may have changed
+// the work succeeded, and has not stumbled since: no step failed or was held,
+// and the belt's own writers wrote nothing after that look.
+//
+// IT IS THE STRUCTURAL MARK OF A FINISHED TURN, read off the calls, their
+// outcomes and their results, never off what the reply says. Measured on the
+// connected-canvas qloop, deepseek-v4.1-flash, baseline to run 16: five short
+// replies came straight after a request for a note. The two finished ones
+// (flyer t2, runs 14 and 15) had patched the flyer and then put a question to
+// a look of it. The three stalls had not: baseline's built a Summary tab and
+// never looked, run 3's only read, and run 5's looked at a picture with `read`,
+// which describes and asks nothing. The cafe stall of run 2 had checked, and
+// then its next steps failed, so it was mid-repair when it stopped.
+//
+// A LOOK COUNTS ONLY WHEN IT ASKED SOMETHING. `view_image` carries the model's
+// question ("Read the date line verbatim. Is it Saturday 14 March?"), so it is
+// a check of a result. A `read` of an image only describes it, which is also
+// how a turn learns about the inputs it was handed.
+//
+// WHAT MAY CHANGE THE WORK IS WHATEVER THE APPROVAL FLOOR CANNOT CALL
+// READ-ONLY ([approval.ReadOnly]), because the canvas is reached through a
+// shell line and a shell line cannot be told apart by its name. AFTER the
+// check, such a step does not undo it: run 14 read the flyer's text twice with
+// `canvas show` after its look, and reading after a check is how a turn makes
+// sure nothing else needs changing. Only the belt's own writers, which are
+// known to change files, undo it. THE PRICE is a turn that checked one piece,
+// then changed another through the shell, then stopped on a short note: it
+// ends there, as every reply did before #2831.
+func (a *Agent) checkedWhatItChanged() bool {
+	messages := a.snapshot()
+	a.mu.Lock()
+	marks := a.presentation
+	a.mu.Unlock()
+	from := personTurnOpenedAt(messages)
+	results := map[string]ai.Message{}
+	for _, message := range messages[from:] {
+		if message.Role == "tool" {
+			results[strings.TrimSpace(message.ToolCallID)] = message
+		}
+	}
+	changed, checked := false, false
+	for _, message := range messages[from:] {
+		if message.Role != "assistant" {
+			continue
+		}
+		for _, call := range message.ToolCalls {
+			name := strings.TrimSpace(call.Function.Name)
+			result, ran := results[strings.TrimSpace(call.ID)]
+			text := strings.TrimSpace(partsText(result))
+			switch mark := marks.of(result); {
+			case !ran || strings.HasPrefix(text, heldDemandOpening) || (mark != nil && mark.ToolOutcome == "failed"):
+				checked = false
+			case name == "view_image" || lookWords(text) != "":
+				if changed && checkpointArgumentNamed(call.Function.Arguments, "question") != "" {
+					checked = true
+				}
+			case checkpointWriters[name]:
+				changed, checked = true, false
+			case !approval.ReadOnly(name, json.RawMessage(call.Function.Arguments)):
+				changed = true
+			}
+		}
+	}
+	return checked
 }
 
 // noteParagraphLimit is how many paragraphs a reply may run to and still be
@@ -3692,7 +3760,15 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 		// IT SHARES THE UPDATE'S BUDGET, so the two together send one reply back
 		// at most [checkpointUpdateNudgeCap] times: both are the same stop — an
 		// interim note taken for an answer — spelled two ways.
-		if answeredNotesAdvice(a.snapshot()) && !a.turnEndsWaiting() {
+		//
+		// AND A TURN THAT CHECKED WHAT IT CHANGED HAS FINISHED, HOWEVER SHORT ITS
+		// ANSWER ([Agent.checkedWhatItChanged]). Layout alone let a two-paragraph
+		// finished reply through on flyer t2 in qloop runs 14 and 15: the date
+		// was patched, the flyer looked at with a question, the look said it
+		// was right, and the reply that followed the request for a note was
+		// sent back and answered [NoChangeReply]. The stalls this block was
+		// written for had not checked anything they changed.
+		if answeredNotesAdvice(a.snapshot()) && !a.checkedWhatItChanged() && !a.turnEndsWaiting() {
 			meter.updateNudges++
 			hub.send(Event{Kind: EventNotice, Text: checkpointNotesNudgeNote})
 			a.record(textMessage("user", checkpointNotesNudgeLead))
