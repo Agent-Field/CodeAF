@@ -14,8 +14,8 @@ confirming: existing chats stay here but stop syncing, shared memories and
 settings clear, and local provider keys stay here. A startup-only computer can
 pair directly. A home that only completed desktop setup and installed the bundled
 Canvas skill can still join. Startup lock files, empty app/service/factory folders and the
-factory migration marker do not count as local work. Choosing a relay and
-caching its storage permission also leave an unused home eligible to join. Credential history is
+factory migration marker do not count as local work. Choosing a sync service and
+saving its storage status also leave an unused home eligible to join. Credential history is
 accepted only when it has the known digest-only metadata format; actual keys,
 unknown content and nonempty work folders remain protected.
 
