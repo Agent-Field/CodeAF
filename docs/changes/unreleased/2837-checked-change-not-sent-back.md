@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A short finished reply after the turn checked its own change is no longer sent back
-pr: 0
+pr: 2837
 surface: [chat, engine]
 invalidates:
   - "Since #2834, a tool-free reply of one or two plain paragraphs that came straight after codeaf's `[silent]` note or `[held]` demand was always sent back with `it wrote down where it was and stopped · asking it to go on`. It is now left alone when this reply had already checked what it changed: a step that may change the work succeeded, a look at the work was then asked a question (`view_image`), and no step failed or was held after that look. A `read` of an image describes and is not a check. Stalls that changed nothing, never looked, or failed after their look are still sent back. The cap and the shared budget are unchanged."
