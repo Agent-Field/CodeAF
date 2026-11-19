@@ -351,12 +351,16 @@ var callSiteRoles = map[string]lane.Role{
 	"router":        lane.RoleJudge,
 	"routerconfirm": lane.RoleJudge,
 	"markreader":    lane.RoleJudge,
-	"guardian":      lane.RoleJudge,
-	"auditor":       lane.RoleJudge,
-	"consolidate":   lane.RoleMemory,
-	"planner":       lane.RoleDesign,
-	"designer":      lane.RoleDesign,
-	"division":      lane.RoleDesign,
+	// internal/session/replycheck.go reads a reply against the turn's own looks
+	// at the end of a turn, while the person waits for it — a judge, as the mark
+	// reader beside it is.
+	"replycheck":  lane.RoleJudge,
+	"guardian":    lane.RoleJudge,
+	"auditor":     lane.RoleJudge,
+	"consolidate": lane.RoleMemory,
+	"planner":     lane.RoleDesign,
+	"designer":    lane.RoleDesign,
+	"division":    lane.RoleDesign,
 	// internal/session/taxonomy_boundary.go hands this word to the classifier
 	// that reads a repair round's evidence, and internal/session/repair_role.go
 	// resolves the hands the round itself runs on. Both are work inside a task

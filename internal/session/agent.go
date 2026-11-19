@@ -5993,7 +5993,8 @@ func isContinuationContext(text string) bool {
 		strings.HasPrefix(text, checkpointAskNudgeOpening) && strings.HasSuffix(text, checkpointAskNudgeClosing):
 		return true
 	}
-	return text == truncationContinuationNote || text == checkpointUpdateNudgeLead || text == checkpointNotesNudgeLead
+	return text == truncationContinuationNote || text == checkpointUpdateNudgeLead || text == checkpointNotesNudgeLead ||
+		isReplyCheckLead(text) || isFailureCheckLead(text)
 }
 
 // entryRows is how many rows the shaping above makes of ONE message: none at
