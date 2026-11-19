@@ -9,4 +9,4 @@ invalidates:
 ---
 The floor is `internal/approval/credentials.go`; the two doors are
 `internal/exec/tools.go`'s `Toolbox.Execute` and `cmd/codeaf/chatv3_harness.go`'s
-bridge. The page is `permissions.md`, under "My API key in a CODEAF_HOME or temp home".
+bridge. The page is `permissions.md`, under "Is a profile in a temp folder protected too".

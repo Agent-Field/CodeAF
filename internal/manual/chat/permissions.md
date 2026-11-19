@@ -1239,7 +1239,7 @@ script reached through a Makefile, or a path built at run time can still reach w
 account can reach. Treat it as stopping an agent from taking the obvious routes, and do not
 run an agent you do not trust on a machine holding credentials you care about.
 
-## My API key in a CODEAF_HOME or temp home — is a profile outside ~/.codeaf protected?
+## Is a profile in a temp folder protected too — CODEAF_HOME, CODEAF_PROFILE_DIR, exec runs
 
 Yes. The credential refusal covers the profile codeaf is actually using, wherever it lives:
 the default `~/.codeaf`, a folder `CODEAF_HOME` points at (a temporary test home included),
