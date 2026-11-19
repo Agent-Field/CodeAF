@@ -495,6 +495,19 @@ func (r *hedgeRace) start(index int, lane string) {
 	r.startArm(index, lane, nil)
 }
 
+// watchFor builds an arm's watch with the two facts about its endpoint that
+// nothing later in the call can learn: whether its waits are stretched
+// ([Client.patience]), and whether it is the one machine a local endpoint has
+// ([Client.soleLocalHost]). It is its own method so a test can ask what an arm
+// would be built with without sending the request.
+func (r *hedgeRace) watchFor(index int, plan control.Plan, now time.Time) *streamWatch {
+	return &streamWatch{
+		race: r, arm: index, plan: plan, control: r.build(plan), began: now,
+		stretched: r.client != nil && r.client.patience() > 1,
+		sole:      r.client != nil && r.client.soleLocalHost(r.model),
+	}
+}
+
 // startArm is [hedgeRace.start] with the one thing only the race's own ladder
 // arm carries: the refusal its doors deferred, which sends that arm's request
 // straight into the endpoint ladder instead of paying the same refusal again
@@ -514,7 +527,7 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 		plan.Pinned = false
 	}
 	plan.Alts = r.untriedAlts()
-	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now, stretched: r.client != nil && r.client.patience() > 1}
+	watch := r.watchFor(index, plan, now)
 	watch.deadline = watch.control.Deadline()
 	if !watch.deadline.IsZero() {
 		watch.armed = watch.deadline.Sub(now)

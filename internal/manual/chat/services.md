@@ -303,9 +303,11 @@ IPv6 unique-local or link-local addresses, names ending in `.local`, `.lan` or
 address text without DNS.
 
 Under `auto`, codeaf only sends a second request while the first is in flight
-if the local gateway has advertised multiple providers for the model. If a
-request fails, the turn can move to another model. A cut can say
-`nothing came back from the model in 1m40s`,
+if the local gateway has advertised multiple providers for the model. Without
+them it never cuts a silent request to ask the same machine again; a first token
+minutes after the headers is waited on for up to 15 minutes on a conversation
+turn. If a request fails, the turn can move to another model. A cut can say
+`nothing came back from the model in 15m0s`,
 `the model stopped mid-reply and went quiet for 7m30s`, or
 `the model did not answer in time` if the connection never answered.
 

@@ -108,6 +108,16 @@ type streamWatch struct {
 	// A stretched wait leaves a silent path open until the ceiling because
 	// the measured habits of a fast prompt can make an early report premature.
 	stretched bool
+	// sole is a request to the one machine a local endpoint has
+	// ([Client.soleLocalHost]). The ceiling still reports on it and never cuts
+	// it, stretched or not: the cut exists so that the next request reaches a
+	// different machine, and this one would reach the same machine and start
+	// reading the prompt again from the beginning. The silence is left to the
+	// stall watch's stretched first-word bound, which still ends a request that
+	// never answers. Measured on 2026-11-19 against a server that sent its
+	// headers at once and its first word at 150 seconds: v0.8.3-rc.2 cut the
+	// request at 100 seconds and asked the same server again, every time.
+	sole bool
 	// progress is whoever asked to watch this call run (callprogress.go), and
 	// nil on every call nobody is watching — which is nearly all of them.
 	//
@@ -411,7 +421,7 @@ func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
 		// says which of the two it was, because "this lane is slow" and "this
 		// connection never opened" are different autopsies.
 		dead := !live && act.Silence >= lanes.DeadPathFloor
-		if w.stretched && !live && act.Kind == control.Report {
+		if w.stretched && !w.sole && !live && act.Kind == control.Report {
 			w.deadPathAt = w.began.Add(max(w.plan.Ceiling, lanes.DeadPathFloor))
 			w.race.rearm()
 		}
@@ -423,8 +433,10 @@ func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
 			// purse is empty. On a path fault that leaves the question with a
 			// machine that has sent nothing at all, so the free move is taken
 			// instead: cut here, and the layer above asks somewhere else. See
-			// THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER.
-			if act.Kind == control.Report && !w.stretched {
+			// THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER. The one
+			// exception is a sole local host ([streamWatch.sole]), which has no
+			// somewhere else for the layer above to ask.
+			if act.Kind == control.Report && !w.stretched && !w.sole {
 				w.free = true
 			}
 		}
