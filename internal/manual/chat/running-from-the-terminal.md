@@ -33,7 +33,9 @@ ahead build gets nothing. Source and unstamped builds — `make build`, `go run`
 built from source · rebuild with make build, or install a release: curl -fsSL
 https://agentfield.ai/get/codeaf | bash`. A codeaf owned by Homebrew, Nix or the
 system package manager, or one in a folder this account cannot write, is never
-replaced in place: the launch names the manager and the curl line instead.
+replaced in place: the launch names the manager and the curl line instead. So is
+the codeaf inside a Mac application, such as the one the desktop app carries
+(`WorkAF.app/Contents/…`): that app updates it, and `codeaf update` says so.
 
 ## Does it update itself automatically — automatic updates — auto update on launch — restart on the new version — stop updating itself
 
@@ -100,8 +102,8 @@ the tag is the deliberate downgrade, and it is the ONLY road that rolls a file
 back — a bare `/update` you type while an offer is up installs what the offer is
 about and never steps the file backwards. An automatic or channel update never installs an older build than the one
 on disk, and a release already on disk is a quiet no-op. If the file is owned by
-Homebrew, Nix or the system package manager, or is in a folder this account
-cannot write, neither road replaces it in place. One install runs at a time per executable:
+Homebrew, Nix or the system package manager, or is inside a Mac application
+bundle, or is in a folder this account cannot write, neither road replaces it in place. One install runs at a time per executable:
 two terminals, or two profiles sharing one codeaf, cannot replace it at once, and
 a window that resolves a release another terminal has already superseded installs
 nothing.
