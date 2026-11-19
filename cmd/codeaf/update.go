@@ -70,6 +70,12 @@ func runUpdate(args []string) error {
 		if err != nil {
 			return updateFailure(err, curl)
 		}
+		// A desktop app's engine is built from a bare commit, so the app's own
+		// refusal is asked before the source-build answer, or it is never reached.
+		if refusal := codeupdate.BundleRefusal(target, curl); refusal != "" {
+			fmt.Fprintln(updateErr, refusal)
+			return exitStatus(2)
+		}
 		if codeupdate.Kind(running) == "other" {
 			shown := strings.TrimSpace(running)
 			if shown == "" {

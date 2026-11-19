@@ -753,3 +753,26 @@ func TestInstallRefusalLeavesABundledEngineToItsApp(t *testing.T) {
 		}
 	}
 }
+
+// TestBundleRefusalIsInstallRefusalsAnswerForABundleOnly proves the refusal the
+// update commands ask before the source-build answer is exactly the bundle's
+// installer refusal, and says nothing about any other target.
+func TestBundleRefusalIsInstallRefusalsAnswerForABundleOnly(t *testing.T) {
+	root := t.TempDir()
+	bundled := filepath.Join(root, "WorkAF.app", "Contents", "MacOS", "codeaf")
+	if err := os.MkdirAll(filepath.Dir(bundled), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bundled, []byte("build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const curl = "curl -fsSL https://example.invalid/codeaf | bash"
+	if got, want := BundleRefusal(bundled, curl), InstallRefusal(bundled, curl); got == "" || got != want {
+		t.Fatalf("BundleRefusal = %q, InstallRefusal = %q; want the same bundle refusal", got, want)
+	}
+	for _, other := range []string{filepath.Join(root, "bin", "codeaf"), "/opt/homebrew/bin/codeaf", ""} {
+		if got := BundleRefusal(other, curl); got != "" {
+			t.Fatalf("BundleRefusal(%q) = %q, want none", other, got)
+		}
+	}
+}
