@@ -2209,6 +2209,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// before starting either naming errand, which also calls a provider.
 		if a.config.PrepareModel == nil {
 			a.startIntentNameLocked(user)
+			// AND A LATER MESSAGE ON A NEW SUBJECT MAY EARN A NEW NAME, at no
+			// cost unless it looks like one (topicname.go).
+			a.startTopicRenameLocked(user)
 		}
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits

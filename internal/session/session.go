@@ -4238,7 +4238,9 @@ type Agent struct {
 	titleProvisional string
 	titleLiteral     bool
 	intentName       *intentNameState
-	intentNaming     bool
+	// topicNaming is a change-of-subject naming in flight (topicname.go).
+	topicNaming  bool
+	intentNaming bool
 	// Serializes current-name metadata snapshots and writes, outside a.mu.
 	titleStampMu sync.Mutex
 
