@@ -197,7 +197,7 @@ func TestCriticalHit(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			segments, _ := splitSegments(test.command)
-			hit, ok := criticalHit(test.command, segments)
+			hit, ok := criticalHit(test.command, segments, "")
 			if ok != test.want {
 				t.Errorf("criticalHit(%q) = (%q, %v), want ok=%v", test.command, hit, ok, test.want)
 			}
@@ -224,7 +224,7 @@ func TestCriticalHitNamesTheCommandThatMatched(t *testing.T) {
 	}
 	for _, test := range cases {
 		segments, _ := splitSegments(test.command)
-		hit, ok := criticalHit(test.command, segments)
+		hit, ok := criticalHit(test.command, segments, "")
 		if !ok || hit != test.want {
 			t.Errorf("criticalHit(%q) = (%q, %v), want %q", test.command, hit, ok, test.want)
 		}
