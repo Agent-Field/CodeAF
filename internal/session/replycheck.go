@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
@@ -115,6 +116,20 @@ import (
 func init() {
 	roles.Register(roles.RoleReplyCheck, roles.TierLow, "whether a reply about the work says what the turn's own looks and steps showed")
 }
+
+// replyCheckWindow is how long the reader gets. It is its own and not the mark
+// reader's [checkpointSketchWindow], because what waits on it differs: the
+// mark's read holds the next round of tools, and this one only holds the end
+// of a turn whose reply is already on the person's screen.
+//
+// THIRTY SECONDS CUT TWO READERS IN QLOOP RUN 26 AND THEIR ANSWERS WERE LOST.
+// The 24 reads of that run took 2 to 29.6 seconds (five over 20; the small
+// tier's reasoning ran to 15,000 tokens on a 3,000-token page), and the two
+// cut at 30.0 were turns whose reply nothing read: board-deck t1 went out as
+// written and café-site t3 got only the bare look-again. A cut read is still a call
+// the provider bills, so a longer window spends nothing more; it keeps the
+// answer that was paid for. Sixty seconds is twice the slowest read measured.
+const replyCheckWindow = 60 * time.Second
 
 // replyStaleLookNote is the dim line a person reads when the turn is sent back
 // to look again. It names what happened in their words; the reply above it
@@ -419,7 +434,7 @@ func (a *Agent) readReplyAgainstLooks(ctx context.Context, said string, looks []
 	if _, err := a.roleLadder(roles.RoleReplyCheck, ""); err != nil {
 		return replyFindings{}
 	}
-	ctx, done := context.WithTimeout(ctx, checkpointSketchWindow)
+	ctx, done := context.WithTimeout(ctx, replyCheckWindow)
 	defer done()
 	response, model, err := a.callRole(ctx, roles.RoleReplyCheck, "", []ai.Message{textMessage("user", page+"\n\n"+replyCheckAsk)})
 	if err != nil || response == nil {

@@ -278,13 +278,17 @@ func TestFactorySteerEchoIsHiddenWithoutHidingAuthoredTextOrRenumberingAnswers(t
 	}
 }
 
-// THE CHECKS ON A FINISHED REPLY ARE NOT ROWS IN THE CHAT. Run 16 (connected-
-// canvas qloop, vector-db t1): the turn answered, the reply check sent it back
-// to look again, the model kept its reply with the token, and the app drew the
-// check's own line as a notice under the final answer. Every one of those
-// lines is the engine talking about its own machinery; the record of each is
-// in the session's transcript and journal, and none reaches the person here.
-func TestTheChecksOnAFinishedReplyAreNotDrawn(t *testing.T) {
+// THE CHECKS ON A FINISHED REPLY ARE ONE QUIET LINE OF THE TURN, NEVER GLUED
+// TO ITS ANSWER. Run 16 (connected-canvas qloop, vector-db t1) drew such a line
+// as a notice under the final answer, and from then on the app dropped every
+// one by its words; run 26 then sent 16 of 28 turns back and not one line was
+// anywhere a person or the run's harness could find it, so the run reported
+// the check as never firing. The line now arrives typed
+// [session.NoticeKindSentBack] — what [session.Agent]'s sendBack always says —
+// and goes out as its own quiet entry, so the app can place it with the work
+// that follows rather than under the answer. The answer stays whole, and a
+// withdrawal after it is still never drawn.
+func TestTheChecksOnAFinishedReplyAreOneQuietLine(t *testing.T) {
 	answer := "Two charts built and a comparison table underway."
 	for _, line := range []string{
 		"it changed the work after its last look · asking it to look again before it replies",
@@ -297,18 +301,52 @@ func TestTheChecksOnAFinishedReplyAreNotDrawn(t *testing.T) {
 		if !session.IsCarryOnNotice(line) {
 			t.Fatalf("%q is not the session's carry-on line", line)
 		}
-		entries, _ := appTurnShape(t, []session.Event{
+		entries, streamed := appTurnShape(t, []session.Event{
 			{Kind: session.EventTextDelta, Text: answer},
 			{Kind: session.EventAssistantDone},
-			{Kind: session.EventNotice, Text: line},
+			{Kind: session.EventNotice, Text: line, NoticeKind: session.NoticeKindSentBack},
 			{Kind: session.EventTextDelta, Text: session.NoChangeReply},
 			{Kind: session.EventAssistantDone},
 			{Kind: session.EventTurnDone},
 		})
+		var notices, answers []appwire.Entry
 		for _, e := range entries {
-			if e.Kind == appwire.EntryNotice {
-				t.Fatalf("the check's line became a row in the chat: %+v", e)
+			switch e.Kind {
+			case appwire.EntryNotice:
+				notices = append(notices, e)
+			case appwire.EntryAnswer:
+				answers = append(answers, e)
 			}
+		}
+		if len(notices) != 1 || notices[0].Text != line || notices[0].NoticeKind != session.NoticeKindSentBack || !notices[0].Quiet {
+			t.Fatalf("the check's line went out as %+v; want one quiet notice typed %q", notices, session.NoticeKindSentBack)
+		}
+		if len(answers) != 1 || answers[0].Text != answer {
+			t.Fatalf("the answer was not left whole and alone: %+v", answers)
+		}
+		for _, words := range streamed {
+			if strings.Contains(words, session.NoChangeReply) || strings.Contains(words, line) {
+				t.Fatalf("the withdrawal or the line was streamed into a reply: %q", words)
+			}
+		}
+	}
+}
+
+// AND THE SAME WORDS UNTYPED ARE STILL LEFT OUT: the kind, never the words,
+// is what the app reads ([session.Event.NoticeKind]), so a producer that says
+// a carry-on line without typing it is drawn as it always was — not at all.
+func TestACarryOnLineWithoutItsKindIsNotDrawn(t *testing.T) {
+	entries, _ := appTurnShape(t, []session.Event{
+		{Kind: session.EventTextDelta, Text: "Done."},
+		{Kind: session.EventAssistantDone},
+		{Kind: session.EventNotice, Text: "its reply said more than it checked this turn · asking it to check or say so"},
+		{Kind: session.EventTextDelta, Text: session.NoChangeReply},
+		{Kind: session.EventAssistantDone},
+		{Kind: session.EventTurnDone},
+	})
+	for _, e := range entries {
+		if e.Kind == appwire.EntryNotice {
+			t.Fatalf("an untyped carry-on line became a row: %+v", e)
 		}
 	}
 }

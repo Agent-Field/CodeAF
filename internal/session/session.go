@@ -812,9 +812,10 @@ type Event struct {
 	// transcript already or said for the moment it is said in.
 	Unrecorded bool `json:"Unrecorded,omitempty"`
 	// NoticeKind names which of the engine's own typed notices an EventNotice
-	// is: [NoticeKindSkills] or [NoticeKindMemory], set only at the producers
-	// ([turnSkillsNotice], [Agent.sayMemory]). Empty on every other notice, which
-	// stays ordinary; a surface never derives it from Text.
+	// is: [NoticeKindSkills], [NoticeKindMemory] or [NoticeKindSentBack], set
+	// only at the producers ([turnSkillsNotice], [Agent.sayMemory],
+	// [Agent.sendBack]). Empty on every other notice, which stays ordinary; a
+	// surface never derives it from Text.
 	NoticeKind    string `json:"NoticeKind,omitempty"`
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
