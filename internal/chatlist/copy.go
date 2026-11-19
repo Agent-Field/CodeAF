@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/syncwords"
@@ -24,12 +25,50 @@ var LiveCarriesChats func() bool
 // StorageOffSentence is what a refusal for storage that is closed says. ONE
 // PLACE DECIDES IT, because the same refusal reaches the person from the start
 // page, from a chat's notices and from the app, and a computer whose chats move
-// live must not tell them on one surface that they stay put.
+// live must not tell them on one surface that they stay put. It also remembers
+// the words it gave, so a surface that said them can be told when they stop
+// being true ([StorageOffChanged]).
 func StorageOffSentence() string {
+	line := storageOffWords()
+	storageOffSaid.Lock()
+	storageOffSaid.line = line
+	storageOffSaid.Unlock()
+	return line
+}
+
+// storageOffWords is the sentence that is true on this computer now.
+func storageOffWords() string {
 	if carries := LiveCarriesChats; carries != nil && carries() {
 		return RelayStorageOffLive
 	}
 	return RelayStorageOff
+}
+
+// storageOffSaid is the sentence [StorageOffSentence] gave last, "" until one
+// was given.
+var storageOffSaid struct {
+	sync.Mutex
+	line string
+}
+
+// StorageOffChanged answers the sentence that now replaces the storage-off one
+// that was said, and true, when the words that are true on this computer are no
+// longer the ones it was given: another computer was paired after the old
+// sentence was shown, or the last one was removed after the new one was. It
+// answers false when none was said (nothing on screen needs replacing) or when
+// what was said is still true, and it answers each replacement once.
+func StorageOffChanged() (string, bool) {
+	storageOffSaid.Lock()
+	defer storageOffSaid.Unlock()
+	if storageOffSaid.line == "" {
+		return "", false
+	}
+	now := storageOffWords()
+	if now == storageOffSaid.line {
+		return "", false
+	}
+	storageOffSaid.line = now
+	return now, true
 }
 
 // The frozen sentences. Every surface takes its words

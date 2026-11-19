@@ -236,6 +236,9 @@ func init() {
 	// A computer whose chats move live is told the refusal for closed storage in
 	// the words that are true there (chatlist.StorageOffSentence).
 	chatlist.LiveCarriesChats = func() bool { return syncsetup.LiveTransferForHome(home.Dir()) }
+	// And when that stops being true after the sentence was said, the sentence
+	// that is true replaces it (storage_off_resay.go).
+	watchStorageOffSentence()
 }
 
 // sayRefusal tells the person what the relay refused when it refused this
