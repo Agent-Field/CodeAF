@@ -34,7 +34,7 @@ var bestMediaPreferences = map[string][]string{
 	// with, so "best" and an unset row cannot disagree about what this build
 	// thinks the good model is. Underneath each of them the older order is
 	// kept exactly as it stood.
-	"image":  {preferredImageModel, "google/gemini-3-pro-image", "openai/gpt-image-1.5", fallbackImageModel},
+	"image":  {preferredImageModel, "google/gemini-3-pro-image", "openai/gpt-image-1.5", priorImageModel, fluxImageModel, fallbackImageModel},
 	"speech": {preferredSpeechModel, priorSpeechModel, hostedSpeechModel, kokoroSpeechModel},
 	"music":  {preferredMusicModel, "google/lyria-3", fallbackMusicModel},
 	"video":  {preferredVideoModel, "google/veo-3.5", fallbackVideoModel},

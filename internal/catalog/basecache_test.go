@@ -165,8 +165,8 @@ func TestACatalogFetchedForOneServiceIsNeverServedToAnother(t *testing.T) {
 			t.Fatalf("non-default service panic got %d built-in rows", len(models.ModelsNow()))
 		}
 		defaults := Load(context.Background(), Options{BaseURL: DefaultBaseURL, Dir: t.TempDir(), Now: func() time.Time { panic("clock") }, HTTPClient: catalogClient(t, http.StatusOK, baseACatalogPayload, nil)})
-		if len(defaults.ModelsNow()) != 11 {
-			t.Fatalf("default service panic got %d built-in rows, want 11", len(defaults.ModelsNow()))
+		if len(defaults.ModelsNow()) != 13 {
+			t.Fatalf("default service panic got %d built-in rows, want 13", len(defaults.ModelsNow()))
 		}
 	})
 }
@@ -207,8 +207,8 @@ func TestTheDefaultBaseKeepsItsCacheAndOfflineFallbackBehavior(t *testing.T) {
 	builtIn := Load(context.Background(), Options{
 		BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: failedCatalogClient(),
 	})
-	if len(builtIn.ModelsNow()) != 11 {
-		t.Fatalf("default-base built-in rows = %d, want 11", len(builtIn.ModelsNow()))
+	if len(builtIn.ModelsNow()) != 13 {
+		t.Fatalf("default-base built-in rows = %d, want 13", len(builtIn.ModelsNow()))
 	}
 	for _, modality := range []string{"image", "speech", "music", "video"} {
 		if len(builtIn.ModelsWithOutput(modality)) == 0 {

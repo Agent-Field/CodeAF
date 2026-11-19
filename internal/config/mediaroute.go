@@ -14,20 +14,30 @@ import (
 // A person who has named a model gets that model, whatever the catalog says
 // (Config.ImageModel and VideoModel are their decision and nothing here
 // substitutes for it). A person who has named none gets a DEFAULT, and a default
-// is spending someone else's money on their behalf: it is therefore only ever a
-// model this build already remembers (the curated constants below, which this
-// file never reorders or replaces), and only when the catalog both advertises it
-// for the job and has published a price for it in a unit a person can be told.
-// It is never the first row, the newest row, the cheapest-looking row, or a row
-// that merely appeared in a listing: the dedicated image and video listings put
-// dozens of new rows in the catalog, and "whichever is first" is a different
-// bill every time the provider reorders.
+// is spending someone else's money on their behalf: it is first a model this
+// build already remembers (the curated constants below), and only when the
+// catalog both advertises it for the job and has published a price for it in a
+// unit a person can be told.
+//
+// A PICTURE HAS ONE MORE RUNG, because "choose a model first" is a refusal a
+// person with a fresh profile cannot act on in the middle of asking for a
+// picture, and refusing every picture because four remembered names went
+// missing helps nobody. When none of the curated drawing models is advertised
+// and priced, the default is the best priced drawing model the current listing
+// does advertise — best by its published Design Arena score, then by id — and
+// the route says so ([RouteListed]). It is never the first row, the newest row
+// or the cheapest-looking row: those are a different bill every time the
+// provider reorders, while a published score and an id are not. Filming has no
+// such rung: a video is billed by the second, and a default nobody remembered
+// is a surprise too costly to make on someone's behalf.
 //
 // WHAT COMES BACK WHEN THERE IS NO DEFAULT is a [MediaRoute] that says which of
 // three different things is true, because they need three different sentences:
 //
 //   - RouteModelRequired: models ARE advertised, but none this build may pick
-//     for you. The person is told to choose one and is shown what is available.
+//     for you (none carries a published price, or the job is filming and no
+//     remembered model is priced). The person is told to choose one and is
+//     shown what is available.
 //   - RouteNoneAdvertised: the listing was read and is current, and nothing in
 //     it makes this. Only this reason may say that no connected service offers it.
 //   - RouteUnconfirmed: the listing was never read, failed, or is out of date.
@@ -43,6 +53,9 @@ const (
 	// RouteCurated: the model is this build's remembered default, advertised
 	// for the job and carrying a published price.
 	RouteCurated RouteReason = "curated"
+	// RouteListed: no remembered model was usable, so the default is the best
+	// priced model the current listing advertises for the job (pictures only).
+	RouteListed RouteReason = "listed"
 	// RouteConfigured: the person's own row. No catalog fact can overrule it.
 	RouteConfigured RouteReason = "configured"
 	// RouteModelRequired: choose a model; see MediaRoute.Options.
@@ -132,7 +145,7 @@ func (e *MediaRouteError) Is(target error) bool {
 
 // curatedRoutes are the remembered defaults, in the order they are tried.
 var curatedRoutes = map[string][]string{
-	"image": {preferredImageModel, fallbackImageModel},
+	"image": {preferredImageModel, priorImageModel, fluxImageModel, fallbackImageModel},
 	"video": {preferredVideoModel, fallbackVideoModel},
 }
 
@@ -175,7 +188,47 @@ func DefaultMediaRoute(models *catalog.Catalog, modality string) MediaRoute {
 			}
 		}
 	}
+	if modality == "image" {
+		if best, found := bestListedImage(candidates); found {
+			route.Model, route.Reason = best, RouteListed
+		}
+	}
 	return route
+}
+
+// bestListedImage is the picture default's last rung: among the advertised
+// drawing models that take a written prompt and carry a published price, the
+// one with the highest published Design Arena score, and among equal scores
+// (unscored included) the lowest id. Both keys are facts of the row and not of
+// the listing's order, so the same listing always answers the same model.
+// Router rows (openrouter/auto and its siblings) are never a default: they
+// publish no price, and the model they reach is chosen per call.
+func bestListedImage(candidates []catalog.Model) (string, bool) {
+	var best catalog.Model
+	found := false
+	for _, candidate := range candidates {
+		if !candidate.PublishedPrice("image") || !takesPrompt(candidate) {
+			continue
+		}
+		if !found || candidate.ArenaElo > best.ArenaElo || (candidate.ArenaElo == best.ArenaElo && candidate.ID < best.ID) {
+			best, found = candidate, true
+		}
+	}
+	return best.ID, found
+}
+
+// takesPrompt says a drawing model is asked in words. A row that publishes no
+// inputs at all is taken at its listing's word that it draws from a prompt.
+func takesPrompt(model catalog.Model) bool {
+	if len(model.InputModalities) == 0 {
+		return true
+	}
+	for _, input := range model.InputModalities {
+		if input == "text" {
+			return true
+		}
+	}
+	return false
 }
 
 func routeOptions(candidates []catalog.Model) ([]string, int) {

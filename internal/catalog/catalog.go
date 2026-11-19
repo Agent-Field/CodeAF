@@ -255,6 +255,12 @@ type cache struct {
 	// Media is the dedicated image and video listings' own compartment, nil in a
 	// cache written before they were read. See media.go.
 	Media *mediaCache `json:"media,omitempty"`
+	// ImageTariffs is set on a cache whose general rows were read by a build
+	// that keeps each drawing model's per-token image price ([imageTokenPrice]).
+	// A cache without it was written by an older build that dropped that price,
+	// so every picture model in it reads as unpriced and no default can be
+	// chosen from it; such a cache is refetched rather than served while fresh.
+	ImageTariffs bool `json:"image_tariffs,omitempty"`
 }
 
 // FetchTimeout bounds one listing request on the default HTTP client. A caller
@@ -445,7 +451,7 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 			_ = guard.Note("catalog/load", recovered)
 			// THE FALLBACK ROWS ARE THE DEFAULT SERVICE'S IDS and nobody
 			// else's, so a panic on another service resolves to nothing
-			// rather than to eleven names it never published.
+			// rather than to thirteen names it never published.
 			if strings.TrimSpace(options.Source) == "" && normalizeBase(options.BaseURL) == DefaultBaseURL {
 				resolved, err = newRows(hardcodedFallbacks()), errUnreadable
 				resolved.media = unreadMedia(mediaEligible(options, strings.TrimSpace(options.Source), normalizeBase(options.BaseURL)))
@@ -585,7 +591,18 @@ func load(ctx context.Context, options Options) (*rows, error) {
 		// dedicated compartment bounds how often this can be asked for.
 		options.Refresh = true
 	}
-	if cachedOK && !options.Refresh && (options.serveStale || now().Before(cached.FetchedAt.Add(TTL))) {
+	// A CACHE AN OLDER BUILD WROTE WITHOUT IMAGE PRICES IS READ AGAIN, ONCE, BY
+	// THE LAZY WARM. It is the one cache that cannot choose a picture default
+	// (see [cache.ImageTariffs]): served as it stands, every picture ask on the
+	// first day after an upgrade was refused, and refreshing it behind the
+	// answer would not help, because a lazy catalog keeps answering what it
+	// answered first. The warm runs behind the first frame, so this costs no
+	// frame; it costs the first media question one listing request, once per
+	// install, after which the cache carries the mark. The eager [Load] keeps
+	// its promise that a fresh cache costs no request, and a refetch that fails
+	// still serves the old cache below, because a dated catalog beats none.
+	untariffed := cachedOK && eligible && !cached.ImageTariffs && options.serveStale
+	if cachedOK && !options.Refresh && !untariffed && (options.serveStale || now().Before(cached.FetchedAt.Add(TTL))) {
 		// A fresh cache is served without any request, as it always was, even
 		// when it has never read a dedicated listing (an older build wrote it):
 		// the lazy warm tops those up behind the answer, and an eager caller
@@ -617,7 +634,7 @@ func load(ctx context.Context, options Options) (*rows, error) {
 	if err == nil {
 		fetchedAt := now().UTC()
 		if path != "" {
-			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base, Priced: true, Media: media})
+			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base, Priced: true, Media: media, ImageTariffs: true})
 		}
 		resolved := newRowsAt(models, fetchedAt)
 		resolved.media = state
@@ -635,7 +652,7 @@ func load(ctx context.Context, options Options) (*rows, error) {
 		fallback.media = unreadMedia(eligible)
 		return fallback, err
 	}
-	// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — handing eleven
+	// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — handing thirteen
 	// OpenRouter ids to a service that never published them puts four verbs on
 	// the belt that cannot succeed.
 	return newRows(nil), err
@@ -1361,6 +1378,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 		completion, completionOK := parsePrice(item.Pricing.Completion)
 		request, _ := parsePrice(item.Pricing.Request)
 		cacheRead, _ := parsePrice(item.Pricing.InputCacheRead)
+		outputs := cleanLowerList(item.Architecture.Output)
 		models = append(models, Model{
 			ID: strings.TrimSpace(item.ID), CanonicalSlug: strings.TrimSpace(item.CanonicalSlug),
 			AliasTarget:       strings.TrimSpace(item.AliasTarget.Slug),
@@ -1378,9 +1396,10 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			AgenticIndex:      analysisScore(item.Benchmarks, "agentic_index"),
 			OpenWeights:       item.HuggingFaceID != "",
 			InputModalities:   cleanLowerList(item.Architecture.Input),
-			OutputModalities:  cleanLowerList(item.Architecture.Output),
+			OutputModalities:  outputs,
 			Parameters:        cleanLowerList(item.SupportedParameters),
 			Reasoning:         reasoningProfile(item.Reasoning),
+			MediaPrices:       imageTokenPrice(item.Pricing.ImageOutput, outputs),
 		})
 	}
 	// The one cleaning pass for the fetched path; what is cached and what is
@@ -1390,6 +1409,22 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 		return nil, &statusError{status: "empty catalog"}
 	}
 	return models, nil
+}
+
+// imageTokenPrice is a drawing model's published per-token output-image rate,
+// as the one [MediaPrice] it is, or nil when the row draws nothing or published
+// no readable figure. It is typed by its unit ("token") so nothing can mistake
+// it for a per-image figure, and it is the price [Model.PublishedPrice] reads
+// for a picture default.
+func imageTokenPrice(raw string, outputs []string) []MediaPrice {
+	if !hasModality(outputs, "image") {
+		return nil
+	}
+	usd, ok := parsePrice(raw)
+	if !ok || !finitePrice(usd) {
+		return nil
+	}
+	return []MediaPrice{{Billable: "image_output", Unit: "token", USD: usd}}
 }
 
 // modelWire is one row of OpenRouter's /models listing, in the shape this
@@ -1428,6 +1463,12 @@ type modelWire struct {
 		// deliberately not kept: nothing on screen explains them, and a session
 		// pays a write once for a prefix it then reads on every step.
 		InputCacheRead string `json:"input_cache_read"`
+		// ImageOutput is the per-token rate for the picture tokens a drawing
+		// model returns. It is the ONLY price the general listing publishes for
+		// a generator at load time — the dedicated image listing carries none,
+		// and its per-endpoint rates are a request per model — so without it
+		// no picture model had a published price and no default could be chosen.
+		ImageOutput string `json:"image_output"`
 	} `json:"pricing"`
 	SupportedParameters []string `json:"supported_parameters"`
 	// Reasoning is a pointer so that a row without the block reads as "the
@@ -1795,7 +1836,12 @@ func writeCache(path string, cached cache) error {
 // row here vouches for exactly that id's capabilities.
 func hardcodedFallbacks() []Model {
 	return []Model{
+		// The Gemini row also writes text, and that half is left off on purpose:
+		// on a cold machine a remembered row that "writes text" is a chat
+		// candidate, and a drawing model must never be elected to talk.
+		{ID: "google/gemini-3.1-flash-image", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
 		{ID: "bytedance-seed/seedream-5-0-pro", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
+		{ID: "black-forest-labs/flux.2-pro", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
 		{ID: "krea/krea-2-medium-turbo", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
 		{ID: "fish-audio/s2.1-pro", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
 		{ID: "fish-audio/s1", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
