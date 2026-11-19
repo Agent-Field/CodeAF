@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,35 @@ var appHomeLock *os.File
 var appHomeWait = appLeaveWait + 10*time.Second
 
 const appHomePoll = 50 * time.Millisecond
+
+// useAppHome points this process at the state folder the app asked for with
+// --home, and answers the restore for it. No folder asked for leaves the
+// environment alone.
+//
+// THE FOLDER MOVES CODEAF'S STATE AND NOTHING THAT IS THE PERSON'S. CODEAF_HOME
+// takes the journal, the sessions, the logs, the sockets and the profile, and
+// codeaf's own skills folder, <folder>/.codeaf/skills, where the app installs
+// its skills. The dot-folders other programs keep under the person's home —
+// Claude Code's, Codex's and their kin's skills — do not move with it, so the
+// person's login home is recorded beside it (home.KeepLogin) and every read of
+// those folders goes through home.Login, which answers it. Both are plain
+// environment, so the children this process starts see the same two answers. A
+// process that sets only CODEAF_HOME still gets the quarantine home.Login
+// gives it.
+func useAppHome(dir string) (restore func(), err error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return func() {}, nil
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Setenv(home.EnvVar, abs); err != nil {
+		return nil, err
+	}
+	return home.KeepLogin(), nil
+}
 
 // holdAppHome makes this the one engine on this home. Two engines would both
 // spend on the same work. It runs before anything that could make a paid call.

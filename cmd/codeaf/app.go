@@ -123,15 +123,11 @@ func runApp(args []string) error {
 		_, err = os.Stdout.Write(out)
 		return err
 	}
-	if dir := strings.TrimSpace(*homeFlag); dir != "" {
-		abs, err := filepath.Abs(dir)
-		if err != nil {
-			return err
-		}
-		if err := os.Setenv(home.EnvVar, abs); err != nil {
-			return err
-		}
+	restoreHome, homeErr := useAppHome(*homeFlag)
+	if homeErr != nil {
+		return homeErr
 	}
+	defer restoreHome()
 	if err := holdAppHome(); err != nil {
 		return err
 	}
