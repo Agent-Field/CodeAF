@@ -72,7 +72,7 @@ internal/session/memory.go:billedCompleter.CompleteWithMessages:CompleteWithMess
 internal/session/seatcompleter.go:seatCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced session helpers
 internal/session/spendguard.go:guardedCompleter.CompleteWithMessages:CompleteWithMessages	exception: untraced session helpers
 internal/session/tools_doc.go:ReadDocument:ParseDocument	exception: untraced session helpers
-internal/session/tools_image.go:GenerateImage:GenerateImage	exception: untraced image and media transport
+internal/session/tools_image_split.go:sendImageRequests:GenerateImage	exception: untraced image and media transport
 internal/session/tools_music.go:Agent.composeMusic:GenerateMusic	exception: music
 internal/session/tools_sense.go:Agent.audioSense:Transcribe	exception: speech
 internal/session/tools_speak.go:Agent.speakTool:Speak	exception: speech
