@@ -215,7 +215,6 @@ func TestImageCountRefused(t *testing.T) {
 		{errors.New(`invalid_request_error: n must be 1 for this model`), true},
 		{errors.New(`Only n=1 is supported`), true},
 		{&provider.APIError{Status: 400, Message: `No provider supports the requested parameters: aspect_ratio "7:3", n "4". Provider rejections: Google: aspect_ratio: unsupported`}, false},
-		{&provider.APIError{Status: 502, Message: geminiCountRefusal}, false},
 		{os.ErrInvalid, false},
 		{nil, false},
 	} {

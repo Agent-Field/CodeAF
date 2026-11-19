@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -69,15 +68,12 @@ func imageSingles(requested int) []int {
 var imageCountPattern = regexp.MustCompile(`(?i)(\bn\s*:\s*must\b|\bn\s+must\b|\bn\s*=\s*1\b|['"]n['"]\s*(must|is|:)|number of (images|outputs)|\bmultiple (images|outputs)\b.*not supported)`)
 
 // imageCountRefused says the provider refused this request because of how many
-// pictures it asked for, and for nothing else this build can see. Only a
-// client-side refusal (4xx) qualifies: a 5xx is the provider having a bad
-// minute, which a second request of a different shape would not fix.
+// pictures it asked for, and for nothing else this build can see. It reads the
+// refusal's WORDS and never its status: what a status means is
+// internal/taxonomy's to decide, and the words are the only place a provider
+// says which parameter it would not take.
 func imageCountRefused(err error) bool {
 	if err == nil {
-		return false
-	}
-	var refusal *provider.APIError
-	if errors.As(err, &refusal) && (refusal.Status < 400 || refusal.Status >= 500) {
 		return false
 	}
 	return imageCountPattern.MatchString(err.Error())
