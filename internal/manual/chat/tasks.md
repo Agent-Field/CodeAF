@@ -1465,13 +1465,35 @@ that, and three cases send it back once, in the same reply:
   to look again and write the reply from that look. The dim line:
   `it changed the work after its last look · asking it to look again before it replies`.
 
-The terminal folds these lines away once the reply settles; the desktop app shows no row.
+The terminal folds these lines away once the reply settles; the desktop app keeps the line
+with the reply's work.
 
 **Once per reply: one extra pass, one comparison.** The reply after it is the one you get,
 even if still wrong; a reply that was right is kept. A closing question excuses nothing.
 
 **Limits.** It only runs on a reply that looked at its work. With no model for the
-`replycheck` role, the comparison is skipped and only the look-again case applies.
+`replycheck` role, or none in 60 seconds, the comparison is skipped and only the
+look-again case applies.
+
+## Why its reply shows twice, with a dim line between — the first reply was sent back to check what it said
+
+**In the desktop app a reply can be followed by more work and a second reply in the same
+turn.** The first reply was already on your screen when codeaf checked it against what the
+model saw that turn, and the check sent it back. The line between the two says which check:
+
+- `its reply did not match what it saw this turn · asking it to correct the reply`
+- `its reply said more than it checked this turn · asking it to check or say so`
+- `it changed the work after its last look · asking it to look again before it replies`
+- `some of its steps failed before it asked you · asking it to retry them or say what failed`
+- `some work it handed out did not start · asking it to start it again or say so`
+- `it promised a later report with nothing running · asking it to finish or say what is left`
+
+**The later reply is the one that counts.** It was written after the model checked again or
+was told to say plainly what it could not check. If the model found its first reply right, it
+keeps it, and no second reply comes: the line then sits in that reply's work alone.
+
+The line is kept with the conversation, so it is still there when you open the chat again.
+In the terminal the same line shows while the reply works and folds away with its work.
 
 ## What the reply check reads — shell output, an export, a cell read, a file it read back, the steps in between; which claims it raises
 
@@ -1499,8 +1521,9 @@ and it is about to end by asking you, it is first sent back once** with the fail
 front of it. It either does the step that was meant to make your change, correctly, or asks
 again and says plainly which steps failed and what it did and did not change.
 
-- A reply in words that ends on a question gets one dim line in the terminal while it works,
-  folded away with the reply's work, and no row in the desktop app:
+- A reply in words that ends on a question gets one dim line while it works, folded away
+  with the reply's work in the terminal and kept as a quiet line of that reply in the
+  desktop app:
   `some of its steps failed before it asked you · asking it to retry them or say what failed`.
 - A question card (`ask`) is held before it is drawn — you see no card — and the model asks
   again or does the work. The next card in that reply is drawn as usual.
@@ -1531,8 +1554,8 @@ reply that already said it is kept as written, in one short call.
 **What you see.** In the terminal a dim line shows while it works —
 `some work it handed out did not start · asking it to start it again or say so` or
 `it promised a later report with nothing running · asking it to finish or say what is left`
-— and folds away with the reply's work. The desktop app shows no row for it. The session's
-transcript and journal keep the record.
+— and folds away with the reply's work. The desktop app keeps the same line as a quiet line
+of that reply. The session's transcript and journal keep the record.
 
 **Limits.** The promise is read from a short list of ways of saying it ("I'll report",
 "I'll let you know", "once it lands", "when they are in"). A promise worded some other way

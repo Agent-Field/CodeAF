@@ -812,9 +812,12 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // transcript, and the turn they announce goes on working, so what each tells
 // the person is only that it has not stopped yet. A surface that folds a
 // settled turn's machinery away draws them while the turn runs and folds them
-// with the rest (tui3's workfold.go); a surface with no such fold leaves them
-// out, rather than keep a standing line that a reopened conversation would not
-// have and that names nothing the person can act on (codeaf app's pump).
+// with the rest (tui3's workfold.go). The app leaves the completion check's
+// carry-on and the nudges out, but NOT the checks on a finished reply: those
+// arrive typed [NoticeKindSentBack] and the app keeps them as a quiet line of
+// the turn, because the reply they send back is one the person has already
+// read as an answer, and without the line a second answer follows it for no
+// reason the chat gives (qloop run 26: 15 send-backs, no line anywhere).
 // The lines that END a turn — stopping, finishing, moving to a task — are not
 // these, and every surface keeps them.
 func IsCarryOnNotice(text string) bool {

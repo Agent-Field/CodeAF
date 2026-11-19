@@ -3122,12 +3122,22 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// THE ENGINE'S NOTICES ARE ITS DIM LINES — the skills a turn
 			// carried, a request reshaped to land — drawn by the terminal as
 			// one muted row and never as a message, and quiet says the same.
-			// A LINE SAYING THE TURN WAS SENT BACK TO WORK IS NOT ONE OF THEM
-			// HERE: the terminal folds it away with the turn's work once the
-			// turn settles, the app has no fold for a notice, and the turn
-			// going on is what the worked line already says
+			// A LINE SAYING THE TURN WAS CARRIED ON IS NOT ONE OF THEM HERE —
+			// the completion check's carry-on and the nudges: the terminal
+			// folds it away with the turn's work once the turn settles, and
+			// the turn going on is what the worked line already says
 			// ([session.IsCarryOnNotice]).
-			if session.IsCarryOnNotice(event.Text) {
+			//
+			// A CHECK ON A FINISHED REPLY IS, and it arrives typed
+			// [session.NoticeKindSentBack]. The reply it sends back is
+			// already an answer on the page, so a second answer follows it,
+			// and this line is the only thing in the chat that says why.
+			// Dropped by its words with the carry-ons, it reached nobody:
+			// qloop run 26 sent 15 of 28 turns back and not one line was in
+			// the canvas chat or in any file the engine kept. The kind is
+			// what lets the app place it with the work it started rather
+			// than under the final answer (run 16's complaint).
+			if event.NoticeKind != session.NoticeKindSentBack && session.IsCarryOnNotice(event.Text) {
 				break
 			}
 			if words := strings.TrimSpace(event.Text); words != "" {
@@ -3135,7 +3145,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				// ONLY WHAT THE PRODUCER TYPED travels as a fact; a notice
 				// with no kind stays ordinary and its words are never read.
 				switch event.NoticeKind {
-				case session.NoticeKindSkills, session.NoticeKindMemory:
+				case session.NoticeKindSkills, session.NoticeKindMemory, session.NoticeKindSentBack:
 					notice.NoticeKind = event.NoticeKind
 				}
 				notice.Skills = append([]string(nil), event.Skills...)

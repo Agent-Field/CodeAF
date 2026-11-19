@@ -40,9 +40,10 @@ import (
 // IT IS THE REPLY CHECK'S SEAM AND ITS SHAPE (replycheck.go, failurecheck.go):
 // one entry from [Agent.checkpointReopen], ONCE A TURN read off the transcript
 // ([handoffCheckSpent]), [NoChangeReply] keeps a reply that already said it,
-// and the line said while it works is a carry-on notice the app does not draw
-// ([IsCarryOnNotice]). Its record is the continuation in the transcript and a
-// rule line in the session journal ([Agent.journalSentBack]).
+// and the line said while it works is a carry-on notice typed
+// [NoticeKindSentBack], which the app keeps as a quiet line of the turn. Its
+// record is the continuation in the transcript and a rule line in the session
+// journal ([Agent.journalSentBack]).
 
 // handoffCheckNote is the dim line for the unstarted arm.
 const handoffCheckNote = "some work it handed out did not start · asking it to start it again or say so"
@@ -236,11 +237,18 @@ func (a *Agent) replyHandoffsBack(ctx context.Context, hub *eventHub, meter *che
 }
 
 // sendBack is what every check on a finished reply does when it sends the
-// turn back: one carry-on line while it works ([IsCarryOnNotice], which the
-// app does not draw), one rule line in the session journal, and the
-// continuation the model reads.
+// turn back: one carry-on line while it works, typed [NoticeKindSentBack], one
+// rule line in the session journal, and the continuation the model reads.
+//
+// THE LINE IS TYPED BECAUSE THE APP DRAWS IT. It explains why a reply the
+// person has already read is followed by more work and a second reply, and
+// the terminal folds it with the turn's work while the desktop app keeps it as
+// a quiet line of that turn (codeaf app's pump). Untyped, the app could only
+// tell it from the completion check's carry-on and the nudges by its words,
+// and it dropped all of them alike: qloop run 26 sent 15 of 28 turns back
+// and not one of those lines reached the canvas chat or any kept file.
 func (a *Agent) sendBack(hub *eventHub, check, note, lead string) {
-	hub.send(Event{Kind: EventNotice, Text: note})
+	hub.send(Event{Kind: EventNotice, Text: note, NoticeKind: NoticeKindSentBack})
 	a.journalSentBack(check)
 	a.record(textMessage("user", lead))
 }

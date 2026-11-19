@@ -40,11 +40,15 @@ func rejectToolArguments(ctx context.Context, text string) string {
 	return bare.RejectArguments(ctx, text)
 }
 
-// The two typed notices the engine produces. Any other EventNotice carries no
+// The typed notices the engine produces. Any other EventNotice carries no
 // kind and stays an ordinary line.
 const (
 	NoticeKindSkills = "skills"
 	NoticeKindMemory = "memory"
+	// NoticeKindSentBack is the line a check on a finished reply says as it
+	// sends the turn back ([Agent.sendBack]): the reply the person just read is
+	// about to be followed by more work and, usually, a reply that replaces it.
+	NoticeKindSentBack = "sent_back"
 )
 
 // recordToolResult binds metadata to the immutable result occurrence before

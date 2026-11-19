@@ -589,6 +589,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it said the flyer was fixed and then got asked to go on anyway", "tasks"},
 		{"it said the brief would follow but that task never started", "tasks"},
 		{"it said it would report back when the table lands and nothing ever came", "tasks"},
+		{"why did the reply show twice with a line saying it said more than it checked", "tasks"},
 		{"why did my second task say has hard dependency across its containment lineage", "how-tasks-run"},
 		{"does typing into a running task reach it straight away", "tasks"},
 		// And the one the code's own comment used to get wrong: thinking on the

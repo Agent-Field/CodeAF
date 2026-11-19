@@ -542,10 +542,13 @@ type Entry struct {
 	Status    int    `json:"status,omitempty"`
 	// NoticeKind, Skills and Unrecorded are typed facts the engine attached to a
 	// notice at its producer: "skills" (the skills a turn carried, named in
-	// Skills), "memory" (a memory line), "factory_status", or a local "sync",
-	// "moved" or "interrupted" sentence. Unrecorded says no transcript record
-	// redraws it. A consumer never derives these facts from Text.
-	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,sync,moved,interrupted"`
+	// Skills), "memory" (a memory line), "factory_status", "sent_back" (a check
+	// on the turn's finished reply sent it back to work: the answer just before
+	// it in the turn is followed by more work and usually by an answer that
+	// replaces it), or a local "sync", "moved" or "interrupted" sentence.
+	// Unrecorded says no transcript record redraws it. A consumer never derives
+	// these facts from Text.
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,sent_back,sync,moved,interrupted"`
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a
