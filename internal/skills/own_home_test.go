@@ -137,3 +137,25 @@ func TestInputPathsNameTheFoldersOwnHomeDirMoves(t *testing.T) {
 		t.Errorf("without OwnHomeDir the login home's .codeaf/skills is not an input: %v", plain)
 	}
 }
+
+// THE APP'S OWN SHELF IS <state>/.codeaf/skills. The desktop app writes its
+// canvas skill to <state>/.codeaf/skills/workaf-canvas/SKILL.md, and a scan
+// that moved codeaf's folder anywhere else, <state>/skills among them, which is
+// the shelf of promoted commands, would stop seeing it.
+func TestOwnHomeDirKeepsTheAppsCanvasSkillWhereTheAppWritesIt(t *testing.T) {
+	project, login, own := ownHomeFixture(t)
+	canvas := filepath.Join(own, ".codeaf", "skills", "workaf-canvas")
+	writeSkill(t, canvas, "workaf-canvas")
+	writeSkill(t, filepath.Join(own, "skills", "promoted-shelf"), "promoted-shelf")
+	found, err := Discover(Options{ProjectDir: project, HomeDir: login, OwnHomeDir: own})
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill, ok := byDir(found, canvas)
+	if !ok || skill.Scope != ScopeUser || skill.Root != RootCodeaf || skill.Shadowed || skill.Name != "workaf-canvas" {
+		t.Fatalf("the canvas skill at %s is missing or wrong (%+v) in %+v", canvas, skill, found)
+	}
+	if stray, ok := byDir(found, filepath.Join(own, "skills", "promoted-shelf")); ok {
+		t.Fatalf("the promoted shelf was read as a skills folder: %+v", stray)
+	}
+}

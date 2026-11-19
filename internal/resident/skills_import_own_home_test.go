@@ -18,11 +18,12 @@ func TestImportUnderAppHomeReadsOtherProgramsFromTheLoginHome(t *testing.T) {
 	claudeDir := filepath.Join(login, ".claude", "skills", "from-claude")
 	codexDir := filepath.Join(login, ".codex", "skills", "from-codex")
 	cliDir := filepath.Join(login, ".codeaf", "skills", "cli-only")
-	appDir := filepath.Join(state, ".codeaf", "skills", "app-canvas")
+	// THE PATH THE DESKTOP APP WRITES ITS CANVAS SKILL TO, exactly.
+	appDir := filepath.Join(state, ".codeaf", "skills", "workaf-canvas")
 	writeImportedSkill(t, claudeDir, "from-claude", "Kept for Claude Code")
 	writeImportedSkill(t, codexDir, "from-codex", "Kept for Codex")
 	writeImportedSkill(t, cliDir, "cli-only", "Kept for the command line")
-	writeImportedSkill(t, appDir, "app-canvas", "Installed by the app")
+	writeImportedSkill(t, appDir, "workaf-canvas", "Installed by the app")
 
 	st := openStore(t)
 	ReconcileImportedSkills(st, project, login)
