@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A recursive delete asks in any spelling, and a no tells the model it covered the act
-pr: 0
+pr: 2852
 surface: [chat, engine, docs]
 invalidates:
   - "Only `rm -rf /path` and `rm -fr /path` were critical commands, so `rm -r /path`, `rm -R /path`, `rm --recursive /path`, `rm -r -f /path`, `/bin/rm -rf /path`, `rm -rf -- /path` and a quoted path ran under an allow without asking. Every recursive `rm` aimed at an absolute path, `~`, `$HOME` or a bare `*` now asks, reported as `critical command \"rm -rf /*\"` or `critical command \"rm -rf *\"`."
