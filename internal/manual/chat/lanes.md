@@ -441,7 +441,9 @@ The line then changes to `switching`. That is a ceiling, not a target — a host
 acted on at its own measured pace, which for a fast one is a second or two.
 Under `auto`, a local endpoint gets ten times the hosted wait. codeaf sends a
 rescue while that request is in flight only if the gateway has advertised
-multiple providers for the model.
+multiple providers for the model. Without them the deadline cuts nothing
+either: a second request would reach the same machine and start reading the
+prompt again, so a silent local request is left to the first-token limit.
 
 Ten seconds is measured, not chosen. Across ten days of real calls the first
 word of a conversation turn arrives in 1.6 seconds at the middle, 8.4 seconds
