@@ -173,8 +173,10 @@ func ReadContentless(text string) bool {
 	return strings.HasPrefix(text, "[Line ") && strings.Contains(text, " exceeds ")
 }
 
+// The timeout is the schema's to describe: its own field already says seconds,
+// optional, and the ceiling, so a sentence here repeated it on every request.
 func bashDescription(caps Caps) string {
-	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr, cut to the last %d lines or %s, whichever comes first; when it is cut the whole output is saved to a temp file the result names. Optionally provide a timeout in seconds.", caps.MaxLines, sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr, cut to the last %d lines or %s, whichever comes first; when it is cut the whole output is saved to a temp file the result names.", caps.MaxLines, sizeWord(caps.MaxBytes))
 }
 
 // The merge sentence owns the whole of it; "do not include large unchanged

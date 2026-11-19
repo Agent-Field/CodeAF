@@ -249,10 +249,11 @@ func withBashCommand(args json.RawMessage, command string) (json.RawMessage, boo
 // cut it actually applies. The cap it quotes is the cap in force for THIS
 // agent's window, in the one place the model learns it: a description quoting
 // a limit the hand does not apply is a description the model plans wrongly
-// around, which is the same law bare's own descriptions are built on.
+// around, which is the same law bare's own descriptions are built on. The
+// timeout is the schema's to describe, as it is for bare's own bash.
 func branchBashDescription(caps bare.Caps) string {
 	kb := (caps.MaxBytes + 1023) / 1024
-	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr. Output over %dKB is cut to its first half and its last half, and the whole output is filed as a file the result names. Optionally provide a timeout in seconds.", kb)
+	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr. Output over %dKB is cut to its first half and its last half, and the whole output is filed as a file the result names.", kb)
 }
 
 // beltOffWords are the spellings of CODEAF_TASK_BELT that send a task back to
