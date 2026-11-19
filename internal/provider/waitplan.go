@@ -87,7 +87,6 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// is empty and a stall is reported rather than rescued. With a pin the
 	// alternatives stay, because there the act is the offer — `switch to
 	// auto?` — and a question has to name where a `y` would go (offer.go).
-	named := len(plan.Alts)
 	if !c.carriesPreferences() || c.routing() == RoutingOff || (c.routing() == RoutingSimple && !choice.Pinned) {
 		plan.Alts = nil
 	} else if len(plan.Alts) == 0 {
@@ -100,21 +99,10 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 		// frontier.
 		plan.Alts = sheetAlts(model, plan.Lane)
 	}
-	// AND A LOCAL ENDPOINT WITH NOWHERE ELSE TO GO NEVER GETS ONE. A rescue is a
-	// second request, and the only machine a second request to a person's own
-	// endpoint could go to is the first one again unless the endpoint has shown it
-	// routes among several ([Client.prefsProven]: an endpoints page, or an answer
-	// that named its lane) or the chooser itself named other lanes it has measured
-	// there (`named`, counted before the sheet's priors were added above). A
-	// second request to the same machine does not rescue anything: it queues
-	// behind the first or competes with it for the one GPU, and so doubles the
-	// work of the machine that was already too slow. The refusal is the same empty
-	// purse, so the hedge, the stall rescue and the walk all read it through the
-	// one door they already ask (hedgeRace.affords). A local gateway that does
-	// front several hosts keeps its rescues. A rescue to a different MODEL is not
-	// this either: that is the turn's hop (internal/session), which waits for the
-	// stretched give-up.
-	if c.localEndpoint() && !c.prefsProven() && !(named > 0 && len(plan.Alts) > 0) {
+	// Under auto, a local endpoint gets a rescue only when it has named
+	// distinct hosts for this model. A duplicate to the same host competes
+	// with the first request for the same capacity.
+	if lanes.PatienceIsAuto() && c.localEndpoint() && !lanes.SheetHasMultipleProviders(c.config.BaseURL, model) {
 		plan.Purse = lanes.NoSpending()
 	}
 	return plan

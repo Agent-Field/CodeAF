@@ -172,3 +172,15 @@ func TestStretchIsTheIdentityAtOneAndBelow(t *testing.T) {
 		t.Errorf("2.5 times ten seconds = %v, want 25s", got)
 	}
 }
+
+func TestStretchSaturatesWhenResponseAttemptsAndPatienceCompose(t *testing.T) {
+	UsePatience(10_000_000)
+	t.Cleanup(func() { UsePatience(1) })
+	giveUp := RoleTalk.GiveUp()
+	if giveUp != 10_000_000*TurnGiveUp {
+		t.Fatalf("response.attempts gave up after %v before response.patience was applied", giveUp)
+	}
+	if got := Stretch(giveUp, MaxResponsePatience); got != time.Duration(math.MaxInt64) {
+		t.Fatalf("combined give-up = %v, want the largest duration", got)
+	}
+}

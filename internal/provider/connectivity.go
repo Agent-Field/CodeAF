@@ -325,7 +325,7 @@ func (w *streamWatch) suspend() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.recovering, w.recovered = true, true
-	w.deadline = time.Time{}
+	w.deadline, w.deadPathAt = time.Time{}, time.Time{}
 }
 
 func (w *streamWatch) resumeConnection() {

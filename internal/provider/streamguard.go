@@ -785,12 +785,9 @@ type stallWatch struct {
 	// out of the package vars because the ceiling they must sit above is the
 	// role's ([boundsFor]).
 	bounds stallBounds
-	// wallScale is the patience this request is held to, and it is what the
-	// wall's OUTER ceiling is multiplied by: a stream that keeps pace may be
-	// re-armed up to [stallWallCeiling], and a client that waits ten times as long
-	// for everything else waits ten times as long for that too. Zero, which is
-	// every watch built without one, is one.
-	wallScale float64
+	// patience scales the wall ceiling and the measured mid-stream gap so
+	// both agree with the bounds the request was opened with.
+	patience float64
 	// gap is the mid-stream silence bound in force. It opens at the flat bound
 	// every stranger gets and narrows once the stream names its lane, to what
 	// that lane's measured rate says a gap should be ([gapFor], [regap]).
@@ -829,18 +826,15 @@ func newStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Dur
 // ledger stretched them — so what this adds is the three silence bounds and the
 // ceiling the wall may be re-armed up to, both of which live here.
 func newPatientStallWatch(ctx context.Context, cancel context.CancelFunc, wall time.Duration, pace float64, factor float64) *stallWatch {
-	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsForPatience(RoleFrom(ctx), factor), wallScale: factor, arm: streamWatchFrom(ctx)}
-	// AND THE ARM LEARNS WHERE ITS SCISSORS ARE. The ceiling is the controller's
-	// and the cutting is this file's, so the one place that can act on a ceiling
-	// the purse refused needs both — see armwatch.go's THE CEILING PICKS ONE OR
-	// THE OTHER, NEVER NEITHER.
-	watch.arm.guardedBy(watch)
+	watch := &stallWatch{cancel: cancel, clock: time.Now, bounds: boundsForPatience(RoleFrom(ctx), factor), patience: factor, arm: streamWatchFrom(ctx)}
 	watch.born = watch.clock()
 	watch.quietSince = watch.born
 	watch.walled, watch.period, watch.pace = wall, wall, pace
 	watch.gap = watch.bounds.gap
 	watch.timer = time.AfterFunc(watch.bounds.first, func() { watch.fire() })
 	watch.wallTimer = time.AfterFunc(wall, func() { watch.overran() })
+	// The arm can cut as soon as it learns that this guard is ready.
+	watch.arm.guardedBy(watch)
 	return watch
 }
 
@@ -910,7 +904,7 @@ func (w *stallWatch) regap(gap time.Duration) {
 	if w.tripped != nil || w.regapped || gap <= 0 {
 		return
 	}
-	if gap = w.bounds.narrow(gap); gap >= w.gap {
+	if gap = w.bounds.narrow(lanes.Stretch(gap, w.patience)); gap >= w.gap {
 		return
 	}
 	w.regapped = true
@@ -958,7 +952,7 @@ func (w *stallWatch) overrunVerdict() context.CancelFunc {
 		return nil
 	}
 	now := w.clock()
-	ceiling := lanes.Stretch(stallWallCeiling, w.wallScale)
+	ceiling := lanes.Stretch(stallWallCeiling, w.patience)
 	if w.walled < ceiling && w.keptPace(now) {
 		w.walled = min(w.walled+w.period, ceiling)
 		w.paceFrom, w.paceMark = now, w.written

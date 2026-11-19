@@ -275,37 +275,84 @@ func TestALocalEndpointIsNeverOfferedARescueRequest(t *testing.T) {
 			t.Errorf("%s: the purse allowed a second request to the same machine", name)
 		}
 	}
-	// A person who wrote a number keeps the same promise: it changes how long
-	// a local model is waited on, never whether it is asked twice.
-	usePatience(t, 3)
-	if plan := local.planFor(context.Background(), lanes.Choice{}, "sim/model", 0); plan.Purse.Allows(0.0001, local.clock()) {
-		t.Error("a written patience re-enabled duplicate requests to a local endpoint")
+	// A number restores the same rescue policy as on a hosted endpoint.
+	for _, factor := range []float64{1, 3} {
+		usePatience(t, factor)
+		for _, client := range []*Client{hosted, local, ollamaRow} {
+			if plan := client.planFor(context.Background(), lanes.Choice{}, "sim/model", 0); !plan.Purse.Allows(0.0001, client.clock()) {
+				t.Errorf("%s at %vx refused a rescue that a hosted endpoint can buy", client.config.BaseURL, factor)
+			}
+		}
 	}
 }
 
-// CONTRACT: the refusal is about having nowhere else to go. A local gateway
-// that has shown it routes among several hosts is still rescued there, because
-// that is a real rescue and not a second request to the same machine.
-func TestALocalGatewayThatNamesAnotherLaneMayStillBeRescued(t *testing.T) {
-	client, _, model := stubbedRouter(t)
-	primed(t, model,
-		laneBelief(model, "quicksilver", 400, 70, 0.25),
-		laneBelief(model, "brass", 900, 60, 0.30),
-	)
-	before := LaneGuardOn()
-	t.Cleanup(func() { SetLaneGuard(before) })
-	SetLaneGuard(true)
-	usePatience(t, 0)
+func TestALocalGatewayNeedsMoreThanOneProviderToRescueUnderAuto(t *testing.T) {
+	// The live endpoints refresh persists a sheet, so its cache belongs to this fixture.
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	const model = "openrouter/patience-gateway-test"
+	for _, tc := range []struct {
+		name       string
+		endpoints  string
+		wantRescue bool
+	}{
+		{"one provider", `{"provider_name":"brass"}, {"provider_name":"Brass","tag":"different-quant"}`, false},
+		{"two providers", `{"provider_name":"brass"}, {"provider_name":"quicksilver"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"data":{"endpoints":[%s]}}`, tc.endpoints)
+			}))
+			defer server.Close()
+			primed(t, model,
+				laneBelief(model, "quicksilver", 400, 70, 0.25),
+				laneBelief(model, "brass", 900, 60, 0.30),
+			)
+			client := patientClient(t, server.URL, "")
+			lanes.WireSheet(server.URL, "", sheetFetcher{}, false)
+			if err := lanes.Default().Sheet().Refresh(t.Context(), model); err != nil {
+				t.Fatal(err)
+			}
+			before := LaneGuardOn()
+			t.Cleanup(func() { SetLaneGuard(before) })
+			SetLaneGuard(true)
 
-	if !client.localEndpoint() {
-		t.Fatal("test premise: the stub router is on loopback")
+			for _, factor := range []float64{0, 1} {
+				usePatience(t, factor)
+				plan := client.planFor(t.Context(), lanes.Choice{}, model, 0)
+				if got, want := plan.Purse.Allows(0.0001, client.clock()), factor == 1 || tc.wantRescue; got != want {
+					t.Errorf("rescue permitted at patience %v = %v, want %v", factor, got, want)
+				}
+			}
+		})
 	}
-	if !client.prefsProven() {
-		t.Fatal("test premise: the stub router has shown it routes among several hosts")
+}
+
+func TestAMeasuredMidStreamGapGetsTheEndpointsPatience(t *testing.T) {
+	const model, served = "sim/model", "fast"
+	usePatience(t, 0)
+	hosted := patientClient(t, "https://api.openai.com/v1", "")
+	local := patientClient(t, "http://localhost:11434/v1", "")
+	cutAfter := func(client *Client) time.Duration {
+		t.Helper()
+		for range 10 {
+			client.velocity.observe(model, served, time.Second, 120, time.Second, 0)
+		}
+		watch := newPatientStallWatch(talking(), func() {}, time.Hour, paceFor(0), client.patience())
+		watch.stop()
+		watch.regap(client.streamGap(model, served))
+		watch.spoken = true
+		watch.quietSince = watch.clock().Add(-watch.gap)
+		if cancel := watch.verdict(); cancel == nil || watch.tripped.Reason != CutStalled {
+			t.Fatal("a stream quiet for its full measured gap did not get a stalled cut")
+		}
+		return watch.tripped.Waited
 	}
-	plan := client.planFor(context.Background(), lanes.Choice{}, model, 0)
-	if !plan.Purse.Allows(0.0001, client.clock()) {
-		t.Error("a rescue to another lane of a local gateway was refused")
+	hostedGap := cutAfter(hosted)
+	if want := gapFor(120); hostedGap != want {
+		t.Fatalf("hosted measured gap = %v, want %v", hostedGap, want)
+	}
+	if localGap := cutAfter(local); localGap != lanes.Stretch(hostedGap, lanes.LocalPatience) {
+		t.Fatalf("local measured gap = %v, want 10x hosted gap %v", localGap, hostedGap)
 	}
 }
 

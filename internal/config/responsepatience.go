@@ -115,10 +115,8 @@ func ResponsePatienceAt(profileDir string) (float64, error) {
 
 // InstallResponsePatience hands the profile's `response.patience` to the
 // process-wide figure the transport reads it from ([lane.UseResponsePatience]).
-// It is called where the profile is loaded and where the row is written, for
-// the reason [InstallLaneRows] is: the code that builds a wait bound cannot read
-// a profile, and a row that reached some of the bounds and not the others would
-// be a person told two different things about the same wait.
+// The launch, the settings writer and the session's request boundary call it
+// so changes a linked terminal saves reach the engine that serves its chat.
 //
 // A pin that will not parse installs `auto` here and is REFUSED where the
 // profile is loaded (the launch errors), so the only way to reach this with one
@@ -166,7 +164,7 @@ func responsePatienceSetting(dir string) Setting {
 			"x for one on your own machine (Ollama, LM Studio, a box on your network), which can spend minutes " +
 			"reading a long prompt. A number from " + formatNumber(lane.MinResponsePatience) + " to " +
 			formatNumber(lane.MaxResponsePatience) + ", like 3 or 3x, applies to every model. " +
-			"A change lands on the next call.",
+			"Set 1 to get the old behaviour exactly. A change lands on the next call.",
 		read:  func() string { return responsePatienceWord(dir) },
 		write: func(raw string) error { return writeResponsePatience(dir, raw) },
 	}

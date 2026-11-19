@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	account "github.com/Agent-Field/codeaf/internal/config"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
@@ -739,11 +740,23 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 	return response, err
 }
 
+// refreshResponsePatience reads the shared profile because a linked terminal
+// can save the row in a different process. An empty directory is the default profile.
+func (a *Agent) refreshResponsePatience() {
+	account.InstallResponsePatience(a.config.ProfileDir)
+}
+
+func (a *Agent) endpointPatience(model string) float64 {
+	service, _ := a.liveSources().For(model)
+	return lanes.PatienceFor(service.Address, service.Source.ID)
+}
+
 // completeWithNamedModel keeps the model that answered attached to the same
 // resolution that chose its account. Errand receipts need that identity when a
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	a.refreshResponsePatience()
 	// Job ownership also covers personal manager turns and reopened stages.
 	// Keep recovery on the call so shared clients retain ordinary refusals.
 	if a.jobBudgetOf() != nil {

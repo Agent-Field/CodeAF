@@ -2771,8 +2771,8 @@ func (a *Agent) giveUp() time.Duration {
 // under `auto` multiplies by one, which is [lanes.Stretch]'s identity, so nothing
 // about a hosted turn moves.
 func (a *Agent) giveUpOn(model string) time.Duration {
-	service := a.config.serviceFor(model)
-	return lanes.Stretch(a.giveUp(), lanes.PatienceFor(service.Address, service.Source.ID))
+	a.refreshResponsePatience()
+	return lanes.Stretch(a.giveUp(), a.endpointPatience(model))
 }
 
 // emptyReplyNotice is the dim line for a 200 that carried nothing. It says what

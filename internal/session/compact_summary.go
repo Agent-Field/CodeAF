@@ -541,7 +541,9 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	}
 	answeredBy := ""
 	call := func(ceiling int) (*ai.Response, error) {
-		callCtx, cancel := context.WithTimeout(ctx, summaryCallWindow)
+		a.refreshResponsePatience()
+		window := lane.Stretch(summaryCallWindow, a.endpointPatience(plan.model))
+		callCtx, cancel := context.WithTimeout(ctx, window)
 		response, answered, err := a.completeWithNamedModel(callCtx, purposeSummary, messages, plan.model, ai.WithMaxTokens(ceiling))
 		cancel()
 		if err == nil && strings.TrimSpace(answered) != "" {

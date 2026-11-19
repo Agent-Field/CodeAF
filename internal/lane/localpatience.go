@@ -76,6 +76,11 @@ func UseResponsePatience(factor float64) {
 	responsePatience.Store(int64(math.Round(factor * patienceScale)))
 }
 
+// PatienceIsAuto reports whether endpoint type determines the wait and rescue policy.
+func PatienceIsAuto() bool {
+	return responsePatience.Load() == 0
+}
+
 // PatienceFor is the multiplier on every wait bound for one request, decided by
 // where the request is going and what the person wrote.
 //
@@ -190,13 +195,17 @@ func hostOf(baseURL string) string {
 // of this feature is that a hosted call under `auto` moves by not one
 // nanosecond.
 func Stretch[D ~int64](bound D, factor float64) D {
-	// WRITTEN AS "NOT GREATER THAN ONE" AND NOT "ONE OR LESS" because a NaN is
-	// neither, and a NaN multiplied into a duration is the most negative one,
-	// which every bound reads as already expired. An infinite factor would
-	// overflow the same way, and both mean a caller that has not been through
-	// [UseResponsePatience]'s range check; the safe answer is the unstretched bound.
+	// The comparison also catches NaN, which cannot define a wait.
 	if !(factor > 1) || math.IsInf(factor, 0) {
 		return bound
 	}
-	return D(float64(bound) * factor)
+	scaled := float64(bound) * factor
+	// MaxInt64 rounds up as a float, so equality is already outside the duration range.
+	if scaled >= float64(math.MaxInt64) {
+		return D(math.MaxInt64)
+	}
+	if scaled <= float64(math.MinInt64) {
+		return D(math.MinInt64)
+	}
+	return D(scaled)
 }
