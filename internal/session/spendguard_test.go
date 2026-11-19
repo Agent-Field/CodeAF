@@ -175,7 +175,7 @@ func TestSharedModelCheckerCeilingFollowsTheSeat(t *testing.T) {
 	fallback := SeatCompleter(crewroute.Checker, guard.Wrap("vendor/fallback", check))
 	_, err := fallback.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(20000))
 	var stopped ErrSpendStopped
-	if !errors.As(err, &stopped) || stopped.Action != "the check stopped at its spend ceiling of $0.05, three times its estimate, before it finished" || check.calls != 2 || worker.calls != 4 {
+	if !errors.As(err, &stopped) || stopped.Action != "the check stopped at its spend ceiling of $0.05 before it finished" || check.calls != 2 || worker.calls != 4 {
 		t.Fatalf("fallback after a shared model: %v, %d checker and %d worker calls", err, check.calls, worker.calls)
 	}
 	// A call without a seat still has the task limit, but not this ceiling.

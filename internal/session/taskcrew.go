@@ -966,7 +966,8 @@ func crewSpendGuard(profileDir string, d crewroute.Decision, withDaily bool) *Sp
 	guard := &SpendGuard{
 		Price: config.CrewCallPriceAt(profileDir), Cap: capUSD, CapAction: action,
 		SeatCeilings: config.CrewSeatCeilings(d), CeilingAction: config.CrewCheckCeilingAction,
-		TaskCap: taskCap, TaskAction: taskAction, Task: &SpendTask{},
+		WorkEstimate: d.Seat(crewroute.Worker).EstUSD,
+		TaskCap:      taskCap, TaskAction: taskAction, Task: &SpendTask{},
 	}
 	// THE DAILY LIMIT IS READ AT EVERY CALL, not frozen here: a limit raised,
 	// lowered or switched on after this crew was admitted is the one that

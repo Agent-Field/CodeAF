@@ -17,6 +17,14 @@ func localRunConflict(notice TaskNotice) bool {
 	return notice.Remote == nil && notice.Program == "" && notice.Copy != nil && notice.Merge == mergeConflicted
 }
 
+// completedRunAsks is whether a run's row is completed work waiting on an
+// explicit answer at this door: a plan recovered without its landing receipt,
+// a local landing that conflicted, or landed work whose check could not finish
+// ([TaskNotice.Unchecked]).
+func completedRunAsks(notice TaskNotice) bool {
+	return notice.RecoveredCompletion || localRunConflict(notice) || notice.Unchecked
+}
+
 // resolveCompletedRun is the existing explicit decision door for completed
 // work whose landing still needs a decision. It never starts workers, and a
 // completed store alone never supplies a successful check receipt.
@@ -45,6 +53,9 @@ func (a *Agent) resolveCompletedRun(ctx context.Context, id uint64, resolution T
 	if err != nil {
 		return "", true, err
 	}
+	if kept.Unchecked && !kept.RecoveredCompletion && !localRunConflict(kept) {
+		return a.resolveUncheckedRun(g, kept, path, root, resolution, why, by)
+	}
 	switch resolution {
 	case TaskReaudit:
 		return "", true, fmt.Errorf("task %d finished before the restart without a final check receipt; inspect its saved work, then accept or refute it", id)
@@ -59,6 +70,31 @@ func (a *Agent) resolveCompletedRun(ctx context.Context, id uint64, resolution T
 	}
 }
 
+// resolveUncheckedRun answers the check's question about work that finished
+// and LANDED while its check could not finish ([TaskNotice.Unchecked]).
+//
+// NOTHING IS LANDED AGAIN. The run brought its work home at its end, as every
+// run does, so `accept` is the person taking it as done and `not right` is the
+// person saying it is not; the work stays exactly where it is either way. And
+// the check is not asked again: it stopped at its own spend ceiling, and asking
+// it again would spend that ceiling a second time on the same reading.
+func (a *Agent) resolveUncheckedRun(g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, resolution TaskResolution, why string, by TaskAskOwner) (string, bool, error) {
+	why = strings.TrimSpace(why)
+	switch resolution {
+	case TaskAccept:
+		kept.State, kept.Unchecked = TaskDone, false
+		kept.Report = withReport(acceptedLine(why, by), root.Result)
+	case TaskRefute:
+		kept.State, kept.Ending, kept.Unchecked = TaskFailed, TaskEndingRefused, false
+		kept.Report = withReport(refutedLine(why, by), root.Result)
+	case TaskReaudit:
+		return "", true, fmt.Errorf("task %d's check stopped at its spend ceiling and is not asked again; read its work, then accept or refute it", kept.ID)
+	default:
+		return "", true, fmt.Errorf("%q is not a resolution: say %s, %s or %s", resolution, TaskAccept, TaskReaudit, TaskRefute)
+	}
+	return a.saveCompletedRunOutcome(g, kept, path, root.ID)
+}
+
 // completedRunOwner keeps the fallback inside this conversation. A worker's
 // shared task graph does not authorize it to settle its parent or siblings.
 func (a *Agent) completedRunOwner(id uint64) (*TaskGraph, bool) {
@@ -69,7 +105,7 @@ func (a *Agent) completedRunOwner(id uint64) (*TaskGraph, bool) {
 	if g == nil {
 		return nil, false
 	}
-	if kept, found := runRowOf(g, id); !found || (!kept.RecoveredCompletion && !localRunConflict(kept)) {
+	if kept, found := runRowOf(g, id); !found || !completedRunAsks(kept) {
 		return nil, false
 	}
 	return g, true

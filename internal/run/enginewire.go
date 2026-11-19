@@ -112,6 +112,10 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		// AND THE WORD A PROGRAM FINISHED ON, which is how the session tells
 		// work its program checked from work nothing checked.
 		ProgramVerdict: summary.Verdict,
+		// AND A CHECK THAT COULD NOT FINISH CROSSES AS ITSELF: the run answered
+		// done over work nobody finished checking, and the session asks the
+		// person about it rather than calling it done or failed.
+		Unchecked: summary.Unchecked,
 		// THE ROWS THE RUN'S OWN ENDING CUT CROSS AS THEMSELVES: the same
 		// one-for-one carrying as the limit fact, so the session draws a row
 		// the person's bound took down from the run's own record of it and

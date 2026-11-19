@@ -669,6 +669,12 @@ type TaskNotice struct {
 	WorkspaceSet *WorkspaceSet
 	// RecoveredCompletion identifies a completed plan recovered before its final landing receipt.
 	RecoveredCompletion bool
+	// Unchecked marks a run whose work finished and landed while its check
+	// could not finish — its checker met its own spend ceiling. It is the
+	// check's question (your call: accept, not right) asked about work that is
+	// already in place, so answering it settles the row and never lands again.
+	// It is omitted when false so every other row keeps its saved shape.
+	Unchecked bool `json:",omitempty"`
 	// PendingRun keeps an admitted request before it owns a working copy.
 	PendingRun *PendingRunRecord
 	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS, and it is the one

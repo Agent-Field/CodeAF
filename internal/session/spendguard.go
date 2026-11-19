@@ -217,6 +217,11 @@ type SpendGuard struct {
 	// ends on.
 	SeatCeilings  map[crewroute.Seat]float64
 	CeilingAction string
+	// WorkEstimate is what the worker seat was expected to cost on this task,
+	// and the checker's ceiling stretches by how far the worker's real spend
+	// overran it ([config.CrewCheckCeilingFor]): a check reads what the work
+	// made, so bigger work is a bigger check. Zero stretches nothing.
+	WorkEstimate float64
 	// TaskCap is the most the task may spend in dollars, across every model
 	// this guard prices, and TaskAction the sentence a call it stops ends on.
 	// Zero is no per-task limit.
@@ -388,12 +393,30 @@ func (g *SpendGuard) seatTally(seat crewroute.Seat) *SpendTask {
 	return g.seatSpent[seat]
 }
 
+// seatCeiling is seat's own ceiling as it stands at this call: the checker's
+// stretched by how far the worker has overrun its own estimate so far
+// ([config.CrewCheckCeilingFor]), every other seat's exactly as it was set.
+// Zero is no ceiling.
+func (g *SpendGuard) seatCeiling(seat crewroute.Seat) float64 {
+	ceiling := g.SeatCeilings[seat]
+	if ceiling <= 0 || seat != crewroute.Checker || g.WorkEstimate <= 0 {
+		return ceiling
+	}
+	return config.CrewCheckCeilingFor(ceiling, g.seatTally(crewroute.Worker).Total(), g.WorkEstimate)
+}
+
 // ErrSpendStopped is a call the guard did not make. Its text is the one
 // sentence that says which line it met.
 type ErrSpendStopped struct {
 	Action string
 	// TaskLimit ends the whole task tree; a seat's own ceiling ends its check.
 	TaskLimit bool
+	// SeatCeiling marks the one line that is a fact about the CHECKER and not
+	// about the work or the person's money: the checker met its own ceiling.
+	// The day's cap also answers TaskLimit false, so this is how a run tells a
+	// check that ran out of its own budget — the work it was reading stands —
+	// from a day that has no money left ([internal/run]'s review round).
+	SeatCeiling bool
 }
 
 func (e ErrSpendStopped) Error() string { return e.Action }
@@ -489,9 +512,10 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		if taskCap, taskAction := g.taskLimit(); taskCap > 0 && g.tally().Total() >= taskCap {
 			return 0, ErrSpendStopped{Action: taskAction, TaskLimit: true}
 		}
-		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 && g.ceilingTally(ctx, seat).Total() >= g.SeatCeilings[seat] {
-			ceiling := g.SeatCeilings[seat]
-			return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
+		if seat := crewSeatOf(ctx); g.SeatCeilings[seat] > 0 {
+			if ceiling := g.seatCeiling(seat); g.ceilingTally(ctx, seat).Total() >= ceiling {
+				return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling), SeatCeiling: true}
+			}
 		}
 		return 0, nil
 	}
@@ -505,7 +529,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 		est = last
 	}
 	seat := crewSeatOf(ctx)
-	ceiling := g.SeatCeilings[seat]
+	ceiling := g.seatCeiling(seat)
 	var ceilingTally *SpendTask
 	if ceiling > 0 {
 		ceilingTally = g.ceilingTally(ctx, seat)
@@ -516,7 +540,7 @@ func (g *SpendGuard) before(ctx context.Context, model string, messages []ai.Mes
 			ceilingEst, fits = ceilingTally.hold(est, ceiling)
 		}
 		if !fits {
-			return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling)}
+			return 0, ErrSpendStopped{Action: fmt.Sprintf(g.CeilingAction, ceiling), SeatCeiling: true}
 		}
 	}
 	task := g.tally()

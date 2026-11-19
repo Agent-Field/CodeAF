@@ -821,9 +821,18 @@ free pool, a local model, a subscription plan — is never stopped by the cap, t
 limit or the checker's ceiling.
 
 **A checker has a ceiling of its own on each task**: three times its estimate, and never
-less than $0.05. A check that reaches it stops there, on `the check stopped at its spend
-ceiling of $0.26, three times its estimate, before it finished`, and the task ends
-unchecked rather than on a bill ten times its estimate.
+less than $0.05. The estimate is an ordinary task's check, so **the ceiling grows with the
+work**: when the worker's own spend runs past the worker's estimate, the checker's ceiling
+is raised by the same factor, up to three times more — work that cost six times what it was
+expected to gets a check ceiling three times higher, never more. A check that reaches its
+ceiling stops there, on `the check stopped at its spend ceiling of $0.26 before it
+finished`, rather than on a bill ten times its estimate.
+
+**Work whose check stopped at the ceiling is not failed.** The work had finished and is in
+place; only the check did not finish. The task reads `your call · the check stopped at its
+spend ceiling`, with the stop and the work's own account under it, and offers the check's
+two answers: `accept` takes it as done, `not right` marks it incomplete. Nothing is landed a
+second time either way, and the check is not run again — that would spend its ceiling twice.
 Only the checker's own calls count toward that ceiling, whatever model the worker or
 planner runs, including a crew whose three seats use one model. The ceiling follows
 the checker when it moves to another model.
