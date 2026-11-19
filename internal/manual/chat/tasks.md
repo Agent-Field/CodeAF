@@ -1452,13 +1452,16 @@ it then tells you about that work is checked against what the look showed,** bef
 ends. Two cases send the reply back once, in the same reply:
 
 - **It changed the work after its last look** and is now describing it. It is asked to look
-  again and write the reply from that look. The dim line reads
+  again and write the reply from that look. The terminal's dim line:
   `it changed the work after its last look · asking it to look again before it replies`.
 - **Its newest look shows something different from what the reply says** — an order, a
   count, a position, a quoted line, what overlaps what. A small second model compares the
   reply with the words that described the picture and names only what the look contradicts;
   what the look did not cover is never raised. The model gets those lines and rewrites the
-  reply. The dim line reads `its reply did not match its own last look · asking it to correct the reply`.
+  reply. The terminal's dim line: `its reply did not match its own last look · asking it to correct the reply`.
+
+The terminal folds either line away once the reply settles; the desktop app shows no row
+for it. The transcript and the session journal keep the record.
 
 **Once per reply, at most one extra pass and one comparison.** The reply written after it is
 the one you get, even if it is still wrong. A reply that was right is kept as written: the
@@ -1477,7 +1480,8 @@ and it is about to end by asking you, it is first sent back once** with the fail
 front of it. It either does the step that was meant to make your change, correctly, or asks
 again and says plainly which steps failed and what it did and did not change.
 
-- A reply in words that ends on a question gets one dim line:
+- A reply in words that ends on a question gets one dim line in the terminal while it works,
+  folded away with the reply's work, and no row in the desktop app:
   `some of its steps failed before it asked you · asking it to retry them or say what failed`.
 - A question card (`ask`) is held before it is drawn — you see no card — and the model asks
   again or does the work. The next card in that reply is drawn as usual.
@@ -1486,6 +1490,34 @@ again and says plainly which steps failed and what it did and did not change.
 changed" itself;** the model, which knows, says it. **Once per reply.** If the failures did not
 touch what you asked for, the model keeps its first reply with one short call. A credential
 request is never held.
+
+## Work it handed out that did not start is said, not promised — it said the brief would follow but the task never started, "Not started", it said it would report back and nothing came, it promised to report when the table lands
+
+**Before a reply ends, codeaf reads the reply's own turn for work it handed out that did not
+start.** A task that did not start has nothing running for it, so no report about it will
+ever come. If one did not start and was not started again under the same title later in
+the reply, the model is sent back once with each one named and what stopped it. It either
+starts it again correctly, or writes the reply again saying plainly which work did not start
+and what that leaves undone. It is told not to promise a report about work that is not
+running.
+
+**A promise of a later report needs something still running.** "I'll report when the table
+lands" is true while a task, a run or a background command it started is still going,
+because that ending starts a reply here on its own. With nothing of its own still going, the
+reply is sent back once: finish the work now, or say what is done and what is not.
+
+**Once per reply, for both together,** and before the check against its own last look. A
+reply that already said it is kept as written, in one short call.
+
+**What you see.** In the terminal a dim line shows while it works —
+`some work it handed out did not start · asking it to start it again or say so` or
+`it promised a later report with nothing running · asking it to finish or say what is left`
+— and folds away with the reply's work. The desktop app shows no row for it. The session's
+transcript and journal keep the record.
+
+**Limits.** The promise is read from a short list of ways of saying it ("I'll report",
+"I'll let you know", "once it lands", "when they are in"). A promise worded some other way
+is not caught. A task that is running but stuck still counts as running.
 
 ## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 

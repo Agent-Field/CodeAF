@@ -793,10 +793,20 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 
 // IsCarryOnNotice says whether a notice's words are the line the harness says
 // as it sends a stopped turn back to work: the completion check's carry-on
-// ([checkpointCarryOnNote]) or one of the three nudges ([checkpointLoadNudgeNote],
-// [checkpointAskNudgeNote], [checkpointUpdateNudgeNote]). It is the ONE reading
-// of those four lines, for
-// [IsNoChangeReply]'s reason.
+// ([checkpointCarryOnNote]), one of the nudges ([checkpointLoadNudgeNote],
+// [checkpointAskNudgeNote], [checkpointUpdateNudgeNote],
+// [checkpointNotesNudgeNote]), or one of the checks on a finished reply
+// ([replyStaleLookNote], [replyCheckNote], [failureCheckNote],
+// [handoffCheckNote], [handoffPromiseNote]). It is the ONE reading of those
+// lines, for [IsNoChangeReply]'s reason.
+//
+// THE CHECKS ON A FINISHED REPLY WERE LEFT OFF THIS LIST WHEN THEY LANDED
+// (#2836), and the app drew each as a standing notice row under the reply —
+// "it changed the work after its last look · asking it to look again before
+// it replies", once even after the final answer, which the model then kept
+// with [NoChangeReply]. That is the engine talking about its own machinery in
+// the person's chat. Their record is the continuation in the transcript and a
+// rule line in the session journal ([Agent.journalSentBack]).
 //
 // THEY ARE SAID FOR THE MOMENT THEY ARE SAID IN. None is written into the
 // transcript, and the turn they announce goes on working, so what each tells
@@ -809,7 +819,8 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // these, and every surface keeps them.
 func IsCarryOnNotice(text string) bool {
 	switch strings.TrimSpace(text) {
-	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote, checkpointNotesNudgeNote:
+	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote, checkpointNotesNudgeNote,
+		replyStaleLookNote, replyCheckNote, failureCheckNote, handoffCheckNote, handoffPromiseNote:
 		return true
 	}
 	return false
@@ -1259,7 +1270,7 @@ func answeredNoteUnchanged(messages []ai.Message) bool {
 		}
 		return messages[index].Role == "user" &&
 			(strings.HasPrefix(text, checkpointCarryOnLead) || text == checkpointNotesNudgeLead ||
-				isReplyCheckLead(text) || isFailureCheckLead(text))
+				isReplyCheckLead(text) || isFailureCheckLead(text) || isHandoffCheckLead(text))
 	}
 	return false
 }
@@ -3782,6 +3793,18 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 	// turns that need it — the person is about to read the reply. Neither is
 	// excused by a closing question: "no layer overlaps the cup. Want the
 	// subline larger?" is wrong about the cup whatever it offers after.
+	//
+	// A TURN THAT HANDED WORK OUT ENDS HONESTLY ABOUT IT (handoffcheck.go), and
+	// that is asked FIRST: work that did not start is started again or said,
+	// and a promise of a later report needs something still running to keep
+	// it. It goes ahead of the look because a [NoChangeReply] to any of these
+	// ends the turn ([answeredNoteUnchanged]) — measured on qloop run 16, where
+	// the stale-look arm fired first, the model kept its reply, and the brief
+	// that never started was never raised. A missing piece of work is the
+	// larger wrong; a reply rewritten for it is still read against the look.
+	if a.replyHandoffsBack(ctx, hub, meter, said) {
+		return true, false
+	}
 	if a.replyLooksBack(ctx, hub, meter, said) {
 		return true, false
 	}

@@ -5994,7 +5994,7 @@ func isContinuationContext(text string) bool {
 		return true
 	}
 	return text == truncationContinuationNote || text == checkpointUpdateNudgeLead || text == checkpointNotesNudgeLead ||
-		isReplyCheckLead(text) || isFailureCheckLead(text)
+		isReplyCheckLead(text) || isFailureCheckLead(text) || isHandoffCheckLead(text)
 }
 
 // entryRows is how many rows the shaping above makes of ONE message: none at
