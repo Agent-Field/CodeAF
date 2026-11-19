@@ -319,14 +319,14 @@ func TestLookedAtTheWorkReadsTheTurnNotTheSession(t *testing.T) {
 func TestReplyCheckPageIsBoundedAndKeepsTheNewestLook(t *testing.T) {
 	old := turnLook{seen: strings.Repeat("old ", 3000)}
 	newest := turnLook{question: "bars?", seen: lookSaid}
-	page := replyCheckPage(strings.Repeat("r", 10000), []turnLook{old, old, old, newest})
+	page := replyCheckPage(strings.Repeat("r", 10000), []turnLook{old, old, old, newest}, nil)
 	if !strings.Contains(page, lookSaid) {
 		t.Fatalf("the newest look was dropped")
 	}
 	if limit := replyCheckLookBytes + replyCheckReplyBytes + 200; len(page) > limit {
 		t.Errorf("the page is %d bytes; want at most %d", len(page), limit)
 	}
-	if replyCheckPage(wrongReply, []turnLook{{}}) != "" {
+	if replyCheckPage(wrongReply, []turnLook{{}}, nil) != "" {
 		t.Errorf("a look with no words gave the reader a page")
 	}
 }
@@ -339,6 +339,7 @@ func TestReplyCheckFindingsReadOnlyTheAskedShape(t *testing.T) {
 		"It all matches.":           0,
 		"- one\n- two":              2,
 		"Found:\n- one\nnot a line": 1,
+		"- NONE":                    0,
 		strings.Repeat("- x\n", 9):  replyCheckFindings,
 	} {
 		if got := len(replyCheckFindingsOf(answer)); got != want {

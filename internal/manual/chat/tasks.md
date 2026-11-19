@@ -1322,7 +1322,7 @@ finishes with a question mark, it is waiting on you, and carrying it on would be
 answering a question that was addressed to you. That is the whole of the test — the mark
 itself, so it works whatever language you are talking in. Two narrower checks still apply
 to such a reply and send it back once to fix the reply itself, not to carry on the work: a
-reply that contradicts its own last look at the work, and a question after failed steps
+reply that contradicts what it saw of its own work this reply, and a question after failed steps
 that does not say what failed (both described below).
 
 **A short reply that only LOOKED at things is not read at all.** If the reply ended before it
@@ -1445,20 +1445,21 @@ stands as written.
 A note that ends by asking you something, or that is waiting on work already out, is left
 alone, as an update is.
 
-## A reply that says something its own look did not show is sent back — it said nothing overlaps but the headline covers the cup, it listed the bars in the wrong order, it described the canvas wrong
+## A reply that says something its own look or its own steps did not show is sent back — it said nothing overlaps but the headline covers the cup, it said it fits one page but the PDF has two, it listed the bars in the wrong order
 
 **When the model looked at its work this reply — a picture of a page, a chart, a board — what
-it then tells you about that work is checked against what the look showed,** before the reply
-ends. Two cases send the reply back once, in the same reply:
+it then tells you about that work is checked against what it saw,** before the reply ends:
+its looks, and what its own steps returned (see the next section). Two cases send the reply
+back once, in the same reply:
 
-- **It changed the work after its last look** and is now describing it. It is asked to look
-  again and write the reply from that look. The terminal's dim line:
+- **Something it saw contradicts the reply** — a number, a count, a page count, an order, a
+  ranking such as "top" or "only", a name, what overlaps what. A small second model compares
+  the reply with that evidence and names only what it contradicts. The model gets those lines
+  and rewrites the reply. The terminal's dim line:
+  `its reply did not match what it saw this turn · asking it to correct the reply`.
+- **It changed the work after its last look** and nothing it read since says the reply is
+  wrong. It is asked to look again and write the reply from that look. The terminal's dim line:
   `it changed the work after its last look · asking it to look again before it replies`.
-- **Its newest look shows something different from what the reply says** — an order, a
-  count, a position, a quoted line, what overlaps what. A small second model compares the
-  reply with the words that described the picture and names only what the look contradicts;
-  what the look did not cover is never raised. The model gets those lines and rewrites the
-  reply. The terminal's dim line: `its reply did not match its own last look · asking it to correct the reply`.
 
 The terminal folds either line away once the reply settles; the desktop app shows no row
 for it. The transcript and the session journal keep the record.
@@ -1468,10 +1469,24 @@ the one you get, even if it is still wrong. A reply that was right is kept as wr
 model says so in one short call and the first reply stands. A closing question does not
 excuse the reply — "nothing overlaps the cup. Want it bigger?" is still checked.
 
-**Limits.** It only runs on a reply that looked at its work with a second model's eyes
-(`view_image`, or `read` of an image). A model that sees pictures itself leaves no words to
-compare, so only the first case applies. With no model for the `replycheck` role, the
-comparison is skipped and the reply goes out as written.
+**Limits.** It only runs on a reply that looked at its work. With no model for the
+`replycheck` role, the comparison is skipped and only the look-again case applies.
+
+## What the reply check reads — shell output, an export, a cell read, a file it read back; a claim nothing covered is not raised
+
+The comparison reads **what the model itself saw this reply, oldest first**: the words a
+second model wrote about each picture it looked at, and the output of its own steps — a
+shell line's output (`pdfinfo` saying `Pages: 2`, a sheet read holding the real figures),
+an export's answer, a file it read back. Nothing is run to get it; it is the reply's own record.
+
+- **Only what shares words with the reply is offered** — the names, labels and figures it
+  states. Words nearly every output carries pick nothing, and the manual and skill pages it
+  read are not evidence.
+- **Newest first, under a cap:** about 4,000 characters of reply, 9,000 of looks and 3,500
+  of step output, a long output cut to the stretches around what it shares with the reply.
+- **An earlier entry can be out of date.** Where two disagree, the later one wins.
+- **A claim nothing it saw covers is not raised** and does not hold the reply. Listing those
+  was measured and left out: it named something in most replies, much of it already shown.
 
 ## A question after failed steps says what failed — it asked me which chart after 8 actions with 2 failed and changed nothing, it ended on a question and did nothing
 
