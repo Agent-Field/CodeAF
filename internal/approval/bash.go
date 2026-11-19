@@ -341,15 +341,23 @@ var criticalCommands = []string{
 // string. Renaming the function defeats it; that is fine. The table is a floor.
 const forkBomb = "*:(){:|:&};:*"
 
-// criticalHit reports the first critical shape found in the line, and the
-// table entry that found it, for display.
+// criticalHit reports whether the line holds a critical shape, and the words
+// to name it by: the segment of the line that matched, as the agent wrote it
+// with its whitespace collapsed, and never the table pattern behind it.
+//
+// THE QUESTION NAMES WHAT WILL RUN. The pattern used to be the name, so a
+// canvas manager's `rm -rf /tmp/site_check` reached the person as
+// `critical command "rm -rf /*"`, which reads as a request to wipe the disk
+// and leaves them nothing true to answer. The segments are tried before the
+// whole line so a compound cleanup names the one deletion that tripped the
+// floor, and the whole line is tried last for a shape no one segment holds.
 func criticalHit(command string, segments []string) (string, bool) {
 	if globMatch(forkBomb, stripSpace(command)) {
 		return ":(){:|:&};:", true
 	}
 	candidates := make([]string, 0, len(segments)+1)
-	candidates = append(candidates, command)
 	candidates = append(candidates, segments...)
+	candidates = append(candidates, command)
 	for _, candidate := range candidates {
 		normalized := normalizeCritical(candidate)
 		if normalized == "" {
@@ -357,11 +365,25 @@ func criticalHit(command string, segments []string) (string, bool) {
 		}
 		for _, pattern := range criticalCommands {
 			if globMatch(pattern, normalized) {
-				return pattern, true
+				return criticalName(candidate), true
 			}
 		}
 	}
 	return "", false
+}
+
+// criticalNameLimit bounds the command a question quotes. A long line is cut
+// at the end, because its start is the verb and the path the person judges.
+const criticalNameLimit = 120
+
+// criticalName is a matched segment as the person reads it: whitespace runs
+// collapsed, cut at criticalNameLimit runes with an ellipsis.
+func criticalName(segment string) string {
+	name := []rune(strings.Join(strings.Fields(segment), " "))
+	if len(name) <= criticalNameLimit {
+		return string(name)
+	}
+	return strings.TrimSpace(string(name[:criticalNameLimit-1])) + "…"
 }
 
 // normalizeCritical flattens the spellings that would otherwise let a critical

@@ -191,7 +191,7 @@ func TestUserBashCriticalFloorAsksUnderAllow(t *testing.T) {
 				t.Fatal(err)
 			}
 			events := drainAnswering(t, ch, func(request Event) {
-				if request.Rule != `critical command "mkfs*"` {
+				if request.Rule != `critical command "mkfs.codeaf-floor-probe"` {
 					t.Errorf("question rule = %q", request.Rule)
 				}
 				if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -211,7 +211,7 @@ func TestUserBashCriticalFloorAsksUnderAllow(t *testing.T) {
 					t.Fatalf("refused command ran: %v", err)
 				}
 				failed, ok := firstOfKind(events, EventToolFailed)
-				if !ok || !strings.Contains(failed.Output, `denied by the person: critical command "mkfs*"`) {
+				if !ok || !strings.Contains(failed.Output, `denied by the person: critical command "mkfs.codeaf-floor-probe"`) {
 					t.Fatalf("refusal = %+v", failed)
 				}
 			}
@@ -234,7 +234,7 @@ func TestUserBashCriticalFloorWithoutResolverRefuses(t *testing.T) {
 		t.Fatalf("unattended command ran: %v", err)
 	}
 	failed, ok := firstOfKind(events, EventToolFailed)
-	if !ok || !strings.Contains(failed.Output, `needs approval but no resolver is attached: critical command "mkfs*"`) {
+	if !ok || !strings.Contains(failed.Output, `needs approval but no resolver is attached: critical command "mkfs.codeaf-floor-probe"`) {
 		t.Fatalf("refusal = %+v", failed)
 	}
 }

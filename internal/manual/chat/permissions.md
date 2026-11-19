@@ -313,7 +313,7 @@ rules' own words. It can read:
 - `default (unset)`
 - `tool "edit"`
 - `bash pattern "rm -rf *"`
-- `critical command "rm -rf /"`
+- `critical command "rm -rf /tmp/site_check"` (the command it caught, as written)
 - `<tool> acts in your name outside this machine`
 - `you said yes to "<phrase>"`
 - `"<phrase>" is set to ask first`
@@ -811,8 +811,14 @@ thing), and a leading `sudo` or `doas` is dropped (so `sudo reboot` reads as
 The `/*` entries deliberately over-fire: they catch
 `rm -rf / --no-preserve-root`, and they also catch plain `rm -rf /var/tmp/x`.
 
+**The question names the command it caught, not the table entry.** A cleanup
+line `rm -rf _brand && rm -rf /tmp/site_check` is asked about as
+`critical command "rm -rf /tmp/site_check"`: the part of the line that matched,
+as written (with a leading `sudo` kept), cut at 120 characters with `…`. A
+plain `rm -rf /tmp/x` is still asked about; only the wording names the real path.
+
 **The table is a floor under allow only.** It turns an allow into a **prompt**,
-with the rule `critical command "rm -rf /"`. It is never a refusal of its own:
+with a rule such as `critical command "rm -rf /"`. It is never a refusal of its own:
 an explicit deny still denies, and an existing prompt still prompts.
 
 This is a floor, not a sandbox. It is not an attempt to enumerate every way a

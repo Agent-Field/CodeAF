@@ -208,6 +208,33 @@ func TestCriticalHit(t *testing.T) {
 	}
 }
 
+// The question names the command the agent wrote, never the table pattern
+// that caught it: a scratch cleanup under /tmp once reached the person as
+// "rm -rf /*", which reads as a request to wipe the disk.
+func TestCriticalHitNamesTheCommandThatMatched(t *testing.T) {
+	cases := []struct{ command, want string }{
+		{"rm -rf _brand ph_*.png && rm -rf /tmp/site_check", "rm -rf /tmp/site_check"},
+		{"rm -rf /tmp/site_check && echo done", "rm -rf /tmp/site_check"},
+		{"sudo   rm -fr /var/tmp/x", "sudo rm -fr /var/tmp/x"},
+		{"rm -rf /", "rm -rf /"},
+		{"cd /tmp; mkfs.ext4 /dev/sdb1", "mkfs.ext4 /dev/sdb1"},
+		{"echo x > /dev/sda", "echo x > /dev/sda"},
+		{":(){ :|:& };:", ":(){:|:&};:"},
+		{"rm -rf /" + strings.Repeat("a", 200), "rm -rf /" + strings.Repeat("a", criticalNameLimit-9) + "…"},
+	}
+	for _, test := range cases {
+		segments, _ := splitSegments(test.command)
+		hit, ok := criticalHit(test.command, segments)
+		if !ok || hit != test.want {
+			t.Errorf("criticalHit(%q) = (%q, %v), want %q", test.command, hit, ok, test.want)
+		}
+	}
+	decision := Policy{Default: ActionAllow}.CheckBash("rm -rf _brand && rm -rf /tmp/site_check")
+	if decision.Action != ActionPrompt || decision.Rule != `critical command "rm -rf /tmp/site_check"` {
+		t.Fatalf("CheckBash = %+v, want a prompt naming the real path", decision)
+	}
+}
+
 func TestSplitBashCommandPreservesCommandsAndBoundaries(t *testing.T) {
 	command := `cd '/tmp/a;b' && echo "x|y" 2>&1; plandb done || echo failed &> log`
 	want := []struct{ command, separator string }{
