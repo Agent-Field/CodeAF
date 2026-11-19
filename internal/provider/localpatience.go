@@ -47,6 +47,21 @@ func (c *Client) localEndpoint() bool {
 	return lanes.IsLocalEndpoint(c.config.BaseURL, c.config.SourceID)
 }
 
+// soleLocalHost says a request on model goes to a local endpoint, under the
+// `auto` patience, that has not named a second host for model: one machine,
+// and nowhere else a request could go.
+//
+// A REQUEST TO IT IS NEVER DUPLICATED AND NEVER CUT TO BE ASKED AGAIN. Both
+// moves exist to reach a different machine, and here there is none. A second
+// request lands on the same machine, competes with the first for the same
+// capacity, and starts reading the prompt again from the beginning. So the
+// rescue purse is empty (waitplan.go) and the ceiling's dead-path cut is not
+// armed ([streamWatch.sole]). A number in `response.patience` keeps the hosted
+// policy everywhere, which is what makes `1` the old behaviour exactly.
+func (c *Client) soleLocalHost(model string) bool {
+	return lanes.PatienceIsAuto() && c.localEndpoint() && !lanes.SheetHasMultipleProviders(c.config.BaseURL, model)
+}
+
 // stretchPlan is a call's plan with its two waits in the client's patience: the
 // ceiling the controller acts at, and the deadline after which the turn stops
 // trying this model. A plan under a patience of one is returned untouched.
