@@ -792,8 +792,9 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 
 // IsCarryOnNotice says whether a notice's words are the line the harness says
 // as it sends a stopped turn back to work: the completion check's carry-on
-// ([checkpointCarryOnNote]) or one of the two nudges ([checkpointLoadNudgeNote],
-// [checkpointAskNudgeNote]). It is the ONE reading of those three lines, for
+// ([checkpointCarryOnNote]) or one of the three nudges ([checkpointLoadNudgeNote],
+// [checkpointAskNudgeNote], [checkpointUpdateNudgeNote]). It is the ONE reading
+// of those four lines, for
 // [IsNoChangeReply]'s reason.
 //
 // THEY ARE SAID FOR THE MOMENT THEY ARE SAID IN. None is written into the
@@ -807,7 +808,7 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // these, and every surface keeps them.
 func IsCarryOnNotice(text string) bool {
 	switch strings.TrimSpace(text) {
-	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote:
+	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote:
 		return true
 	}
 	return false
@@ -899,6 +900,25 @@ const checkpointLoadNudgeNote = "it loaded a tool and stopped before using it ·
 // checkpointAskNudgeNote is the line a person reads when a turn is sent back
 // for an `ask` the gate refused and the model never made again.
 const checkpointAskNudgeNote = "its question was refused and it stopped without asking again · asking it to go on"
+
+// checkpointUpdateNudgeNote is the line a person reads when a turn is sent back
+// for stopping on an interim update ([UserUpdatePrefix]). The update itself
+// stays on screen; this says only that the work it announced is still coming.
+const checkpointUpdateNudgeNote = "it sent a progress update and stopped · asking it to go on"
+
+// checkpointUpdateNudgeLead is that continuation. It is one fixed sentence,
+// matched whole by [isContinuationContext], because it names nothing that
+// varies: the update the model wrote is already the message right before it.
+const checkpointUpdateNudgeLead = "[carry on] Your last reply began with `" + UserUpdatePrefix + "`, which marks an interim " +
+	"note between tool calls, and it made no tool call, so the work it describes has not been done. " +
+	"Continue in this same turn with the next tool call. If the work is in fact finished, give the final answer without the marker."
+
+// checkpointUpdateNudgeCap is how many times one turn is sent back for ending
+// on an update. TWO, and not the load nudge's once, because the second stop is
+// the model declaring AGAIN that it is not finished — but a third is a model
+// that answers every nudge with another promise, and the turn ends on it
+// rather than spending a request per sentence of it.
+const checkpointUpdateNudgeCap = 2
 
 // checkpointAskNudgeLead is that continuation, carrying the refusal itself so
 // the model has the fix in front of it rather than in its history.
@@ -1144,6 +1164,10 @@ type checkpointMeter struct {
 	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
 	// that has decided, and a second nudge would be an argument.
 	loadNudged bool
+	// updateNudges is how many times this turn has been sent back for ending
+	// on a reply its own model marked as interim ([UserUpdatePrefix]), bounded
+	// by [checkpointUpdateNudgeCap].
+	updateNudges int
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -3464,6 +3488,49 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 			return true, false
 		}
 	}
+	// A TURN THAT ENDS ON A REPLY ITS OWN MODEL MARKED AS INTERIM IS SENT BACK,
+	// AND THIS COSTS NO READER EITHER.
+	//
+	// The system prompt gives the model one marker, [UserUpdatePrefix], for a
+	// note to the person BETWEEN tool calls, and says a final answer carries
+	// none. A reply that opens with it and calls nothing has therefore said, in
+	// the protocol and not in prose, that it is not the end — and the loop used
+	// to end the turn on it anyway, because the only stop condition is "no tool
+	// call". Measured on 2026-11-18 (connected-canvas eval run 5, board-deck):
+	// deepseek-v4.1-flash set a deck's tokens, added five empty slide frames,
+	// wrote "[update] … Next I write each slide's HTML in one pass" and the turn
+	// sealed with every slide blank. It had happened in runs 3 and 4 too.
+	//
+	// The reader below could not catch it: a turn the person typed is never
+	// read ([Agent.checkpoints]), which is right for a reply in words and wrong
+	// for one the model has itself declared unfinished. So this sits beside the
+	// load nudge, above that gate, and reads the marker exactly as the display
+	// does ([UserFacingUpdate]: a LEADING marker only, never a mention) — no
+	// guessing at what "next I will" means in any language. An update that ends
+	// by asking the person something is waiting, as everywhere in this file.
+	//
+	// AND AN UPDATE THAT SAYS IT IS WAITING ON SOMETHING ALREADY OUT IS WAITING.
+	// "[update] I've started the render and will report when it lands" is the
+	// marker used truthfully: the render's exit starts a turn by itself, and a
+	// nudge here would buy the poll of it that [checkpointCarryOnCap] was
+	// written against. So the four endings the reader below already honours —
+	// background work still running, the request handed to a live task, a
+	// task of this conversation still out, a landing that came home settled —
+	// are asked FIRST ([Agent.turnEndsWaiting]), and only when none holds is
+	// the update read as a stop. They are asked only once the marker is
+	// there, so an ordinary reply pays for none of them here.
+	//
+	// AT THE CAP THE UPDATE IS AN ORDINARY REPLY. It falls through to
+	// everything below exactly as any reply in words does: a typed turn ends
+	// on it, and a woken turn may still be read for what remains.
+	if meter != nil && ctx.Err() == nil && meter.updateNudges < checkpointUpdateNudgeCap && !endsAskingThePerson(said) {
+		if _, interim := UserFacingUpdate(said); interim && !a.turnEndsWaiting() {
+			meter.updateNudges++
+			hub.send(Event{Kind: EventNotice, Text: checkpointUpdateNudgeNote})
+			a.record(textMessage("user", checkpointUpdateNudgeLead))
+			return true, false
+		}
+	}
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
@@ -4120,7 +4187,11 @@ type readerLine struct {
 // file is held to: a list of openers — "shall I", "would you like", "do you want"
 // — is a rule about English, and this harness answers in whatever language it was
 // asked in. A question mark at the end of the last thing said is the one mark
-// every written language that has questions actually uses for them.
+// every written language that has questions actually uses for them — and it is
+// not one character. Chinese and Japanese end a question on the full-width
+// `？` (U+FF1F) and Arabic, Persian and Urdu on the reversed `؟` (U+061F), so a
+// check that knew only the ASCII mark would read "你想用哪个主题？" as a turn
+// that stopped and send it back to work while it waited on the person.
 //
 // THE TRAILING DECORATION COMES OFF FIRST, because a model that ends on a
 // question ends on `**…?**` and on `"…?"` about as often as it ends on the bare
@@ -4132,8 +4203,17 @@ type readerLine struct {
 // without explaining themselves.
 func endsAskingThePerson(said string) bool {
 	said = strings.TrimRight(strings.TrimSpace(said), "`*_\"'”’) \t\n")
-	return strings.HasSuffix(said, "?")
+	for _, mark := range questionMarks {
+		if strings.HasSuffix(said, mark) {
+			return true
+		}
+	}
+	return false
 }
+
+// questionMarks are the marks [endsAskingThePerson] reads as the end of a
+// question: ASCII, full-width (U+FF1F) and Arabic (U+061F).
+var questionMarks = []string{"?", "\uFF1F", "\u061F"}
 
 // turnIsWaitingOnItsOwnWork reports that this conversation started background
 // work that is still running at the moment the turn ended.
@@ -4152,6 +4232,26 @@ func endsAskingThePerson(said string) bool {
 // turn it was written for.
 func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 	return len(a.jobsWorkingNow()) > 0
+}
+
+// turnEndsWaiting reports that a turn ending now is waiting on something that
+// will start the next turn by itself: background work still running
+// ([Agent.turnIsWaitingOnItsOwnWork]), this request handed to a live task
+// ([Agent.turnHandedItsAskOff]), a task of this conversation still out
+// ([Agent.turnIsWaitingOnItsOwnTasks]), or a landing that came home settled
+// ([Agent.turnSettledItsAsk]).
+//
+// IT IS THOSE FOUR GATES AND NOT A FIFTH OPINION. [Agent.checkpointReopen]
+// asks them one by one below its price gate, journalling the task it waits
+// on; the update nudge sits ABOVE that gate, so it asks them here, together
+// and silently, and a turn that is waiting falls through to everything below
+// exactly as it did before the nudge existed.
+func (a *Agent) turnEndsWaiting() bool {
+	if a.turnIsWaitingOnItsOwnWork() || a.turnHandedItsAskOff() || a.turnSettledItsAsk() {
+		return true
+	}
+	_, waiting := a.turnIsWaitingOnItsOwnTasks()
+	return waiting
 }
 
 // checkpointCeiling ends the turn and moves what is left of it onto the one

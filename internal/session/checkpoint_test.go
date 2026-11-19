@@ -3092,12 +3092,12 @@ func TestATurnThatEndsOnAQuestionToThePersonIsNotReopened(t *testing.T) {
 		t.Errorf("a turn waiting on an answer was carried on: %q", noticeTexts(collected))
 	}
 	// AND THE STRUCTURE IS THE WHOLE OF THE RULE, decoration and all.
-	for _, waiting := range []string{"which one?", "**which one?**", `"which one?"`, "which one? "} {
+	for _, waiting := range []string{"which one?", "**which one?**", `"which one?"`, "which one? ", "你想用哪个主题？", "**哪一个？**", "أي سمة تريد؟"} {
 		if !endsAskingThePerson(waiting) {
 			t.Errorf("%q was not read as a question to the person", waiting)
 		}
 	}
-	for _, stopping := range []string{"", "I've finished the parser.", "next: the handlers"} {
+	for _, stopping := range []string{"", "I've finished the parser.", "next: the handlers", "幻灯片已建好。", "？ 幻灯片已建好。"} {
 		if endsAskingThePerson(stopping) {
 			t.Errorf("%q was read as a question to the person", stopping)
 		}

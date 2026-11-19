@@ -5969,8 +5969,8 @@ const explainingCheckpointCarryOnLead = "[carry on] A reader of a bounded accoun
 
 // isContinuationContext says whether a user-role message is one the HARNESS
 // wrote to send a stopped turn back to work: the carry-on in each of the
-// spellings journals have held, the two nudges ([checkpointLoadNudgeLead],
-// [checkpointAskNudgeLead]), the note after a reply was cut off at the
+// spellings journals have held, the three nudges ([checkpointLoadNudgeLead],
+// [checkpointAskNudgeLead], [checkpointUpdateNudgeLead]), the note after a reply was cut off at the
 // output limit ([truncationContinuationNote]), and a resumed factory step's
 // brief ([ResumedStepBrief]).
 //
@@ -5992,7 +5992,7 @@ func isContinuationContext(text string) bool {
 		strings.HasPrefix(text, checkpointAskNudgeOpening) && strings.HasSuffix(text, checkpointAskNudgeClosing):
 		return true
 	}
-	return text == truncationContinuationNote
+	return text == truncationContinuationNote || text == checkpointUpdateNudgeLead
 }
 
 // entryRows is how many rows the shaping above makes of ONE message: none at
