@@ -106,6 +106,7 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	// builder does.
 	if config.agentDID == "" {
 		config.agentDID = a.config.agentDID
+		config.agentWorkspace = a.config.agentWorkspace
 	}
 	if config.actorDID == "" && config.taskID == 0 {
 		config.actorDID = a.config.actorDID

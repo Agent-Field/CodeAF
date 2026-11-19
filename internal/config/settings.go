@@ -1078,6 +1078,9 @@ var OperatorEnvPins = []string{
 	// The engine hands each command the identity of the agent running it
 	// (internal/agentdid). It names who acted, so it is never a preference.
 	"CODEAF_AGENT_DID",
+	// And the folder of the agent that DID names (internal/agentdid), which a
+	// tool admits it by. Equally a fact about who acted.
+	"CODEAF_AGENT_WORKSPACE",
 	// These switches select unfinished ownership and archive lifecycles in an
 	// explicit prototype profile; they are not persisted settings. The archive
 	// executable path is operator plumbing, like CODEAF_FURROW below.

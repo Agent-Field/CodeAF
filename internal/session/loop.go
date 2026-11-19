@@ -81,7 +81,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
@@ -739,8 +738,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 	ctx = provider.WithStreamObserver(ctx, turnObserver)
 	// A MODEL WHOSE OWN PROGRAM RUNS COMMANDS (internal/claudemodel) is handed the
 	// conversation's identity for them, as the commands codeaf runs are.
-	if a.config.actorDID != "" {
-		ctx = claudemodel.WithEnv(ctx, []string{agentdid.AgentDIDEnv + "=" + a.config.actorDID})
+	if env := a.config.identityEnv(); len(env) > 0 {
+		ctx = claudemodel.WithEnv(ctx, env)
 	}
 	// ONE MECHANISM ANSWERS ONE SILENCE, AND IT IS NOT THIS ONE. This loop used
 	// to keep a hedge of its own here: an eight-second timer that, on a request
