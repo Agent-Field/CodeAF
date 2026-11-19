@@ -138,7 +138,11 @@ func TestCompactSummaryUsesTheConversationEndpointsPatience(t *testing.T) {
 			agent, _ := newTestAgent(t, &scriptedCompleter{steps: []step{check}}, func(cfg *Config) {
 				cfg.BaseURL = tc.base
 			})
-			_, _, err := agent.askForSummary(t.Context(), summaryPlan{model: "test/model", ceiling: 100, answer: 100}, "",
+			agent.mu.Lock()
+			address, source := agent.summaryEndpointLocked("test/model")
+			agent.mu.Unlock()
+			plan := summaryPlan{model: "test/model", ceiling: 100, answer: 100, address: address, source: source}
+			_, _, err := agent.askForSummary(t.Context(), plan, "",
 				"The conversation reviewed the authentication middleware.")
 			if err != nil {
 				t.Fatal(err)
