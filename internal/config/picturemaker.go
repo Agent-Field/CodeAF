@@ -512,6 +512,15 @@ func SetEverywherePictureMaker(profileDir, model string) error {
 // which are not setting names.
 const canvasPicturesFile = "canvas-pictures.json"
 
+// canvasPicturesPath is the store's file, resolved by [ProfilePath] as
+// config.json is. AN EMPTY profileDir IS THE ORDINARY ANSWER, the state root's
+// own profile, and never a relative path: joining the store onto it once made
+// every per-canvas choice on a normal install fail with "mkdir : no such file
+// or directory" while Everywhere, which goes through ProfilePath, worked.
+func canvasPicturesPath(profileDir string) string {
+	return ProfilePath(profileDir, canvasPicturesFile)
+}
+
 // maxCanvasPictureRows bounds the store: a desk with more canvases than this
 // with their own picture maker is a store that is being written in a loop.
 const maxCanvasPictureRows = 4096
@@ -535,7 +544,7 @@ func canvasFolder(folder string) (string, bool) {
 
 func readCanvasPictures(profileDir string) canvasPictures {
 	var store canvasPictures
-	raw, err := os.ReadFile(filepath.Join(profileDir, canvasPicturesFile))
+	raw, err := os.ReadFile(canvasPicturesPath(profileDir))
 	if err == nil {
 		_ = json.Unmarshal(raw, &store)
 	}
@@ -550,7 +559,7 @@ func readCanvasPictures(profileDir string) canvasPictures {
 // when none was chosen there.
 func CanvasPictureMakerAt(profileDir, workspace string) (model, folder string) {
 	dir, ok := canvasFolder(workspace)
-	if !ok || strings.TrimSpace(profileDir) == "" {
+	if !ok {
 		return "", ""
 	}
 	store := readCanvasPictures(profileDir)
@@ -591,10 +600,11 @@ func SetCanvasPictureMakerAt(profileDir, folder, model string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+	path := canvasPicturesPath(profileDir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(profileDir, canvasPicturesFile+".*")
+	temp, err := os.CreateTemp(filepath.Dir(path), canvasPicturesFile+".*")
 	if err != nil {
 		return err
 	}
@@ -606,5 +616,5 @@ func SetCanvasPictureMakerAt(profileDir, folder, model string) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temp.Name(), filepath.Join(profileDir, canvasPicturesFile))
+	return os.Rename(temp.Name(), path)
 }
