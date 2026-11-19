@@ -1251,10 +1251,13 @@ func (c *Client) noteRun(model, served string, ran time.Duration) {
 // be served by `served`, may run before it is cut. See streamguard.go's THE
 // WALL for the law and the constants.
 func (c *Client) streamWall(model, served string) time.Duration {
+	// AND THE WALL IS IN THE CLIENT'S PATIENCE, the floor, the measured floor and
+	// the ceiling alike: [wallFor] has already clamped between the three, so one
+	// multiplication moves all of them together (localpatience.go).
 	if c.velocity == nil {
-		return wallFor(0)
+		return lanes.Stretch(wallFor(0), c.patience())
 	}
-	return c.velocity.wall(model, served)
+	return lanes.Stretch(c.velocity.wall(model, served), c.patience())
 }
 
 // streamGap is how long the stream about to be opened, or the one now known to
@@ -1271,10 +1274,19 @@ func (c *Client) streamGap(model, served string) time.Duration {
 // or the one now known to be served by `served` — is expected to keep, which is
 // what its wall asks about before it cuts. See streamguard.go's [paceFor].
 func (c *Client) streamPace(model, served string) float64 {
-	if c.velocity == nil {
-		return paceFor(0)
+	// THE PACE A STREAM MUST KEEP IS THE WALL'S OTHER HALF AND GETS THE SAME
+	// PATIENCE, divided where the wall was multiplied: a machine held to ten times
+	// the wait is also allowed to write a tenth as fast before it counts as not
+	// keeping pace, or the longer wall would only postpone a cut that the old rate
+	// floor still made.
+	pace := paceFor(0)
+	if c.velocity != nil {
+		pace = paceFor(c.velocity.rate(model, served))
 	}
-	return paceFor(c.velocity.rate(model, served))
+	if factor := c.patience(); factor > 1 {
+		pace /= factor
+	}
+	return pace
 }
 
 // completionWall is the wall a reply that is NOT streamed is held to, and
@@ -1293,7 +1305,7 @@ func (c *Client) completionWall(model string) (time.Duration, bool) {
 	if c.velocity == nil || !c.velocity.measured(model) {
 		return 0, false
 	}
-	return c.velocity.wall(model, ""), true
+	return lanes.Stretch(c.velocity.wall(model, ""), c.patience()), true
 }
 
 // refuseUpstream takes the lane away from an endpoint that REFUSED this request,

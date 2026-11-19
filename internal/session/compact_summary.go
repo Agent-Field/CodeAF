@@ -142,6 +142,13 @@ type summaryPlan struct {
 	ceiling int
 	// pointer says where the original lines can be read back.
 	pointer string
+	// address and source name the endpoint that serves model, read while the
+	// plan is made under the agent's lock. The summary call stretches its
+	// window by that endpoint's patience WITHOUT TAKING THE LOCK AGAIN: Close
+	// holds it while it joins a canceled summary, so a call that asked for the
+	// sources there would wait on the very Close that is waiting on it.
+	address string
+	source  string
 }
 
 // summaryWanted says whether a pass that has already stubbed and folded still
@@ -194,6 +201,13 @@ func (a *Agent) beltTokens() int {
 		return 0
 	}
 	return EstimateTokens(len(encoded))
+}
+
+// summaryEndpointLocked names the endpoint that serves model, from the
+// sources the agent holds, for [summaryPlan.address]. The caller holds a.mu.
+func (a *Agent) summaryEndpointLocked(model string) (address, source string) {
+	service, _ := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL).For(model)
+	return service.Address, service.Source.ID
 }
 
 // planSummaryLocked chooses the region a summary replaces, and reports false
@@ -292,6 +306,7 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 		end: end, region: region, model: a.model, window: window,
 		answer: chosen.answer, ceiling: min(most, 2*chosen.answer),
 	}
+	plan.address, plan.source = a.summaryEndpointLocked(a.model)
 	if text := messageContentText(region[0]); region[0].Role == "user" && strings.HasPrefix(text, summaryNotePrefix) {
 		plan.previous = summaryNoteBody(text)
 	}
@@ -531,7 +546,9 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 		textMessage("user", ask.String()),
 	}
 	call := func(ceiling int) (*ai.Response, error) {
-		callCtx, cancel := context.WithTimeout(ctx, summaryCallWindow)
+		a.refreshResponsePatience()
+		window := lane.Stretch(summaryCallWindow, lane.PatienceFor(plan.address, plan.source))
+		callCtx, cancel := context.WithTimeout(ctx, window)
 		response, answered, err := a.completeWithNamedModel(callCtx, purposeSummary, messages, plan.model, ai.WithMaxTokens(ceiling))
 		cancel()
 		if err != nil {

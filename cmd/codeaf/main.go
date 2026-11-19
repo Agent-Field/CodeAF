@@ -657,7 +657,7 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  the day's spending limit in dollars (0 = unlimited)
   CODEAF_PLAN_CONSENT  ` + usageDollars(config.DefaultPlanConsentUSD) + `  a plan estimated above this quotes its price
                        and waits for your word (0 = never asks)
-  CODEAF_IMAGE_MODEL   image-generation model (catalog-resolved by default)
+` + config.ResponsePatienceHelp() + `  CODEAF_IMAGE_MODEL   image-generation model (catalog-resolved by default)
   CODEAF_SPEECH_MODEL  speech-synthesis model (catalog-resolved by default)
   CODEAF_MUSIC_MODEL   music-generation model (catalog-resolved by default)
   CODEAF_VIDEO_MODEL   video-generation model (catalog-resolved by default)

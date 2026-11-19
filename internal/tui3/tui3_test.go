@@ -47,6 +47,10 @@ import (
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
+	// Loopback fixtures stand in for hosted providers, including their retry policy.
+	if _, pinned := os.LookupEnv(config.EnvResponsePatience); !pinned {
+		os.Setenv(config.EnvResponsePatience, "1")
+	}
 	startCmdProfile()
 	surfaceTick = harnessTick
 	code := runTests(m)

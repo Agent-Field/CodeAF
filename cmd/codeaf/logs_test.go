@@ -32,6 +32,10 @@ import (
 // they stopped at a live provider instead (testenv_test.go carries the whole
 // case).
 func TestMain(m *testing.M) {
+	// Loopback fixtures stand in for hosted providers, including their retry policy.
+	if _, pinned := os.LookupEnv(config.EnvResponsePatience); !pinned {
+		os.Setenv(config.EnvResponsePatience, "1")
+	}
 	// A SHELL RUN'S CHILD COMES IN HERE: carried_test.go starts this very test
 	// binary as the program's process, marked in its environment, and the
 	// binary then runs the dispatch the way `codeaf <name>` would. Its

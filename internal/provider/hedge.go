@@ -514,7 +514,7 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 		plan.Pinned = false
 	}
 	plan.Alts = r.untriedAlts()
-	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now}
+	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now, stretched: r.client != nil && r.client.patience() > 1}
 	watch.deadline = watch.control.Deadline()
 	if !watch.deadline.IsZero() {
 		watch.armed = watch.deadline.Sub(now)
@@ -628,13 +628,18 @@ func (r *hedgeRace) armsSnapshot() (arms []*hedgeArm, done bool) {
 	return append([]*hedgeArm(nil), r.arms...), r.winner >= 0
 }
 
-// wakeAt is the deadline this arm's controller wants waking at, zero when it
-// has none. It is the one read [hedgeRace.nextWake] makes of an arm, taken in
-// its own locked half so the scan's defer law holds per arm rather than across
-// a loop of them.
+// wakeAt is the next decision for this arm, either the controller's wake or
+// the stretched ceiling after a report. [hedgeRace.nextWake] reads it under
+// this arm's lock, so an arm can change its deadline while the beat is asleep.
 func (w *streamWatch) wakeAt() time.Time {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if !w.deadPathAt.IsZero() {
+		if w.guard == nil {
+			return time.Time{}
+		}
+		return w.deadPathAt
+	}
 	return w.deadline
 }
 

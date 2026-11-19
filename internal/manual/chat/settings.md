@@ -103,6 +103,24 @@ Already-open chats keep the memory store they opened with. Restart the CLI to
 apply a changed preference to those chats. Turning memory off does not delete
 saved memories. Input history and unfinished drafts are separate Privacy choices.
 
+## What does the patience setting do in Models
+
+The **patience** row (`response.patience`) in **Models** multiplies model
+response time limits, including the time a turn gives a model before moving on.
+The default is `auto` (1x for hosted endpoints, 10x for local endpoints).
+Enter a number from 1 to 100, such as `10`, `10x` or `2.5`, to use that multiplier
+for every endpoint and use the same rescue policy for all endpoints. Set `1`
+to get the old behaviour exactly. See [slow local model timeout and patience](services.md#my-local-model-keeps-timing-out--ollama-gives-up-after-2-minutes-how-do-i-make-codeaf-wait-longer-slow-local-model-timeout-and-patience)
+for the wait limits and which endpoints count as local.
+
+A change saved in `/settings` reaches the next model request from an engine
+using that profile. With `--host`, the **Models** tab saves to this computer's
+profile. `CODEAF_RESPONSE_PATIENCE` overrides the row.
+A bad value in `config.json` falls back to `auto`. The settings row refuses
+`fast` with `response.patience: want auto or a number from 1 to 100 (10 or 10x), got "fast"`.
+Starting with `CODEAF_RESPONSE_PATIENCE=fast` stops codeaf with
+`CODEAF_RESPONSE_PATIENCE: want auto or a number from 1 to 100 (10 or 10x), got "fast"`.
+
 ## Permissions, task timers and automatic work
 
 **Permissions** controls tool approvals and exceptions. Dangerous-command

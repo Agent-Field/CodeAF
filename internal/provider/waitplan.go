@@ -43,7 +43,7 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// of the choice, what is believed about it, the role's ceiling and λ, and
 	// the alternatives the frontier named. This layer adds only the four things
 	// it is the only one to know.
-	plan := lanes.PlanFor(choice, lanes.PaceFor(lanes.ID{Model: model, Lane: lanes.HeadOf(choice)}, now), RoleFrom(ctx), now)
+	plan := c.stretchPlan(lanes.PlanFor(choice, lanes.PaceFor(lanes.ID{Model: model, Lane: lanes.HeadOf(choice)}, now), RoleFrom(ctx), now))
 	// ── and then the four things only the transport knows
 	//
 	// A PIN IS WHAT THE CHOICE SAYS IT IS, AND NEVER THE LENGTH OF `Only`: the
@@ -98,6 +98,12 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 		// and waiting are two questions; an empty Choice is not an empty
 		// frontier.
 		plan.Alts = sheetAlts(model, plan.Lane)
+	}
+	// Under auto, a local endpoint gets a rescue only when it has named
+	// distinct hosts for this model. A duplicate to the same host competes
+	// with the first request for the same capacity.
+	if lanes.PatienceIsAuto() && c.localEndpoint() && !lanes.SheetHasMultipleProviders(c.config.BaseURL, model) {
+		plan.Purse = lanes.NoSpending()
 	}
 	return plan
 }

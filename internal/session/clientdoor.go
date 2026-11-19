@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	account "github.com/Agent-Field/codeaf/internal/config"
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
@@ -136,6 +137,18 @@ func (p *modelClientPool) clientFor(model string) (Completer, string, string, mo
 	}
 	p.clients[want] = client
 	return client, configured.Model, model, want, nil
+}
+
+// serviceNext is the connection the pool's next call on model would be made
+// through, read from the same snapshot and seat [modelClientPool.clientFor]
+// reads, and constructing nothing.
+func (p *modelClientPool) serviceNext(model string) modelsource.Connected {
+	if p == nil {
+		return modelsource.Connected{}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.config.serviceFor(p.seatedModel(model))
 }
 
 // setSources moves the pool to a freshly resolved profile and forgets every
@@ -592,11 +605,34 @@ func (a *Agent) completeWithModel(ctx context.Context, purpose callPurpose, mess
 	return response, err
 }
 
+// refreshResponsePatience reads the shared profile because a linked terminal
+// can save the row in a different process. An empty directory is the default profile.
+func (a *Agent) refreshResponsePatience() {
+	account.InstallResponsePatience(a.config.ProfileDir)
+}
+
+// endpointPatience is the patience of the endpoint the next call on model goes
+// to, read from the client pool's own snapshot under the pool's lock.
+//
+// IT NEVER TAKES THE AGENT'S LOCK. The turn loop asks it for every give-up, and
+// a pause, a resume or a Close can hold a.mu while it waits on that very turn;
+// a deadline that queued behind them reordered a paused job's resume
+// (TestFactoryRunningJobPause). The pool is replaced under its own mutex by
+// [Agent.SetSources], so this read is still free of the race it replaced.
+func (a *Agent) endpointPatience(model string) float64 {
+	service := a.clientPool.serviceNext(model)
+	if service.Address == "" && service.Source.ID == "" && a.clientPool == nil {
+		service, _ = a.liveSources().For(model)
+	}
+	return lanes.PatienceFor(service.Address, service.Source.ID)
+}
+
 // completeWithNamedModel keeps the model that answered attached to the same
 // resolution that chose its account. Errand receipts need that identity when a
 // missing default-service key moved the call onto the live seat; asking the pool
 // a second time afterwards could observe a different model or source set.
 func (a *Agent) completeWithNamedModel(ctx context.Context, purpose callPurpose, messages []ai.Message, model string, options ...ai.Option) (*ai.Response, string, error) {
+	a.refreshResponsePatience()
 	// AN AUXILIARY CALL NEVER ASKS A ROUTE HEALTH SAYS WILL NOT ANSWER
 	// (taskcrew.go's [Agent.healthyModel]).
 	model = a.healthyModel(ctx, purpose, model)
