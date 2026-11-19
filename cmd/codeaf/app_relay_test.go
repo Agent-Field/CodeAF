@@ -304,7 +304,8 @@ func TestAppPairCopyRetainedWordsM9(t *testing.T) {
 func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 	t.Helper()
 	inlineWords := regexp.MustCompile(`^(?:Waiting for approval on your other computer\. It should show|Pair only if your other computer shows the same (?:three words|check number)): (.+)\.$`)
-	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pairing was declined\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.|This computer is already paired with .+\.|This computer has (local work|1 chat|[0-9]+ chats) of its own\. To protect that work, pairing leaves this WorkAF home as it is\. Show the code on the computer whose chats you want to share, and enter it from a fresh WorkAF home on the other computer\.|Pairing was not confirmed by .+\. Check that computer to see whether it joined\.)$`)
+	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pairing was declined\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.|This computer is already paired with .+\.|Pairing was not confirmed by .+\. Check that computer to see whether it joined\.)$`)
+	localWork := regexp.MustCompile(`^This computer has (local work|1 chat|[0-9]+ chats) of its own\.`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, name := range rec.events {
@@ -330,7 +331,7 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 			}
 		}
 		for _, line := range visible {
-			if line != "" && !allowed.MatchString(line) {
+			if line != "" && !allowed.MatchString(line) && !localWork.MatchString(line) {
 				t.Errorf("L3 unexpected app copy: %q", line)
 			}
 

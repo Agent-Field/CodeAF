@@ -106,6 +106,10 @@ func syncModeBefore(rec *appRecorder, id, state string) string {
 	return ""
 }
 
+const oneChatRefusal = "This computer has 1 chat of its own. Archived chats still count as local work.\n\n" +
+	"Show the code on the computer whose chats you want to sync. To show it here, choose Back, then Add another computer.\n\n" +
+	"If the joining computer has its own chats or other saved work, quit WorkAF there and rename its data folder to keep a backup. The default folder is ~/.workaf. Reopen WorkAF and enter the code. The old library stays in the backup."
+
 // wantCannotJoin is B's refusal: failed, with the app's sentence and the code
 // that tells the app a new code would not help.
 func wantCannotJoin(t *testing.T, failed appwire.Pairing, message string) {
@@ -128,13 +132,13 @@ func TestAppPairOwnChatsRefusedBeforeApproval(t *testing.T) {
 	chatOfItsOwn(t, dirs[0])
 	dirA := t.TempDir()
 	_, recA, wa := appDeviceBackend(t, dirA)
-	_, recB, wb := appDeviceBackend(t, dirs[0])
+	joining, recB, wb := appDeviceBackend(t, dirs[0])
 	defer assertAppPairCopyM9(t, recA)
 	defer assertAppPairCopyM9(t, recB)
 
 	offer, join := offerAndUse(t, wa, wb)
 	failed := e2PairWait(t, wb, join, "failed")
-	wantCannotJoin(t, failed, "This computer has 1 chat of its own. To protect that work, pairing leaves this WorkAF home as it is. Show the code on the computer whose chats you want to share, and enter it from a fresh WorkAF home on the other computer.")
+	wantCannotJoin(t, failed, oneChatRefusal)
 	if states := pairStates(recA, offer); strings.Contains(strings.Join(states, " "), "question") || strings.Contains(strings.Join(states, " "), "done") {
 		t.Fatalf("A went through %v for a computer that refused", states)
 	}
@@ -144,6 +148,44 @@ func TestAppPairOwnChatsRefusedBeforeApproval(t *testing.T) {
 	machineCall[appwire.PairResult](t, wa, "pair.cancel", appwire.IDParams{ID: offer})
 	if !identity.Solo(dirA) || !syncsetup.Quiet(dirA) {
 		t.Fatal("A's code shared nothing, yet A is no longer solo")
+	}
+
+	// Set aside the entire joining home as the refusal describes, then open
+	// the same path again. The backup keeps its chat and the active home
+	// joins the source's identity without replacing anything in the backup.
+	if err := joining.Close(); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(t.TempDir(), "workaf-backup")
+	if err := os.Rename(dirs[0], backup); err != nil {
+		t.Fatal(err)
+	}
+	// Reopening starts a new process. The old process protects a home it
+	// has already seen against disappearing or being replaced underneath it.
+	reopened := e2StartAppWithSetup(t, dirs[0], nil)
+	wb = reopened.w
+	// The pairing sheet reads the roster on open, which initializes a fresh
+	// desktop profile before the person enters a code.
+	if fresh := appDeviceList(t, wb); fresh.Mode != appwire.DevicesQuiet {
+		t.Fatalf("the reopened profile should start unpaired: %+v", fresh)
+	}
+	offer, join = offerAndUse(t, wa, wb)
+	q := e2PairWait(t, wa, offer, "question").Question
+	machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer, Question: q.ID, Option: "y"})
+	if done := e2PairWait(t, wb, join, "done"); !done.Restart {
+		t.Fatal("pairing the newly opened home did not request a restart")
+	}
+	e2PairWait(t, wa, offer, "done")
+	source, err := identity.Load(dirA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined, err := identity.Load(dirs[0])
+	if err != nil || joined.ID() != source.ID() {
+		t.Fatalf("the reopened home did not join the chosen library: %v", err)
+	}
+	if count, err := identity.ChatCount(backup); err != nil || count != 1 {
+		t.Fatalf("the backup should keep one chat, got %d: %v", count, err)
 	}
 }
 
@@ -203,7 +245,7 @@ func TestAppPairLateRefusalIsNotConfirmed(t *testing.T) {
 	offer, join := offerAndUse(t, wa, wb)
 	q := e2PairWait(t, wa, offer, "question")
 	machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer, Question: q.Question.ID, Option: "y"})
-	wantCannotJoin(t, e2PairWait(t, wb, join, "failed"), "This computer has 1 chat of its own. To protect that work, pairing leaves this WorkAF home as it is. Show the code on the computer whose chats you want to share, and enter it from a fresh WorkAF home on the other computer.")
+	wantCannotJoin(t, e2PairWait(t, wb, join, "failed"), oneChatRefusal)
 	a := e2PairWait(t, wa, offer, "failed")
 	if a.Error == nil || a.Error.Code != appwire.CodeEngine || !strings.HasPrefix(a.Error.Message, "Pairing was not confirmed by B") || !strings.HasSuffix(a.Error.Message, "Check that computer to see whether it joined.") {
 		t.Fatalf("A ended with %+v", a.Error)

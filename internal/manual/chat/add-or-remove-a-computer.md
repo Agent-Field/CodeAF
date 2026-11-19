@@ -114,6 +114,12 @@ Yes. Skipping setup and quitting an empty chat counts as starting codeaf, with e
 
 Once you send a message, that chat belongs to this computer. With one such chat, pairing says `this computer already has 1 chat of its own, so nothing was changed.` The rest of the message explains `--replace`: local chats stay here but stop syncing, and shared memories and settings are cleared. Saved knowledge, automations, project work, chat memories and unknown local files keep their existing protection.
 
+## The desktop app says this computer has local work — archived chats, backup and one shared library
+
+Archiving a chat in WorkAF keeps it in the data folder, so it still counts as local work. If a computer was removed from the same shared library, pairing from a computer still connected to that library can bring it back with its saved work.
+
+If the two computers have separate libraries, choose which one to share. Open WorkAF on that computer and show the code there. On the computer joining it, quit WorkAF and rename its data folder to keep a local backup. The default is `~/.workaf`; if you chose a custom data folder, set that folder aside instead. Reopen WorkAF using the original folder path and enter the code. Both computers then use the chosen shared library. The other library is available in the backup folder as local data.
+
 ## The four-digit check — how I know the right computer is asking
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.

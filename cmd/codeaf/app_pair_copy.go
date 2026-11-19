@@ -81,7 +81,7 @@ func appPairPairedWith(paired pairedWithError) string {
 }
 
 // appPairOwnChats refuses a computer with chats of its own, counted where the
-// engine counted them. The app has no way to replace them, so it names none.
+// engine counted them, and explains how to back them up before joining.
 func appPairOwnChats(n int) string {
 	held := fmt.Sprintf("%d chats", n)
 	switch n {
@@ -90,7 +90,9 @@ func appPairOwnChats(n int) string {
 	case 1:
 		held = "1 chat"
 	}
-	return "This computer has " + held + " of its own. To protect that work, pairing leaves this WorkAF home as it is. Show the code on the computer whose chats you want to share, and enter it from a fresh WorkAF home on the other computer."
+	return "This computer has " + held + " of its own. Archived chats still count as local work.\n\n" +
+		"Show the code on the computer whose chats you want to sync. To show it here, choose Back, then Add another computer.\n\n" +
+		"If the joining computer has its own chats or other saved work, quit WorkAF there and rename its data folder to keep a backup. The default folder is ~/.workaf. Reopen WorkAF and enter the code. The old library stays in the backup."
 }
 
 // appPairNotConfirmed is the approving computer's sentence when the joining one
