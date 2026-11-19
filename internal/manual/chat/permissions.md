@@ -30,7 +30,7 @@ when the countdown is off. Silence is never a no.
 and where it opens depends on how much the call can cost you. On an **ordinary
 call** it opens on `1 allow once`, so `enter` runs that one call and nothing
 else. On a **grave one** — a call codeaf will always stop you for, such as a
-critical command (`rm -rf /`, `rm -rf /*`, `rm -rf *`, `mkfs*`), a force-push,
+critical command (`rm -rf /`, `rm -r /tmp/x`, `mkfs*`), a force-push,
 or anything sent out in your name — the pointer opens on `3 deny` instead,
 whether the model asked for the command or you typed it after `!`. So `enter`
 you have not aimed means "allow it once" when the call can be lived with and
@@ -824,6 +824,32 @@ an explicit deny still denies, and an existing prompt still prompts.
 This is a floor, not a sandbox. It is not an attempt to enumerate every way a
 shell can ruin a machine.
 
+## Deleting a folder outside the agent's own folder always asks
+
+A command that deletes a whole folder **outside the agent's own folder** is on
+the same floor as the table above: it is asked about under a blanket `allow`,
+under `--yolo` and after "stop asking me", with the rule
+`critical command "<the command as written>"`.
+
+It is read for what it does, not matched as a spelling, so every way of saying
+it asks: `rm -r /tmp/site_check` (no `-f`), `rm -R`, `rm --recursive`, split or
+combined flags (`rm -r -f`, `rm -Rfv`), `sudo`, `env` or `command` in front,
+`find /tmp -name x -delete`, `find /tmp -exec rm -rf {} \;`,
+`find /tmp | xargs rm -r`, and `sh -c "rm -r /tmp/x"`.
+
+**Outside** means: an absolute path (`/tmp/…`, `/var/…`), a home path (`~/…`),
+a path built from a variable or `$(…)`, a `..` that climbs out, and any relative
+path after a `cd` that left the folder (`cd /tmp && rm -r site_check`). An
+`xargs rm -r` whose paths do not come straight from a `find` inside the folder
+asks too, because its paths cannot be read off the line. An absolute path asks
+even when it names the agent's own folder: the check reads the command line and
+does not know where that folder is.
+
+**Inside stays ask-free.** `rm -r build`, `rm -rf dist/*`,
+`find . -name '*.tmp' -delete` and `cd site && rm -r old` run without a question
+under an allow. Deleting one file (`rm /tmp/a.txt`, `rm -f /tmp/a.txt`) and
+`rmdir` are not recursive deletes and are not on this floor.
+
 ## The floor nothing lifts: anything acting in your name
 
 Calls that leave this machine in your own name are asked about even under a
@@ -852,7 +878,8 @@ question. Nothing else lifts it.
 
 Before any session memo is consulted, codeaf asks whether the call is one of the
 two floors. It returns true for anything acting in your name, and for a bash
-call matching the critical-command table.
+call matching the critical-command table or deleting a folder outside the
+agent's own folder.
 
 Both bypass the memo entirely and put the question to you **every time**. One
 approved `git status` plus "stop asking me about bash" cannot quietly run

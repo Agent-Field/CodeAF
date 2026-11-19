@@ -313,6 +313,8 @@ func globMatch(pattern, text string) bool {
 // and not being asked costs the machine. Everything else is the policy's job.
 //
 // Matched against the whole line and each segment, after normalizeCritical.
+// A recursive delete outside the agent's folder is on the floor too, but it is
+// read rather than matched, in recursivedelete.go.
 var criticalCommands = []string{
 	// Recursive force-remove of a root path. The '/*' glob deliberately
 	// over-fires: it catches "rm -rf / --no-preserve-root" and also plain
@@ -369,7 +371,10 @@ func criticalHit(command string, segments []string) (string, bool) {
 			}
 		}
 	}
-	return "", false
+	// The table names spellings; a recursive delete is read for what it does
+	// and where it lands (recursivedelete.go), so `rm -r /tmp/x` asks the way
+	// `rm -rf /tmp/x` always has.
+	return recursiveDeleteOutside(command)
 }
 
 // criticalNameLimit bounds the command a question quotes. A long line is cut

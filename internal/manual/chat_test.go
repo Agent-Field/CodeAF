@@ -389,6 +389,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it asked me three questions as tabs", "questions"},
 		{"how do I send all my answers", "questions"},
 		{"approve all of these", "permissions"},
+		{"why did it ask before deleting a folder in tmp", "permissions"},
+		{"will the agent ask before it runs rm -r on something outside its folder", "permissions"},
 		{"allow all the reads at once", "permissions"},
 		{"deny all of them", "permissions"},
 		{"the question disappeared", "questions"},
