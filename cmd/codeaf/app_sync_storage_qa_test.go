@@ -13,6 +13,7 @@ func TestQADesktopStorageStatusUsesOnlyLocalFacts(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CODEAF_HOME", home)
 	t.Setenv(syncsetup.URLVar, syncsetup.ProductionRelayURL)
+	t.Setenv(syncsetup.LiveTransferVar, "")
 	b := &appBackend{emit: newAppRecorder()}
 	state, err := b.SyncStatus()
 	if err != nil || state.Storage != nil {
@@ -29,14 +30,28 @@ func TestQADesktopStorageStatusUsesOnlyLocalFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err = b.SyncStatus()
-	if err != nil || state.Storage == nil || state.Storage.State != "off" || state.Storage.RequestCode != id.ID() || state.Storage.RequestURL != syncsetup.StorageRequestLink(id.ID()) {
+	if err != nil || state.Storage == nil || state.Storage.State != "off" || state.Storage.LiveTransfer || state.Storage.RequestCode != id.ID() || state.Storage.RequestURL != syncsetup.StorageRequestLink(id.ID()) {
 		t.Fatalf("hosted storage-off status: %+v, %v", state.Storage, err)
 	}
+	if err := syncsetup.NotePaired(home, syncsetup.ProductionRelayURL); err != nil {
+		t.Fatal(err)
+	}
+	state, err = b.SyncStatus()
+	if err != nil || state.Storage == nil || state.Storage.State != "off" || !state.Storage.LiveTransfer {
+		t.Fatalf("paired home did not report live transfer: %+v, %v", state.Storage, err)
+	}
+	t.Run("pass-through disabled", func(t *testing.T) {
+		t.Setenv(syncsetup.LiveTransferVar, "off")
+		state, err := b.SyncStatus()
+		if err != nil || state.Storage == nil || state.Storage.State != "off" || state.Storage.LiveTransfer {
+			t.Fatalf("disabled pass-through was reported: %+v, %v", state.Storage, err)
+		}
+	})
 	if err := syncsetup.SaveStorage(home, syncsetup.ProductionRelayURL, id.ID(), "on"); err != nil {
 		t.Fatal(err)
 	}
 	state, err = b.SyncStatus()
-	if err != nil || state.Storage == nil || state.Storage.State != "on" || state.Storage.RequestURL != "" {
+	if err != nil || state.Storage == nil || state.Storage.State != "on" || state.Storage.LiveTransfer || state.Storage.RequestURL != "" {
 		t.Fatalf("approved storage still offers access: %+v, %v", state.Storage, err)
 	}
 	t.Setenv(syncsetup.URLVar, "http://127.0.0.1:1")

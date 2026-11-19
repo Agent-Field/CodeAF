@@ -2114,6 +2114,10 @@ this optional field; older engines provide no Library breakdown.
 | `sync.acknowledge` | `in.IDParams` | `Empty` |
 | `sync.get` | `{}` | `SyncResult` |
 
+When `sync.storage.live_transfer` is true, the paired computers can move a chat
+by blind pass-through while both are running, with sync storage still off.
+The field is optional and does not indicate that provider keys can sync.
+
 ## tasks methods
 
 | method | params | result |

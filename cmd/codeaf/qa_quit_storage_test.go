@@ -53,6 +53,18 @@ func TestQAStorageOffDesktopQuitRecordsLocalSave(t *testing.T) {
 // relay. The first definitive answer is an upload refusal, not a local edit.
 func TestQADesktopStorageRevokedWhileUploading(t *testing.T) {
 	celltest.RequireEngine(t)
+	t.Run("pass-through is available", func(t *testing.T) {
+		t.Setenv(syncsetup.LiveTransferVar, "")
+		qaDesktopStorageRevokedWhileUploading(t, chatlist.RelayStorageOffLive)
+	})
+	t.Run("pass-through is disabled", func(t *testing.T) {
+		t.Setenv(syncsetup.LiveTransferVar, "off")
+		qaDesktopStorageRevokedWhileUploading(t, chatlist.RelayStorageOff)
+	})
+}
+
+func qaDesktopStorageRevokedWhileUploading(t *testing.T, storageNotice string) {
+	t.Helper()
 	_, workspace := wakeEnvironment(t, e2TempDir(t))
 	var revoke atomic.Bool
 	var refused atomic.Int32
@@ -95,7 +107,7 @@ func TestQADesktopStorageRevokedWhileUploading(t *testing.T) {
 	a.wait(t, func(f e2Frame) bool {
 		var event appwire.EntryAdded
 		return f.Event == appwire.EventEntryAdded && json.Unmarshal(f.Data, &event) == nil &&
-			event.Entry.Agent == agent.ID && event.Entry.Kind == appwire.EntryNotice && event.Entry.Text == chatlist.RelayStorageOff
+			event.Entry.Agent == agent.ID && event.Entry.Kind == appwire.EntryNotice && event.Entry.Text == storageNotice
 	})
 	if syncsetup.ReportedStorage(dir, relay.URL, id.ID()) != "off" || refused.Load() == 0 {
 		t.Fatal("the relay's upload refusal did not close the local storage gate")
@@ -107,7 +119,7 @@ func TestQADesktopStorageRevokedWhileUploading(t *testing.T) {
 	if refused.Load() != attempts {
 		t.Fatalf("the client made %d more upload attempts after storage was known off", refused.Load()-attempts)
 	}
-	if count := e2SyncNoticeCount(a, agent.ID, func(line string) bool { return line == chatlist.RelayStorageOff }); count != 1 {
+	if count := e2SyncNoticeCount(a, agent.ID, func(line string) bool { return line == storageNotice }); count != 1 {
 		t.Fatalf("received %d notices for one storage revocation", count)
 	}
 	journal, err := os.ReadFile((session.Place{Dir: takeRootForAt(dir, row.Cell)}).Transcript())

@@ -184,7 +184,7 @@ func (p *pendingPublication) tried() int {
 func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say func(cell.Cell, string)) error {
 	s.publicationMu.Lock()
 	defer s.publicationMu.Unlock()
-	if Quiet(s.Home) || !s.StorageAllowed() {
+	if Quiet(s.Home) {
 		return nil
 	}
 	// NOTHING IS OFFERED TO A STORE THAT IS CLOSED. This pass publishes through

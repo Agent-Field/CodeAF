@@ -34,6 +34,8 @@ type SyncStorage struct {
 	State       string `json:"state" enum:"on,off"`
 	RequestCode string `json:"request_code,omitempty"`
 	RequestURL  string `json:"request_url,omitempty"`
+	// LiveTransfer says chats can move directly between paired computers while both are running.
+	LiveTransfer bool `json:"live_transfer,omitempty"`
 }
 
 // SyncUnshared is how many of this computer's chats have no directory record,

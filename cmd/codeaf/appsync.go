@@ -223,6 +223,7 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 		if id, err := identity.Load(b.relayHome()); err == nil {
 			storage := &appwire.SyncStorage{State: syncsetup.StorageState(b.relayHome(), state.Relay.URL, id.ID())}
 			if storage.State == "off" {
+				storage.LiveTransfer = syncsetup.LiveTransferForHome(b.relayHome())
 				storage.RequestCode = id.ID()
 				if syncsetup.IsHostedRelay(state.Relay.URL) {
 					storage.RequestURL = syncsetup.StorageRequestLink(id.ID())

@@ -4,7 +4,7 @@ title: Keep desktop sync and chat handoffs reliable
 pr: 2843
 surface: [app, chat, engine, remote]
 invalidates:
-  - Storage-off pairing confirms the computers are linked and leaves chats local until storage is granted.
+  - WorkAF can distinguish storage-off pairing with blind pass-through from a relay where chats stay local.
   - A chat handoff waits for background jobs and their completion messages, and preserves saved job output.
 ---
 
