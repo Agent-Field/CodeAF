@@ -71,11 +71,11 @@ func (a *Agent) approveUserBash(ctx context.Context, hub *eventHub, call ai.Tool
 	args := json.RawMessage(call.Function.Arguments)
 	// THE FLOOR STILL ASKS. Enter consents to ordinary shell work, but it
 	// cannot answer the critical table on behalf of a question not yet shown.
-	if governed && (decision.ProfileReadError != "" || approval.AlwaysAsks(call.Function.Name, args)) {
+	if governed && (decision.ProfileReadError != "" || approval.AlwaysAsksIn(call.Function.Name, args, a.config.Workspace)) {
 		// An allow-only policy asks the same critical matcher for the rule
 		// shown on the card, even when the person's policy said "default".
 		if decision.ProfileReadError == "" {
-			decision = (approval.Policy{Default: approval.ActionAllow}).Check(call.Function.Name, args)
+			decision = (approval.Policy{Default: approval.ActionAllow, Workspace: a.config.Workspace}).Check(call.Function.Name, args)
 		}
 		if !a.config.AskConsent || hub == nil {
 			return refusal("needs approval but no resolver is attached: " + decision.Rule), false

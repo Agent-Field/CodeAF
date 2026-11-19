@@ -810,6 +810,9 @@ thing), and a leading `sudo` or `doas` is dropped (so `sudo reboot` reads as
 
 The `/*` entries deliberately over-fire: they catch
 `rm -rf / --no-preserve-root`, and they also catch plain `rm -rf /var/tmp/x`.
+When the agent's own folder is known (it is, for the agent's own bash calls),
+the four `rm` entries stand aside for the folder check below, which still asks
+about `rm -rf /` and every other delete outside that folder.
 
 **The question names the command it caught, not the table entry.** A cleanup
 line `rm -rf _brand && rm -rf /tmp/site_check` is asked about as
@@ -841,9 +844,17 @@ combined flags (`rm -r -f`, `rm -Rfv`), `sudo`, `env` or `command` in front,
 a path built from a variable or `$(…)`, a `..` that climbs out, and any relative
 path after a `cd` that left the folder (`cd /tmp && rm -r site_check`). An
 `xargs rm -r` whose paths do not come straight from a `find` inside the folder
-asks too, because its paths cannot be read off the line. An absolute path asks
-even when it names the agent's own folder: the check reads the command line and
-does not know where that folder is.
+asks too, because its paths cannot be read off the line. A folder that only
+shares the start of the name (`/tmp/a/work2` when the folder is `/tmp/a/work`)
+is outside.
+
+**The agent's own folder** is the folder its bash tool runs in. An absolute path
+at or under it is inside, and so is everything after a `cd` to it:
+`cd /tmp/a/work && rm -rf site-check` and `rm -rf /tmp/a/work/dist` run without
+a question. The folder's own link is followed once, so `/private/tmp/…` for a
+folder opened as `/tmp/…` is inside; a link inside a target path is not followed.
+A check that is given only the command line, with no folder, treats every
+absolute path as outside.
 
 **Inside stays ask-free.** `rm -r build`, `rm -rf dist/*`,
 `find . -name '*.tmp' -delete` and `cd site && rm -r old` run without a question

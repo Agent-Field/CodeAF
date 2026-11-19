@@ -1,6 +1,8 @@
 package approval
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -54,7 +56,7 @@ func TestARecursiveDeleteOutsideTheFolderAsks(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			segments, _ := splitSegments(test.command)
-			hit, ok := criticalHit(test.command, segments)
+			hit, ok := criticalHit(test.command, segments, "")
 			if !ok {
 				t.Fatalf("criticalHit(%q) found nothing, want a question", test.command)
 			}
@@ -106,7 +108,7 @@ func TestARecursiveDeleteInsideTheFolderDoesNotAsk(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			segments, _ := splitSegments(test.command)
-			if hit, ok := criticalHit(test.command, segments); ok {
+			if hit, ok := criticalHit(test.command, segments, ""); ok {
 				t.Fatalf("criticalHit(%q) = %q, want no question", test.command, hit)
 			}
 			if AlwaysAsks(ToolBash, bashArgs(test.command)) {
@@ -125,5 +127,126 @@ func TestARecursiveDeleteOutsideStillYieldsToADeny(t *testing.T) {
 	policy := Policy{Default: ActionAllow, BashPatterns: []Rule{{Match: "rm -r /tmp/*", Action: ActionDeny}}}
 	if decision := policy.CheckBash("rm -r /tmp/site_check"); decision.Action != ActionDeny {
 		t.Fatalf("CheckBash = %+v, want the deny rule to stand", decision)
+	}
+}
+
+// THE AGENT'S OWN FOLDER, NAMED BY ITS ABSOLUTE PATH, IS STILL ITS OWN FOLDER.
+// A canvas agent ran the first row on 2026-11-19 with its bash tool standing in
+// exactly that folder, and the floor asked as though it had left (critical,
+// irreversible, the turn blocked and the person's next message never sent),
+// because the reader treated every absolute `cd` as away. Told the folder, it
+// places the path; everything #2825 made ask still asks.
+func TestARecursiveDeleteInTheKnownFolderIsPlaced(t *testing.T) {
+	const work = "/tmp/connected-e2e.Km0WC460/home/canvases/cv_bngq2bi4klrn/work"
+	real := "cd " + work + " && H=f_be5dqzqvnebr\n" +
+		"canvas site text cv_bngq2bi4klrn $H hero-cta --set \"See the menu\" 2>&1 | head -c 60; echo\n" +
+		"rm -rf site-check/site-check\n" +
+		"for f in f_be5dqzqvnebr f_k25qohw3gyqi; do for w in 1280 390; do canvas render cv_bngq2bi4klrn $f --width $w --out site-check/final-$f-$w.png >/dev/null 2>&1; done; done\n" +
+		"ls site-check/final-*.png"
+	cases := []struct {
+		name, command string
+		asks          bool
+	}{
+		{"the real command", real, false},
+		{"cd to the folder", "cd " + work + " && rm -rf site-check", false},
+		{"cd to the folder with a trailing slash", "cd " + work + "/ && rm -r site-check", false},
+		{"cd to a subfolder", "cd " + work + "/site && rm -rf old", false},
+		{"cd to a subfolder and up to the folder", "cd " + work + "/site && rm -rf ../old", false},
+		{"cd away and back", "cd /tmp && cd " + work + " && rm -rf old", false},
+		{"absolute rm inside", "rm -rf " + work + "/site-check", false},
+		{"absolute rm of a glob inside", "rm -rf " + work + "/dist/*", false},
+		{"absolute rm without force inside", "rm -r " + work + "/site-check", false},
+		{"absolute find delete inside", "find " + work + "/site-check -name '*.png' -delete", false},
+		{"absolute rm inside after cd away", "cd /tmp && rm -rf " + work + "/site-check", false},
+		{"through sh -c after cd to the folder", "cd " + work + " && sh -c 'rm -rf old'", false},
+
+		{"cd to a sibling", "cd " + work + "/../other && rm -rf site-check", true},
+		{"cd to a sibling by name", "cd /tmp/connected-e2e.Km0WC460/home/canvases/cv_bngq2bi4klrn/other && rm -rf x", true},
+		{"cd to the parent", "cd /tmp/connected-e2e.Km0WC460/home/canvases/cv_bngq2bi4klrn && rm -rf work", true},
+		{"cd to the folder then up", "cd " + work + " && rm -rf ../x", true},
+		{"a longer name that only shares the start", "cd " + work + "2 && rm -rf x", true},
+		{"absolute rm with a longer name", "rm -rf " + work + "2/x", true},
+		{"absolute rm that climbs out", "rm -rf " + work + "/../x", true},
+		{"the root", "rm -rf /", true},
+		{"the root glob", "rm -fr /*", true},
+		{"elsewhere in tmp", "rm -r /tmp/site_check", true},
+		{"home", "cd " + work + " && rm -rf ~/x", true},
+		{"a variable", "cd " + work + " && rm -rf \"$OUT/x\"", true},
+		{"cd to a variable", "cd \"$WORK\" && rm -rf x", true},
+		{"cd to the folder then a bare cd", "cd " + work + " && cd && rm -rf x", true},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			segments, _ := splitSegments(test.command)
+			hit, asks := criticalHit(test.command, segments, work)
+			if asks != test.asks {
+				t.Fatalf("criticalHit(%q) in %s = (%q, %v), want a question %v", test.command, work, hit, asks, test.asks)
+			}
+			if got := AlwaysAsksIn(ToolBash, bashArgs(test.command), work); got != test.asks {
+				t.Fatalf("AlwaysAsksIn(%q) = %v, want %v", test.command, got, test.asks)
+			}
+			decision := Policy{Default: ActionAllow, Workspace: work}.CheckBash(test.command)
+			if want := map[bool]Action{true: ActionPrompt, false: ActionAllow}[test.asks]; decision.Action != want {
+				t.Fatalf("CheckBash(%q) under allow-all in %s = %+v, want %s", test.command, work, decision, want)
+			}
+		})
+	}
+}
+
+// WITH NO FOLDER, THE LINE IS READ ALONE, as it was before the folder was
+// known: an absolute `cd` and an absolute target are outside, so a caller that
+// has only the command keeps the cautious answer.
+func TestWithNoFolderAnAbsolutePathStillAsks(t *testing.T) {
+	const work = "/tmp/a/work"
+	for _, command := range []string{
+		"cd " + work + " && rm -rf site-check",
+		"rm -r " + work + "/site-check",
+		"rm -rf " + work + "/site-check",
+	} {
+		if !AlwaysAsks(ToolBash, bashArgs(command)) {
+			t.Fatalf("AlwaysAsks(%q) with no folder = false, want the floor", command)
+		}
+		for _, workspace := range []string{"", "relative/work", "/"} {
+			if !AlwaysAsksIn(ToolBash, bashArgs(command), workspace) {
+				t.Fatalf("AlwaysAsksIn(%q, %q) = false, want the floor: that is no folder", command, workspace)
+			}
+		}
+	}
+}
+
+// A FOLDER GIVEN THROUGH A LINK IS THE FOLDER IT LINKS TO. An agent that spells
+// the resolved path (macOS gives /private/tmp for /tmp) is still at home; a
+// path that only reaches the folder through a link of its own is not followed,
+// and asks, exactly as a relative target's links never were.
+func TestTheFolderIsPlacedThroughItsOwnLink(t *testing.T) {
+	root := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	real := filepath.Join(root, "real", "work")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(filepath.Join(root, "real"), link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	given := filepath.Join(link, "work")
+	cases := []struct {
+		name, workspace, command string
+		asks                     bool
+	}{
+		{"given through the link, cd to the resolved path", given, "cd " + real + " && rm -rf old", false},
+		{"given through the link, rm the resolved path", given, "rm -rf " + real + "/old", false},
+		{"given through the link, cd to the link", given, "cd " + given + " && rm -rf old", false},
+		{"given resolved, cd through a link is not followed", real, "cd " + given + " && rm -rf old", true},
+		{"given through the link, its resolved sibling asks", given, "rm -rf " + filepath.Join(root, "real", "other"), true},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := AlwaysAsksIn(ToolBash, bashArgs(test.command), test.workspace); got != test.asks {
+				t.Fatalf("AlwaysAsksIn(%q, %q) = %v, want %v", test.command, test.workspace, got, test.asks)
+			}
+		})
 	}
 }

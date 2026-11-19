@@ -196,7 +196,12 @@ func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
 		return approval.Decision{}, false
 	}
 	args := json.RawMessage(call.Function.Arguments)
-	decision := policy.Check(call.Function.Name, args)
+	// The floor is told where the bash tool runs, so a recursive delete under
+	// the agent's own folder, spelled with an absolute path or after a `cd` to
+	// it, is placed as the cleanup it is (internal/approval/recursivedelete.go).
+	gate := *policy
+	gate.Workspace = a.config.Workspace
+	decision := gate.Check(call.Function.Name, args)
 	return a.capabilitySays(call.Function.Name, args, decision), true
 }
 
@@ -261,7 +266,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	if governed && decision.Action == approval.ActionAllow && decision.Scope != "" && hub != nil {
 		hub.send(Event{Kind: EventConsentAllowed, Tool: call.Function.Name, Args: argsText(call), CallID: call.ID, Hint: a.gloss(call), Rule: decision.Scope})
 	}
-	if !governed || decision.Action == approval.ActionAllow || (decision.ProfileReadError == "" && setupGranted(ctx, call, decision)) {
+	if !governed || decision.Action == approval.ActionAllow || (decision.ProfileReadError == "" && setupGranted(ctx, call, decision, a.config.Workspace)) {
 		return toolResult{}, true
 	}
 	if decision.Action == approval.ActionDeny {
@@ -281,7 +286,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//     ran silently for the rest of the session. The memo is somebody saying
 	//     they are done being asked about ordinary work. It is not somebody
 	//     saying they have read a message that has not been written yet.
-	if decision.ProfileReadError == "" && !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+	if decision.ProfileReadError == "" && !approval.AlwaysAsksIn(call.Function.Name, json.RawMessage(call.Function.Arguments), a.config.Workspace) {
 		if remembered, known := a.rememberedConsent(call.Function.Name); known {
 			if remembered {
 				return toolResult{}, true
@@ -652,12 +657,12 @@ func withoutWidening(options []AnswerOption) []AnswerOption {
 // repository's generic-and-meta law: internal/approval says which shapes are
 // grave, and this lane carries the grade.
 func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision) Question {
-	scopes, alwaysAsk := config.ApprovalScopes(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	scopes, alwaysAsk := config.ApprovalScopesIn(call.Function.Name, json.RawMessage(call.Function.Arguments), a.config.Workspace)
 	outside := ""
 	if policy := a.approvalGate(); policy != nil {
 		outside = policy.OutsideRule(call.Function.Name, []byte(call.Function.Arguments))
 	}
-	irreversible := approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	irreversible := approval.AlwaysAsksIn(call.Function.Name, json.RawMessage(call.Function.Arguments), a.config.Workspace)
 	stakes := StakesCostly
 	options := AnswerOptions(QuestionConsent)
 	scope := []AnswerScope{ScopeOnce, ScopeAlways}

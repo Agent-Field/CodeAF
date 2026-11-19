@@ -316,14 +316,6 @@ func globMatch(pattern, text string) bool {
 // A recursive delete outside the agent's folder is on the floor too, but it is
 // read rather than matched, in recursivedelete.go.
 var criticalCommands = []string{
-	// Recursive force-remove of a root path. The '/*' glob deliberately
-	// over-fires: it catches "rm -rf / --no-preserve-root" and also plain
-	// "rm -rf /var/tmp/x". Prompting on an absolute recursive delete under an
-	// allow-all policy is the trade this table exists to make.
-	"rm -rf /",
-	"rm -rf /*",
-	"rm -fr /",
-	"rm -fr /*",
 	// Making a filesystem — mkfs, mkfs.ext4, mkfs.xfs …
 	"mkfs*",
 	// dd with a device as its output.
@@ -336,6 +328,24 @@ var criticalCommands = []string{
 	"reboot", "reboot *",
 	"halt", "halt *",
 	"poweroff", "poweroff *",
+}
+
+// rootDeletes is the table's recursive force-remove of a root path. The '/*'
+// glob deliberately over-fires: it catches "rm -rf / --no-preserve-root" and
+// also plain "rm -rf /var/tmp/x". Prompting on an absolute recursive delete
+// under an allow-all policy is the trade these rows exist to make.
+//
+// THEY STAND ASIDE WHEN THE AGENT'S FOLDER IS KNOWN. Then the reader in
+// recursivedelete.go can place an absolute path, and it already asks about
+// every recursive delete it cannot place inside that folder, `rm -rf /`
+// included; these rows would only add a question about `rm -rf
+// /path/to/the/agents/own/folder/build`, which is the cleanup the reader lets
+// through. With no folder they stand exactly as they always have.
+var rootDeletes = []string{
+	"rm -rf /",
+	"rm -rf /*",
+	"rm -fr /",
+	"rm -fr /*",
 }
 
 // forkBomb is the classic shape, matched against the line with ALL whitespace
@@ -353,9 +363,16 @@ const forkBomb = "*:(){:|:&};:*"
 // and leaves them nothing true to answer. The segments are tried before the
 // whole line so a compound cleanup names the one deletion that tripped the
 // floor, and the whole line is tried last for a shape no one segment holds.
-func criticalHit(command string, segments []string) (string, bool) {
+//
+// workspace is the folder the line runs in, the bash tool's own working
+// directory, or empty when the caller does not know it.
+func criticalHit(command string, segments []string, workspace string) (string, bool) {
 	if globMatch(forkBomb, stripSpace(command)) {
 		return ":(){:|:&};:", true
+	}
+	table := criticalCommands
+	if len(knownFolder(workspace).roots) == 0 {
+		table = append(append([]string(nil), rootDeletes...), criticalCommands...)
 	}
 	candidates := make([]string, 0, len(segments)+1)
 	candidates = append(candidates, segments...)
@@ -365,7 +382,7 @@ func criticalHit(command string, segments []string) (string, bool) {
 		if normalized == "" {
 			continue
 		}
-		for _, pattern := range criticalCommands {
+		for _, pattern := range table {
 			if globMatch(pattern, normalized) {
 				return criticalName(candidate), true
 			}
@@ -374,7 +391,7 @@ func criticalHit(command string, segments []string) (string, bool) {
 	// The table names spellings; a recursive delete is read for what it does
 	// and where it lands (recursivedelete.go), so `rm -r /tmp/x` asks the way
 	// `rm -rf /tmp/x` always has.
-	return recursiveDeleteOutside(command)
+	return recursiveDeleteOutside(command, workspace)
 }
 
 // criticalNameLimit bounds the command a question quotes. A long line is cut
