@@ -411,8 +411,10 @@ asked about at the moment they matter rather than before you have started.
 
 A first run opens on this build's default unless you picked something else on the setup
 screen's **Chat model** row, and `/model` is the door that moves it afterwards. If that first prompt's provider
-goes quiet before a word arrives, codeaf does not sit silent until the ninety-second
-cut: it tries another provider and says so, naming the door —
+goes quiet before a word arrives, codeaf can try another provider before the
+give-up time. That time is ninety seconds for a hosted endpoint with default
+settings. A local endpoint gets ten times as long by default. When another
+provider can answer, codeaf says so, naming the door —
 
 ```
 still no answer — trying another provider · /model switches
