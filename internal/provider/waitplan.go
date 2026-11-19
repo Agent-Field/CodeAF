@@ -43,7 +43,7 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// of the choice, what is believed about it, the role's ceiling and λ, and
 	// the alternatives the frontier named. This layer adds only the four things
 	// it is the only one to know.
-	plan := lanes.PlanFor(choice, lanes.PaceFor(lanes.ID{Model: model, Lane: lanes.HeadOf(choice)}, now), RoleFrom(ctx), now)
+	plan := c.stretchPlan(lanes.PlanFor(choice, lanes.PaceFor(lanes.ID{Model: model, Lane: lanes.HeadOf(choice)}, now), RoleFrom(ctx), now))
 	// ── and then the four things only the transport knows
 	//
 	// A PIN IS WHAT THE CHOICE SAYS IT IS, AND NEVER THE LENGTH OF `Only`: the
@@ -87,6 +87,7 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// is empty and a stall is reported rather than rescued. With a pin the
 	// alternatives stay, because there the act is the offer — `switch to
 	// auto?` — and a question has to name where a `y` would go (offer.go).
+	named := len(plan.Alts)
 	if !c.carriesPreferences() || c.routing() == RoutingOff || (c.routing() == RoutingSimple && !choice.Pinned) {
 		plan.Alts = nil
 	} else if len(plan.Alts) == 0 {
@@ -98,6 +99,23 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 		// and waiting are two questions; an empty Choice is not an empty
 		// frontier.
 		plan.Alts = sheetAlts(model, plan.Lane)
+	}
+	// AND A LOCAL ENDPOINT WITH NOWHERE ELSE TO GO NEVER GETS ONE. A rescue is a
+	// second request, and the only machine a second request to a person's own
+	// endpoint could go to is the first one again unless the endpoint has shown it
+	// routes among several ([Client.prefsProven]: an endpoints page, or an answer
+	// that named its lane) or the chooser itself named other lanes it has measured
+	// there (`named`, counted before the sheet's priors were added above). A
+	// second request to the same machine does not rescue anything: it queues
+	// behind the first or competes with it for the one GPU, and so doubles the
+	// work of the machine that was already too slow. The refusal is the same empty
+	// purse, so the hedge, the stall rescue and the walk all read it through the
+	// one door they already ask (hedgeRace.affords). A local gateway that does
+	// front several hosts keeps its rescues. A rescue to a different MODEL is not
+	// this either: that is the turn's hop (internal/session), which waits for the
+	// stretched give-up.
+	if c.localEndpoint() && !c.prefsProven() && !(named > 0 && len(plan.Alts) > 0) {
+		plan.Purse = lanes.NoSpending()
 	}
 	return plan
 }

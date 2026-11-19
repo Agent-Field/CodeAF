@@ -549,7 +549,7 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 		plan.Pinned = false
 	}
 	plan.Alts = r.untriedAlts()
-	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now}
+	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now, stretched: r.client != nil && r.client.patience() > 1}
 	watch.deadline = watch.control.Deadline()
 	if !watch.deadline.IsZero() {
 		watch.armed = watch.deadline.Sub(now)

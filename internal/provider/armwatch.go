@@ -102,6 +102,16 @@ type streamWatch struct {
 	// NEVER NEITHER below.
 	guard *stallWatch
 	free  bool
+	// stretched says this arm's client is held to more than the hosted bounds
+	// ([Client.patience]), and it changes ONE thing: the free move below is not
+	// taken before the ceiling. The controller may report a silence EARLIER than
+	// the ceiling when its belief about the lane says the wait is abnormal, and
+	// that belief was measured against whatever this lane did before — against a
+	// local model, usually a short prompt answered in a second. Cutting a stream
+	// on that belief is exactly the cut a stretched patience exists to prevent, so
+	// a stretched arm cuts on the ceiling, which has been stretched with it, and
+	// on nothing earlier.
+	stretched bool
 	// progress is whoever asked to watch this call run (callprogress.go), and
 	// nil on every call nobody is watching — which is nearly all of them.
 	//
@@ -391,7 +401,7 @@ func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
 			// machine that has sent nothing at all, so the free move is taken
 			// instead: cut here, and the layer above asks somewhere else. See
 			// THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER.
-			if act.Kind == control.Report {
+			if act.Kind == control.Report && (!w.stretched || act.Silence >= w.plan.Ceiling) {
 				w.free = true
 			}
 		}
