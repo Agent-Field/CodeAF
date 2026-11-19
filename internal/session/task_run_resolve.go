@@ -84,8 +84,9 @@ func (a *Agent) answerCompletedRun(ctx context.Context, g *TaskGraph, kept TaskN
 // NOTHING IS LANDED AGAIN. The run brought its work home at its end, as every
 // run does, so `accept` is the person taking it as done and `not right` is the
 // person saying it is not; the work stays exactly where it is either way. And
-// the check is not asked again: it stopped at its own spend ceiling, and asking
-// it again would spend that ceiling a second time on the same reading.
+// the check is not asked again from here: the run that held its checker has
+// ended, and a check that stopped at its own spend ceiling would spend that
+// ceiling a second time on the same reading.
 func (a *Agent) resolveUncheckedRun(g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, resolution TaskResolution, why string, by TaskAskOwner) (string, bool, error) {
 	why = strings.TrimSpace(why)
 	switch resolution {
@@ -96,11 +97,21 @@ func (a *Agent) resolveUncheckedRun(g *TaskGraph, kept TaskNotice, path string, 
 		kept.State, kept.Ending, kept.Unchecked = TaskFailed, TaskEndingRefused, false
 		kept.Report = withReport(refutedLine(why, by), root.Result)
 	case TaskReaudit:
-		return "", true, fmt.Errorf("task %d's check stopped at its spend ceiling and is not asked again; read its work, then accept or refute it", kept.ID)
+		return "", true, fmt.Errorf("task %d's check %s and is not asked again; read its work, then accept or refute it", kept.ID, uncheckedStopWords(kept.Report))
 	default:
 		return "", true, fmt.Errorf("%q is not a resolution: say %s, %s or %s", resolution, TaskAccept, TaskReaudit, TaskRefute)
 	}
 	return a.saveCompletedRunOutcome(g, kept, path, root.ID)
+}
+
+// uncheckedStopWords is the refusal's account of why the check is not asked
+// again, read off the row's own lead: the ceiling's words for a check that met
+// its ceiling, and the general words for one whose model could not be served.
+func uncheckedStopWords(report string) string {
+	if taskCheckReason(report) == taskAskCeilingReason {
+		return "stopped at its spend ceiling"
+	}
+	return "could not finish"
 }
 
 // completedRunOwner keeps the fallback inside this conversation. A worker's
