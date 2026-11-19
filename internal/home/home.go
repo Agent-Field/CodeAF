@@ -98,26 +98,141 @@ func Join(elements ...string) string {
 	return filepath.Join(append([]string{Dir()}, elements...)...)
 }
 
-// Login is the directory the OTHER harnesses keep their own state under —
-// the "~" whose dot-folders hold Claude Code's, Codex's and their kin's
-// skills, which the resident imports in place. It follows the state root's
-// override — CODEAF_HOME moves it wholesale, the same way it moves everything
-// else codeaf reads — and otherwise answers the login home the state root
-// itself is resolved from.
+// LoginEnvVar names the person's real login home when the state root was moved
+// for a reason that is not a quarantine. The desktop app runs
+// `codeaf app --home <dir>` so that its chats and settings stay apart from the
+// CLI's, and that moves the state root and nothing else of the person's: the
+// dot-folders other programs keep under their home are still where they were.
+// [KeepLogin] sets it, [Login] reads it, and a child process inherits it with
+// CODEAF_HOME, so the whole process tree answers [Login] the same way.
+const LoginEnvVar = "CODEAF_LOGIN_HOME"
+
+// inheritedLogin is LoginEnvVar as this process was STARTED with it, read once
+// at initialisation for the same reason [inherited] is: a test binary run from
+// inside an app's shell inherits the app's value, and a value nobody in the
+// test chose is not a home the test may read (see [Login]).
+var inheritedLogin = strings.TrimSpace(env.Get(LoginEnvVar))
+
+// Login is THE person's login home: the "~" whose dot-folders hold Claude
+// Code's, Codex's and their kin's skills and settings, which codeaf reads in
+// place. Every read of another program's files goes through this and not
+// through os.UserHomeDir, because the two differ exactly when the state root
+// was moved, and a reader that asked the operating system would find the
+// person's real files in a run that is meant to be quarantined from them.
+//
+// It answers, in order:
+//
+//   - the real login home [KeepLogin] recorded, when the state root was moved
+//     by `codeaf app --home`: codeaf's state is elsewhere, the person's other
+//     programs are not;
+//   - CODEAF_HOME, when that alone is set. A disposable run or a test that
+//     named a state root gets a login home of its own with it, so a scan of
+//     "the person's" skills finds none of the real person's;
+//   - otherwise the login home the state root itself is resolved from.
 //
 // It carries Dir's test-binary gate, aimed at the container instead of the
 // root: a suite that named no home of its own gets the quarantine, not the
 // home of whoever ran it, because a scan of a real home imports a real
-// person's skills into a throwaway store. A test that pins HOME or CODEAF_HOME
-// — the two ways a test says where its state goes — still gets exactly the
-// home it asked for.
+// person's skills into a throwaway store. A test that pins HOME, CODEAF_HOME or
+// LoginEnvVar — the ways a test says where its state goes — still gets exactly
+// the home it asked for; a LoginEnvVar the process was merely handed does not.
 func Login() (string, error) {
+	if kept := keptLogin(); kept != "" {
+		return kept, nil
+	}
+	return StateLogin()
+}
+
+// keptLogin is the real login home an `app --home` recorded, or "" when none
+// did. Under a test binary a value the process inherited is not one a test
+// chose, so it reads as unset and [Login] falls through to its quarantine.
+func keptLogin() string {
+	kept := strings.TrimSpace(env.Get(LoginEnvVar))
+	if kept == "" || (underTest && kept == inheritedLogin) {
+		return ""
+	}
+	if resolved, err := filepath.Abs(kept); err == nil {
+		return resolved
+	}
+	return kept
+}
+
+// StateLogin is the home directory codeaf's OWN user skills folder,
+// <home>/.codeaf/skills, is read under. It follows the state root's override —
+// CODEAF_HOME moves it wholesale, the same way it moves everything else codeaf
+// reads — and otherwise answers the login home the state root itself is
+// resolved from. It is [Login] exactly, except under `codeaf app --home`, where
+// the app's own folder keeps codeaf's skills (the app installs its own there)
+// and Login names the person's home. Almost nothing wants this: a read of
+// another program's files wants [Login].
+func StateLogin() (string, error) {
 	if override := strings.TrimSpace(env.Get(EnvVar)); override != "" {
 		if resolved, err := filepath.Abs(override); err == nil {
 			return resolved, nil
 		}
 		return override, nil
 	}
+	return osLogin()
+}
+
+// Kept says the state root was moved for a home the person keeps, the desktop
+// app's `--home`, and not for a disposable one: [KeepLogin] recorded their login
+// home beside it. A folder codeaf keeps outside the state root on a person's
+// behalf lives where it would for the person's own home, not inside this one,
+// because a kept home is backed up and a person opens it; a disposable home takes
+// everything with it ([Moved]). A record a test binary was merely handed is not
+// one, for the reason [Login] gives.
+func Kept() bool { return keptLogin() != "" }
+
+// OwnLogin is the home directory whose .codeaf/skills is codeaf's own user
+// skills folder for a scan of the login home dir. Under `codeaf app --home`
+// that is the app's folder when dir is the person's login home; a scan of any
+// other directory — a fixture, a home a caller names — is a self-contained
+// home and answers itself, and so does every process that did not move the
+// state root for the app.
+func OwnLogin(dir string) string {
+	kept := keptLogin()
+	if kept == "" || absolute(dir) != kept {
+		return dir
+	}
+	if own, err := StateLogin(); err == nil {
+		return own
+	}
+	return dir
+}
+
+// KeepLogin makes the person's real login home survive a move of the state
+// root. `codeaf app --home` calls it after setting CODEAF_HOME: it records the
+// home the operating system names, so [Login] still answers it, and the
+// children this process starts inherit the record along with CODEAF_HOME. The
+// answer is the restore, which puts the variable back as it was — a process
+// ends and takes the record with it, but an in-process test of the app door
+// must not leave one behind for the next test.
+//
+// The recorded home goes through the test-binary gate, so under `go test` with
+// no HOME of its own it is the quarantine and never the real person's home. A
+// process with no resolvable home records nothing and Login keeps answering the
+// state root, which is what it did before.
+func KeepLogin() (restore func()) {
+	previous, had := env.Lookup(LoginEnvVar)
+	restore = func() {
+		if had {
+			_ = os.Setenv(LoginEnvVar, previous)
+		} else {
+			_ = os.Unsetenv(LoginEnvVar)
+		}
+	}
+	login, err := osLogin()
+	if err != nil {
+		return restore
+	}
+	_ = os.Setenv(LoginEnvVar, login)
+	return restore
+}
+
+// osLogin is the login home the operating system names, behind the test-binary
+// gate: the half of [Login] that does not depend on what the state root says.
+func osLogin() (string, error) {
 	base, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(base) == "" {
 		if err == nil {
