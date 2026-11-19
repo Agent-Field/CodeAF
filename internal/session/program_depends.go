@@ -23,6 +23,7 @@ package session
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -35,14 +36,22 @@ func (a *Agent) proposalDependencyRefusal(spec taskSpec) string {
 	g := a.graph()
 	missing, failed := g.doomedDependencies(spec.dependsOn)
 	missing, failed, running := programRunDependencies(g, missing, failed)
+	var unfinished []uint64
 	if bashBeltAsked() {
 		missing = a.missingRunDependencies(missing)
+		missing, unfinished = endedRunDependencies(g, missing)
 	}
 	if len(missing)+len(failed) > 0 {
 		return dependencyRefusal(missing, failed)
 	}
+	if len(unfinished) > 0 {
+		return endedUnfinishedRefusal(unfinished)
+	}
 	if len(running) > 0 {
 		return programRunWaitRefusal(running)
+	}
+	if root, ok := a.dependsOnTheLiveRun(spec.dependsOn); ok {
+		return liveRunWaitRefusal(root)
 	}
 	if spec.via != "" {
 		if waiting := g.unfinishedDependencies(spec.dependsOn); len(waiting) > 0 {
@@ -75,24 +84,112 @@ func programRunDependencies(g *TaskGraph, missing, failed []uint64) (stillMissin
 	return stillMissing, nowFailed, running
 }
 
-// withoutEndedProgramRuns is ids with every program run that ended done taken
-// out: [Agent.proposalDependencyRefusal] let it through as satisfied, and the
-// graph, which knows no such node, would otherwise wait on it for ever.
+// withoutEndedProgramRuns is ids with every run that ended done taken out —
+// a program's, or under the bash belt an ordinary run's that is not in the
+// run now turning: [Agent.proposalDependencyRefusal] let it through as
+// satisfied, and neither the graph, which knows no such node, nor the live
+// run's store, which holds no such task, could carry the edge.
 func (a *Agent) withoutEndedProgramRuns(ids []uint64) []uint64 {
 	if len(ids) == 0 {
 		return ids
 	}
 	g := a.tasker()
+	belt := bashBeltAsked()
 	kept := make([]uint64, 0, len(ids))
 	for _, id := range ids {
 		if g != nil && !g.holdsNode(id) {
-			if row, found := runRowOf(g, id); found && row.Program != "" && row.State == TaskDone {
+			if row, found := runRowOf(g, id); found && row.State == TaskDone && (row.Program != "" || (belt && !a.liveRunHolds(id))) {
 				continue
 			}
 		}
 		kept = append(kept, id)
 	}
 	return kept
+}
+
+// ── A RUN'S OWN TASKS AND depends_on, UNDER THE BASH BELT ──────────────────
+//
+// THE MEASURED FAILURE (connected-canvas qloop run 16, vector-db t1). A canvas
+// manager handed out "Comparison table" as task 1 and then, in the next call,
+// "The research brief" as task 2 with depends_on [1], which is exactly what
+// the skill asks for: the brief must read the table. Task 2 joined the run task
+// 1 had opened, and a task that joins a run is a CHILD OF ITS ROOT — and the
+// root of that run was task 1 itself. So the store was asked for an edge from
+// a task to its own parent, which it refuses by law ([plandb]'s lineage rule:
+// a task may not wait on the lineage that schedules it), and the person saw
+// "Not started · The research brief doc" under a turn marked finished, whose
+// reply promised the brief.
+//
+// THE STORE IS RIGHT, AND THE PROPOSAL IS WHAT IS REFUSED, before a card or an
+// id: work that must wait for the run now turning cannot be added to that run,
+// and the run's report is what starts the next turn here. So the model is told
+// to propose it again when that report arrives ([liveRunWaitRefusal]).
+//
+// AND THE OTHER HALF OF THE SAME RUN. When task 1 had landed, the manager
+// proposed the brief again with depends_on [1] and was told "no task in this
+// session has that id": a run that has ended is in no live store, and the
+// belt's only reader of depends_on looked nowhere else. Its row still says how
+// it ended ([endedRunDependencies]): done is a dependency met, and anything
+// else is refused in words that say it ended without finishing.
+
+// endedRunDependencies takes out of missing every id whose run row has ended,
+// and answers the ones that ended without finishing. Ended done is met and
+// dropped here; [Agent.withoutEndedProgramRuns] drops it from what is handed
+// on.
+func endedRunDependencies(g *TaskGraph, missing []uint64) (stillMissing, unfinished []uint64) {
+	for _, id := range missing {
+		row, found := runRowOf(g, id)
+		switch {
+		case !found || !row.State.settled():
+			stillMissing = append(stillMissing, id)
+		case row.State == TaskDone:
+		default:
+			unfinished = append(unfinished, id)
+		}
+	}
+	return stillMissing, unfinished
+}
+
+// liveRunHolds reports whether id is a task in the run now turning.
+func (a *Agent) liveRunHolds(id uint64) bool {
+	a.beltMu.Lock()
+	live := a.beltRun
+	a.beltMu.Unlock()
+	return live != nil && live.store != nil && live.store.Task(strconv.FormatUint(id, 10)) != nil
+}
+
+// dependsOnTheLiveRun names the run now turning when ids names its root: the
+// one dependency a task joining that run can never carry, because it would be
+// a child waiting on its own parent.
+func (a *Agent) dependsOnTheLiveRun(ids []uint64) (uint64, bool) {
+	a.beltMu.Lock()
+	live := a.beltRun
+	turning := live != nil && !live.ending && !live.closing && !live.stopped
+	a.beltMu.Unlock()
+	if !turning || !bashBeltAsked() {
+		return 0, false
+	}
+	for _, id := range ids {
+		if strconv.FormatUint(id, 10) == live.root {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
+// liveRunWaitRefusal is a proposal naming the run now turning.
+func liveRunWaitRefusal(id uint64) string {
+	return fmt.Sprintf("Invalid arguments: depends_on names %s, which is still running, and work that must wait for it cannot be added beside it. "+
+		"Propose this again when %s's report arrives — it starts a turn here on its own — or with depends_on left out if it can start now.",
+		numberedTasks([]uint64{id}), numberedTasks([]uint64{id}))
+}
+
+// endedUnfinishedRefusal is a proposal naming a run that ended without
+// finishing: nothing will finish it, so nothing would ever start this.
+func endedUnfinishedRefusal(ids []uint64) string {
+	return fmt.Sprintf("Invalid arguments: depends_on names %s, which ended without finishing, so nothing would ever start this after it. "+
+		"Check what it left and propose this again with depends_on left out, or run that work again first.",
+		numberedTasks(ids))
 }
 
 // unfinishedDependencies is each id whose node has not landed done.

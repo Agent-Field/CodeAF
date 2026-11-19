@@ -221,8 +221,7 @@ func (a *Agent) replyLooksBack(ctx context.Context, hub *eventHub, meter *checkp
 	}
 	if changedSince {
 		meter.lookedBack = true
-		hub.send(Event{Kind: EventNotice, Text: replyStaleLookNote})
-		a.record(textMessage("user", replyStaleLookLead))
+		a.sendBack(hub, "reply-stale-look", replyStaleLookNote, replyStaleLookLead)
 		return true
 	}
 	found := a.readReplyAgainstLooks(ctx, said, looks)
@@ -233,8 +232,7 @@ func (a *Agent) replyLooksBack(ctx context.Context, hub *eventHub, meter *checkp
 	if len(found) == 0 {
 		return false
 	}
-	hub.send(Event{Kind: EventNotice, Text: replyCheckNote})
-	a.record(textMessage("user", replyCheckLead(found)))
+	a.sendBack(hub, "reply-contradicts-look", replyCheckNote, replyCheckLead(found))
 	return true
 }
 

@@ -277,3 +277,37 @@ func TestFactorySteerEchoIsHiddenWithoutHidingAuthoredTextOrRenumberingAnswers(t
 		t.Fatal("authored messages or meaningful runner progress were hidden")
 	}
 }
+
+// THE CHECKS ON A FINISHED REPLY ARE NOT ROWS IN THE CHAT. Run 16 (connected-
+// canvas qloop, vector-db t1): the turn answered, the reply check sent it back
+// to look again, the model kept its reply with the token, and the app drew the
+// check's own line as a notice under the final answer. Every one of those
+// lines is the engine talking about its own machinery; the record of each is
+// in the session's transcript and journal, and none reaches the person here.
+func TestTheChecksOnAFinishedReplyAreNotDrawn(t *testing.T) {
+	answer := "Two charts built and a comparison table underway."
+	for _, line := range []string{
+		"it changed the work after its last look · asking it to look again before it replies",
+		"its reply did not match its own last look · asking it to correct the reply",
+		"some of its steps failed before it asked you · asking it to retry them or say what failed",
+		"some work it handed out did not start · asking it to start it again or say so",
+		"it promised a later report with nothing running · asking it to finish or say what is left",
+	} {
+		if !session.IsCarryOnNotice(line) {
+			t.Fatalf("%q is not the session's carry-on line", line)
+		}
+		entries, _ := appTurnShape(t, []session.Event{
+			{Kind: session.EventTextDelta, Text: answer},
+			{Kind: session.EventAssistantDone},
+			{Kind: session.EventNotice, Text: line},
+			{Kind: session.EventTextDelta, Text: session.NoChangeReply},
+			{Kind: session.EventAssistantDone},
+			{Kind: session.EventTurnDone},
+		})
+		for _, e := range entries {
+			if e.Kind == appwire.EntryNotice {
+				t.Fatalf("the check's line became a row in the chat: %+v", e)
+			}
+		}
+	}
+}

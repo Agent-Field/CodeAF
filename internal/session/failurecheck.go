@@ -161,8 +161,7 @@ func (a *Agent) replyFailuresBack(ctx context.Context, hub *eventHub, meter *che
 	if !ok {
 		return false
 	}
-	hub.send(Event{Kind: EventNotice, Text: failureCheckNote})
-	a.record(textMessage("user", failureCheckLead(failed)))
+	a.sendBack(hub, "failures-before-question", failureCheckNote, failureCheckLead(failed))
 	return true
 }
 

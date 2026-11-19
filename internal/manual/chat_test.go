@@ -573,6 +573,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it wrote where I am, next I make the charts, and then just stopped", "tasks"},
 		{"it stopped after writing down what it learned and never built the dashboard", "tasks"},
 		{"it said the flyer was fixed and then got asked to go on anyway", "tasks"},
+		{"it said the brief would follow but that task never started", "tasks"},
+		{"it said it would report back when the table lands and nothing ever came", "tasks"},
+		{"why did my second task say has hard dependency across its containment lineage", "how-tasks-run"},
 		{"does typing into a running task reach it straight away", "tasks"},
 		// And the one the code's own comment used to get wrong: thinking on the
 		// screen is something you have read.

@@ -3292,6 +3292,24 @@ A task handed to a program such as senior-dev cannot wait at all, because it sta
 moment it is approved: its `depends_on` may name only work that has already landed. A
 program's run that ended done may be named by any task; one still going may not.
 
+## Waiting on the task that is already running — depends_on names task 1, which is still running, the second task did not start, has hard dependency across its containment lineage
+
+**A task cannot wait on the task already running in this conversation.** New tasks join the
+work already underway as parts of it, and a part cannot wait on the work it belongs to. So
+a proposal whose `depends_on` names that task is refused before any card:
+`depends_on names task 1, which is still running, and work that must wait for it cannot be
+added beside it. Propose this again when task 1's report arrives — it starts a turn here on
+its own — or with depends_on left out if it can start now.` Before this, the proposal was
+approved and then did not start, with
+`has hard dependency "1" across its containment lineage`, and the reply went on to promise
+the work anyway. A task that joined beside it may still be waited on.
+
+**Once that task has ended, its id still works.** A task that ended done counts as a
+dependency met. One that ended any other way — failed, incomplete, interrupted — is refused:
+`depends_on names task 1, which ended without finishing, so nothing would ever start this
+after it.` Before this, any task from work that had ended was refused as
+`no task in this session has that id`.
+
 ## Choosing a task's model and tool-call checkpoints — propose_task model and max_steps
 
 These optional arguments choose the task's model and checkpoint size. Bad values return a refusal the model can correct.
