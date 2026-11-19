@@ -578,6 +578,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I typed continue into a task and nothing happened", "tasks"},
 		{"it said the worksheet fits one page but the pdf has two pages", "tasks"},
 		{"does the reply check read the shell output or only the picture", "tasks"},
+		{"it said there was no signage on the photo but the picture has a cafe sign", "tasks"},
+		{"it told me the headline was clear of the cup but it covers it", "tasks"},
 		{"it wrote where I am, next I make the charts, and then just stopped", "tasks"},
 		{"it stopped after writing down what it learned and never built the dashboard", "tasks"},
 		{"it said the flyer was fixed and then got asked to go on anyway", "tasks"},

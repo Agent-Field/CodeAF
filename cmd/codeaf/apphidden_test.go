@@ -289,6 +289,7 @@ func TestTheChecksOnAFinishedReplyAreNotDrawn(t *testing.T) {
 	for _, line := range []string{
 		"it changed the work after its last look · asking it to look again before it replies",
 		"its reply did not match what it saw this turn · asking it to correct the reply",
+		"its reply said more than it checked this turn · asking it to check or say so",
 		"some of its steps failed before it asked you · asking it to retry them or say what failed",
 		"some work it handed out did not start · asking it to start it again or say so",
 		"it promised a later report with nothing running · asking it to finish or say what is left",

@@ -796,7 +796,7 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // ([checkpointCarryOnNote]), one of the nudges ([checkpointLoadNudgeNote],
 // [checkpointAskNudgeNote], [checkpointUpdateNudgeNote],
 // [checkpointNotesNudgeNote]), or one of the checks on a finished reply
-// ([replyStaleLookNote], [replyCheckNote], [failureCheckNote],
+// ([replyStaleLookNote], [replyCheckNote], [replyUnshownNote], [failureCheckNote],
 // [handoffCheckNote], [handoffPromiseNote]). It is the ONE reading of those
 // lines, for [IsNoChangeReply]'s reason.
 //
@@ -820,7 +820,7 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 func IsCarryOnNotice(text string) bool {
 	switch strings.TrimSpace(text) {
 	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote, checkpointNotesNudgeNote,
-		replyStaleLookNote, replyCheckNote, failureCheckNote, handoffCheckNote, handoffPromiseNote, owedLandingCarryOnNote:
+		replyStaleLookNote, replyCheckNote, replyUnshownNote, failureCheckNote, handoffCheckNote, handoffPromiseNote, owedLandingCarryOnNote:
 		return true
 	}
 	return false

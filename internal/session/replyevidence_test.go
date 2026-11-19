@@ -205,20 +205,34 @@ func TestTheEvidenceCheckIsOnceATurnInBothArms(t *testing.T) {
 	}
 }
 
-// A STALE TURN WHOSE LATER OUTPUTS SAY NOTHING ABOUT THE REPLY KEEPS #2836's
-// PRICE: no reader, the bare stale arm.
-func TestAStaleTurnWithNothingRelevantAfterTheLookPaysNoReader(t *testing.T) {
+// A STALE TURN WITH NOTHING TO COMPARE PAYS NO READER: a look whose words the
+// model kept to itself (it saw the picture directly) and an output of
+// {"seq":7} that shares nothing with the reply give the reader no page, and
+// the bare stale arm stands.
+func TestAStaleTurnWithNothingToCompareAgainstPaysNoReader(t *testing.T) {
 	agent, completer, asked, _ := evidenceAgent(t, []step{
-		callStep("l1", "look", `{}`),
+		callStep("l1", "view_image", `{"path":"look.png"}`),
 		callStep("c1", "run", `{"command":"canvas patch cv n --json '{}'"}`),
 		replyStep(topRecallReply), replyStep(NoChangeReply), unreachable,
-	}, func(string) string { return `- "x" — objection.` }, sayingLook(widthsLookSaid), stepTool("run", nil))
+	}, func(string) string { return `- "x" — objection.` }, sawItItself(), stepTool("run", nil))
 	runTurnOn(t, agent, "update it")
 	if asked.Load() != 0 {
-		t.Errorf("the reader was asked %d times; an output of {\"seq\":7} shares nothing with the reply", asked.Load())
+		t.Errorf("the reader was asked %d times; nothing on the page could be compared", asked.Load())
 	}
 	if sent := completer.request(3); messageText(sent[len(sent)-1]) != replyStaleLookLead {
 		t.Errorf("the send-back was %q; want the stale arm", messageText(sent[len(sent)-1]))
+	}
+}
+
+// sawItItself is `view_image` answered with the picture for the model's own
+// eyes: no second model wrote words about it.
+func sawItItself() bare.Tool {
+	return bare.Tool{
+		Name: "view_image", Description: "shows a picture",
+		Schema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`),
+		Execute: func(context.Context, json.RawMessage) (string, bool, error) {
+			return "look.png — 1280×800 png", false, nil
+		},
 	}
 }
 

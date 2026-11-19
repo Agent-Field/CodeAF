@@ -71,11 +71,22 @@ type turnObservation struct {
 	before bool
 }
 
-// observedThisTurn reads this turn — from the person's message to the end —
-// for the results of its own steps that are not looks. A look is
-// [lookedAtTheWork]'s; an empty result, and the harness's own pages, are
-// nothing to compare against.
-func observedThisTurn(messages []ai.Message) []turnObservation {
+// turnCall is one call this turn made that is not a look: where it sits, its
+// place among the turn's calls, its step line, what came back, and whether the
+// approval floor could not call it read-only.
+type turnCall struct {
+	at        int
+	order     int
+	name      string
+	arguments string
+	step      string
+	result    string
+	changes   bool
+}
+
+// callsThisTurn reads this turn — from the person's message to the end — for
+// its calls that are not looks, in order. A look is [lookedAtTheWork]'s.
+func callsThisTurn(messages []ai.Message) []turnCall {
 	from := personTurnOpenedAt(messages)
 	results := map[string]string{}
 	for _, message := range messages[from:] {
@@ -83,8 +94,7 @@ func observedThisTurn(messages []ai.Message) []turnObservation {
 			results[strings.TrimSpace(message.ToolCallID)] = strings.TrimSpace(partsText(message))
 		}
 	}
-	var observed []turnObservation
-	lastChange := -1
+	var calls []turnCall
 	order := 0
 	for index := from; index < len(messages); index++ {
 		message := messages[index]
@@ -98,15 +108,30 @@ func observedThisTurn(messages []ai.Message) []turnObservation {
 			if name == "view_image" || lookWords(result) != "" {
 				continue
 			}
-			if !approval.ReadOnly(name, json.RawMessage(call.Function.Arguments)) {
-				lastChange = order
-			}
-			step := observedStep(name, call.Function.Arguments)
-			if result == "" || isHarnessPage(name, step) {
-				continue
-			}
-			observed = append(observed, turnObservation{at: index, order: order, step: step, result: result})
+			calls = append(calls, turnCall{
+				at: index, order: order, name: name, arguments: call.Function.Arguments, result: result,
+				step:    observedStep(name, call.Function.Arguments),
+				changes: !approval.ReadOnly(name, json.RawMessage(call.Function.Arguments)),
+			})
 		}
+	}
+	return calls
+}
+
+// observedThisTurn is the turn's calls whose results are evidence: not a look,
+// not empty, and not the harness's own pages.
+func observedThisTurn(messages []ai.Message) []turnObservation {
+	calls := callsThisTurn(messages)
+	lastChange := -1
+	var observed []turnObservation
+	for _, call := range calls {
+		if call.changes {
+			lastChange = call.order
+		}
+		if call.result == "" || isHarnessPage(call.name, call.arguments) {
+			continue
+		}
+		observed = append(observed, turnObservation{at: call.at, order: call.order, step: call.step, result: call.result})
 	}
 	for index := range observed {
 		observed[index].before = observed[index].order < lastChange
@@ -114,8 +139,25 @@ func observedThisTurn(messages []ai.Message) []turnObservation {
 	return observed
 }
 
+// changedThisTurn is the turn's calls that may have changed the work, as step
+// lines with no result. They are what lets the reader tell whether an earlier
+// entry still holds ([replyCheckAsk]): "(earlier)" alone says that SOMETHING
+// ran after it, and in run 24 the something was a patch to a different chart.
+func changedThisTurn(messages []ai.Message) []turnObservation {
+	var changes []turnObservation
+	for _, call := range callsThisTurn(messages) {
+		if call.changes {
+			changes = append(changes, turnObservation{at: call.at, order: call.order, step: call.step})
+		}
+	}
+	return changes
+}
+
 // observedStep names a step the way the reader can place it: the tool, and its
-// command or path, on one line.
+// command or path, on one line. A shell line's opening `cd` into the working
+// folder is dropped, because it is the same on every line of a turn and it ate
+// the whole bound before the command itself was reached (run 24: every step
+// line read "bash cd /tmp/connected-e2e.…/work CV=…").
 func observedStep(name, arguments string) string {
 	what := ""
 	for _, key := range []string{"command", "path", "file_path", "pattern", "query"} {
@@ -124,20 +166,46 @@ func observedStep(name, arguments string) string {
 			break
 		}
 	}
-	what = strings.Join(strings.Fields(what), " ")
+	what = strings.Join(strings.Fields(withoutLeadingCd(what)), " ")
 	if what == "" {
 		return name
 	}
 	return name + " " + clip(what, replyEvidenceCommandBytes)
 }
 
+// withoutLeadingCd is a shell line with its opening `cd DIR` and the separator
+// after it taken off, as many times as it opens with one. A `cd` that is the
+// whole line is kept: it is the step.
+func withoutLeadingCd(command string) string {
+	for {
+		trimmed := strings.TrimSpace(command)
+		if !strings.HasPrefix(trimmed, "cd ") {
+			return trimmed
+		}
+		cut := -1
+		width := 0
+		for _, separator := range []string{"&&", ";", "\n"} {
+			if at := strings.Index(trimmed, separator); at >= 0 && (cut < 0 || at < cut) {
+				cut, width = at, len(separator)
+			}
+		}
+		if cut < 0 || strings.TrimSpace(trimmed[cut+width:]) == "" {
+			return trimmed
+		}
+		command = trimmed[cut+width:]
+	}
+}
+
 // isHarnessPage reports a step that read what codeaf wrote for the model to
-// follow — the manual, or a skill's own pages — rather than the work.
-func isHarnessPage(name, step string) bool {
+// follow — the manual, or a skill's own pages — rather than the work. It reads
+// the call's whole arguments, not the step line: a `grep` names its pattern
+// first, and in run 24 a grep over the canvas skill's page reached the reader
+// as 45 KB of evidence because its path was never looked at.
+func isHarnessPage(name, arguments string) bool {
 	if name == "manual" {
 		return true
 	}
-	lower := strings.ToLower(step)
+	lower := strings.ToLower(arguments)
 	return strings.Contains(lower, "skill.md") || strings.Contains(lower, "/skills/")
 }
 

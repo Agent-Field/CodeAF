@@ -311,7 +311,7 @@ func TestAProposalMayNameARunThatHasEnded(t *testing.T) {
 // the work after its last look · asking it to look again before it replies"
 // as an Update row under the final reply.
 func TestTheChecksOnAFinishedReplyAreCarryOnLines(t *testing.T) {
-	for _, line := range []string{replyStaleLookNote, replyCheckNote, failureCheckNote, handoffCheckNote, handoffPromiseNote} {
+	for _, line := range []string{replyStaleLookNote, replyCheckNote, replyUnshownNote, failureCheckNote, handoffCheckNote, handoffPromiseNote} {
 		if !IsCarryOnNotice(line) {
 			t.Errorf("%q would be drawn as a row in the app", line)
 		}

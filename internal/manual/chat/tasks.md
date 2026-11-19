@@ -1445,48 +1445,52 @@ stands as written.
 A note that ends by asking you something, or that is waiting on work already out, is left
 alone, as an update is.
 
-## A reply that says something its own look or its own steps did not show is sent back — it said nothing overlaps but the headline covers the cup, it said it fits one page but the PDF has two, it listed the bars in the wrong order
+## A reply that says something its own look or its own steps did not show is sent back — it said nothing overlaps but the headline covers the cup, it said it fits one page but the PDF has two, it listed the bars in the wrong order, it said no signage but the photo has a sign
 
 **When the model looked at its work this reply — a picture of a page, a chart, a board — what
 it then tells you about that work is checked against what it saw,** before the reply ends:
-its looks, and what its own steps returned (see the next section). Two cases send the reply
-back once, in the same reply:
+its looks and what its own steps returned. A small second model reads the reply against
+that, and three cases send it back once, in the same reply:
 
 - **Something it saw contradicts the reply** — a number, a count, a page count, an order, a
-  ranking such as "top" or "only", a name, what overlaps what. A small second model compares
-  the reply with that evidence and names only what it contradicts. The model gets those lines
-  and rewrites the reply. The terminal's dim line:
+  ranking such as "top" or "only", a name, what overlaps what. The model gets those lines and
+  rewrites the reply. The terminal's dim line:
   `its reply did not match what it saw this turn · asking it to correct the reply`.
-- **It changed the work after its last look** and nothing it read since says the reply is
-  wrong. It is asked to look again and write the reply from that look. The terminal's dim line:
+- **It promised the work is free of a problem that nothing it saw checked** — "clear of the
+  cup", "no overlap", "no signage", "renders clean" — or that one of its own looks reported.
+  It is asked to check exactly that, then say only what it saw; what it still cannot check it
+  leaves out or tells you plainly it could not check. The dim line:
+  `its reply said more than it checked this turn · asking it to check or say so`.
+- **It changed the work after its last look** and the comparison raised nothing. It is asked
+  to look again and write the reply from that look. The dim line:
   `it changed the work after its last look · asking it to look again before it replies`.
 
-The terminal folds either line away once the reply settles; the desktop app shows no row
-for it. The transcript and the session journal keep the record.
+The terminal folds these lines away once the reply settles; the desktop app shows no row.
 
-**Once per reply, at most one extra pass and one comparison.** The reply written after it is
-the one you get, even if it is still wrong. A reply that was right is kept as written: the
-model says so in one short call and the first reply stands. A closing question does not
-excuse the reply — "nothing overlaps the cup. Want it bigger?" is still checked.
+**Once per reply: one extra pass, one comparison.** The reply after it is the one you get,
+even if still wrong; a reply that was right is kept. A closing question excuses nothing.
 
 **Limits.** It only runs on a reply that looked at its work. With no model for the
 `replycheck` role, the comparison is skipped and only the look-again case applies.
 
-## What the reply check reads — shell output, an export, a cell read, a file it read back; a claim nothing covered is not raised
+## What the reply check reads — shell output, an export, a cell read, a file it read back, the steps in between; which claims it raises
 
 The comparison reads **what the model itself saw this reply, oldest first**: the words a
-second model wrote about each picture it looked at, and the output of its own steps — a
-shell line's output (`pdfinfo` saying `Pages: 2`, a sheet read holding the real figures),
-an export's answer, a file it read back. Nothing is run to get it; it is the reply's own record.
+second model wrote about each picture it looked at, the output of its own steps — a shell
+line's output (`pdfinfo` saying `Pages: 2`, a sheet read holding the real figures), an
+export's answer, a file it read back — and one line for each step that may have changed the
+work. Nothing is run to get it; it is the reply's own record.
 
-- **Only what shares words with the reply is offered** — the names, labels and figures it
-  states. Words nearly every output carries pick nothing, and the manual and skill pages it
-  read are not evidence.
-- **Newest first, under a cap:** about 4,000 characters of reply, 9,000 of looks and 3,500
-  of step output, a long output cut to the stretches around what it shares with the reply.
-- **An earlier entry can be out of date.** Where two disagree, the later one wins.
-- **A claim nothing it saw covers is not raised** and does not hold the reply. Listing those
-  was measured and left out: it named something in most replies, much of it already shown.
+- **Only output that shares words with the reply is offered** — the names, labels and figures
+  it states. The manual and skill pages it read are not evidence.
+- **Newest first, under a cap:** about 4,000 characters of reply, 9,000 of looks, 3,500 of
+  step output and 1,500 of step lines.
+- **An earlier entry still counts** for anything no later entry covers, unless a step after
+  it changed that very thing. Two looks at the same unchanged picture that disagree settle
+  nothing, and on how the work looks, a look outranks the settings a step wrote.
+- **A claim nothing covered is raised only when it promises the work is free of a problem.**
+  Other uncovered claims are not raised: asking for every claim about how the work looks named
+  something in 30 of 33 replies, most of it true but not in the record.
 
 ## A question after failed steps says what failed — it asked me which chart after 8 actions with 2 failed and changed nothing, it ended on a question and did nothing
 
