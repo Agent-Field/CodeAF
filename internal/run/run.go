@@ -1044,7 +1044,6 @@ func (s *Supervisor) absorb(ret workerReturn) {
 	s.completeTree()
 }
 
-
 // addReviewCheck spawns the review round's one check task for a work-seat leaf
 // that is about to land done. It is a no-op unless the run's limits turn the
 // review round on, unless the leaf is a check itself — a check is never itself
