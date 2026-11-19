@@ -4,7 +4,7 @@
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing does not turn it on. Saved keys stay on this computer, and no chat or file content is uploaded; the relay refuses even encrypted uploads. A chat can still move by blind pass-through between your paired computers while both are running codeaf: see *Blind pass-through*. Existing stored frames stay readable and nothing is deleted.
 
-Pairing, seeing your devices and `--at` still work while the other computer is on. With storage off, new chat turns cannot be continued on another computer while the first is off (blind pass-through needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
+Pairing, seeing your devices and `--at` still work while the other computer is on. With storage off, new chat turns cannot be continued on another computer while the first is off (blind pass-through needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced provider keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
 
 After pairing, open **Settings → Devices → sync storage**. When it says **off**, press **enter** (`enter request access`). This opens a pre-filled GitHub issue; the panel also shows the request code and link if no browser opens. The request code is your identity id (`id_` followed by 32 hex digits). Approval is tied to this identity id. It is safe to post publicly and grants nothing by itself.
 
@@ -77,7 +77,7 @@ Hosted storage is off until approved; no new chat or file chunks are kept while 
 
 Your saved keys are sealed too, as said above.
 
-Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders and withheld files are listed on the arrival card. Secret files travel separately in the sealed vault between paired devices. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.
+Continuing a chat on another computer brings its saved workspace files with its conversation, tool output and task journals. Rebuildable install folders and withheld files are listed on the arrival card. Secret files travel separately between paired devices: in the sealed vault, or, while hosted storage is off and the chat moves by blind pass-through, sealed with the chat and stored nowhere. See *Continuing a chat that one of your machines holds* and "What comes with a continued chat" on *Home*. It does not keep two arbitrary project folders mirrored while you edit them.
 
 ## Optional warm-transfer frame hints and relay compatibility
 
