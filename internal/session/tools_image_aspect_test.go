@@ -155,10 +155,12 @@ func TestFitAspectMeasuresShapesNotSpellings(t *testing.T) {
 // way aspect_ratio is.
 func TestTheCanvasEditThatAsksForItsShapeInSizeIsFittedToo(t *testing.T) {
 	agent, painter, workspace := newShapePainter(t, 48, 32, geminiShapes)
-	photo := writeReference(t, workspace, "canvas/photo.png", pngOfSize(t, 40, 25))
+	// The exact call pxtone's run made on 5de1df1ca through load_capability's
+	// media group, with the canvas's JPEG reference.
+	photo := writeReference(t, workspace, "picture-asks/b1/ref-1.jpg", jpegOfSize(t, 40, 25))
 
 	result, isError := runTool(t, agent, "generate_image",
-		`{"prompt":"put a croissant on the plate","n":1,"size":"8:5","reference_paths":["`+photo+`"]}`)
+		`{"n":1,"prompt":"put a croissant on the plate","reference_paths":["`+photo+`"],"size":"8:5"}`)
 	if isError {
 		t.Fatalf("the canvas's 8:5 edit was refused: %s", result)
 	}
