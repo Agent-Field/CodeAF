@@ -105,6 +105,8 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	refresh := false
 	var stateRetry time.Time
 	var stateBackoff time.Duration
+	var stateGeneration uint64
+	stateWanted := true
 	sharing := newHomeSharing(b.relayHome())
 	defer sharing.release()
 	var stopStorage, stopLive func()
@@ -120,7 +122,7 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	say := func() {
 		line := ""
 		switch {
-		case source == nil || !source.OthersPaired():
+		case source == nil || !source.OthersPaired() || !source.StorageAllowed():
 		case stateFailing:
 			line = "Saved keys, memory and preferences could not be shared yet; codeaf will try again."
 		case failing:
@@ -133,13 +135,16 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 			b.sharingStatus(line)
 		}
 	}
-	// shareState shares keys, memory and preferences when pairing left them
-	// pending and no retry is waiting. It runs before each round's chat pass
+	// Pairing and later edits both owe a state pass. The local generation and
+	// explicit wakes keep unchanged homes quiet instead of polling the vault.
+	// It runs before each round's chat pass
 	// and between its chats: a pass lasts as long as its uploads keep moving,
 	// which for a large backlog is hours, and a computer just paired needs the
 	// keys first. Home state has its own lock.
 	shareState := func() {
-		if ctx.Err() != nil || !pair.SharingPending(source.Home, source.Identity.ID()) || now().Before(stateRetry) {
+		generation := config.SettingsGeneration()
+		pending := pair.SharingPending(source.Home, source.Identity.ID())
+		if ctx.Err() != nil || !source.StorageAllowed() || now().Before(stateRetry) || !pending && (!source.OthersPaired() || !stateWanted && generation == stateGeneration) {
 			return
 		}
 		if err := source.SyncState(ctx); err != nil {
@@ -152,6 +157,8 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 			stateFailing = true
 		} else {
 			stateFailing = false
+			stateGeneration, stateWanted = generation, false
+			stateRetry, stateBackoff = time.Time{}, 0
 		}
 	}
 	count := func() {
@@ -178,6 +185,7 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 				if source == nil || source.Identity.ID() != next.Identity.ID() || source.Device.ID() != next.Device.ID() || source.Relay != next.Relay {
 					source, offered = next, false
 					stateRetry, stateBackoff = time.Time{}, 0
+					stateGeneration, stateWanted = 0, true
 				}
 				if refresh {
 					refresh, offered = false, false
@@ -218,6 +226,9 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 				}
 				count()
 				say()
+				// Approval can change without a chat, count or progress line
+				// changing. Keep an open Devices view current in that case too.
+				_, _ = b.SyncStatus()
 			}
 		}
 		if settled != nil {
@@ -235,6 +246,7 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 			// Pairing may follow chats made after the startup scan without
 			// changing the binding. Keep its publication progress when scanning.
 			refresh = true
+			stateWanted = true
 		}
 	}
 }

@@ -94,3 +94,30 @@ func TestIdleRelease_C2_BackgroundTaskRetainsOwnership(t *testing.T) {
 		t.Fatal("running task released ownership")
 	}
 }
+
+func TestQAHandoffWaitsForTheJobExitNoteDelivery(t *testing.T) {
+	watch := &cellstore.SealWatch{}
+	watch.Waiting()
+	a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) { cfg.Seals = watch })
+	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	old := a.jobs.notify
+	a.jobs.notify = func(text string) { close(entered); <-release; old(text) }
+	defer func() { close(release); settlementWait(t, done, "exit-note delivery") }()
+	job := settlementJob(t, a.jobs)
+	job.owed = true
+	go func() { a.jobs.settleExit(job, 0); close(done) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exit note did not reach delivery")
+	}
+	select {
+	case <-job.done:
+	default:
+		t.Fatal("job is still running")
+	}
+	if a.idleForHandoff() {
+		t.Fatal("handoff became ready between process exit and its promised note")
+	}
+
+}

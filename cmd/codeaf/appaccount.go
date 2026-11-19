@@ -805,6 +805,7 @@ func (b *appBackend) RemoveKey(provider string) error {
 // ([openAppEngineProcess]) and reads this key then; an open one is updated
 // here, whoever opened it.
 func (b *appBackend) keysMoved(provider string) {
+	b.chats.wakePublication()
 	if provider == modelsource.DefaultID {
 		b.refreshKeyHealth()
 	}

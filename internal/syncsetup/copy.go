@@ -184,7 +184,7 @@ func (p *pendingPublication) tried() int {
 func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say func(cell.Cell, string)) error {
 	s.publicationMu.Lock()
 	defer s.publicationMu.Unlock()
-	if Quiet(s.Home) {
+	if Quiet(s.Home) || !s.StorageAllowed() {
 		return nil
 	}
 	// NOTHING IS OFFERED TO A STORE THAT IS CLOSED. This pass publishes through
@@ -233,8 +233,20 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		began := time.Now()
 		offered = true
 		attempt, err := s.publishLocalChat(ctx, pending.root, id, pending.sent)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if errors.Is(err, errNoChatHead) {
 			continue
+		}
+		// A foreground save can win while the background copy is failing, or
+		// Create can commit before its response is lost. Check what the peer
+		// can actually read before reporting that this chat is unshared.
+		if err != nil && s.shareVisible(ctx, id) {
+			err = nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 		if err == nil && attempt.listed && pending.logged == "" {
 			// Shared before this launch: nothing happened worth a line.
@@ -265,11 +277,18 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		failures = errors.Join(failures, err)
 		// Said only to a person with another computer to read the chat on
 		// (others.go): with none paired there is nobody it was not shared with.
-		if say != nil && s.OthersPaired() {
+		if say != nil && s.OthersPaired() && s.StorageAllowed() {
 			say(cell.Cell{ID: id, Root: pending.root}, "This chat could not be shared yet. It is still saved here; codeaf will try again.")
 		}
 	}
 	return failures
+}
+
+func (s *Sync) shareVisible(ctx context.Context, id string) bool {
+	ctx, cancel := context.WithTimeout(ctx, DeviceRequestWithin)
+	defer cancel()
+	view, err := s.Dir.Cell(ctx, id)
+	return err == nil && view.Cell.Head != "" && !view.Cell.Archived
 }
 
 // betweenChats runs BetweenChats with the pass's lock released, and takes it

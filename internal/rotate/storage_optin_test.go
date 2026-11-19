@@ -214,7 +214,7 @@ func TestStorageOptInOffRotationPlanHasNoUploadCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Chats != 2 || plan.UpBytes != 0 {
+	if plan.Chats != 2 || plan.UpBytes != 0 || !plan.StorageOff {
 		t.Fatalf("off plan: %+v", plan)
 	}
 }

@@ -91,33 +91,56 @@ func (l *boxLink) recv(waiting stage) ([]byte, error) {
 }
 
 // ackWithin is how long a device that has sent its last message waits to hear
-// it was read. The wait ends at once when the word comes; a joining device that
-// died costs the other one this long, once.
+// it was kept. The wait ends at once when the word comes; a joining device that
+// refused, or died, costs the other one this long, once.
 const ackWithin = 10 * time.Second
 
-// acknowledge posts the joining device's word that it has read the answer. It
-// is best effort: if it is lost the other device deletes after ackWithin.
-func (l *boxLink) acknowledge() { _, _ = l.box.Post(l.ctx, l.plate, l.mine, l.key, []byte{1}) }
+// acknowledge posts the joining device's word that it keeps the answer. The
+// word is said after the exchange is over, once this device has decided and
+// before it writes anything, so it has a context of its own: the exchange's
+// may have ended, and the word must still go out. It answers what the mailbox
+// said, so a mailbox the other device already deleted stops the joining one.
+//
+// THE WORD IS ONE PLAIN BYTE, AND ONLY ITS PRESENCE MEANS ANYTHING. A device
+// that will not keep the answer sends nothing, so a relay has no refusal to turn
+// into a yes; and every build has sent this byte, so an older device that
+// shows a code still hears a newer one that joins.
+func (l *boxLink) acknowledge() error {
+	ctx, stop := context.WithTimeout(context.WithoutCancel(l.ctx), ackWithin)
+	defer stop()
+	_, err := l.box.Post(ctx, l.plate, l.mine, l.key, []byte{1})
+	return err
+}
 
-// settle waits, briefly, for that word. Without it the answer may never have
-// arrived, and the device that sent it must not say the pairing finished.
+// settle waits, briefly, for that word. Without it the answer may not have been
+// kept, or may never have arrived, and the device that sent it must not say the
+// pairing finished. Short of a person stopping it, every way the wait can end
+// without the word is [ErrNotConfirmed]: the answer had already gone out, so a
+// sentence that said nothing was shared could be false.
 func (l *boxLink) settle() error {
 	quick := *l
 	var stop context.CancelFunc
 	quick.ctx, stop = context.WithTimeout(l.ctx, ackWithin)
 	defer stop()
 	_, err := quick.recv(awaitAck)
-	return err
+	if err == nil || errors.Is(err, context.Canceled) {
+		return err
+	}
+	return ErrNotConfirmed
 }
 
 // explain gives a mailbox refusal the sentence a person reads. vanished is what
 // this device says when the mailbox is gone; every other fact reads the same on
-// both devices.
+// both devices. A vanished mailbox is never a success, so a stage that names no
+// sentence for it says the pairing did not finish.
 func (l *boxLink) explain(err, vanished error) error {
 	switch {
 	case err == nil:
 		return nil
 	case errors.Is(err, pairbox.ErrGone):
+		if vanished == nil {
+			return ErrDidNotFinish
+		}
 		return vanished
 	}
 	return phraseBox(err, "")

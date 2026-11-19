@@ -196,6 +196,40 @@ func TestAdoptRefusesOverAnUnmigratedVaultKey(t *testing.T) {
 	}
 }
 
+// AdoptRefuses answers what Adopt without replace would, and writes nothing to
+// answer it: not even the identity an unmigrated vault key becomes.
+func TestAdoptRefusesAnswersWithoutWriting(t *testing.T) {
+	legacy := t.TempDir()
+	k := sample().cell
+	if err := os.WriteFile(filepath.Join(legacy, "vault.key"), []byte(hex.EncodeToString(k[:])), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mine := t.TempDir()
+	held, err := Ensure(mine)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		home string
+		next Identity
+		want bool
+	}{
+		{"an empty home", t.TempDir(), sample(), false},
+		{"an unmigrated vault key", legacy, sample(), true},
+		{"the same identity", mine, held, false},
+		{"another identity", mine, sample(), true},
+	} {
+		refuses, err := AdoptRefuses(c.home, c.next)
+		if err != nil || refuses != c.want {
+			t.Errorf("%s: refuses %v, %v, want %v", c.name, refuses, err, c.want)
+		}
+	}
+	if _, err := Load(legacy); !errors.Is(err, ErrNone) {
+		t.Fatalf("asking made the vault key an identity (%v)", err)
+	}
+}
+
 func TestPristine(t *testing.T) {
 	home := t.TempDir()
 	if ok, err := Pristine(home); !ok || err != nil {

@@ -73,6 +73,9 @@ func (a *Agent) idleForHandoff() bool {
 		}
 	}
 	if jobs != nil {
+		if jobs.delivering.Load() != 0 {
+			return false
+		}
 		if !jobs.mu.TryLock() {
 			return false
 		}

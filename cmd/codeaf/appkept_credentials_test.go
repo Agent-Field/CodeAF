@@ -10,6 +10,28 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 )
 
+func TestQAReceivedProviderRefreshesAndReachesTheNativeKeeper(t *testing.T) {
+	appDayProfile(t)
+	credentials := config.NewAppCredentials()
+	restore := config.UseAppCredentials(credentials)
+	defer restore()
+	rec := newAppRecorder()
+	b := newAppBackend(rec, appOpenInProcess)
+	defer b.Close()
+	credentials.Keep("aiand", "FAKE-received-provider-key")
+	taken, err := b.CredentialsTake(context.Background())
+	if err != nil || len(taken.Changes) != 1 || taken.Changes[0].Provider != "aiand" || taken.Changes[0].Key != "FAKE-received-provider-key" {
+		t.Fatal("the received provider key was not handed to the native keeper once")
+	}
+	rec.waitFor(t, 2*time.Second, func(event string, data any) bool {
+		if event != appwire.EventProviderChanged {
+			return false
+		}
+		changed := data.(appwire.ProviderChanged)
+		return changed.Provider.ID == "aiand" && changed.Provider.SignedIn && changed.Key == ""
+	})
+}
+
 // AN APP-RUN ENGINE KEEPS ITS CONNECTIONS ACROSS LAUNCHES. A credential a
 // door gave this launch (here an AgentField key) is announced by an empty
 // credentials.changed — THE KEY NEVER RIDES AN EVENT — and taken once with

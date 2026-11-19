@@ -22,9 +22,18 @@ type Sync struct {
 	Mode       string          `json:"mode" enum:"quiet,on,off,unavailable"`
 	Reason     string          `json:"reason,omitempty"`
 	Disclosure *SyncDisclosure `json:"disclosure,omitempty"`
+	Storage    *SyncStorage    `json:"storage,omitempty"`
 	// Unshared counts this computer's chats the other computers cannot list
 	// yet. Absent while sync is not on here, or before the first count.
 	Unshared *SyncUnshared `json:"unshared,omitempty"`
+}
+
+// SyncStorage is a local permission reading, absent before pairing or with sync
+// off. Only hosted storage-off accounts have a public request URL.
+type SyncStorage struct {
+	State       string `json:"state" enum:"on,off"`
+	RequestCode string `json:"request_code,omitempty"`
+	RequestURL  string `json:"request_url,omitempty"`
 }
 
 // SyncUnshared is how many of this computer's chats have no directory record,

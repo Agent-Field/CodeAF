@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -13,8 +14,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 const appWindowConflict = "this conversation is open in another codeaf window that the app cannot reach; close it there, or open it in that window"
@@ -47,6 +50,9 @@ func (b *appBackend) useSyncDrives(book *driveBook) {
 	b.locked(func() { b.drives = book })
 	book.idleCheck = b.idleForRelay
 	book.notices = &appDriveNotices{
+		savedLocally: func(line string) {
+			fmt.Fprintln(os.Stderr, line)
+		},
 		firstRun: b.syncStarted,
 		say:      func(c cell.Cell, line string) { b.syncFact(c, appSyncFact{line: line}) },
 		viewer: func(c cell.Cell, viewer syncsetup.Viewer) {
@@ -127,7 +133,20 @@ func (b *appBackend) applySyncFact(a *appAgent, fact appSyncFact) {
 			kind = appwire.NoticeMoved
 		}
 	})
-	b.sayLocalNotice(a, kind, fact.line, fact.line)
+	key := fact.line
+	outage := syncwords.IsOutage(fact.line)
+	if outage || fact.line == syncwords.Recovered {
+		// flushSync holds syncGate, so notice IDs follow the episode order.
+		if a.syncOutage == outage {
+			return
+		}
+		a.syncOutage = outage
+		if outage {
+			a.syncOutageSeq++
+		}
+		key = fmt.Sprintf("%d:%s", a.syncOutageSeq, fact.line)
+	}
+	b.sayLocalNotice(a, kind, key, fact.line)
 }
 
 func appLocalNoticeID(agent, kind, key string) string {
@@ -201,6 +220,16 @@ func (b *appBackend) syncStatusLocked() appwire.Sync {
 		state.Mode = appwire.SyncOn
 		state.Reason = b.sync.sharing
 		state.Unshared = b.sync.unshared
+		if id, err := identity.Load(b.relayHome()); err == nil {
+			storage := &appwire.SyncStorage{State: syncsetup.StorageState(b.relayHome(), state.Relay.URL, id.ID())}
+			if storage.State == "off" {
+				storage.RequestCode = id.ID()
+				if syncsetup.IsHostedRelay(state.Relay.URL) {
+					storage.RequestURL = syncsetup.StorageRequestLink(id.ID())
+				}
+			}
+			state.Storage = storage
+		}
 	}
 	if b.sync.owed != nil {
 		if line, owed := b.sync.owed.PeekFirstRun(); owed {
@@ -249,7 +278,7 @@ func (b *appBackend) syncChangedLocked() appwire.Sync {
 	state := b.syncStatusLocked()
 	old := b.sync.last
 	sameDisclosure := old.Disclosure == nil && state.Disclosure == nil || old.Disclosure != nil && state.Disclosure != nil && *old.Disclosure == *state.Disclosure
-	if old.Mode != state.Mode || old.Reason != state.Reason || !sameDisclosure || !reflect.DeepEqual(old.Relay, state.Relay) || !reflect.DeepEqual(old.Unshared, state.Unshared) {
+	if old.Mode != state.Mode || old.Reason != state.Reason || !sameDisclosure || !reflect.DeepEqual(old.Relay, state.Relay) || !reflect.DeepEqual(old.Unshared, state.Unshared) || !reflect.DeepEqual(old.Storage, state.Storage) {
 		b.sync.last = state
 		b.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: state})
 	}

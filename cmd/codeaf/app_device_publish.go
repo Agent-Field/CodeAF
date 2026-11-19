@@ -32,6 +32,7 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 	var up bool
 	var connected bool
 	var version uint64
+	var vault string
 	defer func() {
 		if retry != nil {
 			retry.Stop()
@@ -53,6 +54,7 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 		if source != nil && (source.Relay != s.Relay || source.Identity.ID() != s.Identity.ID() || source.Device.ID() != s.Device.ID()) && feed != nil {
 			feed.Close()
 			feed, changes, up, connected, version = nil, nil, false, false, 0
+			vault = ""
 		}
 		source = s
 		// Bind the observer before this new pairing's first request returns.
@@ -77,7 +79,13 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 		defer d.op.Unlock()
 		one, cancel := context.WithTimeout(ctx, syncsetup.DeviceRequestWithin)
 		defer cancel()
-		_, _ = source.Dir.List(one)
+		listing, err := source.Dir.List(one)
+		if err == nil && listing.Identity.Vault != vault {
+			vault = listing.Identity.Vault
+			if d.stateChanged != nil {
+				d.stateChanged()
+			}
+		}
 	}
 	for {
 		err := attempt()
@@ -113,6 +121,7 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 				connected = connected || up
 				version = state.Version
 				if reconnected {
+					refresh()
 					break waiting
 				}
 				if state.Up && changed {

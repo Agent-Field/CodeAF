@@ -87,12 +87,12 @@ const (
 type link interface {
 	send(msg []byte) error
 	recv(waiting stage) ([]byte, error)
-	// acknowledge tells the other device the last message was read, and settle
-	// waits for that word after sending one, answering an error when it never
-	// came. A carrier that keeps messages in a place that is deleted when the
-	// exchange ends needs them, or the deletion can land under the read that was
-	// about to happen; a stream does not.
-	acknowledge()
+	// acknowledge tells the other device its last message was read and kept,
+	// and settle waits for that word after sending one, answering an error when
+	// it never came. A carrier that keeps messages in a place that is deleted
+	// when the exchange ends needs them, or the deletion can land under the read
+	// that was about to happen; a stream does not.
+	acknowledge() error
 	settle() error
 }
 
@@ -113,8 +113,8 @@ func (l streamLink) recv(waiting stage) ([]byte, error) {
 	return msg, err
 }
 
-func (streamLink) acknowledge()  {}
-func (streamLink) settle() error { return nil }
+func (streamLink) acknowledge() error { return nil }
+func (streamLink) settle() error      { return nil }
 
 // introduction is the joining device's half, after it has sent message 3.
 type introduction struct {
@@ -156,7 +156,9 @@ func begin(ln link, s scheme, secret string, offer []byte) (*introduction, error
 	return &introduction{hs: hs, ln: ln, Words: joinWords(hs.ChannelBinding())}, nil
 }
 
-// verdict reads message 4 and answers what the other device said inside it.
+// verdict reads message 4 and answers what the other device said inside it. It
+// says nothing back: what this device will do with the answer is not decided
+// yet ([introduction.took]).
 func (i *introduction) verdict() ([]byte, error) {
 	reply, err := i.ln.recv(awaitVerdict)
 	if err != nil {
@@ -166,12 +168,16 @@ func (i *introduction) verdict() ([]byte, error) {
 	if err != nil {
 		return nil, ErrWrongCode
 	}
-	// THE WORD THAT THE ANSWER WAS READ IS SENT ONLY ONCE IT HAS OPENED. A reply
-	// that a relay changed on the way was not read, and telling the other device
-	// it was would have that device report a pairing that never happened here.
-	i.ln.acknowledge()
 	return said, nil
 }
+
+// took tells the other device that its answer was read and is being kept.
+//
+// THE WORD IS SENT ONLY ONCE THIS DEVICE HAS DECIDED TO KEEP THE ANSWER, and
+// before it writes any of it. A reply that a relay changed on the way was never
+// read, and a grant this device refuses is not kept; telling the other device
+// either was would have it report a pairing that never happened here.
+func (i *introduction) took() error { return i.ln.acknowledge() }
 
 // offered is the other half, after it has read message 3 and opened it.
 type offered struct {

@@ -31,8 +31,9 @@ type liveDrive struct {
 	say     func(string)
 	notices *driveNotices
 	// transcript identifies the retained turns if this writer's final publish fails.
-	transcript string
-	localGate  *localToolGate
+	transcript   string
+	savedLocally func(string)
+	localGate    *localToolGate
 
 	// published is visible before idle release is enabled. Settings must not
 	// wait for installation or catch-up disk work under mu.
@@ -370,23 +371,42 @@ func (l *liveDrive) Working(on bool) {
 	}
 }
 
-// TurnEnded waits off the turn goroutine so the final capture can include the
-// closing bookkeeping as before. A newer turn invalidates this notification:
-// an older capture must never clear the newer turn's working flag.
+// TurnEnded keeps the shared working flag until all work the reply left behind
+// is settled and captured. Background jobs and their owed wake-up replies are
+// part of the same handoff boundary as the foreground turn.
 func (l *liveDrive) TurnEnded(c cell.Cell, report func(error)) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	turn := l.turn
+	turn, _, _ := l.turnState()
 	guard.Go("chat sync turn end", func() {
+		// This is a local readiness check, never a relay poll. A newer turn
+		// owns its own waiter; closing the drive retires every waiter.
+		timer := time.NewTicker(100 * time.Millisecond)
+		defer timer.Stop()
+		for {
+			current, closed, checksIdle := l.turnState()
+			if closed || current != turn {
+				return
+			}
+			if !checksIdle || l.idleReady() {
+				break
+			}
+			<-timer.C
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
 		defer cancel()
 		if err := cellstore.WaitCapture(ctx, c); err != nil {
 			report(err)
+			return
 		}
 		if l.finishTurn(turn) {
 			l.Idle()
 		}
 	})
+}
+
+func (l *liveDrive) turnState() (turn uint64, closed, checksIdle bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.turn, l.closed, l.idleCheck != nil
 }
 
 // finishTurn changes the flag under one lock so a newer start cannot race

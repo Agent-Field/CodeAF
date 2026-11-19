@@ -35,20 +35,21 @@ const appSyncOff = "Sync is off on this computer."
 // appDevices owns the paired engine's device publication and shares its
 // directory follower with chat inventory. Opening Settings adds no follower.
 type appDevices struct {
-	home     string
-	watch    *syncsetup.DeviceObserver
-	op       sync.Mutex
-	done     chan struct{}
-	emitMu   sync.Mutex
-	lastWire string
-	cancel   context.CancelFunc
-	wake     chan struct{}
-	owned    chan struct{}
+	home         string
+	watch        *syncsetup.DeviceObserver
+	op           sync.Mutex
+	done         chan struct{}
+	emitMu       sync.Mutex
+	lastWire     string
+	cancel       context.CancelFunc
+	wake         chan struct{}
+	owned        chan struct{}
+	stateChanged func()
 }
 
 func (b *appBackend) listenDevices() *appDevices {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &appDevices{home: home.Dir(), done: make(chan struct{}), cancel: cancel, wake: make(chan struct{}, 1), owned: make(chan struct{})}
+	d := &appDevices{home: home.Dir(), done: make(chan struct{}), cancel: cancel, wake: make(chan struct{}, 1), owned: make(chan struct{}), stateChanged: b.chats.wakePublication}
 	d.watch = syncsetup.ObserveDevices(d.home)
 	publishChange := func() {
 		d.op.Lock()

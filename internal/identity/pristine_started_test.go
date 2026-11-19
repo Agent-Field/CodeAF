@@ -112,6 +112,60 @@ func TestPristineAfterOnlyStarting(t *testing.T) {
 	}
 }
 
+func TestQAStartupBookkeepingDoesNotPreventPairing(t *testing.T) {
+	for _, name := range []string{"teams.db.lock", "factory-rooms-swept", "v3/usage.jsonl.remote-lock", "app", "services", ".codeaf", "v3/factory"} {
+		t.Run(name, func(t *testing.T) {
+			home := startedHome(t, func(home string) {
+				path := filepath.Join(home, name)
+				if strings.HasSuffix(name, "lock") || name == "factory-rooms-swept" {
+					put(t, path, "startup bookkeeping")
+				} else if err := os.MkdirAll(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			})
+			if ok, err := Pristine(home); err != nil || !ok {
+				t.Fatalf("unused startup entry %s prevented pairing: %v", name, err)
+			}
+		})
+	}
+}
+
+func TestQAStartupFoldersStillProtectLocalWork(t *testing.T) {
+	for _, name := range []string{"app/state.json", "services/service.json", ".codeaf/settings.json", "v3/factory/work/job.txt", "crew-credentials.json"} {
+		t.Run(name, func(t *testing.T) {
+			home := startedHome(t, func(home string) { put(t, filepath.Join(home, name), "person's work or credential") })
+			if ok, _ := Pristine(home); ok {
+				t.Fatalf("pairing would replace local work in %s", name)
+			}
+		})
+	}
+}
+
+func TestQACredentialHistoryRequiresOnlyKnownDigests(t *testing.T) {
+	for _, body := range []string{
+		`{}`,
+		`{"aiand":{"print":"0123456789abcdef"}}`,
+		`{"aiand":{"print":"0123456789abcdef","since":"2026-11-19T00:00:00Z"}}`,
+	} {
+		home := startedHome(t, func(home string) { put(t, filepath.Join(home, "crew-credentials.json"), body) })
+		if ok, err := Pristine(home); err != nil || !ok {
+			t.Fatalf("known digest bookkeeping prevented pairing: %v", err)
+		}
+	}
+	for _, body := range []string{
+		`{"aiand":{"key":"FAKE-local-key"}}`,
+		`{"aiand":{"print":"FAKE-local-key"}}`,
+		`{"aiand":{"print":"FAKE-local-key","print":"0123456789abcdef"}}`,
+		`{"aiand":{"print":"0123456789abcdef","unknown":"keep this work"}}`,
+		`null`, `{"aiand":null}`, `person's work or credential`,
+	} {
+		home := startedHome(t, func(home string) { put(t, filepath.Join(home, "crew-credentials.json"), body) })
+		if ok, _ := Pristine(home); ok {
+			t.Fatal("credential history admitted unknown or credential-bearing content")
+		}
+	}
+}
+
 // Anything the person made keeps the home from being pristine, however little
 // else changed. When in doubt the answer stays no.
 func TestPristineRefusesEveryKindOfUse(t *testing.T) {
@@ -144,5 +198,19 @@ func TestPristineRefusesEveryKindOfUse(t *testing.T) {
 				t.Fatalf("a home holding %s is used", name)
 			}
 		})
+	}
+}
+
+func TestQAStartupServiceStateProtectsUnknownAndRealWork(t *testing.T) {
+	for _, body := range []string{
+		`{"version":1,"seq":1,"services":null}`,
+		`{"version":1,"seq":0,"services":null,"unknown":true}`,
+		`{"version":1,"seq":0,"seq":0,"services":null}`,
+		`{"version":1,"seq":0,"services":null,"consent":{"future-work":{}}}`,
+	} {
+		home := startedHome(t, func(home string) { put(t, filepath.Join(home, "services", "services.json"), body) })
+		if ok, _ := Joinable(home); ok {
+			t.Fatalf("pairing admitted used or unknown service state: %s", body)
+		}
 	}
 }

@@ -96,6 +96,7 @@ func TestEverySentenceOfPairingChatsIsOnItsOwnPage(t *testing.T) {
 		ErrStopped.Error(),
 		ErrSomeoneElse.Error(),
 		ErrDidNotFinish.Error(),
+		NotConfirmedBy("laptop").Error(),
 		ErrOffering.Error(),
 		ErrBadGrant.Error(),
 		ErrSyncOff.Error(),

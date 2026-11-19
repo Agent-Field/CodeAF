@@ -2320,10 +2320,23 @@ unavailable. `pair.start` starts one operation; a concurrent start is `busy`.
 Questions carry engine text and explicit options; copy their ids to
 `pair.answer`. `pair.cancel` waits for cleanup. `pair.get` without an id returns
 this process's current or last finished operation. Every snapshot has a lines
-array, including when empty. Final states emit exactly once. Joining with local
-chats first asks `replace_own_chats`; joining with live work is `busy`. A join
-that changes this computer's shared keys finishes with `restart:true`: restart
-the engine before sending work. Device and sync snapshots precede done.
+array, including when empty. Final states emit exactly once. Joining with live
+work is `busy`. A join refuses what this computer already holds, and changes
+nothing: chats that already sync with other computers, or chats of its own. It
+refuses before the other computer is asked whenever this computer's directory
+says so, and otherwise after the approval; either way the failure's `error.code`
+is `cannot_join`, because a new code or link would end the same way. The engine
+no longer asks `replace_own_chats` (the kind stays for older engines). The
+computer that showed the code finishes `done` only once the joining computer
+says it kept what it was sent; without that word it fails, with a message that
+names the other computer, including when the person cancels after answering yes. While `offer_code` shows a code, a computer that has
+never paired keeps Sync and Devices in mode `quiet`: they turn `on` only when a
+person answers yes and its identity is sent, and stay `on` after that even if
+the pairing then fails (both are emitted again before that failure). A code that
+is cancelled, runs out, is answered no or is used up by a wrong code leaves them
+`quiet`. A join that changes this computer's shared keys finishes with
+`restart:true`: restart the engine before sending work. Device and sync
+snapshots precede done.
 
 `sync.relay` advertises `Sync.relay`: resolved URL, source (`environment`,
 `paired`, `default`, `none`) and `off`. The source follows CODEAF_SYNC_URL, the

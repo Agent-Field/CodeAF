@@ -831,9 +831,11 @@ type appBackend struct {
 // created or opened. live is nil while no conversation is held for it.
 type appAgent struct {
 	// syncGate keeps startup facts ahead of later live drive notices.
-	syncGate     sync.Mutex
-	localNotices map[string]bool
-	windowMoved  bool
+	syncGate      sync.Mutex
+	syncOutage    bool   // guarded by syncGate
+	syncOutageSeq uint64 // identifies successive outage and recovery notices
+	localNotices  map[string]bool
+	windowMoved   bool
 	// viewOpen preserves the person's open view through idle sweeps. Retiring
 	// it would let its next read immediately take back the released hold.
 	viewOpen bool
@@ -1220,7 +1222,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 		}
 		identity = &copy
 	}
-	return appwire.Agent{ModelIdentity: identity, FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, DID: row.AgentDID, Title: row.Title, Workspace: row.Workspace, Model: row.Model, State: state, UpdatedAt: at}
+	return appwire.Agent{ModelIdentity: identity, FactoryOwned: factoryOwnedConversation(row.Transcript), ID: row.ID, DID: row.AgentDID, Title: row.Title, Workspace: row.Workspace, WorkspaceOrigin: row.Origin, Model: row.Model, State: state, UpdatedAt: at}
 }
 
 // remember files what the disk said about an agent, without touching one this
@@ -3817,6 +3819,10 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 	if err != nil {
 		return nil, false, err
 	}
+	if page, more, used, err := b.remoteEntries(a, before, limit); used {
+		return page, more, appEntriesBusy(err)
+	}
+
 	var transcript string
 	var at time.Time
 	marks := map[int]appTurnMark{}
@@ -4040,7 +4046,7 @@ func appDressedPage(items []session.DisplayEntry, all []appwire.Entry, from []in
 			wanted[entry.Call] = true
 		}
 	}
-	if len(wanted) == 0 {
+	if len(wanted) == 0 || facts == nil {
 		return page, nil
 	}
 	calls := make(map[string]session.DisplayEntry, len(wanted))

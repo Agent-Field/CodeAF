@@ -119,7 +119,7 @@ const (
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	keptTurns      = "kept %s from %s as a separate chat"
-	supersededLine = "%s continued this chat; this window now only shows it"
+	supersededLine = "%s continued this chat. This copy is read-only and may be behind"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
 	setupAsk       = "Set this machine up like %s had it?"

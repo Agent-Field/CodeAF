@@ -53,7 +53,7 @@ const (
 // .cell/tasks, which the seal carries whole with the cell (plandb.TaskDir).
 // Carrying them again from beside the chat would put a second copy on the
 // other machine and a second answer to where a journal is.
-var roots = []string{"logs/jobs", "logs/stubs"}
+var roots = []string{"logs/jobs", "logs/stubs", "processes", "processes.json"}
 
 // formerRoots are folders an earlier seal also carried from beside the chat.
 // Their entries in an old inventory are still ours to clear.
@@ -62,7 +62,7 @@ var formerRoots = []string{"tasks"}
 // OwnsWithheld reports whether a record entry names one of these files, which
 // are the entries this package writes and the seal's other steps leave alone.
 func OwnsWithheld(recordPath string) bool {
-	return slices.ContainsFunc(slices.Concat(formerRoots, roots), func(r string) bool { return strings.HasPrefix(recordPath, r+"/") })
+	return slices.ContainsFunc(slices.Concat(formerRoots, roots), func(r string) bool { return recordPath == r || strings.HasPrefix(recordPath, r+"/") })
 }
 
 // Carry is the mechanism: [Carry.Compose] on the seal side, [Carry.Restore] on

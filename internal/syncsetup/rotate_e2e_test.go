@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,6 +75,10 @@ func TestRotationEndToEnd(t *testing.T) {
 	now, err := identity.Load(h.homeA)
 	if err != nil || now.ID() != res.NewID || now.ID() == oldID.ID() {
 		t.Fatalf("A's identity = %v (%v), new %s, old %s", now.ID(), err, res.NewID, oldID.ID())
+	}
+
+	if _, _, answered := storagePolicy(h.homeA, h.url, now.ID()); !answered {
+		t.Fatal("the self-hosted relay's storage answer was not cached for the successor")
 	}
 
 	// The old identity takes no write on either wire, and says 410.
@@ -214,4 +219,73 @@ func keyOf(home string) (string, error) {
 	}
 	e, err := v.Get("p/OPENROUTER_API_KEY")
 	return e.Value, err
+}
+
+// The successor must get its own storage answer even though no upload goes
+// through the permission gate. Resume after installing the new identity.
+func TestQARotationRebindsStorageOffAfterResume(t *testing.T) {
+	r := newDriveRig(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			switch req.URL.Path {
+			case "/v1/store/stats":
+				_, _ = w.Write([]byte(`{"storage":"off"}`))
+			case "/v1/store/handoff":
+				w.WriteHeader(http.StatusOK)
+			default:
+				next.ServeHTTP(w, req)
+			}
+		})
+	})
+	local, err := url.Parse(r.url)
+	mustNil(t, err)
+	hosted := "https://" + HostedLinkHosts()[0]
+	original := http.DefaultTransport
+	http.DefaultTransport = storageTransport(func(req *http.Request) (*http.Response, error) {
+		if IsHostedRelay(req.URL.String()) {
+			req = req.Clone(req.Context())
+			req.URL.Scheme, req.URL.Host = local.Scheme, local.Host
+		}
+		return original.RoundTrip(req)
+	})
+	t.Cleanup(func() { http.DefaultTransport = original })
+	t.Setenv(URLVar, hosted)
+	old, ok, err := OpenForRotation(r.homeA)
+	mustNil(t, err)
+	if !ok {
+		t.Fatal("rotation fixture cannot open")
+	}
+	mustNil(t, SaveStorage(r.homeA, hosted, old.Identity.ID(), "off"))
+	held := func(string) (cell.Cell, bool) { return cell.Cell{}, false }
+	env := old.Rotation(r.engine, held, nameA, nil)
+	env.Grace = 2 * time.Second
+	pause := errors.New("pause after installing")
+	env.After = func(step string) error {
+		if step == "installed" {
+			return pause
+		}
+		return nil
+	}
+	if _, err := env.Rotate(t.Context()); !errors.Is(err, pause) {
+		t.Fatalf("rotation did not stop at install: %v", err)
+	}
+	if got := ReportedStorage(r.homeA, hosted, old.Identity.ID()); got != "off" {
+		t.Fatal("the unfinished rotation replaced the old binding")
+	}
+	next, ok, err := OpenForRotation(r.homeA)
+	mustNil(t, err)
+	if !ok || next.Identity.ID() == old.Identity.ID() {
+		t.Fatal("the successor was not installed")
+	}
+	env = next.Rotation(r.engine, held, nameA, nil)
+	if err := env.Abandon(t.Context()); !errors.Is(err, rotate.ErrSwitched) {
+		t.Fatalf("abandon after install: %v", err)
+	}
+	_, err = env.Rotate(t.Context())
+	mustNil(t, err)
+	if got := ReportedStorage(r.homeA, hosted, next.Identity.ID()); got != "off" {
+		t.Fatalf("successor cached permission = %q", got)
+	}
+	if err := env.Abandon(t.Context()); !errors.Is(err, rotate.ErrNoRotation) {
+		t.Fatalf("abandon after completed rotation: %v", err)
+	}
 }

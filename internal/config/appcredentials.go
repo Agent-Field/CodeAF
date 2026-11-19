@@ -94,6 +94,29 @@ func (c *AppCredentials) Keep(provider, key string) {
 	c.tell(provider, strings.TrimSpace(key))
 }
 
+// KeepIf applies a shared credential only while the locally held value and its
+// presence still match the capture. A key edited during a network round wins,
+// including an explicit disconnect of a previously absent provider.
+func (c *AppCredentials) KeepIf(provider, expected string, known bool, key string) bool {
+	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
+	trace.Secret(key)
+	redact.Register(key)
+	applied := false
+	c.change(func() {
+		current, present := c.keys[provider]
+		if current != expected || present != known {
+			return
+		}
+		c.keys[provider] = key
+		c.handed[provider]++
+		applied = true
+	})
+	if applied {
+		c.tell(provider, key)
+	}
+	return applied
+}
+
 // Forget removes a credential a door took away and tells the app to remove
 // its kept copy, so the next launch does not bring it back.
 func (c *AppCredentials) Forget(provider string) {

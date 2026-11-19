@@ -870,9 +870,9 @@ You do not have to wait for expiry while a hold is still live: press enter on a 
 machine and choose **Move here** / **Continue here**, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
 
-When another machine does, this window says `<device> continued this chat; this window now only shows it`,
+When another machine does, this window says `<device> continued this chat. This copy is read-only and may be behind`,
 with the name of the machine that took over (or the first digits of its id when it has no name). From then on
-this window only shows the conversation: a tool call the model tries here answers with that same line and does
+this window now only shows it: a tool call the model tries here answers with that same line and does
 not run, so the two machines never both change the chat. Nothing on the other machine is overwritten.
 
 Turns you saved here that had not reached the relay yet are not lost. They are kept as a separate chat

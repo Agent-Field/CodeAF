@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/service"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io"
 	"os"
@@ -61,6 +63,28 @@ func (r rules) of(name string) judge {
 // never is for what a start makes again on demand: keys, caches, locks, logs.
 func never(string) (bool, error) { return false, nil }
 
+func emptyFile(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return true, err
+	}
+	return !info.Mode().IsRegular() || info.Size() != 0, nil
+}
+
+func emptyAppState(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 1024 {
+		return true, err
+	}
+	raw, err := os.ReadFile(path)
+	return !bytes.Equal(bytes.TrimSpace(raw), []byte("{}")), err
+}
+
+func serviceStartup(path string) (bool, error) {
+	known, err := service.IsStartupStore(path)
+	return !known, err
+}
+
 // catalogCache delegates cache naming to its owner instead of treating every
 // model-catalog-prefixed file as disposable startup state.
 func catalogCache(path string) (bool, error) {
@@ -74,6 +98,48 @@ func pickerCache(path string) (bool, error) {
 
 // unknown is the judge of a name nobody declared, and it is always use.
 func unknown(string) (bool, error) { return true, nil }
+
+// credentialDigestHistory accepts only the canonical metadata written by
+// config.writeCrewCredentials: provider slugs, sixteen hex digits of a hash,
+// and an optional change time. Unknown content, including key fields and
+// duplicate JSON fields, stays protected as local work.
+func credentialDigestHistory(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return true, err
+	}
+	var history map[string]struct {
+		Print string    `json:"print"`
+		Since time.Time `json:"since,omitzero"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&history) != nil || history == nil || len(history) > 64 || decoder.Decode(new(json.RawMessage)) != io.EOF {
+		return true, nil
+	}
+	for provider, seen := range history {
+		if provider == "" || len(provider) > 64 || len(seen.Print) != 16 {
+			return true, nil
+		}
+		for _, char := range provider {
+			if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '-') {
+				return true, nil
+			}
+		}
+		if _, err := hex.DecodeString(seen.Print); err != nil {
+			return true, nil
+		}
+	}
+	canonical, err := json.Marshal(history)
+	if err != nil {
+		return true, err
+	}
+	var compact bytes.Buffer
+	if json.Compact(&compact, raw) != nil {
+		return true, nil
+	}
+	return !bytes.Equal(canonical, compact.Bytes()), nil
+}
 
 // startupInventory admits the platform and locations recorded before any call.
 // Observed tools, notes and all other fields still count as work.

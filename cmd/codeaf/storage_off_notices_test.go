@@ -76,9 +76,18 @@ func TestStorageNoticeReachesEngineWindow(t *testing.T) {
 			}
 			var take func() string
 			if mode == "no-host" {
-				defer agent.Close()
 				if got := storageOffLocalNoticeCount(t, agent, cfg); got != 1 {
+					_ = agent.Close()
 					t.Fatalf("local window received notice %d times", got)
+				}
+				if err := agent.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := agent.FinishSaving(); err != nil {
+					t.Fatal(err)
+				}
+				if lines := agent.TakeSavingNotices(); len(lines) != 1 || lines[0] != quitStorageOffWord {
+					t.Fatalf("the terminal's storage-off quit receipt = %q", lines)
 				}
 				return
 			} else {

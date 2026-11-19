@@ -365,3 +365,28 @@ func TestOpenWaveStagesSmallInstructionFilesAndLeavesLargeOnesBehind(t *testing.
 		})
 	}
 }
+
+// Opening preserves the saved history boundary without pulling every old job.
+func TestOpenStagesTheProcessHeadWithoutFetchingItsHistory(t *testing.T) {
+	w := newOpenWorld(t)
+	meta := w.file([][]byte{[]byte(`{"id":"chat"}`)}, true, func(int) bool { return true })
+	body := []byte(`{"epoch":"incoming","highest":99}`)
+	head := w.file([][]byte{body}, false, nil)
+	jobBody := []byte(`{"id":99,"command":"old job"}`)
+	job := w.file([][]byte{jobBody}, false, nil)
+	processes := w.meta(3, wDir{Entries: []wEntry{fileEntry("head.json", head), fileEntry("99.json", job)}, Pages: []any{}}, false)
+	w.seal(w.dir(fileEntry("meta.json", meta), dirEntry("processes", processes)))
+	stage, store, _ := w.open(map[string][]byte{
+		".cell/meta.json":           []byte(`{"id":"chat"}`),
+		".cell/processes/head.json": []byte(`{"epoch":"old","highest":0}`),
+	})
+	if got := read(t, stage, ".cell/processes/head.json"); !bytes.Equal(got, body) {
+		t.Fatal("opening did not preserve the incoming process head")
+	}
+	if _, err := os.Stat(filepath.Join(stage, ".cell", "processes", "99.json")); !os.IsNotExist(err) {
+		t.Fatal("opening staged old job records instead of leaving them for file arrival")
+	}
+	if store.asked[chunkRID(w.dedup, furrowChunkID(jobBody))] != 0 {
+		t.Fatal("opening fetched an old job's chunks")
+	}
+}

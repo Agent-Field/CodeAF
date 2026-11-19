@@ -57,6 +57,13 @@ func (b *appBackend) queueCredential(provider, key string) {
 		}
 		k.pending = append(kept, appKeptCredential{change: c, at: now})
 	}()
+	if p, ok := b.appProviderNamed(provider); ok {
+		b.keysMoved(provider)
+		// Native storage takes the key through credentials.take. Provider events
+		// only refresh the already-open account and model views.
+		b.providerChanged(p, "")
+		b.warmProviderModels()
+	}
 	// The announcement carries nothing, so it goes after the lock is let go.
 	guard.Go("app/credentials changed", func() { b.emit.Emit(appwire.EventCredentialsChanged, appwire.Empty{}) })
 }

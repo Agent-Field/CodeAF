@@ -94,6 +94,10 @@ func identityRotate(d identityDoor, args []string) error {
 	}
 	if !rotate.Pending(d.home) {
 		if err := confirmRotation(d, ctx, rot, opt); err != nil {
+			if errors.Is(err, errRotationDeclined) {
+				say(err.Error())
+				return exitStatus(1)
+			}
 			return err
 		}
 	} else {
@@ -108,11 +112,17 @@ func identityRotate(d identityDoor, args []string) error {
 
 func abandonRotation(d identityDoor, ctx context.Context, rot rotation) error {
 	if err := rot.Abandon(ctx); err != nil {
+		if errors.Is(err, rotate.ErrNoRotation) {
+			fmt.Fprintln(d.out, err)
+			return nil
+		}
 		return err
 	}
 	fmt.Fprintln(d.out, "rotation cancelled; nothing changed")
 	return nil
 }
+
+var errRotationDeclined = errors.New("rotation cancelled; nothing changed")
 
 // confirmRotation says what a rotation costs and asks. Nothing has changed yet,
 // so ctrl+c or n here costs nothing.
@@ -128,7 +138,7 @@ func confirmRotation(d identityDoor, ctx context.Context, rot rotation, opt rota
 	fmt.Fprint(d.out, "continue? y / n  ")
 	answer, _ := bufio.NewReader(d.in).ReadString('\n')
 	if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
-		return errors.New("rotation cancelled; nothing changed")
+		return errRotationDeclined
 	}
 	return nil
 }
@@ -141,7 +151,14 @@ func planText(p rotate.Plan) string {
 	if p.Missing > 0 {
 		fmt.Fprintf(&b, ", %d of them not on this computer (%s to fetch first)", p.Missing, rotationMegabytes(p.DownBytes))
 	}
-	fmt.Fprintf(&b, ".\nabout %s goes up to sync; allow about %s.\n", rotationMegabytes(p.UpBytes), minutes(p.Wait))
+	if p.StorageOff {
+		b.WriteString(".\nsync storage is off; your chats stay on this computer.\n")
+		if p.DownBytes > 0 {
+			fmt.Fprintf(&b, "allow about %s to fetch the missing chats.\n", minutes(p.Wait))
+		}
+	} else {
+		fmt.Fprintf(&b, ".\nabout %s goes up to sync; allow about %s.\n", rotationMegabytes(p.UpBytes), minutes(p.Wait))
+	}
 	b.WriteString("your other computers stop syncing until you pair them again.\n")
 	b.WriteString("the old identity stays readable in sync for a while, then sync deletes it.\n")
 	b.WriteString("once it has switched this cannot be undone.\n")

@@ -44,3 +44,15 @@ func TestRelayAppContractShapesAndOldEngines(t *testing.T) {
 		}
 	}
 }
+
+type qaReadingEngine struct{ fakeEngine }
+
+func (*qaReadingEngine) ChatReadsFollow() bool { return true }
+func TestQAReadOnlyChatFollowingIsAnOptionalCapability(t *testing.T) {
+	if slices.Contains(withChatsFeatures(Hello{}, &fakeEngine{}).Features, FeatureChatsRead) {
+		t.Fatal("an old engine advertised remote reading")
+	}
+	if !slices.Contains(withChatsFeatures(Hello{}, &qaReadingEngine{}).Features, FeatureChatsRead) {
+		t.Fatal("the reading engine did not advertise its saved-chat reader")
+	}
+}

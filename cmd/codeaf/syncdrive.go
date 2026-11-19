@@ -41,10 +41,11 @@ type driveBook struct {
 }
 
 type appDriveNotices struct {
-	firstRun func(*syncsetup.Sync)
-	say      func(cell.Cell, string)
-	viewer   func(cell.Cell, syncsetup.Viewer)
-	driving  func(cell.Cell)
+	firstRun     func(*syncsetup.Sync)
+	say          func(cell.Cell, string)
+	viewer       func(cell.Cell, syncsetup.Viewer)
+	driving      func(cell.Cell)
+	savedLocally func(string)
 }
 
 // driveOf is the drive side of c, made on first use. It answers nil, and the
@@ -112,6 +113,7 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 	}
 	if appNotices != nil {
 		d.say = sayNotice
+		d.savedLocally = appNotices.savedLocally
 	}
 	d.transcript = (session.Place{Dir: c.Root}).Transcript()
 	d.localGate = &localToolGate{cell: c, say: sayNotice}
@@ -271,7 +273,7 @@ func (b *driveBook) closeAll() {
 	defer cancel()
 	for _, d := range drives {
 		defer func() { recordFinalSaveNotices(d.TakeSavingNotices()) }()
-		if err := d.Close(ctx); err != nil {
+		if err := d.closeSaved(ctx); err != nil {
 			log.Print("sync: closing a chat: ", err)
 			recordFinalSaveFailure(session.SavingError(d.transcript, err))
 		}
@@ -370,7 +372,7 @@ func (b *driveBook) closeCell(id string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
 	defer cancel()
-	return session.SavingError(d.transcript, d.Close(ctx))
+	return session.SavingError(d.transcript, d.closeSaved(ctx))
 }
 
 // takeCell forgets one drive under the book lock before any closing I/O begins.

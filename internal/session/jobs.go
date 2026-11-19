@@ -61,6 +61,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -593,6 +594,9 @@ func (j *job) signal(sig syscall.Signal) {
 // for a turn: a job started in one turn is still running, and still listable,
 // three turns later, and Close is what ends it.
 type jobRegistry struct {
+	// A process can be done while its checkpoint and exit note are still being delivered.
+	delivering atomic.Int64
+
 	// workStarted wakes the owner after a job becomes visible to StopWork.
 	workStarted func()
 
@@ -1564,6 +1568,8 @@ func (r *jobRegistry) reap(watched *job) {
 // it became known: the job is made final, and unless the death was asked for a
 // note goes to the waking lane or waits silently for the next turn.
 func (r *jobRegistry) settleExit(watched *job, code int) {
+	r.delivering.Add(1)
+	defer r.delivering.Add(-1)
 	// Receipt/news delivery remains live work even after the process has exited.
 	defer func() {
 		if watched.stageOwned {
