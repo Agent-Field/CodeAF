@@ -692,11 +692,28 @@ func InstallRefusal(target, curl string) string {
 	// is the bundled engine — replace a file inside the bundle and break its
 	// signature. The check is on the path and not on CODEAF_NO_UPDATE_CHECK,
 	// which anybody may set and which leaves an explicit update working.
-	if bundle := AppBundle(target); bundle != "" {
-		return "this codeaf is part of " + bundle + " · that app updates it, so update the app, or install a separate codeaf with: " + curl
+	if refusal := bundleRefusal(target, curl); refusal != "" {
+		return refusal
 	}
 	if dir := filepath.Dir(target); dir != "" && !dirWritable(dir) {
 		return "this codeaf is in a folder this account cannot write · reinstall it as that owner, or with: " + curl
+	}
+	return ""
+}
+
+// BundleRefusal is the refusal [InstallRefusal] gives a target inside a macOS
+// application bundle, or "" for any other target. The terminal update and the
+// chat's /update ask it before they turn a source build away, because the engine
+// a desktop app carries is always built from a bare commit: answered the other
+// way round, the bundle's refusal could never be reached from the app, and the
+// person would be told to rebuild with make build instead of updating the app.
+func BundleRefusal(target, curl string) string {
+	return bundleRefusal(canonicalTarget(target), curl)
+}
+
+func bundleRefusal(target, curl string) string {
+	if bundle := AppBundle(target); bundle != "" {
+		return "this codeaf is part of " + bundle + " · that app updates it, so update the app, or install a separate codeaf with: " + curl
 	}
 	return ""
 }

@@ -35,7 +35,8 @@ https://agentfield.ai/get/codeaf | bash`. A codeaf owned by Homebrew, Nix or the
 system package manager, or one in a folder this account cannot write, is never
 replaced in place: the launch names the manager and the curl line instead. So is
 the codeaf inside a Mac application, such as the one the desktop app carries
-(`WorkAF.app/Contents/…`): that app updates it, and `codeaf update` says so.
+(`WorkAF.app/Contents/…`): that app updates it, and `codeaf update` and
+`/update` say so, although that engine is a source build.
 
 ## Does it update itself automatically — automatic updates — auto update on launch — restart on the new version — stop updating itself
 
