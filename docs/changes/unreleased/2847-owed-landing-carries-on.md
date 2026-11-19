@@ -1,6 +1,7 @@
 ---
 kind: fixed
 title: Short replies to landed work carry on instead of going quiet; joined tasks show their own cost
+pr: 2847
 surface: [engine, chat, app]
 invalidates:
   - "Was believed: #2838 covers a handoff turn whose promised follow-on work never happens. Is true: #2838 checks the handoff turn itself, which in qloop run23 (vector-db t1) was honest, because both tasks were still running. The failure was in the turn their report woke. An owed landing wakes a short reply on the cheap tier with a 6-call ceiling (settleCallCeiling) and the answer-from-result page. When that reply hit 6 calls while still reading, it sealed with no reply and no notice: both tasks were done, so markSettleBound had nothing to hand back. The promised brief stayed blank until the person's next message. Now a short reply that reaches its bound queues one owed carry-on note, ends as completed, and the end-of-turn drain starts one ordinary turn. That turn has the conversation's own model and prompt, no settle ceiling and no window, and it keeps every read the short reply made. It shows the carry-on notice 'the report needs more than a short reply · carrying on' and writes a sent-back rule line 'owed-landing-carried-on'. A reply stopped by the person, or one that answers within its bound, is unchanged. The landing-answer page now also says to do work the earlier reply promised for when the work landed."
