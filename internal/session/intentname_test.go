@@ -1220,8 +1220,15 @@ func TestExhaustedIntentBudgetStaysClosedAfterRelaunch(t *testing.T) {
 	defer reopened.Close()
 	submitMessage(t, reopened, Submission{Text: "my sourdough smells like apples"})
 	settleNaming(reopened)
-	if c.asks() != 4 || reopened.Title() != "hi" {
+	// THE OPENING'S BUDGET STAYS CLOSED. A concrete subject after a vague
+	// opening is still a change of subject, and that door (topicname.go) asks
+	// once with the current name in front of it; it is not the opening naming
+	// coming back, which would ask about "hi" again.
+	if c.asks() != 5 || reopened.Title() != "hi" {
 		t.Fatalf("exhaustion lost on replay: calls=%d title=%q", c.asks(), reopened.Title())
+	}
+	if asked := c.ask(4).userWords(); !strings.Contains(asked, "Current name: hi") || strings.Contains(asked, "What the person typed first") {
+		t.Fatalf("the opening naming resumed after relaunch:\n%s", asked)
 	}
 }
 

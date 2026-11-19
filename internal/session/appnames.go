@@ -60,8 +60,14 @@ func (a *Agent) RenameByPerson(title string) error {
 		return errors.New("this conversation has closed")
 	}
 	a.title, a.titleProvisional, a.titleLiteral = title, "", true
+	if a.intentName == nil && a.config.IntentNames {
+		a.intentName = &intentNameState{}
+	}
 	if a.intentName != nil {
 		a.intentName.Pending = false
+		// AND IT IS THE PERSON'S FROM NOW ON: a later change of subject never
+		// replaces it (topicname.go).
+		a.intentName.Person, a.intentName.Engine = true, false
 	}
 	// THE LINE IS WRITTEN UNDER THE LOCK, so a name a model earned in the same
 	// moment cannot follow this one into the file: an answer reaches the journal

@@ -33,6 +33,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"why did my chat's name change", "conversation-names"},
+		{"the chat title still shows the old topic after I switched subject", "conversation-names"},
+		{"will my own conversation name get overwritten", "conversation-names"},
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
 		{"can Claude Code make a canvas", "claude-code-provider"},
 		{"does Claude Code see my codeaf skills", "claude-code-provider"},
