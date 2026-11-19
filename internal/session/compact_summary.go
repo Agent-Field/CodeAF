@@ -443,7 +443,7 @@ var codeafNoteOpenings = []string{
 	truncationContinuationNote,
 	"[carry on] ",
 	checkpointChoiceLead,
-	"[silent] You have made ",
+	silentNoteOpening,
 	"[stuck] You have sent the same ",
 }
 

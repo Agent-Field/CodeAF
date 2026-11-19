@@ -233,15 +233,25 @@ func (writeNotesRule) met(sub submission) bool { return sub.visibleText }
 
 // demand spells its two thresholds out of the constants the loop applies, so the
 // numbers a model reasons from and the numbers the loop enforces cannot drift.
+//
+// IT ASKS FOR THE NOTE AND THE CALL IN ONE REPLY, because that is what [met]
+// lets through, and because "write that note now, as an ordinary visible
+// message" was obeyed to the letter: the note alone, no call, and the turn
+// ended on it (checkpoint.go's [answeredNotesAdvice]).
 func (writeNotesRule) demand() string {
-	return fmt.Sprintf("[held] Nothing was run this step. You were asked at %d tool-using replies "+
+	return fmt.Sprintf(heldDemandOpening+"You were asked at %d tool-using replies "+
 		"with no visible text, and again at %d, to write down what you are doing, and you called tools "+
 		"instead. Your reasoning between steps is not saved — if it isn't in your visible reply, it's gone. "+
-		"Write that note now, as an ordinary visible message: what you have learned so far, what you are "+
-		"checking next, and why. Your next tool call runs as soon as that note is there; until then none of "+
-		"them run.",
+		"Send your next reply with that note as visible text, starting with `"+UserUpdatePrefix+"`, AND the tool call "+
+		"you want to make next: what you have learned so far, what you are checking next, and why. That reply "+
+		"runs; a reply with tool calls and no note does not, and a reply with the note and no tool call ends your turn.",
 		silentThreshold(0), silentThreshold(silentEnforceRung-1))
 }
+
+// heldDemandOpening opens [writeNotesRule.demand], and it is how the end of a
+// turn knows the reply in front of it was answering that demand
+// ([answeredNotesAdvice]).
+const heldDemandOpening = "[held] Nothing was run this step. "
 
 // stopped is what the person reads on a turn that would not comply. It says the
 // two things that are true — the turn stopped, and the reasoning behind whatever

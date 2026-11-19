@@ -1409,7 +1409,32 @@ one only writes its dim line (see *Finishing a task's work stays in this convers
 
 Only a note the model marked as an update counts. An ordinary answer that happens to say
 what it might do next ends the reply as it always did, and the reader described above is
-what decides whether that kind of reply is carried on.
+what decides whether that kind of reply is carried on — with one exception, below.
+
+## A note codeaf asked for is not where a reply stops — it wrote "where I am … next I make the charts" and stopped, the dashboard was never built, it stopped after writing down what it learned
+
+**When the model has worked quietly for a while, codeaf asks it to write down what it has
+learned and what it checks next,** so the reasoning reaches the record. That note is asked
+for in the same reply as its next tool call. Some models send the note alone, with no tool
+call, and a reply with no tool call is the end of a reply — so it used to stop right there,
+on "Where I am: … Next: make two charts", with nothing built.
+
+**A reply that is only the note codeaf just asked for is sent back to do the work it names,**
+whether or not the model marked it as an update. The note stays on screen and one dim line
+follows it:
+
+```
+it wrote down where it was and stopped · asking it to go on
+```
+
+**This is read from where the reply sits, not from its words:** it applies only to the reply
+that comes straight after codeaf's request for a note. If that reply was in fact the finished
+answer, the model says so in one short call that you do not see, and the answer stands as
+written. Any other reply in words ends as before.
+
+**It shares the update's limit: at most twice in one reply,** counting both kinds together.
+A note that ends by asking you something, or that is waiting on work already out, is left
+alone, as an update is.
 
 ## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 

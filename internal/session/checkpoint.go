@@ -808,7 +808,7 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // these, and every surface keeps them.
 func IsCarryOnNotice(text string) bool {
 	switch strings.TrimSpace(text) {
-	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote:
+	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote, checkpointNotesNudgeNote:
 		return true
 	}
 	return false
@@ -919,6 +919,64 @@ const checkpointUpdateNudgeLead = "[carry on] Your last reply began with `" + Us
 // that answers every nudge with another promise, and the turn ends on it
 // rather than spending a request per sentence of it.
 const checkpointUpdateNudgeCap = 2
+
+// checkpointNotesNudgeNote is the line a person reads when a turn is sent back
+// for stopping on the note the harness itself asked for between tool calls
+// ([answeredNotesAdvice]). The note stays on screen; this says the work it
+// described is still coming.
+const checkpointNotesNudgeNote = "it wrote down where it was and stopped · asking it to go on"
+
+// checkpointNotesNudgeLead is that continuation, one fixed sentence matched
+// whole by [isContinuationContext] for the update nudge's reason. IT OFFERS
+// [NoChangeReply] BECAUSE THE SHAPE IS READ AND NOT THE WORDS: a reply written
+// right after a note was asked for may really be the finished answer, and then
+// the cheapest honest move is the token that keeps it, not a second copy of it.
+const checkpointNotesNudgeLead = "[carry on] codeaf asked you for a note between tool calls, and your last reply was " +
+	"that note with no tool call, so the turn would have ended on it and the work it names as next is not done. " +
+	"Continue in this same turn with the next tool call. If that reply was already your complete final answer, " +
+	"reply with exactly " + NoChangeReply + " and nothing else."
+
+// answeredNotesAdvice reads the transcript for the shape
+// [checkpointNotesNudgeLead] answers: the newest message is a reply in words
+// with no tool call, and what it answers is the harness's own request for a
+// note — the silent ladder's `[silent]` note (looped.go's [nudgeNote]) or the
+// write-your-notes rule's `[held]` demand standing in for every tool result of
+// the batch before it (processrule.go).
+//
+// THE WALK STEPS BACK OVER THE HARNESS'S OTHER NOTES, which may land in the
+// same boundary, and stops at the first message that is anything else: a reply
+// after the person's own words, after a real tool result or after a carry-on
+// answers that, not the request for a note. A reply that is only
+// [NoChangeReply] answers a carry-on and is never this shape.
+func answeredNotesAdvice(messages []ai.Message) bool {
+	last := len(messages) - 1
+	if last < 1 || messages[last].Role != "assistant" || len(messages[last].ToolCalls) > 0 {
+		return false
+	}
+	said := strings.TrimSpace(partsText(messages[last]))
+	if said == "" || IsNoChangeReply(said) {
+		return false
+	}
+	for index := last - 1; index >= 0; index-- {
+		message := messages[index]
+		text := strings.TrimSpace(partsText(message))
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(text, silentNoteOpening) {
+				return true
+			}
+			if isVolatileNote(text) {
+				continue
+			}
+			return false
+		case "tool":
+			return strings.HasPrefix(text, heldDemandOpening)
+		default:
+			return false
+		}
+	}
+	return false
+}
 
 // checkpointAskNudgeLead is that continuation, carrying the refusal itself so
 // the model has the fix in front of it rather than in its history.
@@ -1050,7 +1108,8 @@ const checkpointCarryOnLead = "[carry on] codeaf's completion check read a clipp
 // answeredNoteUnchanged reads the transcript for the one shape [NoChangeReply]
 // is an answer to: the newest message is a tool-less reply that is only the
 // token, and the message it answers is the reader's continuation
-// ([checkpointCarryOnLead]). A volatile note that landed between the two is the
+// ([checkpointCarryOnLead]) or the notes nudge ([checkpointNotesNudgeLead]),
+// the two continuations that offer the token. A volatile note that landed between the two is the
 // harness's own context and is walked through; anything else is not.
 func answeredNoteUnchanged(messages []ai.Message) bool {
 	last := len(messages) - 1
@@ -1063,7 +1122,8 @@ func answeredNoteUnchanged(messages []ai.Message) bool {
 		if messages[index].Role == "user" && isVolatileNote(text) {
 			continue
 		}
-		return messages[index].Role == "user" && strings.HasPrefix(text, checkpointCarryOnLead)
+		return messages[index].Role == "user" &&
+			(strings.HasPrefix(text, checkpointCarryOnLead) || text == checkpointNotesNudgeLead)
 	}
 	return false
 }
@@ -3528,6 +3588,38 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 			meter.updateNudges++
 			hub.send(Event{Kind: EventNotice, Text: checkpointUpdateNudgeNote})
 			a.record(textMessage("user", checkpointUpdateNudgeLead))
+			return true, false
+		}
+		// AND A REPLY WRITTEN IN ANSWER TO THE HARNESS'S OWN REQUEST FOR A NOTE
+		// IS THAT NOTE, WHETHER OR NOT IT CARRIES THE MARKER.
+		//
+		// The silent ladder (looped.go) and the rule it arms (processrule.go)
+		// ask a model that has worked quietly for a while to write down what it
+		// has learned and what it checks next. That is a request for a note
+		// BETWEEN tool calls, and a weaker model obeys it to the letter: it
+		// sends the note and nothing else, and the loop, whose only stop is
+		// "no tool call", sealed the turn on the harness's own interruption.
+		// Measured on the connected-canvas qloop, deepseek-v4.1-flash, in nine
+		// of nine stalled turns across five runs: "Where I am: … Next: make two
+		// charts", "Learned: … Next I'm checking whether the logo PNG has a
+		// transparent background" — each the very next reply after a `[silent]`
+		// note or a `[held]` answer, with nothing built.
+		//
+		// IT IS READ OFF THE TRANSCRIPT AND NOT OFF THE WORDS ([answeredNotesAdvice]),
+		// which is this block's law: no guessing at what "next I will" means.
+		// The price of that is a reply that really was the final answer, written
+		// right after a note was asked for, being asked once more — so the
+		// continuation offers [NoChangeReply], which ends the turn on the answer
+		// already given and draws nothing ([answeredNoteUnchanged]). One short
+		// call on a narrow shape, against a turn that otherwise built nothing.
+		//
+		// IT SHARES THE UPDATE'S BUDGET, so the two together send one reply back
+		// at most [checkpointUpdateNudgeCap] times: both are the same stop — an
+		// interim note taken for an answer — spelled two ways.
+		if answeredNotesAdvice(a.snapshot()) && !a.turnEndsWaiting() {
+			meter.updateNudges++
+			hub.send(Event{Kind: EventNotice, Text: checkpointNotesNudgeNote})
+			a.record(textMessage("user", checkpointNotesNudgeLead))
 			return true, false
 		}
 	}

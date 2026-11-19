@@ -570,6 +570,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// answer is that it is the same rule on the same clock, and it lives
 		// beside the model sentence because that is where they will be looking.
 		{"I typed continue into a task and nothing happened", "tasks"},
+		{"it wrote where I am, next I make the charts, and then just stopped", "tasks"},
+		{"it stopped after writing down what it learned and never built the dashboard", "tasks"},
 		{"does typing into a running task reach it straight away", "tasks"},
 		// And the one the code's own comment used to get wrong: thinking on the
 		// screen is something you have read.
