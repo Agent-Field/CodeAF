@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
 )
 
@@ -212,6 +213,24 @@ type liveRig struct {
 	mu   sync.Mutex
 	// dialed is every files-door source a take made: who dialed whom.
 	dialed []liveDialed
+	// chats is where each computer keeps each chat, which is what a real home
+	// answers from its own layout and a rig has to be told.
+	chats map[string]livePlace
+}
+
+// livePlace is where one computer keeps one chat: its cell and the project
+// folder its files are in.
+type livePlace struct {
+	cell      cell.Cell
+	workspace string
+}
+
+// placeChat tells the rig that the chat c lives on the computer with this home,
+// its files in workspace, so that computer's door can find it when it is asked.
+func (r *liveRig) placeChat(home string, c cell.Cell, workspace string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.chats[home+"|"+c.ID] = livePlace{cell: c, workspace: workspace}
 }
 
 type liveDialed struct {
@@ -243,10 +262,17 @@ func newLiveRig(t *testing.T) *liveRig {
 	base.a = openSync(t, base.homeA)
 	base.b = openSync(t, base.homeB)
 	h := twoHomesOver(t, base)
-	rig := &liveRig{twoHomes: h, wire: wire, tap: tap}
+	rig := &liveRig{twoHomes: h, wire: wire, tap: tap, chats: map[string]livePlace{}}
 
 	// The timings that exist so a test does not wait on a real laptop's clocks.
-	oldWithin, oldRoster, oldPoll, oldHook := liveRetryWithin, liveDoorRosterFor, liveDoorLockPoll, liveSourceHook
+	oldWithin, oldRoster, oldPoll, oldHook, oldFinder := liveRetryWithin, liveDoorRosterFor, liveDoorLockPoll, liveSourceHook, liveChatFinder
+	liveChatFinder = func(home, id string) (cell.Cell, string, bool) {
+		rig.mu.Lock()
+		defer rig.mu.Unlock()
+		place, ok := rig.chats[home+"|"+id]
+		return place.cell, place.workspace, ok
+	}
+	rig.placeChat(base.homeA, h.cell, h.work)
 	liveRetryWithin, liveDoorRosterFor, liveDoorLockPoll = 400*time.Millisecond, 20*time.Millisecond, 20*time.Millisecond
 	liveSourceHook = func(from, to string, s *filesdoor.Source) {
 		rig.mu.Lock()
@@ -255,7 +281,7 @@ func newLiveRig(t *testing.T) *liveRig {
 	}
 	t.Cleanup(func() {
 		stopFilesDoors()
-		liveRetryWithin, liveDoorRosterFor, liveDoorLockPoll, liveSourceHook = oldWithin, oldRoster, oldPoll, oldHook
+		liveRetryWithin, liveDoorRosterFor, liveDoorLockPoll, liveSourceHook, liveChatFinder = oldWithin, oldRoster, oldPoll, oldHook, oldFinder
 	})
 
 	for _, one := range []struct {

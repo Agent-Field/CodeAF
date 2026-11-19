@@ -190,7 +190,7 @@ func (c *Continuer) takerWithDir(ctx context.Context, sc *Scope, dir directory.C
 		Branch:   c.branchWithDir(brancher, dir),
 		RootFor:  c.opt.RootFor,
 		InPlace:  func(c cell.Cell) bool { return borrowsProject(c.Root) },
-		After:    []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
+		After:    []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVaultVia(sc)},
 	}
 }
 
@@ -1509,7 +1509,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			filesElapsed = time.Since(started)
 			phaseMu.Unlock()
 
-			for _, hook := range []func(context.Context, cell.Cell) error{restoreChatFiles, rebuildIndexes, c.pullVault} {
+			for _, hook := range []func(context.Context, cell.Cell) error{restoreChatFiles, rebuildIndexes, c.pullVaultVia(sc)} {
 				hookDone := handoff.Trace(c.opt.OnPhase, "hooks")
 				hErr := hook(runCtx, taken.Cell)
 				hookDone()
@@ -2573,18 +2573,26 @@ func rebuildIndexes(_ context.Context, c cell.Cell) error {
 	return err
 }
 
-// pullVault brings this identity's secrets here, and with them the files the
+// pullVaultVia brings this identity's secrets here, and with them the files the
 // chat's seals withheld, which are written back into the folder the tools run in.
-func (c *Continuer) pullVault(ctx context.Context, at cell.Cell) error {
-	opened, err := cell.OpenAt(at.Root, at.ID)
-	if err != nil {
-		return err
+//
+// While blind pass-through carries the chat there is no vault to pull from (it
+// waits for storage), so the files come from the computer that has the chat, over
+// the tunnel its fetch already opened ([Continuer.takeSecretFiles]); the vault's
+// own pull is left exactly as it was.
+func (c *Continuer) pullVaultVia(sc *Scope) func(context.Context, cell.Cell) error {
+	return func(ctx context.Context, at cell.Cell) error {
+		opened, err := cell.OpenAt(at.Root, at.ID)
+		if err != nil {
+			return err
+		}
+		files, err := c.sync.files(c.eng, opened)
+		if err != nil {
+			return err
+		}
+		err = c.sync.withVaultWithin(ctx, vaultBusyWait, func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
+		return errors.Join(err, c.takeSecretFiles(ctx, sc, files))
 	}
-	files, err := c.sync.files(c.eng, opened)
-	if err != nil {
-		return err
-	}
-	return c.sync.withVaultWithin(ctx, vaultBusyWait, func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
 }
 
 // files is the withheld files of c as a carrier: the workspace the engine seals

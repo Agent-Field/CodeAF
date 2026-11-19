@@ -214,6 +214,66 @@ func (l *liveStore) absent() error {
 	return blobstore.ErrNotFound
 }
 
+// secrets walks the secret files of a chat, a page at a time, from the first
+// computer that has the chat, handing each page to use. A computer that is off
+// or refuses is left alone, as for objects; one that does not have the chat is
+// asked past. It is silent when no computer has the chat, and says the computer
+// is off only when that is the reason nothing could be asked. Once a computer
+// has started, its pages are the only ones read: a walk never mixes two
+// computers' files.
+func (l *liveStore) secrets(ctx context.Context, chat string, use func(filesdoor.SecretPage) error) error {
+	for _, one := range l.others(ctx) {
+		l.mu.Lock()
+		skip := one.off != nil
+		l.mu.Unlock()
+		if skip {
+			continue
+		}
+		found, err := l.walkSecrets(ctx, one, chat, use)
+		if found || (err != nil && !l.isOff(one, err)) {
+			return err
+		}
+	}
+	if err := l.absent(); !errors.Is(err, blobstore.ErrNotFound) {
+		return err
+	}
+	return nil
+}
+
+// walkSecrets reads every page one computer holds for chat. found is whether it
+// had the chat at all.
+func (l *liveStore) walkSecrets(ctx context.Context, one *liveSource, chat string, use func(filesdoor.SecretPage) error) (found bool, err error) {
+	after := ""
+	for {
+		page, err := one.source.Secrets(ctx, chat, after)
+		if err != nil {
+			return found, err
+		}
+		if !page.Found {
+			return found, nil
+		}
+		found = true
+		if err := use(page); err != nil || !page.More || len(page.Files) == 0 {
+			return found, err
+		}
+		after = page.Files[len(page.Files)-1].Path
+	}
+}
+
+// isOff notes that a computer is not answering, or refuses, and says whether
+// that is what err was.
+func (l *liveStore) isOff(one *liveSource, err error) bool {
+	var off *filesdoor.OffError
+	var refused *filesdoor.RefusedError
+	if !errors.As(err, &off) && !errors.As(err, &refused) {
+		return false
+	}
+	l.mu.Lock()
+	one.off = err
+	l.mu.Unlock()
+	return true
+}
+
 // keepObjects writes what a peer sent into this computer's live store, so this
 // computer can serve the chat in turn. It is best effort: a take does not fail
 // because its copy could not be kept.

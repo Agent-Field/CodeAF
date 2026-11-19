@@ -23,6 +23,9 @@ type Scope struct {
 	release func()
 	once    sync.Once
 	hint    func(device string)
+	// live is the live store under this scope, nil for any other store. A take
+	// asks it for the chat's secret files, over the tunnels its fetch opened.
+	live *liveStore
 }
 
 // scope is the one place the wire is wrapped: wire, then Counting, then
@@ -54,6 +57,9 @@ func (s *Sync) scopeOver(name string, store blobstore.Store, c *blobstore.Counte
 	}
 	if hinted, ok := store.(interface{ Hint(string) }); ok {
 		sc.hint = hinted.Hint
+	}
+	if l, ok := store.(*liveStore); ok {
+		sc.live = l
 	}
 	return sc
 }

@@ -323,6 +323,10 @@ func (s *Sync) filesDoorConfig() (filesdoor.ServeConfig, error) {
 		RosterFor: liveDoorRosterFor,
 		LockPoll:  liveDoorLockPoll,
 		Roster:    s.activeDevices,
+		// The chat's secret files are read from the chat's own folder and never
+		// from the live store.
+		Secrets:     s.serveSecrets,
+		SecretsPage: liveSecretsPage,
 	}, nil
 }
 

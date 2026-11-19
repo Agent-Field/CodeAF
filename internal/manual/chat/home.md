@@ -371,8 +371,9 @@ When continuing a chat from another paired computer:
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
 executable bit, links. Git history, branches and settings travel too, sealed to your paired
-devices even when an old commit holds a key. A working file the guard withholds travels
-through the vault instead. Rebuildable install folders such as `node_modules` stay out of the
+devices even when an old commit holds a key. A working file the guard withholds travels on its
+own road instead: the vault when sync storage is approved, and the chat's own blind pass-through
+when it is off. Rebuildable install folders such as `node_modules` stay out of the
 workspace copy and are listed on the arrival card (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
 the machine that continues; everything comes from your relay. The copy lives in a folder of
 its own under this machine's chats, and the chat works in a `work` folder inside it. Your
@@ -383,14 +384,16 @@ the other machine's work.
 
 ## Do secret files and .env come with a continued chat
 
-**Secret working files travel through the vault.** A `.env`, at any depth, and any other working file the guard recognises as holding a
-secret is kept out of the chat's file capture and kept whole in your key vault instead, and the vault
-travels with your chats. When you continue, each of those files is put back at the same
+**Secret working files travel on their own road, never in the chat's file capture.** A `.env`, at any depth, and any other working file the guard recognises as holding a
+secret is kept out of the chat's file capture. With sync storage approved it is kept whole in your key vault instead, and the vault
+travels with your chats. With sync storage off, the same files move with the chat by blind pass-through while both computers run codeaf
+(*Do my .env files and secrets move to my other computer without sync storage*, in *Continuing a chat that one of your machines holds*).
+When you continue, each of those files is put back at the same
 path in the chat's work folder, with the same bytes and the same permissions: comments, order
 and quoting are as you wrote them. Each file is carried on its own, so two machines that edited
 different files keep both. When both edited the same file, the one saved last wins as a whole
-file, never line by line. A file you delete on one machine is deleted on the other. With no
-identity on this machine, no secrets are fetched and no file is written.
+file, never line by line. Through the vault a file you delete on one machine is deleted on the other;
+by blind pass-through it is never removed. With no identity on this machine, no secrets are fetched and no file is written.
 
 ## Do saved provider keys and credentials follow me to another computer
 
@@ -430,7 +433,7 @@ chat while you are still fetching it, this machine keeps exactly what it had.
 
 Yes. When you continue a chat on your own paired device, the repository's `.git` travels as it is, including its history, branches, settings and any keys in old commits. Task commits travel too. Git history is sealed end to end between your devices; the relay sees only ciphertext. codeaf does not screen, remove or rewrite committed secrets.
 
-The working-tree guard is separate: a `.env` or source file it recognises as holding a secret is excluded from the chat's file capture and sent only through the encrypted vault. The scanner reads the whole file, including keys past its first MiB. If the secret was committed, its Git copy still travels with the history. An untracked secret file with no committed copy arrives only through the vault.
+The working-tree guard is separate: a `.env` or source file it recognises as holding a secret is excluded from the chat's file capture and sent on its own road, sealed: the encrypted vault, or blind pass-through while sync storage is off. The scanner reads the whole file, including keys past its first MiB. If the secret was committed, its Git copy still travels with the history. An untracked secret file with no committed copy arrives only by that separate road.
 
 ## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
 
@@ -447,11 +450,11 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 
 The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
 
-It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
+It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels on its own, in the key vault or by blind pass-through while sync storage is off. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
 
 ## Does dist or other gitignored output move — ignored files and secret files
 
-Untracked Git-ignored output stays on the computer that made it and is named on the arrival card with `(git ignores them)`. It is neither captured locally nor uploaded. Tracked files still move. A wholly ignored directory is not walked or screened; an ignored secret file in an ordinary directory, such as `.env` or `config/.env.local`, is screened and still travels through the key vault to paired computers.
+Untracked Git-ignored output stays on the computer that made it and is named on the arrival card with `(git ignores them)`. It is neither captured locally nor uploaded. Tracked files still move. A wholly ignored directory is not walked or screened; an ignored secret file in an ordinary directory, such as `.env` or `config/.env.local`, is screened and still travels to paired computers on its own road, the key vault or blind pass-through.
 
 ## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
 

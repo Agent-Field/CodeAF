@@ -62,6 +62,11 @@ type ServeConfig struct {
 	// LockPoll is how often a process without the lock looks again; 0 is
 	// [DefaultLockPoll].
 	LockPoll time.Duration
+	// Secrets answers a request for the secret files of one chat; nil answers
+	// that there are none.
+	Secrets SecretsFunc
+	// SecretsPage is the most bytes of file one page holds; 0 is [DefaultSecretsPage].
+	SecretsPage int
 	// Ready, when set, is called after every successful registration, before
 	// the door starts answering. It must not block.
 	Ready func()
@@ -346,6 +351,8 @@ func (d *door) respond(ctx context.Context, typ byte, body []byte) (reply, bool)
 		return d.getMany(ctx, body)
 	case typeGetFrame:
 		return d.getFrame(ctx, body)
+	case typeSecrets:
+		return d.secrets(ctx, body)
 	}
 	return errorReply(codeBadRequest), true
 }

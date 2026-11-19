@@ -3712,6 +3712,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the blind pass-through switch still apply on a computer that already shared a chat", "continuing-a-chat-on-another-computer"},
 		{"why can't I move a chat when my other computer is off", "continuing-a-chat-on-another-computer"},
 		{"move a chat to my other computer without sync storage approval", "continuing-a-chat-on-another-computer"},
+		// THE CHAT'S SECRET FILES MOVE WITH IT BY BLIND PASS-THROUGH. The wish (do
+		// they come), the worry (is a secret leaving my computer), and the symptom a
+		// person sees first: git on the second computer lists the .env files as
+		// deleted. The page that answers all three is the continuing-a-chat guide.
+		{"do my .env files move to my other computer", "continuing-a-chat-on-another-computer"},
+		{"will my secrets come with the chat without sync storage", "continuing-a-chat-on-another-computer"},
+		{"why does git show my env files deleted after I moved a chat", "continuing-a-chat-on-another-computer"},
+		{"are my .env files sent through the sync service when sync storage is off", "continuing-a-chat-on-another-computer"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

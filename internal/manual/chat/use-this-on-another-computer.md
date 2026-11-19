@@ -201,7 +201,7 @@ too many pairings from this network; wait 7 min
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; vault content still needs enabled sync storage to copy; chats move by blind pass-through while both computers are running codeaf even when it is off.
+**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; vault content such as saved keys still needs enabled sync storage to copy; chats, with their `.env` and other secret files, move by blind pass-through while both computers are running codeaf even when it is off.
 
 It is not a view of your chats. It is a copy of you. Pair only a computer you own and trust.
 

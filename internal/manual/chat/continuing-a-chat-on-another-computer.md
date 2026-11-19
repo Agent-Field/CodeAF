@@ -12,15 +12,30 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 
 On the hosted sync service, sync storage is off for an account until it is approved (**Settings → Devices → sync storage**), and the service keeps no chat or file content while it is off. You can still move a chat between your own paired computers without it. This is **blind pass-through**, also called pass-through mode: the computer that has the chat sends its already-encrypted bytes straight through the sync service to the computer taking it, and the service, which cannot read them, stores nothing. It is on by default; beyond pairing there is nothing to set up. Everything stays encrypted end to end.
 
-Blind pass-through needs **both computers running codeaf**: a terminal, the app, or a background engine for that computer. It covers ordinary chats and their files, and applies only when you have at least one other paired computer. Choose `continue here` as usual. If the computer that has the chat is not on, see *Continue here says the computer that has this chat is not on*.
+Blind pass-through needs **both computers running codeaf**: a terminal, the app, or a background engine for that computer. It covers ordinary chats and their files, including a chat's `.env` and other secret files (*Do my .env files and secrets move to my other computer without sync storage*), and applies only when you have at least one other paired computer. Choose `continue here` as usual. If the computer that has the chat is not on, see *Continue here says the computer that has this chat is not on*.
 
 Taking a chat on a second computer remembers it there, so that computer can serve it in turn: a third computer can take it from the second while the first is off.
 
-Still waiting for sync storage approval, even with blind pass-through: saved keys, memories, teams, shared preferences, idle handoff (an idle chat handing itself over) and task copies. They behave exactly as before while storage is off.
+Still waiting for sync storage approval, even with blind pass-through: saved provider keys and connections, memories, teams, shared preferences, idle handoff (an idle chat handing itself over) and task copies. They behave exactly as before while storage is off. A chat's own secret files are not in that list: they move with the chat.
 
 When sync storage is approved later, chats that only lived on computers upload in the background by themselves. Until that finishes they can still be taken from a computer that is on.
 
 Blind pass-through does nothing when storage is approved or when you use a self-hosted sync service: those behave as they always did. *Turn off blind pass-through* says how to switch it off.
+
+## Do my .env files and secrets move to my other computer without sync storage — will my secrets come with the chat, git shows my .env files deleted after moving a chat
+
+Yes. While hosted sync storage is off and a chat moves by blind pass-through, the files codeaf keeps out of a chat's saved history move with it: every `.env` and `.env.*` file anywhere in the folder, committed templates such as `.env.example` included, and any other file that looks like it holds a secret, such as a private key or a README with a token in it. They arrive in the same step that brings the chat's files, byte for byte at the same path with the same file permissions, so git on the other computer does not show them as deleted.
+
+They leave the computer that has the chat sealed under your key, inside the encrypted pipe, and nothing about them is stored anywhere but the two folders. Only the chat's own secret files move this way: saved provider keys, connections and credentials, preferences, shared memories and teams still wait for sync storage approval.
+
+Where it stops:
+
+- Both computers must run codeaf and be your own paired computers; a computer you removed gets nothing more.
+- If the computer that has the chat is off, nothing moves, secret files included, and `continue here` ends with the sentence in *Continue here says the computer that has this chat is not on*.
+- `CODEAF_PASSTHROUGH=off` turns blind pass-through off, and these files then wait for sync storage like the rest. With sync storage approved they travel through the key vault, as always.
+- A file you edit on the second computer comes back when you take the chat back there. The file saved last wins, so a copy saved later on the receiving computer is kept.
+- A secret file you delete on one computer is not deleted on the other by this road. A file too large for the key vault stays on the computer it is on (*A large file that looks like a secret did not arrive*).
+- A secret file the computer that has the chat has not saved a turn since creating may not have been noticed yet, so it can miss the move until the chat's next saved turn.
 
 ## Continue here says the computer that has this chat is not on — open codeaf there, then continue here
 
@@ -434,15 +449,15 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the sync service sees only ciphertext, including when the history contains keys.
 
-The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried through the encrypted vault. If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only through the vault.
+The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried on its own: through the encrypted vault when sync storage is approved, and by blind pass-through with the chat while sync storage is off (*Do my .env files and secrets move to my other computer without sync storage*). If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only by that separate road.
 
 ## How are secret files screened before saving or moving a chat — .env, ignored folders and changing files
 
-Before each seal, codeaf asks which files will be captured and screens those candidates, including a full candidate list for a first reply or a capture that needs a full scan. If a file changes between screening and capture, saving plans and screens again. If repeated edits prevent a stable capture, it says `files kept changing while saving this chat; try again` and keeps the calls for a later save. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel through the encrypted vault to paired computers. A withheld file stays out of local saved packs and the uploaded workspace capture. The chat does not mention a file withheld for a secret: the engine's log names it with its rule, and the cell's `.furrowpolicy` lists every withheld path. Tools still see a `.env` file's variables through the vault. An unreadable folder stays out until its permissions recover; its newly eligible files are then screened with a fresh capture plan. Restores and arrivals also screen before an automatic safety capture.
+Before each seal, codeaf asks which files will be captured and screens those candidates, including a full candidate list for a first reply or a capture that needs a full scan. If a file changes between screening and capture, saving plans and screens again. If repeated edits prevent a stable capture, it says `files kept changing while saving this chat; try again` and keeps the calls for a later save. A wholly git-ignored directory is neither entered nor screened unless it holds tracked files. An ignored file in an ordinary directory is still screened: root `.env`, `config/.env.local` and a private key in a `*.pem` file travel to paired computers on the separate road, the encrypted vault or blind pass-through. A withheld file stays out of local saved packs and the uploaded workspace capture. The chat does not mention a file withheld for a secret: the engine's log names it with its rule, and the cell's `.furrowpolicy` lists every withheld path. Tools still see a `.env` file's variables on the other computer once it has arrived. An unreadable folder stays out until its permissions recover; its newly eligible files are then screened with a fresh capture plan. Restores and arrivals also screen before an automatic safety capture.
 
 ## A large file that looks like a secret did not arrive — the key vault's size limit
 
-The encrypted key vault carries secrets, not files of any size. A withheld file — one the guard kept out of the chat's saved files because it looks like it holds a key or a token — travels to your paired computers only when it is at most about 768 KiB, which encodes to the vault's limit of 1 MiB per entry. A `.env`, a credentials file or a private key is far below that.
+The encrypted key vault carries secrets, not files of any size, and blind pass-through applies the same limit to a chat's secret files. A withheld file — one the guard kept out of the chat's saved files because it looks like it holds a key or a token — travels to your paired computers only when it is at most about 768 KiB, which encodes to the vault's limit of 1 MiB per entry. A `.env`, a credentials file or a private key is far below that.
 
 A larger withheld file, such as a database, a git pack or a built binary that happens to contain a key-shaped string, is still kept out of every save. It stays on the computer that has it and does not travel. The engine's log says `it is too large for the key vault, so it stays on this computer` when it is first withheld. A copy of the same path from another computer never writes over it, and a removal on another computer never deletes it.
 
@@ -462,9 +477,9 @@ New chats on this computer share one store of saved file contents. Opening four 
 
 Every chat's capture follows Git's ignore rules. Untracked ignored output stays on the computer that made it: it is neither stored in the local file history nor uploaded. Tracked files travel even if an ignore rule matches their name. A wholly ignored directory is not walked or screened. Lockfile rebuild folders still follow the existing rebuild rules.
 
-The arrival card names omitted paths from the saved summary, for example `not brought along: dist/ (git ignores them), node_modules/ (git ignores them)`. The summary is bounded and can name only some omitted groups. Ignored secret files in ordinary directories are still screened and travel through the key vault; an ignored `.env` inside a wholly ignored directory stays there with that directory.
+The arrival card names omitted paths from the saved summary, for example `not brought along: dist/ (git ignores them), node_modules/ (git ignores them)`. The summary is bounded and can name only some omitted groups. Ignored secret files in ordinary directories are still screened and travel on their own road, the key vault or blind pass-through; an ignored `.env` inside a wholly ignored directory stays there with that directory.
 
-If Git cannot read the project's ignore rules, saving stops with `cannot read which folders Git ignores here` and the cause. Completed calls stay in their local log for a later save. codeaf does not fall back to searching ignored directories or putting their secret files in the key vault.
+If Git cannot read the project's ignore rules, saving stops with `cannot read which folders Git ignores here` and the cause. Completed calls stay in their local log for a later save. codeaf does not fall back to searching ignored directories or putting their secret files in the key vault or moving them by blind pass-through.
 
 ## Does saving slow my command — pending save, quit while saving, moving before the save finishes
 

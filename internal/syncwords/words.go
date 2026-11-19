@@ -140,3 +140,13 @@ func HolderOffline(name string) string {
 // mode switched off: the record is in the list, but the only road to its frames
 // is shut here.
 var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and blind pass-through is switched off here; switch it back on (CODEAF_PASSTHROUGH) or turn on sync storage to continue it here")
+
+// SecretFilesLate is said when a chat has moved here but the files kept out of
+// its saved history (.env and the like) did not come with it, because the
+// computer that has them stopped answering. They are still on that computer.
+func SecretFilesLate(name string) string {
+	if name == "" {
+		name = "the other computer"
+	}
+	return "its secret files (.env and the like) did not come with it, because " + name + " stopped answering; they are still there"
+}

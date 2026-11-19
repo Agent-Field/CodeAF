@@ -33,6 +33,7 @@ const (
 	typeLocate   byte = 2
 	typeGetMany  byte = 3
 	typeGetFrame byte = 4
+	typeSecrets  byte = 5 // a chat's secret files, one sealed page at a time (secrets.go)
 
 	// answerBit turns a request type into the type of its answer.
 	answerBit byte = 0x80

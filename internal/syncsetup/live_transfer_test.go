@@ -65,6 +65,9 @@ func liveTake(t *testing.T, r *liveRig) Continued {
 	if err != nil {
 		t.Fatalf("Take on B = %v; want the chat moved", err)
 	}
+	// B now keeps the chat where its take put it, which is where its own door
+	// looks when another computer asks it for the chat.
+	r.placeChat(r.homeB, got.Taken.Cell, workspaceOf(got.Taken.Cell.Root))
 	if got.Wait != nil {
 		if err := got.Wait(ctx); err != nil {
 			t.Fatalf("the files did not finish arriving: %v", err)
@@ -156,13 +159,18 @@ func TestLiveTransferC3TheRelaySeesCiphertextOnly(t *testing.T) {
 // folder. The list is printed: it is the owners' evidence of what the relay keeps.
 func TestLiveTransferC18EverythingTheRelayKeeps(t *testing.T) {
 	r := newLiveRig(t)
-	a := liveChat(t, r)
+	// The chat holds secret files too (SPEC-3 V2): they move by the same blind
+	// pipe, so the relay keeps nothing more for them than for the rest.
+	a := passSecretChat(t, r)
 	got := liveTake(t, r)
 	assertMovedIntact(t, r, got)
 	_ = a
 
 	if n := r.wire.storeWrites(); n != 0 {
 		t.Fatalf("%d object writes reached the relay", n)
+	}
+	if n := r.wire.storeRequests(); len(n) != 0 {
+		t.Fatalf("the relay's object store was asked %d times (puts, gets and has): %v; want never", len(n), n)
 	}
 	if bad := r.wire.recordsWithNames(); len(bad) > 0 {
 		t.Fatalf("records with a name reached the relay: %v", bad)
