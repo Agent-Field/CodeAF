@@ -436,6 +436,7 @@ func (s CredentialScope) judgePath(word, cwd string, vars map[string]string) (st
 	if word == "" {
 		return "", false
 	}
+	s = s.withNamedHomes(cwd, vars)
 	full := joinTo(cwd, s.expand(word, vars))
 	if s.isCredentialFile(normalLower(full)) {
 		return word, true
@@ -446,7 +447,7 @@ func (s CredentialScope) judgePath(word, cwd string, vars map[string]string) (st
 		matches = found
 	}
 	for _, match := range matches {
-		if s.isCredentialFile(normalLower(match)) {
+		if s.isCredentialFile(normalLower(match)) || holdsProfileKey(match) {
 			return word, true
 		}
 		if real, err := filepath.EvalSymlinks(match); err == nil && s.isCredentialFile(normalLower(real)) {
@@ -454,6 +455,64 @@ func (s CredentialScope) judgePath(word, cwd string, vars map[string]string) (st
 		}
 	}
 	return "", false
+}
+
+// stateRootVariables are the variables that move codeaf's state root or its
+// profile. A command line that sets one is pointing a codeaf at a home of its
+// own, and that home's key files are as much a credential as the running
+// engine's, which already stand in [CredentialScope.appHomes].
+var stateRootVariables = []string{
+	"CODEAF_HOME", "CODEAF_PROFILE_DIR",
+	"AFORGE_HOME", "AFORGE_PROFILE_DIR", // legacy-name
+}
+
+// withNamedHomes is the scope with every state root the command line itself
+// named added to it, so `CODEAF_HOME=/tmp/h; cat /tmp/h/config.json` is read the
+// way `cat ~/.codeaf/config.json` is. The table is copied rather than appended to
+// in place, because a scope is a value that other calls share.
+func (s CredentialScope) withNamedHomes(cwd string, vars map[string]string) CredentialScope {
+	var named []string
+	for _, name := range stateRootVariables {
+		if folder := strings.TrimSpace(vars[name]); folder != "" {
+			named = append(named, bothSpellings(joinTo(cwd, folder))...)
+		}
+	}
+	if len(named) > 0 {
+		s.appHomes = append(append([]string(nil), s.appHomes...), named...)
+	}
+	return s
+}
+
+// profileKeySniffBytes bounds the one file this floor opens. A profile is a few
+// kilobytes; anything far larger is not one, and the floor must stay cheap.
+const profileKeySniffBytes = 256 << 10
+
+// holdsProfileKey reports whether a file is a codeaf profile holding a key,
+// wherever it stands: a `config.json` whose top level carries a non-empty
+// `api_key`, the row config.APIKeyAt reads. The folder table above only knows
+// the homes this process can name, and a profile copied into a temporary home
+// for a test run is a key file all the same. It is the one row of the floor that
+// reads a file rather than its name, and only a file with exactly this name.
+func holdsProfileKey(name string) bool {
+	if strings.ToLower(filepath.Base(name)) != "config.json" {
+		return false
+	}
+	info, err := os.Stat(name)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > profileKeySniffBytes {
+		return false
+	}
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		return false
+	}
+	var profile struct {
+		APIKey any `json:"api_key"`
+	}
+	if json.Unmarshal(raw, &profile) != nil {
+		return false
+	}
+	key, isText := profile.APIKey.(string)
+	return isText && strings.TrimSpace(key) != ""
 }
 
 func joinTo(cwd, name string) string {
@@ -469,6 +528,7 @@ func (s CredentialScope) holderHit(word, cwd string, vars map[string]string, ski
 	if !isPathShaped(word) {
 		return "", false
 	}
+	s = s.withNamedHomes(cwd, vars)
 	full := joinTo(cwd, s.expand(word, vars))
 	spellings := []string{normalLower(full)}
 	if real, err := filepath.EvalSymlinks(full); err == nil {
