@@ -65,7 +65,7 @@ func (b *appBackend) ListSkills(agent string) ([]skillpick.Row, error) {
 		}
 	} else if _, far := live.conn.Conv.(interface{ SkillsSupported() bool }); !far {
 		homeDir, _ := home.Login()
-		disk, err = skills.Discover(skills.Options{ProjectDir: live.conn.Workspace, HomeDir: homeDir, OmitSize: true})
+		disk, err = skills.Discover(skills.Options{ProjectDir: live.conn.Workspace, HomeDir: homeDir, OwnHomeDir: home.OwnLogin(homeDir), OmitSize: true})
 	}
 	if err != nil {
 		return nil, appEngineError(err)
