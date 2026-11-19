@@ -4402,8 +4402,9 @@ the governor cannot say anything and therefore never holds. On those machines
 
 Separately, a task that is already running can be held by the provider's own pacing. Its
 row reads `waiting · rate limited` until the calls get through — or until the task's
-patience runs out, which is **four and a half minutes** of trying, machine after machine;
-your own turn gives up sooner, at **90 seconds**. Neither is a number of attempts: it is
+patience runs out. With hosted defaults, that is **four and a half minutes** of trying,
+machine after machine, and your own turn gives up sooner, at **90 seconds**. A local
+endpoint gets ten times the hosted figure by default. Neither is a number of attempts: it is
 how long, and nothing counts tries. See how-tasks-run.
 
 The frontier used to hold two tasks at once. Two was a guess standing in for a resource

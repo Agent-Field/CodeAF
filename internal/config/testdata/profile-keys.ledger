@@ -81,6 +81,7 @@ reply.guard
 response.attempts
 response.lift_after
 response.lift_cap_usd
+response.patience
 routing
 search.exaKey
 search.firecrawlKey
