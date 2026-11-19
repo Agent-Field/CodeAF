@@ -2,7 +2,7 @@
 
 ## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
-While hosted sync storage is off, a chat still moves live between your paired computers when both are running codeaf; see *Move a chat while sync storage is off*.
+While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -12,7 +12,7 @@ There is no account and no password to log in with. You pair: a code on one scre
 
 Use a code shown on a screen you own.
 
-The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them when sync storage is on, and move live while both computers are running codeaf when it is off (*Move a chat while sync storage is off*).
+The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them when sync storage is on, and move by blind pass-through while both computers are running codeaf when it is off (*Blind pass-through*).
 
 This page is the code way. A new computer can also ask to join and be approved from a link, with a four-digit check: the page *Adding a computer to your devices, approving it, and removing it* tells it.
 
@@ -42,7 +42,7 @@ chats requires `--replace`. By default (`idle handoff` is off by default; turn i
 ## Sync my chats — get my chats on my other computer, how to sync between paired computers
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine.
-Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired computers through the saved or hosted relay when storage is on. While hosted storage is off, a chat moves live when both computers are running codeaf (*Move a chat while sync storage is off*). `CODEAF_SYNC_URL=off` stops relay traffic. A never-paired home sends no relay requests.
+Pair both computers first with `codeaf pair` or `/pair`, on Linux, macOS or native Windows. New chats save their turns locally and sync them to your paired computers through the saved or hosted relay when storage is on. While hosted storage is off, a chat moves by blind pass-through when both computers are running codeaf (*Blind pass-through*). `CODEAF_SYNC_URL=off` stops relay traffic. A never-paired home sends no relay requests.
 
 ## Do older chats sync after pairing — independent copies and untouched originals
 
@@ -201,7 +201,7 @@ too many pairings from this network; wait 7 min
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; vault content still needs enabled sync storage to copy; chats move live while both computers are running codeaf even when it is off.
+**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; vault content still needs enabled sync storage to copy; chats move by blind pass-through while both computers are running codeaf even when it is off.
 
 It is not a view of your chats. It is a copy of you. Pair only a computer you own and trust.
 
@@ -291,7 +291,7 @@ writes made after the replacement was installed.
 
 ## I got a new laptop — move my chats to a new machine
 
-While hosted sync storage is off, a chat still moves live between your paired computers when both are running codeaf; see *Move a chat while sync storage is off*.
+While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -299,7 +299,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 2. On the new computer, run `codeaf pair <code>`, or type `/pair <code>` in the chat, or type the code on the first screen.
 3. Compare the three words. Answer `y` on the old computer.
 
-The new computer now has your identity. If both computers are on the same relay and storage is enabled, chats sync between them; while hosted storage is off, a chat moves live when both computers are running codeaf. Read *Sync your chats between machines* in the terminal page for the sync settings.
+The new computer now has your identity. If both computers are on the same relay and storage is enabled, chats sync between them; while hosted storage is off, a chat moves by blind pass-through when both computers are running codeaf. Read *Sync your chats between machines* in the terminal page for the sync settings.
 
 There is no phone app for continuing chats. A phone browser can open the `/p/` pairing-link page, but that page only shows the approval command and a link for a computer with codeaf installed; it does not turn the browser into a paired device. Use a supported desktop or server build to pair and continue chats.
 
@@ -375,7 +375,7 @@ The first-run line about the hosted relay is said once, when chats are first cop
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Your chats live on your own computer first. When sync storage is enabled they are also copied, sealed,
-to the relay, so your other computers can open them. While hosted storage is off, a chat can still move live, sealed, from the computer that has it to the one taking it while both are running codeaf, and nothing is stored. Which relay is one setting,
+to the relay, so your other computers can open them. While hosted storage is off, a chat can still move by blind pass-through, sealed, from the computer that has it to the one taking it while both are running codeaf, and nothing is stored. Which relay is one setting,
 `CODEAF_SYNC_URL`, and there is no sign-in and no account:
 
 - **Unset** uses this build's channel relay when it has one — `https://codeaf.agentfield.ai/fabric` on stable releases and release candidates, `https://caf-fabric-staging.instrument-santosh.workers.dev` on staging builds, and `https://caf-fabric-dev.instrument-santosh.workers.dev` on dev builds and local builds from source — and says so once, in one
@@ -576,4 +576,4 @@ A computer that already has its own saved pairing keys follows the local-work re
 
 ## Why pairing alone does not copy saved chats — sync storage access
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move live between your paired computers while both are running codeaf (*Move a chat while sync storage is off*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

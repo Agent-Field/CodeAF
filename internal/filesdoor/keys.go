@@ -61,6 +61,16 @@ const (
 	// from one process to another on the same computer.
 	DefaultRetryWithin = 10 * time.Second
 
+	// DefaultNoMachineWithin is how long a client keeps redialling when every
+	// answer so far has been the relay saying that nothing is registered under
+	// the door's name. A computer that is switched off answers that way for as
+	// long as it is off, so waiting out [DefaultRetryWithin] for it only delays
+	// the sentence that says so. A door that is moving between two codeaf
+	// processes of one computer is back within one lock poll and one
+	// registration, which this covers with room to spare. Any other failure, a
+	// relay that is busy or unreachable for instance, keeps the longer window.
+	DefaultNoMachineWithin = 2 * time.Second
+
 	// DefaultLockPoll is how often a process that does not hold the home's door
 	// lock looks again. It bounds how long a door can be missing after the
 	// process that held it ends.

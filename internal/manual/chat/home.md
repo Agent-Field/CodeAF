@@ -2748,7 +2748,7 @@ from a previous visit cannot replace the current visit's selection or draft.
 
 ## I quit on my laptop and opened my desktop — straight back into the chat
 
-While hosted sync storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop. See *Move a chat while sync storage is off*.
+While hosted sync storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop. See *Blind pass-through*.
 
 After a clean quit lets a paired computer's chat go (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — about 2 seconds after an idle paired chat goes idle once saved to the sync service), bare `codeaf` on another paired computer continues that released chat automatically within 24 hours, and with `idle handoff` on Enter on Home opens a released chat directly (with `idle handoff` off, Home rows ask **Continue here**). A lapsed hold on another computer still asks Continue here, including when its holder was working. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
@@ -2772,4 +2772,4 @@ When an older chat was already copied into this version's store, Home lists and 
 
 ## Why are chats and files still on this computer after pairing — sync storage
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move live between your paired computers while both are running codeaf (*Move a chat while sync storage is off*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Home can list paired devices while uploads wait; an offline computer cannot supply new turns that never reached the service.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Home can list paired devices while uploads wait; an offline computer cannot supply new turns that never reached the service.

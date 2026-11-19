@@ -136,6 +136,7 @@ func HolderOffline(name string) string {
 }
 
 // ErrLiveTransferOff is what continuing a chat says when the chat exists only on
-// the computer that shared it live and this computer has live transfer switched
-// off: the record is in the list, but the only road to its frames is shut here.
-var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and live transfer is switched off here; switch it back on (CODEAF_LIVE_TRANSFER) or turn on sync storage to continue it here")
+// the computer that shared it by blind pass-through and this computer has that
+// mode switched off: the record is in the list, but the only road to its frames
+// is shut here.
+var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and blind pass-through is switched off here; switch it back on (CODEAF_PASSTHROUGH) or turn on sync storage to continue it here")

@@ -987,6 +987,19 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			return cellstore.NotePublished(target, head)
 		}
 		canConcurrent := (hasSupplied || c.opt.OnShown != nil || c.opt.AsyncFiles) && len(c.opt.WorkspaceRoots) == 0
+		// BLIND PASS-THROUGH ASKS FOR THE LEASE AFTER THE FRAMES, NEVER BESIDE THEM.
+		// Here the fetch can fail for a reason that is common and not an outage: the
+		// computer that has the chat is off, and nothing else holds its frames. An
+		// acquire sent beside that fetch lands, and handing the lease back after the
+		// failure leaves THIS computer named as the chat's last holder, so the real
+		// holder's next launch is offered a move from a computer that never had the
+		// chat. Fetching first costs one more directory request when the holder is
+		// on, and a take that fails leaves the record exactly as it was. The road
+		// with approved sync storage is unchanged: its frames come from the relay,
+		// and a failed fetch there is a real fault.
+		if c.sync.LiveTransfer() {
+			canConcurrent = false
+		}
 		if canConcurrent && keepRoot {
 			if needed, nErr := session.TaskWorkspaceAdmissionNeeded(session.Place{Dir: root, Workspace: intendedPrimary}); nErr != nil || needed {
 				canConcurrent = false

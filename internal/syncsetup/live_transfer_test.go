@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
@@ -331,6 +332,154 @@ func TestLiveTransferC5TheComputerThatHasTheChatIsOff(t *testing.T) {
 	r.a.ensureFilesDoor()
 	got := liveTake(t, r)
 	assertMovedIntact(t, r, got)
+}
+
+// rowOnA is the chat's row as A's own Home lists it from the directory.
+func rowOnA(t *testing.T, r *liveRig) chatlist.Row {
+	t.Helper()
+	listing, err := r.a.Dir.List(context.Background())
+	mustNil(t, err)
+	for _, row := range chatlist.Rows(listing, r.a.Device.ID(), func(sealed string) (string, error) { return sealed, nil }) {
+		if row.Cell == r.cell.ID {
+			return row
+		}
+	}
+	t.Fatal("A's list does not show the chat")
+	return chatlist.Row{}
+}
+
+// continuerBOpeningAtOnce is B's take side as the terminal and the app build it:
+// the chat opens first and its files arrive behind it, which is also the road on
+// which the take asks for the lease beside the fetch.
+func (r *liveRig) continuerBOpeningAtOnce() *Continuer {
+	r.awayFromA()
+	return r.b.Continuer(r.engB, TakeOptions{DeviceName: nameB, Notify: r.wall.add, AsyncFiles: true, RootFor: func(id string) string {
+		return filepath.Join(r.rootsB, id)
+	}})
+}
+
+// F1: a take that fails for want of the frames leaves the chat's record as it
+// was. The computer that had the chat is still the one the record names, no
+// lease is left behind, and A's next open of its own chat is not offered as a
+// move from B, which never had it. The hand test saw the opposite: B's take
+// asked for the lease beside the fetch, the fetch failed, and giving the lease
+// back left B named as the last holder.
+func TestLiveTransferF1AFailedTakeLeavesTheRecordAsItWas(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		release bool
+		atOnce  bool
+	}{
+		{"the holder quit its window, so the record names no holder", true, false},
+		{"the holder's lease still runs but its computer is off", false, false},
+		{"the chat opens at once and its files follow: the holder quit its window", true, true},
+		{"the chat opens at once and its files follow: the holder's lease still runs", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newLiveRig(t)
+			a := liveChat(t, r)
+			if tc.release {
+				mustNil(t, a.drive.Close(context.Background()))
+			}
+			stopFilesDoor(r.homeA)
+			before, err := r.b.Dir.Cell(context.Background(), r.cell.ID)
+			mustNil(t, err)
+			rowBefore := rowOnA(t, r)
+
+			taker := r.continuerB()
+			if tc.atOnce {
+				taker = r.continuerBOpeningAtOnce()
+			}
+			_, err = taker.Take(context.Background(), r.cell.ID)
+			if !errors.Is(err, syncwords.ErrHolderOffline) {
+				t.Fatalf("the take failed with %v; want the holder-offline refusal", err)
+			}
+
+			after, err := r.b.Dir.Cell(context.Background(), r.cell.ID)
+			mustNil(t, err)
+			if got, was := after.Cell.Lease.Device, before.Cell.Lease.Device; got != was || was != r.a.Device.ID() {
+				t.Fatalf("the record names %q as the holder after the failed take; it named %q before and A is %q", got, was, r.a.Device.ID())
+			}
+			if got, was := after.Cell.Lease.Fence, before.Cell.Lease.Fence; got != was {
+				t.Fatalf("the failed take left the fence at %d; it was %d", got, was)
+			}
+			if tc.release && (after.Cell.Lease.Expires != 0 || after.Cell.Lease.ReleasedAt != before.Cell.Lease.ReleasedAt) {
+				t.Fatalf("the lease was %+v and is now %+v: a take that never opened the chat left a mark on it", before.Cell.Lease, after.Cell.Lease)
+			}
+			if after.Cell.Head != before.Cell.Head {
+				t.Fatalf("the chat's head moved from %s to %s", before.Cell.Head, after.Cell.Head)
+			}
+			assertNothingOnB(t, r)
+
+			rowAfter := rowOnA(t, r)
+			if rowAfter.Mine != rowBefore.Mine || rowAfter.DeviceID != rowBefore.DeviceID || rowAfter.Status != rowBefore.Status || rowAfter.Released != rowBefore.Released {
+				t.Fatalf("A's own list shows the chat as %+v after B's failed take; it was %+v: A would be offered a move from B", rowAfter, rowBefore)
+			}
+		})
+	}
+}
+
+// withProductionDialTimings puts the dial timings a person's computers run with
+// back in place for one test; the rig shortens them so the tests that only need
+// "A is off" do not wait on a real laptop's clocks.
+func withProductionDialTimings(t *testing.T) {
+	t.Helper()
+	oldWithin, oldPoll := liveRetryWithin, liveDoorLockPoll
+	liveRetryWithin, liveDoorLockPoll = filesdoor.DefaultRetryWithin, filesdoor.DefaultLockPoll
+	t.Cleanup(func() { liveRetryWithin, liveDoorLockPoll = oldWithin, oldPoll })
+}
+
+// F3: with no codeaf process of the holder's computer registered at the relay,
+// the take ends with the holder-off sentence within a few seconds, not after the
+// ten the door keeps redialling for a door that is moving between processes. The
+// timings are the production ones: the hand test saw about twelve seconds of
+// `opening conversation...` for a computer that was simply off.
+func TestLiveTransferF3TheHolderBeingOffIsSaidQuickly(t *testing.T) {
+	r := newLiveRig(t)
+	a := liveChat(t, r)
+	mustNil(t, a.drive.Close(context.Background()))
+	stopFilesDoor(r.homeA)
+	withProductionDialTimings(t)
+
+	started := time.Now()
+	err := failedTake(t, r)
+	took := time.Since(started)
+	if !errors.Is(err, syncwords.ErrHolderOffline) {
+		t.Fatalf("the take failed with %v; want the holder-offline refusal", err)
+	}
+	if took > 4*time.Second {
+		t.Fatalf("the holder-off sentence took %v; want it within about 4 seconds", took)
+	}
+	assertNothingOnB(t, r)
+}
+
+// F3, the other half: a door that is moving from one codeaf process of A to
+// another is still found. The waiting process polls for the lock at the pace a
+// real computer does, and the take that starts the moment the first process
+// stops succeeds inside the shortened window.
+func TestLiveTransferF3TheDoorMovingProcessesIsStillFoundAtProductionTimings(t *testing.T) {
+	r := newLiveRig(t)
+	a := liveChat(t, r)
+	mustNil(t, a.drive.Close(context.Background()))
+	r.b.ensureFilesDoor()
+	quietRelay(r)
+	withProductionDialTimings(t)
+
+	cfg, err := r.a.filesDoorConfig()
+	mustNil(t, err)
+	second, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = filesdoor.Serve(second, cfg) }()
+	t.Cleanup(func() { stop(); <-done })
+	time.Sleep(300 * time.Millisecond)
+
+	started := time.Now()
+	stopFilesDoor(r.homeA)
+	got := liveTake(t, r)
+	assertMovedIntact(t, r, got)
+	if took := time.Since(started); took > 4*time.Second {
+		t.Fatalf("the other process took %v to serve; want under 4 seconds", took)
+	}
 }
 
 // doorGate makes A's files door go quiet at a point the test chooses: once
@@ -1035,7 +1184,7 @@ func TestLiveTransferC7UnchangedWhereItDoesNotApply(t *testing.T) {
 	}
 }
 
-// C8: CODEAF_LIVE_TRANSFER=off restores today's storage-off behaviour exactly: a
+// C8: CODEAF_PASSTHROUGH=off restores today's storage-off behaviour exactly: a
 // chat is not shared, no door is registered or dialled, no live store is made,
 // and a take of a chat that only a live computer holds says why in a sentence.
 func TestLiveTransferC8TheOffSwitch(t *testing.T) {
@@ -1064,7 +1213,7 @@ func TestLiveTransferC8TheOffSwitch(t *testing.T) {
 // C8, after a chat was shared live: the switch is off on a computer that has
 // already shared a chat, and the marker that says its frames wait for the relay
 // does not keep live transfer going there. Found in a hand test: the taker had
-// shared a chat the hour before, and with CODEAF_LIVE_TRANSFER=off it still
+// shared a chat the hour before, and with CODEAF_PASSTHROUGH=off it still
 // fetched the other computer's newest turns through that computer's door.
 func TestLiveTransferC8TheOffSwitchWinsOnAComputerThatSharedAChat(t *testing.T) {
 	ctx := context.Background()

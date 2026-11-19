@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -141,9 +144,12 @@ func TestFilesDoorSourceIsOffWhenNobodyIsRegistered(t *testing.T) {
 	if !strings.Contains(err.Error(), "selfhost-pc") {
 		t.Fatalf("the sentence does not name the computer: %q", err)
 	}
-	want := []time.Duration{500 * time.Millisecond, time.Second, 2 * time.Second, 2 * time.Second}
-	if len(slept) < len(want) {
-		t.Fatalf("slept %v", slept)
+	// A name nobody is registered under is what a computer that is off answers
+	// with, so the window is the short one (F3): the pauses grow as always and
+	// the last is cut to what is left of it.
+	want := []time.Duration{500 * time.Millisecond, time.Second, 500 * time.Millisecond}
+	if len(slept) != len(want) {
+		t.Fatalf("slept %v, want %v", slept, want)
 	}
 	for i, d := range want {
 		if slept[i] != d {
@@ -154,12 +160,66 @@ func TestFilesDoorSourceIsOffWhenNobodyIsRegistered(t *testing.T) {
 	for _, d := range slept {
 		total += d
 	}
-	if total > DefaultRetryWithin {
-		t.Fatalf("paused %v in all, past the window of %v", total, DefaultRetryWithin)
+	if total > DefaultNoMachineWithin {
+		t.Fatalf("paused %v in all, past the window of %v", total, DefaultNoMachineWithin)
 	}
 	stats := source.Stats()
 	if stats.Dials != len(slept)+1 || stats.DialFailures != stats.Dials || stats.Requests != 0 {
 		t.Fatalf("stats = %+v after %d pauses", stats, len(slept))
+	}
+}
+
+// F3, the other half: the short window is for the relay saying nobody is
+// registered, and for nothing else. A relay that is failing, or a first answer
+// of that kind followed by a failure, is still given the long window.
+func TestFilesDoorSourceKeepsTheLongWindowForAnythingButNoMachine(t *testing.T) {
+	w := newWorld(t)
+	noMachine := (&relay.Server{})
+	for _, tc := range []struct {
+		name   string
+		handle func(call int) http.Handler
+	}{
+		{"the relay is failing", func(int) http.Handler {
+			return http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+				http.Error(rw, "upstream trouble", http.StatusBadGateway)
+			})
+		}},
+		{"nobody is registered at first and the relay then fails", func(call int) http.Handler {
+			if call <= 2 {
+				return noMachine
+			}
+			return http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+				http.Error(rw, "upstream trouble", http.StatusBadGateway)
+			})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				tc.handle(int(calls.Add(1))).ServeHTTP(rw, r)
+			}))
+			defer server.Close()
+			var slept []time.Duration
+			source := NewSource(SourceConfig{
+				Service: server.URL, Identity: w.id, Device: w.b, TargetID: w.a.ID(), TargetName: "selfhost-pc",
+				Sleep: func(_ context.Context, d time.Duration) error {
+					slept = append(slept, d)
+					return nil
+				},
+			})
+			defer source.Close()
+			_, err := source.Has(context.Background(), []string{rid(1)})
+			if !errors.Is(err, ErrSourceOff) {
+				t.Fatalf("Has = %v, want a source that is off", err)
+			}
+			var total time.Duration
+			for _, d := range slept {
+				total += d
+			}
+			if total <= DefaultNoMachineWithin || total > DefaultRetryWithin {
+				t.Fatalf("paused %v in all (%v); want the long window, between %v and %v", total, slept, DefaultNoMachineWithin, DefaultRetryWithin)
+			}
+		})
 	}
 }
 

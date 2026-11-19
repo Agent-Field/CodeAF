@@ -39,16 +39,16 @@ func TestStorageOffRefusalSpeaksForTheComputerItIsSaidOn(t *testing.T) {
 		carry func() bool
 		want  string
 	}{
-		{"nothing says anything about live transfer", nil, chatlist.RelayStorageOff},
-		{"live transfer is not carrying chats", func() bool { return false }, chatlist.RelayStorageOff},
-		{"live transfer is carrying chats", func() bool { return true }, chatlist.RelayStorageOffLive},
+		{"nothing says anything about blind pass-through", nil, chatlist.RelayStorageOff},
+		{"blind pass-through is not carrying chats", func() bool { return false }, chatlist.RelayStorageOff},
+		{"blind pass-through is carrying chats", func() bool { return true }, chatlist.RelayStorageOffLive},
 	} {
 		chatlist.LiveCarriesChats = c.carry
 		if got := r.Say(wireauth.ErrStorageOff); got != c.want {
 			t.Fatalf("%s: the refusal says %q; want %q", c.name, got, c.want)
 		}
 	}
-	for _, word := range []string{"live", "keys", "memories", "teams", "preferences", "Settings under Devices"} {
+	for _, word := range []string{"blind pass-through", "keys", "memories", "teams", "preferences", "Settings under Devices"} {
 		if !strings.Contains(chatlist.RelayStorageOffLive, word) {
 			t.Fatalf("the live sentence does not mention %q: %s", word, chatlist.RelayStorageOffLive)
 		}

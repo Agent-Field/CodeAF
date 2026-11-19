@@ -89,6 +89,10 @@ type SourceConfig struct {
 	// RetryWithin is how long a door that is not there is redialled; 0 is
 	// [DefaultRetryWithin].
 	RetryWithin time.Duration
+	// NoMachineWithin is the shorter window used while every answer has been
+	// that nothing is registered under the door's name; 0 is
+	// [DefaultNoMachineWithin]. It never lengthens RetryWithin.
+	NoMachineWithin time.Duration
 	// Sleep waits between dial attempts. Nil is a real timer.
 	Sleep func(context.Context, time.Duration) error
 }
@@ -126,6 +130,9 @@ type Source struct {
 func NewSource(cfg SourceConfig) *Source {
 	if cfg.RetryWithin <= 0 {
 		cfg.RetryWithin = DefaultRetryWithin
+	}
+	if cfg.NoMachineWithin <= 0 {
+		cfg.NoMachineWithin = DefaultNoMachineWithin
 	}
 	if cfg.Sleep == nil {
 		cfg.Sleep = sleep
@@ -624,6 +631,13 @@ func (s *Source) drop(tunnel *pair.Tunnel) {
 // connect returns the live tunnel, dialling one when there is none. A door
 // that is not there is redialled with a growing pause until RetryWithin has
 // passed, and then the computer is called off.
+//
+// THE RELAY'S ANSWER TO A NAME NOBODY HOLDS IS NOT A FAULT. While every failure
+// so far has been exactly that answer, the window is the shorter
+// NoMachineWithin: a computer that is off says nothing else, and the person is
+// waiting to be told so. The first failure of any other kind (a busy or
+// unreachable relay, a handshake that broke) puts the longer window back, so a
+// flaky network is still given its time.
 func (s *Source) connect(ctx context.Context) (*pair.Tunnel, error) {
 	if tunnel := s.current(); tunnel != nil {
 		return tunnel, nil
@@ -631,6 +645,7 @@ func (s *Source) connect(ctx context.Context) (*pair.Tunnel, error) {
 	start := time.Now()
 	var planned time.Duration
 	backoff := 500 * time.Millisecond
+	onlyNoMachine := true
 	for {
 		tunnel, err := s.dialOnce(ctx)
 		if err == nil {
@@ -650,9 +665,16 @@ func (s *Source) connect(ctx context.Context) (*pair.Tunnel, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		if !errors.Is(err, relay.ErrNoMachine) {
+			onlyNoMachine = false
+		}
+		window := s.cfg.RetryWithin
+		if onlyNoMachine {
+			window = min(window, s.cfg.NoMachineWithin)
+		}
 		// Elapsed time counts the pauses it was told to take as well as the
 		// clock, so a test that replaces the sleep still ends the window.
-		remaining := s.cfg.RetryWithin - max(time.Since(start), planned)
+		remaining := window - max(time.Since(start), planned)
 		if remaining <= 0 {
 			return nil, &OffError{DeviceID: s.cfg.TargetID, Name: s.cfg.TargetName, Err: err}
 		}

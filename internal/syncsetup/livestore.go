@@ -55,7 +55,7 @@ type liveSource struct {
 }
 
 // errUnanswered is internal: no computer's door held what was asked.
-var errUnanswered = errors.New("live transfer: no other computer had it")
+var errUnanswered = errors.New("blind pass-through: no other computer had it")
 
 func (s *Sync) newLiveStore(chat string, relay blobstore.Store) (*liveStore, error) {
 	disk, err := s.liveDisk()
@@ -97,12 +97,13 @@ func (l *liveStore) others(ctx context.Context) []*liveSource {
 		seen[id] = true
 		name := l.sync.deviceName(id)
 		src := filesdoor.NewSource(filesdoor.SourceConfig{
-			Service:     l.sync.Relay,
-			Identity:    l.sync.Identity,
-			Device:      l.sync.Device,
-			TargetID:    id,
-			TargetName:  name,
-			RetryWithin: liveRetryWithin,
+			Service:         l.sync.Relay,
+			Identity:        l.sync.Identity,
+			Device:          l.sync.Device,
+			TargetID:        id,
+			TargetName:      name,
+			RetryWithin:     liveRetryWithin,
+			NoMachineWithin: liveNoMachineWithin,
 		})
 		if liveSourceHook != nil {
 			liveSourceHook(self, id, src)

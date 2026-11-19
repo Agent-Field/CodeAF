@@ -2,6 +2,12 @@ package syncsetup
 
 // LIVE TRANSFER: A CHAT MOVES BETWEEN YOUR COMPUTERS WITHOUT THE RELAY KEEPING IT.
 //
+// THE PERSON-FACING NAME IS "BLIND PASS-THROUGH". The identifiers here keep the
+// word live (it never shipped under that name, and renaming every one would
+// only add churn), but nothing a person reads may say "live transfer": the
+// manual, the help text, the refusal sentences and the change entry all say
+// blind pass-through, and the switch is CODEAF_PASSTHROUGH.
+//
 // The hosted relay keeps no content until an account is approved for sync
 // storage, so a chat cannot be parked there for another computer to collect.
 // Live transfer is the other road. The computer that has the chat keeps the
@@ -35,10 +41,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
-// LiveTransferVar turns live transfer off when it says off. Unset, live
-// transfer is on: it only ever acts where sync storage is closed and another
-// computer is paired, which is exactly where a chat could not move at all.
-const LiveTransferVar = "CODEAF_LIVE_TRANSFER"
+// LiveTransferVar turns blind pass-through off when it says off (also 0, false
+// and no). Unset, or any other value, it is on: it only ever acts where sync
+// storage is closed and another computer is paired, which is exactly where a
+// chat could not move at all.
+const LiveTransferVar = "CODEAF_PASSTHROUGH"
 
 // liveRecordsCarryTitle is the one choice the owners may flip: whether the
 // record a live-only chat leaves in the hosted directory carries the chat's
@@ -54,9 +61,12 @@ const liveRecordsCarryTitle = false
 // The timings below are variables only so a test can shorten them; the doors
 // are built from these, never from a literal.
 var (
-	liveRetryWithin   = filesdoor.DefaultRetryWithin
-	liveDoorRosterFor = filesdoor.DefaultRosterFor
-	liveDoorLockPoll  = filesdoor.DefaultLockPoll
+	liveRetryWithin = filesdoor.DefaultRetryWithin
+	// liveNoMachineWithin is how long a take redials a computer the relay says
+	// nobody is registered for, before it says that computer is off.
+	liveNoMachineWithin = filesdoor.DefaultNoMachineWithin
+	liveDoorRosterFor   = filesdoor.DefaultRosterFor
+	liveDoorLockPoll    = filesdoor.DefaultLockPoll
 	// liveSourceHook, when set, is told of every door a take dials: from is
 	// this computer, to the one it asks. It is how a test counts dials and
 	// request sizes without reaching into a take that is already running.
@@ -66,7 +76,9 @@ var (
 	liveDoorStore func(home string, store blobstore.Store) blobstore.Store
 )
 
-// liveTransferEnabled is false only when the person switched it off.
+// liveTransferEnabled is false only when the person switched blind pass-through
+// off. The person-facing name of this mode is blind pass-through; "live" is the
+// name the code kept.
 func liveTransferEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(env.Get(LiveTransferVar))) {
 	case "off", "0", "false", "no":
@@ -244,7 +256,7 @@ func (s *Sync) chatScope(name string) *Scope {
 	if err != nil {
 		// A store that cannot be opened here leaves chats on the road they were
 		// on, which for storage off is that they stay put.
-		log.Printf("live transfer: opening the live store: %v", err)
+		log.Printf("blind pass-through: opening the live store: %v", err)
 		return s.scope(name)
 	}
 	return s.scopeOver(name, inner, c)
@@ -277,7 +289,7 @@ func (s *Sync) ensureFilesDoor() {
 	}
 	cfg, err := s.filesDoorConfig()
 	if err != nil {
-		log.Printf("live transfer: opening the live store: %v", err)
+		log.Printf("blind pass-through: opening the live store: %v", err)
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -286,7 +298,7 @@ func (s *Sync) ensureFilesDoor() {
 	go func() {
 		defer close(run.done)
 		if err := filesdoor.Serve(ctx, cfg); err != nil && ctx.Err() == nil {
-			log.Printf("live transfer: files door: %v", err)
+			log.Printf("blind pass-through: files door: %v", err)
 		}
 	}()
 }
@@ -446,7 +458,7 @@ func StartLiveTransfer(ctx context.Context, home string) (stop func()) {
 			s.ensureFilesDoor()
 			if s.StorageAllowed() && livePending(home) {
 				if err := s.BackfillLive(ctx); err != nil && ctx.Err() == nil {
-					log.Printf("live transfer: sending shared chats to the relay: %v", err)
+					log.Printf("blind pass-through: sending shared chats to the relay: %v", err)
 				}
 			}
 		}

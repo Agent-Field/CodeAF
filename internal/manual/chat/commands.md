@@ -337,7 +337,7 @@ command).
 
 ## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
 
-While hosted sync storage is off, a chat still moves live between your paired computers when both are running codeaf; see *Move a chat while sync storage is off*.
+While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
@@ -2341,4 +2341,4 @@ Limits: a setup turn is never replayed on another machine (the agent does it aga
 
 ## Why pairing commands do not turn on sync storage — request access in Devices
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move live between your paired computers while both are running codeaf (*Move a chat while sync storage is off*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

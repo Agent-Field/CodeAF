@@ -213,7 +213,7 @@ requires updating both ends before retrying.
 
 ## The task copy could not be sent
 
-Task copies wait for hosted sync storage approval (Settings → Devices → sync storage); chats can still move live, but a task copy is sent through that storage. A self-hosted sync service with `--store` needs no request.
+Task copies wait for hosted sync storage approval (Settings → Devices → sync storage); chats can still move by blind pass-through, but a task copy is sent through that storage. A self-hosted sync service with `--store` needs no request.
 
 `the task copy changed while it was being sent; try again` keeps the copy here.
 Finish or pause the edits, then retry the task.

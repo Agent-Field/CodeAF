@@ -49,7 +49,7 @@ type twoHomes struct {
 
 // newTwoHomes is two computers in the world before live transfer: the storage-off
 // tests built on it pin what a chat does on a hosted relay when nothing may be
-// stored, and C8 says exactly that behaviour is what CODEAF_LIVE_TRANSFER=off
+// stored, and C8 says exactly that behaviour is what CODEAF_PASSTHROUGH=off
 // restores. A test of the new road builds its scene with newLiveRig instead.
 func newTwoHomes(t *testing.T, wrap ...func(http.Handler) http.Handler) *twoHomes {
 	t.Helper()
