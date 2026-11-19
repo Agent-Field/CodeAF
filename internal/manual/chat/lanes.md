@@ -439,8 +439,9 @@ counting up under it.
 is when codeaf stops waiting and can send a second request to another host.
 The line then changes to `switching`. That is a ceiling, not a target — a host codeaf has timed is
 acted on at its own measured pace, which for a fast one is a second or two.
-A local endpoint gets ten times the hosted wait by default. While that request
-is still working, codeaf never sends a duplicate to the same server.
+Under `auto`, a local endpoint gets ten times the hosted wait. codeaf sends a
+rescue while that request is in flight only if the gateway has advertised
+multiple providers for the model.
 
 Ten seconds is measured, not chosen. Across ten days of real calls the first
 word of a conversation turn arrives in 1.6 seconds at the middle, 8.4 seconds
@@ -520,8 +521,9 @@ on the **Models** tab of `/settings`, or with `CODEAF_RESPONSE_ATTEMPTS`.
 
 **`response.patience` multiplies the silence bounds and the give-up clock.**
 Its default, `auto`, uses the hosted figures and gives a local endpoint ten
-times as long. A number replaces `auto` for every endpoint. The give-up time
-uses the product of both multipliers. See [slow local model timeout and patience](services.md#my-local-model-keeps-timing-out--ollama-gives-up-after-2-minutes-how-do-i-make-codeaf-wait-longer-slow-local-model-timeout-and-patience).
+times as long. A number uses the same multiplier and rescue policy for every
+endpoint. Set `1` to get the old behaviour exactly. The give-up time uses the
+product of both multipliers. See [slow local model timeout and patience](services.md#my-local-model-keeps-timing-out--ollama-gives-up-after-2-minutes-how-do-i-make-codeaf-wait-longer-slow-local-model-timeout-and-patience).
 
 ```
 response.attempts: 3      # every give-up above, three times as long

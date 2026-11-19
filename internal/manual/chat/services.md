@@ -277,15 +277,15 @@ provider has one host, so there is nothing to choose between and that is not a f
 
 ## My local model keeps timing out — Ollama gives up after 2 minutes. How do I make codeaf wait longer? (slow local model timeout and patience)
 
-A slow local model can spend minutes reading a roughly 15,000-token prompt.
-Ollama and llama.cpp can send nothing until the first token.
+Ollama and llama.cpp can spend minutes reading a long prompt before the first token.
 
-Set **patience** (`response.patience`) in **Models** in `/settings`. The default,
-`auto`, uses 1x for hosted endpoints and ten times the hosted figure for local
-endpoints. A number from 1 to 100 (`10`, `10x`, or `2.5`) replaces `auto` for
-every endpoint. Try `CODEAF_RESPONSE_PATIENCE=30 codeaf` for 30x everywhere.
+Set **patience** (`response.patience`) in **Models** in `/settings`. The default
+`auto` uses 1x for hosted endpoints and 10x for local endpoints. A number from
+1 to 100 (`10`, `10x`, or `2.5`) uses the same multiplier and rescue policy
+everywhere. Set `1` to get the old behaviour exactly. Try
+`CODEAF_RESPONSE_PATIENCE=30 codeaf` for 30x everywhere.
 
-With `auto`, hosted endpoints use these limits.
+These are the hosted defaults.
 
 - 2 minutes for reply headers, or 20 minutes on a local endpoint.
 - After headers, 10 seconds with no answer byte on a conversation turn, or
@@ -295,6 +295,7 @@ With `auto`, hosted endpoints use these limits.
 - 5 minutes for a reply below about 6 tokens per second. A reply that keeps
   pace can run up to 20 minutes.
 - 2 minutes 30 seconds for a non-streamed reply once the server has answered once.
+- 2 minutes for one compaction summary request.
 - 90 seconds for a conversation turn to give up on an unreachable model.
 - 10 seconds before a slow hosted call can send a second request.
 
@@ -305,8 +306,9 @@ IPv6 unique-local or link-local addresses, names ending in `.local`, `.lan` or
 `gpu-box`. The Ollama row counts as local wherever it runs. codeaf reads the
 address text without DNS.
 
-While a local request is working, codeaf sends no duplicate to that server.
-If it still fails, the turn can move to another model. A cut can say
+Under `auto`, codeaf only sends a second request while the first is in flight
+if the local gateway has advertised multiple providers for the model. If a
+request fails, the turn can move to another model. A cut can say
 `nothing came back from the model in 1m40s`,
 `the model stopped mid-reply and went quiet for 7m30s`, or
 `the model did not answer in time` if the connection never answered.

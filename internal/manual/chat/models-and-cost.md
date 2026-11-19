@@ -1737,7 +1737,8 @@ token of thinking, a piece of a tool call.
 On a conversation turn, the no-answer-byte limit after headers without
 keepalives is 10 seconds for a hosted endpoint. A local endpoint gets ten
 times the hosted waits with `response.patience: auto` (the default). A number
-in `response.patience` sets the multiplier for every endpoint.
+in `response.patience` uses the same multiplier and rescue policy for every
+endpoint. Set `1` to get the old behaviour exactly.
 
 There is a third clock for the opposite problem — a reply that keeps writing and never
 finishes. It is not a fixed number, so it has its own section below: *A reply that never
@@ -1824,9 +1825,10 @@ That means your own base url or a local server with no router in front of it, a 
 connected service, or a model pinned by hand to one lane. Another endpoint and a pause
 cannot help there, and giving up would only hand you the retry to do by hand.
 
-With default patience, a local endpoint gets ten times the hosted wait before
-a request is cut. codeaf waits for that local request to end before asking the
-same server again.
+With `response.patience: auto`, a local endpoint gets ten times the hosted
+wait before a request is cut. codeaf waits for a request to a single-host
+local endpoint to end before asking the same server again. A numeric setting
+uses the same rescue policy for hosted and local endpoints.
 
 So in a conversation you are watching, with no fallback model left to move to, **codeaf
 keeps asking that machine until it answers or you stop it**. It waits before every ask:
@@ -3242,8 +3244,9 @@ There is no separate compaction model or summarization setting. The smaller reta
 explicit reduction distinguish this command from routine automatic cleanup.
 
 `/compact` ends with a summary written by the conversation's own model whenever at least
-about 1,000 tokens of older conversation are left to summarize; its cost counts toward the
-session's spending like any other call.
+about 1,000 tokens of older conversation are left to summarize. Its cost counts toward the
+session's spending like any other call. Each summary request gets two minutes multiplied by
+the conversation endpoint's `response.patience`, so a local model gets 20 minutes under `auto`.
 
 ## Turning automatic compaction off
 
