@@ -7,15 +7,18 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/Agent-Field/codeaf/internal/catalog"
-	"github.com/Agent-Field/codeaf/internal/service"
-	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/service"
+	"github.com/Agent-Field/codeaf/internal/skills"
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 
 	_ "modernc.org/sqlite" // reads the memory graph, which is a SQLite file
 )
@@ -71,13 +74,67 @@ func emptyFile(path string) (bool, error) {
 	return !info.Mode().IsRegular() || info.Size() != 0, nil
 }
 
-func emptyAppState(path string) (bool, error) {
+// appStartupState recognizes the part of the app's saved state written by
+// onboarding and initial unread tracking. Custom settings, chat references,
+// unknown fields and duplicate fields still count as use.
+func appStartupState(path string) (bool, error) {
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Size() > 1024 {
 		return true, err
 	}
-	raw, err := os.ReadFile(path)
-	return !bytes.Equal(bytes.TrimSpace(raw), []byte("{}")), err
+	raw, err := skills.ReadWholeRegular(path, 1024)
+	if err != nil {
+		return true, err
+	}
+	var state struct {
+		Setup *struct {
+			Step         json.RawMessage `json:"step"`
+			Provider     string          `json:"provider,omitempty"`
+			DefaultModel string          `json:"default_model,omitempty"`
+			DayCapUSD    *float64        `json:"day_cap_usd,omitempty"`
+			Start        string          `json:"start,omitempty"`
+		} `json:"setup,omitempty"`
+		SetupSteps int       `json:"setup_steps,omitempty"`
+		UnreadFrom time.Time `json:"unread_from,omitzero"`
+	}
+	if json.Unmarshal(raw, &state) != nil || state.SetupSteps < 0 || state.SetupSteps > 4 {
+		return true, nil
+	}
+	if setup := state.Setup; setup != nil {
+		switch string(setup.Step) {
+		case `"done"`, "1", "2", "3", "4": // Older builds kept four setup steps.
+		default:
+			return true, nil
+		}
+		if setup.Start != "" && setup.Start != "agents" {
+			return true, nil
+		}
+	}
+	return noncanonicalJSON(raw, state)
+}
+
+// bundledCanvasSkill recognizes the exact install location and version marker
+// used by WorkAF. A custom skill, or extra files in this skill's folder, still
+// count as use. Ordinary pairing leaves the managed skill in place.
+func bundledCanvasSkill(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return true, err
+	}
+	raw, err := skills.ReadRegularHead(path, 4096)
+	if err != nil {
+		return true, err
+	}
+	text := strings.TrimPrefix(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\ufeff")
+	front, body, found := strings.Cut(text, "\n---\n")
+	if !found || !strings.HasPrefix(front, "---\nname: workaf-canvas\n") {
+		return true, nil
+	}
+	line, _, _ := strings.Cut(body, "\n")
+	version, prefix := strings.CutPrefix(strings.TrimSpace(line), "<!-- workaf-canvas v")
+	version, suffix := strings.CutSuffix(version, " -->")
+	_, err = strconv.ParseUint(version, 10, 32)
+	return !prefix || !suffix || err != nil, nil
 }
 
 func serviceStartup(path string) (bool, error) {
@@ -130,7 +187,11 @@ func credentialDigestHistory(path string) (bool, error) {
 			return true, nil
 		}
 	}
-	canonical, err := json.Marshal(history)
+	return noncanonicalJSON(raw, history)
+}
+
+func noncanonicalJSON(raw []byte, known any) (bool, error) {
+	canonical, err := json.Marshal(known)
 	if err != nil {
 		return true, err
 	}

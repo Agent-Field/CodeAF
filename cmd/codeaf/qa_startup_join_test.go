@@ -2,6 +2,8 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -35,9 +37,22 @@ func testOpenedDesktopPair(t *testing.T, method string) {
 	}
 	a := e2StartAppWithSetup(t, offering, nil)
 	dir := t.TempDir()
+	// The native desktop installs this skill before launching the engine.
+	const bundledSkill = "---\nname: workaf-canvas\ndescription: Create canvases\n---\n<!-- workaf-canvas v17 -->\n"
+	skillPath := filepath.Join(dir, ".codeaf", "skills", "workaf-canvas", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte(bundledSkill), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	opened := func() *e2App {
 		return e2StartAppWithSetup(t, dir, func(b *e2App) {
 			machineCall[any](t, b.w, "setup.get", struct{}{})
+			machineCall[any](t, b.w, "setup.set", appwire.Setup{
+				Step: appwire.SetupStep{Done: true}, Start: appwire.SetupAgents,
+				Provider: "openrouter", DefaultModel: "vendor/model",
+			})
 			machineCall[appwire.DevicesResult](t, b.w, "devices.list", struct{}{})
 		})
 	}
@@ -64,6 +79,15 @@ func testOpenedDesktopPair(t *testing.T, method string) {
 	e2PairWait(t, a.w, approveID, "done")
 	if done := e2PairWait(t, b.w, joinID, "done"); !done.Restart {
 		t.Fatal("joining an already opened home did not request an engine restart")
+	}
+	if current, err := os.ReadFile(skillPath); err != nil || string(current) != bundledSkill {
+		t.Fatalf("ordinary pairing did not preserve the bundled skill: %v", err)
+	}
+	savedSetup := machineCall[struct {
+		Setup appwire.Setup `json:"setup"`
+	}](t, b.w, "setup.get", struct{}{}).Setup
+	if !savedSetup.Step.Done {
+		t.Fatal("ordinary pairing did not preserve completed onboarding")
 	}
 	id, err := identity.Load(dir)
 	if err != nil {

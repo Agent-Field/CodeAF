@@ -131,11 +131,25 @@ func TestQAStartupBookkeepingDoesNotPreventPairing(t *testing.T) {
 }
 
 func TestQAStartupFoldersStillProtectLocalWork(t *testing.T) {
-	for _, name := range []string{"app/state.json", "services/service.json", ".codeaf/settings.json", "v3/factory/work/job.txt", "crew-credentials.json"} {
-		t.Run(name, func(t *testing.T) {
-			home := startedHome(t, func(home string) { put(t, filepath.Join(home, name), "person's work or credential") })
-			if ok, _ := Pristine(home); ok {
-				t.Fatalf("pairing would replace local work in %s", name)
+	cases := []struct {
+		name, path, body string
+	}{
+		{"unknown desktop state", "app/state.json", "person's work or credential"},
+		{"archived chat after setup", "app/state.json", `{"setup":{"step":"done"},"archived":{"chat":"2026-01-01T00:00:00Z"}}`},
+		{"unknown field in setup", "app/state.json", `{"setup":{"step":"done","key":"keep"}}`},
+		{"duplicate setup field", "app/state.json", `{"setup":{"step":"done","step":"done"}}`},
+		{"local service", "services/service.json", "person's work"},
+		{"local settings file", ".codeaf/settings.json", "person's work"},
+		{"custom skill with bundled name", ".codeaf/skills/workaf-canvas/SKILL.md", "---\nname: workaf-canvas\n---\n# My skill\n<!-- workaf-canvas v17 -->\n"},
+		{"additional skill file", ".codeaf/skills/workaf-canvas/reference.md", "person's work"},
+		{"factory job", "v3/factory/work/job.txt", "person's work"},
+		{"credential", "crew-credentials.json", "person's credential"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := startedHome(t, func(home string) { put(t, filepath.Join(home, tc.path), tc.body) })
+			if ok, _ := Joinable(home); ok {
+				t.Fatalf("pairing would admit local work in %s", tc.path)
 			}
 		})
 	}

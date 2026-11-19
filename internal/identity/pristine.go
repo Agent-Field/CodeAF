@@ -41,10 +41,12 @@ var startupRules = rules{
 	"factory-rooms-swept":   never,
 	"crew-credentials.json": credentialDigestHistory,
 	"app.lock":              never,
-	"app":                   within(rules{"state.json": emptyAppState}),
+	"app":                   within(rules{"state.json": appStartupState}),
 	"services":              within(rules{"lock": emptyFile, "logs": within(rules{}), "services.json": serviceStartup}),
-	".codeaf":               within(rules{}),
-	"model-catalog-*.json":  catalogCache, // Provider catalog caches are fetched again on demand.
+	".codeaf": within(rules{"skills": within(rules{
+		"workaf-canvas": within(rules{"SKILL.md": bundledCanvasSkill}),
+	})}),
+	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
 	"knowledge": within(rules{
 		".worker.lock":         never,
 		".discovery-asked":     never, // the Memory page asking the worker for a count

@@ -12,7 +12,8 @@ A computer with submitted chats and its own pairing keys refuses ordinary
 pairing without changing its chats. Use `--replace` to join the other set after
 confirming: existing chats stay here but stop syncing, shared memories and
 settings clear, and local provider keys stay here. A startup-only computer can
-pair directly. Startup lock files, empty app/service/factory folders and the
+pair directly. A home that only completed desktop setup and installed the bundled
+Canvas skill can still join. Startup lock files, empty app/service/factory folders and the
 factory migration marker do not count as local work. Credential history is
 accepted only when it has the known digest-only metadata format; actual keys,
 unknown content and nonempty work folders remain protected.
