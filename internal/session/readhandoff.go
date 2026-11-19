@@ -40,6 +40,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -83,8 +84,27 @@ type readSweep struct {
 // same read issued twice is one target, and a re-read of a file the turn
 // already holds never moves the count. Arguments are JSON-compacted so
 // whitespace variations do not register as distinct targets.
+//
+// A FILE READ IN PAGES IS ONE FILE. A `read` is keyed by its path alone, never
+// by its offset or limit, because the law above is that one file stays a step
+// and a long file is read a window at a time. Keying the window let a model
+// paging through the one skill it had to follow reach the sweep line on its
+// third page (run7, 2026-11-19): the remainder of its own instructions went to
+// a quick task that could not run a command, that task reported a canvas with
+// two parts on it as empty, and the chat asked the person what the deck was
+// about instead of reading the canvas and building it.
 func sweepKey(call ai.ToolCall) string {
 	raw := strings.TrimSpace(call.Function.Arguments)
+	if call.Function.Name == "read" {
+		var args struct {
+			Path string `json:"path"`
+		}
+		if json.Unmarshal([]byte(raw), &args) == nil {
+			if path := strings.TrimSpace(args.Path); path != "" {
+				return "read\x00" + filepath.Clean(path)
+			}
+		}
+	}
 	var compacted bytes.Buffer
 	if err := json.Compact(&compacted, []byte(raw)); err == nil {
 		raw = compacted.String()
@@ -372,7 +392,7 @@ func sweepBrief(user userMessage, glosses []string, calls []ai.ToolCall) string 
 	for _, call := range calls {
 		b.WriteString("- " + gloss(call) + "\n")
 	}
-	b.WriteString("\nReturn ONLY the distilled answer to the person's question — the answer itself, not a narration of what you read. Do not write or edit any file.")
+	b.WriteString("\nReturn ONLY the distilled answer the chat needs from this reading — what the reading found, not a narration of it, and not the chat's own reply to the person. Do not write or edit any file. You cannot run a command, so what only a program shows (the rows in a database file, what a running program holds) is something you did not see: never call it empty or missing; say you could not check it.")
 	return b.String()
 }
 
@@ -387,9 +407,17 @@ func sweepTitle(user userMessage) string {
 
 // sweepHandoffWord is the lead on the distilled answer, and the whole of what
 // the model is told about the hand-off: that it happened, that the raw reads
-// never entered the conversation, and the one road back to exact bytes.
+// never entered the conversation, the one road back to exact bytes, and what
+// the reader could not have seen.
+//
+// A READER'S "NOTHING THERE" ABOUT PROGRAM STATE IS NOT A FACT. The task holds
+// only the four readers, so a database it can only list and a canvas it can
+// only see as files are things it never saw; its sentence that they are empty
+// came back once as the answer, and the chat built a question on it rather than
+// running the one command that shows them. The chat can check cheaply, so the
+// lead tells it that it must.
 func sweepHandoffWord(id uint64) string {
-	return fmt.Sprintf("[This reading was handed to quick task %d, which finished it and returned the distilled answer below — the raw reads never entered this conversation. If you need one file's exact text to defend the answer, read that one file directly.]", id)
+	return fmt.Sprintf("[This reading was handed to quick task %d, which finished it and returned the distilled answer below — the raw reads never entered this conversation. If you need one file's exact text to defend the answer, read that one file directly. The task could read files but never run a command, so a claim about what only a command shows — what a database or a running program holds, or that something there is empty — is unchecked: check it yourself before you act on it.]", id)
 }
 
 // sweepCoveredWord answers every call after the first in an intercepted batch:

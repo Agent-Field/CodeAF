@@ -6,6 +6,7 @@ package session
 // the next person to touch the threshold.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -166,5 +167,51 @@ func TestOnlyAConversationHasItsReadsSwept(t *testing.T) {
 	}
 	if (Config{Stage: &fakeStageDoor{}}).maySweepReads() {
 		t.Fatal("a factory stage's reads were swept")
+	}
+}
+
+// TestReadSweepPagesOfOneFileAreOneTarget pins the paging law: a `read` is
+// keyed by its path, so a long file read a window at a time is one file and
+// never reaches the sweep line by itself (run7's board deck paged its skill to
+// the line). Two other files beside it are still the set the sweep is for.
+func TestReadSweepPagesOfOneFileAreOneTarget(t *testing.T) {
+	sweep := &readSweep{}
+	sweep.count([]ai.ToolCall{readCall("read", `{"path":"SKILL.md"}`)})
+	sweep.count([]ai.ToolCall{readCall("read", `{"path":"SKILL.md","offset":790,"limit":400}`)})
+	sweep.count([]ai.ToolCall{readCall("read", `{"path":"./SKILL.md","offset":1190,"limit":400}`)})
+	if sweep.due([]ai.ToolCall{readCall("read", `{"path":"SKILL.md","offset":1590}`)}) {
+		t.Fatal("the fourth window of one file armed the sweep")
+	}
+	if len(sweep.keys()) != 1 {
+		t.Fatalf("windows of one file counted as %d targets", len(sweep.keys()))
+	}
+	sweep.count([]ai.ToolCall{readCall("read", `{"path":"b.go"}`)})
+	if !sweep.due([]ai.ToolCall{readCall("read", `{"path":"c.go","offset":10}`)}) {
+		t.Fatal("three distinct files are still a sweep")
+	}
+}
+
+// TestReadHandoffSaysWhatTheReaderCouldNotSee pins both halves of the run7
+// answer that called a canvas with two parts empty: the reader is told that
+// what only a program shows is outside its reading, and the chat is told that
+// such a claim from it is unchecked.
+func TestReadHandoffSaysWhatTheReaderCouldNotSee(t *testing.T) {
+	brief := sweepBrief(userMessage{}, nil, []ai.ToolCall{readCall("read", `{"path":"a.go"}`)})
+	for _, needle := range []string{"cannot run a command", "never call it empty or missing", "not the chat's own reply"} {
+		if !strings.Contains(brief, needle) {
+			t.Errorf("the reader's brief lost %q: %s", needle, brief)
+		}
+	}
+	lead := sweepHandoffWord(1)
+	for _, needle := range []string{"never run a command", "is unchecked", "check it yourself before you act on it"} {
+		if !strings.Contains(lead, needle) {
+			t.Errorf("the chat's lead lost %q: %s", needle, lead)
+		}
+	}
+	page := readingPrompt
+	for _, needle := range []string{"OUTSIDE YOUR READING", "Never report one of them as empty"} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("the reading prompt lost %q", needle)
+		}
 	}
 }

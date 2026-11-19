@@ -207,6 +207,14 @@ func (b *appBackend) steer(agent, text, clientID string, shown *appSending) erro
 	if !running {
 		return appwire.Errorf(appwire.CodeBusy, "nothing is running to steer; send it as a message")
 	}
+	return b.steerRunning(a, live, agent, text, clientID, shown)
+}
+
+// steerRunning gives words to the running turn of live, the steer's own road
+// once the caller holds a.gate and has seen the turn running. agent is the id
+// the steer's entry is drawn under.
+func (b *appBackend) steerRunning(a *appAgent, live *appLive, agent, text, clientID string, shown *appSending) error {
+	var err error
 	// A CORRECTION'S MARK IS KEPT OR THE CORRECTION IS NOT MADE: a host that
 	// cannot keep it is refused before the turn hears a word, and the person's
 	// draft stays theirs.
