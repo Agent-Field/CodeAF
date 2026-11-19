@@ -83,6 +83,9 @@ type HarnessBeltSeams struct {
 	// MediaAspects is [Config.MediaAspects]: which frame shapes a model draws.
 	MediaAspects func(model string) []string
 
+	// MediaOutputs is [Config.MediaOutputs]: how many pictures one request draws.
+	MediaOutputs func(model string) int
+
 	// Seer is the completer view_image asks to look. It is separate from Media
 	// because looking is a CHAT call to a vision model and not a media-endpoint
 	// call, which is the same split the conversation's belt makes
@@ -156,6 +159,7 @@ func HarnessBelt(workspace string, seams HarnessBeltSeams) []bare.Tool {
 			MediaPick:      seams.MediaPick,
 			MediaMasks:     seams.MediaMasks,
 			MediaAspects:   seams.MediaAspects,
+			MediaOutputs:   seams.MediaOutputs,
 			Place:          seams.Place,
 			ArtifactsIndex: seams.ArtifactsIndex,
 		},
@@ -200,6 +204,7 @@ func (a *Agent) harnessSeams() HarnessBeltSeams {
 		MediaPick:      a.config.MediaPick,
 		MediaMasks:     a.config.MediaMasks,
 		MediaAspects:   a.config.MediaAspects,
+		MediaOutputs:   a.config.MediaOutputs,
 		Seer:           a.routedCompleter(),
 		Place:          a.config.Place,
 		ArtifactsIndex: a.config.ArtifactsIndex,

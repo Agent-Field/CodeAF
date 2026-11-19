@@ -159,6 +159,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"was the picture that failed still charged", "making-pictures-audio-and-video"},
 		{"change only the sky in this photo and keep the rest", "making-pictures-audio-and-video"},
 		{"edit one region of my picture with a mask", "making-pictures-audio-and-video"},
+		{"make four pictures failed saying n must be exactly 1", "making-pictures-audio-and-video"},
 		{"why does it say there is no default image model with a published price", "making-pictures-audio-and-video"},
 		{"which image model draws if I never picked one", "making-pictures-audio-and-video"},
 		{"make this 8:5 photo brighter and keep its shape", "making-pictures-audio-and-video"},

@@ -257,6 +257,24 @@ func v3MediaAspects(models *catalog.Catalog) func(string) []string {
 	}
 }
 
+// v3MediaOutputs is session.Config.MediaOutputs: how many pictures one request
+// to an image model may return, as its catalog row publishes the `n` knob, and
+// zero when it published none. Every Gemini image model publishes a maximum of
+// one, and a "make four" sent to one as a single request was refused outright;
+// with this fact the call goes out as four requests from the start.
+func v3MediaOutputs(models *catalog.Catalog) func(string) int {
+	if models == nil {
+		return nil
+	}
+	return func(id string) int {
+		params, known := models.MediaParams(id)
+		if !known {
+			return 0
+		}
+		return params.MaxOutputs
+	}
+}
+
 // v3MediaClient is session.Config.Media: the one client that reaches every
 // generation endpoint, or nil when this install cannot build one.
 //

@@ -111,23 +111,40 @@ are passed through untouched and never cropped.
 
 ## Can you make several versions, variants or a contact sheet of one picture?
 
-Yes: give `generate_image` an `n` from 1 to 10 (default 1). It asks the drawing
-model for that many pictures in **one** request and saves each as its own file —
-with `path: "sheet.png"` they are `sheet-1.png`, `sheet-2.png` and so on, and an
-existing file with one of those names is never overwritten (the next free name is
-used). The result says how many were asked for, how many the model sent and how
-many were saved, lists one path per line in the order the model sent them, and
-does not rank them — you choose.
+Yes: give `generate_image` an `n` from 1 to 10 (default 1). Each picture is saved
+as its own file — with `path: "sheet.png"` they are `sheet-1.png`, `sheet-2.png`
+and so on, and an existing file with one of those names is never overwritten
+(the next free name is used). The result says how many were asked for, how many
+came back and how many were saved, lists one path per line, and does not rank
+them — you choose.
 
-Limits: more than 10 is refused before anything is spent. If the drawing model
-cannot return several pictures in one request it says so and the call fails;
-codeaf does not quietly make several single requests instead, and it never
-retries a paid request. If the model sends fewer than you asked for, only those
-are saved and the count is stated. If one picture will not decode or write, the
-others stay saved and the failure is named. The cost is for the whole request;
-codeaf does not split it per picture. A reply whose pictures together are over
-64MB (or any one over 32MB) is refused after being paid for, with a suggestion to
-ask for fewer or a smaller size.
+A model that can return several pictures at once is asked in **one** request,
+and its cost is for that whole request. A model that returns fewer per request
+— every Gemini image model returns exactly one — is asked in several requests
+at the same time, and the result ends with a line such as
+`google/gemini-3.1-flash-image returns fewer pictures per request than were asked for, so they were asked as 4 separate requests at once; together they were charged $0.1560.`
+Each of those requests is billed on its own, so each picture carries its own
+cost.
+
+Limits: more than 10 is refused before anything is spent. If some requests fail
+the pictures that came back are kept, the call still counts as made, and each
+failure is named (`One request for one picture was not made: …`). If the model
+sends fewer than you asked for, only those are saved and the count is stated. A
+reply whose pictures together are over 64MB (or any one over 32MB) is refused
+after being paid for, with a suggestion to ask for fewer or a smaller size.
+
+## Asking for four pictures failed with "n: must be exactly 1" — can I get four?
+
+Yes, and you no longer have to do anything for it. When the model list says how
+many pictures a model returns per request, a request for more is split before
+anything is sent. When the list says nothing and the provider refuses the
+request **because of the count** (`n: must be exactly 1`, `n must be 1`), codeaf
+asks again **once**, as that many single-picture requests at the same time, and
+the result says
+`<model> refused several pictures in one request, so they were asked as 4 separate requests at once`.
+A refusal about anything else — a shape, a size, the prompt — is reported as it
+came and never retried, because asking again for a reason nobody can name would
+spend money you did not approve.
 
 ## Do I only get a file path, or can I see the image you made?
 
@@ -788,7 +805,11 @@ In the terminal, stopping the turn stops it. The desktop app's render stop
 already been accepted for saving and will land) or `already_ended`. After
 `cancelled` the call says `Image generation was stopped (<model>); nothing was saved.
 Only waiting stopped here — the provider was not told to cancel, so whether it
-charged is unknown.` Nothing is retried after a stop or a failure.
+charged is unknown.` Nothing is retried after a stop or a failure, with one
+exception: a request for several pictures refused only because of the count is
+asked again once as single pictures. A call sent as several requests keeps ONE
+record, and its charge is what all of them reported together (`unknown` if any
+one of them said nothing).
 
 **What it was charged** is the provider's own figure: `charged` with the amount,
 `not_charged` when it said zero, and `unknown` when it said nothing — never a
