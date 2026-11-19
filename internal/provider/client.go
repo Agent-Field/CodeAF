@@ -528,7 +528,7 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 	// wearing one name. A race has already stamped its own (hedge.go), and every
 	// arm of it inherits that one deadline and that one list of moves.
 	if _, held := callPlanFrom(ctx); !held {
-		ctx = withCallPlan(ctx, lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow()))
+		ctx = withCallPlan(ctx, c.stretchPlan(lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow())))
 	}
 	// AND THE CALL'S ONE LANE CHOICE IS STAMPED BESIDE ITS ONE BUDGET, ON THE
 	// SAME DOOR AND FOR THE SAME REASON (lanes.go's [Client.withLaneChoice]).
@@ -1756,7 +1756,7 @@ func (c *Client) completeWithMessagesStreaming(
 	// lineage's widest — no chunk has named a serving endpoint yet — and
 	// narrows to the lane's own the moment one does, below. The pace it is
 	// judged at when it fires travels with it, by the same rule.
-	stall := newStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""), c.streamPace(c.modelFor(request), ""))
+	stall := newPatientStallWatch(ctx, cutStream, c.streamWall(c.modelFor(request), ""), c.streamPace(c.modelFor(request), ""), c.patience())
 	defer stall.stop()
 	// THE MOMENT THE ENDPOINT OWES AN ANSWER is the moment this arm's wait
 	// really began, and it is taken from the reading above rather than from a

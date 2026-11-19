@@ -865,6 +865,11 @@ func InstallLaneRows(profileDir string) {
 	InstallRoutingRow(profileDir)
 	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
 	provider.SetLaneGuard(LaneGuardAt(profileDir))
+	// How long a slow model may stay quiet is the same kind of process-wide
+	// fact, and it travels with the routing posture for the same reason: every
+	// door that installs one installs the other, so no client runs on a wait the
+	// person did not write.
+	InstallResponsePatience(profileDir)
 }
 
 // InstallRoutingRow hands the routing row ALONE to the transport, and it is the
@@ -2855,6 +2860,13 @@ func (s *Settings) build() []Setting {
 		},
 	)
 	rows = append(rows, teamRows(dir)...)
+	// THE RESPONSE PATIENCE ROW IS REGISTERED LAST, which makes it the last row of
+	// the Models tab and moves no row above it: a row added in the middle of a
+	// tab shifts every row under it, and the panel's own tests (and a person's
+	// muscle memory) count down from the model row. The tab is a filter over this
+	// list in order, so where it is registered is only where it lands inside its
+	// own tab.
+	rows = append(rows, responsePatienceSetting(dir))
 	return rows
 }
 

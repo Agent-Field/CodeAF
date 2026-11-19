@@ -89,7 +89,12 @@ func TestMemoryRecoversFromTimeoutOnTheRealTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "CODEAF_BASE_URL=" + server.URL + "/fixture"}, "memory_recovery", home, ws, 150, 45, "chat", "--one-model", "--debug")
+	// The proxy stands in for the hosted model during the injected outage.
+	r := startWithEnv(t, []string{
+		config.APIKeyEnv + "=" + liveKey(t),
+		"CODEAF_BASE_URL=" + server.URL + "/fixture",
+		config.EnvResponsePatience + "=1",
+	}, "memory_recovery", home, ws, 150, 45, "chat", "--one-model", "--debug")
 	r.skipSetup(t)
 	prompt := "For the fictional Juniper demo, our standing packaging convention is violet envelopes for weekend parcels. Please acknowledge in one sentence without calling any tools."
 	r.lit(prompt)
