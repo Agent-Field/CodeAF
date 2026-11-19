@@ -861,6 +861,31 @@ func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs ca
 			began = logNow()
 			response, err = c.resend(ctx, request, knobs, stream, response)
 			continue
+		case foreign && !repaired["bound_reasoning"] && refusesBoundReasoning(response, peek, knobs.reasoning):
+			// THE THINKING IS BOUND TO THE MACHINE THAT MADE IT, AND THIS
+			// REQUEST HAS BEEN STEERED OFF THAT MACHINE. An opaque
+			// `reasoning_details` item can only be read by the provider that
+			// encrypted it, and the request's own membership filter — a veto, a
+			// role's patience, a retry's avoid list, a person's lane — excluded
+			// that provider, so the router could serve the request nowhere
+			// (run21: a checker's sixth call carried five turns of Google AI
+			// Studio's working while `provider.ignore` named Google AI Studio,
+			// and the task settled failed over finished work). The bound state
+			// comes off this one request and the words go as they are: the next
+			// machine continues the conversation from what was said, which is
+			// all it could ever have continued from. The filter stays — it was
+			// put there for a reason this request knows nothing about.
+			c.record(recordFacts{
+				ctx: ctx, request: request, knobs: knobs, stream: stream,
+				attempt: c.attemptsSoFar(knobs), began: began,
+				status: response.StatusCode, err: apiError(response.StatusCode, peek),
+				responseBody: peek,
+			})
+			knobs.reasoning = withoutBoundReasoning(knobs.reasoning)
+			repaired["bound_reasoning"] = true
+			began = logNow()
+			response, err = c.resend(ctx, request, knobs, stream, response)
+			continue
 		case streamUsage && usageRefusalStatus && !repaired["stream_usage"] && refusesStreamUsage(peek):
 			c.record(recordFacts{ctx: ctx, request: request, knobs: knobs, stream: stream,
 				attempt: c.attemptsSoFar(knobs), began: began, status: response.StatusCode,
