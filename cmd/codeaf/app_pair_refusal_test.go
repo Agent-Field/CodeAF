@@ -134,7 +134,7 @@ func TestAppPairOwnChatsRefusedBeforeApproval(t *testing.T) {
 
 	offer, join := offerAndUse(t, wa, wb)
 	failed := e2PairWait(t, wb, join, "failed")
-	wantCannotJoin(t, failed, "This computer has 1 chat of its own, so it can't join another computer's chats. Nothing was changed.")
+	wantCannotJoin(t, failed, "This computer has 1 chat of its own. To protect that work, pairing leaves this WorkAF home as it is. Show the code on the computer whose chats you want to share, and enter it from a fresh WorkAF home on the other computer.")
 	if states := pairStates(recA, offer); strings.Contains(strings.Join(states, " "), "question") || strings.Contains(strings.Join(states, " "), "done") {
 		t.Fatalf("A went through %v for a computer that refused", states)
 	}
@@ -203,7 +203,7 @@ func TestAppPairLateRefusalIsNotConfirmed(t *testing.T) {
 	offer, join := offerAndUse(t, wa, wb)
 	q := e2PairWait(t, wa, offer, "question")
 	machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer, Question: q.Question.ID, Option: "y"})
-	wantCannotJoin(t, e2PairWait(t, wb, join, "failed"), "This computer has 1 chat of its own, so it can't join another computer's chats. Nothing was changed.")
+	wantCannotJoin(t, e2PairWait(t, wb, join, "failed"), "This computer has 1 chat of its own. To protect that work, pairing leaves this WorkAF home as it is. Show the code on the computer whose chats you want to share, and enter it from a fresh WorkAF home on the other computer.")
 	a := e2PairWait(t, wa, offer, "failed")
 	if a.Error == nil || a.Error.Code != appwire.CodeEngine || !strings.HasPrefix(a.Error.Message, "Pairing was not confirmed by B") || !strings.HasSuffix(a.Error.Message, "Check that computer to see whether it joined.") {
 		t.Fatalf("A ended with %+v", a.Error)

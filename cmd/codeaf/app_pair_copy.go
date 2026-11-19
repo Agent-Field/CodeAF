@@ -90,7 +90,7 @@ func appPairOwnChats(n int) string {
 	case 1:
 		held = "1 chat"
 	}
-	return "This computer has " + held + " of its own, so it can't join another computer's chats. Nothing was changed."
+	return "This computer has " + held + " of its own. To protect that work, pairing leaves this WorkAF home as it is. Show the code on the computer whose chats you want to share, and enter it from a fresh WorkAF home on the other computer."
 }
 
 // appPairNotConfirmed is the approving computer's sentence when the joining one

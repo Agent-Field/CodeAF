@@ -30,8 +30,11 @@ func testOpenedDesktopPair(t *testing.T, method string) {
 			next.ServeHTTP(w, r)
 		})
 	})
-	t.Setenv(syncsetup.URLVar, relay.URL)
+	t.Setenv(syncsetup.URLVar, "")
 	offering := t.TempDir()
+	if err := syncsetup.SaveRelayURL(offering, relay.URL); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := identity.Ensure(offering); err != nil {
 		t.Fatal(err)
 	}
@@ -58,20 +61,31 @@ func testOpenedDesktopPair(t *testing.T, method string) {
 	}
 	b := opened()
 	e2Quit(t, b)
+	// WorkAF writes this file when picking a relay, even if no chat was sent.
+	if err := syncsetup.SaveRelayURL(dir, relay.URL); err != nil {
+		t.Fatal(err)
+	}
+	old, err := identity.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syncsetup.SaveStorage(dir, relay.URL, old.ID(), "on"); err != nil {
+		t.Fatal(err)
+	}
 	if ok, err := identity.Joinable(dir); err != nil || !ok {
 		t.Fatalf("an opened but unused home refused pairing: %v", err)
 	}
 	b = opened()
 	var approveID, joinID string
 	if method == "code" {
-		offer := machineCall[appwire.PairResult](t, a.w, "pair.start", appwire.PairStartParams{Mode: "offer_code"}).Pairing
+		offer := machineCall[appwire.PairResult](t, a.w, "pair.start", appwire.PairStartParams{Mode: "offer_code", Name: "Living Room Mac mini"}).Pairing
 		code := e2PairWait(t, a.w, offer.ID, "waiting").Code
-		join := machineCall[appwire.PairResult](t, b.w, "pair.start", appwire.PairStartParams{Mode: "use_code", Code: code}).Pairing
+		join := machineCall[appwire.PairResult](t, b.w, "pair.start", appwire.PairStartParams{Mode: "use_code", Code: code, Name: "Travel MacBook"}).Pairing
 		approveID, joinID = offer.ID, join.ID
 	} else {
-		request := machineCall[appwire.PairResult](t, b.w, "pair.start", appwire.PairStartParams{Mode: "request_link"}).Pairing
+		request := machineCall[appwire.PairResult](t, b.w, "pair.start", appwire.PairStartParams{Mode: "request_link", Name: "Travel MacBook"}).Pairing
 		link := e2PairWait(t, b.w, request.ID, "waiting").Link
-		approve := machineCall[appwire.PairResult](t, a.w, "pair.start", appwire.PairStartParams{Mode: "approve_link", Link: link}).Pairing
+		approve := machineCall[appwire.PairResult](t, a.w, "pair.start", appwire.PairStartParams{Mode: "approve_link", Link: link, Name: "Living Room Mac mini"}).Pairing
 		approveID, joinID = approve.ID, request.ID
 	}
 	question := e2PairWait(t, a.w, approveID, "question").Question
@@ -92,6 +106,21 @@ func testOpenedDesktopPair(t *testing.T, method string) {
 	id, err := identity.Load(dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	e2Quit(t, b)
+	b = e2StartAppWithSetup(t, dir, nil)
+	for _, check := range []struct {
+		app  *e2App
+		peer string
+	}{{a, "Travel MacBook"}, {b, "Living Room Mac mini"}} {
+		appSyncWait(t, "the other computer appears with its chosen name", func() bool {
+			for _, device := range appDeviceList(t, check.app.w).Devices {
+				if !device.Self && !device.Removed && device.Name == check.peer {
+					return true
+				}
+			}
+			return false
+		})
 	}
 	if got := syncsetup.ReportedStorage(dir, relay.URL, id.ID()); got != "off" {
 		t.Fatalf("the completed pairing's storage answer was %q", got)

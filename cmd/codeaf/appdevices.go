@@ -135,7 +135,7 @@ func (d *appDevices) snapshotState() (appwire.Devices, bool, error) {
 	case !cell.Available():
 		view.Mode, view.Line = appwire.DevicesUnavailable, cell.UnavailableReason()
 	case errors.Is(known.Refused, dirwatch.ErrRevoked):
-		view.Mode, view.Line = appwire.DevicesUnavailable, chatlist.Removed
+		view.Mode, view.Line = appwire.DevicesUnavailable, appRemoved
 	case errors.Is(known.Refused, dirwatch.ErrRotated):
 		view.Mode, view.Line = appwire.DevicesUnavailable, chatlist.Replaced
 	case !syncsetup.MayTalk(d.home):
@@ -294,7 +294,7 @@ func deviceError(err error) error {
 	case errors.Is(err, directory.ErrUnreachable):
 		return appwire.Errorf(appwire.CodeUnreachable, "%s", chatlist.Unreachable)
 	case errors.Is(err, directory.ErrRevoked):
-		return appwire.Errorf(appwire.CodeEngine, "%s", chatlist.Removed)
+		return appwire.Errorf(appwire.CodeEngine, "%s", appRemoved)
 	case errors.Is(err, directory.ErrRotated):
 		return appwire.Errorf(appwire.CodeEngine, "%s", chatlist.Replaced)
 	case errors.Is(err, wireauth.ErrSkew):
