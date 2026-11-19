@@ -44,6 +44,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// probe: base cmd/codeaf leg, nothing else changed.
 var flushFinalSaves = cellstore.Flush
 
 func main() {
