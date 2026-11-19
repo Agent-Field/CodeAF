@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: codeaf exec and saved harnesses refuse to read the profile key, wherever the profile lives
-pr: 0
+pr: 2830
 surface: [engine, chat, docs]
 invalidates:
   - "Was true: the credential refusal stood on the chat's and the resident's doors, but `codeaf exec` (and every unattended run and benchmark built on its leaf) and a saved harness's tool calls ran without it, so an agent run through `codeaf exec` with `CODEAF_HOME` pointed at a temporary folder could `cat` that folder's `config.json` and send its `api_key` to the model. Is true now: both doors ask the same floor before any tool runs and answer `Blocked: this call reaches for a credential …`."
