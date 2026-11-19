@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,45 @@ var appHomeLock *os.File
 var appHomeWait = appLeaveWait + 10*time.Second
 
 const appHomePoll = 50 * time.Millisecond
+
+// appFlags is `codeaf app`'s flag set, kept in one place so runApp and the
+// early reading of --home ([useAppHomeEarly]) cannot disagree about what is a
+// flag and what is its value.
+type appFlags struct {
+	set      *flag.FlagSet
+	home     *string
+	turnLong *time.Duration
+	schema   *bool
+}
+
+func newAppFlags() appFlags {
+	set := commandFlags("app")
+	return appFlags{
+		set:      set,
+		home:     set.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf"),
+		turnLong: set.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long"),
+		schema:   set.Bool("schema", false, "print the wire's JSON Schema, generated from its Go types, and exit"),
+	}
+}
+
+// useAppHomeEarly applies `codeaf app --home <dir>` at the very start of the
+// process, before anything reads the state root.
+//
+// main reads the state root before runApp has parsed a flag: the legacy-folder
+// adoption, the first look at the root's identity (home.Witness), and the
+// crash-telemetry consent, which is read from the profile under it. Left to
+// runApp, an app started with --home would have its consent read from the
+// command line's folder and could adopt the command line's legacy folder.
+// Whatever is wrong with the rest of the command line is runApp's to say: this
+// reads the flag the way runApp will and acts on nothing else.
+func useAppHomeEarly(args []string) {
+	if len(args) == 0 || args[0] != "app" {
+		return
+	}
+	names := newAppFlags()
+	_ = names.set.Parse(args[1:])
+	_, _ = useAppHome(*names.home)
+}
 
 // useAppHome points this process at the state folder the app asked for with
 // --home, and answers the restore for it. No folder asked for leaves the

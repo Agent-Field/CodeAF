@@ -47,6 +47,9 @@ import (
 var flushFinalSaves = cellstore.Flush
 
 func main() {
+	// THE APP'S --HOME IS READ BEFORE ANYTHING READS THE STATE ROOT, which
+	// the adoption, the witness and the telemetry consent below all do.
+	useAppHomeEarly(os.Args[1:])
 	// THE DEVELOPER-ONLY PROFILE STARTS FIRST AND STOPS LAST, and is inert
 	// unless CODEAF_DIAGNOSTIC_PROFILE_DIR is set (diagnostics.go).
 	stopDiagnostics := startDiagnostics()

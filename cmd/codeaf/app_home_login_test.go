@@ -62,3 +62,51 @@ func TestAppWithoutHomeFlagLeavesTheEnvironmentAlone(t *testing.T) {
 		t.Fatalf("the login home with no --home = %q err = %v, want %q", got, err, login)
 	}
 }
+
+// THE APP'S --HOME TAKES EFFECT BEFORE MAIN READS THE STATE ROOT, because the
+// legacy-folder adoption, the root's first witness and the crash-telemetry
+// consent all read it first. Every way the flag is spelled gives the same home,
+// and no other command and no other spelling of the app moves anything.
+func TestAppHomeFlagIsReadBeforeTheStateRootIsRead(t *testing.T) {
+	login := t.TempDir()
+	state := filepath.Join(t.TempDir(), "app-state")
+	t.Setenv("HOME", login)
+	for _, args := range [][]string{
+		{"app", "--home", state},
+		{"app", "--home=" + state},
+		{"app", "-home", state},
+		{"app", "--turn-long", "5s", "--home", state},
+	} {
+		t.Setenv(home.EnvVar, "")
+		t.Setenv(home.LoginEnvVar, "")
+		useAppHomeEarly(args)
+		if got := home.Dir(); got != state {
+			t.Errorf("%v: the state root is %q, want %q", args, got, state)
+		}
+		if got, err := home.Login(); err != nil || got != login {
+			t.Errorf("%v: the login home is %q err = %v, want the real one %q", args, got, err, login)
+		}
+	}
+}
+
+func TestAppHomeFlagIsLeftAloneByEveryOtherCommand(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	for _, args := range [][]string{
+		nil,
+		{"app"},
+		{"app", "--schema"},
+		{"chat", "--home", "/elsewhere"},
+		{"exec", "--home", "/elsewhere", "say hi"},
+		{"version"},
+	} {
+		t.Setenv(home.EnvVar, "")
+		t.Setenv(home.LoginEnvVar, "")
+		useAppHomeEarly(args)
+		if got := os.Getenv(home.EnvVar); got != "" {
+			t.Errorf("%v set CODEAF_HOME to %q", args, got)
+		}
+		if got := os.Getenv(home.LoginEnvVar); got != "" {
+			t.Errorf("%v recorded a login home %q", args, got)
+		}
+	}
+}
