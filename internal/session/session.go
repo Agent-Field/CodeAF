@@ -2105,6 +2105,12 @@ type Config struct {
 	// MediaAdmission optionally keeps connected generation capabilities explainable
 	// when no safe default exists. It is evaluated for the actual invocation.
 	MediaAdmission func(modality, word string) MediaAdmission
+	// PictureRoute, when set, routes generate_image instead of MediaAdmission:
+	// the picture maker chosen for this canvas or Everywhere, or Automatic's
+	// ladder, checked against what the ask needs (tools_image_route.go). The
+	// tool fills the call's word, this session's workspace and whether the
+	// call works from a picture; the surface fills the rest.
+	PictureRoute func(config.PictureAsk) config.PictureRoute
 
 	// MediaPick is the just-in-time half of the pair above: where MediaModel
 	// answers "the default for this modality", MediaPick answers "the model

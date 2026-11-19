@@ -1281,6 +1281,7 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		cfg.MediaAspects = v3MediaAspects(activeModels)
 		cfg.MediaOutputs = v3MediaOutputs(activeModels)
 		cfg.MediaAdmission = v3MediaAdmission(activeModels, settings.ProfileDir, cfg.RolesSource)
+		cfg.PictureRoute = v3PictureRoute(activeModels, settings.ProfileDir, cfg.RolesSource)
 	}
 
 	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
@@ -1295,7 +1296,8 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 	// directory and recorded nothing, which made a harness's work invisible.
 	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, session.HarnessBeltSeams{
 		Media: cfg.Media, MediaModel: cfg.MediaModel, MediaPick: cfg.MediaPick, MediaMasks: cfg.MediaMasks, MediaAspects: cfg.MediaAspects, MediaOutputs: cfg.MediaOutputs, MediaAdmission: cfg.MediaAdmission,
-		Place: cfg.Place, ArtifactsIndex: cfg.ArtifactsIndex,
+		PictureRoute: cfg.PictureRoute,
+		Place:        cfg.Place, ArtifactsIndex: cfg.ArtifactsIndex,
 	})
 	// AND THE SAME DOOR PUTS THAT STORE ON THE LIST. A program saved as a page is
 	// a program this conversation can run, so it belongs on `/subharness` beside

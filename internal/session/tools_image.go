@@ -150,6 +150,11 @@ type ImageGen struct {
 	// door and a saved harness's belt have no ledger by construction, so they
 	// leave it nil and record nothing ([Agent.imageAttemptDoor]).
 	attempt func(ctx context.Context, model string) (*renderAttempt, error)
+	// routing is the picture maker's route for this call when the surface
+	// wired one (tools_image_route.go): how the model was picked, which
+	// Automatic models were passed over, and what to say when this one does
+	// not answer. Nil for every other door, which keeps its old words.
+	routing *pictureRouting
 }
 
 // generateImageTool wraps the shared road ([generateImage]) in the belt's
@@ -164,6 +169,10 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
+			if strings.TrimSpace(parsed.Prompt) != "" && a.config.PictureRoute != nil {
+				text, failed := a.generateRoutedPicture(ctx, client, parsed)
+				return text, failed, nil
+			}
 			resolvedDefault := defaultModel
 			if strings.TrimSpace(parsed.Prompt) != "" && a.config.MediaAdmission != nil {
 				admission := a.config.MediaAdmission(modalityImage, parsed.Model)
@@ -173,22 +182,29 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 				resolvedDefault = admission.Model
 				parsed.Model = "" // The invocation's exact choice was already resolved.
 			}
-			text, failed := GenerateImage(ctx, ImageGen{
-				Client:       client,
-				DefaultModel: resolvedDefault,
-				Pick:         a.config.MediaPick,
-				Workspace:    a.config.Workspace,
-				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
-				TakesMask:    a.config.MediaMasks,
-				AspectRatios: a.config.MediaAspects,
-				MaxOutputs:   a.config.MediaOutputs,
-				Account:      a.accountImageRung,
-				attempt:      a.imageAttemptDoor(),
-				RecordMedia: func(path, prompt string, fact MediaFact) {
-					a.recordImageMedia(path, prompt, fact.WithMade(madeBy(ctx, nil)))
-				},
-			}, parsed)
+			text, failed := GenerateImage(ctx, a.imageGen(ctx, client, resolvedDefault), parsed)
 			return text, failed, nil
+		},
+	}
+}
+
+// imageGen is the belt's road for one model: every hook the conversation's
+// generate_image wires, so the routed call and the plain one cannot differ in
+// anything but the model.
+func (a *Agent) imageGen(ctx context.Context, client MediaGenerator, model string) ImageGen {
+	return ImageGen{
+		Client:       client,
+		DefaultModel: model,
+		Pick:         a.config.MediaPick,
+		Workspace:    a.config.Workspace,
+		Directory:    ImagesDir(a.config.Place, a.config.Workspace),
+		TakesMask:    a.config.MediaMasks,
+		AspectRatios: a.config.MediaAspects,
+		MaxOutputs:   a.config.MediaOutputs,
+		Account:      a.accountImageRung,
+		attempt:      a.imageAttemptDoor(),
+		RecordMedia: func(path, prompt string, fact MediaFact) {
+			a.recordImageMedia(path, prompt, fact.WithMade(madeBy(ctx, nil)))
 		},
 	}
 }
@@ -368,6 +384,10 @@ func finishImageCall(gen ImageGen, parsed GenerateImageArgs, model string, reque
 	attempt *renderAttempt, requestCtx context.Context, sizes []int, replies []imageReply, retried bool, total *ai.Usage) (string, bool) {
 	// end reports false only when a Stop already wrote the ending.
 	end := func(patch renderPatch) bool {
+		if gen.routing != nil {
+			patch.picked = gen.routing.picked
+			patch.passedOver = gen.routing.passedOver
+		}
 		return attempt == nil || attempt.end(patch)
 	}
 	stoppedText := "Image generation was stopped (" + model + "); nothing was saved. Only waiting stopped here — the provider was not told to cancel, so whether it charged is unknown."
@@ -420,9 +440,14 @@ func finishImageCall(gen ImageGen, parsed GenerateImageArgs, model string, reque
 		if firstErr != nil {
 			text := "Image generation failed (" + model + "): " + firstErr.Error()
 			patch := renderPatch{state: RenderFailed, err: text}
+			note := ""
 			if requestCtx.Err() != nil {
 				// The turn ended under the call: only waiting stopped.
 				patch = renderPatch{state: RenderCancelled}
+			} else if gen.routing != nil {
+				// Not answering is the one failure another model can repair;
+				// the route decides whether one may (tools_image_route.go).
+				note, patch.refusal, patch.options = gen.routing.notAnswering(model, firstErr)
 			}
 			if !end(patch) {
 				// A Stop landed after the provider returned and before the ending.
@@ -437,7 +462,7 @@ func finishImageCall(gen ImageGen, parsed GenerateImageArgs, model string, reque
 				// nobody approved.
 				text += fmt.Sprintf(" — asked for %d images in one request; the refusal was not about the count, so nothing was retried", requested)
 			}
-			return text, true
+			return joinNotes(text, note), true
 		}
 		end(renderPatch{state: RenderFailed, err: "the provider returned no image"})
 		return "Image generation returned no image (" + model + ")", true
@@ -504,6 +529,9 @@ func finishImageCall(gen ImageGen, parsed GenerateImageArgs, model string, reque
 		r := origins[i]
 		usage := replies[r].response.Usage
 		fact := GeneratedMedia(path, data, model).WithReferences(parsed.ReferencePaths).WithRequested(requested)
+		if gen.routing != nil {
+			fact = fact.WithPicked(gen.routing.picked, gen.routing.passedOver)
+		}
 		switch {
 		case !numbered:
 			fact = fact.WithUsage(usage)
@@ -527,6 +555,9 @@ func finishImageCall(gen ImageGen, parsed GenerateImageArgs, model string, reque
 		end(renderPatch{state: RenderFailed, committed: true, err: "none of the images could be saved"})
 	} else {
 		end(renderPatch{state: RenderFinished, committed: true})
+	}
+	if gen.routing != nil {
+		maskNote = joinNotes(maskNote, gen.routing.madeNote(model))
 	}
 	if !numbered {
 		return withMaskNote(saved[0], maskNote), false
