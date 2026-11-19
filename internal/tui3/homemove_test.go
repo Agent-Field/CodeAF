@@ -111,7 +111,8 @@ func TestAStalledContinueSaysWhy(t *testing.T) {
 }
 
 // A chat whose computer is not running codeaf cannot be copied from it. The
-// failure names that computer and says the words typed here are kept (C5).
+// failure names that computer (C5). Whether it also says the words typed here
+// are kept depends on whether there are any: see the three tests below.
 func TestContinueNamesTheComputerThatIsNotOn(t *testing.T) {
 	a := continueHome(t, &fakeTaker{}, continueRows, 200)
 	for _, err := range []error{
@@ -121,9 +122,54 @@ func TestContinueNamesTheComputerThatIsNotOn(t *testing.T) {
 		row := continueRows[0]
 		row.Device = "tower"
 		got := a.continueFailure(homeTakenMsg{row: row, err: err})
-		if !strings.Contains(got, "tower has this chat and is not on right now; open codeaf there, then continue here") || !strings.Contains(got, "your words are still in the box") {
+		if !strings.Contains(got, "tower has this chat and is not on right now; open codeaf there, then continue here") {
 			t.Fatalf("a continue whose computer is off says %q", got)
 		}
+	}
+}
+
+// F2: an automatic continue at launch has no typed draft, so the holder-off
+// sentence must not claim that words are still in the box.
+func TestHolderOffSentenceWithoutADraftDoesNotMentionTheBox(t *testing.T) {
+	a := continueHome(t, &fakeTaker{}, continueRows, 200)
+	row := continueRows[0]
+	row.Device = "tower"
+	err := fmt.Errorf("handoff: %w", &syncwords.HolderOfflineError{Name: "tower"})
+	want := "tower has this chat and is not on right now; open codeaf there, then continue here"
+	for name, msg := range map[string]homeTakenMsg{
+		"automatic continue, no draft": {row: row, err: err, automatic: true},
+		"a draft holding nothing":      {row: row, err: err, draft: &composerState{}},
+	} {
+		if got := a.continueFailure(msg); got != want {
+			t.Errorf("%s: the holder-off sentence is %q; want exactly %q", name, got, want)
+		}
+	}
+}
+
+// F2, the other half: with words typed in a chat window's composer, or in
+// Home's own box, the sentence still says they were kept.
+func TestHolderOffSentenceWithAnUnsentDraftSaysTheWordsAreKept(t *testing.T) {
+	row := continueRows[0]
+	row.Device = "tower"
+	err := fmt.Errorf("handoff: %w", &syncwords.HolderOfflineError{Name: "tower"})
+	const tail = "; your words are still in the box"
+
+	a := continueHome(t, &fakeTaker{}, continueRows, 200)
+	var box editor
+	box.setText("carry on with the migration")
+	got := a.continueFailure(homeTakenMsg{row: row, err: err, draft: &composerState{box: box}})
+	if !strings.HasSuffix(got, tail) || !strings.HasPrefix(got, "tower has this chat and is not on right now") {
+		t.Errorf("with a draft captured from a chat window the sentence is %q", got)
+	}
+
+	b := continueHome(t, &fakeTaker{}, continueRows, 200)
+	b.home.box.setText("typed on home while it tried")
+	if !b.at(pageHome) {
+		t.Fatal("the home page is not showing")
+	}
+	got = b.continueFailure(homeTakenMsg{row: row, err: err, automatic: true})
+	if !strings.HasSuffix(got, tail) {
+		t.Errorf("with words typed in Home's box the sentence is %q", got)
 	}
 }
 
@@ -132,7 +178,7 @@ func TestContinueNamesTheComputerThatIsNotOn(t *testing.T) {
 func TestContinueSaysLiveTransferIsOff(t *testing.T) {
 	a := continueHome(t, &fakeTaker{}, continueRows, 200)
 	got := a.continueFailure(homeTakenMsg{row: continueRows[0], err: fmt.Errorf("cellsync: fetch object x: %w", syncwords.ErrLiveTransferOff)})
-	if !strings.Contains(got, "live transfer is switched off here") || !strings.Contains(got, "CODEAF_LIVE_TRANSFER") {
+	if !strings.Contains(got, "blind pass-through is switched off here") || !strings.Contains(got, "CODEAF_PASSTHROUGH") {
 		t.Fatalf("a continue with live transfer off says %q", got)
 	}
 }
