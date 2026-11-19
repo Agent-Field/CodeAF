@@ -52,6 +52,9 @@ var (
 func runSurface(ctx context.Context, options tui3.Options) error {
 	stopStorage := syncsetup.StartStorageRefresh(ctx, home.Dir(), false)
 	defer stopStorage()
+	// While this window runs, the computer also answers for the chats it shared
+	// live, so another computer can take them (see syncsetup.StartLiveTransfer).
+	defer syncsetup.StartLiveTransfer(ctx, home.Dir())()
 	if options.Host == "" {
 		if options.Notices == nil {
 			options.Notices = surfaceNotices

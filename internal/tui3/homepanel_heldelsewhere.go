@@ -502,12 +502,43 @@ type continueCheckError struct{ err error }
 func (e *continueCheckError) Error() string { return e.err.Error() }
 func (e *continueCheckError) Unwrap() error { return e.err }
 
+// keptWordsTail is the clause a failed move adds when what the person typed is
+// still in front of them.
+const keptWordsTail = "; your words are still in the box"
+
+// wordsAreKept says whether a failed move leaves something the person typed in
+// a box: the draft taken from the chat window the move started from, or what
+// stands in Home's own box (which a failed move does not touch).
+func (a *app) wordsAreKept(msg homeTakenMsg) bool {
+	if msg.draft != nil && !msg.draft.empty() {
+		return true
+	}
+	return a.at(pageHome) && (!a.home.box.empty() || len(a.home.chips) > 0)
+}
+
 // continueFailure describes an error without retiring local authority. A failed
 // safety reading has not started a take and must not cancel one already running.
 func (a *app) continueFailure(msg homeTakenMsg) string {
 	switch {
 	case errors.Is(msg.err, syncwords.ErrContinueStorageOff):
 		return syncwords.ErrContinueStorageOff.Error()
+	case errors.Is(msg.err, syncwords.ErrHolderOffline):
+		// The computer that has the chat is not running codeaf, so there is
+		// nothing to copy from. Name it, and say where the words went.
+		name := msg.row.Device
+		var off *syncwords.HolderOfflineError
+		if errors.As(msg.err, &off) && off.Name != "" {
+			name = off.Name
+		}
+		// THE TAIL IS ONLY TRUE WITH WORDS. A launch that continues a chat by
+		// itself has nothing typed, and a line that promised words in the box
+		// told the person about words that were never there.
+		if a.wordsAreKept(msg) {
+			return syncwords.HolderOffline(name) + keptWordsTail
+		}
+		return syncwords.HolderOffline(name)
+	case errors.Is(msg.err, syncwords.ErrLiveTransferOff):
+		return syncwords.ErrLiveTransferOff.Error()
 	case errors.Is(msg.err, directory.ErrLeaseHeld):
 		return lostRaceWord
 	case errors.Is(msg.err, ErrMoveStalled):

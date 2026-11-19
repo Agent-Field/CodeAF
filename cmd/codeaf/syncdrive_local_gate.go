@@ -44,7 +44,7 @@ func (g *localToolGate) Gate() error {
 	}
 	if g.sync == nil {
 		s, ok, err := syncsetup.Open(home.Dir())
-		if err != nil || !ok || s.StorageAllowed() {
+		if err != nil || !ok || !s.ChatStorageOff() {
 			return nil
 		}
 		g.sync = s

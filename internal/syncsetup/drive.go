@@ -124,9 +124,12 @@ func (s *Sync) Drive(ctx context.Context, eng cellstore.Engine, c cell.Cell, opt
 	if Quiet(s.Home) {
 		return nil, ErrQuiet
 	}
-	if !s.StorageAllowed() {
+	if s.ChatStorageOff() {
 		return nil, wireauth.ErrStorageOff
 	}
+	// While live transfer carries this chat, the computer that shares it must
+	// also answer for it: the files door serves what this publish keeps.
+	s.ensureFilesDoor()
 	files, err := s.files(eng, c)
 	if err != nil {
 		return nil, err
@@ -464,7 +467,7 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 	}
 	engine := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	engine.MaxFrame = blobstore.BulkFrame // a flush's objects share frames up to the bulk size (contract §22.6); a small save still writes one small frame
-	d.scope = s.scope(c.ID)
+	d.scope = s.chatScope(c.ID)
 	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
 	var unsavedWarning sync.Once
 	b := &cellsync.Batcher{

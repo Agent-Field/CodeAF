@@ -289,8 +289,6 @@ updates the tab and the row in Sessions together.
 
 ## A chat is running on my other computer — how does home show it, chats on my other machines, "held on tower", "tower offline", why does it say held on build-box offline, merge / discard
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
@@ -308,8 +306,6 @@ happened. The row says where the chat is only where that tells you something:
 | held by this machine, or let go by everyone | nothing |
 
 ## Why a chat says held on build-box or build-box offline
-
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 For a chat on another paired computer, read the words apart: `working on build-box` says a turn is running on that computer right now, `held on build-box` says that computer still holds the chat with nothing running right now (by default while `idle handoff` is off, before idle release when `idle handoff` is on, or while an older build is idle), and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A live hold on a computer that says `working on`, `held on` or `offline` still asks before **Move here** / **Continue here**; the card says how many turns may still be there. Offline alone does not make the chat free. By default (`idle handoff` is off by default; turn it on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`), a released chat asks **Continue here**; on paired computers with `idle handoff` on, a released chat opens here directly with its latest saved copy and no Continue-here card, including when its older viewer tab is already open. A lapsed hold on another computer still asks, including when its holder was working. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
@@ -341,7 +337,7 @@ same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
 ## Continue a chat here that another machine left — "tower offline", takeover, "continue here", the chat is running on another computer
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+While hosted sync storage is off, a chat on a computer where codeaf is not running cannot be taken until codeaf runs there again; see *Continue here says the computer that has this chat is not on*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -361,8 +357,6 @@ question takes the whole screen, with the sentence wrapped.
 
 ## Continue here with unsaved edits, another device continuing first, or an unreachable computer
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 When continuing a chat from another paired computer:
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
@@ -374,13 +368,12 @@ When continuing a chat from another paired computer:
 
 ## Is my project folder changed when I continue a chat here — what comes with a continued chat, the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Continuing a chat brings all of it: the whole conversation, and every file the chat worked
 on, byte for byte: text and binary files, files that were never in a git repository, the
 executable bit, links. Git history, branches and settings travel too, sealed to your paired
-devices even when an old commit holds a key. A working file the guard withholds travels
-through the vault instead. Rebuildable install folders such as `node_modules` stay out of the
+devices even when an old commit holds a key. A working file the guard withholds travels on its
+own road instead: the vault when sync storage is approved, and the chat's own blind pass-through
+when it is off. Rebuildable install folders such as `node_modules` stay out of the
 workspace copy and are listed on the arrival card (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
 the machine that continues; everything comes from your relay. The copy lives in a folder of
 its own under this machine's chats, and the chat works in a `work` folder inside it. Your
@@ -391,18 +384,20 @@ the other machine's work.
 
 ## Do secret files and .env come with a continued chat
 
-**Secret working files travel through the vault.** A `.env`, at any depth, and any other working file the guard recognises as holding a
-secret is kept out of the chat's file capture and kept whole in your key vault instead, and the vault
-travels with your chats. When you continue, each of those files is put back at the same
+**Secret working files travel on their own road, never in the chat's file capture.** A `.env`, at any depth, and any other working file the guard recognises as holding a
+secret is kept out of the chat's file capture. With sync storage approved it is kept whole in your key vault instead, and the vault
+travels with your chats. With sync storage off, the same files move with the chat by blind pass-through while both computers run codeaf
+(*Do my .env files and secrets move to my other computer without sync storage*, in *Continuing a chat that one of your machines holds*).
+When you continue, each of those files is put back at the same
 path in the chat's work folder, with the same bytes and the same permissions: comments, order
 and quoting are as you wrote them. Each file is carried on its own, so two machines that edited
 different files keep both. When both edited the same file, the one saved last wins as a whole
-file, never line by line. A file you delete on one machine is deleted on the other. With no
-identity on this machine, no secrets are fetched and no file is written.
+file, never line by line. Through the vault a file you delete on one machine is deleted on the other;
+by blind pass-through it is never removed. With no identity on this machine, no secrets are fetched and no file is written.
 
 ## Do saved provider keys and credentials follow me to another computer
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted sync service, saved keys wait for sync storage approval (Settings → Devices → sync storage).
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -422,7 +417,7 @@ is kept beside it as `credentials.json.damaged`.
 
 ## Do budgets, settings and model choices move between computers
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted sync service, shared settings wait for sync storage approval (Settings → Devices → sync storage).
 
 Your stored model picks, display and approval defaults, and spending-limit values follow your paired computers through the encrypted vault. Each setting merges independently; the later edit wins. Spending counted against a limit stays **per computer**, so a daily limit is not a combined fleet allowance. Local paths, caches, service addresses, automations and operator environment pins stay on their computer.
 
@@ -436,15 +431,11 @@ chat while you are still fetching it, this machine keeps exactly what it had.
 
 ## Is my git history sent — secrets in my repo, .git, committed keys, branches
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 Yes. When you continue a chat on your own paired device, the repository's `.git` travels as it is, including its history, branches, settings and any keys in old commits. Task commits travel too. Git history is sealed end to end between your devices; the relay sees only ciphertext. codeaf does not screen, remove or rewrite committed secrets.
 
-The working-tree guard is separate: a `.env` or source file it recognises as holding a secret is excluded from the chat's file capture and sent only through the encrypted vault. The scanner reads the whole file, including keys past its first MiB. If the secret was committed, its Git copy still travels with the history. An untracked secret file with no committed copy arrives only through the vault.
+The working-tree guard is separate: a `.env` or source file it recognises as holding a secret is excluded from the chat's file capture and sent on its own road, sealed: the encrypted vault, or blind pass-through while sync storage is off. The scanner reads the whole file, including keys past its first MiB. If the secret was committed, its Git copy still travels with the history. An untracked secret file with no committed copy arrives only by that separate road.
 
 ## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
-
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 A chat that moves to another computer brings, from the relay and sealed on the way:
 
@@ -457,17 +448,13 @@ A chat that moves to another computer brings, from the relay and sealed on the w
 
 ## What stays on this computer when a chat moves — does the task history come with the chat to another computer, install folders, secrets and spending limits
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
 
-It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
+It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels on its own, in the key vault or by blind pass-through while sync storage is off. Stored limit values, model picks and personal memory follow separately through the encrypted vault. Spending against limits remains per computer; machine-scoped memory and local paths stay local.
 
 ## Does dist or other gitignored output move — ignored files and secret files
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
-Untracked Git-ignored output stays on the computer that made it and is named on the arrival card with `(git ignores them)`. It is neither captured locally nor uploaded. Tracked files still move. A wholly ignored directory is not walked or screened; an ignored secret file in an ordinary directory, such as `.env` or `config/.env.local`, is screened and still travels through the key vault to paired computers.
+Untracked Git-ignored output stays on the computer that made it and is named on the arrival card with `(git ignores them)`. It is neither captured locally nor uploaded. Tracked files still move. A wholly ignored directory is not walked or screened; an ignored secret file in an ordinary directory, such as `.env` or `config/.env.local`, is screened and still travels to paired computers on its own road, the key vault or blind pass-through.
 
 ## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
 
@@ -2764,7 +2751,7 @@ from a previous visit cannot replace the current visit's selection or draft.
 
 ## I quit on my laptop and opened my desktop — straight back into the chat
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+While hosted sync storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop. See *Blind pass-through*.
 
 After a clean quit lets a paired computer's chat go (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — about 2 seconds after an idle paired chat goes idle once saved to the sync service), bare `codeaf` on another paired computer continues that released chat automatically within 24 hours, and with `idle handoff` on Enter on Home opens a released chat directly (with `idle handoff` off, Home rows ask **Continue here**). A lapsed hold on another computer still asks Continue here, including when its holder was working. You arrive with the `Moved from` banner and the usual `not brought along:` facts; `esc` goes Home.
 
@@ -2788,4 +2775,4 @@ When an older chat was already copied into this version's store, Home lists and 
 
 ## Why are chats and files still on this computer after pairing — sync storage
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Home can list paired devices while uploads wait; an offline computer cannot supply new turns that never reached the service.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Home can list paired devices while uploads wait; an offline computer cannot supply new turns that never reached the service.

@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 type pendingPublication struct {
@@ -184,6 +185,17 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 	s.publicationMu.Lock()
 	defer s.publicationMu.Unlock()
 	if Quiet(s.Home) {
+		return nil
+	}
+	// NOTHING IS OFFERED TO A STORE THAT IS CLOSED. This pass publishes through
+	// the relay's own store, never through blind pass-through, so with the
+	// account's storage off every chat it offered was packed, asked about (an
+	// existence check carrying every object id of the folder) and then refused
+	// by the local permission check, and again at each retry. The chats this
+	// computer shares with another travel through the chat's own drive when it
+	// is opened ([Sync.chatScope]); an older chat nobody opens waits here until
+	// storage is approved.
+	if !s.StorageAllowed() {
 		return nil
 	}
 	if err := s.scanLocalChats(); err != nil {
@@ -393,6 +405,11 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	var attempt copyAttempt
 	if Quiet(s.Home) {
 		return attempt, ErrQuiet
+	}
+	// The copy goes into the relay's store, which a closed account refuses; ask
+	// nothing of it ([Sync.PublishLocalChats]).
+	if !s.StorageAllowed() {
+		return attempt, wireauth.ErrStorageOff
 	}
 	answered := watch.asking(0)
 	_, err := s.Dir.Cell(ctx, c.ID)

@@ -15,6 +15,7 @@ const (
 	// FeatureChatsSend says chats.send exists and chat rows carry notes: a
 	// message written here to a chat another computer holds, which that
 	// computer puts in the chat's queue, so it runs when the turn there ends.
+	// It is absent while the account's hosted sync storage is off ([ChatsSendOffer]).
 	FeatureChatsSend = "chats.send"
 	FeatureSyncRelay = "sync.relay"
 	EventChatChanged = "chat.changed"
@@ -93,6 +94,14 @@ type ChatSendResult struct {
 type ChatsSender interface {
 	SendToChat(ChatSendParams) (ChatNote, error)
 }
+
+// ChatsSendOffer is an engine's answer to whether a message to a chat another
+// computer holds can be sent now. A message waits on the sync service as sealed
+// text until the holder takes it, which an account whose hosted storage is off
+// may not keep there, and a capability that cannot work is absent, not broken:
+// an engine that answers false does not advertise chats.send. An engine that
+// does not implement it keeps advertising chats.send, as before.
+type ChatsSendOffer interface{ ChatsSendOffered() bool }
 
 // ChatSharing says the computer holding the chat has sealed turns it has not
 // finished sharing yet; can_take stays false until it has, while that
@@ -181,7 +190,9 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 		h = withFeature(h, FeatureChatsWorking)
 	}
 	if _, ok := e.(ChatsSender); ok {
-		h = withFeature(h, FeatureChatsSend)
+		if offer, asked := e.(ChatsSendOffer); !asked || offer.ChatsSendOffered() {
+			h = withFeature(h, FeatureChatsSend)
+		}
 	}
 	if d, ok := e.(RelayReporter); ok && d.RelayKnown() {
 		h = withFeature(h, FeatureSyncRelay)

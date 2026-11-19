@@ -57,8 +57,6 @@ once. It keeps this notice even when the full-screen chat has already closed.
 
 ## Quitting while the sync service is slow — waiting for a final save
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
-
 A removed computer quits quietly; it no longer says it is saving to your other devices.
 
 The screen closes after at most one second while a slow close finishes. The

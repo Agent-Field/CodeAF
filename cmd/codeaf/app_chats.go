@@ -107,10 +107,13 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 	var stateBackoff time.Duration
 	sharing := newHomeSharing(b.relayHome())
 	defer sharing.release()
-	var stopStorage func()
+	var stopStorage, stopLive func()
 	defer func() {
 		if stopStorage != nil {
 			stopStorage()
+		}
+		if stopLive != nil {
+			stopLive()
 		}
 	}()
 	said := ""
@@ -184,6 +187,9 @@ func (b *appBackend) runLocalChatPublication(ctx context.Context, now func() tim
 			if ready && ctx.Err() == nil {
 				if stopStorage == nil && !source.StorageAllowed() {
 					stopStorage = syncsetup.StartStorageRefresh(ctx, source.Home)
+				}
+				if stopLive == nil {
+					stopLive = syncsetup.StartLiveTransfer(ctx, source.Home)
 				}
 				shareState()
 				say()
