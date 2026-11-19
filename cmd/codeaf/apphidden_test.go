@@ -281,7 +281,7 @@ func TestFactorySteerEchoIsHiddenWithoutHidingAuthoredTextOrRenumberingAnswers(t
 // THE CHECKS ON A FINISHED REPLY ARE ONE QUIET LINE OF THE TURN, NEVER GLUED
 // TO ITS ANSWER. Run 16 (connected-canvas qloop, vector-db t1) drew such a line
 // as a notice under the final answer, and from then on the app dropped every
-// one by its words; run 26 then sent 16 of 28 turns back and not one line was
+// one by its words; run 26 then sent 15 of 28 turns back and not one line was
 // anywhere a person or the run's harness could find it, so the run reported
 // the check as never firing. The line now arrives typed
 // [session.NoticeKindSentBack] — what [session.Agent]'s sendBack always says —

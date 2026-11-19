@@ -245,7 +245,7 @@ func (a *Agent) replyHandoffsBack(ctx context.Context, hub *eventHub, meter *che
 // the terminal folds it with the turn's work while the desktop app keeps it as
 // a quiet line of that turn (codeaf app's pump). Untyped, the app could only
 // tell it from the completion check's carry-on and the nudges by its words,
-// and it dropped all of them alike: qloop run 26 sent 16 of 28 turns back
+// and it dropped all of them alike: qloop run 26 sent 15 of 28 turns back
 // and not one of those lines reached the canvas chat or any kept file.
 func (a *Agent) sendBack(hub *eventHub, check, note, lead string) {
 	hub.send(Event{Kind: EventNotice, Text: note, NoticeKind: NoticeKindSentBack})

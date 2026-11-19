@@ -817,7 +817,7 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 // arrive typed [NoticeKindSentBack] and the app keeps them as a quiet line of
 // the turn, because the reply they send back is one the person has already
 // read as an answer, and without the line a second answer follows it for no
-// reason the chat gives (qloop run 26: 16 send-backs, no line anywhere).
+// reason the chat gives (qloop run 26: 15 send-backs, no line anywhere).
 // The lines that END a turn — stopping, finishing, moving to a task — are not
 // these, and every surface keeps them.
 func IsCarryOnNotice(text string) bool {

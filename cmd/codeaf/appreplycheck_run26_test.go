@@ -26,7 +26,7 @@ import (
 // qloop run 26 (engine b3a842964, which carries #2848) reported that the reply
 // check never fired: no screenshot and no kept engine file held "its reply
 // said more than it checked this turn". Its session journals say otherwise —
-// 16 of its 28 turns were sent back by a check on the finished reply, café-site
+// 15 of its 28 turns were sent back by a check on the finished reply, café-site
 // t2 among them — and none of those lines reached the canvas chat or any file,
 // because codeaf app's pump dropped every one by its words, with the
 // completion check's carry-on and the nudges.

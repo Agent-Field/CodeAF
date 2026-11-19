@@ -25,7 +25,7 @@ import (
 // The run's report said the check never fired: "its reply said more than it
 // checked this turn" was in no screenshot and no kept engine file. It fired.
 // The journal holds `reply-contradicts-look` sent-back on this very turn, and
-// on 16 of the run's 28 turns in all; the model then rendered and looked at
+// on 15 of the run's 28 turns in all; the model then rendered and looked at
 // the four pages at phone width before it replied again. What never happened
 // is the line reaching anyone: the app dropped every check's line by its words
 // (codeaf app's pump), and the engine writes a notice into no record.

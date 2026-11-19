@@ -3133,7 +3133,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// already an answer on the page, so a second answer follows it,
 			// and this line is the only thing in the chat that says why.
 			// Dropped by its words with the carry-ons, it reached nobody:
-			// qloop run 26 sent 16 of 28 turns back and not one line was in
+			// qloop run 26 sent 15 of 28 turns back and not one line was in
 			// the canvas chat or in any file the engine kept. The kind is
 			// what lets the app place it with the work it started rather
 			// than under the final answer (run 16's complaint).
