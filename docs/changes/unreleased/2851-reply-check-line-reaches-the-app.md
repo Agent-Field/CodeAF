@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: the line a reply check says as it sends a reply back reaches the desktop app and is kept with the chat
+title: a reply check's send-back line reaches the desktop app and is kept with the chat
 pr: 2851
 surface: [engine, app, chat]
 invalidates:
