@@ -53,12 +53,20 @@ func (a *Agent) resolveCompletedRun(ctx context.Context, id uint64, resolution T
 	if err != nil {
 		return "", true, err
 	}
+	return a.answerCompletedRun(ctx, g, kept, path, root, epoch, resolution, why, by)
+}
+
+// answerCompletedRun is the answer phase of [Agent.resolveCompletedRun]: the
+// row and its saved plan are already found and admitted, and what is left is
+// which road the answer takes — landed work whose check could not finish
+// ([Agent.resolveUncheckedRun]), or saved work that lands on accept.
+func (a *Agent) answerCompletedRun(ctx context.Context, g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, epoch uint64, resolution TaskResolution, why string, by TaskAskOwner) (string, bool, error) {
 	if kept.Unchecked && !kept.RecoveredCompletion && !localRunConflict(kept) {
 		return a.resolveUncheckedRun(g, kept, path, root, resolution, why, by)
 	}
 	switch resolution {
 	case TaskReaudit:
-		return "", true, fmt.Errorf("task %d finished before the restart without a final check receipt; inspect its saved work, then accept or refute it", id)
+		return "", true, fmt.Errorf("task %d finished before the restart without a final check receipt; inspect its saved work, then accept or refute it", kept.ID)
 	case TaskAccept:
 		return a.acceptCompletedRun(ctx, g, kept, path, root, epoch, why, by)
 	case TaskRefute:
