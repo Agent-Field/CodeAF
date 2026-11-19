@@ -74,9 +74,13 @@ type crewGuardRecord struct {
 	Cap, TaskCap                         float64
 	CapAction, TaskAction, CeilingAction string
 	SeatCeilings                         map[crewroute.Seat]float64
-	ModelSpent                           map[string]float64
-	TaskSpent                            float64
-	SeatSpent                            map[crewroute.Seat]float64
+	// WorkEstimate is the worker's own estimate the checker's ceiling
+	// stretches against ([SpendGuard.WorkEstimate]); absent on older rows,
+	// which keep the ceiling they were written with.
+	WorkEstimate float64 `json:",omitempty"`
+	ModelSpent   map[string]float64
+	TaskSpent    float64
+	SeatSpent    map[crewroute.Seat]float64
 	// TaskCalls/TaskUnknown and SeatCalls/SeatUnknown count answered calls
 	// and those whose cost was unknown; absent on older rows.
 	TaskCalls, TaskUnknown int                    `json:",omitempty"`
@@ -114,7 +118,7 @@ func (c *taskCrew) record() *TaskCrewRecord {
 	if g := c.guard; g != nil {
 		g.mu.Lock()
 		r.Guard = &crewGuardRecord{Cap: g.Cap, TaskCap: g.TaskCap, CapAction: g.CapAction, TaskAction: g.TaskAction, CeilingAction: g.CeilingAction,
-			SeatCeilings: maps.Clone(g.SeatCeilings), ModelSpent: maps.Clone(g.modelSpent), SeatSpent: map[crewroute.Seat]float64{}, Day: time.Now().Format("2006-01-02")}
+			SeatCeilings: maps.Clone(g.SeatCeilings), WorkEstimate: g.WorkEstimate, ModelSpent: maps.Clone(g.modelSpent), SeatSpent: map[crewroute.Seat]float64{}, Day: time.Now().Format("2006-01-02")}
 		// The task's and the roles' figures are read as one booking left them.
 		g.bookMu.Lock()
 		r.Guard.TaskSpent, r.Guard.TaskCalls, r.Guard.TaskUnknown = g.Task.snapshot()
@@ -229,7 +233,7 @@ func (a *Agent) restoreTaskCrew(row uint64, r *TaskCrewRecord) (*taskCrew, error
 	crewCap, crewCapAction := config.CrewSpendCap(a.config.ProfileDir, false)
 	c.guard = &SpendGuard{Price: config.CrewCallPriceAt(a.config.ProfileDir), Day: day, Cap: crewCap, TaskCap: s.TaskCap, CapAction: crewCapAction, TaskAction: s.TaskAction,
 		DayLimit:      config.CrewDailyLimit(a.config.ProfileDir),
-		CeilingAction: s.CeilingAction, SeatCeilings: s.SeatCeilings, modelSpent: s.ModelSpent, Task: &SpendTask{spent: s.TaskSpent, calls: s.TaskCalls, unknown: s.TaskUnknown}, seatSpent: map[crewroute.Seat]*SpendTask{}}
+		CeilingAction: restoredCeilingAction(s.CeilingAction), SeatCeilings: s.SeatCeilings, WorkEstimate: s.WorkEstimate, modelSpent: s.ModelSpent, Task: &SpendTask{spent: s.TaskSpent, calls: s.TaskCalls, unknown: s.TaskUnknown}, seatSpent: map[crewroute.Seat]*SpendTask{}}
 	for seat, spent := range s.SeatSpent {
 		c.guard.seatSpent[seat] = &SpendTask{spent: spent, calls: s.SeatCalls[seat], unknown: s.SeatUnknown[seat]}
 	}
@@ -321,4 +325,15 @@ func restoreCrewDay(day *SpendDay, s *crewGuardRecord) {
 			day.last[model] = cost
 		}
 	}
+}
+
+// restoredCeilingAction is the sentence a restored checker's ceiling stops
+// on: today's, whenever the record carried one at all. A row written before
+// the ceiling could stretch saved "three times its estimate" in its sentence,
+// and a ceiling that has since stretched must not be quoted under it.
+func restoredCeilingAction(saved string) string {
+	if saved == "" {
+		return ""
+	}
+	return config.CrewCheckCeilingAction
 }

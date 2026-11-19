@@ -323,6 +323,11 @@ type RunSummary struct {
 	// FINISHED — senior-dev's `pass` or `pass-unverified` — and empty for
 	// every other ending and every other run.
 	ProgramVerdict string
+	// Unchecked is the sentence a review check stopped on when its checker met
+	// its own spend ceiling before it could answer — the work it was reading
+	// had landed. Empty when every check answered. A done run with this set is
+	// asked about (your call), never drawn done and never failed.
+	Unchecked string
 	// Cut is every task the run's own ending cut mid-flight, by store id: the
 	// same typed fact as the limit, read where the run recorded it. A joined
 	// row in this set is drawn with the run's own ending and never as a fault.
@@ -2681,6 +2686,9 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 	if run.remoteEngine != nil {
 		run.fillRemoteLandingNotice(&notice, summary)
 	}
+	// The row that asks the check's question about landed work says so, which
+	// is what lets the completed-run door answer it ([Agent.resolveCompletedRun]).
+	notice.Unchecked = state == TaskUnverified && landing.Home != mergeConflicted && uncheckedRunLanding(run, summary, TaskDone)
 	if state == TaskFailed && run.crew != nil {
 		decision := run.crew.stoppedIfCutOff()
 		notice.Crew = &decision
@@ -2718,7 +2726,24 @@ func (run *beltRun) noticeResultWords(summary RunSummary, landing RunLanding) (T
 	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
 		state = TaskInterrupted
 	}
+	if uncheckedRunLanding(run, summary, state) {
+		// FINISHED WORK WHOSE CHECK COULD NOT FINISH IS YOUR CALL, NEVER FAILED
+		// AND NEVER DONE. The check's own checker met its spend ceiling — a fact
+		// about the checker — and nobody said whether the work is right, so it
+		// is asked about with the check's two answers, led by the stop itself.
+		state = TaskUnverified
+		report = withReport(strings.TrimSpace(summary.Unchecked), report)
+	}
 	return state, report
+}
+
+// uncheckedRunLanding is whether a run that answered done did so over a check
+// that could not finish ([RunSummary.Unchecked]). A landing that already asks
+// the conflict's question keeps it: two versions of somebody's files outrank
+// a check that ran out of budget, and the card asks one question at a time.
+func uncheckedRunLanding(run *beltRun, summary RunSummary, state TaskState) bool {
+	return run.remoteEngine == nil && run.delegate == nil && state == TaskDone &&
+		summary.Outcome == beltRunOutcomeDone && strings.TrimSpace(summary.Unchecked) != ""
 }
 
 // A remote landing keeps the executor with its final reading, since this

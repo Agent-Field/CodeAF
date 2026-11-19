@@ -2053,7 +2053,8 @@ do at all, which stops the task's worker and lands this way (*A task that landed
 your look without doing anything*). The task is neither done nor incomplete: nothing merges,
 the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
 the six questions on the tasks page, and two of those questions have more than one sentence —
-`nobody could check it` or `the check ran out of time`, `the check did not pass it: <gaps>`,
+`nobody could check it`, `the check ran out of time` or `the check stopped at its spend
+ceiling`, `the check did not pass it: <gaps>`,
 `conflicts with your branch: <files>`, `your branch changed the same files while it worked:
 <files>`, `design ready to approve`, `starts on your word`, `paused at the <amount> cap` —
 and each carries its own two answers.
@@ -2062,7 +2063,9 @@ The report under a landing nobody could judge leads with **the same question the
 asking** and then what was said — `nobody could check it — ` and the checker's own
 sentence, or `nobody could check it — the checker never answered` when nothing was said.
 When the clock is what stopped the check, it leads `the check ran out of time — ` instead,
-and the row says the same.
+and the row says the same. When the checker's own spend ceiling stopped it, the report
+leads with that stop — `the check stopped at its spend ceiling of $0.37 before it
+finished` — and the row reads `your call · the check stopped at its spend ceiling`.
 A landing whose branch would not merge leads `conflicts with your branch — ` the same way,
 and one whose files moved under it leads `your branch changed the same files while it
 worked — `.
@@ -2187,6 +2190,29 @@ nothing about whether the work is right, and the work waits for your answer like
 its own — measured at 183 seconds on one call, with no refusal and no error — and the check
 was then never asked a second time at all, while the task landed saying nobody could check
 it in five minutes.
+
+## Says failed, but it finished — the check stopped at its spend ceiling
+
+A task whose worker finished the work, but whose check ran out of budget before it could
+say whether the work is right, is **not failed**. The check has a spend ceiling of its own
+(*models-and-cost*: three times its estimate, grown with the work up to three times more),
+and on reaching that ceiling the check halts mid-read. That is a fact about the checker, not
+about your work: the work is already in place, and nobody has said it is wrong.
+
+So the task reads `your call · the check stopped at its spend ceiling`, and its report
+leads with the stop, then the worker's own account:
+
+```
+the check stopped at its spend ceiling of $0.37 before it finished
+Built the vector-DB research brief on canvas …
+```
+
+The two answers are the check's: `accept` takes the work as done, and `not right` marks the
+task incomplete with your reason. Either way nothing is landed a second time — the work
+came home when the task ended — and the check is not run again, because asking it again
+would spend its ceiling a second time on the same reading. Look at the work, then answer.
+
+Earlier builds marked this task `failed` even though its work was finished.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 

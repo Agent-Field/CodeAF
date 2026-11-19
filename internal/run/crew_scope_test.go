@@ -53,7 +53,7 @@ func TestCrewFactoryGivesEachCheckItsOwnCeiling(t *testing.T) {
 		worker := factory(*store.Task(id)).(*BashWorker)
 		_, err := worker.completer.CompleteWithMessages(t.Context(), nil)
 		var stopped session.ErrSpendStopped
-		if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12, three times its estimate, before it finished" {
+		if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12 before it finished" {
 			t.Fatalf("%s lost its ceiling: %v", id, err)
 		}
 	}

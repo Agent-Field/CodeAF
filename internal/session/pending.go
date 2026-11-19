@@ -99,7 +99,7 @@ func (a *Agent) PendingDecisions() []PendingDecision {
 		})
 	}
 	for _, notice := range graph.runRowsLocked() {
-		if (notice.RecoveredCompletion || localRunConflict(notice)) && notice.State == TaskUnverified {
+		if completedRunAsks(notice) && notice.State == TaskUnverified {
 			out = append(out, PendingDecision{Notice: notice})
 		}
 	}

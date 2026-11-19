@@ -5136,3 +5136,27 @@ func TestKnowledgeSpendingAndAutomaticCaptureManual(t *testing.T) {
 		}
 	}
 }
+
+// run19: a research brief's worker built the brief, its check met its own
+// spend ceiling, and the person read the task as failed. Asked in their own
+// words, the question reaches the one section that says the work is not
+// failed and what the two answers do.
+func TestTheFinishedButFailedTaskQuestionReachesTheCheckCeilingAnswer(t *testing.T) {
+	const says = "is **not failed**"
+	for _, asked := range []string{
+		"my task says failed but the work is done",
+		"why did my task fail when it finished the brief",
+		"the check stopped at its spend ceiling what does that mean",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "how-tasks-run" && strings.Contains(section.Body, says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the section that says a check's ceiling does not fail finished work", asked)
+		}
+	}
+}

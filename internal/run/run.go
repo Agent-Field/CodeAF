@@ -218,6 +218,13 @@ type Supervisor struct {
 	// when the check's own ending lands, both on the loop goroutine, so it
 	// belongs to the loop's memory like the counters beside it.
 	checkOf map[string]string
+	// unchecked is the sentence the first review check that could not finish
+	// stopped on — its checker met its own spend ceiling — and empty while every
+	// check has answered. It is a fact about the checker and never about the
+	// work: the leaf it was reading stands, and the run carries the sentence
+	// out typed ([Summary.Unchecked]) so the work is asked about rather than
+	// failed. It belongs to the loop goroutine like the counters beside it.
+	unchecked string
 }
 
 // NewSupervisor builds a run over store. The workspace is the run's own
@@ -951,6 +958,26 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		}
 	} else {
 		switch {
+		case ret.task.Role == plandb.RoleCheck && checkerOutOfBudget(ret.err):
+			// A CHECK THAT RAN OUT OF ITS OWN BUDGET IS A NON-ANSWER, NOT A
+			// FAILURE OF THE WORK. Its checker met the seat's own spend ceiling
+			// mid-read, so it said neither "holds" nor "does not hold", and the
+			// leaf it was reading already landed done. Failed here, it failed
+			// the root in CompleteRoot and the person read finished work as
+			// failed (run19: a research brief, built, its check stopped at
+			// $0.37). So the check ends with the stop as its plain account —
+			// never a review conclusion, which would need a basis it did not
+			// earn — and the run answers done, carrying the sentence typed so
+			// the surface asks the person instead ([Summary.Unchecked]).
+			delete(s.lastReport, ret.task.ID)
+			if s.unchecked == "" {
+				s.unchecked = ret.err.Error()
+			}
+			if _, err := s.store.Done(ret.task.ID, ret.task.ID, ret.err.Error(), nil, nil); err != nil {
+				if task := s.store.Task(ret.task.ID); task == nil || !terminalStatus(task.Status) {
+					_, _ = s.store.Fail(ret.task.ID, ret.task.ID, ret.err.Error())
+				}
+			}
 		case endedByStore:
 			// THE WORKER WROTE ITS OWN ENDING, so the store's word stands and
 			// nothing here speaks over it. The run counts the spend above and the
@@ -1004,6 +1031,15 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		}
 	}
 	s.completeTree()
+}
+
+// checkerOutOfBudget is whether err is a checker's own spend ceiling — the
+// one stop that says nothing about the work and nothing about the person's
+// money ([session.ErrSpendStopped.SeatCeiling]). A task or day limit is not
+// this: those end the run on a bound its person set.
+func checkerOutOfBudget(err error) bool {
+	var stopped session.ErrSpendStopped
+	return errors.As(err, &stopped) && stopped.SeatCeiling && !stopped.TaskLimit
 }
 
 // addReviewCheck spawns the review round's one check task for a work-seat leaf
@@ -1957,6 +1993,11 @@ type Summary struct {
 	// finished ([Report.Verdict]): senior-dev's `pass` or `pass-unverified`.
 	// Empty for every other run.
 	Verdict string
+	// Unchecked is the sentence a review check stopped on when its checker met
+	// its own spend ceiling before it could answer, and empty when every check
+	// answered. The run still answers done — the work it was reading landed —
+	// and this is the fact that says nobody finished checking it.
+	Unchecked string
 	// Cut is every task the run's own ending cut mid-flight, by store id: its
 	// wall, its spend ceiling, or a person's stop ended the context their
 	// workers ran under. A task that failed on its own before the ending is
@@ -2072,6 +2113,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		Limit:     supervisor.limitHit,
 		Program:   supervisor.rootProgram,
 		Verdict:   supervisor.rootVerdict,
+		Unchecked: supervisor.unchecked,
 		Cut:       supervisor.cutIDs(),
 		Nodes:     supervisor.nodes,
 		Steps:     supervisor.steps,
