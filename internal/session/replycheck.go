@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -37,10 +38,18 @@ import (
 //     sent back once to look again. It costs no reader.
 //   - THE CONTRADICTED LOOK ([replyCheckLeadOpening]). The newest look came
 //     after the last change, so it is the best account of the work there is.
-//     One call to [roles.RoleReplyCheck] is handed that look's words and the
-//     reply, and asked for the statements the look contradicts — only those, so
-//     what the look did not cover is never raised. If it names any, the model is
-//     sent back once with them in hand.
+//     One call to [roles.RoleReplyCheck] is handed the looks' words, what the
+//     turn's own steps returned (replyevidence.go), and the reply, and asked
+//     for the statements that evidence contradicts — only those, so what
+//     nothing covered is never raised. If it names any, the model is sent back
+//     once with them in hand.
+//
+// A STALE TURN THAT READ SOMETHING AFTER ITS LOOK IS READ TOO. "fits one
+// page" after `pdfinfo` said `Pages: 2` (qloop run 13) is a turn whose newest
+// look came before the export, so the stale arm alone sent it to look again,
+// the look said one page, and the reply stood. When an output from after the
+// newest look shares words with the reply, the reader is asked first; what it
+// names is the send-back, and when it names nothing the stale arm stands.
 //
 // BOTH ARE ONCE A TURN, TOGETHER ([checkpointMeter.lookedBack]): at most one
 // extra pass, at most one reader call, and a reply written after either is the
@@ -48,16 +57,17 @@ import (
 // the reply already given and draws nothing ([answeredNoteUnchanged]), so a
 // reply that was right costs one short call and is never written twice.
 //
-// THE READER'S BILL IS CAPPED. The reply is clipped to [replyCheckReplyBytes]
-// and the looks to [replyCheckLookBytes], newest first, so one call reads at
-// most a few thousand tokens whatever the turn did; it runs on the small-work
+// THE READER'S BILL IS CAPPED. The reply is clipped to [replyCheckReplyBytes],
+// the looks to [replyCheckLookBytes] and the observations to
+// [replyEvidenceBytes], each newest first, so one call reads at most a few
+// thousand tokens whatever the turn did; it runs on the small-work
 // tier; and it is asked only on a turn that looked at its work with a second
 // model's eyes, which is where the words to compare against exist at all. With
 // no model for the role, the arm is absent ([Agent.readReplyAgainstLooks]),
 // and the stale arm — which needs no model — still stands.
 
 func init() {
-	roles.Register(roles.RoleReplyCheck, roles.TierLow, "whether a reply about the work says what the last look at it showed")
+	roles.Register(roles.RoleReplyCheck, roles.TierLow, "whether a reply about the work says what the turn's own looks and steps showed")
 }
 
 // replyStaleLookNote is the dim line a person reads when the turn is sent back
@@ -66,7 +76,7 @@ func init() {
 const replyStaleLookNote = "it changed the work after its last look · asking it to look again before it replies"
 
 // replyCheckNote is the line for the contradicted arm.
-const replyCheckNote = "its reply did not match its own last look · asking it to correct the reply"
+const replyCheckNote = "its reply did not match what it saw this turn · asking it to correct the reply"
 
 // replyStaleLookLead is the stale arm's continuation, one fixed sentence.
 const replyStaleLookLead = "[carry on] Your reply describes the work, but you ran more after your last look at it, " +
@@ -77,9 +87,17 @@ const replyStaleLookLead = "[carry on] Your reply describes the work, but you ra
 // replyCheckLeadOpening opens the contradicted arm's continuation; the reader's
 // lines follow it, and [replyCheckLeadClosing] ends it. The two halves are what
 // [isReplyCheckLead] recognises, so the varying middle never has to be matched.
-const replyCheckLeadOpening = "[carry on] Before your reply goes out: your own look at the work this turn shows something different from what the reply says.\n"
+const replyCheckLeadOpening = "[carry on] Before your reply goes out: what you saw this turn — your own looks at the work and the output of your own steps — shows something different from what the reply says.\n"
 
-const replyCheckLeadClosing = "\nWrite the whole reply again for the person, saying only what your look shows; look again first if you think it is wrong. " +
+const replyCheckLeadClosing = "\nWrite the whole reply again for the person, saying only what that shows; look or read again first if you think it is wrong. " +
+	"If the reply is right as written, reply with exactly " + NoChangeReply + " and nothing else."
+
+// legacyReplyCheckLeadOpening and legacyReplyCheckLeadClosing are the halves
+// #2836 wrote, still recognised so a turn the previous build sent back is not
+// read as the person's own message after an upgrade.
+const legacyReplyCheckLeadOpening = "[carry on] Before your reply goes out: your own look at the work this turn shows something different from what the reply says.\n"
+
+const legacyReplyCheckLeadClosing = "\nWrite the whole reply again for the person, saying only what your look shows; look again first if you think it is wrong. " +
 	"If the reply is right as written, reply with exactly " + NoChangeReply + " and nothing else."
 
 // replyCheckLead is the contradicted arm's whole continuation.
@@ -92,7 +110,8 @@ func replyCheckLead(found []string) string {
 // ([isContinuationContext]) and a [NoChangeReply] after one is honoured.
 func isReplyCheckLead(text string) bool {
 	return text == replyStaleLookLead ||
-		(strings.HasPrefix(text, replyCheckLeadOpening) && strings.HasSuffix(text, replyCheckLeadClosing))
+		(strings.HasPrefix(text, replyCheckLeadOpening) && strings.HasSuffix(text, replyCheckLeadClosing)) ||
+		(strings.HasPrefix(text, legacyReplyCheckLeadOpening) && strings.HasSuffix(text, legacyReplyCheckLeadClosing))
 }
 
 const (
@@ -110,21 +129,32 @@ const (
 
 // replyCheckAsk is the reader's question, put after the evidence because the
 // models on this tier answer whatever they read last.
-const replyCheckAsk = "Above are the looks an assistant took at its own work this turn (each describes a picture of the work; newest last), " +
-	"and the reply it is about to send to a person.\n" +
-	"List every statement in the reply about what the work shows or contains — an order, a count, a position, a label, " +
-	"a quoted line, what overlaps what, what a card or row shows — that the NEWEST look contradicts. " +
-	"Quote the reply's words, then say what the look shows instead. " +
-	"Leave out anything the looks do not cover, and leave out offers, plans and questions.\n" +
-	"Answer with at most five lines, each starting with \"- \". If the looks contradict nothing in the reply, answer exactly NONE."
+//
+// IT IS ASKED ABOUT ALL OF THE EVIDENCE, LATER WINNING, NOT ABOUT THE NEWEST
+// LOOK. "top recall (97.0%)" went out in run 17 over an earlier look that said
+// Milvus is at 98.0%, because the newest look was about table widths. And a
+// move is not a position: "Sofia Rossi: Rejected → Hired" was raised in the
+// same run because the look showed her in Hired, which is what the line says.
+const replyCheckAsk = "Above is what an assistant saw this turn while working, oldest first: LOOK entries describe a picture of its own work; " +
+	"OUTPUT entries are what its own steps returned. Then the reply it is about to send to a person.\n" +
+	"List every statement in the reply about the work or its facts — a number, a count, a page count, an order, a ranking " +
+	"such as top, best or only, a position, a name, a label, a quoted line, what overlaps what, what a card or row shows — that this evidence contradicts. " +
+	"An entry marked (earlier) came before a step that may have changed the work: where two entries disagree, the later one wins. " +
+	"A change such as \"A → B\", \"moved from\" or \"up to 4\" states a before and an after; it is contradicted only if the evidence shows a different before or after. " +
+	"Quote the reply's words, then say what the evidence shows instead and which entry shows it. " +
+	"Leave out anything the evidence does not cover, and leave out offers, plans and questions.\n" +
+	"Answer with at most five lines, each starting with \"- \". If the evidence contradicts nothing in the reply, answer exactly NONE."
 
 // turnLook is one look this turn took at its work: where its call sits in the
 // transcript, and the words a second model wrote about the picture, when it
 // wrote any.
 type turnLook struct {
 	at       int
+	order    int
 	question string
 	seen     string
+	// before says a step that may change the work ran after this look.
+	before bool
 }
 
 // lookedAtTheWork reads this turn — from the person's message
@@ -146,22 +176,29 @@ func lookedAtTheWork(messages []ai.Message) (looks []turnLook, changedSince bool
 			results[strings.TrimSpace(message.ToolCallID)] = strings.TrimSpace(partsText(message))
 		}
 	}
+	order := 0
 	for index := from; index < len(messages); index++ {
 		message := messages[index]
 		if message.Role != "assistant" {
 			continue
 		}
 		for _, call := range message.ToolCalls {
+			order++
 			name := strings.TrimSpace(call.Function.Name)
 			result := results[strings.TrimSpace(call.ID)]
 			seen := lookWords(result)
 			if name == "view_image" || seen != "" {
-				looks = append(looks, turnLook{at: index, question: checkpointArgumentNamed(call.Function.Arguments, "question"), seen: seen})
+				looks = append(looks, turnLook{at: index, order: order, question: checkpointArgumentNamed(call.Function.Arguments, "question"), seen: seen})
 				changedSince = false
 				continue
 			}
-			if len(looks) > 0 && !approval.ReadOnly(name, json.RawMessage(call.Function.Arguments)) {
-				changedSince = true
+			if !approval.ReadOnly(name, json.RawMessage(call.Function.Arguments)) {
+				for earlier := range looks {
+					looks[earlier].before = true
+				}
+				if len(looks) > 0 {
+					changedSince = true
+				}
 			}
 		}
 	}
@@ -215,16 +252,27 @@ func (a *Agent) replyLooksBack(ctx context.Context, hub *eventHub, meter *checkp
 	if _, interim := UserFacingUpdate(said); interim {
 		return false
 	}
-	looks, changedSince := lookedAtTheWork(a.snapshot())
+	messages := a.snapshot()
+	looks, changedSince := lookedAtTheWork(messages)
 	if len(looks) == 0 {
 		return false
 	}
+	observed := relevantObservations(said, observedThisTurn(messages))
 	if changedSince {
+		// THE STALE ARM STILL STANDS, but an output the turn read after its
+		// newest look is not stale against that look, and it may already say
+		// the reply is wrong. Only then is the reader asked first.
 		meter.lookedBack = true
+		if readAfter(observed, looks[len(looks)-1].order) {
+			if found := a.readReplyAgainstLooks(ctx, said, looks, observed); len(found) > 0 {
+				a.sendBack(hub, "reply-contradicts-look", replyCheckNote, replyCheckLead(found))
+				return true
+			}
+		}
 		a.sendBack(hub, "reply-stale-look", replyStaleLookNote, replyStaleLookLead)
 		return true
 	}
-	found := a.readReplyAgainstLooks(ctx, said, looks)
+	found := a.readReplyAgainstLooks(ctx, said, looks, observed)
 	// THE READER IS SPENT EITHER WAY. A turn whose reply the reader cleared is
 	// not read a second time on its next stop, which is what keeps this at one
 	// call a turn.
@@ -236,12 +284,22 @@ func (a *Agent) replyLooksBack(ctx context.Context, hub *eventHub, meter *checkp
 	return true
 }
 
+// readAfter reports an observation from after the call at order.
+func readAfter(observed []turnObservation, order int) bool {
+	for _, observation := range observed {
+		if observation.order > order {
+			return true
+		}
+	}
+	return false
+}
+
 // readReplyAgainstLooks asks [roles.RoleReplyCheck] which statements in the
-// reply the looks contradict. Nothing comes back — no model for the role, no
+// reply the looks and the turn's observations contradict. Nothing comes back — no model for the role, no
 // words to compare, a failed call, an answer not in the asked shape — and the
 // reply goes out as written: A CAPABILITY THAT CANNOT WORK IS ABSENT.
-func (a *Agent) readReplyAgainstLooks(ctx context.Context, said string, looks []turnLook) []string {
-	page := replyCheckPage(said, looks)
+func (a *Agent) readReplyAgainstLooks(ctx context.Context, said string, looks []turnLook, observed []turnObservation) []string {
+	page := replyCheckPage(said, looks, observed)
 	if page == "" {
 		return nil
 	}
@@ -262,34 +320,53 @@ func (a *Agent) readReplyAgainstLooks(ctx context.Context, said string, looks []
 }
 
 // replyCheckPage is what the reader is shown: the looks that carry words, newest
-// kept first under the bound and then put back in order, and the reply. A turn
-// whose looks carry no words — a model that saw the picture itself — has
-// nothing to compare against, and the page is empty.
-func replyCheckPage(said string, looks []turnLook) string {
-	var kept []string
+// kept first under their bound; the observations [relevantObservations] already
+// chose and bounded; all of them in the order the turn met them; and the reply.
+// A turn with neither — a model that saw the picture itself and read nothing
+// that shares a word with the reply — has nothing to compare against, and the
+// page is empty.
+func replyCheckPage(said string, looks []turnLook, observed []turnObservation) string {
+	type entry struct {
+		order int
+		text  string
+	}
+	var kept []entry
 	room := replyCheckLookBytes
 	for index := len(looks) - 1; index >= 0 && room > 0; index-- {
 		look := looks[index]
 		if look.seen == "" {
 			continue
 		}
-		var entry strings.Builder
-		entry.WriteString("LOOK")
-		if look.question != "" {
-			entry.WriteString(" (asked: " + strconv.Quote(clip(look.question, 300)) + ")")
+		var text strings.Builder
+		text.WriteString("LOOK")
+		if look.before {
+			text.WriteString(" (earlier)")
 		}
-		entry.WriteString(":\n")
-		entry.WriteString(clip(look.seen, min(replyCheckOneLookBytes, room)))
-		room -= entry.Len()
-		kept = append(kept, entry.String())
+		if look.question != "" {
+			text.WriteString(" (asked: " + strconv.Quote(clip(look.question, 300)) + ")")
+		}
+		text.WriteString(":\n")
+		text.WriteString(clip(look.seen, min(replyCheckOneLookBytes, room)))
+		room -= text.Len()
+		kept = append(kept, entry{look.order, text.String()})
+	}
+	for _, observation := range observed {
+		text := "OUTPUT"
+		if observation.before {
+			text += " (earlier)"
+		}
+		text += " of " + observation.step + ":\n" + observation.result
+		kept = append(kept, entry{observation.order, text})
 	}
 	if len(kept) == 0 {
 		return ""
 	}
-	for left, right := 0, len(kept)-1; left < right; left, right = left+1, right-1 {
-		kept[left], kept[right] = kept[right], kept[left]
+	sort.SliceStable(kept, func(left, right int) bool { return kept[left].order < kept[right].order })
+	texts := make([]string, len(kept))
+	for index, one := range kept {
+		texts[index] = one.text
 	}
-	return strings.Join(kept, "\n\n") + "\n\nREPLY:\n" + clip(said, replyCheckReplyBytes)
+	return strings.Join(texts, "\n\n") + "\n\nREPLY:\n" + clip(said, replyCheckReplyBytes)
 }
 
 // replyCheckFindingsOf reads the reader's answer into the lines it raised. ONLY
@@ -305,6 +382,11 @@ func replyCheckFindingsOf(answer string) []string {
 	for _, line := range strings.Split(answer, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "- ") || strings.TrimSpace(line[2:]) == "" {
+			continue
+		}
+		// "- NONE" is the asked answer in the asked shape's dress: measured on
+		// the run 16 and 17 transcripts, the reader wrote it once in 47.
+		if strings.EqualFold(strings.Trim(line[2:], ". "), "NONE") {
 			continue
 		}
 		found = append(found, clip(line, replyCheckFindingBytes))
