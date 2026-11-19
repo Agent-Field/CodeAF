@@ -76,7 +76,7 @@ const generateImageSchemaJSON = `{"type":"object","properties":{` +
 	`"reference_paths":{"type":"array","items":{"type":"string"},"description":"Pictures to work from, as paths in the workspace (png, jpeg, webp or gif, each up to 10MB). One is an edit or a restyle of it; several are combined. A path this tool returned earlier is a valid reference, which is how you iterate on your own output."},` +
 	`"mask_path":{"type":"string","description":"A mask for the first of reference_paths, as a path in the workspace: the same size as that picture, white where it may change, black where it must stay. Needs reference_paths. A model that takes masks edits only the white area; any other model is sent the mask as a guide picture beside the source, the change may reach past it, and the result says which happened."},` +
 	`"aspect_ratio":{"type":"string","description":"Shape of the frame as width:height (for example 16:9, 1:1, or the shape of the picture you are editing). A shape this model does not draw is drawn at the nearest one it does and cropped back, and the result says so; leave it out for the model's own default."},` +
-	`"size":{"type":"string","description":"Exact pixel size as WIDTHxHEIGHT (for example 1024x1024). Passed through untouched; leave it out for the model's own default."},` +
+	`"size":{"type":"string","description":"Exact pixel size as WIDTHxHEIGHT (for example 1024x1024). Without aspect_ratio, a size whose shape this model does not draw is drawn at the nearest shape it does and cropped and scaled back to this size, and a width:height here is read as aspect_ratio; leave it out for the model's own default."},` +
 	`"n":{"type":"integer","minimum":1,"maximum":10,"default":1,"description":"How many pictures ONE request should return, for a contact sheet of variants of the same prompt. Default 1. Each is saved as its own file and the cost is that of the whole request. If the model cannot return several, the call fails and nothing is retried."},` +
 	`"path":{"type":"string","description":"Where to save it, relative to the workspace. Leave it out for a timestamped name derived from the prompt, saved where this session keeps its pictures. An existing file at this path is overwritten, as with the write tool; with n above 1 the files are numbered from it (name-1.png, name-2.png) and no existing file is overwritten."}` +
 	`},"required":["prompt"],"additionalProperties":false}`
@@ -268,11 +268,11 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	if gen.AspectRatios != nil {
 		published = gen.AspectRatios(model)
 	}
-	aspect := fitAspect(parsed.AspectRatio, published)
+	aspect, size := fitShape(parsed.AspectRatio, parsed.Size, published)
 	request := provider.ImageRequest{
 		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
 		AspectRatio:     aspect.sent,
-		Size:            strings.TrimSpace(parsed.Size),
+		Size:            size,
 		InputReferences: references,
 	}
 	maskNote := ""

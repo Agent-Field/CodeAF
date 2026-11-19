@@ -146,3 +146,82 @@ func TestFitAspectMeasuresShapesNotSpellings(t *testing.T) {
 		}
 	}
 }
+
+// The desk's canvas asks for a picture's shape in `size`, not `aspect_ratio`:
+// an edit of an 880×550 photo is planned as {"n":1,"size":"8:5",
+// "reference_paths":[…]}, and before this the shape went to the provider as it
+// was and Gemini refused the whole call ("Gemini does not support aspect_ratio
+// \"8:5\" on this endpoint."). A W:H in `size` is a shape, and is fitted the
+// way aspect_ratio is.
+func TestTheCanvasEditThatAsksForItsShapeInSizeIsFittedToo(t *testing.T) {
+	agent, painter, workspace := newShapePainter(t, 48, 32, geminiShapes)
+	// The exact call pxtone's run made on 5de1df1ca through load_capability's
+	// media group, with the canvas's JPEG reference.
+	photo := writeReference(t, workspace, "picture-asks/b1/ref-1.jpg", jpegOfSize(t, 40, 25))
+
+	result, isError := runTool(t, agent, "generate_image",
+		`{"n":1,"prompt":"put a croissant on the plate","reference_paths":["`+photo+`"],"size":"8:5"}`)
+	if isError {
+		t.Fatalf("the canvas's 8:5 edit was refused: %s", result)
+	}
+	sent := painter.request(0)
+	if sent.AspectRatio != "3:2" || sent.Size != "" {
+		t.Fatalf("the model was sent aspect_ratio %q and size %q, want 3:2 and no size", sent.AspectRatio, sent.Size)
+	}
+	if w, h := savedSize(t, workspace, result); w != 40 || h != 25 {
+		t.Fatalf("the edit came back %d×%d, want the photo's own 40×25", w, h)
+	}
+	if !strings.Contains(result, "does not draw 8:5, so it drew at 3:2 and the result was cropped to 8:5 and scaled to 40×25") {
+		t.Fatalf("the result does not say the shape was fitted: %q", result)
+	}
+}
+
+// A pixel size whose shape the model does not draw is fitted the same way and
+// comes back at exactly the size asked for: Gemini was sent "1280x800" and
+// answered 2816×1536, which is not 8:5 at all.
+func TestAPixelSizeOfAShapeTheModelDoesNotDrawComesBackThatSize(t *testing.T) {
+	agent, painter, workspace := newShapePainter(t, 48, 32, geminiShapes)
+	result, isError := runTool(t, agent, "generate_image", `{"prompt":"a wide harbour","size":"40x25"}`)
+	if isError {
+		t.Fatalf("a 40x25 picture was refused: %s", result)
+	}
+	sent := painter.request(0)
+	if sent.AspectRatio != "3:2" || sent.Size != "" {
+		t.Fatalf("sent aspect_ratio %q and size %q, want 3:2 and no size", sent.AspectRatio, sent.Size)
+	}
+	if w, h := savedSize(t, workspace, result); w != 40 || h != 25 {
+		t.Fatalf("saved %d×%d, want the 40×25 asked for", w, h)
+	}
+	if !strings.Contains(result, "cropped to 8:5 and scaled to 40×25, the size asked for") {
+		t.Fatalf("the result does not say the size was restored: %q", result)
+	}
+}
+
+// A size is left alone where nothing can be checked or nothing needs fitting:
+// a model whose shapes nobody published, a word that is not a shape, and a
+// size beside an aspect_ratio, which already names the shape.
+func TestASizeThatNeedsNoFittingIsSentAsItWas(t *testing.T) {
+	cases := []struct {
+		name, args, aspect, size string
+		shapes                   []string
+	}{
+		{"unpublished pixels", `"size":"1280x800"`, "", "1280x800", nil},
+		{"unpublished shape", `"size":"8:5"`, "8:5", "", nil},
+		{"a word", `"size":"2K"`, "", "2K", geminiShapes},
+		{"beside aspect_ratio", `"aspect_ratio":"16:9","size":"1024x576"`, "16:9", "1024x576", geminiShapes},
+	}
+	for _, c := range cases {
+		agent, painter, _ := newShapePainter(t, 32, 18, c.shapes)
+		result, isError := runTool(t, agent, "generate_image", `{"prompt":"a harbour",`+c.args+`}`)
+		if isError {
+			t.Fatalf("%s: %s", c.name, result)
+		}
+		sent := painter.request(0)
+		if sent.AspectRatio != c.aspect || sent.Size != c.size {
+			t.Errorf("%s: sent aspect_ratio %q size %q, want %q and %q", c.name, sent.AspectRatio, sent.Size, c.aspect, c.size)
+		}
+		if strings.Contains(result, "does not draw") {
+			t.Errorf("%s: reported as fitted: %q", c.name, result)
+		}
+	}
+}
