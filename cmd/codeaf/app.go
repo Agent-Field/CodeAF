@@ -2576,7 +2576,36 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 			return turn, err
 		}
 	}
+	if live, id, held := b.heldOnAsk(a); held {
+		return 0, b.steerRunning(a, live, id, text, clientID, shown)
+	}
 	return b.startLocked(a, text, clientID, shown)
+}
+
+// heldOnAsk answers the conversation's live connection and the agent's id when
+// its running turn is held on a question the person has open. The caller holds
+// a.gate.
+//
+// A REPLY TO AN OPEN QUESTION IS NEVER REFUSED. A turn held on a question is
+// still a running turn, so a message sent to it found the turn busy and was
+// refused with "this agent is already working on a turn" while the question
+// sat on the screen asking for exactly that message (run7's board deck,
+// 2026-11-19: the app sends rather than steers to a turn waiting on the person,
+// because waiting is not working). The words go down the steer's road instead,
+// which is the one door that takes words mid-turn: the engine retires the
+// model's own question and puts the words in front of the model at once
+// (internal/session/steerquestion.go), and a turn held on an approval reads
+// them at its next step. Only a running turn with nothing open still refuses,
+// so a send never silently becomes a correction to work the person was not
+// looking at.
+func (b *appBackend) heldOnAsk(a *appAgent) (*appLive, string, bool) {
+	held, id := false, ""
+	var live *appLive
+	b.locked(func() {
+		live, id = a.live, a.view.ID
+		held = live != nil && live.running && len(live.asks) > 0
+	})
+	return live, id, held
 }
 
 // knownWorkRefusalGated asks knownWorkRefusal holding the agent's gate, so the
