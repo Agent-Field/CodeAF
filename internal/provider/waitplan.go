@@ -102,7 +102,7 @@ func (c *Client) planFor(ctx context.Context, choice lanes.Choice, model string,
 	// Under auto, a local endpoint gets a rescue only when it has named
 	// distinct hosts for this model. A duplicate to the same host competes
 	// with the first request for the same capacity.
-	if lanes.PatienceIsAuto() && c.localEndpoint() && !lanes.SheetHasMultipleProviders(c.config.BaseURL, model) {
+	if c.soleLocalHost(model) {
 		plan.Purse = lanes.NoSpending()
 	}
 	return plan
