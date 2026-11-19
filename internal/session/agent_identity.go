@@ -65,14 +65,32 @@ func configureAgentIdentity(config *Config) {
 			config.agentDID = (Meta{ID: config.Place.ID(), AgentIdentity: config.agentDocument}).AgentDID()
 		}
 		config.actorDID = config.agentDID
+		// THE FOLDER TRAVELS WITH THE NAME. The app registers an agent whose
+		// DID it has not seen yet by this folder (a canvas `cwd:` member), so
+		// the folder is the other half of who the agent is, and it is the
+		// conversation's, never the directory a command ran in.
+		config.agentWorkspace = strings.TrimSpace(config.Workspace)
 	}
 	if config.InTask && config.taskID != 0 && config.agentDID != "" {
 		config.actorDID = agentdid.Worker(config.agentDID, config.taskID)
 	}
-	if config.actorDID == "" {
-		return
+	if env := config.identityEnv(); len(env) > 0 {
+		config.Seat = executor.WithEnvironment(config.seat(), env)
 	}
-	config.Seat = executor.WithEnvironment(config.seat(), []string{agentdid.AgentDIDEnv + "=" + config.actorDID})
+}
+
+// identityEnv is who this agent's commands act as, in the variables they
+// carry: the DID and the folder of the conversation it belongs to. Both or
+// neither: a folder without a DID names nobody the engine vouched for.
+func (c Config) identityEnv() []string {
+	if c.actorDID == "" {
+		return nil
+	}
+	env := []string{agentdid.AgentDIDEnv + "=" + c.actorDID}
+	if c.agentWorkspace != "" {
+		env = append(env, agentdid.AgentWorkspaceEnv+"="+c.agentWorkspace)
+	}
+	return env
 }
 
 // conversationAgentIdentity reads the kept document, or mints a fresh one.

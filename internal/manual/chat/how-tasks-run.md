@@ -3587,6 +3587,12 @@ as that task. The desktop app reads the DID in the agent list as `did`, and
 each task's own name as `worker`, so it can release whatever that task held
 once the task ends.
 
+Beside the DID, each command sees `CODEAF_AGENT_WORKSPACE`: the conversation's
+folder, spelled as the agent list's `workspace`. A task's commands see the
+conversation's folder too, not the task's own copy. It names the agent's folder
+even after a command runs `cd /tmp`, so a tool that admits an agent by its folder
+(a canvas member the app added before it knew the DID) still knows it.
+
 New conversations retain an Ed25519 signing key and a separate X25519 encryption
 key in encrypted custody inside their cell. The versioned identity document
 travels with the chat; paired computers with the same cell key can open it.

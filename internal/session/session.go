@@ -2702,6 +2702,11 @@ type Config struct {
 	agentDID      string
 	agentDocument *AgentIdentity
 	actorDID      string
+	// agentWorkspace is the folder the conversation that owns agentDID works
+	// in, the one the app lists it by, and what its commands (and its
+	// workers') see as $CODEAF_AGENT_WORKSPACE (agent_identity.go). Inherited
+	// like the DID.
+	agentWorkspace string
 
 	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
 	// conversation's DID with the task number its row wears. A run builds its
