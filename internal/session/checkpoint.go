@@ -820,7 +820,7 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 func IsCarryOnNotice(text string) bool {
 	switch strings.TrimSpace(text) {
 	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote, checkpointNotesNudgeNote,
-		replyStaleLookNote, replyCheckNote, failureCheckNote, handoffCheckNote, handoffPromiseNote:
+		replyStaleLookNote, replyCheckNote, failureCheckNote, handoffCheckNote, handoffPromiseNote, owedLandingCarryOnNote:
 		return true
 	}
 	return false

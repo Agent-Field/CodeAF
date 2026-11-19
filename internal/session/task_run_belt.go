@@ -2417,7 +2417,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 		note.replyTags = tags
 		note.landingQuestion, note.landingOutcome = document.landingQuestion, document.landingOutcome
 		note.batch = false
-		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
+		note.settle, note.settleCeiling, note.settleOwed = true, owedLandingCallCeiling(), true
 		note.settlePrompt = landingAnswerPrompt
 		note.settleModel, _ = readerFor(a.config, a.model).TierModel(owedLandingTier())
 		a.admitBeltLanding(run, summary, line, landing, note)
@@ -2642,6 +2642,10 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 			if notice.Report == "" && task.Status != plandb.StatusDone {
 				notice.Report = strings.TrimSpace(task.Error)
 			}
+			// WHAT ITS OWN WORK COST, checks included, read off the run's store
+			// rather than left at nothing while the run's row carried it
+			// (task_run_joined_spend.go).
+			notice.CostUSD = runSubtreeSpend(run.store, task.ID)
 		}
 		if notice.State != TaskDone && runEnding != "" && (cutRows[id] || cancelledByRunEnding(run.store, id)) {
 			notice.Ending = runEnding
@@ -2683,6 +2687,15 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// THE CREW THAT DID IT AND WHAT IT COST, beside the estimate it was
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
+	}
+	// AND A HAND-OFF THAT JOINED THIS RUN CARRIES ITS OWN SPEND ON ITS OWN ROW
+	// ([Agent.settleJoinedRows]), so this row says what is left of the run's
+	// figure rather than the whole of it (task_run_joined_spend.go).
+	a.beltMu.Lock()
+	joined := append([]uint64(nil), run.joined...)
+	a.beltMu.Unlock()
+	if notice.CostUSD > 0 {
+		notice.CostUSD = rootRowShare(run.store, notice.CostUSD, joined)
 	}
 	if run.remoteEngine != nil {
 		run.fillRemoteLandingNotice(&notice, summary)
