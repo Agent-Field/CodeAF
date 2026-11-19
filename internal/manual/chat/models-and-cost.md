@@ -1058,6 +1058,7 @@ role**, grouped under the row answering it, saying which model comes out:
 | `worker` | worker | one node of an adaptive run, and the worker of every task |
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | whether a turn should have been work |
+| `replycheck` | small work | whether a reply about the work says what its last look at the work showed |
 | `taskname` | small work | the two or three words a task is called |
 | `insight` | small work | the model every page AI writes with (the desktop app's repository notes, answers and themes) |
 | `insight_notes` | small work | a repository's notes since you last looked; unpinned, it follows `insight` |

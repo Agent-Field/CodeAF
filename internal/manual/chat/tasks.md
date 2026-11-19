@@ -1320,7 +1320,10 @@ your message, the steps, what came back — and it answers either the single lin
 **A reply that ends by asking you something is never carried on.** If the last thing it said
 finishes with a question mark, it is waiting on you, and carrying it on would be codeaf
 answering a question that was addressed to you. That is the whole of the test — the mark
-itself, so it works whatever language you are talking in.
+itself, so it works whatever language you are talking in. Two narrower checks still apply
+to such a reply and send it back once to fix the reply itself, not to carry on the work: a
+reply that contradicts its own last look at the work, and a question after failed steps
+that does not say what failed (both described below).
 
 **A short reply that only LOOKED at things is not read at all.** If the reply ended before it
 reached the first of those notes — a couple of reads and an answer, or no tools at all
@@ -1437,6 +1440,48 @@ short extra call, the dim line above still shows, and the answer stands as writt
 **It shares the update's limit: at most twice in one reply,** counting both kinds together.
 A note that ends by asking you something, or that is waiting on work already out, is left
 alone, as an update is.
+
+## A reply that says something its own look did not show is sent back — it said nothing overlaps but the headline covers the cup, it listed the bars in the wrong order, it described the canvas wrong
+
+**When the model looked at its work this reply — a picture of a page, a chart, a board — what
+it then tells you about that work is checked against what the look showed,** before the reply
+ends. Two cases send the reply back once, in the same reply:
+
+- **It changed the work after its last look** and is now describing it. It is asked to look
+  again and write the reply from that look. The dim line reads
+  `it changed the work after its last look · asking it to look again before it replies`.
+- **Its newest look shows something different from what the reply says** — an order, a
+  count, a position, a quoted line, what overlaps what. A small second model compares the
+  reply with the words that described the picture and names only what the look contradicts;
+  what the look did not cover is never raised. The model gets those lines and rewrites the
+  reply. The dim line reads `its reply did not match its own last look · asking it to correct the reply`.
+
+**Once per reply, at most one extra pass and one comparison.** The reply written after it is
+the one you get, even if it is still wrong. A reply that was right is kept as written: the
+model says so in one short call and the first reply stands. A closing question does not
+excuse the reply — "nothing overlaps the cup. Want it bigger?" is still checked.
+
+**Limits.** It only runs on a reply that looked at its work with a second model's eyes
+(`view_image`, or `read` of an image). A model that sees pictures itself leaves no words to
+compare, so only the first case applies. With no model for the `replycheck` role, the
+comparison is skipped and the reply goes out as written.
+
+## A question after failed steps says what failed — it asked me which chart after 8 actions with 2 failed and changed nothing, it ended on a question and did nothing
+
+**If some of its steps failed this reply, nothing it wrote with `write` or `edit` succeeded,
+and it is about to end by asking you, it is first sent back once** with the failed steps in
+front of it. It either does the step that was meant to make your change, correctly, or asks
+again and says plainly which steps failed and what it did and did not change.
+
+- A reply in words that ends on a question gets one dim line:
+  `some of its steps failed before it asked you · asking it to retry them or say what failed`.
+- A question card (`ask`) is held before it is drawn — you see no card — and the model asks
+  again or does the work. The next card in that reply is drawn as usual.
+
+**codeaf cannot see whether a shell command changed your work, so it does not claim "nothing
+changed" itself;** the model, which knows, says it. **Once per reply.** If the failures did not
+touch what you asked for, the model keeps its first reply with one short call. A credential
+request is never held.
 
 ## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 

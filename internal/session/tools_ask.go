@@ -231,6 +231,14 @@ func (a *Agent) raiseAsk(ctx context.Context, in askArguments) (string, bool, er
 	if err := q.Check(a.Decisions()); err != nil {
 		return askRefusedLead + err.Error(), false, nil
 	}
+	// A CARD AFTER FAILED STEPS IS HELD ONCE, before anything is drawn
+	// (failurecheck.go): a question the person can answer says what failed. A
+	// credential is never held — it is the engine's question, not the model's.
+	if !q.SecretAnswer() && waits && a.config.Interactive && !a.config.InTask {
+		if held := a.holdAskAfterFailures(); held != "" {
+			return held, false, nil
+		}
+	}
 	if q.SecretAnswer() {
 		if !a.config.Interactive {
 			return "your call: " + strings.TrimSpace(q.Head) + " (nobody to ask, so nothing was asked for)", false, nil

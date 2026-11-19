@@ -1190,7 +1190,8 @@ func answeredNoteUnchanged(messages []ai.Message) bool {
 			continue
 		}
 		return messages[index].Role == "user" &&
-			(strings.HasPrefix(text, checkpointCarryOnLead) || text == checkpointNotesNudgeLead)
+			(strings.HasPrefix(text, checkpointCarryOnLead) || text == checkpointNotesNudgeLead ||
+				isReplyCheckLead(text) || isFailureCheckLead(text))
 	}
 	return false
 }
@@ -1295,6 +1296,11 @@ type checkpointMeter struct {
 	// on a reply its own model marked as interim ([UserUpdatePrefix]), bounded
 	// by [checkpointUpdateNudgeCap].
 	updateNudges int
+	// lookedBack says this turn's reply has already been read against the
+	// turn's own looks at the work, by either arm of [Agent.replyLooksBack].
+	// ONCE: the reply written after it is the reply the turn ends on, which is
+	// what keeps the guard from becoming a loop.
+	lookedBack bool
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -3692,6 +3698,19 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 			a.record(textMessage("user", checkpointNotesNudgeLead))
 			return true, false
 		}
+	}
+	// A REPLY ABOUT THE WORK IS READ AGAINST THE TURN'S OWN LOOKS AT IT, AND A
+	// QUESTION AFTER FAILED STEPS SAYS WHAT FAILED (replycheck.go,
+	// failurecheck.go). Both sit above the price gate for the update nudge's
+	// reason: a turn the person typed is never read below, and these are the
+	// turns that need it — the person is about to read the reply. Neither is
+	// excused by a closing question: "no layer overlaps the cup. Want the
+	// subline larger?" is wrong about the cup whatever it offers after.
+	if a.replyLooksBack(ctx, hub, meter, said) {
+		return true, false
+	}
+	if a.replyFailuresBack(ctx, hub, meter, said) {
+		return true, false
 	}
 	if !a.checkpoints(ctx, user) {
 		return false, false
