@@ -11,6 +11,15 @@
 // a tombstone, and two machines that edited different files keep both. The file
 // is written back at the same path with the same bytes and mode (files.go).
 //
+// BLIND PASS-THROUGH CARRIES THE WITHHELD FILES AND NOTHING ELSE. With hosted
+// sync storage off, Files.Offer reads a chat's withheld files in pages and
+// Files.Receive installs them on the computer taking the chat (passthrough.go).
+// Both read and write the real files directly and never touch the vault, so no
+// saved key, credential, preference, memory or team can ride along. They apply
+// the whole-file rules above: a file too large for one slot stays where it is,
+// the newest whole file wins by its save time, and the sender never decides
+// where a write lands.
+//
 // THE CARRIED-STATE LAW. Credentials, provider keys, profile preferences,
 // shared memories and portable teams ride beside secrets. Whole files use
 // their save time; Keyed gives individual fields independent clocks and

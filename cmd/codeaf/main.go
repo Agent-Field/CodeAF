@@ -767,6 +767,12 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_SYNC_URL      sync service for your chats; off disables syncing
   CODEAF_MOVE_FILES_FIRST=1
                        wait for all workspace files before opening a moved chat
+  CODEAF_PASSTHROUGH
+                       off (also 0, false, no) turns blind pass-through off:
+                       while hosted sync storage is off, a chat then stays on
+                       the computer that has it instead of passing straight
+                       through the sync service to a paired computer that is
+                       also running codeaf (default on)
   CODEAF_RELAY         sync service override for pairing and remote connections
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.codeaf). Move it

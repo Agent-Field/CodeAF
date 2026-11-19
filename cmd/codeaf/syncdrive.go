@@ -191,7 +191,7 @@ func startLiveDrive(c cell.Cell, engine cellstore.Engine, report func(error), no
 	if syncsetup.Quiet(home.Dir()) {
 		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
 	}
-	if !s.StorageAllowed() {
+	if s.ChatStorageOff() {
 		return nil, wireauth.ErrStorageOff
 	}
 	var viewer func(syncsetup.Viewer)
@@ -230,6 +230,15 @@ func (b *driveBook) renewalsOf(id string) *liveDrive {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.drive[id]
+}
+
+func init() {
+	// A computer whose chats move live is told the refusal for closed storage in
+	// the words that are true there (chatlist.StorageOffSentence).
+	chatlist.LiveCarriesChats = func() bool { return syncsetup.LiveTransferForHome(home.Dir()) }
+	// And when that stops being true after the sentence was said, the sentence
+	// that is true replaces it (storage_off_resay.go).
+	watchStorageOffSentence()
 }
 
 // sayRefusal tells the person what the relay refused when it refused this
@@ -508,7 +517,7 @@ func (n *driveNotices) say(line string) {
 func (n *driveNotices) clearStorageOff() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.last == chatlist.RelayStorageOff {
+	if n.last == chatlist.RelayStorageOff || n.last == chatlist.RelayStorageOffLive {
 		n.last = ""
 	}
 }

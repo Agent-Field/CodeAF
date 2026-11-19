@@ -2458,7 +2458,12 @@ it, rows never say `working`, so a client says "open there", not "idle there".
 It is display only: `agents.take` does not consult it.
 
 `chats.send {cell, text, client_id?}` leaves a message for whichever computer
-holds the chat; `chats.send` in `hello` says it exists. The message travels in
+holds the chat; `chats.send` in `hello` says it exists, and it is absent while
+the account's hosted sync storage is off, because a waiting message is sealed
+text kept on the relay (a send that arrives anyway is refused with "Sync storage
+is off for this account, so a message can't wait for another computer. Bring the
+chat here to write to it." and leaves nothing there; a self-hosted relay and an
+approved account always have it). The message travels in
 this device's own directory record (`outbox`, sealed under the metadata key,
 at most 8 messages of at most 2000 bytes), only to a relay that answers
 `Codeaf-Chat-Notes: 1`; a relay that does not is refused with "This sync

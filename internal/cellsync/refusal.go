@@ -40,7 +40,7 @@ type Refusal struct {
 // within minutes stays quiet for a few of them, because a burst that ended
 // before anyone could act is noise; a longer refusal is said at once.
 var refusals = []Refusal{
-	{Is: wireauth.ErrStorageOff, Say: said(chatlist.RelayStorageOff), Halts: true, RetryStartup: true},
+	{Is: wireauth.ErrStorageOff, Say: func(error) string { return chatlist.StorageOffSentence() }, Halts: true, RetryStartup: true},
 	// Both decoders preserve a general full match, so shared capacity must come first.
 	{Is: wireauth.ErrRelayFull, Say: said(chatlist.RelayStorageFull), Halts: true, RetryStartup: true},
 	{Is: blobstore.ErrFull, Say: fullLine, Halts: true, RetryStartup: true},

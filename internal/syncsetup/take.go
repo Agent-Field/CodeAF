@@ -190,7 +190,7 @@ func (c *Continuer) takerWithDir(ctx context.Context, sc *Scope, dir directory.C
 		Branch:   c.branchWithDir(brancher, dir),
 		RootFor:  c.opt.RootFor,
 		InPlace:  func(c cell.Cell) bool { return borrowsProject(c.Root) },
-		After:    []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVault},
+		After:    []func(context.Context, cell.Cell) error{rebuildIndexes, recordOrigin, restoreChatFiles, c.pullVaultVia(sc)},
 	}
 }
 
@@ -309,6 +309,11 @@ func (c *Continuer) RestartFiles(ctx context.Context, id string) (restarted bool
 }
 
 func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseExpectation, branchOnly bool) (out Continued, err error) {
+	// A computer that serves this chat's frames must be able to answer for them
+	// once it has taken the chat, and a take that cannot find a chat's frames
+	// says why in words when live transfer is the reason.
+	c.sync.ensureFilesDoor()
+	defer func() { err = c.sync.liveTransferRefusal(err) }()
 	// Measure one attempt on its own copy: observers must not leak into another
 	// continue, and diagnostics must survive both early refusal and late failure.
 	started := time.Now()
@@ -401,7 +406,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			err = fmt.Errorf("%w: %w", ErrMoveStalled, err)
 		}
 	}()
-	sc := c.sync.scope(id)
+	sc := c.sync.chatScope(id)
 	settleSync := true
 	defer func() {
 		if settleSync {
@@ -545,7 +550,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	}
 	if hasSupplied && !explicitSupplied {
 		lease := supplied.Cell.Lease
-		eligible := supplied.Cell.Head != "" && !supplied.Cell.Archived && c.sync.StorageAllowed()
+		eligible := supplied.Cell.Head != "" && !supplied.Cell.Archived && !c.sync.ChatStorageOff()
 		if branchOnly {
 			eligible = eligible && supplied.Cell.ParentCell != ""
 		} else {
@@ -572,7 +577,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 	if hasSupplied {
 		view = supplied
 	} else {
-		if keepRoot && (MoveFilesFirst() || branchOnly || !c.sync.StorageAllowed() || !c.eng.HasComposedCellDir(cell.Cell{ID: id, Root: root})) {
+		if keepRoot && (MoveFilesFirst() || branchOnly || c.sync.ChatStorageOff() || !c.eng.HasComposedCellDir(cell.Cell{ID: id, Root: root})) {
 			localCache.start(ctx, cell.Cell{ID: id, Root: root})
 		}
 		directoryRead := handoff.Trace(c.opt.OnPhase, "directory")
@@ -598,6 +603,9 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		return Continued{}, errors.New("these turns are no longer available to open separately")
 	}
 	lease := view.Cell.Lease
+	// A live store asks the computer that held the chat when this take read its
+	// record; once the take acquires it, the record names this computer instead.
+	sc.Holder(lease.Device)
 	if c.freeOnly && lease.Expires != 0 {
 		return Continued{}, directory.ErrLeaseHeld
 	}
@@ -661,7 +669,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		if err := c.restoreTakenIdentity(ctx, opened); err != nil {
 			return Continued{}, err
 		}
-		return Continued{AlreadyHere: true, LocalOnly: !c.sync.StorageAllowed(), Device: c.opt.DeviceName, Taken: handoff.Taken{
+		return Continued{AlreadyHere: true, LocalOnly: c.sync.ChatStorageOff(), Device: c.opt.DeviceName, Taken: handoff.Taken{
 			Cell: opened, Driving: cellsync.Driving{Cell: opened, Fence: lease.Fence, Head: view.Cell.Head, Frames: view.Cell.Frames, Size: view.Cell.Size},
 		}}, nil
 	}
@@ -701,7 +709,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 		// the rest; the fast road leaves that lookup for after the chat is open.
 		resolveFrom()
 	}
-	storageOff := !c.sync.StorageAllowed()
+	storageOff := c.sync.ChatStorageOff()
 	// An own free chat can return without replacing its open local conversation.
 	keepOpen := storageOff && lease.Device == c.sync.Device.ID() && lease.Expires <= view.Now
 	filesFirst := (MoveFilesFirst() || branchOnly || view.Cell.ParentCell != "") && !restart
@@ -979,6 +987,19 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			return cellstore.NotePublished(target, head)
 		}
 		canConcurrent := (hasSupplied || c.opt.OnShown != nil || c.opt.AsyncFiles) && len(c.opt.WorkspaceRoots) == 0
+		// BLIND PASS-THROUGH ASKS FOR THE LEASE AFTER THE FRAMES, NEVER BESIDE THEM.
+		// Here the fetch can fail for a reason that is common and not an outage: the
+		// computer that has the chat is off, and nothing else holds its frames. An
+		// acquire sent beside that fetch lands, and handing the lease back after the
+		// failure leaves THIS computer named as the chat's last holder, so the real
+		// holder's next launch is offered a move from a computer that never had the
+		// chat. Fetching first costs one more directory request when the holder is
+		// on, and a take that fails leaves the record exactly as it was. The road
+		// with approved sync storage is unchanged: its frames come from the relay,
+		// and a failed fetch there is a real fault.
+		if c.sync.LiveTransfer() {
+			canConcurrent = false
+		}
 		if canConcurrent && keepRoot {
 			if needed, nErr := session.TaskWorkspaceAdmissionNeeded(session.Place{Dir: root, Workspace: intendedPrimary}); nErr != nil || needed {
 				canConcurrent = false
@@ -1488,7 +1509,7 @@ func (c *Continuer) take(ctx context.Context, id string, seen *directory.LeaseEx
 			filesElapsed = time.Since(started)
 			phaseMu.Unlock()
 
-			for _, hook := range []func(context.Context, cell.Cell) error{restoreChatFiles, rebuildIndexes, c.pullVault} {
+			for _, hook := range []func(context.Context, cell.Cell) error{restoreChatFiles, rebuildIndexes, c.pullVaultVia(sc)} {
 				hookDone := handoff.Trace(c.opt.OnPhase, "hooks")
 				hErr := hook(runCtx, taken.Cell)
 				hookDone()
@@ -2552,18 +2573,26 @@ func rebuildIndexes(_ context.Context, c cell.Cell) error {
 	return err
 }
 
-// pullVault brings this identity's secrets here, and with them the files the
+// pullVaultVia brings this identity's secrets here, and with them the files the
 // chat's seals withheld, which are written back into the folder the tools run in.
-func (c *Continuer) pullVault(ctx context.Context, at cell.Cell) error {
-	opened, err := cell.OpenAt(at.Root, at.ID)
-	if err != nil {
-		return err
+//
+// While blind pass-through carries the chat there is no vault to pull from (it
+// waits for storage), so the files come from the computer that has the chat, over
+// the tunnel its fetch already opened ([Continuer.takeSecretFiles]); the vault's
+// own pull is left exactly as it was.
+func (c *Continuer) pullVaultVia(sc *Scope) func(context.Context, cell.Cell) error {
+	return func(ctx context.Context, at cell.Cell) error {
+		opened, err := cell.OpenAt(at.Root, at.ID)
+		if err != nil {
+			return err
+		}
+		files, err := c.sync.files(c.eng, opened)
+		if err != nil {
+			return err
+		}
+		err = c.sync.withVaultWithin(ctx, vaultBusyWait, func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
+		return errors.Join(err, c.takeSecretFiles(ctx, sc, files))
 	}
-	files, err := c.sync.files(c.eng, opened)
-	if err != nil {
-		return err
-	}
-	return c.sync.withVaultWithin(ctx, vaultBusyWait, func(v vaultsync.Syncer) error { return v.Pull(ctx) }, files)
 }
 
 // files is the withheld files of c as a carrier: the workspace the engine seals
@@ -2725,11 +2754,17 @@ func (s *Sync) Discard(ctx context.Context, branch string) error {
 func newCellID() (string, error) { return cell.NewID(time.Now()) }
 
 // publishInfo is what the directory is told about c: its class, its title
-// sealed under the metadata key, and who can open it.
+// sealed under the metadata key, and who can open it. While blind pass-through
+// is the road it carries neither the title nor the folder, for EVERY caller:
+// the drive's publishes, the kept-edits branch a take makes and the background
+// pass all build their record here, so there is no second place to forget.
 func (s *Sync) publishInfo(c cell.Cell, title string) cellsync.PublishInfo {
 	in := cellsync.PublishInfo{
 		Class: string(c.Meta().Class),
 		Keys:  map[string]map[string]string{c.Meta().CellKeyID: {s.Identity.ID(): ""}},
+	}
+	if s.recordsWithholdNames() {
+		return in
 	}
 	if title != "" {
 		in.Title, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), title)

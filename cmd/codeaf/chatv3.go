@@ -1583,7 +1583,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if !errors.Is(err, session.ErrSessionLocked) {
 		// With account storage off, startup is purely local and makes no relay
 		// writes, so retaining the drive lets callers observe watch retirement.
-		if syncsetup.StorageForHome(home.Dir()) == "off" {
+		if syncsetup.ChatStorageOffForHome(home.Dir()) {
 			claim(true)
 		}
 		return nil, cfg, "", err

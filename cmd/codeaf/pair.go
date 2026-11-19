@@ -98,10 +98,30 @@ func ownDeviceRevoked(ctx context.Context, dir string, route pair.Mailbox) bool 
 	return errors.Is(err, directory.ErrRevoked) || err == nil && listing.Devices[dev.ID()].Revoked
 }
 
+// notePaired tells the home that a pairing through route just finished, so the
+// computer it paired with is known before any roster is read: the first launch
+// afterwards says what is true of a computer that has another, not of one on its
+// own (syncsetup.NotePaired). It never fails a pairing that succeeded.
+func notePaired(dir string, route pair.Mailbox) { _ = syncsetup.NotePaired(dir, route.URL) }
+
+// ownHome is the home this door pairs: the one its joining seam names, and this
+// process's own when no seam was set.
+func (d pairDoor) ownHome() string {
+	if d.joining == nil {
+		return home.Dir()
+	}
+	return d.joining(false).Home
+}
+
 // recordOwnDeviceOrSay is what a finished pairing does about its record: the
 // pairing itself succeeded, so a record that did not land is one line on the
 // screen and a clean exit — the next chat start writes the record anyway.
+// It is also where every terminal road of a finished pairing says that another
+// computer is now paired, including the approving one, whose own record was
+// written ahead of the grant ([pairDoor.withApprovalRecord]) and so is not
+// written here.
 func (d pairDoor) recordOwnDeviceOrSay(ctx context.Context, route pair.Mailbox) {
+	notePaired(d.ownHome(), route)
 	if d.ownRecord == nil {
 		return
 	}

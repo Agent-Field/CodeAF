@@ -294,6 +294,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			_, _ = devname.Set(dir, p.Name)
 		}
 		_ = ownDeviceRecord(o.ctx, dir, route)
+		notePaired(dir, route)
 	}
 	switch p.Mode {
 	case "offer_code":

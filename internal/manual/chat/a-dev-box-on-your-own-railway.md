@@ -60,7 +60,7 @@ removal of the one-time setup values. Then open `codeaf chat --at build-box`.
 
 ## How saved provider keys, settings and shared memories reach the box
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Saved keys, settings and shared memories wait for hosted sync storage approval (Settings → Devices → sync storage). A self-hosted sync service with `--store` needs no request.
 
 The box starts `codeaf serve` with `CODEAF_SERVE_SYNC=1`, so it pulls the identity's saved provider keys,
 settings and shared memories at startup and every five seconds by default,
