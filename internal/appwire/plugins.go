@@ -12,6 +12,18 @@ const (
 	EventPluginsChanged    = "plugins.changed"
 	EventPluginsNeeded     = "plugins.needed"
 	EventPluginsNeededDone = "plugins.needed_done"
+
+	// FeaturePluginsReadCSV is announced by an engine that answers
+	// plugins.read_csv. The app offers a sheet's "pull from a connector" only
+	// to an engine that announces it, and refuses it as unsupported otherwise.
+	FeaturePluginsReadCSV = "plugins.read_csv"
+	// PluginReadCSVMaxBytes is the most one read may answer, and what a
+	// max_bytes over it (or left out) is clamped to.
+	PluginReadCSVMaxBytes = 64 << 20
+	// CodeReadRefused is a plugins.read_csv the engine would not or could not
+	// make: nothing that only reads, a query that needs more than reading, an
+	// answer that is not a CSV. Its message is the reason, for the person.
+	CodeReadRefused = "refused"
 )
 
 type PluginsResult struct {
@@ -66,6 +78,29 @@ type PluginDisconnectParams struct {
 	ID      string `json:"id"`
 	Account string `json:"account,omitempty"`
 }
+
+// PluginReadCSVParams asks for one read of a connected plugin as CSV, for a
+// sheet's pull: Query is the source's own words for what to read, empty for
+// the account's main records; MaxBytes bounds the answer, which is refused
+// rather than cut when it is over.
+type PluginReadCSVParams struct {
+	ID       string `json:"id"`
+	Query    string `json:"query,omitempty"`
+	MaxBytes int64  `json:"max_bytes,omitempty"`
+}
+
+// PluginReadCSVResult is the read: the rows as CSV text, header row first.
+// It is a person's data, and nothing on either side logs it.
+type PluginReadCSVResult struct {
+	CSV string `json:"csv"`
+}
+
+// PluginCSVReader is the optional half of [Plugins] that reads one connected
+// plugin into a CSV with its read-only tools alone.
+type PluginCSVReader interface {
+	ReadPluginCSV(PluginReadCSVParams) (PluginReadCSVResult, error)
+}
+
 type Plugins interface {
 	ListPlugins() (PluginsResult, error)
 	DescribePlugin(string) (connect.PluginDescription, error)
@@ -126,6 +161,31 @@ func init() {
 		}
 		return Empty{}, e.SetPluginCapability(p)
 	})
+	methods["plugins.read_csv"] = typed(func(e Engine, p PluginReadCSVParams) (*PluginReadCSVResult, error) {
+		reader, ok := e.(PluginCSVReader)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine cannot read a connector into a sheet")
+		}
+		id, err := required("id", p.ID)
+		if err != nil {
+			return nil, err
+		}
+		if p.MaxBytes < 0 {
+			return nil, Errorf(CodeBadParams, "max_bytes is a number of bytes, not below zero")
+		}
+		if p.MaxBytes == 0 || p.MaxBytes > PluginReadCSVMaxBytes {
+			p.MaxBytes = PluginReadCSVMaxBytes
+		}
+		p.ID, p.Query = id, strings.TrimSpace(p.Query)
+		out, err := reader.ReadPluginCSV(p)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(out.CSV)) > p.MaxBytes {
+			return nil, Errorf(CodeTooLarge, "the connector answered with more than %d MB", max(p.MaxBytes>>20, 1))
+		}
+		return &out, nil
+	})
 	methods["plugins.disconnect"] = pluginMethod(func(p PluginDisconnectParams) string { return p.ID }, func(e Plugins, p PluginDisconnectParams) (Empty, error) { return Empty{}, e.DisconnectPlugin(p) })
 	eventShapes[EventPluginsChanged] = reflect.TypeFor[PluginsChanged]()
 	eventShapes[EventPluginsNeeded] = reflect.TypeFor[PluginsNeeded]()
@@ -133,7 +193,10 @@ func init() {
 }
 func withPluginsFeature(h Hello, e Engine) Hello {
 	if _, ok := e.(Plugins); ok {
-		return withFeature(h, FeaturePlugins)
+		h = withFeature(h, FeaturePlugins)
+	}
+	if _, ok := e.(PluginCSVReader); ok {
+		h = withFeature(h, FeaturePluginsReadCSV)
 	}
 	return h
 }

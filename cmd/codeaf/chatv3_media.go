@@ -226,6 +226,21 @@ func v3MediaPick(models *catalog.Catalog) func(string, string) (string, error) {
 	}
 }
 
+// v3MediaMasks is session.Config.MediaMasks: an image model takes a real mask
+// only when its catalog row publishes a `mask` knob. Published facts and nothing
+// else, for v3MediaCapable's reason: a guess that a model takes masks sends a
+// field it may silently drop, and the result would then claim an edit it did
+// not make.
+func v3MediaMasks(models *catalog.Catalog) func(string) bool {
+	if models == nil {
+		return nil
+	}
+	return func(id string) bool {
+		row, known := models.Model(id)
+		return known && row.Media != nil && row.Media.Mask
+	}
+}
+
 // v3MediaClient is session.Config.Media: the one client that reaches every
 // generation endpoint, or nil when this install cannot build one.
 //

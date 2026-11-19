@@ -69,11 +69,12 @@ const imageDirectory = ".codeaf/images"
 // itself a valid reference can edit, restyle, combine, and iterate on its own
 // last render until the thing is right. That is the whole difference between one
 // picture and a working loop, and it costs three clauses to say.
-const generateImageDescription = "Generate an image from a text prompt and save it. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give reference_paths to work from pictures instead of from words alone — one reference edits or restyles it, several combine them — and remember that the path this tool just returned is itself a valid reference, so you can pass your own last render back in and iterate on it until the diagram, the character or the layout is right. Set n (1 to 10) to get that many variants of one prompt from a single request; you choose among them yourself. A first render is a draft: look at the file before you build on it or hand it over, judge it against what was asked, and iterate when it fell short. Give a path to choose the name and the folder; leave it out and the image is saved under a timestamped name derived from the prompt, and the result says where it went."
+const generateImageDescription = "Generate an image from a text prompt and save it. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give reference_paths to work from pictures instead of from words alone — one reference edits or restyles it, several combine them — and remember that the path this tool just returned is itself a valid reference, so you can pass your own last render back in and iterate on it until the diagram, the character or the layout is right. To change one region and keep the rest, add mask_path: a picture the size of the first reference, white where it may change and black where it must stay; the result says whether this model took it as a real mask or only as a guide. Set n (1 to 10) to get that many variants of one prompt from a single request; you choose among them yourself. A first render is a draft: look at the file before you build on it or hand it over, judge it against what was asked, and iterate when it fell short. Give a path to choose the name and the folder; leave it out and the image is saved under a timestamped name derived from the prompt, and the result says where it went."
 
 const generateImageSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"What to draw, as a full description: subject, composition, style, lighting. The whole prompt reaches the image model, so detail is worth writing — every dimension the prompt leaves open, the model fills with its statistical average, and that average is what generic AI imagery looks like. Decide the medium, the light, the palette and the mood yourself and write them down; specificity is the difference between the picture you meant and a generic one. A prompt assembled from the genre's usual clichés lands on that same average by choice — escape a genre by naming a real medium (a print process, a photographic setup, a drafting tradition), not by recoloring it. And specify positively: image models barely read negation, so describe the surface, material and light that ARE there until the default has no room. With reference_paths it is the instruction — what to change about the pictures you gave."},` +
 	`"reference_paths":{"type":"array","items":{"type":"string"},"description":"Pictures to work from, as paths in the workspace (png, jpeg, webp or gif, each up to 10MB). One is an edit or a restyle of it; several are combined. A path this tool returned earlier is a valid reference, which is how you iterate on your own output."},` +
+	`"mask_path":{"type":"string","description":"A mask for the first of reference_paths, as a path in the workspace: the same size as that picture, white where it may change, black where it must stay. Needs reference_paths. A model that takes masks edits only the white area; any other model is sent the mask as a guide picture beside the source, the change may reach past it, and the result says which happened."},` +
 	`"aspect_ratio":{"type":"string","description":"Shape of the frame, as the image model spells it (for example 16:9 or 1:1). Passed through untouched; leave it out for the model's own default."},` +
 	`"size":{"type":"string","description":"Exact pixel size as WIDTHxHEIGHT (for example 1024x1024). Passed through untouched; leave it out for the model's own default."},` +
 	`"n":{"type":"integer","minimum":1,"maximum":10,"default":1,"description":"How many pictures ONE request should return, for a contact sheet of variants of the same prompt. Default 1. Each is saved as its own file and the cost is that of the whole request. If the model cannot return several, the call fails and nothing is retried."},` +
@@ -109,6 +110,8 @@ type GenerateImageArgs struct {
 	// N is how many pictures ONE request asks for, 1 to [ImageVariantsMax]; zero
 	// means one.
 	N int `json:"n"`
+	// MaskPath is a mask for the first of ReferencePaths (tools_image_mask.go).
+	MaskPath string `json:"mask_path"`
 }
 
 // ImageGen is everything one generation needs from the surface it runs in:
@@ -127,6 +130,10 @@ type ImageGen struct {
 	// RecordMedia is Record with the structured fact of the file (mediafact.go);
 	// it wins over Record when both are set.
 	RecordMedia func(path, prompt string, fact MediaFact)
+	// TakesMask says whether a model takes a real mask. Nil, or false for the
+	// model that draws, sends a mask_path as a guide picture instead
+	// (tools_image_mask.go) — the honest default when nobody can vouch.
+	TakesMask func(model string) bool
 	// attempt writes the call's render record before the provider is asked
 	// (render_attempt.go). A conversation's belt sets it; the command line's
 	// door and a saved harness's belt have no ledger by construction, so they
@@ -161,6 +168,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 				Pick:         a.config.MediaPick,
 				Workspace:    a.config.Workspace,
 				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
+				TakesMask:    a.config.MediaMasks,
 				Account:      a.accountImageRung,
 				attempt:      a.imageAttemptDoor(),
 				RecordMedia: func(path, prompt string, fact MediaFact) {
@@ -243,6 +251,21 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	if refusal != "" {
 		return rejectToolArguments(ctx, "Invalid arguments: reference "+refusal), true
 	}
+	// The mask is read and measured with the references, for their reason.
+	mask, refusal := readImageMask(gen.Workspace, parsed.MaskPath, parsed.ReferencePaths)
+	if refusal != "" {
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true
+	}
+	request := provider.ImageRequest{
+		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
+		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
+		Size:            strings.TrimSpace(parsed.Size),
+		InputReferences: references,
+	}
+	maskNote := ""
+	if mask != nil {
+		maskNote = mask.note(mask.apply(&request, gen.TakesMask != nil && gen.TakesMask(model)))
+	}
 
 	// THE ATTEMPT IS RECORDED BEFORE ANYTHING IS PAID FOR, and one that cannot
 	// be recorded is never sent: a paid request with no record of having been
@@ -273,12 +296,7 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	// record, so the stop says that rather than "unknown".
 	stoppedAfterReply := "Image generation was stopped (" + model + ") after the provider answered; nothing was saved, and whatever it reported charging is recorded."
 
-	response, err := gen.Client.GenerateImage(requestCtx, provider.ImageRequest{
-		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
-		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
-		Size:            strings.TrimSpace(parsed.Size),
-		InputReferences: references,
-	})
+	response, err := gen.Client.GenerateImage(requestCtx, request)
 	// A provider may return a usage receipt alongside an error. Account the
 	// actual receipt once, before any failure or unusable-output branch.
 	if response != nil && gen.Account != nil {
@@ -398,9 +416,23 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		end(renderPatch{state: RenderFinished, committed: true})
 	}
 	if !numbered {
-		return saved[0], false
+		return withMaskNote(saved[0], maskNote), false
 	}
-	return describeImageBatch(model, requested, len(response.Data), saved, failures)
+	text, failed := describeImageBatch(model, requested, len(response.Data), saved, failures)
+	if !failed {
+		text = withMaskNote(text, maskNote)
+	}
+	return text, failed
+}
+
+// withMaskNote closes a result with the mask's line, when there was a mask.
+// The path stays the first thing on the first line, which the command line's
+// door and every caller that reads the path back rely on.
+func withMaskNote(text, note string) string {
+	if note == "" {
+		return text
+	}
+	return text + "\n" + note
 }
 
 // describeImageBatch is the result of a request for several pictures: how many
