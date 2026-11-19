@@ -60,3 +60,21 @@ func v3MediaAdmission(models *catalog.Catalog, profileDir string, source roles.S
 		return session.MediaAdmission{Reason: string(route.Reason), Message: route.Err().Error(), Options: append([]string(nil), route.Options...)}
 	}
 }
+
+// v3PictureRoute is session.Config.PictureRoute: the picture maker's route
+// (internal/config's picturemaker.go) read at the moment of each call, so a
+// choice made on the desk a second ago is the next picture's. The operator's
+// image role pin is the one rung the profile cannot answer, and it is read
+// here, at call time, for v3MediaModel's reason.
+func v3PictureRoute(models *catalog.Catalog, profileDir string, source roles.Source) func(config.PictureAsk) config.PictureRoute {
+	return func(ask config.PictureAsk) config.PictureRoute {
+		var available *catalog.Catalog
+		if models != nil {
+			available = models.SnapshotNow()
+		}
+		if pin, set := roles.Pinned(source, roles.RoleImageGen); set {
+			ask.Pin = pin
+		}
+		return config.ResolvePicture(available, profileDir, ask)
+	}
+}

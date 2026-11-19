@@ -94,6 +94,11 @@ type MediaParams struct {
 	// its first reference and edits only the area the mask opens. False is the
 	// ordinary answer and means unpublished, never "known not to".
 	Mask bool `json:"mask,omitempty"`
+	// Transparent says the model publishes a transparent-background option:
+	// a `background` knob whose values include "transparent", or a boolean
+	// `transparent_background` knob. False means unpublished. It is a fact
+	// about the model; generate_image does not ask for it.
+	Transparent bool `json:"transparent,omitempty"`
 }
 
 // MediaKind is what a catalog knows about one dedicated listing.
@@ -670,6 +675,14 @@ func imageParams(raw json.RawMessage) *MediaParams {
 		params.MaxOutputs = int(*max)
 	}
 	params.Mask = imageMaskKnob(fields["mask"])
+	for _, value := range read("background").Values {
+		if strings.EqualFold(strings.TrimSpace(value), "transparent") {
+			params.Transparent = true
+		}
+	}
+	if strings.TrimSpace(string(fields["transparent_background"])) == "true" || imageMaskKnob(fields["transparent_background"]) {
+		params.Transparent = true
+	}
 	return &params
 }
 

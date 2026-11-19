@@ -69,16 +69,84 @@ so the same list always gives the same model.
 
 A refusal is left for a list that genuinely cannot pay for a picture:
 
-- `there is no default image model with a published price. Choose an image model in settings or name one in the request. Advertised: …` — drawing models are listed but none has a price. Name one (`draw it with flux`) or set one in `/settings` → Models.
-- `no connected service advertises image generation` — the current list has no drawing model.
-- `the image model list could not be confirmed …` — the list has not been read yet, or is out of date. Try again in a moment.
+- `No picture maker has a published price, so Automatic won't choose one for you. Choose a picture maker in Settings → Models.` — drawing models are listed but none has a price. Name one (`draw it with flux`) or choose one in Settings → Models.
+- `No connected provider makes pictures. Connect one in Settings → Models.` — the current list has no drawing model.
+- `The list of picture makers couldn't be read just now, so none was chosen. …` — the list has not been read yet, or is out of date. Try again in a moment.
 
-**A model you chose always wins.** The `/settings` row, `CODEAF_IMAGE_MODEL`,
-a pinned role or a model named in the request is used as given, listed or not.
+Older builds said `there is no default image model with a published price`
+for the first of these.
+
+**A model you chose always wins**, listed or not, and is never swapped: this
+canvas's picture maker, the Everywhere one, a pinned role, or one named in the
+request.
 
 Until 2026-11-19 every picture on a fresh profile was refused with the first of
 those sentences, because codeaf dropped the per-token picture price that is the
 only one the model list publishes when it loads.
+
+## Which model makes my pictures — the picture maker, Automatic, Everywhere or just this canvas?
+
+The model that makes pictures is the **picture maker**, and you can choose it
+at two reaches:
+
+- **Everywhere** — every picture, in every conversation and canvas. On the
+  desk it is Settings → Models → Pictures; in the terminal it is `/settings` →
+  Models → drawing. `CODEAF_IMAGE_MODEL`, when set, outranks it, and the desk
+  shows it locked with that variable's name.
+- **This canvas** — only pictures made on one canvas, chosen from the canvas's
+  own picture chip. It outranks Everywhere. Clearing it makes the canvas follow
+  Everywhere again.
+
+Leaving either empty is **Automatic**, never a blank: codeaf picks the model
+as *Which image model draws if I never chose one* describes, and the desk says
+which one it picked, e.g. `Automatic · Seedream 5.0 Pro`. Only one case has no
+model: `No connected provider makes pictures`.
+
+The order a picture follows is: a model named for that one picture, then this
+canvas, then Everywhere, then the operator's pinned role, then Automatic. A
+canvas is known by its working folder, so a task working in a copy of that
+folder still uses the canvas's choice.
+
+The picker lists every model the catalogue says draws, with its price per
+picture (estimated at one 1K picture when the catalogue prices megapixels or
+tokens), whether it reads a photo, how many pictures one request returns, the
+shapes it draws and whether it offers a transparent background. A capability
+the catalogue does not publish is shown as absent. codeaf does not ask any
+model for a transparent background yet; that line only says which models offer
+one.
+
+## A picture failed because the model was busy — does codeaf switch to another model?
+
+**Only when nobody chose the model.**
+
+On **Automatic**, a model that is busy (429, 503), not answering (a 5xx or a
+timeout) or no longer offered (404) is passed over for the next model on the
+same list, at most three in all. The picture then says so, e.g.
+`Made with Gemini 3 Pro Image · Automatic · Seedream 5.0 Pro was busy.` If none
+answers: `Automatic tried 3 picture makers and none answered. Nothing was made;
+try again in a moment.`
+
+A model that **you chose** — for this canvas, Everywhere, or by name — is never
+swapped. When it does not answer, nothing is made and the answer is a question:
+`Seedream 5.0 Pro isn't answering (was busy). Nothing was made, and no other
+picture maker was used, because Seedream 5.0 Pro was chosen for this canvas.
+Gemini 3 Pro Image can make these 4 instead.` codeaf asks you before using it,
+and the desk offers it as one button.
+
+Any other failure — a refused prompt, an expired key, no credit — is reported
+as it is and never sent to another model, because the next one would refuse it
+too. A connection that is down is not passed on either.
+
+## Why was changing a photo refused with "can't read a photo"?
+
+Changing, restyling or starting from a picture needs a model that takes a
+picture in. When the picture maker you chose does not, codeaf refuses before
+anything is paid for, and names one that can:
+`Krea 2 Medium can't read a photo, and you're changing one. Gemini 3 Pro Image
+can; choose it for this, or start from words.` On Automatic it simply picks a
+model that reads photos; with none connected it says `No connected picture
+maker can read a photo, so this picture can't be changed. Start from words
+instead.` Making a picture from words alone still uses your choice.
 
 ## Can you keep my picture's shape — an 8:5 photo, an odd or unusual aspect ratio?
 

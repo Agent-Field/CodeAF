@@ -42,6 +42,20 @@ type Render struct {
 	Error       string     `json:"error,omitempty"`
 	Refusal     string     `json:"refusal,omitempty"`
 	Options     []string   `json:"options,omitempty"`
+	// Picked is how a picture's model was chosen: "chosen" (the call, this
+	// canvas, Everywhere or the operator's pin named it) or "automatic".
+	// Absent on a render from an engine that did not say.
+	Picked string `json:"picked,omitempty" enum:"chosen,automatic"`
+	// PassedOver are the Automatic picture makers tried before Model that did
+	// not answer, in order: "made with Model · <each> was busy".
+	PassedOver []RenderPassedOver `json:"passed_over,omitempty"`
+}
+
+// RenderPassedOver is one picture maker Automatic passed over, and why:
+// busy (429/503), unreachable (5xx, timeout) or gone (not offered now).
+type RenderPassedOver struct {
+	Model  string `json:"model"`
+	Reason string `json:"reason" enum:"busy,unreachable,gone"`
 }
 
 // RenderPage is one window of renders, newest first.
