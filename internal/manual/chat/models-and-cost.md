@@ -2601,6 +2601,22 @@ Two things follow that are worth knowing:
 
 To see the halves, ask `/cost`. To see one task's own bill, open its card.
 
+## One card shows the price of two jobs — my charts card shows what the research spent, the second job joined the first one's work, the research card shows nothing
+
+When the chat starts two tasks in one go, the second can join the work the first has already
+started. Its start line then says `It joined the work already underway and shares its copy.`
+The two run as one piece of work, and the second is listed under the first.
+
+**Each card shows what its own work cost.** The card of a task that joined shows what its own
+workers and its own checks spent. The first task's card shows the rest of what the shared work
+spent. Together the two cards add up to the whole. They are labels: nothing is charged twice,
+and `/cost` and the status line are counted from the calls themselves, as before.
+
+Until this changed, the first card showed the price of all the shared work and the joined
+card showed none. In one measured run, a charts task whose own worker spent $0.13 showed
+$1.43, because a research task had joined it. That research split into five parts, and each
+part was checked by the careful model on its own, which cost $0.82 of the total.
+
 ## Why does the row show the wrong cost after I switch conversations — the money jumped when I switched chats, the figure came from the chat I left
 
 **Switching hands the row over completely.** `/resume`, a row of the welcome list, taking

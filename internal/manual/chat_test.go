@@ -37,6 +37,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the chat title still shows the old topic after I switched subject", "conversation-names"},
 		{"will my own conversation name get overwritten", "conversation-names"},
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"the chat said it would write the brief when the tasks landed but the reply stopped partway", "how-tasks-run"},
+		{"why does my charts task show the cost of the research task that joined it", "models-and-cost"},
 		{"can Claude Code make a canvas", "claude-code-provider"},
 		{"does Claude Code see my codeaf skills", "claude-code-provider"},
 		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},

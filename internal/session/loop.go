@@ -1015,6 +1015,15 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// lives, and the hand-back is the end-of-turn floor's ([Agent.handBackUnsettled]),
 		// asked here only for the sentence it carries ([Agent.markSettleBound]).
 		if count, tripped := a.settleBoundTripped(ctx, &turn, settleCalls); tripped {
+			// AN OWED LANDING'S BOUND ENDS THE CHEAP REPLY, NOT THE WORK. Its run
+			// was started to answer the person, it holds no decision to hand back,
+			// and sealing it here was a turn that ended mid-read with nothing said
+			// (qloop run23, vector-db t1). The rest goes to an ordinary turn.
+			if wake, _ := settleWakeFrom(ctx); wake.owed {
+				a.carryOwedLandingOn(hub, count)
+				hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+				return true
+			}
 			a.markSettleBound(count)
 			// Keep the step spend without duration or ordinary turn-ending acts;
 			// abandonment can displace this turn while the bound is marked.

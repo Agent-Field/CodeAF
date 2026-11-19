@@ -1157,10 +1157,33 @@ request, the line shows its identity mark and name alone rather than an empty qu
 If several tasks arrive before one answer, their lines are stacked in arrival order above
 that answer.
 
-**That reply is priced exactly like one you typed.** It climbs the same ladder, has the
+**That reply is priced exactly like one you typed**, once it is past its short start (a reply
+to work the chat owed you starts short, see *The chat said it would finish once the tasks
+landed*). It climbs the same ladder, has the
 same ceiling, and is handed to a task the same way — see *When a reply is taken out of your
 hands* in *Tasks*. It used to be exempt, and a measured run had one such reply grind for 46
 minutes with nobody watching and then leave the session idle for seven and a half hours.
+
+## The chat said it would finish once the tasks landed, and the reply stopped partway — my brief was never written after the tasks finished, the reply to a landed task went quiet, carrying on
+
+When the chat hands out work you asked for and says it will put the pieces together once they
+land, that report starts a **short reply**. It runs on the cheaper model and is told to answer
+from the report. It may make at most **6 model calls**, and most replies need one or two.
+
+Putting the pieces together needs more than that. When the short reply reaches its 6 calls
+before it has answered, it does not stop with nothing said. A dim line
+`the report needs more than a short reply · carrying on` shows, and the work carries on in an
+ordinary turn on the conversation's own model, with no call limit of its own. That turn keeps
+everything the short reply already read, finishes what you asked (the write-up it promised,
+for example), and ends with the answer. The dim line goes when the turn ends.
+
+Until this changed, the short reply could stop after its sixth call in the middle of reading.
+Nothing was said, the card kept showing `Working` with its actions, and the promised work
+waited until you typed again.
+
+A reply you stop yourself is not carried on. A reply that answers within its 6 calls costs what
+it always did. The ordinary turn is priced like one you typed (see *Why did the chat reply on
+its own*).
 
 ## Which task is this answer about
 
