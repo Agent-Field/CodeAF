@@ -350,12 +350,10 @@ func criticalHit(command string, segments []string) (string, bool) {
 	// THE PERSON'S NO HOLDS FOR THE ACT, NOT FOR ONE SPELLING OF IT. The table
 	// below matches text, and every `rm` entry in it spells `rm -rf /`, so a
 	// model refused that line ran `rm -r /tmp/victim` one call later and was
-	// never asked (#2813). The delete is therefore read the way the shell reads
-	// it — quotes stripped, flags in any spelling, a path-qualified `rm` — before
-	// the text table is consulted.
-	if hit, ok := recursiveRemoveHit(command); ok {
-		return hit, true
-	}
+	// never asked (#2813). The table still answers first, so a line it already
+	// catches keeps the rule it has always been reported under (`rm -rf /` is
+	// `rm -rf /`). Only what it misses is then read the way the shell reads it —
+	// quotes stripped, flags in any spelling, a path-qualified `rm`.
 	candidates := make([]string, 0, len(segments)+1)
 	candidates = append(candidates, command)
 	candidates = append(candidates, segments...)
@@ -370,7 +368,7 @@ func criticalHit(command string, segments []string) (string, bool) {
 			}
 		}
 	}
-	return "", false
+	return recursiveRemoveHit(command)
 }
 
 // normalizeCritical flattens the spellings that would otherwise let a critical
