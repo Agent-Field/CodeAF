@@ -572,6 +572,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I typed continue into a task and nothing happened", "tasks"},
 		{"it wrote where I am, next I make the charts, and then just stopped", "tasks"},
 		{"it stopped after writing down what it learned and never built the dashboard", "tasks"},
+		{"it said the flyer was fixed and then got asked to go on anyway", "tasks"},
 		{"does typing into a running task reach it straight away", "tasks"},
 		// And the one the code's own comment used to get wrong: thinking on the
 		// screen is something you have read.

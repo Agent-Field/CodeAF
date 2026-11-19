@@ -1434,8 +1434,12 @@ it wrote down where it was and stopped · asking it to go on
 applies only to the reply that comes straight after codeaf's request for a note, and only
 when that reply is short — one or two plain paragraphs. A reply of three or more paragraphs,
 or one with a list, a heading or a table, is an answer written for you and ends the reply as
-it always did. If a short reply was in fact the finished answer, the model says so in one
-short extra call, the dim line above still shows, and the answer stands as written.
+it always did. **A short reply is left alone too when the reply already checked what it
+changed:** it changed the work, then asked a question of a look at it ("does the date line
+read Saturday 14 March?"), and no step failed after that look. A look that only describes
+a picture is not a check. Otherwise, if a short reply was in fact the finished answer, the
+model says so in one short extra call, the dim line above still shows, and the answer
+stands as written.
 
 **It shares the update's limit: at most twice in one reply,** counting both kinds together.
 A note that ends by asking you something, or that is waiting on work already out, is left
