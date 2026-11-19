@@ -746,8 +746,19 @@ func (a *Agent) refreshResponsePatience() {
 	account.InstallResponsePatience(a.config.ProfileDir)
 }
 
+// endpointPatience is the patience of the endpoint the next call on model goes
+// to, read from the client pool's own snapshot under the pool's lock.
+//
+// IT NEVER TAKES THE AGENT'S LOCK. The turn loop asks it for every give-up, and
+// a pause, a resume or a Close can hold a.mu while it waits on that very turn;
+// a deadline that queued behind them reordered a paused job's resume
+// (TestFactoryRunningJobPause). The pool is replaced under its own mutex by
+// [Agent.SetSources], so this read is still free of the race it replaced.
 func (a *Agent) endpointPatience(model string) float64 {
-	service, _ := a.liveSources().For(model)
+	service := a.clientPool.serviceNext(model)
+	if service.Address == "" && service.Source.ID == "" && a.clientPool == nil {
+		service, _ = a.liveSources().For(model)
+	}
 	return lanes.PatienceFor(service.Address, service.Source.ID)
 }
 
