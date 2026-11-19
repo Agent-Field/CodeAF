@@ -243,8 +243,9 @@ func TestATurnThatNeverLookedPaysNoReader(t *testing.T) {
 
 // ── the stale look ──────────────────────────────────────────────────────────
 
-// THE TURN LOOKED, THEN CHANGED THE WORK, THEN DESCRIBED IT: it is sent back to
-// look again, with no reader spent, and only once.
+// THE TURN LOOKED, THEN CHANGED THE WORK, THEN DESCRIBED IT: the reader reads
+// it first (run 24), and when it raises nothing the turn is sent back to look
+// again, once.
 func TestAReplyAfterAChangeSinceTheLastLookIsSentBackToLookAgain(t *testing.T) {
 	var looked, changed atomic.Int64
 	agent, completer, asked := replyCheckAgent(t, []step{
@@ -254,7 +255,7 @@ func TestAReplyAfterAChangeSinceTheLastLookIsSentBackToLookAgain(t *testing.T) {
 		callStep("l2", "look", `{}`),
 		replyStep(rightReply),
 		unreachable,
-	}, `- "bars now" — objection.`, lookTool(&looked), changeTool("change", &changed, false))
+	}, "NONE", lookTool(&looked), changeTool("change", &changed, false))
 	collected := runTurnOn(t, agent, "update it")
 	if got, want := completer.requests(), 5; got != want {
 		t.Fatalf("the loop made %d requests; want %d", got, want)
@@ -262,14 +263,37 @@ func TestAReplyAfterAChangeSinceTheLastLookIsSentBackToLookAgain(t *testing.T) {
 	if sent := completer.request(3); messageText(sent[len(sent)-1]) != replyStaleLookLead {
 		t.Fatalf("the send-back was %q; want the stale look", messageText(sent[len(sent)-1]))
 	}
-	if asked.Load() != 0 {
-		t.Errorf("the reader was asked %d times; the stale arm spends none and the guard is spent", asked.Load())
+	if asked.Load() != 1 {
+		t.Errorf("the reader was asked %d times; a stale turn is read once, first", asked.Load())
 	}
 	if !saidSomething(noticeTexts(collected), replyStaleLookNote) {
 		t.Errorf("the person was not told; notices were %q", noticeTexts(collected))
 	}
 	if looked.Load() != 2 {
 		t.Errorf("looked %d times; want the second look the send-back asked for", looked.Load())
+	}
+}
+
+// AND WHAT THE READER RAISES ON A STALE TURN IS THE SEND-BACK, in place of the
+// bare look-again: run 24's vector brief went out "renders clean" because the
+// stale arm sent it back with no reader and the model kept its reply.
+func TestAStaleTurnTheReaderObjectsToCarriesTheReadersLine(t *testing.T) {
+	var looked, changed atomic.Int64
+	agent, completer, asked := replyCheckAgent(t, []step{
+		callStep("l1", "look", `{}`),
+		callStep("c1", "change", `{}`),
+		replyStep(wrongReply),
+		replyStep(rightReply),
+		unreachable,
+	}, `- WRONG: "bars now" — the look draws pgvector, Pinecone, Weaviate.`, lookTool(&looked), changeTool("change", &changed, false))
+	collected := runTurnOn(t, agent, "update it")
+	sent := completer.request(3)
+	lead := messageText(sent[len(sent)-1])
+	if lead == replyStaleLookLead || !isReplyCheckLead(lead) || !strings.Contains(lead, `"bars now"`) {
+		t.Fatalf("the send-back was %q; want the reader's line", lead)
+	}
+	if asked.Load() != 1 || !saidSomething(noticeTexts(collected), replyCheckNote) || saidSomething(noticeTexts(collected), replyStaleLookNote) {
+		t.Errorf("asked %d, notices %q; want one reading and the correction line alone", asked.Load(), noticeTexts(collected))
 	}
 }
 
@@ -319,44 +343,53 @@ func TestLookedAtTheWorkReadsTheTurnNotTheSession(t *testing.T) {
 func TestReplyCheckPageIsBoundedAndKeepsTheNewestLook(t *testing.T) {
 	old := turnLook{seen: strings.Repeat("old ", 3000)}
 	newest := turnLook{question: "bars?", seen: lookSaid}
-	page := replyCheckPage(strings.Repeat("r", 10000), []turnLook{old, old, old, newest}, nil)
+	page := replyCheckPage(strings.Repeat("r", 10000), []turnLook{old, old, old, newest}, nil, nil)
 	if !strings.Contains(page, lookSaid) {
 		t.Fatalf("the newest look was dropped")
 	}
 	if limit := replyCheckLookBytes + replyCheckReplyBytes + 200; len(page) > limit {
 		t.Errorf("the page is %d bytes; want at most %d", len(page), limit)
 	}
-	if replyCheckPage(wrongReply, []turnLook{{}}, nil) != "" {
+	if replyCheckPage(wrongReply, []turnLook{{}}, nil, []turnObservation{{order: 1, step: "bash canvas patch"}}) != "" {
 		t.Errorf("a look with no words gave the reader a page")
 	}
 }
 
 func TestReplyCheckFindingsReadOnlyTheAskedShape(t *testing.T) {
-	for answer, want := range map[string]int{
-		"NONE":                      0,
-		"none.":                     0,
-		"":                          0,
-		"It all matches.":           0,
-		"- one\n- two":              2,
-		"Found:\n- one\nnot a line": 1,
-		"- NONE":                    0,
-		strings.Repeat("- x\n", 9):  replyCheckFindings,
+	for answer, want := range map[string][2]int{
+		"NONE":                      {0, 0},
+		"none.":                     {0, 0},
+		"":                          {0, 0},
+		"It all matches.":           {0, 0},
+		"- one\n- two":              {2, 0},
+		"Found:\n- one\nnot a line": {1, 0},
+		"- NONE":                    {0, 0},
+		strings.Repeat("- x\n", 9):  {replyCheckFindings, 0},
+		"- WRONG: \"top recall\" — Milvus is 0.98\n- UNSHOWN: \"clear of the cup\" — nothing shows the cup":                          {1, 1},
+		"- **UNSHOWN**: \"no lettering\" — the looks disagree":                                                                       {0, 1},
+		"- WRONG: none of the statements are contradicted.\n- UNSHOWN: none of the statements promise the work is free of a problem": {0, 0},
+		"- [Wrong] \"x\" — y\n- UNSHOWN:": {1, 0},
 	} {
-		if got := len(replyCheckFindingsOf(answer)); got != want {
-			t.Errorf("replyCheckFindingsOf(%q) gave %d lines; want %d", answer, got, want)
+		found := replyCheckFindingsOf(answer)
+		if got := [2]int{len(found.wrong), len(found.unshown)}; got != want {
+			t.Errorf("replyCheckFindingsOf(%q) gave %v (wrong, unshown); want %v", answer, got, want)
 		}
+	}
+	found := replyCheckFindingsOf("- UNSHOWN: \"clear of the cup\" — nothing shows the cup")
+	if len(found.unshown) != 1 || found.unshown[0] != "- \"clear of the cup\" — nothing shows the cup" {
+		t.Errorf("the kind was not taken off the line: %q", found.unshown)
 	}
 }
 
 // AND THE HARNESS'S OWN WORDS NEVER REACH THE PERSON AS THEIRS.
 func TestTheReplyCheckLeadsAreContinuationContext(t *testing.T) {
-	for _, lead := range []string{replyStaleLookLead, replyCheckLead([]string{"- x"}), failureCheckLead([]string{"- bash: usage"})} {
+	for _, lead := range []string{replyStaleLookLead, replyCheckLead(replyFindings{wrong: []string{"- x"}}), replyCheckLead(replyFindings{unshown: []string{"- y"}}), failureCheckLead([]string{"- bash: usage"})} {
 		if !isContinuationContext(lead) {
 			t.Errorf("%q is not continuation context", lead)
 		}
 	}
 	for _, banned := range []string{"verified", "auditor", "verdict", "refuted"} {
-		for _, said := range []string{replyStaleLookNote, replyCheckNote, failureCheckNote} {
+		for _, said := range []string{replyStaleLookNote, replyCheckNote, replyUnshownNote, failureCheckNote} {
 			if strings.Contains(strings.ToLower(said), banned) {
 				t.Errorf("%q says %q", said, banned)
 			}
