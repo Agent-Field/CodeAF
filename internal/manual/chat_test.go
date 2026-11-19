@@ -3720,6 +3720,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will my secrets come with the chat without sync storage", "continuing-a-chat-on-another-computer"},
 		{"why does git show my env files deleted after I moved a chat", "continuing-a-chat-on-another-computer"},
 		{"are my .env files sent through the sync service when sync storage is off", "continuing-a-chat-on-another-computer"},
+		// What the sync service is told about a chat in pass-through, and the one
+		// verb that waits for storage because it would leave message text there.
+		{"what does the sync service record about my chat in blind pass-through", "relay-what-it-stores-and-sees"},
+		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
+		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
+		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -2754,11 +2754,17 @@ func (s *Sync) Discard(ctx context.Context, branch string) error {
 func newCellID() (string, error) { return cell.NewID(time.Now()) }
 
 // publishInfo is what the directory is told about c: its class, its title
-// sealed under the metadata key, and who can open it.
+// sealed under the metadata key, and who can open it. While blind pass-through
+// is the road it carries neither the title nor the folder, for EVERY caller:
+// the drive's publishes, the kept-edits branch a take makes and the background
+// pass all build their record here, so there is no second place to forget.
 func (s *Sync) publishInfo(c cell.Cell, title string) cellsync.PublishInfo {
 	in := cellsync.PublishInfo{
 		Class: string(c.Meta().Class),
 		Keys:  map[string]map[string]string{c.Meta().CellKeyID: {s.Identity.ID(): ""}},
+	}
+	if s.recordsWithholdNames() {
+		return in
 	}
 	if title != "" {
 		in.Title, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), title)

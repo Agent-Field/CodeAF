@@ -150,3 +150,10 @@ func SecretFilesLate(name string) string {
 	}
 	return "its secret files (.env and the like) did not come with it, because " + name + " stopped answering; they are still there"
 }
+
+// ErrNotesWaitForStorage is what sending a message to a chat another computer
+// holds says while sync storage is off for the account. Such a message would
+// have to sit on the sync service until that computer took it, and the service
+// keeps nothing of the kind until storage is approved, so the message is not
+// sent: the chat has to be brought here to be written to.
+var ErrNotesWaitForStorage = errors.New("a message to a chat on another computer waits for sync storage, which is off for this account; continue the chat here to write to it")

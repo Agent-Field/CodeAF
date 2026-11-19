@@ -175,6 +175,12 @@ To bring the chat here instead, choose Continue here. While a turn runs there
 it waits (`Comes here when this turn ends.`, with Cancel), then moves, retrying
 once if that computer saved again first.
 
+## Why can't I message a chat on another computer — the composer is read-only while sync storage is off
+
+While the account's hosted sync storage is off, the desktop does not offer `Message <name>` for a chat another computer holds, and `chats.send` is not in `hello`. A waiting message is sealed text kept in this computer's record on the sync service until the holder takes it, and the service keeps nothing of the kind until storage is approved. A send that arrives anyway is refused with `Sync storage is off for this account, so a message can't wait for another computer. Bring the chat here to write to it.` and leaves nothing on the service.
+
+Choose Continue here to write to the chat: blind pass-through moves it while both computers run codeaf. Approving sync storage brings the message box back on the next connection, and a self-hosted sync service always had it. Messages already waiting when storage was switched off can still be taken off the service.
+
 ## A message to another computer is not delivered, the computer is offline, or it didn't send
 
 These are messages written here to a chat that another of your computers holds.

@@ -58,6 +58,15 @@ const LiveTransferVar = "CODEAF_PASSTHROUGH"
 // has been moved, when the title comes from the chat itself.
 const liveRecordsCarryTitle = false
 
+// recordsWithholdNames is the ONE answer to "may this chat's title or folder go
+// to the hosted relay?". It is no while blind pass-through is the road, whatever
+// the chat, and it is asked in two places that must agree: where a record is
+// built ([Sync.publishInfo]) and at the directory client every record leaves
+// through ([deviceDirectory]), so a caller that builds a record some other way
+// is still kept from sending a name. Approved storage and self-hosted relays
+// answer false and send names as they always have.
+func (s *Sync) recordsWithholdNames() bool { return !liveRecordsCarryTitle && s.LiveTransfer() }
+
 // The timings below are variables only so a test can shorten them; the doors
 // are built from these, never from a literal.
 var (

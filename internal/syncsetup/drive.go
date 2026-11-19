@@ -508,13 +508,7 @@ func (d *Drive) info() cellsync.PublishInfo {
 	if d.opt.Title != nil {
 		title = d.opt.Title()
 	}
-	info := d.sync.publishInfo(d.cell, title)
-	if !liveRecordsCarryTitle && d.sync.LiveTransfer() {
-		// The legal line of live transfer: no name of the chat, or of its
-		// folder, reaches a relay that has not been approved to store them.
-		info.Title, info.Folder = "", ""
-	}
-	return info
+	return d.sync.publishInfo(d.cell, title)
 }
 
 // loseHold retires this writer's permission to run tools and clears its send
