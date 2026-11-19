@@ -49,7 +49,8 @@ and folder; an existing file there is overwritten, exactly as `write` would.
 `aspect_ratio` (for example `16:9`) is the frame's shape; a shape the drawing
 model does not take is drawn at the nearest one it does and cropped back (see
 *Can you keep my picture's shape*, below). `size` (for example `1024x1024`) is
-passed to the image model untouched. Leave either out for its own default.
+the pixel size; without `aspect_ratio` it carries the shape too and is fitted
+the same way. Leave either out for its own default.
 
 ## Which image model draws if I never chose one, and why was a picture refused with "no default image model"?
 
@@ -96,9 +97,17 @@ draw 8:5, so it drew at 3:2 and the result was cropped to 8:5 and scaled to
 two edges: a model that keeps your whole photo in its own frame may lose a
 little of it at the border.
 
+**The shape may come in `size` instead.** With no `aspect_ratio`, a `size` of
+`8:5` is read as that shape, and a pixel size such as `1280x800` whose shape the
+model does not take is drawn at the nearest one and comes back cropped and
+scaled to exactly 1280×800. Until 2026-11-19 a `size` went to the model as it
+was, and Gemini refused an `8:5` canvas edit with `Gemini does not support
+aspect_ratio "8:5" on this endpoint.`
+
 A shape the model takes is sent exactly as asked (`16:10` goes in the model's
-own spelling, `8:5`). A word such as `auto`, and any shape for a model whose
-shapes were never published, are passed through untouched and never cropped.
+own spelling, `8:5`). A word such as `auto` or `2K`, a `size` beside an
+`aspect_ratio`, and any shape for a model whose shapes were never published,
+are passed through untouched and never cropped.
 
 ## Can you make several versions, variants or a contact sheet of one picture?
 

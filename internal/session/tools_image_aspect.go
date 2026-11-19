@@ -41,6 +41,19 @@ import (
 // shapes nobody published — those are passed through untouched, as they always
 // were, because a guess about a model's shapes is a field it may refuse.
 //
+// THE SHAPE MAY ARRIVE IN EITHER FIELD, AND BOTH ARE FITTED. The desk's canvas
+// plans a picture edit as {"size":"8:5","reference_paths":[…]}, a W:H in
+// `size`, and OpenRouter reads that as the aspect_ratio it then refuses; the
+// fitting once read only aspect_ratio, so every canvas edit of an 8:5 photo
+// was refused on the default model the day the fitting shipped. A pixel size
+// ("1280x800") is a shape too, and no drawing model publishes a size knob:
+// Gemini sent "1280x800" answered 2816×1536. So when aspect_ratio is empty,
+// [fitShape] reads the shape out of `size`: a W:H moves to aspect_ratio, and a
+// pixel size whose shape the model does not draw is sent as the nearest shape
+// it does and the result is cropped and scaled to exactly that size. A size
+// beside an aspect_ratio, a word ("2K"), and a pixel size the model's shapes
+// either include or were never published for, are sent as they were.
+//
 // It is the only one of the two ways the engine could have handled this:
 // preferring a default that takes any shape would fix only the default, and a
 // person's own choice of model would still refuse the photo.
@@ -52,6 +65,9 @@ type aspectFit struct {
 	// ratio is the asked width over height, set only when the result must be
 	// cropped back to it (the model was sent another shape).
 	ratio float64
+	// width and height are a pixel size the caller asked for, which a fitted
+	// result is scaled to; zero when the shape came without one.
+	width, height int
 }
 
 // mapped says the model was sent a different shape from the one asked.
@@ -108,6 +124,55 @@ func fitAspect(asked string, published []string) aspectFit {
 	return fit
 }
 
+// fitShape chooses what a call sends for its two shape fields, aspect_ratio
+// and size, given the shapes the model publishes, and answers the fit and the
+// size the request carries. See "THE SHAPE MAY ARRIVE IN EITHER FIELD" above.
+func fitShape(aspectRatio, size string, published []string) (aspectFit, string) {
+	aspectRatio, size = strings.TrimSpace(aspectRatio), strings.TrimSpace(size)
+	if aspectRatio != "" || size == "" {
+		return fitAspect(aspectRatio, published), size
+	}
+	if _, ok := parseAspect(size); ok {
+		return fitAspect(size, published), ""
+	}
+	w, h, ok := parsePixels(size)
+	if !ok {
+		return fitAspect("", published), size
+	}
+	fit := fitAspect(reducedAspect(w, h), published)
+	if !fit.mapped() {
+		// The model draws this shape, or nobody knows which it draws: the size
+		// is sent as it was asked, as it always was.
+		return aspectFit{}, size
+	}
+	fit.asked = size
+	fit.width, fit.height = w, h
+	return fit, ""
+}
+
+// parsePixels reads "WIDTHxHEIGHT" with positive whole sides ("1280x800").
+func parsePixels(text string) (int, int, bool) {
+	width, height, found := strings.Cut(strings.ToLower(text), "x")
+	if !found {
+		return 0, 0, false
+	}
+	w, errW := strconv.Atoi(strings.TrimSpace(width))
+	h, errH := strconv.Atoi(strings.TrimSpace(height))
+	if errW != nil || errH != nil || w <= 0 || h <= 0 {
+		return 0, 0, false
+	}
+	return w, h, true
+}
+
+// reducedAspect spells a pixel size as its shape in lowest terms, 1280×800 as 8:5.
+func reducedAspect(w, h int) string {
+	a, b := w, h
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return strconv.Itoa(w/a) + ":" + strconv.Itoa(h/a)
+}
+
 // fitBack crops one returned picture to the asked shape and, when target is a
 // size of that shape, scales it to exactly that size. It answers the PNG it
 // made, or false when the picture could not be decoded — in which case the
@@ -145,10 +210,14 @@ func (f aspectFit) fitBack(data []byte, targetW, targetH int) ([]byte, bool) {
 	return encoded.Bytes(), true
 }
 
-// editTarget is the size an edit's result is scaled to: the first reference's
-// own size, when that picture has the asked shape. Zero when there is no such
-// picture, which leaves the cropped result at the size the model drew it.
+// editTarget is the size a fitted result is scaled to: the pixel size the
+// call asked for, or else the first reference's own size when that picture has
+// the asked shape. Zero when there is neither, which leaves the cropped result
+// at the size the model drew it.
 func (f aspectFit) editTarget(workspace string, references []string) (int, int) {
+	if f.mapped() && f.width > 0 {
+		return f.width, f.height
+	}
 	if !f.mapped() || len(references) == 0 {
 		return 0, 0
 	}
@@ -182,6 +251,9 @@ func (f aspectFit) fitItems(items []provider.GeneratedImage, model string, targe
 	}
 	if !restored {
 		return fmt.Sprintf("%s does not draw %s, so it was asked for %s; the result could not be read to crop it back, so it is %s.", model, f.asked, f.sent, f.sent)
+	}
+	if f.width > 0 {
+		return fmt.Sprintf("%s does not draw %s, so it drew at %s and the result was cropped to %s and scaled to %d×%d, the size asked for.", model, f.asked, f.sent, reducedAspect(f.width, f.height), targetW, targetH)
 	}
 	if targetW > 0 {
 		return fmt.Sprintf("%s does not draw %s, so it drew at %s and the result was cropped to %s and scaled to %d×%d, the size of the picture it edits.", model, f.asked, f.sent, f.asked, targetW, targetH)
