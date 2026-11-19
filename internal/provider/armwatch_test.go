@@ -240,8 +240,12 @@ func (c *oneReportController) Quiet(now time.Time) control.Act {
 	return control.Act{Kind: control.Report, Silence: now.Sub(c.began)}
 }
 
+// CONTRACT: under a number in `response.patience` a local endpoint keeps the
+// hosted rescue policy, so a path that has sent nothing at all is still cut at
+// the stretched ceiling and asked again. (Under `auto` it is a sole local host
+// and is never cut there: TestASoleLocalHostIsReportedOnAndNeverCutAtTheCeiling.)
 func TestPatienceCutsADeadPathAtTheStretchedCeilingAfterOneReport(t *testing.T) {
-	usePatience(t, 0)
+	usePatience(t, 10)
 	client := patientClient(t, "http://localhost:11434/v1", "")
 	const hostedCeiling = 400 * time.Millisecond
 	now := time.Now()
@@ -282,5 +286,105 @@ func TestPatienceCutsADeadPathAtTheStretchedCeilingAfterOneReport(t *testing.T) 
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("an early, once-only report left the dead path waiting past %v", ceiling)
+	}
+}
+
+// CONTRACT: under `auto`, a request to a local endpoint that has named no
+// second host is reported on at the stretched ceiling and NOT cut there, whether
+// its headers arrived before the report or after it. Asking again would reach
+// the same machine and start reading the prompt again from the beginning, so the
+// silence is left to the stall watch's own stretched first-word bound.
+//
+// Both orders are real servers. One that sends its headers at once and its
+// first word after a long prompt read was cut at 100 seconds and re-asked by
+// v0.8.3-rc.2 every time; one that sends its headers with its first word lost
+// a complete answer to the cut when the two landed in the same instant.
+func TestASoleLocalHostIsReportedOnAndNeverCutAtTheCeiling(t *testing.T) {
+	usePatience(t, 0)
+	for _, headersFirst := range []bool{true, false} {
+		name := "headers after the report"
+		if headersFirst {
+			name = "headers before the report"
+		}
+		t.Run(name, func(t *testing.T) {
+			client := patientClient(t, "http://localhost:11434/v1", "")
+			if !client.soleLocalHost("sim/model") {
+				t.Fatal("a localhost endpoint under auto is not a sole local host: this test is asking nothing")
+			}
+			const hostedCeiling = 400 * time.Millisecond
+			now := time.Now()
+			plan := client.stretchPlan(control.Plan{Ceiling: hostedCeiling, Purse: lanes.NoSpending()})
+			ceiling := 10 * hostedCeiling
+			// Already past the stretched ceiling, so a cut would come at once.
+			began := now.Add(-ceiling - 250*time.Millisecond)
+			controller := &oneReportController{began: began}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			race := &hedgeRace{base: ctx, plan: plan, winner: -1, wake: make(chan struct{}, 1)}
+			watch := &streamWatch{
+				race: race, control: controller, began: began, deadline: now,
+				plan: plan, stretched: true, sole: true,
+			}
+			race.arms = []*hedgeArm{{watch: watch}}
+			cutAt := make(chan time.Time, 1)
+			guard := &stallWatch{arm: watch, clock: time.Now, born: began, quietSince: began, cancel: func() {
+				cutAt <- time.Now()
+			}}
+			if headersFirst {
+				watch.guardedBy(guard)
+				watch.quiet(now)
+			} else {
+				watch.quiet(now)
+				watch.guardedBy(guard)
+			}
+			if !controller.reported {
+				t.Fatal("the ceiling did not report on the silent request")
+			}
+
+			stopped := make(chan struct{})
+			go func() {
+				defer close(stopped)
+				race.beat(ctx.Done())
+			}()
+			defer func() {
+				cancel()
+				<-stopped
+			}()
+			select {
+			case <-cutAt:
+				t.Fatalf("a sole local host was cut at the ceiling: %v", guard.cut())
+			case <-time.After(750 * time.Millisecond):
+			}
+		})
+	}
+}
+
+// CONTRACT: an arm is built knowing whether its endpoint is a sole local host:
+// a local endpoint under `auto` is, a local endpoint under a number is not, and
+// a hosted endpoint never is.
+func TestAnArmKnowsWhetherItIsTheOneMachineALocalEndpointHas(t *testing.T) {
+	factory := func(plan control.Plan) control.Controller { return control.New(plan) }
+	for _, tc := range []struct {
+		name     string
+		base     string
+		patience float64
+		want     bool
+	}{
+		{"local under auto", "http://localhost:11434/v1", 0, true},
+		{"local under a number", "http://localhost:11434/v1", 10, false},
+		{"local under one", "http://127.0.0.1:8080/v1", 1, false},
+		{"hosted under auto", "https://openrouter.ai/api/v1", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usePatience(t, tc.patience)
+			client := patientClient(t, tc.base, "")
+			race, made := client.raceFor(context.Background(), nil, factory, "sim/model")
+			if !made {
+				t.Fatal("a build with a controller factory should race")
+			}
+			if got := race.watchFor(0, race.plan, time.Now()).sole; got != tc.want {
+				t.Errorf("sole = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
