@@ -2065,7 +2065,9 @@ sentence, or `nobody could check it — the checker never answered` when nothing
 When the clock is what stopped the check, it leads `the check ran out of time — ` instead,
 and the row says the same. When the checker's own spend ceiling stopped it, the report
 leads with that stop — `the check stopped at its spend ceiling of $0.37 before it
-finished` — and the row reads `your call · the check stopped at its spend ceiling`.
+finished` — and the row reads `your call · the check stopped at its spend ceiling`. When
+the check's model could not be reached or served, the report leads `the check could not
+finish: ` and the provider's own words, and the row reads `your call · nobody could check it`.
 A landing whose branch would not merge leads `conflicts with your branch — ` the same way,
 and one whose files moved under it leads `your branch changed the same files while it
 worked — `.
@@ -2213,6 +2215,30 @@ came home when the task ended — and the check is not run again, because asking
 would spend its ceiling a second time on the same reading. Look at the work, then answer.
 
 Earlier builds marked this task `failed` even though its work was finished.
+
+## Says failed, but it finished — the check could not reach its model, a provider error during the check
+
+A task whose worker finished, but whose **check's model could not answer** — the provider
+refused the request, no machine would serve it, the reply stalled, the connection was down —
+is **not failed** either. Like a check that met its spend ceiling, that is news about the
+checker. The work is in place and nobody has said it is wrong.
+
+The task reads `your call · nobody could check it`. Its report leads with the real stop,
+quoting the provider, then the worker's own account:
+
+```
+the check could not finish: the provider would not serve its model google/gemini-4-carbon and said "…"
+Rota sheet tabs Rota Coverage Hours built …
+```
+
+`accept` takes the work as done and `not right` marks it incomplete with your reason. The
+check is not run again from the task; look at the work, then answer.
+
+When codeaf tells the conversation a task ended, it says that same recorded stop — never a
+guess about the work. A task that did not finish says the stop its failed step recorded. If
+nothing recorded a reason, none is given.
+
+Earlier builds marked this task `failed`, and the reply could name a cause nobody recorded.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 

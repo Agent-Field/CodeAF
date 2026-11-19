@@ -2129,6 +2129,27 @@ another one. And a refusal your router made **on its own account** — a `400` t
 machine — is your request being read and rejected, which every model would do, so it stops
 at once with no retry and no move (see *"Provider returned error"* below).
 
+## "Encrypted reasoning … can only be processed by the provider that created it" — thinking that belongs to one provider
+
+Some models' thinking comes back **encrypted by the provider that served it**. codeaf sends
+that thinking back with each later request, so the model continues from its own reasoning.
+Only that provider can read it.
+
+codeaf also steers requests away from a provider that has just been slow or failing. When
+it steers a conversation away from the provider that holds its thinking, the router refuses
+the request: `Your request contains encrypted reasoning or compaction content that can only
+be processed by the provider that created it … but your request's provider.ignore preference
+excludes that provider`.
+
+**codeaf answers that refusal by itself.** The request goes again **once**, without the
+encrypted thinking, to a provider that can serve it. The conversation's words, the readable
+part of the thinking and the choice to avoid the struggling provider all stay. The model
+continues from what was said, as it does after `/model`. You read no error, and nothing is
+remembered against the model.
+
+Earlier builds sent the same request through every retry, so the turn failed. A task's check
+that ended that way was marked `failed` over finished work (*how-tasks-run*).
+
 ## "Provider returned error" — a 400, what the error actually was, and why my reply just stopped
 
 `Provider returned error` is your router saying that **somebody else refused** — it handed

@@ -323,10 +323,11 @@ type RunSummary struct {
 	// FINISHED — senior-dev's `pass` or `pass-unverified` — and empty for
 	// every other ending and every other run.
 	ProgramVerdict string
-	// Unchecked is the sentence a review check stopped on when its checker met
-	// its own spend ceiling before it could answer — the work it was reading
-	// had landed. Empty when every check answered. A done run with this set is
-	// asked about (your call), never drawn done and never failed.
+	// Unchecked is the sentence a review check stopped on when it could not
+	// answer — its checker met its own spend ceiling, or its model could not be
+	// served — while the work it was reading had landed. Empty when every
+	// check answered. A done run with this set is asked about (your call),
+	// never drawn done and never failed.
 	Unchecked string
 	// Cut is every task the run's own ending cut mid-flight, by store id: the
 	// same typed fact as the limit, read where the run recorded it. A joined
@@ -2728,9 +2729,10 @@ func (run *beltRun) noticeResultWords(summary RunSummary, landing RunLanding) (T
 	}
 	if uncheckedRunLanding(run, summary, state) {
 		// FINISHED WORK WHOSE CHECK COULD NOT FINISH IS YOUR CALL, NEVER FAILED
-		// AND NEVER DONE. The check's own checker met its spend ceiling — a fact
-		// about the checker — and nobody said whether the work is right, so it
-		// is asked about with the check's two answers, led by the stop itself.
+		// AND NEVER DONE. The check's own checker met its spend ceiling, or its
+		// model could not be served — a fact about the checker either way — and
+		// nobody said whether the work is right, so it is asked about with the
+		// check's two answers, led by the stop itself.
 		state = TaskUnverified
 		report = withReport(strings.TrimSpace(summary.Unchecked), report)
 	}
@@ -2822,6 +2824,15 @@ func beltRunLimitEnding(limit RunLimit) TaskEnding {
 // had taken when it was asked.
 func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding, span time.Duration) string {
 	outcome, result := runEndingWords(summary)
+	unchecked := strings.TrimSpace(summary.Unchecked)
+	if unchecked != "" && summary.Outcome == beltRunOutcomeDone {
+		// FINISHED WORK NOBODY FINISHED CHECKING IS ANNOUNCED AS WHAT THE ROW
+		// SAYS IT IS — your call — and never as `done`, which would tell the
+		// conversation's model the question was settled.
+		outcome = taskWordYourCall
+	} else {
+		unchecked = ""
+	}
 	parts := []string{outcome}
 	if ran := runSpanWord(span); ran != "" {
 		parts = append(parts, "ran "+ran)
@@ -2829,15 +2840,69 @@ func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, 
 	if result != "" {
 		parts = append(parts, result)
 	}
+	// AND THE RECORDED REASON IS SAID HERE, IN THE RUN'S OWN WORDS, BEFORE ANY
+	// MODEL-WRITTEN LINE. This note is what the conversation's model is handed
+	// when a run ends, and the one line after it ([RunPlanSummary.Now]) is a
+	// model's reading of the rows. Run21's note said only "ran and did not
+	// finish" and then the reading's guess — "role cells are left reading
+	// Open" — about a check whose provider had refused it, and the manager
+	// told the person that guess as the cause. A stop the run recorded is a
+	// fact, so it travels as one: the check's own stop when the work stands
+	// unchecked, or the first ended task's stop when the run did not finish
+	// and nothing above has already said why.
+	recorded := unchecked
+	if recorded == "" {
+		recorded = runRecordedStop(store, rootID, summary)
+	}
+	if recorded != "" {
+		parts = append(parts, recorded)
+	}
 	if line := beltLandingLine(landing); line != "" {
 		parts = append(parts, line)
 	}
+	// A RECORDED ENDING NEEDS NO READING OF IT. The reading's `now` line is,
+	// for a run that has ended, how it ended — the very fact the line above
+	// already states from the record, and the one place a reading can still
+	// contradict it.
+	if recorded == "" {
+		parts = appendRunReadingNow(parts, store, rootID)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// appendRunReadingNow adds the last stored reading's `now` sentence, when
+// there is one.
+func appendRunReadingNow(parts []string, store *plandb.Store, rootID string) []string {
 	if stored, ok := readRunSummary(store, rootID); ok {
 		if now := strings.TrimSpace(stored.Summary.Now); now != "" {
 			parts = append(parts, now)
 		}
 	}
-	return strings.Join(parts, " · ")
+	return parts
+}
+
+// runRecordedStop is the stop a run that did not finish recorded on the task
+// that ended it — the first task of the run, in the store's order, that ended
+// failed with a reason written on it — said as "<title>: <reason>". It is
+// empty for a run that finished, for an ending that already says why
+// ([runEndingWords] leads with a program's reason or the run's own failure),
+// and for a run with no store or no recorded reason, because a reason nobody
+// recorded is never supplied.
+func runRecordedStop(store *plandb.Store, rootID string, summary RunSummary) string {
+	if store == nil || rootID == "" || summary.Outcome == beltRunOutcomeDone || summary.Program != nil || strings.TrimSpace(summary.Failure) != "" {
+		return ""
+	}
+	for _, task := range runSummaryFamily(store, rootID) {
+		reason := summaryFirstLine(task.Error, 280)
+		if task.Status != plandb.StatusFailed || reason == "" {
+			continue
+		}
+		if task.ID == rootID {
+			return reason
+		}
+		return cutChars(strings.TrimSpace(task.Title), 120) + ": " + reason
+	}
+	return ""
 }
 
 // beltLandingLine is what a landing is in one line: where the work went and how

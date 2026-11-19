@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 )
 
 // ReasoningReplayPolicy is the wire law for model working carried across a
@@ -108,6 +110,64 @@ func encodeReasoningFields(raw json.RawMessage, reasoning MessageReasoning) (jso
 	}
 	out = append(out, '}')
 	return out, nil
+}
+
+// carriesBoundReasoning reports whether any message in the sidecar carries
+// `reasoning_details` — the opaque, provider-encrypted half of a model's
+// working. Plain reasoning text is readable by anybody and binds nothing.
+func carriesBoundReasoning(reasoning []MessageReasoning) bool {
+	for _, entry := range reasoning {
+		if len(bytes.TrimSpace(entry.Details)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// withoutBoundReasoning is the sidecar with every opaque `reasoning_details`
+// taken off and everything else kept: the reasoning text, its field and its
+// model tag. It is a copy, because the caller's sidecar belongs to the
+// transcript and this repair is true of one request only.
+func withoutBoundReasoning(reasoning []MessageReasoning) []MessageReasoning {
+	kept := make([]MessageReasoning, len(reasoning))
+	for index, entry := range reasoning {
+		entry.Details = nil
+		kept[index] = entry
+	}
+	return kept
+}
+
+// refusesBoundReasoning recognises the router refusing a request because the
+// encrypted working it carries belongs to a provider the request itself
+// excluded. RECOGNISED BY STRUCTURE FIRST (endpoints.go's header says why a
+// phrase list is always one sentence behind, and [refusesForeignReasoning]
+// was: run21's "can only be processed by the provider that created it" matched
+// none of its four phrases):
+//
+//   - the refusal is a 404 or 400 in the router's own error envelope;
+//   - the request carried opaque `reasoning_details`;
+//   - and EITHER the router refused on its own account (no upstream named)
+//     while the request went out with a membership filter — `ignore` or
+//     `only`, the two fields that can keep the creating provider out — OR the
+//     router's words say the content is encrypted, which covers a provider
+//     the account's own settings excluded where no field on the wire shows it.
+//
+// A false reading costs one free resend without the opaque items, after which
+// the refusal goes back to the ladder with the request whole; a missed one
+// costs the turn, which is what run21 paid.
+func refusesBoundReasoning(response *http.Response, payload []byte, carried []MessageReasoning) bool {
+	if response == nil || !endpointRefusalStatus(response.StatusCode) || !carriesBoundReasoning(carried) {
+		return false
+	}
+	upstream, ok := routerErrorEnvelope(payload)
+	if !ok {
+		return false
+	}
+	if strings.Contains(strings.ToLower(string(payload)), "encrypted") {
+		return true
+	}
+	sent := refusedWirePreferences(response)
+	return upstream == "" && sent != nil && (len(sent.Ignore) > 0 || len(sent.Only) > 0)
 }
 
 func attachMessageReasoning(encoded []json.RawMessage, reasoning []MessageReasoning, model string) ([]json.RawMessage, error) {

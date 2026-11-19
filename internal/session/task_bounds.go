@@ -160,5 +160,11 @@ func (run *beltRun) stopCrewAtTaskLimit(summary RunSummary) {
 }
 
 func (run *beltRun) outcomeNote(summary RunSummary, landing RunLanding, span time.Duration) string {
+	// The note says "your call" over unchecked work only where the row does
+	// ([uncheckedRunLanding]): a remote engine's or a program's run keeps the
+	// ending its own door draws.
+	if !uncheckedRunLanding(run, summary, TaskDone) {
+		summary.Unchecked = ""
+	}
 	return beltRunOutcomeNote(run.store, run.root, run.taskLimitEnding(summary), landing, span)
 }

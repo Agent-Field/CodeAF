@@ -5160,3 +5160,27 @@ func TestTheFinishedButFailedTaskQuestionReachesTheCheckCeilingAnswer(t *testing
 		}
 	}
 }
+
+// run21: the rota's worker finished, its check's provider refused the request,
+// the chat drew the task failed, and the reply named a cause nobody recorded.
+// Asked in a person's own words, each question reaches the section that says
+// what really happened.
+func TestTheCheckCouldNotReachItsModelQuestionsReachTheirAnswers(t *testing.T) {
+	for _, probe := range []struct{ asked, page, says string }{
+		{"my task finished but the check failed with a provider error", "how-tasks-run", "check's model could not answer"},
+		{"why does my finished task say nobody could check it", "how-tasks-run", "check's model could not answer"},
+		{"encrypted reasoning can only be processed by the provider that created it", "models-and-cost", "codeaf answers that refusal by itself"},
+		{"provider.ignore preference excludes that provider", "models-and-cost", "codeaf answers that refusal by itself"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach %s's section saying %q", probe.asked, probe.page, probe.says)
+		}
+	}
+}

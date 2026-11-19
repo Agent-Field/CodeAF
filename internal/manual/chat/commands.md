@@ -1116,6 +1116,9 @@ thinking. A model's reasoning is its own — the router encrypts it and refuses 
 to any other model — so the new model reads what was said and continues from there. If a
 switch mid-conversation is ever refused with "encrypted reasoning … produced under a
 different model", the request is repaired and sent again on its own; nothing is lost.
+The same holds on one model: thinking a provider encrypted can be read only by that
+provider, so a request steered away from it (the provider was struck as slow or failing)
+goes out without that thinking rather than being refused.
 
 Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/pgdown move
 12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the
