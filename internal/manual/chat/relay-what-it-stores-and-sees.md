@@ -30,7 +30,7 @@ Background chat publication waits silently while storage is off. It does not add
 
 While hosted sync storage is off and a chat moves by blind pass-through, the sync service keeps no chat or file content: the encrypted bytes pass through while both of your computers are running codeaf and are never written to the service. Everything stays encrypted end to end.
 
-The service does hold a small directory record for each such chat, the same kind of thing pairing already stores. *What the sync service records for a chat in blind pass-through* lists every field. The title and the folder name are not among them, so the service holds no chat name and no folder name. The list on your other computer shows the chat as `untitled` until you take it there.
+The service does hold a small directory record for each such chat, the same kind of thing pairing already stores. *What the sync service records for a chat in blind pass-through* lists every field. The title and the folder name are not among them, so the service holds no chat name and no folder name. WorkAF can read the chat’s title directly from its computer over the same end-to-end encrypted connection.
 
 `CODEAF_PASSTHROUGH=off` restores the previous behaviour: while storage is off, chats stay on the computer that has them. Blind pass-through does nothing when storage is approved or with a self-hosted sync service. *Blind pass-through* has the steps.
 

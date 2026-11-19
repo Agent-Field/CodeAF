@@ -370,6 +370,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.preview` | `{cell}` | `{last_user?: string, last_assistant?: string}` |
 | `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
 ## pair methods
@@ -2364,7 +2365,9 @@ when sync is off or unavailable; in those modes `chats.list` returns `[]`.
 Never-paired homes also return `[]` without contacting a relay. The first
 inventory read starts one shared Sync.Follow subscription; later version
 changes reread and diff rows. Presence changes update cached online facts
-without a directory read. No inventory polling timer runs. Kept branches are
+without a directory read. While live transfer is active, the follower also
+refreshes cached titles from paired holders over the encrypted files door.
+The titles are never added to directory records. Kept branches are
 outside this v1 inventory. Crew is omitted because relay rows carry no crew
 membership; the local Agent keeps its existing crews.
 
@@ -2392,6 +2395,12 @@ is here can still say it; a followed inventory emits the row again when the take
 starts and when it ends without moving the chat. Once a take has acquired the
 chat, rows that still show it elsewhere keep `taking:true` until a row says the
 chat is here or a later take holds it, even when opening the moved chat fails.
+`chats.preview` in `hello` advertises a read of the selected saved conversation.
+The optional row field `can_preview` says a saved head appears readable. The
+result contains short text excerpts, with either field omitted when empty.
+The read uses store frames or the holder’s encrypted files door. It takes no
+lease and installs no local copy of the chat or its workspace.
+
 A client that stopped waiting for a take reads `taking:false`
 on a chat still elsewhere as a take that did not move it.
 

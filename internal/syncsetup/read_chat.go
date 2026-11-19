@@ -20,7 +20,7 @@ func (s *Sync) ReadChat(ctx context.Context, id string, view directory.CellView,
 	if !cell.ValidID(id) || view.Cell.Head == "" || view.Cell.Archived || view.Cell.ParentCell != "" {
 		return directory.ErrNotFound
 	}
-	if !s.StorageAllowed() {
+	if s.ChatStorageOff() {
 		return wireauth.ErrStorageOff
 	}
 	if read == nil {
@@ -36,8 +36,9 @@ func (s *Sync) ReadChat(ctx context.Context, id string, view directory.CellView,
 	eng.DataRoot = filepath.Join(s.Home, "v3", "stores")
 	eng.WorkspaceOf = func(c cell.Cell) string { return c.Root }
 	sync := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
-	scope := s.scope(id)
+	scope := s.chatScope(id)
 	defer scope.Settle()
+	scope.Holder(view.Cell.Lease.Device)
 	fetch := cellsync.Fetcher{Engine: sync, Store: scope.Store, Dir: s.Dir, View: &view, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)}
 	if _, err := fetch.StageChat(ctx, at, view.Cell.Head, eng.StageState); err != nil {
 		return err

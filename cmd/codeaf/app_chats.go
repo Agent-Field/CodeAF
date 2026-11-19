@@ -26,19 +26,22 @@ import (
 )
 
 type appChats struct {
-	start    sync.Once
-	byAgent  map[string]appwire.ChatRow
-	taking   map[string]int
-	landed   map[string]uint64
-	moves    map[string]*appMove
-	ended    map[string]appwire.ChatMoveEnded
-	slot     chan struct{}
-	slotOnce sync.Once
-	op       sync.Mutex
-	mu       sync.Mutex
-	rows     []appwire.ChatRow
-	facts    map[string]chatlist.Row
-	views    map[string]directory.CellView
+	start   sync.Once
+	byAgent map[string]appwire.ChatRow
+	// Peer labels are scoped to the holder and head, under op.
+	peerTitles   map[string]peerChatTitle
+	titleBinding string
+	taking       map[string]int
+	landed       map[string]uint64
+	moves        map[string]*appMove
+	ended        map[string]appwire.ChatMoveEnded
+	slot         chan struct{}
+	slotOnce     sync.Once
+	op           sync.Mutex
+	mu           sync.Mutex
+	rows         []appwire.ChatRow
+	facts        map[string]chatlist.Row
+	views        map[string]directory.CellView
 	// takeable is each row's can_take before its holder's sharing was judged,
 	// so a presence change can lift the block as well as set it.
 	takeable        map[string]bool
@@ -57,6 +60,7 @@ type appChats struct {
 }
 type appLocalChat struct {
 	agent    string
+	title    string
 	copyable bool
 }
 
@@ -282,10 +286,11 @@ func (b *appBackend) localChats(s *syncsetup.Sync) map[string]appLocalChat {
 			remote = held
 		}
 		copyable := true
-		if meta, err := session.LoadMeta(root); err == nil && copied != root {
+		meta, err := session.LoadMeta(root)
+		if err == nil && copied != root {
 			copyable = olderChatCopyable(meta)
 		}
-		out[remote] = appLocalChat{agent: agent, copyable: copyable}
+		out[remote] = appLocalChat{agent: agent, title: strings.TrimSpace(meta.Title), copyable: copyable}
 	}
 	return out
 }
@@ -448,6 +453,9 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		row.Folder = r.Folder
 		if l, ok := local[r.Cell]; ok {
 			row.LocalAgent = l.agent
+			if here && l.title != "" {
+				row.Title = l.title
+			}
 			row.CanTake = row.CanTake && l.copyable
 		} else if !here && r.Size > 0 {
 			row.Size = int64(min(r.Size, math.MaxInt64))
@@ -461,6 +469,7 @@ func (b *appBackend) readChats(parent context.Context, s *syncsetup.Sync, feed d
 		}
 		out = append(out, row)
 	}
+	b.chats.describeChatRows(ctx, s, out, facts)
 	// Messages waiting for chats held here go into their queues; the queue
 	// takes its own locks, so this runs apart from the list's.
 	guard.Go("app/chat-notes", func() { b.carryNotes(s, mail, local) })
@@ -697,10 +706,19 @@ func (b *appBackend) followChats(ctx context.Context, feed dirwatch.Follower) {
 	if feed.State().Up && !b.refreshChatInventory(ctx, feed) {
 		return
 	}
+	titles := time.NewTicker(syncsetup.DefaultInterval)
+	defer titles.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-titles.C:
+			b.chats.mu.Lock()
+			source := b.chats.source
+			b.chats.mu.Unlock()
+			if source == nil || !source.LiveTransfer() {
+				continue
+			}
 		case _, ok := <-feed.Changes():
 			if !ok {
 				return
@@ -743,6 +761,7 @@ func (b *appBackend) refreshChatInventory(ctx context.Context, feed dirwatch.Fol
 			appChatPresence(r, c.facts[r.Cell], state, known)
 			appChatSharingAgain(r, c.facts[r.Cell], takeable[r.Cell])
 		}
+		c.describeChatRows(ctx, s, rows, c.facts)
 		c.markTaking(rows, false)
 		// Presence still refreshes local agents' lines, but a cached row from
 		// before a landed take would move its agent back elsewhere.

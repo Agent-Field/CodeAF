@@ -53,9 +53,9 @@ A computer with blind pass-through turned off that meets such a chat on its list
 
 ## Why a chat shows as untitled on my other computer — blind pass-through and chat titles
 
-While blind pass-through is the only road (hosted sync storage is off), a chat's title and folder are not shared with the sync service. The list on your other computer shows the chat as `untitled` until you take it there; after the take, the title comes from the chat itself and the row shows its real name.
+While blind pass-through is carrying chats, WorkAF reads the title directly from the computer that has the chat. The sync service keeps neither the title nor the folder name. If that computer is offline or runs an older version, Devices can show `untitled` until a title is available. After you move the chat, Devices reads the title from your local copy.
 
-This is on purpose: it keeps chat names and folder names off the sync service. It does not mean the chat lost its name. The computer that has the chat still shows it. Taking the chat is how the name arrives: choose `continue here` on the `untitled` row while the computer that has it is running codeaf.
+In WorkAF’s Devices page, **Preview** reads a short excerpt of the last saved message and reply. When the saved chat is unavailable, **Details** shows its device and move status. You can choose **Continue here** from either view when the move is available.
 
 ## Turn off blind pass-through — CODEAF_PASSTHROUGH=off, pass-through mode off switch
 

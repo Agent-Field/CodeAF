@@ -9,7 +9,8 @@ const (
 	// FeatureChatsMove says chat rows carry move and move_ended, and
 	// agents.take_cancel exists: a client learns how every move ends from the
 	// rows and needs its own timer only as a fallback.
-	FeatureChatsMove = "chats.move"
+	FeatureChatsMove    = "chats.move"
+	FeatureChatsPreview = "chats.preview"
 	// FeatureChatsWorking says chat rows carry working: the holder said at its
 	// last beat that work is still running or settling there. A relay that does not keep the
 	// flag leaves it false, so a client says "open there", never "idle there".
@@ -30,6 +31,7 @@ type Seen struct {
 	Head   string `json:"head,omitempty"`
 }
 type ChatRow struct {
+	CanPreview bool            `json:"can_preview,omitempty"`
 	CanOpen    bool            `json:"can_open,omitempty"`
 	Cell       string          `json:"cell"`
 	Title      string          `json:"title"`
@@ -183,7 +185,24 @@ type RelayReporter interface{ RelayKnown() bool }
 
 type ChatReadFollower interface{ ChatReadsFollow() bool }
 
+// ChatPreview is a read-only excerpt of recently saved conversation text.
+type ChatPreview struct {
+	LastUser      string `json:"last_user,omitempty"`
+	LastAssistant string `json:"last_assistant,omitempty"`
+}
+
+type ChatPreviewParams struct {
+	Cell string `json:"cell"`
+}
+
+type ChatPreviewReader interface {
+	PreviewChat(cell string) (ChatPreview, error)
+}
+
 func withChatsFeatures(h Hello, e Engine) Hello {
+	if _, ok := e.(ChatPreviewReader); ok {
+		h = withFeature(h, FeatureChatsPreview)
+	}
 	if d, ok := e.(ChatReadFollower); ok && d.ChatReadsFollow() {
 		h = withFeature(h, FeatureChatsRead)
 	}
@@ -207,6 +226,17 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	return h
 }
 func init() {
+	methods["chats.preview"] = typed(func(e Engine, p ChatPreviewParams) (*ChatPreview, error) {
+		d, ok := e.(ChatPreviewReader)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not preview chats on other computers")
+		}
+		if _, err := required("cell", p.Cell); err != nil {
+			return nil, err
+		}
+		got, err := d.PreviewChat(p.Cell)
+		return &got, err
+	})
 	methods["chats.list"] = typed(func(e Engine, _ struct{}) (*ChatsResult, error) {
 		d, ok := e.(ChatsTaker)
 		if !ok {
