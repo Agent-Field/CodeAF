@@ -213,7 +213,13 @@ const briefLastMost = 4000
 // because nothing inside the conversation does: a stage has no goal owner to
 // spend a wall against. cmd/codeaf hands the same figure to the conversation as
 // its budget, so what it hands out to tasks is bounded by it too.
-const StageWall = 2 * time.Hour
+//
+// IT IS A BACKSTOP FOR A WEDGED ROUND, NOT A SCHEDULE. It was two hours until
+// 2026-11-19, which could end a long round that was still working and park
+// its job for a person. The job's dollar cap is what bounds the spend, so a
+// longer wall costs nothing the cap has not already allowed; it only gives
+// honest work room to finish.
+const StageWall = 8 * time.Hour
 
 // stageWall is [StageWall], a variable so tests do not wait it out.
 var stageWall = StageWall
