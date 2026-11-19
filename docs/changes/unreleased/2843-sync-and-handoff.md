@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Keep desktop sync and chat handoffs reliable
-pr: 0
+pr: 2843
 surface: [app, chat, engine, remote]
 invalidates:
   - Storage-off pairing confirms the computers are linked and leaves chats local until storage is granted.
