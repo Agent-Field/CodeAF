@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: a reply about the work is checked against its own last look, and a question after failed steps says what failed
+title: a reply is checked against its own last look, and a question after failed steps says what failed
 pr: 2836
 surface: [engine, chat]
 invalidates:
