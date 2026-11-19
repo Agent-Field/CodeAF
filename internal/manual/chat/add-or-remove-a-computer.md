@@ -49,7 +49,7 @@ The card goes away once you have two devices. After that, `/pair` or Settings �
 
 Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
-Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
+Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted sync storage is off, that background preparation sends nothing to the sync service: an older chat that is not open on its computer cannot move to another one until it is opened there (*Blind pass-through*) or sync storage is approved.
 
 ## Pairing a server with no browser — the link, token and check number
 
