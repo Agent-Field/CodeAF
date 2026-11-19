@@ -503,6 +503,8 @@ func TestATaskPageSaysWhenAnAttemptWasCutAndAskedAgain(t *testing.T) {
 	rig := startWithEnv(t, []string{
 		"OPENROUTER_API_KEY=test-key",
 		"CODEAF_BASE_URL=" + brain.URL + "/api/v1",
+		// The scripted loopback provider has to stall before its stream closes.
+		"CODEAF_RESPONSE_PATIENCE=1",
 	}, "roomfeedcut", home, ws, 120, 40)
 
 	rig.lit("/task solo " + roomProbeBrief)

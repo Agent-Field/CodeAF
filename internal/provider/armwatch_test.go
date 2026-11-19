@@ -1,9 +1,11 @@
 package provider
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/lane/control"
 )
 
@@ -221,5 +223,64 @@ func TestALateFirstTokenStillTeachesTheLedgerAboutItsMachine(t *testing.T) {
 	}
 	if sighting.TTFT <= LagTTFT {
 		t.Fatalf("a %s first token is not over the lag line of %s — this test is asking nothing", sighting.TTFT, LagTTFT)
+	}
+}
+
+type oneReportController struct {
+	scriptedController
+	began    time.Time
+	reported bool
+}
+
+func (c *oneReportController) Quiet(now time.Time) control.Act {
+	if c.reported {
+		return control.Act{}
+	}
+	c.reported = true
+	return control.Act{Kind: control.Report, Silence: now.Sub(c.began)}
+}
+
+func TestPatienceCutsADeadPathAtTheStretchedCeilingAfterOneReport(t *testing.T) {
+	usePatience(t, 0)
+	client := patientClient(t, "http://localhost:11434/v1", "")
+	const hostedCeiling = 400 * time.Millisecond
+	now := time.Now()
+	plan := client.stretchPlan(control.Plan{Ceiling: hostedCeiling, Purse: lanes.NoSpending()})
+	ceiling := 10 * hostedCeiling
+	began := now.Add(-ceiling + 250*time.Millisecond)
+	controller := &oneReportController{began: began}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	race := &hedgeRace{base: ctx, plan: plan, winner: -1, wake: make(chan struct{}, 1)}
+	watch := &streamWatch{
+		race: race, control: controller, began: began, deadline: now,
+		plan: plan, stretched: true,
+	}
+	race.arms = []*hedgeArm{{watch: watch}}
+	cutAt := make(chan time.Time, 1)
+	guard := &stallWatch{arm: watch, clock: time.Now, born: began, quietSince: began, cancel: func() {
+		cutAt <- time.Now()
+		cancel()
+	}}
+	watch.guardedBy(guard)
+	watch.quiet(now)
+
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		race.beat(ctx.Done())
+	}()
+	defer func() {
+		cancel()
+		<-stopped
+	}()
+	select {
+	case at := <-cutAt:
+		cut := guard.cut()
+		if cut == nil || cut.Reason != CutSilent || cut.Waited != ceiling || at.Sub(began) < ceiling {
+			t.Fatalf("cut = %v after %v, want a silent cut at %v", cut, at.Sub(began), ceiling)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("an early, once-only report left the dead path waiting past %v", ceiling)
 	}
 }

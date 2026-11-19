@@ -1203,7 +1203,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
 				emptyReplies++
 				if emptyUntil.IsZero() {
-					emptyUntil = turnNow().Add(a.giveUp())
+					emptyUntil = turnNow().Add(a.giveUpOn(model))
 				}
 				// AND IT GOES THROUGH THE SAME VERDICT ROAD AS EVERY OTHER FAILED
 				// CALL, SAYING SO. This was the second retry road in the turn: the
@@ -2056,7 +2056,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// published where the limits are resolved) — so somebody who asks for more
 	// patience gets more time rather than more identical requests, and this loop
 	// has exactly one bound again.
-	deadline := turnNow().Add(a.giveUp())
+	deadline := turnNow().Add(a.giveUpOn(model))
 	// moveOn is THE BUDGET IS SPENT, SO THE MODEL MOVES, and it is a closure
 	// because two roads reach it: a verdict that says hop, and a wait that would
 	// outlast the deadline (below). Asking the same weights again is the one
@@ -2084,7 +2084,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		a.rideModel(next)
 		rung = a.effortFor(model)
 		cuts, rerouted, oneMachine, waitingSince = 0, false, true, time.Time{}
-		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
+		deadline, owed, unpaid = turnNow().Add(a.giveUpOn(next)), 0, 0
 	}
 	// takeTheModel is THE ONE PLACE THIS STEP CHANGES MODEL, and `root` is the
 	// only thing that differs between the two roads into it — which is a fact
@@ -2752,6 +2752,24 @@ func roundWait(d time.Duration) string {
 func (a *Agent) giveUp() time.Duration {
 	a.failureLimits()
 	return a.laneRole().GiveUp()
+}
+
+// giveUpOn is [Agent.giveUp] for the model the turn is about to ask, with the
+// patience of the machine that model is served from on it.
+//
+// THE TURN'S BUDGET HAS TO AGREE WITH THE TRANSPORT'S. The provider multiplies
+// every silence bound on a call by [lanes.PatienceFor] for that call's endpoint
+// (internal/provider's localpatience.go), so a local model is allowed minutes of
+// quiet before one request is called dead; if this deadline stayed at ninety
+// seconds the conversation would hop to another model while the first was still,
+// by the transport's own reckoning, working. It is asked per model and not once
+// per turn because a hop changes the endpoint: the hosted model the chain falls
+// back to gets its hosted budget, exactly as it always had. A hosted endpoint
+// under `auto` multiplies by one, which is [lanes.Stretch]'s identity, so nothing
+// about a hosted turn moves.
+func (a *Agent) giveUpOn(model string) time.Duration {
+	a.refreshResponsePatience()
+	return lanes.Stretch(a.giveUp(), a.endpointPatience(model))
 }
 
 // emptyReplyNotice is the dim line for a 200 that carried nothing. It says what
