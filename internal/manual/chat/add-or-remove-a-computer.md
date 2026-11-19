@@ -46,9 +46,9 @@ When this computer uses your own sync service, step 1 includes its address: `1. 
 
 Approving a self-hosted page's link in a terminal keeps that page's service when it matches this computer's selected service. A link waiting on a different service is refused before its code is sent.
 
-The computer showing a numeric pairing code saves its selected relay when it
-approves the joining computer, just before sending the identity. Showing or
-cancelling a code alone does not change the saved relay.
+The computer showing a numeric pairing code saves its selected sync service when
+it approves the joining computer, just before sending the identity. Showing or
+cancelling a code alone does not change the saved service.
 
 The card goes away once you have two devices. After that, `/pair` or Settings → Devices → Add another device still offers a place to paste the new device’s link, alongside the code command. It is not drawn when this chat cannot pair at all, for example a chat that runs over `--host` or `--at`.
 
