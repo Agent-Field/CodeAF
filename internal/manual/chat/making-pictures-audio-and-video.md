@@ -46,8 +46,59 @@ Leave `path` out and the name is a timestamp plus a few words of your prompt,
 saved where this session keeps its pictures. Give `path` and you choose the name
 and folder; an existing file there is overwritten, exactly as `write` would.
 
-`aspect_ratio` (for example `16:9`) and `size` (for example `1024x1024`) are
-passed to the image model untouched. Leave them out for its own default.
+`aspect_ratio` (for example `16:9`) is the frame's shape; a shape the drawing
+model does not take is drawn at the nearest one it does and cropped back (see
+*Can you keep my picture's shape*, below). `size` (for example `1024x1024`) is
+passed to the image model untouched. Leave either out for its own default.
+
+## Which image model draws if I never chose one, and why was a picture refused with "no default image model"?
+
+**Nothing to set up: with no image model chosen, codeaf picks one.** It tries,
+in order, `google/gemini-3.1-flash-image`, `bytedance-seed/seedream-5-0-pro`,
+`black-forest-labs/flux.2-pro` and `krea/krea-2-medium-turbo` — strongest first,
+then cheaper — and takes the first your model list advertises **with a
+published price**. The price it reads is the picture's own: per output-image
+token, per image or per megapixel. A model that publishes only zero prompt and
+completion prices has not said what a picture costs, and is never a default.
+
+If none of those four is listed and priced, it takes the best priced drawing
+model the list does have: the one with the highest published Design Arena
+score, then the lowest name. Never the first, newest or cheapest-looking row,
+so the same list always gives the same model.
+
+A refusal is left for a list that genuinely cannot pay for a picture:
+
+- `there is no default image model with a published price. Choose an image model in settings or name one in the request. Advertised: …` — drawing models are listed but none has a price. Name one (`draw it with flux`) or set one in `/settings` → Models.
+- `no connected service advertises image generation` — the current list has no drawing model.
+- `the image model list could not be confirmed …` — the list has not been read yet, or is out of date. Try again in a moment.
+
+**A model you chose always wins.** The `/settings` row, `CODEAF_IMAGE_MODEL`,
+a pinned role or a model named in the request is used as given, listed or not.
+
+Until 2026-11-19 every picture on a fresh profile was refused with the first of
+those sentences, because codeaf dropped the per-token picture price that is the
+only one the model list publishes when it loads.
+
+## Can you keep my picture's shape — an 8:5 photo, an odd or unusual aspect ratio?
+
+**Yes.** Every drawing model publishes the shapes it draws, and they differ:
+`google/gemini-3.1-flash-image` takes fourteen, from `1:8` to `8:1`, and not
+`8:5`. When `aspect_ratio` asks for a shape the model does not take, codeaf asks
+it for the **nearest** shape it does take (an `8:5` photo is drawn at `3:2`),
+then crops the result from the centre back to the shape you asked for. When the
+call edits a picture of that shape, the result is also scaled to that picture's
+own size, so "make the photo brighter" on a 1600×1000 photo comes back
+1600×1000.
+
+The result says so beside the file, e.g. `google/gemini-3.1-flash-image does not
+draw 8:5, so it drew at 3:2 and the result was cropped to 8:5 and scaled to
+1600×1000, the size of the picture it edits.` The crop takes a thin strip off
+two edges: a model that keeps your whole photo in its own frame may lose a
+little of it at the border.
+
+A shape the model takes is sent exactly as asked (`16:10` goes in the model's
+own spelling, `8:5`). A word such as `auto`, and any shape for a model whose
+shapes were never published, are passed through untouched and never cropped.
 
 ## Can you make several versions, variants or a contact sheet of one picture?
 
@@ -221,7 +272,7 @@ until it finishes.
 
 A call that **failed** has no file and no model beside it on the row — there was
 no picture to attribute. The model it tried is named inside the failure the
-expansion shows, e.g. `Image generation failed (bytedance-seed/seedream-5-0-pro):
+expansion shows, e.g. `Image generation failed (google/gemini-3.1-flash-image):
 …`.
 
 To change which model draws, just say so: "draw this one with gemini", "use the

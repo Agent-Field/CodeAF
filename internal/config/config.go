@@ -127,10 +127,17 @@ const (
 	// into the row themselves — and 0 there removes the rail entirely.
 	DefaultDailyBudgetUSD = 500.0
 
-	// preferredImageModel is the drawing default the operator asked for, with
-	// the previous leader kept underneath for a catalog that does not
-	// advertise it.
-	preferredImageModel = "bytedance-seed/seedream-5-0-pro"
+	// preferredImageModel leads the drawing defaults, and the three under it
+	// are tried in order when the catalog does not advertise and price the one
+	// above. The order is quality first, then cost, from the live listing of
+	// 2026-11-19: Gemini 3.1 Flash Image (Nano Banana 2, about $0.067 a 1K
+	// picture at $0.00006 an output token, the strongest Design Arena score of
+	// the four and the model the desk's picture work was proven on), Seedream
+	// 5.0 Pro ($0.045 a picture), FLUX.2 Pro ($0.03 a megapixel) and Krea 2
+	// Medium Turbo ($0.015 a picture). The last two led this list before.
+	preferredImageModel = "google/gemini-3.1-flash-image"
+	priorImageModel     = "bytedance-seed/seedream-5-0-pro"
+	fluxImageModel      = "black-forest-labs/flux.2-pro"
 	fallbackImageModel  = "krea/krea-2-medium-turbo"
 
 	// preferredSpeechModel is the voice the speech slot reaches for first. A
@@ -602,10 +609,10 @@ func load(requireKey bool) (Config, error) {
 }
 
 // ResolveImageModel applies the runtime preference order: an explicit slot,
-// then Seedream 5.0 Pro or Krea 2 Medium Turbo — and only when the catalog
-// advertises it AND has published a price for it. There is no "first image
-// model" rung: see [DefaultMediaRoute], which also says why there was no
-// answer. Empty means no default, and the caller keeps image generation off
+// then Gemini 3.1 Flash Image, Seedream 5.0 Pro, FLUX.2 Pro or Krea 2 Medium
+// Turbo — each only when the catalog advertises it AND has published a price
+// for it — and then the best-scored priced drawing model the listing has. See
+// [DefaultMediaRoute], which also says why there was no answer. Empty means no default, and the caller keeps image generation off
 // the belt or shows [MediaRoute.Err].
 func (c Config) ResolveImageModel(models *catalog.Catalog) string {
 	return c.ResolveImageRoute(models).Model

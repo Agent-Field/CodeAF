@@ -241,6 +241,22 @@ func v3MediaMasks(models *catalog.Catalog) func(string) bool {
 	}
 }
 
+// v3MediaAspects is session.Config.MediaAspects: the frame shapes an image
+// model's catalog row publishes, and nil when it published none, so an
+// unknown model's shapes are passed through rather than guessed at.
+func v3MediaAspects(models *catalog.Catalog) func(string) []string {
+	if models == nil {
+		return nil
+	}
+	return func(id string) []string {
+		params, known := models.MediaParams(id)
+		if !known {
+			return nil
+		}
+		return params.AspectRatios
+	}
+}
+
 // v3MediaClient is session.Config.Media: the one client that reaches every
 // generation endpoint, or nil when this install cannot build one.
 //

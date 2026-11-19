@@ -117,7 +117,7 @@ clip — media generation is a tool every job already has.
 ### Model slots — the right model per modality
 **What**: Standing slots: talk, work, plan, voice (transcription), image,
 speech, music, video, boost. Defaults resolve against a live catalog
-(krea-2-medium-turbo images, fish-audio/s1 speech, qwen3-asr-flash
+(gemini-3.1-flash-image images, fish-audio/s1 speech, qwen3-asr-flash
 transcription, lyria-3-pro-preview music, seedance-2.0-mini video) and degrade
 gracefully if a slug disappears. Each slot's picker only lists models
 that can actually do that job.

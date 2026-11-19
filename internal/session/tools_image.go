@@ -75,7 +75,7 @@ const generateImageSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"What to draw, as a full description: subject, composition, style, lighting. The whole prompt reaches the image model, so detail is worth writing — every dimension the prompt leaves open, the model fills with its statistical average, and that average is what generic AI imagery looks like. Decide the medium, the light, the palette and the mood yourself and write them down; specificity is the difference between the picture you meant and a generic one. A prompt assembled from the genre's usual clichés lands on that same average by choice — escape a genre by naming a real medium (a print process, a photographic setup, a drafting tradition), not by recoloring it. And specify positively: image models barely read negation, so describe the surface, material and light that ARE there until the default has no room. With reference_paths it is the instruction — what to change about the pictures you gave."},` +
 	`"reference_paths":{"type":"array","items":{"type":"string"},"description":"Pictures to work from, as paths in the workspace (png, jpeg, webp or gif, each up to 10MB). One is an edit or a restyle of it; several are combined. A path this tool returned earlier is a valid reference, which is how you iterate on your own output."},` +
 	`"mask_path":{"type":"string","description":"A mask for the first of reference_paths, as a path in the workspace: the same size as that picture, white where it may change, black where it must stay. Needs reference_paths. A model that takes masks edits only the white area; any other model is sent the mask as a guide picture beside the source, the change may reach past it, and the result says which happened."},` +
-	`"aspect_ratio":{"type":"string","description":"Shape of the frame, as the image model spells it (for example 16:9 or 1:1). Passed through untouched; leave it out for the model's own default."},` +
+	`"aspect_ratio":{"type":"string","description":"Shape of the frame as width:height (for example 16:9, 1:1, or the shape of the picture you are editing). A shape this model does not draw is drawn at the nearest one it does and cropped back, and the result says so; leave it out for the model's own default."},` +
 	`"size":{"type":"string","description":"Exact pixel size as WIDTHxHEIGHT (for example 1024x1024). Passed through untouched; leave it out for the model's own default."},` +
 	`"n":{"type":"integer","minimum":1,"maximum":10,"default":1,"description":"How many pictures ONE request should return, for a contact sheet of variants of the same prompt. Default 1. Each is saved as its own file and the cost is that of the whole request. If the model cannot return several, the call fails and nothing is retried."},` +
 	`"path":{"type":"string","description":"Where to save it, relative to the workspace. Leave it out for a timestamped name derived from the prompt, saved where this session keeps its pictures. An existing file at this path is overwritten, as with the write tool; with n above 1 the files are numbered from it (name-1.png, name-2.png) and no existing file is overwritten."}` +
@@ -134,6 +134,11 @@ type ImageGen struct {
 	// model that draws, sends a mask_path as a guide picture instead
 	// (tools_image_mask.go) — the honest default when nobody can vouch.
 	TakesMask func(model string) bool
+	// AspectRatios answers the frame shapes a model publishes, nil when it
+	// published none. A shape the model does not take is sent as its nearest
+	// published one and the result cropped back (tools_image_aspect.go); nil,
+	// or a nil answer, passes every shape through untouched.
+	AspectRatios func(model string) []string
 	// attempt writes the call's render record before the provider is asked
 	// (render_attempt.go). A conversation's belt sets it; the command line's
 	// door and a saved harness's belt have no ledger by construction, so they
@@ -169,6 +174,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 				Workspace:    a.config.Workspace,
 				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
 				TakesMask:    a.config.MediaMasks,
+				AspectRatios: a.config.MediaAspects,
 				Account:      a.accountImageRung,
 				attempt:      a.imageAttemptDoor(),
 				RecordMedia: func(path, prompt string, fact MediaFact) {
@@ -256,9 +262,16 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	if refusal != "" {
 		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true
 	}
+	// The shape is fitted to what this model draws before anything is paid
+	// for, so a shape it does not take is not a refused call.
+	var published []string
+	if gen.AspectRatios != nil {
+		published = gen.AspectRatios(model)
+	}
+	aspect := fitAspect(parsed.AspectRatio, published)
 	request := provider.ImageRequest{
 		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
-		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
+		AspectRatio:     aspect.sent,
 		Size:            strings.TrimSpace(parsed.Size),
 		InputReferences: references,
 	}
@@ -365,6 +378,13 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		return stoppedAfterReply, true
 	}
 
+	// A shape the model was sent in place of the asked one is cropped back
+	// before anything is written, so the file on disk has the asked shape.
+	targetW, targetH := aspect.editTarget(gen.Workspace, parsed.ReferencePaths)
+	if note := aspect.fitItems(items, model, targetW, targetH); note != "" {
+		maskNote = joinNotes(note, maskNote)
+	}
+
 	numbered := requested > 1
 	batch := newBatchID()
 	var saved []string
@@ -423,6 +443,17 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		text = withMaskNote(text, maskNote)
 	}
 	return text, failed
+}
+
+// joinNotes puts two closing lines together, either of which may be empty.
+func joinNotes(first, second string) string {
+	switch {
+	case first == "":
+		return second
+	case second == "":
+		return first
+	}
+	return first + "\n" + second
 }
 
 // withMaskNote closes a result with the mask's line, when there was a mask.

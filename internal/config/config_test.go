@@ -172,6 +172,7 @@ func runtimeCatalog(t *testing.T, rows string) *catalog.Catalog {
 func TestImageAndSpeechPreferenceOrders(t *testing.T) {
 	models := runtimeCatalog(t, `
 		{"id":"first/image","architecture":{"output_modalities":["image"]}},
+		{"id":"google/gemini-3.1-flash-image","architecture":{"input_modalities":["text","image"],"output_modalities":["image","text"]},"pricing":{"prompt":"0.0000005","completion":"0.000003","image_output":"0.00006"}},
 		{"id":"bytedance-seed/seedream-5-0-pro","architecture":{"output_modalities":["image"]},"pricing":{"request":"0.04"}},
 		{"id":"krea/krea-2-medium-turbo","architecture":{"output_modalities":["image"]},"pricing":{"request":"0.02"}},
 		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},

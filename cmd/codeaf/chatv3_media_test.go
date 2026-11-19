@@ -306,12 +306,21 @@ func TestTheMediaResolverRefusesToSpendOnAnOfflineCatalog(t *testing.T) {
 // reached for instead: unknown cost is not a licence to spend.
 func TestTheMediaResolverRefusesAnUnpricedSpendingDefault(t *testing.T) {
 	mediaEnvOff(t)
+	// An unpriced curated row is never the default, and since 2026-11-19 a
+	// priced listed one is taken in its place rather than refusing the picture
+	// (internal/config's bestListedImage).
 	models := mediaCatalogFor(t, `
 		{"id":"vendor/first-painter","pricing":{"request":"0.01"},"architecture":{"input_modalities":["text"],"output_modalities":["image"]}},
 		{"id":"krea/krea-2-medium-turbo","architecture":{"input_modalities":["text"],"output_modalities":["image"]}}`)
 	resolve := v3MediaModel(models, t.TempDir(), nil)
-	if got := resolve("image"); got != "" {
-		t.Fatalf("an unpriced curated image row, beside a priced non-curated one, resolved to %q", got)
+	if got := resolve("image"); got != "vendor/first-painter" {
+		t.Fatalf("beside an unpriced curated image row, the priced listed one was not taken: %q", got)
+	}
+	unpriced := mediaCatalogFor(t, `
+		{"id":"vendor/first-painter","architecture":{"input_modalities":["text"],"output_modalities":["image"]}},
+		{"id":"krea/krea-2-medium-turbo","architecture":{"input_modalities":["text"],"output_modalities":["image"]}}`)
+	if got := v3MediaModel(unpriced, t.TempDir(), nil)("image"); got != "" {
+		t.Fatalf("a listing with no priced drawing model resolved to %q", got)
 	}
 }
 

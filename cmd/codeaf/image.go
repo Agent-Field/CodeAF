@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -55,6 +56,16 @@ func runImage(args []string) error {
 	models := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
+	// A ONE-SHOT COMMAND WAITS FOR ITS CATALOG, bounded by one fetch. The
+	// default is chosen from a snapshot that never waits, and a command run on
+	// a home with no cache yet would otherwise read only the built-in rows,
+	// which carry no price and so can choose no picture default: every
+	// `codeaf image` on a fresh profile was refused that way. A conversation
+	// needs no such wait, because it asks at the moment it draws, long after
+	// the warm has landed.
+	warmCtx, cancelWarm := context.WithTimeout(context.Background(), catalog.FetchTimeout+5*time.Second)
+	models.Warmed(warmCtx)
+	cancelWarm()
 	source, err := v3RolesSource(mustWorkspace(), settings.ProfileDir)
 	if err != nil {
 		return err
@@ -68,6 +79,7 @@ func runImage(args []string) error {
 		Client:       client,
 		DefaultModel: defaultModel,
 		Pick:         v3MediaPick(models),
+		AspectRatios: v3MediaAspects(models),
 		Workspace:    mustWorkspace(),
 		Directory:    session.ImagesDir(session.Place{}, mustWorkspace()),
 		Account:      accountBilledUsage,

@@ -2129,6 +2129,11 @@ type Config struct {
 	// as a guide picture and says so — never a field a model may drop.
 	MediaMasks func(model string) bool
 
+	// MediaAspects answers the frame shapes an image model publishes, from the
+	// catalog's knobs (generate_image's aspect_ratio, tools_image_aspect.go).
+	// Nil passes every shape through untouched, which is what it always did.
+	MediaAspects func(model string) []string
+
 	// DocumentEngine is the rung read_document climbs to (tools_doc.go): the
 	// person's document_engine row, one of auto, local, free or ocr
 	// (config.DocumentEngines), resolved by the surface exactly as the search

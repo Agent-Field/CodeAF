@@ -67,7 +67,8 @@ type MediaPrice struct {
 	// Billable is what is charged for: "video_output", "image_output" or
 	// "image_input".
 	Billable string `json:"billable"`
-	// Unit is what one USD figure buys: "second", "image" or "megapixel".
+	// Unit is what one USD figure buys: "second", "image", "megapixel", or
+	// "token" for a picture billed by the output-image tokens it returns.
 	Unit string `json:"unit"`
 	// Variant narrows the rate, today only the output resolution ("480p").
 	Variant string `json:"variant,omitempty"`
@@ -878,11 +879,13 @@ func (c *Catalog) MediaStateNow() MediaState {
 // a unit a person can be told. It is the test a DEFAULT must pass before it is
 // chosen for someone who chose nothing.
 //
-// Prompt/completion token zeros do not establish a generation tariff. Some
-// image models really bill output tokens, but this catalog does not yet carry
-// that output tariff separately; it remains unknown here. Unreadable units
-// remain unknown too. A positive published per-request price counts for an
-// image, while an explicit dedicated per-image zero remains a known zero.
+// Prompt/completion token zeros do not establish a generation tariff: a
+// generator publishes those as zero and bills the picture. The picture's own
+// rate does — per image or per megapixel from a dedicated listing, or per
+// output-image token from the general listing ([imageTokenPrice]), which is the
+// one every drawing model on OpenRouter publishes. Unreadable units remain
+// unknown. A positive published per-request price counts for an image, while
+// an explicit per-image zero remains a known zero.
 func (m Model) PublishedPrice(output string) bool {
 	switch strings.ToLower(strings.TrimSpace(output)) {
 	case kindVideo:
@@ -893,7 +896,7 @@ func (m Model) PublishedPrice(output string) bool {
 		}
 	case kindImage:
 		for _, price := range m.MediaPrices {
-			if price.Billable == "image_output" && (price.Unit == "image" || price.Unit == "megapixel") && finitePrice(price.USD) {
+			if price.Billable == "image_output" && (price.Unit == "image" || price.Unit == "megapixel" || price.Unit == "token") && finitePrice(price.USD) {
 				return true
 			}
 		}
