@@ -412,6 +412,10 @@ two-second flush contract must complete the new $0.002 call; replaying that call
 and historical identities adds no rows. An independent public ledger walk checks
 1,000,001 records, exact consumed bytes and $1000.002 total after the measurement.
 Elapsed times are diagnostic. The retained identity set still grows with history.
+The two-second contract is judged only without `-race`: on 2026-11-19 the flush
+took about 0.82 s plain and about 5 s instrumented on the same box, and that
+difference is the detector's, so a race build still checks the charge lands
+after the join but does not judge the deadline.
 
 
 ## Usage writer overflow draining
