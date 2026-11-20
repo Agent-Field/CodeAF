@@ -684,6 +684,13 @@ func newBashTool(cwd string, caps Caps) Tool {
 				text += formatBashTruncationFooter(snapshot)
 			}
 
+			// A STOP SAYS WHY, after what the command had said. The caller that
+			// stopped it wrote the sentence ([BashCall.Stop]), because only it
+			// knows what the clock it read was for.
+			if status := call.stopStatus(); status != "" {
+				reportBashInterruption(ctx, "timed out")
+				return appendStatus(text, status), true, nil
+			}
 			if call.wasTimedOut() {
 				reportBashInterruption(ctx, "timed out")
 				// The bound that was APPLIED, which is the model's own figure
@@ -1252,7 +1259,10 @@ type outputAccumulator struct {
 	// for one command would be two answers to "where is the rest of it".
 	observer io.Writer
 	mirror   io.Writer
-	mu       sync.Mutex
+	// lastWrite is when the command last said anything, which is what a quiet
+	// clock reads ([BashCall.QuietFor]). Zero is nothing said yet.
+	lastWrite time.Time
+	mu        sync.Mutex
 }
 
 // Write implements io.Writer so both cmd.Stdout and cmd.Stderr can be set
@@ -1261,6 +1271,9 @@ type outputAccumulator struct {
 func (a *outputAccumulator) Write(data []byte) (int, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if len(data) > 0 {
+		a.lastWrite = time.Now()
+	}
 	a.append(data)
 	if a.observer != nil {
 		_, _ = a.observer.Write(data)

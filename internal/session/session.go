@@ -1720,6 +1720,9 @@ type Config struct {
 	// bashAfter lets tests fire the real promotion callback after the command
 	// starts. Production leaves it nil and arms time.AfterFunc as before.
 	bashAfter func(time.Duration, func()) *time.Timer
+	// searchQuiet replaces a task search's quiet limit in a test, so the cut can
+	// be proved without thirty silent seconds (widesearch.go). Zero is the law.
+	searchQuiet time.Duration
 	// AbandonAfter lets tests hold and fire the bounded stop's timer itself.
 	// Production leaves it nil and arms time.AfterFunc at the same grace.
 	AbandonAfter func(time.Duration, func()) *time.Timer
