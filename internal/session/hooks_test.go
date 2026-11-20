@@ -115,7 +115,7 @@ func TestTheControlPlaneRegistersTheFourMechanismsInOrder(t *testing.T) {
 		// sentences are about a task's OWN copy, so a command aimed at another
 		// directory has to meet the path law first or be refused with a
 		// paragraph that is false about every path in it (taskoutside.go).
-		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "tree-claim", "program-hold", "task-ground", "task-git"}},
+		{"pre-action", planeNames(plane.preAction), []string{"approval", "changes", "write-scope", "tree-claim", "program-hold", "task-ground", "wide-search", "task-git"}},
 		{"post-feedback", planeNames(plane.postFeedback), []string{"changes", "writes", "loop"}},
 	} {
 		if !sameNames(expected.got, expected.want) {

@@ -1320,7 +1320,10 @@ your message, the steps, what came back — and it answers either the single lin
 **A reply that ends by asking you something is never carried on.** If the last thing it said
 finishes with a question mark, it is waiting on you, and carrying it on would be codeaf
 answering a question that was addressed to you. That is the whole of the test — the mark
-itself, so it works whatever language you are talking in.
+itself, so it works whatever language you are talking in. Two narrower checks still apply
+to such a reply and send it back once to fix the reply itself, not to carry on the work: a
+reply that contradicts what it saw of its own work this reply, and a question after failed steps
+that does not say what failed (both described below).
 
 **A short reply that only LOOKED at things is not read at all.** If the reply ended before it
 reached the first of those notes — a couple of reads and an answer, or no tools at all
@@ -1374,9 +1377,196 @@ the tree; a green check can stand in for the reader, while a red one is carried 
 Having no configured reader is an absence, not a failed call, and never runs checks on its
 own — see *Leaving it running on its own* in *starting codeaf*.
 
+## A progress update is not where a reply stops — it said "next I write the slides" and stopped, the deck was left blank, it ended on an update
+
+**codeaf puts an interim note to you — a result so far, a blocker, a decision — on screen
+between its steps,** and the model marks that note as an update rather than an answer. An
+update says more work is coming, so a reply that stops on one is usually stopping short.
+
+**If the model sends an update and then calls no tool, the reply is sent back to do the
+work it announced.** This needs no second reader and happens on any reply,
+typed or woken. The update stays on screen, one dim line follows it:
+
+```
+it sent a progress update and stopped · asking it to go on
+```
+
+and the model continues in the same reply. It is told that, if the work really is
+finished, it should say so as a final answer instead.
+
+**An update is sent back at most twice in one reply.** After the second, a further update
+is treated like any other reply in words: a reply to something you typed ends on it, and a
+reply woken by a job or task landing may still be read by the completion check above,
+which decides for itself whether to carry it on.
+
+**An update that ends by asking you something is left alone.** If it finishes with a
+question mark — `?`, the full-width `？` of Chinese and Japanese, or the Arabic `؟` — it is
+waiting on you, as any reply that asks you something is.
+
+**An update that is waiting on work already out is left alone too.** "I've started the
+render and will report when it lands" is not sent back while a background command, watch
+or render it started is still running, while this request's work is with a task that is
+still going, or while a task of this conversation is still out. That work reports by
+itself when it ends: a landing that owes you an answer wakes one short reply, and a quiet
+one only writes its dim line (see *Finishing a task's work stays in this conversation*).
+
+Only a note the model marked as an update counts. An ordinary answer that happens to say
+what it might do next ends the reply as it always did, and the reader described above is
+what decides whether that kind of reply is carried on — with one exception, below.
+
+## A note codeaf asked for is not where a reply stops — it wrote "where I am … next I make the charts" and stopped, the dashboard was never built, it stopped after writing down what it learned
+
+**When the model has worked quietly for a while, codeaf asks it to write down what it has
+learned and what it checks next,** so the reasoning reaches the record. That note is asked
+for in the same reply as its next tool call. Some models send the note alone, with no tool
+call, and a reply with no tool call is the end of a reply — so it used to stop right there,
+on "Where I am: … Next: make two charts", with nothing built.
+
+**A reply that is only the note codeaf just asked for is sent back to do the work it names,**
+whether or not the model marked it as an update. The note stays on screen and one dim line
+follows it:
+
+```
+it wrote down where it was and stopped · asking it to go on
+```
+
+**This is read from where the reply sits and how it is laid out, not from its words:** it
+applies only to the reply that comes straight after codeaf's request for a note, and only
+when that reply is short — one or two plain paragraphs. A reply of three or more paragraphs,
+or one with a list, a heading or a table, is an answer written for you and ends the reply as
+it always did. **A short reply is left alone too when the reply already checked what it
+changed:** it changed the work, then asked a question of a look at it ("does the date line
+read Saturday 14 March?"), and no step failed after that look. A look that only describes
+a picture is not a check. Otherwise, if a short reply was in fact the finished answer, the
+model says so in one short extra call, the dim line above still shows, and the answer
+stands as written.
+
+**It shares the update's limit: at most twice in one reply,** counting both kinds together.
+A note that ends by asking you something, or that is waiting on work already out, is left
+alone, as an update is.
+
+## A reply that says something its own look or its own steps did not show is sent back — it said nothing overlaps but the headline covers the cup, it said it fits one page but the PDF has two, it listed the bars in the wrong order, it said no signage but the photo has a sign
+
+**When the model looked at its work this reply — a picture of a page, a chart, a board — what
+it then tells you about that work is checked against what it saw,** before the reply ends:
+its looks and what its own steps returned. A small second model reads the reply against
+that, and three cases send it back once, in the same reply:
+
+- **Something it saw contradicts the reply** — a number, a count, a page count, an order, a
+  ranking such as "top" or "only", a name, what overlaps what. The model gets those lines and
+  rewrites the reply. The terminal's dim line:
+  `its reply did not match what it saw this turn · asking it to correct the reply`.
+- **It promised the work is free of a problem that nothing it saw checked** — "clear of the
+  cup", "no overlap", "no signage", "renders clean" — or that one of its own looks reported.
+  It is asked to check exactly that, then say only what it saw; what it still cannot check it
+  leaves out or tells you plainly it could not check. The dim line:
+  `its reply said more than it checked this turn · asking it to check or say so`.
+- **It changed the work after its last look** and the comparison raised nothing. It is asked
+  to look again and write the reply from that look. The dim line:
+  `it changed the work after its last look · asking it to look again before it replies`.
+
+The terminal folds these lines away once the reply settles; the desktop app keeps the line
+with the reply's work.
+
+**Once per reply: one extra pass, one comparison.** The reply after it is the one you get,
+even if still wrong; a reply that was right is kept. A closing question excuses nothing.
+
+**Limits.** It only runs on a reply that looked at its work. With no model for the
+`replycheck` role, or none in 60 seconds, the comparison is skipped and only the
+look-again case applies.
+
+## Why its reply shows twice, with a dim line between — the first reply was sent back to check what it said
+
+**In the desktop app a reply can be followed by more work and a second reply in the same
+turn.** The first reply was already on your screen when codeaf checked it against what the
+model saw that turn, and the check sent it back. The line between the two says which check:
+
+- `its reply did not match what it saw this turn · asking it to correct the reply`
+- `its reply said more than it checked this turn · asking it to check or say so`
+- `it changed the work after its last look · asking it to look again before it replies`
+- `some of its steps failed before it asked you · asking it to retry them or say what failed`
+- `some work it handed out did not start · asking it to start it again or say so`
+- `it promised a later report with nothing running · asking it to finish or say what is left`
+
+**The later reply is the one that counts.** It was written after the model checked again or
+was told to say plainly what it could not check. If the model found its first reply right, it
+keeps it, and no second reply comes: the line then sits in that reply's work alone.
+
+The line is kept with the conversation, so it is still there when you open the chat again.
+In the terminal the same line shows while the reply works and folds away with its work.
+
+## What the reply check reads — shell output, an export, a cell read, a file it read back, the steps in between; which claims it raises
+
+The comparison reads **what the model itself saw this reply, oldest first**: the words a
+second model wrote about each picture it looked at, the output of its own steps — a shell
+line's output (`pdfinfo` saying `Pages: 2`, a sheet read holding the real figures), an
+export's answer, a file it read back — and one line for each step that may have changed the
+work. Nothing is run to get it; it is the reply's own record.
+
+- **Only output that shares words with the reply is offered** — the names, labels and figures
+  it states. The manual and skill pages it read are not evidence.
+- **Newest first, under a cap:** about 4,000 characters of reply, 9,000 of looks, 3,500 of
+  step output and 1,500 of step lines.
+- **An earlier entry still counts** for anything no later entry covers, unless a step after
+  it changed that very thing. Two looks at the same unchanged picture that disagree settle
+  nothing, and on how the work looks, a look outranks the settings a step wrote.
+- **A claim nothing covered is raised only when it promises the work is free of a problem.**
+  Other uncovered claims are not raised: asking for every claim about how the work looks named
+  something in 30 of 33 replies, most of it true but not in the record.
+
+## A question after failed steps says what failed — it asked me which chart after 8 actions with 2 failed and changed nothing, it ended on a question and did nothing
+
+**If some of its steps failed this reply, nothing it wrote with `write` or `edit` succeeded,
+and it is about to end by asking you, it is first sent back once** with the failed steps in
+front of it. It either does the step that was meant to make your change, correctly, or asks
+again and says, in your words, what it changed, what it did not change, what is not done yet
+and what it needs from you. It is told not to name its tools or commands and not to quote error
+messages on the card or in the reply: you get the outcome, not the machinery.
+
+- A reply in words that ends on a question gets one dim line while it works, folded away
+  with the reply's work in the terminal and kept as a quiet line of that reply in the
+  desktop app:
+  `some of its steps failed before it asked you · asking it to retry them or say what failed`.
+- A question card (`ask`) is held before it is drawn — you see no card — and the model asks
+  again or does the work. The next card in that reply is drawn as usual.
+
+**codeaf cannot see whether a shell command changed your work, so it does not claim "nothing
+changed" itself;** the model, which knows, says it. **Once per reply.** If the failures did not
+touch what you asked for, the model keeps its first reply with one short call. A credential
+request is never held.
+
+## Work it handed out that did not start is said, not promised — it said the brief would follow but the task never started, "Not started", it said it would report back and nothing came, it promised to report when the table lands
+
+**Before a reply ends, codeaf reads the reply's own turn for work it handed out that did not
+start.** A task that did not start has nothing running for it, so no report about it will
+ever come. If one did not start and was not started again under the same title later in
+the reply, the model is sent back once with each one named and what stopped it. It either
+starts it again correctly, or writes the reply again saying plainly which work did not start
+and what that leaves undone. It is told not to promise a report about work that is not
+running.
+
+**A promise of a later report needs something still running.** "I'll report when the table
+lands" is true while a task, a run or a background command it started is still going,
+because that ending starts a reply here on its own. With nothing of its own still going, the
+reply is sent back once: finish the work now, or say what is done and what is not.
+
+**Once per reply, for both together,** and before the check against its own last look. A
+reply that already said it is kept as written, in one short call.
+
+**What you see.** In the terminal a dim line shows while it works —
+`some work it handed out did not start · asking it to start it again or say so` or
+`it promised a later report with nothing running · asking it to finish or say what is left`
+— and folds away with the reply's work. The desktop app keeps the same line as a quiet line
+of that reply. The session's transcript and journal keep the record.
+
+**Limits.** The promise is read from a short list of ways of saying it ("I'll report",
+"I'll let you know", "once it lands", "when they are in"). A promise worded some other way
+is not caught. A task that is running but stuck still counts as running.
+
 ## Waiting on something is not carried on — it kept polling while it waited, it turned my wait into a task, why does it say carry on, why does it say "carried on 3 times", why does it keep asking about a task that is still running
 
-**A reply that ends while something IT started is still running is never carried on.** A
+**A reply that ends while something IT started is still running is never carried on** —
+not by the completion check, and not for ending on a progress update either. A
 background command, a watch, a video or music render — while any of those is still going,
 the reply is waiting on it exactly the way a reply that ends on a question is waiting on
 you, and pushing it on would only make it poll.
@@ -4789,12 +4979,26 @@ its card, so the second attempt does not have to work the answer out again.
 
 It only works for a task **this conversation** still holds. A task from another
 conversation or another window, an unknown id (`No task 1 in this project` on a read), or a
-task that is still running cannot be continued here. The tool then says there is no graph
-left to continue it in, and names where the work is — its branch or working copy — so it
+task that is still running cannot be continued here. The tool then says the task is not one
+this conversation holds, and names where the work is — its branch or working copy — so it
 can be read. The model should relay that, not narrate progress it did not make.
 
 Starting the same brief again with `/task` or `propose_task` is new work with a new id, and
 it is the wrong door when you mean keep going.
+
+## Continuing a handed-off run that is done — is done, so there is nothing to continue
+
+A run this conversation handed off — the `#1` the task list shows, worked by its own
+workers — is answered for what it is when the model asks to continue it:
+
+- `interrupted` (nothing is driving it any more): it is carried on from where it stopped,
+  in the same working copy.
+- `done`: it cannot be continued. The tool says `is done, so there is nothing to continue`,
+  and the model makes the follow-up change itself or hands off a new task for it.
+- still running or queued: it is told so, and a line can reach it with `say`.
+- `incomplete` or `stopped`: a run that has ended cannot be picked up again; the model reads
+  what it left and makes the rest of the change, or hands off a new task.
+- one part of a run (`#1.2`): a part cannot be continued on its own.
 
 ## Why is the task waiting for me — what does your call mean, a sub-task needs my look, a nested task waiting on me
 

@@ -106,6 +106,7 @@ func (a *Agent) newChildAgent(config Config) (*Agent, error) {
 	// builder does.
 	if config.agentDID == "" {
 		config.agentDID = a.config.agentDID
+		config.agentWorkspace = a.config.agentWorkspace
 	}
 	if config.actorDID == "" && config.taskID == 0 {
 		config.actorDID = a.config.actorDID
@@ -1631,6 +1632,11 @@ type userMessage struct {
 	// tree and declared no check ([TaskNode.settleCeiling]) and [settleCallCeiling]
 	// otherwise.
 	settleCeiling int
+	// settleOwed marks the settle wake of an OWED landing: the run that landed was
+	// started to answer the person, so the turn it wakes is the turn that answers
+	// them, and a bound that trips in it carries the work on rather than ending
+	// it with nothing said ([Agent.carryOwedLandingOn]).
+	settleOwed bool
 	// settleModel and settlePrompt narrow an owed-answer landing to its cheap
 	// seat and dedicated role page; ordinary settle wakes leave both empty.
 	settleModel  string
@@ -2208,6 +2214,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		// before starting either naming errand, which also calls a provider.
 		if a.config.PrepareModel == nil {
 			a.startIntentNameLocked(user)
+			// AND A LATER MESSAGE ON A NEW SUBJECT MAY EARN A NEW NAME, at no
+			// cost unless it looks like one (topicname.go).
+			a.startTopicRenameLocked(user)
 		}
 	}
 	// THEIR NEXT WORDS ARE WHAT CHANGED. A generation Interrupt minted waits
@@ -4655,6 +4664,10 @@ type settleWake struct {
 	model   string
 	prompt  string
 	window  time.Duration
+	// owed is set when one of the landings on the queue is OWED an answer to the
+	// person ([userMessage.settleOwed]). Its bound does not end the work: it ends
+	// the cheap reply turn and starts an ordinary one ([Agent.carryOwedLandingOn]).
+	owed bool
 }
 
 type settleWakeKey struct{}
@@ -4691,6 +4704,7 @@ func (a *Agent) settleWakeLocked() (settleWake, bool) {
 		if note.settlePrompt != "" {
 			wake.model, wake.prompt = note.settleModel, note.settlePrompt
 		}
+		wake.owed = wake.owed || note.settleOwed
 		if note.settleWindow > wake.window {
 			wake.window = note.settleWindow
 		}
@@ -5983,8 +5997,8 @@ const explainingCheckpointCarryOnLead = "[carry on] A reader of a bounded accoun
 
 // isContinuationContext says whether a user-role message is one the HARNESS
 // wrote to send a stopped turn back to work: the carry-on in each of the
-// spellings journals have held, the two nudges ([checkpointLoadNudgeLead],
-// [checkpointAskNudgeLead]), the note after a reply was cut off at the
+// spellings journals have held, the four nudges ([checkpointLoadNudgeLead],
+// [checkpointAskNudgeLead], [checkpointUpdateNudgeLead], [checkpointNotesNudgeLead]), the note after a reply was cut off at the
 // output limit ([truncationContinuationNote]), and a resumed factory step's
 // brief ([ResumedStepBrief]).
 //
@@ -6006,7 +6020,8 @@ func isContinuationContext(text string) bool {
 		strings.HasPrefix(text, checkpointAskNudgeOpening) && strings.HasSuffix(text, checkpointAskNudgeClosing):
 		return true
 	}
-	return text == truncationContinuationNote
+	return text == truncationContinuationNote || text == checkpointUpdateNudgeLead || text == checkpointNotesNudgeLead ||
+		isReplyCheckLead(text) || isFailureCheckLead(text) || isHandoffCheckLead(text) || isOwedLandingCarryOnLead(text)
 }
 
 // entryRows is how many rows the shaping above makes of ONE message: none at

@@ -46,6 +46,9 @@ func TestADeskGoAheadStartsTheCoveredJobAfterItsParentMerges(t *testing.T) {
 	}
 	seam := factory.LocalSeam(st, now)
 	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "alice"}, nil }
+	// THE FACTORY READS THE TEST'S CLOCK, never the wall's: the allowance
+	// below ends on a fixed date, and a server on the wall clock read it
+	// "ended" the moment that date passed in the real world (2026-11-20).
 	h := serve.New(seam, serve.Config{Mode: api.FactorySolo, AccessToken: testHostToken, OperatorLogin: "alice", Store: st, Record: history, Now: clock})
 	srv := httptest.NewServer(h)
 	t.Cleanup(func() { srv.Close(); h.Close() })

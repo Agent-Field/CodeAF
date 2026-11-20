@@ -555,8 +555,11 @@ func TestTheDedicatedCacheRoundTripsAndServesWithoutAnyRequest(t *testing.T) {
 
 func TestACacheWrittenBeforeDedicatedListingsStillLoadsAndIsToppedUpAlone(t *testing.T) {
 	dir := t.TempDir()
-	// An older build's cache: general rows only, none of the new fields.
-	legacy := `{"fetched_at":"` + day.Format(time.RFC3339) + `","priced":true,"models":[{"id":"only/chat","input_modalities":["text"],"output_modalities":["text"],"prompt_price":0.000001}]}`
+	// An older build's cache: general rows only, none of the dedicated fields.
+	// It carries the image-tariff mark so this test isolates the dedicated
+	// top-up; a cache without that mark is refetched whole by the lazy warm,
+	// which TestACacheWithoutImagePricesIsReadAgainOnceByTheLazyWarm pins.
+	legacy := `{"fetched_at":"` + day.Format(time.RFC3339) + `","priced":true,"image_tariffs":true,"models":[{"id":"only/chat","input_modalities":["text"],"output_modalities":["text"],"prompt_price":0.000001}]}`
 	if err := os.WriteFile(filepath.Join(dir, cacheName), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -821,7 +824,9 @@ func assertRetiredAndRepriced(t *testing.T, c *Catalog) {
 
 func TestALazyTopUpOfAnOlderCacheRetiresAndRepricesThroughTheDisk(t *testing.T) {
 	dir := t.TempDir()
-	legacy := `{"fetched_at":"` + day.Format(time.RFC3339) + `","priced":true,"models":[` +
+	// Marked as carrying image prices, to isolate the dedicated top-up (see
+	// TestACacheWithoutImagePricesIsReadAgainOnceByTheLazyWarm).
+	legacy := `{"fetched_at":"` + day.Format(time.RFC3339) + `","priced":true,"image_tariffs":true,"models":[` +
 		`{"id":"hybrid/draws-and-talks","input_modalities":["text"],"output_modalities":["text"],"prompt_price":0.000001,"completion_price":0.000002}]}`
 	if err := os.WriteFile(filepath.Join(dir, cacheName), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
@@ -1019,5 +1024,33 @@ func TestMediaStateSaysWhetherTheDedicatedListingsApplyAtAll(t *testing.T) {
 	offline := Load(context.Background(), Options{BaseURL: DefaultBaseURL, Dir: t.TempDir(), HTTPClient: catalogClient(t, 503, "x", nil)})
 	if s := offline.MediaState(); !s.Applicable || s.Authoritative("video") || s.Videos.Known {
 		t.Errorf("an unread OpenRouter catalog = %+v, want applicable and unconfirmed", s)
+	}
+}
+
+// A mask knob is read however the listing spells it, and an explicit no is no.
+func TestAnImageModelTakesAMaskOnlyWhenItsListingPublishesOne(t *testing.T) {
+	for _, testCase := range []struct {
+		knobs string
+		want  bool
+	}{
+		{`{"n":{"max":4}}`, false},
+		{`{"n":{"max":4},"mask":{"type":"image"}}`, true},
+		{`{"mask":true}`, true},
+		{`{"mask":false,"n":{"max":1}}`, false},
+		{`{"mask":null,"n":{"max":1}}`, false},
+		{`{"mask":"false"}`, false},
+		{`{"mask":0}`, false},
+		{`{"mask":{"supported":false}}`, false},
+		{`{"mask":{"supported":true}}`, true},
+	} {
+		params := imageParams([]byte(testCase.knobs))
+		if got := params != nil && params.Mask; got != testCase.want {
+			t.Errorf("%s: mask = %v, want %v", testCase.knobs, got, testCase.want)
+		}
+	}
+	// A model in both listings keeps the dedicated listing's mask knob.
+	merged := mergeParams(&MediaParams{MaxOutputs: 2}, &MediaParams{Mask: true})
+	if !merged.Mask || merged.MaxOutputs != 2 {
+		t.Errorf("merged = %+v, want the mask knob kept beside the rest", merged)
 	}
 }

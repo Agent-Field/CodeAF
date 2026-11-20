@@ -812,9 +812,10 @@ type Event struct {
 	// transcript already or said for the moment it is said in.
 	Unrecorded bool `json:"Unrecorded,omitempty"`
 	// NoticeKind names which of the engine's own typed notices an EventNotice
-	// is: [NoticeKindSkills] or [NoticeKindMemory], set only at the producers
-	// ([turnSkillsNotice], [Agent.sayMemory]). Empty on every other notice, which
-	// stays ordinary; a surface never derives it from Text.
+	// is: [NoticeKindSkills], [NoticeKindMemory] or [NoticeKindSentBack], set
+	// only at the producers ([turnSkillsNotice], [Agent.sayMemory],
+	// [Agent.sendBack]). Empty on every other notice, which stays ordinary; a
+	// surface never derives it from Text.
 	NoticeKind    string `json:"NoticeKind,omitempty"`
 	Usage         Usage
 	TaskReplyTags []TaskReplyTag
@@ -1719,6 +1720,16 @@ type Config struct {
 	// bashAfter lets tests fire the real promotion callback after the command
 	// starts. Production leaves it nil and arms time.AfterFunc as before.
 	bashAfter func(time.Duration, func()) *time.Timer
+	// searchQuiet replaces a task search's quiet limit in a test, so the cut can
+	// be proved without thirty silent seconds (widesearch.go). Zero is the law.
+	searchQuiet time.Duration
+	// shellQuiet replaces the app's foreground quiet clock in a test, and turns
+	// it on outside the app (bash_backstop.go). Zero is the law.
+	shellQuiet time.Duration
+	// bashBackstop replaces the dispatcher's own bash clock in a test (bash_backstop.go). Zero is the law.
+	bashBackstop time.Duration
+	// bashAbort replaces the dispatcher's abort grace in a test. Zero is the law.
+	bashAbort time.Duration
 	// AbandonAfter lets tests hold and fire the bounded stop's timer itself.
 	// Production leaves it nil and arms time.AfterFunc at the same grace.
 	AbandonAfter func(time.Duration, func()) *time.Timer
@@ -2105,6 +2116,12 @@ type Config struct {
 	// MediaAdmission optionally keeps connected generation capabilities explainable
 	// when no safe default exists. It is evaluated for the actual invocation.
 	MediaAdmission func(modality, word string) MediaAdmission
+	// PictureRoute, when set, routes generate_image instead of MediaAdmission:
+	// the picture maker chosen for this canvas or Everywhere, or Automatic's
+	// ladder, checked against what the ask needs (tools_image_route.go). The
+	// tool fills the call's word, this session's workspace and whether the
+	// call works from a picture; the surface fills the rest.
+	PictureRoute func(config.PictureAsk) config.PictureRoute
 
 	// MediaPick is the just-in-time half of the pair above: where MediaModel
 	// answers "the default for this modality", MediaPick answers "the model
@@ -2122,6 +2139,23 @@ type Config struct {
 	// chatv3_media.go) answers from the same catalog the defaults ladder
 	// reads, so a picked model is capability-checked exactly as a default is.
 	MediaPick func(modality, word string) (string, error)
+
+	// MediaMasks answers whether an image model takes a real mask, from the
+	// catalog's published knobs (generate_image's mask_path,
+	// tools_image_mask.go). Nil answers no for every model, which sends a mask
+	// as a guide picture and says so — never a field a model may drop.
+	MediaMasks func(model string) bool
+
+	// MediaAspects answers the frame shapes an image model publishes, from the
+	// catalog's knobs (generate_image's aspect_ratio, tools_image_aspect.go).
+	// Nil passes every shape through untouched, which is what it always did.
+	MediaAspects func(model string) []string
+
+	// MediaOutputs answers how many pictures one request to an image model may
+	// return, from the catalog's published `n` knob (generate_image's n,
+	// tools_image_split.go); zero when the model published none. Nil asks once
+	// and splits only on a refusal about the count.
+	MediaOutputs func(model string) int
 
 	// DocumentEngine is the rung read_document climbs to (tools_doc.go): the
 	// person's document_engine row, one of auto, local, free or ocr
@@ -2696,6 +2730,11 @@ type Config struct {
 	agentDID      string
 	agentDocument *AgentIdentity
 	actorDID      string
+	// agentWorkspace is the folder the conversation that owns agentDID works
+	// in, the one the app lists it by, and what its commands (and its
+	// workers') see as $CODEAF_AGENT_WORKSPACE (agent_identity.go). Inherited
+	// like the DID.
+	agentWorkspace string
 
 	// WorkerDID is who a run worker's commands act as, `<did>#w<n>`: the
 	// conversation's DID with the task number its row wears. A run builds its
@@ -3216,6 +3255,10 @@ type Agent struct {
 	// spendStampMu orders meter capture with its metadata write. The folder
 	// lock alone cannot keep an older captured total from being written last.
 	spendStampMu sync.Mutex
+	// spendSaved is the total this agent last saved and announced, guarded by
+	// spendStampMu. Two owed stamps the deferred writer did not happen to
+	// coalesce must not say one figure twice ([Agent.stampTurnEnd]).
+	spendSaved savedSpend
 
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
@@ -4216,7 +4259,9 @@ type Agent struct {
 	titleProvisional string
 	titleLiteral     bool
 	intentName       *intentNameState
-	intentNaming     bool
+	// topicNaming is a change-of-subject naming in flight (topicname.go).
+	topicNaming  bool
+	intentNaming bool
 	// Serializes current-name metadata snapshots and writes, outside a.mu.
 	titleStampMu sync.Mutex
 

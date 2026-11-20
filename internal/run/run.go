@@ -69,6 +69,12 @@ type workerReturn struct {
 	task   plandb.Task
 	report Report
 	err    error
+	// ended is whether the context the worker ran under had already ended when
+	// it came home — the run's wall, its limit or a person's stop cut it. It is
+	// read off the context and never out of the error, because a provider's own
+	// timeout and the run's wall can wrap the same context error, and only the
+	// second is the run's ending ([checkCouldNotFinish]).
+	ended bool
 }
 
 // AdmissionGate is the machine's answer at each worker start and the shared
@@ -218,6 +224,14 @@ type Supervisor struct {
 	// when the check's own ending lands, both on the loop goroutine, so it
 	// belongs to the loop's memory like the counters beside it.
 	checkOf map[string]string
+	// unchecked is the sentence the first review check that could not finish
+	// stopped on — its checker met its own spend ceiling, or its model could
+	// not be served ([checkCouldNotFinish]) — and empty while every check has
+	// answered. It is a fact about the checker and never about the
+	// work: the leaf it was reading stands, and the run carries the sentence
+	// out typed ([Summary.Unchecked]) so the work is asked about rather than
+	// failed. It belongs to the loop goroutine like the counters beside it.
+	unchecked string
 }
 
 // NewSupervisor builds a run over store. The workspace is the run's own
@@ -575,7 +589,7 @@ func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) 
 		} else {
 			report, err = worker.Run(WithStepsPerTask(taskCtx, s.limits.StepsPerTask), task)
 		}
-		s.finished <- workerReturn{task: task, report: report, err: err}
+		s.finished <- workerReturn{task: task, report: report, err: err, ended: taskCtx.Err() != nil}
 	}()
 }
 
@@ -951,6 +965,30 @@ func (s *Supervisor) absorb(ret workerReturn) {
 		}
 	} else {
 		switch {
+		case ret.task.Role == plandb.RoleCheck && checkCouldNotFinish(ret):
+			// A CHECK THAT COULD NOT FINISH IS A NON-ANSWER, NOT A FAILURE OF
+			// THE WORK. Its checker met the seat's own spend ceiling mid-read,
+			// or its model could not be served — a provider's refusal, a
+			// routing dead end, a stalled stream, a dropped connection — so it
+			// said neither "holds" nor "does not hold", and the leaf it was
+			// reading already landed done. Failed here, it failed the root in
+			// CompleteRoot and the person read finished work as failed (run19:
+			// a research brief, its check stopped at $0.37; run21: a shift
+			// rota, its checker's provider refused the request). So the check
+			// ends with the stop as its plain account — never a review
+			// conclusion, which would need a basis it did not earn — and the
+			// run answers done, carrying the sentence typed so the surface asks
+			// the person instead ([Summary.Unchecked]).
+			stop := checkStopSentence(ret.err)
+			delete(s.lastReport, ret.task.ID)
+			if s.unchecked == "" {
+				s.unchecked = stop
+			}
+			if _, err := s.store.Done(ret.task.ID, ret.task.ID, stop, nil, nil); err != nil {
+				if task := s.store.Task(ret.task.ID); task == nil || !terminalStatus(task.Status) {
+					_, _ = s.store.Fail(ret.task.ID, ret.task.ID, stop)
+				}
+			}
 		case endedByStore:
 			// THE WORKER WROTE ITS OWN ENDING, so the store's word stands and
 			// nothing here speaks over it. The run counts the spend above and the
@@ -1957,6 +1995,12 @@ type Summary struct {
 	// finished ([Report.Verdict]): senior-dev's `pass` or `pass-unverified`.
 	// Empty for every other run.
 	Verdict string
+	// Unchecked is the sentence a review check stopped on when it could not
+	// finish — its checker met its own spend ceiling, or its model could not be
+	// served ([checkStopSentence]) — and empty when every check answered.
+	// The run still answers done — the work it was reading landed — and this
+	// is the fact that says nobody finished checking it.
+	Unchecked string
 	// Cut is every task the run's own ending cut mid-flight, by store id: its
 	// wall, its spend ceiling, or a person's stop ended the context their
 	// workers ran under. A task that failed on its own before the ending is
@@ -2072,6 +2116,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		Limit:     supervisor.limitHit,
 		Program:   supervisor.rootProgram,
 		Verdict:   supervisor.rootVerdict,
+		Unchecked: supervisor.unchecked,
 		Cut:       supervisor.cutIDs(),
 		Nodes:     supervisor.nodes,
 		Steps:     supervisor.steps,

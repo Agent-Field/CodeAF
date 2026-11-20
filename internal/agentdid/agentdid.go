@@ -27,6 +27,15 @@ import (
 // AgentDIDEnv is the variable every command an agent runs carries its DID in.
 const AgentDIDEnv = "CODEAF_AGENT_DID"
 
+// AgentWorkspaceEnv is the variable every command an agent runs carries the
+// agent's own folder in: the workspace of the conversation the DID belongs
+// to, spelled exactly as the app's agent list spells it. A tool that admits
+// an agent by the folder it was registered under (the canvas's `cwd:`
+// member) reads it rather than the command's current directory, which is
+// only where one command happened to run: an agent that runs `cd /tmp`
+// before a command is still the same agent, in the same folder.
+const AgentWorkspaceEnv = "CODEAF_AGENT_WORKSPACE"
+
 // prefix is did:key with the multibase marker AgentField writes.
 const prefix = "did:key:z"
 

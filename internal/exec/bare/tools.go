@@ -173,8 +173,10 @@ func ReadContentless(text string) bool {
 	return strings.HasPrefix(text, "[Line ") && strings.Contains(text, " exceeds ")
 }
 
+// The timeout is the schema's to describe: its own field already says seconds,
+// optional, and the ceiling, so a sentence here repeated it on every request.
 func bashDescription(caps Caps) string {
-	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr, cut to the last %d lines or %s, whichever comes first; when it is cut the whole output is saved to a temp file the result names. Optionally provide a timeout in seconds.", caps.MaxLines, sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Execute a bash command in the current working directory. Returns stdout and stderr, cut to the last %d lines or %s, whichever comes first; when it is cut the whole output is saved to a temp file the result names.", caps.MaxLines, sizeWord(caps.MaxBytes))
 }
 
 // The merge sentence owns the whole of it; "do not include large unchanged
@@ -682,6 +684,13 @@ func newBashTool(cwd string, caps Caps) Tool {
 				text += formatBashTruncationFooter(snapshot)
 			}
 
+			// A STOP SAYS WHY, after what the command had said. The caller that
+			// stopped it wrote the sentence ([BashCall.Stop]), because only it
+			// knows what the clock it read was for.
+			if status := call.stopStatus(); status != "" {
+				reportBashInterruption(ctx, "timed out")
+				return appendStatus(text, status), true, nil
+			}
 			if call.wasTimedOut() {
 				reportBashInterruption(ctx, "timed out")
 				// The bound that was APPLIED, which is the model's own figure
@@ -1250,7 +1259,10 @@ type outputAccumulator struct {
 	// for one command would be two answers to "where is the rest of it".
 	observer io.Writer
 	mirror   io.Writer
-	mu       sync.Mutex
+	// lastWrite is when the command last said anything, which is what a quiet
+	// clock reads ([BashCall.QuietFor]). Zero is nothing said yet.
+	lastWrite time.Time
+	mu        sync.Mutex
 }
 
 // Write implements io.Writer so both cmd.Stdout and cmd.Stderr can be set
@@ -1259,11 +1271,21 @@ type outputAccumulator struct {
 func (a *outputAccumulator) Write(data []byte) (int, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if len(data) > 0 {
+		a.lastWrite = time.Now()
+	}
 	a.append(data)
 	if a.observer != nil {
 		_, _ = a.observer.Write(data)
 	}
 	return len(data), nil
+}
+
+// lastSaid is when the command last wrote anything, or zero.
+func (a *outputAccumulator) lastSaid() time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastWrite
 }
 
 func newOutputAccumulator(caps Caps) *outputAccumulator {

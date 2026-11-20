@@ -26,7 +26,7 @@ func TestEachCheckHasItsOwnCeilingWithASharedDay(t *testing.T) {
 	}
 	var stopped ErrSpendStopped
 	_, err := checkA.CompleteWithMessages(t.Context(), nil)
-	if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12, three times its estimate, before it finished" || first.calls != 1 {
+	if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12 before it finished" || first.calls != 1 {
 		t.Fatalf("first check past its ceiling: %v, calls=%d", err, first.calls)
 	}
 	second := &spendingCompleter{usd: .0625}
@@ -51,7 +51,7 @@ func TestEachCheckHasItsOwnCeilingWithASharedDay(t *testing.T) {
 		}
 	}
 	_, err = checkB.CompleteWithMessages(t.Context(), nil)
-	if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12, three times its estimate, before it finished" || second.calls != 2 {
+	if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12 before it finished" || second.calls != 2 {
 		t.Fatalf("second check at its own ceiling: %v, calls=%d", err, second.calls)
 	}
 	if guard.tally().Total() != .3125 || guard.Day.Total() != .3125 || guard.seatTally(crewroute.Checker).Total() != .3125 || guard.tally().held != 0 || guard.Day.held != 0 {

@@ -43,12 +43,23 @@ func TestAnApprovedHandoffTheStoreRefusedSettlesFailed(t *testing.T) {
 	lane, stop := agent.WatchTaskUpdates()
 	defer stop()
 
-	staged := agent.stageTask(context.Background(), beltProposalArgs("Consume the run", "the output uses the run", root))
+	// A PROPOSAL MADE WHILE THE RUN IS TURNING IS REFUSED BEFORE ITS CARD now
+	// (program_depends.go's [liveRunWaitRefusal], qloop run 16): it names the
+	// run's report as the moment to propose it again.
+	refused, _, _ := agent.stageTask(context.Background(), beltProposalArgs("Consume the run", "the output uses the run", root)).Commit(context.Background())
+	if want := liveRunWaitRefusal(root); !strings.Contains(refused, want) {
+		t.Fatalf("a proposal waiting on the turning run answered %q, want %q", refused, want)
+	}
+	// THE STORE'S OWN REFUSAL IS STILL REACHABLE: a card raised before the run
+	// it names was turning, approved once it was. That is what is staged here,
+	// with the dependency the card carried put back on it.
+	staged := agent.stageTask(context.Background(), beltProposalArgs("Consume the run", "the output uses the run"))
 	proposal, ok := staged.(*stagedProposal)
 	if !ok {
 		answer, _, _ := staged.Commit(context.Background())
 		t.Fatalf("the proposal was not staged: %q", answer)
 	}
+	proposal.spec.dependsOn = []uint64{root}
 	agent.ResolveTask(proposal.id, TaskAnswer{Approved: true})
 	answer, failed, err := proposal.Commit(context.Background())
 	if err != nil {

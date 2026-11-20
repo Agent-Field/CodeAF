@@ -313,15 +313,9 @@ func globMatch(pattern, text string) bool {
 // and not being asked costs the machine. Everything else is the policy's job.
 //
 // Matched against the whole line and each segment, after normalizeCritical.
+// A recursive delete outside the agent's folder is on the floor too, but it is
+// read rather than matched, in recursivedelete.go.
 var criticalCommands = []string{
-	// Recursive force-remove of a root path. The '/*' glob deliberately
-	// over-fires: it catches "rm -rf / --no-preserve-root" and also plain
-	// "rm -rf /var/tmp/x". Prompting on an absolute recursive delete under an
-	// allow-all policy is the trade this table exists to make.
-	"rm -rf /",
-	"rm -rf /*",
-	"rm -fr /",
-	"rm -fr /*",
 	// Making a filesystem — mkfs, mkfs.ext4, mkfs.xfs …
 	"mkfs*",
 	// dd with a device as its output.
@@ -336,32 +330,82 @@ var criticalCommands = []string{
 	"poweroff", "poweroff *",
 }
 
+// rootDeletes is the table's recursive force-remove of a root path. The '/*'
+// glob deliberately over-fires: it catches "rm -rf / --no-preserve-root" and
+// also plain "rm -rf /var/tmp/x". Prompting on an absolute recursive delete
+// under an allow-all policy is the trade these rows exist to make.
+//
+// THEY STAND ASIDE WHEN THE AGENT'S FOLDER IS KNOWN. Then the reader in
+// recursivedelete.go can place an absolute path, and it already asks about
+// every recursive delete it cannot place inside that folder, `rm -rf /`
+// included; these rows would only add a question about `rm -rf
+// /path/to/the/agents/own/folder/build`, which is the cleanup the reader lets
+// through. With no folder they stand exactly as they always have.
+var rootDeletes = []string{
+	"rm -rf /",
+	"rm -rf /*",
+	"rm -fr /",
+	"rm -fr /*",
+}
+
 // forkBomb is the classic shape, matched against the line with ALL whitespace
 // removed so the usual spacings — ":(){ :|:& };:" and ":(){:|:&};:" — are one
 // string. Renaming the function defeats it; that is fine. The table is a floor.
 const forkBomb = "*:(){:|:&};:*"
 
-// criticalHit reports the first critical shape found in the line, and the
-// table entry that found it, for display.
-func criticalHit(command string, segments []string) (string, bool) {
+// criticalHit reports whether the line holds a critical shape, and the words
+// to name it by: the segment of the line that matched, as the agent wrote it
+// with its whitespace collapsed, and never the table pattern behind it.
+//
+// THE QUESTION NAMES WHAT WILL RUN. The pattern used to be the name, so a
+// canvas manager's `rm -rf /tmp/site_check` reached the person as
+// `critical command "rm -rf /*"`, which reads as a request to wipe the disk
+// and leaves them nothing true to answer. The segments are tried before the
+// whole line so a compound cleanup names the one deletion that tripped the
+// floor, and the whole line is tried last for a shape no one segment holds.
+//
+// workspace is the folder the line runs in, the bash tool's own working
+// directory, or empty when the caller does not know it.
+func criticalHit(command string, segments []string, workspace string) (string, bool) {
 	if globMatch(forkBomb, stripSpace(command)) {
 		return ":(){:|:&};:", true
 	}
+	table := criticalCommands
+	if len(knownFolder(workspace).roots) == 0 {
+		table = append(append([]string(nil), rootDeletes...), criticalCommands...)
+	}
 	candidates := make([]string, 0, len(segments)+1)
-	candidates = append(candidates, command)
 	candidates = append(candidates, segments...)
+	candidates = append(candidates, command)
 	for _, candidate := range candidates {
 		normalized := normalizeCritical(candidate)
 		if normalized == "" {
 			continue
 		}
-		for _, pattern := range criticalCommands {
+		for _, pattern := range table {
 			if globMatch(pattern, normalized) {
-				return pattern, true
+				return criticalName(candidate), true
 			}
 		}
 	}
-	return "", false
+	// The table names spellings; a recursive delete is read for what it does
+	// and where it lands (recursivedelete.go), so `rm -r /tmp/x` asks the way
+	// `rm -rf /tmp/x` always has.
+	return recursiveDeleteOutside(command, workspace)
+}
+
+// criticalNameLimit bounds the command a question quotes. A long line is cut
+// at the end, because its start is the verb and the path the person judges.
+const criticalNameLimit = 120
+
+// criticalName is a matched segment as the person reads it: whitespace runs
+// collapsed, cut at criticalNameLimit runes with an ellipsis.
+func criticalName(segment string) string {
+	name := []rune(strings.Join(strings.Fields(segment), " "))
+	if len(name) <= criticalNameLimit {
+		return string(name)
+	}
+	return strings.TrimSpace(string(name[:criticalNameLimit-1])) + "…"
 }
 
 // normalizeCritical flattens the spellings that would otherwise let a critical

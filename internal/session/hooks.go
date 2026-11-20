@@ -247,6 +247,12 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	// refused with a sentence about where it was aimed, because the git guard's
 	// sentences are about the task's own copy and are false about anywhere else.
 	plane.register(taskGroundGuard{agent: a})
+	// AND HOW FAR A TASK'S SEARCH MAY WALK, which is the one read a task is held
+	// to (widesearch.go): not a place the brief named, but the whole disk or the
+	// person's whole home. It asks only about searches, so it is registered after
+	// the path law, whose refusals are about writes and are the truer sentence
+	// when a command does both.
+	plane.register(wideSearchGuard{agent: a})
 	// AND WHAT A WORKER'S GIT MAY DO, which is the same shape as the write scope
 	// and about a different kind of reach: not which files this agent may touch,
 	// but whose work it may pull into its own copy (taskgit.go). It is registered

@@ -100,13 +100,13 @@ func (s *sheet) spendingItems() []sheetItem {
 	}
 	// AND WHAT THE MACHINE COULD NOT WRITE DOWN, directly under the day it makes
 	// short. Absent whenever nothing was lost, which is nearly always.
-	if unwritten := unwrittenReading(); unwritten != nil {
-		items = append(items, sheetItem{read: unwritten})
+	if s.unwritten != nil {
+		items = append(items, sheetItem{read: s.unwritten})
 	}
 	// AND WHAT THE PROVIDER CHARGED WITHOUT PUTTING A FIGURE ON, beside the
 	// missing writes because both facts make every total below them short.
-	if unbilled := unbilledReading(); unbilled != nil {
-		items = append(items, sheetItem{read: unbilled})
+	if s.unbilled != nil {
+		items = append(items, sheetItem{read: s.unbilled})
 	}
 	add(config.KeyDailyBudget)
 	add(config.KeySpendRail)

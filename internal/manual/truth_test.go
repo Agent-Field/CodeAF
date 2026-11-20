@@ -119,6 +119,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 	steps, notSteps := counted(sourceNumber(t, "../router/crew.go", "redoOffsetCeiling"))
 	shortlist, notShortlist := counted(sourceNumber(t, "../session/taskmodel.go", "taskModelShortlist"))
 	ceilingTimes, otherCeilingTimes := counted(int(config.CrewCheckCeilingTimes))
+	ceilingStretch, otherCeilingStretch := counted(int(config.CrewCheckCeilingStretch))
 	// AN AUTOMATION'S TWO LIMITS are the figures a card quotes when nobody named
 	// any, and the pages that explain a run stopping quote them back in the
 	// card's own spellings — `30m` and `$5.00` — as well as in prose.
@@ -284,12 +285,21 @@ func quotedFacts(t *testing.T) []quotedFact {
 		value: ceilingTimes, others: otherCeilingTimes,
 		quotes: []quotedIn{
 			{"models-and-cost", "**A checker has a ceiling of its own on each task**: %s times its estimate"},
-			{"models-and-cost", "ceiling of $0.26, %s times its estimate, before it finished"},
+			{"how-tasks-run", "(*models-and-cost*: %s times its estimate,"},
+		},
+	}, {
+		// THE CEILING GROWS WITH THE WORK, AND ONLY SO FAR: the pages that say
+		// how far quote the stretch's own bound.
+		fact: "how far the work stretches the checker's ceiling", owner: "config.CrewCheckCeilingStretch",
+		value: ceilingStretch, others: otherCeilingStretch,
+		quotes: []quotedIn{
+			{"models-and-cost", "raised by the same factor, up to %s times more"},
+			{"how-tasks-run", "grown with the work up to %s times more)"},
 		},
 	}, {
 		fact: "the checker's ceiling floor", owner: "config.CrewCheckCeilingFloor",
 		value: ceilingFloor, others: otherCeilingFloors,
-		quotes: []quotedIn{{"models-and-cost", "less than %s. A check that reaches it"}},
+		quotes: []quotedIn{{"models-and-cost", "less than %s. The estimate is an ordinary task's check"}},
 	}, {
 		// THE CREW IS THREE SEATS, and every page that counts them counts
 		// them from the router's own list.

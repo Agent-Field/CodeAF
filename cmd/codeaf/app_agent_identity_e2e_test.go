@@ -59,7 +59,7 @@ func TestAppAgentIdentityBinaryE2E(t *testing.T) {
 		delta := map[string]any{"content": "Identity QA complete"}
 		finish := "stop"
 		if needsTool {
-			args, _ := json.Marshal(map[string]string{"command": `printf '%s' "$CODEAF_AGENT_DID" > did.txt; env | sed -n '/^CODEAF_AGENT_/p' > identity-env.txt`})
+			args, _ := json.Marshal(map[string]string{"command": `printf '%s' "$CODEAF_AGENT_DID" > did.txt; env | sed -n '/^CODEAF_AGENT_/p' | LC_ALL=C sort > identity-env.txt`})
 			delta = map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "identity-qa", "type": "function", "function": map[string]any{"name": "bash", "arguments": string(args)}}}}
 			finish = "tool_calls"
 		}
@@ -83,8 +83,13 @@ func TestAppAgentIdentityBinaryE2E(t *testing.T) {
 	}
 	p := start()
 	created := p.call("agents.create", map[string]any{"workspace": workspace, "model": "openai/gpt-4.1", "approval_posture": "allow"})
-	var result struct{ Agent struct{ ID string } }
-	if err := json.Unmarshal(created, &result); err != nil || result.Agent.ID == "" {
+	var result struct {
+		Agent struct {
+			ID        string
+			Workspace string `json:"workspace"`
+		}
+	}
+	if err := json.Unmarshal(created, &result); err != nil || result.Agent.ID == "" || result.Agent.Workspace == "" {
 		t.Fatalf("create: %s, %v", created, err)
 	}
 	id := result.Agent.ID
@@ -124,15 +129,20 @@ func TestAppAgentIdentityBinaryE2E(t *testing.T) {
 	if doc.V != agentdid.Version || doc.Signing == nil || doc.Encryption == nil || len(doc.Custody) == 0 {
 		t.Fatalf("incomplete identity after a real turn: %+v", doc)
 	}
-	// The real bash tool wrote only the public identity into its environment.
+	// The real bash tool wrote only the public identity into its environment:
+	// the DID, and the folder the app lists the agent by, spelled exactly as the
+	// list spells it, because the app registers an agent whose DID it has not
+	// seen yet by that folder (a canvas `cwd:` member) and a tool admits the DID
+	// by it wherever the command itself runs.
 	checkShell := func() {
 		did, err := os.ReadFile(filepath.Join(workspace, "did.txt"))
 		if err != nil || string(did) != doc.DID {
 			t.Fatalf("shell DID: %q %v", did, err)
 		}
 		env, err := os.ReadFile(filepath.Join(workspace, "identity-env.txt"))
-		if err != nil || string(env) != agentdid.AgentDIDEnv+"="+doc.DID+"\n" {
-			t.Fatalf("shell identity environment: %q %v", env, err)
+		want := agentdid.AgentDIDEnv + "=" + doc.DID + "\n" + agentdid.AgentWorkspaceEnv + "=" + result.Agent.Workspace + "\n"
+		if err != nil || string(env) != want {
+			t.Fatalf("shell identity environment: %q, want %q %v", env, want, err)
 		}
 	}
 	checkShell()

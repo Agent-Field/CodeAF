@@ -67,7 +67,8 @@ type MediaPrice struct {
 	// Billable is what is charged for: "video_output", "image_output" or
 	// "image_input".
 	Billable string `json:"billable"`
-	// Unit is what one USD figure buys: "second", "image" or "megapixel".
+	// Unit is what one USD figure buys: "second", "image", "megapixel", or
+	// "token" for a picture billed by the output-image tokens it returns.
 	Unit string `json:"unit"`
 	// Variant narrows the rate, today only the output resolution ("480p").
 	Variant string `json:"variant,omitempty"`
@@ -89,6 +90,15 @@ type MediaParams struct {
 	MaxInputReferences int `json:"max_input_references,omitempty"`
 	// MaxOutputs is how many images one request may return.
 	MaxOutputs int `json:"max_outputs,omitempty"`
+	// Mask says the model publishes a `mask` knob: it takes a real mask beside
+	// its first reference and edits only the area the mask opens. False is the
+	// ordinary answer and means unpublished, never "known not to".
+	Mask bool `json:"mask,omitempty"`
+	// Transparent says the model publishes a transparent-background option:
+	// a `background` knob whose values include "transparent", or a boolean
+	// `transparent_background` knob. False means unpublished. It is a fact
+	// about the model; generate_image does not ask for it.
+	Transparent bool `json:"transparent,omitempty"`
 }
 
 // MediaKind is what a catalog knows about one dedicated listing.
@@ -357,6 +367,9 @@ func mergeParams(have, add *MediaParams) *MediaParams {
 	}
 	if add.MaxOutputs > 0 {
 		merged.MaxOutputs = add.MaxOutputs
+	}
+	if add.Mask {
+		merged.Mask = true
 	}
 	return &merged
 }
@@ -633,25 +646,68 @@ func imageRow(raw json.RawMessage) (Model, bool) {
 
 // imageParams reads the supported_parameters object: each knob is an enum with
 // values, a range with bounds, or a boolean.
+//
+// EACH KNOB IS DECODED ON ITS OWN. A knob published as a bare boolean does not
+// fit the enum-or-range shape, and decoding the whole object into that shape at
+// once would let one such knob throw away every other knob of the row.
 func imageParams(raw json.RawMessage) *MediaParams {
-	var knobs map[string]struct {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) == 0 {
+		return nil
+	}
+	type knob struct {
 		Values []string `json:"values"`
 		Max    *float64 `json:"max"`
 	}
-	if json.Unmarshal(raw, &knobs) != nil || len(knobs) == 0 {
-		return nil
+	read := func(name string) knob {
+		var k knob
+		_ = json.Unmarshal(fields[name], &k)
+		return k
 	}
 	params := MediaParams{
-		Resolutions:  cleanList(knobs["resolution"].Values),
-		AspectRatios: cleanList(knobs["aspect_ratio"].Values),
+		Resolutions:  cleanList(read("resolution").Values),
+		AspectRatios: cleanList(read("aspect_ratio").Values),
 	}
-	if max := knobs["input_references"].Max; max != nil && *max > 0 && *max < 1000 {
+	if max := read("input_references").Max; max != nil && *max > 0 && *max < 1000 {
 		params.MaxInputReferences = int(*max)
 	}
-	if max := knobs["n"].Max; max != nil && *max > 0 && *max < 1000 {
+	if max := read("n").Max; max != nil && *max > 0 && *max < 1000 {
 		params.MaxOutputs = int(*max)
 	}
+	params.Mask = imageMaskKnob(fields["mask"])
+	for _, value := range read("background").Values {
+		if strings.EqualFold(strings.TrimSpace(value), "transparent") {
+			params.Transparent = true
+		}
+	}
+	if strings.TrimSpace(string(fields["transparent_background"])) == "true" || imageMaskKnob(fields["transparent_background"]) {
+		params.Transparent = true
+	}
 	return &params
+}
+
+// imageMaskKnob reads the `mask` knob. Only a bare true or a described knob (an
+// object) is a yes, and an object that says it is not supported is a no:
+// a wrong yes sends a mask field the model drops without a word, while a wrong
+// no costs only a guide picture the result owns up to.
+func imageMaskKnob(value json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(value))
+	if trimmed == "true" {
+		return true
+	}
+	if !strings.HasPrefix(trimmed, "{") {
+		return false
+	}
+	var described map[string]json.RawMessage
+	if json.Unmarshal(value, &described) != nil {
+		return false
+	}
+	for _, field := range []string{"supported", "enabled"} {
+		if said, named := described[field]; named && strings.TrimSpace(string(said)) != "true" {
+			return false
+		}
+	}
+	return true
 }
 
 // ImageEndpointPrices is the lazy, single-model price door for an image
@@ -836,11 +892,13 @@ func (c *Catalog) MediaStateNow() MediaState {
 // a unit a person can be told. It is the test a DEFAULT must pass before it is
 // chosen for someone who chose nothing.
 //
-// Prompt/completion token zeros do not establish a generation tariff. Some
-// image models really bill output tokens, but this catalog does not yet carry
-// that output tariff separately; it remains unknown here. Unreadable units
-// remain unknown too. A positive published per-request price counts for an
-// image, while an explicit dedicated per-image zero remains a known zero.
+// Prompt/completion token zeros do not establish a generation tariff: a
+// generator publishes those as zero and bills the picture. The picture's own
+// rate does — per image or per megapixel from a dedicated listing, or per
+// output-image token from the general listing ([imageTokenPrice]), which is the
+// one every drawing model on OpenRouter publishes. Unreadable units remain
+// unknown. A positive published per-request price counts for an image, while
+// an explicit per-image zero remains a known zero.
 func (m Model) PublishedPrice(output string) bool {
 	switch strings.ToLower(strings.TrimSpace(output)) {
 	case kindVideo:
@@ -851,7 +909,7 @@ func (m Model) PublishedPrice(output string) bool {
 		}
 	case kindImage:
 		for _, price := range m.MediaPrices {
-			if price.Billable == "image_output" && (price.Unit == "image" || price.Unit == "megapixel") && finitePrice(price.USD) {
+			if price.Billable == "image_output" && (price.Unit == "image" || price.Unit == "megapixel" || price.Unit == "token") && finitePrice(price.USD) {
 				return true
 			}
 		}

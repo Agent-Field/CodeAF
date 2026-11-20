@@ -186,6 +186,14 @@ type Policy struct {
 	// BashPatterns is ordered and FIRST MATCH WINS. Order is the author's
 	// priority statement, so it is preserved exactly as loaded.
 	BashPatterns []Rule
+	// Workspace is the folder a bash call runs in, the bash tool's own working
+	// directory, when the caller knows it. It is not a rule anybody wrote: it
+	// only lets the critical floor place an absolute path, so a recursive
+	// delete under the agent's own folder (`cd /…/work && rm -rf build`) is
+	// the cleanup it is rather than a question (recursivedelete.go). Empty
+	// keeps the floor reading the line alone, where every absolute path is
+	// outside.
+	Workspace string
 }
 
 // Decision is an answer plus the reason to show for it. Rule is already
@@ -287,7 +295,7 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	// deny already refuses, a prompt already asks, and only a decision that
 	// would have run silently is worth interrupting.
 	if decision.Action == ActionAllow {
-		if hit, ok := criticalHit(command, segments); ok {
+		if hit, ok := criticalHit(command, segments, p.Workspace); ok {
 			return Decision{Action: ActionPrompt, Rule: fmt.Sprintf(criticalCommandRulePrefix+"%q", hit)}
 		}
 	}

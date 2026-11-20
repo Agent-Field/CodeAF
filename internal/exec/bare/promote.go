@@ -94,6 +94,9 @@ type BashCall struct {
 	// timeout's. It is set under the lock the timer already takes, so the
 	// sentence and the kill that produced it cannot race.
 	timedOut bool
+	// stopped is the sentence a [BashCall.Stop] ended the call with, set under
+	// the same lock and for the same reason.
+	stopped string
 }
 
 func newBashCall(command string, cmd *exec.Cmd, acc *outputAccumulator, ctx context.Context) *BashCall {
@@ -196,6 +199,50 @@ func (c *BashCall) closeTimedOut() bool {
 	}
 	c.outcome, c.timedOut = bashEnded, true
 	return true
+}
+
+// QuietFor reports how long the command has gone without saying anything: since
+// its last output, or since it started when it has said nothing at all. It reads
+// the accumulator's own clock, so a promoted call — whose output goes to its
+// adopter's log — stops moving it, which is right: it is no longer this call.
+func (c *BashCall) QuietFor() time.Duration {
+	last := c.acc.lastSaid()
+	if last.IsZero() || last.Before(c.started) {
+		last = c.started
+	}
+	return time.Since(last)
+}
+
+// Stop ends a call that is still open the way the timeout would, killing its
+// process group, and makes status the line the call's result ends with. It
+// reports false, and does nothing, when the call was already adopted or ended:
+// a job somebody took is theirs, and an ending already spoken for is not
+// re-spoken.
+func (c *BashCall) Stop(status string) bool {
+	if !c.closeStopped(status) {
+		return false
+	}
+	killProcessGroup(c.cmd)
+	return true
+}
+
+// closeStopped claims the ending for a stop and records its sentence, both
+// under one lock, exactly as [BashCall.closeTimedOut] does for the timeout.
+func (c *BashCall) closeStopped(status string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.outcome != bashOpen {
+		return false
+	}
+	c.outcome, c.stopped = bashEnded, status
+	return true
+}
+
+// stopStatus is the sentence a [BashCall.Stop] left, or "".
+func (c *BashCall) stopStatus() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stopped
 }
 
 // wasTimedOut reports whether the timeout is what ended this call.

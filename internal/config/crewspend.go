@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -110,8 +109,9 @@ func CrewTaskMoney(usd float64) string {
 
 // CrewSeatCeilings is each seat's own spend ceiling on one task, keyed by the
 // seat rather than its model: the CHECKER'S, a few times what it is expected to
-// cost and never under a floor. A check is the seat whose length nothing else
-// bounds — it reads until it is satisfied — and one that ran to eleven times
+// cost and never under a floor — and stretched while the task runs by how far
+// the work itself overran its estimate ([CrewCheckCeilingFor]). A check is the
+// seat whose length nothing else bounds — it reads until it is satisfied — and one that ran to eleven times
 // its estimate on a dear model was the whole of a day's overshoot. A seat on a
 // route that bills nothing has no ceiling.
 func CrewSeatCeilings(d crewroute.Decision) map[crewroute.Seat]float64 {
@@ -133,25 +133,45 @@ func CrewSeatCeilings(d crewroute.Decision) map[crewroute.Seat]float64 {
 }
 
 // CrewCheckCeilingAction is the sentence a check its ceiling ends says, with
-// the ceiling's dollars. The multiplier is spelled from
-// [CrewCheckCeilingTimes], so the sentence cannot promise a figure the guard
-// does not hold.
-var CrewCheckCeilingAction = "the check stopped at its spend ceiling of $%.2f, " +
-	crewCeilingTimesWord() + " times its estimate, before it finished"
+// the ceiling's dollars as the guard held them when it stopped the call.
+//
+// IT NAMES NO MULTIPLIER, because the ceiling it quotes is not always three
+// times the estimate: it grows with the work ([CrewCheckCeilingFor]). A sentence
+// that said "three times its estimate" over a ceiling the work had stretched
+// would be quoting a figure the guard did not hold.
+var CrewCheckCeilingAction = "the check stopped at its spend ceiling of $%.2f before it finished"
 
-// The checker's ceiling: how many times its estimate, and the least it is.
-// The manual quotes both (internal/manual's truth_test.go holds it to them).
+// The checker's ceiling: how many times its estimate, the least it is, and
+// how far the measured size of the work may stretch it. The manual quotes all
+// three (internal/manual's truth_test.go holds it to them).
 const (
-	CrewCheckCeilingTimes = 3.0
-	CrewCheckCeilingFloor = 0.05
+	CrewCheckCeilingTimes   = 3.0
+	CrewCheckCeilingFloor   = 0.05
+	CrewCheckCeilingStretch = 3.0
 )
 
-// crewCeilingTimesWord is the multiplier as a sentence says it: a small whole
-// number in words, the way prose spells a count, and anything else in digits.
-func crewCeilingTimesWord() string {
-	words := []string{"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
-	if n := int(CrewCheckCeilingTimes); float64(n) == CrewCheckCeilingTimes && n >= 0 && n < len(words) {
-		return words[n]
+// CrewCheckCeilingFor is the checker's ceiling as it stands once the worker has
+// spent workSpent against its own estimate workEst: base, stretched by how many
+// times its estimate the work itself turned out to cost, and never by more than
+// [CrewCheckCeilingStretch].
+//
+// THE CHECK'S SIZE IS THE WORK'S SIZE. A checker's estimate is an ordinary
+// task's check (crewroute's checker shape), but a check reads what the worker
+// made, and work that ran to six times its estimate is work a check must read
+// six times as much of. On 2026-11-19 (run19) a research brief's worker ran to
+// 5.9 times its estimate, its checker made seventeen calls over a transcript
+// that grew from ten thousand tokens to seventy thousand with nothing repeated,
+// and it met an unstretched ceiling of $0.37 with the work already landed.
+//
+// THE STRETCH IS BOUNDED, so the ceiling stays a ceiling: at most
+// [CrewCheckCeilingTimes] × [CrewCheckCeilingStretch] times the checker's own
+// estimate, and always under the task's own limit and the day's, which count
+// every one of the checker's calls as well. Work that cost what it was expected
+// to, or less, leaves the ceiling exactly where it was; an unknown estimate
+// stretches nothing.
+func CrewCheckCeilingFor(base, workSpent, workEst float64) float64 {
+	if base <= 0 || workEst <= 0 || workSpent <= workEst {
+		return base
 	}
-	return strconv.FormatFloat(CrewCheckCeilingTimes, 'f', -1, 64)
+	return base * math.Min(workSpent/workEst, CrewCheckCeilingStretch)
 }

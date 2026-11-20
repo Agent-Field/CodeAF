@@ -1112,6 +1112,15 @@ type sheet struct {
 	// a day nothing has counted, and the row is then absent.
 	today *railReading
 
+	// unwritten and unbilled are the two shortfall rows under it, TAKEN ON THE
+	// SAME BEAT as today and for the same reason. Both answer from counters
+	// that belong to the whole process ([session.UsageDrops],
+	// [session.UnbilledCalls]). A tab that asked them on every build could
+	// grow a row while somebody read it, and a test could see one that another
+	// test's call left behind. Nil is the ordinary answer, and the row is then
+	// absent.
+	unwritten, unbilled *railReading
+
 	// msg is the last refusal, in the registry's own words.
 	msg      string
 	savedKey string // Set only after a setting write succeeds.
@@ -1357,6 +1366,8 @@ func (a *app) raiseSettings() {
 		sessionModel:     a.model,
 		routing:          a.routing,
 		today:            a.todayReading(),
+		unwritten:        unwrittenReading(),
+		unbilled:         unbilledReading(),
 	}
 	a.sheet.storageCode, a.sheet.storageState = a.storageRead.code, a.storageRead.state
 	a.sheet.rows = a.sheet.registry.Rows()

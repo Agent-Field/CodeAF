@@ -28,7 +28,19 @@ func appRenderOf(r session.RenderRecord) appwire.Render {
 		Started: r.Started, Ended: r.Ended, DurationMS: r.DurationMS, Run: r.Run, Call: r.Call,
 		Committed: r.Committed, Path: r.Path, Charge: string(r.Charge), CostUSD: r.CostUSD,
 		Upstream: r.Upstream, Error: r.Error, Persistence: r.Persistence, Refusal: r.Refusal, Options: append([]string(nil), r.Options...),
+		Picked: r.Picked, PassedOver: appRenderPassedOver(r.PassedOver),
 	}
+}
+
+func appRenderPassedOver(passed []session.RenderPassedOver) []appwire.RenderPassedOver {
+	if len(passed) == 0 {
+		return nil
+	}
+	out := make([]appwire.RenderPassedOver, 0, len(passed))
+	for _, p := range passed {
+		out = append(out, appwire.RenderPassedOver{Model: p.Model, Reason: p.Reason})
+	}
+	return out
 }
 
 func appRenderError(err error) error {

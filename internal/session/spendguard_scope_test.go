@@ -32,7 +32,7 @@ func TestEachCheckHasItsOwnSeatCeiling(t *testing.T) {
 			}
 			_, err := checkA.CompleteWithMessages(t.Context(), nil)
 			var stopped ErrSpendStopped
-			if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12, three times its estimate, before it finished" || first.calls != 1 {
+			if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12 before it finished" || first.calls != 1 {
 				t.Fatalf("first check past its ceiling: %v, calls=%d", err, first.calls)
 			}
 
@@ -44,7 +44,7 @@ func TestEachCheckHasItsOwnSeatCeiling(t *testing.T) {
 				}
 			}
 			_, err = checkB.CompleteWithMessages(t.Context(), nil)
-			if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12, three times its estimate, before it finished" || second.calls != 2 {
+			if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12 before it finished" || second.calls != 2 {
 				t.Fatalf("second check at its own ceiling: %v, calls=%d", err, second.calls)
 			}
 			if guard.tally().Total() != .3125 || guard.seatTally(crewroute.Checker).Total() != .3125 {
@@ -92,7 +92,7 @@ func TestCheckCeilingSurvivesTheTurnsModelFallback(t *testing.T) {
 	}
 	failure, failed := firstOfKind(collect(t, events), EventError)
 	var stopped ErrSpendStopped
-	if !failed || !errors.As(failure.Err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.19, three times its estimate, before it finished" || next.requests() != 3 {
+	if !failed || !errors.As(failure.Err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.19 before it finished" || next.requests() != 3 {
 		t.Fatalf("check forgot its fallback spend: %v, requests=%d", failure.Err, next.requests())
 	}
 }
@@ -241,7 +241,7 @@ func TestSharedLimitRefusalReleasesTheCheckReservation(t *testing.T) {
 				t.Fatalf("refusal leaked the check reservation: %v, calls=%d", err, calls.calls)
 			}
 			_, err = check.CompleteWithMessages(t.Context(), nil)
-			if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12, three times its estimate, before it finished" || calls.calls != 1 {
+			if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12 before it finished" || calls.calls != 1 {
 				t.Fatalf("raised shared limit bypassed the check ceiling: %v, calls=%d", err, calls.calls)
 			}
 			if guard.Day.held != 0 || guard.tally().held != 0 {

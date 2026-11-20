@@ -1179,6 +1179,16 @@ func appAgentID(transcript string) string {
 // locked runs fn holding b.mu. Every critical section in this file goes
 // through it or opens with a deferred unlock, so a panic a guard absorbs never
 // leaves the lock held (internal/guard's lock law).
+//
+// appSessionLocks: NOTHING UNDER THIS LOCK CALLS INTO A CONVERSATION. b.mu is
+// the whole app's — every request from the desk passes through it — while a
+// conversation's methods (Title, Model, ModelIdentity, ContextUse, Usage) take
+// that conversation's own lock. Holding the first while waiting on the second
+// is how one stuck conversation can stall every other canvas — the shape qloop
+// run44 showed, where a different canvas's first message got no answer within
+// the desk's 30 s while one conversation's tool call was wedged. So a conversation's facts are read
+// before the lock is taken and only stored under it;
+// app_lock_order_test.go holds the line.
 func (b *appBackend) locked(fn func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -2074,6 +2084,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	}
 	users := conn.UserMessages
 	crewHeld := b.crewKeeps(a.view.ID)
+	// Read before the backend's lock: it takes the conversation's own
+	// (appSessionLocks).
+	contextUse := appContextOf(conn.Conv)
 	var view appwire.Agent
 	b.locked(func() {
 		if !a.counted {
@@ -2100,7 +2113,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		if !a.starting {
 			a.view.State = live.restingState()
 		}
-		a.view.Context = appContextOf(conn.Conv)
+		a.view.Context = contextUse
 		if a.view.UpdatedAt.IsZero() {
 			a.view.UpdatedAt = b.now()
 		}
@@ -2169,6 +2182,9 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
+	if ask.Fields = appAskFields(q); ask.Fields != nil {
+		ask.FieldsPrompt = strings.TrimSpace(q.Input.Prompt)
+	}
 	if q.SecretAnswer() {
 		ask.Secret = &appwire.AskSecret{Placeholder: strings.TrimSpace(q.Input.Prompt)}
 		// Only the model's own question keeps what was typed in a file
@@ -2179,6 +2195,25 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		}
 	}
 	return ask
+}
+
+// appAskFields is a blanks question's named fields as the app draws them, and
+// nil for every other question. A blank with no label is not a field anybody
+// can fill, so it is left out rather than drawn as an unnamed box; a secret
+// question keeps its one masked box and never grows fields.
+func appAskFields(q session.Question) []appwire.AskField {
+	if q.Input.Kind != session.InputBlanks || q.SecretAnswer() {
+		return nil
+	}
+	var fields []appwire.AskField
+	for _, blank := range q.Input.Blanks {
+		label := strings.TrimSpace(blank.Label)
+		if label == "" {
+			continue
+		}
+		fields = append(fields, appwire.AskField{Label: label, Kind: string(blank.Kind), Default: blank.Default, Choices: blank.Choices})
+	}
+	return fields
 }
 
 // appAskSubject is what a question is about, in the app's words: an order is
@@ -2580,7 +2615,36 @@ func (b *appBackend) sendLocked(a *appAgent, text, clientID string, shown *appSe
 			return turn, err
 		}
 	}
+	if live, id, held := b.heldOnAsk(a); held {
+		return 0, b.steerRunning(a, live, id, text, clientID, shown)
+	}
 	return b.startLocked(a, text, clientID, shown)
+}
+
+// heldOnAsk answers the conversation's live connection and the agent's id when
+// its running turn is held on a question the person has open. The caller holds
+// a.gate.
+//
+// A REPLY TO AN OPEN QUESTION IS NEVER REFUSED. A turn held on a question is
+// still a running turn, so a message sent to it found the turn busy and was
+// refused with "this agent is already working on a turn" while the question
+// sat on the screen asking for exactly that message (run7's board deck,
+// 2026-11-19: the app sends rather than steers to a turn waiting on the person,
+// because waiting is not working). The words go down the steer's road instead,
+// which is the one door that takes words mid-turn: the engine retires the
+// model's own question and puts the words in front of the model at once
+// (internal/session/steerquestion.go), and a turn held on an approval reads
+// them at its next step. Only a running turn with nothing open still refuses,
+// so a send never silently becomes a correction to work the person was not
+// looking at.
+func (b *appBackend) heldOnAsk(a *appAgent) (*appLive, string, bool) {
+	held, id := false, ""
+	var live *appLive
+	b.locked(func() {
+		live, id = a.live, a.view.ID
+		held = live != nil && live.running && len(live.asks) > 0
+	})
+	return live, id, held
 }
 
 // knownWorkRefusalGated asks knownWorkRefusal holding the agent's gate, so the
@@ -3097,12 +3161,22 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			// THE ENGINE'S NOTICES ARE ITS DIM LINES — the skills a turn
 			// carried, a request reshaped to land — drawn by the terminal as
 			// one muted row and never as a message, and quiet says the same.
-			// A LINE SAYING THE TURN WAS SENT BACK TO WORK IS NOT ONE OF THEM
-			// HERE: the terminal folds it away with the turn's work once the
-			// turn settles, the app has no fold for a notice, and the turn
-			// going on is what the worked line already says
+			// A LINE SAYING THE TURN WAS CARRIED ON IS NOT ONE OF THEM HERE —
+			// the completion check's carry-on and the nudges: the terminal
+			// folds it away with the turn's work once the turn settles, and
+			// the turn going on is what the worked line already says
 			// ([session.IsCarryOnNotice]).
-			if session.IsCarryOnNotice(event.Text) {
+			//
+			// A CHECK ON A FINISHED REPLY IS, and it arrives typed
+			// [session.NoticeKindSentBack]. The reply it sends back is
+			// already an answer on the page, so a second answer follows it,
+			// and this line is the only thing in the chat that says why.
+			// Dropped by its words with the carry-ons, it reached nobody:
+			// qloop run 26 sent 15 of 28 turns back and not one line was in
+			// the canvas chat or in any file the engine kept. The kind is
+			// what lets the app place it with the work it started rather
+			// than under the final answer (run 16's complaint).
+			if event.NoticeKind != session.NoticeKindSentBack && session.IsCarryOnNotice(event.Text) {
 				break
 			}
 			if words := strings.TrimSpace(event.Text); words != "" {
@@ -3110,7 +3184,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				// ONLY WHAT THE PRODUCER TYPED travels as a fact; a notice
 				// with no kind stays ordinary and its words are never read.
 				switch event.NoticeKind {
-				case session.NoticeKindSkills, session.NoticeKindMemory:
+				case session.NoticeKindSkills, session.NoticeKindMemory, session.NoticeKindSentBack:
 					notice.NoticeKind = event.NoticeKind
 				}
 				notice.Skills = append([]string(nil), event.Skills...)
@@ -4306,12 +4380,18 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	if now := live.conn.Conv.Model(); now != "" {
 		model = now
 	}
+	// Read before the backend's lock: it takes the conversation's own
+	// (appSessionLocks).
+	var identity *session.ModelIdentity
+	if door, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+		state := door.ModelIdentity()
+		identity = &state
+	}
 	var view appwire.Agent
 	b.locked(func() {
 		a.view.Model = model
-		if door, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
-			state := door.ModelIdentity()
-			a.view.ModelIdentity = &state
+		if identity != nil {
+			a.view.ModelIdentity = identity
 		}
 		view = a.view
 	})

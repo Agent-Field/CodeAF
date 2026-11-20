@@ -839,6 +839,16 @@ const (
 	// differs, and it names the checker rather than the work (#941).
 	taskAskTimeReason = "the check ran out of time"
 
+	// taskAskCeilingReason is the FOURTH ROAD TO THE CHECK'S QUESTION: the
+	// check's checker met its own spend ceiling before it could answer, over
+	// work that had already finished and landed (internal/run's review round,
+	// [RunSummary.Unchecked]). Like the clock, it is news about the checker and
+	// not about the work, so the work is asked about rather than failed — run19
+	// drew a finished research brief as failed for exactly this. The sentence is
+	// the guard's own stop ([config.CrewCheckCeilingAction]), which opens with
+	// these words, so the report's lead IS the reason and nothing is said twice.
+	taskAskCeilingReason = "the check stopped at its spend ceiling"
+
 	// taskAskSettleReason is the THIRD ROAD TO THE CHECK'S QUESTION, and the one a
 	// person reads after the turn that was to decide the landing ran past its own
 	// bound — its call ceiling, its share of the run's money, or the window it was
@@ -1122,6 +1132,9 @@ func taskCheckReason(report string) string {
 	}
 	if strings.HasPrefix(strings.TrimSpace(report), taskAskTimeReason) {
 		return taskAskTimeReason
+	}
+	if strings.HasPrefix(strings.TrimSpace(report), taskAskCeilingReason) {
+		return taskAskCeilingReason
 	}
 	return taskAskCheckReason
 }

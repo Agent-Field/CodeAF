@@ -169,8 +169,21 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 	if p.callID != "" {
 		p.agent.holdPromotable(p.callID, call)
 	}
+	// A TASK'S SEARCH IS BOUNDED BY ITS QUIET AND NOT HANDED TO A JOB
+	// (widesearch.go). A worker waits for the commands it started
+	// (task_job_park.go), so a search adopted at the clock would hold the worker
+	// exactly as long as it held the call; the quiet clock is what ends it, and
+	// the handoff clock is left unarmed for it.
+	searchCut := p.agent.armSearchQuiet(call)
+	// THE APP'S FOREGROUND COMMANDS GO QUIET ON A CLOCK TOO (bash_backstop.go).
+	// It sits beside the handoff clock rather than replacing it: whichever comes
+	// first ends the wait, and a call already adopted is not stopped by it.
+	var quietCut func()
+	if searchCut == nil {
+		quietCut = p.agent.armForegroundQuiet(call)
+	}
 	var timer *time.Timer
-	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 {
+	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 && searchCut == nil {
 		wait := time.Duration(seconds)*time.Second - call.RunningFor()
 		if wait < 0 {
 			wait = 0
@@ -196,12 +209,18 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 			}
 		})
 	}
-	if timer == nil && p.callID == "" && p.result == nil {
+	if timer == nil && searchCut == nil && quietCut == nil && p.callID == "" && p.result == nil {
 		return nil
 	}
 	return func() {
 		if timer != nil {
 			timer.Stop()
+		}
+		if quietCut != nil {
+			quietCut()
+		}
+		if searchCut != nil {
+			searchCut()
 		}
 		if p.callID != "" {
 			p.agent.releasePromotable(p.callID)
