@@ -16,8 +16,9 @@ The app pins `Continued on <computer>` above the transcript with
 `This copy is read-only and may be behind.` Its tab, sidebar and header use a
 computer indicator. Continue here replaces an inert composer; a composer that
 can send to the other computer names that destination. Hidden drafts stay kept.
-With a compatible engine, the open view follows newly saved remote heads without
-moving the chat, replacing its local journal or restoring remote files. Unsealed
+With a compatible engine, the open view follows newly saved messages through
+sync storage or live transfer, without moving the chat or restoring remote files.
+If the latest history is unavailable, you can still read the local copy. Unsealed
 words and in-progress tokens are not streamed between computers.
 The desktop can still send that computer a message for the chat while it is
 open or working there; it waits in the chat's queue on that computer. See
@@ -58,6 +59,13 @@ its disclosure sentence. The desktop must show it before acknowledging it.
 Reading sync status does not count as showing it. If the desktop never
 acknowledges, a later desktop or terminal still owes the sentence. The terminal
 continues to count it when it says it.
+
+## Which desktop provider keys sync between paired computers
+
+With sync storage enabled, saved keys for supported model providers can sync
+through the encrypted vault. Connections that can point to different servers
+on different computers, such as custom endpoints and Ollama, keep their keys
+on the computer where you entered them.
 
 ## Can another terminal window take a chat the desktop holds
 

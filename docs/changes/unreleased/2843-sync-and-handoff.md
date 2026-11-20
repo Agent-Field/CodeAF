@@ -8,7 +8,8 @@ invalidates:
   - A chat handoff waits for background jobs and their completion messages, and preserves saved job output.
 ---
 
-Desktop keys added after pairing sync through the encrypted vault. Clients
+Supported desktop provider keys added after pairing sync through the encrypted
+vault. Custom and Ollama connection keys stay on the computer that uses them. Clients
 report relay outages, retain local turns, and suppress false sharing warnings.
 Completing desktop setup or choosing a relay still leaves an unused home
 eligible to join, even with a cached storage receipt.

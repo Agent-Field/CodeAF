@@ -165,7 +165,7 @@ func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stage
 					return false, fErr
 				}
 			}
-			if ok, sErr := f.stageOpenFromInbox(ctx, c, head, stageInbox, mainInbox); sErr == nil && ok {
+			if ok, sErr := f.stageOpenFromInbox(ctx, c, head, stageInbox, false); sErr == nil && ok {
 				return false, nil
 			}
 		}
@@ -243,6 +243,20 @@ func (f *Fetcher) StageChat(ctx context.Context, c cell.Cell, head string, stage
 		}
 	}
 	return true, nil
+}
+
+// StageTranscript reads only the saved transcript into an independent scratch
+// cell. It never falls back to importing the workspace or staging other files.
+func (f *Fetcher) StageTranscript(ctx context.Context, c cell.Cell, head string) error {
+	inbox := f.Inbox(c)
+	if err := os.MkdirAll(inbox, 0o700); err != nil {
+		return err
+	}
+	ok, err := f.stageOpenFromInbox(ctx, c, head, inbox, true)
+	if err == nil && !ok {
+		err = errors.New("cellsync: the saved transcript could not be read")
+	}
+	return err
 }
 
 // Complete is Fetch without the restore: everything head needs is in the

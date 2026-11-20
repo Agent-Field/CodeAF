@@ -48,6 +48,9 @@ type CredentialChange struct {
 	Provider string `json:"provider"`
 	Key      string `json:"key,omitempty"`
 	Removed  bool   `json:"removed,omitempty"`
+	// ExpectedKey guards an incoming synced write against a later local edit.
+	// An empty value means the secure store should have no entry.
+	ExpectedKey *string `json:"expected_key,omitempty"`
 }
 
 // CredentialsTaken is every change not yet taken, oldest first.

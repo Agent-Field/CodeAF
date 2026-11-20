@@ -230,7 +230,7 @@ func (w *openWorld) open(local map[string][]byte) (stage string, store *counting
 	}
 	store = &countingStore{Store: mem, asked: map[string]int{}}
 	f = &Fetcher{Engine: keyedEngine{w: w, cache: filepath.Join(w.t.TempDir(), "open")}, Store: store}
-	ok, err := f.stageOpenFromInbox(context.Background(), cell.Cell{ID: "chat", Root: stage}, w.head, stageInbox, filepath.Join(w.t.TempDir(), "main"))
+	ok, err := f.stageOpenFromInbox(context.Background(), cell.Cell{ID: "chat", Root: stage}, w.head, stageInbox, false)
 	if err != nil || !ok {
 		w.t.Fatalf("stageOpenFromInbox = %v, %v; want the open state staged", ok, err)
 	}

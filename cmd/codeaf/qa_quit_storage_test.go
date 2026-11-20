@@ -17,6 +17,18 @@ import (
 )
 
 func TestQAStorageOffDesktopQuitRecordsLocalSave(t *testing.T) {
+	t.Run("pass-through off", func(t *testing.T) {
+		t.Setenv(syncsetup.LiveTransferVar, "off")
+		qaStorageOffDesktopQuit(t, false)
+	})
+	t.Run("chat shared by pass-through", func(t *testing.T) {
+		t.Setenv(syncsetup.LiveTransferVar, "")
+		qaStorageOffDesktopQuit(t, true)
+	})
+}
+
+func qaStorageOffDesktopQuit(t *testing.T, passThrough bool) {
+	t.Helper()
 	celltest.RequireEngine(t)
 	_, workspace := wakeEnvironment(t, e2TempDir(t))
 	_, _, _ = heldChatRelay(t, "fixture", func(next http.Handler) http.Handler {
@@ -29,23 +41,31 @@ func TestQAStorageOffDesktopQuitRecordsLocalSave(t *testing.T) {
 		})
 	})
 	relay := os.Getenv(syncsetup.URLVar)
-	dir, _ := outageHomes(t, relay)
-	id, err := identity.Load(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := syncsetup.SaveStorage(dir, relay, id.ID(), "off"); err != nil {
-		t.Fatal(err)
+	dir, peerDir := outageHomes(t, relay)
+	for _, home := range []string{dir, peerDir} {
+		id, err := identity.Load(home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := syncsetup.SaveStorage(home, relay, id.ID(), "off"); err != nil {
+			t.Fatal(err)
+		}
 	}
 	a := e2StartApp(t, dir)
 	agent := machineCall[struct {
 		Agent appwire.Agent `json:"agent"`
 	}](t, a.w, "agents.create", map[string]any{"workspace": workspace}).Agent
 	e2Turn(t, a, agent.ID, "save this turn here")
+	want := 1
+	if passThrough {
+		peer := e2StartApp(t, peerDir)
+		outageChatRow(t, peer, "", func(r appwire.ChatRow) bool { return r.CanPreview && r.Seen.Head != "" && !r.Working })
+		want = 0
+	}
 	e2Quit(t, a)
 	raw, err := os.ReadFile(a.log)
-	if err != nil || strings.Count(string(raw), quitStorageOffWord) != 1 {
-		t.Fatalf("desktop engine did not log exactly one local-save receipt: %v, %s", err, raw)
+	if got := strings.Count(string(raw), quitStorageOffWord); err != nil || got != want {
+		t.Fatalf("desktop engine logged %d local-only receipts, want %d: %v", got, want, err)
 	}
 }
 

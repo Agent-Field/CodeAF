@@ -171,12 +171,8 @@ func (i *introduction) verdict() ([]byte, error) {
 	return said, nil
 }
 
-// took tells the other device that its answer was read and is being kept.
-//
-// THE WORD IS SENT ONLY ONCE THIS DEVICE HAS DECIDED TO KEEP THE ANSWER, and
-// before it writes any of it. A reply that a relay changed on the way was never
-// read, and a grant this device refuses is not kept; telling the other device
-// either was would have it report a pairing that never happened here.
+// took acknowledges a refusal or confirms that the joining device has kept
+// the approved grant. Refused or failed adoptions send no confirmation.
 func (i *introduction) took() error { return i.ln.acknowledge() }
 
 // offered is the other half, after it has read message 3 and opened it.

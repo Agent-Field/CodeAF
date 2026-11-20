@@ -1119,6 +1119,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	b := &appBackend{
 		keys:      keys,
 		state:     &appState{},
+		chats:     appChats{publicationWake: make(chan struct{}, 1)},
 		turnLong:  appTurnLong,
 		toolQuiet: appToolQuiet,
 		follows:   map[string]*appFollow{},
@@ -1142,6 +1143,7 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 	// (config.AppCredentials.Keep, appkept_credentials.go), and comes back
 	// with keys.set at the next.
 	keys.OnKept(b.queueCredential)
+	keys.OnSynced(b.queueSyncedCredential)
 	b.stopSyncedSettings = b.listenSyncedSettings()
 	b.devices = b.listenDevices()
 	b.stopPhases = b.listenPhases()
@@ -3815,12 +3817,18 @@ var appRecords = session.NewRecordCache(session.RecordCacheLimits{})
 // Entries reads the agent's transcript off the disk, whether or not a
 // conversation is held for it: the journal is written as the turn goes.
 func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, bool, error) {
+	page, err := b.EntriesWithFallback(id, before, limit)
+	return page.Entries, page.More, err
+}
+
+func (b *appBackend) EntriesWithFallback(id, before string, limit int) (appwire.EntriesResult, error) {
 	a, err := b.find(id)
 	if err != nil {
-		return nil, false, err
+		return appwire.EntriesResult{}, err
 	}
-	if page, more, used, err := b.remoteEntries(a, before, limit); used {
-		return page, more, appEntriesBusy(err)
+	page, more, remote, remoteErr := b.remoteEntries(a, before, limit)
+	if remote && remoteErr == nil {
+		return appwire.EntriesResult{Entries: page, More: more}, nil
 	}
 
 	var transcript string
@@ -3833,10 +3841,13 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 		}
 	})
 	if transcript == "" {
-		return []appwire.Entry{}, false, nil
+		return appwire.EntriesResult{}, appEntriesBusy(remoteErr)
 	}
-	var page []appwire.Entry
-	var more bool
+	if remoteErr != nil {
+		if _, err := os.Stat(transcript); err != nil {
+			return appwire.EntriesResult{}, appEntriesBusy(remoteErr)
+		}
+	}
 	err = appRecords.WithRecord(transcript, func(record session.Record) error {
 		footers, err := b.readAppFooters(transcript)
 		if err != nil {
@@ -3857,10 +3868,10 @@ func (b *appBackend) Entries(id, before string, limit int) ([]appwire.Entry, boo
 		return err
 	})
 	if err != nil {
-		return nil, false, appEntriesBusy(err)
+		return appwire.EntriesResult{}, appEntriesBusy(err)
 	}
 	appMarkStepBrief(page, transcript)
-	return page, more, nil
+	return appwire.EntriesResult{Entries: page, More: more, LocalFallback: remoteErr != nil}, nil
 }
 
 // appEntriesBusy says a reading refused at the gate as busy, so a client asks

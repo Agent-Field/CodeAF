@@ -4236,10 +4236,24 @@ func (a *Agent) enqueueJobNoteUnowed(text string) {
 	a.enqueueNote(note)
 }
 
-// enqueueJobNoteQuiet keeps each successful process ending intact until the
-// next turn. There is no batch key: separate jobs must keep separate endings.
+// enqueueJobNoteQuiet keeps each successful process ending as context without
+// waking the model. An idle chat journals it now so a handoff can carry it.
 func (a *Agent) enqueueJobNoteQuiet(text string) {
-	a.enqueueAmbient(userMessage{message: textMessage("user", text), batch: true})
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	note := userMessage{message: textMessage("user", text), batch: true, authored: true}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	if a.running || !a.opened {
+		a.ambient = append(a.ambient, note)
+		return
+	}
+	a.recordUserLocked(batchSessionNotes([]userMessage{note}))
 }
 
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by

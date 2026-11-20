@@ -25,22 +25,41 @@ type appKeptCredentials struct {
 }
 
 type appKeptCredential struct {
-	change appwire.CredentialChange
-	at     time.Time
+	change   appwire.CredentialChange
+	at       time.Time
+	revision uint64
 }
 
 // queueCredential is config.AppCredentials' listener: key "" is a removal.
 func (b *appBackend) queueCredential(provider, key string) {
-	c := appwire.CredentialChange{Provider: provider, Key: key, Removed: key == ""}
-	func() {
+	b.enqueueCredential(appwire.CredentialChange{Provider: provider, Key: key, Removed: key == ""}, 0)
+}
+
+func (b *appBackend) queueSyncedCredential(provider, previous, key string, revision uint64) {
+	b.enqueueCredential(appwire.CredentialChange{Provider: provider, Key: key, Removed: key == "", ExpectedKey: &previous}, revision)
+}
+
+func (b *appBackend) enqueueCredential(c appwire.CredentialChange, revision uint64) {
+	provider := c.Provider
+	queued := func() bool {
 		k := &b.credentials
 		k.mu.Lock()
 		defer k.mu.Unlock()
+		if revision != 0 && b.keys.Handed(provider) != revision {
+			return false
+		}
 		now := b.now()
 		kept := k.pending[:0]
 		for _, p := range k.pending {
-			if p.change.Provider != provider && now.Sub(p.at) < appwire.CredentialsTakeLife {
+			if now.Sub(p.at) >= appwire.CredentialsTakeLife {
+				continue
+			}
+			if p.change.Provider != provider {
 				kept = append(kept, p)
+			} else if p.revision != 0 && p.revision+1 == revision {
+				// Native storage hasn't seen either change. Compare against the
+				// key before the first change when applying the latest one.
+				c.ExpectedKey = p.change.ExpectedKey
 			}
 		}
 		// A FULL QUEUE DROPS ITS OLDEST KEY TO KEEP, never a removal: a lost
@@ -55,8 +74,12 @@ func (b *appBackend) queueCredential(provider, key string) {
 			}
 			kept = append(kept[:drop], kept[drop+1:]...)
 		}
-		k.pending = append(kept, appKeptCredential{change: c, at: now})
+		k.pending = append(kept, appKeptCredential{change: c, at: now, revision: revision})
+		return true
 	}()
+	if !queued {
+		return
+	}
 	if p, ok := b.appProviderNamed(provider); ok {
 		b.keysMoved(provider)
 		// Native storage takes the key through credentials.take. Provider events
@@ -77,7 +100,7 @@ func (b *appBackend) CredentialsTake(context.Context) (appwire.CredentialsTaken,
 	now := b.now()
 	out := appwire.CredentialsTaken{Changes: []appwire.CredentialChange{}}
 	for _, p := range k.pending {
-		if now.Sub(p.at) < appwire.CredentialsTakeLife {
+		if now.Sub(p.at) < appwire.CredentialsTakeLife && (p.revision == 0 || b.keys.Handed(p.change.Provider) == p.revision) {
 			out.Changes = append(out.Changes, p.change)
 		}
 	}

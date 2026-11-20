@@ -966,7 +966,7 @@ type openFileSpec struct {
 	mode    os.FileMode
 }
 
-func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, stageInbox, mainInbox string) (bool, error) {
+func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, stageInbox string, transcriptOnly bool) (bool, error) {
 	cellKey, dedup, openCache, ok := parseKeys(f.Engine, c)
 	if !ok {
 		return false, nil
@@ -1072,6 +1072,9 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 
 	for _, e := range cellEntries {
 		name := string(e.Name)
+		if transcriptOnly && (e.Kind != "File" || name != filepath.Base(cell.TranscriptPath)) {
+			continue
+		}
 		oid, ok := e.Target.id32()
 		if !ok {
 			continue
@@ -1178,6 +1181,9 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 	// bringing them costs the open no round of its own.
 	var instructionSpecs []openFileSpec
 	for _, name := range OpenInstructionFiles {
+		if transcriptOnly {
+			break
+		}
 		ie, _, ok := findDirEntryInPages(rootOID, name, metaByOID)
 		if !ok || ie.Kind != "File" {
 			continue
@@ -1253,7 +1259,9 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		loadObjectsFromDir(stageInbox, cellKey, rawByRID, metaByOID)
 	}
 
-	writeOpenStateToCache(openCache, cellKey, dedup, headOID, rawByRID, metaByOID)
+	if !transcriptOnly {
+		writeOpenStateToCache(openCache, cellKey, dedup, headOID, rawByRID, metaByOID)
+	}
 	for i, spec := range files {
 		var buf bytes.Buffer
 		buf.Grow(int(blobs[i].TotalLen))
@@ -1282,8 +1290,10 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 			return false, err
 		}
 	}
-	if _, err := os.Stat(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath))); err != nil {
-		return false, nil
+	if !transcriptOnly {
+		if _, err := os.Stat(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath))); err != nil {
+			return false, nil
+		}
 	}
 	return true, nil
 }

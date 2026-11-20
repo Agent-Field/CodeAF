@@ -33,7 +33,17 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 	var connected bool
 	var version uint64
 	var vault string
+	var refreshRetry *time.Timer
+	var refreshLater <-chan time.Time
+	var refreshWait time.Duration
+	stopRefresh := func() {
+		if refreshRetry != nil {
+			refreshRetry.Stop()
+		}
+		refreshLater = nil
+	}
 	defer func() {
+		stopRefresh()
 		if retry != nil {
 			retry.Stop()
 		}
@@ -51,10 +61,14 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 		if err != nil || !ok {
 			return err
 		}
-		if source != nil && (source.Relay != s.Relay || source.Identity.ID() != s.Identity.ID() || source.Device.ID() != s.Device.ID()) && feed != nil {
-			feed.Close()
+		if source != nil && (source.Relay != s.Relay || source.Identity.ID() != s.Identity.ID() || source.Device.ID() != s.Device.ID()) {
+			if feed != nil {
+				feed.Close()
+			}
 			feed, changes, up, connected, version = nil, nil, false, false, 0
 			vault = ""
+			stopRefresh()
+			refreshWait = 0
 		}
 		source = s
 		// Bind the observer before this new pairing's first request returns.
@@ -75,12 +89,22 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 		return syncsetup.PutOwnDevice(one, s.Dir, s.Identity, s.Device, devname.Name(d.home))
 	}
 	refresh := func() {
+		stopRefresh()
 		d.op.Lock()
 		defer d.op.Unlock()
 		one, cancel := context.WithTimeout(ctx, syncsetup.DeviceRequestWithin)
 		defer cancel()
 		listing, err := source.Dir.List(one)
-		if err == nil && listing.Identity.Vault != vault {
+		if err != nil {
+			if ctx.Err() == nil && !errors.Is(err, directory.ErrRevoked) && !errors.Is(err, directory.ErrRotated) {
+				refreshWait = min(cellsync.MaxBackoff, max(cellsync.DefaultInterval, 2*refreshWait))
+				refreshRetry = time.NewTimer(refreshWait)
+				refreshLater = refreshRetry.C
+			}
+			return
+		}
+		refreshWait = 0
+		if listing.Identity.Vault != vault {
 			vault = listing.Identity.Vault
 			if d.stateChanged != nil {
 				d.stateChanged()
@@ -113,6 +137,8 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 				break waiting
 			case <-later:
 				break waiting
+			case <-refreshLater:
+				refresh()
 			case <-changes:
 				state := feed.State()
 				reconnected := state.Up && !up && connected
@@ -120,6 +146,9 @@ func (d *appDevices) publishOwn(ctx context.Context) {
 				up = state.Up
 				connected = connected || up
 				version = state.Version
+				if !up {
+					stopRefresh()
+				}
 				if reconnected {
 					refresh()
 					break waiting

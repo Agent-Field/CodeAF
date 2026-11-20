@@ -69,7 +69,6 @@ type appLocalChat struct {
 func (b *appBackend) startLocalChatPublication() {
 	c := &b.chats
 	c.publicationDone = make(chan struct{})
-	c.publicationWake = make(chan struct{}, 1)
 	guard.Go("app/existing-chats", func() {
 		defer close(c.publicationDone)
 		ctx, cancel := context.WithCancel(context.Background())

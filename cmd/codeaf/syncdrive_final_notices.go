@@ -20,7 +20,7 @@ func (l *liveDrive) closeSaved(ctx context.Context) error {
 		}
 		return err
 	}
-	if l.localGate == nil || l.localGate.superseded() || syncsetup.StorageForHome(home.Dir()) != "off" {
+	if l.localGate == nil || l.localGate.superseded() || !syncsetup.ChatStorageOffForHome(home.Dir()) {
 		return nil
 	}
 	if drive := l.started(); drive != nil {

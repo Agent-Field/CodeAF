@@ -30,6 +30,8 @@ type AppCredentials struct {
 	// kept hears every credential a door gave this process (Keep, Forget),
 	// so the app can keep it for the next launch ([AppCredentials.OnKept]).
 	kept atomic.Pointer[func(provider, key string)]
+	// synced hands the prior value and its replacement to the secure-store guard.
+	synced atomic.Pointer[func(provider, previous, key string, revision uint64)]
 }
 
 var appCredentials atomic.Pointer[AppCredentials]
@@ -83,6 +85,10 @@ func (c *AppCredentials) OnKept(listen func(provider, key string)) {
 	c.kept.Store(&listen)
 }
 
+func (c *AppCredentials) OnSynced(listen func(provider, previous, key string, revision uint64)) {
+	c.synced.Store(&listen)
+}
+
 // Keep holds a credential a door gave this process and hands it to the app
 // to keep. EVERY CREDENTIAL AN APP-RUN ENGINE IS GIVEN THROUGH A DOOR OUTLIVES
 // THE LAUNCH: the process keeps keys in memory only, so the app, which keeps
@@ -101,7 +107,7 @@ func (c *AppCredentials) KeepIf(provider, expected string, known bool, key strin
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
 	trace.Secret(key)
 	redact.Register(key)
-	applied := false
+	var revision uint64
 	c.change(func() {
 		current, present := c.keys[provider]
 		if current != expected || present != known {
@@ -109,12 +115,17 @@ func (c *AppCredentials) KeepIf(provider, expected string, known bool, key strin
 		}
 		c.keys[provider] = key
 		c.handed[provider]++
-		applied = true
+		revision = c.handed[provider]
 	})
-	if applied {
+	if revision == 0 {
+		return false
+	}
+	if listen := c.synced.Load(); listen != nil {
+		(*listen)(provider, expected, key, revision)
+	} else {
 		c.tell(provider, key)
 	}
-	return applied
+	return true
 }
 
 // Forget removes a credential a door took away and tells the app to remove

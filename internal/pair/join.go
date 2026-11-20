@@ -95,21 +95,16 @@ func Join(ctx context.Context, route Mailbox, j Joining, typed string, ui JoinUI
 	if err != nil {
 		return Joined{}, err
 	}
-	return adoptWithDevice(j, grant, nil, func() error {
-		// A person who stopped this side before it decided has not paired.
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := intro.took(); errors.Is(err, pairbox.ErrGone) {
-			// The other device stopped waiting and deleted its mailbox, so it
-			// does not say they are paired; nor, with nothing written, does this.
-			return ErrDidNotFinish
-		}
-		// Any other failure may still have reached the mailbox. Keeping the
-		// grant then leaves the other device telling a person to look here,
-		// which is true, and never the reverse.
-		return nil
-	})
+	if err := ctx.Err(); err != nil {
+		return Joined{}, err
+	}
+	joined, err := adoptWithDevice(j, grant, nil)
+	if err == nil {
+		// The other device can only confirm after this home has kept the grant.
+		// If the confirmation is lost, this home still holds the approved grant.
+		_ = intro.took()
+	}
+	return joined, err
 }
 
 // joinRun is the exchange: it answers the grant and the introduction it came
@@ -173,25 +168,11 @@ func joinOffer(label string, platform ...string) ([]byte, error) {
 // adopt takes the grant into this home. Submitted chats require explicit
 // replacement; a startup-only home retains its state through the durable switch.
 func adopt(j Joining, grant Grant) (Joined, error) {
-	return adoptWithDevice(j, grant, nil, nil)
+	return adoptWithDevice(j, grant, nil)
 }
 
-// adoptWithDevice is adopt with the device to install, when the grant came with
-// one, and agree: what to do the moment this computer has decided to keep the
-// grant, which a pairing by code uses to tell the device that sent it.
-//
-// EVERY REFUSAL COMES BEFORE AGREE, AND AGREE COMES BEFORE ANY WRITE THE GRANT
-// CAUSES. So the device that sent the grant hears it was kept exactly when it
-// was. An error from agree stops the adoption with nothing of the grant
-// written. Outcomes that write nothing (these chats are here already) still
-// tell it, and do not wait on its answer.
-func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev, agree func() error) (Joined, error) {
-	keep := func() error {
-		if agree == nil {
-			return nil
-		}
-		return agree()
-	}
+// adoptWithDevice installs the device included in a pairing-link grant.
+func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
 	recovered, err := j.resumeApproved()
 	if err != nil {
 		if recovered != nil {
@@ -205,7 +186,6 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev, agree func() err
 			return *recovered, err
 		}
 		if held.ID() == grant.Identity.ID() {
-			_ = keep()
 			return *recovered, nil
 		}
 	}
@@ -216,7 +196,6 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev, agree func() err
 		return Joined{}, err
 	}
 	if err == nil && !j.Replace && !j.Revoked && held.ID() == grant.Identity.ID() {
-		_ = keep()
 		return Joined{Already: true}, nil
 	}
 	if err == nil && !j.Replace && held.ID() != grant.Identity.ID() && !slices.Contains(grant.Replaces, held.ID()) {
@@ -244,38 +223,25 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev, agree func() err
 			// A removed device needs a fresh key, while its identity and local
 			// state stay in place. Only explicit replacement runs cleanup.
 			if j.Revoked {
-				if err := keep(); err != nil {
-					return Joined{}, err
-				}
 				return j.merge(grant, dev, held.CellKey())
 			}
-			_ = keep()
 			return Joined{Already: true}, nil
 		}
 		// Explicit replacement after approval renews this computer's key even
 		// when the shared account is unchanged, because its old key may be
 		// revoked: the replacing merge below mints a new device.
 	case err == nil && slices.Contains(grant.Replaces, held.ID()):
-		if err := keep(); err != nil {
-			return Joined{}, err
-		}
 		return Joined{Successor: true}, follow(j, held, grant)
 	}
 	if err != nil && !errors.Is(err, identity.ErrNone) {
 		return Joined{}, err
 	}
 	if j.Replace {
-		if err := keep(); err != nil {
-			return Joined{}, err
-		}
 		return j.merge(grant, dev, nil)
 	}
 	if err == nil {
 		if merge, checkErr := identity.Joinable(j.Home); checkErr != nil || !merge {
 			return Joined{}, differentChats(j.Home)
-		}
-		if err := keep(); err != nil {
-			return Joined{}, err
 		}
 		return j.merge(grant, dev, held.CellKey())
 	}
@@ -283,9 +249,6 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev, agree func() err
 	// its own, which Adopt would refuse only after making it an identity.
 	if refuses, err := identity.AdoptRefuses(j.Home, grant.Identity); err != nil || refuses {
 		return Joined{}, legacyRefusal(err)
-	}
-	if err := keep(); err != nil {
-		return Joined{}, err
 	}
 	if _, err := identity.Adopt(j.Home, grant.Identity, false); err != nil {
 		return Joined{}, adoptFailure(err)

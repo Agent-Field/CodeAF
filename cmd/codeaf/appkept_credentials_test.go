@@ -18,9 +18,11 @@ func TestQAReceivedProviderRefreshesAndReachesTheNativeKeeper(t *testing.T) {
 	rec := newAppRecorder()
 	b := newAppBackend(rec, appOpenInProcess)
 	defer b.Close()
-	credentials.Keep("aiand", "FAKE-received-provider-key")
+	if !credentials.KeepIf("aiand", "", false, "FAKE-received-provider-key") {
+		t.Fatal("the received provider key was not applied")
+	}
 	taken, err := b.CredentialsTake(context.Background())
-	if err != nil || len(taken.Changes) != 1 || taken.Changes[0].Provider != "aiand" || taken.Changes[0].Key != "FAKE-received-provider-key" {
+	if err != nil || len(taken.Changes) != 1 || taken.Changes[0].Provider != "aiand" || taken.Changes[0].Key != "FAKE-received-provider-key" || taken.Changes[0].ExpectedKey == nil || *taken.Changes[0].ExpectedKey != "" {
 		t.Fatal("the received provider key was not handed to the native keeper once")
 	}
 	rec.waitFor(t, 2*time.Second, func(event string, data any) bool {
@@ -30,6 +32,36 @@ func TestQAReceivedProviderRefreshesAndReachesTheNativeKeeper(t *testing.T) {
 		changed := data.(appwire.ProviderChanged)
 		return changed.Provider.ID == "aiand" && changed.Provider.SignedIn && changed.Key == ""
 	})
+}
+
+func TestQASyncedCredentialQueueKeepsOriginalGuardAndDropsSupersededChanges(t *testing.T) {
+	appDayProfile(t)
+	keys := config.NewAppCredentials()
+	defer config.UseAppCredentials(keys)()
+	b := newAppBackend(newAppRecorder(), appOpenInProcess)
+	defer b.Close()
+	provider := "aiand"
+	keys.Set(provider, "FAKE-original-key")
+	if !keys.KeepIf(provider, "FAKE-original-key", true, "FAKE-intermediate-key") ||
+		!keys.KeepIf(provider, "FAKE-intermediate-key", true, "FAKE-current-key") {
+		t.Fatal("app did not apply both synced changes")
+	}
+	pending, err := b.CredentialsTake(t.Context())
+	if err != nil || len(pending.Changes) != 1 {
+		t.Fatal("app did not combine the synced changes")
+	}
+	change := pending.Changes[0]
+	if change.Key != "FAKE-current-key" || change.ExpectedKey == nil || *change.ExpectedKey != "FAKE-original-key" {
+		t.Fatal("combined change did not keep the original comparison and the latest value")
+	}
+	if !keys.KeepIf(provider, "FAKE-current-key", true, "FAKE-late-sync-key") {
+		t.Fatal("app did not apply the synced change")
+	}
+	keys.Remove(provider)
+	pending, err = b.CredentialsTake(t.Context())
+	if err != nil || len(pending.Changes) != 0 {
+		t.Fatal("app took a change superseded by the local disconnect")
+	}
 }
 
 // AN APP-RUN ENGINE KEEPS ITS CONNECTIONS ACROSS LAUNCHES. A credential a

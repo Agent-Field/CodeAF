@@ -96,28 +96,42 @@ func TestIdleRelease_C2_BackgroundTaskRetainsOwnership(t *testing.T) {
 }
 
 func TestQAHandoffWaitsForTheJobExitNoteDelivery(t *testing.T) {
-	watch := &cellstore.SealWatch{}
-	watch.Waiting()
-	a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) { cfg.Seals = watch })
-	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	old := a.jobs.notify
-	a.jobs.notify = func(text string) { close(entered); <-release; old(text) }
-	defer func() { close(release); settlementWait(t, done, "exit-note delivery") }()
-	job := settlementJob(t, a.jobs)
-	job.owed = true
-	go func() { a.jobs.settleExit(job, 0); close(done) }()
-	select {
-	case <-entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("exit note did not reach delivery")
+	for _, tc := range []struct {
+		name   string
+		settle func(*jobRegistry, *job)
+	}{
+		{"process", func(r *jobRegistry, job *job) { r.settleExit(job, 0) }},
+		{"worker", func(r *jobRegistry, job *job) { r.finish(job, 0, "background worker finished") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			watch := &cellstore.SealWatch{}
+			watch.Waiting()
+			a, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) { cfg.Seals = watch })
+			entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			old := a.jobs.notify
+			a.jobs.notify = func(text string) { close(entered); <-release; old(text) }
+			job := settlementJob(t, a.jobs)
+			job.owed = true
+			go func() { defer close(done); tc.settle(a.jobs, job) }()
+			defer func() { close(release); settlementWait(t, done, "exit-note delivery") }()
+			settlementWait(t, entered, "exit note to reach delivery")
+			select {
+			case <-job.done:
+			default:
+				t.Fatal("job is still running")
+			}
+			if a.idleForHandoff() {
+				t.Fatal("handoff became ready between job exit and its promised note")
+			}
+		})
 	}
-	select {
-	case <-job.done:
-	default:
-		t.Fatal("job is still running")
-	}
-	if a.idleForHandoff() {
-		t.Fatal("handoff became ready between process exit and its promised note")
-	}
+}
 
+func TestQAHandoffAllowsQueuedProgressFromAStoppedWatch(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	a.enqueueWatchNote("build", "build watch: a new line", false)
+	if len(ambientQueue(a)) != 1 {
+		t.Fatal("watch progress was not queued")
+	}
+	waitFor(t, "handoff after watch progress", a.idleForHandoff)
 }

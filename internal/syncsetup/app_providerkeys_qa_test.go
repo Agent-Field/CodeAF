@@ -4,20 +4,22 @@ import (
 	"bytes"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
+
+func (r *keyRig) appMachine(credentials *config.AppCredentials) *keyMachine {
+	defer config.UseAppCredentials(credentials)()
+	return r.machine()
+}
 
 func TestQADesktopProviderKeysUseVaultAndCredentialHandoff(t *testing.T) {
 	r := newKeyRig(t)
 	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
-	makeApp := func(credentials *config.AppCredentials) *keyMachine {
-		restore := config.UseAppCredentials(credentials)
-		defer restore()
-		return r.machine()
-	}
-	a, b := makeApp(appA), makeApp(appB)
+	a, b := r.appMachine(appA), r.appMachine(appB)
 	kept := map[string]string{}
 	appB.OnKept(func(provider, key string) { kept[provider] = key })
 	// Pairing has completed before either provider key is added.
@@ -50,5 +52,120 @@ func TestQADesktopProviderKeysUseVaultAndCredentialHandoff(t *testing.T) {
 	a.pull(t)
 	if key, known := appA.Key("aiand"); !known || key != "" {
 		t.Fatal("disconnecting a provider did not propagate through the encrypted vault")
+	}
+}
+
+func TestQADesktopProviderKeyUnreadAtLaunchDoesNotDeletePeerKeys(t *testing.T) {
+	r := newKeyRig(t)
+	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+	a, b := r.appMachine(appA), r.appMachine(appB)
+	appA.Set(modelsource.DefaultID, fakeKeyOne)
+	a.push(t)
+	b.pull(t)
+
+	// Restart A with the same vault and ledger before the native credential
+	// store has supplied any keys. A round can run even if the store is locked.
+	func() {
+		defer config.UseAppCredentials(config.NewAppCredentials())()
+		a.Carry = []vaultsync.Carrier{providerKeys(a.profile, a.home)}
+	}()
+	a.push(t)
+	b.pull(t)
+	if got, _ := appB.Key(modelsource.DefaultID); got != fakeKeyOne {
+		t.Fatal("a missing startup handoff removed the peer's saved key")
+	}
+}
+
+func TestQADesktopProviderKeyDisconnectDuringPullStaysRemoved(t *testing.T) {
+	r := newKeyRig(t)
+	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+	a, b := r.appMachine(appA), r.appMachine(appB)
+	kept := 0
+	appB.OnKept(func(string, string) { kept++ })
+	mustNil(t, b.Capture())
+	appB.Remove(modelsource.DefaultID)
+	for _, remote := range []string{fakeKeyOne, fakeKeyTwo} {
+		appA.Set(modelsource.DefaultID, remote)
+		a.push(t)
+		// Pull preserves the pre-request snapshot, including on a repeated merge.
+		b.pull(t)
+		if got, known := appB.Key(modelsource.DefaultID); !known || got != "" || kept != 0 {
+			t.Fatal("the incoming key reconnected a locally disconnected provider")
+		}
+	}
+	b.push(t)
+	a.pull(t)
+	if got, known := appA.Key(modelsource.DefaultID); !known || got != "" {
+		t.Fatal("the next capture failed to share the protected disconnect")
+	}
+}
+
+func TestQADesktopProviderKeySecondMergeFollowsAnAppliedRemoval(t *testing.T) {
+	r := newKeyRig(t)
+	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+	a, b := r.appMachine(appA), r.appMachine(appB)
+	appA.Set(modelsource.DefaultID, fakeKeyOne)
+	a.push(t)
+	b.pull(t)
+	mustNil(t, b.Capture())
+
+	appA.Remove(modelsource.DefaultID)
+	a.push(t)
+	b.pull(t)
+	if got, known := appB.Key(modelsource.DefaultID); !known || got != "" {
+		t.Fatal("the first merge did not apply the upstream removal")
+	}
+	appA.Set(modelsource.DefaultID, fakeKeyTwo)
+	a.push(t)
+	b.pull(t)
+	if got, _ := appB.Key(modelsource.DefaultID); got != fakeKeyTwo {
+		t.Fatal("the second merge mistook its own applied removal for a local edit")
+	}
+}
+
+func TestQADesktopProviderKeysKeepEndpointCredentialsLocal(t *testing.T) {
+	r := newKeyRig(t)
+	legacy := r.machine()
+	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+	a, b := r.appMachine(appA), r.appMachine(appB)
+	observer := r.machine()
+	rows := func(address, key string) []config.PersistedSource {
+		return []config.PersistedSource{
+			{ID: modelsource.CustomID, Written: "custom", Address: address, Key: key},
+			{ID: "custom-second", Written: "second", Address: address, Key: key},
+			{ID: "ollama", Written: "ollama", Address: address, Key: key},
+		}
+	}
+	mustNil(t, config.WriteSources(observer.profile, rows("https://first.invalid/v1", "")))
+	legacy.saveConfig(t, map[string]any{config.KeyAPIKey: fakeKeyOne, "model_sources": rows("https://first.invalid/v1", fakeKeyOne)}, time.Now())
+	mustNil(t, config.WriteSources(a.profile, rows("https://first.invalid/v1", fakeKeyTwo)))
+	mustNil(t, config.WriteSources(b.profile, rows("https://other.invalid/v1", "")))
+	legacy.push(t)
+	a.push(t)
+	b.pull(t)
+	if got, _ := appB.Key(modelsource.DefaultID); got != fakeKeyOne {
+		t.Fatal("the desktop did not restore a built-in key from the legacy slot")
+	}
+	observer.pull(t)
+	observed, err := config.ReadProviderKeys(observer.profile)
+	mustNil(t, err)
+	for _, id := range []string{modelsource.CustomID, "custom-second", "ollama"} {
+		if _, known := appB.Key(id); known {
+			t.Fatalf("an unrelated endpoint received the shared %s key", id)
+		}
+		if observed.Sources[id] != fakeKeyOne {
+			t.Fatalf("desktop publication changed the legacy slot for %s", id)
+		}
+		appA.Set(id, fakeKeyTwo)
+	}
+	a.push(t)
+	b.pull(t)
+	observer.pull(t)
+	observed, err = config.ReadProviderKeys(observer.profile)
+	mustNil(t, err)
+	for _, id := range []string{modelsource.CustomID, "custom-second", "ollama"} {
+		if _, known := appB.Key(id); known || observed.Sources[id] != fakeKeyOne {
+			t.Fatalf("a secure-store credential changed another machine's %s key", id)
+		}
 	}
 }

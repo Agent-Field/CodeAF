@@ -2,6 +2,7 @@ package syncsetup
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -44,6 +45,9 @@ func TestLivePreviewGetsTitleAndSavedConversationWithoutTaking(t *testing.T) {
 	var summary session.Summary
 	err = r.b.ReadChat(ctx, r.cell.ID, before, func(c cell.Cell) error {
 		summary, _ = session.Peek(filepath.Join(c.Root, cell.TranscriptPath))
+		if _, err := os.Stat(filepath.Join(c.Root, cell.MetaPath)); !os.IsNotExist(err) {
+			t.Fatalf("preview staged other chat state: %v", err)
+		}
 		return nil
 	})
 	if err != nil || summary.LastUser != "What happened?" || summary.LastAssistant != "The checks passed." {

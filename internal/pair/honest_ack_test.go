@@ -1,9 +1,8 @@
 package pair
 
 // The word that ends a pairing on the device that showed the code. The joining
-// device says it has the answer only once it has decided to keep it, and before
-// it writes any of it; a device that refuses says nothing, so the device that
-// approved never says two computers are paired when one of them refused.
+// device confirms an approved grant only after saving it. A device that
+// refuses or fails to save says nothing.
 
 import (
 	"context"
@@ -118,22 +117,18 @@ func TestRefusalIsStillAcknowledged(t *testing.T) {
 	untouched(t, r.homeB)
 }
 
-// THE WORD GOES OUT BEFORE THE GRANT IS WRITTEN. When the joining computer posts
-// it, nothing of the grant is on its disk yet; the pairing then finishes on
-// both, and the approver names the computer it paired.
-func TestWordPrecedesTheFirstWrite(t *testing.T) {
+func TestWordFollowsTheDurablePairing(t *testing.T) {
 	r, hostile := hostileRig(t)
-	// A computer that has been started and not used: it keeps its state through
-	// the recorded switch, whose every step comes after the word.
+	// A computer that has been started and not used keeps its state through
+	// the recorded switch.
 	if _, err := identity.EnsureSolo(r.homeB); err != nil {
 		t.Fatal(err)
 	}
-	before := filesIn(t, r.homeB)
-	var early []string
-	posted := false
+	var atConfirmation string
 	hostile.on(5, func(h *hostileBox, w write) (int, error) {
-		posted = true
-		early = changedBesidesLock(t, before, filesIn(t, r.homeB))
+		if held, err := identity.Load(r.homeB); err == nil {
+			atConfirmation = held.ID()
+		}
 		return h.storeAndRelease(w)
 	})
 
@@ -146,15 +141,37 @@ func TestWordPrecedesTheFirstWrite(t *testing.T) {
 	if end := offer.wait(t); end.err != nil || end.label != "laptop" {
 		t.Fatalf("A ended with %q, %v, want paired with laptop", end.label, end.err)
 	}
-	if !posted {
-		t.Fatal("B never said it kept the grant")
-	}
-	if len(early) != 0 {
-		t.Fatalf("B wrote %v before it said it kept the grant", early)
+	if atConfirmation != r.a.ID() {
+		t.Fatal("B confirmed before it held the grant")
 	}
 	if held, err := identity.Load(r.homeB); err != nil || held.ID() != r.a.ID() {
 		t.Fatalf("B does not hold the grant (%v)", err)
 	}
+}
+
+func TestFailedPairingInstallSendsNoConfirmation(t *testing.T) {
+	r, hostile := hostileRig(t)
+	if _, err := identity.EnsureSolo(r.homeB); err != nil {
+		t.Fatal(err)
+	}
+	blocked := errors.New("local write failed")
+	j := joiningAt(r.homeB)
+	j.After = func(step string) error {
+		if step == "staged" {
+			return blocked
+		}
+		return nil
+	}
+	a := newScreen()
+	offer := startOffer(t, r, bounded(t, refuseWithin), Grant{Identity: r.a}, a)
+	code := a.nextCode(t)
+	if _, err := Join(bounded(t, 20*time.Second), r.route, j, code.Shown(), newScreen()); !errors.Is(err, blocked) {
+		t.Fatalf("join error = %v, want local write failure", err)
+	}
+	if wrote := len(hostile.wroteBy(pairbox.SideB)); wrote != 2 {
+		t.Fatalf("B wrote %d messages, want no confirmation", wrote)
+	}
+	wantNotConfirmed(t, offer.wait(t), "laptop")
 }
 
 // A WORD THE RELAY LOSES LEAVES THE JOINING COMPUTER PAIRED, and the approver
@@ -175,9 +192,8 @@ func TestLostWordIsNotConfirmed(t *testing.T) {
 	}
 }
 
-// A MAILBOX THAT VANISHES WHILE THE APPROVER WAITS FOR THE WORD IS NOT A PAIRING
-// THAT FINISHED. Whether the joining computer read the answer first or not, it
-// keeps nothing, and the approver says it was not confirmed.
+// The approver cannot confirm when the mailbox vanishes. The joining computer
+// can still keep the grant if it already received the approval.
 func TestMailboxVanishesDuringTheWait(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -194,12 +210,18 @@ func TestMailboxVanishesDuringTheWait(t *testing.T) {
 			offer := startOffer(t, r, bounded(t, time.Minute), Grant{Identity: r.a}, a)
 			code := a.nextCode(t)
 			_, err := Join(bounded(t, 20*time.Second), r.route, joiningAt(r.homeB), code.Shown(), newScreen())
-			if !errors.Is(err, ErrDidNotFinish) && !errors.Is(err, ErrCodeDidNotWork) {
-				t.Fatalf("B was told %v, want that the pairing did not finish", err)
-			}
 			wantNotConfirmed(t, offer.wait(t), "laptop")
-			if changed := changedBesidesLock(t, map[string][]byte{}, filesIn(t, r.homeB)); len(changed) != 0 {
-				t.Fatalf("B wrote %v", changed)
+			if err == nil {
+				if held, err := identity.Load(r.homeB); err != nil || held.ID() != r.a.ID() {
+					t.Fatalf("B did not keep the approved grant (%v)", err)
+				}
+			} else {
+				if c.n == 5 || !errors.Is(err, ErrDidNotFinish) && !errors.Is(err, ErrCodeDidNotWork) {
+					t.Fatalf("B was told %v", err)
+				}
+				if changed := changedBesidesLock(t, map[string][]byte{}, filesIn(t, r.homeB)); len(changed) != 0 {
+					t.Fatalf("B wrote %v without receiving approval", changed)
+				}
 			}
 		})
 	}

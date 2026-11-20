@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"strings"
 	"time"
@@ -27,7 +28,8 @@ type Carrier interface {
 // which keys this machine could hold and how to change them.
 type Keyset interface {
 	// Values answers every key held here by name. ErrDamaged means what is held
-	// cannot be read, and is neither captured nor written over.
+	// cannot be read, and is neither captured nor written over. A keyset
+	// using GuardedExplicitKeys reports an explicit removal as an empty value.
 	Values() (map[string]string, error)
 	// Holds reports whether this machine has a place for the named key, so a
 	// restore cannot introduce keys it cannot use. GuardedKeys also checks it
@@ -45,13 +47,14 @@ type Keyset interface {
 //
 // A key is stamped only when its value changed since the last capture. The
 // ledger, a local file of digests (never the values), remembers what was last
-// captured or restored per key, which is also how a removal is told from a key
-// that was never here: only a key the ledger knows can be tombstoned.
+// captured or restored per key. By default, only a key the ledger knows can be
+// tombstoned.
 type Keyed struct {
-	scope         string
-	set           Keyset
-	ledger        string
-	ownedRemovals bool
+	scope            string
+	set              Keyset
+	ledger           string
+	ownedRemovals    bool
+	explicitRemovals bool
 	// Captured values guard an apply across the network round, not only the write.
 	baseline *map[string]string
 }
@@ -71,6 +74,14 @@ func GuardedKeys(kind string, set Keyset, ledgerPath string) Keyed {
 	k := Keys(kind, set, ledgerPath)
 	k.baseline = new(map[string]string)
 	k.ownedRemovals = true
+	return k
+}
+
+// GuardedExplicitKeys carries credentials whose absence may mean the local
+// store has yet to be read. Only an explicit empty value can remove a key.
+func GuardedExplicitKeys(kind string, set Keyset, ledgerPath string) Keyed {
+	k := GuardedKeys(kind, set, ledgerPath)
+	k.explicitRemovals = true
 	return k
 }
 
@@ -164,24 +175,54 @@ func (r *keyedRun) captureAll() error {
 		}
 	}
 	for name, value := range r.held {
+		if r.explicitRemovals && value == "" {
+			if err := r.captureExplicitRemoval(name); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := r.captureKey(name, value); err != nil {
 			return err
 		}
 	}
+	if r.explicitRemovals {
+		return nil
+	}
 	for name := range r.digests {
 		if _, still := r.held[name]; !still && (!r.ownedRemovals || r.set.Holds(name)) {
-			remove := func() error { return r.v.Delete(r.id(name)) }
-			if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
-				if vault, ok := r.v.(interface{ DeleteAt(string, time.Time) error }); ok {
-					remove = func() error { return vault.DeleteAt(r.id(name), timed.KeyTime(name)) }
-				}
-			}
-			if err := remove(); err != nil {
+			if err := r.captureRemoval(name); err != nil {
 				return err
 			}
-			delete(r.digests, name)
 		}
 	}
+	return nil
+}
+
+func (r *keyedRun) captureExplicitRemoval(name string) error {
+	if _, known := r.digests[name]; !known {
+		// A pull may have learned a key after the user disconnected it, so
+		// the first vault copy need not have a corresponding local digest.
+		if _, err := r.v.Get(r.id(name)); err != nil {
+			if errors.Is(err, keys.ErrNotFound) {
+				return nil
+			}
+			return err
+		}
+	}
+	return r.captureRemoval(name)
+}
+
+func (r *keyedRun) captureRemoval(name string) error {
+	remove := func() error { return r.v.Delete(r.id(name)) }
+	if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
+		if vault, ok := r.v.(interface{ DeleteAt(string, time.Time) error }); ok {
+			remove = func() error { return vault.DeleteAt(r.id(name), timed.KeyTime(name)) }
+		}
+	}
+	if err := remove(); err != nil {
+		return err
+	}
+	delete(r.digests, name)
 	return nil
 }
 
@@ -277,41 +318,53 @@ func (r *keyedRun) restoreAll() error {
 		}
 	}
 	if len(changes) > 0 {
-		apply := func() error { return r.set.Apply(changes) }
-		if guarded, ok := r.set.(interface {
-			ApplyIf(map[string]string, map[string]string) error
-		}); ok {
-			expected := r.held
-			if r.baseline != nil && *r.baseline != nil {
-				expected = *r.baseline
-			}
-			apply = func() error {
-				if err := guarded.ApplyIf(changes, expected); err != nil {
-					return err
-				}
-				// A CAS retry may restore twice in one network round. Advance
-				// only keys this restore could apply, so its own writes are
-				// not mistaken for local edits on the second merge.
-				if r.baseline != nil && *r.baseline != nil {
-					for name, value := range changes {
-						if r.held[name] == expected[name] {
-							if value == "" {
-								delete(expected, name)
-							} else {
-								expected[name] = value
-							}
-						}
-					}
-				}
-				return nil
-			}
-		}
-		if err := apply(); err != nil {
+		changes, err = r.applyChanges(changes)
+		if err != nil {
 			return err
 		}
 	}
 	r.record(live, changes)
 	return nil
+}
+
+func (r *keyedRun) applyChanges(changes map[string]string) (map[string]string, error) {
+	expected := r.held
+	hasBaseline := r.baseline != nil && *r.baseline != nil
+	if hasBaseline {
+		expected = *r.baseline
+	}
+	if guarded, ok := r.set.(interface {
+		ApplyMatching(changes, expected map[string]string) (applied map[string]string, err error)
+	}); ok {
+		applied, err := guarded.ApplyMatching(changes, expected)
+		if err == nil && hasBaseline {
+			// A second merge in a CAS retry must still protect local edits,
+			// but accept follow-up changes to entries applied by this pull.
+			maps.Copy(expected, applied)
+		}
+		return applied, err
+	}
+	if guarded, ok := r.set.(interface {
+		ApplyIf(map[string]string, map[string]string) error
+	}); ok {
+		if err := guarded.ApplyIf(changes, expected); err != nil {
+			return nil, err
+		}
+		if hasBaseline {
+			for name, value := range changes {
+				if r.held[name] != expected[name] {
+					continue
+				}
+				if value == "" {
+					delete(expected, name)
+				} else {
+					expected[name] = value
+				}
+			}
+		}
+		return changes, nil
+	}
+	return changes, r.set.Apply(changes)
 }
 
 func (r *keyedRun) liveKeys() (map[string]string, error) {

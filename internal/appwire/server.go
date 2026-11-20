@@ -489,11 +489,18 @@ var methods = map[string]method{
 		if p.Limit == 0 || p.Limit > MaxEntries {
 			p.Limit = MaxEntries
 		}
+		if reader, ok := e.(interface {
+			EntriesWithFallback(string, string, int) (EntriesResult, error)
+		}); ok {
+			result, err := reader.EntriesWithFallback(p.ID, p.Before, p.Limit)
+			result.Entries = nonNil(result.Entries)
+			return &result, err
+		}
 		entries, more, err := e.Entries(p.ID, p.Before, p.Limit)
 		if err != nil {
 			return nil, err
 		}
-		return &EntriesResult{nonNil(entries), more}, nil
+		return &EntriesResult{Entries: nonNil(entries), More: more}, nil
 	}),
 	"agents.set_models": typed(func(e Engine, p struct {
 		ID   string `json:"id"`
@@ -826,8 +833,9 @@ type (
 		Agents []Agent `json:"agents"`
 	}
 	EntriesResult struct {
-		Entries []Entry `json:"entries"`
-		More    bool    `json:"more"`
+		Entries       []Entry `json:"entries"`
+		More          bool    `json:"more"`
+		LocalFallback bool    `json:"local_fallback,omitempty"`
 	}
 	TurnResult struct {
 		Turn uint64 `json:"turn"`

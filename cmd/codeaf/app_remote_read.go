@@ -30,7 +30,7 @@ func (b *appBackend) remoteEntries(a *appAgent, before string, limit int) (page 
 		return
 	}
 	s, ok, openErr := syncsetup.Open(b.relayHome())
-	if openErr != nil || !ok || !s.StorageAllowed() || view.Cell.Lease.Device == s.Device.ID() {
+	if openErr != nil || !ok || s.ChatStorageOff() || view.Cell.Lease.Device == s.Device.ID() {
 		return
 	}
 	used = true

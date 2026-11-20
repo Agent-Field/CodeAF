@@ -96,10 +96,8 @@ func (l *boxLink) recv(waiting stage) ([]byte, error) {
 const ackWithin = 10 * time.Second
 
 // acknowledge posts the joining device's word that it keeps the answer. The
-// word is said after the exchange is over, once this device has decided and
-// before it writes anything, so it has a context of its own: the exchange's
-// may have ended, and the word must still go out. It answers what the mailbox
-// said, so a mailbox the other device already deleted stops the joining one.
+// word is said after accepting the verdict, so it has a context of its own:
+// the exchange's may have ended, and the word must still go out.
 //
 // THE WORD IS ONE PLAIN BYTE, AND ONLY ITS PRESENCE MEANS ANYTHING. A device
 // that will not keep the answer sends nothing, so a relay has no refusal to turn

@@ -1463,6 +1463,8 @@ func (r *jobRegistry) releaseParked() {
 // the caller already knows — and that this kind's note is a sentence, not bash
 // output.
 func (r *jobRegistry) finish(done *job, code int, note string) {
+	r.delivering.Add(1)
+	defer r.delivering.Add(-1)
 	if requested := r.settled(done, code); requested {
 		return
 	}

@@ -33,14 +33,13 @@ func (s *Sync) ReadChat(ctx context.Context, id string, view directory.CellView,
 	defer os.RemoveAll(root)
 	at := cell.Cell{ID: id, Root: root}
 	eng := cellstore.EngineFor("")
-	eng.DataRoot = filepath.Join(s.Home, "v3", "stores")
-	eng.WorkspaceOf = func(c cell.Cell) string { return c.Root }
-	sync := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
+	eng.DataRoot = filepath.Join(root, "store")
+	sync := eng.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, "")
 	scope := s.chatScope(id)
 	defer scope.Settle()
 	scope.Holder(view.Cell.Lease.Device)
-	fetch := cellsync.Fetcher{Engine: sync, Store: scope.Store, Dir: s.Dir, View: &view, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)}
-	if _, err := fetch.StageChat(ctx, at, view.Cell.Head, eng.StageState); err != nil {
+	fetch := cellsync.Fetcher{Engine: sync, Store: scope.Store, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)}
+	if err := fetch.StageTranscript(ctx, at, view.Cell.Head); err != nil {
 		return err
 	}
 	return read(at)
