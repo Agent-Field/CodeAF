@@ -259,7 +259,7 @@ keeps the value in a private file the agent's commands read (the model's own
 
 A question that asks for several things at once carries `fields: [{label, kind?,
 default?, choices?}]`, the asker's own named blanks in order (`kind` is `text`,
-`path`, `number`, `choice` or `time`). The app draws one labelled box per field
+`path`, `number`, `choice` or `time`), and `fields_prompt`, its one line over them. The app draws one labelled box per field
 and answers with `asks.answer` `text`, one `label: value` line per field, so the
 answer reads the same to an engine that never sent fields.
 

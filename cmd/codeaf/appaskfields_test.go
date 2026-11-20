@@ -15,7 +15,7 @@ import (
 // unnamed blanks left out.
 func TestAppAskOfCarriesTheQuestionsNamedFields(t *testing.T) {
 	q := session.Question{ID: 3, Kind: session.QuestionAsk, Head: "Your numbers for the FIRE plan", Input: session.InputShape{
-		Kind: session.InputBlanks,
+		Kind: session.InputBlanks, Prompt: " Rough numbers are fine ",
 		Blanks: []session.Blank{
 			{Label: "Monthly spend in Chennai", Kind: session.BlankNumber},
 			{Label: "  "},
@@ -23,7 +23,11 @@ func TestAppAskOfCarriesTheQuestionsNamedFields(t *testing.T) {
 			{Label: "Account type", Kind: session.BlankChoice, Choices: []string{"RRSP", "TFSA"}},
 		},
 	}}
-	got := appAskOf("a", q).Fields
+	ask := appAskOf("a", q)
+	if ask.FieldsPrompt != "Rough numbers are fine" {
+		t.Fatalf("fields prompt = %q", ask.FieldsPrompt)
+	}
+	got := ask.Fields
 	want := []appwire.AskField{
 		{Label: "Monthly spend in Chennai", Kind: "number"},
 		{Label: "Savings so far", Kind: "number", Default: "0"},

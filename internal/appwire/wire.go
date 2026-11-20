@@ -447,8 +447,12 @@ type Ask struct {
 	// Fields are the named blanks of a question that asks for several things
 	// at once, in the asker's order ([AskField]). Nil on every other ask.
 	Fields []AskField `json:"fields,omitempty"`
-	SayWhy bool       `json:"say_why,omitempty"`
-	Later  bool       `json:"later,omitempty"`
+	// FieldsPrompt is the asker's one line over those fields ("Rough numbers
+	// are fine; skip what you don't know"), and "" when it wrote none or there
+	// are no fields.
+	FieldsPrompt string `json:"fields_prompt,omitempty"`
+	SayWhy       bool   `json:"say_why,omitempty"`
+	Later        bool   `json:"later,omitempty"`
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`

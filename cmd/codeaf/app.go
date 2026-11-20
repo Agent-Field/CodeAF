@@ -2169,7 +2169,9 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
-	ask.Fields = appAskFields(q)
+	if ask.Fields = appAskFields(q); ask.Fields != nil {
+		ask.FieldsPrompt = strings.TrimSpace(q.Input.Prompt)
+	}
 	if q.SecretAnswer() {
 		ask.Secret = &appwire.AskSecret{Placeholder: strings.TrimSpace(q.Input.Prompt)}
 		// Only the model's own question keeps what was typed in a file
