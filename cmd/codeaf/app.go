@@ -1179,6 +1179,16 @@ func appAgentID(transcript string) string {
 // locked runs fn holding b.mu. Every critical section in this file goes
 // through it or opens with a deferred unlock, so a panic a guard absorbs never
 // leaves the lock held (internal/guard's lock law).
+//
+// appSessionLocks: NOTHING UNDER THIS LOCK CALLS INTO A CONVERSATION. b.mu is
+// the whole app's — every request from the desk passes through it — while a
+// conversation's methods (Title, Model, ModelIdentity, ContextUse, Usage) take
+// that conversation's own lock. Holding the first while waiting on the second
+// is how one stuck conversation can stall every other canvas — the shape qloop
+// run44 showed, where a different canvas's first message got no answer within
+// the desk's 30 s while one conversation's tool call was wedged. So a conversation's facts are read
+// before the lock is taken and only stored under it;
+// app_lock_order_test.go holds the line.
 func (b *appBackend) locked(fn func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -2074,6 +2084,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	}
 	users := conn.UserMessages
 	crewHeld := b.crewKeeps(a.view.ID)
+	// Read before the backend's lock: it takes the conversation's own
+	// (appSessionLocks).
+	contextUse := appContextOf(conn.Conv)
 	var view appwire.Agent
 	b.locked(func() {
 		if !a.counted {
@@ -2100,7 +2113,7 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		if !a.starting {
 			a.view.State = live.restingState()
 		}
-		a.view.Context = appContextOf(conn.Conv)
+		a.view.Context = contextUse
 		if a.view.UpdatedAt.IsZero() {
 			a.view.UpdatedAt = b.now()
 		}
@@ -4345,12 +4358,18 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 	if now := live.conn.Conv.Model(); now != "" {
 		model = now
 	}
+	// Read before the backend's lock: it takes the conversation's own
+	// (appSessionLocks).
+	var identity *session.ModelIdentity
+	if door, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+		state := door.ModelIdentity()
+		identity = &state
+	}
 	var view appwire.Agent
 	b.locked(func() {
 		a.view.Model = model
-		if door, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
-			state := door.ModelIdentity()
-			a.view.ModelIdentity = &state
+		if identity != nil {
+			a.view.ModelIdentity = identity
 		}
 		view = a.view
 	})

@@ -4007,7 +4007,12 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		recorded.Execute = func(runCtx context.Context, runArgs json.RawMessage) (string, bool, error) {
 			return a.executeTaskTool(runCtx, observedTool, running, runArgs)
 		}
-		text, isError, err := a.executeRecorded(callCtx, recorded, args)
+		// A BASH CALL ALWAYS COMES BACK (bash_backstop.go): the dispatcher holds
+		// a clock of its own outside the tool, so a call wedged anywhere on its
+		// way back is answered for rather than holding the turn.
+		text, isError, err := a.executeBashBackstopped(callCtx, call.ID, tool, args, func() (string, bool, error) {
+			return a.executeRecorded(callCtx, recorded, args)
+		})
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is

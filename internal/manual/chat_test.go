@@ -677,6 +677,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},
 		{"I set a search key and nothing changed", "what-i-can-do"},
+		{"the command hangs and the chat is stuck forever", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
 		// A finished task's room after codeaf was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.
