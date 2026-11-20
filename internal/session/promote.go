@@ -174,9 +174,9 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 	// (task_job_park.go), so a search adopted at the clock would hold the worker
 	// exactly as long as it held the call; the quiet clock is what ends it, and
 	// the handoff clock is left unarmed for it.
-	quiet := p.agent.armSearchQuiet(call)
+	searchCut := p.agent.armSearchQuiet(call)
 	var timer *time.Timer
-	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 && quiet == nil {
+	if seconds := p.agent.config.BashBackgroundAfterSeconds; seconds > 0 && searchCut == nil {
 		wait := time.Duration(seconds)*time.Second - call.RunningFor()
 		if wait < 0 {
 			wait = 0
@@ -202,15 +202,15 @@ func (p bashPromotion) Started(call *bare.BashCall) func() {
 			}
 		})
 	}
-	if timer == nil && quiet == nil && p.callID == "" && p.result == nil {
+	if timer == nil && searchCut == nil && p.callID == "" && p.result == nil {
 		return nil
 	}
 	return func() {
 		if timer != nil {
 			timer.Stop()
 		}
-		if quiet != nil {
-			quiet()
+		if searchCut != nil {
+			searchCut()
 		}
 		if p.callID != "" {
 			p.agent.releasePromotable(p.callID)

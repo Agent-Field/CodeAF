@@ -206,9 +206,7 @@ func (c *BashCall) closeTimedOut() bool {
 // the accumulator's own clock, so a promoted call — whose output goes to its
 // adopter's log — stops moving it, which is right: it is no longer this call.
 func (c *BashCall) QuietFor() time.Duration {
-	c.acc.mu.Lock()
-	last := c.acc.lastWrite
-	c.acc.mu.Unlock()
+	last := c.acc.lastSaid()
 	if last.IsZero() || last.Before(c.started) {
 		last = c.started
 	}
@@ -221,14 +219,22 @@ func (c *BashCall) QuietFor() time.Duration {
 // a job somebody took is theirs, and an ending already spoken for is not
 // re-spoken.
 func (c *BashCall) Stop(status string) bool {
+	if !c.closeStopped(status) {
+		return false
+	}
+	killProcessGroup(c.cmd)
+	return true
+}
+
+// closeStopped claims the ending for a stop and records its sentence, both
+// under one lock, exactly as [BashCall.closeTimedOut] does for the timeout.
+func (c *BashCall) closeStopped(status string) bool {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.outcome != bashOpen {
-		c.mu.Unlock()
 		return false
 	}
 	c.outcome, c.stopped = bashEnded, status
-	c.mu.Unlock()
-	killProcessGroup(c.cmd)
 	return true
 }
 

@@ -1281,6 +1281,13 @@ func (a *outputAccumulator) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
+// lastSaid is when the command last wrote anything, or zero.
+func (a *outputAccumulator) lastSaid() time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastWrite
+}
+
 func newOutputAccumulator(caps Caps) *outputAccumulator {
 	caps = caps.resolve()
 	return &outputAccumulator{
