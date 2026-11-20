@@ -3245,6 +3245,10 @@ type Agent struct {
 	// spendStampMu orders meter capture with its metadata write. The folder
 	// lock alone cannot keep an older captured total from being written last.
 	spendStampMu sync.Mutex
+	// spendSaved is the total this agent last saved and announced, guarded by
+	// spendStampMu. Two owed stamps the deferred writer did not happen to
+	// coalesce must not say one figure twice ([Agent.stampTurnEnd]).
+	spendSaved savedSpend
 
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
