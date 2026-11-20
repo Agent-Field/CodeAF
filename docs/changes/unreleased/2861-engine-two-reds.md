@@ -1,7 +1,7 @@
 ---
 kind: internal
-title: the go-ahead factory test runs on its own clock, and the Spending tab takes its shortfall rows once per visit
-pr: 0
+title: the go-ahead factory test keeps its own clock; Spending reads shortfall rows once a visit
+pr: 2861
 surface: [engine, chat]
 invalidates:
   - >-
