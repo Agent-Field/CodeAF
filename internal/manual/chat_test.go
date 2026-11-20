@@ -2162,6 +2162,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// never held that graph.
 		{"continue task 1", "tasks"},
 		{"keep going on task 4", "tasks"},
+		{"why does it say the hand-off is done so there is nothing to continue", "tasks"},
 		{"can I continue a task from another conversation", "tasks"},
 		{"No task 1 in this project", "tasks"},
 

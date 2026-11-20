@@ -45,12 +45,33 @@ import (
 // failureCheckNote is the dim line a person reads when the turn is sent back.
 const failureCheckNote = "some of its steps failed before it asked you · asking it to retry them or say what failed"
 
+// failureCheckInTheirWords is what both doors ask the reply or the card to
+// say, once, so the two cannot drift.
+//
+// ── THE RUN THIS WAS WRITTEN FROM ──
+//
+// qloop run31, hiring t2: three `tasks continue` calls failed, the card was
+// held, and the instruction said "say plainly which steps failed". The model
+// did exactly that, and the card a person read said "three `tasks continue`
+// attempts … refused each time with "no graph in this session"" — a tool
+// name and an error string copied verbatim from the lines above it.
+//
+// ── THE LAW ──
+//
+// THE FAILED LINES ARE FOR THE MODEL; THE PERSON IS OWED THE OUTCOME. What
+// they read says what changed, what did not, and what is not done yet, in their
+// own words — never a tool's name, a command, or an error's text. The honesty
+// stays whole: a step that failed and left part of the ask undone is still said,
+// as the part that is not done.
+const failureCheckInTheirWords = "say in it, in the person's own words, what you changed, what you did not change, what is not done yet, and what you need from them. " +
+	"Never name a tool or a command in it, and never quote an error: those lines are for you, and the person only needs the outcome."
+
 // failureCheckLeadOpening and [failureCheckLeadClosing] frame the reply door's
 // continuation; the failed steps are between them.
 const failureCheckLeadOpening = "[carry on] Your reply ends by asking the person, and some of your steps this turn failed:\n"
 
 const failureCheckLeadClosing = "\nIf one of them was meant to make the change the person asked for, do it correctly now in this same turn and then answer. " +
-	"If you still need to ask, write the reply again and say plainly in it which steps failed and what you did and did not change. " +
+	"If you still need to ask, write the reply again and " + failureCheckInTheirWords + " " +
 	"If the reply already says that, or those failures did not touch what the person asked for, reply with exactly " +
 	NoChangeReply + " and nothing else."
 
@@ -61,7 +82,7 @@ const failureCheckLeadClosing = "\nIf one of them was meant to make the change t
 const askHeldAfterFailuresLead = "the person has not seen this question yet: some of your steps this turn failed:\n"
 
 const askHeldAfterFailuresClosing = "\nIf one of them was meant to make the change the person asked for, do it correctly now instead of asking. " +
-	"If you still need the person, call ask again and say plainly in it which steps failed and what you did and did not change; it will be shown."
+	"If you still need the person, call ask again and " + failureCheckInTheirWords + " It will be shown."
 
 // failureCheckLead is the reply door's whole continuation.
 func failureCheckLead(failed []string) string {
