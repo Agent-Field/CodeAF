@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: A shell call always comes back — a wedged command is ended and the turn still replies
-pr: 0
+pr: 2863
 surface: [engine, chat]
 invalidates:
   - "Every clock on a bash call (the background-after handoff, the ten-minute timeout, the person's Stop) lived inside the bash tool, so a call wedged anywhere on its way back held the turn until the app was quit (qloop run44: 900 s busy, no model call, no reply). The dispatcher now holds its own clock: a call that has not answered 30 s after the first bound it was going to meet is ended (process group killed), the model is told `Command stopped: it did not finish or answer within N seconds, so it was ended and its result is lost.`, and the turn goes on to a reply. A Stop the call cannot hear ends it after 5 s with `Command aborted: …`."
