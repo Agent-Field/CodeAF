@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE SPENDING TAB, AND EVERY DOOR ONTO IT ────────────────────────────────
@@ -22,6 +23,12 @@ func spendingSheet(t *testing.T) (*app, string) {
 	a.openSettings()
 	a.raiseSettings()
 	a.sheet.tab = spendingTabIndex()
+	// ON A MACHINE THAT LOST NO RECORD AND PRICED EVERY CALL. The two counters
+	// behind the shortfall rows belong to the whole test binary, and an earlier
+	// test whose fake provider ended a call with no usage block leaves the
+	// unbilled one above zero. Unpinned, the tab grew an `unbilled` row or not
+	// depending on which tests ran before it in the same shard.
+	a.sheet.unwritten, a.sheet.unbilled = nil, nil
 	a.sheet.build()
 	return a, dir
 }
@@ -48,6 +55,10 @@ func spendingRows(a *app) []string {
 // and the rows are in the order a person worries about them — not alphabetical,
 // not registry order, not by key.
 func TestTheSpendingTabIsTheSevenRowsAndNothingElse(t *testing.T) {
+	// What an earlier test in the same binary can leave behind: one call the
+	// host charged for and nobody priced. The tab under test is pinned to a
+	// machine with none ([spendingSheet]), so this must change nothing.
+	session.CountUnbilledCall()
 	a, _ := spendingSheet(t)
 	// A day with something on it, so the receipt row is drawn at all.
 	a.dayCost, a.dayCosted = 3.42, true
