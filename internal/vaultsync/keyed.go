@@ -99,8 +99,8 @@ type keyedRun struct {
 	revisions map[string]keys.Revision
 }
 
-func (k Keyed) begin(v VaultFile) (*keyedRun, error) {
-	held, err := k.set.Values()
+func (k Keyed) begin(v VaultFile, values func() (map[string]string, error)) (*keyedRun, error) {
+	held, err := values()
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,13 @@ func (k Keyed) begin(v VaultFile) (*keyedRun, error) {
 }
 
 func (k Keyed) capture(v VaultFile) error {
-	run, err := k.begin(v)
+	values := k.set.Values
+	if guarded, ok := k.set.(interface {
+		CaptureValues() (map[string]string, error)
+	}); ok {
+		values = guarded.CaptureValues
+	}
+	run, err := k.begin(v, values)
 	if errors.Is(err, ErrDamaged) {
 		return nil
 	}
@@ -133,7 +139,7 @@ func (k Keyed) captureEdits(v VaultFile) error {
 }
 
 func (k Keyed) restore(v VaultFile) error {
-	run, err := k.begin(v)
+	run, err := k.begin(v, k.set.Values)
 	if errors.Is(err, ErrDamaged) {
 		return nil
 	}
@@ -142,6 +148,9 @@ func (k Keyed) restore(v VaultFile) error {
 	}
 	return run.finish(run.restoreAll())
 }
+
+// RestoreLocal reapplies this carrier from an already-merged local vault.
+func (k Keyed) RestoreLocal(v VaultFile) error { return k.restore(v) }
 
 // finish saves the ledger only when the step succeeded, so a failed step is
 // retried in full next time.
@@ -174,15 +183,33 @@ func (r *keyedRun) captureAll() error {
 			}
 		}
 	}
+	guarded, guards := r.set.(interface {
+		MayCapture(string) bool
+		PreserveVault(string) bool
+		CaptureCommitted(string)
+	})
 	for name, value := range r.held {
+		if guards && !guarded.MayCapture(name) {
+			continue
+		}
+		if guards && guarded.PreserveVault(name) {
+			preserved, err := r.preserveVaultKey(name, value)
+			if err != nil {
+				return err
+			}
+			if preserved {
+				continue
+			}
+		}
 		if r.explicitRemovals && value == "" {
 			if err := r.captureExplicitRemoval(name); err != nil {
 				return err
 			}
-			continue
-		}
-		if err := r.captureKey(name, value); err != nil {
+		} else if err := r.captureKey(name, value, guards); err != nil {
 			return err
+		}
+		if guards {
+			guarded.CaptureCommitted(name)
 		}
 	}
 	if r.explicitRemovals {
@@ -196,6 +223,34 @@ func (r *keyedRun) captureAll() error {
 		}
 	}
 	return nil
+}
+
+// A key handed back at launch or just written from a remote merge is an
+// observation. Never promote it over a different saved value or tombstone.
+func (r *keyedRun) preserveVaultKey(name, value string) (bool, error) {
+	entry, err := r.v.Get(r.id(name))
+	if err == nil {
+		if entry.Value == value {
+			r.digests[name] = digest(value)
+		}
+		return true, nil
+	}
+	if !errors.Is(err, keys.ErrNotFound) {
+		return false, err
+	}
+	removed, err := r.v.Removed(r.id(""))
+	if err != nil {
+		return false, err
+	}
+	for _, id := range removed {
+		if id == r.id(name) {
+			if value == "" {
+				delete(r.digests, name)
+			}
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *keyedRun) captureExplicitRemoval(name string) error {
@@ -226,8 +281,8 @@ func (r *keyedRun) captureRemoval(name string) error {
 	return nil
 }
 
-func (r *keyedRun) captureKey(name, value string) error {
-	if r.digests[name] == digest(value) {
+func (r *keyedRun) captureKey(name, value string, explicit bool) error {
+	if !explicit && r.digests[name] == digest(value) {
 		return r.annotateKey(name, value)
 	}
 	if e, err := r.v.Get(r.id(name)); err == nil && e.Value == value {
@@ -393,7 +448,8 @@ func (r *keyedRun) changes(live map[string]string) (map[string]string, error) {
 	}
 	for _, id := range removed {
 		name := strings.TrimPrefix(id, r.id(""))
-		if _, known := r.digests[name]; known && r.held[name] != "" {
+		_, known := r.digests[name]
+		if (known || r.explicitRemovals && r.set.Holds(name)) && r.held[name] != "" {
 			changes[name] = ""
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
@@ -18,36 +19,69 @@ import (
 // Set, which queues nothing.
 
 var _ appwire.CredentialKeeper = (*appBackend)(nil)
+var _ appwire.CredentialSyncHost = (*appBackend)(nil)
 
 type appKeptCredentials struct {
-	mu      sync.Mutex
-	pending []appKeptCredential
+	mu         sync.Mutex
+	pending    []appKeptCredential
+	synced     map[string]appSyncedCredential
+	nextTicket uint64
 }
 
 type appKeptCredential struct {
-	change   appwire.CredentialChange
-	at       time.Time
-	revision uint64
+	change appwire.CredentialChange
+	at     time.Time
 }
 
-// queueCredential is config.AppCredentials' listener: key "" is a removal.
-func (b *appBackend) queueCredential(provider, key string) {
-	b.enqueueCredential(appwire.CredentialChange{Provider: provider, Key: key, Removed: key == ""}, 0)
+type appSyncedCredential struct {
+	change  appwire.CredentialChange
+	before  config.AppKeyState
+	at      time.Time
+	wait    time.Duration
+	retryAt time.Time
+	taken   bool
 }
 
-func (b *appBackend) queueSyncedCredential(provider, previous, key string, revision uint64) {
-	b.enqueueCredential(appwire.CredentialChange{Provider: provider, Key: key, Removed: key == "", ExpectedKey: &previous}, revision)
+func (b *appBackend) CredentialsReady() {
+	b.keys.MarkSyncReady()
+	b.chats.wakePublication()
 }
 
-func (b *appBackend) enqueueCredential(c appwire.CredentialChange, revision uint64) {
-	provider := c.Provider
+func (b *appBackend) queueSyncedCredential(provider string, before config.AppKeyState, key string) {
 	queued := func() bool {
 		k := &b.credentials
 		k.mu.Lock()
 		defer k.mu.Unlock()
-		if revision != 0 && b.keys.Handed(provider) != revision {
+		if b.keys.State(provider) != before {
 			return false
 		}
+		if k.synced == nil {
+			k.synced = make(map[string]appSyncedCredential)
+		}
+		now := b.now()
+		if previous, ok := k.synced[provider]; ok && now.Sub(previous.at) < appwire.CredentialsTakeLife &&
+			previous.before == before && (previous.taken || previous.change.Key == key) {
+			return false
+		}
+		k.nextTicket++
+		k.synced[provider] = appSyncedCredential{
+			change: appwire.CredentialChange{Provider: provider, Key: key, Removed: key == "", ExpectedKey: &before.Key, Ticket: k.nextTicket},
+			before: before, at: now,
+		}
+		return true
+	}()
+	if queued {
+		b.announceCredential()
+	}
+}
+
+// queueCredential is config.AppCredentials' listener: key "" is a removal.
+func (b *appBackend) queueCredential(provider, key string) {
+	c := appwire.CredentialChange{Provider: provider, Key: key, Removed: key == ""}
+	func() {
+		k := &b.credentials
+		k.mu.Lock()
+		defer k.mu.Unlock()
 		now := b.now()
 		kept := k.pending[:0]
 		for _, p := range k.pending {
@@ -56,10 +90,6 @@ func (b *appBackend) enqueueCredential(c appwire.CredentialChange, revision uint
 			}
 			if p.change.Provider != provider {
 				kept = append(kept, p)
-			} else if p.revision != 0 && p.revision+1 == revision {
-				// Native storage hasn't seen either change. Compare against the
-				// key before the first change when applying the latest one.
-				c.ExpectedKey = p.change.ExpectedKey
 			}
 		}
 		// A FULL QUEUE DROPS ITS OLDEST KEY TO KEEP, never a removal: a lost
@@ -74,12 +104,13 @@ func (b *appBackend) enqueueCredential(c appwire.CredentialChange, revision uint
 			}
 			kept = append(kept[:drop], kept[drop+1:]...)
 		}
-		k.pending = append(kept, appKeptCredential{change: c, at: now, revision: revision})
-		return true
+		k.pending = append(kept, appKeptCredential{change: c, at: now})
 	}()
-	if !queued {
-		return
-	}
+	b.credentialChanged(provider)
+	b.announceCredential()
+}
+
+func (b *appBackend) credentialChanged(provider string) {
 	if p, ok := b.appProviderNamed(provider); ok {
 		b.keysMoved(provider)
 		// Native storage takes the key through credentials.take. Provider events
@@ -87,6 +118,9 @@ func (b *appBackend) enqueueCredential(c appwire.CredentialChange, revision uint
 		b.providerChanged(p, "")
 		b.warmProviderModels()
 	}
+}
+
+func (b *appBackend) announceCredential() {
 	// The announcement carries nothing, so it goes after the lock is let go.
 	guard.Go("app/credentials changed", func() { b.emit.Emit(appwire.EventCredentialsChanged, appwire.Empty{}) })
 }
@@ -100,10 +134,55 @@ func (b *appBackend) CredentialsTake(context.Context) (appwire.CredentialsTaken,
 	now := b.now()
 	out := appwire.CredentialsTaken{Changes: []appwire.CredentialChange{}}
 	for _, p := range k.pending {
-		if now.Sub(p.at) < appwire.CredentialsTakeLife && (p.revision == 0 || b.keys.Handed(p.change.Provider) == p.revision) {
+		if now.Sub(p.at) < appwire.CredentialsTakeLife {
 			out.Changes = append(out.Changes, p.change)
 		}
 	}
 	k.pending = nil
+	for provider, p := range k.synced {
+		if now.Sub(p.at) >= appwire.CredentialsTakeLife || b.keys.State(provider) != p.before {
+			delete(k.synced, provider)
+			continue
+		}
+		if !p.taken && !now.Before(p.retryAt) {
+			p.taken = true
+			k.synced[provider] = p
+			out.Changes = append(out.Changes, p.change)
+		}
+	}
 	return out, nil
+}
+
+func (b *appBackend) CredentialsConfirm(ticket uint64, applied bool) {
+	k := &b.credentials
+	k.mu.Lock()
+	var proposal appSyncedCredential
+	for provider, p := range k.synced {
+		if p.change.Ticket != ticket || !p.taken {
+			continue
+		}
+		if applied || b.keys.State(provider) != p.before {
+			delete(k.synced, provider)
+			proposal = p
+		} else {
+			p.taken = false
+			p.wait = min(15*time.Second, max(time.Second, 2*p.wait))
+			p.retryAt = b.now().Add(p.wait)
+			k.synced[provider] = p
+			if p.retryAt.Sub(p.at) < appwire.CredentialsTakeLife {
+				time.AfterFunc(p.wait, func() {
+					if !b.isClosing() {
+						b.announceCredential()
+					}
+				})
+			}
+		}
+		break
+	}
+	k.mu.Unlock()
+	if proposal.change.Ticket != 0 && applied && b.keys.AcceptSynced(proposal.change.Provider, proposal.before, proposal.change.Key) {
+		// Another vault value may have arrived while this ticket was taken.
+		b.keys.RequestSyncRefresh()
+		b.credentialChanged(proposal.change.Provider)
+	}
 }

@@ -100,6 +100,94 @@ func TestQADesktopProviderKeyDisconnectDuringPullStaysRemoved(t *testing.T) {
 	}
 }
 
+func TestQADesktopProviderKeyRestoreDoesNotUndoAnEditThatReturnedToTheSameValue(t *testing.T) {
+	r := newKeyRig(t)
+	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+	a, b := r.appMachine(appA), r.appMachine(appB)
+	appA.Set("aiand", fakeKeyOne)
+	a.push(t)
+	b.pull(t)
+	mustNil(t, b.Capture())
+	appB.Set("aiand", "FAKE-intervening-key")
+	appB.Set("aiand", fakeKeyOne)
+	appA.Set("aiand", fakeKeyTwo)
+	a.push(t)
+	b.pull(t)
+	if got, _ := appB.Key("aiand"); got != fakeKeyOne {
+		t.Fatal("a pull overwrote a local edit that restored the earlier value")
+	}
+}
+
+func TestQADesktopProviderKeyFailedNativeWriteDoesNotRollBackTheVault(t *testing.T) {
+	r := newKeyRig(t)
+	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+	var desired string
+	appB.OnSynced(func(_ string, _ config.AppKeyState, key string) { desired = key })
+	a, b := r.appMachine(appA), r.appMachine(appB)
+	appA.Set("aiand", fakeKeyOne)
+	a.push(t)
+	b.pull(t)
+	if desired != "" {
+		t.Fatal("an unready host received a key from the vault")
+	}
+	appB.Set("aiand", fakeKeyOne)
+	appB.MarkSyncReady()
+	b.pull(t)
+	appB.SyncLoaded()
+	appA.Set("aiand", fakeKeyTwo)
+	a.push(t)
+	mustNil(t, b.Capture())
+	b.pull(t)
+	if desired != fakeKeyTwo {
+		t.Fatal("the newer key did not reach the secure-store proposal")
+	}
+	// The write was rejected. The previous key remains active and must not be
+	// sent as a fresh local edit, even after it is handed back on restart.
+	if key, _ := appB.Key("aiand"); key != fakeKeyOne {
+		t.Fatal("an unconfirmed update changed the local key")
+	}
+	restarted := config.NewAppCredentials()
+	restarted.OnSynced(func(_ string, _ config.AppKeyState, key string) { desired = key })
+	restarted.Set("aiand", fakeKeyOne)
+	restarted.MarkSyncReady()
+	func() {
+		defer config.UseAppCredentials(restarted)()
+		b.Carry = []vaultsync.Carrier{providerKeys(b.profile, b.home)}
+	}()
+	b.pull(t)
+	restarted.SyncLoaded()
+	b.push(t)
+	a.pull(t)
+	if key, _ := appA.Key("aiand"); key != fakeKeyTwo {
+		t.Fatal("a failed native write rolled back the peer's newer key")
+	}
+}
+
+func TestQADesktopProviderKeyDefaultSlotIsOnlySharedAtOfficialEndpoint(t *testing.T) {
+	for _, address := range []string{"https://custom.invalid/v1", "http://openrouter.ai/api/v1"} {
+		t.Run(address, func(t *testing.T) {
+			t.Setenv("CODEAF_BASE_URL", config.DefaultBaseURL)
+			r := newKeyRig(t)
+			appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+			a, b := r.appMachine(appA), r.appMachine(appB)
+			appA.Set(modelsource.DefaultID, fakeKeyOne)
+			a.push(t)
+			t.Setenv("CODEAF_BASE_URL", address)
+			appB.Set(modelsource.DefaultID, fakeKeyTwo)
+			b.pull(t)
+			if key, _ := appB.Key(modelsource.DefaultID); key != fakeKeyTwo {
+				t.Fatal("an official provider key was restored into a different endpoint")
+			}
+			b.push(t)
+			t.Setenv("CODEAF_BASE_URL", config.DefaultBaseURL)
+			a.pull(t)
+			if key, _ := appA.Key(modelsource.DefaultID); key != fakeKeyOne {
+				t.Fatal("a custom endpoint key replaced the official provider key")
+			}
+		})
+	}
+}
+
 func TestQADesktopProviderKeySecondMergeFollowsAnAppliedRemoval(t *testing.T) {
 	r := newKeyRig(t)
 	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()

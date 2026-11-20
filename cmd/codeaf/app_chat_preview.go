@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -128,6 +130,12 @@ func (b *appBackend) PreviewChat(id string) (appwire.ChatPreview, error) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, session.ErrRecordReadBusy) {
+			return appwire.ChatPreview{}, appEntriesBusy(err)
+		}
+		if errors.Is(err, cellsync.ErrTranscriptTooLarge) {
+			return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "This saved conversation is too large to preview. Continue here to read its full history.")
+		}
 		return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "Couldn't load the saved messages. Check that the other computer is running and try again.")
 	}
 	return preview, nil

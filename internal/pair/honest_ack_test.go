@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
 )
 
@@ -172,6 +173,40 @@ func TestFailedPairingInstallSendsNoConfirmation(t *testing.T) {
 		t.Fatalf("B wrote %d messages, want no confirmation", wrote)
 	}
 	wantNotConfirmed(t, offer.wait(t), "laptop")
+}
+
+func TestCanceledPairingCannotAdoptAfterHomeLock(t *testing.T) {
+	r, _ := hostileRig(t)
+	if _, err := identity.EnsureSolo(r.homeB); err != nil {
+		t.Fatal(err)
+	}
+	before := filesIn(t, r.homeB)
+	unlock, err := keys.LockHome(r.homeB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	started := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := adoptWithDevice(ctx, joiningAt(r.homeB), Grant{Identity: r.a}, nil)
+		result <- err
+	}()
+	<-started
+	cancel()
+	unlock()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("adoption after cancellation returned %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("canceled adoption did not return after the lock was released")
+	}
+	if changed := changedBesidesLock(t, before, filesIn(t, r.homeB)); len(changed) != 0 {
+		t.Fatalf("canceled adoption wrote %v", changed)
+	}
 }
 
 // A WORD THE RELAY LOSES LEAVES THE JOINING COMPUTER PAIRED, and the approver

@@ -1,11 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
@@ -13,6 +17,28 @@ import (
 	"github.com/Agent-Field/codeaf/internal/relayserve"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
+
+func TestAppEntriesMarksLocalHistoryWhenRemoteViewDisappears(t *testing.T) {
+	appDayProfile(t)
+	const id = "old-local-chat"
+	file := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if err := os.WriteFile(file, []byte("{\"type\":\"message\",\"role\":\"user\",\"content\":\"The old local history\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &appAgent{transcript: file, view: appwire.Agent{ID: id, Location: &appwire.Location{
+		Cell: "saved-chat", Seen: &appwire.Seen{Head: "announced-remote-head"},
+	}}}
+	b := &appBackend{agents: map[string]*appAgent{id: a}, now: time.Now, state: &appState{}, emit: newAppRecorder()}
+	page, err := b.EntriesWithFallback(id, "", appwire.MaxEntries)
+	if err != nil || !page.LocalFallback || page.RemoteHead != "" || len(page.Entries) != 1 || page.Entries[0].Text != "The old local history" {
+		t.Fatalf("reading after losing the remote view = %+v, %v", page, err)
+	}
+	a.view.Location = nil
+	page, err = b.EntriesWithFallback(id, "", appwire.MaxEntries)
+	if err != nil || page.LocalFallback || page.RemoteHead != "" || len(page.Entries) != 1 {
+		t.Fatalf("ordinary local page = %+v, %v", page, err)
+	}
+}
 
 func TestAppPassThroughTitleAndPreview(t *testing.T) {
 	celltest.RequireEngine(t)
@@ -61,6 +87,20 @@ func TestAppPassThroughTitleAndPreview(t *testing.T) {
 	if stillRemote.Seen != row.Seen || stillRemote.LocalAgent != "" {
 		t.Fatal("preview changed the lease or installed a chat")
 	}
+	workingChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool { return r.Here })
 	machineCall[appwire.TakeResult](t, b.w, "agents.take", appwire.TakeParams{Cell: row.Cell, Seen: stillRemote.Seen})
 	workingChatRow(t, b, row.Cell, func(r appwire.ChatRow) bool { return r.Here && r.Title == title && !r.CanPreview })
+	remote := workingChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool { return !r.Here && r.Seen.Device != row.Seen.Device })
+	a.wait(t, func(f e2Frame) bool {
+		var changed appwire.AgentChanged
+		if f.Event != appwire.EventAgentChanged || json.Unmarshal(f.Data, &changed) != nil || changed.Agent.ID != created.ID {
+			return false
+		}
+		l := changed.Agent.Location
+		return l != nil && !l.Here && l.Cell == row.Cell && l.Seen != nil && l.Seen.Device == remote.Seen.Device
+	})
+	page := machineCall[appwire.EntriesResult](t, a.w, "agents.entries", appwire.EntriesParams{ID: created.ID})
+	if page.LocalFallback || page.RemoteHead != remote.Seen.Head || len(page.Entries) == 0 {
+		t.Fatalf("the moved chat did not return a saved page at head %s: %+v", remote.Seen.Head, page)
+	}
 }

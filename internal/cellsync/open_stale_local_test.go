@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -244,6 +245,38 @@ func read(t *testing.T, root, rel string) []byte {
 		t.Fatal(err)
 	}
 	return got
+}
+
+func TestStageTranscriptRefusesOversizeBeforeFetchingChunks(t *testing.T) {
+	w := newOpenWorld(t)
+	cid := furrowChunkID([]byte("transcript content"))
+	const larger = transcriptReadMaxBytes + 1
+	blob := w.meta(2, wBlob{TotalLen: larger, Chunks: []wChunk{{ID: nums(cid[:]), Len: larger}}}, false)
+	w.seal(w.dir(fileEntry(filepath.Base(cell.TranscriptPath), blob)))
+	objects := make([]blobstore.Object, 0, len(w.all))
+	for _, obj := range w.all {
+		objects = append(objects, obj)
+	}
+	frame, err := blobstore.Encode(strings.Repeat("a", 32), objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &countingStore{Store: blobstore.NewMemory(), asked: map[string]int{}}
+	if _, err := store.PutFrame(t.Context(), frame); err != nil {
+		t.Fatal(err)
+	}
+	inbox := t.TempDir()
+	f := &Fetcher{Engine: keyedEngine{w: w}, Store: store, Inbox: func(cell.Cell) string { return inbox }}
+	c := cell.Cell{ID: "chat", Root: t.TempDir()}
+	if err := f.StageTranscript(t.Context(), c, w.head); !errors.Is(err, ErrTranscriptTooLarge) {
+		t.Fatalf("oversize transcript = %v, want size refusal", err)
+	}
+	if store.asked[chunkRID(w.dedup, cid)] != 0 {
+		t.Fatal("the oversized transcript's content reached the relay request")
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, cell.TranscriptPath)); !os.IsNotExist(err) {
+		t.Fatalf("oversize read created a transcript: %v", err)
+	}
 }
 
 // A same-length stale transcript on this disk must never be passed off as the

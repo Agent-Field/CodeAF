@@ -19,7 +19,7 @@ const sourcePrefix = "source:"
 // beside the vault.
 func providerKeys(profileDir, home string) vaultsync.Keyed {
 	if credentials := config.AppCredentialSource(); credentials != nil {
-		return vaultsync.GuardedExplicitKeys("provider", appProviderKeyset{providerKeyset{profileDir}, credentials}, filepath.Join(home, "provider-keys.ledger"))
+		return vaultsync.GuardedExplicitKeys("provider", &appProviderKeyset{providerKeyset: providerKeyset{profileDir}, credentials: credentials}, filepath.Join(home, "provider-keys.ledger"))
 	}
 	return vaultsync.Keys("provider", providerKeyset{profileDir}, filepath.Join(home, "provider-keys.ledger"))
 }

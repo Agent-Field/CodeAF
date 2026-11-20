@@ -1775,6 +1775,19 @@ which queues nothing. `keys.set` takes `github`, `jira`, `agentfield` and
 | method | params | result |
 |---|---|---|
 | `credentials.take` | `Empty` | `CredentialsTaken` |
+| `credentials.ready` | `Empty` | `Empty` |
+| `credentials.confirm` | `{ticket, applied}` | `Empty` |
+
+`credentials.ready` is also a hello feature. The native host calls it after its
+secure-store hand-back is complete, including a successful read of an empty store.
+Provider key sync stays idle until then. A provider change in `credentials.take`
+has a nonzero `ticket` and an `expected_key` (empty when the store had no key).
+The host compares the current stored key before persisting the proposed key or
+removal, then calls `credentials.confirm` with the ticket and result. The engine
+accepts a successful confirmation only while the captured local revision still
+matches. Failed writes can retry for the ticket's remaining lifetime. A client
+without these methods still uses the original `credentials.take` behavior for
+credentials entered through factory doors.
 
 ## manual methods
 

@@ -33,6 +33,9 @@ import (
 // credentials.take.
 const FeatureCredentials = "credentials.take"
 
+// FeatureCredentialSync opts the desktop into two-way provider key persistence.
+const FeatureCredentialSync = "credentials.ready"
+
 // EventCredentialsChanged says a credential to keep changed; its data is [Empty].
 const EventCredentialsChanged = "credentials.changed"
 
@@ -51,6 +54,7 @@ type CredentialChange struct {
 	// ExpectedKey guards an incoming synced write against a later local edit.
 	// An empty value means the secure store should have no entry.
 	ExpectedKey *string `json:"expected_key,omitempty"`
+	Ticket      uint64  `json:"ticket,omitempty"`
 }
 
 // CredentialsTaken is every change not yet taken, oldest first.
@@ -63,15 +67,47 @@ type CredentialKeeper interface {
 	CredentialsTake(ctx context.Context) (CredentialsTaken, error)
 }
 
+type CredentialSyncHost interface {
+	CredentialsReady()
+	CredentialsConfirm(ticket uint64, applied bool)
+}
+
+type CredentialConfirmation struct {
+	Ticket  uint64 `json:"ticket"`
+	Applied bool   `json:"applied"`
+}
+
 func withCredentialsFeature(hello Hello, e Engine) Hello {
 	if _, ok := e.(CredentialKeeper); ok {
 		hello = withFeature(hello, FeatureCredentials)
+	}
+	if _, ok := e.(CredentialSyncHost); ok {
+		hello = withFeature(hello, FeatureCredentialSync)
 	}
 	return hello
 }
 
 func init() {
 	eventShapes[EventCredentialsChanged] = reflect.TypeFor[Empty]()
+	methods["credentials.ready"] = typed(func(e Engine, _ Empty) (*Empty, error) {
+		host, ok := e.(CredentialSyncHost)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve credentials.ready")
+		}
+		host.CredentialsReady()
+		return &Empty{}, nil
+	})
+	methods["credentials.confirm"] = typed(func(e Engine, confirm CredentialConfirmation) (*Empty, error) {
+		host, ok := e.(CredentialSyncHost)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not serve credentials.confirm")
+		}
+		if confirm.Ticket == 0 {
+			return nil, Errorf(CodeBadParams, "credential confirmation needs a ticket")
+		}
+		host.CredentialsConfirm(confirm.Ticket, confirm.Applied)
+		return &Empty{}, nil
+	})
 	methods["credentials.take"] = shaped[Empty, CredentialsTaken](func(e Engine, raw json.RawMessage) (*CredentialsTaken, error) {
 		k, ok := e.(CredentialKeeper)
 		if !ok {

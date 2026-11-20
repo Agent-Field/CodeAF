@@ -18,7 +18,9 @@ computer indicator. Continue here replaces an inert composer; a composer that
 can send to the other computer names that destination. Hidden drafts stay kept.
 With a compatible engine, the open view follows newly saved messages through
 sync storage or live transfer, without moving the chat or restoring remote files.
-If the latest history is unavailable, you can still read the local copy. Unsealed
+If the latest history is unavailable, you can still read the local copy. Remote
+history and previews read saved transcripts up to 24 MiB. For a larger transcript,
+use Continue here to move the chat and read its full history. Unsealed
 words and in-progress tokens are not streamed between computers.
 The desktop can still send that computer a message for the chat while it is
 open or working there; it waits in the chat's queue on that computer. See
@@ -65,7 +67,9 @@ continues to count it when it says it.
 With sync storage enabled, saved keys for supported model providers can sync
 through the encrypted vault. Connections that can point to different servers
 on different computers, such as custom endpoints and Ollama, keep their keys
-on the computer where you entered them.
+on the computer where you entered them. This includes an OpenRouter connection
+redirected with `CODEAF_BASE_URL`. The desktop starts syncing provider keys
+after reading its secure store, and uses a received key once that store saves it.
 
 ## Can another terminal window take a chat the desktop holds
 

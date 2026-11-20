@@ -10,8 +10,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
+
+// The preview and full history doors share admission before allocating any
+// scratch, downloading objects or parsing the journal.
+var chatReadSlots = make(chan struct{}, 2)
 
 // ReadChat visits a saved conversation in private scratch. It neither acquires
 // ownership nor restores a workspace, vault, task runtime or local journal.
@@ -26,6 +31,15 @@ func (s *Sync) ReadChat(ctx context.Context, id string, view directory.CellView,
 	if read == nil {
 		return errors.New("reading a chat needs a reader")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case chatReadSlots <- struct{}{}:
+		defer func() { <-chatReadSlots }()
+	default:
+		return session.ErrRecordReadBusy
+	}
 	root, err := os.MkdirTemp("", "codeaf-chat-preview-")
 	if err != nil {
 		return err
@@ -38,7 +52,7 @@ func (s *Sync) ReadChat(ctx context.Context, id string, view directory.CellView,
 	scope := s.chatScope(id)
 	defer scope.Settle()
 	scope.Holder(view.Cell.Lease.Device)
-	fetch := cellsync.Fetcher{Engine: sync, Store: scope.Store, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay)}
+	fetch := cellsync.Fetcher{Engine: sync, Store: scope.Store, Inbox: sync.Inbox, ManyMax: cellsync.ManyMaxFor(s.Relay), Concurrency: 1}
 	if err := fetch.StageTranscript(ctx, at, view.Cell.Head); err != nil {
 		return err
 	}

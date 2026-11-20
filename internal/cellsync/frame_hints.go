@@ -978,7 +978,7 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 	rawByRID := map[string]blobstore.Object{}
 	metaByOID := map[[32]byte]metaObj{}
 	loadObjectsFromDir(stageInbox, cellKey, rawByRID, metaByOID)
-	if openCache != "" {
+	if !transcriptOnly && openCache != "" {
 		loadObjectsFromDir(openCache, cellKey, rawByRID, metaByOID)
 	}
 
@@ -1047,6 +1047,33 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 			return false, err
 		}
 	}
+	if transcriptOnly {
+		name := filepath.Base(cell.TranscriptPath)
+		e, missing, found := findDirEntryInPages(cellDirOID, name, metaByOID)
+		if !found && len(missing) != 0 {
+			if err := fetchMissingMeta(missing); err != nil {
+				return false, err
+			}
+			e, missing, found = findDirEntryInPages(cellDirOID, name, metaByOID)
+		}
+		if !found {
+			// A newly saved chat can have no transcript yet.
+			return len(missing) == 0, nil
+		}
+		blobOID, ok := e.Target.id32()
+		if e.Kind != "File" || !ok {
+			return false, nil
+		}
+		if err := fetchMissingMeta([][32]byte{blobOID}); err != nil {
+			return false, err
+		}
+		m := metaByOID[blobOID]
+		var b furrowBlob
+		if m.kind != 2 || json.Unmarshal(m.body, &b) != nil {
+			return false, nil
+		}
+		return f.stageTranscriptFile(ctx, filepath.Join(c.Root, cell.TranscriptPath), dedup, b)
+	}
 	cellEntries, missingCellPages, ok := decodeDirEntries(cellDirOID, metaByOID)
 	if !ok && len(missingCellPages) > 0 {
 		if err := fetchMissingMeta(missingCellPages); err != nil {
@@ -1072,9 +1099,6 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 
 	for _, e := range cellEntries {
 		name := string(e.Name)
-		if transcriptOnly && (e.Kind != "File" || name != filepath.Base(cell.TranscriptPath)) {
-			continue
-		}
 		oid, ok := e.Target.id32()
 		if !ok {
 			continue
@@ -1181,9 +1205,6 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 	// bringing them costs the open no round of its own.
 	var instructionSpecs []openFileSpec
 	for _, name := range OpenInstructionFiles {
-		if transcriptOnly {
-			break
-		}
 		ie, _, ok := findDirEntryInPages(rootOID, name, metaByOID)
 		if !ok || ie.Kind != "File" {
 			continue
@@ -1259,9 +1280,7 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 		loadObjectsFromDir(stageInbox, cellKey, rawByRID, metaByOID)
 	}
 
-	if !transcriptOnly {
-		writeOpenStateToCache(openCache, cellKey, dedup, headOID, rawByRID, metaByOID)
-	}
+	writeOpenStateToCache(openCache, cellKey, dedup, headOID, rawByRID, metaByOID)
 	for i, spec := range files {
 		var buf bytes.Buffer
 		buf.Grow(int(blobs[i].TotalLen))
@@ -1290,10 +1309,8 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 			return false, err
 		}
 	}
-	if !transcriptOnly {
-		if _, err := os.Stat(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath))); err != nil {
-			return false, nil
-		}
+	if _, err := os.Stat(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath))); err != nil {
+		return false, nil
 	}
 	return true, nil
 }

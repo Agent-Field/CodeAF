@@ -98,7 +98,7 @@ func Join(ctx context.Context, route Mailbox, j Joining, typed string, ui JoinUI
 	if err := ctx.Err(); err != nil {
 		return Joined{}, err
 	}
-	joined, err := adoptWithDevice(j, grant, nil)
+	joined, err := adoptWithDevice(ctx, j, grant, nil)
 	if err == nil {
 		// The other device can only confirm after this home has kept the grant.
 		// If the confirmation is lost, this home still holds the approved grant.
@@ -168,11 +168,11 @@ func joinOffer(label string, platform ...string) ([]byte, error) {
 // adopt takes the grant into this home. Submitted chats require explicit
 // replacement; a startup-only home retains its state through the durable switch.
 func adopt(j Joining, grant Grant) (Joined, error) {
-	return adoptWithDevice(j, grant, nil)
+	return adoptWithDevice(context.Background(), j, grant, nil)
 }
 
 // adoptWithDevice installs the device included in a pairing-link grant.
-func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
+func adoptWithDevice(ctx context.Context, j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
 	recovered, err := j.resumeApproved()
 	if err != nil {
 		if recovered != nil {
@@ -213,10 +213,16 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 		return Joined{}, err
 	}
 	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return Joined{}, err
+	}
 	if _, err := j.resume(); err != nil {
 		return Joined{}, err
 	}
 	held, err = identity.Load(j.Home)
+	if stopped := ctx.Err(); stopped != nil {
+		return Joined{}, stopped
+	}
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
 		if !j.Replace {
@@ -243,12 +249,18 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 		if merge, checkErr := identity.Joinable(j.Home); checkErr != nil || !merge {
 			return Joined{}, differentChats(j.Home)
 		}
+		if err := ctx.Err(); err != nil {
+			return Joined{}, err
+		}
 		return j.merge(grant, dev, held.CellKey())
 	}
 	// No identity here. A vault key from before identities is still chats of
 	// its own, which Adopt would refuse only after making it an identity.
 	if refuses, err := identity.AdoptRefuses(j.Home, grant.Identity); err != nil || refuses {
 		return Joined{}, legacyRefusal(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Joined{}, err
 	}
 	if _, err := identity.Adopt(j.Home, grant.Identity, false); err != nil {
 		return Joined{}, adoptFailure(err)

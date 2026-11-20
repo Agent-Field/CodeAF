@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -93,6 +94,15 @@ func (s *Sync) SyncState(ctx context.Context) error {
 		return err
 	}
 	err = s.withVaultWithin(ctx, 0, func(v vaultsync.Syncer) error {
+		app := config.AppCredentialSource()
+		if app != nil && app.NeedsSyncLoad() {
+			// Fetch the current vault before treating hand-back keys as local
+			// captures. A locked or late secure store cannot revert a peer's edit.
+			if err := v.Pull(ctx); err != nil {
+				return err
+			}
+			app.SyncLoaded()
+		}
 		sharing := s.teamsSharing()
 		if sharing != s.teamsShared {
 			s.stateVaultKnown = false
@@ -106,6 +116,15 @@ func (s *Sync) SyncState(ctx context.Context) error {
 		}
 		if err := v.Capture(); err != nil {
 			return err
+		}
+		if app != nil && app.SyncReady() {
+			if refresh := app.SyncRefresh(); refresh != s.stateCredentialRefresh {
+				// Retake a saved proposal only after capturing any newer local edit.
+				if err := providerKeys(s.profile(), s.Home).RestoreLocal(v.Vault); err != nil {
+					return err
+				}
+				s.stateCredentialRefresh = refresh
+			}
 		}
 		fp, exists := keys.Fingerprint(s.Home)
 		if exists && fp != s.stateSent && s.StorageAllowed() {

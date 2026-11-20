@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,14 @@ const GatherWindow = 8
 // §22.12): each import walks what is stored so far, so asking after every
 // frame would pay the walk many times for little new work.
 const ImportEvery = 4
+
+// ErrTranscriptTooLarge refuses an interactive transcript read past its
+// byte budget. Taking a chat does not have this limit.
+var ErrTranscriptTooLarge = errors.New("the saved conversation is too large to read remotely")
+
+// Two 24 MiB remote reads fit the session's 256 MiB record budget when each
+// reserves five times its journal size, plus the fixed per-read reservation.
+const transcriptReadMaxBytes = 24 << 20
 
 // Fetcher brings a head and everything it needs from the store onto this device.
 type Fetcher struct {
@@ -257,6 +266,91 @@ func (f *Fetcher) StageTranscript(ctx context.Context, c cell.Cell, head string)
 		err = errors.New("cellsync: the saved transcript could not be read")
 	}
 	return err
+}
+
+type transcriptChunk struct {
+	id  [32]byte
+	rid string
+	len uint64
+}
+
+// stageTranscriptFile checks the declared size before requesting content.
+// The scratch copy grows one authenticated batch at a time.
+func (f *Fetcher) stageTranscriptFile(ctx context.Context, path string, dedup [32]byte, b furrowBlob) (bool, error) {
+	if b.TotalLen > transcriptReadMaxBytes {
+		return false, ErrTranscriptTooLarge
+	}
+	chunks := make([]transcriptChunk, 0, len(b.Chunks))
+	var size uint64
+	for _, ref := range b.Chunks {
+		id, ok := ref.ID.id32()
+		if !ok || ref.Len == 0 || ref.Len > b.TotalLen-size {
+			return false, nil
+		}
+		size += ref.Len
+		chunks = append(chunks, transcriptChunk{id: id, rid: chunkRID(dedup, id), len: ref.Len})
+	}
+	if size != b.TotalLen {
+		return false, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return false, err
+	}
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return false, err
+	}
+	defer out.Close()
+	for batch := range slices.Chunk(chunks, f.manyMax()) {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		if err := f.writeTranscriptBatch(ctx, out, dedup, batch); err != nil {
+			return false, err
+		}
+	}
+	return true, out.Close()
+}
+
+func (f *Fetcher) writeTranscriptBatch(ctx context.Context, out *os.File, dedup [32]byte, batch []transcriptChunk) error {
+	refs := make(map[string]transcriptChunk, len(batch))
+	want := make([]string, 0, len(batch))
+	for _, ch := range batch {
+		if _, known := refs[ch.rid]; !known {
+			refs[ch.rid] = ch
+			want = append(want, ch.rid)
+		}
+	}
+	saved := make(map[string][]byte, len(want))
+	for len(want) > 0 {
+		f.addOpenRound(1)
+		objects, err := f.getMany(ctx, want)
+		if err != nil {
+			return err
+		}
+		if len(objects) == 0 || len(objects) > len(want) {
+			return blobstore.ErrDamaged
+		}
+		for i, obj := range objects {
+			ch := refs[want[i]]
+			plain, ok := decryptChunkObject(dedup, ch.id, ch.rid, obj.Bytes)
+			if obj.RID != ch.rid || !ok || uint64(len(plain)) != ch.len {
+				return blobstore.ErrDamaged
+			}
+			saved[ch.rid] = plain
+		}
+		want = want[len(objects):]
+	}
+	for _, ch := range batch {
+		plain := saved[ch.rid]
+		if uint64(len(plain)) != ch.len {
+			return blobstore.ErrDamaged
+		}
+		if _, err := out.Write(plain); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Complete is Fetch without the restore: everything head needs is in the

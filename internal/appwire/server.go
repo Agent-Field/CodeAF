@@ -833,8 +833,11 @@ type (
 		Agents []Agent `json:"agents"`
 	}
 	EntriesResult struct {
-		Entries       []Entry `json:"entries"`
-		More          bool    `json:"more"`
+		Entries []Entry `json:"entries"`
+		More    bool    `json:"more"`
+		// RemoteHead identifies the saved page. LocalFallback says a remote
+		// page could not be read and this page came from the retained journal.
+		RemoteHead    string  `json:"remote_head,omitempty"`
 		LocalFallback bool    `json:"local_fallback,omitempty"`
 	}
 	TurnResult struct {

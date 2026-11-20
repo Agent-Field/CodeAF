@@ -3826,9 +3826,9 @@ func (b *appBackend) EntriesWithFallback(id, before string, limit int) (appwire.
 	if err != nil {
 		return appwire.EntriesResult{}, err
 	}
-	page, more, remote, remoteErr := b.remoteEntries(a, before, limit)
-	if remote && remoteErr == nil {
-		return appwire.EntriesResult{Entries: page, More: more}, nil
+	page, more, head, remoteErr := b.remoteEntries(a, before, limit)
+	if head != "" {
+		return appwire.EntriesResult{Entries: page, More: more, RemoteHead: head}, nil
 	}
 
 	var transcript string

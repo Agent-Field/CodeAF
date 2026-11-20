@@ -18,13 +18,20 @@ func TestQAReceivedProviderRefreshesAndReachesTheNativeKeeper(t *testing.T) {
 	rec := newAppRecorder()
 	b := newAppBackend(rec, appOpenInProcess)
 	defer b.Close()
-	if !credentials.KeepIf("aiand", "", false, "FAKE-received-provider-key") {
-		t.Fatal("the received provider key was not applied")
+	credentials.ProposeSynced("aiand", config.AppKeyState{}, "FAKE-received-provider-key")
+	if taken, _ := b.CredentialsTake(t.Context()); len(taken.Changes) != 0 {
+		t.Fatal("a host that has not handed back its Keychain received an update")
 	}
+	b.CredentialsReady()
+	credentials.ProposeSynced("aiand", config.AppKeyState{}, "FAKE-received-provider-key")
 	taken, err := b.CredentialsTake(context.Background())
-	if err != nil || len(taken.Changes) != 1 || taken.Changes[0].Provider != "aiand" || taken.Changes[0].Key != "FAKE-received-provider-key" || taken.Changes[0].ExpectedKey == nil || *taken.Changes[0].ExpectedKey != "" {
+	if err != nil || len(taken.Changes) != 1 || taken.Changes[0].Provider != "aiand" || taken.Changes[0].Key != "FAKE-received-provider-key" || taken.Changes[0].ExpectedKey == nil || *taken.Changes[0].ExpectedKey != "" || taken.Changes[0].Ticket == 0 {
 		t.Fatal("the received provider key was not handed to the native keeper once")
 	}
+	if _, known := credentials.Key("aiand"); known {
+		t.Fatal("the engine used a remote key before native storage confirmed it")
+	}
+	b.CredentialsConfirm(taken.Changes[0].Ticket, true)
 	rec.waitFor(t, 2*time.Second, func(event string, data any) bool {
 		if event != appwire.EventProviderChanged {
 			return false
@@ -42,10 +49,10 @@ func TestQASyncedCredentialQueueKeepsOriginalGuardAndDropsSupersededChanges(t *t
 	defer b.Close()
 	provider := "aiand"
 	keys.Set(provider, "FAKE-original-key")
-	if !keys.KeepIf(provider, "FAKE-original-key", true, "FAKE-intermediate-key") ||
-		!keys.KeepIf(provider, "FAKE-intermediate-key", true, "FAKE-current-key") {
-		t.Fatal("app did not apply both synced changes")
-	}
+	b.CredentialsReady()
+	before := keys.State(provider)
+	keys.ProposeSynced(provider, before, "FAKE-intermediate-key")
+	keys.ProposeSynced(provider, before, "FAKE-current-key")
 	pending, err := b.CredentialsTake(t.Context())
 	if err != nil || len(pending.Changes) != 1 {
 		t.Fatal("app did not combine the synced changes")
@@ -54,13 +61,27 @@ func TestQASyncedCredentialQueueKeepsOriginalGuardAndDropsSupersededChanges(t *t
 	if change.Key != "FAKE-current-key" || change.ExpectedKey == nil || *change.ExpectedKey != "FAKE-original-key" {
 		t.Fatal("combined change did not keep the original comparison and the latest value")
 	}
-	if !keys.KeepIf(provider, "FAKE-current-key", true, "FAKE-late-sync-key") {
-		t.Fatal("app did not apply the synced change")
+	b.CredentialsConfirm(change.Ticket, false)
+	if held := keys.State(provider); held != before {
+		t.Fatal("native refusal changed the held provider key")
+	}
+	b.credentials.mu.Lock()
+	retry := b.credentials.synced[provider]
+	retry.retryAt = time.Time{}
+	b.credentials.synced[provider] = retry
+	b.credentials.mu.Unlock()
+	pending, err = b.CredentialsTake(t.Context())
+	if err != nil || len(pending.Changes) != 1 || pending.Changes[0].Ticket != change.Ticket {
+		t.Fatal("the native refusal was not retryable")
 	}
 	keys.Remove(provider)
+	b.CredentialsConfirm(change.Ticket, true)
 	pending, err = b.CredentialsTake(t.Context())
 	if err != nil || len(pending.Changes) != 0 {
 		t.Fatal("app took a change superseded by the local disconnect")
+	}
+	if key, known := keys.Key(provider); !known || key != "" {
+		t.Fatal("an obsolete confirmation reconnected a locally removed provider")
 	}
 }
 

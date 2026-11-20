@@ -17,7 +17,7 @@ func (*appBackend) ChatReadsFollow() bool { return true }
 
 // remoteEntries is a read-only projection of a shared head. It deliberately
 // uses no local call log or turn marks: those belong to the copy left here.
-func (b *appBackend) remoteEntries(a *appAgent, before string, limit int) (page []appwire.Entry, more, used bool, err error) {
+func (b *appBackend) remoteEntries(a *appAgent, before string, limit int) (page []appwire.Entry, more bool, head string, err error) {
 	var location *appwire.Location
 	var id string
 	var at time.Time
@@ -27,13 +27,16 @@ func (b *appBackend) remoteEntries(a *appAgent, before string, limit int) (page 
 	}
 	view, known := b.chats.viewFor(location.Cell)
 	if !known || view.Cell.Head == "" {
+		if location.Seen != nil && location.Seen.Head != "" {
+			err = appwire.Errorf(appwire.CodeUnreachable, "The saved messages aren't available on this computer.")
+		}
 		return
 	}
 	s, ok, openErr := syncsetup.Open(b.relayHome())
 	if openErr != nil || !ok || s.ChatStorageOff() || view.Cell.Lease.Device == s.Device.ID() {
+		err = appwire.Errorf(appwire.CodeUnreachable, "The saved messages aren't available on this computer.")
 		return
 	}
-	used = true
 	ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
 	defer cancel()
 	// Leaving the app stops a fetch as well as its subsequent record read.
@@ -53,5 +56,8 @@ func (b *appBackend) remoteEntries(a *appAgent, before string, limit int) (page 
 			return readErr
 		})
 	})
+	if err == nil {
+		head = view.Cell.Head
+	}
 	return
 }
