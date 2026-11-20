@@ -6,25 +6,31 @@ Hosted sync storage is off by default while its privacy terms are being finished
 
 Pairing, seeing your devices and `--at` still work while the other computer is on. With storage off, new chat turns cannot be continued on another computer while the first is off (blind pass-through needs both computers on), recovered from the relay after losing a computer, or sent as task copies. Teams sharing, synced provider keys, preferences, shared memories and idle handoff also wait. The relay still keeps device and directory coordination metadata, including existing chat records and leases; storage off does not erase those records.
 
-After pairing, open **Settings → Devices → sync storage**. When it says **off**, press **enter** (`enter request access`). This opens a pre-filled GitHub issue; the panel also shows the request code and link if no browser opens. The request code is your identity id (`id_` followed by 32 hex digits). Approval is tied to this identity id. It is safe to post publicly and grants nothing by itself.
+After pairing, open **Settings → Devices → sync storage** in the terminal and press **enter** (`enter request access`) while it says **off**. In the desktop app, Devices and Advanced → Devices show **Sync storage** and **Request access…**. This opens a pre-filled GitHub issue. GitHub may ask you to sign in before showing the request. The terminal shows a request-code panel only when the browser cannot open; its **Open request on GitHub** link keeps the complete destination behind a short label. The desktop offers **Copy request link** if opening fails, and **Copy request code** while storage is off.
+
+The request code is your identity id (`id_` followed by 32 hex digits). Approval is tied to this identity id. It is safe to post publicly and grants nothing by itself. The desktop reads this status locally and never contacts the relay merely to show the row. When blind pass-through is available, Devices and the pairing receipt explain that a chat can move while both computers are running. Its request button is offered only for hosted storage; a custom relay's storage permission belongs to its operator.
 
 Turning sync storage off stops new uploads and leaves earlier frames readable. A self-hosted `codeaf relay --store <directory>` keeps storage on and needs no request. Approved hosted accounts still have the limits on *Relay limits and refusals*.
 
 ## How sync storage permission is discovered — custom addresses, startup and status
 
-The relay's answer decides, whatever its hostname. When it reports storage permission, Settings shows the sync storage row and `/status` shows the dim line `sync storage  off` while off. A relay that answers without storage permission, including the self-hosted Go relay and older hosted Workers, keeps storage on and has no row or line.
+The relay's answer decides, whatever its hostname. When it reports storage permission, terminal Settings shows the sync storage row and `/status` shows the dim line `sync storage  off` while off. A relay that answers without storage permission, including the self-hosted Go relay and older hosted Workers, keeps storage on and has no terminal row or line. The desktop still shows its effective storage permission.
 
 Before any answer, the three hosted addresses on *Hosted relay or your own relay* start closed; other addresses start open. A paired process probes an unanswered custom address once at startup. A successful answer is remembered for this account and relay, including when the field is absent. Sync off and unpaired homes make no requests.
 
 Eligible serving processes check after their first home-state round; chat windows check at launch and after `/status` in chat, and every ten minutes while a relay that reports storage is off (or a hosted address is still unknown). Storage on or an answer without the field stops requests. Once approval is read, waiting chats and uploads start within a minute without a restart. Opening a chat never waits for a relay reading. A revoked or removed device stops approval polling.
 
-Pairing asks for the storage answer once alongside its other finishing work, with a best-effort budget of about 1.5 seconds. A timely on or off answer is saved for other open windows before pairing finishes. A timeout, failed ask or absent field leaves the saved answer untouched and adds no sentence.
+Repeated `/status` requests for the same home, identity and relay share a 30-second refresh window. The first request on a new binding is never held behind a previous account's refresh.
+
+Pairing asks for the storage answer alongside its other finishing work, with up to three attempts inside a best-effort budget of about 1.5 seconds. A timely answer is saved for other open windows before pairing finishes, including a successful answer without the storage field. A timeout or failed reading leaves the saved answer untouched and adds no sentence. A revoked or gone identity is not retried.
+
+Background chat publication waits silently while storage is off. It does not add a contradictory “could not be shared yet; will try again” notice or discard the chat's pending copy. Publication resumes after approval.
 
 ## Does the sync service keep my chat when I move it without sync storage — what blind pass-through leaves behind
 
 While hosted sync storage is off and a chat moves by blind pass-through, the sync service keeps no chat or file content: the encrypted bytes pass through while both of your computers are running codeaf and are never written to the service. Everything stays encrypted end to end.
 
-The service does hold a small directory record for each such chat, the same kind of thing pairing already stores. *What the sync service records for a chat in blind pass-through* lists every field. The title and the folder name are not among them, so the service holds no chat name and no folder name. The list on your other computer shows the chat as `untitled` until you take it there.
+The service does hold a small directory record for each such chat, the same kind of thing pairing already stores. *What the sync service records for a chat in blind pass-through* lists every field. The title and the folder name are not among them, so the service holds no chat name and no folder name. WorkAF can read the chat’s title directly from its computer over the same end-to-end encrypted connection.
 
 `CODEAF_PASSTHROUGH=off` restores the previous behaviour: while storage is off, chats stay on the computer that has them. Blind pass-through does nothing when storage is approved or with a self-hosted sync service. *Blind pass-through* has the steps.
 

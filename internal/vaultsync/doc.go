@@ -23,11 +23,12 @@
 // THE CARRIED-STATE LAW. Credentials, provider keys, profile preferences,
 // shared memories and portable teams ride beside secrets. Whole files use
 // their save time; Keyed gives individual fields independent clocks and
-// deletion tombstones. Only a key this machine once shared can be removed by
-// it. Existing Keys keep their original equal-stamp, removal and apply rules.
-// Only team records use GuardedKeys to preserve edits across a network round
-// and check ownership before removal. A damaged copy is neither captured nor
-// overwritten. Teams and their Traffic carriers run only while this computer's
+// deletion tombstones. Existing Keys keep their original equal-stamp, removal
+// and apply rules. Team records use GuardedKeys to preserve edits across a
+// network round and check ownership before removal. Desktop provider keys
+// additionally require an explicit removal because native credentials can be
+// unread at startup. A damaged copy is neither captured nor overwritten. Teams
+// and their Traffic carriers run only while this computer's
 // local sharing switch is on; that switch is never a synced preference.
 //
 // ONE TRAFFIC VALUE PER WRITING DEVICE AND TEAM. DeviceWindows replaces a

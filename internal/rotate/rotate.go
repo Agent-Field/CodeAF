@@ -84,8 +84,10 @@ type Env struct {
 	// StorageAllowed lets a closed account finish with local copies instead of
 	// asking verification to find content it was forbidden to upload.
 	StorageAllowed func(context.Context, blobstore.Store) (bool, error)
-	Grace          time.Duration // 0 is DefaultGrace
-	Say            func(string)  // progress lines; nil says nothing
+	// SaveSuccessorStorage binds local discovery to the installed identity before retiring the old one.
+	SaveSuccessorStorage func(context.Context, string, blobstore.Store) error
+	Grace                time.Duration // 0 is DefaultGrace
+	Say                  func(string)  // progress lines; nil says nothing
 	// After is called once each step is durable, with its name; an error stops
 	// the rotation there. Tests use it to crash at every point.
 	After func(step string) error
@@ -289,20 +291,29 @@ func (r *run) refusedFirst(err error) error {
 	return err
 }
 
+var ErrNoRotation = errors.New("no rotation in progress")
+
 // Abandon stops a rotation that has not switched: the old identity is thawed
 // and keeps its successor keys only when a hosted relay accepted their binding.
-// A later rotation of that source on the same relay must reuse them. With no journal
-// it thaws anyway, which is how another computer undoes a rotation whose
-// keeper lost its disk.
+// A later rotation of that source on the same relay must reuse them. Without a journal it can still thaw a frozen identity
+// whose keeper lost its disk.
 func (e Env) Abandon(ctx context.Context) error {
 	j, found, err := load(e.Home)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return e.Connect(signer{e.Identity.PublicKey(), e.Device}).Gate.Thaw(ctx)
+		side := e.oldSide()
+		view, err := side.Dir.Rotation(ctx)
+		if err != nil {
+			return err
+		}
+		if view.Rotation == nil {
+			return ErrNoRotation
+		}
+		return side.Gate.Thaw(ctx)
 	}
-	if j.State == Switched {
+	if j.State == Switched || e.Identity.ID() == j.NewID {
 		return ErrSwitched
 	}
 	r, err := e.resume(j)

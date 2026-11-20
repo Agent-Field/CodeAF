@@ -238,6 +238,36 @@ confirmation remains; a no or Esc leaves everything as it was. This clean-slate
 option is required for a solo computer with submitted chats. Old chat
 folders are set aside outside the chat list and are not shared into the new set.
 
+## Pairing was not confirmed, or this computer is already paired — refused before or after approval
+
+The computer that typed the code says it kept your chats only once it has
+decided to, and before it changes anything. If it refuses them, stops, or its
+word is lost, or you stop it after answering `y`, the computer that showed the code
+does not say they are paired. It names the other computer instead, after waiting
+up to ten seconds:
+
+```
+pairing was not confirmed by laptop; check that computer to see whether it joined
+```
+
+The computer that typed the code shows its own reason, such as the refusal above.
+An older codeaf that types the code says it has your chats as soon as it reads
+them, so with one the computer that showed the code may still say they are paired.
+
+Most refusals come before the other computer is asked to approve. A computer
+whose chats already sync with other computers is refused by `codeaf pair <code>`
+and `/pair <code>` alike, even with `--replace`, and the code stays unused:
+
+```
+this computer is already paired with laptop-a — codeaf devices lists them
+```
+
+A computer that only showed a code is still solo: its chats are its own, and
+they are refused before approval with the counted sentence above. So is one
+whose chats no other computer holds any more: you said yes but the other
+computer refused, or an earlier codeaf counted showing a code as pairing. A
+removed computer is not refused here: it can pair back.
+
 ## Interrupted explicit replacement — clean slate and saved keys
 
 Reopening codeaf finishes an interrupted explicit `--replace` pairing. Recovery
@@ -362,13 +392,13 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
+On a new home, no device record reaches the relay, and no relay request, connection or chat upload is sent, until this home completes a pairing or starts offering a pairing code. Showing a code needs the relay even if nobody joins. On a new home it uses the relay for that code only: its device record goes there once you approve the other computer, just before its chats are sent, and the home syncs nothing until then; a code you take back, that runs out, that you answer `n` to or that a wrong code uses up leaves it **quiet**. A new device's `codeaf pair` also contacts the relay to offer its link; its chats start syncing only after approval. Opening or closing `+ Add another device` with `alt+d`, reading its instructions, listing `/devices` or `codeaf devices`, and ordinary local chats leave a new home **quiet**.
 
 An identity made by an older build without the quiet marker keeps its earlier sync behavior. That local identity does not say whether it was paired, so codeaf preserves existing pairings rather than silently stopping them. Set `CODEAF_SYNC_URL=off` to stop relay requests on that home too.
 
 If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
 
-The first-run line about the hosted relay is said once, when chats are first copied, after pairing or offering a code. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
+The first-run line about the hosted relay is said once, when chats are first copied after a pairing is approved; showing a code copies nothing. `CODEAF_SYNC_URL=off` keeps even a paired machine from contacting a relay, including pairing with `--via`.
 
 ## Where are my chats stored — where your chats are stored, the hosted relay, turning it off, self-host your own relay, is my code private
 

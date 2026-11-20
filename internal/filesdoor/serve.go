@@ -67,6 +67,8 @@ type ServeConfig struct {
 	Secrets SecretsFunc
 	// SecretsPage is the most bytes of file one page holds; 0 is [DefaultSecretsPage].
 	SecretsPage int
+	// ChatTitle reads the name of one local conversation for a paired peer.
+	ChatTitle func(id string) string
 	// Ready, when set, is called after every successful registration, before
 	// the door starts answering. It must not block.
 	Ready func()
@@ -353,6 +355,8 @@ func (d *door) respond(ctx context.Context, typ byte, body []byte) (reply, bool)
 		return d.getFrame(ctx, body)
 	case typeSecrets:
 		return d.secrets(ctx, body)
+	case typeChatTitles:
+		return d.titles(ctx, body)
 	}
 	return errorReply(codeBadRequest), true
 }

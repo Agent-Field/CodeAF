@@ -165,7 +165,9 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	// outageHomes repeats these values after that teardown has been registered.
 	t.Setenv(syncsetup.URLVar, relay.URL)
 	t.Setenv(syncsetup.IntervalVar, "50")
-	a, rec, _, workspace := appSyncBackend(t)
+	a, rec, model, workspace := appSyncBackend(t)
+	pauseReply, replyEntered, resumeReply := appSyncHoldReply(t, model)
+	defer resumeReply()
 	_, homeB := outageHomes(t, relay.URL)
 	var idleClock atomic.Int64
 	if leftover {
@@ -190,10 +192,26 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if _, err := a.Rename(agent.ID, "Idle release fixture"); err != nil {
 		t.Fatal(err)
 	}
-	turn, err := a.Send(agent.ID, "! echo before-idle", "")
+	seed, err := a.Send(agent.ID, "! echo before-idle", "")
 	if err != nil {
 		t.Fatal(err)
 	}
+	appTurnDoneFor(t, rec, seed)
+	first := idleReleaseRow(t, wire, agent.ID, func(row appwire.ChatRow) bool { return row.Seen.Head != "" })
+	// With the first published head providing a fence, the peer can
+	// acknowledge the next turn's working flag before we let it finish.
+	pauseReply()
+	turn, err := a.Send(agent.ID, "Say hello before the idle check", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-replyEntered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the second turn did not reach the model")
+	}
+	idleReleaseRow(t, wire, agent.ID, func(row appwire.ChatRow) bool { return row.Working })
+	resumeReply()
 	appTurnDoneFor(t, rec, turn)
 	own := appSyncOwn(t)
 	appSyncWait(t, "I1 idle turn settled", func() bool {
@@ -207,8 +225,8 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A completed turn can still be saving. Baseline the peer only after that
-	// capture is finished and its exact head has reached the directory.
+	// A completed turn can still be saving. Baseline the peer only after its
+	// exact head has reached the directory and the working flag has cleared.
 	if err := cellstore.WaitCapture(t.Context(), chat); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +234,9 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if err != nil || head == nil {
 		t.Fatalf("idle setup head = %v, %v", head, err)
 	}
-	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool { return r.Seen.Head == head.Turn.ID })
+	row := idleReleaseRow(t, wire, agent.ID, func(r appwire.ChatRow) bool {
+		return r.Seen.Head == head.Turn.ID && r.Seen.Head != first.Seen.Head && !r.Working
+	})
 	if leftover {
 		// Model the old engine's mismatch after its final checkpoint: the
 		// stopped job is in tasks.json, but its process file still says running.
@@ -240,7 +260,7 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	}
 	peer.waitFor(t, 10*time.Second, func(_ string, data any) bool {
 		changed, ok := data.(appwire.ChatChanged)
-		return ok && changed.Chat.Cell == agent.ID && changed.Chat.Seen == row.Seen && changed.Chat.Online != nil && *changed.Chat.Online
+		return ok && changed.Chat.Cell == agent.ID && changed.Chat.Seen == row.Seen && !changed.Chat.Working && changed.Chat.Online != nil && *changed.Chat.Online
 	})
 	peer.mu.Lock()
 	cursor := len(peer.events)
@@ -329,10 +349,10 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 		}
 	}
 	peer.mu.Lock()
-	changes := 0
+	var changes []appwire.ChatRow
 	for _, data := range peer.data[cursor:] {
 		if changed, ok := data.(appwire.ChatChanged); ok && changed.Chat.Cell == agent.ID {
-			changes++
+			changes = append(changes, changed.Chat)
 		}
 	}
 	peer.mu.Unlock()
@@ -340,10 +360,12 @@ func appIdleReleaseI1I2(t *testing.T, viewed bool, stopped ...bool) {
 	if viewed {
 		wantChanges = 0
 	}
-	if changes != wantChanges {
-		t.Fatalf("I2 idle chat emitted %d changes, want %d", changes, wantChanges)
+	if len(changes) != wantChanges {
+		initial, _ := json.Marshal(row)
+		later, _ := json.Marshal(changes)
+		t.Fatalf("I2 idle chat emitted %d changes, want %d\ninitial: %s\nchanges: %s", len(changes), wantChanges, initial, later)
 	}
-	t.Logf("I1/I2 viewed=%v: idle acquires=%d releases=%d heartbeat requests=%d row changes=%d fence=%d", viewed, acquires.Load(), releases.Load(), beats.Load(), changes, row.Seen.Fence)
+	t.Logf("I1/I2 viewed=%v: idle acquires=%d releases=%d heartbeat requests=%d row changes=%d fence=%d", viewed, acquires.Load(), releases.Load(), beats.Load(), len(changes), row.Seen.Fence)
 	if leftover {
 		if session.NeedsProcessRecovery(transcript) {
 			t.Fatal("B1 settled process still demands recovery after the sweep")

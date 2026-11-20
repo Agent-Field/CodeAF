@@ -29,11 +29,12 @@ const (
 	typeRefused byte = 'x' // json refusal: the door answered and said no
 	typeError   byte = 'e' // one error code; the request itself was understood
 
-	typeHas      byte = 1
-	typeLocate   byte = 2
-	typeGetMany  byte = 3
-	typeGetFrame byte = 4
-	typeSecrets  byte = 5 // a chat's secret files, one sealed page at a time (secrets.go)
+	typeHas        byte = 1
+	typeLocate     byte = 2
+	typeGetMany    byte = 3
+	typeGetFrame   byte = 4
+	typeSecrets    byte = 5 // a chat's secret files, one sealed page at a time (secrets.go)
+	typeChatTitles byte = 6
 
 	// answerBit turns a request type into the type of its answer.
 	answerBit byte = 0x80

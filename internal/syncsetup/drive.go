@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -470,16 +471,32 @@ func (s *Sync) batcher(eng cellstore.Engine, c cell.Cell, drv cellsync.Driving, 
 	d.scope = s.chatScope(c.ID)
 	pub := &cellsync.Publisher{Engine: engine, Store: d.scope.Store, Dir: s.Dir}
 	var unsavedWarning sync.Once
+	// Upload outcomes run under the batcher's flush lock. Only a successful
+	// publication clears this outage; local seals and directory beats do not.
+	outage := false
+	flushed := d.flushed()
 	b := &cellsync.Batcher{
 		Publisher: pub,
 		Brancher: cellsync.Brancher{
 			Dir: s.Dir, Publisher: pub, Map: branches,
 			NewID: func() (string, error) { return cell.NewID(time.Now()) },
 		},
-		Driving:      &drv,
-		Interval:     s.Interval,
-		Info:         d.info,
-		OnFlush:      d.flushed(),
+		Driving:  &drv,
+		Interval: s.Interval,
+		Info:     d.info,
+		OnFlush: func(f cellsync.Flush) {
+			if outage {
+				outage = false
+				d.notice(syncwords.Recovered)
+			}
+			flushed(f)
+		},
+		OnUploadFailure: func(err error) {
+			if !outage && !errors.Is(err, context.Canceled) && syncwords.TransportFailure(err) {
+				outage = true
+				d.notice(syncwords.Outage(s.Relay))
+			}
+		},
 		OnSuperseded: d.becomeViewer,
 		OnLost:       d.loseHold,
 		BeforeResolve: func(ctx context.Context) error {

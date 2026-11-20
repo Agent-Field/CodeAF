@@ -2,6 +2,7 @@ package syncsetup
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -101,5 +102,50 @@ func TestAChatThatCouldNotBeSharedIsSaidOnlyWithAnotherComputer(t *testing.T) {
 	}
 	if len(said) != 1 || !strings.Contains(said[0], "could not be shared") {
 		t.Fatalf("with another computer paired the failure reads %q", said)
+	}
+}
+
+// The directory may have committed the first head even though the client
+// received an error. A chat the other computer can already list needs no warning.
+func TestQAFirstShareReconcilesACommittedHeadBeforeWarning(t *testing.T) {
+	var interrupted atomic.Bool
+	r := newDriveRig(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.Method == http.MethodPost && strings.HasPrefix(req.URL.Path, "/v1/dir/cells/") && !interrupted.Swap(true) {
+				result := httptest.NewRecorder()
+				next.ServeHTTP(result, req)
+				if result.Code >= 200 && result.Code < 300 {
+					http.Error(w, "response interrupted", http.StatusServiceUnavailable)
+				} else {
+					w.WriteHeader(result.Code)
+					_, _ = w.Write(result.Body.Bytes())
+				}
+				return
+			}
+			next.ServeHTTP(w, req)
+		})
+	})
+	mustNil(t, r.b.Rename(t.Context(), "laptop"))
+	_, err := r.a.Dir.List(t.Context())
+	mustNil(t, err)
+	c, err := cell.CreateIn(filepath.Join(r.a.Home, "v3", "projects", "local"), cell.Options{Class: cell.FilesOnly})
+	mustNil(t, err)
+	work := filepath.Join(c.Root, "work")
+	mustNil(t, os.MkdirAll(work, 0700))
+	mustNil(t, session.SaveMeta(c.Root, session.Meta{ID: c.ID, Title: "first turn", Workspace: work, Owned: true, Created: time.Now()}))
+	appendTo(t, transcriptOf(c), "{\"type\":\"message\",\"role\":\"user\",\"content\":\"first saved message\"}\n")
+	engine := cellstore.EngineFor(work)
+	engine.DataRoot = filepath.Join(r.a.Home, "v3", "stores")
+	_, err = engine.Seal(t.Context(), c, cellstore.TurnInfo{})
+	mustNil(t, err)
+
+	var said []string
+	err = r.a.PublishLocalChats(t.Context(), time.Now, func(_ cell.Cell, line string) { said = append(said, line) })
+	view, readErr := r.b.Dir.Cell(t.Context(), c.ID)
+	if !interrupted.Load() || readErr != nil || view.Cell.Head == "" {
+		t.Fatalf("the peer cannot see the committed first head: %v", readErr)
+	}
+	if err != nil || len(said) != 0 {
+		t.Fatalf("first save was reported as unshared: %v, %q", err, said)
 	}
 }

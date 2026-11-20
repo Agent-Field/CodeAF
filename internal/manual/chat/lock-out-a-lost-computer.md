@@ -20,7 +20,7 @@ usage: codeaf identity rotate [--grace 7d] [--yes] [--abandon]
 
 ## What a rotation does — the steps, in order
 
-1. It tells you the cost first, and asks. It says how many chats you have, how many are not on this computer, how many megabytes go up and about how long that takes. Answer `n`, or press ctrl+c, and nothing has changed.
+1. It tells you the cost first, and asks. It says how many chats you have and how many are not on this computer. With storage on it estimates the upload and wait; with storage off it says your chats stay on this computer instead of promising a zero-byte upload. Answer `n`, or press ctrl+c, and nothing has changed.
 2. It fetches the chats this computer does not hold yet. This can take a long time for big chats. You can still cancel.
 3. It makes the new identity and writes it down on this computer, before it sends anything.
 4. It shuts the old identity on the relay. Nobody can write to it any more, this computer included. Your other computers show that your chats are moving, and wait.
@@ -45,7 +45,7 @@ If `codeaf identity rotate` stops half way, because the network dropped or the c
 
 To stop a rotation before step 7, run `codeaf identity rotate --abandon`. The old identity opens again. Only after a hosted relay accepts the successor binding does this computer keep the replacement keys privately, outside the active rotation, for another rotation of the same identity on that same relay. Canceling before acceptance, using a relay without the storage capability, or using a self-hosted relay discards the candidate; the next rotation makes fresh keys. After step 7 the only way is forward: it says `already switched to the new identity`.
 
-If the computer that started the rotation is lost too, run `codeaf identity rotate --abandon` on another computer that still has the old identity. It opens the old identity again.
+If the computer that started the rotation is lost too, run `codeaf identity rotate --abandon` on another computer that still has the old identity. It opens the old identity again. If the identity is already open, it says `no rotation in progress`. Declining the initial plan prints a cancellation and returns status 1. The completed rotation records the successor’s storage permission on this computer.
 
 ## What a lost computer still keeps — be plain about it
 

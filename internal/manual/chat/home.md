@@ -351,7 +351,7 @@ be on <device>`. The `up to` clause is left out when nothing is waiting there. O
 <N> ago`. When that device is not online, the card leaves `held on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
-`<device> continued this chat; this window now only shows it`. Anything it had not yet sent
+`<device> continued this chat. This copy is read-only and may be behind`. Anything it had not yet sent
 is kept as a branch, `<K> turns from <device>: open separately / discard`; opening it continues it separately, and discard archives it. On a narrow frame the same
 question takes the whole screen, with the sentence wrapped.
 

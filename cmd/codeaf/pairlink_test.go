@@ -176,7 +176,7 @@ func TestPairApproveWithoutALinkSaysUsage(t *testing.T) {
 	usageErr = errs
 	defer func() { usageErr = previous }()
 	err := rig.door(rig.homeA, strings.NewReader(""), &pairScreenText{}).run(context.Background(), []string{"approve"})
-	if err != exitStatus(2) || !strings.Contains(errs.String(), "usage: codeaf pair approve <link-or-code>") || strings.Contains(errs.String(), "42-715-302") {
+	if err != exitStatus(2) || !strings.Contains(errs.String(), "usage: codeaf pair approve <link-or-token>") || strings.Contains(errs.String(), "42-715-302") {
 		t.Fatalf("a bare approve ended with %v and said %q, want its own usage line and exit 2", err, errs.String())
 	}
 }
