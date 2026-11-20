@@ -46,7 +46,7 @@ func TestADeskGoAheadStartsTheCoveredJobAfterItsParentMerges(t *testing.T) {
 	}
 	seam := factory.LocalSeam(st, now)
 	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "alice"}, nil }
-	h := serve.New(seam, serve.Config{Mode: api.FactorySolo, AccessToken: testHostToken, OperatorLogin: "alice", Store: st, Record: history})
+	h := serve.New(seam, serve.Config{Mode: api.FactorySolo, AccessToken: testHostToken, OperatorLogin: "alice", Store: st, Record: history, Now: clock})
 	srv := httptest.NewServer(h)
 	t.Cleanup(func() { srv.Close(); h.Close() })
 	w := newFactoryWire(t, testFactoryHub(t))

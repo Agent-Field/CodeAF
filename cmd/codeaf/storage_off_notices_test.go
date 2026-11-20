@@ -181,6 +181,7 @@ func (a *storageOffNoticeAgent) TakeSealNotice() string { return a.watch.Take() 
 
 // B4 gives each seat sharing a drive one notice over its own real window connection.
 func TestSharedDriveNoticesEachWindow(t *testing.T) {
+	cellstoretest.EngineDir(t)
 	cfg, c := spokenDoorChatWithPairing(t, true)
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	defer service.Close()
@@ -198,11 +199,14 @@ func TestSharedDriveNoticesEachWindow(t *testing.T) {
 	cfg = v3Seated(cfg)
 	d := syncDrives.renewalsOf(c.ID)
 	startupFinished(d)
+	first := cfg.Seals.(*cellstore.SealWatch)
+	defer first.Retire()
 	_, _, second := v3SeatWith(cfg.Place, nil, syncDrives)
+	defer second.Retire()
 	if syncDrives.renewalsOf(c.ID) != d {
 		t.Fatal("seats did not share a drive")
 	}
-	for _, watch := range []*cellstore.SealWatch{cfg.Seals.(*cellstore.SealWatch), second} {
+	for _, watch := range []*cellstore.SealWatch{first, second} {
 		loop, err := remote.Loopback(remote.Hello{}, remote.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
 			return &remote.Engine{Agent: &storageOffNoticeAgent{watch: watch}}, nil
 		}})
@@ -240,6 +244,7 @@ func TestSharedDriveNoticesEachWindow(t *testing.T) {
 	}
 	startupFinished(d)
 	_, _, approved := v3SeatWith(cfg.Place, nil, syncDrives)
+	defer approved.Retire()
 	for line := approved.Take(); line != ""; line = approved.Take() {
 		if line == chatlist.RelayStorageOff {
 			t.Fatal("approved seat replayed an obsolete refusal")
