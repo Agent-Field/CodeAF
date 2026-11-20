@@ -152,7 +152,7 @@ never just looks at the same unchanged checkout again. A check just runs its com
 Only when the last round falls short does it ask you, for instance
 `review is not clean after 3 rounds: 1 finding · try again, send it back, or stop the job?`.
 
-## a step stopped without reporting — what ends a step, the out of rounds state, my job stopped and waits, try again
+## a step stopped without reporting — what ends a step, the eight-hour timeout, the out of rounds state, my job stopped and waits, try again
 
 A step's conversation ends its work by calling `stage_result`; nothing inside it decides the
 step is finished. A step never hands work to a quick task (it has no `quick_task`, its reads
@@ -175,7 +175,7 @@ brought nothing:
 A spending limit is a stop, not a missing report: a turn today's limit refused stops the job
 with `today's spend limit stopped this step` (another limit: `a spend limit stopped this step:
 <its words>`), with no reminder and nothing asked. Only when all three came back empty, or a
-round ran for two hours (or an idle Plan could not finish reporting within its two-minute recovery window), does the job wait for you, in plain words:
+round ran for eight hours (or an idle Plan could not finish reporting within its two-minute recovery window), does the job wait for you, in plain words:
 
 - `plan stopped without reporting · try again, or stop the job?`, with why after a colon when
   codeaf could not make the report;
@@ -200,7 +200,7 @@ Each call replaces the one before until the final report. `done: true` is final 
 immediately after the tool receipt is saved. `final: true` can also finish an incomplete step.
 An intermediate report is never cut off merely because it reported. The runner judges a final
 report against the step's rule. It never needs an extra model reply to
-accept a final report. The two-hour wall still bounds a step that never finishes.
+accept a final report. The eight-hour wall still bounds a step that never finishes.
 
 The Timeline shows the final report only, with `· updated 1 time` or `· updated 2 times` when
 the step changed it, so you can see it corrected itself.
@@ -238,7 +238,7 @@ only what it said.
 
 A stage's conversation is made when the stage starts, in the item's own worktree (a folder
 of its own on its own branch, never your checkout), and joins the item's team (`#12 · <title>`) under the one `factory` team in the team
-menu. Nobody is at its keyboard: it runs unattended for at most two hours, and a card it raises
+menu. Nobody is at its keyboard: it runs unattended for at most eight hours, and a card it raises
 takes its default. It has no
 `factory_add`, `factory_recipe` or `factory_item`, because those wait on a card. The round is
 over when it has been idle, with no task it started still running.
