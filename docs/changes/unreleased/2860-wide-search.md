@@ -1,6 +1,6 @@
 ---
 kind: fixed
-title: A task's search of the whole disk is refused, and a search that prints nothing for 30 seconds is stopped
+title: A task's search of the whole disk is refused, and a search silent for 30 seconds is stopped
 pr: 2860
 surface: [chat, engine]
 invalidates:
