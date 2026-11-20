@@ -186,7 +186,7 @@ const backgroundProperty = `{"type":"boolean","description":"Spawn the command a
 func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 	return bare.Tool{
 		Name:        inner.Name,
-		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds) + a.keepSentence(),
+		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds) + a.appShellQuietDescription() + a.keepSentence(),
 		Schema:      a.schemaWithKeep(schemaWithBackground(inner.Schema)),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			// A factory must judge the check itself, not grep/tail's exit.

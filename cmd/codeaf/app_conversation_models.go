@@ -110,12 +110,19 @@ func (b *appBackend) setConversationModels(id string, pair session.ConversationM
 	if err != nil {
 		return appwire.Agent{}, err
 	}
+	// Read before the backend's lock: they take the conversation's own
+	// (appSessionLocks).
+	model := live.conn.Conv.Model()
+	var identity *session.ModelIdentity
+	if door, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
+		state := door.ModelIdentity()
+		identity = &state
+	}
 	var view appwire.Agent
 	b.locked(func() {
-		a.view.Model = live.conn.Conv.Model()
-		if identity, ok := live.conn.Conv.(interface{ ModelIdentity() session.ModelIdentity }); ok {
-			state := identity.ModelIdentity()
-			a.view.ModelIdentity = &state
+		a.view.Model = model
+		if identity != nil {
+			a.view.ModelIdentity = identity
 		}
 		view = a.view
 	})

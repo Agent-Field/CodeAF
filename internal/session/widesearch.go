@@ -439,7 +439,16 @@ func (a *Agent) armSearchQuiet(call *bare.BashCall) func() {
 	if a.config.searchQuiet > 0 {
 		limit, poll = a.config.searchQuiet, a.config.searchQuiet/10+time.Millisecond
 	}
-	sentence := searchQuietSentence(a.taskGround())
+	return armQuietClock(call, limit, poll, searchQuietSentence(a.taskGround()))
+}
+
+// armQuietClock is THE quiet clock, shared by a task's search (above) and the
+// app's foreground commands (bash_backstop.go): it reads how long the call has
+// gone without printing and stops it, with the output it had and the sentence
+// given, once that passes limit. It answers the function that takes it off.
+// A call that was adopted into a job first is not stopped by it: [BashCall.Stop]
+// refuses a call that is no longer open.
+func armQuietClock(call *bare.BashCall, limit, poll time.Duration, sentence string) func() {
 	done := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(poll)

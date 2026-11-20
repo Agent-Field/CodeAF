@@ -1723,6 +1723,13 @@ type Config struct {
 	// searchQuiet replaces a task search's quiet limit in a test, so the cut can
 	// be proved without thirty silent seconds (widesearch.go). Zero is the law.
 	searchQuiet time.Duration
+	// shellQuiet replaces the app's foreground quiet clock in a test, and turns
+	// it on outside the app (bash_backstop.go). Zero is the law.
+	shellQuiet time.Duration
+	// bashBackstop replaces the dispatcher's own bash clock in a test (bash_backstop.go). Zero is the law.
+	bashBackstop time.Duration
+	// bashAbort replaces the dispatcher's abort grace in a test. Zero is the law.
+	bashAbort time.Duration
 	// AbandonAfter lets tests hold and fire the bounded stop's timer itself.
 	// Production leaves it nil and arms time.AfterFunc at the same grace.
 	AbandonAfter func(time.Duration, func()) *time.Timer
