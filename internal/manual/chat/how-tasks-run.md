@@ -898,6 +898,37 @@ named, and went around it three ways — plumbing commands, then `GIT_DIR=`, the
 own API. Two commits landed on a branch of the person's repository from work nobody had
 approved landing there.
 
+## Can a task search my whole computer? No — find / or a search of your home is refused, and a quiet search is stopped
+
+**A task may read anything it is pointed at, but it may not search everywhere.** A search
+rooted at the top of the disk, at a folder one level under it (`/home`, `/usr`, `/tmp`,
+`/Users`), at your home (`~`, `$HOME`) or at the folder your home sits in is refused before
+it runs. That covers `find`, `fd`, `rg`, `ag`, `ack`, `grep -r`, `du`, `tree` and `ls -R`,
+after a `cd` too (`cd / && find . -name x`), and the belt's own `find` and `grep` tools. The
+task reads:
+
+> find / searches far beyond this task, so it was not run: a search that wide takes many
+> minutes and passes through the person's own folders. This task works in …/work — search
+> there, or in a folder your brief names, or keep a wide search shallow with a depth limit
+> of 3 or less.
+
+**What still runs:** a search of the task's own folder or of any folder the brief names
+(`grep -rn TODO ~/code/yours`), a shallow one (`find / -maxdepth 2 -name bin`), and every
+plain read (`cat /etc/hosts`, `ls ~`).
+
+**A search that prints nothing for 30 seconds is stopped**, with whatever it had printed and
+`Search stopped: it printed nothing for 30 seconds, so it was walking far more than it was
+finding. This task works in …` naming its folder. A search that keeps finding things keeps
+printing and is never cut by this; a quiet command that is not a search — a build, `sleep`,
+a test suite that prints at the end — is not on this clock at all. A task's search is not
+handed to a job either, because a task waits for its own commands.
+
+**Your conversation is not held to this.** A search you ask for in the chat runs as asked.
+
+**Why it exists.** A canvas finished its sheet in 90 seconds and handed a doc to a task. The
+task's worker ran `find / -iname '*reports*research*' 2>/dev/null | head`, which printed
+nothing and held it for the full ten-minute limit, and the turn ran past fifteen minutes.
+
 ## Can a task push, or open a pull request? No — its work comes home through its landing
 
 **`git push` is refused**, wherever the task is standing, and so is anything that changes a

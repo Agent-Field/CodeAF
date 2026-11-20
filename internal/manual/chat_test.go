@@ -1013,6 +1013,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		{"can a task search my whole computer", "how-tasks-run"},
+		{"why was my task's find / refused", "how-tasks-run"},
+		{"my task's search was stopped because it printed nothing", "how-tasks-run"},
 		// The run's checker is told the work is in its own copy; a person who
 		// saw it read their checkout asks in these words.
 		{"did the checker read my checkout instead of the task's copy", "how-tasks-run"},
