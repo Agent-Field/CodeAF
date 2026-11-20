@@ -138,17 +138,20 @@ func (b *appBackend) announceCredentialWhenDue(provider string, proposal appSync
 		if b.isClosing() {
 			return
 		}
-		k := &b.credentials
-		k.mu.Lock()
-		current, exists := k.synced[provider]
-		now := b.now()
-		waiting := exists && current.change.Ticket == ticket && current.retryAt.Equal(due) &&
-			!now.Before(due) && now.Sub(current.at) < appwire.CredentialsTakeLife && b.keys.State(provider) == current.before
-		k.mu.Unlock()
-		if waiting {
+		if b.credentialRetryDue(provider, ticket, due) {
 			b.announceCredential()
 		}
 	})
+}
+
+func (b *appBackend) credentialRetryDue(provider string, ticket uint64, due time.Time) bool {
+	k := &b.credentials
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	current, exists := k.synced[provider]
+	now := b.now()
+	return exists && current.change.Ticket == ticket && current.retryAt.Equal(due) &&
+		!now.Before(due) && now.Sub(current.at) < appwire.CredentialsTakeLife && b.keys.State(provider) == current.before
 }
 
 // CredentialsTake drains ordinary changes once. A synced ticket remains
@@ -182,30 +185,33 @@ func (b *appBackend) CredentialsTake(context.Context) (appwire.CredentialsTaken,
 }
 
 func (b *appBackend) CredentialsConfirm(ticket uint64, applied bool) {
+	proposal := b.confirmCredentialProposal(ticket, applied)
+	if proposal.change.Ticket != 0 && applied && b.keys.AcceptSynced(proposal.change.Provider, proposal.before, proposal.change.Key) {
+		// Another vault value may have arrived while this ticket was taken.
+		b.keys.RequestSyncRefresh()
+		b.credentialChanged(proposal.change.Provider)
+	}
+}
+
+func (b *appBackend) confirmCredentialProposal(ticket uint64, applied bool) appSyncedCredential {
 	k := &b.credentials
 	k.mu.Lock()
-	var proposal appSyncedCredential
+	defer k.mu.Unlock()
 	for provider, p := range k.synced {
 		if p.change.Ticket != ticket || !p.taken {
 			continue
 		}
 		if applied || b.keys.State(provider) != p.before {
 			delete(k.synced, provider)
-			proposal = p
-		} else {
-			now := b.now()
-			p.taken = false
-			p.wait = min(15*time.Second, max(time.Second, 2*p.wait))
-			p.retryAt = now.Add(p.wait)
-			k.synced[provider] = p
-			b.announceCredentialWhenDue(provider, p, now)
+			return p
 		}
+		now := b.now()
+		p.taken = false
+		p.wait = min(15*time.Second, max(time.Second, 2*p.wait))
+		p.retryAt = now.Add(p.wait)
+		k.synced[provider] = p
+		b.announceCredentialWhenDue(provider, p, now)
 		break
 	}
-	k.mu.Unlock()
-	if proposal.change.Ticket != 0 && applied && b.keys.AcceptSynced(proposal.change.Provider, proposal.before, proposal.change.Key) {
-		// Another vault value may have arrived while this ticket was taken.
-		b.keys.RequestSyncRefresh()
-		b.credentialChanged(proposal.change.Provider)
-	}
+	return appSyncedCredential{}
 }

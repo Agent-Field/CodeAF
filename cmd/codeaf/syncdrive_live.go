@@ -372,18 +372,10 @@ func (l *liveDrive) Working(on bool) {
 // is settled and captured. Background jobs and their owed wake-up replies are
 // part of the same handoff boundary as the foreground turn.
 func (l *liveDrive) TurnEnded(c cell.Cell, watch *cellstore.SealWatch) {
-	l.mu.Lock()
-	if l.closed.Load() {
-		l.mu.Unlock()
+	ctx, stop, turn, surface := l.beginTurnWait()
+	if stop == nil {
 		return
 	}
-	if l.turnStop != nil {
-		l.turnStop()
-	}
-	ctx, stop := context.WithCancel(context.Background())
-	l.turnStop = stop
-	turn, surface := l.turn, l.surfaceIdle
-	l.mu.Unlock()
 	ready := func() bool { return (surface == nil || surface()) && watch.IdleForCapture() }
 	guard.Go("chat sync turn end", func() {
 		defer stop()
@@ -424,6 +416,20 @@ func (l *liveDrive) TurnEnded(c cell.Cell, watch *cellstore.SealWatch) {
 			return
 		}
 	})
+}
+
+func (l *liveDrive) beginTurnWait() (context.Context, context.CancelFunc, uint64, func() bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed.Load() {
+		return nil, nil, 0, nil
+	}
+	if l.turnStop != nil {
+		l.turnStop()
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	l.turnStop = stop
+	return ctx, stop, l.turn, l.surfaceIdle
 }
 
 // finishTurn changes the flag under one lock so a newer start cannot race
