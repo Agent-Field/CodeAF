@@ -169,7 +169,7 @@ func TestDisplacedWindowsContinueWithoutBranchesOrLostDrafts(t *testing.T) {
 		draft  string
 		from   string
 	}{{a, draftA, names[1]}, {b, draftB, names[0]}} {
-		turn.window.waitFor(15*time.Second, "this window now only shows it")
+		turn.window.waitFor(15*time.Second, "This copy is read-only and may be behind")
 		turn.window.lit(turn.draft)
 		before := requests.Load()
 		turn.window.keys("Enter")

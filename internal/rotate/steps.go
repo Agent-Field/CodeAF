@@ -317,6 +317,11 @@ func (r *run) stageAndInstall() error {
 // retire asks the relay to delete the old identity after the grace period and
 // ends the rotation.
 func (r *run) retire(ctx context.Context) error {
+	if r.SaveSuccessorStorage != nil {
+		if err := r.SaveSuccessorStorage(ctx, r.j.NewID, r.new.Store); err != nil {
+			return err
+		}
+	}
 	if err := r.old.Gate.Retire(ctx, time.Duration(r.j.GraceMS)*time.Millisecond); err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -44,6 +45,22 @@ func (s *Sync) Rotation(eng cellstore.Engine, held func(id string) (cell.Cell, b
 		Home: s.Home, Identity: s.Identity, Device: s.Device, Say: say,
 		HostedRelay: hostedRelay,
 		Connect:     s.relayOf,
+		SaveSuccessorStorage: func(ctx context.Context, id string, successor blobstore.Store) error {
+			ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+			defer cancel()
+			counts, err := successor.(interface {
+				Stats(context.Context) (blobstore.Counts, error)
+			}).Stats(ctx)
+			if err != nil {
+				// An older self-hosted relay may not answer stats. Its old
+				// cache cannot authorize the successor and startup can retry.
+				if hostedRelay == "" {
+					return nil
+				}
+				return err
+			}
+			return SaveStorage(s.Home, s.Relay, id, counts.Storage)
+		},
 		StorageAllowed: func(ctx context.Context, successor blobstore.Store) (bool, error) {
 			if !IsHostedRelay(s.Relay) {
 				return true, nil
@@ -86,20 +103,20 @@ func (s *Sync) relayOf(sig reqsign.Signer) rotate.Relay {
 	dir := directory.NewHTTP(s.Relay, sign, &http.Client{Timeout: requestTimeout})
 	store := GateStore(blobstore.NewHTTP(s.Relay, sign, &http.Client{}), s.Home, s.Relay, reqsign.IDOf(sig.IdentityKey()))
 	if IsHostedRelay(s.Relay) && reqsign.IDOf(sig.IdentityKey()) != s.Identity.ID() {
-		allowed := store.CanStore
-		legacy := false
+		// The successor's permission is private to this rotation until the
+		// identity is installed. Abandon must leave the old binding intact.
+		var allowed atomic.Bool
+		store.OnStorageOff = func() { allowed.Store(false) }
 		store.CanStore = func() bool {
-			if legacy || allowed() {
+			if allowed.Load() {
 				return true
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
 			counts, err := store.Stats(ctx)
-			if err == nil && counts.Storage == "" {
-				legacy = true
-				return true
-			}
-			return err == nil && SaveStorage(s.Home, s.Relay, reqsign.IDOf(sig.IdentityKey()), counts.Storage) == nil && allowed()
+			ok := err == nil && (counts.Storage == "" || counts.Storage == "on")
+			allowed.Store(ok)
+			return ok
 		}
 	}
 	return rotate.Relay{Dir: dir, Store: store, Gate: directory.Gate{Client: dir, Store: store, Source: reqsign.IDOf(sig.IdentityKey())}}

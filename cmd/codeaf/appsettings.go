@@ -266,6 +266,7 @@ func (b *appBackend) ForgetMemory(id string) error {
 	if err := brain.ForgetMemory(id); err != nil {
 		return appEngineError(err)
 	}
+	b.chats.wakePublication()
 	return nil
 }
 

@@ -136,6 +136,12 @@ var (
 	ErrSomeoneElse = errors.New("someone else used that code")
 	// ErrDidNotFinish is a pairing that ran out of time part way.
 	ErrDidNotFinish = errors.New("the pairing did not finish; nothing was changed")
+	// ErrNotConfirmed is a pairing whose answer went out and whose joining
+	// device never said it kept it: it refused what it was sent, it stopped, or
+	// its word was lost. The answer carried the whole identity and may have
+	// arrived, so this is never said as nothing having been shared: the sentence
+	// points at the other device, which knows how it ended ([NotConfirmedBy]).
+	ErrNotConfirmed = errors.New("the other device did not confirm the pairing")
 	// ErrOffering is a second code asked for while one is showing.
 	ErrOffering = errors.New("a pairing code is already showing on this computer")
 	// ErrBadGrant is what arrived as a grant and could not be used.
@@ -157,6 +163,27 @@ var (
 	// ErrTooManyPairings is a network that asked for too many codes in an hour.
 	ErrTooManyPairings = errors.New("too many pairings from this network")
 )
+
+// NotConfirmedBy is [ErrNotConfirmed] naming the joining device, because that
+// device's screen is where a person can see whether it joined and why not.
+func NotConfirmedBy(label string) error { return notConfirmedError{label: label} }
+
+// UnconfirmedBy answers the joining device a pairing was not confirmed by, for
+// a screen that words the sentence itself.
+func UnconfirmedBy(err error) (string, bool) {
+	var e notConfirmedError
+	if errors.As(err, &e) {
+		return e.label, true
+	}
+	return "", false
+}
+
+type notConfirmedError struct{ label string }
+
+func (e notConfirmedError) Error() string {
+	return "pairing was not confirmed by " + e.label + "; check that computer to see whether it joined"
+}
+func (e notConfirmedError) Unwrap() error { return ErrNotConfirmed }
 
 // NothingWaitingUnder is the sentence for a nameplate that is unknown or over,
 // the same words for both because the person's next step is the same.

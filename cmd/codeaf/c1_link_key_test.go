@@ -10,21 +10,25 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pair"
 )
 
-// C1 requires explicit a approval through the real terminal pairing door.
-func TestC1TerminalLinkApprovalRequiresA(t *testing.T) {
-	rig := newPairRig(t)
-	screen, done := rig.asking(t)
-	token := screen.waitFor(t, `codeaf pair approve (\S+)`)[1]
-	out, err := rig.approveWith(t, []string{"approve", token}, "a\n")
-	joined := <-done
-	if err != nil || joined != nil || !strings.Contains(out.String(), "is now paired") {
-		t.Fatalf("C1 a was not approval: err=%v join=%v output=%s", err, joined, out.String())
+// C1 accepts explicit approval through the real terminal pairing door.
+func TestC1TerminalLinkApprovalAcceptsExplicitApproval(t *testing.T) {
+	for _, answer := range []string{"a\n", "A\n", "y\n", "yes\n"} {
+		t.Run(fmt.Sprintf("%q", answer), func(t *testing.T) {
+			rig := newPairRig(t)
+			screen, done := rig.asking(t)
+			token := screen.waitFor(t, `codeaf pair approve (\S+)`)[1]
+			out, err := rig.approveWith(t, []string{"approve", token}, answer)
+			joined := <-done
+			if err != nil || joined != nil || !strings.Contains(out.String(), "is now paired") {
+				t.Fatalf("%q did not approve pairing: err=%v join=%v output=%s", answer, err, joined, out.String())
+			}
+		})
 	}
 }
 
-// C1 declines every other terminal key, including the older code-pairing yes.
+// C1 declines every other terminal answer, including empty input.
 func TestC1TerminalLinkApprovalDeclinesEveryOtherKey(t *testing.T) {
-	for _, answer := range []string{"d\n", "\x1b\n", "\n", "y\n", "yes\n", "A\n", "anything\n"} {
+	for _, answer := range []string{"d\n", "\x1b\n", "\n", "n\n", "no\n", "anything\n"} {
 		t.Run(fmt.Sprintf("%q", answer), func(t *testing.T) {
 			rig := newPairRig(t)
 			screen, done := rig.asking(t)

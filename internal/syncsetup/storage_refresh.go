@@ -13,6 +13,10 @@ import (
 
 const StorageRefreshEvery = 10 * time.Minute
 
+// StorageStatusRefreshEvery bounds explicit status refreshes without changing
+// the background discovery cadence or delaying the first request on a new binding.
+const StorageStatusRefreshEvery = 30 * time.Second
+
 // One coordinator owns both approval discovery and startup waits in a process.
 // Running batchers use their own bounded retry and never poll permission files.
 var storageProcesses = struct {
@@ -43,6 +47,8 @@ type storageProcess struct {
 	counts                      blobstore.Counts
 	countsRelay, countsIdentity string
 	probeRelay, probeIdentity   string
+	statusRelay, statusIdentity string
+	statusRefresh               time.Time
 	// These seams count actual scheduled work without relying on elapsed time.
 	after func(time.Duration, func()) func() bool
 	read  func() (string, string, string)
@@ -385,6 +391,14 @@ func StorageCounts(home, relay, identity string) blobstore.Counts {
 func StorageNeedsRefresh(home, relay, id string) bool {
 	state, gating, answered := storagePolicy(home, relay, id)
 	if state == "off" {
+		p := storageProcessFor(home)
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		address := normalizeStorageURL(relay)
+		if p.statusRelay == address && p.statusIdentity == id && p.now().Before(p.statusRefresh.Add(StorageStatusRefreshEvery)) {
+			return false
+		}
+		p.statusRelay, p.statusIdentity, p.statusRefresh = address, id, p.now()
 		return true
 	}
 	if answered || gating {

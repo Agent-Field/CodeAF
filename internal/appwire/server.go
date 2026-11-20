@@ -490,11 +490,16 @@ var methods = map[string]method{
 		if p.Limit == 0 || p.Limit > MaxEntries {
 			p.Limit = MaxEntries
 		}
+		if reader, ok := e.(ChatEntryPageReader); ok {
+			result, err := reader.EntriesWithFallback(p.ID, p.Before, p.Limit)
+			result.Entries = nonNil(result.Entries)
+			return &result, err
+		}
 		entries, more, err := e.Entries(p.ID, p.Before, p.Limit)
 		if err != nil {
 			return nil, err
 		}
-		return &EntriesResult{nonNil(entries), more}, nil
+		return &EntriesResult{Entries: nonNil(entries), More: more}, nil
 	}),
 	"agents.set_models": typed(func(e Engine, p struct {
 		ID   string `json:"id"`
@@ -829,6 +834,10 @@ type (
 	EntriesResult struct {
 		Entries []Entry `json:"entries"`
 		More    bool    `json:"more"`
+		// RemoteHead identifies the saved page. LocalFallback says a remote
+		// page could not be read and this page came from the retained journal.
+		RemoteHead    string `json:"remote_head,omitempty"`
+		LocalFallback bool   `json:"local_fallback,omitempty"`
 	}
 	TurnResult struct {
 		Turn uint64 `json:"turn"`

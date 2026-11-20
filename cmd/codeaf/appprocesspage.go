@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -474,6 +475,12 @@ func (b *appBackend) processRecord(ctx context.Context, id string, legacyList bo
 	convDir := ""
 	if transcript != "" {
 		convDir = session.DirOf(transcript)
+		// The chat opens ahead of its carried files. An output request waits
+		// for that arrival rather than mistaking an uninstalled record for a
+		// missing process. No process is started by this read.
+		if err := cell.WaitWorkspace(ctx, convDir); err != nil {
+			return session.JobNotice{}, "", appEngineError(err)
+		}
 	}
 	var record session.JobNotice
 	found := false
@@ -504,7 +511,7 @@ func (b *appBackend) processRecord(ctx context.Context, id string, legacyList bo
 	if !found || (stamp != "" && appProcessStamp(record) != stamp) {
 		return session.JobNotice{}, "", appwire.Errorf(appwire.CodeNotFound, "there is no process %s", id)
 	}
-	return record, convDir, nil
+	return appMovedProcessRecord(transcript, record), convDir, nil
 }
 
 // appRunningPages bounds how many pages a sleep or a quit reads to find the

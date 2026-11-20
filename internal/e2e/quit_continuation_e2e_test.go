@@ -192,7 +192,7 @@ func TestQuitContinuationFirstSend(t *testing.T) {
 		if strings.Contains(screen, "Continue this chat here?") {
 			t.Fatalf("first send raised the continuation card:\n%s", screen)
 		}
-		if strings.Contains(screen, "this window now only shows it") {
+		if strings.Contains(screen, "This copy is read-only and may be behind") {
 			t.Fatalf("the window that continued the chat said another computer holds it:\n%s", screen)
 		}
 		if answered.Load() && strings.Contains(screen, continuedReply) {

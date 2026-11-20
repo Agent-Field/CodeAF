@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,7 +231,7 @@ func (w *openWorld) open(local map[string][]byte) (stage string, store *counting
 	}
 	store = &countingStore{Store: mem, asked: map[string]int{}}
 	f = &Fetcher{Engine: keyedEngine{w: w, cache: filepath.Join(w.t.TempDir(), "open")}, Store: store}
-	ok, err := f.stageOpenFromInbox(context.Background(), cell.Cell{ID: "chat", Root: stage}, w.head, stageInbox, filepath.Join(w.t.TempDir(), "main"))
+	ok, err := f.stageOpenFromInbox(context.Background(), cell.Cell{ID: "chat", Root: stage}, w.head, stageInbox, false)
 	if err != nil || !ok {
 		w.t.Fatalf("stageOpenFromInbox = %v, %v; want the open state staged", ok, err)
 	}
@@ -244,6 +245,38 @@ func read(t *testing.T, root, rel string) []byte {
 		t.Fatal(err)
 	}
 	return got
+}
+
+func TestStageTranscriptRefusesOversizeBeforeFetchingChunks(t *testing.T) {
+	w := newOpenWorld(t)
+	cid := furrowChunkID([]byte("transcript content"))
+	const larger = transcriptReadMaxBytes + 1
+	blob := w.meta(2, wBlob{TotalLen: larger, Chunks: []wChunk{{ID: nums(cid[:]), Len: larger}}}, false)
+	w.seal(w.dir(fileEntry(filepath.Base(cell.TranscriptPath), blob)))
+	objects := make([]blobstore.Object, 0, len(w.all))
+	for _, obj := range w.all {
+		objects = append(objects, obj)
+	}
+	frame, err := blobstore.Encode(strings.Repeat("a", 32), objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &countingStore{Store: blobstore.NewMemory(), asked: map[string]int{}}
+	if _, err := store.PutFrame(t.Context(), frame); err != nil {
+		t.Fatal(err)
+	}
+	inbox := t.TempDir()
+	f := &Fetcher{Engine: keyedEngine{w: w}, Store: store, Inbox: func(cell.Cell) string { return inbox }}
+	c := cell.Cell{ID: "chat", Root: t.TempDir()}
+	if err := f.StageTranscript(t.Context(), c, w.head); !errors.Is(err, ErrTranscriptTooLarge) {
+		t.Fatalf("oversize transcript = %v, want size refusal", err)
+	}
+	if store.asked[chunkRID(w.dedup, cid)] != 0 {
+		t.Fatal("the oversized transcript's content reached the relay request")
+	}
+	if _, err := os.Stat(filepath.Join(c.Root, cell.TranscriptPath)); !os.IsNotExist(err) {
+		t.Fatalf("oversize read created a transcript: %v", err)
+	}
 }
 
 // A same-length stale transcript on this disk must never be passed off as the
@@ -363,5 +396,30 @@ func TestOpenWaveStagesSmallInstructionFilesAndLeavesLargeOnesBehind(t *testing.
 				t.Fatalf("the open fetched the chunks of an instruction file over the bound")
 			}
 		})
+	}
+}
+
+// Opening preserves the saved history boundary without pulling every old job.
+func TestOpenStagesTheProcessHeadWithoutFetchingItsHistory(t *testing.T) {
+	w := newOpenWorld(t)
+	meta := w.file([][]byte{[]byte(`{"id":"chat"}`)}, true, func(int) bool { return true })
+	body := []byte(`{"epoch":"incoming","highest":99}`)
+	head := w.file([][]byte{body}, false, nil)
+	jobBody := []byte(`{"id":99,"command":"old job"}`)
+	job := w.file([][]byte{jobBody}, false, nil)
+	processes := w.meta(3, wDir{Entries: []wEntry{fileEntry("head.json", head), fileEntry("99.json", job)}, Pages: []any{}}, false)
+	w.seal(w.dir(fileEntry("meta.json", meta), dirEntry("processes", processes)))
+	stage, store, _ := w.open(map[string][]byte{
+		".cell/meta.json":           []byte(`{"id":"chat"}`),
+		".cell/processes/head.json": []byte(`{"epoch":"old","highest":0}`),
+	})
+	if got := read(t, stage, ".cell/processes/head.json"); !bytes.Equal(got, body) {
+		t.Fatal("opening did not preserve the incoming process head")
+	}
+	if _, err := os.Stat(filepath.Join(stage, ".cell", "processes", "99.json")); !os.IsNotExist(err) {
+		t.Fatal("opening staged old job records instead of leaving them for file arrival")
+	}
+	if store.asked[chunkRID(w.dedup, furrowChunkID(jobBody))] != 0 {
+		t.Fatal("opening fetched an old job's chunks")
 	}
 }

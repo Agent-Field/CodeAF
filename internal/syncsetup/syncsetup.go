@@ -109,6 +109,8 @@ type Sync struct {
 	ProfileDir string
 	Ledger     string        // cellstore.LedgerName of Relay and the identity
 	Interval   time.Duration // flush interval
+
+	stateCredentialRefresh uint64 // guarded by stateMu across vault rounds
 }
 
 // Open builds the clients for the relay Resolve names. It answers ok = false

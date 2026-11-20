@@ -35,9 +35,17 @@ var startupRules = rules{
 	"vault.enc.lock": never, "pair-sharing.pending": never,
 	"config.json": never, "config.json.lock": never, "notices.json": never,
 	// The pairing name prompt writes this before checking whether the home can join.
-	"device-name":          never,
-	"teams.json.lock":      never,
-	"app.lock":             never,
+	"device-name":           never,
+	"teams.json.lock":       never,
+	"teams.db.lock":         never,
+	"factory-rooms-swept":   never,
+	"crew-credentials.json": credentialDigestHistory,
+	"app.lock":              never,
+	"app":                   within(rules{"state.json": appStartupState}),
+	"services":              within(rules{"lock": emptyFile, "logs": within(rules{}), "services.json": serviceStartup}),
+	".codeaf": within(rules{"skills": within(rules{
+		"workaf-canvas": within(rules{"SKILL.md": bundledCanvasSkill}),
+	})}),
 	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
 	"knowledge": within(rules{
 		".worker.lock":         never,
@@ -55,6 +63,8 @@ var startupRules = rules{
 	}),
 	"telemetry": within(rules{"first_run": never, "install_id": never, "notice_seen": never}),
 	"v3": within(rules{
+		"usage.jsonl.remote-lock": never,
+		"factory":                 within(rules{}),
 		"automations": within(rules{
 			"automations.db":     automationStartup,
 			"automations.db-wal": never, "automations.db-shm": never,

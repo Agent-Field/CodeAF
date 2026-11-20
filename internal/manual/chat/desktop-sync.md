@@ -3,7 +3,7 @@
 ## Why did this desktop chat stop taking messages after another computer continued it
 
 When another computer continues a chat, the desktop shows the engine's sentence:
-`<name> continued this chat; this window now only shows it`. This computer stops
+`<name> continued this chat. This copy is read-only and may be behind`. This computer stops
 accepting new messages, corrections, queued messages and retries for that chat.
 Task and program starts, quick-task promotion, moving a reply to a task, task
 directions and asking for a new crew proposal also refuse the move.
@@ -12,7 +12,16 @@ accepted before the move is refused before its turn can start. Existing action
 receipts remain readable and replaying one does not start its work again.
 Your unsent draft and staged attachments stay yours. Messages already queued
 stay in the queue; editing, reordering or removing them does not start a turn.
-You can still read the chat's history and files.
+The app pins `Continued on <computer>` above the transcript with
+`This copy is read-only and may be behind.` Its tab, sidebar and header use a
+computer indicator. Continue here replaces an inert composer; a composer that
+can send to the other computer names that destination. Hidden drafts stay kept.
+With a compatible engine, the open view follows newly saved messages through
+sync storage or live transfer, without moving the chat or restoring remote files.
+If the latest history is unavailable, you can still read the local copy. Remote
+history and previews read saved transcripts up to 24 MiB. For a larger transcript,
+use Continue here to move the chat and read its full history. Unsealed
+words and in-progress tokens are not streamed between computers.
 The desktop can still send that computer a message for the chat while it is
 open or working there; it waits in the chat's queue on that computer. See
 "Send a message to a chat working on another computer".
@@ -52,6 +61,17 @@ its disclosure sentence. The desktop must show it before acknowledging it.
 Reading sync status does not count as showing it. If the desktop never
 acknowledges, a later desktop or terminal still owes the sentence. The terminal
 continues to count it when it says it.
+
+## Which desktop provider keys sync between paired computers
+
+With sync storage enabled, saved keys for supported model providers can sync
+through the encrypted vault. Connections that can point to different servers
+on different computers, such as custom endpoints and Ollama, keep their keys
+on the computer where you entered them. This includes an OpenRouter connection
+redirected with `CODEAF_BASE_URL`. The desktop starts syncing provider keys
+after reading its secure store, and uses a received key once that store saves it.
+If you save or disconnect a key before sync can run, the change stays pending
+on this computer across a restart until it can be captured in the encrypted vault.
 
 ## Can another terminal window take a chat the desktop holds
 
@@ -95,9 +115,17 @@ Cancel takes back the waiting code or ends the request. A wrong code shows the
 engine's sentence and does not add a computer.
 
 A computer with submitted chats and its own pairing keys refuses ordinary
-pairing and explains replacement. Confirm `--replace` to join the other set:
-local chats stay here but stop syncing, shared memories and settings clear,
-and local provider keys stay here. Use Continue here to move a shared chat (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — a shared chat no computer holds advertises `can_open` and opens directly through `agents.open` with no Continue-here step; use **Move here** or **Continue here** when another computer still holds it). A failed
+pairing, in the app's words: `This computer has 3 chats of its own, so it can't
+join another computer's chats. Nothing was changed.` One already paired with
+other computers is refused too: `This computer is already paired with <name>.`
+Both refusals usually come before the other computer is asked, and its code
+keeps waiting. When the refusal only comes after you chose Pair there, or the
+other computer's confirmation is lost, the computer that showed the code does
+not say they are paired: it says `Pairing was not confirmed by <name>. Check
+that computer to see whether it joined.` For chats of its own (not for a
+computer paired elsewhere), `codeaf pair <code> --replace` in a terminal joins
+the other set instead: local chats stay here but stop syncing, shared memories
+and settings clear, and local provider keys stay here. Use Continue here to move a shared chat (or, when **Settings → General → idle handoff** / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — a shared chat no computer holds advertises `can_open` and opens directly through `agents.open` with no Continue-here step; use **Move here** or **Continue here** when another computer still holds it). A failed
 upload stays saved locally and is retried while codeaf is open or on the next
 start. Sync status says `Sharing this computer's chats.` during the pass and
 `Some chats could not be shared yet. They are still saved here; codeaf will try
@@ -229,6 +257,12 @@ sync or repeat settled preferences.
 
 ## Relay outages, local turns and automatic recovery
 
+A refused network connection or an unavailable upload service produces one
+outage notice in the affected chat. A successful publication reports recovery.
+A local save alone does not clear it. Storage, quota and rate limits have their
+own notices. If storage is turned off while you work, a successful quit records
+that the final turns stayed here in the desktop engine log.
+
 While the relay is unreachable, an open chat continues to run and save on this
 computer. Unpublished turns retry automatically with waits capped at 60 seconds, without
 another send, quit or restart. Once an ownership check finds the hold expired,
@@ -239,7 +273,7 @@ Reopening a chat also acquires a new ownership fence. If this computer's renewal
 or the relay's renewal at restart reaches the unchanged hold before an ownership
 check observes expiry, the open chat keeps its fence and uploads its local turns.
 
-A turn that is already running when the hold is observed to have expired attempts a conditional in-place reacquire at a new fence when no other computer holds the chat, clearing the outage notice and continuing on the original chat without a copy branch; if another computer holds the chat, finished calls are kept as a branch. An upload never overwrites another computer's newer hold and never renews a lapsed lease by publishing. If the service is down, those saved turns remain local and retry when it returns.
+A turn that is already running when the hold is observed to have expired attempts a conditional in-place reacquire at a new fence when no other computer holds the chat, continuing on the original chat without a copy branch; if another computer holds the chat, finished calls are kept as a branch. An upload never overwrites another computer's newer hold and never renews a lapsed lease by publishing. If the service is down, those saved turns remain local and retry when it returns.
 
 If another computer continued the chat meanwhile, this window becomes read-only
 and names that computer. Work saved here during the outage is kept through the
@@ -290,10 +324,32 @@ not apply an older skipped choice; only a newer choice on the other computer tra
 
 One desktop engine runs on your codeaf home at a time, so two can't spend on the same work. If the last one is still saving as it closes, the new one waits, starts nothing, and carries on as soon as the last one ends. A crash doesn't make you wait.
 
-If the last one is still there after about two minutes, the new one stops and the log says `another codeaf app is still closing this home`. Quit it, then open the app again. Terminal `codeaf`, headless runs and other `--home` folders don't wait.
+If the last one is still there after about two minutes, the new one stops and the log says `another codeaf app is still closing this home`. Quit it, then open the app again. Terminal `codeaf` and headless commands can use other homes. If you open WorkAF again with a different home while it is already running, it asks you to quit the running WorkAF first.
 
 ## Saved-key sync when the local vault is unreadable
 
 A removal check returns a local vault read error rather than stopping the
 background sync worker. Background sync can retry on a later round. This does
 not repair a damaged vault or change the saved keys shared between computers.
+
+## Continue here while a background job runs on the other computer
+
+Continue here waits until that computer's foreground turn, background jobs and
+resulting replies are finished and saved. The notice says
+`Comes here after its running work and replies are saved.` Cancel stops waiting.
+Job completion and its owed reply stay on the original computer until that
+boundary; the moved chat then carries the real ending, elapsed time and output within
+the existing file carry limits. Its process history and managed output remain
+readable on the receiving computer; an output read waits for arriving files.
+A long-running job can keep the move waiting; cancelling does not stop the job.
+
+The waiting view follows saved remote messages through the existing directory
+watch. This is saved history, not a live stream of unsaved text. Older engines
+without `chats.read` retain their previous local-history behavior.
+
+## Where did the received repository land after a chat move
+
+A received working copy shows `Working copy on this computer`, its actual folder
+and `Copied from <original folder>`. Show folder reveals that working directory.
+The private copy stays in codeaf's state folder. Commands use the local path shown
+in that notice; the source path identifies the original copy.

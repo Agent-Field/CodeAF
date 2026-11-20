@@ -1032,6 +1032,7 @@ type sheet struct {
 	storageState     string
 	storageSampled   bool
 	storageRequest   bool
+	storageReceipt   string
 	approvals        Approvals
 	dev              *deviceCard
 	now              func() time.Time

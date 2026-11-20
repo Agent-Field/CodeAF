@@ -254,7 +254,10 @@ func TestOpenFirstWithNoRelayTouchesNothing(t *testing.T) {
 }
 
 // TestFirstLaunchIsQuietUntilWoken proves D5 and amended C27.4: a local identity
-// is allowed, while sync sends nothing before pairing. C8 also holds: only offering or completing pairing ends solo.
+// is allowed, while sync sends nothing before pairing: the gate stays quiet
+// until solo ends, and talks after it. That showing a code does not end solo is
+// pinned by cmd/codeaf's TestPairGrantStaysSoloUntilItIsSent and
+// TestPairShowingACodeStaysSoloUntilYes.
 func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
 	celltest.Available(t)
 	hits := 0
@@ -299,7 +302,7 @@ func TestFirstLaunchIsQuietUntilWoken(t *testing.T) {
 		t.Fatal(err)
 	}
 	if Quiet(home) {
-		t.Fatal("offering a code left the machine quiet")
+		t.Fatal("ending solo left the machine quiet")
 	}
 	if _, err := s.FleetSize(ctx); hits == 0 {
 		t.Fatalf("an engaged machine sent nothing (err %v)", err)

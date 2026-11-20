@@ -30,13 +30,24 @@ type AppCredentials struct {
 	// kept hears every credential a door gave this process (Keep, Forget),
 	// so the app can keep it for the next launch ([AppCredentials.OnKept]).
 	kept atomic.Pointer[func(provider, key string)]
+	// synced proposes a vault change to the secure-store owner before it can be applied.
+	synced      atomic.Pointer[func(provider string, before AppKeyState, key string)]
+	syncReady   atomic.Bool
+	syncLoaded  atomic.Bool
+	syncRefresh atomic.Uint64
+	// observed marks launch hand-back and acknowledged remote values. Unlike
+	// an edit, these values must never overwrite a newer value in the vault.
+	observed map[string]uint64
+	// tentative keys work in this launch but are not eligible for provider
+	// sync until the native secure store has accepted them.
+	tentative map[string]bool
 }
 
 var appCredentials atomic.Pointer[AppCredentials]
 
 // NewAppCredentials is an empty set of app keys.
 func NewAppCredentials() *AppCredentials {
-	return &AppCredentials{keys: make(map[string]string), handed: make(map[string]uint64)}
+	return &AppCredentials{keys: make(map[string]string), handed: make(map[string]uint64), observed: make(map[string]uint64), tentative: make(map[string]bool)}
 }
 
 // UseAppCredentials installs the keys every key reader consults first, before
@@ -55,10 +66,28 @@ func AppCredentialSource() *AppCredentials { return appCredentials.Load() }
 // Set holds one provider's key, and registers it with the redactor and the
 // trace scrubber so no log line ever carries it.
 func (c *AppCredentials) Set(provider, key string) {
+	c.set(provider, key, false)
+}
+
+// SetTentative makes a browser sign-in usable while its secure-store save is
+// still outstanding. A later Set makes the saved key eligible for sync.
+func (c *AppCredentials) SetTentative(provider, key string) {
+	c.set(provider, key, true)
+}
+
+func (c *AppCredentials) set(provider, key string, tentative bool) {
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
 	trace.Secret(key)
 	redact.Register(key)
-	c.change(func() { c.keys[provider] = key; c.handed[provider]++ })
+	c.change(func() {
+		c.keys[provider] = key
+		c.handed[provider]++
+		if tentative {
+			c.tentative[provider] = true
+		} else {
+			delete(c.tentative, provider)
+		}
+	})
 }
 
 // AppKept reports whether provider is a credential a door keeps with the app
@@ -83,6 +112,58 @@ func (c *AppCredentials) OnKept(listen func(provider, key string)) {
 	c.kept.Store(&listen)
 }
 
+func (c *AppCredentials) OnSynced(listen func(provider string, before AppKeyState, key string)) {
+	c.synced.Store(&listen)
+}
+
+// AppKeyState is one credential and the revision of the last local hand-over.
+type AppKeyState struct {
+	Key      string
+	Present  bool
+	Revision uint64
+}
+
+// MarkSyncReady is called after the host has supplied its secure-store snapshot.
+func (c *AppCredentials) MarkSyncReady() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.syncReady.Load() {
+		return
+	}
+	for provider, revision := range c.handed {
+		c.observed[provider] = revision
+	}
+	c.syncReady.Store(true)
+}
+
+func (c *AppCredentials) SyncReady() bool { return c.synced.Load() == nil || c.syncReady.Load() }
+func (c *AppCredentials) NeedsSyncLoad() bool {
+	return c.synced.Load() != nil && c.syncReady.Load() && !c.syncLoaded.Load()
+}
+func (c *AppCredentials) SyncLoaded()         { c.syncLoaded.Store(true) }
+func (c *AppCredentials) RequestSyncRefresh() { c.syncRefresh.Add(1) }
+func (c *AppCredentials) SyncRefresh() uint64 { return c.syncRefresh.Load() }
+
+// WasObserved distinguishes the startup or synced value from a local edit.
+func (c *AppCredentials) WasObserved(provider string, revision uint64) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	got, ok := c.observed[provider]
+	return ok && got == revision
+}
+
+// ObserveCapture retires the edit after its value is safely in the local vault.
+func (c *AppCredentials) ObserveCapture(provider string, revision uint64) {
+	if revision == 0 || c.synced.Load() == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.handed[provider] == revision {
+		c.observed[provider] = revision
+	}
+}
+
 // Keep holds a credential a door gave this process and hands it to the app
 // to keep. EVERY CREDENTIAL AN APP-RUN ENGINE IS GIVEN THROUGH A DOOR OUTLIVES
 // THE LAUNCH: the process keeps keys in memory only, so the app, which keeps
@@ -92,6 +173,55 @@ func (c *AppCredentials) OnKept(listen func(provider, key string)) {
 func (c *AppCredentials) Keep(provider, key string) {
 	c.Set(provider, key)
 	c.tell(provider, strings.TrimSpace(key))
+}
+
+// KeepIf applies a shared credential only while the locally held value and its
+// presence still match the capture. A key edited during a network round wins,
+// including an explicit disconnect of a previously absent provider.
+func (c *AppCredentials) KeepIf(provider, expected string, known bool, key string) bool {
+	before := c.State(provider)
+	if before.Key != expected || before.Present != known {
+		return false
+	}
+	return c.ProposeSynced(provider, before, key)
+}
+
+// ProposeSynced delegates persistence to the app. A proposal has not changed
+// the key yet. Without a native host (the direct credential store), apply now.
+func (c *AppCredentials) ProposeSynced(provider string, before AppKeyState, key string) bool {
+	if listen := c.synced.Load(); listen != nil {
+		if c.syncReady.Load() && c.State(provider) == before {
+			(*listen)(provider, before, key)
+		}
+		return false
+	}
+	if !c.AcceptSynced(provider, before, key) {
+		return false
+	}
+	c.tell(provider, key)
+	return true
+}
+
+// AcceptSynced is the compare-and-set after native persistence has succeeded.
+func (c *AppCredentials) AcceptSynced(provider string, before AppKeyState, key string) bool {
+	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
+	trace.Secret(key)
+	redact.Register(key)
+	var revision uint64
+	c.change(func() {
+		current, present := c.keys[provider]
+		if (AppKeyState{current, present, c.handed[provider]}) != before {
+			return
+		}
+		c.keys[provider] = key
+		c.handed[provider]++
+		delete(c.tentative, provider)
+		revision = c.handed[provider]
+		if c.synced.Load() != nil {
+			c.observed[provider] = revision
+		}
+	})
+	return revision != 0
 }
 
 // Forget removes a credential a door took away and tells the app to remove
@@ -109,8 +239,7 @@ func (c *AppCredentials) tell(provider, key string) {
 
 // Remove disconnects one provider for the rest of this launch.
 func (c *AppCredentials) Remove(provider string) {
-	provider = strings.ToLower(strings.TrimSpace(provider))
-	c.change(func() { c.keys[provider] = ""; c.handed[provider]++ })
+	c.set(provider, "", false)
 }
 
 // change makes one change to the keys held. A key handed over is a credential
@@ -135,10 +264,16 @@ func (c *AppCredentials) change(edit func()) {
 // Key answers one provider's key and whether the app has said anything about
 // it; an empty key that is known is a removal.
 func (c *AppCredentials) Key(provider string) (string, bool) {
+	state := c.State(provider)
+	return state.Key, state.Present
+}
+
+func (c *AppCredentials) State(provider string) AppKeyState {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	key, ok := c.keys[strings.ToLower(strings.TrimSpace(provider))]
-	return key, ok
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	key, ok := c.keys[provider]
+	return AppKeyState{key, ok, c.handed[provider]}
 }
 
 func appKey(provider string) (string, bool) {
@@ -164,6 +299,19 @@ func (c *AppCredentials) Snapshot() map[string]string {
 	keys := make(map[string]string, len(c.keys))
 	for id, key := range c.keys {
 		keys[id] = key
+	}
+	return keys
+}
+
+// SyncSnapshot keeps values and revisions from the same instant.
+func (c *AppCredentials) SyncSnapshot() map[string]AppKeyState {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	keys := make(map[string]AppKeyState, len(c.keys))
+	for id, key := range c.keys {
+		if !c.tentative[id] {
+			keys[id] = AppKeyState{key, true, c.handed[id]}
+		}
 	}
 	return keys
 }

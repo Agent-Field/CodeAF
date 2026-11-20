@@ -324,15 +324,26 @@ func (w *SealWatch) SetIdleCheck(check func() bool) {
 // IdleReady includes trailing seals and session work that outlives a reply.
 // A watch without a session cannot certify that releasing ownership is safe.
 func (w *SealWatch) IdleReady() bool {
+	return w.idleReady(true)
+}
+
+// IdleForCapture allows a settled session to retry a failed save. Releasing
+// ownership still uses IdleReady and requires the saving failure to clear.
+func (w *SealWatch) IdleForCapture() bool {
+	return w.idleReady(false)
+}
+
+func (w *SealWatch) idleReady(requireSaved bool) bool {
+	ready := func() bool { return w.idle && w.tail == nil && !w.tailRunning && (!requireSaved || !w.failing) }
 	w.mu.Lock()
-	ready, check := w.idle && w.tail == nil && !w.tailRunning && !w.failing, w.idleCheck
+	quiet, check := ready(), w.idleCheck
 	w.mu.Unlock()
-	if !ready || check == nil || !check() {
+	if !quiet || check == nil || !check() {
 		return false
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.idle && w.tail == nil && !w.tailRunning && !w.failing
+	return ready()
 }
 
 // TurnEnded is the session's word that the agent finished a turn. It only
