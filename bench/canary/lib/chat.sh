@@ -41,10 +41,24 @@ CHAT_WALL_MARGIN=${CHAT_WALL_MARGIN:-60}
 CHAT_STALL="${CHAT_STALL:-420}"
 CHAT_FRAME_WAIT="${CHAT_FRAME_WAIT:-60}"
 
+# The words the screen draws, not the punctuation around them: the status line
+# spells idle as a bare word (tui3 stateWord), and the settle card spells its
+# yes as the key, one space, the word (tuiwords_test.go settleAccept). Both are
+# checked against that table by internal/e2e/canaryneedles_test.go, so a
+# respelling fails there rather than emptying the grid.
+CHAT_NEEDLE_IDLE='idle'
+CHAT_NEEDLE_ACCEPT='a accept'
+
+# chat_idle_line is true when the status line (the last line of a frame) carries
+# the idle word as a whole word.
+chat_idle_line() {
+  printf '%s\n' "$1" | tail -1 | grep -Eq "(^|[^[:alnum:]])${CHAT_NEEDLE_IDLE}([^[:alnum:]]|\$)"
+}
+
 chat_asked_frame() {
   local frame="$1" quiet="$2"
-  printf '%s\n' "$frame" | grep -q '\[a\] accept' &&
-    printf '%s\n' "$frame" | tail -1 | grep -q ' · idle' &&
+  printf '%s\n' "$frame" | grep -qF "$CHAT_NEEDLE_ACCEPT" &&
+    chat_idle_line "$frame" &&
     ! printf '%s\n' "$frame" | grep -Eq '[0-9]+ running' &&
     [ "$quiet" -ge "$CHAT_QUIET" ]
 }
@@ -89,7 +103,7 @@ canary_chat() {
   # send-keys and paste-buffer below spells the pane out as `=name:`: this exact
   # session, its current window, its active pane. The session-level commands
   # (kill-session, resize-window, respawn-window, list-panes) keep `=name`.
-  until tmux capture-pane -p -t "=$name:" 2>/dev/null | grep -q ' · idle'; do
+  until chat_idle_line "$(tmux capture-pane -p -t "=$name:" 2>/dev/null)"; do
     if [ $(( $(date +%s) - started )) -ge "$CHAT_FRAME_WAIT" ]; then ended="noframe"; break; fi
     if [ "$(tmux list-panes -t "=$name" -F '#{pane_dead}' 2>/dev/null)" = "1" ]; then ended="crash"; break; fi
     sleep 1
@@ -123,7 +137,7 @@ canary_chat() {
         task_done_s=$(( now - started ))
       fi
       working=0
-      echo "$screen" | tail -1 | grep -q ' · idle' || working=1
+      chat_idle_line "$screen" || working=1
       echo "$screen" | grep -Eq '[0-9]+ running' && working=1
       if [ "$seals" -ge 1 ] && [ "$working" -eq 0 ] && [ "$quiet" -ge "$CHAT_QUIET" ]; then ended="self"; break; fi
       if [ "$quiet" -ge "$CHAT_STALL" ] && [ "$working" -eq 1 ]; then ended="stall"; break; fi
