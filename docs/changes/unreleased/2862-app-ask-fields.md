@@ -1,5 +1,6 @@
 ---
 kind: added
+pr: 2862
 title: A question that asks for several figures names each one in the app
 surface: [engine, app]
 invalidates:
