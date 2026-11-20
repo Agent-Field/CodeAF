@@ -83,7 +83,14 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 		return "", fmt.Errorf("could not persist knowledge project scope; workspace anchor must be retried")
 	}
 	a.config.Workspace = resolved
-	a.config.Place = place
+	// ONLY THE TWO FIELDS THE ANCHOR CHANGES ARE WRITTEN, never the whole Place.
+	// The session folder (Place.Dir) is fixed when the agent is built, and the
+	// presence goroutine reads it without a.mu to drain answers from the
+	// doorstep (answers.go's [Agent.drainAnswers]), as do dozens of other
+	// readers. A whole-struct assignment rewrites Dir's bytes with the same
+	// value, which is still a write those readers race with.
+	a.config.Place.Workspace = place.Workspace
+	a.config.Place.Owned = place.Owned
 	if a.Knowledge() != nil {
 		a.rebindKnowledgeLocked(resolved)
 	}
