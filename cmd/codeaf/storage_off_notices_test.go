@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -199,10 +200,20 @@ func TestSharedDriveNoticesEachWindow(t *testing.T) {
 	cfg = v3Seated(cfg)
 	d := syncDrives.renewalsOf(c.ID)
 	startupFinished(d)
+	// The loopbacks have fake agents. No session closes their real seats,
+	// so join each seat's warm capture before the test home is removed.
+	closeSeat := func(seat executor.Seat, watch *cellstore.SealWatch) {
+		watch.Retire()
+		ctx, cancel := context.WithTimeout(t.Context(), cellstore.SealWithin)
+		defer cancel()
+		if err := executor.Drain(ctx, seat); err != nil {
+			t.Errorf("settling shared-drive seat: %v", err)
+		}
+	}
 	first := cfg.Seals.(*cellstore.SealWatch)
-	defer first.Retire()
-	_, _, second := v3SeatWith(cfg.Place, nil, syncDrives)
-	defer second.Retire()
+	defer closeSeat(cfg.Seat, first)
+	secondSeat, _, second := v3SeatWith(cfg.Place, nil, syncDrives)
+	defer closeSeat(secondSeat, second)
 	if syncDrives.renewalsOf(c.ID) != d {
 		t.Fatal("seats did not share a drive")
 	}
@@ -243,8 +254,8 @@ func TestSharedDriveNoticesEachWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	startupFinished(d)
-	_, _, approved := v3SeatWith(cfg.Place, nil, syncDrives)
-	defer approved.Retire()
+	approvedSeat, _, approved := v3SeatWith(cfg.Place, nil, syncDrives)
+	defer closeSeat(approvedSeat, approved)
 	for line := approved.Take(); line != ""; line = approved.Take() {
 		if line == chatlist.RelayStorageOff {
 			t.Fatal("approved seat replayed an obsolete refusal")
