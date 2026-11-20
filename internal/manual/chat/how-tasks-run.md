@@ -2941,7 +2941,9 @@ task's card. They are three kinds of news:
   round's finding — rather than proposing a new one. It only works in the
   conversation that still holds the graph. A task from another window, an unknown
   id, or a task that is still running cannot be continued here: the tool says
-  there is no graph, and names the branch or working copy so it can be read.
+  the task is not one this conversation holds, and names the branch or working copy so it
+  can be read. A finished hand-off this conversation ran is answered as `done, so there is
+  nothing to continue`, and the follow-up is made directly or handed off as a new task.
   Start a new task that builds on that branch only if the objective itself
   changed.
   - `lost the connection`: the connection to the model dropped (a reset, a

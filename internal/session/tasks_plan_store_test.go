@@ -105,3 +105,58 @@ func TestTasksToolWithNoRunAnswersAsBefore(t *testing.T) {
 		t.Fatalf("the listing of a conversation with no run changed:\n%s", listing)
 	}
 }
+
+// A HAND-OFF THE LISTING SHOWS IS ONE `continue` CAN NAME. qloop run31, hiring
+// t2: `tasks` listed `#1 · … · done`, and `tasks {"id":"1","continue":true}` was
+// refused three times as a task this conversation did not hold, because the
+// reader below leaves this conversation's own runs out of its rows. The model
+// then copied that refusal onto the person's card. A finished run is answered
+// for what it is — done, with the move that is actually open — and a part of a
+// run is told it cannot be continued on its own; neither is the stranger's
+// refusal any more.
+func TestContinueOnAFinishedHandOffSaysItIsDoneNotThatItIsNotHeld(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	path := filepath.Join(t.TempDir(), planStoreFilename)
+	store, err := plandb.Open(path, "the project", "1", "Hiring dashboard", "build the hiring dashboard", "chat-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "p1", ParentID: "1", Title: "Summary tab", Description: "count the stages"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Claim("p1", "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Done("p1", "p1", "counted", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteRoot("built the dashboard"); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	armPlanStore(t, agent, path, "chat-a")
+
+	listing, _ := runTool(t, agent, "tasks", `{}`)
+	if !strings.Contains(listing, "#1 · Hiring dashboard · done") {
+		t.Fatalf("the listing does not show the hand-off:\n%s", listing)
+	}
+	for _, id := range []string{`"1"`, `1`, `"#1"`} {
+		answer, failed := runTool(t, agent, "tasks", `{"id":`+id+`,"continue":true}`)
+		if !failed {
+			t.Fatalf("continue %s on a finished run read as a resume:\n%s", id, answer)
+		}
+		if !strings.Contains(answer, "#1 · Hiring dashboard is done, so there is nothing to continue") {
+			t.Errorf("continue %s did not say the run is done:\n%s", id, answer)
+		}
+		for _, wrong := range []string{"not one this conversation holds", "graph", "another window"} {
+			if strings.Contains(answer, wrong) {
+				t.Errorf("continue %s still answers as a task this conversation does not hold (%q):\n%s", id, wrong, answer)
+			}
+		}
+	}
+	part, failed := runTool(t, agent, "tasks", `{"id":"1.1","continue":true}`)
+	if !failed || !strings.Contains(part, "#1.1 · Summary tab is one part of a run") {
+		t.Errorf("continue on a part: failed=%v\n%s", failed, part)
+	}
+}

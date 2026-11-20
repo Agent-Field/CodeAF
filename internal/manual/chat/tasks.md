@@ -1519,7 +1519,9 @@ work. Nothing is run to get it; it is the reply's own record.
 **If some of its steps failed this reply, nothing it wrote with `write` or `edit` succeeded,
 and it is about to end by asking you, it is first sent back once** with the failed steps in
 front of it. It either does the step that was meant to make your change, correctly, or asks
-again and says plainly which steps failed and what it did and did not change.
+again and says, in your words, what it changed, what it did not change, what is not done yet
+and what it needs from you. It is told not to name its tools or commands and not to quote error
+messages on the card or in the reply: you get the outcome, not the machinery.
 
 - A reply in words that ends on a question gets one dim line while it works, folded away
   with the reply's work in the terminal and kept as a quiet line of that reply in the
@@ -4977,12 +4979,26 @@ its card, so the second attempt does not have to work the answer out again.
 
 It only works for a task **this conversation** still holds. A task from another
 conversation or another window, an unknown id (`No task 1 in this project` on a read), or a
-task that is still running cannot be continued here. The tool then says there is no graph
-left to continue it in, and names where the work is — its branch or working copy — so it
+task that is still running cannot be continued here. The tool then says the task is not one
+this conversation holds, and names where the work is — its branch or working copy — so it
 can be read. The model should relay that, not narrate progress it did not make.
 
 Starting the same brief again with `/task` or `propose_task` is new work with a new id, and
 it is the wrong door when you mean keep going.
+
+## Continuing a handed-off run that is done — is done, so there is nothing to continue
+
+A run this conversation handed off — the `#1` the task list shows, worked by its own
+workers — is answered for what it is when the model asks to continue it:
+
+- `interrupted` (nothing is driving it any more): it is carried on from where it stopped,
+  in the same working copy.
+- `done`: it cannot be continued. The tool says `is done, so there is nothing to continue`,
+  and the model makes the follow-up change itself or hands off a new task for it.
+- still running or queued: it is told so, and a line can reach it with `say`.
+- `incomplete` or `stopped`: a run that has ended cannot be picked up again; the model reads
+  what it left and makes the rest of the change, or hands off a new task.
+- one part of a run (`#1.2`): a part cannot be continued on its own.
 
 ## Why is the task waiting for me — what does your call mean, a sub-task needs my look, a nested task waiting on me
 

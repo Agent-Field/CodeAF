@@ -123,6 +123,9 @@ func TestAnAskAfterFailedStepsIsHeldOnceAndNotDrawn(t *testing.T) {
 	if !strings.HasPrefix(held, askHeldAfterFailuresLead) || !strings.Contains(held, "- probe: usage") {
 		t.Fatalf("ask answered %q; want the hold naming the failed step", held)
 	}
+	if !strings.HasSuffix(held, askHeldAfterFailuresClosing) {
+		t.Errorf("the hold does not end on the instruction to ask in the person's words:\n%s", held)
+	}
 	if _, refused := askRefusedAndNotRetried(agent.snapshot()); refused {
 		t.Errorf("the hold reads as a refusal, so the ask nudge would send the model round to re-ask")
 	}
@@ -133,5 +136,30 @@ func TestAnAskAfterFailedStepsIsHeldOnceAndNotDrawn(t *testing.T) {
 	}
 	if agent.holdAskAfterFailures() != "" {
 		t.Errorf("a second ask in the same turn would be held again")
+	}
+}
+
+// THE PERSON GETS THE OUTCOME, NOT THE MACHINERY (qloop run31, hiring t2). Told
+// to "say plainly which steps failed", the model put a tool's name and its
+// error string on the card. Both doors now ask for what changed, what did not,
+// what is not done yet and what is needed — the honesty is kept — and forbid
+// naming a tool or a command or quoting an error.
+func TestTheFailureCheckAsksForTheOutcomeInThePersonsWords(t *testing.T) {
+	for door, closing := range map[string]string{
+		"reply": failureCheckLeadClosing,
+		"ask":   askHeldAfterFailuresClosing,
+	} {
+		for _, want := range []string{
+			"in the person's own words",
+			"what you changed", "what you did not change", "what is not done yet", "what you need from them",
+			"Never name a tool or a command", "never quote an error",
+		} {
+			if !strings.Contains(closing, want) {
+				t.Errorf("the %s door's instruction misses %q:\n%s", door, want, closing)
+			}
+		}
+		if strings.Contains(closing, "which steps failed") {
+			t.Errorf("the %s door still asks the model to name the failed steps to the person:\n%s", door, closing)
+		}
 	}
 }
