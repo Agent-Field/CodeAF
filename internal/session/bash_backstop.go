@@ -132,7 +132,7 @@ func (a *Agent) bashBackstopAfter(args json.RawMessage) time.Duration {
 	var parsed struct {
 		Command string `json:"command"`
 	}
-	if a.config.InTask && json.Unmarshal(args, &parsed) == nil && commandSearches(parsed.Command) {
+	if a.config.InTask && decodeToolArguments(args, &parsed) == nil && commandSearches(parsed.Command) {
 		backgroundAfter = 0
 	}
 	bound := time.Duration(BashBoundSeconds(args, backgroundAfter) * float64(time.Second))
@@ -191,7 +191,7 @@ func keepsRunning(args json.RawMessage) bool {
 	var parsed struct {
 		KeepRunning json.RawMessage `json:"keep_running"`
 	}
-	return json.Unmarshal(args, &parsed) == nil && len(parsed.KeepRunning) > 0 && string(parsed.KeepRunning) != "null"
+	return decodeToolArguments(args, &parsed) == nil && len(parsed.KeepRunning) > 0 && string(parsed.KeepRunning) != "null"
 }
 
 // bashAbortAfter is [bashAbortGrace], or the test's own figure.
