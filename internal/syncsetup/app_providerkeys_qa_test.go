@@ -178,6 +178,21 @@ func TestQADesktopProviderKeyExplicitEditSurvivesRestartBeforeCapture(t *testing
 			// B saved or removed its native credential, then exited before
 			// capturing the edit. B has never downloaded the vault's copy.
 			mustNil(t, RememberAppProviderEdit(b.home, provider, tc.edit))
+			edits, err := readAppProviderEdits(b.home)
+			mustNil(t, err)
+			peerRevisions, err := a.Vault.Revisions("home:keys:provider")
+			mustNil(t, err)
+			name := appProviderKeyName(provider)
+			if peerRevisions[name].Stamp == 0 {
+				t.Fatal("the peer did not publish its initial key")
+			}
+			edit := edits[name]
+			edit.At = time.UnixMilli(peerRevisions[name].Stamp).UnixNano()
+			edits[name] = edit
+			// Fix the edit to the same timestamp resolution as the peer's
+			// write. Capturing it before the read would let both copies win
+			// their own merge, so the peer would keep the old key.
+			mustNil(t, writeAppProviderEdits(b.home, edits))
 			raw, err := os.ReadFile(appProviderEditsPath(b.home))
 			mustNil(t, err)
 			if bytes.Contains(raw, []byte(fakeKeyTwo)) {
@@ -199,7 +214,7 @@ func TestQADesktopProviderKeyExplicitEditSurvivesRestartBeforeCapture(t *testing
 			if got, known := appA.Key(provider); !known || got != tc.edit {
 				t.Fatal("the peer did not receive the saved edit after restart")
 			}
-			edits, err := readAppProviderEdits(b.home)
+			edits, err = readAppProviderEdits(b.home)
 			mustNil(t, err)
 			if len(edits) != 0 {
 				t.Fatal("a captured edit remained pending")

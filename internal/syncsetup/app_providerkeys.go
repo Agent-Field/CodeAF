@@ -96,9 +96,10 @@ func (s *appProviderKeyset) MayCapture(name string) bool {
 	if !s.credentials.NeedsSyncLoad() {
 		return true
 	}
-	// A disconnect may be the first local write for a remotely held key.
-	// See the vault before completing the intent if it has no local slot yet.
-	if edit, ok := s.capturedEdits[name]; ok && edit.Digest == "" {
+	// Resolve the first vault version before recording a durable user edit.
+	// This supplies the previous stamp for saves made in the same millisecond
+	// as a peer's key and the previous slot for an explicit disconnect.
+	if _, pending := s.capturedEdits[name]; pending {
 		return false
 	}
 	return !s.PreserveVault(name)
