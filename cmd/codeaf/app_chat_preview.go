@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -112,13 +113,13 @@ func (b *appBackend) PreviewChat(id string) (appwire.ChatPreview, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), chatPreviewWithin)
 	defer cancel()
-	go func() {
+	guard.Go("app/chat-preview-stop", func() {
 		select {
 		case <-b.left:
 			cancel()
 		case <-ctx.Done():
 		}
-	}()
+	})
 	var preview appwire.ChatPreview
 	err = s.ReadChat(ctx, id, view, func(c cell.Cell) error {
 		if summary, ok := session.Peek(filepath.Join(c.Root, cell.TranscriptPath)); ok {

@@ -239,10 +239,10 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		if errors.Is(err, errNoChatHead) {
 			continue
 		}
-		// A foreground save can win while the background copy is failing, or
-		// Create can commit before its response is lost. Check what the peer
-		// can actually read before reporting that this chat is unshared.
-		if err != nil && s.shareVisible(ctx, id) {
+		// After the directory said the chat was absent, a foreground save can
+		// win or Create can commit before its response is lost. Reconcile that
+		// race without repeating a failed initial directory request.
+		if err != nil && attempt.absent && s.shareVisible(ctx, id) {
 			err = nil
 		}
 		if ctx.Err() != nil {
@@ -315,6 +315,8 @@ type copyAttempt struct {
 	sent, size int64
 	// listed says the directory already named the chat; nothing was sent.
 	listed bool
+	// absent says the directory answered that no record existed.
+	absent bool
 }
 
 func (s *Sync) publishLocalChat(ctx context.Context, root, id string, earlier int64) (copyAttempt, error) {
@@ -433,6 +435,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	answered := watch.asking(0)
 	_, err := s.Dir.Cell(ctx, c.ID)
 	if errors.Is(err, directory.ErrNotFound) {
+		attempt.absent = true
 		err = s.putDevice(ctx, name)
 	} else if err == nil {
 		answered()
@@ -457,7 +460,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	engine := e.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	publisher := cellsync.Publisher{Engine: engine, Store: store, Dir: s.Dir}
 	ex, err := publisher.Upload(ctx, c, head.Turn.ID)
-	attempt = copyAttempt{sent: landed, size: ex.Bytes}
+	attempt.sent, attempt.size = landed, ex.Bytes
 	if err != nil {
 		return attempt, err
 	}

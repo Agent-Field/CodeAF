@@ -713,9 +713,11 @@ func (b *appBackend) followChats(ctx context.Context, feed dirwatch.Follower) {
 		case <-ctx.Done():
 			return
 		case <-titles.C:
-			b.chats.mu.Lock()
-			source := b.chats.source
-			b.chats.mu.Unlock()
+			source := func() *syncsetup.Sync {
+				b.chats.mu.Lock()
+				defer b.chats.mu.Unlock()
+				return b.chats.source
+			}()
 			if source == nil || !source.LiveTransfer() {
 				continue
 			}

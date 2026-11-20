@@ -86,22 +86,29 @@ func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
 				mux.Handle("/v1/dir/", directory.Handler(auth, func(string) (directory.Directory, error) { return dir, nil }))
 				frames := blobstore.NewMemory()
 				mux.Handle("/", blobstore.Handler(auth, func(string) (blobstore.Store, error) { return frames, nil }))
-				var closing, discovered atomic.Bool
+				var holdPublish, discovered atomic.Bool
 				finalPublish := make(chan struct{})
+				displace := sync.OnceFunc(func() {
+					if _, err := dir.For("other-device").Acquire(t.Context(), c.ID, directory.AcquireOpts{Force: true}); err != nil {
+						t.Error(err)
+					} else {
+						discovered.Store(true)
+					}
+				})
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if displaced && closing.Load() && strings.HasSuffix(r.URL.Path, "/publish") && discovered.CompareAndSwap(false, true) {
+					if displaced && holdPublish.Load() && strings.HasSuffix(r.URL.Path, "/publish") {
 						select {
 						case <-finalPublish:
 						case <-r.Context().Done():
 							return
 						}
-						if _, err := dir.For("other-device").Acquire(r.Context(), c.ID, directory.AcquireOpts{Force: true}); err != nil {
-							t.Error(err)
-						}
+						displace()
 					}
 					mux.ServeHTTP(w, r)
 				}))
 				defer server.Close()
+				releasePublish := sync.OnceFunc(func() { close(finalPublish) })
+				defer releasePublish()
 				t.Setenv(syncsetup.URLVar, server.URL)
 				t.Setenv(syncsetup.IntervalVar, "3600000")
 				if err := syncsetup.SaveStorage(home.Dir(), server.URL, id.ID(), "on"); err != nil {
@@ -128,6 +135,9 @@ func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer agent.Close()
+				// Hold publication before the new work can be sealed. Otherwise
+				// the background batcher can publish before the terminal quits.
+				holdPublish.Store(true)
 				events, err := agent.SubmitBash(t.Context(), "! printf final-work > final-work")
 				if err != nil {
 					t.Fatal(err)
@@ -172,9 +182,6 @@ func TestFinalPublishDisplacementReachesTheRestoredWindowOnce(t *testing.T) {
 				case <-ctx.Done():
 					t.Fatal("window never painted")
 				}
-				releasePublish := sync.OnceFunc(func() { close(finalPublish) })
-				defer releasePublish()
-				closing.Store(true)
 				if _, err := io.WriteString(typed, "/quit\r"); err != nil {
 					t.Fatal(err)
 				}
