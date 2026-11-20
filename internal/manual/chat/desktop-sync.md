@@ -70,6 +70,8 @@ on different computers, such as custom endpoints and Ollama, keep their keys
 on the computer where you entered them. This includes an OpenRouter connection
 redirected with `CODEAF_BASE_URL`. The desktop starts syncing provider keys
 after reading its secure store, and uses a received key once that store saves it.
+If you save or disconnect a key before sync can run, the change stays pending
+on this computer across a restart until it can be captured in the encrypted vault.
 
 ## Can another terminal window take a chat the desktop holds
 

@@ -489,9 +489,7 @@ var methods = map[string]method{
 		if p.Limit == 0 || p.Limit > MaxEntries {
 			p.Limit = MaxEntries
 		}
-		if reader, ok := e.(interface {
-			EntriesWithFallback(string, string, int) (EntriesResult, error)
-		}); ok {
+		if reader, ok := e.(ChatEntryPageReader); ok {
 			result, err := reader.EntriesWithFallback(p.ID, p.Before, p.Limit)
 			result.Entries = nonNil(result.Entries)
 			return &result, err
@@ -837,8 +835,8 @@ type (
 		More    bool    `json:"more"`
 		// RemoteHead identifies the saved page. LocalFallback says a remote
 		// page could not be read and this page came from the retained journal.
-		RemoteHead    string  `json:"remote_head,omitempty"`
-		LocalFallback bool    `json:"local_fallback,omitempty"`
+		RemoteHead    string `json:"remote_head,omitempty"`
+		LocalFallback bool   `json:"local_fallback,omitempty"`
 	}
 	TurnResult struct {
 		Turn uint64 `json:"turn"`

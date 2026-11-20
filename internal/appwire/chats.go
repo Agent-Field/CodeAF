@@ -6,6 +6,8 @@ const (
 	FeatureChatsTake = "chats.take"
 	// FeatureChatsRead says agents.entries follows saved remote heads without taking the chat.
 	FeatureChatsRead = "chats.read"
+	// FeatureChatReadSource identifies engines that tag remote and fallback pages.
+	FeatureChatReadSource = "chats.read_source"
 	// FeatureChatsMove says chat rows carry move and move_ended, and
 	// agents.take_cancel exists: a client learns how every move ends from the
 	// rows and needs its own timer only as a fallback.
@@ -185,6 +187,10 @@ type RelayReporter interface{ RelayKnown() bool }
 
 type ChatReadFollower interface{ ChatReadsFollow() bool }
 
+type ChatEntryPageReader interface {
+	EntriesWithFallback(id, before string, limit int) (EntriesResult, error)
+}
+
 // ChatPreview is a read-only excerpt of recently saved conversation text.
 type ChatPreview struct {
 	LastUser      string `json:"last_user,omitempty"`
@@ -205,6 +211,9 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	}
 	if d, ok := e.(ChatReadFollower); ok && d.ChatReadsFollow() {
 		h = withFeature(h, FeatureChatsRead)
+		if _, ok := e.(ChatEntryPageReader); ok {
+			h = withFeature(h, FeatureChatReadSource)
+		}
 	}
 	if _, ok := e.(ChatsTaker); ok {
 		h = withFeature(h, FeatureChatsTake)

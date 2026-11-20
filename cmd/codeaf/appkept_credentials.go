@@ -125,8 +125,34 @@ func (b *appBackend) announceCredential() {
 	guard.Go("app/credentials changed", func() { b.emit.Emit(appwire.EventCredentialsChanged, appwire.Empty{}) })
 }
 
-// CredentialsTake drains the changes not yet taken and not yet expired, each
-// answered once.
+// A guarded write can be replayed if the take response or its acknowledgement
+// is lost. A keeper that already made the write recognizes the same value.
+const appCredentialAckWait = 5 * time.Second
+
+func (b *appBackend) announceCredentialWhenDue(provider string, proposal appSyncedCredential, now time.Time) {
+	ticket, due := proposal.change.Ticket, proposal.retryAt
+	if due.Sub(proposal.at) >= appwire.CredentialsTakeLife {
+		return
+	}
+	b.after(due.Sub(now), func() {
+		if b.isClosing() {
+			return
+		}
+		k := &b.credentials
+		k.mu.Lock()
+		current, exists := k.synced[provider]
+		now := b.now()
+		waiting := exists && current.change.Ticket == ticket && current.retryAt.Equal(due) &&
+			!now.Before(due) && now.Sub(current.at) < appwire.CredentialsTakeLife && b.keys.State(provider) == current.before
+		k.mu.Unlock()
+		if waiting {
+			b.announceCredential()
+		}
+	})
+}
+
+// CredentialsTake drains ordinary changes once. A synced ticket remains
+// available after its acknowledgement deadline until confirmed or expired.
 func (b *appBackend) CredentialsTake(context.Context) (appwire.CredentialsTaken, error) {
 	k := &b.credentials
 	k.mu.Lock()
@@ -144,10 +170,12 @@ func (b *appBackend) CredentialsTake(context.Context) (appwire.CredentialsTaken,
 			delete(k.synced, provider)
 			continue
 		}
-		if !p.taken && !now.Before(p.retryAt) {
+		if !now.Before(p.retryAt) {
 			p.taken = true
+			p.retryAt = now.Add(appCredentialAckWait)
 			k.synced[provider] = p
 			out.Changes = append(out.Changes, p.change)
+			b.announceCredentialWhenDue(provider, p, now)
 		}
 	}
 	return out, nil
@@ -165,17 +193,12 @@ func (b *appBackend) CredentialsConfirm(ticket uint64, applied bool) {
 			delete(k.synced, provider)
 			proposal = p
 		} else {
+			now := b.now()
 			p.taken = false
 			p.wait = min(15*time.Second, max(time.Second, 2*p.wait))
-			p.retryAt = b.now().Add(p.wait)
+			p.retryAt = now.Add(p.wait)
 			k.synced[provider] = p
-			if p.retryAt.Sub(p.at) < appwire.CredentialsTakeLife {
-				time.AfterFunc(p.wait, func() {
-					if !b.isClosing() {
-						b.announceCredential()
-					}
-				})
-			}
+			b.announceCredentialWhenDue(provider, p, now)
 		}
 		break
 	}

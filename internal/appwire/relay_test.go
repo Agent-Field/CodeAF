@@ -48,11 +48,24 @@ func TestRelayAppContractShapesAndOldEngines(t *testing.T) {
 type qaReadingEngine struct{ fakeEngine }
 
 func (*qaReadingEngine) ChatReadsFollow() bool { return true }
+
+type qaSourcedReadingEngine struct{ qaReadingEngine }
+
+func (*qaSourcedReadingEngine) EntriesWithFallback(string, string, int) (EntriesResult, error) {
+	return EntriesResult{}, nil
+}
+
 func TestQAReadOnlyChatFollowingIsAnOptionalCapability(t *testing.T) {
 	if slices.Contains(withChatsFeatures(Hello{}, &fakeEngine{}).Features, FeatureChatsRead) {
 		t.Fatal("an old engine advertised remote reading")
 	}
 	if !slices.Contains(withChatsFeatures(Hello{}, &qaReadingEngine{}).Features, FeatureChatsRead) {
 		t.Fatal("the reading engine did not advertise its saved-chat reader")
+	}
+	if slices.Contains(withChatsFeatures(Hello{}, &qaReadingEngine{}).Features, FeatureChatReadSource) {
+		t.Fatal("an old saved-chat reader advertised source tags")
+	}
+	if !slices.Contains(withChatsFeatures(Hello{}, &qaSourcedReadingEngine{}).Features, FeatureChatReadSource) {
+		t.Fatal("a reader that tags page sources did not advertise them")
 	}
 }

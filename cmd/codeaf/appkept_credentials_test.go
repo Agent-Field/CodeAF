@@ -85,6 +85,78 @@ func TestQASyncedCredentialQueueKeepsOriginalGuardAndDropsSupersededChanges(t *t
 	}
 }
 
+func TestQASyncedCredentialLostConfirmationReoffersCurrentTicket(t *testing.T) {
+	appDayProfile(t)
+	keys := config.NewAppCredentials()
+	defer config.UseAppCredentials(keys)()
+	clock := &closeClock{at: time.Unix(100, 0)}
+	recorder := newAppRecorder()
+	b := &appBackend{keys: keys, now: clock.now, after: clock.after, emit: recorder}
+	keys.OnSynced(b.queueSyncedCredential)
+	b.CredentialsReady()
+	const provider = "aiand"
+	const remote = "FAKE-reoffered-key"
+	keys.ProposeSynced(provider, keys.State(provider), remote)
+	announcements := 0
+	waitForAnnouncement := func() {
+		t.Helper()
+		seen := 0
+		recorder.waitFor(t, time.Second, func(event string, data any) bool {
+			if event == appwire.EventCredentialsChanged {
+				seen++
+			}
+			return seen > announcements
+		})
+		announcements++
+	}
+	take := func(want int) []appwire.CredentialChange {
+		t.Helper()
+		out, err := b.CredentialsTake(t.Context())
+		if err != nil || len(out.Changes) != want {
+			t.Fatalf("credentials.take returned %d changes (%v), want %d", len(out.Changes), err, want)
+		}
+		return out.Changes
+	}
+
+	waitForAnnouncement()
+	first := take(1)[0]
+	clock.advance(t, appCredentialAckWait-time.Millisecond)
+	take(0)
+	clock.advance(t, time.Millisecond)
+	waitForAnnouncement()
+	replayed := take(1)[0]
+	if replayed.Ticket == 0 || !reflect.DeepEqual(replayed, first) {
+		t.Fatal("a lost confirmation did not reoffer the same guarded change")
+	}
+	b.CredentialsConfirm(replayed.Ticket, true)
+	if key, _ := keys.Key(provider); key != remote {
+		t.Fatal("the reoffered ticket could not be confirmed")
+	}
+	clock.advance(t, appCredentialAckWait)
+	take(0)
+
+	keys.ProposeSynced(provider, keys.State(provider), "FAKE-next-remote-key")
+	waitForAnnouncement()
+	stale := take(1)[0]
+	keys.Set(provider, remote) // A same-value re-save is still a new local revision.
+	clock.advance(t, appCredentialAckWait)
+	take(0)
+	b.CredentialsConfirm(stale.Ticket, true)
+	if key, _ := keys.Key(provider); key != remote {
+		t.Fatal("a lost confirmation overwrote an intervening local edit")
+	}
+
+	keys.ProposeSynced(provider, keys.State(provider), "FAKE-expiring-key")
+	waitForAnnouncement()
+	expired := take(1)[0]
+	clock.advance(t, appwire.CredentialsTakeLife)
+	take(0)
+	b.CredentialsConfirm(expired.Ticket, true)
+	if key, _ := keys.Key(provider); key != remote {
+		t.Fatal("an expired ticket was confirmed")
+	}
+}
+
 // AN APP-RUN ENGINE KEEPS ITS CONNECTIONS ACROSS LAUNCHES. A credential a
 // door gave this launch (here an AgentField key) is announced by an empty
 // credentials.changed — THE KEY NEVER RIDES AN EVENT — and taken once with

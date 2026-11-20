@@ -3,6 +3,7 @@ package syncsetup
 import (
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -13,9 +14,12 @@ import (
 // received key goes through the app's credential handoff instead of config.json.
 type appProviderKeyset struct {
 	providerKeyset
-	credentials *config.AppCredentials
-	baseline    map[string]config.AppKeyState
-	recent      map[string]config.AppKeyState
+	credentials   *config.AppCredentials
+	home          string
+	baseline      map[string]config.AppKeyState
+	recent        map[string]config.AppKeyState
+	capturedEdits map[string]appProviderEdit
+	recentEdits   map[string]appProviderEdit
 }
 
 func sharedAppProvider(name string) (string, bool) {
@@ -47,6 +51,10 @@ func (s *appProviderKeyset) Values() (map[string]string, error) {
 	if !s.credentials.SyncReady() {
 		return nil, nil
 	}
+	edits, err := readAppProviderEdits(s.home)
+	if err != nil {
+		return nil, err
+	}
 	values, err := s.providerKeyset.Values()
 	if err != nil {
 		return nil, err
@@ -58,12 +66,19 @@ func (s *appProviderKeyset) Values() (map[string]string, error) {
 	}
 	s.recent = s.credentials.SyncSnapshot()
 	for provider, state := range s.recent {
-		name := sourcePrefix + provider
-		if provider == modelsource.DefaultID {
-			name = config.KeyAPIKey
-		}
+		name := appProviderKeyName(provider)
 		if _, ok := sharedAppProvider(name); ok {
 			// Preserve a disconnect separately from unread native credentials.
+			values[name] = state.Key
+		}
+	}
+	s.recentEdits = make(map[string]appProviderEdit)
+	for name, edit := range edits {
+		provider, ok := sharedAppProvider(name)
+		if state := s.recent[provider]; ok && providerEditDigest(state.Key) == edit.Digest {
+			s.recentEdits[name] = edit
+			// The secure store omits disconnected providers on hand-back. A
+			// matching intent distinguishes that removal from an unknown key.
 			values[name] = state.Key
 		}
 	}
@@ -73,23 +88,48 @@ func (s *appProviderKeyset) Values() (map[string]string, error) {
 func (s *appProviderKeyset) CaptureValues() (map[string]string, error) {
 	values, err := s.Values()
 	s.baseline = s.recent
+	s.capturedEdits = s.recentEdits
 	return values, err
 }
 
 func (s *appProviderKeyset) MayCapture(name string) bool {
-	return !s.credentials.NeedsSyncLoad() || !s.PreserveVault(name)
+	if !s.credentials.NeedsSyncLoad() {
+		return true
+	}
+	// A disconnect may be the first local write for a remotely held key.
+	// See the vault before completing the intent if it has no local slot yet.
+	if edit, ok := s.capturedEdits[name]; ok && edit.Digest == "" {
+		return false
+	}
+	return !s.PreserveVault(name)
 }
 
 func (s *appProviderKeyset) PreserveVault(name string) bool {
+	if _, explicit := s.capturedEdits[name]; explicit {
+		return false
+	}
 	provider, ok := sharedAppProvider(name)
 	return ok && s.credentials.WasObserved(provider, s.baseline[provider].Revision)
 }
 
-func (s *appProviderKeyset) CaptureCommitted(name string) {
+func (s *appProviderKeyset) KeyTime(name string) time.Time {
+	if edit, ok := s.capturedEdits[name]; ok {
+		return time.Unix(0, edit.At)
+	}
+	return time.Time{}
+}
+
+func (s *appProviderKeyset) CaptureCommitted(name string) error {
 	provider, ok := sharedAppProvider(name)
 	if ok {
+		if edit, captured := s.capturedEdits[name]; captured {
+			if err := completeAppProviderEdit(s.home, name, edit); err != nil {
+				return err
+			}
+		}
 		s.credentials.ObserveCapture(provider, s.baseline[provider].Revision)
 	}
+	return nil
 }
 
 func (s *appProviderKeyset) Holds(name string) bool {
@@ -118,6 +158,9 @@ func (s *appProviderKeyset) ApplyMatching(changes, expected map[string]string) (
 		baseline = s.recent
 	}
 	for name, value := range changes {
+		if _, pending := s.recentEdits[name]; pending {
+			continue
+		}
 		provider, ok := sharedAppProvider(name)
 		if !ok {
 			continue

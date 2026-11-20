@@ -163,6 +163,74 @@ func TestQADesktopProviderKeyFailedNativeWriteDoesNotRollBackTheVault(t *testing
 	}
 }
 
+func TestQADesktopProviderKeyExplicitEditSurvivesRestartBeforeCapture(t *testing.T) {
+	for _, tc := range []struct{ name, edit string }{
+		{name: "saved key", edit: fakeKeyTwo},
+		{name: "disconnect"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const provider = "aiand"
+			r := newKeyRig(t)
+			appA, restarted := config.NewAppCredentials(), config.NewAppCredentials()
+			a, b := r.appMachine(appA), r.appMachine(restarted)
+			appA.Set(provider, fakeKeyOne)
+			a.push(t)
+			// B saved or removed its native credential, then exited before
+			// capturing the edit. B has never downloaded the vault's copy.
+			mustNil(t, RememberAppProviderEdit(b.home, provider, tc.edit))
+			raw, err := os.ReadFile(appProviderEditsPath(b.home))
+			mustNil(t, err)
+			if bytes.Contains(raw, []byte(fakeKeyTwo)) {
+				t.Fatal("the durable edit stored the credential on disk")
+			}
+			if tc.edit != "" {
+				restarted.Set(provider, tc.edit)
+			}
+			proposals := 0
+			restarted.OnSynced(func(string, config.AppKeyState, string) { proposals++ })
+			restarted.MarkSyncReady()
+			b.pull(t)
+			if proposals != 0 {
+				t.Fatal("the initial pull proposed reviving the key the user changed")
+			}
+			restarted.SyncLoaded()
+			b.push(t)
+			a.pull(t)
+			if got, known := appA.Key(provider); !known || got != tc.edit {
+				t.Fatal("the peer did not receive the saved edit after restart")
+			}
+			edits, err := readAppProviderEdits(b.home)
+			mustNil(t, err)
+			if len(edits) != 0 {
+				t.Fatal("a captured edit remained pending")
+			}
+		})
+	}
+}
+
+func TestQADesktopProviderKeyUnsavedBrowserSignInDoesNotSync(t *testing.T) {
+	const provider = "aiand"
+	r := newKeyRig(t)
+	appA, appB := config.NewAppCredentials(), config.NewAppCredentials()
+	a, b := r.appMachine(appA), r.appMachine(appB)
+	appA.SetTentative(provider, fakeKeyOne)
+	if got, known := appA.Key(provider); !known || got != fakeKeyOne {
+		t.Fatal("browser sign-in could not be used this launch")
+	}
+	a.push(t)
+	b.pull(t)
+	if _, known := appB.Key(provider); known {
+		t.Fatal("a browser key went to a peer before its secure-store save")
+	}
+	mustNil(t, RememberAppProviderEdit(a.home, provider, fakeKeyOne))
+	appA.Set(provider, fakeKeyOne)
+	a.push(t)
+	b.pull(t)
+	if got, known := appB.Key(provider); !known || got != fakeKeyOne {
+		t.Fatal("the securely saved browser key did not sync")
+	}
+}
+
 func TestQADesktopProviderKeyDefaultSlotIsOnlySharedAtOfficialEndpoint(t *testing.T) {
 	for _, address := range []string{"https://custom.invalid/v1", "http://openrouter.ai/api/v1"} {
 		t.Run(address, func(t *testing.T) {

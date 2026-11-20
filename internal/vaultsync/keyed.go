@@ -186,7 +186,7 @@ func (r *keyedRun) captureAll() error {
 	guarded, guards := r.set.(interface {
 		MayCapture(string) bool
 		PreserveVault(string) bool
-		CaptureCommitted(string)
+		CaptureCommitted(string) error
 	})
 	for name, value := range r.held {
 		if guards && !guarded.MayCapture(name) {
@@ -209,7 +209,9 @@ func (r *keyedRun) captureAll() error {
 			return err
 		}
 		if guards {
-			guarded.CaptureCommitted(name)
+			if err := guarded.CaptureCommitted(name); err != nil {
+				return err
+			}
 		}
 	}
 	if r.explicitRemovals {
@@ -271,7 +273,9 @@ func (r *keyedRun) captureRemoval(name string) error {
 	remove := func() error { return r.v.Delete(r.id(name)) }
 	if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
 		if vault, ok := r.v.(interface{ DeleteAt(string, time.Time) error }); ok {
-			remove = func() error { return vault.DeleteAt(r.id(name), timed.KeyTime(name)) }
+			if at := timed.KeyTime(name); !at.IsZero() {
+				remove = func() error { return vault.DeleteAt(r.id(name), at) }
+			}
 		}
 	}
 	if err := remove(); err != nil {
@@ -285,15 +289,17 @@ func (r *keyedRun) captureKey(name, value string, explicit bool) error {
 	if !explicit && r.digests[name] == digest(value) {
 		return r.annotateKey(name, value)
 	}
-	if e, err := r.v.Get(r.id(name)); err == nil && e.Value == value {
+	var editTime time.Time
+	if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
+		editTime = timed.KeyTime(name)
+	}
+	if e, err := r.v.Get(r.id(name)); err == nil && e.Value == value && !(explicit && !editTime.IsZero()) {
 		r.digests[name] = digest(value)
 		return r.annotateKey(name, value)
 	} else {
 		at := time.Now()
-		if timed, ok := r.set.(interface{ KeyTime(string) time.Time }); ok {
-			if known := timed.KeyTime(name); !known.IsZero() {
-				at = known
-			}
+		if !editTime.IsZero() {
+			at = editTime
 		}
 		entry := keys.Entry{Name: name, Value: value, Scope: r.scope}
 		put := func() error { return r.v.PutAt(r.id(name), entry, at) }
