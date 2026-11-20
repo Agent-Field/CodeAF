@@ -257,6 +257,12 @@ secret ask (`bad_params`) and so never carries the value. `keeps_for_s` is how l
 keeps the value in a private file the agent's commands read (the model's own
 `request_secret`); absent, the value goes to its lane (a connection's key).
 
+A question that asks for several things at once carries `fields: [{label, kind?,
+default?, choices?}]`, the asker's own named blanks in order (`kind` is `text`,
+`path`, `number`, `choice` or `time`). The app draws one labelled box per field
+and answers with `asks.answer` `text`, one `label: value` line per field, so the
+answer reads the same to an engine that never sent fields.
+
 ## attachments methods
 
 | method | params | result |

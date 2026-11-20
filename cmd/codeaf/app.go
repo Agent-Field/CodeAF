@@ -2169,6 +2169,7 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		ask.Options = append(ask.Options, appwire.AskOption{ID: option.id, Label: option.label})
 	}
 	ask.Subject = appAskSubject(agent, q.Subject)
+	ask.Fields = appAskFields(q)
 	if q.SecretAnswer() {
 		ask.Secret = &appwire.AskSecret{Placeholder: strings.TrimSpace(q.Input.Prompt)}
 		// Only the model's own question keeps what was typed in a file
@@ -2179,6 +2180,25 @@ func appAskOf(agent string, q session.Question) appwire.Ask {
 		}
 	}
 	return ask
+}
+
+// appAskFields is a blanks question's named fields as the app draws them, and
+// nil for every other question. A blank with no label is not a field anybody
+// can fill, so it is left out rather than drawn as an unnamed box; a secret
+// question keeps its one masked box and never grows fields.
+func appAskFields(q session.Question) []appwire.AskField {
+	if q.Input.Kind != session.InputBlanks || q.SecretAnswer() {
+		return nil
+	}
+	var fields []appwire.AskField
+	for _, blank := range q.Input.Blanks {
+		label := strings.TrimSpace(blank.Label)
+		if label == "" {
+			continue
+		}
+		fields = append(fields, appwire.AskField{Label: label, Kind: string(blank.Kind), Default: blank.Default, Choices: blank.Choices})
+	}
+	return fields
 }
 
 // appAskSubject is what a question is about, in the app's words: an order is
