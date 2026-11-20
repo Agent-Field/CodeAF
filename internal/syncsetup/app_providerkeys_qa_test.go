@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
@@ -180,7 +181,9 @@ func TestQADesktopProviderKeyExplicitEditSurvivesRestartBeforeCapture(t *testing
 			mustNil(t, RememberAppProviderEdit(b.home, provider, tc.edit))
 			edits, err := readAppProviderEdits(b.home)
 			mustNil(t, err)
-			peerRevisions, err := a.Vault.Revisions("home:keys:provider")
+			peerVault, err := keys.Open(a.home)
+			mustNil(t, err)
+			peerRevisions, err := peerVault.Revisions("home:keys:provider")
 			mustNil(t, err)
 			name := appProviderKeyName(provider)
 			if peerRevisions[name].Stamp == 0 {
