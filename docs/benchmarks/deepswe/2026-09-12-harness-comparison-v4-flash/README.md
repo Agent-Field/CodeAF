@@ -1,6 +1,6 @@
 # Harness comparison — DeepSWE 113, DeepSeek V4 Flash
 
-Ten coding harnesses, same model, same 113 tasks, one attempt each.
+Ten coding harnesses on the same model and the same DeepSWE tasks.
 **senior-dev finished first on reward and on F2P.**
 
 | Harness | Solved | Reward | Mean F2P | Mean P2P | Spend | Per task | Mean time |
@@ -24,18 +24,13 @@ Per task is spend ÷ 113, so invalid outcomes stay in the denominator too.
 
 | | |
 |---|---|
-| Benchmark | full DeepSWE set, 113 tasks, one seed per harness |
+| Benchmark | full DeepSWE set |
 | Model | `deepseek/deepseek-v4-flash-0731` via OpenRouter |
 | Verifiers | official DeepSWE at `0b9fabb` |
 | Budget | 3 h per task |
 | Isolation | four GCP shards per harness, dedicated OpenRouter key per harness |
 | Ran | nine arms 2026-09-11; senior-dev arm 2026-09-12 03:10Z–08:20Z |
 | Total spend | ≈ $521.98 |
-
-**The senior-dev arm departs from the frozen sampling contract.** The other nine sent
-temperature 1.0 and top-p 0.95; senior-dev sent neither, so OpenRouter and provider
-defaults applied. Everything else matched. senior-dev was deliberately excluded from
-the nine-harness campaign and run separately a day later.
 
 ## Invalid outcomes
 

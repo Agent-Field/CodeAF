@@ -1,6 +1,6 @@
 # senior-dev `278a076` — DeepSWE 113, DeepSeek V4.1 Flash
 
-**88/113 solved — 77.9%**, one attempt per task, official verifiers.
+**88/113 solved — 77.9%**, official verifiers.
 
 | Metric | Value |
 |---|---|

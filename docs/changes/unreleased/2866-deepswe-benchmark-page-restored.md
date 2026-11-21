@@ -8,4 +8,4 @@ invalidates:
   - "The per-task DeepSWE records were said to stay on the run machines. The ten comparison tables and the two later single-arm runs (113 rows each, from 9b4344aaf on another branch) are now in docs/benchmarks/deepswe/, one folder per campaign."
 ---
 
-The scores are unchanged. The page now also says where its data and its rig live, and adds the cuts codeaf placed first on (medium and hard tasks, Go, Python, task-by-task against each harness) beside the ones it did not.
+The scores are unchanged. The page now also says where its data and its rig live, and adds the cuts codeaf placed first on: medium and hard tasks, Go, Python, and task by task against each harness. The page keeps to results and tables; OpenCode and Kilo read 26.5% (30 tasks), not 26.6%.

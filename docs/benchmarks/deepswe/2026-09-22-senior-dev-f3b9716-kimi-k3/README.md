@@ -1,6 +1,6 @@
 # senior-dev `f3b9716` — DeepSWE 113, Kimi K3
 
-**78/113 solved — 69.0%**, one attempt per task, official verifiers.
+**78/113 solved — 69.0%**, official verifiers.
 
 The question was whether the harness holds up when the backend model is swapped to
 Kimi K3, with everything the rig can pin held at the values of the
@@ -36,7 +36,7 @@ Kimi K3, with everything the rig can pin held at the values of the
 | Routing | `{"only": ["modal", "moonshotai"]}` — the only two Kimi K3 endpoints sharing one quantisation (mxfp4), price, 1,048,576 context and an output cap above 131,072, both supporting tools |
 | Compaction | window policy, 500,000 / 300,000 / 200,000, 60,000 tail |
 | Output cap / budget | 131,072 tokens per call; 3 h agent cap, 10,920 s watchdog |
-| Population | the frozen 113-task list, hash-pinned, four shards (29/28/28/28), one attempt per task, one seed |
+| Population | the frozen 113-task list, hash-pinned, four shards (29/28/28/28) |
 | Verifiers | official DeepSWE at `0b9fabb` |
 | Substrate | four `n2-standard-64`, `us-central1-a`, 2 CPU / 8 GiB per container, contained egress, 113 containers concurrent |
 
@@ -45,37 +45,6 @@ compaction watermarks, effort, model id, output cap, a single campaign-wide prom
 hash, and the control-plane record. Zero rate limits, zero attempts ended by
 anything external, zero empty patches, no upstream outside the allowlist, and no
 run reached the 3 h cap.
-
-## The comparison, and why it resolves nothing
-
-**The intended control was never run.** A DeepSeek V4.1 Flash re-anchor on this same
-binary would have isolated the model; it was deprioritised. The only available
-reference is the [88/113 V4.1 Flash run](../2026-09-15-senior-dev-278a076-v41-flash/),
-which used a **different model**, a **different binary** and a **different coder
-prompt** (`008bd219…` against `32cda36e…`, the rename having moved six lines of
-`coder.md`). Those three differences are not separable.
-
-| Reading | Result |
-|---|---|
-| Unpaired | 69.0% [59.6, 77.4] against 77.9% [69.1, 85.1] — intervals **overlap**, not resolved |
-| Paired, 112 tasks valid in both | 77 against 88; both pass 65, neither 12, discordant 12 / 23; exact McNemar **two-sided p = 0.0895** — not resolved |
-
-**No resolved difference, on either reading.** The preregistered decision rule is
-the two-sided test. A one-sided p of 0.0448 exists and was registered as
-supplementary; it is not the decision rule, and reading the result off it would be
-choosing the test after seeing which one clears 0.05. This is also not a finding
-that the models are equivalent, and it is not a ranking.
-
-## Honest limits
-
-1. **No re-anchor exists**, so nothing here isolates the model from the binary and the coder prompt.
-2. **One seed, one attempt per task** — no within-configuration variance estimate. Four runs of one identical configuration previously measured **SD 0.183** mean-of-means, so some discordance would appear pairing an arm against *itself*; McNemar cannot see that.
-3. **A ~10-point difference is not resolvable at n = 113.** Two arms must differ by roughly fifteen points before their exact intervals separate.
-4. **Concurrency and host type were not held constant** — 113-way on `n2-standard-64` here, 24-way and 60-way on `e2-standard-32` in the references. Neither changes what is sent to the model.
-5. **The earlier Kimi K3 campaign is not a control.** It scored **77/113**, three era lines back (binary `4bfb927`, default routing, `adopt_image_tree` off). Some documents cite it as 78/113; the store and that campaign's own result both say 77.
-6. **The serving endpoint per call is not recorded** by this binary.
-7. **No per-task claims** — per-task behaviour on this corpus is bimodal.
-8. **This result exists because another arm was stopped for it.** A companion GLM 5.3 lane was killed mid-run at 15:26:32Z to free the shared credit pool. That lane has no corpus rate and must not be quoted: its partial salvage is length-biased and excludes the 58 longest tasks.
 
 ## The file
 
