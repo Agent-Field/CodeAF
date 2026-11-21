@@ -41,6 +41,41 @@ grades, invalid outcomes, mean F2P and P2P, OpenRouter spend, cost per task,
 mean agent seconds and model. The codeaf row is stored there as `senior-dev`.
 The binary's name on the day of the run was an earlier one.
 
+## Where codeaf placed first
+
+Counted from the per-task records (see the last section). Each cut is the same
+one pass, on the same model.
+
+| Cut | codeaf | next best |
+| --- | --- | --- |
+| medium and hard tasks, 76 | **36** | mini-swe-agent 30, codex 29 |
+| medium band, 38 | **24** | mini-swe-agent 20 |
+| hard band, 38 | **12** | codex 11 |
+| Go tasks, 34 | **21** | mini-swe-agent and codex 17 |
+| Python tasks, 34 | **20** | mini-swe-agent 18 |
+| mean fail-to-pass, all 113 | **88.64%** | mini-swe-agent 88.17% |
+
+Task by task, codeaf solved more of the tasks where it and another harness
+disagreed, against each of the nine:
+
+| opponent | only codeaf | only opponent | both | neither |
+| --- | --- | --- | --- | --- |
+| mini-swe-agent | 29 | 23 | 33 | 28 |
+| codex | 25 | 14 | 37 | 37 |
+| pi | 33 | 13 | 29 | 38 |
+| omp | 44 | 13 | 18 | 38 |
+| opencode | 40 | 8 | 22 | 43 |
+| kilo | 41 | 9 | 21 | 42 |
+| deepseek-harness | 53 | 7 | 9 | 44 |
+| claude-code | 51 | 5 | 11 | 46 |
+| muse-code | 60 | 1 | 2 | 50 |
+
+Where another harness did better: easy tasks were a tie with mini-swe-agent
+(26 of 37); mini-swe-agent solved more TypeScript tasks (16 of 35 against 15),
+kept more existing tests passing (P2P 99.66% against 99.42%) and solved more
+tasks no other harness solved (7 against 5); claude-code and muse-code cost
+less per task. With one pass each, a gap of a few tasks is not settled.
+
 ## Tested versions and public references
 
 The nine competing harness versions below were checked against all 113 saved
@@ -122,6 +157,28 @@ at launch. The comparison does not establish how newer versions perform.
 ## Where the data and the rig live
 
 [`arms.csv`](arms.csv) and [`versions.csv`](versions.csv), beside this page, are
-the published summary: one row per harness. The per-task records the campaign
-saved are not in this repository. The scripts that run and grade DeepSWE tasks
-are in [bench/deepswe](../../../bench/deepswe/).
+the published summary: one row per harness. The scripts that run and grade
+DeepSWE tasks are in [bench/deepswe](../../../bench/deepswe/).
+
+The per-task records are in one folder per campaign, each with its own README
+giving setup, binary and model:
+
+| Folder | What |
+| --- | --- |
+| [`2026-09-12-harness-comparison-v4-flash/`](2026-09-12-harness-comparison-v4-flash/) | the comparison above: `tasks/<harness>.csv`, 113 rows each, and that campaign's `arms.csv` |
+| [`2026-09-15-senior-dev-278a076-v41-flash/`](2026-09-15-senior-dev-278a076-v41-flash/) | senior-dev mode alone on DeepSeek V4.1 Flash, 88 of 113 |
+| [`2026-09-22-senior-dev-f3b9716-kimi-k3/`](2026-09-22-senior-dev-f3b9716-kimi-k3/) | senior-dev mode alone on Kimi K3, 78 of 113 |
+
+Each row carries the task, its band and language, the verifier reward, the
+fail-to-pass and pass-to-pass test counts, wall time, timestamps, exit status
+and, where the harness recorded them, cost and model calls. The SHAs in those
+folders (`278a076`, `f3b9716` and others) belong to senior-dev's own history
+from before it was folded into codeaf, not to this repository. The per-attempt
+artifacts (event logs, traces, verifier output, patches), about 23 GB, stay on
+the machines that produced them.
+
+One step joins the ten comparison tables back into one file:
+
+```sh
+awk 'FNR>1 || NR==1' 2026-09-12-harness-comparison-v4-flash/tasks/*.csv > all-arms.csv
+```
