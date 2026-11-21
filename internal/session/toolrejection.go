@@ -122,6 +122,11 @@ const (
 	// ToolResultMediaAttempt: this occurrence made at least one render record
 	// carrying its own run and call id (media_attempt.go).
 	ToolResultMediaAttempt
+	// ToolResultNested: a script made this call, not the model, and a surface
+	// draws it under the script entry it follows (tool_script.go). It rides
+	// this byte rather than a field of its own for the reason the media
+	// attempt does: DisplayEntry's size is a budget.
+	ToolResultNested
 )
 
 func (f ToolResultFlags) Invoked() bool           { return f&ToolResultInvoked != 0 }
@@ -129,6 +134,7 @@ func (f ToolResultFlags) RejectedBeforeRun() bool { return f&ToolResultRejectedB
 func (f ToolResultFlags) HarnessMade() bool       { return f&ToolResultHarnessMade != 0 }
 func (f ToolResultFlags) Refused() bool           { return f&ToolResultRefused != 0 }
 func (f ToolResultFlags) MediaAttempt() bool      { return f&ToolResultMediaAttempt != 0 }
+func (f ToolResultFlags) Nested() bool            { return f&ToolResultNested != 0 }
 func (f toolResultFacts) flags() ToolResultFlags {
 	var flags ToolResultFlags
 	if f.invoked {

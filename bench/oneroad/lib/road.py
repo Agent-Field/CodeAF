@@ -660,6 +660,12 @@ def main():
         "checkpoint_marks": mech["checkpoint_marks"],
         "calls": calls["calls"],
         "cost_usd_calls": calls["cost_usd_calls"],
+        # The conversation's own tokens, under the names the peer arms' tokens
+        # already use (competitor_cost.py). Task workers' tokens are not here:
+        # they are in each run's plan store (script_use.py's worker_* columns).
+        "tokens_in": calls["tokens"]["input"],
+        "tokens_out": calls["tokens"]["output"],
+        "tokens_cache": calls["tokens"]["cache_read"],
         "endpoint_mix": calls["endpoint_mix"],
         "marks": ",".join(f"{m['rounds']}:{m['decision']}" for m in marks_journal),
         "mark_decisions": len(marks_journal),

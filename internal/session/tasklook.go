@@ -113,6 +113,25 @@ func withEpisode(ctx context.Context, ep *episode) context.Context {
 	return context.WithValue(ctx, episodeCarrier{}, ep)
 }
 
+// withEventHub puts the batch's hub on the context beside the episode, for the
+// one tool that makes calls of its own: a script's nested call has to raise its
+// rows and questions on the turn's hub, exactly as the call would at the top
+// level (tool_script.go).
+func withEventHub(ctx context.Context, hub *eventHub) context.Context {
+	if hub == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, eventHubCarrier{}, hub)
+}
+
+type eventHubCarrier struct{}
+
+// eventHubFrom answers the batch's hub, or nil where there is none.
+func eventHubFrom(ctx context.Context) *eventHub {
+	hub, _ := ctx.Value(eventHubCarrier{}).(*eventHub)
+	return hub
+}
+
 // episodeFrom answers the turn's episode, or nil where there is none — a tool
 // called from a test, or from a path that runs no turn. Every reader treats nil
 // as "no memory", so nothing here can fail a call.

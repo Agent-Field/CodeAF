@@ -714,6 +714,9 @@ func (f *feed) beginTool(ev session.Event) {
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: f.turn,
 		open:   session.IsUserBashCall(ev.CallID),
 		status: toolRunning, began: f.now(), detail: toolDetail{Args: ev.Args},
+		// A SCRIPT'S CALL IS NEVER ANNOUNCED, so this is the one door its row
+		// comes through, and it hangs under the script (toolview.go).
+		nested: ev.Parent != "",
 		// AND THE ROW MINTED HERE TAKES THE ID TOO. Every other door onto a tool
 		// row records it and this one did not, which left the rows drawn for a
 		// provider that does not stream its calls — and for a surface that
@@ -871,7 +874,7 @@ func (f *feed) closeTool(ev session.Event, status toolState, why string) {
 		}
 		f.entries = append(f.entries, entry{
 			kind: entryTool, tool: ev.Tool, text: why, turn: f.turn, status: toolFailed,
-			open:   !refused,
+			open: !refused, nested: ev.Parent != "",
 			detail: toolDetail{Args: ev.Args, Output: sentence},
 		})
 		f.follow()

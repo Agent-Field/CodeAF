@@ -315,6 +315,15 @@ func (c Config) mayProposeSubharness() bool {
 // on.
 func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt && !c.readingTask() }
 
+// mayScript is the script tool's predicate: a bash-belt worker whose switch was
+// on when it was built (tool_script.go).
+func (c Config) mayScript() bool { return c.mayBashBelt() && c.script }
+
+// mayChatScript is the script tool's predicate on a conversation's belt: a
+// session that is not a task, built by [New] with CODEAF_CHAT_SCRIPT on
+// (tool_script.go).
+func (c Config) mayChatScript() bool { return c.chatScript && !c.InTask }
+
 // ── the facts ───────────────────────────────────────────────────────────────
 
 // beltFact is one run of session-facts bullets that names a tool, together with

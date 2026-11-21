@@ -404,6 +404,14 @@ func (r *childRun) drain(events <-chan Event) {
 // clock that bounds the wait for its next event.
 func (r *childRun) observe(event Event) {
 	r.room.publish(event)
+	// A SCRIPT'S OWN CALL IS NOT A STEP: the script is, and its end comes after
+	// every call it made. A check it ran is still a check the node ran.
+	if event.Parent != "" {
+		if event.Kind == EventToolEnd && checkingTools[event.Tool] && !event.HarnessMade {
+			r.ranCheck = true
+		}
+		return
+	}
 	switch event.Kind {
 	case EventToolBegin:
 		r.batchBegan()

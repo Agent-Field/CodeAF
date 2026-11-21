@@ -14,11 +14,13 @@ TASK="${1:?usage: wave.sh <task> [arms...]}"; shift
 ARMS="${*:-codeaf-new-flash codeaf-new-crew codeaf-old-flash pi opencode}"
 SEED="${SEED:-s1}"
 
+source "$ROOT/lib/loadavg.sh"
+
 mkdir -p "$ROOT/results"
 # The load at the instant the wave fired. Five cells on one box contend for CPU
 # during clone, venv and pytest even though the middle of every cell is waiting
 # on a model, and the discount is only arguable afterwards if the number is here.
-printf 'wave %s fired %s loadavg %s\n' "$TASK" "$(date -Is)" "$(cut -d' ' -f1-3 /proc/loadavg)" \
+printf 'wave %s fired %s loadavg %s\n' "$TASK" "$(date +%Y-%m-%dT%H:%M:%S%z)" "$(loadavg)" \
   >> "$ROOT/results/waves.log"
 
 pids=()
@@ -28,5 +30,5 @@ for arm in $ARMS; do
   sleep 2
 done
 for pid in "${pids[@]}"; do wait "$pid"; done
-printf 'wave %s landed %s loadavg %s\n' "$TASK" "$(date -Is)" "$(cut -d' ' -f1-3 /proc/loadavg)" \
+printf 'wave %s landed %s loadavg %s\n' "$TASK" "$(date +%Y-%m-%dT%H:%M:%S%z)" "$(loadavg)" \
   >> "$ROOT/results/waves.log"

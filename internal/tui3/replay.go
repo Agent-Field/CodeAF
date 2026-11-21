@@ -743,6 +743,7 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 				// pairs the end that arrives a second later with the row already
 				// standing, or the same call is drawn twice.
 				callID: e.CallID,
+				nested: e.ToolResult.Nested(),
 				// AND THE STEP'S OWN TITLE COMES BACK WITH IT. The narration and
 				// the family it named were journaled against this call
 				// (session's DisplayEntry.Caption), so a reopened conversation

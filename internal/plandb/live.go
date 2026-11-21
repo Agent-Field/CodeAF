@@ -26,7 +26,11 @@ import (
 // is the honest answer for a task that is running nothing, which is why a
 // reader draws nothing rather than a zero step.
 type LiveStep struct {
-	Step    int
+	Step int
+	// Tool is the tool the step is running, as the belt began it; empty for a
+	// writer that names none, which a surface reads as the bash step every
+	// older writer publishes.
+	Tool    string
 	Command string
 	Since   time.Time
 }
@@ -48,6 +52,12 @@ func (l LiveStep) Empty() bool { return l.Step == 0 }
 // The moment is the store's own clock, the same one a spend row is stamped
 // with, so two readings of one run's present cannot disagree about now.
 func (s *Store) SetLive(taskID string, step int, command string) error {
+	return s.SetLiveCall(taskID, step, "", command)
+}
+
+// SetLiveCall is [Store.SetLive] naming the tool the step is running, so a
+// surface draws a step in flight as what it is.
+func (s *Store) SetLiveCall(taskID string, step int, tool, command string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.beginWrite()
@@ -55,9 +65,9 @@ func (s *Store) SetLive(taskID string, step int, command string) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO live (task_id, step, command, since) VALUES (?, ?, ?, ?)
-		ON CONFLICT(task_id) DO UPDATE SET step = excluded.step, command = excluded.command, since = excluded.since`,
-		bareTaskID(taskID), step, command, formatTime(s.now().UTC())); err != nil {
+	if _, err := tx.Exec(`INSERT INTO live (task_id, step, tool, command, since) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(task_id) DO UPDATE SET step = excluded.step, tool = excluded.tool, command = excluded.command, since = excluded.since`,
+		bareTaskID(taskID), step, tool, command, formatTime(s.now().UTC())); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -102,22 +112,22 @@ func (s *Store) LiveSteps() map[string]LiveStep {
 	if s.closed || s.rdb == nil {
 		return out
 	}
-	rows, err := s.rdb.Query(`SELECT task_id, step, command, since FROM live`)
+	rows, err := s.rdb.Query(`SELECT task_id, step, tool, command, since FROM live`)
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, command, since string
+		var id, tool, command, since string
 		var step int
-		if rows.Scan(&id, &step, &command, &since) != nil {
+		if rows.Scan(&id, &step, &tool, &command, &since) != nil {
 			return out
 		}
 		moment, err := parseTime(since)
 		if err != nil {
 			continue
 		}
-		out[id] = LiveStep{Step: step, Command: command, Since: moment}
+		out[id] = LiveStep{Step: step, Tool: tool, Command: command, Since: moment}
 	}
 	return out
 }

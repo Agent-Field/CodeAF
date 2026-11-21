@@ -3,6 +3,10 @@
 #
 # Usage: cell.sh <arm> <task>
 #   arm   codeaf-new-flash | codeaf-new-crew | codeaf-old-flash | pi | opencode
+#         | codeaf-script-flash | codeaf-script-crew  (the new arms with
+#           CODEAF_TASK_SCRIPT=on, the script tool's measurement)
+#         | codeaf-chatscript-flash | codeaf-chatscript-crew  (the new arms
+#           with CODEAF_CHAT_SCRIPT=on, the tool on the chat's own belt)
 #   task  20 | 21 | 22 | 23 | batch
 #
 # THE PROTOCOL POINT (bench/oneroad/README.md): the codeaf arms are driven
@@ -24,6 +28,17 @@ SEED="${SEED:-s1}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ONEROAD="$ROOT"
 source "$ONEROAD/lib/corpus.sh"
+source "$ONEROAD/lib/loadavg.sh"
+
+# CELL_ENV is the whole environment a harness under test is started with, on
+# top of env -i: where programs are, who and where the user is, the locale and
+# the temp folder (codeaf names its sockets there). Nothing else from the shell
+# that launched the bench — tokens, database URLs, cloud keys — reaches a
+# harness, which runs unattended on text from a public repository.
+# CELL_ENV_ARGS is for a command run from here; CELL_ENV is the same list
+# quoted for the command line tmux hands its own shell.
+CELL_ENV_ARGS=("PATH=$PATH" "USER=${USER:-}" "LOGNAME=${LOGNAME:-}" "LANG=${LANG:-en_US.UTF-8}" "SHELL=${SHELL:-/bin/sh}" "TMPDIR=${TMPDIR:-/tmp}")
+CELL_ENV="$(printf '%q ' "${CELL_ENV_ARGS[@]}")"
 
 ISSUES="${ISSUES:-20 21 22 23}"
 MODEL="${MODEL:-deepseek/deepseek-v4-flash}"
@@ -43,7 +58,12 @@ CELL_SECONDS="${CELL_SECONDS:-3600}"
 SILENCE_SECONDS="${SILENCE_SECONDS:-180}"
 POLL="${POLL:-10}"
 
-CELL="$ONEROAD/results/$ARM-$TASK-$SEED"
+# THREE OVERRIDES LET ANOTHER BENCHMARK DRIVE THIS CELL (bench/scriptbench):
+# RESULTS is where its cells go, PROMPT_FILE is its prompt in place of an
+# issue's, and SKIP_SUITE=1 leaves out the test suite for a task whose answer
+# is checked by something else. Unset, the one-road cell is unchanged.
+RESULTS="${RESULTS:-$ONEROAD/results}"
+CELL="$RESULTS/$ARM-$TASK-$SEED"
 rm -rf "$CELL"; mkdir -p "$CELL"
 WORK="$CELL/work"; mkdir -p "$WORK"
 DIR="$WORK/$SLUG"
@@ -53,7 +73,9 @@ say() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$CELL/cell.log"; }
 
 # ── the prompt ──────────────────────────────────────────────────────────────
 say "$ARM/$TASK: fetching issue text"
-if [ "$TASK" = "batch" ]; then
+if [ -n "${PROMPT_FILE:-}" ]; then
+  PROMPT="$(cat "$PROMPT_FILE")" || { say "could not read $PROMPT_FILE"; exit 1; }
+elif [ "$TASK" = "batch" ]; then
   PROMPT="$(batch_prompt)" || { say "could not read the issues"; exit 1; }
 else
   PROMPT="$(issue_prompt "$TASK")" || { say "could not read issue #$TASK"; exit 1; }
@@ -64,20 +86,38 @@ printf '%s' "$PROMPT" > "$CELL/prompt.txt"
 say "$ARM/$TASK: cloning at $BASE_COMMIT"
 COMMIT="$(fresh_clone "$DIR")" || { say "clone failed"; exit 1; }
 echo "$COMMIT" > "$CELL/base-commit"
-setup_python "$DIR"
-BEFORE="$(run_suite "$DIR" "$CELL/pytest-before.log")"
+BEFORE="skipped"
+if [ "${SKIP_SUITE:-0}" != "1" ]; then
+  setup_python "$DIR"
+  BEFORE="$(run_suite "$DIR" "$CELL/pytest-before.log")"
+fi
 say "$ARM/$TASK: suite before = $BEFORE (passed/failed)"
 
 # The load this cell started under. Arms share one machine by design (the
 # same-wave rule is what keeps provider weather fair), so the contention has to
 # be on the record rather than argued about afterwards.
-cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-before"
+loadavg > "$CELL/loadavg-before"
 
 # ── the codeaf arms: the real TUI, over tmux ────────────────────────────────
 run_codeaf() {
-  local binary="$1" all_flash="$2"
-  local profile="$CELL/profile" cellhome="$CELL/home"
-  mkdir -p "$profile" "$cellhome"
+  local binary="$1" all_flash="$2" switches=""
+  # THE SCRIPT ARMS DIFFER BY ONE VARIABLE. A third argument of `script` arms the
+  # task worker's script tool (internal/session/tool_script.go) and changes
+  # nothing else, so a script arm beside its new arm measures the tool alone.
+  [ "${3:-}" = "script" ] && switches="CODEAF_TASK_SCRIPT=on"
+  # AND THE CHAT'S ARM, on the same terms: `chatscript` arms the tool on the
+  # conversation's own belt and leaves the workers as the new arm has them.
+  [ "${3:-}" = "chatscript" ] && switches="CODEAF_CHAT_SCRIPT=on"
+  # THE PROFILE LIVES AT A SHORT PATH WHILE CODEAF RUNS. codeaf names a socket
+  # inside it, and a socket path has a 103-byte limit on macOS: under results/
+  # the name is too long, codeaf runs the conversation in its own terminal
+  # instead, and the cell measures a codeaf nobody runs. $CELL/profile points at
+  # it while the cell runs, and the folder moves back when it ends.
+  local profile cellhome="$CELL/home"
+  profile="$(mktemp -d /tmp/oneroad.XXXXXX)" || return 92
+  RUN_BIN="$binary"
+  ln -s "$profile" "$CELL/profile"
+  mkdir -p "$cellhome"
 
   # The disposable brain. This is the same shape the retired UX harness built:
   # HOME moves as well as the profile, so anything that does not yet honour the profile override lands
@@ -117,10 +157,24 @@ PY
   # `pi -p` and `opencode run --auto` take on the other arms.
   # --model pins the conversation's own model; the tier rows above (or their
   # absence) decide everything the machine calls on its own behalf.
+  # THE CELL'S CODEAF SEES ONLY WHAT IT NEEDS. It runs --yolo on a public
+  # issue's words, and a worker that runs `env` reads whatever it was handed,
+  # so it starts from an empty environment (env -i) plus CELL_ENV, never the
+  # shell that launched the bench. The provider key is NOT among them: it is in
+  # the profile's config.json above, and on a command line it would be readable
+  # by anything that lists processes.
+  #
+  # AND NO PROCESS ABOVE IT KEEPS THE SHELL'S ENVIRONMENT EITHER. tmux runs
+  # its command under the server's shell, whose environment is the one that
+  # started the server; left alive as codeaf's parent, `ps eww` would read it
+  # back. So that shell `exec`s straight into env -i, and the steps that must
+  # follow codeaf run from a launcher under the clean environment.
+  local launch="$CELL/launch.sh"
+  printf 'cd %q || exit 1\n%q chat --yolo --model %q\necho codeaf-EXITED\nsleep 60\n' \
+    "$DIR" "$binary" "$MODEL" > "$launch"
   tmux new-session -d -s "$SESSION_NAME" -x 200 -y 50 \
-    "cd '$DIR' && env HOME='$cellhome' CODEAF_HOME='$profile' CODEAF_PROFILE_DIR='$profile' \
-      OPENROUTER_API_KEY='$OPENROUTER_API_KEY' TERM=xterm-256color \
-      '$binary' chat --yolo --model '$MODEL'; echo codeaf-EXITED; sleep 60"
+    "exec env -i $CELL_ENV HOME='$cellhome' CODEAF_HOME='$profile' CODEAF_PROFILE_DIR='$profile' \
+      TERM=xterm-256color $switches /bin/sh '$launch'"
 
   # The first frame. A surface that never drew one has nothing to type into, and
   # the pane is kept so the reason is legible rather than inferred.
@@ -181,7 +235,7 @@ PY
       echo wall > "$CELL/settle_reason"
       return 124
     fi
-    now="$(find "$sessroot" -type f ! -name presence.json -printf '%s %T@ %p\n' 2>/dev/null | sort | md5sum)"
+    now="$(python3 "$ONEROAD/lib/storeprint.py" "$sessroot" 2>/dev/null | cksum)"
     screen="$(tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null)"
     printf '%s\n' "$screen" > "$CELL/tmux-live.txt"
     # THE STORE IS THE SIGNAL AND THE SCREEN IS ONLY A VETO ON "working".
@@ -190,6 +244,21 @@ PY
     # had been silent for seven minutes was still being called busy and would
     # have run to the wall and been recorded DNF. A liveness check must key on
     # something that STOPS when the work stops; the footer's hint does not.
+    # A CELL STOPPED AT AN APPROVAL IS BLOCKED, NOT IDLE. --yolo still asks
+    # before the commands internal/approval's floor names (an absolute
+    # recursive delete among them), nobody here will answer, and the store
+    # goes quiet while the prompt waits — which the idle rule below would
+    # record as a cell that finished.
+    if printf '%s' "$screen" | grep -q 'needs your ok'; then
+      say "$ARM/$TASK: blocked at an approval prompt at ${elapsed}s"
+      printf '%s\n' "$screen" | grep -A2 'needs your ok' | head -3 > "$CELL/approval.txt"
+      tmux capture-pane -t "$SESSION_NAME" -p > "$CELL/tmux-final.txt"
+      tmux capture-pane -t "$SESSION_NAME" -p -S -4000 > "$CELL/tmux-scrollback.txt"
+      tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+      echo BLOCKED > "$CELL/outcome"
+      echo approval > "$CELL/settle_reason"
+      return 0
+    fi
     if [ "$now" = "$last" ]; then
       quiet=$((quiet + POLL))
     else
@@ -244,7 +313,8 @@ run_peer() {
     pi)
       # bench/run.sh's recorded invocation, checked against pi 0.84.1: -p is
       # still non-interactive print mode and --provider/--model still pin.
-      (cd "$DIR" && timeout "$CELL_SECONDS" "$PI_BIN" -p \
+      (cd "$DIR" && env -i "${CELL_ENV_ARGS[@]}" HOME="$HOME" OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
+        timeout "$CELL_SECONDS" "$PI_BIN" -p \
         --provider openrouter --model "$MODEL" "$PROMPT")
       ;;
     opencode)
@@ -253,7 +323,8 @@ run_peer() {
       # stops at the first permission prompt with nobody there to answer and the
       # cell measures a dialog rather than a harness. --auto is this arm's
       # equivalent of codeaf's --yolo and pi's -p.
-      (cd "$DIR" && timeout "$CELL_SECONDS" "$OPENCODE_BIN" run --auto \
+      (cd "$DIR" && env -i "${CELL_ENV_ARGS[@]}" HOME="$HOME" OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
+        timeout "$CELL_SECONDS" "$OPENCODE_BIN" run --auto \
         -m "openrouter/$MODEL" "$PROMPT")
       ;;
   esac
@@ -264,6 +335,10 @@ STARTED=$(date +%s)
 case "$ARM" in
   codeaf-new-flash) run_codeaf "$NEW_BIN" 1; CODE=$? ;;
   codeaf-new-crew)  run_codeaf "$NEW_BIN" 0; CODE=$? ;;
+  codeaf-script-flash) run_codeaf "$NEW_BIN" 1 script; CODE=$? ;;
+  codeaf-script-crew)  run_codeaf "$NEW_BIN" 0 script; CODE=$? ;;
+  codeaf-chatscript-flash) run_codeaf "$NEW_BIN" 1 chatscript; CODE=$? ;;
+  codeaf-chatscript-crew)  run_codeaf "$NEW_BIN" 0 chatscript; CODE=$? ;;
   codeaf-old-flash) run_codeaf "$OLD_BIN" 1; CODE=$? ;;
   codeaf-esc-flash) run_codeaf "$ESC_BIN" 1; CODE=$? ;;
   codeaf-esc-crew)  run_codeaf "$ESC_BIN" 0; CODE=$? ;;
@@ -284,7 +359,23 @@ case "$ARM" in
   *) say "unknown arm $ARM"; exit 2 ;;
 esac
 WALL=$(( $(date +%s) - STARTED ))
-cut -d' ' -f1-3 /proc/loadavg > "$CELL/loadavg-after"
+if [ -L "$CELL/profile" ]; then
+  short="$(readlink "$CELL/profile")"
+  # THE ENGINE OUTLIVES THE CHAT. codeaf holds the workspace's conversations in
+  # a daemon that a killed tmux session does not stop; left running, it goes on
+  # writing into this profile and holds its tasks after the cell has ended.
+  env -i "${CELL_ENV_ARGS[@]}" HOME="$CELL/home" CODEAF_HOME="$short" CODEAF_PROFILE_DIR="$short" \
+    "$RUN_BIN" engine --stop --workspace "$DIR" >> "$CELL/cell.log" 2>&1
+  # codeaf writes its last files on the way out, so the folder moves only once
+  # nothing holds it open.
+  for _ in $(seq 30); do
+    lsof +D "$short" >/dev/null 2>&1 || break
+    sleep 1
+  done
+  sleep 2
+  rm "$CELL/profile" && mv "$short" "$CELL/profile"
+fi
+loadavg > "$CELL/loadavg-after"
 say "$ARM/$TASK: harness finished, exit $CODE, ${WALL}s"
 
 CHANGED="$(changed_files "$DIR")"
@@ -306,11 +397,13 @@ LANDED
 (cd "$DIR" && git diff) > /dev/null 2>&1
 (cd "$DIR" && git status --porcelain | grep -vE '\.venv|__pycache__') > "$CELL/status.txt" 2>/dev/null
 
-AFTER="$(run_suite "$DIR" "$CELL/pytest-after.log")"
+AFTER="skipped"
+[ "${SKIP_SUITE:-0}" != "1" ] && AFTER="$(run_suite "$DIR" "$CELL/pytest-after.log")"
 say "$ARM/$TASK: suite after = $AFTER, $CHANGED changed file(s)"
 
 # ── the road columns, and the parallelism timeline ──────────────────────────
 ROAD=""; ARMED=""; PARTS=0; PEAK=""; REFUSED=""; COST=""; COST_SRC=""
+TOK_IN=""; TOK_OUT=""; TOK_CACHE=""
 ESCALATED=""; ESC_SEEN=""; ROUTE=""; GRIND=""; PRE_LINE=""; MARKS=""
 CALLS=""; COST_CALLS=""; ENDPOINTS=""; MARKS_J=""; FORKS=""; COSTROLE=""; CEIL=""; DIVISION=""; DIVWHY=""
 case "$ARM" in
@@ -359,7 +452,8 @@ for name, key in (("ROAD","road"),("ARMED","armed"),("PARTS","parts"),
                   ("COST_CALLS","cost_usd_calls"),("ENDPOINTS","endpoint_mix"),
                   ("MARKS_J","marks"),("FORKS","forks"),("COSTROLE","cost_by_role"),
                   ("CEIL","ceiling_decision"),("DIVISION","division"),("DIVWHY","division_why"),
-                  ("COST","cost_usd"),("COST_SRC","cost_source")):
+                  ("COST","cost_usd"),("COST_SRC","cost_source"),
+                  ("TOK_IN","tokens_in"),("TOK_OUT","tokens_out"),("TOK_CACHE","tokens_cache")):
     print("%s=%s" % (name, shlex.quote(str(c.get(key, "")))))')"
       fi
     else
@@ -392,6 +486,14 @@ if [ "$OUTCOME" = "DNF" ]; then
     SETTLE_NOTE="wall reached with nothing landed"
   fi
 fi
+# HOW MUCH THE WORKERS USED THE SCRIPT TOOL, AND WHAT THEY SPENT, from their
+# trajectories and their runs' plan stores. Every codeaf arm records it, so the
+# zeros on a new arm are measured, not assumed.
+SCRIPT_USE=""
+case "$ARM" in
+  codeaf-*) SCRIPT_USE="$(python3 "$ONEROAD/lib/script_use.py" "$CELL" 2>>"$CELL/cell.log")" ;;
+esac
+export SCRIPT_USE TOK_IN TOK_OUT TOK_CACHE
 SETTLE_REASON="$(cat "$CELL/settle_reason" 2>/dev/null || echo n/a)"
 [ -n "${SETTLE_NOTE:-}" ] && SETTLE_REASON="$SETTLE_NOTE"
 ARM="$ARM" TASK="$TASK" SEED="$SEED" WALL="$WALL" CODE="$CODE" CHANGED="$CHANGED" \
@@ -436,6 +538,9 @@ meta = {
     "endpoint_mix": env["ENDPOINTS"], "marks": env["MARKS_J"],
     "forks": env["FORKS"], "cost_by_role": env["COSTROLE"],
     "ceiling_decision": env["CEIL"], "division": env["DIVISION"], "division_why": env["DIVWHY"],
+    "tokens_in": env.get("TOK_IN", ""), "tokens_out": env.get("TOK_OUT", ""),
+    "tokens_cache": env.get("TOK_CACHE", ""),
+    **(json.loads(env.get("SCRIPT_USE") or "{}")),
     "loadavg_before": open(os.path.join(env["CELL"], "loadavg-before")).read().strip(),
     "loadavg_after": open(os.path.join(env["CELL"], "loadavg-after")).read().strip(),
 }
@@ -464,7 +569,7 @@ PY
 # does not depend on the shared file.
 case "$ARM" in
   pi|opencode)
-    python3 "$ONEROAD/lib/competitor_cost.py" "$ONEROAD/results" "$(basename "$CELL")" \
+    python3 "$ONEROAD/lib/competitor_cost.py" "$RESULTS" "$(basename "$CELL")" \
       >> "$CELL/cell.log" 2>&1 || say "$ARM/$TASK: competitor cost unreadable (meta.json keeps its blank)"
     ;;
 esac

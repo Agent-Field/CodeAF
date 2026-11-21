@@ -35,22 +35,30 @@ const bashSpillName = "action-%06d.txt"
 // command's exit said: a timeout's own status line is the tail of the text and
 // survives the cut, which is exactly where it belongs.
 func (a *Agent) cutBashResult(text string) string {
-	caps := a.resultCaps()
-	if len(text) <= caps.MaxBytes {
-		return text
+	cut, _, _ := a.cutBashAt(text, a.resultCaps().MaxBytes, bashSpillName)
+	return cut
+}
+
+// cutBashAt is the cut at any byte cap: the window's for the model, a script's
+// wider one for a script ([scriptBashBytes]), each filing under its own name
+// pattern. It answers whether it cut and the file that holds the whole output,
+// empty when it could not be filed.
+func (a *Agent) cutBashAt(text string, max int, spillName string) (string, bool, string) {
+	if len(text) <= max {
+		return text, false, ""
 	}
-	head := utf8SafeCut(text, caps.MaxBytes/2)
-	tail := utf8SafeTail(text, caps.MaxBytes-caps.MaxBytes/2)
+	head := utf8SafeCut(text, max/2)
+	tail := utf8SafeTail(text, max-max/2)
 	// AND THE WHOLE OUTPUT IS NOT THROWN AWAY. Where it can be filed it is
 	// filed beside this node's journal and the marker names the file; where
 	// there is no journal to sit beside, the temp directory takes it, because
 	// the one thing the cut must never do is hand the model a path into the
 	// working copy it is standing in.
-	path, err := a.spillBashOutput(text)
+	path, err := a.spillBashOutput(text, spillName)
 	if err != nil {
-		return text[:head] + "\n" + fmt.Sprintf(bashTruncationMarker, "unavailable") + "\n" + tail
+		return text[:head] + "\n" + fmt.Sprintf(bashTruncationMarker, "unavailable") + "\n" + tail, true, ""
 	}
-	return text[:head] + "\n" + fmt.Sprintf(bashTruncationMarker, path) + "\n" + tail
+	return text[:head] + "\n" + fmt.Sprintf(bashTruncationMarker, path) + "\n" + tail, true, path
 }
 
 // utf8SafeCut answers the longest prefix of s at or under max bytes that ends
@@ -84,7 +92,7 @@ func utf8SafeTail(s string, max int) string {
 // directory rather than from a counter, because a worker's life is one
 // directory and reading it is the one source of truth for what is already
 // there; the exclusive create closes the race the scan leaves open.
-func (a *Agent) spillBashOutput(text string) (string, error) {
+func (a *Agent) spillBashOutput(text, spillName string) (string, error) {
 	dir := a.logDirectory()
 	if dir == "" {
 		return "", fmt.Errorf("no directory to file the output in")
@@ -93,13 +101,13 @@ func (a *Agent) spillBashOutput(text string) (string, error) {
 	if entries, err := os.ReadDir(dir); err == nil {
 		for _, entry := range entries {
 			var n int
-			if _, err := fmt.Sscanf(entry.Name(), "action-%06d.txt", &n); err == nil && n >= next {
+			if _, err := fmt.Sscanf(entry.Name(), spillName, &n); err == nil && n >= next {
 				next = n + 1
 			}
 		}
 	}
 	for attempt := 0; attempt < 1000; attempt++ {
-		path := fmt.Sprintf(filepath.Join(dir, bashSpillName), next)
+		path := fmt.Sprintf(filepath.Join(dir, spillName), next)
 		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err == nil {
 			_, writeErr := file.WriteString(text)

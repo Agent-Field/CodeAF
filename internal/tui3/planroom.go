@@ -178,17 +178,23 @@ func planRoomShape(page session.PlanTaskPage) string {
 // The notes follow the steps in the order they were left: the store keeps the
 // moment of a note and not of a step, so the two cannot be interleaved without
 // guessing, and a guess about order is the one thing a transcript may not make.
+// bashArgs is a command as the bash tool's arguments, the shape every bash row
+// is drawn from.
+func bashArgs(command string) string {
+	raw, _ := json.Marshal(map[string]string{"command": command})
+	return string(raw)
+}
+
 func (a *app) planRoomEntries(page session.PlanTaskPage) ([]entry, int) {
 	var record session.Record
 	add := func(e session.DisplayEntry) { record.Entries = append(record.Entries, e) }
 	if brief := strings.TrimSpace(page.Description); brief != "" {
 		add(session.DisplayEntry{Role: "user", Text: requestDisplayFor(brief)})
 	}
-	call := func(step int, command, output string, answered bool) {
-		args, _ := json.Marshal(map[string]string{"command": command})
+	call := func(id, tool, args, output string, answered bool, flags session.ToolResultFlags) {
 		add(session.DisplayEntry{
-			Role: "tool", Tool: "bash", CallID: "step-" + itoa(step),
-			Args: string(args), Output: output, Answered: answered,
+			Role: "tool", Tool: tool, CallID: id,
+			Args: args, Output: output, Answered: answered, ToolResult: flags,
 		})
 	}
 	for _, step := range page.Steps {
@@ -214,13 +220,35 @@ func (a *app) planRoomEntries(page session.PlanTaskPage) ([]entry, int) {
 		if step.ObservationHeadWithheld {
 			output = ""
 		}
-		call(step.Step, command, output, true)
+		// A SCRIPT STEP IS DRAWN AS ITSELF, with its arguments; every other step
+		// keeps the bash row it has always had.
+		id := "step-" + itoa(step.Step)
+		if step.Tool == "script" {
+			call(id, step.Tool, step.Command, output, true, 0)
+		} else {
+			call(id, "bash", bashArgs(command), output, true, 0)
+		}
+		// AND THE CALLS A STEP MADE HANG UNDER IT, each as the tool it was
+		// (internal/run's StepCall).
+		for k, nested := range step.Calls {
+			args := nested.Command
+			if nested.Tool == "bash" {
+				args = bashArgs(nested.Command)
+			}
+			call(id+"-call-"+itoa(k+1), nested.Tool, args, nested.Observation, true, session.ToolResultNested)
+		}
 	}
 	// THE LIVE STEP IS DRAWN ONE STEP EARLY, as a call in flight, and only
 	// where the store says there is one ([plandb.LiveStep.Empty]).
 	if live := page.Live; !live.Empty() && live.Step > 0 {
 		if command := planDisplayCommand(live.Command, page.Row.LiveParts); command != "" {
-			call(live.Step, command, "", false)
+			// A SCRIPT IN FLIGHT IS DRAWN AS ITSELF, from the tool the live step
+			// names; every other live step keeps its bash row.
+			if live.Tool == "script" {
+				call("step-"+itoa(live.Step), live.Tool, live.Command, "", false, 0)
+			} else {
+				call("step-"+itoa(live.Step), "bash", bashArgs(command), "", false, 0)
+			}
 		}
 	}
 	for _, entry := range page.Worker {

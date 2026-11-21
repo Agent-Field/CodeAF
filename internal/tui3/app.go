@@ -404,6 +404,10 @@ type entry struct {
 	// at a time and must not ask what surrounds it — the same law the answer
 	// hierarchy is stamped under ([app.deckRows]).
 	brief bool
+	// nested says this tool row is a call a script made, drawn one indent under
+	// the script row it follows (toolview.go). Set where the fact is known
+	// (replay.go), for brief's reason.
+	nested bool
 	// decision is what the person answered when this call was asked about —
 	// "allowed" or "denied", dim, beside the row's stat (consent.go). It is
 	// empty for every call the policy did not stop.
