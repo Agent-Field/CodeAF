@@ -30,6 +30,7 @@ explains task folders, cooperating layouts, multi-root transfer, and result appl
 | Design rationale | [Visual design language](DESIGN-LANGUAGE.md), [home layout](HOME-BRIDGE.md), [thread UX](THREAD-UX.md), [background jobs](JOBS.md), [services](SERVICES.md), [multimodal](MULTIMODAL.md), [stored subharness design](SUBHARNESS.md) |
 | Feature catalog | [Capabilities](FEATURES.md) |
 | Performance | [Performance rules and size budget](../PERF.md), [diagnostic CPU and heap profiles](DIAGNOSTIC-PROFILE.md) |
+| Benchmark results | [DeepSWE comparison](benchmarks/deepswe/README.md): method, tested versions, [`arms.csv`](benchmarks/deepswe/arms.csv) and [`versions.csv`](benchmarks/deepswe/versions.csv) |
 
 A contract describes an interface that other code relies on. Design rationale
 explains a decision and may include proposals or earlier revisions. Check scope

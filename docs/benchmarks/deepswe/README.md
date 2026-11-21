@@ -118,3 +118,10 @@ at launch. The comparison does not establish how newer versions perform.
 - **cost per solved issue**: spend divided by tasks solved, shown as a multiple
   of codeaf's (39.9¢).
 - **mean time**: mean agent wall time per task.
+
+## Where the data and the rig live
+
+[`arms.csv`](arms.csv) and [`versions.csv`](versions.csv), beside this page, are
+the published summary: one row per harness. The per-task records the campaign
+saved are not in this repository. The scripts that run and grade DeepSWE tasks
+are in [bench/deepswe](../../../bench/deepswe/).
