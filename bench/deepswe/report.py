@@ -52,8 +52,11 @@ def row(d):
             c = sqlite3.connect(os.path.join(d, "graph.db"))
             columns = {r[1] for r in c.execute("pragma table_info(nodes)")}
             column = "ran" if "ran" in columns else "subharness"
-            meta["workers_ran"] = sorted({r[0] for r in c.execute(
-                f"select {column} from nodes where coalesce({column},'') != ''")})
+            queries = {
+                "ran": "select ran from nodes where coalesce(ran,'') != ''",
+                "subharness": "select subharness from nodes where coalesce(subharness,'') != ''",
+            }
+            meta["workers_ran"] = sorted({r[0] for r in c.execute(queries[column])})
             meta["workers_from_ask"] = column == "subharness"
         except Exception:
             pass
