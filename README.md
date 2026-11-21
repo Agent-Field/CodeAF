@@ -154,6 +154,9 @@ on the same model, DeepSeek V4 Flash: 113 real GitHub issues from DeepSWE, grade
 by the official verifiers. It solved the most issues and paid the least for each
 one it solved.
 
+Every number, the method, the tested versions and the limits:
+[docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
+
 
 ## The right model for each call
 
