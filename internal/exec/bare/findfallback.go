@@ -16,7 +16,26 @@ func findToolDescription(caps Caps) string {
 	if _, err := exec.LookPath("fd"); err == nil {
 		return findDescription(caps)
 	}
+	return findFallbackDescription(caps)
+}
+
+func findFallbackDescription(caps Caps) string {
 	return fmt.Sprintf("Search file paths by glob. No fd: ignores .gitignore, skips .git/node_modules/vendor; follows no directory symlinks. Returns relative paths, capped at 1000 results or %s.", sizeWord(caps.MaxBytes))
+}
+
+// WidestFindDescription is the longer of find's two sentences, for the reason
+// [WidestGrepDescription] gives: the gate that bounds the fixed prefix
+// (internal/session's prefixbudget_test.go) weighed 13 bytes more on a laptop
+// with fd than on a runner without it, so it failed where it was run and
+// passed where it was proved. Measured, never assumed, so an edit that grows
+// either sentence still reaches the gate.
+func WidestFindDescription(caps Caps) string {
+	caps = caps.resolve()
+	with, without := findDescription(caps), findFallbackDescription(caps)
+	if len(with) > len(without) {
+		return with
+	}
+	return without
 }
 
 // findGlob treats ** as zero or more path components. A basename pattern
