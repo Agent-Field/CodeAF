@@ -173,6 +173,12 @@ func TestLandKeepsEveryRealFilename(t *testing.T) {
 // whose name contains the word — lands as it always did.
 func TestLandLeavesOutUntrackedBuildCachesOnly(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
+	// THE MACHINE'S OWN GIT CONFIG STAYS OUT. A global excludes file that
+	// ignores __pycache__ (a common one) refused the seed commit below, and
+	// would change which untracked caches the landing sees; this contract is
+	// about the repository's rules, so it is read with no others.
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	repo := t.TempDir()
 	runGit(t, repo, "init")
 	runGit(t, repo, "checkout", "-b", "work")
