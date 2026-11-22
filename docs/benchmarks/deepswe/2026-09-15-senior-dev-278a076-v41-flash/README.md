@@ -7,13 +7,16 @@
 | Solved | **88/113 — 77.9%** (exact 95% CI 69.1%–85.1%) |
 | Mean F2P | 0.9549 |
 | Mean P2P | 0.9822 |
-| Valid grades | 113/113 — no invalid outcomes |
+| Valid grades | 112/113 |
 | Model cost | **$56.52 billed** — $0.50 per attempt |
 | Mean agent time | 33 min (median 26 min, longest 103 min) |
 | Runs that hit the 3 h budget | 0/113 |
 | Model calls | 16,951 total, 150 mean |
 | First attempt started | 2026-09-14T22:48:36+00:00 |
 | Last attempt finished | 2026-09-15T04:53:10+00:00 |
+
+The verifier stalled on `koota-query-predicates`. The run includes that attempt
+in the 113-task denominator as a non-pass.
 
 ## Setup
 
