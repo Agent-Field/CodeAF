@@ -79,11 +79,17 @@ Task by task, against each of the nine other harnesses:
 ## The data
 
 [`arms.csv`](arms.csv) has one row per harness and [`versions.csv`](versions.csv)
-the versions; the codeaf row is `senior-dev` in both. The
-[verifier results ZIP](verifier-results.zip) contains the original scored
-`reward.json` files. Its [manifest](verifier-results-manifest.json) lists the
-included files, SHA-256 checksums, and ungraded attempts. The per-task records are in
-one folder per campaign:
+the versions. Both files label the codeaf row `senior-dev`.
+
+The [verifier results and patches ZIP](DeepSWE-verifier-results-and-patches.zip)
+contains 1,350 original verifier results and one submitted patch per attempt where
+available (1,354 patch files, including 168 empty patches). Use the submitted patches
+with the official DeepSWE verifiers at `0b9fabb` to rerun grading. The
+[manifest](verifier-results-manifest.json), also included in the ZIP as
+`manifest.json`, lists file checksums, ungraded attempts, and unavailable patches.
+The download is 20.87 MiB.
+
+The per-task records are in one folder per campaign:
 
 | Folder | What |
 | --- | --- |
