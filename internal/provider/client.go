@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/lane/control"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/paymentrefusal"
 	"github.com/Agent-Field/codeaf/internal/trace"
 
@@ -74,8 +75,14 @@ type Config struct {
 	// one call's correctness wins over it. A router copies the pin to every
 	// fallback model because the seat keeps doing the same job after a fallback.
 	// Zero is the ordinary unpinned case, and the level is NEVER part of Model.
-	Effort  Effort
-	Timeout time.Duration
+	Effort Effort
+	// ReasoningDialect is which request field the endpoint reads a thinking
+	// level from, declared by the connected service's row
+	// ([modelsource.Source.Reasoning]). Zero is OpenRouter's unified
+	// `reasoning` object and leaves every body exactly as it was; the one
+	// other dialect is written by wire.go's [reasoningEffortFor].
+	ReasoningDialect modelsource.ReasoningDialect
+	Timeout          time.Duration
 
 	// RouteGate, when set, is asked before every body this client sends, with
 	// the model the body names and the call's tag ([WithCallTag]); an error
