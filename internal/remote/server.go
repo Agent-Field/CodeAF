@@ -1150,7 +1150,15 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// THE ARRIVAL IS NUMBERED BEFORE THE WELCOME IS BUILT, because the welcome
 	// says which questions THIS surface is owed and the number is how a card
 	// names the surfaces that have already drawn it (held.go).
-	s.name = machineLabel(hello.Surface)
+	if hello.Remote != nil && s.remote == nil {
+		copied := *hello.Remote
+		s.remote = &copied
+	}
+	surface := hello.Surface
+	if s.remote != nil {
+		surface = s.remote.Label
+	}
+	s.name = machineLabel(surface)
 	s.clientID = strings.TrimSpace(hello.ClientID)
 	// THE ARRIVAL IS AN ACT. A window that has just been welcomed is
 	// watching, and a pipe that tears on the way in — or a getter that
@@ -1162,22 +1170,24 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	}
 	sess.arrivals++
 	s.arrived = sess.arrivals
+	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
+	// new one (driver.go states the whole rule, [Hello.Back] states why the
+	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
+	// flag is recorded so no later hand-on can give it the keyboard either. For a
+	// remote viewer the host decides from the door's stamp rather than trusting
+	// the viewer's own Watch flag.
+	s.watching = hello.Watch || (s.remote != nil && !s.remote.Drive)
 	// Attached counts the OTHERS, so it is read before this one is added
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked(s)
 	// The initial capability reads the arrival directly, preserving the machine's
 	// existing point at which a watcher becomes registered.
-	welcome.TaskComputers = !hello.Watch && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
+	welcome.TaskComputers = !s.watching && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
 	welcome.Encoding = s.encoding
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
 	sess.empty = time.Time{}
 	sess.releaseOnIdle = false
-	// THE NEWEST WINDOW DRIVES, and a window that merely lost its link is not a
-	// new one (driver.go states the whole rule, [Hello.Back] states why the
-	// difference is load-bearing). A WATCHER IS NEITHER: it never drives, and the
-	// flag is recorded so no later hand-on can give it the keyboard either.
-	s.watching = hello.Watch
 	if hello.Join {
 		// WHAT THIS CONNECTION IS BOUND TO is the conversation it named, confirmed
 		// against the one open under this same lock a few lines above. The engine's
@@ -1189,9 +1199,10 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// window may replace that stale driver, because Attached counts every live
 	// surface and cannot distinguish the returning window from another one.
 	// Replacing the driver pointer makes the old pipe a non-driver immediately;
-	// its later detach therefore cannot take the keyboard away again.
+	// its later detach therefore cannot take the keyboard away again. A remote
+	// viewer never takes the keyboard on arrival; it takes only via MethodTake.
 	sameReturningWindow := hello.Back && s.clientID != "" && sess.driver != nil && sess.driver.clientID == s.clientID
-	if !s.watching && (!hello.Back || sess.driver == nil || sameReturningWindow) {
+	if !s.watching && s.remote == nil && (!hello.Back || sess.driver == nil || sameReturningWindow) {
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
@@ -1484,7 +1495,16 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		SideAsk:       sideAskKnown(sess.agent),
 		SideAskStream: sideAskStreamKnown(sess.agent),
 		Setup:         setupKnown(sess.agent),
+		Remote:        remoteCopy(s.remote),
 	}
+}
+
+func remoteCopy(r *RemoteViewer) *RemoteViewer {
+	if r == nil {
+		return nil
+	}
+	copied := *r
+	return &copied
 }
 
 // factsLocked is the fact set as it stands, numbered.
@@ -1909,6 +1929,9 @@ type server struct {
 	// because a welcome proves whose conversation this was at the instant of
 	// arriving and another window can replace it a second later.
 	joined string
+	// remote is a copy of the viewer stamp from [Hello.Remote], or nil for a
+	// local or full-machine connection.
+	remote *RemoteViewer
 
 	// pending is the stream a call has just opened and dispatch has not yet let
 	// speak. It is one slot rather than a queue, and it needs no lock, because
@@ -2145,6 +2168,13 @@ func (s *server) handshake(line []byte) error {
 	if hello.Version != Version {
 		return s.refuse(wireMismatchSentence(MachineName(), Version, hello.Version, buildinfo.String()))
 	}
+	if hello.Remote != nil {
+		if !hello.Join || hello.New {
+			return s.refuse("remote control opens a chat that is already running; it never starts one")
+		}
+		copied := *hello.Remote
+		s.remote = &copied
+	}
 
 	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
 		s.encoding = frameEncodingGzip
@@ -2373,7 +2403,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// model, resolving a card, reviving a node, opening another session and
 	// closing this one all change the conversation without a word being said, and
 	// every one of them was open to a reader before this ([Hello.Watch]).
-	if s.watching && !watcherMay(call.Method) {
+	if s.remote != nil {
+		if !GuestMay(call.Method, s.remote.Drive) {
+			return nil, errors.New(GuestRefusal(HostName(), call.Method, s.remote.Drive))
+		}
+		if err := guestAnswerMay(call); err != nil {
+			return nil, err
+		}
+	} else if s.watching && !watcherMay(call.Method) {
 		return nil, fmt.Errorf("%s (%s)", watchingWord, call.Method)
 	}
 	// THE DOORS THAT PUT WORDS INTO THE CONVERSATION ARE THE DRIVER'S, and
