@@ -614,18 +614,19 @@ const (
 	// project it was in. `/autonomy` printed that sentence on a machine with the
 	// rules sitting in `.codeaf/autonomy.json`, and the settings rows that read
 	// the same door drew nothing at all.
-	MethodAutonomy      = "Autonomy"          // nothing → map[AskKind]Policy
-	MethodHarness       = "ResolveHarness"    // HarnessArgs → nothing
-	MethodConnect       = "ResolveConnect"    // ConnectArgs → nothing
-	MethodConnectKey    = "ResolveConnectKey" // ConnectArgs → nothing
-	MethodNoteConnected = "NoteConnected"     // ConnectedArgs → nothing
-	MethodTitle         = "Title"             // nothing → string
-	MethodUsage         = "Usage"             // nothing → session.Usage
-	MethodContextTokens = "ContextTokens"     // nothing → int
-	MethodTranscript    = "Transcript"        // nothing → []session.DisplayEntry
-	MethodEarlier       = "EarlierHistory"    // nothing → session.EarlierHistory
-	MethodRewindPoints  = "RewindPoints"      // nothing → []session.RewindPoint
-	MethodRewindAt      = "RewindAt"          // int → []session.DisplayEntry
+	MethodAutonomy       = "Autonomy"          // nothing → map[AskKind]Policy
+	MethodHarness        = "ResolveHarness"    // HarnessArgs → nothing
+	MethodConnect        = "ResolveConnect"    // ConnectArgs → nothing
+	MethodConnectKey     = "ResolveConnectKey" // ConnectArgs → nothing
+	MethodNoteConnected  = "NoteConnected"     // ConnectedArgs → nothing
+	MethodTitle          = "Title"             // nothing → string
+	MethodUsage          = "Usage"             // nothing → session.Usage
+	MethodContextTokens  = "ContextTokens"     // nothing → int
+	MethodTranscript     = "Transcript"        // nothing → []session.DisplayEntry
+	MethodTranscriptPage = "Transcript.Page"   // TranscriptPageArgs → Page
+	MethodEarlier        = "EarlierHistory"    // nothing → session.EarlierHistory
+	MethodRewindPoints   = "RewindPoints"      // nothing → []session.RewindPoint
+	MethodRewindAt       = "RewindAt"          // int → []session.DisplayEntry
 	// MethodPlanSpend CARRIES THE RUN'S SPEND-BY-SEAT ACROSS THE WIRE, and it
 	// is the spend page's other reading beside the machine's own ledger above.
 	// A conversation that seeded a plan writes its workers' calls into the plan
@@ -1099,6 +1100,21 @@ type Hello struct {
 	// retired while the window is open (cmd/codeaf's chatv3_beside.go). A
 	// headless `--once` is a script and not a window, and says nothing.
 	Window bool `json:"window,omitempty"`
+
+	// Remote carries the peer identity and permissions stamped by the door that
+	// accepted the connection, never trusted from a surface directly.
+	Remote *RemoteViewer `json:"remote,omitempty"`
+}
+
+// RemoteViewer describes a paired remote computer viewing or driving a chat held
+// on this host. It is stamped by the door that carried the connection and is
+// never trusted from a surface.
+type RemoteViewer struct {
+	Device string `json:"device,omitempty"`
+	Label  string `json:"label,omitempty"`
+	Watch  bool   `json:"watch,omitempty"`
+	Drive  bool   `json:"drive,omitempty"`
+	Road   string `json:"road,omitempty"`
 }
 
 // StreamCursor is one "I have seen this stream through here".
@@ -1540,6 +1556,10 @@ type Welcome struct {
 	// then says it has no machine to set up rather than showing a plan nobody
 	// can act on.
 	Setup bool `json:"setup,omitempty"`
+
+	// Remote echoes the peer identity and permissions stamped on Hello.Remote by
+	// the door that carried this connection. Absent on local connections.
+	Remote *RemoteViewer `json:"remote,omitempty"`
 }
 
 // SkillShelfArgs asks for one reading of the conversation's skill shelf, on
@@ -2265,4 +2285,22 @@ type RefreshRunSummaryArgs struct {
 type PlanRunSummaryResult struct {
 	Summary session.RunPlanSummary `json:"summary"`
 	OK      bool                   `json:"ok"`
+}
+
+// TranscriptPageArgs asks for one bounded page of the conversation's transcript
+// ending before the absolute entry index Before (zero for the tail).
+type TranscriptPageArgs struct {
+	Before   int `json:"before,omitempty"`
+	Limit    int `json:"limit,omitempty"`
+	MaxBytes int `json:"maxBytes,omitempty"`
+}
+
+// Page is one slice of the transcript returned by [MethodTranscriptPage], with
+// the absolute index of its first entry, the transcript's total entry count,
+// and whether older entries remain before Base.
+type Page struct {
+	Entries []session.DisplayEntry `json:"entries,omitempty"`
+	Base    int                    `json:"base,omitempty"`
+	Total   int                    `json:"total,omitempty"`
+	More    bool                   `json:"more,omitempty"`
 }
