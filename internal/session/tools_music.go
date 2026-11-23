@@ -45,9 +45,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -133,32 +134,41 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 		Name:        "generate_music",
 		Description: generateMusicDescription,
 		Schema:      a.mediaSchema(generateMusicSchemaJSON, "music"),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(callCtx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateMusicArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			prompt := strings.TrimSpace(parsed.Prompt)
 			if prompt == "" {
-				return "Invalid arguments: prompt is required", true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: prompt is required"), true, nil
 			}
 			// The call's own choice, resolved before the job starts, so a word
 			// that matches nothing costs neither money nor a job row
 			// (tools_image.go states the shape).
 			model, refusal := a.mediaPick(modalityMusic, parsed.Model, defaultModel)
 			if refusal != "" {
-				return "Invalid arguments: " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+refusal), true, nil
 			}
 
 			started, ctx, err := a.jobs.startRender(musicLabel, prompt)
 			if err != nil {
 				return "Could not start the compose: " + err.Error(), true, nil
 			}
+			if err := a.jobs.beginRender(started, "music", model, runIdentity(callCtx), callIDFrom(callCtx)); err != nil {
+				if started.stop != nil {
+					started.stop()
+				}
+				a.jobs.finish(started, 1, "")
+				started.releaseRender()
+				return "Could not start the music render: " + err.Error(), true, nil
+			}
+			markMediaAttempt(callCtx)
 			fmt.Fprintf(started.sink, "composing on %s: %s\n", model, firstLine(prompt))
 
 			go a.composeMusic(ctx, client, started, provider.MusicRequest{
 				Model: model, Prompt: prompt,
-			}, parsed.Path, model)
+			}, parsed.Path, model, madeBy(callCtx, nil))
 
 			// The id, the model and the log, and nothing else — the RESULT
 			// arrives as a note, by tools_video.go's law exactly.
@@ -174,11 +184,18 @@ func (a *Agent) generateMusicTool(client MediaGenerator, defaultModel string) ba
 // turn that started it and dies to `jobs kill` and to Close like any other
 // job; the only audience for a failure is the model, which hears it in the
 // note.
-func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composing *job, request provider.MusicRequest, asked, model string) {
+func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composing *job, request provider.MusicRequest, asked, model string, made mediaMade) {
+	// Keep admission until the actual provider goroutine exits, including late cancellation.
+	defer composing.releaseRender()
 	response, err := client.GenerateMusic(ctx, request)
 	if err != nil {
 		a.failMusic(composing, musicFailure(model, err))
 		return
+	}
+	// WHAT THE PROVIDER SAYS IT CHARGED goes to the ledger the moment the call
+	// returns, whatever became of the render meanwhile.
+	if response != nil {
+		composing.noteCharge(response.Usage)
 	}
 	if response == nil || len(response.Audio) == 0 {
 		a.failMusic(composing, "music generation returned no audio ("+model+")")
@@ -189,20 +206,27 @@ func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composi
 	// the law).
 	a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 
-	path, err := a.mediaDestination(asked, request.Prompt, musicFileExtension(response.Format),
-		MusicDir(a.config.Place, a.config.Workspace))
-	if err == nil {
-		err = os.MkdirAll(filepath.Dir(path), 0o755)
-	}
-	if err == nil {
-		err = os.WriteFile(path, response.Audio, 0o644)
-	}
-	if err != nil {
+	path, landing, err := a.landRender(composing, asked, request.Prompt, musicFileExtension(response.Format),
+		MusicDir(a.config.Place, a.config.Workspace), response.Audio, writeFileAtomic)
+	switch landing {
+	case renderStopped:
+		reason := "stopped before the music was saved; the provider had already finished it, so it may have been charged"
+		fmt.Fprintln(composing.sink, reason)
+		composing.sealRender(renderPatch{state: RenderCancelled})
+		a.jobs.finish(composing, 1, "job "+strconv.Itoa(composing.id)+" "+reason)
+		return
+	case renderNotSaved:
 		a.failMusic(composing, "could not save the generated music: "+err.Error())
 		return
 	}
-	a.recordArtifact(path, mediaTitle(request.Prompt, path), "audio")
+	a.recordMedia(Artifact{
+		Path:    path,
+		Title:   mediaTitle(request.Prompt, path),
+		Kind:    "audio",
+		Created: time.Now(),
+	}, GeneratedMedia(path, response.Audio, model).WithUsage(response.Usage).WithMade(made))
 
+	composing.sealRender(renderPatch{state: RenderFinished, committed: true, path: path, usage: response.Usage})
 	landed := describeGeneratedMusic(a.config.Workspace, path, len(response.Audio), model)
 	fmt.Fprintln(composing.sink, landed)
 	a.jobs.finish(composing, 0, fmt.Sprintf("job %d finished: %s", composing.id, landed))
@@ -211,6 +235,7 @@ func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composi
 // failMusic ends a compose that produced nothing, [Agent.failVideo]'s twin:
 // exit code 1, the reason in the log, the same sentence as the note.
 func (a *Agent) failMusic(composing *job, reason string) {
+	composing.sealRender(renderPatch{state: RenderFailed, committed: composing.isCommitted(), err: reason})
 	fmt.Fprintln(composing.sink, reason)
 	a.jobs.finish(composing, 1, fmt.Sprintf("job %d failed: %s", composing.id, reason))
 }
@@ -225,7 +250,7 @@ func (a *Agent) failMusic(composing *job, reason string) {
 func musicFailure(model string, err error) string {
 	switch {
 	case errors.Is(err, context.Canceled):
-		return "music generation was stopped (" + model + "); no music was saved"
+		return "music generation was stopped (" + model + "); no music was saved. The provider was not told to cancel, so whether it is charged is unknown"
 	case errors.Is(err, context.DeadlineExceeded):
 		return "music generation timed out (" + model + "); no music was saved"
 	default:

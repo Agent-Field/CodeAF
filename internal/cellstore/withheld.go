@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/env"
 )
 
 // The engine keeps a path out of a snapshot when a .furrowpolicy says
@@ -41,9 +42,10 @@ var controlDirs = map[string]bool{".git": true, ".furrow": true, ".cell": true}
 
 // policyFile is a tree's .furrowpolicy split at the marker.
 type policyFile struct {
-	user     []string // lines above the block, kept verbatim
-	withheld []string // paths the harness withholds because they hold secrets, sorted
-	rebuilt  []string // install folders the harness leaves out, sorted
+	gitFenced bool
+	user      []string // lines above the block, kept verbatim
+	withheld  []string // paths the harness withholds because they hold secrets, sorted
+	rebuilt   []string // install folders the harness leaves out, sorted
 	// unreadable is the paths this machine cannot read, sorted; a seal recomputes it.
 	unreadable []string
 	// held is the paths whose name this machine cannot keep; only a take writes it.
@@ -56,6 +58,9 @@ type policyFile struct {
 // tree, the person's own file in the tree.
 func readPolicy(tree, dir string) (policyFile, error) {
 	p, err := readPolicyAt(dir)
+	if env.Value(gitCeilingVar) != "" {
+		_, p.gitFenced = gitScope(tree)
+	}
 	if err != nil || dir == tree {
 		return p, err
 	}
@@ -148,12 +153,17 @@ func sorted(paths []string) []string {
 }
 
 func (p policyFile) String() string {
-	lines := append([]string(nil), p.user...)
+	lines := make([]string, 0, len(p.user)+1)
+	for _, line := range p.user {
+		if !p.gitFenced || strings.TrimSpace(line) != "gitignore" {
+			lines = append(lines, line)
+		}
+	}
 	hasIgnore := false
 	for _, line := range lines {
 		hasIgnore = hasIgnore || strings.TrimSpace(line) == "gitignore"
 	}
-	if !hasIgnore {
+	if !hasIgnore && !p.gitFenced {
 		lines = append(lines, "gitignore")
 	}
 	lines = appendBlock(lines, withheldTag, p.withheld)

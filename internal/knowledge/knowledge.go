@@ -28,6 +28,7 @@ type Source struct {
 	TS      string `json:"ts"`
 	Text    string `json:"text"`
 	Kind    string `json:"kind"`
+	Job     bool   `json:"job,omitempty"`
 }
 type Link struct {
 	ID     string `json:"id"`
@@ -47,6 +48,7 @@ type Evidence struct {
 	Role   string `json:"role,omitempty"`
 }
 type Paragraph struct {
+	Derivation  string       `json:"derivation,omitempty"`
 	Text        string       `json:"text"`
 	Claims      []string     `json:"claims"`
 	Evidence    []Evidence   `json:"evidence"`
@@ -57,30 +59,33 @@ type Section struct {
 	Paragraphs []Paragraph `json:"paragraphs"`
 }
 type Conflict struct {
+	ID     string   `json:"id,omitempty"`
 	Claims []string `json:"claims"`
 	Reason string   `json:"reason"`
 	State  string   `json:"state"`
 }
 type Page struct {
-	Conflicts            []Conflict `json:"conflicts,omitempty"`
-	OriginalEvidence     []Evidence `json:"original_evidence,omitempty"`
-	Revision             string     `json:"revision,omitempty"`
-	HumanEditedAt        string     `json:"human_edited_at,omitempty"`
-	HumanEdited          bool       `json:"human_edited,omitempty"`
-	Markdown             string     `json:"manual_markdown,omitempty"`
-	ID                   string     `json:"id"`
-	Title                string     `json:"title"`
-	Scope                string     `json:"scope"`
-	Kind                 string     `json:"kind"`
-	Folder               []string   `json:"folder"`
-	Sections             []Section  `json:"sections"`
-	Links                []Link     `json:"links"`
-	Backlinks            []Link     `json:"backlinks"`
-	Aliases              []string   `json:"aliases"`
-	Claims               []string   `json:"claims"`
-	Evidence             []Evidence `json:"evidence,omitempty"`
-	NeedsEditorialUpdate bool       `json:"needs_editorial_update"`
-	LearningState        string     `json:"learning_state"`
+	Resolutions          []Resolution `json:"resolutions,omitempty"`
+	Conflicts            []Conflict   `json:"conflicts,omitempty"`
+	OriginalEvidence     []Evidence   `json:"original_evidence,omitempty"`
+	Revision             string       `json:"revision,omitempty"`
+	HumanEditedAt        string       `json:"human_edited_at,omitempty"`
+	HumanEdited          bool         `json:"human_edited,omitempty"`
+	Markdown             string       `json:"manual_markdown,omitempty"`
+	ID                   string       `json:"id"`
+	Title                string       `json:"title"`
+	TitleEdited          bool         `json:"title_edited,omitempty"`
+	Scope                string       `json:"scope"`
+	Kind                 string       `json:"kind"`
+	Folder               []string     `json:"folder"`
+	Sections             []Section    `json:"sections"`
+	Links                []Link       `json:"links"`
+	Backlinks            []Link       `json:"backlinks"`
+	Aliases              []string     `json:"aliases"`
+	Claims               []string     `json:"claims"`
+	Evidence             []Evidence   `json:"evidence,omitempty"`
+	NeedsEditorialUpdate bool         `json:"needs_editorial_update"`
+	LearningState        string       `json:"learning_state"`
 }
 type Snapshot struct {
 	Revision    string
@@ -97,11 +102,19 @@ type Result struct {
 	Page    Page
 	Snippet string
 }
-type Vault struct{ root, profile string }
+type Vault struct {
+	root, profile string
+	calls         func(context.Context) (context.Context, error)
+	repeats       *compilerRepeats
+	// passSeen is what the last build pass found, written and read only by
+	// the one goroutine running [Vault.Run], which backs off while it is the
+	// same from pass to pass.
+	passSeen string
+}
 
 func hash(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }
 func Open(profile string) *Vault {
-	return &Vault{root: filepath.Join(profile, "knowledge"), profile: profile}
+	return &Vault{root: filepath.Join(profile, "knowledge"), profile: profile, repeats: &compilerRepeats{failed: make(map[string]compilerRepeat)}}
 }
 func (v *Vault) Directory() string { return v.root }
 func materializePages(vault document) ([]Page, error) {

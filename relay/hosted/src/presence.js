@@ -18,10 +18,10 @@ export function parseBeat(values) {
   return beat;
 }
 
-/** presenceOf answers {now, devices} for every device of the directory that is not revoked. */
-export function presenceOf(devices, online, now) {
+/** presenceOf omits revoked computers and computers whose presence is not yet known. */
+export function presenceOf(devices, online, now, unknown = new Set()) {
   const entries = Object.entries(devices)
-    .filter(([, d]) => !d.revoked)
+    .filter(([id, d]) => !d.revoked && !unknown.has(id))
     .map(([id, d]) => [id, online.has(id) ? { online: true, last_seen: now } : { online: false, last_seen: d.last_seen ?? 0 }]);
   return { now, devices: Object.fromEntries(entries) };
 }

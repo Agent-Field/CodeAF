@@ -76,3 +76,21 @@ func TestRunTreeSnapshotSignsFirstCommitsOnUnbornBranch(t *testing.T) {
 		t.Fatalf("second signing = %d, %v", count, err)
 	}
 }
+
+// With attribution turned off on the snapshot, SignRunCommits leaves the run's
+// commits at their original hashes and messages.
+func TestRunTreeSnapshotWithAttributionOffLeavesCommitsUnsigned(t *testing.T) {
+	repo := newTestRepo(t)
+	snapshot := SnapshotRunTree(repo).WithAttribution(false)
+	sha := runCommitFile(t, repo, "first.txt", "first")
+	count, err := snapshot.SignRunCommits("deepseek/deepseek-v4-flash")
+	if err != nil || count != 0 {
+		t.Fatalf("sign with attribution off = %d, %v; want 0, nil", count, err)
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD")); got != sha {
+		t.Fatalf("commit sha moved with attribution off: %s -> %s", sha, got)
+	}
+	if message := strings.TrimSpace(gitOut(t, repo, "log", "-1", "--format=%B")); message != "first" {
+		t.Fatalf("commit message changed with attribution off: %q", message)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -48,6 +49,9 @@ type Store struct {
 	path string
 	now  func() time.Time
 	data state
+	// seen is what the database looked like when data was last read from it, so
+	// a read of a plan nobody has written does not read it again (refresh).
+	seen readStamp
 	// closed is set by Close under the lock. Every method asks it there before
 	// it touches a handle Close may already have released — the nil `db` and
 	// `rdb` below, which used to be what a late write found.
@@ -109,6 +113,9 @@ func Open(path, project, rootID, rootTitle, rootDescription string, chat ...stri
 		return nil, err
 	}
 	store.rdb = rdb
+	// The stamp is taken before the plan is read, so a store that had to seed
+	// its root (a write the stamp does not know) is read once more, never less.
+	seen := store.currentStamp()
 	loaded, err := store.loadOrCreate(project, rootID, rootTitle, rootDescription, tag)
 	if err != nil {
 		_ = rdb.Close()
@@ -116,6 +123,7 @@ func Open(path, project, rootID, rootTitle, rootDescription string, chat ...stri
 		return nil, err
 	}
 	store.data = loaded
+	store.seen = seen
 	return store, nil
 }
 
@@ -228,6 +236,15 @@ func (s *Store) RootID() string {
 	return s.data.RootID
 }
 
+// Stopped reports the run's recorded stop, including when its root had already
+// finished. Ordinary completion does not carry this fact.
+func (s *Store) Stopped() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refresh()
+	return s.data.Stopped
+}
+
 // AddMany admits a batch of specs and answers the tasks as they now stand.
 // The batch is validated whole before any of it is written, so a split with a
 // bad third part creates nothing — which is the property the CLI's split
@@ -237,6 +254,16 @@ func (s *Store) RootID() string {
 // CLI mints short random ones — `t-` + six base-36 characters — and honours
 // `--as` names. Both roads end here.
 func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
+	return s.addMany(specs, false, "", false)
+}
+
+// AddJoinedMany admits independent assignments through the engine's join door.
+// Silent joins keep the ordinary tree bounds; person-approved joins may exceed them.
+func (s *Store) AddJoinedMany(specs []TaskSpec, bounded bool) ([]*Task, error) {
+	return s.addMany(specs, bounded, "", true)
+}
+
+func (s *Store) addMany(specs []TaskSpec, bounded bool, workerTask string, joined bool, retiring ...string) ([]*Task, error) {
 	if len(specs) == 0 {
 		return nil, errors.New("tasks must not be empty")
 	}
@@ -269,6 +296,11 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 			}
 			batch[specs[i].ID] = true
 		}
+		if bounded {
+			if err := boundedGrowthRefusal(*next, s.rdb, specs, workerTask, retiring...); err != nil {
+				return err
+			}
+		}
 		for _, spec := range specs {
 			if next.Tasks[spec.ParentID] == nil && !batch[spec.ParentID] {
 				return fmt.Errorf("task %q has unknown parent %q", spec.ID, spec.ParentID)
@@ -286,7 +318,8 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 			}
 		}
 		for _, spec := range specs {
-			task := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+			task := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now, AddedByTask: workerTask}
+			task.JoinedAssignment = joined
 			next.Tasks[spec.ID] = task
 			next.Order = append(next.Order, spec.ID)
 		}
@@ -436,6 +469,21 @@ func (s *Store) Task(id string) *Task {
 	return task
 }
 
+// HeldInLineage says a person's hold is on this task or a task above it, the
+// same reading the ready frontier makes ([pausedInLineage]). A worker already
+// running asks it between its steps, so a hold reaches work in hand at its
+// next step and not only work not yet started. An unknown task is not held.
+func (s *Store) HeldInLineage(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.errIfClosed() != nil {
+		return false
+	}
+	s.refresh()
+	task := s.data.Tasks[strings.TrimPrefix(id, "t-")]
+	return task != nil && pausedInLineage(s.data, task)
+}
+
 // Resolve answers one task for a word the model may have written loosely:
 // an exact id first, then `t-` + the word, then a unique prefix of either.
 // Ids fuzzy-match because the doctrine leans on that; a prefix that fits
@@ -545,6 +593,9 @@ func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 	defer s.mu.Unlock()
 	var id string
 	err := s.transact(func(next *state, now time.Time) error {
+		if next.Stopped {
+			return errors.New("this run was stopped, so no review was added")
+		}
 		spec = normalizeSpec(spec, next.RootID)
 		id = spec.ID
 		if err := validateSpec(spec); err != nil {
@@ -563,7 +614,7 @@ func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 		if parent == nil {
 			return fmt.Errorf("parent %q does not exist", spec.ParentID)
 		}
-		check := &Task{TaskSpec: spec, Status: StatusPending, CreatedAt: now, UpdatedAt: now}
+		check := &Task{TaskSpec: spec, Status: StatusPending, ReviewCheck: true, CreatedAt: now, UpdatedAt: now}
 		next.Tasks[spec.ID] = check
 		next.Order = append(next.Order, spec.ID)
 		for ancestor := parent; ancestor != nil; ancestor = next.Tasks[ancestor.ParentID] {
@@ -1124,6 +1175,28 @@ func (s *Store) hold(id string, paused bool) (*Task, error) {
 	})
 }
 
+// HoldRun is a PERSON'S hold on the whole run, set on the root, which [Pause]
+// refuses to anyone. No worker may hold the run it is part of, and this verb is
+// not on the worker's command line; a person may, and the hold reads as every
+// other hold does: nothing under the root leaves the ready frontier, and a
+// worker already running waits at its next step ([Store.HeldInLineage]).
+// Statuses are untouched, so releasing it lets the run carry on as it stood.
+func (s *Store) HoldRun(paused bool) (*Task, error) {
+	s.mu.Lock()
+	root := s.data.RootID
+	s.mu.Unlock()
+	if root == "" {
+		return nil, errors.New("there is no run to hold")
+	}
+	return s.changeTask(root, func(next *state, task *Task, now time.Time) error {
+		if task.Paused == paused {
+			return errNoChange
+		}
+		task.Paused, task.UpdatedAt = paused, now
+		return nil
+	})
+}
+
 // Retry reopens a failed task. The runtime uses it when a node's ending says
 // the work, not the store, is worth another run.
 func (s *Store) Retry(id string) (*Task, error) {
@@ -1296,7 +1369,7 @@ const NoteAgentChat = "chat"
 // recorded so a reader can tell an owner's handoff from a bystander's
 // observation.
 func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
-	return s.addNote(taskID, agent, body, NoteFromWorker)
+	return s.addNote(taskID, agent, body, NoteFromWorker, "")
 }
 
 // AddPersonNote leaves a note in the person's own voice. It is AddNote with
@@ -1304,12 +1377,41 @@ func (s *Store) AddNote(taskID, agent, body string) (Note, error) {
 // a `person:` prefix, and it is the same store row, because a note's home is
 // the task either way.
 func (s *Store) AddPersonNote(taskID, body string) (Note, error) {
-	return s.addNote(taskID, "", body, NoteFromPerson)
+	return s.addNote(taskID, "", body, NoteFromPerson, "")
+}
+
+// AddPersonNoteKeyed is [Store.AddPersonNote] with the sender's own opaque name
+// for the note, committed in the SAME transaction as the note: refused, or
+// stored with its key, and never a note whose key is still to be written. The
+// store keeps the key verbatim and never reads meaning into it, matches by it
+// or refuses a repeat of it — two notes with one key are two notes. The caller
+// bounds what a key may be (the app caps it at 256); the store refuses one over
+// [NotePageMetaMax].
+func (s *Store) AddPersonNoteKeyed(taskID, body, clientID string) (Note, error) {
+	return s.addNote(taskID, "", body, NoteFromPerson, clientID)
 }
 
 // addNote is the one road both note writers take: validate, mint an id, and
 // stamp the change on the task the note hangs on.
-func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
+func (s *Store) addNote(taskID, agent, body, from, clientID string) (Note, error) {
+	// PER-NOTE PARITY WITH THE PAGE, AND NO MORE THAN THAT. [Store.NotesPage]
+	// and [Store.NoteEnvelopesPage] refuse a note whose agent or client key is
+	// over its meta ceiling and the readers hold every later note behind it;
+	// nothing in the product removes or edits one note. So those two are
+	// REFUSED here, before any transaction, never truncated (a cut name or key
+	// is a different one). The agent is measured as stored, trimmed; the body
+	// check below already equals the page's. THIS DOES NOT BOUND project OR
+	// chat, which a note copies from its task and which [Open] takes unbounded:
+	// a plan named over the ceiling makes the full page refuse every note on
+	// it. The inbox readers use the envelope page, which does not read those
+	// two columns, so they are not held; the hydrated readers and
+	// [Store.NotesPage] still carry the tags.
+	if len(strings.TrimSpace(agent)) > NotePageMetaMax {
+		return Note{}, fmt.Errorf("note author exceeds %d bytes", NotePageMetaMax)
+	}
+	if len(clientID) > NotePageMetaMax {
+		return Note{}, fmt.Errorf("note client key exceeds %d bytes", NotePageMetaMax)
+	}
 	// One transaction, like every writer: the database's write lock, a fresh
 	// load, the change, the commit. See AddMany for why.
 	s.mu.Lock()
@@ -1329,7 +1431,7 @@ func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
 		next.NextID++
 		note = Note{
 			ID: fmt.Sprintf("n-%08x", next.NextID), TaskID: taskID,
-			Agent: strings.TrimSpace(agent), Body: text, At: now, From: from,
+			Agent: strings.TrimSpace(agent), Body: text, At: now, From: from, ClientID: clientID,
 			Project: next.Tasks[taskID].Project, Chat: next.Tasks[taskID].Chat,
 		}
 		next.Notes = append(next.Notes, note)
@@ -1347,6 +1449,11 @@ func (s *Store) addNote(taskID, agent, body, from string) (Note, error) {
 
 // Notes answers one task's notes, newest last, with a bound so a task that
 // accumulated a transcript's worth cannot become one.
+//
+// IT IS NOT A WAY TO DELIVER NOTES. It answers the OLDEST page (50 by default,
+// 200 at most) of a hydrated snapshot and a failed refresh answers stale memory
+// without saying so, so a caller that has already read those never sees the
+// next note. Anything that must reach every note uses [Store.NotesPage].
 func (s *Store) Notes(taskID string, limit int) []Note {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1633,16 +1740,21 @@ func (s *Store) EndRoot(reason string) error {
 
 // closeRoot is the one write [Store.StopRoot] and [Store.EndRoot] share: the
 // run's own task takes the ending named, every open task is cancelled under the
-// same reason, and nothing that had already ended is touched.
+// same reason, even beneath an already-ended root. Earlier task endings stand;
+// a person's stop is also kept in metadata so late reviews cannot reopen them.
 func (s *Store) closeRoot(rootStatus Status, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.transact(func(next *state, now time.Time) error {
 		root := next.Tasks[next.RootID]
-		if root == nil || terminal(root.Status) {
+		if root == nil {
 			return errNoChange
 		}
 		reason = strings.TrimSpace(reason)
+		changed := false
+		if rootStatus == StatusCancelled && !next.Stopped {
+			next.Stopped, changed = true, true
+		}
 		for _, task := range next.Tasks {
 			if terminal(task.Status) {
 				continue
@@ -1650,8 +1762,15 @@ func (s *Store) closeRoot(rootStatus Status, reason string) error {
 			task.Status, task.Error, task.ClaimedBy = StatusCancelled, reason, ""
 			task.Owner, task.SeenAt = "", time.Time{}
 			task.UpdatedAt, task.CompletedAt = now, now
+			changed = true
+			task.Paused, task.Waiting, task.WaitedAt = false, false, time.Time{}
+			if task.ID == root.ID {
+				task.Status = rootStatus
+			}
 		}
-		root.Status = rootStatus
+		if !changed {
+			return errNoChange
+		}
 		promote(next, now)
 		return nil
 	})
@@ -1749,7 +1868,7 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 	now := s.now().UTC()
 	doomed, moved := archiveSelection(fresh, now.Add(-olderThan))
 	if len(moved) == 0 {
-		s.data = fresh
+		s.adopt(fresh)
 		return nil, nil
 	}
 	for _, task := range moved {
@@ -1771,7 +1890,7 @@ func (s *Store) Archive(olderThan time.Duration) ([]*Task, error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	s.data = fresh
+	s.adopt(fresh)
 	return moved, nil
 }
 
@@ -2243,7 +2362,7 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 	if err != nil {
 		return err
 	}
-	s.data = fresh
+	s.adopt(fresh)
 	next := cloneState(fresh)
 	if err := change(&next, s.now().UTC()); err != nil {
 		if errors.Is(err, errNoChange) {
@@ -2255,11 +2374,23 @@ func (s *Store) transact(change func(*state, time.Time) error) error {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		// A COMMIT THAT FAILS IS NOT A WRITE THAT DID NOT HAPPEN. The log frames
+		// may already be durable when the sync after them fails, and the next
+		// open replays them, so the change can be on the disk under an error.
+		// Everything before this line fails before any effect and keeps its own
+		// error; this one wears [ErrCommitUncertain] and the original cause.
+		return fmt.Errorf("%w: %w", ErrCommitUncertain, err)
 	}
-	s.data = next
+	s.adopt(next)
 	return nil
 }
+
+// ErrCommitUncertain wraps the error of a transaction's COMMIT. The change may
+// or may not be in the database: a caller that must not do the work twice treats
+// it as "unknown", never as "refused". Errors raised before the commit (the
+// lock, the load, the change itself, the save) do not wear it; they are raised
+// before any effect.
+var ErrCommitUncertain = errors.New("the plan store could not confirm that the change was committed")
 
 // errIfClosed is the refusal every method makes on a store Close has already
 // released, and nil while the store is open. The caller holds the store's
@@ -2295,11 +2426,61 @@ func (s *Store) refresh() {
 		return
 	}
 	defer tx.Rollback()
+	// THE STAMP IS READ BEFORE THE PLAN, so a commit between the two leaves a
+	// stamp older than the data and costs one more read, never a stale answer.
+	stamp := s.stampOf(tx)
+	if stamp.known && stamp == s.seen {
+		return
+	}
 	fresh, err := loadState(tx)
 	if err != nil {
 		return
 	}
 	s.data = fresh
+	s.seen = stamp
+}
+
+// readStamp is what says the database has not changed since a read: SQLite's
+// own counter of commits by other connections, and the size and modification
+// time of the database and its log. Either moving is a change; both standing
+// still across a write would need the counter and two clocks to agree on it.
+type readStamp struct {
+	known   bool
+	version int64
+	db, wal fileStamp
+}
+
+type fileStamp struct {
+	size  int64
+	mtime int64
+	inode uint64
+}
+
+// currentStamp is the stamp of the database as it stands.
+func (s *Store) currentStamp() readStamp {
+	tx, err := s.rdb.Begin()
+	if err != nil {
+		return readStamp{}
+	}
+	defer tx.Rollback()
+	return s.stampOf(tx)
+}
+
+func (s *Store) stampOf(tx *sql.Tx) readStamp {
+	var stamp readStamp
+	if err := tx.QueryRow("PRAGMA data_version").Scan(&stamp.version); err != nil {
+		return readStamp{}
+	}
+	stamp.db, stamp.wal = statStamp(s.path), statStamp(s.path+"-wal")
+	stamp.known = true
+	return stamp
+}
+
+// adopt takes a plan this handle has just written as what it holds. The next
+// read looks at the database again, whatever it last saw.
+func (s *Store) adopt(data state) {
+	s.data = data
+	s.seen = readStamp{}
 }
 
 // Close releases the store's database handles and marks the handle closed
@@ -2908,9 +3089,27 @@ func summarize(value state) Summary {
 // role it played, the dollars and the token counts. The ledger is append-only
 // — the summary reads it back and nothing here rewrites it — so the row lives
 // outside the whole-plan rewrite every other writer performs, and its own
-// transaction is all it needs. Nothing in the runtime calls this yet; the
-// wiring that spends is a later change.
+// transaction is all it needs.
+//
+// The model it names is NOT a fact about who answered: it is whatever the
+// caller had, usually the model a seat was built on. [Store.AddAnsweredSpend]
+// is the door for money the answer itself attributed.
 func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outTokens int) error {
+	return s.addSpend(taskID, model, role, usd, inTokens, outTokens, false)
+}
+
+// AddAnsweredSpend records one charge exactly as [Store.AddSpend] does, under
+// the model that ANSWERED the calls it paid for — the name the responses gave,
+// after any fallback — and marks the row so. Every reader of the money reads it
+// the same; a reader asking WHO did the work can tell it from a built-on name.
+func (s *Store) AddAnsweredSpend(taskID, model, role string, usd float64, inTokens, outTokens int) error {
+	if strings.TrimSpace(model) == "" {
+		return errors.New("an answered charge names the model that answered")
+	}
+	return s.addSpend(taskID, model, role, usd, inTokens, outTokens, true)
+}
+
+func (s *Store) addSpend(taskID, model, role string, usd float64, inTokens, outTokens int, answered bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.beginWrite()
@@ -2918,9 +3117,13 @@ func (s *Store) AddSpend(taskID, model, role string, usd float64, inTokens, outT
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT INTO spend (task_id, model, role, usd, in_tokens, out_tokens, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	mark := 0
+	if answered {
+		mark = 1
+	}
+	if _, err := tx.Exec(`INSERT INTO spend (task_id, model, role, usd, in_tokens, out_tokens, at, answered) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(strings.TrimPrefix(taskID, "t-")), strings.TrimSpace(model), strings.TrimSpace(role),
-		usd, inTokens, outTokens, formatTime(s.now().UTC())); err != nil {
+		usd, inTokens, outTokens, formatTime(s.now().UTC()), mark); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -3155,14 +3358,17 @@ func cloneTask(task *Task) *Task {
 		return nil
 	}
 	copyTask := *task
-	copyTask.Dependencies = append([]Dependency(nil), task.Dependencies...)
-	copyTask.Capabilities = append([]string(nil), task.Capabilities...)
-	copyTask.Resources = append([]ResourceClaim(nil), task.Resources...)
-	copyTask.ContextInputs = append([]string(nil), task.ContextInputs...)
-	copyTask.Deliverables = append([]string(nil), task.Deliverables...)
-	copyTask.EvidenceRequirements = append([]string(nil), task.EvidenceRequirements...)
-	copyTask.Artifacts = append([]string(nil), task.Artifacts...)
-	copyTask.Evidence = append([]string(nil), task.Evidence...)
+	copyTask.Dependencies = slices.Clip(slices.Clone(task.Dependencies))
+	copyTask.Capabilities = slices.Clip(slices.Clone(task.Capabilities))
+	copyTask.Resources = slices.Clip(slices.Clone(task.Resources))
+	copyTask.ContextInputs = slices.Clip(slices.Clone(task.ContextInputs))
+	copyTask.Deliverables = slices.Clip(slices.Clone(task.Deliverables))
+	copyTask.EvidenceRequirements = slices.Clip(slices.Clone(task.EvidenceRequirements))
+	copyTask.Checks = slices.Clip(slices.Clone(task.Checks))
+	copyTask.Artifacts = slices.Clip(slices.Clone(task.Artifacts))
+	copyTask.Evidence = slices.Clip(slices.Clone(task.Evidence))
+	copyTask.VerdictBasis.Runs = slices.Clip(slices.Clone(task.VerdictBasis.Runs))
+	copyTask.VerdictBasis.Unobserved = slices.Clip(slices.Clone(task.VerdictBasis.Unobserved))
 	return &copyTask
 }
 

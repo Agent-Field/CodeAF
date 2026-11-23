@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
@@ -19,11 +20,58 @@ import (
 // every word. It is memory only: new journal writes keep the typed words, so
 // those restored messages need no mark. An older compacted journal can still
 // carry the saved block without a mark.
+//
+// On a PERSON'S line (Audience [audiencePerson]) Text is their own words where
+// the door that sent the message said them apart from what the model reads,
+// Attachments are what rode on it, and Reads are the reads of references its
+// words were written from ([Agent.SubmitMessage]). None of them changes the
+// content; all are absent from every line no such door wrote.
 type messagePresentation struct {
+	RunID       string  `json:"run_id,omitempty"`
 	Audience    string  `json:"audience"`
 	Text        *string `json:"text,omitempty"`
 	Interrupted bool    `json:"interrupted,omitempty"`
-	SkillsBlock string  `json:"-"`
+	// Kind names what wrote the message when it was not the model's own turn:
+	// [FactoryProgressKind] is a factory runner's line in an item's manager
+	// conversation (talk_progress.go), which a surface may draw as the run's
+	// timeline rather than as something the model said. "" is the model.
+	Kind string `json:"kind,omitempty"`
+	// FactoryStep is, on a [FactoryProgressKind] line, the step and round the
+	// line reports on and what happened to it, as the runner said it
+	// (talk_progress.go); nil on every other line, and on a progress line about
+	// the job as a whole.
+	FactoryStep *factory.StepProgress `json:"step,omitempty"`
+	// RejectedBeforeRun belongs to this exact tool-result occurrence, never a provider ID.
+	RejectedBeforeRun bool `json:"rejected_before_run,omitempty"`
+	ToolInvoked       bool `json:"invoked,omitempty"`
+	HarnessMade       bool `json:"harness_made,omitempty"`
+	Refused           bool `json:"refused,omitempty"`
+	// ToolOutcome is the producer status, independent of command output.
+	ToolOutcome string `json:"outcome,omitempty"`
+	// MediaAttempt: this result's call made a render record (media_attempt.go).
+	MediaAttempt bool `json:"media_attempt,omitempty"`
+	// ToolProcess stays with this result occurrence through journal replay.
+	ToolProcess *ToolProcess        `json:"tool_process,omitempty"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+	Reads       []MessageRead       `json:"reads,omitempty"`
+	// Composed is what a composed submission added to a person's line: its
+	// durable id, its pictures as measured, its annotation and how the pictures
+	// reached a model ([Agent.SubmitComposed]).
+	Composed *ComposedMark `json:"composed,omitempty"`
+	Queued   bool          `json:"queued,omitempty"`
+	// ClientID is the door's own opaque name for this person's message, kept
+	// exactly as accepted ([Submission.ClientID]). It is correlation and
+	// nothing else: no request, route or replay reads it.
+	ClientID string `json:"client_id,omitempty"`
+	// From is who sent the person's message on their behalf
+	// ([Submission.From]); absent for the person's own.
+	From string `json:"from,omitempty"`
+	// Creation is the creation provenance the accepting door stated
+	// ([Submission.Creation]), kept on the person's own line so a turn asked
+	// again from that line ([Agent.ResumeStoppedTurn]) keeps it. Nil is unknown.
+	// It is the record's alone: no display entry carries it.
+	Creation    *CreationContext `json:"creation,omitempty"`
+	SkillsBlock string           `json:"-"`
 	// RoutineCompletion is the runtime's delivery receipt, not the answer
 	// the person asked for. Its owner keeps the report and output available.
 	RoutineCompletion bool `json:"routineCompletion,omitempty"`
@@ -31,6 +79,19 @@ type messagePresentation struct {
 	Attention bool `json:"attention,omitempty"`
 	// CompletionTasks preserves source identity in memory-only conversations; journals keep these as replyTags.
 	CompletionTasks []TaskReplyTag `json:"-"`
+}
+
+// person is the part of a mark a person's message carries into the record: the
+// mark without the memory-only skills provenance, or nil when there is nothing
+// of the person's to keep. It is what a line is written with and what a
+// re-journaled copy of the line is marked with again.
+func (m *messagePresentation) person() *messagePresentation {
+	if m == nil || m.Audience != audiencePerson {
+		return nil
+	}
+	kept := *m
+	kept.SkillsBlock = ""
+	return &kept
 }
 
 // Message identity follows its immutable content allocation, as reasoning repair
@@ -52,6 +113,64 @@ func (p *presentationIndex) remember(message ai.Message, mark *messagePresentati
 		p.entries = make(map[*ai.ContentPart]messagePresentation)
 	}
 	p.entries[&message.Content[0]] = *mark
+}
+
+// forget drops one message's mark. It is for a copy whose only reader has
+// already read it — the record's own copy of a person's line, once the line is
+// written ([Agent.recordUserLocked]).
+func (p *presentationIndex) forget(message ai.Message) {
+	if p == nil || len(message.Content) == 0 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.entries, &message.Content[0])
+}
+
+// retain keeps the marks of the messages given and drops every other one.
+//
+// A MARK IS KEYED BY ITS MESSAGE'S FIRST PART, AND THE KEY KEEPS THE WHOLE PART
+// ARRAY ALIVE. A message a compaction folded away or a rewind cut is gone from
+// the conversation, but its mark would hold its content — a person's message
+// can carry hundreds of kilobytes of paste the model was sent — for as long as
+// the session lives. So at each boundary that lets messages go, the index is
+// cut back to the messages something still holds. The record is untouched: a
+// line's mark is on the line, and a reopen reads it from there.
+//
+// It is one walk of what is live and one of the index, at a boundary that has
+// already walked the transcript; nothing per token or per message pays for it.
+func (p *presentationIndex) retain(live ...[]ai.Message) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.entries) == 0 {
+		return
+	}
+	kept := make(map[*ai.ContentPart]messagePresentation)
+	for _, messages := range live {
+		for index := range messages {
+			if len(messages[index].Content) == 0 {
+				continue
+			}
+			key := &messages[index].Content[0]
+			if mark, ok := p.entries[key]; ok {
+				kept[key] = mark
+			}
+		}
+	}
+	p.entries = kept
+}
+
+// size is how many marks the index holds.
+func (p *presentationIndex) size() int {
+	if p == nil {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.entries)
 }
 
 func (p *presentationIndex) of(message ai.Message) *messagePresentation {
@@ -87,7 +206,16 @@ func humanPresentation(text string) *messagePresentation {
 	return &messagePresentation{Audience: "human", Text: &text}
 }
 
-func (a *Agent) recordPresentedAssistant(message ai.Message, reasoning provider.MessageReasoning, mark *messagePresentation) {
+func (a *Agent) recordPresentedAssistant(message ai.Message, reasoning provider.MessageReasoning, mark *messagePresentation, runs ...string) {
+	if len(runs) > 0 && runs[0] != "" {
+		if mark == nil {
+			mark = &messagePresentation{Audience: "human"}
+		} else {
+			copy := *mark
+			mark = &copy
+		}
+		mark.RunID = runs[0]
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.presentation == nil {
@@ -99,6 +227,7 @@ func (a *Agent) recordPresentedAssistant(message ai.Message, reasoning provider.
 	a.presentation.remember(message, mark)
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, message)
+	a.answeredSinceSeal = a.answeredSinceSeal || isAnswer(message)
 	a.messageReasoning = append(a.messageReasoning, reasoning)
 	if a.file != nil {
 		a.file.appendReasonedMessage(message, reasoning)

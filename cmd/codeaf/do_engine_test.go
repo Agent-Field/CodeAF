@@ -261,6 +261,8 @@ func beltRepoWorkspace(t *testing.T) string {
 		t.Fatal(err)
 	}
 	beltGit(t, dir, "init")
+	beltGit(t, dir, "config", "--local", "maintenance.auto", "false")
+	beltGit(t, dir, "config", "--local", "gc.auto", "0")
 	beltGit(t, dir, "checkout", "-b", "work")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("the project\n"), 0o644); err != nil {
 		t.Fatal(err)

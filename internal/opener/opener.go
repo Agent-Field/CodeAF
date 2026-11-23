@@ -33,7 +33,7 @@ func Command() (string, []string) {
 		}
 		return "xdg-open", nil
 	}
-	return "", nil
+	return platformCommand()
 }
 
 // Start hands target to the platform and returns after the process has

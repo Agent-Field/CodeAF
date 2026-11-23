@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -642,5 +643,119 @@ func TestTheVolatileNoteIsNeverTakenForSomethingThePersonSaid(t *testing.T) {
 	agent.mu.Unlock()
 	if !ok || said != "how is the parser going?" {
 		t.Fatalf("the last turn started at %q, want the person's own sentence", said)
+	}
+}
+
+func TestRewindKeepUndoRestoresAndRefusesNewWork(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	collect(t, mustSubmit(t, a, "first"))
+	collect(t, mustSubmit(t, a, "second"))
+	before := a.Transcript()
+	points := a.RewindPoints()
+	token, err := a.RewindKeep(points[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Transcript()) >= len(before) {
+		t.Fatal("rewind did not set aside the tail")
+	}
+	if err := a.UndoRewind("wrong"); err == nil {
+		t.Fatal("accepted another token")
+	}
+	if err := a.UndoRewind(token); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Transcript(); len(got) != len(before) {
+		t.Fatalf("restored %d entries, want %d", len(got), len(before))
+	}
+	token, err = a.RewindKeep(points[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, a, "replacement"))
+	if err := a.UndoRewind(token); err == nil || !strings.Contains(err.Error(), "newer work") {
+		t.Fatalf("new work undo: %v", err)
+	}
+}
+
+func TestRewindKeepUndoSurvivesResume(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	a, workspace := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = path })
+	collect(t, mustSubmit(t, a, "keep these words"))
+	token, err := a.RewindKeep(a.RewindPoints()[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.UndoRewind(token); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := newAgent(Config{Workspace: workspace, Model: "test/model", System: "SYSTEM", SessionFile: path}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resumed.Close()
+	if countMessages(resumed, "keep these words") != 1 {
+		t.Fatal("restored message was not replayed exactly once")
+	}
+}
+
+func TestRewindKeepUndoPreservesSteerInstantAndRestampsOrdinaryMessages(t *testing.T) {
+	const at = "2026-10-15T14:00:00Z"
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	file, _, err := openSessionFile(path, t.TempDir(), "test/model", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []sessionEntry{
+		{Type: "message", Role: "user", Content: "start", Timestamp: at},
+		{Type: "message", Role: "assistant", Content: "working", ToolCalls: []ai.ToolCall{{ID: "c1", Type: "function", Function: ai.ToolCallFunction{Name: "read", Arguments: "{}"}}}, Timestamp: at},
+		{Type: "message", Role: "tool", ToolCallID: "c1", Content: "result", Timestamp: at},
+		{Type: "message", Role: "user", Content: "correction", Steer: &journalSteer{}, Timestamp: at},
+		{Type: "message", Role: "user", Content: "session note", Note: true, Timestamp: at},
+		{Type: "message", Role: "assistant", Content: "done", Timestamp: at},
+	} {
+		file.writeLine(line)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := newTestAgent(t, &refusingCompleter{t}, func(c *Config) { c.SessionFile = path })
+	before := a.Transcript()
+	if len(before) != 7 {
+		t.Fatalf("resumed %d entries, want 7", len(before))
+	}
+	token, err := a.RewindKeep(a.RewindPoints()[0].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if err := a.UndoRewind(token); err != nil {
+		t.Fatal(err)
+	}
+	finished := time.Now()
+	after := a.Transcript()
+	written := ReadTranscript(path).Entries
+	if len(after) != len(before) || len(written) != len(before) {
+		t.Fatalf("undo entries: live %d, journal %d, want %d", len(after), len(written), len(before))
+	}
+	for i, entry := range after {
+		if entry.Text == "correction" {
+			if !entry.At.Equal(lineInstant(at)) {
+				t.Fatalf("steer instant = %v, want original journal instant %s", entry.At, at)
+			}
+		} else {
+			// appendWindow has always sent ordinary messages through appendMessage,
+			// which stamps their new writes rather than preserving the old instant.
+			if !entry.At.Equal(written[i].At) || entry.At.Before(started) || entry.At.After(finished) {
+				t.Fatalf("%q instant = %v, want its undo write instant %v within [%v, %v]", entry.Text, entry.At, written[i].At, started, finished)
+			}
+		}
+		after[i].At = before[i].At
+	}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatal("undo changed shaped entries beyond their ordinary write instants")
 	}
 }

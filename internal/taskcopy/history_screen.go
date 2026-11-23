@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
@@ -23,7 +24,7 @@ func writeScreenedFullHistory(tree, destination string) error {
 		return err
 	}
 	staged := temporary.Name()
-	defer os.Remove(staged)
+	defer fsreplace.Remove(staged)
 	if err := temporary.Close(); err != nil {
 		return err
 	}
@@ -33,7 +34,7 @@ func writeScreenedFullHistory(tree, destination string) error {
 	if err := screenFullHistory(staged); err != nil {
 		return err
 	}
-	return os.Rename(staged, destination)
+	return fsreplace.Rename(staged, destination)
 }
 
 // screenFullHistory judges every object in the exact self-contained bundle.
@@ -53,7 +54,7 @@ func screenFullHistory(bundle string) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(scratch)
+	defer fsreplace.RemoveAll(scratch)
 	if err := historyGitCommand(scratch, "init", "--bare", "-q", "--object-format="+header.format).Run(); err != nil {
 		return errFullHistoryContainer
 	}

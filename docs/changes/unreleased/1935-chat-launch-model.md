@@ -21,3 +21,6 @@ to force every task seat onto the conversation model.
 
 Quick tasks retain their per-call model argument on the node task engine. The default
 worker harness continues to expose the full task proposal door instead.
+
+App teammate starts honor the model on the manager's traffic entry before an app-side default.
+App-only sessions omit the independent-chat tool, which requires a terminal launcher.

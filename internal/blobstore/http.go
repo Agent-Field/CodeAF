@@ -4,20 +4,99 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
+// FetchRetries is how many times a transient object or frame fetch is retried
+// with backoff before the failure counts as final (C4).
+const FetchRetries = 3
+
+// RetryBackoff is the initial wait before retrying a transient read failure;
+// each subsequent retry doubles it. Tests may shorten it or replace Sleep.
+var RetryBackoff = 10 * time.Millisecond
+
+// Sleep waits d or until ctx ends. Tests may replace it with a fake clock.
+var Sleep = func(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+type retriedError struct{ err error }
+
+func (e retriedError) Error() string { return e.err.Error() }
+func (e retriedError) Unwrap() error { return e.err }
+
+// Retried reports whether err has already exhausted the store client's retry budget.
+func Retried(err error) bool {
+	var r retriedError
+	return errors.As(err, &r)
+}
+
+// Transient reports whether err is a transient transport or server failure
+// (5xx, request timeout, or connection reset) that a fetch should retry while
+// ctx is still live. Auth refusals, 4xx statuses, quota/damage errors, and
+// caller cancellations are never retried.
+func Transient(ctx context.Context, err error) bool {
+	if err == nil || ctx.Err() != nil {
+		return false
+	}
+	if errors.Is(err, wireauth.ErrUnauthorized) ||
+		errors.Is(err, wireauth.ErrSkew) ||
+		errors.Is(err, wireauth.ErrRevoked) ||
+		errors.Is(err, wireauth.ErrRotated) ||
+		errors.Is(err, wireauth.ErrGone) ||
+		errors.Is(err, wireauth.ErrStorageOff) ||
+		errors.Is(err, wireauth.ErrRateLimited) ||
+		errors.Is(err, wireauth.ErrTooManyIdentities) ||
+		errors.Is(err, ErrNotFound) ||
+		errors.Is(err, ErrBadFrame) ||
+		errors.Is(err, ErrBadRID) ||
+		errors.Is(err, ErrConflict) ||
+		errors.Is(err, ErrTooMany) ||
+		errors.Is(err, ErrDamaged) ||
+		errors.Is(err, ErrFull) {
+		return false
+	}
+	if errors.Is(err, ErrUnreachable) || errors.Is(err, ErrAnswered) || errors.Is(err, wireauth.ErrUnavailable) {
+		return true
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return false
+}
+
 // HTTP is a Store that lives behind the store wire (contract §3). Every
 // request is signed, so the far side knows whose namespace it is.
 type HTTP struct {
-	base string
-	sign wireauth.Sign
-	hc   *http.Client
+	// CanStore screens uploads locally while leaving the read wire available.
+	CanStore func() bool
+	// OnStorageOff remembers a refusal immediately for other local uploaders.
+	OnStorageOff func()
+	base         string
+	sign         wireauth.Sign
+	hc           *http.Client
 
 	// deadline sizes each request's time limit from its body; a test swaps it
 	// to make a modest frame time out.
@@ -35,8 +114,14 @@ func NewHTTP(base string, sign wireauth.Sign, hc *http.Client) *HTTP {
 
 // PutFrame implements Store.
 func (c *HTTP) PutFrame(ctx context.Context, frame []byte) (FrameID, error) {
+	if c.CanStore != nil && !c.CanStore() {
+		return "", wireauth.ErrStorageOff
+	}
 	var out putAnswer
 	if err := c.doJSON(ctx, http.MethodPost, pathFrames, frame, &out); err != nil {
+		if errors.Is(err, wireauth.ErrStorageOff) && c.OnStorageOff != nil {
+			c.OnStorageOff()
+		}
 		return "", err
 	}
 	return out.Frame, nil
@@ -48,7 +133,9 @@ func (c *HTTP) Get(ctx context.Context, rid string) ([]byte, error) {
 	if err := checkGet(rid); err != nil {
 		return nil, err
 	}
-	return c.do(ctx, http.MethodGet, pathObjects+rid, nil)
+	return c.doRead(ctx, func() ([]byte, error) {
+		return c.do(ctx, http.MethodGet, pathObjects+rid, nil)
+	})
 }
 
 // GetMany implements Store: one request, answered by a frame holding a prefix of
@@ -62,13 +149,22 @@ func (c *HTTP) GetMany(ctx context.Context, rids []string) ([]Object, error) {
 	if err := checkMany(rids); err != nil {
 		return nil, err
 	}
-	frame, err := c.do(ctx, http.MethodPost, pathMany, mustJSON(getManyRequest{Rids: rids}))
+	body := mustJSON(getManyRequest{Rids: rids})
+	var objects []Object
+	_, err := c.doRead(ctx, func() ([]byte, error) {
+		frame, err := c.do(ctx, http.MethodPost, pathMany, body)
+		if err != nil {
+			return nil, err
+		}
+		_, decoded, err := Decode(frame)
+		if err != nil || !isPrefix(decoded, rids) {
+			return nil, fmt.Errorf("%w: the answer to a GetMany is not the objects asked for", ErrUnreachable)
+		}
+		objects = decoded
+		return frame, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	_, objects, err := Decode(frame)
-	if err != nil || !isPrefix(objects, rids) {
-		return nil, fmt.Errorf("%w: the answer to a GetMany is not the objects asked for", ErrUnreachable)
 	}
 	return objects, nil
 }
@@ -95,14 +191,37 @@ func (c *HTTP) GetFrame(ctx context.Context, frame string) ([]byte, error) {
 	if err := checkGet(frame); err != nil {
 		return nil, err
 	}
-	b, err := c.do(ctx, http.MethodGet, pathFrames+"/"+frame, nil)
-	if err != nil {
-		return nil, err
+	return c.doRead(ctx, func() ([]byte, error) {
+		b, err := c.do(ctx, http.MethodGet, pathFrames+"/"+frame, nil)
+		if err != nil {
+			return nil, err
+		}
+		if IDOf(b) != frame {
+			return nil, fmt.Errorf("%w: frame %s answered bytes that are not it", ErrDamaged, frame)
+		}
+		return b, nil
+	})
+}
+
+// doRead retries a transient blob or frame read up to FetchRetries times with
+// exponential backoff. Auth refusals and 4xx errors return at once.
+func (c *HTTP) doRead(ctx context.Context, call func() ([]byte, error)) ([]byte, error) {
+	backoff := RetryBackoff
+	var out []byte
+	var err error
+	for attempt := 0; attempt <= FetchRetries; attempt++ {
+		if attempt > 0 {
+			if sleepErr := Sleep(ctx, backoff); sleepErr != nil {
+				return nil, sleepErr
+			}
+			backoff *= 2
+		}
+		out, err = call()
+		if err == nil || !Transient(ctx, err) {
+			return out, err
+		}
 	}
-	if IDOf(b) != frame {
-		return nil, fmt.Errorf("%w: frame %s answered bytes that are not it", ErrDamaged, frame)
-	}
-	return b, nil
+	return nil, retriedError{err: err}
 }
 
 // Locate implements Store: one request answering where each held rid lies.
@@ -129,16 +248,20 @@ func (c *HTTP) Has(ctx context.Context, rids []string) ([]bool, error) {
 	return out.Have, nil
 }
 
-// Stats asks the server for its own count of this identity's requests.
+// Stats asks the server for this identity's request counts and any stored totals it reports.
 func (c *HTTP) Stats(ctx context.Context) (Counts, error) {
 	var out statsBody
 	err := c.doJSON(ctx, http.MethodGet, pathStats, nil, &out)
 	return Counts(out), err
 }
 
-// Counts is the server's tally for one identity since it started.
+// Counts holds request counters and optional stored totals for one identity.
+// Nil totals distinguish an older or self-hosted relay from a reported zero.
 type Counts struct {
-	Puts, Gets, Has, BytesIn, BytesOut int64
+	Storage                                     string
+	Puts, Gets, Has, BytesIn, BytesOut          int64
+	StoredBytes, StoredObjects, FramesToday     *int64
+	LimitBytes, LimitObjects, LimitFramesPerDay *int64
 }
 
 func (c *HTTP) doJSON(ctx context.Context, method, path string, body []byte, into any) error {
@@ -161,6 +284,19 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
+	traffic := trafficOf(ctx)
+	if traffic != nil {
+		traffic.Begin()
+		defer traffic.End()
+	}
+	if traffic != nil && len(body) > 0 {
+		// A replayed body (a retried connection) reports its bytes again; the
+		// caller counts what moved, not what was new.
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(trafficReader{r: bytes.NewReader(body), w: traffic}), nil
+		}
+		req.Body, _ = req.GetBody()
+	}
 	c.sign(req, body)
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -168,7 +304,11 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 	}
 	defer resp.Body.Close()
 	limit.answering(resp.ContentLength)
-	answer, err := io.ReadAll(io.LimitReader(resp.Body, MaxFrame+1))
+	var got io.Reader = resp.Body
+	if traffic != nil {
+		got = trafficReader{r: got, w: traffic, down: true}
+	}
+	answer, err := io.ReadAll(io.LimitReader(got, MaxFrame+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUnreachable, err)
 	}
@@ -180,16 +320,43 @@ func (c *HTTP) do(ctx context.Context, method, path string, body []byte) ([]byte
 
 // answerError turns a non-200 answer into an error: the code the server named,
 // else a 5xx as "unreachable" (the server is not doing its job now, so
-// callers degrade), else a plain error carrying the status. A refusal keeps the
-// Retry-After the relay sent with it.
+// callers degrade) that is also ErrAnswered when the server itself answered
+// rather than a gateway in front of it, else a plain error carrying the
+// status. A refusal keeps the Retry-After the relay sent with it.
 func answerError(status int, h http.Header, answer []byte) error {
 	var e errBody
 	_ = json.Unmarshal(answer, &e)
 	if named := errOf(e.Err); named != nil {
 		return Capped(wireauth.Wait(fmt.Errorf("%w (%d)", named, status), h), e.LimitBytes)
 	}
+	if status >= 500 && !gatewayStatus(status) {
+		return answered{status}
+	}
 	if status >= 500 {
 		return fmt.Errorf("%w: server answered %d", ErrUnreachable, status)
 	}
 	return fmt.Errorf("blobstore: server refused with %d %q", status, e.Err)
+}
+
+// answered is an unnamed 5xx answer from a server that was reached. Its text
+// says the server answered, as the person's line does, and keeps the status.
+type answered struct{ status int }
+
+func (a answered) Error() string { return fmt.Sprintf("blobstore: server answered %d", a.status) }
+
+func (a answered) Is(target error) bool { return target == ErrUnreachable || target == ErrAnswered }
+
+// gatewayStatus is a 5xx a proxy or the network edge in front of the server
+// answers for it: bad gateway, unavailable, gateway timeout, and a CDN's own
+// origin-down codes (Cloudflare's 520-527 and 530), and an intercepting
+// proxy's sign-in wall (511). The server itself was not reached, so it stays
+// plain unreachable.
+func gatewayStatus(status int) bool {
+	switch {
+	case status == http.StatusBadGateway, status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout, status == http.StatusNetworkAuthenticationRequired:
+		return true
+	case status >= 520 && status <= 527, status == 530:
+		return true
+	}
+	return false
 }

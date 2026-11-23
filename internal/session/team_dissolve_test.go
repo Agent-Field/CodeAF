@@ -131,19 +131,12 @@ func TestTeamDissolveRefusesATeamWithTrafficAndWritesNothing(t *testing.T) {
 	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
 	manager.teamBoundary()
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "docs", Text: "write the README"})
-	before, err := os.ReadFile(teams.Path(fixture.profile))
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := teams.Stamp(fixture.profile)
 	said, failed, _ := manager.teamDissolveTool(context.Background(), json.RawMessage(`{}`))
 	if !failed || !strings.Contains(said, "not yours to take back") {
 		t.Fatalf("dissolving a team with traffic said %q (failed %v)", said, failed)
 	}
-	after, err := os.ReadFile(teams.Path(fixture.profile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(before) != string(after) {
+	if after := teams.Stamp(fixture.profile); before != after {
 		t.Fatal("a refused dissolve wrote the teams file")
 	}
 }

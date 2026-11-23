@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"path/filepath"
 	"strings"
@@ -11,9 +12,48 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
+
+func TestRunSummaryDailyLimitKeepsLastReadingAndPreauthorizationLiftsIt(t *testing.T) {
+	for _, authorized := range []bool{false, true} {
+		t.Run(fmt.Sprint(authorized), func(t *testing.T) {
+			t.Setenv("CODEAF_HOME", t.TempDir())
+			t.Setenv("CODEAF_DAILY_BUDGET", "")
+			profile := t.TempDir()
+			if err := config.WriteDailyBudgetUSD(profile, 1); err != nil {
+				t.Fatal(err)
+			}
+			client := &scriptedCompleter{steps: []step{
+				finalText("what: original\nsince: first\nnow: running\nnext: Nothing needs you."),
+				finalText("what: updated\nsince: changed\nnow: done\nnext: Nothing needs you."),
+			}}
+			agent, store, _ := runSummaryFixture(t, client, func(c *Config) {
+				c.ProfileDir = profile
+				c.SpendPreauthorized = authorized
+				c.OneModel = true
+			})
+			before, ok := agent.RefreshRunSummary(context.Background(), planRootID, time.Time{})
+			if !ok {
+				t.Fatal("initial reading missing")
+			}
+			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "later", Title: "Later", Description: "work", ParentID: planRootID}}); err != nil {
+				t.Fatal(err)
+			}
+			recordUsage(t, UsageLedgerPath(), UsageLine{At: time.Now(), USD: 1, Calls: 1, Model: "test/model"})
+			after, ok := agent.RefreshRunSummary(context.Background(), planRootID, time.Time{})
+			if authorized {
+				if !ok || after.What != "updated" || client.requests() != 2 {
+					t.Fatalf("preauthorized refresh = %+v, %v; calls=%d", after, ok, client.requests())
+				}
+			} else if !ok || after != before || client.requests() != 1 {
+				t.Fatalf("daily limit replaced the reading or bought a call: %+v, %v; calls=%d", after, ok, client.requests())
+			}
+		})
+	}
+}
 
 func runSummaryFixture(t *testing.T, completer *scriptedCompleter, more ...func(*Config)) (*Agent, *plandb.Store, time.Time) {
 	t.Helper()

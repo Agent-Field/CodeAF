@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -20,7 +21,11 @@ func TestLocalTeamDeliverySurvivesMissingFilesAndLookupFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := newTeamFixture(t, true)
-	enableSessionTeamSharing(t, f.profile)
+	// This fixture deliberately remains solo with sharing requested.
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: f.profile}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
 	a := teamAgent(t, f, f.manager, nil, manualRelayTeamClock)
 	a.config.TeamComputers = func(context.Context, []teams.Member) (map[string]string, error) { return nil, errors.New("offline") }
 	if err := teams.Update(f.profile, func(file *teams.File) error {

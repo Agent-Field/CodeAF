@@ -656,38 +656,59 @@ func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
 // half-imported is a state the next pass repairs and a failed pass is one
 // nothing repairs.
 func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
-	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir})
-	if err != nil {
-		return
-	}
-	active, err := st.SkillFacts(store.FactActive, skillCandidateScanLimit)
-	if err != nil {
-		return
-	}
-	// Only facts this pass itself recorded are its business. The map is
-	// keyed by the original directory because that is the skill's identity
-	// across runs — names, scopes and docs may change, the folder is what the
-	// person deleted or edited. SkillFacts is newest first, so the first fact
-	// seen for a directory is the one to keep; a second one can only exist
-	// when a crash landed between one import's activation and the supersede it
-	// was about to journal, and it retires here so the shelf keeps its
-	// one-active-fact-per-folder shape.
-	imported := make(map[string]store.Fact)
-	for _, fact := range active {
-		if fact.Trust != importedSkillTrust {
-			continue
-		}
-		dir := filepath.Clean(strings.TrimSpace(fact.Artifact))
-		if dir == "" {
-			continue
-		}
-		if existing, seen := imported[dir]; seen {
-			_ = st.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record")
-			continue
-		}
-		imported[dir] = fact
-	}
+	reconcileImportedSkillsWith(st, projectDir, homeDir, skillDigests)
+}
 
+// reconcileImportedSkillsWith is the same door over a cache of the caller's own.
+func reconcileImportedSkillsWith(st *store.Store, projectDir, homeDir string, digests *digestCache) {
+	importPasses.do(importKey{shelf: st, project: projectDir, home: homeDir}, func() {
+		importPass(st, projectDir, homeDir, digests)
+	})
+}
+
+// importPass is one uncoalesced pass. Discovery skips folder
+// sizing (nothing here reads it) and each folder's digest goes through the
+// cache. Remembered dependencies are statted before discovery, so an unchanged
+// shelf needs neither directory listings nor content reads.
+func importPass(st *store.Store, projectDir, homeDir string, digests *digestCache) {
+	key := importKey{shelf: st, project: projectDir, home: homeDir}
+	importPasses.publish(st, func() {
+		if digests.imports.unchanged(key) {
+			return
+		}
+		stamps, valid := importStamps(key)
+		digests.imports.countScan()
+		if scanAndPublishImport(st, projectDir, homeDir, digests.digest, true) && valid {
+			digests.imports.remember(key, stamps)
+		}
+	})
+}
+
+// importScan is what the disk said, gathered without touching the shelf.
+type importScan struct {
+	alive map[string]bool
+	ready []importReady
+}
+
+type importReady struct {
+	dir, scope, body, digest string
+}
+
+// runImportPass serializes a shelf's scan and publication together. A scan
+// gathered before another workspace installed or edited a shared skill must
+// not publish after the newer scan and replace its facts. Different shelves
+// remain independent; the gate exists only while its callers are active.
+func runImportPass(st *store.Store, projectDir, homeDir string, digest func(string) (string, error), omitSize bool) {
+	importPasses.publish(st, func() {
+		scanAndPublishImport(st, projectDir, homeDir, digest, omitSize)
+	})
+}
+
+func scanAndPublishImport(st *store.Store, projectDir, homeDir string, digest func(string) (string, error), omitSize bool) bool {
+	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir, OmitSize: omitSize})
+	if err != nil {
+		return false
+	}
 	// alive is every directory this scan still endorses — shadowed ones
 	// included, because a folder another root outranks has not gone away, and
 	// superseding a live folder because it lost a naming contest would retire
@@ -695,13 +716,14 @@ func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
 	// folder even when it carries a soft warning — a name that does not match
 	// its folder is still a working skill, per the spec's client guide — while
 	// a skipped one (no name, no description, unparseable) endorses nothing.
-	alive := make(map[string]bool)
+	complete := true
+	scan := importScan{alive: make(map[string]bool)}
 	for _, skill := range discovered {
 		if skill.Name == "" || skill.Description == "" {
 			continue
 		}
 		dir := filepath.Clean(skill.Dir)
-		alive[dir] = true
+		scan.alive[dir] = true
 		if skill.Shadowed {
 			continue
 		}
@@ -714,24 +736,79 @@ func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
 		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
 			digestDir = resolved
 		}
-		digest, err := contentDigest(digestDir)
+		sum, err := digest(digestDir)
 		if err != nil {
+			complete = false
 			continue
 		}
-		if existing, ok := imported[dir]; ok && existing.Digest == digest {
+		scan.ready = append(scan.ready, importReady{dir: dir, scope: importedSkillScope(skill, projectDir),
+			body: clipFactBody(skill.Description), digest: sum})
+	}
+	return publishImport(st, projectDir, homeDir, scan) && complete
+}
+
+// ownsImported limits retirement to the scope this scan actually inspected.
+// Plugin artifacts may live outside their project's directory, so containment
+// cannot establish ownership. The store normalizes scope text on write.
+func ownsImported(fact store.Fact, projectDir, homeDir string) bool {
+	if strings.HasPrefix(fact.Scope, "repo:") {
+		return fact.Scope == strings.ToLower(strings.TrimSpace("repo:"+projectDir))
+	}
+	// A shelf has one login home; plugin installations may live outside it.
+	return strings.HasPrefix(fact.Scope, "harness:")
+}
+
+func publishImport(st *store.Store, projectDir, homeDir string, scan importScan) bool {
+	active, err := st.SkillFacts(store.FactActive, skillCandidateScanLimit)
+	if err != nil {
+		return false
+	}
+	// Match and repair imported facts by their folder across the whole shelf.
+	// Ownership limits retirement below, never identity. The map is keyed by
+	// the original directory because that is the skill's identity across
+	// runs — names, scopes and docs may change, the folder is what the person
+	// deleted or edited. SkillFacts is newest first, so the first fact seen
+	// for a directory is the one to keep; a second one can only exist when a
+	// crash landed between one import's activation and the supersede it was
+	// about to journal, and it retires here so the shelf keeps its
+	// one-active-fact-per-folder shape.
+	complete := true
+	imported := make(map[string]store.Fact)
+	for _, fact := range active {
+		if fact.Trust != importedSkillTrust {
+			continue
+		}
+		dir := filepath.Clean(strings.TrimSpace(fact.Artifact))
+		if dir == "" {
+			continue
+		}
+		if existing, seen := imported[dir]; seen {
+			if err := st.SupersedeFactWithReason(fact.Seq, existing.Seq, "duplicate import record"); err != nil {
+				complete = false
+			}
+			continue
+		}
+		imported[dir] = fact
+	}
+	for _, skill := range scan.ready {
+		if existing, ok := imported[skill.dir]; ok && existing.Digest == skill.digest {
 			continue
 		}
 		candidate, err := st.RecordSkillCandidateFrom(store.FactWriterOther, store.RootID,
-			importedSkillScope(skill, projectDir), clipFactBody(skill.Description), dir, importedSkillTrust)
+			skill.scope, skill.body, skill.dir, importedSkillTrust)
 		if err != nil {
+			complete = false
 			continue
 		}
-		if err := st.ActivateSkill(candidate.Seq, dir, digest); err != nil {
+		if err := st.ActivateSkill(candidate.Seq, skill.dir, skill.digest); err != nil {
+			complete = false
 			continue
 		}
-		if existing, ok := imported[dir]; ok {
-			_ = st.SupersedeFactWithReason(existing.Seq, candidate.Seq,
-				"imported skill changed on disk")
+		if existing, ok := imported[skill.dir]; ok {
+			if err := st.SupersedeFactWithReason(existing.Seq, candidate.Seq,
+				"imported skill changed on disk"); err != nil {
+				complete = false
+			}
 		}
 	}
 
@@ -741,15 +818,18 @@ func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
 	// for. A shadowed folder stays alive, so it never reaches this arm.
 	gone := make([]string, 0, len(imported))
 	for dir := range imported {
-		if !alive[dir] {
+		if !scan.alive[dir] && ownsImported(imported[dir], projectDir, homeDir) {
 			gone = append(gone, dir)
 		}
 	}
 	sort.Strings(gone)
 	for _, dir := range gone {
-		_ = st.SupersedeFactWithReason(imported[dir].Seq, 0,
-			"skill folder no longer holds a readable SKILL.md")
+		if err := st.SupersedeFactWithReason(imported[dir].Seq, 0,
+			"skill folder no longer holds a readable SKILL.md"); err != nil {
+			complete = false
+		}
 	}
+	return complete
 }
 
 // importedSkillScope names where a discovered skill came from, in the tree's

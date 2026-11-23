@@ -176,6 +176,9 @@ type SyncEngine struct {
 	// MaterializeWith screens the folder before the engine's automatic undo
 	// snapshot; nil keeps the bare transport seam used by independent clients.
 	MaterializeWith func(context.Context, cell.Cell, Op) ([]byte, error)
+	// MaterializeWorkspaceWith materializes the workspace tree while keeping
+	// already-installed .cell/ files in place.
+	MaterializeWorkspaceWith func(context.Context, cell.Cell, Op) ([]byte, error)
 }
 
 // LocalWork reports work beyond the shared boundary. Standalone sync engines
@@ -187,6 +190,19 @@ func (e SyncEngine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 	return e.Work(ctx, c)
 }
 
+// OpenKeys returns the cell and dedup keys for open-state frame hints.
+func (e SyncEngine) OpenKeys() ([]byte, []byte) {
+	return e.Keys.CellKey, e.Keys.Dedup
+}
+
+// OpenCache returns the directory where open-state objects for c are cached.
+func (e SyncEngine) OpenCache(c cell.Cell) string {
+	if e.Inbox != nil {
+		return e.Inbox(c) + ".open"
+	}
+	return e.outbox(c) + ".open"
+}
+
 // Export implements the sync seam.
 func (e SyncEngine) Export(ctx context.Context, c cell.Cell, head string) (Export, error) {
 	var out Export
@@ -195,8 +211,24 @@ func (e SyncEngine) Export(ctx context.Context, c cell.Cell, head string) (Expor
 			return out, err
 		}
 	}
-	op := exportOp{Head: head, Outbox: e.outbox(c), Ledger: e.Ledger, MaxFrame: e.MaxFrame, keyArgs: hexKeys(e.Keys)}
-	return out, e.ask(ctx, c, op, &out)
+	outbox := e.outbox(c)
+	// An export still waiting in the outbox is answered as it stands rather
+	// than sealed again (keptExport says why).
+	stamp, known := e.stampFor(e.Target(c).DataDir, head)
+	if known {
+		if kept, ok := reuse(outbox, stamp); ok {
+			return kept, nil
+		}
+	}
+	op := exportOp{Head: head, Outbox: outbox, Ledger: e.Ledger, MaxFrame: e.MaxFrame, keyArgs: hexKeys(e.Keys)}
+	if err := e.ask(ctx, c, op, &out); err != nil {
+		return out, err
+	}
+	if known {
+		stamp.Export = out
+		keep(outbox, stamp)
+	}
+	return out, nil
 }
 
 // Published implements the sync seam.
@@ -267,18 +299,17 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 	// legacy-copy markers snapshots never carry: they are read first and
 	// written back after the head is materialized.
 	earlier := heldBefore(c, e.holdDir(c))
-	_, readyErr := os.Stat(rel(c, cell.CopyReadyPath))
-	_, lockErr := os.Stat(c.Root + ".lock")
-	keepCopyReady := readyErr == nil || (filepath.Base(filepath.Dir(c.Root)) == ".moving" && lockErr == nil)
+	restoreCopyReady, err := cell.PreserveCopyReady(c.Root)
+	if err != nil {
+		return err
+	}
 	_, offeredErr := os.Stat(rel(c, cell.CopyOfferedPath))
 	keepCopyOffered := offeredErr == nil
 	if err := e.ask(ctx, c, materializeOp{Head: head}, &out); err != nil {
 		return err
 	}
-	if keepCopyReady {
-		if err := cell.StampCopyReady(c.Root); err != nil {
-			return err
-		}
+	if err := restoreCopyReady(); err != nil {
+		return err
 	}
 	if keepCopyOffered {
 		offeredFile := rel(c, cell.CopyOfferedPath)
@@ -296,6 +327,26 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 	// the received head so local-work checks compare against a snapshot held here.
 	if err := NotePublished(c, head); err != nil {
 		return err
+	}
+	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))
+}
+
+// MaterializeWorkspace restores head's workspace tree without overwriting the
+// cell's already-installed .cell/ files (C1, C2).
+func (e SyncEngine) MaterializeWorkspace(ctx context.Context, c cell.Cell, head string) error {
+	if e.MaterializeWorkspaceWith == nil {
+		return e.Materialize(ctx, c, head)
+	}
+	earlier := heldBefore(c, e.holdDir(c))
+	raw, err := e.MaterializeWorkspaceWith(ctx, c, materializeOp{Head: head})
+	if err != nil {
+		return fmt.Errorf("sync materialize of cell %s: %w", c.ID, err)
+	}
+	var out struct {
+		Held []heldName `json:"held"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("sync materialize of cell %s: unreadable answer: %w", c.ID, err)
 	}
 	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))
 }
@@ -358,6 +409,9 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 		Work:      e.LocalWork,
 		Transport: e.transport(),
 		BeforeExport: func(ctx context.Context, c cell.Cell) error {
+			if err := cell.WaitWorkspace(ctx, c.Root, e.workspace(c)); err != nil {
+				return err
+			}
 			if err := Await(ctx, c); err != nil {
 				return err
 			}
@@ -374,7 +428,112 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			if err := e.screenCapture(ctx, c); err != nil {
 				return nil, err
 			}
-			return e.do(ctx, c, e.cellDir(c), op)
+			// The daemon retains a directory watcher after materializing a tree.
+			// A take renames that tree next, which Windows refuses while watched.
+			// Join a one-shot process before returning; Follow binds the final root.
+			materializer := e
+			materializer.Transport = materializeTransport(e.transport())
+			raw, err := materializer.do(ctx, c, e.cellDir(c), op)
+			if err == nil {
+				if mop, ok := op.(materializeOp); ok {
+					e.recordMaterializedStat(c, mop.Head)
+				}
+			}
+			return raw, err
 		},
+		MaterializeWorkspaceWith: func(ctx context.Context, c cell.Cell, op Op) ([]byte, error) {
+			if err := e.screenCapture(ctx, c); err != nil {
+				return nil, err
+			}
+			scratch, err := e.scratchDir(c)
+			if err != nil {
+				return nil, err
+			}
+			defer os.RemoveAll(scratch)
+			materializer := e
+			materializer.Transport = materializeTransport(e.transport())
+			if e.cellDir(c) != "" {
+				policyDst := filepath.Join(stateDir(c), ".furrowpolicy")
+				if _, statErr := os.Lstat(policyDst); statErr == nil {
+					_ = copyFile(policyDst, filepath.Join(scratch, ".furrowpolicy"))
+				}
+				raw, err := materializer.do(ctx, c, scratch, op)
+				if err != nil {
+					return nil, err
+				}
+				if err := syncState(filepath.Join(scratch, "env"), filepath.Join(stateDir(c), "env")); err != nil && !os.IsNotExist(err) {
+					return nil, err
+				}
+				policySrc := filepath.Join(scratch, ".furrowpolicy")
+				if _, statErr := os.Lstat(policySrc); statErr == nil {
+					if err := copyFile(policySrc, policyDst); err != nil {
+						return nil, err
+					}
+				}
+				if err := mergeMissingState(scratch, stateDir(c), e.carriedStale(c)); err != nil {
+					return nil, err
+				}
+				// Once the head's records have replaced the carried-over older
+				// ones, the note has done its work: a later restore must not
+				// mistake a file written since for the older copy.
+				_ = removeIfPresent(e.carriedPath(c))
+				if mop, ok := op.(materializeOp); ok {
+					e.recordMaterializedStat(c, mop.Head)
+				}
+				return raw, nil
+			}
+			// When the cell's own folder is the tree (e.g. a home-folder chat),
+			// preserve the live .cell/ state across materialize.
+			if err := mergeMissingState(stateDir(c), scratch, nil); err != nil {
+				return nil, err
+			}
+			raw, err := materializer.do(ctx, c, "", op)
+			if err != nil {
+				return nil, err
+			}
+			want, err := stateFiles(scratch)
+			if err != nil {
+				return nil, err
+			}
+			for _, name := range want {
+				if err := copyFile(filepath.Join(scratch, name), filepath.Join(stateDir(c), name)); err != nil {
+					return nil, err
+				}
+			}
+			for name := range chainNames {
+				src := filepath.Join(scratch, name)
+				dst := filepath.Join(stateDir(c), name)
+				if info, statErr := os.Lstat(src); statErr == nil && !info.IsDir() {
+					if err := copyFile(src, dst); err != nil {
+						return nil, err
+					}
+				}
+			}
+			if mop, ok := op.(materializeOp); ok {
+				e.recordMaterializedStat(c, mop.Head)
+			}
+			return raw, nil
+		},
+	}
+}
+
+// materializeTransport releases daemon watchers before installation while
+// preserving a caller's independent transport, binary and runner.
+func materializeTransport(transport Transport) Transport {
+	switch t := transport.(type) {
+	case Daemon:
+		return Spawn{Binary: t.Binary, Socket: t.Socket}
+	case *Daemon:
+		return materializeTransport(*t)
+	case Fallback:
+		switch t.Primary.(type) {
+		case Daemon, *Daemon:
+			return materializeTransport(t.Secondary)
+		}
+		return Fallback{Primary: materializeTransport(t.Primary), Secondary: materializeTransport(t.Secondary)}
+	case *Fallback:
+		return materializeTransport(*t)
+	default:
+		return transport
 	}
 }

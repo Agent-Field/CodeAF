@@ -3,14 +3,22 @@ package identity
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
-	"github.com/Agent-Field/codeaf/internal/catalog"
-	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/service"
+	"github.com/Agent-Field/codeaf/internal/skills"
+	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 
 	_ "modernc.org/sqlite" // reads the memory graph, which is a SQLite file
 )
@@ -58,6 +66,82 @@ func (r rules) of(name string) judge {
 // never is for what a start makes again on demand: keys, caches, locks, logs.
 func never(string) (bool, error) { return false, nil }
 
+func emptyFile(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return true, err
+	}
+	return !info.Mode().IsRegular() || info.Size() != 0, nil
+}
+
+// appStartupState recognizes the part of the app's saved state written by
+// onboarding and initial unread tracking. Custom settings, chat references,
+// unknown fields and duplicate fields still count as use.
+func appStartupState(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 1024 {
+		return true, err
+	}
+	raw, err := skills.ReadWholeRegular(path, 1024)
+	if err != nil {
+		return true, err
+	}
+	var state struct {
+		Setup *struct {
+			Step         json.RawMessage `json:"step"`
+			Provider     string          `json:"provider,omitempty"`
+			DefaultModel string          `json:"default_model,omitempty"`
+			DayCapUSD    *float64        `json:"day_cap_usd,omitempty"`
+			Start        string          `json:"start,omitempty"`
+		} `json:"setup,omitempty"`
+		SetupSteps int       `json:"setup_steps,omitempty"`
+		UnreadFrom time.Time `json:"unread_from,omitzero"`
+	}
+	if json.Unmarshal(raw, &state) != nil || state.SetupSteps < 0 || state.SetupSteps > 4 {
+		return true, nil
+	}
+	if setup := state.Setup; setup != nil {
+		switch string(setup.Step) {
+		case `"done"`, "1", "2", "3", "4": // Older builds kept four setup steps.
+		default:
+			return true, nil
+		}
+		if setup.Start != "" && setup.Start != "agents" {
+			return true, nil
+		}
+	}
+	return noncanonicalJSON(raw, state)
+}
+
+// bundledCanvasSkill recognizes the exact install location and version marker
+// used by WorkAF. A custom skill, or extra files in this skill's folder, still
+// count as use. Ordinary pairing leaves the managed skill in place.
+func bundledCanvasSkill(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return true, err
+	}
+	raw, err := skills.ReadRegularHead(path, 4096)
+	if err != nil {
+		return true, err
+	}
+	text := strings.TrimPrefix(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\ufeff")
+	front, body, found := strings.Cut(text, "\n---\n")
+	if !found || !strings.HasPrefix(front, "---\nname: workaf-canvas\n") {
+		return true, nil
+	}
+	line, _, _ := strings.Cut(body, "\n")
+	version, prefix := strings.CutPrefix(strings.TrimSpace(line), "<!-- workaf-canvas v")
+	version, suffix := strings.CutSuffix(version, " -->")
+	_, err = strconv.ParseUint(version, 10, 32)
+	return !prefix || !suffix || err != nil, nil
+}
+
+func serviceStartup(path string) (bool, error) {
+	known, err := service.IsStartupStore(path)
+	return !known, err
+}
+
 // catalogCache delegates cache naming to its owner instead of treating every
 // model-catalog-prefixed file as disposable startup state.
 func catalogCache(path string) (bool, error) {
@@ -71,6 +155,94 @@ func pickerCache(path string) (bool, error) {
 
 // unknown is the judge of a name nobody declared, and it is always use.
 func unknown(string) (bool, error) { return true, nil }
+
+// credentialDigestHistory accepts only the canonical metadata written by
+// config.writeCrewCredentials: provider slugs, sixteen hex digits of a hash,
+// and an optional change time. Unknown content, including key fields and
+// duplicate JSON fields, stays protected as local work.
+func credentialDigestHistory(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return true, err
+	}
+	var history map[string]struct {
+		Print string    `json:"print"`
+		Since time.Time `json:"since,omitzero"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&history) != nil || history == nil || len(history) > 64 || decoder.Decode(new(json.RawMessage)) != io.EOF {
+		return true, nil
+	}
+	for provider, seen := range history {
+		if provider == "" || len(provider) > 64 || len(seen.Print) != 16 {
+			return true, nil
+		}
+		for _, char := range provider {
+			if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '-') {
+				return true, nil
+			}
+		}
+		if _, err := hex.DecodeString(seen.Print); err != nil {
+			return true, nil
+		}
+	}
+	return noncanonicalJSON(raw, history)
+}
+
+func noncanonicalJSON(raw []byte, known any) (bool, error) {
+	canonical, err := json.Marshal(known)
+	if err != nil {
+		return true, err
+	}
+	var compact bytes.Buffer
+	if json.Compact(&compact, raw) != nil {
+		return true, nil
+	}
+	return !bytes.Equal(canonical, compact.Bytes()), nil
+}
+
+// startupInventory admits the platform and locations recorded before any call.
+// Observed tools, notes and all other fields still count as work.
+func startupInventory(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return true, err
+	}
+	var inv struct {
+		V         uint16
+		Platform  struct{ OS, Arch string }
+		Workspace string
+		ChatDir   string `json:"chat_dir"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&inv) != nil || inv.V != 1 {
+		return true, nil
+	}
+	return decoder.Decode(new(json.RawMessage)) != io.EOF, nil
+}
+
+// unopenedRepository keeps even deleted or staged project work from being
+// mistaken for the empty repository made when an owned chat first opens.
+//
+// ANY NAME GIT PRINTS IS WORK. The names are read NUL-terminated and never
+// trimmed: a file named only with spaces, staged and then deleted, printed a
+// blank line that trimming discarded, and the repository passed as untouched.
+// For the startup repository both listings print nothing at all.
+func unopenedRepository(path string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for _, args := range [][]string{{"log", "--all", "--format=", "--name-only", "-z"}, {"ls-files", "--cached", "-z"}} {
+		cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...) //codeaf:plumbing An empty owned repository contains no saved or staged files.
+		cmd.Dir = filepath.Dir(path)
+		raw, err := cmd.Output()
+		if err != nil || len(raw) > 0 {
+			return true, err
+		}
+	}
+	return false, nil
+}
 
 // empty is for what holds the person's words and bytes when it holds any: a
 // file with no bytes, or a folder of such files.

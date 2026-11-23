@@ -2,7 +2,9 @@
 
 ## Are chats sandboxed — network access, installs and writes outside the workspace
 
-New chats are not sandboxed. Their commands run on this computer with the network and the same access as any program you run, including writes outside the workspace and the computer's ordinary temporary folder. Moving chats keeps that access. `/setup` is for preparing tools on this machine after a move; ordinary commands do not need it to reach the network. Command approvals still apply.
+New interactive chats are not sandboxed. Their commands run on this computer with the network and the same access as any program you run, including writes outside the workspace and the computer's ordinary temporary folder. Moving chats keeps that access.
+
+Runs with nobody at the keyboard are limited: factory steps, `codeaf chat --once` and `codeaf exec`. Their commands keep the network but may write only their own checkout and their own temp and cache folders. They cannot read keys and sign-ins or use docker. On Linux this uses Landlock, and user namespaces where the system allows them. "What an unattended run may touch" says what is blocked, how to allow more with `"jail.allow"`, and what a computer without them says. `/setup` is for preparing tools on this machine after a move; ordinary commands do not need it to reach the network. Command approvals still apply.
 
 ## Why commands fail on Ubuntu 24.04 — user namespaces, AppArmor and reduced workspace limits
 

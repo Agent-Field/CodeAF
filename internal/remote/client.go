@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"os"
 	"path/filepath"
@@ -89,6 +90,11 @@ const callDeadline = 10 * time.Second
 // it has to be: the surface asks synchronous getters from its update loop while
 // a turn's events are arriving on the reader.
 type Client struct {
+	settingError atomic.Pointer[settingResult]
+	clientTools  clientToolLink
+
+	savingNotices []string
+
 	// host keeps the typed destination as the fallback until the window chooses
 	// its displayed name. Keeping the two apart preserves the connection route.
 	host string
@@ -130,6 +136,9 @@ type Client struct {
 	// redial can discover that a person must not be left to guess at. See
 	// [Client.TakeNotice].
 	notice string
+	// Live saving sentences keep their own queue so either the surface or the
+	// closing report can claim them without consuming unrelated redial news.
+	liveSavingNotices []string
 	// stop is closed by Close, and it is what takes a roaming client out of its
 	// backoff without waiting for the timer it is sitting on.
 	stop     chan struct{}
@@ -164,6 +173,7 @@ type Client struct {
 	// calls is every call waiting for its result, and streams every open turn.
 	// Both are guarded by mu. Observers are independent view subscriptions;
 	// their ids belong to this connection and never enter turn replay cursors.
+	sideAsks     map[uint64]func(string)
 	calls        map[uint64]chan result
 	streams      map[uint64]*stream
 	observers    map[uint64]*stream
@@ -229,6 +239,8 @@ type Client struct {
 	// want it — the events themselves are queued on the stream regardless, and
 	// the transcript is the authority on a turn that ended.
 	following chan Following
+	// passes is the compaction passes asked for outside any turn (passes.go).
+	passes chan session.Event
 
 	// dead is the reason this connection stopped, or nil while it is alive.
 	// Every method reads it first, so a surface driving a corpse gets an error
@@ -295,6 +307,8 @@ func newClient(host string, hello Hello) *Client {
 	}
 	hello.Encodings = []string{frameEncodingGzip}
 	return &Client{
+		clientTools: clientToolLink{owner: rand.Text()},
+
 		host:    strings.TrimSpace(host),
 		hello:   hello,
 		calls:   map[uint64]chan result{},
@@ -305,6 +319,7 @@ func newClient(host string, hello Hello) *Client {
 		driver:     Driver{Yours: true},
 		driverWake: make(chan struct{}),
 		following:  make(chan Following, followingRoom),
+		passes:     make(chan session.Event, passRoom),
 	}
 }
 
@@ -696,15 +711,18 @@ func (c *Client) LinkNote() string {
 // news about something that just happened to this connection, not a condition
 // that stays true, so a second reading answers nothing.
 //
-// Only a redial writes one, and only for the two things a redial can discover
-// that a person must not be left to work out from the screen: the engine did not
-// keep the turn, and the engine came back with a different conversation open.
+// Redial news and live saving sentences share this display door. Taking a live
+// sentence here removes it from the closing report's ownership at the same time.
 func (c *Client) TakeNotice() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	said := c.notice
+	lines := c.liveSavingNotices
+	if c.notice != "" {
+		lines = append([]string{c.notice}, lines...)
+	}
 	c.notice = ""
-	return said
+	c.liveSavingNotices = nil
+	return strings.Join(lines, " — ")
 }
 
 // note puts one sentence where [Client.TakeNotice] will find it. Two notices
@@ -720,6 +738,12 @@ func (c *Client) note(sentence string) {
 	c.notice += " — " + sentence
 }
 
+func (c *Client) noteSaving(sentence string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.liveSavingNotices = append(c.liveSavingNotices, sentence)
+}
+
 // Close ends the connection, which ends the ssh process. It is NOT what the
 // surface's /new and /resume call — see [Agent.Close], which flushes the remote
 // session file and leaves the connection standing.
@@ -732,6 +756,7 @@ func (c *Client) Close() error {
 	c.closing = true
 	conn := c.conn
 	c.mu.Unlock()
+	c.endClientToolCalls()
 	// A CLOSE ENDS THE ROAMING TOO, and it has to end it now rather than at the
 	// end of whatever backoff the redial loop is sitting in: the person quit,
 	// and a client that went on dialling a machine nobody is watching would be
@@ -866,8 +891,12 @@ func (c *Client) read() {
 			return
 		}
 		switch frame.Kind {
+		case clientToolCallKind, clientToolEndedKind:
+			c.clientToolFrame(frame)
 		case "observed", "observerClosed":
 			c.observerFrame(frame)
+		case "sideAskDelta":
+			c.sideAskDelta(frame)
 		case "localSaved":
 			c.mu.Lock()
 			if c.welcome.LocalSavingReceipts && frame.ID == c.localSavingID {
@@ -933,6 +962,9 @@ func (c *Client) read() {
 			// /status are drawn from, and neither had anything to draw from on
 			// a conversation whose engine is another process (news.go).
 			c.laneNewsFrame(frame.Payload)
+		case passFrameKind:
+			// A pass somebody asked for outside any turn (passes.go).
+			c.passFrame(frame.Payload)
 		case "facts":
 			// The engine stating something nobody asked for. It is taken on the
 			// reader goroutine before the surface is notified of a changed name.
@@ -941,7 +973,7 @@ func (c *Client) read() {
 		case "notice":
 			var line string
 			if json.Unmarshal(frame.Payload, &line) == nil && line != "" {
-				c.note(line)
+				c.noteSaving(line)
 			}
 		case "fatal":
 			c.bury(spokenError{reason: frame.Error})
@@ -978,9 +1010,27 @@ func (c *Client) deliver(frame Frame) {
 		// has gone ([Client.late]).
 		return
 	}
+	if len(frame.SavingNotices) > 0 {
+		c.keepSavingNotices(frame.SavingNotices)
+	}
 	if frame.Error != "" {
-		err := errors.New(frame.Error)
+		var err error = errors.New(frame.Error)
+		// Resident context errors can arrive before the caller's own context
+		// ends. Restore their identity before applying typed refusals or saving errors.
+		switch frame.Error {
+		case context.DeadlineExceeded.Error():
+			err = context.DeadlineExceeded
+		case context.Canceled.Error():
+			err = context.Canceled
+		}
+		if frame.WorkRefusal != nil {
+			frame.WorkRefusal.Line = frame.Error
+			err = frame.WorkRefusal
+		}
 		if c.Welcome().LocalSavingReceipts && frame.SyncPending && frame.LocalSaved {
+			if frame.StorageOff {
+				err = errors.Join(wireauth.ErrStorageOff, err)
+			}
 			err = syncwords.UploadFailure(err)
 		}
 		if frame.UnsavedTranscript != "" {
@@ -1020,6 +1070,7 @@ func (c *Client) streamLocked(id uint64) *stream {
 // a channel left open would leave the surface spinning on a turn nobody is
 // running.
 func (c *Client) bury(cause error) {
+	c.endClientToolCalls()
 	c.closeObservers()
 	c.mu.Lock()
 	if c.dead != nil {
@@ -1547,6 +1598,20 @@ func (c *Client) swap(method string, args any) (Welcome, error) {
 // /resume keep using the same one.
 type Agent struct{ c *Client }
 
+// CheckWork reads the session's own gate. An older engine has no new call.
+func (a *Agent) CheckWork() error {
+	return a.CheckWorkContext(context.Background())
+}
+
+// CheckWorkContext bounds an ownership check made before a surface sends.
+func (a *Agent) CheckWorkContext(ctx context.Context) error {
+	if !a.c.Welcome().WorkAdmission {
+		return nil
+	}
+	_, err := a.c.call(ctx, MethodCheckWork, nil)
+	return err
+}
+
 // TaskRoom reads the bounded tail of a node whose record URI may not exist yet.
 func (a *Agent) TaskRoom(id uint64, tail int) (session.TaskRecord, error) {
 	payload, err := a.c.call(nil, MethodTaskRoom, TaskRoomArgs{ID: id, Tail: tail})
@@ -1804,6 +1869,137 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
 }
 
+// SubmitMessage is Submit with what the door knows about the message beyond its
+// words ([session.Agent.SubmitMessage]): it travels on the same call, so the
+// engine records the words and the mark on one line or neither.
+//
+// A queued mark goes only to an engine that said it keeps one
+// ([Welcome.QueuedMarks]); to any other the words go without it, so the record
+// reads "not known to be queued" rather than carrying a fact it dropped.
+func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (<-chan session.Event, error) {
+	if err := a.refuseUnkeptMarks(message); err != nil {
+		return nil, err
+	}
+	message.Queued = message.Queued && a.QueuedMarksKnown()
+	if argsOf(message).composed() {
+		_, events, err := a.SubmitComposed(ctx, message)
+		return events, err
+	}
+	mark := argsOf(message)
+	mark.Queued = false
+	if mark.marked() && !a.MessageMarksKnown() {
+		return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
+	}
+	return a.open(ctx, MethodSubmit, argsOf(message))
+}
+
+// SubmitComposed is Submit for a message that carries pictures and what the
+// person marked on them ([session.Agent.SubmitComposed]). The engine reads the
+// files, on ITS machine, so the paths must mean something there; an engine that
+// has not said it takes them is refused BEFORE ANYTHING IS SENT, because run as
+// its words alone the pictures would be silently dropped.
+func (a *Agent) SubmitComposed(ctx context.Context, message session.Submission) (session.SubmissionReceipt, <-chan session.Event, error) {
+	if !a.ComposedKnown() {
+		return session.SubmissionReceipt{}, nil, errors.New("engine: this engine cannot take pictures with a message; update it before sending")
+	}
+	if err := a.refuseUnkeptMarks(message); err != nil {
+		return session.SubmissionReceipt{}, nil, err
+	}
+	args := argsOf(message)
+	if !args.composed() && !a.MessageReceiptsKnown() {
+		return session.SubmissionReceipt{}, nil, errors.New("engine: this host cannot acknowledge an ordinary message identity; update it before requesting a receipt")
+	}
+	args.WantReceipt = true
+	payload, err := a.c.call(ctx, MethodSubmit, args)
+	if err != nil {
+		return session.SubmissionReceipt{}, nil, err
+	}
+	var ref StreamRef
+	if err := json.Unmarshal(payload, &ref); err != nil {
+		return session.SubmissionReceipt{}, nil, err
+	}
+	if ref.Receipt == nil {
+		return session.SubmissionReceipt{}, nil, errors.New("engine: the engine took the message without saying how")
+	}
+	return *ref.Receipt, a.c.stream(ref.Stream).events(), nil
+}
+
+// ComposedKnown is what the engine said in its welcome about taking a message
+// that carries pictures.
+func (a *Agent) ComposedKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.ComposedMessages })
+}
+
+// SteerMessage is Steer with what the door knows about the correction beyond
+// its words ([session.Agent.SteerMessage]). An engine that has not said it keeps
+// a correction's mark is refused BEFORE ANYTHING IS SENT: run as its words
+// alone it would lose what the person read, and the correction would already be
+// in the turn. A submission with no mark is Steer.
+func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, error) {
+	if err := a.refuseUnkeptMarks(message); err != nil {
+		return nil, err
+	}
+	if argsOf(message).composed() {
+		return nil, errors.New("engine: a correction carries no pictures; send them as a message")
+	}
+	if !argsOf(message).marked() {
+		return a.Steer(message.Text)
+	}
+	if !a.SteerMarksKnown() {
+		return nil, errors.New("engine: this engine cannot keep a correction's description; update it before sending")
+	}
+	return a.open(nil, MethodSteer, argsOf(message))
+}
+
+// FollowUpMessage is FollowUp with what the door knows about the message beyond
+// its words ([session.Agent.FollowUpMessage]), refused before anything is sent
+// to an engine that has not said it keeps a follow-up's mark. Its stream is
+// remembered for the take-back exactly as a plain follow-up's is.
+func (a *Agent) FollowUpMessage(message session.Submission) (<-chan session.Event, error) {
+	if err := a.refuseUnkeptMarks(message); err != nil {
+		return nil, err
+	}
+	if argsOf(message).composed() {
+		return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
+	}
+	if !argsOf(message).marked() {
+		// A creation context alone goes to an engine that keeps marks, and is
+		// left behind by one that does not: the team is then unknown there.
+		if message.Creation != nil && a.FollowUpMarksKnown() {
+			return a.followUp(argsOf(message))
+		}
+		return a.FollowUp(message.Text)
+	}
+	if !a.FollowUpMarksKnown() {
+		return nil, errors.New("engine: this engine cannot keep a follow-up's description; update it before sending")
+	}
+	return a.followUp(argsOf(message))
+}
+
+// MessageMarksKnown, SteerMarksKnown and FollowUpMarksKnown are what the
+// engine said in its welcome about keeping a mark on Submit, Steer and
+// FollowUp, so a surface can refuse a marked message before it queues it.
+func (a *Agent) MessageMarksKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageMarks })
+}
+
+func (a *Agent) SteerMarksKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.SteerMarks })
+}
+
+func (a *Agent) FollowUpMarksKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.FollowUpMarks })
+}
+
+func (a *Agent) welcomeSays(fact func(Welcome) bool) bool {
+	a.c.mu.Lock()
+	defer a.c.mu.Unlock()
+	return fact(a.c.welcome)
+}
+
+// QueuedMarksKnown is whether the engine keeps a queued mark ([Welcome.QueuedMarks]).
+func (a *Agent) QueuedMarksKnown() bool { return a.c.Welcome().QueuedMarks }
+
 // SubmitBash explicitly runs the person's command; ordinary Submit never
 // interprets message content as executable shell syntax.
 func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -1830,7 +2026,12 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []session.I
 // because the take-back ([Agent.UnqueueFollowUp]) names the stream and the wire
 // needs the id that channel stands for.
 func (a *Agent) FollowUp(text string) (<-chan session.Event, error) {
-	payload, err := a.c.call(nil, MethodFollowUp, SubmitArgs{Text: text})
+	return a.followUp(SubmitArgs{Text: text})
+}
+
+// followUp is the FollowUp call's one body, plain or marked.
+func (a *Agent) followUp(args SubmitArgs) (<-chan session.Event, error) {
+	payload, err := a.c.call(nil, MethodFollowUp, args)
 	if err != nil {
 		return nil, err
 	}
@@ -1950,6 +2151,13 @@ func (a *Agent) InterruptFor(door session.StopDoor) {
 	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door)})
 }
 
+// InterruptWithin is a person's stop with its bound on it: the engine abandons
+// a turn that has not let go by then ([InterruptArgs]). Like every stop it
+// does not wait and reports nothing.
+func (a *Agent) InterruptWithin(grace time.Duration) {
+	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(session.StopByPerson), Within: grace.Milliseconds()})
+}
+
 // AnswerLaneOffer answers the question a stalled PINNED lane raises: the
 // machine this person named has gone quiet, there is somewhere else to go, and
 // a pin is asked rather than overridden. The `y` they pressed takes this road
@@ -2067,6 +2275,33 @@ func (a *Agent) DetachAndWait() error {
 // PERF.md pins it: a View over --host issues zero far calls).
 func (a *Agent) Model() string { return a.c.facts.read().Model }
 
+// SetConversationModels is an acknowledged, non-interrupting conversation pick.
+func (a *Agent) SetConversationModels(pair session.ConversationModels) ([]session.ModelSwitch, error) {
+	raw, err := a.c.call(nil, MethodSetConversationModels, pair)
+	if err != nil {
+		return nil, err
+	}
+	var notes []session.ModelSwitch
+	if err := json.Unmarshal(raw, &notes); err != nil {
+		return nil, err
+	}
+	return notes, nil
+}
+
+func (a *Agent) SetAutomaticModels(enabled bool) error {
+	_, err := a.c.call(nil, MethodSetAutomaticModels, enabled)
+	return err
+}
+
+func (a *Agent) LastModel() string { return a.ModelIdentity().Last }
+
+func (a *Agent) ModelIdentity() session.ModelIdentity {
+	if state := a.c.facts.read().ModelIdentity; state != nil {
+		return *state
+	}
+	return session.ModelIdentity{Selected: a.Model()}
+}
+
 // SetModel swaps it, and the surface's own copy moves with it.
 //
 // THE LOCAL WRITE IS NOT A SECOND AUTHORITY. The engine announces the change to
@@ -2074,8 +2309,31 @@ func (a *Agent) Model() string { return a.c.facts.read().Model }
 // what is assumed here; the assumption only covers the round trip, which is the
 // gap in which a person who pressed a key is looking at the row it changed.
 func (a *Agent) SetModel(model string) {
+	a.c.settingError.Store(&settingResult{err: a.SetModelChecked(model)})
+}
+
+// SetModelChecked reports this call's ownership refusal with the ordinary RPC policy.
+func (a *Agent) SetModelChecked(model string) error {
+	previous := a.Model()
 	a.c.facts.setModel(model)
-	_, _ = a.c.call(nil, MethodSetModel, model)
+	_, err := a.c.call(nil, MethodSetModel, model)
+	var refusal *executor.WorkRefusal
+	if !errors.As(err, &refusal) {
+		err = nil
+	} else {
+		a.c.facts.setModel(previous)
+	}
+	return err
+}
+
+type settingResult struct{ err error }
+
+// SettingError reads the last ownership refusal without crossing the wire.
+func (a *Agent) SettingError() error {
+	if result := a.c.settingError.Load(); result != nil {
+		return result.err
+	}
+	return nil
 }
 
 // SetSpendRail waits for the engine to bind the new conversation limit before
@@ -2083,6 +2341,24 @@ func (a *Agent) SetModel(model string) {
 func (a *Agent) SetSpendRail(usd float64) error {
 	_, err := a.c.call(nil, MethodSetSpendRail, usd)
 	return err
+}
+
+// SpendRail reads the conversation limit the engine checks its next turn
+// against, zero for none. An engine too old to say answers an error, which a
+// caller reports as not knowing rather than as no limit.
+func (a *Agent) SpendRail() (float64, error) {
+	raw, err := a.c.call(nil, MethodSpendRail, nil)
+	if err != nil {
+		return 0, err
+	}
+	var usd *float64
+	if err := json.Unmarshal(raw, &usd); err != nil {
+		return 0, err
+	}
+	if usd == nil || *usd < 0 {
+		return 0, errors.New("conversation limit response is not a non-negative amount")
+	}
+	return *usd, nil
 }
 
 // SetContextWindow is deliberately a no-op here. The surface's catalog belongs
@@ -2758,6 +3034,51 @@ func (c *Client) DeleteTask(file, id string) error {
 	return err
 }
 
+// MessageReceiptsKnown distinguishes hosts that can acknowledge plain text
+// from earlier composed-image-only hosts. A client checks before sending.
+func (a *Agent) MessageReceiptsKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageReceipts })
+}
+
+// MessageClientIDsKnown is whether the engine keeps a message's ClientID on its
+// own line ([Welcome.MessageClientIDs]). A call that carries one is refused
+// before it is sent to an engine that has not said so, because that engine
+// would run the words and drop the id without a word.
+func (a *Agent) MessageClientIDsKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageClientIDs })
+}
+
+// MessageFromKnown is whether the engine keeps who sent a message on the
+// person's behalf ([Welcome.MessageFrom]).
+func (a *Agent) MessageFromKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageFrom })
+}
+
+// refuseUnkeptMarks is the refusal for a message carrying a client id, a
+// sender or an attachment source this engine cannot keep, and nil for one that
+// carries none or whose engine can.
+func (a *Agent) refuseUnkeptMarks(message session.Submission) error {
+	if message.ClientID != "" && !a.MessageClientIDsKnown() {
+		return errors.New("engine: this engine cannot keep a message's client id; update it before sending")
+	}
+	if message.From != "" && !a.MessageFromKnown() {
+		return errors.New("engine: this engine cannot keep who sent a message; update it before sending")
+	}
+	for _, attachment := range message.Attachments {
+		if attachment.Source != nil && !a.AttachmentSourcesKnown() {
+			return errors.New("engine: this engine cannot keep an attachment's recorded source; update it before sending")
+		}
+	}
+	return nil
+}
+
+// AttachmentSourcesKnown is whether the engine keeps an attachment's recorded
+// source ([Welcome.AttachmentSources]). A call that carries one is refused
+// before it is sent to an engine that has not said so.
+func (a *Agent) AttachmentSourcesKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.AttachmentSources })
+}
+
 // WriterChanges lets an off-loop send wait for the writer's next pushed state.
 // It uses existing facts and adds neither a request nor a wire field.
 func (a *Agent) WriterChanges() <-chan struct{} { return a.c.facts.changes() }
@@ -2767,3 +3088,21 @@ func (a *Agent) LocalDurable() bool { a.c.mu.Lock(); defer a.c.mu.Unlock(); retu
 
 // SavingReceipts reports the two-way capability agreed in this connection's hello.
 func (a *Agent) SavingReceipts() bool { return a.c.Welcome().LocalSavingReceipts }
+
+// TakeSavingNotices also claims live sentences the window has not displayed.
+// The wire reader queues them before the closing reply, so they cannot arrive
+// after a successful close has handed this report to the restored terminal.
+func (a *Agent) TakeSavingNotices() []string {
+	a.c.mu.Lock()
+	defer a.c.mu.Unlock()
+	lines := append(a.c.liveSavingNotices, a.c.savingNotices...)
+	a.c.liveSavingNotices = nil
+	a.c.savingNotices = nil
+	return lines
+}
+
+func (c *Client) keepSavingNotices(lines []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.savingNotices = append(c.savingNotices, lines...)
+}

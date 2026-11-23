@@ -141,6 +141,8 @@ type Status struct {
 	Service
 	// Connected reports that codeaf holds usable keys for this service.
 	Connected bool
+	// Checked reports that this key connection's probe ran and passed.
+	Checked bool
 	// Account is the address the keys belong to. THE EMPTINESS LAW: an
 	// account we do not know is empty, never a placeholder — a screen that
 	// renders nothing is honest, one that renders "unknown" is not.

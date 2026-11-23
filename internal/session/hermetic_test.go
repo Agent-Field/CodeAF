@@ -36,13 +36,16 @@ package session
 
 import (
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/testutil"
 )
 
 func TestMain(m *testing.M) { os.Exit(runTests(m)) }
@@ -52,6 +55,10 @@ func TestMain(m *testing.M) { os.Exit(runTests(m)) }
 // call, and a package that leaks a directory per run to stop leaking files per
 // run has not fixed anything.
 func runTests(m *testing.M) int {
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintf(os.Stderr, "session tests: %v\n", err)
+		return 1
+	}
 	// The guard watches wherever this machine actually keeps its state: the real
 	// home, or the CODEAF_HOME a developer had already pointed somewhere else.
 	// It asks [home.InheritedDir] rather than [home.Dir] because Dir hands a
@@ -65,12 +72,18 @@ func runTests(m *testing.M) int {
 	// directory of its own runs here. See hermetic_checkout_test.go.
 	tree := watchTheCheckout()
 
+	// AND GO KEEPS THE DEVELOPER'S OWN MODULE CACHE, pinned before HOME moves.
+	// Unset, Go's module cache follows HOME, so a test that ran go made Go fetch
+	// the module's toolchain into the throwaway home on every run: half a
+	// gigabyte of read-only files that the cleanup below could not remove.
+	keepModuleCache()
+
 	root, err := os.MkdirTemp("", "codeaf-session-test-home-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "session tests: no temporary home: %v\n", err)
 		return 1
 	}
-	defer os.RemoveAll(root)
+	defer removeTestHome(root)
 	if err := os.Setenv("HOME", root); err != nil {
 		fmt.Fprintf(os.Stderr, "session tests: could not move HOME: %v\n", err)
 		return 1
@@ -92,7 +105,8 @@ func runTests(m *testing.M) int {
 	// PATH — so this is the whole of "no furrow here".
 	//
 	// A test that wants the rung installs a furrow of its own over the top of
-	// this with t.Setenv, which is restored for it on the way out.
+	// this with t.Setenv, which is restored for it on the way out; a test that
+	// seals through the product's own engine asks [sealEngine].
 	if err := os.Setenv("CODEAF_FURROW", filepath.Join(root, "no-furrow-in-the-tests")); err != nil {
 		fmt.Fprintf(os.Stderr, "session tests: could not pin furrow away: %v\n", err)
 		return 1
@@ -181,4 +195,48 @@ func grew(before, after map[string]bool) []string {
 	}
 	sort.Strings(added)
 	return added
+}
+
+// testFurrowEnvVar names a furrow binary for this suite's real-engine proofs.
+// It is separate from CODEAF_FURROW because runTests pins that one away.
+const testFurrowEnvVar = "CODEAF_TEST_FURROW"
+
+// sealEngine lifts this suite's furrow pin for one test that seals for real and
+// returns the engine codeaf itself would seal with. With CODEAF_TEST_FURROW
+// unset the lifted pin leaves the embedded engine, which `make furrow` stages
+// before every make test target; with neither, the test skips by name.
+func sealEngine(t *testing.T) string {
+	t.Helper()
+	t.Setenv(furrow.BinaryEnvVar, os.Getenv(testFurrowEnvVar))
+	return celltest.Engine(t)
+}
+
+// keepModuleCache pins GOMODCACHE to where this machine already keeps it, as Go
+// itself would compute it from the original GOPATH or home, unless it is set.
+func keepModuleCache() {
+	if os.Getenv("GOMODCACHE") != "" {
+		return
+	}
+	base := ""
+	if paths := filepath.SplitList(os.Getenv("GOPATH")); len(paths) > 0 && paths[0] != "" {
+		base = paths[0]
+	} else if dir, err := os.UserHomeDir(); err == nil {
+		base = filepath.Join(dir, "go")
+	}
+	if base != "" {
+		_ = os.Setenv("GOMODCACHE", filepath.Join(base, "pkg", "mod"))
+	}
+}
+
+// removeTestHome makes the throwaway home's folders writable before removing
+// it. Go and git leave read-only trees behind, and os.RemoveAll alone cannot
+// delete a file from a folder it may not write.
+func removeTestHome(root string) {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && entry.IsDir() {
+			_ = os.Chmod(path, 0o700)
+		}
+		return nil
+	})
+	_ = os.RemoveAll(root)
 }

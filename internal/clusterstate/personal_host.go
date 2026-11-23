@@ -26,7 +26,7 @@ func personalAllowed(cluster, actor, certificate string, read ReadRecord) (Code,
 	}
 	if raw != nil {
 		var d Device
-		if Decode(raw, &d) != nil || d.Revoked {
+		if Decode(raw, &d) != nil || d.Revoked || d.Kind == "client" {
 			return Unauthorized, nil
 		}
 	}

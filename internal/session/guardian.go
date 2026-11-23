@@ -118,13 +118,13 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	}
 	a.mu.Lock()
 	model := a.model
-	source := a.config.RolesSource
+	reader := readerFor(a.config, model)
 	closed := a.closed
 	a.mu.Unlock()
 	if closed {
 		return false
 	}
-	judge, err := roles.Resolve(roles.Source(source), roles.RoleGuardian, model)
+	judge, err := reader.Resolve(roles.RoleGuardian, model)
 	if err != nil {
 		return false
 	}

@@ -2,39 +2,114 @@ package chatlist
 
 import (
 	"fmt"
+	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
+// RelayStorageOffLive is the refusal for closed storage on a computer whose
+// chats move by blind pass-through (internal/syncsetup/livetransfer.go): what is
+// true there is that chats are not stuck, and that what still needs the relay's
+// storage waits.
+const RelayStorageOffLive = "chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)"
+
+// LiveCarriesChats answers whether blind pass-through is carrying this computer's
+// chats now. The program that owns the home sets it at startup; nothing that
+// leaves it unset (a test of the sentences, a library user) is told anything
+// but the ordinary refusal.
+var LiveCarriesChats func() bool
+
+// StorageOffSentence is what a refusal for storage that is closed says. ONE
+// PLACE DECIDES IT, because the same refusal reaches the person from the start
+// page, from a chat's notices and from the app, and a computer whose chats move
+// live must not tell them on one surface that they stay put. It also remembers
+// the words it gave, so a surface that said them can be told when they stop
+// being true ([StorageOffChanged]).
+func StorageOffSentence() string {
+	line := storageOffWords()
+	storageOffSaid.Lock()
+	storageOffSaid.line = line
+	storageOffSaid.Unlock()
+	return line
+}
+
+// storageOffWords is the sentence that is true on this computer now.
+func storageOffWords() string {
+	if carries := LiveCarriesChats; carries != nil && carries() {
+		return RelayStorageOffLive
+	}
+	return RelayStorageOff
+}
+
+// storageOffSaid is the sentence [StorageOffSentence] gave last, "" until one
+// was given.
+var storageOffSaid struct {
+	sync.Mutex
+	line string
+}
+
+// StorageOffChanged answers the sentence that now replaces the storage-off one
+// that was said, and true, when the words that are true on this computer are no
+// longer the ones it was given: another computer was paired after the old
+// sentence was shown, or the last one was removed after the new one was. It
+// answers false when none was said (nothing on screen needs replacing) or when
+// what was said is still true, and it answers each replacement once.
+func StorageOffChanged() (string, bool) {
+	storageOffSaid.Lock()
+	defer storageOffSaid.Unlock()
+	if storageOffSaid.line == "" {
+		return "", false
+	}
+	now := storageOffWords()
+	if now == storageOffSaid.line {
+		return "", false
+	}
+	storageOffSaid.line = now
+	return now, true
+}
+
 // The frozen sentences. Every surface takes its words
 // from here so a respelling happens once.
 const (
+	// Available describes a free lease while work admission acquires a new fence.
+	Available     = "This chat is available to continue here."
 	OfferContinue = "continue here"
 	// MoveHere is the verb for a chat another device is running right now, and
 	// ContinueVerb for one it let go of; the devices row offers them by name.
-	MoveHere     = "Move here"
-	ContinueVerb = "Continue here"
-	LostRace     = "another device continued this chat first"
-	NoIdentity   = "this machine has no identity yet: codeaf identity import"
-	SyncOff      = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
-	Unreachable  = "the sync service is not answering"
-	ReadTimedOut = "the sync service did not answer in time"
-	SyncPaused   = syncwords.UnknownOutage
-	SyncRestored = "this chat is syncing again"
-	ClockOff     = "this computer's clock is off by more than 5 minutes"
+	MoveHere        = "Move here"
+	ContinueVerb    = "Continue here"
+	LostRace        = "another device continued this chat first"
+	PickedUpAgain   = "%s picked this chat up again"
+	NoIdentity      = "this machine has no identity yet: codeaf identity import"
+	RelayStorageOff = "sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
+	SyncOff         = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
+	Unreachable     = "the sync service is not answering"
+	// TakeBackUnreachable explains why a released writer keeps a send unsent.
+	TakeBackUnreachable = Unreachable + ", so this chat cannot be taken back yet; your words are still in the box"
+	ReadTimedOut        = "the sync service did not answer in time"
+	SyncPaused          = syncwords.UnknownOutage
+	SyncRestored        = "this chat is syncing again"
+	ClockOff            = "this computer's clock is off by more than 5 minutes"
+
+	DevicesQuiet  = "Only this computer is here. Add another computer by pairing from a terminal with `codeaf pair`."
+	RemoveSelf    = "that is this device — remove it from another of your devices instead"
+	DeviceMissing = "that device is not in your list any more — `codeaf devices` shows the ones there are"
+
 	// What the relay's refusals say (one sentence each, in the order the
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
-	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
-	Removed        = removedChatStart + "run codeaf pair to bring it back"
+	relayFull      = "your sync space is full%s, so new turns stay on this computer"
+	Removed        = removedChatStart + "run codeaf pair --replace to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
 	tooManyNewIn   = "too many new identities from this network today — try again in about %s"
 	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	heldOn         = "held on %s"
+	workingOn      = "working on %s"
 	deviceOff      = "%s offline"
 	branchLine     = "%s from %s: merge / discard"
 	branchKeep     = "%s from %s: discard"
@@ -43,7 +118,8 @@ const (
 	lastHeldHere   = "this chat was last held here"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
-	supersededLine = "%s continued this chat; this window now only shows it"
+	keptTurns      = "kept %s from %s as a separate chat"
+	supersededLine = "%s continued this chat. This copy is read-only and may be behind"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
 	setupAsk       = "Set this machine up like %s had it?"
@@ -69,6 +145,9 @@ const (
 	OfferGotIt  = "got it"
 	SetupLater  = "/setup does this later"
 )
+
+// RelayStorageFull names shared capacity because it is separate from the person's quota.
+const RelayStorageFull = "sync is full for everyone right now, so new turns stay on this computer and go up when it has room"
 
 // namesShown is how many names a line of the setup card spells before it says
 // how many more there are.
@@ -147,6 +226,9 @@ func nameList(names []string) string {
 func StatusLine(r Row) string {
 	switch r.Status {
 	case Running:
+		if r.Working {
+			return fmt.Sprintf(workingOn, r.Device)
+		}
 		return fmt.Sprintf(heldOn, r.Device)
 	case Off:
 		return fmt.Sprintf(deviceOff, r.Device)
@@ -198,6 +280,26 @@ func TakeoverLine(r Row) string {
 	return line
 }
 
+// CopyLine is the sentence under the card raised for one copy folded onto a
+// chat's row: what [BranchLine] says of the copy, then, when every turn of it is
+// already in the chat, that discarding loses nothing, so the note on the row has
+// something to point at, and, when the chat has several copies, which of them
+// this is. nth counts from 1.
+func CopyLine(c BranchCopy, nth, of int, merge, separate bool) string {
+	line := BranchLine(c.Row("", ""), merge, separate)
+	if c.Redundant {
+		line += "; " + copyRedundantClause
+	}
+	if of > 1 {
+		line += fmt.Sprintf(" (copy %d of %d)", nth, of)
+	}
+	return line
+}
+
+// copyRedundantClause is said of a copy whose every turn is already in its
+// chat, in the note on the row and on the card for that copy alike.
+const copyRedundantClause = "already in this chat, so discarding loses nothing"
+
 // CopiesLine summarizes branch copies collapsed into a main chat row: how many
 // copies exist, what a copy is, and whether discarding loses anything. Empty
 // when there are no copies (the emptiness law).
@@ -208,7 +310,7 @@ func CopiesLine(copies []BranchCopy) string {
 	count := copiesWord(len(copies))
 	allRedundant, extraTurns := copiesLoss(copies)
 	if allRedundant {
-		return fmt.Sprintf("%s (unsent turns set aside; already in this chat, so discarding loses nothing)", count)
+		return fmt.Sprintf("%s (unsent turns set aside; %s)", count, copyRedundantClause)
 	}
 	if extraTurns > 0 {
 		return fmt.Sprintf("%s (unsent turns set aside; discarding archives %s not in this chat)", count, turns(extraTurns))
@@ -287,6 +389,11 @@ func KeptEdits(n uint32, device string) string {
 	return fmt.Sprintf(keptEdits, turns(n), device)
 }
 
+// KeptTurns names only the saved turns when unsaved calls remain on this device.
+func KeptTurns(n uint32, device string) string {
+	return fmt.Sprintf(keptTurns, turns(n), device)
+}
+
 // CopiesCame is said after a takeover brought the working copies of tasks that
 // had not landed, named by task. It says nothing when none came (the emptiness
 // law), so the caller can join it to other sentences without a test.
@@ -300,13 +407,12 @@ func CopiesCame(names []string) string {
 	return fmt.Sprintf(copiesCame, strings.Join(names, ", "))
 }
 
-// RelayFull is said when the relay has no room left. It names the ceiling the
-// relay told us, and says nothing of one when the relay named none (the
-// emptiness law): a relay run on its own disk has no number to give.
+// RelayFull names the identity's ceiling so shared capacity is not blamed on the person.
+// It omits the number when the relay names none, as a relay on its own disk does not.
 func RelayFull(limitBytes int64) string {
 	size := ""
 	if limitBytes > 0 {
-		size = " (" + bytesSize(limitBytes) + ")"
+		size = " (" + BytesSize(limitBytes) + ")"
 	}
 	return fmt.Sprintf(relayFull, size)
 }
@@ -340,14 +446,18 @@ func waitWords(wait time.Duration) string {
 // ceilUnits is wait in whole units of unit, rounded up.
 func ceilUnits(wait, unit time.Duration) int { return int((wait + unit - 1) / unit) }
 
-// bytesSize spells a byte count in the largest binary unit it reaches, without
-// trailing zeros: 5 GiB, 1.5 GiB, 512 MiB.
-func bytesSize(n int64) string {
-	const mib, gib = 1 << 20, 1 << 30
-	if n >= gib {
-		return fmt.Sprintf("%g GiB", float64(n)/gib)
+// BytesSize keeps usage and refusal amounts in the same binary units, rounded
+// to one decimal place so a stored total does not expose a long fraction.
+func BytesSize(n int64) string {
+	for _, unit := range []struct {
+		bytes int64
+		name  string
+	}{{1 << 40, "TiB"}, {1 << 30, "GiB"}, {1 << 20, "MiB"}, {1 << 10, "KiB"}} {
+		if n >= unit.bytes {
+			return fmt.Sprintf("%g %s", math.Round(float64(n)/float64(unit.bytes)*10)/10, unit.name)
+		}
 	}
-	return fmt.Sprintf("%g MiB", float64(n)/mib)
+	return fmt.Sprintf("%d B", n)
 }
 
 // Superseded is said to a driver whose lease another device took over.
@@ -380,7 +490,7 @@ func Moved(from string, elapsed time.Duration, hadRunning bool) string {
 // IsRemovedNotice accepts the wire spelling from earlier engines as well as
 // each current reading place, so removal keeps its recovery behavior.
 func IsRemovedNotice(text string) bool {
-	return text == Removed || text == RemovedChat || text == LegacyRemoved
+	return text == Removed || text == RemovedChat || text == LegacyRemoved || text == earlierRemoved
 }
 
 // LegacySyncNotice preserves the vocabulary an older surface recognizes.
@@ -405,4 +515,38 @@ const (
 	RemovedChat = removedChatStart + "/pair brings it back"
 	// LegacyRemoved is retained for old surfaces that recognize terminal guidance by text.
 	LegacyRemoved = removedChatStart + "run `codeaf pair` to bring it back"
+	// earlierRemoved is Removed as engines before --replace wrote it into notices.
+	earlierRemoved = removedChatStart + "run codeaf pair to bring it back"
 )
+
+// BigMoveBytes is the size of chat folder over which moving it asks first: a
+// copy that large takes minutes, so the person decides before it starts.
+const BigMoveBytes = 100 << 20
+
+// MoveSize reads a move's size the way the warning says it: "1.4 GB", "412 MB".
+func MoveSize(bytes uint64) string {
+	if bytes >= 1<<30 {
+		return fmt.Sprintf("%.1f GB", float64(bytes)/(1<<30))
+	}
+	return fmt.Sprintf("%d MB", (bytes+(1<<19))>>20)
+}
+
+// BigMoveLine is the warning before a big move, "" for a chat small enough to
+// move without one, or one this computer already holds (r.Mine).
+func BigMoveLine(r Row) string {
+	if r.Mine || r.Size <= BigMoveBytes {
+		return ""
+	}
+	where := "a folder"
+	if r.Folder != "" {
+		where = "the " + r.Folder + " folder"
+	}
+	return fmt.Sprintf("this chat works in %s on %s; moving it copies that folder too: %s, which can take several minutes", where, nonempty(r.Device), MoveSize(r.Size))
+}
+
+func nonempty(device string) string {
+	if device == "" {
+		return "the other computer"
+	}
+	return device
+}

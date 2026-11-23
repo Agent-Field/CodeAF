@@ -63,6 +63,12 @@ func TestTaskNameNeededTellsANameFromASentenceOrAPath(t *testing.T) {
 		{"/var/folders/j7/59f75dnd", true},
 		{"read /Users/me", true},
 		{`C:\Users\me`, true},
+		// A FILE'S NAME IS FILING TOO: a task writing ten notes was renamed
+		// after the first of them while it ran. A version number is still a
+		// name, because its last part has no letter.
+		{"note1.md", true},
+		{"README", false},
+		{"v1.2.3", false},
 	} {
 		if got := taskNameNeeded(c.title); got != c.want {
 			t.Errorf("taskNameNeeded(%q) = %v, want %v", c.title, got, c.want)
@@ -87,6 +93,7 @@ func TestCleanTaskNameCutsToThreeWordsAndRefusesWhatIsNotAName(t *testing.T) {
 		{"", ""},
 		{"   ", ""},
 		{"/var/folders/j7/59f75dnd", ""},
+		{"note1.md", ""},
 		// THE THREE ANSWERS OBSERVED IN #942, and the shapes beside them. A
 		// reasoning namer answered its plan instead of a label and the reader took
 		// the first three words of it. A clause about the speaker is refused BY ITS

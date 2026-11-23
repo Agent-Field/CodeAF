@@ -124,8 +124,9 @@ func TestAFanOutPlannerIsSentBackFromAPlaceholderCheckAndNoFixIsSpawned(t *testi
 			t.Errorf("part %s has checks %q, want its own %s", task.Title, task.Checks, file)
 		}
 	}
-	if parts != 20 {
-		t.Errorf("part tasks = %d, want 20", parts)
+	// L-LOOP2 C3d: valid checks still consume the planner's worker allowance.
+	if parts != 5 {
+		t.Errorf("part tasks = %d, want 5", parts)
 	}
 	if outcome != run.OutcomeDone {
 		t.Errorf("outcome = %q, want done; summary=%+v", outcome, summary)

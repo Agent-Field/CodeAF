@@ -410,17 +410,20 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	if len(lives) > 0 {
 		showActivity = false
 	}
+	appendVirtualDisclosure := func(f workfold) {
+		if wasUser || wasBlock {
+			gap()
+		}
+		out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
+		if a.workFoldOpen(d, f.key) {
+			out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
+		}
+		wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
 		if f, ok := folds[i]; ok && f.virtual {
-			if wasUser || wasBlock {
-				gap()
-			}
-			out = append(out, row{text: a.pal.dim(fit(a.workfoldLabel(d, f), max(0, width-workIndentCols(width)))), entry: -1, hit: hitWorkFold, turn: f.key})
-			if a.workFoldOpen(d, f.key) {
-				out = append(out, a.completionRows(f.completions, max(0, width-workIndentCols(width)))...)
-			}
-			wasCluster, wasBlock, wasUser, wasNote = true, false, false, false
+			appendVirtualDisclosure(f)
 		}
 		if e.completion != nil {
 			continue
@@ -628,6 +631,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			end := i + 1
 			for end < len(es) && es[end].kind == entryDone {
 				end++
+			}
+			// Later landings can own disclosures too, even when the whole
+			// batch suppresses their superseded decision cards.
+			for at := i + 1; at < end; at++ {
+				if f, ok := folds[at]; ok && f.virtual {
+					appendVirtualDisclosure(f)
+				}
 			}
 			if cards := a.doneCluster(d, nil, i, end, width); len(cards) > 0 {
 				gap()
@@ -2088,6 +2098,10 @@ const (
 	// a narrow frame gives up a number rather than the one segment saying that
 	// the session has stopped and is waiting for them.
 	segQuestions
+	// segFiles is `files arriving · 40 of 112 MB` while workspace files arrive in
+	// the background after the chat opens, or the plain-words failure and retry
+	// when they could not arrive (C2, C4).
+	segFiles
 	// segSeal is `not sealed`, drawn while the last seal of the conversation's
 	// calls failed and never otherwise (sealseam.go). It is not in
 	// [dropOrder]: a narrow frame gives up a number before the fact that there
@@ -2679,6 +2693,7 @@ func (a *app) telemetry(width int) []hudPart {
 	// link's own reason said one rung louder: the numbers are not moving, and
 	// this is the segment that says whose move it is (question.go).
 	add(segQuestions, a.questionSegment())
+	add(segFiles, a.filesSegment())
 	add(segSeal, a.sealSegment())
 	if word, painted := a.stateSegment(); word != "" {
 		parts = append(parts, hudPart{kind: segState, text: word, paint: painted})
@@ -2798,6 +2813,11 @@ func (a *app) paintPart(part hudPart) string {
 		// own argument at the one hue this surface reserves for a person being
 		// waited on (question.go, styles.go's [hueWarn]).
 		return a.pal.warn(part.text)
+	case segFiles:
+		if a.filesMoveFailed() {
+			return a.pal.warn(part.text)
+		}
+		return a.pal.dim(part.text)
 	case segSeal:
 		// LOUD FOR WHAT IT MEANS, [segYolo]'s argument: it is true for exactly as
 		// long as it is drawn, so its age says nothing.
@@ -3246,6 +3266,9 @@ func (a *app) contextSegment() (string, bool) {
 // tiny, because "there is a cache and it is barely hitting" is a different fact
 // from the empty segment's "there is no cache accounting here at all".
 func (a *app) warmSegment() string {
+	if a.cacheSaved == 0 && len(a.cacheReadByModel) > 0 {
+		a.repriceCache()
+	}
 	share, ok := session.Usage{Input: a.inputTokens, CacheRead: a.cacheRead}.CachedShare()
 	if !ok {
 		return ""

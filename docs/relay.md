@@ -48,25 +48,22 @@ either to stay awake. From a joined computer using this relay:
 
 ```sh
 codeaf cluster status
-codeaf cluster lead
 ```
 
-Status shows this computer, the leader, voters and learners when known, after a fresh
-majority read. Lead catches up this computer, replaces the third anchor's vote through
-a joint membership change, finishes that change with the anchor still learning, then
-transfers leadership. Success prints `computer <node> is coordinating` followed by its
-term, revision and read barrier. A pending request is not success; retrying lead reuses
-the saved signed request. Keep codeaf open: without an open terminal the member runs
-only for that command. Leadership does not transfer chat ownership or fetch content.
+Status shows which computer coordinates, along with the voters and learners when
+known, after a fresh majority read. In this release the coordinating computer cannot
+be chosen by hand: `codeaf cluster lead` is an unknown command. Tracked in issue #2559.
+Leadership does not transfer chat ownership or fetch content.
 
-On a clean terminal quit, that personal leader releases its idle chats and returns
-coordination to an anchor before stopping. Returning coordination adds at most five
-seconds (`syncsetup.LeaderQuitWithin`); unavailable anchors retain ordinary fallback.
-When that personal leader sleeps, crashes, loses its connection or turns sync off, the two remaining anchors
-can elect a leader and restore the third anchor. Healthy fallback targets about
+If a personal leader remains from an earlier release, on a clean terminal quit it
+releases its idle chats and returns coordination to an anchor before stopping.
+Returning coordination adds at most five seconds (`syncsetup.LeaderQuitWithin`);
+unavailable anchors retain ordinary fallback. When that personal leader sleeps,
+crashes, loses its connection or turns sync off, the two remaining anchors can
+elect a leader and restore the third anchor. Healthy fallback targets about
 65 seconds; delays and partitions can take longer. Returning computers remain learners
-until explicitly asked to lead again. Losing the personal leader and either voting
-anchor leaves no majority. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
+and cannot be chosen to lead by hand in this release. Losing the personal leader
+and either voting anchor leaves no majority. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
 Saved local chats remain. There is no phone app yet, so a phone cannot lead yet.
 
 ## Storage layout and capacity

@@ -1,6 +1,6 @@
 # Attaching files
 
-## Pasting a lot of text
+## How do I share a file with it — attach files or paste text
 
 A paste of **3 or more lines** becomes one compact `[paste 1 · 42 lines]` chip in the
 message box. One- and two-line pastes stay ordinary text. A paste made only of real file
@@ -50,7 +50,16 @@ Inside the paste editor, `ctrl+x` does the same thing. There is no recovery afte
 is discarded, though ordinary unsent draft recovery still applies to the rest of the
 message.
 
-## Send a file with your message — /attach, how do I share a file with codeaf, how do I send it a photo or an image
+## Share a file with it — give codeaf a file to read
+
+To share a file with codeaf, attach it to your next message: `/attach <path>` (or `/upload
+<path>`, the same command) puts the file on the tray above the message box, and it goes with
+the next thing you send. Dropping the file onto the terminal does the same. A bare `/attach`
+opens a browser so you can find the file and look at it first. This is how you hand codeaf a
+log, a CSV, a PDF or a screenshot; "Send a file with your message" below has the path rules
+and the tray, and "Every refusal /attach can give you" has what it says when it cannot.
+
+## Send a file with your message — /attach, how do I share a file with it, how do I share a file with codeaf, photos and images
 
 `/attach <path>` puts an ordinary file — a log, a CSV, a PDF, a stack trace you saved —
 on the tray above the message box, and it goes with the next thing you send.
@@ -613,3 +622,8 @@ An arrival selects the best match unless you chose a row with the arrows since
 the query last changed; that choice survives while still offered. A changed query
 returns to the best match. On home, clicking a row inserts it immediately. A space
 or punctuation after a chosen mention keeps the list closed so you can write on.
+
+The app records sound and video length only when the file's bounded header
+probe can establish it. A larger or unsupported container may still play while
+its recorded length stays unknown; range notes remain unavailable for that
+source. Playback time from the browser does not fill in the missing fact.

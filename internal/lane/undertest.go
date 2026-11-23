@@ -41,6 +41,24 @@ import (
 // for the cache. None of them can be reached by forgetting.
 var underTest = testing.Testing()
 
+// BeforeCompactionInTests holds the real store before compaction can write.
+// Call the returned restore only after the writer has stopped.
+func BeforeCompactionInTests(before func()) func() {
+	if !testing.Testing() {
+		panic("lane: compaction hook requires a test binary")
+	}
+	s := Default().Store().(*store)
+	s.mu.Lock()
+	previous := s.beforeCompact
+	s.beforeCompact = before
+	s.mu.Unlock()
+	return func() {
+		s.mu.Lock()
+		s.beforeCompact = previous
+		s.mu.Unlock()
+	}
+}
+
 // inheritedRoot is the state root this process was STARTED with, read once at
 // package initialisation — before any test has run, because `t.Setenv` can only
 // happen inside one.

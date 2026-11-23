@@ -35,7 +35,7 @@ func waitOf(t *testing.T, err error) time.Duration {
 	return b.flush(context.Background())
 }
 
-func TestAFullRelayIsToldAtOnceAndNotRetried(t *testing.T) {
+func TestAFullRelayIsToldAtOnceAndWaitsAnHour(t *testing.T) {
 	r := newRig(t)
 	b, told := refused(t, r, blobstore.ErrFull)
 	if d := b.flush(context.Background()); d != MaxHalt {
@@ -44,6 +44,43 @@ func TestAFullRelayIsToldAtOnceAndNotRetried(t *testing.T) {
 	b.flush(context.Background())
 	if len(*told) != 1 || (*told)[0] != chatlist.RelayFull(0) {
 		t.Fatalf("told %q, want the full sentence once", *told)
+	}
+}
+
+func TestSharedStorageRefusalHasItsOwnSentenceAndWaitsAnHour(t *testing.T) {
+	r := newRig(t)
+	b, told := refused(t, r, blobstore.Capped(blobstore.ErrRelayFull, 5<<30))
+	if d := b.flush(context.Background()); d != MaxHalt {
+		t.Fatalf("wait after shared storage fills = %v, want %v", d, MaxHalt)
+	}
+	b.flush(context.Background())
+	if len(*told) != 1 || (*told)[0] != chatlist.RelayStorageFull {
+		t.Fatalf("told %q, want the shared-storage sentence once without an identity ceiling", *told)
+	}
+}
+
+func TestFullRefusalsRetryAfterAnHourWithoutReopening(t *testing.T) {
+	for _, err := range []error{blobstore.ErrFull, blobstore.ErrRelayFull} {
+		t.Run(err.Error(), func(t *testing.T) {
+			r := newRig(t)
+			b, _ := refused(t, r, err)
+			sl := newFakeSleeper(r.clock)
+			b.Sleep = sl.Sleep
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() { done <- b.Run(ctx) }()
+			t.Cleanup(func() { cancel(); <-done })
+			sl.settleOn(MaxHalt)
+			h := r.seal(map[string]string{"a": "2"})
+			note(b, h)
+			r.store.set(nil, nil)
+			sl.advance(MaxHalt - time.Second)
+			if b.Pending() == 0 || headIfAny(r) == h {
+				t.Fatal("sync retried before the hour elapsed")
+			}
+			sl.advance(time.Second)
+			eventually(t, "the pending turn to upload after an hour", func() bool { return headIfAny(r) == h && b.Pending() == 0 })
+		})
 	}
 }
 

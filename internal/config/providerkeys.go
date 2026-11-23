@@ -39,7 +39,7 @@ func secretRowKeys() []string {
 // config.json that cannot be read is an error, never an empty answer, so a
 // damaged file is not mistaken for a person who removed their keys.
 func ReadProviderKeys(profileDir string) (ProviderKeys, error) {
-	values, err := readProfileConfig(profileDir)
+	values, err := readProfileConfigStrict(profileDir)
 	if err != nil {
 		return ProviderKeys{}, err
 	}

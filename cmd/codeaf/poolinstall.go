@@ -70,7 +70,21 @@ func installNonce(poolDir string) (string, error) {
 	if err := os.MkdirAll(poolDir, installDirMode); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(nonce), installFileMode); err != nil {
+	// Replace the identity atomically so a cancelled process never leaves a
+	// partial nonce that would change the install's identity on restart.
+	file, err := os.CreateTemp(poolDir, "install-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.WriteString(nonce); err != nil {
+		file.Close()
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(file.Name(), path); err != nil {
 		return "", err
 	}
 	return nonce, nil
@@ -84,7 +98,7 @@ func installNonce(poolDir string) (string, error) {
 // switch and never at a person. The rows a batch did not reach stay pending,
 // where the next judged run and the next start-up try them again.
 func poolPush(ctx context.Context, profileDir string, cfg poolcfg.Config, budget time.Duration) {
-	if !cfg.CanSend() || config.PoolTelemetryRowsOffAt(profileDir) {
+	if ctx.Err() != nil || !cfg.CanSend() || config.PoolTelemetryRowsOffAt(profileDir) {
 		return
 	}
 	poolDir := config.ProfilePath(profileDir, "pool")
@@ -125,6 +139,10 @@ type poolSendTransport struct {
 func (transport poolSendTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	if !transport.cfg.CanSend() || config.PoolTelemetryRowsOffAt(transport.profileDir) {
 		return nil, errors.New("model pool sending is off")
+	}
+	// Shutdown also closes the retry path when a relay replies after cancellation.
+	if err := request.Context().Err(); err != nil {
+		return nil, err
 	}
 	return http.DefaultTransport.RoundTrip(request)
 }

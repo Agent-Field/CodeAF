@@ -151,7 +151,7 @@ func (a *Agent) shapeBrief(ctx context.Context, request string) (shapedBrief, bo
 	}
 
 	a.mu.Lock()
-	call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RoleShaper, a.model)
+	call, err := readerFor(a.config, a.model).ResolveCall(roles.RoleShaper, a.model)
 	closed := a.closed
 	a.mu.Unlock()
 	if closed || err != nil || strings.TrimSpace(call.Model) == "" {

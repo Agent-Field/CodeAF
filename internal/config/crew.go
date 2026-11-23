@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -284,20 +286,20 @@ func ClearCrewPins(profileDir string) error {
 }
 
 // CrewPinAllowed says why a pin may not be written, or nil. The model must be
-// one the allowed rule admits — by its figures when the catalog knows it, by
-// name otherwise — and a pinned provider must be connected and must reach it.
+// one the allowed rule admits ON THE ROUTE THE PIN RUNS — by its figures when
+// the catalog knows it, by name otherwise — and a pinned provider must be
+// connected and must reach it.
 func CrewPinAllowed(profileDir string, pin CrewPin) error {
 	rule := CrewAllowedAt(profileDir)
 	model, known := crewCatalogModel(pin.Model)
-	switch {
-	case known && !rule.AdmitsModel(model):
+	route := resolveCrewPin(pin, CrewProvidersAt(profileDir)).Provider
+	if !crewPinAdmitted(rule, pin.Model, route) {
+		if !known && rule.Base != crewroute.BaseAll {
+			return fmt.Errorf("%s is not in the catalog, so the rule %s cannot admit it by price or licence · name it with /crew models +%s",
+				pin.Model, rule.String(), pin.Model)
+		}
 		return fmt.Errorf("%s is outside the models you allow (%s) · widen them with /crew models +%s",
 			pin.Model, rule.String(), crewroute.ShortModel(pin.Model))
-	case !known && rule.Base != crewroute.BaseAll && !rule.NamesModel(pin.Model):
-		return fmt.Errorf("%s is not in the catalog, so the rule %s cannot admit it by price or licence · name it with /crew models +%s",
-			pin.Model, rule.String(), pin.Model)
-	case !known && rule.Base == crewroute.BaseAll && !rule.AdmitsModel(crewroute.Model{ID: pin.Model}):
-		return fmt.Errorf("%s is outside the models you allow (%s)", pin.Model, rule.String())
 	}
 	if pin.Provider != "" {
 		provider, ok := crewProviderByID(CrewProvidersAt(profileDir), pin.Provider)
@@ -317,6 +319,19 @@ func CrewPinAllowed(profileDir string, pin CrewPin) error {
 	return nil
 }
 
+// crewPinAdmitted is whether the rule admits a pinned model on the route it
+// runs. A model the catalog knows is judged by its figures; one it does not
+// know cannot be judged by a price or a licence, so under `open` or a price it
+// is admitted only by name, and under `all` or a list exactly as any model.
+func crewPinAdmitted(rule crewroute.Allowed, id, provider string) bool {
+	base, _ := roles.SplitEffort(strings.TrimSpace(id))
+	model, known := crewCatalogModel(base)
+	if !known {
+		model = crewroute.Model{ID: stripCrewRoute(base), PromptPrice: math.Inf(1), CompletionPrice: math.Inf(1)}
+	}
+	return rule.AdmitsOn(model, provider)
+}
+
 // ── allowed models and the cap ──────────────────────────────────────────────
 
 // CrewAllowedAt is the allowed-models rule. A rule that does not parse — a
@@ -332,7 +347,7 @@ func CrewAllowedAt(profileDir string) crewroute.Allowed {
 }
 
 // SetCrewAllowed writes the rule in its canonical spelling, refusing one that
-// does not parse and one that would leave a pinned seat outside it.
+// does not parse.
 func SetCrewAllowed(profileDir, raw string) error {
 	rule, err := crewroute.ParseAllowed(raw)
 	if err != nil {
@@ -352,18 +367,26 @@ func ModifyCrewAllowed(profileDir string, add bool, word string) error {
 }
 
 // writeCrewAllowed is the rule's one writer.
+//
+// A RULE THAT LEAVES A PINNED ROLE OUTSIDE IS WRITTEN, AND THE PIN IS KEPT. The
+// pin is still the person's word about that role and is not deleted behind
+// their back; until the model is allowed again or the pin is removed, the role
+// is routed like any unpinned one and every task admitted says so
+// ([CrewPinBlockedAt], the decision's warnings). Refusing the rule instead left
+// a person who unticked one model with a list they could not edit.
 func writeCrewAllowed(profileDir string, rule crewroute.Allowed) error {
-	for _, seat := range crewroute.Seats {
-		pin, ok := CrewPinAt(profileDir, seat)
-		if !ok {
-			continue
-		}
-		if model, known := crewCatalogModel(pin.Model); (known && !rule.AdmitsModel(model)) || (!known && rule.Base != crewroute.BaseAll && !rule.NamesModel(pin.Model)) {
-			return fmt.Errorf("your %s is pinned to %s, which that rule leaves out · /crew unpin %s first, or add +%s",
-				seat, pin.Model, seat, crewroute.ShortModel(pin.Model))
-		}
-	}
 	return writeProfileValue(profileDir, KeyCrewAllowed, rule.String())
+}
+
+// CrewPinBlockedAt is whether a role's saved pin is one the allowed models no
+// longer admit, which leaves the role routed by Auto.
+func CrewPinBlockedAt(profileDir string, seat crewroute.Seat) bool {
+	pin, ok := CrewPinAt(profileDir, seat)
+	if !ok {
+		return false
+	}
+	route := resolveCrewPin(pin, CrewProvidersAt(profileDir)).Provider
+	return !crewPinAdmitted(CrewAllowedAt(profileDir), pin.Model, route)
 }
 
 // CrewCapAt is the daily cap on crew spend, zero for none.
@@ -688,6 +711,19 @@ type CrewProvider struct {
 	// collides lists the catalog vendors whose ids this connection's Written
 	// prefix would capture, so the default route spells them `openrouter/…`.
 	collides map[string]bool
+	// own is a direct metered connection's OWN price facts, from its own
+	// cached listing ([catalog.OwnPrices]), keyed by the id it lists. The
+	// default service's own prices are the catalog's and are not kept here.
+	own map[string]catalog.PriceFact
+}
+
+// ownPrice is what this connection's own listing published for a send, and
+// whether it is a direct metered route that needs one at all.
+func (p CrewProvider) ownPrice(r crewroute.Route) (fact catalog.PriceFact, needs bool) {
+	if p.ID == modelsource.DefaultID || r.Kind != crewroute.Metered {
+		return catalog.PriceFact{}, false
+	}
+	return p.own[strings.ToLower(strings.TrimPrefix(r.Send, p.Written+"/"))], true
 }
 
 // crewVendors maps a direct connection to the CATALOG vendor prefixes it
@@ -781,6 +817,8 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 		case strings.EqualFold(source.ID, "codex"):
 			p.Kind = crewroute.Plan
 			p.Serves = []string{source.Preferred}
+		case strings.EqualFold(source.ID, "claude-code"):
+			p.Kind = crewroute.Plan
 		case strings.EqualFold(source.ID, "ollama"):
 			p.Kind = crewroute.Local
 		case modelsource.IsCustomID(source.ID):
@@ -792,6 +830,9 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 		}
 		if !strings.EqualFold(source.ID, modelsource.DefaultID) && !modelsource.IsCustomID(source.ID) && !strings.EqualFold(source.ID, "ollama") {
 			p.vendors = append([]string{strings.ToLower(source.Written)}, crewVendors[strings.ToLower(source.ID)]...)
+		}
+		if p.Kind == crewroute.Metered && !strings.EqualFold(source.ID, modelsource.DefaultID) {
+			p.own = catalog.OwnPrices(CatalogOptionsFor(service, profileDir))
 		}
 		out = append(out, p)
 	}
@@ -955,17 +996,30 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 	}
 	var out []crewroute.Candidate
 	for _, m := range models {
-		if !rule.AdmitsModel(m) {
-			continue
-		}
 		var plans, direct, fallback []crewroute.Route
 		for _, p := range providers {
-			if !rule.AdmitsRoute(p.ID) {
+			// THE RULE IS READ PER ROUTE: a model may be allowed on one
+			// provider and not another ([crewroute.Allowed.AdmitsOn]).
+			if !rule.AdmitsOn(m, p.ID) {
 				continue
 			}
 			r, ok := p.route(m.ID, m, true)
 			if !ok {
 				continue
+			}
+			// A DIRECT ROUTE IS WEIGHED AT ITS OWN PROVIDER'S PRICE, and one
+			// whose provider published none is no route the router may pick:
+			// the catalog's price is another provider's, and says nothing about
+			// this one's bill. A pin still names it ([resolveCrewPin]).
+			if fact, needs := p.ownPrice(r); needs {
+				if !fact.Known {
+					continue
+				}
+				r.Price = &crewroute.RoutePrice{Prompt: fact.Prompt, Completion: fact.Completion, CacheRead: fact.CacheRead}
+			} else if r.Kind == crewroute.Metered && p.ID == modelsource.DefaultID && (m.PromptPrice > 0 || m.CompletionPrice > 0) {
+				// Freeze the default service's own published catalog tariff too;
+				// historical decisions must never reread today's model prices.
+				r.Price = &crewroute.RoutePrice{Prompt: m.PromptPrice, Completion: m.CompletionPrice, CacheRead: m.CacheReadPrice}
 			}
 			switch {
 			case r.Kind != crewroute.Metered:
@@ -978,7 +1032,7 @@ func crewCandidatesWith(rule crewroute.Allowed, providers []CrewProvider, facts 
 		}
 		if send, ok := free[crewroute.Lineage(m.ID)]; ok {
 			for _, p := range providers {
-				if p.ID == modelsource.DefaultID && rule.AdmitsRoute(p.ID) {
+				if p.ID == modelsource.DefaultID && rule.AdmitsOn(m, p.ID) {
 					plans = append(plans, crewroute.Route{Provider: p.ID, Send: send, Kind: crewroute.Free})
 				}
 			}
@@ -1072,23 +1126,43 @@ func CrewOffersAt(profileDir string) []CrewOffer {
 		// ── end of the seat check ──
 		offer := CrewOffer{Model: c.Model, Routes: c.Routes}
 		offer.Served = len(off.Routes(c.Routes)) > 0
-		if rule.AdmitsModel(c.Model) {
-			for _, r := range off.Routes(c.Routes) {
-				if rule.AdmitsRoute(r.Provider) {
-					offer.Allowed = true
-					break
-				}
+		for _, r := range off.Routes(c.Routes) {
+			if rule.AdmitsOn(c.Model, r.Provider) {
+				offer.Allowed = true
+				break
 			}
 		}
 		out = append(out, offer)
+	}
+	for _, p := range providers {
+		if p.ID == claudemodel.ID {
+			out = append(out, claudeCodeOffers(p, rule, off, facts.health)...)
+		}
+	}
+	return out
+}
+
+// claudeCodeOffers are the claude-code service's rows for the crew picker,
+// matching the rows [claudeCodeRows] builds for the task-models table: the
+// three families and their listed versions, offered whenever claude-code is
+// connected even when the shared catalog has no rows.
+func claudeCodeOffers(p CrewProvider, rule crewroute.Allowed, off crewroute.ProvidersOff, health crewHealth) []CrewOffer {
+	var out []CrewOffer
+	for _, m := range claudemodel.Models() {
+		model := crewroute.Model{ID: claudemodel.ID + "/" + m.ID, Context: m.ContextLength, Tools: true}
+		routes := health.usable([]crewroute.Route{{Provider: p.ID, Send: m.ID, Kind: crewroute.Plan}})
+		if len(routes) == 0 {
+			continue
+		}
+		served := len(off.Routes(routes)) > 0
+		allowed := served && crewPinAdmitted(rule, model.ID, p.ID)
+		out = append(out, CrewOffer{Model: model, Routes: routes, Served: served, Allowed: allowed})
 	}
 	return out
 }
 
 // SetCrewAllowedRule writes a rule the panel composed ([crewroute.Allowed]'s
-// edits) through the rule's one writer, so a checklist tick is refused for
-// exactly the reason the typed form would be — a pinned seat it would leave
-// outside.
+// edits) through the rule's one writer, the same writer the typed form uses.
 func SetCrewAllowedRule(profileDir string, rule crewroute.Allowed) error {
 	return writeCrewAllowed(profileDir, rule)
 }
@@ -1143,16 +1217,30 @@ func RestoreCrewState(profileDir string, state CrewState) error {
 // one-line warning. A pinned seat is judged by its pin alone, read from the
 // catalog whether or not a route to it is healthy right now, because the pin
 // is what the seat runs.
+//
+// A PIN THE ALLOWED MODELS LEAVE OUT IS SAID FIRST, by name: it is kept, and
+// the seat is routed until the model is allowed again or the pin is removed —
+// the one state of the panel a person could not otherwise see.
 func CrewGapsAt(profileDir string) []crewroute.Gap {
 	pins := map[crewroute.Seat]crewroute.Model{}
-	for seat, pin := range CrewPinsAt(profileDir) {
+	var aside []crewroute.Gap
+	for _, seat := range crewroute.Seats {
+		pin, ok := CrewPinAt(profileDir, seat)
+		if !ok {
+			continue
+		}
+		if CrewPinBlockedAt(profileDir, seat) {
+			aside = append(aside, crewroute.Gap{Seat: seat, Line: string(seat) + " pinned to " + crewroute.ShortModel(pin.Model) +
+				", which the models you allow leave out · routed until you allow it or unpin it"})
+			continue
+		}
 		model, known := crewCatalogModel(pin.Model)
 		if !known {
 			model = crewroute.Model{ID: pin.Model}
 		}
 		pins[seat] = model
 	}
-	return crewroute.Gaps(CrewCandidatesAt(profileDir), pins)
+	return append(aside, crewroute.Gaps(CrewCandidatesAt(profileDir), pins)...)
 }
 
 // ── one task's crew ─────────────────────────────────────────────────────────
@@ -1165,6 +1253,10 @@ type CrewAsk struct {
 	// Pins are ONE-TASK pins, laid over the profile's: `--pin` and the seat
 	// flags. They never persist.
 	Pins map[crewroute.Seat]CrewPin
+	// AutoSeats explicitly ignores saved role pins (and one-model policy) for
+	// these roles for this admission only. Explicit Pins and Sends still win.
+	// Absent/false keeps saved policy unchanged.
+	AutoSeats map[crewroute.Seat]bool
 	// Sends are seats a door has already filled with an id to send as it
 	// stands — a flag, a variable — which the router treats as pins.
 	Sends map[crewroute.Seat]string
@@ -1336,25 +1428,79 @@ func OffsetKey(repo string, class crewroute.Class) string {
 }
 
 // RouteCrew picks one task's crew on this profile: the seats pinned there or
-// for this task run their pins, and every other seat is routed.
+// for this task run their pins, and every other seat is routed. It is read at
+// the task's ADMISSION, and the decision it answers is what the task runs for
+// its whole life, whatever changes on the profile after.
+//
+// In one-model mode ([TaskModelsModeAt]) every seat is the one model and
+// nothing is routed. Otherwise a saved pin the allowed models no longer admit is
+// set aside for this task — the seat is routed — and the decision's warnings say
+// so; the pin itself stays saved.
 //
 // The class is read first, so the learned offset for this repository and this
 // class of work can move the price of a point before the seats are picked. A
 // day at its cap still answers with the crew it would run, beside
-// [ErrCrewAtCap]; a seat nothing allowed can sit is a [crewroute.NoCandidateError].
+// [ErrCrewAtCap]; a seat nothing allowed can sit is a [*crewroute.NoEligibleError],
+// and is never seated on a model the allowed models leave out.
 func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
+	oneMode := TaskModelsModeAt(profileDir) == crewroute.ModeOne
+	autoOverride := false
+	for _, seat := range crewroute.Seats {
+		autoOverride = autoOverride || ask.AutoSeats[seat]
+	}
+	if oneMode && !autoOverride {
+		return routeOneModel(profileDir, ask)
+	}
 	reading := crewroute.Classify(ask.Task)
 	providers := CrewProvidersAt(profileDir)
-	pins := map[crewroute.Seat]crewroute.Pin{}
-	for seat, pin := range CrewPinsAt(profileDir) {
-		pins[seat] = resolveCrewPin(pin, providers)
+	health := crewHealthAt(profileDir)
+	pins, warnings, refused := crewSavedPins(profileDir, providers, health)
+	filled := map[crewroute.Seat]bool{}
+	if oneMode {
+		// An explicit per-task opt-out routes only its named roles. The
+		// untouched roles keep the saved one model, even outside Auto's set.
+		pins = map[crewroute.Seat]crewroute.Pin{}
+		warnings = nil
+		refused = map[crewroute.Seat]*crewroute.NoEligibleError{}
+		one, haveOne := TaskOneModelAt(profileDir)
+		for _, seat := range crewroute.Seats {
+			if ask.AutoSeats[seat] {
+				continue
+			}
+			route := resolveCrewPin(one, providers)
+			if why, reachable := crewPinReachable(providers, route, health); !haveOne || !reachable {
+				if !haveOne {
+					why = crewroute.RejectProviderUnavailable
+				}
+				refusal := &crewroute.NoEligibleError{Seat: seat, Mode: crewroute.ModeOne, Action: health.actionFor(route, "choose another one model")}
+				if !haveOne {
+					refusal.Action = "choose the one model for every task, or switch Task models back to Auto"
+				}
+				refusal.Reject(route.Model, route.Provider, why)
+				refused[seat] = refusal
+			}
+			pins[seat] = route
+		}
+	}
+	for _, seat := range crewroute.Seats {
+		if ask.AutoSeats[seat] {
+			delete(pins, seat)
+			delete(refused, seat)
+			filled[seat] = true
+		}
 	}
 	for seat, pin := range ask.Pins {
-		pins[seat] = resolveCrewPin(pin, providers)
+		pins[seat], filled[seat] = resolveCrewPin(pin, providers), true
 	}
 	for seat, send := range ask.Sends {
 		if send = strings.TrimSpace(send); send != "" {
-			pins[seat] = resolveCrewPin(CrewPin{Model: send}, providers)
+			pins[seat], filled[seat] = resolveCrewPin(CrewPin{Model: send}, providers), true
+		}
+	}
+	warnings = withoutWarningsFor(warnings, filled)
+	for _, seat := range crewroute.Seats {
+		if refusal, ok := refused[seat]; ok && !filled[seat] {
+			return crewroute.Decision{}, refusal
 		}
 	}
 	day := CrewDay{}
@@ -1362,7 +1508,6 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 		day = CrewHistory(profileDir)
 	}
 	pace, atCap := crewroute.Pace(day.SpentUSD, CrewCapAt(profileDir))
-	health := crewHealthAt(profileDir)
 	// AN ACCOUNT OUT OF CREDIT, OR A KEY REFUSED, IS PROBED BY THE NEXT TASK:
 	// its paid routes are routed as usual, so the task's first seat call is
 	// the probe. A 200 clears the account on the spot; another refusal moves
@@ -1396,7 +1541,7 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 		// NO CREW CAN BE FORMED: the seat nothing can sit goes down the rest of
 		// the ladder — the last crew that worked here, the person's own model
 		// — and with nothing left the answer is the one thing to do.
-		d, err = crewRescued(profileDir, req, health, ask.ChatModel, err)
+		d, err = crewRescued(profileDir, req, health, err)
 	}
 	if err != nil {
 		return crewroute.Decision{}, err
@@ -1404,6 +1549,7 @@ func RouteCrew(profileDir string, ask CrewAsk) (crewroute.Decision, error) {
 	if notice != "" {
 		d.Note = strings.TrimSpace(strings.TrimPrefix(d.Note+" · "+notice, " · "))
 	}
+	d.Mode, d.Warnings = crewroute.ModeAuto, warnings
 	d.Why, d.Sure = reading.Why, reading.Sure
 	d.Redo = ask.Stronger != nil || ask.Again != nil
 	if atCap {
@@ -1518,4 +1664,17 @@ func quoted(words []string) []string {
 		out = append(out, "`"+word+"`")
 	}
 	return out
+}
+
+// ApplyCrewModels applies the terminal's whole rule and incremental model forms.
+// Keeping the reading here makes desktop policy edits preserve open and price rules.
+func ApplyCrewModels(profileDir, raw string) error {
+	switch {
+	case strings.HasPrefix(raw, "+") && !strings.Contains(raw, " "):
+		return ModifyCrewAllowed(profileDir, true, strings.TrimPrefix(raw, "+"))
+	case strings.HasPrefix(raw, "-") && !strings.Contains(raw, " "):
+		return ModifyCrewAllowed(profileDir, false, strings.TrimPrefix(raw, "-"))
+	default:
+		return SetCrewAllowed(profileDir, raw)
+	}
 }

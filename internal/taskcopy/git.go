@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
 
 // git runs one git command in dir and answers its standard output as it came.
@@ -27,6 +28,11 @@ func git(dir string, args ...string) (string, error) {
 		return "", &gitError{args: args, text: strings.TrimSpace(stderr.String()), err: err}
 	}
 	return string(out), nil
+}
+
+// privateGit prevents detached maintenance from outliving a disposable checkout.
+func privateGit(dir string, args ...string) (string, error) {
+	return git(dir, gitidentity.PrivateArgs(args...)...)
 }
 
 type gitError struct {

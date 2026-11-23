@@ -3,15 +3,14 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/furrow"
-	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/workspaceidentity"
 )
 
 func TestOwnershipChatIdentitySurvivesMetadataRefresh(t *testing.T) {
@@ -116,11 +115,7 @@ func TestOwnershipConflictingMetadataIdentityIsRefused(t *testing.T) {
 func TestOwnershipSealedTasklessChatCarriesIdentity(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv("CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP", "1")
-	t.Setenv(furrow.BinaryEnvVar, os.Getenv("CODEAF_TEST_FURROW"))
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("requires native cell engine: %v", err)
-	}
+	bin := sealEngine(t)
 	// Stop native writers before TempDir cleanup removes their state folders.
 	defer cellstore.StopSpawned()
 	source, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.HostBound})

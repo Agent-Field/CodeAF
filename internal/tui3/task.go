@@ -153,7 +153,8 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
-	computer string
+	retryable bool
+	computer  string
 	// A later local replacement clears placement; an older silent node cannot.
 	computerKnown             bool
 	unreachable, ranElsewhere bool
@@ -5267,7 +5268,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 			taskLiveLines(notice) == node.liveLines() && !taskRenames(notice, node) &&
 			!taskRenamesContext(notice, node) && !taskStops(notice, node) &&
 			!taskPauses(notice, node) && !taskReasks(notice, node) &&
-			notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
+			notice.Retryable == node.retryable && notice.Decider == node.decider && notice.NextModel == node.nextModel && notice.Thinking == node.thinking &&
 			(notice.Brief == "" || notice.Brief == node.brief) &&
 			(notice.Acceptance == "" || notice.Acceptance == node.acceptance) &&
 			(notice.Program == "" || notice.Program == node.program) &&
@@ -5366,6 +5367,7 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.Parent != 0 {
 		node.parent = itoa(int(notice.Parent))
 	}
+	node.retryable = notice.Retryable
 	// THE RUN DOOR IS KEPT AND NEVER UNSET. Belonging to an adaptive run and
 	// the node's place inside it are facts for the row's whole life; an update
 	// quiet about either one has not turned it back into an ordinary task.

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+
+	"github.com/Agent-Field/codeaf/internal/inventory/layout"
 )
 
 // Pristine says whether the home holds nothing but what starting codeaf makes:
@@ -30,13 +32,24 @@ func Pristine(home string) (bool, error) {
 // holds rather than by its name.
 var startupRules = rules{
 	File: never, DeviceFile: never, legacyKeyFile: never, soloFile: never,
+	"vault.enc.lock": never, "pair-sharing.pending": never,
 	"config.json": never, "config.json.lock": never, "notices.json": never,
 	// The pairing name prompt writes this before checking whether the home can join.
-	"device-name":          never,
-	"teams.json.lock":      never,
+	"device-name":           never,
+	"teams.json.lock":       never,
+	"teams.db.lock":         never,
+	"factory-rooms-swept":   never,
+	"crew-credentials.json": credentialDigestHistory,
+	"app.lock":              never,
+	"app":                   within(rules{"state.json": appStartupState}),
+	"services":              within(rules{"lock": emptyFile, "logs": within(rules{}), "services.json": serviceStartup}),
+	".codeaf": within(rules{"skills": within(rules{
+		"workaf-canvas": within(rules{"SKILL.md": bundledCanvasSkill}),
+	})}),
 	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
 	"knowledge": within(rules{
 		".worker.lock":         never,
+		".discovery-asked":     never, // the Memory page asking the worker for a count
 		"knowledge.sqlite":     knowledgeStartup,
 		"knowledge.sqlite-wal": never, "knowledge.sqlite-shm": never,
 	}),
@@ -50,6 +63,8 @@ var startupRules = rules{
 	}),
 	"telemetry": within(rules{"first_run": never, "install_id": never, "notice_seen": never}),
 	"v3": within(rules{
+		"usage.jsonl.remote-lock": never,
+		"factory":                 within(rules{}),
 		"automations": within(rules{
 			"automations.db":     automationStartup,
 			"automations.db-wal": never, "automations.db-shm": never,
@@ -72,8 +87,11 @@ var started = within(startupRules)
 // its transcript and memories are the chat itself.
 var withinSession = within(rules{
 	"meta.json": never, "meta.lock": never, "presence.json": never,
+	// An owned chat starts with an empty repository before any request is sent.
+	"work": within(rules{".git": unopenedRepository}),
 	".cell": within(rules{
-		"meta.json": never, "session.json": never, ".furrowpolicy": never, "env": empty,
+		"meta.json": never, "session.json": never, ".furrowpolicy": never,
+		"env":            within(rules{layout.File: startupInventory}),
 		"memories.jsonl": empty, "transcript.jsonl": noTurns,
 	}),
 })

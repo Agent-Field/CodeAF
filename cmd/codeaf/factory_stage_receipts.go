@@ -1,0 +1,857 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
+	"github.com/Agent-Field/codeaf/internal/session"
+)
+
+// ExecutionNotes carries exact command context and observed outcomes to later stages.
+// Journal messages are complete; display events are capped and cannot prove results.
+func (c *stageConversation) ExecutionNotes() ([]string, *factory.TestCounts) {
+	notes, tests, _ := c.VerificationEvidence()
+	return notes, tests
+}
+
+// VerificationEvidence also identifies the current measured failures. The
+// runner uses the identity to stop repeating work, never to accept a report.
+func (c *stageConversation) VerificationEvidence() ([]string, *factory.TestCounts, string) {
+	if c.verification == nil || !c.verification.requireFresh {
+		return c.collectExecutionEvidence(false, false, "")
+	}
+	return c.collectExecutionEvidence(true, c.verification.requireAnyCheck, c.verification.baselineCommit)
+}
+
+// MeasureBase has the factory compare this step's failing Go tests with the
+// job's base itself (verification.MeasureBase), and answers how many failing
+// checks that cleared. The runner calls it as a round ends with red checks.
+func (c *stageConversation) MeasureBase(ctx context.Context, base string) (int, error) {
+	if base == "" {
+		return 0, nil
+	}
+	checks, err := verification.ReadIn(c.file, c.dir)
+	if err != nil {
+		return 0, err
+	}
+	state, err := verification.SnapshotAt(c.dir)
+	if err != nil || state.Head == "" {
+		return 0, err
+	}
+	latest, _ := verification.RequiredChecks(checks, state, true)
+	return verification.MeasureBase(ctx, c.file, c.dir, latest, state, base, nil)
+}
+
+// A completed repair needs measured exits for its current checkout. Generic
+// historical notes remain readable; their prose is not upgraded to fresh proof.
+func (c *stageConversation) RepairExecutionNotes() ([]string, *factory.TestCounts) {
+	return c.executionNotesMode(true, true)
+}
+func (c *stageConversation) executionNotesMode(fresh, requireAnyCheck bool) ([]string, *factory.TestCounts) {
+	notes, tests, _ := c.collectExecutionEvidence(fresh, requireAnyCheck, "")
+	return notes, tests
+}
+
+func (c *stageConversation) collectExecutionEvidence(fresh, requireAnyCheck bool, base string) ([]string, *factory.TestCounts, string) {
+	f, err := os.Open(c.file)
+	if err != nil {
+		return []string{verification.FailurePrefix + " command journal could not be read: " + err.Error()}, nil, ""
+	}
+	defer f.Close()
+	dec := json.NewDecoder(f)
+	commands := map[string]string{}
+	background := map[string]bool{}
+	var notes []string
+	var tests *factory.TestCounts
+	lastOutcome := map[string]string{}
+	journalOrder := map[string]int{}
+	callOrder := map[string]int{}
+	commandOccurrences := map[string]int{}
+	sequence := 0
+	var pending []string
+	var state verification.Snapshot
+	checks, checkErr := verification.ReadIn(c.file, c.dir)
+	hasOwnedCheck := false
+	for _, check := range checks {
+		if !check.Diagnostic && check.SupersededBy == "" {
+			hasOwnedCheck = true
+			break
+		}
+	}
+	if fresh && (hasOwnedCheck || requireAnyCheck) {
+		var stateErr error
+		state, stateErr = verification.SnapshotAt(c.dir)
+		if stateErr != nil {
+			pending = append(pending, stateErr.Error())
+		} else if state.Head == "" {
+			pending = append(pending, "repair checkout snapshot is unavailable")
+		}
+	}
+	setupFailures := map[string]string{}
+	var journalErr error
+	// Reused evidence has to qualify on the current checkout even when this is
+	// an ordinary Test rather than a PR repair. Historical passes stay historical.
+	if !fresh {
+		for _, check := range checks {
+			if check.Inherited {
+				fresh = true
+				var e error
+				state, e = verification.SnapshotAt(c.dir)
+				if e != nil {
+					pending = append(pending, e.Error())
+				}
+				break
+			}
+		}
+	}
+	// What the owner accepted on an earlier step is not held against this one:
+	// the same check failing in the same words. A new or different failure is.
+	accepted := map[string]bool{}
+	if c.verification != nil {
+		for _, a := range c.verification.accepted {
+			accepted[a] = true
+		}
+	}
+	observed := map[string]bool{}
+	observedCall := map[string]bool{}
+	callExit := map[string]*int{}
+	callCommand := map[string]string{}
+	checksPerCall := map[string]int{}
+	baseOutputs := map[string]string{}
+	unmeasuredCall := map[string]bool{}
+	diagnosticOnly := map[string]bool{}
+	ownedCommand := map[string]bool{}
+	checks = verification.Resolve(checks, state, fresh)
+	latest, superseded := verification.RequiredChecks(checks, state, fresh)
+	for _, check := range checks {
+		observed[check.Command] = true
+		callCommand[check.CallID] = check.Command
+		if base != "" && check.CallID != "" {
+			checksPerCall[check.CallID]++
+		}
+		if check.CallID != "" && check.Exit == nil {
+			unmeasuredCall[check.CallID] = true
+		}
+		if check.CallID != "" && check.Exit != nil {
+			observedCall[check.CallID] = true
+			if exit := callExit[check.CallID]; exit == nil || *exit == 0 {
+				callExit[check.CallID] = check.Exit
+			}
+		}
+		if check.Diagnostic {
+			diagnosticOnly[check.Command] = true
+		} else {
+			ownedCommand[check.Command] = true
+		}
+		if check.Diagnostic {
+			notes = append(notes, "Diagnostic check retained outside job requirements: "+check.Label()+" · "+check.DiagnosticReason)
+			continue
+		}
+		if check.SupersededBy != "" {
+			notes = append(notes, "Check superseded by passing evidence: "+check.Label()+" · "+check.SupersededBy+" · "+check.SupersessionReason)
+		}
+	}
+	seenResults := map[string]bool{}
+	corrected := map[string]bool{}
+	for command := range superseded {
+		notes = append(notes, "Corrected verification invocation: "+command)
+	}
+	for _, check := range latest {
+		if !verification.PresentationOnly(check.Command) {
+			continue
+		}
+		identity := verificationCommand(check.Command)
+		if _, seen := corrected[identity]; !seen {
+			corrected[identity] = true
+		}
+		if check.Exit == nil || *check.Exit != 0 || (fresh && !check.Fresh(state)) {
+			corrected[identity] = false
+		}
+	}
+	for {
+		var row struct {
+			Role         string `json:"role"`
+			Content      string `json:"content"`
+			ToolCallID   string `json:"toolCallId"`
+			Presentation *struct {
+				Refused bool                 `json:"refused"`
+				Invoked bool                 `json:"invoked"`
+				Outcome string               `json:"outcome"`
+				Process *session.ToolProcess `json:"tool_process"`
+			} `json:"presentation"`
+			Calls []struct {
+				ID       string `json:"id"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"toolCalls"`
+		}
+		if err := dec.Decode(&row); err != nil {
+			if err == io.EOF {
+				break
+			}
+			journalErr = err
+			break
+		}
+		for _, call := range row.Calls {
+			if call.Function.Name != "bash" {
+				continue
+			}
+			var args struct {
+				Command    string `json:"command"`
+				Background bool   `json:"background"`
+			}
+			if json.Unmarshal([]byte(call.Function.Arguments), &args) == nil && len(args.Command) <= 4000 {
+				commands[call.ID] = args.Command
+				background[call.ID] = args.Background
+			}
+		}
+		cmd := commands[row.ToolCallID]
+		if row.Role != "tool" || cmd == "" {
+			continue
+		}
+		// Compaction appends the retained tool history again. A tool invocation
+		// contributes one observation, not one more blocker per compaction.
+		if seenResults[row.ToolCallID] {
+			continue
+		}
+		seenResults[row.ToolCallID] = true
+		sequence++
+		journalOrder[cmd] = sequence
+		callOrder[row.ToolCallID] = sequence
+		commandOccurrences[cmd]++
+		// Setup refusal happens before the shell runs and has no exit receipt.
+		// Keep it even for commands outside the legacy check-name vocabulary.
+		if strings.HasPrefix(row.Content, verification.SetupFailurePrefix) {
+			setupFailures[cmd] = row.Content
+			raw, _ := json.Marshal(map[string]any{"command": cmd, "cwd": c.dir, "outcome": "refused", "reason": row.Content})
+			notes = append(notes, "Command receipt: "+string(raw))
+			if len(notes) > 12 {
+				notes = notes[len(notes)-12:]
+			}
+			continue
+		}
+		delete(setupFailures, cmd)
+		if !verification.CheckCommand(cmd) {
+			continue
+		}
+		status, invoked, refused, started := "", false, false, background[row.ToolCallID]
+		if row.Presentation != nil {
+			status, invoked, refused = row.Presentation.Outcome, row.Presentation.Invoked, row.Presentation.Refused
+			started = started || row.Presentation.Process != nil
+		}
+		// A call ID cannot transfer an exit to a different journal command.
+		measuredExit := callExit[row.ToolCallID]
+		if callCommand[row.ToolCallID] != cmd {
+			measuredExit = nil
+		}
+		outcome, reason := commandReceiptOutcome(row.Content, status, invoked, refused, started, measuredExit)
+		if base != "" && outcome == "failed" && invoked && !started && !refused &&
+			checksPerCall[row.ToolCallID] == 1 && measuredExit != nil && *measuredExit == 1 {
+			if output, ok := strings.CutSuffix(strings.TrimSpace(row.Content), "\nCommand exited with code 1"); ok {
+				baseOutputs[row.ToolCallID] = output
+			}
+		}
+		if outcome == "passed" && (unmeasuredCall[row.ToolCallID] || shellCanHideFailure(cmd)) {
+			outcome = "completed"
+		}
+		receipt := map[string]any{"command": cmd, "cwd": c.dir, "outcome": outcome}
+		if reason != "" {
+			receipt["reason"] = reason
+		}
+		interrupted := outcome == "refused" || outcome == "cancelled" || outcome == "timed out"
+		if !interrupted && observed[cmd] && (outcome != "started" || observedCall[row.ToolCallID]) && (verification.PresentationOnly(cmd) || (status == "ok" && !started && observedCall[row.ToolCallID])) {
+			// The pipeline may have failed while its check passed. Keep the
+			// shell receipt honest; only the observed check decides the guard.
+			receipt["scope"] = "shell presentation; check exits recorded separately"
+			if observedCall[row.ToolCallID] {
+				delete(lastOutcome, cmd)
+			}
+		} else {
+			lastOutcome[cmd] = receipt["outcome"].(string)
+			// A measured check does not finish its surrounding background shell.
+			if launchOutcome, _ := commandReceiptOutcome(row.Content, status, invoked, refused, started, nil); (outcome == "passed" || outcome == "completed") && launchOutcome == "started" {
+				lastOutcome[cmd] = launchOutcome
+			}
+		}
+		if strings.Contains(cmd, "go test") && measuredExit != nil && (outcome == "passed" || outcome == "failed") {
+			counts := &factory.TestCounts{}
+			for _, line := range strings.Split(row.Content, "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "--- PASS:") {
+					counts.Passed++
+				}
+				if strings.HasPrefix(line, "--- FAIL:") {
+					counts.Failed++
+				}
+				if strings.HasPrefix(line, "--- SKIP:") {
+					counts.Skipped++
+				}
+			}
+			if counts.Passed+counts.Failed+counts.Skipped > 0 {
+				counts.Command = cmd
+				if tests == nil || counts.Passed+counts.Failed+counts.Skipped >= tests.Passed+tests.Failed+tests.Skipped {
+					tests = counts
+				}
+				receipt["tests"] = counts
+				receipt["count_scope"] = "named Go test outcomes including subtests; standalone PASS excluded"
+			}
+		}
+		raw, _ := json.Marshal(receipt)
+		notes = append(notes, "Command receipt: "+string(raw))
+		if len(notes) > 12 {
+			notes = notes[len(notes)-12:]
+		}
+	}
+	// Exact argv, directory and target context identify a check. A later
+	// corrected presentation of THAT check can clear an earlier failure; a
+	// passing subset, other directory or target cannot.
+	for command, failure := range setupFailures {
+		pending = append(pending, verification.OwedCommand(command)+" · "+failure)
+	}
+	if journalErr != nil {
+		pending = append(pending, "command journal could not be decoded: "+journalErr.Error())
+	}
+	var baseMatches map[string]verification.Check
+	matchedShell := map[string]bool{}
+	if base != "" && checkErr == nil && journalErr == nil {
+		baseMatches = verification.BaselineMatches(checks, latest, state, base, baseOutputs)
+		for key := range baseMatches {
+			check := latest[key]
+			// Only the observed invocation can cover a shell failure. A later
+			// interruption or another command using that argv still blocks.
+			if journalOrder[check.Command] == callOrder[check.CallID] {
+				matchedShell[check.Command] = true
+			}
+		}
+	}
+	// THE FACTORY'S OWN COMPARISON counts beside the step's: a failing Go test
+	// it ran itself on this checkout and on the base, and found already failing
+	// there, or found passing on this checkout (MeasureBase).
+	measuredPass := map[string]bool{}
+	if base != "" && checkErr == nil {
+		for key, m := range verification.ReadMeasured(c.file) {
+			check, ok := latest[key]
+			if !ok || !m.Clears(state, base) || check.Problem != "" || check.Exit == nil || *check.Exit == 0 {
+				continue
+			}
+			if m.Outcome == verification.MeasuredPassed {
+				measuredPass[key] = true
+			} else if _, already := baseMatches[key]; !already {
+				if baseMatches == nil {
+					baseMatches = map[string]verification.Check{}
+				}
+				baseMatches[key] = verification.Check{ID: m.ID}
+			}
+			if journalErr == nil && journalOrder[check.Command] == callOrder[check.CallID] {
+				matchedShell[check.Command] = true
+			}
+		}
+	}
+	for command, outcome := range lastOutcome {
+		if diagnosticOnly[command] && !ownedCommand[command] {
+			continue
+		}
+		if outcome == "refused" || outcome == "cancelled" || outcome == "timed out" || outcome == "started" || (outcome == "completed" && !observed[command]) {
+			covered := false
+			for _, check := range checks {
+				order := callOrder[check.CallID]
+				// Legacy receipts without invocation IDs are usable only when the
+				// journal contains one unambiguous occurrence of their command.
+				if check.CallID == "" && commandOccurrences[check.Command] == 1 {
+					order = journalOrder[check.Command]
+				}
+				if order > journalOrder[command] && (!fresh || check.Fresh(state)) && verification.CoversUnrun(command, c.dir, check) {
+					covered = true
+					break
+				}
+			}
+			if !covered {
+				pending = append(pending, verification.OwedCommand(command)+" · "+outcome+"; no later measured covering pass")
+			}
+		}
+		if outcome == "failed" && !matchedShell[command] && !(verification.PresentationOnly(command) && (corrected[verificationCommand(command)] || superseded[command])) {
+			pending = append(pending, verification.OwedCommand(command))
+		}
+	}
+	keys := make([]string, 0, len(latest))
+	for key := range latest {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var failed []string
+	for _, key := range keys {
+		check := latest[key]
+		outcome := "unknown"
+		if check.Problem != "" {
+			outcome = "instrumentation_error"
+		} else if check.Exit != nil {
+			if *check.Exit == 0 {
+				outcome = "passed"
+			} else {
+				outcome = "failed"
+			}
+		}
+		receipt := map[string]any{"command": check.Command, "check": check.Args, "cwd": check.Cwd, "exit": check.Exit, "outcome": outcome, "before": check.Before, "after": check.After}
+		matched, reproduced := baseMatches[key]
+		if reproduced {
+			receipt["base_commit"] = base
+			receipt["base_receipt_id"] = matched.ID
+		}
+		if outcome != "passed" && accepted[check.Label()+" · "+outcome] {
+			receipt["accepted"] = true
+		}
+		if measuredPass[key] {
+			// The red receipt was of another tree; the factory ran the check on
+			// this one and it passes.
+			receipt["rechecked"] = "passed"
+			receipt["base_receipt_id"] = "factory-recheck"
+			receipt["base_commit"] = base
+		}
+		raw, _ := json.Marshal(receipt)
+		notes = append(notes, "Check receipt: "+string(raw))
+		if check.Problem != "" {
+			pending = append(pending, check.Label()+" · "+check.Problem)
+		} else if reproduced || measuredPass[key] {
+			continue
+		} else if outcome != "passed" {
+			if why := check.InvocationProblem(); why != "" {
+				pending = append(pending, check.Label()+" · invalid test command: "+why)
+			} else {
+				pending = append(pending, check.Label()+" · "+outcome)
+				if outcome == "failed" && check.Fresh(state) && !accepted[check.Label()+" · "+outcome] {
+					failed = append(failed, fmt.Sprintf("%s:%d", key, *check.Exit))
+				}
+			}
+		} else if fresh && !check.Fresh(state) {
+			pending = append(pending, check.Label()+" · verification is stale or unbound to this checkout; rerun after the last change")
+		}
+	}
+	if len(notes) > 12 {
+		notes = notes[len(notes)-12:]
+	}
+	if len(baseMatches) != 0 {
+		notes = append(notes, verification.BaselineNotePrefix+base+".")
+	}
+	if requireAnyCheck && len(latest) == 0 {
+		pending = append(pending, "no measured checks verify the current repair checkout")
+	}
+	if checkErr != nil {
+		pending = append(pending, "check receipts could not be read: "+checkErr.Error())
+	}
+	sort.Strings(pending)
+	for i, command := range pending {
+		if (i > 0 && command == pending[i-1]) || accepted[command] {
+			continue
+		}
+		notes = append(notes, verification.FailurePrefix+" "+command)
+	}
+	var failureKey string
+	if len(failed) != 0 && checkErr == nil && journalErr == nil {
+		raw, _ := json.Marshal([]any{state, failed})
+		failureKey = fmt.Sprintf("%x", sha256.Sum256(raw))
+	}
+	return notes, tests, failureKey
+}
+
+// commandReceiptOutcome reads measured exits first. Producer facts and legacy
+// text may only lower the outcome; text can never establish a pass.
+func commandReceiptOutcome(content, status string, invoked, refused, started bool, measuredExit *int) (string, string) {
+	text := strings.TrimSpace(content)
+	if refused || status == "refused" {
+		return "refused", text
+	}
+	if measuredExit != nil && *measuredExit != 0 && status != "cancelled" && status != "timed out" {
+		return "failed", ""
+	}
+	if status == "" && !invoked {
+		for _, prefix := range []string{"needs approval but no resolver is attached:", "denied by approval rule:", "denied by the person:", "refused in a task:", "not approved:"} {
+			if strings.HasPrefix(text, prefix) {
+				return "refused", text
+			}
+		}
+	}
+	// Older launch receipts have no process identity. Recognize the producer's
+	// launch acknowledgement conservatively, without upgrading it to a pass.
+	var job int
+	if n, _ := fmt.Sscanf(text, "job %d started; log at", &job); status == "" && n == 1 && strings.Contains(text, " started; log at ") {
+		started = true
+	}
+	switch {
+	case status == "cancelled":
+		return "cancelled", text
+	case status == "timed out":
+		return "timed out", text
+	case status == "failed":
+		return "failed", ""
+	case status != "ok" && strings.Contains(content, "Command exited with code"):
+		return "failed", ""
+	case measuredExit != nil:
+		return "passed", ""
+	case started:
+		return "started", ""
+	default:
+		return "completed", ""
+	}
+}
+
+// shellCanHideFailure rejects shell forms whose unobserved work could fail
+// despite every measured check succeeding. Quotes and escapes protect literals.
+func shellCanHideFailure(command string) bool {
+	quote := byte(0)
+	escaped := false
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != '\'' && (ch == '`' || (ch == '$' && i+1 < len(command) && command[i+1] == '(')) {
+			return true
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch ch {
+		case '\'', '"':
+			quote = ch
+		case ';', '\n':
+			return true
+		case '|':
+			if i+1 < len(command) && command[i+1] == '|' {
+				return true
+			}
+		case '&':
+			if i+1 >= len(command) || command[i+1] != '&' {
+				return true
+			}
+			i++
+		}
+	}
+	return false
+}
+
+// Old transcripts have only a pipeline's exit. Match a newly observed rerun
+// conservatively to the identical command before its presentation pipe. Shell
+// substitutions and compound alternatives stay exact rather than guessing at
+// what they executed. Changed flags, environment and cd prefixes stay distinct.
+func verificationCommand(command string) string {
+	quote := byte(0)
+	escaped := false
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			quote = ch
+			continue
+		}
+		if ch == '`' || ch == '(' || ch == ';' || ch == '\n' {
+			return command
+		}
+		if ch == '|' {
+			if i+1 < len(command) && command[i+1] == '|' {
+				return command
+			}
+			return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(command[:i]), "2>&1"))
+		}
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(command), "2>&1"))
+}
+
+// Reject a false fixed report before the successful stage_result can end the
+// model turn. Keep Ask/Edit on the original door, including manager decisions.
+type receiptStageDoor struct {
+	session.StageDoor
+	file, dir       string
+	repair          bool
+	mu              sync.Mutex
+	last            string
+	repeats         int
+	refused         int
+	reason          string
+	stopped         bool
+	closed          bool
+	timer           *time.Timer
+	stop            chan string
+	workRunning     func() bool
+	requireFresh    bool
+	requireAnyCheck bool
+	baselineCommit  string
+	// accepted are the shortfalls the owner accepted on earlier steps, in the
+	// guard's own words ([factory.AcceptedFailures]).
+	accepted      []string
+	syncPRBase    func(context.Context) (string, error)
+	recoveryFinal bool
+}
+
+func (d *receiptStageDoor) CanSyncPRBase() bool {
+	return d.syncPRBase != nil && !d.halted()
+}
+
+func (d *receiptStageDoor) SyncPRBase(ctx context.Context) (string, error) {
+	if !d.CanSyncPRBase() {
+		return "", errors.New("this round cannot update the PR branch")
+	}
+	return d.syncPRBase(ctx)
+}
+
+// halted reports whether verification recovery has stopped or the stage closed.
+func (d *receiptStageDoor) halted() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.stopped || d.closed
+}
+
+func (d *receiptStageDoor) Report(ctx context.Context, r factory.StageResult) error {
+	// A newer refused attempt withdraws any older terminal candidate. Keeping
+	// the old candidate would let an invalid revision silently fall back to it.
+	accepted := false
+	defer func() {
+		if !accepted {
+			d.RejectReport()
+		}
+	}()
+	if d.halted() {
+		return errors.New("verification recovery stopped; local changes are retained; retry the step after correcting its check or environment")
+	}
+	if r.Checkpoint {
+		err := d.StageDoor.Report(ctx, r)
+		accepted = err == nil
+		return err
+	}
+	if d.repair && r.Done && r.Repair == nil {
+		return errors.New("a completed PR repair needs repair.decision fixed or no_change with evidence; use needs_repair for partial work")
+	}
+	if d.repair && r.Done && r.Repair != nil && r.Repair.Decision == "no_change" {
+		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).ExecutionNotes()
+		for _, note := range notes {
+			if strings.HasPrefix(note, verification.FailurePrefix) {
+				return d.rejectVerification(notes, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+			}
+		}
+	}
+	// Ordinary Test/Proof reports need the same live correction door as PR
+	// repairs. Accepting done first would close the conversation and consume
+	// another round before the runner could explain its failing evidence.
+	if d.requireFresh && r.Done && (r.Repair == nil || r.Repair.Decision != "fixed") {
+		notes, _, _ := (&stageConversation{file: d.file, dir: d.dir, verification: d}).VerificationEvidence()
+		for _, note := range notes {
+			if strings.HasPrefix(note, verification.FailurePrefix) {
+				return d.rejectVerification(notes, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+			}
+		}
+	}
+	if r.Repair != nil && r.Repair.Decision == "fixed" {
+		if !r.Done || r.Exit != 0 || r.Findings != 0 {
+			return errors.New("repair is incomplete: fixed requires done, no failing exit and no remaining findings; report needs_repair for partial work")
+		}
+		notes, _ := (&stageConversation{file: d.file, dir: d.dir}).RepairExecutionNotes()
+		for _, note := range notes {
+			if strings.HasPrefix(note, verification.FailurePrefix) {
+				return d.rejectVerification(notes, strings.TrimSpace(strings.TrimPrefix(note, verification.FailurePrefix)))
+			}
+		}
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.stopped || d.closed {
+		return errors.New("verification recovery stopped; retry the step after correcting its check or environment")
+	}
+	if d.timer != nil {
+		d.timer.Stop()
+		d.timer = nil
+	}
+	// A successful correction cancels the stop: both counts start over.
+	d.last, d.reason, d.repeats, d.refused = "", "", 0, 0
+	err := d.StageDoor.Report(ctx, r)
+	accepted = err == nil
+	return err
+}
+
+// RejectReport forwards invalidation through the evidence wrapper, including
+// parser rejections that happen before Report can receive a typed result.
+func (d *receiptStageDoor) RejectReport() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// A refused model report may have just installed the recovery owner's
+	// newer terminal assessment. Do not invalidate that assessment as stale.
+	if d.recoveryFinal {
+		return
+	}
+	if door, ok := d.StageDoor.(interface{ RejectReport() }); ok {
+		door.RejectReport()
+	}
+}
+func (d *receiptStageDoor) Ask(ctx context.Context, q factory.Asked) (string, error) {
+	if door, ok := d.StageDoor.(session.StageAsker); ok {
+		return door.Ask(ctx, q)
+	}
+	return "", errors.New("this stage has nobody to ask")
+}
+
+// These limits apply after a repair claims completion, not while its initial
+// tests run, and they are COUNTED IN REPORTS, NOT MINUTES: unchanged evidence
+// gets two opportunities to be corrected, and any evidence gets
+// stageVerificationReportLimit refused reports in all. A slow but productive
+// repair is never stopped by the clock; its stage's own time and money bounds
+// remain. stageVerificationRecheck is how often a stop that found owned work
+// still running looks again.
+const stageVerificationRejectLimit = 3
+const stageVerificationReportLimit = 6
+const stageVerificationRecheck = 30 * time.Second
+
+func (d *receiptStageDoor) stoppedVerification() <-chan string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.stop == nil {
+		d.stop = make(chan string, 1)
+	}
+	return d.stop
+}
+
+func (d *receiptStageDoor) rejectVerification(notes []string, reason string) error {
+	// The evidence key excludes shell formatting and receipt timestamps. A
+	// newly passing check or changed checkout is progress; reprinting the same
+	// check and repeatedly asserting fixed is not.
+	var evidence []string
+	for _, note := range notes {
+		if strings.HasPrefix(note, verification.FailurePrefix) {
+			evidence = append(evidence, note)
+		} else if raw, ok := strings.CutPrefix(note, "Check receipt: "); ok {
+			var c struct {
+				Cwd    string                `json:"cwd"`
+				Args   []string              `json:"check"`
+				Exit   *int                  `json:"exit"`
+				Before verification.Snapshot `json:"before"`
+				After  verification.Snapshot `json:"after"`
+			}
+			if json.Unmarshal([]byte(raw), &c) == nil {
+				key, _ := json.Marshal([]any{c.Cwd, c.Args, c.Exit, c.Before, c.After})
+				evidence = append(evidence, string(key))
+			}
+		}
+	}
+	sort.Strings(evidence)
+	key := strings.Join(evidence, "\n")
+	repeated, refused := d.countRefusal(key, reason)
+	switch {
+	case repeated:
+		d.stopVerification(fmt.Sprintf("%d completion reports repeated the same unresolved evidence", stageVerificationRejectLimit))
+	case refused:
+		d.stopVerification(fmt.Sprintf("%d completion reports were refused", stageVerificationReportLimit))
+	}
+	var owed []string
+	for _, note := range notes {
+		if debt, ok := strings.CutPrefix(note, verification.FailurePrefix); ok {
+			owed = append(owed, strings.Join(strings.Fields(debt), " "))
+		}
+	}
+	return fmt.Errorf("repair is incomplete; owed: %s; correct this evidence or report done:false; stops after %d unchanged or %d total refusals", strings.Join(owed, " | "), stageVerificationRejectLimit, stageVerificationReportLimit)
+}
+
+// countRefusal records one refused completion report with its evidence key and
+// reports whether the same evidence has now repeated, or reports in all have
+// been refused, too many times.
+func (d *receiptStageDoor) countRefusal(key, reason string) (repeated, refused bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if key != d.last {
+		d.last, d.repeats = key, 0
+	}
+	d.repeats++
+	d.refused++
+	d.reason = reason
+	return d.repeats >= stageVerificationRejectLimit, d.refused >= stageVerificationReportLimit
+}
+
+func (d *receiptStageDoor) stopVerification(why string) {
+	// The lifecycle owner, not nullable receipt exits, knows whether physical
+	// owned work is still running. Its absolute stage and money bounds remain.
+	if d.workRunning != nil && d.workRunning() {
+		d.recheckLater(why)
+		return
+	}
+	d.stopNow(why)
+}
+
+// recheckLater looks at the stop again after stageVerificationRecheck, unless
+// the stage has closed or stopped meanwhile.
+func (d *receiptStageDoor) recheckLater(why string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.closed && !d.stopped {
+		d.timer = time.AfterFunc(stageVerificationRecheck, func() { d.stopVerification(why) })
+	}
+}
+
+// stopNow stops verification recovery: the runner gets an honest incomplete
+// result and then the stop signal.
+func (d *receiptStageDoor) stopNow(why string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed || d.stopped || d.reason == "" {
+		return
+	}
+	d.stopped = true
+	reason := "Verification stopped because " + why + ": " + d.reason + ". Local changes are retained. Correct the check or environment, then retry this step."
+	if d.stop == nil {
+		d.stop = make(chan string, 1)
+	}
+	stop := d.stop
+	// The runner receives an honest incomplete result before its stop signal.
+	// needs_you parks Follow PR instead of starting another paid repair round.
+	d.recoveryFinal = d.StageDoor.Report(context.Background(), factory.StageResult{Done: false, Exit: 1, Output: reason, Repair: &factory.CIRepairResult{Decision: "needs_you", Reason: reason}}) == nil
+	stop <- reason
+}
+
+func (d *receiptStageDoor) closeRecovery() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.timer != nil {
+		d.timer.Stop()
+		d.timer = nil
+	}
+}
+
+func (d *receiptStageDoor) closeVerification() {
+	d.markClosed()
+	d.closeRecovery()
+}
+
+func (d *receiptStageDoor) markClosed() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closed = true
+}

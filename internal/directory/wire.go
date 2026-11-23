@@ -19,6 +19,7 @@ type wireError struct {
 // wireErrors is the single place a sentinel and its code meet, so the handler
 // and the client cannot drift apart. Order matters only for errors.Is chains.
 var wireErrors = []wireError{
+	{wireauth.ErrStorageOff, "storage_off", http.StatusForbidden},
 	{ErrUnreachable, "unreachable", http.StatusServiceUnavailable},
 	{wireauth.ErrUnavailable, "unreachable", http.StatusServiceUnavailable},
 	{clusterstate.ErrMigration, "unreachable", http.StatusServiceUnavailable},
@@ -30,6 +31,7 @@ var wireErrors = []wireError{
 	{ErrHeadMoved, "head_moved", http.StatusConflict},
 	{ErrCAS, "cas", http.StatusConflict},
 	{ErrUnauthorized, "unauthorized", http.StatusUnauthorized},
+	{wireauth.ErrUnauthorized, "unauthorized", http.StatusUnauthorized},
 	{ErrRevoked, "revoked", http.StatusUnauthorized},
 	{ErrSelfRevoke, "self_revoke", http.StatusBadRequest},
 	{ErrRotated, "rotated", http.StatusGone},
@@ -48,10 +50,11 @@ var wireErrors = []wireError{
 	{ErrRequestGone, "gone", http.StatusNotFound},
 	{ErrAlreadyDecided, "already_decided", http.StatusConflict},
 	{ErrTooBig, "too_big", http.StatusRequestEntityTooLarge},
+	// Shared capacity must precede the directory's general full error when encoding.
+	{wireauth.ErrRelayFull, "relay_storage_full", http.StatusInsufficientStorage},
 	{ErrFull, "full", http.StatusServiceUnavailable},
 	// Hosted deployment brakes leave existing identities readable and erasable.
 	{wireauth.ErrRateLimited, "relay_admission_full", http.StatusTooManyRequests},
-	{ErrFull, "relay_storage_full", http.StatusInsufficientStorage},
 }
 
 // Codes that have no sentinel a Client returns: the wire's own refusals.
@@ -79,6 +82,10 @@ func classify(err error) wireError {
 func errorOf(code string, status int) error {
 	for _, w := range wireErrors {
 		if w.code == code && w.status == status {
+			if w.err == wireauth.ErrRelayFull {
+				// Existing directory callers still match the general full error.
+				return errors.Join(w.err, ErrFull)
+			}
 			return w.err
 		}
 	}

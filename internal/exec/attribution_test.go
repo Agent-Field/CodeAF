@@ -135,10 +135,14 @@ func TestTheModelNameRowsHintIsTheTwoLines(t *testing.T) {
 	if config.AttributionModelHint != want {
 		t.Fatalf("the attribution.model hint = %q, want %q", config.AttributionModelHint, want)
 	}
+	wantOff := "On, codeaf signs the commits, pull requests, issues and comments it writes; off, it adds no marks."
+	if config.AttributionHint != wantOff {
+		t.Fatalf("the attribution hint = %q, want %q", config.AttributionHint, wantOff)
+	}
 }
 
-// THE LAW IS IN EVERY CONTRACT, because signing has no off. What the surface
-// hands the loop decides only whether the `Assisted-by` line names a model.
+// THE LAW IS IN EVERY CONTRACT BY DEFAULT, and when the person turned
+// attribution off it is replaced by AttributionOffLaw.
 func TestAttributionLawIsInEveryContract(t *testing.T) {
 	named := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute).
 		WithAssistedBy("qwen/qwen3-coder").system(Task{NodeID: 1, Brief: "work"}, nil)
@@ -171,10 +175,24 @@ func TestAttributionLawIsInEveryContract(t *testing.T) {
 		t.Fatalf("a loop handed no model does not carry the bare line: want %q", want)
 	}
 	for _, page := range []string{named, unnamed} {
-		for _, unwanted := range []string{AttributionAssistedBySlot, "CodeAF ()"} {
+		for _, unwanted := range []string{AttributionAssistedBySlot, "CodeAF ()", AttributionOffLaw} {
 			if strings.Contains(page, unwanted) {
 				t.Fatalf("the contract carries %q", unwanted)
 			}
+		}
+	}
+
+	// WHEN ATTRIBUTION IS TURNED OFF, the contract carries AttributionOffLaw and
+	// none of the trailers, footers, or model name.
+	off := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute).
+		WithAttribution(false).WithAssistedBy("qwen/qwen3-coder").system(Task{NodeID: 1, Brief: "work"}, nil)
+	if !strings.Contains(off, AttributionOffLaw) {
+		t.Fatalf("the off contract is missing %q", AttributionOffLaw)
+	}
+	for _, unwanted := range append(append([]string{}, attributionStrings...),
+		AttributionAssistedBy, "qwen3-coder", AttributionAssistedBySlot, "SIGN GIT WORK YOU DO WITH `bash`") {
+		if strings.Contains(off, unwanted) {
+			t.Fatalf("the off contract still carries %q", unwanted)
 		}
 	}
 }

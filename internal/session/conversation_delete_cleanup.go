@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -58,7 +59,7 @@ func writeConversationTaskCleanup(file string, receipt conversationTaskCleanup) 
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer fsreplace.Remove(tmp.Name())
 	if _, err = tmp.Write(raw); err == nil {
 		err = tmp.Sync()
 	}
@@ -68,7 +69,7 @@ func writeConversationTaskCleanup(file string, receipt conversationTaskCleanup) 
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, conversationTaskCleanupFile))
+	return fsreplace.Rename(tmp.Name(), filepath.Join(dir, conversationTaskCleanupFile))
 }
 
 // The receipt survives every cleanup error. Retrying must recheck memberships
@@ -94,10 +95,10 @@ func finishConversationTaskCleanup(profile, file, chat string, choices map[strin
 	if err = removeDeletedConversationJournal(file); err != nil {
 		return err
 	}
-	if err = os.Remove(filepath.Join(filepath.Dir(file), taskCleanupFile)); err != nil && !os.IsNotExist(err) {
+	if err = fsreplace.Remove(filepath.Join(filepath.Dir(file), taskCleanupFile)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	return os.Remove(receipt)
+	return fsreplace.Remove(receipt)
 }
 
 func finishDeletedMemberships(profile, file string, choices map[string]string, savedAliases map[string]bool, affected ...map[string][]string) error {
@@ -113,8 +114,14 @@ func finishDeletedMemberships(profile, file string, choices map[string]string, s
 }
 
 func removeDeletedConversationJournal(file string) error {
+	// Verification receipts contain command history and belong to this journal,
+	// not to its deliverables. Owners have stopped before this cleanup runs.
+	// RemoveAll removes a symlink itself, preserving any unrelated target.
+	if err := fsreplace.RemoveAll(file + ".checks"); err != nil {
+		return err
+	}
 	for _, path := range []string{file + ".delete-pending", file} {
-		journal, err := os.OpenFile(path, os.O_RDWR, 0)
+		journal, err := fsreplace.OpenFile(path, os.O_RDWR, 0)
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -128,7 +135,7 @@ func removeDeletedConversationJournal(file string) error {
 		if err != nil {
 			return err
 		}
-		if err = os.Remove(path); err != nil {
+		if err = fsreplace.Remove(path); err != nil {
 			return err
 		}
 	}

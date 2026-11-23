@@ -36,7 +36,14 @@ func crewSeatOf(ctx context.Context) crewroute.Seat {
 // chain, because a completer that dropped it would silently end model
 // fallback for every task it wraps.
 func SeatCompleter(seat crewroute.Seat, next Completer) Completer {
-	marked := seatCompleter{seat: seat, next: next}
+	return SeatCompleterFor(seat, "", next)
+}
+
+// SeatCompleterFor also marks the task scope within a shared crew guard. Each
+// scope has its own seat ceiling; seat totals and task/day limits stay shared.
+// An empty scope keeps the single-task crew's per-seat ceiling.
+func SeatCompleterFor(seat crewroute.Seat, scope string, next Completer) Completer {
+	marked := seatCompleter{seat: seat, scope: scope, next: next}
 	if chain, ok := next.(modelChain); ok {
 		return seatChain{seatCompleter: marked, chain: chain}
 	}
@@ -45,11 +52,15 @@ func SeatCompleter(seat crewroute.Seat, next Completer) Completer {
 
 // seatCompleter is one seat's completer with its calls marked.
 type seatCompleter struct {
-	seat crewroute.Seat
-	next Completer
+	seat  crewroute.Seat
+	scope string
+	next  Completer
 }
 
 func (c seatCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	if c.scope != "" {
+		ctx = context.WithValue(ctx, crewScopeContextKey{}, c.scope)
+	}
 	return c.next.CompleteWithMessages(context.WithValue(ctx, crewSeatContextKey{}, c.seat), messages, options...)
 }
 

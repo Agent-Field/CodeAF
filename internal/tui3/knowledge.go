@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"fmt"
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -155,6 +156,13 @@ func (a *app) knowledgeRead(create bool) tea.Cmd {
 			}
 		}
 		r, err := v.Status()
+		if err == nil && !r.Enabled && cached.Revision == "" {
+			// The offer is on screen: count the saved chats now, as nothing
+			// does with Memory off until a person is looking.
+			if problem := v.AskDiscovery(); problem != nil {
+				log.Printf("knowledge: asking for a count: %v", problem)
+			}
+		}
 		if err == nil {
 			if r.Revision == cached.Revision {
 				r.Pages = cached.Pages
@@ -358,7 +366,7 @@ func (a *app) knowledgeOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			p.open = false
 		}
 	case "enter":
-		if !p.reading.Enabled {
+		if !p.reading.Enabled && len(p.reading.Pages) == 0 {
 			return a.knowledgeRead(true), true
 		}
 		if p.links {
@@ -513,7 +521,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	var rows []placeRow
 	add := func(s string) { rows = append(rows, placeRow{text: " " + fit(s, max(1, width-2)), hit: -1}) }
 	add(a.pal.bold(a.pal.muted("Knowledge")))
-	if p.reading.Enabled {
+	if p.reading.Enabled || len(p.reading.Pages) > 0 {
 		stats := a.pal.data(fmt.Sprint(len(p.reading.Pages))) + a.pal.dim(" pages")
 		if p.reading.Pending > 0 {
 			stats += a.pal.dim(" · ") + a.pal.data(fmt.Sprint(p.reading.Pending)) + a.pal.dim(" queued")
@@ -539,7 +547,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 	if p.loading {
 		add(a.pal.dim("Reading knowledge…"))
 	}
-	if !p.reading.Enabled {
+	if !p.reading.Enabled && len(p.reading.Pages) == 0 {
 		if p.reading.Build.Error != "" {
 			add(a.pal.bad(p.reading.Build.Error))
 		}
@@ -645,7 +653,7 @@ func (a *app) knowledgeBody(width, room int) []placeRow {
 		articleHits[len(article)] = hits
 		article = append(article, actions, "")
 		if n.HumanEdited {
-			article = append(article, a.pal.dim("Edited by you · additions are not source-verified"), "")
+			article = append(article, a.pal.dim("Edited by you · your additions have no source"), "")
 		}
 		if n.NeedsEditorialUpdate {
 			message := "New evidence is available in Sources; guide integration is pending."
@@ -848,7 +856,7 @@ func (placeMemory) pressAt(a *app, x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if hit, ok := hits[y].(knowledgeHit); ok {
-		if hit.create && !p.reading.Enabled && x >= 1 && x < 1+ansi.StringWidth(knowledgeBuildLabel) {
+		if hit.create && !p.reading.Enabled && len(p.reading.Pages) == 0 && x >= 1 && x < 1+ansi.StringWidth(knowledgeBuildLabel) {
 			return a.knowledgeRead(true), true
 		}
 		for _, link := range hit.links {

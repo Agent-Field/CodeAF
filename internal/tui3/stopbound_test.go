@@ -107,7 +107,7 @@ func TestAStopWithNoDoorBehindItAnnouncesNoBound(t *testing.T) {
 func TestTheTurnIsNotDetachedInsideTheWindow(t *testing.T) {
 	a, agent, advance := boundedStopApp(t)
 
-	advance(stopGrace - time.Second)
+	advance(session.StopGrace - time.Second)
 	drive(t, a, frameMsg{})
 	if agent.abandons != 0 {
 		t.Fatalf("the turn was detached %d second(s) early", 1)
@@ -118,7 +118,7 @@ func TestTheTurnIsNotDetachedInsideTheWindow(t *testing.T) {
 
 	// And a turn the engine lets go of properly never reaches the door at all.
 	drive(t, a, streamClosedMsg{gen: a.gen})
-	advance(2 * stopGrace)
+	advance(2 * session.StopGrace)
 	drive(t, a, frameMsg{})
 	if agent.abandons != 0 {
 		t.Fatal("a turn the engine let go of was detached anyway")
@@ -138,7 +138,7 @@ func TestAtTheBoundTheTurnIsDetachedAndTheSurfaceIsFree(t *testing.T) {
 	a, agent, advance := boundedStopApp(t)
 	agent.spend = session.Usage{CostUSD: 0.04}
 
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 
 	if agent.abandons != 1 {
@@ -167,7 +167,7 @@ func TestAtTheBoundTheTurnIsDetachedAndTheSurfaceIsFree(t *testing.T) {
 	}
 
 	// AND IT FIRES ONCE. Every later frame finds no deadline and no turn.
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 	if agent.abandons != 1 {
 		t.Fatalf("the bound fired again after it had already detached (%d)", agent.abandons)
@@ -179,7 +179,7 @@ func TestAtTheBoundTheTurnIsDetachedAndTheSurfaceIsFree(t *testing.T) {
 func TestADetachedTurnThatSpentNothingNamesNoMoney(t *testing.T) {
 	a, agent, advance := boundedStopApp(t)
 
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 	if agent.abandons != 1 {
 		t.Fatalf("the door was opened %d times", agent.abandons)
@@ -196,7 +196,7 @@ func TestADetachedTurnThatSpentNothingNamesNoMoney(t *testing.T) {
 func TestAfterTheBoundTheNextPromptRuns(t *testing.T) {
 	a, agent, advance := boundedStopApp(t)
 
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 	drive(t, a, key("h"), key("i"), key("enter"))
 
@@ -215,7 +215,7 @@ func TestTheFrameClockRunsForTheWholeStoppingWindow(t *testing.T) {
 	if !a.stopBounded() {
 		t.Fatal("the stop is not bounded, so the clock has no reason to turn")
 	}
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 	if a.stopBounded() {
 		t.Fatal("the window outlived the detach that ended it")
@@ -252,7 +252,7 @@ func TestADetachedTurnIsOwedTheSameSettleAsAnyOtherFinishedTurn(t *testing.T) {
 		return "main", false, true
 	}
 
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 
 	select {
@@ -285,7 +285,7 @@ func TestADeadlineOnATurnThatAlreadyEndedDetachesNothing(t *testing.T) {
 	agent.letGo = false
 	stream := a.stream
 
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 
 	if agent.abandons != 1 {
@@ -299,7 +299,7 @@ func TestADeadlineOnATurnThatAlreadyEndedDetachesNothing(t *testing.T) {
 	}
 	// AND IT DOES NOT KEEP ASKING. The window is spent either way, so the next
 	// frame finds no deadline and the door is not opened again.
-	advance(stopGrace)
+	advance(session.StopGrace)
 	drive(t, a, frameMsg{})
 	if agent.abandons != 1 {
 		t.Fatalf("the lapsed deadline kept opening the door (%d)", agent.abandons)

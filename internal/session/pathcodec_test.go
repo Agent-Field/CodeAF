@@ -24,10 +24,10 @@ func TestPathCodecPrefersTheSmallestRemainder(t *testing.T) {
 	}
 }
 
-func TestPathCodecRefusesWhatHasNoBase(t *testing.T) {
+func TestPathCodecKeepsAbsolutePathsWithNoBase(t *testing.T) {
 	c := codecFor("/a/session", "/a/ws")
-	if ref, ok := c.encode("/mnt/data/x"); ok {
-		t.Errorf("a path under no base was spelled %q", ref)
+	if ref, ok := c.encode("/mnt/data/x"); !ok || ref != "/mnt/data/x" {
+		t.Errorf("a path under no base was lost: %q, %v", ref, ok)
 	}
 	if got, ok := c.resolve("nowhere:x"); ok {
 		t.Errorf("an unknown base resolved to %q", got)

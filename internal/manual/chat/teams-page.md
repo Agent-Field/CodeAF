@@ -4,7 +4,7 @@
 
 The **teams page** is where you run your teams: every team you have, what waits on you from
 them, and an overview of the team you choose. Member cards show activity and recent updates;
-interaction links take you into the conversation where an exchange happened. It follows Chats on the tab bar: `Home  Chats  AI teams  Activity  Memories  Automations  Spend  Settings`. Open it with
+interaction links take you into the conversation where an exchange happened. It follows Chats on the tab bar: `Home  Chats  AI teams  Activity  Memory  Automations  Spend  Settings`. Open it with
 `/teams`, `alt+2` (`opt+2` on a Mac), a click on `AI teams`, `tab` from Chats, or the map
 (`alt+.`). A number beside the word on the bar counts the decisions waiting on you that arrived
 since you last looked.
@@ -530,3 +530,8 @@ A new client refuses writes to an older engine and says `update the engine befor
 Stop older local codeaf processes before editing the same profile with this build: an already
 running old binary cannot learn the new fields or store rules. Current builds preserve unknown
 member fields and existing join timestamps; new hosted memberships use the engine's clock.
+
+## Why an empty team has no conversation count
+
+On All teams, an empty team keeps its name and state without a zero count. A team
+with one member says `1 conversation`; larger teams say `N conversations`.

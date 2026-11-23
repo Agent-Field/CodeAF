@@ -184,7 +184,7 @@ func (a *Agent) spendMergeRound(ctx context.Context, node *TaskNode, tree taskTr
 	}
 	node.spendMergeRoundCount()
 
-	out, err := git(tree.dir, append(codeafGitIdentity(), "merge", "--no-edit", home)...)
+	out, err := privateGit(tree.dir, append(codeafGitIdentity(), "merge", "--no-edit", home)...)
 	if err == nil {
 		// The two branches had nothing to argue about after all — a merge git
 		// could do by itself, which is the cheapest possible round.
@@ -284,7 +284,7 @@ func settleResolvedMerge(tree taskTree, files []string) string {
 	if still := conflictedPaths(tree.dir); len(still) > 0 {
 		return "git still holds " + namedFew(still, conflictNamesShown) + " as unresolved"
 	}
-	if out, err := git(tree.dir, append(codeafGitIdentity(), "commit", "--no-edit")...); err != nil {
+	if out, err := privateGit(tree.dir, append(codeafGitIdentity(), "commit", "--no-edit")...); err != nil {
 		return "the merge could not be committed — " + firstLine(out)
 	}
 	return ""
@@ -515,8 +515,16 @@ func (n *TaskNode) releaseResolving(gen uint64) {
 // has nothing to resolve IN, and a node whose round is already running must not
 // be given a second worker in the same directory as the first.
 func (a *Agent) ResolveConflict(id uint64) error {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return err
+	}
 	node := a.taskNode(id)
 	if node == nil {
+		if _, found, err := a.resolveCompletedRun(context.Background(), id, TaskAccept, "", TaskAskOwnerPerson); found {
+			return err
+		}
 		return fmt.Errorf("no task %d in this session", id)
 	}
 	// THE ROUND IN FLIGHT IS ASKED ABOUT FIRST, and it is not tidiness: the

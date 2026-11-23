@@ -31,6 +31,49 @@ const (
 
 var ErrVideoTimeout = errors.New("video generation timed out")
 
+// ErrMediaTooLarge is what a response over its byte ceiling is refused with.
+// A body is NEVER cut at the ceiling and handed on: a truncated video or clip
+// is a file that looks saved and does not play.
+var ErrMediaTooLarge = errors.New("media response is over the size limit")
+
+// readMediaBody reads one media response body whole, under a hard ceiling.
+//
+// THE CEILING IS CHECKED ONE BYTE PAST ITSELF. io.LimitReader(body, limit)
+// alone cannot tell a body of exactly limit bytes from a longer one cut off at
+// limit, so an oversize reply used to come back as a "successful" truncated
+// artifact. Reading limit+1 and refusing on the extra byte is the whole fix,
+// and a declared Content-Length over the limit is refused before a byte is
+// read, so the usual oversize reply allocates nothing.
+//
+// An error status is read through the small error peek instead: its body is
+// diagnosis text, truncating it is harmless, and a hostile 4xx must not be
+// able to make the client buffer the ceiling. Every failure is reported to the
+// call log here, so callers return the error as it comes.
+func readMediaBody(response *http.Response, limit int64, what string) ([]byte, error) {
+	failed := response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices
+	if failed {
+		limit = maxErrorPeek
+	} else if response.ContentLength > limit {
+		err := fmt.Errorf("%s is %d MB, over the %d MB limit: %w", what, response.ContentLength>>20, limit>>20, ErrMediaTooLarge)
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return nil, err
+	}
+	payload, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return nil, fmt.Errorf("read %s: %w", what, err)
+	}
+	if int64(len(payload)) > limit {
+		if failed {
+			return payload[:limit], nil
+		}
+		err := fmt.Errorf("%s is over the %d MB limit and was discarded: %w", what, limit>>20, ErrMediaTooLarge)
+		finishMediaResponse(response, response.StatusCode, err, nil)
+		return nil, err
+	}
+	return payload, nil
+}
+
 // ImageRequest is OpenRouter's non-streaming image generation request.
 //
 // InputReferences carries the SAME envelope the video endpoint takes and not a
@@ -211,10 +254,9 @@ func (c *MediaClient) Speak(ctx context.Context, request SpeechRequest) (*Speech
 		return nil, err
 	}
 	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
+	payload, err := readMediaBody(response, maxMediaResponseBytes, "speech response")
 	if err != nil {
-		finishMediaResponse(response, response.StatusCode, err, nil)
-		return nil, fmt.Errorf("read speech response: %w", err)
+		return nil, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		err := apiError(response.StatusCode, payload)
@@ -332,10 +374,9 @@ func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob, model str
 		return nil, err
 	}
 	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, maxVideoResponseBytes))
+	payload, err := readMediaBody(response, maxVideoResponseBytes, "video response")
 	if err != nil {
-		finishMediaResponse(response, response.StatusCode, err, nil)
-		return nil, fmt.Errorf("read video response: %w", err)
+		return nil, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		err := apiError(response.StatusCode, payload)
@@ -361,10 +402,9 @@ func (c *MediaClient) postJSON(ctx context.Context, path string, request any, ta
 		return nil, err
 	}
 	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
+	payload, err := readMediaBody(response, maxMediaResponseBytes, "media response")
 	if err != nil {
-		finishMediaResponse(response, response.StatusCode, err, nil)
-		return nil, fmt.Errorf("read media response: %w", err)
+		return nil, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		err := apiError(response.StatusCode, payload)
@@ -393,10 +433,9 @@ func (c *MediaClient) getJSON(ctx context.Context, endpoint string, target any, 
 		return err
 	}
 	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, maxMediaResponseBytes))
+	payload, err := readMediaBody(response, maxMediaResponseBytes, "media response")
 	if err != nil {
-		finishMediaResponse(response, response.StatusCode, err, nil)
-		return fmt.Errorf("read media response: %w", err)
+		return err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		err := apiError(response.StatusCode, payload)
@@ -437,6 +476,10 @@ func (c *MediaClient) do(ctx context.Context, path string, body []byte, model st
 // belongs to nobody, and internal/tui3's PostPhaseNews drops it — which is how
 // a picture whose connection had gone drew nothing at all while it waited.
 func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, body []byte, authenticated bool, model string) (*http.Response, error) {
+	// Every media adapter shares this door, including music and transcription.
+	if err := refuseObserved(ctx, SurfaceMedia); err != nil {
+		return nil, err
+	}
 	ctx = beginMediaCall(ctx, model)
 	var recovery connectionRetry
 	defer recovery.release()

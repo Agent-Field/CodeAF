@@ -225,7 +225,7 @@ func (e *Engine) follow(ctx context.Context, spec session.RunSpec, record sessio
 					return err
 				}
 				line := event.Line
-				charge := session.RunCharge{Model: line.Model, TokensIn: line.InputTokens, TokensOut: line.OutputTokens, Cached: line.CachedTokens, USD: line.USD}
+				charge := session.RunCharge{CallID: line.CallID, Model: line.Model, TokensIn: line.InputTokens, TokensOut: line.OutputTokens, Cached: line.CachedTokens, USD: line.USD}
 				if spec.OnRemoteCharge != nil {
 					if err := spec.OnRemoteCharge(seq, charge, line.Seat); err != nil {
 						return err

@@ -114,17 +114,21 @@ func saidYes(typed string) bool {
 	return false
 }
 
-// approveLink uses the same deliberate approval key as the chat card. Code
-// pairing keeps its own yes/no question because its comparison is different.
+// pairApproveKeys sits on its own line under the check number, so the typed
+// answer does not run into the question.
+const pairApproveKeys = "a approve · d decline: "
+
+// approveLink keeps the chat card's deliberate approval key and accepts the
+// terminal's explicit yes answers too. Empty or unrecognised input never approves.
 func (t *terminal) approveLink(ctx context.Context, question string) bool {
 	t.stopProgress()
-	fmt.Fprint(t.out, question+"  a / d ")
+	fmt.Fprint(t.out, question+"\n"+pairApproveKeys)
 	typed, ok := t.lines.next(ctx)
 	if !ok {
 		fmt.Fprintln(t.out)
 		return false
 	}
-	return strings.TrimSpace(typed) == "a"
+	return strings.EqualFold(strings.TrimSpace(typed), "a") || saidYes(typed)
 }
 
 // offerScreen is the device that shows the code, as a terminal.

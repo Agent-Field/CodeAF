@@ -17,11 +17,13 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 type knowledgeHistory struct {
-	root  string
-	cache *knowledgeHistoryCache
+	root    string
+	profile string
+	cache   *knowledgeHistoryCache
 }
 
 type knowledgeHistoryCache struct {
@@ -43,10 +45,29 @@ type knowledgeHistoryRecord struct {
 
 // KnowledgeHistory reads every saved conversation under the named places root,
 // across projects and including archives and their saved task reports.
-func KnowledgeHistory(placesRoot string) knowledge.History {
-	return knowledgeHistory{root: placesRoot, cache: &knowledgeHistoryCache{}}
+func KnowledgeHistory(placesRoot string, profile ...string) knowledge.History {
+	h := knowledgeHistory{root: placesRoot, cache: &knowledgeHistoryCache{}}
+	if len(profile) > 0 {
+		h.profile = profile[0]
+	}
+	return h
 }
 func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, error) {
+	owned := map[string]bool{}
+	if h.profile != "" {
+		roster, _, err := teams.ReadSnapshot(ctx, h.profile)
+		if err != nil {
+			return nil, err
+		}
+		for _, team := range roster.Teams {
+			for _, member := range append(append([]teams.Member{}, team.Members...), team.FormerMembers...) {
+				if member.FactoryStage || (team.FactoryManaged && member.Key == team.Manager) {
+					owned[filepath.Clean(member.File)] = true
+					owned[filepath.Clean(member.Key)] = true
+				}
+			}
+		}
+	}
 	var previous map[string]knowledgeHistoryFile
 	current := make(map[string]knowledgeHistoryFile)
 	if h.cache != nil {
@@ -91,11 +112,22 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 	journals := []knowledge.Journal{}
 	seen := map[string]bool{}
 	owners := map[string]string{}
+	jobOwners := map[string]string{}
 	deletedOwners := map[string]bool{}
 	add := func(path, session, project string, task bool) error {
 		if seen[path] {
 			return nil
 		}
+		owner, marked, err := knowledgeJobOwner(path)
+		if err != nil {
+			return err
+		}
+		job := owned[filepath.Clean(path)] || marked
+		if inherited := jobOwners[filepath.Clean(path)]; inherited != "" {
+			owner, job = inherited, true
+		}
+		owned[filepath.Clean(path)] = job
+		jobOwners[filepath.Clean(path)] = owner
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
 			return nil
@@ -121,7 +153,7 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			}
 		}
 		seen[path] = true
-		journals = append(journals, knowledge.Journal{ID: path, Session: session, Project: project, Size: info.Size(), Modified: info.ModTime()})
+		journals = append(journals, knowledge.Journal{ID: path, Session: session, Project: project, Size: info.Size(), Modified: info.ModTime(), Job: job, JobOwner: owner})
 		return nil
 	}
 	addTasks := func(dir, owner, file, project, run string) error {
@@ -173,7 +205,14 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") || (run == "" && (id == "" || deleted[id])) || blocked[path] {
 				continue
 			}
+			jobOwners[filepath.Clean(path)] = jobOwners[filepath.Clean(owners[owner])]
 			identity := "task:" + owner + ":" + run + ":" + strings.TrimSuffix(entry.Name(), ".jsonl")
+			if owned[filepath.Clean(owners[owner])] {
+				owned[filepath.Clean(path)] = true
+			}
+			if _, err := os.Stat(owners[owner] + ".knowledge-job"); err == nil {
+				owned[filepath.Clean(path)] = true
+			}
 			if err = add(path, identity, project, true); err != nil {
 				return err
 			}
@@ -451,4 +490,33 @@ func readKnowledgeLine(reader *bufio.Reader) ([]byte, error) {
 		}
 		return line, err
 	}
+}
+
+// Both markers are durable ownership facts. The old factory marker identifies
+// sibling stages even after their team roster has been replaced.
+func knowledgeJobOwner(path string) (owner string, job bool, err error) {
+	data, err := os.ReadFile(path + ".knowledge-job")
+	if err == nil {
+		job = true
+		owner = path
+		if strings.HasPrefix(strings.TrimSpace(string(data)), "job:") {
+			owner = strings.TrimSpace(string(data))
+		}
+	} else if !os.IsNotExist(err) {
+		return "", false, err
+	}
+	data, err = os.ReadFile(filepath.Join(filepath.Dir(path), "factory-owner.json"))
+	if err == nil {
+		job = true
+		var saved struct {
+			Root string
+			Job  int
+		}
+		if json.Unmarshal(data, &saved) == nil && saved.Root != "" && saved.Job > 0 {
+			owner = fmt.Sprintf("%s:%d", filepath.Clean(saved.Root), saved.Job)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", false, err
+	}
+	return owner, job, nil
 }

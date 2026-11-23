@@ -130,6 +130,10 @@ func (a *app) tookFleet(msg fleetMsg) tea.Cmd {
 	m.asking = false
 	if msg.err == nil {
 		m.size, m.known = msg.size, true
+		if a.sheet.registry != nil {
+			a.sheet.taskComputers = a.taskComputersAvailable()
+			a.sheet.build()
+		}
 	}
 	return nil
 }

@@ -12,6 +12,7 @@ package session
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -292,7 +293,7 @@ func TestTalkingPastAQuestionClaimsItsWordsWithItsWait(t *testing.T) {
 	forget := agent.rememberQuestion(question)
 
 	agent.mu.Lock()
-	taken := agent.talkedPastQuestionsLocked()
+	taken := agent.talkedPastQuestionsLocked(false)
 	// THE BOOK IS ALREADY EMPTY WHILE THE LOCK IS STILL HELD, which is the whole
 	// law: there is no window in which the other road could win.
 	if _, said := agent.claimQuestionLocked(QuestionAsk, question.Token(), true); said {
@@ -320,4 +321,232 @@ func TestTalkingPastAQuestionClaimsItsWordsWithItsWait(t *testing.T) {
 		}
 	case <-time.After(200 * time.Millisecond):
 	}
+}
+
+// ── a reply from the person closes what is still open ───────────────────────
+
+// laterAsk is a question the turn does not wait for, with a task stopped on it:
+// both kinds outlive the turn that raised them ([questionOutlivesTurn]).
+const laterAsk = `{"head":"Which colour for the hall?","kind":"choice",` +
+	`"reason":"the paint order forks on it",` +
+	`"options":[{"key":"1","label":"White"},{"key":"2","label":"Grey"}],` +
+	`"stakes":"reversible","blocking":{"turn":false,"tasks":["Paint the hall"]}}`
+
+// leaveAQuestionStanding runs one turn that asks laterAsk and ends, and answers
+// the agent with the question still open after it.
+func leaveAQuestionStanding(t *testing.T, after ...step) *questioningTurn {
+	t.Helper()
+	steps := []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("", loadCapabilityToolName, `{"group":"`+questionsGroup+`"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("", "ask", laterAsk), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("asked; carrying on"), nil
+		},
+	}
+	rig := newQuestioningTurn(t, &scriptedCompleter{steps: append(steps, after...)})
+	collect(t, mustSubmit(t, rig.agent, "plan the hall"))
+	open := rig.agent.OpenQuestions()
+	if len(open) != 1 || !open[0].Later || len(open[0].Blocking.Tasks) != 1 {
+		t.Fatalf("the turn left %+v standing, want the one later question blocking a task", open)
+	}
+	return rig
+}
+
+// A FRESH TURN FROM THE PERSON CLOSES EVERY OPEN QUESTION, by the steer's own
+// road: the same withdrawal with the same reason, so the receipt and the Inbox
+// read exactly as they do when the person talks past a question mid-turn.
+func TestAPersonsNewMessageClosesTheQuestionsLeftStanding(t *testing.T) {
+	rig := leaveAQuestionStanding(t, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("grey, then"), nil
+	})
+
+	turn := mustSubmit(t, rig.agent, "go with grey")
+	gone := waitForAsk(t, rig.asks, EventQuestionWithdrawn)
+	if gone.Question.Withdrawn == nil || gone.Question.Withdrawn.Reason != askTalkedPastReason {
+		t.Fatalf("the withdrawal reads %+v, want %q", gone.Question.Withdrawn, askTalkedPastReason)
+	}
+	collect(t, turn)
+	if open := rig.agent.OpenQuestions(); len(open) != 0 {
+		t.Fatalf("the person's reply left %d question(s) standing: %+v", len(open), open)
+	}
+	if decisions := rig.agent.Decisions(); len(decisions) != 0 {
+		t.Fatalf("a question nobody answered was recorded as a decision: %+v", decisions)
+	}
+}
+
+// ONLY THE PERSON'S OWN WORDS DO IT. A turn the engine opens — factory work, a
+// runner's note, a wake — is not somebody replying, and the question stands.
+func TestATurnTheEngineOpensLeavesTheQuestionsStanding(t *testing.T) {
+	rig := leaveAQuestionStanding(t, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return textResponse("noted"), nil
+	})
+
+	note := userText("the factory has work for you")
+	note.factoryWork = true
+	events, err := rig.agent.submitUser(watchedContext(rig.agent), note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	if open := rig.agent.OpenQuestions(); len(open) != 1 {
+		t.Fatalf("an engine turn closed the person's question: %d left, want 1", len(open))
+	}
+}
+
+// A FOLLOW-UP FROM THE PERSON'S OWN DOOR IS THEIR REPLY TOO. The TUI's queued
+// message and a remote client's follow-up are the person's words as a sent
+// message is, so the question they left standing comes down, with the same
+// reason, whether the follow-up starts a turn at once or waits for the running
+// one to end. The same words handed on by an engine caller are nobody's reply,
+// and the question stands.
+func TestAFollowUpClosesTheQuestionsLeftStandingOnlyFromThePersonsOwnDoor(t *testing.T) {
+	said := func(words string) step {
+		return func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(words), nil }
+	}
+	for _, door := range []struct {
+		name   string
+		closes bool
+		send   func(*Agent) (<-chan Event, error)
+	}{
+		{"the person's own door", true, func(a *Agent) (<-chan Event, error) { return a.FollowUpMessage(Submission{Text: "go with grey"}) }},
+		{"an engine caller's", false, func(a *Agent) (<-chan Event, error) { return a.FollowUp("go with grey") }},
+	} {
+		for _, queued := range []bool{false, true} {
+			name := door.name + ", sent when idle"
+			if queued {
+				name = door.name + ", queued behind a running turn"
+			}
+			t.Run(name, func(t *testing.T) {
+				release := make(chan struct{})
+				running := make(chan struct{})
+				hold := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+					close(running)
+					select {
+					case <-release:
+					case <-ctx.Done():
+					}
+					return textResponse("noted"), nil
+				}
+				after := []step{said("grey, then")}
+				if queued {
+					after = []step{hold, said("grey, then")}
+				}
+				rig := leaveAQuestionStanding(t, after...)
+				var turn <-chan Event
+				if queued {
+					// A turn the engine opened is running: it closes nothing.
+					note := userText("the factory has work for you")
+					note.factoryWork = true
+					events, err := rig.agent.submitUser(watchedContext(rig.agent), note)
+					if err != nil {
+						t.Fatal(err)
+					}
+					<-running
+					queuedTurn, err := door.send(rig.agent)
+					if err != nil {
+						t.Fatal(err)
+					}
+					close(release)
+					collect(t, events)
+					turn = queuedTurn
+				} else {
+					var err error
+					if turn, err = door.send(rig.agent); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if door.closes {
+					gone := waitForAsk(t, rig.asks, EventQuestionWithdrawn)
+					if gone.Question.Withdrawn == nil || gone.Question.Withdrawn.Reason != askTalkedPastReason {
+						t.Fatalf("the withdrawal reads %+v, want %q", gone.Question.Withdrawn, askTalkedPastReason)
+					}
+				}
+				collect(t, turn)
+				open := rig.agent.OpenQuestions()
+				switch {
+				case door.closes && len(open) != 0:
+					t.Fatalf("the person's follow-up left %d question(s) standing: %+v", len(open), open)
+				case !door.closes && len(open) != 1:
+					t.Fatalf("an engine caller's follow-up closed the person's question: %d left, want 1", len(open))
+				}
+				if decisions := rig.agent.Decisions(); len(decisions) != 0 {
+					t.Fatalf("a question nobody answered was recorded as a decision: %+v", decisions)
+				}
+			})
+		}
+	}
+}
+
+// AN ANSWERED QUESTION IS NOT TALKED PAST. The person answers, then types
+// something else: the answer's receipt can still change it, because the new
+// message closes what is still asked and leaves what they already decided.
+func TestAPersonsNewMessageLeavesAnAnsweredQuestionChangeable(t *testing.T) {
+	said := func(words string) step {
+		return func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(words), nil }
+	}
+	rig := leaveAQuestionStanding(t, said("white it is"), said("on the kitchen"), said("grey, then"), said("noted"), said("noted"))
+	q := rig.agent.OpenQuestions()[0]
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	collect(t, mustSubmit(t, rig.agent, "now the kitchen"))
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "2", Revises: true}); err != nil {
+		t.Fatalf("changing the answer after a new message was refused: %v", err)
+	}
+}
+
+// A STEER LEAVES AN ANSWERED QUESTION CHANGEABLE TOO: the person answers, then
+// types a correction into the turn that is running, then changes the answer
+// from its receipt. Only what is still asked comes down.
+func TestASteerLeavesAnAnsweredQuestionChangeable(t *testing.T) {
+	var hold atomic.Bool
+	h := newHeldTurn()
+	step := func(context.Context, []ai.Message) (*ai.Response, error) {
+		if hold.CompareAndSwap(true, false) {
+			close(h.entered)
+			<-h.release
+		}
+		return textResponse("noted"), nil
+	}
+	rig := leaveAQuestionStanding(t, step, step, step, step, step, step)
+	q := rig.agent.OpenQuestions()[0]
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	hold.Store(true)
+	turn := mustSubmit(t, rig.agent, "now the kitchen")
+	h.wait(t)
+	steered := mustSteer(t, rig.agent, "and the hall after")
+	close(h.release)
+	collect(t, turn)
+	collect(t, steered)
+	if err := rig.agent.ResolveQuestion(Answer{Kind: QuestionAsk, ID: q.ID, Key: "2", Revises: true}); err != nil {
+		t.Fatalf("changing the answer after a steer was refused: %v", err)
+	}
+}
+
+// THE MODEL IS TOLD WHEN THE PERSON'S WORDS TOOK DOWN A QUESTION IT WAS NOT
+// WAITING ON: no call is left to hand the news to, so it arrives as a note the
+// model reads at its next step, as a dismissed question's does.
+func TestAQuestionTheModelWasNotWaitingOnIsToldWhenTalkedPast(t *testing.T) {
+	var later []ai.Message
+	rig := leaveAQuestionStanding(t,
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("grey, then"), nil },
+		func(_ context.Context, msgs []ai.Message) (*ai.Response, error) {
+			later = msgs
+			return textResponse("noted"), nil
+		},
+	)
+	collect(t, mustSubmit(t, rig.agent, "go with grey"))
+	collect(t, mustSubmit(t, rig.agent, "and the hall after"))
+	for _, m := range later {
+		if strings.Contains(partsText(m), askTalkedPastNote) {
+			return
+		}
+	}
+	t.Fatalf("the model was not told its question came down; it read %d messages", len(later))
 }

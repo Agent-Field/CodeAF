@@ -58,8 +58,8 @@ package session
 //
 // The watch is this program's own and runs everywhere. It reads the subtree
 // through the process-group handle #1155 gave, which works wherever a process
-// group is a process group; the CPU-and-process reading itself is /proc, so off
-// Linux it says it cannot say and the bound never cuts ([processgroup.Usage]).
+// group is a process group. Linux and macOS read the subtree's CPU and process
+// count; other platforms cannot say and the bound never cuts ([processgroup.Usage]).
 // The subtree's USAGE needs no cgroup — a job is a process group and not a
 // cgroup. Whether a quota BINDS is a different question — how many cores the
 // subtree could ever reach — answered from the process's own cgroup CPU quota and
@@ -179,10 +179,18 @@ func (b *subtreeBound) strike(now time.Time, usage processgroup.Usage, ok bool) 
 		return false
 	}
 	cores := 0.0
-	if b.have && now.After(b.last) {
-		cores = (usage.CPUSeconds - b.lastCPU) / now.Sub(b.last).Seconds()
+	if usage.CPUPartial {
+		// A sum that left part of the tree out yields no rate, and it is no
+		// baseline for the next reading either: only the process count is
+		// judged, and the next complete reading arms the CPU half again.
+		b.have = false
+	} else {
+		if b.have && now.After(b.last) {
+			cores = (usage.CPUSeconds - b.lastCPU) / now.Sub(b.last).Seconds()
+		}
+		b.last, b.lastCPU, b.have = now, usage.CPUSeconds, true
 	}
-	b.last, b.lastCPU, b.have, b.lastCores = now, usage.CPUSeconds, true, cores
+	b.lastCores = cores
 	if usage.Processes > jobBoundProcesses || cores > b.ceilingCores() {
 		b.strikes++
 	} else {

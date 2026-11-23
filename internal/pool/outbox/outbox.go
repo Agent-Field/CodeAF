@@ -619,6 +619,9 @@ func (o *Outbox) sendHTTP(ctx context.Context, dest string, rows []Row) (int, er
 // Keep that declines everything does.
 func (o *Outbox) postBatch(ctx context.Context, client *http.Client, dest string, batch []Row) ([]Row, error) {
 	for len(batch) > 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		body := make([]byte, 0, len(batch)*128)
 		for _, r := range batch {
 			line, err := rowLine(r)
@@ -641,6 +644,11 @@ func (o *Outbox) postBatch(ctx context.Context, client *http.Client, dest string
 		}
 		reply, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 		resp.Body.Close()
+		// A response body may ignore cancellation beyond the owner's close budget.
+		// Keep its rows pending rather than writing markers or retrying after close.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return batch, nil
 		}

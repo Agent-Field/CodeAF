@@ -114,14 +114,18 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 	case store.ServiceHealthCmd:
 		// Health checks discard output, so inherited pipes cannot turn a clean
 		// exit into a failure or accumulate an unbounded output buffer.
+		argv, err := serviceHealthCommand(service.Health.Value)
+		if err != nil {
+			return err
+		}
 		cmd, err := procexec.Host.In(service.Dir).Command(ctx, procexec.ExecRequest{
-			Argv:  []string{"bash", "-lc", service.Health.Value},
+			Argv:  argv,
 			Group: procexec.GroupInherit,
 		})
 		if err != nil {
 			return err
 		}
-		return cmd.Run()
+		return processgroup.Run(cmd)
 	default:
 		return fmt.Errorf("unknown health kind %q", service.Health.Kind)
 	}

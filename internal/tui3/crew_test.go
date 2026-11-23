@@ -316,7 +316,8 @@ func TestCrewMoneyDrawsNoZero(t *testing.T) {
 		t.Errorf("a task that spent nothing reads %q, want %q", got, "today 1 task")
 	}
 	a.crewUI.log = router.CrewLog{Tasks: 2, SpentUSD: 0.006}
-	if got := a.crewTodayWord(); got != "today $0.006 · 2 tasks" {
+	// R5 keeps four decimal places for positive sub-cent crew costs.
+	if got := a.crewTodayWord(); got != "today $0.0060 · 2 tasks" {
 		t.Errorf("a day that spent reads %q", got)
 	}
 }
@@ -343,7 +344,8 @@ func TestTheLandingCrewFactsDoNotDisplaceTheConversation(t *testing.T) {
 	if last.text != "an answer to is my code sent anywhere that logs it?" {
 		t.Fatalf("crew receipt displaced the conversation: %q", last.text)
 	}
-	if !strings.Contains(a.crewSaid[2].text, "$0.004 (est $0.013)") {
+	// R5 keeps four decimal places for positive sub-cent crew costs.
+	if !strings.Contains(a.crewSaid[2].text, "$0.0040 (est $0.013)") {
 		t.Fatal("completion spending was lost")
 	}
 	for _, e := range a.entries {

@@ -163,7 +163,7 @@ func (a *Agent) historicalPlanRow(notice TaskNotice) PlanTaskRow {
 	a.mu.Lock()
 	owner := a.sessionID()
 	a.mu.Unlock()
-	return PlanTaskRow{ID: notice.PlanTask, Title: notice.Title, Status: string(notice.State),
+	return PlanTaskRow{ID: notice.PlanTask, Title: notice.Title, Status: string(notice.State), Source: cloneSource(notice.Source),
 		HistoricalRun: notice.ID, HistoricalSession: owner,
 		Stopped: notice.Stopped, Archived: true, Started: notice.StartedAt, Ended: notice.EndedAt,
 		Model: notice.Model, USD: notice.CostUSD, Note: notice.Report}
@@ -183,7 +183,7 @@ func (a *Agent) historicalPlanPage(id string) (PlanTaskPage, bool) {
 		a.mu.Unlock()
 		base := taskHistoryDir(place, session)
 		relative := filepath.Join(strconv.FormatUint(notice.ID, 10), planTrajectoryFile)
-		page.Steps = planStepDisplayFactsForPage(decodePlanTrajectory(readHistoricalFile(base, relative)), a.planDisplayRunCopy())
+		page.Steps = planStepDisplayFactsForPage(parsePlanTrajectory(readHistoricalFile(base, relative)), a.planDisplayRunCopy())
 		page.Row.Steps = len(page.Steps)
 		history := findWorkerHistory(place, session, notice.ID)
 		if history.journal != "" {

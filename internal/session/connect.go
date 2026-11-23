@@ -265,6 +265,7 @@ func (a *Agent) service(id string) (connectStatus, bool) {
 // whether it needs a typed answer — a key, or the one thing the service's
 // address is missing.
 type connectAsk struct {
+	service  string
 	answers  chan connectAnswer
 	needsKey bool
 	// name is the account in the words a person owns it by, and secret says what
@@ -318,7 +319,7 @@ func (a *Agent) ResolveConnect(id string, approve bool) {
 	if !waiting {
 		return
 	}
-	if ask.needsKey {
+	if ask.needsKey && (a.connect == nil || !a.connect.Connected(ask.service)) {
 		approve = false
 	}
 	// Buffered to one and read at most once, so this never blocks and never
@@ -384,6 +385,7 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectA
 	a.connectSeq++
 	id := "connect-" + strconv.FormatUint(a.connectSeq, 10)
 	ask := connectAsk{
+		service:  service.ID,
 		answers:  make(chan connectAnswer, 1),
 		needsKey: service.keyed() || service.asks(),
 		name:     strings.TrimSpace(service.Name),
@@ -563,7 +565,9 @@ func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
 
 	held := make(map[string]bool, len(a.tools))
 	for _, tool := range a.tools {
-		held[tool.Name] = true
+		if _, client := a.clientTools.names[tool.Name]; !client {
+			held[tool.Name] = true
+		}
 	}
 	var arriving []bare.Tool
 	var names []string
@@ -573,6 +577,7 @@ func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
 		}
 		arriving = append(arriving, tool)
 		names = append(names, tool.Name)
+		held[tool.Name] = true
 	}
 	if len(arriving) == 0 {
 		return nil, nil
@@ -584,12 +589,14 @@ func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
 	// Fresh arrays, exact length: the old ones are still being walked by
 	// whatever took a snapshot a moment ago, and appending into spare capacity
 	// would write into the array they are reading.
-	grownTools := make([]bare.Tool, 0, len(a.tools)+len(arriving))
-	grownTools = append(append(grownTools, a.tools...), arriving...)
-	grownDefinitions := make([]ai.ToolDefinition, 0, len(a.definitions)+len(definitions))
-	grownDefinitions = append(append(grownDefinitions, a.definitions...), definitions...)
-	a.tools = grownTools
-	a.definitions = grownDefinitions
+	builtins, builtinDefinitions, err := a.clientToolBuiltinsLocked(len(arriving))
+	if err != nil {
+		return nil, err
+	}
+	builtins = append(builtins, arriving...)
+	a.tools = a.clientToolTailLocked(builtins, a.clientTools.sets)
+	tail, _ := toolDefinitions(a.tools[len(builtins):])
+	a.definitions = append(append(builtinDefinitions, definitions...), tail...)
 	for _, tool := range arriving {
 		known := false
 		for _, kept := range a.profileArmed {

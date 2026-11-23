@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -120,7 +121,8 @@ func TestASnapshotConfiguredSeatsTheEngineCrewAndNoneSeatsTheLiveCrew(t *testing
 		t.Fatal(err)
 	}
 	for _, seat := range crewroute.Seats {
-		if gone.Seat(seat) != bare.Seat(seat) {
+		// Admission copies tariff pointers, so compare their values along with the rest of each pick.
+		if !reflect.DeepEqual(gone.Seat(seat), bare.Seat(seat)) {
 			t.Errorf("%s: a vanished snapshot changed the pick to %+v, want the bare %+v", seat, gone.Seat(seat), bare.Seat(seat))
 		}
 	}

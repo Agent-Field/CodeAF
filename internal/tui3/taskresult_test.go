@@ -358,7 +358,11 @@ func TestAnUndeliveredLandingWithNoResultSplitsItsReportOnce(t *testing.T) {
 // expansion has always been behind, and the one a new block of rows is easiest
 // to drop out of.
 func TestRoutineResultLeavesNoTranscriptClickTargets(t *testing.T) {
-	a := doneResultApp(t, 160, session.TaskDone, conflictedStoryNotice())
+	notice := conflictedStoryNotice()
+	// R10a's kept-branch decision (517cbbfb3) leaves unlanded work visible.
+	// This routine-result contract applies to work that actually merged.
+	notice.Merge, notice.Report = mergeWordMerged, "The story landed."
+	a := doneResultApp(t, 160, session.TaskDone, notice)
 	body, _ := a.window(a.width, a.viewHeight())
 	for _, row := range body {
 		if row.hit == hitDone {

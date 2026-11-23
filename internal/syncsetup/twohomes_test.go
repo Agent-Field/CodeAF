@@ -47,9 +47,20 @@ type twoHomes struct {
 	link   string // the project path A's session record names; a link to A's folder, removed while B has the chat
 }
 
+// newTwoHomes is two computers in the world before live transfer: the storage-off
+// tests built on it pin what a chat does on a hosted relay when nothing may be
+// stored, and C8 says exactly that behaviour is what CODEAF_PASSTHROUGH=off
+// restores. A test of the new road builds its scene with newLiveRig instead.
 func newTwoHomes(t *testing.T, wrap ...func(http.Handler) http.Handler) *twoHomes {
 	t.Helper()
-	r := newDriveRig(t, wrap...)
+	t.Setenv(LiveTransferVar, "off")
+	return twoHomesOver(t, newDriveRig(t, wrap...))
+}
+
+// twoHomesOver is the rig's second half, for a test that must reach into the
+// drive rig first (to put a byte tap in front of its relay, say).
+func twoHomesOver(t *testing.T, r *driveRig) *twoHomes {
+	t.Helper()
 	h := &twoHomes{driveRig: r, rootsB: t.TempDir(), wall: &noticeLog{}}
 	h.block = &blocker{Store: r.a.Store}
 	r.a.Store = h.block
@@ -179,6 +190,13 @@ func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, devi
 // openObserved is openOn with an observer on the seat, the way the door gives a
 // chat the machine that keeps the record of what it ran.
 func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer) *openChat {
+	return h.openSeated(s, eng, c, work, device, obs)
+}
+
+// openSeated is openObserved with options on the seat: the chat surface opens
+// its seat with a pipeline and a warm capture, which a test of what a running
+// chat captures between tool calls has to do as well.
+func (h *twoHomes) openSeated(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer, opts ...cellstore.SeatOption) *openChat {
 	h.t.Helper()
 	eng.Workspace = work
 	title := func() string { m, _ := session.LoadMeta(c.Root); return m.Title }
@@ -188,7 +206,7 @@ func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work
 	}
 	h.t.Cleanup(func() { _ = drive.Close(context.Background()) })
 	seat, err := cellstore.SeatOver(executor.HostBound, c, work, obs, nil,
-		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) })
+		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) }, opts...)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -493,6 +511,10 @@ func TestTwoHomesL12DeathBranches(t *testing.T) {
 
 	h.block.set(false)
 	waitFor(t, "A to learn it was superseded", func() bool { _, viewer := a.drive.Viewer(); return viewer })
+	waitFor(t, "A's branch row to hold three orphan turns", func() bool {
+		branch, ok := branchRowOf(t, h.a, h.cell.ID)
+		return ok && branch.OrphanTurns == 3
+	})
 
 	v, err := h.a.Dir.Cell(ctx, h.cell.ID)
 	if err != nil || v.Cell.Head != parentHead || v.Cell.Lease.Device != h.b.Device.ID() {
@@ -563,6 +585,110 @@ func bContinued(t *testing.T) *twoHomes {
 		t.Fatal(err)
 	}
 	return h
+}
+
+func TestTwoHomesTakeBackRunsToolsAfterRetainedBranchAndRestart(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	a := h.openA()
+	a.mustSay("A published")
+	h.durable(h.cell.ID, h.cell)
+	h.block.set(true)
+	a.mustSay("A retained turn")
+	orphanHead := headOf(t, h.cell)
+
+	took, err := h.continuerB().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.block.set(false)
+	waitFor(t, "A's persisted retained-branch redirect", func() bool {
+		branches, err := branchMapOf(h.homeA)
+		return err == nil && branches.Resolve(h.cell.ID) != h.cell.ID
+	})
+	branch, ok := branchRowOf(t, h.a, h.cell.ID)
+	if !ok || branch.OrphanTurns != 1 {
+		t.Fatalf("retained branch = %+v, %v", branch, ok)
+	}
+	branches, err := branchMapOf(h.homeA)
+	mustNil(t, err)
+	mustNil(t, branches.Set("unrelated-chat", "unrelated-branch"))
+	b := h.openOn(h.b, h.engB, took.Taken.Cell, workspaceOf(took.Taken.Cell.Root), nameB)
+	b.mustSay("B unique work")
+	h.durable(h.cell.ID, took.Taken.Cell)
+
+	back, err := h.continuerA().Take(ctx, h.cell.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	returned := h.openOn(h.a, h.engine, back.Taken.Cell, h.work, nameA)
+	assertToolSentinel(t, returned, "before-restart")
+	mustNil(t, returned.drive.Close(ctx))
+
+	// Reopen the saved home and native store through fresh sync and engine values.
+	h.a = openSync(t, h.homeA)
+	eng := cellstore.EngineFor(h.work)
+	eng.DataRoot, eng.Binary, eng.Transport = h.engine.DataRoot, h.bin, cellstore.Spawn{Binary: h.bin}
+	reopened := h.openOn(h.a, eng, h.cell, h.work, nameA)
+	assertToolSentinel(t, reopened, "after-restart")
+	branches, err = branchMapOf(h.homeA)
+	mustNil(t, err)
+	if branches.Resolve(h.cell.ID) != h.cell.ID || branches.Resolve("unrelated-chat") != "unrelated-branch" {
+		t.Fatal("take-back did not persist only the requested chat's redirect removal")
+	}
+	raw, err := os.ReadFile(transcriptOf(h.cell))
+	if err != nil || !strings.Contains(string(raw), "B unique work") {
+		t.Fatalf("B's unique work is missing after take-back: %v", err)
+	}
+	rec, err := h.a.Dir.Cell(ctx, branch.Cell)
+	if err != nil || rec.Cell.Archived || rec.Cell.Head != orphanHead {
+		t.Fatalf("retained branch no longer reachable: %+v, %v", rec.Cell, err)
+	}
+	kept := h.fetchInto(orphanHead)
+	if kept["turn-"+h.cell.ID[len(h.cell.ID)-4:]+"-2.txt"].body != "A retained turn" {
+		t.Fatal("the retained branch lost A's unpublished turn")
+	}
+}
+
+func TestTwoHomesAlreadyHereRepairsRetainedRedirect(t *testing.T) {
+	h := newTwoHomes(t)
+	ctx := context.Background()
+	a := h.openA()
+	a.mustSay("A published")
+	h.durable(h.cell.ID, h.cell)
+	branches, err := branchMapOf(h.homeA)
+	mustNil(t, err)
+	mustNil(t, branches.Set(h.cell.ID, "retained-branch"))
+	mustNil(t, branches.Set("unrelated-chat", "unrelated-branch"))
+	back, err := h.continuerA().Take(ctx, h.cell.ID)
+	if err != nil || !back.AlreadyHere {
+		t.Fatalf("take = %+v, %v; want AlreadyHere", back, err)
+	}
+	reopened := h.openOn(h.a, h.engine, back.Taken.Cell, h.work, nameA)
+	assertToolSentinel(t, reopened, "already-here")
+	branches, err = branchMapOf(h.homeA)
+	mustNil(t, err)
+	if branches.Resolve(h.cell.ID) != h.cell.ID || branches.Resolve("unrelated-chat") != "unrelated-branch" {
+		t.Fatal("AlreadyHere did not persist only the requested chat's redirect removal")
+	}
+}
+
+func assertToolSentinel(t *testing.T, chat *openChat, name string) {
+	t.Helper()
+	path := filepath.Join(chat.work, name+".sentinel")
+	ran := false
+	var writeErr error
+	err := chat.seat.Around(context.Background(), executor.Call{Tool: "bash", Args: []byte(`{"command":"write sentinel"}`)}, func() ([]byte, bool) {
+		ran = true
+		writeErr = os.WriteFile(path, []byte(name), 0o600)
+		return nil, writeErr != nil
+	})
+	if err != nil || !ran || writeErr != nil {
+		t.Fatalf("tool callback %s: ran=%v, gate=%v, write=%v", name, ran, err, writeErr)
+	}
+	if raw, err := os.ReadFile(path); err != nil || string(raw) != name {
+		t.Fatalf("tool sentinel %s missing: %v", name, err)
+	}
 }
 
 // sameFolder asserts a path is still the very directory it was: editors and git

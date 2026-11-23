@@ -9,10 +9,13 @@ package enginehost
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
@@ -222,6 +225,19 @@ func TestRetireWaitsForTheSaveOfTheHostItAskedToGo(t *testing.T) {
 	retired := make(chan error, 1)
 	go func() { retired <- Retire(workspace, true) }()
 	<-agent.closing
+	// A second reader must not make the retirement probe look like a host.
+	dir, err := Dir(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe, err := os.Open(filepath.Join(dir, lockName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseLock(probe)
+	if err := filelock.Lock(probe, false, true); err != nil {
+		t.Fatalf("probe the released workspace: %v", err)
+	}
 	if hostLockHeld(workspace) {
 		t.Fatal("the workspace lock is still held while the host saves")
 	}

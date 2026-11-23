@@ -18,6 +18,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/atlas"
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -25,12 +26,14 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
+	"github.com/Agent-Field/codeaf/internal/upgradenotice"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -674,6 +677,8 @@ type (
 		call *hostCall
 		ch   <-chan session.Event
 		err  error
+		// refused keeps the submitted words until the engine accepts them.
+		refused string
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -1245,28 +1250,17 @@ type app struct {
 	inputTokens int
 	cacheRead   int
 	cacheWrite  int
-	// cacheSaved is what those reads have been WORTH, in dollars: cacheRead ×
-	// (prompt price − cache-read price) for the model this conversation is on,
-	// worked out from the totals every time they move ([app.repriceCache], the
-	// one place it is written). It is what turns the warm share from a statistic
-	// into a fact about the bill: the percentage is the hit RATE, this is what
-	// the rate MEANT.
-	//
-	// IT IS DERIVED RATHER THAN ACCUMULATED, and that is a fix rather than a
-	// simplification. It used to be summed per turn as each turn landed, which
-	// meant a RESUMED conversation — whose cache reads are restored whole from
-	// the journal and whose turns are all in the past — read `⟲ 28% cached` with
-	// no `saved $…` beside it until the next turn happened to land. The share
-	// was restored and the money was not, on the one figure a person opens a
-	// resumed session to check.
-	//
-	// A MIXED-MODEL SESSION IS PRICED AT THE MODEL IT IS ON NOW. The price is a
-	// property of whoever was answering at the time, and one total of cache
-	// reads cannot be split back out over the models that made them — so the
-	// current model's price is applied to all of them. That is the honest
-	// approximation a resume can make: every alternative is either a figure
-	// nobody can reconstruct or no figure at all, and the second was what this
-	// surface used to draw.
+	// cacheReadByModel records how many cached prompt tokens were served under
+	// each model id in this conversation, so [app.repriceCache] prices each
+	// model's reads at that model's own rate rather than the currently selected
+	// model's rate.
+	cacheReadByModel map[string]int
+	// cacheSaved is what those reads have been WORTH, in dollars: for each model
+	// that served cached tokens, its reads × (prompt price − cache-read price),
+	// summed across [app.cacheReadByModel] ([app.repriceCache], the one place it
+	// is written). Switching the selected model for future turns never reprices
+	// savings already earned, and a reopened conversation prices each row at the
+	// model that row named.
 	cacheSaved float64
 
 	// outputTokens is what the session has WRITTEN, and it is held apart from
@@ -1492,8 +1486,19 @@ type app struct {
 	// LEAVING. The open's landing spends it; a shared window opens in place
 	// and spends it at once.
 	homeTakenSaid func() tea.Cmd
+	// setupOffered is the resume the setup card was last raised from, and
+	// setupOfferedFor the conversation it was raised in. A look taken after a
+	// moved chat's files arrived is compared with it, so the card is raised
+	// again only when it has something new to say ([app.arrivedAfterFiles]).
+	setupOffered    machine.Resume
+	setupOfferedFor string
+	// heldArrival is a look that finished before the window had landed in its
+	// chat, by the chat's folder name, until the landing takes it.
+	heldArrival map[string]machine.Resume
 	// homeTaking keeps a retiring session on its own continuation until arrival.
 	homeTaking string
+	// homeMoveSaid is the progress line home shows for the running continue.
+	homeMoveSaid string
 	// homeTakeSeq keeps each answer and cleanup tied to the operation that created it.
 	homeTakeSeq uint64
 	// homeTakeCancel belongs to the active mutation; automatic cleanup keeps it until settlement.
@@ -1965,6 +1970,11 @@ type app struct {
 	// MID-SENTENCE, and dropping the move would leave them on the service they
 	// just replaced, so the one pending id lands at the turn boundary.
 	deferredModelServiceModel string
+	deferredModelRename       *modelRename
+	// A later explicit choice keeps its wire and preference-write order even
+	// across a chat switch. Sends wait by agent inside their commands instead.
+	pendingModelSelection <-chan struct{}
+	modelCommands         []tea.Cmd
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -2155,7 +2165,8 @@ type app struct {
 	link LinkSeam
 	// seal is what the door can tell this surface about the sealing of the
 	// conversation's calls (sealseam.go). Its zero value draws nothing.
-	seal SealSeam
+	seal           SealSeam
+	stopSealNotice func()
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
@@ -2331,6 +2342,7 @@ type app struct {
 	// (draft.go); empty means it is not kept at all.
 	draftFile    string
 	draftPending bool
+	draftLoaded  map[string]bool
 	// artifacts is the deliverables index a finished /export records itself in
 	// (export.go). Empty is the door saying nothing, which [app.artifactsIndex]
 	// turns into the product's own path.
@@ -2355,6 +2367,7 @@ type app struct {
 	// fleet counts this person's devices and addMachine is the home card that
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
+	notShared  func() (NotShared, bool)
 	addMachine addMachine
 	// resume is the one-time "continue where you left off" offer (homeband_resume.go).
 	leftOff resumeOffer
@@ -2396,7 +2409,8 @@ type app struct {
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
 	// as for the keyboard. Closed, it costs the frame nothing.
-	sheet sheet
+	sheet       sheet
+	storageRead storageSampling
 	// deck is the phone tier's status sheet (statusdeck.go): the SECOND
 	// fullscreen thing, and the only one that exists at one size class only —
 	// under sixty columns the status row is a two-row deck, and this is where
@@ -2747,6 +2761,8 @@ type app struct {
 	cellsUnavailable string
 	pairing          Pairing
 	syncService      string
+	syncStats        func(context.Context) (blobstore.Counts, error)
+	syncSpace        blobstore.Counts
 	pair             pairPanel
 
 	// approvals answers a new device's request and revokes devices, and
@@ -2887,7 +2903,8 @@ type app struct {
 	// quitting keeps new input out of teardown while allowing another interrupt to leave.
 	quitting bool
 	// saveFailure retains closing errors for the report after the screen is restored.
-	saveFailure func(error)
+	saveFailure   func(error)
+	savingNotices func([]string)
 	// closingStarted retains pending engine replies after the terminal is restored.
 	closingStarted      func(<-chan struct{})
 	savingDurability    func(func() bool)
@@ -3108,10 +3125,12 @@ func newApp(ctx context.Context, opts Options) *app {
 		pairing:             opts.Pairing,
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
+		syncStats:           opts.SyncStats,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
 		taskComputers:       opts.TaskComputers,
 		fleet:               opts.Fleet,
+		notShared:           opts.NotShared,
 		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
@@ -3137,6 +3156,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		movedName:           movedName,
 		deviceID:            opts.DeviceID,
 		saveFailure:         opts.SaveFailure,
+		savingNotices:       opts.SavingNotices,
 		closingStarted:      opts.ClosingStarted,
 		savingDurability:    opts.SavingDurability,
 		savingCompatibility: opts.SavingCompatibility,
@@ -3393,6 +3413,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// nothing restores a zero Usage and every one of these fields stays as it
 	// was, so the sheet and /cost still draw nothing.
 	a.refreshUsage()
+	a.readTreeSpend()
 	// The notices get their first look now that the conversation, the box and
 	// the directory's facts are all in place: a news line lands here, under the
 	// replay and above the door's own notice, and the hints that wait on this
@@ -3410,7 +3431,14 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
-		eachLine(notice, a.note)
+		if upgradenotice.IsRecovery(notice) {
+			if opts.Notices == nil {
+				opts.Notices = NewNotices()
+			}
+			eachLine(notice, opts.Notices.SayHomeOnce)
+		} else {
+			eachLine(notice, a.note)
+		}
 	}
 	if from := strings.TrimSpace(opts.UpdatedFrom); from != "" {
 		a.note(updatedFromNote(from, a.updateRunning))
@@ -3487,6 +3515,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		opts.Notices = NewNotices()
 	}
 	a.useNotices(opts.Notices)
+	a.useSeal(opts.Seal)
 	return a
 }
 
@@ -3632,7 +3661,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.takeModelCommands(), a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -3697,6 +3726,12 @@ func (a *app) Init() tea.Cmd {
 	// (delegate.go). The list is the engine's, so a switch asks again
 	// ([app.attachConversation]).
 	standing = append(standing, a.installDelegates())
+	// The relay's sync-space reading is asked for once here, off the loop, so the
+	// first /status can answer at once instead of waiting on the network
+	// (syncspace.go). Nil when sync is off or no relay can report it.
+	if read := a.refreshSyncSpace(); read != nil {
+		standing = append(standing, read)
+	}
 	return tea.Batch(standing...)
 }
 
@@ -3827,7 +3862,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if summary := a.refreshRunSummary(); summary != nil {
 		cmd = tea.Batch(cmd, summary)
 	}
-	return model, cmd
+	return model, tea.Batch(cmd, a.takeModelCommands())
 }
 
 // route is the message switch: every message this surface handles, handled once.
@@ -3861,12 +3896,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case conversationClosedMsg:
 		a.conversationClosing = false
-		if errors.Is(msg.err, session.ErrSavingUnanswered) {
-			a.note(closeStillFinishingWord)
-		} else if msg.err != nil {
-			a.note(closeSaveFailedWord)
-		} else if msg.finishing {
-			a.note(closeStillFinishingWord)
+		a.saidNotices()
+		for _, line := range msg.notices {
+			a.note(line)
+		}
+		if line := closeSaveWords(msg.err, msg.finishing, msg.address); line != "" {
+			a.note(line)
 		}
 		a.touch()
 		return a, nil
@@ -4250,6 +4285,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.homeFilesLoaded(msg.paths, msg.root)
 			return a, nil
 		}
+		if msg.root != "" && a.comp.walked != "" && msg.root != a.comp.walked {
+			return a, nil
+		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.fillMentions()
 		a.comp.refresh(&a.input)
@@ -4374,6 +4412,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.toldNote(filesOpenFailedWord + drawableLine(msg.path))
 		}
+		return a, nil
+
+	case storageRequestOpenedMsg:
+		a.storageRequestOpened(msg)
 		return a, nil
 
 	case copiedMsg:
@@ -5600,6 +5642,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.automaticTakeSettled(msg)
 	case homeTakenMsg:
 		return a, a.tookTakeover(msg)
+	case homeMoveTickMsg:
+		return a, a.followMove(msg)
 
 	case homeBranchMsg:
 		return a, a.tookBranch(msg)
@@ -5615,6 +5659,8 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case homeMachinesSlowMsg:
 		a.machinesStillChecking(msg)
 		return a, nil
+	case homeLocalOpenMsg:
+		return a, a.homeLocalOpenReady(msg)
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
@@ -5935,6 +5981,29 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (cachecmd.go).
 		a.toldNote(msg.line)
 		return a, nil
+
+	case storageAccountMsg:
+		if msg.serial <= a.storageRead.applied || msg.serial != a.storageRead.pending {
+			return a, nil
+		}
+		a.storageRead.pending = 0
+		a.storageRead.applied = msg.serial
+		a.storageRead.code, a.storageRead.state = msg.code, msg.state
+		if a.at(pageSettings) && (a.sheet.storageCode != msg.code || a.sheet.storageState != msg.state) {
+			a.sheet.storageCode, a.sheet.storageState = msg.code, msg.state
+			a.sheet.build()
+			a.touch()
+		}
+		return a, nil
+
+	case syncSpaceMsg:
+		// The reading is the identity's, not one chat's, so it is kept whichever
+		// chat is on screen. It is only ever read by the next /status.
+		if msg.counts.Storage == "" {
+			msg.counts.Storage = a.syncSpace.Storage
+		}
+		a.syncSpace = msg.counts
+		return a, a.sampleStorageAccount(true)
 
 	case spelledMsg:
 		// The expansion, or nothing at all — a failure, a timeout and a model that
@@ -6403,6 +6472,16 @@ func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
 	if msg.err != nil {
+		if msg.refused != "" {
+			a.atMainComposer(func(state *composerState) {
+				words := msg.refused
+				if !state.box.empty() {
+					words += "\n" + unfoldPastes(state.box.String(), state.pastes)
+				}
+				state.box.setText(words)
+				state.pastes = nil
+			})
+		}
 		// A MESSAGE THE ENGINE REFUSED NEVER HAPPENED, so the line the surface
 		// drew for it comes off the page and the refusal is put where it was
 		// (echo.go). The sentence is the engine's own, unchanged: it knows why —
@@ -7321,12 +7400,15 @@ func (a *app) take(u session.Usage) {
 	if u.Input > a.inputTokens {
 		a.inputTokens = u.Input
 	}
+	deltaCacheRead := 0
 	if u.CacheRead > a.cacheRead {
+		deltaCacheRead = u.CacheRead - a.cacheRead
 		a.cacheRead = u.CacheRead
 	}
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
 	}
+	a.recordCacheReads(deltaCacheRead)
 	// AND WHAT THE CACHE GAVE BACK IS RE-DERIVED FROM THE TOTAL THAT JUST MOVED,
 	// which is what carries the figure across a RESUME: this is the one door
 	// every reading of the session's cache reads comes through — a turn landing,
@@ -7466,7 +7548,12 @@ func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 // counts as an accepted turn, and keeps the update-loop door budget from growing
 // merely because a conversation can now send while it is behind the screen.
 func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
-	return func() (<-chan session.Event, error) { return agent.Submit(ctx, text) }
+	return func() (<-chan session.Event, error) {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil, err
+		}
+		return agent.Submit(ctx, text)
+	}
 }
 
 // submitting is that body with the CALL left to the caller: everything a
@@ -7538,9 +7625,13 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	a.startClock()
 	a.follow()
 	a.touch()
+	ctx, agent := a.ctx, a.agent
 	return tea.Batch(func() tea.Msg {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return submittedMsg{err: err, echo: mark, call: call, refused: text}
+		}
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call, refused: text}
 	}, a.wake())
 }
 
@@ -8620,13 +8711,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// serialized object would corrupt the JSON. Any other words after the
 		// name fall through to the bare form, the route this command has always
 		// answered on.
-		if rest == "--json" {
-			a.note(a.statusJSON())
-			return nil
-		}
-		text := a.statusText()
-		a.noteFacts(text, a.statusFacts(text)...)
-		return nil
+		return a.runStatusCommand(rest)
 
 	case "cost":
 		// THE FIGURE IS THE PAYLOAD AND THE LABEL IS THE FURNITURE (payload.go).
@@ -8861,7 +8946,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	a.history = conv.History
 	// AND THE SEALS ARE THIS CONVERSATION'S OWN, cleared by a zero for the same
 	// reason: one chat's failed seal is not another's (sealseam.go).
-	a.seal = conv.Seal
+	a.useSeal(conv.Seal)
 	a.saveApproval = conv.SaveApproval
 	a.saveBashApproval = conv.SaveBashApproval
 	a.applyApprovals = conv.ApplyApprovals
@@ -9268,7 +9353,7 @@ func (a *app) interruptTurn() {
 	// surface says what it is while it runs down. It is measured from the KEY and
 	// not from the last event, because the key is the moment the person is
 	// certain of and the only one they are timing from.
-	a.stopBy = a.now().Add(stopGrace)
+	a.stopBy = a.now().Add(session.StopGrace)
 	// THE ROWS STOP AT THE KEY. Leaving the state word was already enough to
 	// still the spinners and the count-ups — both renderers stand down outside
 	// stateWorking (toolview.go's [app.mark] and [app.countClock]) — but only for
@@ -9373,24 +9458,6 @@ func (a *app) interruptTurn() {
 // surface detaches. A silent countdown is not a stop anybody can trust, so the
 // bound is on the screen before it fires and never only after.
 
-// stopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the surface lets go
-// of the turn without it ([app.stopSweep]).
-//
-// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
-// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
-// graces any more: this change put the call's context on both of those, so a
-// stop ends them at once rather than waiting them out. What is left behind the
-// bound is the class this change cannot reach from outside — a wait that never
-// looks at its context at all, a command whose output a grandchild still holds,
-// anything a tool blocks on that was written before cancellation existed. Ten
-// seconds is chosen to sit far above every settle we can measure, so the
-// deadline fires only on that class and never on a turn that was about to end
-// tidily and hand back what it did.
-//
-// IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
-// is the only moment the person is timing from.
-const stopGrace = 10 * time.Second
-
 // windingDown reports that the turn on screen was STOPPED BY HAND and its stream
 // has not closed yet: the seconds between a person's ctrl+c and the engine letting
 // go of the turn.
@@ -9403,7 +9470,7 @@ const stopGrace = 10 * time.Second
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
 // the context until the tool batch it is inside has finished. What can still
 // outlast the cancel is the context-blind class — a wait that never looks at the
-// context it was given — and that is what the bound is for. [stopGrace] above
+// context it was given — and that is what the bound is for. [session.StopGrace]
 // carries the argument in full; it is not repeated here, so that moving the
 // reasoning cannot leave two versions of it disagreeing.
 //
@@ -10058,6 +10125,7 @@ func (a *app) syncLists() tea.Cmd {
 		recents = a.loadMentionRecents()
 	}
 	a.fillMentions()
+	a.alignFiles(a.pathRoot())
 	a.comp.sync(&a.input)
 	if opening {
 		// Both halves of the list are asked for at the same moment, and neither
@@ -10065,6 +10133,9 @@ func (a *app) syncLists() tea.Cmd {
 		// walk lands when it lands (taskmention.go, files.go). The recent
 		// conversations ride the same opening (mention.go).
 		return tea.Batch(a.loadFiles(), a.loadTasks(), recents)
+	}
+	if a.comp.open && a.comp.words == nil {
+		return a.loadFiles()
 	}
 	return nil
 }
@@ -10118,6 +10189,7 @@ func (a *app) resetMeters() {
 	a.cost = 0
 	a.tokens, a.inputTokens, a.outputTokens = 0, 0, 0
 	a.cacheRead, a.cacheWrite = 0, 0
+	a.cacheReadByModel = nil
 	a.cacheSaved = 0
 	// AND THE TREE'S TOTAL, which is a fact about one conversation exactly as
 	// a.cost above it is: it is what THIS conversation and the work it started
@@ -10345,10 +10417,73 @@ func (a *app) cacheNote(u session.Usage) {
 	a.feed.note(line)
 }
 
+// cacheModel is the model id a newly observed cache read is attributed to when
+// no per-row breakdown named one.
+func (a *app) cacheModel() string {
+	if model := strings.TrimSpace(a.model); model != "" {
+		return model
+	}
+	if a.agent != nil {
+		return strings.TrimSpace(a.agent.Model())
+	}
+	return ""
+}
+
+// transcriptCacheReads reads the per-model cached prompt tokens from this
+// conversation's journal on disk when one is present.
+func (a *app) transcriptCacheReads() map[string]int {
+	if path := strings.TrimSpace(a.file); path != "" {
+		if reads := session.TranscriptCacheReads(path); len(reads) > 0 {
+			return reads
+		}
+	}
+	if a.resumed && strings.TrimSpace(a.workspace) != "" {
+		for _, name := range []string{"session.jsonl", "transcript.jsonl"} {
+			if reads := session.TranscriptCacheReads(filepath.Join(a.workspace, name)); len(reads) > 0 {
+				return reads
+			}
+		}
+	}
+	return nil
+}
+
+// recordCacheReads attributes newly arrived cache reads to the model that
+// served them so a later /model switch never reprices earned savings.
+func (a *app) recordCacheReads(delta int) {
+	if len(a.cacheReadByModel) == 0 && a.cacheRead > 0 {
+		if fromTranscript := a.transcriptCacheReads(); len(fromTranscript) > 0 {
+			a.cacheReadByModel = fromTranscript
+		}
+	}
+	if a.cacheReadByModel != nil {
+		if unattributed := a.cacheReadByModel[""]; unattributed > 0 {
+			if model := a.cacheModel(); model != "" {
+				a.cacheReadByModel[model] += unattributed
+				delete(a.cacheReadByModel, "")
+			}
+		}
+	}
+	if delta <= 0 {
+		return
+	}
+	var attributed int
+	for _, reads := range a.cacheReadByModel {
+		attributed += reads
+	}
+	if a.cacheRead <= attributed {
+		return
+	}
+	add := min(delta, a.cacheRead-attributed)
+	if a.cacheReadByModel == nil {
+		a.cacheReadByModel = make(map[string]int)
+	}
+	a.cacheReadByModel[a.cacheModel()] += add
+}
+
 // repriceCache is what the session's cache reads have been worth, worked out
-// from the totals rather than remembered from the turns that made them
-// ([app.cacheSaved] states the bargain, the resume it fixes and the mixed-model
-// approximation it accepts). It is called wherever [app.cacheRead] moves.
+// per model that served those reads rather than repriced at the currently
+// selected model ([app.cacheSaved]). It is called wherever [app.cacheRead] or
+// [app.cacheReadByModel] moves.
 //
 // BOTH PRICES OR NO MONEY, which is [app.cacheNote]'s own guard said again at
 // the second site that spends it: around two rows in five publish a prompt
@@ -10361,7 +10496,30 @@ func (a *app) repriceCache() {
 	if a.cacheRead <= 0 {
 		return
 	}
-	model, known := a.priceFor(a.model)
+	if len(a.cacheReadByModel) > 0 {
+		if unattributed := a.cacheReadByModel[""]; unattributed > 0 {
+			if model := a.cacheModel(); model != "" {
+				a.cacheReadByModel[model] += unattributed
+				delete(a.cacheReadByModel, "")
+			}
+		}
+		var total float64
+		for id, reads := range a.cacheReadByModel {
+			if reads <= 0 {
+				continue
+			}
+			model, known := a.priceFor(id)
+			if !known || model.CacheReadPrice <= 0 {
+				continue
+			}
+			if saved := float64(reads) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
+				total += saved
+			}
+		}
+		a.cacheSaved = total
+		return
+	}
+	model, known := a.priceFor(a.cacheModel())
 	if !known || model.CacheReadPrice <= 0 {
 		return
 	}

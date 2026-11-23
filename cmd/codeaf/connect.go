@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/claudeagent"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"io"
 	"net/url"
 	"os"
@@ -63,6 +65,8 @@ func runConnect(args []string) error {
 		return connectCodex(context.Background(), config.ProfileDir(), *noBrowser)
 	case modelsource.DefaultID:
 		return connectOpenRouter(context.Background(), config.ProfileDir(), *noBrowser)
+	case claudemodel.ID:
+		return connectClaudeCode(context.Background(), config.ProfileDir())
 	default:
 		return connectKeyService(context.Background(), config.ProfileDir(), service, strings.TrimSpace(*region))
 	}
@@ -92,6 +96,42 @@ func connectCodex(ctx context.Context, profileDir string, noBrowser bool) error 
 		return connectFailed("codex", err)
 	}
 	fmt.Fprintln(usageOut, config.CodexConnectionWord(tokens.Email, tokens.Plan, outcome))
+	return nil
+}
+
+// connectClaudeCode connects the person's own `claude` program. It asks for no
+// key, because codeaf never holds its sign-in: it checks the program is here
+// and signed in, keeps the row and seeds its models, exactly as the app's
+// Connect does. The line names the three family words and counts the versions
+// listed beside them, so it stays one line however many versions there are.
+func connectClaudeCode(ctx context.Context, profileDir string) error {
+	outcome, err := config.ConnectClaudeCode(ctx, profileDir)
+	if err != nil {
+		return connectFailed(claudemodel.ID, err)
+	}
+	status := claudeagent.ReadStatus(ctx)
+	words := []string{claudemodel.ID + " is connected"}
+	if status.Version != "" {
+		words = append(words, "Claude Code "+status.Version)
+	}
+	if status.Plan != "" {
+		words = append(words, "Claude "+strings.ToUpper(status.Plan[:1])+status.Plan[1:]+" plan")
+	}
+	var families []string
+	versions := 0
+	for _, id := range outcome.ModelIDs {
+		if claudemodel.Version(id) != "" {
+			versions++
+			continue
+		}
+		families = append(families, claudemodel.ID+"/"+id)
+	}
+	models := "models: " + strings.Join(families, ", ")
+	if versions > 0 {
+		models += fmt.Sprintf(" and %d versions", versions)
+	}
+	words = append(words, models)
+	fmt.Fprintln(usageOut, strings.Join(words, " · "))
 	return nil
 }
 
@@ -164,8 +204,11 @@ func listConnections(profileDir string) error {
 			continue
 		}
 		method := "key"
-		if source.ID == "codex" {
+		switch source.ID {
+		case "codex":
 			method = "browser"
+		case claudemodel.ID:
+			method = "your Claude Code sign-in"
 		}
 		line(source.Written, method, held[source.ID])
 	}

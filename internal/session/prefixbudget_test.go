@@ -90,6 +90,7 @@ const leanWindow = 16_000
 // none, while this budget must still weigh the Unix shipping maximum.
 func prefixPrograms() []delegate.Delegate {
 	return []delegate.Delegate{
+		{Name: "claude", Guide: programguide.Claude, Lands: delegate.LandsTree},
 		{Name: "review", Guide: programguide.Review, Lands: delegate.LandsText},
 		{Name: "sec", Guide: programguide.Sec, Lands: delegate.LandsText},
 		{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree},

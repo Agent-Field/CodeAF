@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/inventory"
 )
 
@@ -33,6 +34,9 @@ var restorer = Carry{Cutter: worktreeCutter{}}
 
 func run(t *testing.T, dir string, name string, args ...string) string {
 	t.Helper()
+	if name == "git" {
+		args = gitidentity.PrivateArgs(args...)
+	}
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "GIT_CONFIG_GLOBAL=/dev/null")
@@ -411,7 +415,7 @@ func TestComposeRecordsCopyInstallFolders(t *testing.T) {
 type forkCutter struct{}
 
 func (forkCutter) Cut(project, dest string, spec Spec) error {
-	if err := exec.Command("git", "clone", "-q", "--no-checkout", project, dest).Run(); err != nil {
+	if _, err := privateGit(filepath.Dir(dest), "clone", "-q", "--no-checkout", project, dest); err != nil {
 		return err
 	}
 	return exec.Command("git", "-C", dest, "checkout", "-q", "-b", spec.Branch, spec.At).Run()

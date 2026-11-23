@@ -281,6 +281,26 @@ func programHoldWriteRefusal(shown string, hold programHold) string {
 		", is working, so nothing was written; wait for that run to end, or stop it, then write there"
 }
 
+// WriteHeldRefusal is why a write into dir, by any road that is not one of the
+// chat's own file tools, must not happen now: a program's run holds dir or a
+// folder around it. It answers "" when nothing does. A road that writes where
+// it was pointed asks it of the folder it will ACTUALLY write in, immediately
+// before the write — the recipe door asks it of a checkout written in place and
+// of the worktree a change is cut in, and only the first is ever held. The
+// question is the one [programHoldGuard] asks of a path, and a failure to learn
+// anything else (no git history, a git error) is not an answer to it.
+func WriteHeldRefusal(dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	hold, busy := programHoldOver(canonicalPath(dir), "")
+	if !busy {
+		return ""
+	}
+	return programHoldWriteRefusal(dir, hold)
+}
+
 // savingPath is the absolute path one call is about to put a file at, and the
 // same path as a person reads it, for every hand in [savingTools] whose call
 // both writes ([producedAFile]) and names where. It resolves a relative path

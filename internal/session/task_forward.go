@@ -120,6 +120,8 @@ type personSourceID struct {
 type spokenSource struct {
 	id     personSourceID
 	spoken time.Time
+	// clientID is opaque authored-note correlation, not a retry identity or model instruction.
+	clientID string
 	// forwarded says the person was NOT in this node's room when they said it —
 	// the model chose the address and this door carried their words there. It
 	// decides which of the two receipt lines the worker reads
@@ -136,6 +138,15 @@ type spokenSource struct {
 }
 
 func (id personSourceID) live() bool { return id.scope != "" && id.seq != 0 }
+
+// written says this line must be on the checkpoint before it is handed to
+// anybody: it carries a retry identity, or an authored note's correlation key.
+//
+// THE KEY IS NOT AN IDENTITY. It never makes a repeat a repeat — two notes under
+// one key are two notes — but a surface reads it back off the page to know which
+// of its notes this is, so a worker must never read a keyed note the disk has
+// not heard of, and a restart must never bring one back without its key.
+func (s spokenSource) written() bool { return s.id.live() || s.clientID != "" }
 
 // after says this id names a LATER message than the other one. Only ids from
 // the same life are comparable, and that is the whole of the ordering: a

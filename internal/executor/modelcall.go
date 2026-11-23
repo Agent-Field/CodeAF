@@ -1,14 +1,33 @@
 package executor
 
+// UnbilledMarkerKind distinguishes missing accounting from a measured model call.
+const UnbilledMarkerKind = "unbilled-marker"
+
 // ModelCall is one model call as a seat is told of it: who answered, for what,
 // and what it cost. The seat that keeps a record puts it in the next receipt.
 type ModelCall struct {
+	// ID is the live usage ledger row identity, absent on older saved calls.
+	ID           string
+	CallID       string
 	Model        string
 	Role         string
 	TokensIn     int
 	TokensOut    int
 	TokensCached int
 	CostMicroUSD int64
+	Kind         string
+	Billing      string
+	BillingBasis string
+	Unbilled     bool
+	FactoryJob   string
+}
+
+// ExplicitID returns the caller-assigned model call identity when present.
+func (m ModelCall) ExplicitID() string {
+	if m.CallID != "" {
+		return m.CallID
+	}
+	return m.ID
 }
 
 // ModelNoter is a seat that records model calls.

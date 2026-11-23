@@ -49,13 +49,20 @@ func TestRotateAsksFirst(t *testing.T) {
 	f := &fakeRotation{plan: rotate.Plan{Chats: 3, Missing: 1, DownBytes: 5 << 20, UpBytes: 9 << 20, Wait: 3 * time.Minute}}
 	d, out := rotationDoor(t, f, "n\n")
 	err := identityRotate(d, nil)
-	if err == nil || !strings.Contains(err.Error(), "nothing changed") || f.rotate != 0 {
+	if err != exitStatus(1) || !strings.Contains(out.String(), "rotation cancelled; nothing changed") || f.rotate != 0 {
 		t.Fatalf("a no = %v, rotations %d", err, f.rotate)
 	}
 	for _, want := range []string{"3 chats", "1 of them not on this computer (5.0 MB to fetch first)", "9.0 MB goes up", "3 minutes", "cannot be undone"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the plan does not say %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestQARotationPlanSaysStorageIsOff(t *testing.T) {
+	text := planText(rotate.Plan{Chats: 2, StorageOff: true})
+	if !strings.Contains(text, "storage is off") || !strings.Contains(text, "stay on this computer") || strings.Contains(text, "goes up to sync") {
+		t.Fatalf("storage-off plan promises an upload: %s", text)
 	}
 }
 
@@ -158,5 +165,13 @@ func TestPairGrantNamesWhatItReplaced(t *testing.T) {
 	g, err := pairGrant(pair.Mailbox{URL: "http://relay.test"})
 	if err != nil || len(g.Replaces) != 1 || g.Replaces[0] != gone.ID() {
 		t.Fatalf("grant replaces %v, %v", g.Replaces, err)
+	}
+}
+
+func TestQAAbandonWhenNoRotationIsInProgress(t *testing.T) {
+	f := &fakeRotation{err: rotate.ErrNoRotation}
+	d, out := rotationDoor(t, f, "")
+	if err := identityRotate(d, []string{"--abandon"}); err != nil || strings.TrimSpace(out.String()) != "no rotation in progress" {
+		t.Fatalf("abandon without a rotation: %q, %v", out, err)
 	}
 }

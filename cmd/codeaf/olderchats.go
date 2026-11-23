@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -19,8 +20,13 @@ const olderChatRecent = 30 * 24 * time.Hour
 // copyOlderChat seals the folder as it stands today and exposes the independent
 // copy only after that first turn is durable. Failed attempts remain hidden.
 func copyOlderChat(ctx context.Context, dir string) (cell.Cell, error) {
+	return copyOlderChatIn(ctx, home.Dir(), dir)
+}
+
+// copyOlderChatIn is copyOlderChat for the chats of the home at root.
+func copyOlderChatIn(ctx context.Context, root, dir string) (cell.Cell, error) {
 	return cell.CopyLegacy(ctx, dir, func(ctx context.Context, c cell.Cell) error {
-		brain, err := store.Open(filepath.Join(home.Dir(), "graph.db"))
+		brain, err := store.Open(filepath.Join(root, "graph.db"))
 		if err != nil {
 			return err
 		}
@@ -34,6 +40,7 @@ func copyOlderChat(ctx context.Context, dir string) (cell.Cell, error) {
 			return err
 		}
 		e := cellstore.EngineFor(c.Root)
+		e.DataRoot = filepath.Join(root, "v3", "stores")
 		e.Workspace = meta.Workspace
 		if meta.Owned {
 			e.Workspace = filepath.Join(c.Root, "work")
@@ -45,8 +52,14 @@ func copyOlderChat(ctx context.Context, dir string) (cell.Cell, error) {
 	})
 }
 
-// runOlderChats visits one chat at a time between background rounds. A live
-// original is retried after its window closes; its journal is never rewritten.
+// terminalSharing is the terminal's part in sharing its home (homesharing.go),
+// set while runOlderChats runs so the screen can say what is not shared yet.
+var terminalSharing atomic.Pointer[homeSharing]
+
+// runOlderChats is the terminal's background sharing round: when it holds the
+// home's sharing lock it publishes the chats not shared yet and copies at most
+// one older chat a round. A live original is retried after its window closes;
+// its journal is never rewritten.
 func runOlderChats(ctx context.Context) {
 	ticker := time.NewTicker(syncsetup.DefaultInterval)
 	defer ticker.Stop()
@@ -55,33 +68,36 @@ func runOlderChats(ctx context.Context) {
 		return
 	case <-ticker.C:
 	}
-	chats := olderChats{copy: copyOlderChat}
+	sharing := newHomeSharing(home.Dir())
+	defer sharing.release()
+	terminalSharing.Store(sharing)
+	defer terminalSharing.CompareAndSwap(sharing, nil)
+	var source *syncsetup.Sync
 	for {
 		if syncsetup.MayTalk(home.Dir()) {
-			dirs, _ := filepath.Glob(home.Join("v3", "projects", "*", "*"))
-			for _, dir := range dirs {
-				if ctx.Err() != nil {
-					return
+			if s, ok, err := syncsetup.Open(home.Dir()); err == nil && ok {
+				binding := s.Ledger + "/" + s.Device.ID()
+				if source == nil || source.Ledger+"/"+source.Device.ID() != binding {
+					source = s
 				}
-				c, meta, ok := chats.visit(ctx, dir)
-				if !ok {
-					continue
-				}
-				// A finished copy is uploaded and released as an ordinary chat. The
-				// same drive and durability rules apply as for a newly started chat.
-				if s, ok, err := syncsetup.Open(home.Dir()); err == nil && ok {
-					copiedMeta, _ := session.LoadMeta(c.Root)
-					e := cellstore.EngineFor(copiedMeta.Workspace)
-					if err := s.PublishCopy(ctx, e, c, deviceName(), meta.Title); err == nil {
-						_ = os.WriteFile(filepath.Join(c.Root, cell.CopyOfferedPath), nil, 0600)
+				if sharing.claim() {
+					// A pass lasts as long as its uploads keep moving: the
+					// count is kept current between its chats.
+					var counted time.Time
+					source.BetweenChats = func() {
+						if time.Since(counted) >= unsharedRecount/3 {
+							counted = time.Now()
+							sharing.note(source, counted)
+						}
 					}
+					_ = source.PublishLocalChats(ctx, time.Now, func(_ cell.Cell, line string) { surfaceNotices.SayHomeOnce(line) })
+					source.BetweenChats = nil
+					sharing.copyOne(ctx)
 				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-				}
+				sharing.note(source, time.Now())
 			}
+		} else {
+			sharing.forget()
 		}
 		select {
 		case <-ctx.Done():
@@ -112,16 +128,15 @@ type olderChatStamp struct {
 }
 
 // visit copies the chat in dir when it is a recent older chat that nothing is
-// using and that has no copy yet. It answers the copy and the original's meta.
+// using and that has no copy yet; a chat with a cell is not an older chat. It
+// answers the copy and the original's meta.
 func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.Meta, bool) {
-	copied := cell.Copied(dir)
-	if copied != dir && session.InUse(filepath.Join(copied, cell.TranscriptPath)) {
+	// A finished copy is published by the ordinary pass (homesharing.go).
+	if cell.Copied(dir) != dir {
 		return cell.Cell{}, session.Meta{}, false
 	}
-	if copied != dir {
-		if _, err := os.Stat(filepath.Join(copied, cell.CopyOfferedPath)); err == nil {
-			return cell.Cell{}, session.Meta{}, false
-		}
+	if _, err := os.Stat(filepath.Join(dir, cell.MetaPath)); err == nil {
+		return cell.Cell{}, session.Meta{}, false
 	}
 	journal, err := os.Stat(filepath.Join(dir, "transcript.jsonl"))
 	if err != nil {
@@ -159,7 +174,7 @@ func (o *olderChats) visit(ctx context.Context, dir string) (cell.Cell, session.
 // The home folder is not a project (session.HoldsHomeFolder); such a chat keeps
 // opening where it is. A chat with its own folder is always copyable.
 func olderChatCopyable(meta session.Meta) bool {
-	return meta.Owned || !session.HoldsHomeFolder(meta.Workspace)
+	return syncsetup.OlderChatShareable(meta)
 }
 
 // movablePlace resolves a completed copy or prepares one when the person opens

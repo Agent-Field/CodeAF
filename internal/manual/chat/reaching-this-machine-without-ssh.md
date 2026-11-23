@@ -584,3 +584,7 @@ An `--at` window uses the serving computer's chosen device name in its bar,
 connection errors, reconnecting notices and timeout messages. Its typed
 rendezvous name still selects the machine to connect to. If an older engine
 has not supplied a chosen name, the window uses the requested name.
+
+## Does live --at access need sync storage approval?
+
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Live access works on the other computer while it stays on; storage approval is needed to copy saved chats so they can open elsewhere when it is off.

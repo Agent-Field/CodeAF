@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/keys"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
@@ -20,6 +22,12 @@ var stateMu sync.Mutex
 // its lifetime. Quiet, unpaired and removed homes end silently; other failures
 // retry after the sync interval and are reported once per distinct error.
 func RunHomeState(ctx context.Context, home string, report func(error)) {
+	var stopStorage func()
+	defer func() {
+		if stopStorage != nil {
+			stopStorage()
+		}
+	}()
 	interval, err := flushInterval()
 	if err != nil {
 		interval = DefaultInterval
@@ -53,6 +61,11 @@ func RunHomeState(ctx context.Context, home string, report func(error)) {
 		if errors.Is(err, directory.ErrRevoked) || (current != nil && current.isRemoved()) {
 			return
 		}
+		// The first state round proves the device may still use this home.
+		// Starting earlier races a revoked device's one final request.
+		if stopStorage == nil && current != nil {
+			stopStorage = StartStorageRefresh(ctx, home)
+		}
 		if err != nil && ctx.Err() == nil && !reported[err.Error()] {
 			reported[err.Error()] = true
 			if report != nil {
@@ -80,7 +93,16 @@ func (s *Sync) SyncState(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.withVault(func(v vaultsync.Syncer) error {
+	err = s.withVaultWithin(ctx, 0, func(v vaultsync.Syncer) error {
+		app := config.AppCredentialSource()
+		if app != nil && app.NeedsSyncLoad() {
+			// Fetch the current vault before treating hand-back keys as local
+			// captures. A locked or late secure store cannot revert a peer's edit.
+			if err := v.Pull(ctx); err != nil {
+				return err
+			}
+			app.SyncLoaded()
+		}
 		sharing := s.teamsSharing()
 		if sharing != s.teamsShared {
 			s.stateVaultKnown = false
@@ -95,8 +117,17 @@ func (s *Sync) SyncState(ctx context.Context) error {
 		if err := v.Capture(); err != nil {
 			return err
 		}
+		if app != nil && app.SyncReady() {
+			if refresh := app.SyncRefresh(); refresh != s.stateCredentialRefresh {
+				// Retake a saved proposal only after capturing any newer local edit.
+				if err := providerKeys(s.profile(), s.Home).RestoreLocal(v.Vault); err != nil {
+					return err
+				}
+				s.stateCredentialRefresh = refresh
+			}
+		}
 		fp, exists := keys.Fingerprint(s.Home)
-		if exists && fp != s.stateSent {
+		if exists && fp != s.stateSent && s.StorageAllowed() {
 			if err := v.Push(ctx); err != nil {
 				return err
 			}
@@ -112,9 +143,15 @@ func (s *Sync) SyncState(ctx context.Context) error {
 			}
 			s.stateVault, s.stateVaultKnown = rid, local
 		}
-		s.stateSent, _ = keys.Fingerprint(s.Home)
+		if s.StorageAllowed() {
+			s.stateSent, _ = keys.Fingerprint(s.Home)
+		}
 		return nil
 	})
+	if err == nil && pair.SharingPending(s.Home, s.Identity.ID()) {
+		return pair.CompleteSharing(s.Home, s.Identity.ID())
+	}
+	return err
 }
 
 // RunState is owned and joined by the terminal's lifetime. Pairing while Home

@@ -40,6 +40,7 @@ type keyRig struct {
 type keyMachine struct {
 	vaultsync.Syncer
 	profile string
+	home    string
 }
 
 func newKeyRig(t *testing.T) *keyRig {
@@ -64,7 +65,7 @@ func (r *keyRig) machine() *keyMachine {
 		r.t.Fatal(err)
 	}
 	dev := "dev_" + strings.Repeat(string(rune('a'+r.n)), 32)
-	m := &keyMachine{profile: filepath.Join(r.t.TempDir(), "profile")}
+	m := &keyMachine{profile: filepath.Join(r.t.TempDir(), "profile"), home: home}
 	m.Syncer = vaultsync.Syncer{Store: r.store, Dir: r.dir.For(dev), Vault: v, CellKeyID: r.id.CellKeyID(),
 		Carry: []vaultsync.Carrier{providerKeys(m.profile, home)}}
 	return m

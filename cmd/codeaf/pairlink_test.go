@@ -51,7 +51,7 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The asking computer names its own operating system, so on a Mac it says Mac.
-	want := pair.WantsToJoinLine("laptop", runtime.GOOS) + "\n" + pair.CheckQuestion(check) + "  a / d "
+	want := pair.WantsToJoinLine("laptop", runtime.GOOS) + "\n" + pair.CheckQuestion(check) + "\n" + pairApproveKeys
 	if !strings.HasPrefix(out.String(), want) || !strings.Contains(out.String(), pair.ApprovedLine("laptop")) {
 		t.Fatalf("the approving terminal printed:\n%s\nwant it to start:\n%s", out.String(), want)
 	}
@@ -59,6 +59,9 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	screen.waitFor(t, `Paired with`)
+	if !strings.Contains(screen.String(), ". Run codeaf to open your chats.\n") {
+		t.Fatalf("link join omitted dev completion copy: %s", screen.String())
+	}
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)
 	if err != nil || second.ID() != first.ID() {
@@ -173,7 +176,7 @@ func TestPairApproveWithoutALinkSaysUsage(t *testing.T) {
 	usageErr = errs
 	defer func() { usageErr = previous }()
 	err := rig.door(rig.homeA, strings.NewReader(""), &pairScreenText{}).run(context.Background(), []string{"approve"})
-	if err != exitStatus(2) || !strings.Contains(errs.String(), "usage: codeaf pair approve <link-or-code>") || strings.Contains(errs.String(), "42-715-302") {
+	if err != exitStatus(2) || !strings.Contains(errs.String(), "usage: codeaf pair approve <link-or-token>") || strings.Contains(errs.String(), "42-715-302") {
 		t.Fatalf("a bare approve ended with %v and said %q, want its own usage line and exit 2", err, errs.String())
 	}
 }

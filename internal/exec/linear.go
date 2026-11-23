@@ -418,11 +418,12 @@ const AttributionCommentFooter = "<sub>drafted with [CodeAF](https://agentfield.
 // that attributes nobody and counts as nothing, so this is the one law on the
 // belt that cannot be paraphrased down.
 //
-// IT HAS NO OFF. Signing used to be a settings row; since 2026-09-23 it is
-// always on, and the only thing a person may turn off is the model's name in
-// the `Assisted-by` line. What still wins is a repository's own CONTRIBUTING
-// policy against AI trailers, which is the repository's rule and not a person's
-// setting, and the law's last sentence says so.
+// The person can turn signing off altogether (`attribution: false` or
+// `CODEAF_ATTRIBUTION=off`), or turn off only the model's name in the
+// `Assisted-by` line (`attribution.model: false` or
+// `CODEAF_ATTRIBUTION_MODEL=off`). What also wins is a repository's own
+// CONTRIBUTING policy against AI trailers, which is the repository's rule and
+// not a person's setting, and the law's last sentence says so.
 const AttributionLaw = "SIGN GIT WORK YOU DO WITH `bash`, GENTLY AND ONCE. A commit ends with a blank " +
 	"line, then `" + AttributionAssistedBySlot + "` and `" + AttributionTrailer + "` as its last two lines. " +
 	"A pull request or issue body ends with " + AttributionSeparator +
@@ -431,6 +432,12 @@ const AttributionLaw = "SIGN GIT WORK YOU DO WITH `bash`, GENTLY AND ONCE. A com
 	"one-liner, in a code or suggestion block, or on words they dictated. " +
 	"Nowhere else: not in code, a commit subject, a README, a deliverable or your reply. " +
 	"A CONTRIBUTING policy banning AI trailers wins: leave them out and say so."
+
+// AttributionOffLaw is the sentence that replaces [AttributionLaw] when the
+// person turned attribution off (`attribution: false` or
+// `CODEAF_ATTRIBUTION=off`), so a model that has seen AI trailers in training
+// is explicitly told not to invent any of its own.
+const AttributionOffLaw = "The person turned attribution off: add no Assisted-by, Co-Authored-By, \"drafted with\" or other AI attribution lines to commits, pull requests, issues or comments."
 
 // AttributionAssistedBySlot is where [AttributionLaw] holds the `Assisted-by`
 // line until a surface that knows its model fills it ([FillAttribution]). It is
@@ -461,6 +468,8 @@ Spelled out, an issue's footer is:
 ` + AttributionSeparator + `
 ` + AttributionIssueFooter
 
+const attributionOffPrompt = "\n\n" + AttributionOffLaw
+
 const reflexSystemPrompt = `
 
 This assignment is a reflex: one obvious, reversible action with a deliberately
@@ -484,8 +493,11 @@ type Linear struct {
 	deadline  time.Duration
 	// assistedBy is the model the contract's `Assisted-by` line names, and empty
 	// when there is none to name: the surface did not say, or the person turned
-	// the model's name off. It never turns the signature itself off.
+	// the model's name off.
 	assistedBy string
+	// attributionOff replaces the attribution contract with [AttributionOffLaw]
+	// when the person turned attribution off. Zero value false signs by default.
+	attributionOff bool
 	// contextTokens is how much the working model can hold in one request, and
 	// it is the only honest input to the observation window. Zero means nobody
 	// could say; see observationWindow, which has a default for exactly that.
@@ -539,10 +551,17 @@ func (l *Linear) ContextLength() int { return l.contextTokens }
 // WithAssistedBy names the model the contract's `Assisted-by` line credits. The
 // surface passes the model this leaf runs on, or the empty string when the
 // person turned the model's name off (internal/config's AssistedByModelAt), and
-// the line is then the bare `Assisted-by: CodeAF`. The attribution law itself is
-// in every contract whatever this is handed.
+// the line is then the bare `Assisted-by: CodeAF`.
 func (l *Linear) WithAssistedBy(model string) *Linear {
 	l.assistedBy = model
+	return l
+}
+
+// WithAttribution sets whether this leaf signs commits, pull requests, issues
+// and comments (`on == true`, the default) or carries [AttributionOffLaw]
+// instead (`on == false`).
+func (l *Linear) WithAttribution(on bool) *Linear {
+	l.attributionOff = !on
 	return l
 }
 
@@ -807,7 +826,11 @@ func (l *Linear) Subharness() string { return LinearSubharness }
 // the toolbox, and everything ahead of it stays the byte-identical prefix four
 // sibling leaves share.
 func (l *Linear) system(task Task, guidelines []string) string {
-	system := systemPrompt + FillAttribution(attributionPrompt, l.assistedBy)
+	attribution := FillAttribution(attributionPrompt, l.assistedBy)
+	if l.attributionOff {
+		attribution = attributionOffPrompt
+	}
+	system := systemPrompt + attribution
 	if task.Reflex {
 		system += reflexSystemPrompt
 	}

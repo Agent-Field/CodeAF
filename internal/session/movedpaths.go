@@ -215,6 +215,11 @@ func checkMovedDestination(root, path string) error {
 		if !os.IsNotExist(err) {
 			return err
 		}
+		// A dangling link is an existing destination, not a missing ancestor.
+		// Skipping it could let a write create its target outside the workspace.
+		if _, linkErr := os.Lstat(path); linkErr == nil {
+			return err
+		}
 		parent := filepath.Dir(path)
 		if parent == path {
 			return err

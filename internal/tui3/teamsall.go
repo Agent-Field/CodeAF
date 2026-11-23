@@ -199,11 +199,13 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 		dot = a.pal.accent(wallGlyphsFor(a.pal.ascii).marked)
 	}
 	add(dot + " " + a.pal.bold(a.pal.ink(t.Name)))
-	count := itoa(len(t.Members)) + " conversations"
-	if len(t.Members) == 1 {
-		count = "1 conversation"
+	if len(t.Members) > 0 {
+		count := itoa(len(t.Members)) + " conversations"
+		if len(t.Members) == 1 {
+			count = "1 conversation"
+		}
+		add(a.pal.dim(count))
 	}
-	add(a.pal.dim(count))
 	if t.Closed() {
 		add(a.pal.dim("closed " + a.teamsDot() + " read-only history"))
 	} else {

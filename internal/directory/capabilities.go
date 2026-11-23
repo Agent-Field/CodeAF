@@ -18,6 +18,7 @@ type Capability struct {
 // service does not answer every one, and the client says which feature waits.
 var Capabilities = []Capability{
 	{Header: ConditionalTakeHeader, Feature: conditionalTakeFeature},
+	{Header: ChatFoldersHeader, Feature: "syncing chat folders between computers"},
 }
 
 // conditionalTakeFeature is what waits on a service without conditional takes:

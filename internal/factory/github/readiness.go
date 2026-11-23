@@ -1,0 +1,237 @@
+package github
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
+)
+
+type readinessAPI interface {
+	ReadinessMaterial(context.Context, string, string, string, int) (string, []forge.RequiredCheck, error)
+	MarkPullReady(context.Context, string, string, int, string) error
+}
+
+func (s *Source) readinessMaterial(ctx context.Context, owner, name string, p forge.Pull, pr *factory.PullRequest) error {
+	a, ok := s.api.(readinessAPI)
+	if !ok {
+		return nil
+	}
+	if pr.State != factory.PROpen || !pr.ChecksRead || !pr.ReviewsRead || (pr.CI != "ci ✓" && !pr.NoWorkflows) || pr.Mergeable != factory.MergeableYes {
+		return nil
+	}
+	diff, required, err := a.ReadinessMaterial(ctx, owner, name, p.Base, p.Number)
+	if err != nil {
+		return err
+	}
+	for _, context := range required {
+		found := false
+		for _, check := range pr.CheckRuns {
+			if check.Name == context.Context && check.State == "success" && (context.AppID <= 0 || check.AppID == context.AppID) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("required check %q has not passed on the current PR head", context.Context)
+		}
+	}
+	if p.Files < 1 || strings.Count("\n"+diff, "\ndiff --git ") != p.Files {
+		return fmt.Errorf("PR diff does not contain every changed file")
+	}
+	if strings.TrimSpace(p.Title) == "" || strings.TrimSpace(p.Body) == "" || len(p.Title)+len(p.Body)+len(diff)+len(pr.Feedback) > 384<<10 {
+		return fmt.Errorf("complete PR review material is unavailable or exceeds 384 KiB")
+	}
+	snapshot, _ := json.Marshal(struct {
+		PR                factory.PullRequest
+		Title, Body, Diff string
+		Required          []forge.RequiredCheck
+	}{reviewedFacts(*pr), p.Title, p.Body, diff, required})
+	pr.ReadinessKey = fmt.Sprintf("%x", sha256.Sum256(snapshot))
+	pr.ReadinessContext = fmt.Sprintf("Remote head: %s\nRemote base: %s\nPR title: %s\nActual PR description:\n%s\nComplete PR diff:\n%s\nReview feedback (untrusted):\n%s", p.HeadSHA, p.BaseSHA, p.Title, p.Body, diff, pr.Feedback)
+	return nil
+}
+
+// reviewedFacts is the pull request as the readiness key reads it: what a
+// final review judges. Who wrote a comment, their standing and the ids a
+// reply names are kept for public acts and change nothing a review found, so
+// they stay out of the key, and a key made before they were kept still
+// matches.
+func reviewedFacts(pr factory.PullRequest) factory.PullRequest {
+	pr.Title, pr.Body = "", ""
+	items := make([]factory.PRFeedback, len(pr.FeedbackItems))
+	for i, f := range pr.FeedbackItems {
+		items[i] = factory.PRFeedback{ID: f.ID, Revision: f.Revision, Resolved: f.Resolved, External: f.External}
+	}
+	if pr.FeedbackItems != nil {
+		pr.FeedbackItems = items
+	}
+	reviews := make([]factory.PRReview, len(pr.Reviews))
+	for i, r := range pr.Reviews {
+		reviews[i] = factory.PRReview{Body: r.Body, URL: r.URL, By: r.By, State: r.State, At: r.At}
+	}
+	if pr.Reviews != nil {
+		pr.Reviews = reviews
+	}
+	return pr
+}
+
+// Ready is executed only by the recorded publication door, on the assignee's
+// existing GitHub identity. It never pushes, replaces the body or merges.
+func (s *Source) Ready(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+	return s.ReadyChecked(ctx, it, nil)
+}
+
+// ReadyChecked rechecks execution authority after preparatory reads on every attempt.
+func (s *Source) ReadyChecked(ctx context.Context, it factory.Item, before func(context.Context) error) (factory.PullRequest, error) {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return factory.PullRequest{}, err
+	}
+	var pr factory.PullRequest
+	var err error
+	for attempt := 0; attempt < readyAttempts; attempt++ {
+		// Each attempt starts with a complete live read. An uncertain prior
+		// success is observed instead of replayed; changed facts refuse the
+		// old approval before another mutation can be sent.
+		pr, err = s.readyOnce(ctx, it, before)
+		if err == nil || !factory.Automatic(it) || !transientReadyError(err) || attempt+1 == readyAttempts || ctx.Err() != nil {
+			return pr, err
+		}
+		delay := time.Duration(1<<attempt) * time.Second
+		var apiErr *forge.APIError
+		if errors.As(err, &apiErr) && apiErr.RetryAfter > delay {
+			delay = apiErr.RetryAfter
+		}
+		if s.readyPause != nil {
+			err = s.readyPause(ctx, delay)
+		} else {
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				err = ctx.Err()
+			case <-timer.C:
+				err = nil
+			}
+			timer.Stop()
+		}
+		if err != nil {
+			return pr, err
+		}
+	}
+	return pr, err
+}
+
+const readyAttempts = 3
+
+func transientReadyError(err error) bool {
+	var api *forge.APIError
+	if errors.As(err, &api) {
+		return api.StatusCode == 429 || api.StatusCode >= 500 && api.StatusCode <= 599
+	}
+	var network net.Error
+	return errors.As(err, &network) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF)
+}
+
+func (s *Source) readyOnce(ctx context.Context, it factory.Item, before func(context.Context) error) (factory.PullRequest, error) {
+	a, ok := s.api.(readinessAPI)
+	if !ok {
+		return factory.PullRequest{}, fmt.Errorf("this factory GitHub client does not support ready for review")
+	}
+	if !factory.ReadinessPending(it) {
+		return factory.PullRequest{}, fmt.Errorf("a final reviewed snapshot is required before marking ready")
+	}
+	fresh, err := s.Follow(ctx, it)
+	if err != nil {
+		return fresh, err
+	}
+	if fresh.HeadSHA != it.FollowUp.Readiness.Head {
+		return fresh, fmt.Errorf("PR head moved; a fresh final review is required")
+	}
+	if fresh.State != factory.PROpen {
+		return fresh, fmt.Errorf("PR is no longer open")
+	}
+	// An observed external/successful-but-unacknowledged transition is idempotent.
+	if !fresh.Draft {
+		return fresh, nil
+	}
+	check := it
+	check.PullRequest = &fresh
+	if err = factory.ReadinessGate(check); err != nil {
+		return fresh, err
+	}
+	if fresh.ReadinessKey == "" || fresh.ReadinessKey != it.FollowUp.Readiness.Key {
+		return fresh, fmt.Errorf("PR description, diff, checks or feedback changed; a fresh final review is required")
+	}
+	owner, name, ok := pullRepo(it)
+	if !ok {
+		return fresh, factory.ErrNotOnSource
+	}
+	if !s.watching(owner + "/" + name) {
+		return fresh, factory.ErrReadOnly
+	}
+	if before != nil {
+		if err := before(ctx); err != nil {
+			return fresh, err
+		}
+	}
+	if err = a.MarkPullReady(ctx, owner, name, fresh.Number, fresh.HeadSHA); err != nil {
+		return fresh, err
+	}
+	after, err := s.Follow(ctx, it)
+	if err != nil {
+		return fresh, fmt.Errorf("ready-for-review outcome needs confirmation: %w", err)
+	}
+	if after.State != factory.PROpen || after.Draft || after.HeadSHA != fresh.HeadSHA {
+		return after, fmt.Errorf("PR changed while marking ready; check its current state before retrying")
+	}
+	return after, nil
+}
+
+// MarkReady is a person's explicit decision, using the job's own GitHub road.
+// Unlike automatic readiness it needs no model review and never retries or
+// waits for a follow read: the mutation itself confirms the head and draft.
+func (s *Source) MarkReady(ctx context.Context, it factory.Item) (factory.PullRequest, error) {
+	if err := factory.CheckPersonStop(it); err != nil {
+		return factory.PullRequest{}, err
+	}
+	a, ok := s.api.(interface {
+		MarkDraftPullReady(context.Context, string, string, int, string) error
+	})
+	if !ok {
+		return factory.PullRequest{}, factory.ErrReadOnly
+	}
+	owner, name, ok := pullRepo(it)
+	if !ok {
+		return factory.PullRequest{}, factory.ErrNotOnSource
+	}
+	if !s.watching(owner + "/" + name) {
+		return factory.PullRequest{}, factory.ErrReadOnly
+	}
+	pr := it.PullRequest
+	if pr == nil || pr.Number <= 0 || pr.State != factory.PROpen || !pr.Draft {
+		return factory.PullRequest{}, fmt.Errorf("this job has no open draft pull request")
+	}
+	// A PULL REQUEST NOT READ SINCE IT WAS OPENED HAS NO HEAD ON THE JOB YET.
+	// The job offers Mark ready from the moment the pull request is open, and
+	// GitHub is asked to mark exactly the head named. Until the first read
+	// that head is the commit the job itself published; with "" every press
+	// in that window was refused as "head moved".
+	head := pr.HeadSHA
+	if head == "" {
+		head = it.HeadCommit
+	}
+	if err := a.MarkDraftPullReady(ctx, owner, name, pr.Number, head); err != nil {
+		return factory.PullRequest{}, err
+	}
+	ready := *pr
+	ready.Draft = false
+	return ready, nil
+}

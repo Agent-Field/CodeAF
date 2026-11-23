@@ -1,41 +1,103 @@
 package main
 
-// The chat's pairing door (chatv3_pair.go). The plain refusal is said the
-// chat's way: the terminal sentence names its --replace flag, and here the
-// same fact points at the /pair keystroke the person is already sitting at.
+// The chat's pairing door shares the same merge and explicit replacement
+// behavior as the terminal command.
 
 import (
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
 
-func TestChatJoinRefusalNamesTheInChatReplace(t *testing.T) {
-	err := chatJoinRefusal(pair.ErrDifferentChats)
-	for _, want := range []string{"/pair <code> --replace", "already has chats of its own"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("the refusal lacks %q: %s", want, err)
+// The chat refuses a computer that is paired with others before the code is
+// used, as the terminal does, even after replacing was confirmed: replacing
+// would set aside chats that sync elsewhere. The computer showing the code is
+// never asked about it.
+func TestChatPairDoorRefusesAPairedComputerFirst(t *testing.T) {
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv("CODEAF_PROFILE_DIR", rig.homeB)
+	t.Setenv("CODEAF_SYNC_URL", rig.url)
+	id, err := identity.Ensure(rig.homeB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := t.TempDir()
+	if _, err := identity.Adopt(peer, id, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := devname.Set(peer, "box-c"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ownDeviceRecord(context.Background(), peer, pair.Mailbox{URL: rig.url}); err != nil {
+		t.Fatal(err)
+	}
+	shown := rig.show(t)
+	code := shown.code(t)
+	ui := joinScreen{newTerminal(strings.NewReader(""), io.Discard)}
+	for _, join := range []func(context.Context, string, pair.JoinUI) (pair.Joined, error){chatPairDoor{}.Join, chatPairDoor{}.JoinReplacing} {
+		if _, err := join(t.Context(), code, ui); err == nil || err.Error() != "this computer is already paired with box-c — codeaf devices lists them" {
+			t.Fatalf("a paired computer was told %v", err)
 		}
 	}
-	// Any other failure is carried as it is.
-	other := errors.New("the relay is down")
-	if chatJoinRefusal(other) != other {
-		t.Fatal("an unrelated error was rewritten")
+	if strings.Contains(shown.out.String(), "wants your chats") {
+		t.Fatalf("the computer showing the code was asked:\n%s", shown.out.String())
 	}
-	if chatJoinRefusal(nil) != nil {
-		t.Fatal("a nil error was rewritten")
+	if held, err := identity.Load(rig.homeB); err != nil || held.ID() != id.ID() {
+		t.Fatalf("the refused computer's identity changed (%v)", err)
+	}
+}
+
+// A used computer is told how to confirm replacement without changing its chats.
+func TestChatPairRefusalExplainsReplacement(t *testing.T) {
+	if !strings.Contains(pair.ErrDifferentChats.Error(), "--replace") || !strings.Contains(pair.ErrDifferentChats.Error(), "nothing was changed") {
+		t.Fatal(pair.ErrDifferentChats)
+	}
+}
+
+func TestM1M8ChatPairDoorUsedSoloHome(t *testing.T) {
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv("CODEAF_PROFILE_DIR", rig.homeB)
+	t.Setenv("CODEAF_SYNC_URL", rig.url)
+	if _, err := identity.EnsureSolo(rig.homeB); err != nil {
+		t.Fatal(err)
+	}
+	chat := filepath.Join(rig.homeB, "own-chat")
+	if err := os.WriteFile(chat, []byte("history kept\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	shown := rig.show(t)
+	code := shown.code(t)
+	done := make(chan error, 1)
+	go func() {
+		_, err := (chatPairDoor{}).Join(t.Context(), code, joinScreen{newTerminal(strings.NewReader(""), io.Discard)})
+		done <- err
+	}()
+	if err := <-done; !errors.Is(err, pair.ErrDifferentChats) {
+		t.Fatalf("used solo pairing = %v", err)
+	}
+	if got, err := os.ReadFile(chat); err != nil || string(got) != "history kept\n" {
+		t.Fatalf("M1 /pair history: %q, %v", got, err)
 	}
 }
 
@@ -95,13 +157,24 @@ func TestTeamPairedFollowsPairingAndSyncOff(t *testing.T) {
 	if teamPaired() {
 		t.Fatal("missing identity was paired")
 	}
-	if _, err := identity.EnsureSolo(root); err != nil {
+	id, err := identity.EnsureSolo(root)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if teamPaired() {
 		t.Fatal("solo identity was paired")
 	}
 	if err := identity.EndSolo(root); err != nil {
+		t.Fatal(err)
+	}
+	relay := syncsetup.Resolve(root)
+	if err := syncsetup.SaveStorage(root, relay.URL, id.ID(), "off"); err != nil {
+		t.Fatal(err)
+	}
+	if teamPaired() {
+		t.Fatal("paired identity with storage off was team-paired")
+	}
+	if err := syncsetup.SaveStorage(root, relay.URL, id.ID(), "on"); err != nil {
 		t.Fatal(err)
 	}
 	if !teamPaired() {
@@ -164,13 +237,14 @@ func TestTerminalPairReplaceWithoutTerminalNeverWaitsForInput(t *testing.T) {
 // R3/F3 completes non-terminal teams-only replacement and prints the preserved team's actual path.
 func TestTerminalTeamsOnlyReplacePrintsAsideReceiptWithoutInput(t *testing.T) {
 	rig := newPairRig(t)
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: rig.homeB}).Row(config.KeyTeamsShare)
+	if err := row.Apply("on"); err != nil {
+		t.Fatal(err)
+	}
 	if err := teams.Update(rig.homeB, func(f *teams.File) error { f.Teams = []teams.Team{{ID: "local", Name: "harbor"}}; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(teams.Path(rig.homeB))
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := teamstest.JSON(t, rig.homeB)
 	shown := rig.show(t)
 	code := shown.code(t)
 	in, writer := io.Pipe()
@@ -203,15 +277,54 @@ func TestTerminalTeamsOnlyReplacePrintsAsideReceiptWithoutInput(t *testing.T) {
 	if err := shown.end(t); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := filepath.Glob(teams.Path(rig.homeB) + ".unreadable-*")
+	paths, err := filepath.Glob(teams.Path(rig.homeB) + ".unreadable-*[0-9]")
 	if err != nil || len(paths) != 1 {
 		t.Fatal("replacement did not set teams aside", paths, err, out.String())
 	}
 	if !strings.Contains(out.String(), pair.TeamsAsideLine(paths[0])) || strings.Contains(out.String(), pair.ReplaceAskLine) {
 		t.Fatal("missing non-terminal receipt", out.String())
 	}
-	got, err := os.ReadFile(paths[0])
-	if err != nil || !bytes.Equal(got, before) {
+	kept := t.TempDir()
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := os.Rename(paths[0]+suffix, teams.Path(kept)+suffix); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	got := teamstest.JSON(t, kept)
+	if !bytes.Equal(got, before) {
 		t.Fatal("receipt's file did not preserve teams", string(got), err)
+	}
+}
+
+// A REPLACING /pair THAT CANNOT READ THIS COMPUTER'S SET STOPS, as the terminal
+// does: nothing after the approval would refuse a computer paired elsewhere. A
+// plain join goes on to the code, whose exchange still refuses what it must.
+func TestChatPairReplacingStopsWhenTheSetCannotBeRead(t *testing.T) {
+	rig := newPairRig(t)
+	upstream, err := url.Parse(rig.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay := httputil.NewSingleHostReverseProxy(upstream)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/dir") {
+			http.Error(w, "the directory is down", http.StatusServiceUnavailable)
+			return
+		}
+		relay.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv("CODEAF_PROFILE_DIR", rig.homeB)
+	t.Setenv("CODEAF_SYNC_URL", srv.URL)
+	if _, err := identity.Ensure(rig.homeB); err != nil {
+		t.Fatal(err)
+	}
+	ui := joinScreen{newTerminal(strings.NewReader(""), io.Discard)}
+	if _, err := (chatPairDoor{}).JoinReplacing(t.Context(), "42-715-302", ui); err == nil || errors.Is(err, pair.ErrNothingWaiting) {
+		t.Fatalf("replacing went on although this computer's set could not be read: %v", err)
+	}
+	if _, err := (chatPairDoor{}).Join(t.Context(), "42-715-302", ui); !errors.Is(err, pair.ErrNothingWaiting) {
+		t.Fatalf("a plain join was told %v, want to reach the code", err)
 	}
 }

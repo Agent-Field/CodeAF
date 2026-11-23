@@ -239,6 +239,10 @@ var funnelKnownSecondTransports = map[string]string{
 	// to provider.Client by config, and the provider funnel still owns the call,
 	// its lane, its watch and its record.
 	"internal/codexauth/transport.go": "the provider funnel's Codex wire adapter",
+	// The same is true of Claude Code's: config attaches it to provider.Client
+	// for the claude-code service, and it answers the funnel's own request by
+	// running the person's Claude Code rather than dialling anything.
+	"internal/claudemodel/claudemodel.go": "the provider funnel's Claude Code adapter",
 }
 
 // TestNothingOutsideTheFunnelTalksToAModelEndpoint is law (a).
@@ -345,12 +349,13 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 //	             which are request/response and carry no stream at all
 //	Fetch        sheetFetcher's GET of the lane sheet, which is not a model call
 //	             — it is the belief the choice is made from (lanes.go)
-//	fetchReceiptAt the bounded background GET for a cut stream's exact generation
-//	             receipt; it creates no model work and never runs on the turn
+//	readReceiptAt the bounded background GET for a cut stream's exact generation
+//	             receipt (fetchReceiptAt is its sinks' view); it creates no model
+//	             work and never runs on the turn
 //
 // probeConnection is a credential-free HEAD of the configured origin. Its
 // contract tests forbid a prompt, a request body or redirect following.
-var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceiptAt", "probeConnection", "probeLane", "send"}
+var funnelWireSenders = []string{"Fetch", "doEndpoint", "probeConnection", "probeLane", "readReceiptAt", "send"}
 
 // funnelSendCallers is every function that reaches [Client.send].
 //

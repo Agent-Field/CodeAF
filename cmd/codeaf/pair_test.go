@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -124,10 +126,8 @@ func (r *pairRig) door(home string, in io.Reader, out io.Writer) pairDoor {
 	d.mailbox = func(string) (pair.Mailbox, error) {
 		return pair.Mailbox{Box: pairbox.NewHTTP(r.url, &http.Client{Timeout: time.Minute}), URL: r.url, Host: "relay.test"}, nil
 	}
-	d.grant = func(route pair.Mailbox) (pair.Grant, error) {
-		id, err := identity.Ensure(home)
-		return pair.Grant{Identity: id, SyncURL: route.URL}, err
-	}
+	// The production grant, so a test sees solo end where a person's yes ends it.
+	d.grant = func(route pair.Mailbox) (pair.Grant, error) { return pairGrantAt(home, route) }
 	d.joining = func(replace bool) pair.Joining {
 		return pair.Joining{Home: home, Label: "laptop", Replace: replace,
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(home, url) }}
@@ -151,14 +151,17 @@ type showing struct {
 	stop  context.CancelFunc
 }
 
-func (r *pairRig) show(t *testing.T) *showing {
+func (r *pairRig) show(t *testing.T, args ...string) *showing {
 	t.Helper()
 	in, typed := io.Pipe()
 	s := &showing{out: &pairScreenText{}, typed: typed, done: make(chan error, 1)}
 	ctx, stop := context.WithCancel(context.Background())
 	s.stop = stop
 	t.Cleanup(func() { stop(); _ = typed.Close() })
-	go func() { s.done <- r.door(r.homeA, in, s.out).run(ctx, []string{"--code"}) }()
+	if len(args) == 0 {
+		args = []string{"--code"}
+	}
+	go func() { s.done <- r.door(r.homeA, in, s.out).run(ctx, args) }()
 	return s
 }
 
@@ -193,8 +196,15 @@ func (r *pairRig) joinWith(t *testing.T, code string, replace bool) (*pairScreen
 // types it, both screens show the same three words, a person types y, and the
 // second computer holds the first one's chats and the relay it came through.
 // L4-M12b: code approval uses the same completion sentence as link approval.
-func TestPairBothDoorsOnATerminal(t *testing.T) {
+func TestM1M8PairBothDoorsOnATerminal(t *testing.T) {
 	rig := newPairRig(t)
+	// Dev permits startup preferences, but refuses submitted chats and unknown files.
+	kept := filepath.Join(rig.homeB, "config.json")
+	const preferences = `{"model.talk":"fixture/saved"}`
+	if err := os.WriteFile(kept, []byte(preferences), 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := devname.Set(rig.homeA, "laptop-a"); err != nil {
 		t.Fatal(err)
 	}
@@ -226,6 +236,9 @@ func TestPairBothDoorsOnATerminal(t *testing.T) {
 	}
 	if !strings.HasSuffix(shown.out.String(), pair.PairedChatsLine("laptop")+"\n") {
 		t.Fatalf("the sharing terminal did not end on the paired line:\n%s", shown.out.String())
+	}
+	if got, err := os.ReadFile(kept); err != nil || string(got) != preferences {
+		t.Fatalf("startup preferences changed: %q, %v", got, err)
 	}
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)

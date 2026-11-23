@@ -141,7 +141,7 @@ func TestTeamQuestionsUpOffAndPermissionsStayThePersons(t *testing.T) {
 	}
 	fixture := newTeamFixture(t, true)
 	web := teamAgent(t, fixture, fixture.web, nil, nil)
-	if _, up := web.askUp(Question{Ask: AskPermission, Head: "run bash?"}); up {
+	if _, up := web.askUp(context.Background(), Question{Ask: AskPermission, Head: "run bash?"}); up {
 		t.Fatal("a permission kind went up")
 	}
 	off := false
@@ -150,7 +150,7 @@ func TestTeamQuestionsUpOffAndPermissionsStayThePersons(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, up := web.askUp(Question{Ask: AskClarification, Head: "tabs?"}); up {
+	if _, up := web.askUp(context.Background(), Question{Ask: AskClarification, Head: "tabs?"}); up {
 		t.Fatal("a question went up with questions_up off")
 	}
 }

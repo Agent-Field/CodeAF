@@ -121,7 +121,7 @@ func TestReleasedChatOnAnotherMachineOffersContinue(t *testing.T) {
 func TestNoticeSeamSaysASentenceAtOnce(t *testing.T) {
 	a, _ := homeTabsFixture(t)
 	desk := NewNotices()
-	desk.Say("host-a continued this chat; this window now only shows it")
+	desk.Say(chatlist.Superseded("host-a"))
 	a.useNotices(desk) // a sentence said before the surface listened waits for it
 	ringOf := func() tea.Msg { return a.noticeBell.waitRing()() }
 	if _, ok := ringOf().(noticesMsg); !ok {

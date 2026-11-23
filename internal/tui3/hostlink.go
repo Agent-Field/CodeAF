@@ -339,7 +339,9 @@ func latencyWord(elapsed time.Duration) string {
 // surface has one way of saying those (app.go's [feed.note]) — the same road the
 // door's own entry notice takes on the first frame.
 func (a *app) takeLinkNotice() {
-	if a.link.Notice == nil {
+	// Updates can still arrive while quit waits for saving. They must leave
+	// unread sentences for the closing report because the window is leaving.
+	if a.quitting || a.link.Notice == nil {
 		return
 	}
 	if said := a.link.Notice(); said != "" {

@@ -1,0 +1,318 @@
+package session
+
+// ── THE LEDGER, ADDED UP BY DAY AND MODEL: a generic report, never a guess ───
+//
+// [QueryUsageLedger] answers rows (runs and calls) and [UsageBySubject] answers
+// one grouping; a calendar, a model flow and a sparkline all want the same
+// thing a third way: what was spent on each LOCAL DAY, on each MODEL, on each
+// KIND OF THING. This file is that one aggregate and nothing more. It is
+// GENERIC — it names no screen — and the screen folds, ranks and colours it.
+//
+// THE CELLS ARE ONLY WHAT THE LEDGER WROTE. A cell is (day, model, kind,
+// subject) and, for a task, the conversation it ran in, because a task id alone
+// restarts with every conversation and would merge two different tasks. The day
+// is the line's STORED [UsageLine.Day] — the day the writer's own clock gave it
+// — and only a line with no valid stored day is placed by its instant in the
+// query's zone (counted in [UsageReport.DaysDerived]). A call that named no
+// model has an empty model, and an empty model is "nobody said", never a named
+// "Unknown". The ledger does not record the provider that BILLED a call, the
+// outcome of the task it served, or the crew that owned it; nothing here joins
+// those from today's membership or today's task states, because a crew or an
+// outcome as it is NOW is not what it was when the money was spent.
+//
+// NOTHING IS FOLDED AND NOTHING IS CUT. There is no "top three" and no "Other"
+// here. A range that would need more cells than [UsageReportMaxCells], or more
+// estimated bytes than [UsageReportMaxBytes], is REFUSED with
+// [ErrUsageReportTooLarge] asking for a narrower filter, rather than answered
+// with fewer cells than the range holds. The bound is checked BEFORE a cell is
+// inserted and before its key strings are copied, so a ledger line with an
+// absurd id costs the check and not the copy. The byte figure is an ESTIMATE of
+// the cells' weight used to refuse early; it is not a promise about resident
+// memory, and the scan is NOT constant-time: it is one linear pass over the
+// ledger's first byte to the end of the prefix it fixed at the start.
+//
+// Date-only reports use an incremental in-memory daily rollup when it can
+// preserve the scan's exact answer; other questions retain the streaming scan.
+//
+// THE TOTALS ARE ADDED UP BY THE SAME CHECKED HELPER as the ledger's
+// ([UsageLedgerTotals.count]): a negative count or a sum past what a number
+// holds refuses with [ErrUsageLedgerFigures]. Money is summed within each
+// cell in ledger order, then across cells in report order in both paths.
+// The final money sums are checked too, since grouping changes rounding.
+
+import (
+	"cmp"
+	"errors"
+	"fmt"
+	"math"
+	"slices"
+	"strings"
+	"time"
+)
+
+// The most a report may hold.
+const (
+	// UsageReportMaxCells is the most cells one report may hold.
+	UsageReportMaxCells = 8192
+	// UsageReportMaxBytes is the estimate of the cells' weight past which a
+	// report is refused.
+	UsageReportMaxBytes = 4 << 20
+	// UsageReportMaxDays is the longest range, in calendar days, a report is
+	// asked for. A report needs a range: there is no "all history".
+	UsageReportMaxDays = 366
+)
+
+// usageReportCellBytes is the estimate of one cell's own weight, before its
+// strings: the struct, its map slot and its slice slot.
+const usageReportCellBytes = 256
+
+// ErrUsageReportTooLarge is a range holding more cells, or heavier ones, than
+// one report may. It is refused rather than answered with fewer.
+var ErrUsageReportTooLarge = errors.New("this range holds too many day, model and subject groups to report at once; ask for a shorter date range or a narrower filter")
+
+// UsageReportBudget bounds what one report may hold. A zero field is the
+// default; a larger one than the default is not honoured.
+type UsageReportBudget struct {
+	MaxCells int
+	MaxBytes int64
+}
+
+func (b UsageReportBudget) bounded() UsageReportBudget {
+	if b.MaxCells <= 0 || b.MaxCells > UsageReportMaxCells {
+		b.MaxCells = UsageReportMaxCells
+	}
+	if b.MaxBytes <= 0 || b.MaxBytes > UsageReportMaxBytes {
+		b.MaxBytes = UsageReportMaxBytes
+	}
+	return b
+}
+
+// UsageReportCell is everything the ledger wrote for one day, model and
+// subject, added up.
+type UsageReportCell struct {
+	// Day is the stored local calendar day, "2006-01-02".
+	Day string
+	// Model is the provider's model id, and empty where nobody said.
+	Model string
+	// Kind and Subject are [UsageBySubject]'s classification, and both empty
+	// for a line that belonged to nothing. Root is the conversation a TASK ran
+	// in, set only on a task cell: a task id means nothing without it.
+	Kind, Subject, Root string
+	// Session disambiguates task rows whose older writer did not record Root.
+	Session         string
+	Agent           string
+	LibraryActivity string
+	// Records is ledger lines; Calls is provider requests, counted apart from
+	// the lines because an older line may cover many.
+	Records, Calls int
+	Input, Output  int64
+	// USD is the sum of the priced lines; Unpriced counts the lines with no
+	// figure and Unbilled those marked as a missing receipt (also unpriced).
+	USD                float64
+	Unpriced, Unbilled int
+}
+
+// Priced reports whether any line in the cell carried a figure; a cell with
+// none has no cost, which is not a cost of nothing.
+func (c UsageReportCell) Priced() bool { return c.Records > c.Unpriced }
+
+// UsageReport is one question's answer: the whole range's totals, exactly, and
+// every cell that makes them up.
+type UsageReport struct {
+	Totals UsageLedgerTotals
+	// Cells are sorted by day, model, kind, subject, then root.
+	Cells []UsageReportCell
+	// Models are the distinct named models in the cells, sorted.
+	Models []string
+	// DaysDerived is lines with no valid stored day, placed by their instant.
+	DaysDerived int
+	// Stats is what the reader passed over; Stats.Bytes is the length of the
+	// ledger prefix the report is of.
+	Stats UsageScanStats
+}
+
+type usageReportKey struct{ day, model, kind, subject, root, session, agent, library string }
+
+// checkReportRange refuses a query that is not a bounded range.
+func (q UsageQuery) checkReportRange() error {
+	if q.From.IsZero() || q.To.IsZero() {
+		return fmt.Errorf("%w: a report needs both a from and a to day", ErrUsageQuery)
+	}
+	if q.To.After(q.From.AddDate(0, 0, UsageReportMaxDays)) {
+		return fmt.Errorf("%w: a report covers at most %d days", ErrUsageQuery, UsageReportMaxDays)
+	}
+	return nil
+}
+
+// validStoredDay reports whether day is a calendar day as the ledger writes it.
+func validStoredDay(day string) bool {
+	if len(day) != len(usageDayLayout) {
+		return false
+	}
+	_, err := time.Parse(usageDayLayout, day)
+	return err == nil
+}
+
+// scanUsageReport adds up every ledger line the query matches into day, model
+// and subject cells. The query must name both ends of a range of at most
+// [UsageReportMaxDays] days; loc places a line that has no stored day.
+func scanUsageReport(path string, q UsageQuery, loc *time.Location, budget UsageReportBudget) (UsageReport, error) {
+	q, err := q.normalized()
+	if err != nil {
+		return UsageReport{}, err
+	}
+	if err := q.checkReportRange(); err != nil {
+		return UsageReport{}, err
+	}
+	if loc == nil {
+		loc = time.Local
+	}
+	budget = budget.bounded()
+	file, done, err := openUsageScan(path)
+	if err != nil {
+		return UsageReport{}, err
+	}
+	defer done()
+
+	var report UsageReport
+	if file == nil {
+		return report, nil
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return UsageReport{}, err
+	}
+	b := newUsageReportBuilder(loc, budget)
+	report.Stats, err = scanUsageLines(file, info.Size(), func(_ int64, line UsageLine) error {
+		if !q.matches(line) {
+			return nil
+		}
+		return b.add(line)
+	})
+	if err != nil {
+		return UsageReport{}, err
+	}
+	b.report.Stats = report.Stats
+	return b.finish()
+}
+
+// Run membership is not part of a report's cell identity, but its money
+// subtotals must follow the same cell order as the visible total.
+type usageReportCell struct {
+	UsageReportCell
+	runUSD, unknownRunUSD float64
+}
+
+type usageReportBuilder struct {
+	report       UsageReport
+	cells        map[usageReportKey]*usageReportCell
+	weight       int64
+	lastDay      string
+	lastDayValid bool
+	loc          *time.Location
+	budget       UsageReportBudget
+}
+
+func newUsageReportBuilder(loc *time.Location, budget UsageReportBudget) *usageReportBuilder {
+	return &usageReportBuilder{cells: map[usageReportKey]*usageReportCell{}, loc: loc, budget: budget}
+}
+
+func (b *usageReportBuilder) add(line UsageLine) error {
+	line.Run = strings.TrimSpace(line.Run)
+	if err := b.report.Totals.count(line); err != nil {
+		return err
+	}
+	day := line.Day
+	if day != b.lastDay {
+		b.lastDay, b.lastDayValid = day, validStoredDay(day)
+	}
+	if !b.lastDayValid {
+		day = line.At.In(b.loc).Format(usageDayLayout)
+		b.report.DaysDerived++
+	}
+	kind, subject := usageSubject(line)
+	root, session := "", ""
+	if kind == SubjectTask {
+		root = strings.TrimSpace(line.Root)
+		if root == "" {
+			session = strings.TrimSpace(line.Session)
+		}
+	}
+	key := usageReportKey{day: day, model: strings.TrimSpace(line.Model), kind: kind, subject: subject, root: root, session: session, agent: UsageOwner(line), library: libraryActivityOf(line)}
+	cell := b.cells[key]
+	if cell == nil {
+		cost := reportCellWeight(key)
+		if len(b.cells) >= b.budget.MaxCells || b.weight+cost > b.budget.MaxBytes {
+			return fmt.Errorf("%w (more than %d groups or %d estimated bytes)", ErrUsageReportTooLarge, b.budget.MaxCells, b.budget.MaxBytes)
+		}
+		// Only now are the strings copied, so a line's large id is never
+		// retained by a map it was refused from.
+		key = usageReportKey{strings.Clone(key.day), strings.Clone(key.model), key.kind, strings.Clone(key.subject), strings.Clone(key.root), strings.Clone(key.session), strings.Clone(key.agent), key.library}
+		cell = &usageReportCell{UsageReportCell: UsageReportCell{Day: key.day, Model: key.model, Kind: key.kind, Subject: key.subject, Root: key.root, Session: key.session, Agent: key.agent, LibraryActivity: key.library}}
+		b.cells[key] = cell
+		b.weight += cost
+	}
+	cell.Records++
+	cell.Calls += line.modelCalls()
+	cell.Input += int64(line.Input)
+	cell.Output += int64(line.Output)
+	if line.USD > 0 {
+		cell.USD += line.USD
+		if line.Run != "" {
+			cell.runUSD += line.USD
+		} else {
+			cell.unknownRunUSD += line.USD
+		}
+	} else {
+		cell.Unpriced++
+	}
+	if line.Unbilled {
+		cell.Unbilled++
+	}
+	return nil
+}
+
+func (b *usageReportBuilder) finish() (UsageReport, error) {
+	b.report.Cells = make([]UsageReportCell, 0, len(b.cells))
+	seen := map[string]struct{}{}
+	for _, cell := range b.cells {
+		b.report.Cells = append(b.report.Cells, cell.UsageReportCell)
+		if cell.Model != "" {
+			if _, ok := seen[cell.Model]; !ok {
+				seen[cell.Model] = struct{}{}
+				b.report.Models = append(b.report.Models, cell.Model)
+			}
+		}
+	}
+	slices.SortFunc(b.report.Cells, func(a, b UsageReportCell) int {
+		return cmp.Or(strings.Compare(a.Day, b.Day), strings.Compare(a.Model, b.Model), strings.Compare(a.Kind, b.Kind),
+			strings.Compare(a.Subject, b.Subject), strings.Compare(a.Root, b.Root), strings.Compare(a.Session, b.Session), strings.Compare(a.Agent, b.Agent), strings.Compare(a.LibraryActivity, b.LibraryActivity))
+	})
+	// Each cell sums its lines in ledger order. Both scan and rollup sum
+	// money in this fixed report order, so decimal costs agree exactly.
+	t := &b.report.Totals
+	t.USD, t.RunUSD, t.UnknownRunUSD = 0, 0, 0
+	for _, cell := range b.report.Cells {
+		key := usageReportKey{cell.Day, cell.Model, cell.Kind, cell.Subject, cell.Root, cell.Session, cell.Agent, cell.LibraryActivity}
+		t.USD += cell.USD
+		t.RunUSD += b.cells[key].runUSD
+		t.UnknownRunUSD += b.cells[key].unknownRunUSD
+		if math.IsInf(t.USD, 0) || math.IsInf(t.RunUSD, 0) || math.IsInf(t.UnknownRunUSD, 0) {
+			return UsageReport{}, ErrUsageLedgerFigures
+		}
+	}
+	slices.Sort(b.report.Models)
+	return b.report, nil
+}
+
+func libraryActivityOf(line UsageLine) string {
+	if line.Role != "memory" {
+		return ""
+	}
+	switch line.LibraryActivity {
+	case "learning", "answers":
+		return line.LibraryActivity
+	default:
+		return "unspecified"
+	}
+}

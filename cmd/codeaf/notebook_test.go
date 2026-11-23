@@ -13,6 +13,7 @@ import (
 )
 
 func TestNotebookCommandListsRetractsAndRestores(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
 	path := filepath.Join(t.TempDir(), "graph.db")
 	graph, err := store.Open(path)

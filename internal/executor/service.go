@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/processgroup"
@@ -37,16 +38,42 @@ func Left(call Call) []Service {
 // listens names it, because it is the server; with none listening the first
 // member does. The ports of all members are its ports.
 func describe(req ExecRequest, root string, pgid int, members []int) Service {
+	service := describeWith(req, root, pgid, members, pidPorts, cmdline)
+	if len(service.Ports) == 0 {
+		// An empty query preserves each platform's unknown-versus-empty result
+		// without inspecting any member's sockets again.
+		service.Ports = listenPorts(nil)
+	}
+	return service
+}
+
+// describeWith uses one socket snapshot for naming and aggregation so a member
+// is not inspected twice while a service is recorded.
+func describeWith(req ExecRequest, root string, pgid int, members []int, ports func(int) []int, cmdline func(int) []string) Service {
+	allPorts := make([]int, 0)
+	naming := 0
+	for _, member := range members {
+		listening := ports(member)
+		if naming == 0 && len(listening) > 0 {
+			naming = member
+		}
+		allPorts = append(allPorts, listening...)
+	}
+	if naming == 0 && len(members) > 0 {
+		naming = members[0]
+	}
+	slices.Sort(allPorts)
+	allPorts = slices.Compact(allPorts)
 	argv := req.Argv
-	if name := namingMember(members); name > 0 {
-		if a := cmdline(name); len(a) > 0 {
+	if naming > 0 {
+		if a := cmdline(naming); len(a) > 0 {
 			argv = a
 		}
 	}
 	name := filepath.Base(argv[0])
 	return Service{
 		Name: name, Argv: argv, PGID: pgid,
-		Ports:   listenPorts(members),
+		Ports:   allPorts,
 		DataDir: dataDir(name, argv, root, req.Dir),
 	}
 }
@@ -99,19 +126,4 @@ func inside(root, dir, path string) string {
 		return ""
 	}
 	return filepath.ToSlash(rel)
-}
-
-// namingMember is the member that names a service: the first that listens on a
-// port, else the first member, else 0. A shell that started a server lingers
-// beside it, and the shell's command line says nothing of what is being served.
-func namingMember(members []int) int {
-	for _, m := range members {
-		if len(listenPorts([]int{m})) > 0 {
-			return m
-		}
-	}
-	if len(members) > 0 {
-		return members[0]
-	}
-	return 0
 }

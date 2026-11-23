@@ -3,6 +3,8 @@ package session
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // task_lay.go is how a ledger arrives over a folder: ALL OF IT, OR NONE OF IT,
@@ -167,7 +169,7 @@ func (l laidWork) place(staged, target string) (layStep, error) {
 	// The hold is a second NAME for a regular file and a MOVE for anything else,
 	// so a directory standing where a file goes is out of the way by now and the
 	// rename has nothing left to refuse.
-	if err := os.Rename(staged, target); err != nil {
+	if err := fsreplace.Rename(staged, target); err != nil {
 		return step, err
 	}
 	step.placed = true

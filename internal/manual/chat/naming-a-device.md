@@ -6,7 +6,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds.
 
-Every screen that names a device uses one name for it: the home rows (`held on tower`, `tower offline`), `Continue tower's latest chat here?`, the approve screen, `tower is now paired. Your chats can continue there.`, `/devices`, `/settings` → `Devices`, and the line after a move, `Moved from tower in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
+Every screen that names a device uses one name for it: the home rows (`working on tower`, `held on tower`, `tower offline`), `Continue tower's latest chat here?`, the approve screen, `tower is now paired. Your chats can continue there.`, `/devices`, `/settings` → `Devices`, and the line after a move, `Moved from tower in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
 
 Because you never named this device, it kept the default. Name it and every other device shows the new name.
 
@@ -19,6 +19,9 @@ Your other devices will call this computer "tower". Press Enter to keep that, or
 ```
 
 Press Enter to keep the host name, or type a name and press Enter. To say it without being asked, type `codeaf pair --name "atlas"`. It works with a typed code too: `codeaf pair 42-715-302 --name "atlas"`. The device that approves shows that name when it asks you to approve.
+
+Current computers include the platform during approval, such as `Abir (Windows)`,
+so two computers named Abir can be distinguished.
 
 ## How do I rename a device later — codeaf devices rename and the n key
 
@@ -49,7 +52,9 @@ Your other devices show the new name the next time they list devices or draw a h
 This computer is now called atlas. Your other devices will show it after this one next connects.
 ```
 
-You do not type it again. A device that is not paired with anything yet says `This computer is now called atlas.`
+You do not type it again. A running paired desktop engine retries automatically,
+even without a chat. A device that is not paired with anything yet says
+`This computer is now called atlas.`
 
 ## What can a device name be — length, spaces, control characters and duplicates
 

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -36,9 +37,21 @@ type SealWatch struct {
 
 	// Say, when set, receives each sentence as it happens.
 	Say func(string)
+	// OnRetire releases seat-owned subscriptions after the session stops.
+	OnRetire func()
+	retired  sync.Once
+	stopped  bool
+	owners   int
+	wake     func()
+	listener uint64
 	// OnTurnEnd, when set, hears each time the agent finishes a turn. The door
 	// sets it to the sync side's idle call.
 	OnTurnEnd func()
+	// OnMetadataWrite is installed only by the paired idle ownership door.
+	OnMetadataWrite func()
+	// OnTurnStart, when set, hears each time a turn begins. The door sets it to
+	// the sync side's working call, so other computers can say a turn runs here.
+	OnTurnStart func()
 	// OnTail, when set, is called once the record has been quiet for Quiet after
 	// writes that came behind the turn-end seal. The door seals the tree and asks
 	// the sync side to upload, exactly as it does at the end of a turn, so there
@@ -51,8 +64,11 @@ type SealWatch struct {
 	idle        bool
 	started     bool
 	tail        *time.Timer
+	tailRunning bool
+	idleCheck   func() bool
 	cause       string
 	said        []string
+	changes     chan struct{}
 	failing     bool
 	syncFailing bool
 	// SyncAddress is selected by the door, so failures without a URL still name the right service.
@@ -113,6 +129,105 @@ func (w *SealWatch) say(sentence string) {
 		return
 	}
 	w.said = append(w.said, sentence)
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	select {
+	case w.changes <- struct{}{}:
+	default:
+	}
+	if w.wake != nil {
+		w.wake()
+	}
+}
+
+// Changes wakes a reader when a sentence is queued. One signal may stand for
+// several sentences; a receiver drains Take until it returns "".
+func (w *SealWatch) Changes() <-chan struct{} {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.changes == nil {
+		w.changes = make(chan struct{}, 1)
+	}
+	return w.changes
+}
+
+// Owed reports whether a reader that drains Take must look again although
+// nothing woke it: a sentence is waiting, or sealing is failing, whose recovery
+// is found only by asking Take or Failing. It never looks for that recovery
+// itself, so a reader's own Take stays the one check per look.
+func (w *SealWatch) Owed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.failing || len(w.said) > 0
+}
+
+// Listen wakes a local surface without giving its sentences a second consuming road.
+func (w *SealWatch) Listen(wake func()) func() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.listener++
+	serial := w.listener
+	w.wake = wake
+	if len(w.said) > 0 && wake != nil {
+		wake()
+	}
+	return func() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.listener == serial {
+			w.wake = nil
+		}
+	}
+}
+
+// Adopt keeps subscriptions alive while a conversation still uses this watch.
+func (w *SealWatch) Adopt() func() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.stopped {
+		return func() {}
+	}
+	w.owners++
+	var released sync.Once
+	return func() {
+		released.Do(func() {
+			last := func() bool {
+				w.mu.Lock()
+				defer w.mu.Unlock()
+				w.owners--
+				if w.owners != 0 {
+					return false
+				}
+				// Mark the last release before unlocking so a retired watch cannot be adopted again.
+				w.stopped = true
+				return true
+			}()
+			if last {
+				w.Retire()
+			}
+		})
+	}
+}
+
+// Retire ends this seat's sentence subscriptions once no conversation uses it.
+//
+// RETIRING NEVER TOUCHES THE TRAILING SEAL. The tail belongs to the writes, not
+// to the subscriptions: a conversation still finishing its journal, or a Home
+// errand opened later on the same seat, must seal what it wrote exactly as it
+// did before retirement existed. Only the delivery of sentences ends here.
+func (w *SealWatch) Retire() {
+	w.retired.Do(func() {
+		func() {
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			w.stopped = true
+			w.wake = nil
+		}()
+		if w.OnRetire != nil {
+			w.OnRetire()
+		}
+	})
 }
 
 // Waiting arms a newly constructed chat that is waiting for its first input.
@@ -126,14 +241,24 @@ func (w *SealWatch) Waiting() {
 	}
 }
 
+// liveTurns counts this process's watches with a turn running. The desktop
+// app keeps its saving helpers warm only while one is (daemon_app.go).
+var liveTurns atomic.Int64
+
 // TurnStarted is the session's word that a turn began: the turn writes the
 // record itself and every call seals it, so no tail seal is owed.
 func (w *SealWatch) TurnStarted() {
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	if !w.started || w.idle {
+		liveTurns.Add(1)
+	}
 	w.started = true
 	w.idle = false
 	w.stopTail()
+	w.mu.Unlock()
+	if w.OnTurnStart != nil {
+		w.OnTurnStart()
+	}
 }
 
 // Wrote is the session's word that something the chat owns was written: a line
@@ -169,16 +294,65 @@ func (w *SealWatch) sealTail() {
 	w.mu.Lock()
 	owed := w.idle && w.tail != nil
 	w.tail = nil
+	w.tailRunning = owed
 	w.mu.Unlock()
 	if owed {
+		defer func() {
+			w.mu.Lock()
+			w.tailRunning = false
+			w.mu.Unlock()
+		}()
 		w.OnTail()
 	}
+}
+
+// MetadataWrote leaves ordinary metadata saves on their original path. An
+// idle ownership door can schedule certification after a retaken setting save.
+func (w *SealWatch) MetadataWrote() {
+	if w.OnMetadataWrite != nil {
+		w.OnMetadataWrite()
+	}
+}
+
+// SetIdleCheck binds this watch to its session after construction.
+func (w *SealWatch) SetIdleCheck(check func() bool) {
+	w.mu.Lock()
+	w.idleCheck = check
+	w.mu.Unlock()
+}
+
+// IdleReady includes trailing seals and session work that outlives a reply.
+// A watch without a session cannot certify that releasing ownership is safe.
+func (w *SealWatch) IdleReady() bool {
+	return w.idleReady(true)
+}
+
+// IdleForCapture allows a settled session to retry a failed save. Releasing
+// ownership still uses IdleReady and requires the saving failure to clear.
+func (w *SealWatch) IdleForCapture() bool {
+	return w.idleReady(false)
+}
+
+func (w *SealWatch) idleReady(requireSaved bool) bool {
+	ready := func() bool { return w.idle && w.tail == nil && !w.tailRunning && (!requireSaved || !w.failing) }
+	w.mu.Lock()
+	quiet, check := ready(), w.idleCheck
+	w.mu.Unlock()
+	if !quiet || check == nil || !check() {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return ready()
 }
 
 // TurnEnded is the session's word that the agent finished a turn. It only
 // forwards, so a watch without a listener costs nothing.
 func (w *SealWatch) TurnEnded() {
 	w.mu.Lock()
+	if w.started && !w.idle {
+		liveTurns.Add(-1)
+	}
 	w.started = true
 	w.idle = true
 	w.requireTranscript()

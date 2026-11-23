@@ -4,6 +4,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/summarypath"
 )
 
 // The edge between two nodes carries the work, not a report about the work.
@@ -93,7 +95,7 @@ func InlineProduct(files []string, limit int, seen map[string]bool) (string, boo
 	whole := true
 	remaining := limit
 	for _, path := range files {
-		if seen[path] {
+		if seen[summarypath.Key(path)] {
 			continue
 		}
 		if remaining < productReadFloor {
@@ -105,7 +107,7 @@ func InlineProduct(files []string, limit int, seen map[string]bool) (string, boo
 			whole = false
 			continue
 		}
-		seen[path] = true
+		seen[summarypath.Key(path)] = true
 		if !entire {
 			whole = false
 		}
@@ -170,14 +172,14 @@ func readArtifact(path string, limit int) (body string, ok, whole bool) {
 func productBytes(files []string, seen map[string]bool) int {
 	total := 0
 	for _, path := range files {
-		if seen[path] {
+		if seen[summarypath.Key(path)] {
 			continue
 		}
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		seen[path] = true
+		seen[summarypath.Key(path)] = true
 		total += int(info.Size())
 	}
 	return total

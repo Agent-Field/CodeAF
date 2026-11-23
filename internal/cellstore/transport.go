@@ -84,6 +84,11 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		argv = append(argv, "--timeline", t.Timeline)
 	}
 	environ := append(os.Environ(), dataDirEnv+"="+t.DataDir)
+	release, err := lockStoreOperation(ctx, t.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	out, err := s.run(ctx, t.Tree, append(environ, opEnv(op)...), argv...)
 	return out, classifyStoreBusyError(t.DataDir, socket, err)
 }

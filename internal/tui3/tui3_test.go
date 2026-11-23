@@ -28,6 +28,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/testutil"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -48,6 +49,10 @@ import (
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
+	// Loopback fixtures stand in for hosted providers, including their retry policy.
+	if _, pinned := os.LookupEnv(config.EnvResponsePatience); !pinned {
+		os.Setenv(config.EnvResponsePatience, "1")
+	}
 	startCmdProfile()
 	surfaceTick = harnessTick
 	code := runTests(m)
@@ -105,6 +110,13 @@ func waitOut(cmd tea.Cmd) tea.Msg {
 // temporary root is still removed on the way out — os.Exit runs no deferred
 // call.
 func runTests(m *testing.M) int {
+	if err := testutil.CanonicalizeTempRoots(); err != nil {
+		fmt.Fprintf(os.Stderr, "tui3 tests: %v\n", err)
+		return 1
+	}
+	// The scratch roots were read at package initialisation, before the
+	// temporary folder took its physical spelling; fixtures now live under it.
+	homeScratchRoots[0] = filepath.Clean(os.TempDir())
 	root, err := os.MkdirTemp("", "codeaf-tui3-test-home-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui3 tests: no temporary state root: %v\n", err)

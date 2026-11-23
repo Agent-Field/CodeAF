@@ -14,12 +14,20 @@ import (
 )
 
 type remoteUsage struct {
+	CallID                string
 	Task, Computer, Event string
 	Seat                  Seat
 }
 type remoteLedgerCursor struct {
+	info   os.FileInfo
 	offset int64
 	seen   map[string]bool
+}
+
+// unchanged accepts cached membership only for the generation it describes.
+func (memo *remoteLedgerCursor) unchanged(info os.FileInfo) bool {
+	return memo != nil && memo.info != nil && os.SameFile(info, memo.info) &&
+		info.Size() == memo.info.Size() && info.ModTime().Equal(memo.info.ModTime())
 }
 
 var remoteUsageMemo = struct {
@@ -27,15 +35,16 @@ var remoteUsageMemo = struct {
 	ledgers map[string]*remoteLedgerCursor
 }{ledgers: map[string]*remoteLedgerCursor{}}
 
-// Mirrored calls are paid elsewhere. Refreshing the appended tail under a
-// process-shared lock prevents a second chat owner from repeating a paid call.
+// Mirrored calls are paid elsewhere. Membership belongs to one ledger
+// generation; a restore or another writer invalidates both present and absent
+// events before the process-shared lock permits another charge.
 func appendRemoteUsage(path string, line UsageLine) error {
 	remoteUsageMemo.Lock()
 	defer remoteUsageMemo.Unlock()
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(path+".remote-lock", os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := os.OpenFile(path+UsageLedgerLockSuffix, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return err
 	}
@@ -49,22 +58,40 @@ func appendRemoteUsage(path string, line UsageLine) error {
 		return err
 	}
 	defer f.Close()
-	info, err := f.Stat()
+	// Ordinary ledger writers use the same file lock while checking identity
+	// and appending. Remote event deduplication keeps its own cursor and lock.
+	if err := filelock.Lock(f, true, false); err != nil {
+		return err
+	}
+	defer filelock.Unlock(f)
+	memo, newline, err := readRemoteUsageTail(path, f)
 	if err != nil {
 		return err
 	}
+	if memo.seen["remote:"+line.RemoteEvent] || (line.CallID != "" && memo.seen[line.CallID]) {
+		return nil
+	}
+	return memo.appendCall(f, line, newline)
+}
+
+// readRemoteUsageTail refreshes the paid-call identities while the caller holds
+// the ledger lock, resetting its cursor if the ledger has shrunk.
+func readRemoteUsageTail(path string, f *os.File) (*remoteLedgerCursor, bool, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return nil, false, err
+	}
 	memo := remoteUsageMemo.ledgers[path]
-	if memo == nil || info.Size() < memo.offset {
+	if !memo.unchanged(info) {
 		memo = &remoteLedgerCursor{seen: map[string]bool{}}
 		remoteUsageMemo.ledgers[path] = memo
 	}
 	newline, err := memo.readTail(f)
-	if err != nil {
-		return err
-	}
-	if memo.seen[line.RemoteEvent] {
-		return nil
-	}
+	return memo, newline, err
+}
+
+// appendCall records a new charge durably before remembering it as paid.
+func (memo *remoteLedgerCursor) appendCall(f *os.File, line UsageLine, newline bool) error {
 	raw, err := json.Marshal(line)
 	if err != nil {
 		return err
@@ -78,10 +105,14 @@ func appendRemoteUsage(path string, line UsageLine) error {
 	if err = f.Sync(); err != nil {
 		return err
 	}
-	memo.seen[line.RemoteEvent] = true
+	memo.seen["remote:"+line.RemoteEvent] = true
+	if line.CallID != "" {
+		memo.seen[line.CallID] = true
+	}
 	// Leave offset at the last read boundary: another process or the ordinary
-	// asynchronous ledger writer may have appended while this call was written.
-	return nil
+	// asynchronous ledger writer may append before the next call.
+	memo.info, err = f.Stat()
+	return err
 }
 
 // readTail recognizes complete EOF objects without turning a replay into another charge.
@@ -101,8 +132,16 @@ func (memo *remoteLedgerCursor) readTail(f *os.File) (bool, error) {
 		}
 		var old UsageLine
 		readable := json.Unmarshal(raw, &old) == nil
-		if readable && old.RemoteEvent != "" {
-			memo.seen[old.RemoteEvent] = true
+		if readable {
+			if id := UsageCallID(old); id != "" {
+				memo.seen[id] = true
+			}
+			if fp := UsageFingerprint(old); fp != "" {
+				memo.seen[fp] = true
+			}
+			if old.RemoteEvent != "" {
+				memo.seen["remote:"+old.RemoteEvent] = true
+			}
 		}
 		if err == io.EOF {
 			if readable {
@@ -122,7 +161,7 @@ func (a *Agent) foldRemoteCharge(event string, charge RunCharge) error {
 	}
 	used := Usage{Input: charge.TokensIn, Output: charge.TokensOut, CacheRead: charge.Cached, Calls: 1, CostUSD: charge.USD}
 	if a.file != nil {
-		added, err := a.file.appendRemoteCharge(event, charge.Model, used)
+		added, err := a.file.appendRemoteCharge(event, UsageLine{CallID: charge.CallID, Model: charge.Model, FactoryJob: a.factoryJobName()}, used)
 		if err != nil {
 			return err
 		}
@@ -133,7 +172,7 @@ func (a *Agent) foldRemoteCharge(event string, charge RunCharge) error {
 	a.bank(bankedCall{used: used, model: charge.Model, late: true})
 	return nil
 }
-func (s *sessionFile) appendRemoteCharge(event, model string, used Usage) (bool, error) {
+func (s *sessionFile) appendRemoteCharge(event string, facts UsageLine, used Usage) (bool, error) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -146,7 +185,11 @@ func (s *sessionFile) appendRemoteCharge(event, model string, used Usage) (bool,
 		s.mu.Unlock()
 		return false, nil
 	}
-	raw, err := json.Marshal(sessionEntry{Type: "usage", Timestamp: stamp(), Usage: &journalUsage{RemoteEvent: event, Model: model, Input: used.Input, Output: used.Output, CacheRead: used.CacheRead, CostUSD: used.CostUSD, Calls: used.Calls, Aux: true}})
+	raw, err := json.Marshal(sessionEntry{Type: "usage", Timestamp: stamp(), Usage: &journalUsage{
+		CallID: facts.CallID, RemoteEvent: event, Model: facts.Model,
+		Billing: facts.Billing, BillingBasis: facts.BillingBasis, Unbilled: facts.Unbilled, FactoryJob: facts.FactoryJob,
+		Input: used.Input, Output: used.Output, CacheRead: used.CacheRead, CostUSD: used.CostUSD, Calls: used.Calls, Aux: true,
+	}})
 	if err == nil {
 		_, err = s.file.Write(append(trace.ScrubRegistered(raw), '\n'))
 	}

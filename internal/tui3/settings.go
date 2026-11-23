@@ -505,12 +505,21 @@ var settingUI = map[string]settingMeta{
 		tab: tabWorkspace, label: "auto update", widget: widgetToggle,
 		// NO `about`: the registry's own hint is the sentence, said once.
 	},
-	// THE SIGNATURE HAS NO ROW, only the model's name inside it: codeaf always
-	// signs the commits and pull requests it writes, and what a person may
-	// choose is whether the `Assisted-by` line says which model it was.
+	// THE SIGNATURE AND THE MODEL'S NAME INSIDE IT: `attribution` turns signing
+	// commits, pull requests, issues and comments on or off, and
+	// `attribution.model` chooses whether the `Assisted-by` line says which
+	// model it was.
+	config.KeyAttribution: {
+		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
+		about: config.AttributionHint,
+	},
 	config.KeyAttributionModel: {
 		tab: tabWorkspace, label: "model in commits", widget: widgetToggle,
 		about: config.AttributionModelHint,
+	},
+	config.KeyIdleHandoff: {
+		tab: tabWorkspace, label: "idle handoff", widget: widgetToggle,
+		about: config.IdleHandoffHint,
 	},
 	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
@@ -687,6 +696,14 @@ var settingUI = map[string]settingMeta{
 		about: "an answer that is slow to start is asked of the next-best host as well, " +
 			"and you read whichever replies first. One extra call, under a tenth of spend.",
 	},
+	// HOW LONG A QUIET MODEL IS WAITED ON. It is the last row of the Models tab
+	// (the registry places it there, so no row above it moves), and the sentence
+	// under it is the registry's own (internal/config's responsePatienceSetting),
+	// which interpolates the local multiple from the one constant, so this panel
+	// cannot say a figure the transport does not use.
+	config.KeyResponsePatience: {
+		tab: tabProviders, label: "patience", widget: widgetText,
+	},
 	// AND THE OTHER HALF OF THE SAME QUESTION: the three rows above are about
 	// WHERE a request goes, this is about how much rides in front of it. It is
 	// on this tab and not under Session because the answer is a fact about the
@@ -840,7 +857,7 @@ func (s *sheet) finishCategory() {
 	title := settingTabs[s.tab]
 	shown := make([]sheetItem, 0, len(s.items))
 	if title == tabMemory {
-		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "Open the Memories tab", about: "See every remembered line, who kept it, and fix, move, forget or put one back (" + placeChord(pageMemory) + ")."}})
+		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "Open the Memory tab", about: "See every remembered line, who kept it, and fix, move, forget or put one back (" + placeChord(pageMemory) + ")."}})
 	}
 	advanced := make([]sheetItem, 0)
 	catalog := make([]sheetItem, 0)
@@ -1011,6 +1028,11 @@ type sheet struct {
 	// hosts a [deviceCard] over the surface's own [Approvals] door and clock
 	// (settings_devices.go).
 	cellsUnavailable string
+	storageCode      string
+	storageState     string
+	storageSampled   bool
+	storageRequest   bool
+	storageReceipt   string
 	approvals        Approvals
 	dev              *deviceCard
 	now              func() time.Time
@@ -1336,6 +1358,7 @@ func (a *app) raiseSettings() {
 		routing:          a.routing,
 		today:            a.todayReading(),
 	}
+	a.sheet.storageCode, a.sheet.storageState = a.storageRead.code, a.storageRead.state
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 	// WHOSE ROWS, SAID FOR THE TAB ON SHOW. Over --host the note is
@@ -2387,7 +2410,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
 			if s.dev != nil && s.dev.loaded {
 				s.syncDeviceCursor()
-				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.unavailable {
+				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
 					return a.revoke(s.dev), true
 				}
 			}
@@ -2399,7 +2422,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
 			if s.dev != nil && s.dev.loaded {
 				s.syncDeviceCursor()
-				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.unavailable {
+				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
 					s.dev.startNaming()
 				}
 			}
@@ -2528,6 +2551,9 @@ func (a *app) activate() tea.Cmd {
 				}
 			}
 			s.syncDeviceCursor()
+		}
+		if item.dev.storage {
+			return a.requestRelayStorage()
 		}
 		return nil
 	}
@@ -2897,6 +2923,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 			} else {
 				a.sheet.msg = ""
 			}
+			a.sheet.storageCode, a.sheet.storageState = a.storageRead.code, a.storageRead.state
 			a.sheet.rows = a.sheet.registry.Rows()
 			a.sheet.build()
 		})
@@ -2906,6 +2933,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 	}
 	a.sheet.msg = note
 	a.sheet.savedKey = item.row.Key
+	a.sheet.storageCode, a.sheet.storageState = a.storageRead.code, a.storageRead.state
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 	return true
@@ -4068,6 +4096,11 @@ func (s *sheet) keysLine() string {
 			switch {
 			case item.memoryDoor, item.crewDoor:
 				action = "open"
+			case item.dev != nil && item.dev.storage:
+				if s.storageState != "off" {
+					return "↑↓ results · esc clear search"
+				}
+				action = "request access"
 			case item.dev != nil && item.dev.add:
 				action = "add"
 			case item.dev != nil:

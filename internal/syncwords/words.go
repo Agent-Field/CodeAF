@@ -2,6 +2,7 @@
 package syncwords
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -96,3 +97,63 @@ func Asking(address string) string { return "asking the sync service at " + Host
 func IsOutage(text string) bool {
 	return text == UnknownOutage || text == LegacyOutage || strings.HasPrefix(text, outagePrefix) && strings.HasSuffix(text, outageSuffix)
 }
+
+// SavedHerePending names the same pending upload at app quit and individual close.
+const SavedHerePending = "saved here; it reaches your other devices when the sync service at %s answers"
+
+// SavedStorageOff is shared by app quit and the close of an individual chat.
+const SavedStorageOff = "saved here; sync storage is off for this account, so it stays on this computer"
+
+// ErrContinueStorageOff preserves local turns when the recorded history is missing here.
+var ErrContinueStorageOff = errors.New("cannot continue this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here")
+
+// ErrHolderOffline is a take that cannot finish because the computer that has
+// the chat is not running codeaf, so nothing can send its bytes. The chat is
+// safe on that computer; the person is told whose it is and what to do.
+var ErrHolderOffline = errors.New("the computer that has this chat is not on right now")
+
+// HolderOfflineError carries the name of the computer that has the chat.
+// errors.Is(err, ErrHolderOffline) holds for it, and errors.As recovers the name.
+type HolderOfflineError struct {
+	// Name is the person-facing name of the computer, "another computer" when
+	// the directory could not say.
+	Name string
+}
+
+func (e *HolderOfflineError) Error() string { return HolderOffline(e.Name) }
+
+// Is makes the typed error match [ErrHolderOffline] without wrapping anything
+// that a fetch would classify as a transient failure and retry.
+func (e *HolderOfflineError) Is(target error) bool { return target == ErrHolderOffline }
+
+// HolderOffline is the sentence for a chat whose holder is not running codeaf.
+// It is the one place the words live, so Home, the app and the manual agree.
+func HolderOffline(name string) string {
+	if name == "" {
+		name = "another computer"
+	}
+	return name + " has this chat and is not on right now; open codeaf there, then continue here"
+}
+
+// ErrLiveTransferOff is what continuing a chat says when the chat exists only on
+// the computer that shared it by blind pass-through and this computer has that
+// mode switched off: the record is in the list, but the only road to its frames
+// is shut here.
+var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and blind pass-through is switched off here; switch it back on (CODEAF_PASSTHROUGH) or turn on sync storage to continue it here")
+
+// SecretFilesLate is said when a chat has moved here but the files kept out of
+// its saved history (.env and the like) did not come with it, because the
+// computer that has them stopped answering. They are still on that computer.
+func SecretFilesLate(name string) string {
+	if name == "" {
+		name = "the other computer"
+	}
+	return "its secret files (.env and the like) did not come with it, because " + name + " stopped answering; they are still there"
+}
+
+// ErrNotesWaitForStorage is what sending a message to a chat another computer
+// holds says while sync storage is off for the account. Such a message would
+// have to sit on the sync service until that computer took it, and the service
+// keeps nothing of the kind until storage is approved, so the message is not
+// sent: the chat has to be brought here to be written to.
+var ErrNotesWaitForStorage = errors.New("a message to a chat on another computer waits for sync storage, which is off for this account; continue the chat here to write to it")

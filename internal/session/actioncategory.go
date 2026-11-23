@@ -222,17 +222,22 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		"gmail_read", "slack_read_thread", "slack_list_channels",
 		"calendar_list", "workspace_snapshots",
 		// A manager looking at its team: the states, and a member's page.
-		"team_status", "team_read":
+		"team_status", "team_read",
+		// The foreman reading the factory floor (a mark is a proposal, not a
+		// change). THE FAMILY IS BY NAME ALONE, so it stays the one most of
+		// its calls are: a press or words passed on for the person are the
+		// same tool, and their own result lines say what changed.
+		"factory_floor", "factory_status":
 		return ActionRead
 
 	// Changing something that exists.
 	case "edit", "edit_video", "change_setting", "revise_assignment",
-		"revise_design", "forget", "workspace":
+		"revise_design", "forget", "workspace", "factory_run", "factory_answer", "factory_start":
 		return ActionEdit
 
 	// Writing content or generating an artifact.
 	case "write", "generate_image", "generate_music", "generate_video",
-		"remember", "propose_subharness", "build_harness", "calendar_create":
+		"remember", "propose_subharness", "factory_add", "factory_recipe", "factory_item", "build_harness", "calendar_create":
 		return ActionCreate
 
 	// Executing and waiting on what it prints.
@@ -244,29 +249,40 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		return ActionBrowse
 
 	// Moving bytes or state from one place to another.
-	case "workspace_restore", "workspace_merge":
+	case "workspace_restore", "workspace_merge", stagePRBaseSyncToolName,
+		// A job's manager putting its work on the pull request: a push, an
+		// edit, a reply (tools_factory_manager.go).
+		"factory_act":
 		return ActionTransfer
 
 	// Saying something to a person.
-	case "slack_send", "gmail_send", "speak", "ask",
+	case "slack_send", "gmail_send", "speak", "ask", RequestSecretToolName,
 		// A line into a team's traffic, from its manager or one of its members,
 		// a packet sent up, and a closing report to the person.
 		"team_send", "team_post", "team_escalate", "team_close_report", "team_raise",
 		// An automation's run telling the person how it went.
-		"automation_report":
+		"automation_report",
+		// A file handed to the person as a result.
+		"share_deliverable":
 		return ActionCommunicate
 
 	// Work handed out, or this mind copied to run beside itself.
 	case "propose_task", "quick_task", "divide_work", "workspace_fork", "automation",
 		// A manager starting a member or ending its turn, or deciding what a
 		// member asked it.
-		"team_start", "team_stop", "team_decide", "team_add", "team_remove", "team_dissolve":
+		"team_start", "team_stop", "team_decide", "team_add", "team_remove", "team_dissolve",
+		// A job's manager sending a delegate into the job's checkout.
+		"factory_task":
 		return ActionCoordinate
 
 	// Keeping the account of the work rather than doing it. `items` is a quick
 	// task ticking its own list (task_quick.go): nothing about the work moves,
 	// and what changes is the row saying where it has got to.
 	case "track", "items", "commit", "recall":
+		return ActionPlan
+
+	// A factory stage reporting its round and proposing stages (tools_stage.go).
+	case "stage_result", "plan_edit":
 		return ActionPlan
 
 	// Standing by for something outside this turn.

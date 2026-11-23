@@ -48,6 +48,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -448,6 +449,8 @@ type Options struct {
 	// SaveFailure keeps a close failure for the terminal's restored screen.
 	// The callback may run outside the update loop.
 	SaveFailure func(error)
+	// SavingNotices retains final sentences until the screen is restored on quit.
+	SavingNotices func([]string)
 	// ClosingStarted retains pending cleanup until the restored terminal can report it.
 	ClosingStarted func(<-chan struct{})
 	// SavingDurability retains local-save receipt predicates for chats being closed.
@@ -468,6 +471,9 @@ type Options struct {
 	TeamsPaired func() bool
 	// SyncService names the service selected for this chat's sync notices.
 	SyncService string
+	// SyncStats reads the selected relay only when /status is requested.
+	// Nil leaves sync space absent for connections that cannot report it.
+	SyncStats func(context.Context) (blobstore.Counts, error)
 	// Approvals answers a new device's request to join and revokes devices
 	// (approve.go, devices.go). Nil is a connection that cannot, and the
 	// screens are then absent.
@@ -477,6 +483,10 @@ type Options struct {
 	// (homeband_addmachine.go). Nil is a connection that cannot count, and the
 	// card is then absent.
 	Fleet Fleet
+	// NotShared reads how many of this computer's chats the other computers
+	// cannot list yet (notshared.go), and false while it is not known. Nil
+	// draws no sentence.
+	NotShared func() (NotShared, bool)
 	// Branches is what a branch row can do. A nil verb is absent from the row.
 	Branches BranchActions
 	// Notices is the desk a goroutine outside the surface puts a sentence on
@@ -1341,6 +1351,7 @@ func Run(ctx context.Context, opts Options) error {
 	defer listenForNews(surface.news)()
 	defer surface.news.close()
 	defer surface.noticeBell.close()
+	defer func() { surface.useSeal(SealSeam{}) }()
 	defer surface.leaving.close()
 	// AND THE DOOR LINE ENDS WITH THE WINDOW, after what is already in it has
 	// been asked (offloop.go): a person's last keystroke before they close a

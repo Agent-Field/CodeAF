@@ -5,6 +5,8 @@ small, budgeted, honest routine over what it has already learned and done.
 Nothing here spends without a ceiling, and nothing here is hidden from you —
 every piece of it leaves a line you can read.
 
+The standing-item upgrade notice covers chat standing items only, separate from this routine.
+
 ## Standing goals, charters, the standing watch and practice — removed
 
 Earlier versions kept a routine on a clock while you were gone: standing goals

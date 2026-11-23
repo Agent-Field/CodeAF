@@ -20,6 +20,9 @@ const myOther = await newDevice(mine.identity);
 const theirs = await newDevice(await newIdentity());
 const f = frame([rid(1)]);
 
+// Measure isolation between active identities, separately from cold preparation.
+for (const device of [mine, theirs]) assert.equal((await call(device, 'GET', '/v1/store/stats')).status, 200);
+
 const putting = trickle(await signed(mine, 'POST', '/v1/store/frames', f.bytes), '/v1/store/frames', f.bytes, PAUSE_MS);
 await sleep(300);
 

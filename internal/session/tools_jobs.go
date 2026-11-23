@@ -1,6 +1,6 @@
 package session
 
-// The background half of the belt: bash with one extra argument, and the jobs
+// The background half of the belt: bash with background and notify arguments, and the jobs
 // tool that looks at what it started.
 //
 // This file is the WINDOW onto jobs.go's registry. The split is deliberate:
@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/factory/verification"
 )
 
 // ── bash, wrapped ───────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ import (
 // quick task — reports itself into this conversation; never sleep, tail or poll
 // for it`, registered as `handoff.reports-itself`), so this tool states only
 // what is its own.
-const backgroundSentence = " Run long-lived commands (servers, watchers, long builds) with background:true and ask the jobs tool about them; a job leaves its log and an exit code and nothing else."
+const backgroundSentence = " Run servers, watchers and long builds with background:true; ask the jobs tool about them."
 
 // timeoutSentence states the v3 foreground law pi leaves unstated: a call the
 // model did not bound is bounded by the harness, because one hung command
@@ -66,7 +67,7 @@ func timeoutSentence(backgroundAfter int) string {
 			strconv.Itoa(BashCeilingSeconds) + "s, and is never turned into a job before then. One that outlives even that is NOT killed — it becomes a background job, and the call answers with the output so far and 'still running as job N; log at <path>'. Background calls never time out."
 	}
 	return " bash WAITS for the command: a foreground call runs for up to " + strconv.Itoa(backgroundAfter) +
-		" seconds and is then kept running as a background job while you get its output so far and the job id. Its own timeout can move that handoff sooner and is capped at " +
+		" seconds, then is kept running as a background job (you get output so far and its job id). A timeout can move it sooner, capped at " +
 		strconv.Itoa(BashCeilingSeconds) + " seconds. Background calls never time out."
 }
 
@@ -173,9 +174,9 @@ func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 // foreground call WAITS and hands back the output, a background one FORKS and
 // hands back an id. What happens when the job ends is the page's law for
 // everything handed off, and is not a third copy of it here.
-const backgroundProperty = `{"type":"boolean","description":"Spawn the command instead of waiting for it: the call returns a job id at once (default: false — the call waits and returns the output)"}`
+const backgroundProperty = `{"type":"boolean","description":"Spawn the command and return a job id at once (default: false: wait and return the output)"}`
 
-// backgroundBash wraps bare's bash: the same tool, with one optional argument.
+// backgroundBash wraps bare's bash with optional background and notify arguments.
 //
 // Without background, the call is handed to bare verbatim — same timeout, same
 // truncation, same wire text. bare's parser ignores fields it does not know, so
@@ -185,15 +186,45 @@ const backgroundProperty = `{"type":"boolean","description":"Spawn the command i
 func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 	return bare.Tool{
 		Name:        inner.Name,
-		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds),
-		Schema:      schemaWithBackground(inner.Schema),
+		Description: inner.Description + backgroundSentence + timeoutSentence(a.config.BashBackgroundAfterSeconds) + a.keepSentence(),
+		Schema:      a.schemaWithKeep(schemaWithBackground(inner.Schema)),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			// A factory must judge the check itself, not grep/tail's exit.
+			// Fit this before either foreground or background dispatch so a
+			// promoted check keeps writing the same receipt when it finishes.
+			if a.config.Stage != nil && a.config.SessionFile != "" {
+				var call struct {
+					Command string `json:"command"`
+				}
+				if decodeToolArguments(args, &call) == nil && strings.TrimSpace(call.Command) != "" {
+					command, err := verification.PrepareCallIn(a.config.SessionFile, a.config.Workspace, call.Command, callIDFrom(ctx))
+					if err != nil {
+						return verification.SetupFailurePrefix + " " + err.Error(), true, nil
+					}
+					if changed, ok := withBashCommand(args, command); ok {
+						args = changed
+					}
+				}
+			}
 			if err := markTaskStorageUncertain(a.config.Workspace); err != nil {
 				return "could not record shell writer uncertainty: " + err.Error(), true, nil
 			}
 			var parsed struct {
-				Command    string `json:"command"`
-				Background bool   `json:"background"`
+				Command     string           `json:"command"`
+				Background  bool             `json:"background"`
+				Notify      bool             `json:"notify"`
+				KeepRunning *keepRunningArgs `json:"keep_running"`
+			}
+			// A command to keep running is its own road: a person is asked
+			// first, and it is started as a service or not at all
+			// (keep_running.go).
+			if err := decodeToolArguments(args, &parsed); err == nil && parsed.KeepRunning != nil {
+				text, isError, err := a.keepRunning(ctx, parsed.Command, *parsed.KeepRunning)
+				// A service outlives the call: nothing it writes is this call's.
+				if _, declared, _ := shellOutputsArgs(args); declared && a.mayPublishShellOutputs() {
+					text = shellOutputsNote(text, isError, "Outputs not registered: a kept-running command ends after this call.")
+				}
+				return text, isError, err
 			}
 			// A call whose arguments do not parse belongs to bare: it owns the
 			// wording of every other bash error, and a second parser reporting
@@ -207,22 +238,32 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 				return inner.Execute(a.promotable(ctx), withTimeoutLaw(args))
 			}
 			if strings.TrimSpace(parsed.Command) == "" {
-				return "Invalid arguments: command is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: command is required"), true, nil
 			}
-			started, err := a.jobs.start(a.planCommand(parsed.Command))
+			if _, _, bad := shellOutputsArgs(args); bad != nil && a.mayPublishShellOutputs() {
+				return rejectToolArguments(ctx, "Invalid arguments: "+bad.Error()), true, nil
+			}
+			started, err := a.jobs.startInUnder(withCallID(context.Background(), callIDFrom(ctx)), a.planCommand(parsed.Command), "", parsed.Notify)
 			if err != nil {
 				return "Could not start the background job: " + err.Error(), true, nil
 			}
+			markToolJob(toolProcessFrom(ctx), started)
 			// The id and the path, and nothing else. There is no output yet by
 			// construction, and the two things the model needs next — how to ask
 			// about it, where to read it — are both here.
-			return fmt.Sprintf("job %d started; log at %s", started.id, started.logPath), false, nil
+			text := fmt.Sprintf("job %d started; log at %s", started.id, started.logPath)
+			// A JOB ENDS LATER, and what it writes is not this call's to
+			// promise (shell_outputs.go): declared outputs claim nothing here.
+			if _, declared, _ := shellOutputsArgs(args); declared && a.mayPublishShellOutputs() {
+				text += "\nOutputs not registered: a background job ends after this call."
+			}
+			return text, false, nil
 		},
 	}
 }
 
-// schemaWithBackground returns pi's bash schema with one boolean property
-// added.
+// schemaWithBackground adds the background and notify boolean properties to
+// pi's bash schema.
 //
 // It DERIVES rather than restating the schema as a literal: bare's bytes are
 // pinned to pi's source and may move with it, and a copied literal here would
@@ -240,6 +281,7 @@ func schemaWithBackground(schema json.RawMessage) json.RawMessage {
 		return schema
 	}
 	properties["background"] = json.RawMessage(backgroundProperty)
+	properties["notify"] = json.RawMessage(`{"type":"boolean","description":"Set it when the person asked to be told when this ends."}`)
 	encodedProperties, err := json.Marshal(properties)
 	if err != nil {
 		return schema
@@ -314,14 +356,14 @@ func (a *Agent) jobsTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			parsed, err := parseJobsArguments(args)
 			if err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			switch parsed.Action {
 			case "list":
-				return a.jobs.list(), false, nil
+				return a.jobs.list() + a.keptRunningList(), false, nil
 			case "output":
 				if parsed.ID == nil {
-					return "Invalid arguments: id is required for output", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: id is required for output"), true, nil
 				}
 				lines := jobsDefaultTail
 				if parsed.Tail != nil {
@@ -337,7 +379,7 @@ func (a *Agent) jobsTool() bare.Tool {
 				return text, isError, nil
 			case "kill":
 				if parsed.ID == nil {
-					return "Invalid arguments: id is required for kill", true, nil
+					return rejectToolArguments(ctx, "Invalid arguments: id is required for kill"), true, nil
 				}
 				// THE CALL'S OWN CONTEXT RIDES INTO THE GRACES, so a kill
 				// caught inside a turn somebody stopped does not spend four
@@ -346,7 +388,7 @@ func (a *Agent) jobsTool() bare.Tool {
 				text, isError := a.jobs.kill(ctx, *parsed.ID)
 				return text, isError, nil
 			case "":
-				return "Invalid arguments: action is required (list, output, or kill)", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: action is required (list, output, or kill)"), true, nil
 			default:
 				return fmt.Sprintf("Unknown action: %s. Use list, output, or kill.", parsed.Action), true, nil
 			}

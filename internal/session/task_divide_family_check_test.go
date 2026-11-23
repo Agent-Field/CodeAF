@@ -706,7 +706,9 @@ func TestAThirdAskAfterARepairNeitherRefusesNorDoublesTheFamilysChecks(t *testin
 	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "browse")...))
 	nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "browse")...))
 
-	third := nest.divide(t, divideArgsFor(wideEvidence, familyParts("rank", "browse")...))
+	// The repaired ask already admitted the original work. Different work
+	// can reuse its family check without dispatching those tasks twice.
+	third := nest.divide(t, divideArgsFor(wideEvidence, familyParts("ranking", "browsing")...))
 	if !strings.HasPrefix(third, "split into 2 parts:") {
 		t.Fatalf("the third ask was told %q, want the division admitted", third)
 	}

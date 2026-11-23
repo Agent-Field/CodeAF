@@ -25,7 +25,8 @@ func TestR9R23R27LearnerAndIdleAnswersRemainReachable(t *testing.T) {
 		}
 	}
 	page, _ := Chat().Page("coordination-and-workers")
-	for _, claim := range []string{"durable learner", "Three anchors vote until a personal computer is explicitly asked to lead", "run `codeaf cluster lead`", "does not automatically regain leadership", "hosted relay has no learner door"} {
+	// The design law removes unusable manual leadership for this release, per #2559.
+	for _, claim := range []string{"durable learner", "Three anchors vote by default", "the coordinating computer cannot be chosen by hand", "does not automatically regain leadership", "hosted relay has no learner door"} {
 		if !strings.Contains(page, claim) {
 			t.Errorf("R9 missing current capability: %q", claim)
 		}

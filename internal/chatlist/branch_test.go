@@ -31,6 +31,7 @@ func TestOneTurnIsNotPlural(t *testing.T) {
 			BranchShort(r):        c.unit + " · mac",
 			TakeoverLine(r):       "last saved turn 0s ago; up to " + c.unit + " may still be on mac",
 			KeptEdits(c.n, "mac"): "your unsaved edits here were kept as " + c.unit + " from mac",
+			KeptTurns(c.n, "mac"): "kept " + c.unit + " from mac as a separate chat",
 		}
 		for got, w := range want {
 			if got != w {

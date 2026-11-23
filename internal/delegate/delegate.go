@@ -103,6 +103,15 @@ type Delegate struct {
 	// as its own. codeaf moves the folder this names into the run's own record
 	// folder when the run ends, unless it was there before the run began.
 	Notes string
+	// Reports are the bare file names, in the run's record folder, of the
+	// reports the program leaves for a person or for another program to read
+	// back exactly: a name, never a path. A DECLARATION IS NOT A GRANT: a file
+	// is served ([ReadIssuedReport]) only under a declared name AND on the
+	// receipt the launch's own program issued when it wrote it
+	// ([ProgramRecord.ReportReceipts]); nothing a renderer or an ending's
+	// display names ([EndFacts.Reports]) say is either. A name that is not a
+	// [ValidReportName] is ignored.
+	Reports []string
 	// Listens says the program reads the messages codeaf sends it while it
 	// works (inbox.go): the person's words from its task's page and the
 	// conversation's `say`. A program that does not listen is refused a message

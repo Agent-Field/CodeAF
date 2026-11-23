@@ -238,6 +238,20 @@ func TestBindSendsEveryReflexCallToOneModel(t *testing.T) {
 
 // ── the prompts ─────────────────────────────────────────────────────────────
 
+// A permission the person denied or dismissed is an event, not something they
+// said, so the notice prompt names it among the things never kept and shows a
+// refused call keeping nothing.
+func TestTheNoticePromptNeverKeepsAPermissionOutcome(t *testing.T) {
+	for _, words := range []string{"denied, dismissed or never answered", "refused or blocked", "never something the person said"} {
+		if !strings.Contains(noticePrompt, words) {
+			t.Fatalf("the notice prompt lost %q, the rule that a refused call is not a memory", words)
+		}
+	}
+	if !strings.Contains(noticePrompt, "the shell command was denied") {
+		t.Fatal("the notice prompt lost the example of a denied command keeping nothing")
+	}
+}
+
 // The prompt names the scope words the parser accepts, because it is rendered
 // from the parser's own list, and it says the time rule that tells a memory
 // from an automation.

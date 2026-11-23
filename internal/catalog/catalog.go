@@ -159,6 +159,17 @@ type Model struct {
 	// kept and on a row the provider published nothing for — see
 	// [Catalog.ReasoningProfile].
 	Reasoning ReasoningProfile `json:"reasoning,omitempty"`
+	// Dedicated says which dedicated media listings ("image", "video") this row
+	// was also found in. Those listings are authoritative for the media side of
+	// the row — see media.go — and say nothing about its chat side.
+	Dedicated []string `json:"dedicated,omitempty"`
+	// Media is what a dedicated listing published about the model's knobs, nil
+	// when none did.
+	Media *MediaParams `json:"media_params,omitempty"`
+	// MediaPrices are the per-second and per-image prices a dedicated listing
+	// published, in their own units. They are NOT per-token prices and share no
+	// field with PromptPrice; empty means nobody published one, never free.
+	MediaPrices []MediaPrice `json:"media_prices,omitempty"`
 }
 
 // ReasoningProfile is the provider's own account of a model's thinking pass.
@@ -236,6 +247,14 @@ type cache struct {
 	Models    []Model   `json:"models"`
 	Source    string    `json:"source,omitempty"`
 	Base      string    `json:"base,omitempty"`
+	// Priced is set on a cache written from the service's own listing, whose
+	// rows say what they cost or that they did not say ([Model.PriceUnknown]).
+	// A cache seeded from model ids alone ([Remember]), and one written before
+	// this mark existed, knows NO price: its zeros are absences, never free.
+	Priced bool `json:"priced,omitempty"`
+	// Media is the dedicated image and video listings' own compartment, nil in a
+	// cache written before they were read. See media.go.
+	Media *mediaCache `json:"media,omitempty"`
 }
 
 // FetchTimeout bounds one listing request on the default HTTP client. A caller
@@ -267,11 +286,19 @@ type Options struct {
 	// facts than it had.
 	Refresh bool
 
+	// NoDedicatedMedia keeps this catalog to the general /models listing even on
+	// the OpenRouter source, for the caller that wants exactly the old behaviour.
+	// Every other source never reads the dedicated listings whatever this says.
+	NoDedicatedMedia bool
+
 	// serveStale answers a cache past [TTL] as it stands instead of fetching
 	// in front of it. Only [LoadLazy] sets it, because only a lazy catalog has
 	// somewhere to put the refresh: its own warming goroutine, behind the
 	// answer. See [LoadLazy] for why a day-old catalog must not hold a frame.
 	serveStale bool
+	// mediaOnly asks [load] to top up the dedicated listings of the cache it has
+	// and leave the general rows alone. Only the lazy warm sets it.
+	mediaOnly bool
 }
 
 // Catalog is immutable once resolved and therefore safe to share among the
@@ -317,6 +344,9 @@ type rows struct {
 	// network at all — the built-in fallbacks — and a reader must say so rather
 	// than print the epoch.
 	fetchedAt time.Time
+	// media is the standing of the dedicated image and video listings; the zero
+	// value says neither was ever read.
+	media MediaState
 }
 
 // Load fetches at most once. A fresh cache avoids I/O; a failed fetch degrades
@@ -358,8 +388,20 @@ func Remember(options Options, models []Model) error {
 	}
 	source := strings.TrimSpace(options.Source)
 	base := normalizeBase(options.BaseURL)
-	return writeCache(cachePath(options.Dir, source, base), cache{
-		FetchedAt: now().UTC(), Models: models, Source: source, Base: base,
+	path := cachePath(options.Dir, source, base)
+	// A second read must never erase what the dedicated listings already proved,
+	// so their pure rows are carried over and laid back on the rows given.
+	var media *mediaCache
+	if mediaEligible(options, source, base) {
+		if previous, ok := readCache(path, source, base); ok && previous.Media != nil {
+			// The rows given are the new GENERAL rows; the snapshot follows them.
+			media = previous.Media
+			media.General = models
+			models = mergeMedia(models, media)
+		}
+	}
+	return writeCache(path, cache{
+		FetchedAt: now().UTC(), Models: models, Source: source, Base: base, Media: media,
 	})
 }
 
@@ -374,7 +416,17 @@ func Recall(options Options) *Catalog {
 	if !ok {
 		return &Catalog{ready: newRows(nil)}
 	}
-	return &Catalog{ready: newRowsAt(cached.Models, cached.FetchedAt)}
+	return &Catalog{ready: cachedRows(cached, options, nowOf(options)())}
+}
+
+// cachedRows is the rows a cache file holds, with the standing of the dedicated
+// listings it recorded.
+func cachedRows(cached cache, options Options, now time.Time) *rows {
+	resolved := newRowsAt(cached.Models, cached.FetchedAt)
+	if mediaEligible(options, strings.TrimSpace(options.Source), normalizeBase(options.BaseURL)) {
+		resolved.media = mediaStateOf(cached.Media, now)
+	}
+	return resolved
 }
 
 // errUnreadable is what a fault inside discovery is reported as. The fault
@@ -396,6 +448,7 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows, err e
 			// rather than to eleven names it never published.
 			if strings.TrimSpace(options.Source) == "" && normalizeBase(options.BaseURL) == DefaultBaseURL {
 				resolved, err = newRows(hardcodedFallbacks()), errUnreadable
+				resolved.media = unreadMedia(mediaEligible(options, strings.TrimSpace(options.Source), normalizeBase(options.BaseURL)))
 			} else {
 				resolved, err = newRows(nil), errUnreadable
 			}
@@ -431,9 +484,10 @@ func LoadLazy(ctx context.Context, options Options) *Catalog {
 	base, source := normalizeBase(options.BaseURL), strings.TrimSpace(options.Source)
 	var preview *rows
 	if cached, ok := readCache(cachePath(options.Dir, source, base), source, base); ok {
-		preview = newRowsAt(cached.Models, cached.FetchedAt)
+		preview = cachedRows(cached, options, nowOf(options)())
 	} else if source == "" && base == DefaultBaseURL {
 		preview = newRows(hardcodedFallbacks())
+		preview.media = unreadMedia(mediaEligible(options, source, base))
 	}
 	warmCtx, cancel := context.WithCancel(ctx)
 	resolved := &Catalog{
@@ -456,7 +510,16 @@ func LoadLazy(ctx context.Context, options Options) *Catalog {
 	resolved.resolve = resolve
 	guard.Go("catalog/warm", func() {
 		defer close(resolved.warmDone)
-		if !stale(resolve(), options) {
+		answered := resolve()
+		if !stale(answered, options) {
+			// Rows fresh in every way the clock can tell may still lack a
+			// dedicated listing nobody has read yet (a cache older than this
+			// build). That is topped up alone, never by refetching the chat rows.
+			if answered != nil && answered.media.due() {
+				topUp := options
+				topUp.mediaOnly = true
+				_, _ = loadOrFallback(warmCtx, topUp)
+			}
 			return
 		}
 		// The refresh the answer did not wait for. Its rows go to the cache
@@ -506,20 +569,46 @@ func (c *Catalog) Close() {
 // network and did not land. A fresh cache that needed no fetch is not a failure
 // and answers nil.
 func load(ctx context.Context, options Options) (*rows, error) {
-	now := time.Now
-	if options.Now != nil {
-		now = options.Now
-	}
+	now := nowOf(options)
 	base := normalizeBase(options.BaseURL)
 	source := strings.TrimSpace(options.Source)
 	path := cachePath(options.Dir, source, base)
 	cached, cachedOK := readCache(path, source, base)
+	eligible := mediaEligible(options, source, base)
+	if cachedOK && eligible && options.mediaOnly {
+		if _, ok := generalOf(cached); ok {
+			return topUpMedia(ctx, options, cached, path)
+		}
+		// The cache merged dedicated rows without keeping the general ones, so
+		// the chat rows' own capabilities cannot be recovered from it. Say so by
+		// refetching the general listing, once, here; the retry throttle on the
+		// dedicated compartment bounds how often this can be asked for.
+		options.Refresh = true
+	}
 	if cachedOK && !options.Refresh && (options.serveStale || now().Before(cached.FetchedAt.Add(TTL))) {
-		return newRowsAt(cached.Models, cached.FetchedAt), nil
+		// A fresh cache is served without any request, as it always was, even
+		// when it has never read a dedicated listing (an older build wrote it):
+		// the lazy warm tops those up behind the answer, and an eager caller
+		// gets them on the next refresh.
+		return cachedRows(cached, options, now()), nil
 	}
 
 	// fetch refuses an empty listing itself, so a nil error here is always rows.
 	models, err := fetch(ctx, options)
+	var (
+		media *mediaCache
+		state MediaState
+	)
+	if err == nil && eligible {
+		// The dedicated listings ride behind a general listing that landed. A
+		// failure of either keeps that listing's previous rows and is reported
+		// stale; it can never fail the general fetch or empty the catalog.
+		var prior *mediaCache
+		if cachedOK {
+			prior = cached.Media
+		}
+		models, media, state = refreshMedia(ctx, options, models, prior, now().UTC())
+	}
 	if err == nil {
 		// A transport may report success after cancellation. Closing the owner
 		// must still prevent that late response from changing persistent state.
@@ -528,24 +617,54 @@ func load(ctx context.Context, options Options) (*rows, error) {
 	if err == nil {
 		fetchedAt := now().UTC()
 		if path != "" {
-			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base})
+			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models, Source: source, Base: base, Priced: true, Media: media})
 		}
-		return newRowsAt(models, fetchedAt), nil
+		resolved := newRowsAt(models, fetchedAt)
+		resolved.media = state
+		return resolved, nil
 	}
 	if cachedOK {
 		// The network is gone and the cache is old. It is still the truest
 		// answer anyone has, so it is served WITH ITS DATE rather than
 		// withheld: a stale catalog a surface can date is worth more than an
 		// empty one it cannot explain.
-		return newRowsAt(cached.Models, cached.FetchedAt), err
+		return cachedRows(cached, options, now()), err
 	}
 	if source == "" && base == DefaultBaseURL {
-		return newRows(hardcodedFallbacks()), err
+		fallback := newRows(hardcodedFallbacks())
+		fallback.media = unreadMedia(eligible)
+		return fallback, err
 	}
 	// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN — handing eleven
 	// OpenRouter ids to a service that never published them puts four verbs on
 	// the belt that cannot succeed.
 	return newRows(nil), err
+}
+
+// topUpMedia reads the dedicated listings over a cache whose general rows it
+// leaves exactly as they were, and writes the result back. Whatever it cannot
+// read stays as the cache had it, dated, and is reported stale.
+func topUpMedia(ctx context.Context, options Options, cached cache, path string) (*rows, error) {
+	now := nowOf(options)
+	general, _ := generalOf(cached)
+	models, media, state := refreshMedia(ctx, options, general, cached.Media, now().UTC())
+	if err := ctx.Err(); err != nil {
+		return cachedRows(cached, options, now()), err
+	}
+	if path != "" {
+		cached.Models, cached.Media = models, media
+		_ = writeCache(path, cached)
+	}
+	resolved := newRowsAt(models, cached.FetchedAt)
+	resolved.media = state
+	return resolved, nil
+}
+
+func nowOf(options Options) func() time.Time {
+	if options.Now != nil {
+		return options.Now
+	}
+	return time.Now
 }
 
 // FetchedAt is when this catalog's rows left the provider, or the zero time
@@ -1453,6 +1572,16 @@ func cloneModel(model Model) Model {
 	model.InputModalities = append([]string(nil), model.InputModalities...)
 	model.OutputModalities = append([]string(nil), model.OutputModalities...)
 	model.Parameters = append([]string(nil), model.Parameters...)
+	model.Dedicated = append([]string(nil), model.Dedicated...)
+	model.MediaPrices = append([]MediaPrice(nil), model.MediaPrices...)
+	if model.Media != nil {
+		params := *model.Media
+		params.Resolutions = append([]string(nil), params.Resolutions...)
+		params.AspectRatios = append([]string(nil), params.AspectRatios...)
+		params.Durations = append([]int(nil), params.Durations...)
+		params.FrameImages = append([]string(nil), params.FrameImages...)
+		model.Media = &params
+	}
 	return model
 }
 
@@ -1584,6 +1713,22 @@ func readCache(path, source, base string) (cache, bool) {
 	if err != nil {
 		return cache{}, false
 	}
+	return decodeCache(raw, source, base)
+}
+
+// decodeCacheAny reads a cache file's rows whatever compartment it names.
+func decodeCacheAny(raw []byte) (cache, bool) {
+	var cached cache
+	if json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() {
+		return cache{}, false
+	}
+	cached.Models = cleanModels(cached.Models)
+	return cached, true
+}
+
+// decodeCache reads one cache file's bytes as the compartment of one service
+// and base, refusing a cache that belongs to another.
+func decodeCache(raw []byte, source, base string) (cache, bool) {
 	var cached cache
 	if json.Unmarshal(raw, &cached) != nil || cached.FetchedAt.IsZero() {
 		return cache{}, false

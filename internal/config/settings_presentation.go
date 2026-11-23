@@ -45,7 +45,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Hidden = true // Resident-only controls have no live chat consumer.
 	case KeyMemoryEnabled:
 		// The detail is the row's own Hint (settings.go), not a second copy.
-		p.Category, p.Label = "Memory", "notice things to remember"
+		p.Category, p.Label = "Memory", s.Label
 		p.Activation = "Applies from the next turn"
 	case KeyUpdateAuto:
 		p.Label = "automatic updates"
@@ -66,8 +66,13 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyHints:
 		p.Label = "show hints"
 		p.Description = "Show contextual tips while you work."
+	case KeyAttribution:
+		p.Label = "sign commits, pull requests and issues"
 	case KeyAttributionModel:
 		p.Label = "include model in commit attribution"
+	case KeyIdleHandoff:
+		p.Label = "idle handoff"
+		p.Activation = "Applies immediately"
 	case KeyHistoryEnabled:
 		p.Category, p.Label = "Privacy", "save input history"
 	case KeyDraftPersist:
@@ -76,7 +81,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Category, p.Label = "Privacy", "share anonymous usage reports"
 	case KeyModelPool:
 		p.Category, p.Label = "Privacy", "shared model recommendations"
-		p.Description = "Use and contribute receives model recommendations and shares text-free performance measurements. Use only sends nothing. Off does neither. Code, prompts and file paths are never included."
+		p.Description = "Off by default. Use and contribute receives model recommendations and shares text-free performance measurements. Use only sends nothing. Off does neither. Code, prompts and file paths are never included."
 	case KeyModelPoolPublicKey:
 		p.Category, p.Label, p.Advanced = "Privacy", "model pool signing key", true
 	case KeyToolApprovalMode:
@@ -196,7 +201,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	}
 	switch s.Key {
 	case KeyEffort, KeyModelFallbacks, KeyTaskAutoApprove, KeyBashBackgroundAfter,
-		KeyTaskModel, KeyTaskAudit, KeyAttributionModel, KeyReplyGuard,
+		KeyTaskModel, KeyTaskAudit, KeyAttribution, KeyAttributionModel, KeyReplyGuard,
 		KeyPromptProfile, KeyTaskSettle, KeyTaskRepairRounds, KeyTaskParallel,
 		KeyHistoryEnabled, KeyDraftPersist, KeyDocumentEngine, KeyTaskColumn,
 		KeyGoogleOAuthClient, KeyGoogleOAuthSecret, KeySlackOAuthClient,
@@ -226,6 +231,8 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Aliases = append(p.Aliases, "budget", "cost", "limit")
 	case KeyHistoryEnabled, KeyDraftPersist:
 		p.Aliases = append(p.Aliases, "privacy", "saved messages")
+	case KeyIdleHandoff:
+		p.Aliases = append(p.Aliases, "handoff", "idle release", "continue here", "other computers", "sync")
 	}
 	return p
 }

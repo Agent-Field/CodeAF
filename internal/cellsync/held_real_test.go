@@ -11,8 +11,8 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
-	"github.com/Agent-Field/codeaf/internal/furrow"
 )
 
 // TestAFreshLedgerSendsOnlyTheTurnRealEngine is the same rule on the real
@@ -20,10 +20,7 @@ import (
 // holds a 1 MiB chat another ledger published, a second ledger publishes one
 // small turn on top, and only the turn crosses the wire.
 func TestAFreshLedgerSendsOnlyTheTurnRealEngine(t *testing.T) {
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	ctx := context.Background()
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {

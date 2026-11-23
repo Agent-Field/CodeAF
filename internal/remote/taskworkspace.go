@@ -76,11 +76,47 @@ func (a *Agent) taskWorkspaceCall(ctx context.Context, method string, id uint64,
 		}
 	}
 	if err != nil {
-		return result, err
+		return result, callerDeadline(ctx, err)
 	}
 	err = json.Unmarshal(payload, &result)
 	return result, err
 }
+
+// callerDeadline keeps the caller's own deadline recognisable when the engine is
+// the end that noticed it.
+//
+// THE DEADLINE CROSSES THE WIRE AND ITS IDENTITY DOES NOT. args.Deadline makes the
+// engine stop the operation at the caller's deadline, and then both ends race to
+// report it. When this end's timer wins, the caller gets ctx.Err(). When the
+// engine's answer arrives first, the caller used to get the engine's words,
+// "context deadline exceeded", as a plain error that errors.Is does not match to
+// context.DeadlineExceeded. On a loaded machine that was half the calls (1,049 of
+// 2,000 at GOMAXPROCS=2 beside eight busy loops), and
+// TestTaskWorkspaceEarlierCallerDeadlineStopsResidentOperation failed on it. A
+// caller that tells a timeout from a refusal must get the same answer either way.
+//
+// The engine's own words are kept, because they say what happened there. A
+// deadline that has passed counts even before this end's context has noticed:
+// under load the answer can beat the local timer's callback.
+func callerDeadline(ctx context.Context, err error) error {
+	cause := ctx.Err()
+	if cause == nil {
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			cause = context.DeadlineExceeded
+		}
+	}
+	if cause == nil || !strings.Contains(err.Error(), cause.Error()) {
+		return err
+	}
+	return callerContextError{remote: err, cause: cause}
+}
+
+// callerContextError reads as the engine's answer and is the caller's context
+// error, so errors.Is finds context.DeadlineExceeded or context.Canceled in it.
+type callerContextError struct{ remote, cause error }
+
+func (e callerContextError) Error() string   { return e.remote.Error() }
+func (e callerContextError) Unwrap() []error { return []error{e.cause, e.remote} }
 
 // A cancel can reach the independent lane before its operation goroutine. A
 // short-lived cancelled entry remembers that order; entries always expire.

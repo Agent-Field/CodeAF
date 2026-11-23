@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/textfile"
 )
 
 // appendSentence is what the wrapper adds to pi's write description. The
@@ -70,10 +71,10 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 				return inner.Execute(ctx, args)
 			}
 			if parsed.Content == nil {
-				return "Invalid arguments: content is required and must be a string", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: content is required and must be a string"), true, nil
 			}
 			if strings.TrimSpace(parsed.Path) == "" {
-				return "Invalid arguments: path is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: path is required"), true, nil
 			}
 			// The current bytes are read here and the combined result is
 			// handed to the inner tool, so the write itself keeps pi's whole
@@ -85,10 +86,14 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 			if err != nil && !os.IsNotExist(err) {
 				return "Error reading the file to append to: " + err.Error(), true, nil
 			}
+			existingText, _, err := textfile.Decode(existing)
+			if err != nil {
+				return "Error reading the file to append to: " + err.Error(), true, nil
+			}
 			combined, err := json.Marshal(struct {
 				Path    string `json:"path"`
 				Content string `json:"content"`
-			}{parsed.Path, string(existing) + *parsed.Content})
+			}{parsed.Path, existingText + *parsed.Content})
 			if err != nil {
 				return "Error preparing the append: " + err.Error(), true, nil
 			}
@@ -100,7 +105,7 @@ func (a *Agent) appendableWrite(inner bare.Tool) bare.Tool {
 			// lines are the unit a continuation reasons in — the salvage
 			// note counts them the same way (salvage.go).
 			added := lineTally(*parsed.Content)
-			total := lineTally(string(existing) + *parsed.Content)
+			total := lineTally(existingText + *parsed.Content)
 			return fmt.Sprintf("Appended %d line%s to %s; the file now has %d line%s.",
 				added, plural(added), parsed.Path, total, plural(total)), false, nil
 		},

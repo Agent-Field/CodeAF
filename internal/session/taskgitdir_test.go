@@ -29,7 +29,7 @@ import (
 func TestStatusReadsWithNoDirectoryNeverRuns(t *testing.T) {
 	repo := t.TempDir()
 	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"config", "user.name", "codeaf"}} {
-		if _, err := git(repo, args...); err != nil {
+		if _, err := fixtureGit(repo, args...); err != nil {
 			t.Skipf("no usable git here: %v", err)
 		}
 	}
@@ -66,7 +66,7 @@ func TestAGitCommandWithNoDirectoryNeverRuns(t *testing.T) {
 	// would leave something staged.
 	repo := t.TempDir()
 	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"config", "user.name", "codeaf"}} {
-		if out, err := git(repo, args...); err != nil {
+		if out, err := fixtureGit(repo, args...); err != nil {
 			t.Skipf("no usable git here: %s %v", out, err)
 		}
 	}
@@ -93,5 +93,56 @@ func TestAGitCommandWithNoDirectoryNeverRuns(t *testing.T) {
 		t.Fatalf("read the index: %s", problem)
 	} else if len(staged) > 0 {
 		t.Errorf("the refused command staged %v in the repository the process was standing in", staged)
+	}
+}
+
+// A private commit must finish all its writers before a copy can be walked or
+// removed. Override a repository that explicitly enables automatic maintenance
+// and keep that repository's saved preference intact.
+func TestPrivateGitDoesNotStartDetachedMaintenance(t *testing.T) {
+	repo := newTestRepo(t)
+	mustGit(t, repo, "config", "--local", "maintenance.auto", "true")
+	mustGit(t, repo, "config", "--local", "gc.auto", "1")
+	trace := filepath.Join(t.TempDir(), "git.trace")
+	t.Setenv("GIT_TRACE", trace)
+	if out, err := privateGit(repo, "-c", "user.name=t", "-c", "user.email=t@t",
+		"commit", "--allow-empty", "-qm", "private work"); err != nil {
+		t.Fatalf("private commit: %v: %s", err, out)
+	}
+	calls := readFile(t, trace)
+	if strings.Contains(calls, "maintenance run") || strings.Contains(calls, "gc --auto") {
+		t.Fatalf("private commit started automatic maintenance: %s", calls)
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "config", "--local", "maintenance.auto")); got != "true" {
+		t.Fatalf("private command changed the repository preference: %q", got)
+	}
+}
+
+func TestFixtureGitDisablesRepositoryMaintenance(t *testing.T) {
+	repo := newTestRepo(t)
+	for key, want := range map[string]string{"maintenance.auto": "false", "gc.auto": "0"} {
+		if got := strings.TrimSpace(gitOut(t, repo, "config", "--local", key)); got != want {
+			t.Fatalf("fixture %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// Copy ownership, rather than the commit helper's name, decides the command's
+// maintenance policy: the same landing road also serves an in-place run.
+func TestTaskCommitSuppressesMaintenanceOnlyInOwnedCopies(t *testing.T) {
+	for _, owned := range []bool{false, true} {
+		t.Run(map[bool]string{false: "person", true: "copy"}[owned], func(t *testing.T) {
+			repo := newTestRepo(t)
+			writeFile(t, filepath.Join(repo, "shared.txt"), "the completed work\n")
+			trace := filepath.Join(t.TempDir(), "git.jsonl")
+			t.Setenv("GIT_TRACE2_EVENT", trace)
+			_, _, _, err := commitTaskWorkAs(repo, "completed work", []string{"shared.txt"}, gitSignature{off: true}, false, owned)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if suppressed := strings.Contains(readFile(t, trace), `"maintenance.auto=false"`); suppressed != owned {
+				t.Fatalf("owned copy %t: maintenance override = %t", owned, suppressed)
+			}
+		})
 	}
 }

@@ -166,3 +166,65 @@ func TestTaskWorkspaceEarlierCallerDeadlineStopsResidentOperation(t *testing.T) 
 		t.Fatal("resident operation outlived earlier caller deadline")
 	}
 }
+
+// A resident reply can beat the caller's cancellation notification. Keep the
+// caller live so this test always exercises the error received over the wire.
+func TestTaskWorkspaceResidentContextErrorsPreserveSentinels(t *testing.T) {
+	for _, cause := range []error{context.DeadlineExceeded, context.Canceled} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			far := &workspaceFar{fakeAgent: &fakeAgent{}, refuse: cause}
+			loop := workspaceLoop(t, far, false)
+			agent := loop.Client.Agent()
+			if _, err := agent.ApplyTaskWorkspaceRoot(context.Background(), 7, "work"); !errors.Is(err, cause) {
+				t.Fatalf("resident apply lost %v: %v", cause, err)
+			}
+			if _, err := agent.ReviewTaskWorkspaceRoot(context.Background(), 7, "work"); !errors.Is(err, cause) {
+				t.Fatalf("resident review lost %v: %v", cause, err)
+			}
+		})
+	}
+}
+
+// The engine's answer to a call whose caller's deadline has passed is that
+// caller's context error, whichever end reported it first. An unrelated
+// refusal, or the same words while the caller still has time, is left alone.
+func TestAnEngineAnswerAtTheCallersDeadlineIsTheCallersContextError(t *testing.T) {
+	expired, cancelExpired := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelExpired()
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	live, cancelLive := context.WithTimeout(context.Background(), time.Hour)
+	defer cancelLive()
+	for _, tc := range []struct {
+		what   string
+		ctx    context.Context
+		answer string
+		want   error
+	}{
+		{"the engine noticed the deadline", expired, "context deadline exceeded", context.DeadlineExceeded},
+		{"the engine wrapped it", expired, "apply: context deadline exceeded", context.DeadlineExceeded},
+		{"the caller cancelled", cancelled, "context canceled", context.Canceled},
+		{"an unrelated refusal after the deadline", expired, "no task 7 in this session", nil},
+		{"the same words while the caller has time", live, "context deadline exceeded", nil},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			answer := errors.New(tc.answer)
+			got := callerDeadline(tc.ctx, answer)
+			if got.Error() != tc.answer {
+				t.Fatalf("the engine's words became %q, want %q", got.Error(), tc.answer)
+			}
+			if tc.want == nil {
+				if got != answer {
+					t.Fatalf("%v was attributed to the caller's context", got)
+				}
+				return
+			}
+			if !errors.Is(got, tc.want) {
+				t.Fatalf("errors.Is(%v, %v) = false", got, tc.want)
+			}
+			if !errors.Is(got, answer) {
+				t.Fatal("the engine's own error is no longer reachable")
+			}
+		})
+	}
+}

@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,8 @@ func setupProviderApp(t *testing.T, seed func(dir string)) (*app, string, *[]str
 		t.Setenv(pin, "")
 	}
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	// The machine's own Claude Code must not decide what setup lists.
+	t.Setenv("CODEAF_CLAUDE_BIN", filepath.Join(t.TempDir(), "no-claude-here"))
 	dir := t.TempDir()
 	if seed != nil {
 		seed(dir)

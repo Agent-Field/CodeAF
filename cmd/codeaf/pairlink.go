@@ -15,16 +15,21 @@ import (
 	"errors"
 	"net/http"
 	"runtime"
-	"sort"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
+
+// pairAnswerNotArrived is an approval that timed out with the request still
+// waiting: nothing was decided, so the same command can simply run again.
+const pairAnswerNotArrived = "sync did not answer in time and nothing was decided — run the same command again"
 
 // linkTimeout outlasts one held poll so the answer, not the client, ends a wait.
 const linkTimeout = directory.MaxWait + 10*time.Second
@@ -64,6 +69,8 @@ func (s homeSigner) Sign(msg []byte) []byte         { return s.dev.Sign(msg) }
 // pullFleet counts what the identity holds, as this computer now sees it.
 func pullFleet(dir string, route pair.Mailbox) func(context.Context) (pair.Fleet, error) {
 	return func(ctx context.Context) (pair.Fleet, error) {
+		waitStorage := startPairedStorage(ctx, dir, route)
+		defer waitStorage()
 		client, id, err := homeDirectory(dir, route)
 		if err != nil {
 			return pair.Fleet{}, err
@@ -114,6 +121,16 @@ func (s inviteScreen) Invited(in pair.Invite) { s.say(pair.InviteLines(in)) }
 
 // askToJoin is the new device: a link on screen until a device that is in says yes.
 func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) error {
+	// A computer whose chats sync elsewhere is refused before it is asked to
+	// replace anything.
+	home := d.joining(replace).Home
+	standing, err := joinStanding(ctx, home, d.standingRoute(home, relay))
+	if err != nil {
+		return err
+	}
+	if err := standing.refusal(); err != nil {
+		return err
+	}
 	if !d.confirmReplacement(ctx, replace) {
 		return nil
 	}
@@ -121,10 +138,11 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 	if err != nil {
 		return err
 	}
-	if err := d.pairingStatus(ctx, route, replace); err != nil {
-		return err
+	joining := d.linking(route, replace)
+	if d.name != "" {
+		joining.Label = d.name
 	}
-	joined, err := pair.JoinByLink(ctx, d.requests(route), d.linking(route, replace), inviteScreen{d.term})
+	joined, err := pair.JoinByLink(ctx, d.requests(route), joining, inviteScreen{d.term})
 	if err != nil {
 		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
 			d.term.say(line)
@@ -137,9 +155,18 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 		d.term.say(err.Error())
 		return nil
 	}
-	d.recordOwnDeviceOrSay(ctx, route)
-	joined.Joined.With = joined.Fleet.With
-	d.term.say(joined.Joined.Sentence())
+	if !joined.Already && d.name != "" {
+		if _, err := devname.Set(joining.Home, d.name); err != nil {
+			return err
+		}
+	}
+	if joined.Already {
+		d.term.say(joined.Sentence())
+	} else {
+		d.recordOwnDeviceOrSay(ctx, route)
+		joined.Joined.With = joined.Fleet.With
+		d.term.say(joined.Joined.Sentence())
+	}
 	return nil
 }
 
@@ -168,6 +195,15 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return err
 	}
 	asking, err := who.Look(ctx, ref)
+	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
+		// An approval whose reply was lost: the device is in, so this computer is shared.
+		if err := identity.EndSolo(d.joining(false).Home); err != nil {
+			return err
+		}
+		d.recordOwnDeviceOrSay(ctx, route)
+		d.term.say(tui3.ErrAlreadyPaired.Error())
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -176,7 +212,13 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return d.decline(ctx, who, asking)
 	}
 	if err := who.Approve(ctx, asking); err != nil {
-		return err
+		err = settleApproval(who, asking, err)
+		if errors.Is(err, tui3.ErrAnswerNotArrived) {
+			return errors.New(pairAnswerNotArrived)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	if err := identity.EndSolo(d.joining(false).Home); err != nil {
 		return err
@@ -206,12 +248,14 @@ func linkApprover(dir string) func(pair.Mailbox) (pair.Approver, error) {
 		}
 		return pair.Approver{
 			Requests: linkRequests(route), Dir: client, Identity: id,
-			SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir),
+			AfterApprove: func(ctx context.Context) { samplePairedStorage(ctx, dir, route) },
+			SyncURL:      syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir),
 		}, nil
 	}
 }
 
-// pairingPeer reads names after joining, so pairing needs no new wire fields.
+// A link grant does not identify its approver. With several possible peers,
+// keep the existing generic receipt instead of guessing from sorted names.
 func pairingPeer(l directory.Listing, key []byte, self string) string {
 	var names []string
 	for id, dev := range l.Devices {
@@ -219,8 +263,7 @@ func pairingPeer(l directory.Listing, key []byte, self string) string {
 			names = append(names, openName(key, dev.Name))
 		}
 	}
-	sort.Strings(names)
-	if len(names) > 0 {
+	if len(names) == 1 {
 		return names[0]
 	}
 	return ""

@@ -2144,7 +2144,7 @@ func TestTheWorktreeFingerprintSeesEveryNewFile(t *testing.T) {
 		{"init", "-b", "main"},
 		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "root"},
 	} {
-		if out, err := git(dir, args...); err != nil {
+		if out, err := fixtureGit(dir, args...); err != nil {
 			t.Fatalf("git %v: %s", args, out)
 		}
 	}
@@ -2529,16 +2529,38 @@ func newTestRepo(t *testing.T) string {
 	return repo
 }
 
+// fixtureGit makes each fixture own its maintenance policy before any commit,
+// so product commands in the fixture cannot leave detached writers at cleanup.
+func fixtureGit(dir string, args ...string) (string, error) {
+	if len(args) == 0 || (args[0] != "init" && args[0] != "clone") {
+		return git(dir, args...)
+	}
+	out, err := privateGit(dir, args...)
+	if err != nil {
+		return out, err
+	}
+	if destination := args[len(args)-1]; filepath.IsAbs(destination) {
+		dir = destination
+	}
+	for _, setting := range []string{"maintenance.auto=false", "gc.auto=0"} {
+		key, value, _ := strings.Cut(setting, "=")
+		if result, err := git(dir, "config", "--local", key, value); err != nil {
+			return result, err
+		}
+	}
+	return out, nil
+}
+
 func mustGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	if out, err := git(dir, args...); err != nil {
+	if out, err := fixtureGit(dir, args...); err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 }
 
 func gitOut(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	out, err := git(dir, args...)
+	out, err := fixtureGit(dir, args...)
 	if err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}

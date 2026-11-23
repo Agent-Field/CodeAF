@@ -141,6 +141,9 @@ type engineFleet struct {
 	// assembled the surface: the readings that are about the engine's machine
 	// rather than about one conversation (hostOptions fills it).
 	machine machineReadings
+	// poolErrands is this launch's handle, also retained by its owned closer.
+	// Keeping it on the fleet makes the window's lifetime explicit.
+	poolErrands *poolErrands
 
 	mu    sync.Mutex
 	conns []*engineConn

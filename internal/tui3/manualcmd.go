@@ -25,7 +25,7 @@ package tui3
 // turn of that conversation.
 
 import (
-	"strings"
+	"github.com/Agent-Field/codeaf/internal/session"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -35,19 +35,9 @@ import (
 // are the words behind it ([app.submitShown] keeps the two apart). Both name
 // the tool so the answer is read out of the pages rather than remembered from
 // somewhere else, and both ask for the page, so the person can go on to read it.
-const (
-	// manualTourAsk is a bare /manual: what codeaf can do, from its own account.
-	manualTourAsk = "What can codeaf do? Answer from codeaf's own manual — the manual tool — and name the pages worth reading first."
-	// manualQuestionLead is put in front of a question typed after the word.
-	manualQuestionLead = "Answer from codeaf's own manual — the manual tool — and say which page it came from: "
-)
-
 // runManualCommand is /manual: the question, or the tour, sent to the model as
 // a turn of this conversation.
 func (a *app) runManualCommand(rest string) tea.Cmd {
-	asked := strings.TrimSpace(rest)
-	if asked == "" {
-		return a.submitShown(manualTourAsk, "/manual", nil)
-	}
-	return a.submitShown(manualQuestionLead+asked, "/manual "+asked, nil)
+	text, said := session.ManualCommand(rest)
+	return a.submitShown(text, said, nil)
 }

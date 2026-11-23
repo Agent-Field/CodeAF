@@ -35,6 +35,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -96,11 +97,11 @@ func (a *Agent) viewImageTool(known string) bare.Tool {
 				Question string `json:"question"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			path := strings.TrimSpace(parsed.Path)
 			if path == "" {
-				return "Invalid arguments: path is required", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: path is required"), true, nil
 			}
 			return a.viewImage(ctx, path, strings.TrimSpace(parsed.Question), known)
 		},
@@ -113,6 +114,7 @@ func (a *Agent) viewImageTool(known string) bare.Tool {
 // on — look somewhere else, ask the person, say so out loud — and none of them
 // is a reason to end the turn.
 func (a *Agent) viewImage(ctx context.Context, path, question, known string) (string, bool, error) {
+	working := a.Model() // WHO WAS WORKING when the look began; see captureWorking.
 	seer := a.visionSeer()
 	if seer == "" {
 		seer = known
@@ -133,8 +135,13 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	if err != nil {
 		return toolReason(err), true, nil
 	}
-	data, err := imageBytes(image)
+	data, observed, err := readObservedMedia(absolute, maxImageBytes)
 	if err != nil {
+		if errors.Is(err, errObservedMediaLarge) {
+			err = oversizeImage(absolute)
+		} else {
+			err = fmt.Errorf("session: could not read %s", filepath.ToSlash(absolute))
+		}
 		return toolReason(err), true, nil
 	}
 
@@ -169,6 +176,7 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 		// wrong, and an API error can carry a whole HTML page.
 		return seer + " could not look at " + shown + ": " + oneLineReason(err.Error()), true, nil
 	}
+	a.recordEvidence(ctx, working, absolute, mediaType, "image", data, EvidenceLookedAt, answer, seer, false, observed)
 	// "seen by <model>" is the same sentence internal/exec's own view_image
 	// returns, and it is said out loud for image.go's reason: a second model
 	// answering in the first one's voice, silently, would be the surface lying

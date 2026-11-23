@@ -1,0 +1,18 @@
+{
+  "token": "ZZZZZZWSxiZZZ2yIvs3peJ",
+  "team_id": "T061EG9R6",
+  "api_app_id": "A0PNCHHK2",
+  "event": {
+    "type": "app_mention",
+    "user": "U061F7AUR",
+    "text": "<@U0LAN0Z89> add a Len method to Ledger in factory-demo",
+    "ts": "1515449522.000016",
+    "channel": "C0LAN2Q65",
+    "event_ts": "1515449522.000016",
+    "client_msg_id": "a8744611-0210-4f85-9f15-5faf7fb225c8"
+  },
+  "type": "event_callback",
+  "event_id": "Ev0LAN670R",
+  "event_time": 1515449522,
+  "authed_users": ["U0LAN0Z89"]
+}

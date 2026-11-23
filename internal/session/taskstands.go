@@ -220,7 +220,7 @@ func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
 			if err != nil {
 				return taskStand{refusal: "this task names a folder it cannot work in: " + where}
 			}
-			return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
+			return a.namedWhereStand(dir)
 		}
 	}
 	stand := a.groundLadder(spec, workspace)
@@ -240,6 +240,16 @@ func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
 	stand.mode, redirect = groundModeAfterPlacement(stand, spec, workspace, redirect, a.config.Place.Trees(), WorkspaceOwnershipEnabled(a.config.Place))
 	stand.redirect = redirect
 	return stand
+}
+
+// namedWhereStand is where a model's named folder puts a task outside a
+// repository: in place, except that a folder holding the home folder is read
+// from the task's own folder unless the person saved it as in place.
+func (a *Agent) namedWhereStand(dir string) taskStand {
+	if saved, found := a.knownPlace(dir); HoldsHomeFolder(dir) && (!found || TaskMode(saved.Mode) != TaskModeInPlace) {
+		return taskStand{dir: dir, mode: TaskModeReference, rung: taskGroundNamed, redirect: homeTaskRedirect(dir)}
+	}
+	return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
 }
 
 // groundModeAfterPlacement is the mode phase of [Agent.resolveTaskGround]. It
@@ -928,7 +938,7 @@ func groundMode(stand taskStand, spec taskSpec, workspace string, trees string, 
 	case stand.rung == taskGroundNothing || stand.dir == workspace:
 		return TaskModeFolder
 	case writes:
-		return TaskModeMirror
+		return ownershipPlainMode(stand.dir)
 	}
 	return TaskModeReference
 }

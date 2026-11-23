@@ -550,7 +550,7 @@ The ten wakes count ten replies when each member turn replies and then finishes.
 
 A team's auto-wake can be turned off. `team messages wake` in `/settings` under **Teams** is
 the default every team inherits (on), and a team can override it for itself and the teams
-under it: its entry in `teams.json` in the profile carries `"wake": false` (or `true`). With it
+under it: its entry in the profile's teams store, `teams.db`, carries `"wake": false` (or `true`). With it
 off, every message waits for each conversation's next turn, and a member the manager starts
 with `team_start` is opened and handed its brief on that next turn, with no turn started for
 it. The traffic says so.
@@ -563,6 +563,8 @@ member's brief. A conversation reopened later is handed what was said to it
 while it was closed.
 
 ## Team sharing and Traffic on another computer
+
+Hosted sync storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: teams, shared team settings and Traffic wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
@@ -622,6 +624,8 @@ former appointment stays; the copy made before the first exchange keeps the orig
 Review manager choices in Teams.
 
 ## Shared team spending caps and continued members
+
+On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
 
 Teams and their settings share automatically between paired computers by default;
 an unpaired computer is unaffected. A shared team's spending cap counts spending

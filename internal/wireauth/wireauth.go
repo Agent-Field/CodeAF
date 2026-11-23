@@ -73,6 +73,13 @@ var ErrRateLimited = errors.New("wireauth: rate limited")
 // time, but by hours and not seconds.
 var ErrTooManyIdentities = errors.New("wireauth: too many new identities")
 
+// ErrStorageOff means the relay has not enabled storage for this account.
+var ErrStorageOff = errors.New("wireauth: sync storage off")
+
+// ErrRelayFull identifies shared storage capacity on both wires. Each decoder
+// also retains its own general full error so existing callers keep matching it.
+var ErrRelayFull = errors.New("wireauth: relay storage full")
+
 // waiting is a refusal together with how long the relay said to wait.
 type waiting struct {
 	err   error

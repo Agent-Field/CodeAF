@@ -35,3 +35,23 @@ func TestPairingSharesTheChatsAndTheWordsAgree(t *testing.T) {
 		t.Fatalf("B holds %v (%v), want A's identity", held.ID(), err)
 	}
 }
+
+func TestA3CodePairingApprovalNamesTheOtherPlatform(t *testing.T) {
+	r := newChatRig(t)
+	a, b := newScreen(), newScreen()
+	a.answer = func(_ context.Context, label, _ string) bool {
+		if label != "Abir (Windows)" {
+			t.Errorf("A3: approval identifies %q, want Abir (Windows)", label)
+		}
+		return true
+	}
+	done := r.offer(t.Context(), a)
+	code := a.nextCode(t)
+	_, err := Join(t.Context(), r.route, Joining{Home: r.homeB, Label: "Abir", Platform: "windows"}, code.Shown(), b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if end := within(t, done); end.err != nil {
+		t.Fatal(end.err)
+	}
+}

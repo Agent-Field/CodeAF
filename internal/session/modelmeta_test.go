@@ -1,10 +1,39 @@
 package session
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
+
+func TestModelMetaC1RemembersProviderBeforeTheFirstCall(t *testing.T) {
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(cfg *Config) {
+		cfg.Place = Place{Dir: dir}
+		cfg.Sources = modelsource.NewSet(
+			modelsource.Connected{Source: modelsource.Source{ID: "openrouter", Written: "openrouter"}, Key: "router"},
+			modelsource.Connected{Source: modelsource.Source{ID: "custom-local", Written: "local-models"}, Key: "local"},
+		)
+	})
+	agent.SetModel("local-models/never-called")
+	agent.SettleWrites()
+	raw, err := os.ReadFile(filepath.Join(dir, "meta.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["model"] != "local-models/never-called" || saved["modelProvider"] != "custom-local" {
+		t.Fatalf("C1 saved model/provider = %v/%v", saved["model"], saved["modelProvider"])
+	}
+}
 
 // A different window must see a chosen model even before another turn runs.
 func TestModelChoicePublishesSavedConfigurationWithoutAnotherTurn(t *testing.T) {

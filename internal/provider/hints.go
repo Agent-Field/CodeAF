@@ -91,6 +91,8 @@ func CacheKeyFrom(ctx context.Context) string {
 // whose catalog entry does not confirm reasoning support, because an optional
 // harness default that 400s an unknown model would be a self-inflicted outage.
 type effortRequest struct {
+	dropRefused bool
+
 	effort Effort
 
 	// budget is the thinking allowance in tokens that the two ladder rungs
@@ -157,8 +159,17 @@ func ReasoningEffortFrom(ctx context.Context) Effort {
 	return request.effort
 }
 
+// WithRefusedEffortRecovery lets this call retry a model's explicit reasoning
+// refusal without changing other calls through the same client.
+func WithRefusedEffortRecovery(ctx context.Context) context.Context {
+	return context.WithValue(ctx, refusedEffortRecoveryKey{}, true)
+}
+
+type refusedEffortRecoveryKey struct{}
+
 func effortFrom(ctx context.Context) effortRequest {
 	request, _ := ctx.Value(effortContextKey{}).(effortRequest)
+	request.dropRefused, _ = ctx.Value(refusedEffortRecoveryKey{}).(bool)
 	if request.wall > 0 {
 		request.lane = askedFor(ctx)
 	}

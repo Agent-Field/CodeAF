@@ -207,8 +207,12 @@ func (p Project) NeedsPerson() int {
 // meta.json, whether a window is holding it right now, and what the project's
 // index says it ran.
 type SessionRow struct {
+	ModelIdentity *ModelIdentity
 	// ID is the session id, which is its folder's name.
 	ID string
+	// AgentDID is the conversation's agent DID (agent_identity.go), and ""
+	// for one that has not taken a turn since agents were given one.
+	AgentDID string
 	// Dir is the session folder and Transcript its journal — the path a resume
 	// is asked for.
 	Dir        string
@@ -240,6 +244,9 @@ type SessionRow struct {
 	// this codebase (place.go's [Meta.LastUserAt]) and deliberately not the
 	// file's modification time.
 	At time.Time
+	// ReplyAt is when the conversation last finished an answer to the person
+	// ([Meta.LastReplyAt]); zero when it has not said.
+	ReplyAt time.Time
 	// Created is when the folder was minted.
 	Created time.Time
 	// Open reports that a window is holding this journal AT THIS INSTANT. It is
@@ -669,13 +676,16 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 	meta, _ := LoadMeta(dir)
 	row := SessionRow{
 		ID:            filepath.Base(dir),
+		AgentDID:      meta.AgentDID(),
 		Dir:           dir,
 		Transcript:    transcript,
 		Title:         firstWord(seed.Title, meta.Title),
 		Workspace:     firstWord(seed.Workspace, meta.Workspace),
 		Owned:         meta.Owned,
 		Model:         firstWord(seed.Model, meta.Model),
+		ModelIdentity: meta.ModelIdentity,
 		At:            meta.LastUserAt,
+		ReplyAt:       meta.LastReplyAt,
 		Created:       meta.Created,
 		Spend:         meta.SpentUSD,
 		Tokens:        meta.Tokens,
@@ -919,6 +929,7 @@ func readResolvedSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	}
 	return SessionRow{
 		ID:              id,
+		AgentDID:        meta.AgentDID(),
 		Dir:             dir,
 		Transcript:      transcript,
 		DeletionPending: pending,
@@ -927,7 +938,9 @@ func readResolvedSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		Origin:          strings.TrimSpace(meta.Origin),
 		Owned:           meta.Owned,
 		Model:           strings.TrimSpace(meta.Model),
+		ModelIdentity:   meta.ModelIdentity,
 		At:              at,
+		ReplyAt:         meta.LastReplyAt,
 		Created:         meta.Created,
 		Spend:           meta.SpentUSD,
 		Tokens:          meta.Tokens,

@@ -17,7 +17,12 @@ import (
 var errCreditsSuperseded = errors.New("credit read superseded by a changed key")
 
 // v3ReadAndStoreCredits commits only a reading for the key still in force.
+//
+// THE READING IS DATED WHEN THE READ BEGAN, taken before the request goes out:
+// a balance that answers after a payment refusal was looked up before it, and
+// must not lift it.
 func v3ReadAndStoreCredits(ctx context.Context, profileDir, base, key string) (credits.Reading, error) {
+	observedAt := time.Now()
 	reading, err := credits.Read(ctx, nil, base, key)
 	if err != nil {
 		return credits.Reading{}, err
@@ -25,7 +30,7 @@ func v3ReadAndStoreCredits(ctx context.Context, profileDir, base, key string) (c
 	if key != config.APIKeyAt(profileDir) {
 		return credits.Reading{}, errCreditsSuperseded
 	}
-	if err := config.WriteCreditsReading(profileDir, key, reading); err != nil {
+	if err := config.WriteCreditsReadingAt(profileDir, key, reading, observedAt); err != nil {
 		return credits.Reading{}, err
 	}
 	return reading, nil

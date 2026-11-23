@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"github.com/Agent-Field/codeaf/internal/config"
 	"strings"
 	"testing"
 
@@ -39,7 +40,11 @@ func TestMemoryKnowledgeSwitchIsClickableBothWays(t *testing.T) {
 
 func TestSavedMemoryKnowledgeSwitchDoesNotEnableCapture(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)))
 	placeFrameText(a)

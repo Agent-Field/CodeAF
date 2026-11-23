@@ -4,13 +4,19 @@ import (
 	"context"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/pairbox"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // L4-H2c: already paired is the first explanation, even when --replace was supplied.
@@ -34,10 +40,39 @@ func TestL4AlreadyPairedNamesDevices(t *testing.T) {
 	}
 	d := r.door(r.homeA, strings.NewReader(""), &pairScreenText{})
 	for _, replace := range []bool{false, true} {
-		err := d.pairingStatus(context.Background(), pair.Mailbox{URL: r.url}, replace)
+		// Nothing waits under this code: the refusal has to come before it is used.
+		err := d.join(context.Background(), "", "42-715-302", replace)
 		if err == nil || err.Error() != "this computer is already paired with box-c and laptop-a — codeaf devices lists them" {
 			t.Fatalf("%v", err)
 		}
+	}
+	// The page that explains pairing quotes the sentence as the terminal prints it.
+	page, ok := manual.Chat().Page("use-this-on-another-computer")
+	if quoted := (pairedWithError{names: []string{"laptop-a"}}).Error(); !ok || !strings.Contains(page, quoted) {
+		t.Fatalf("the pairing page does not quote %q", quoted)
+	}
+	// A computer whose name cannot be read is unnamed on each surface in its own words.
+	unnamed := pairedWithError{names: []string{"", "box-c"}}
+	if got := unnamed.Error(); got != "this computer is already paired with a device and box-c — codeaf devices lists them" {
+		t.Fatalf("the terminal said %q", got)
+	}
+	if got := appPairPairedWith(unnamed); got != "This computer is already paired with another computer and box-c." {
+		t.Fatalf("the app said %q", got)
+	}
+
+	// Once the identity was replaced by a rotation, the same computer may be
+	// following it to the new one, so it is not refused before the code. Its own
+	// chats are still refused by the join, unless the grant names this identity.
+	client, _, err := homeDirectory(r.homeA, pair.Mailbox{URL: r.url})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Rotate(context.Background(), directory.RotationReq{Op: directory.OpFreeze}); err != nil {
+		t.Fatal(err)
+	}
+	standing, err := joinStanding(context.Background(), r.homeA, func() (pair.Mailbox, error) { return pair.Mailbox{URL: r.url}, nil })
+	if err != nil || standing.refusal() != nil || standing.alone() {
+		t.Fatalf("a rotated identity's computer reads as %+v, %v", standing, err)
 	}
 }
 
@@ -92,7 +127,7 @@ func TestL4PairEmptyChatThroughBothDoors(t *testing.T) {
 				if err := <-done; err != nil {
 					t.Fatal(err)
 				}
-				if !strings.Contains(screen.String(), "Paired with laptop-a. Run codeaf to open your chats.") {
+				if !strings.Contains(screen.String(), pair.PairedWithLine("laptop-a")) {
 					t.Fatal(screen.String())
 				}
 				return
@@ -109,9 +144,44 @@ func TestL4PairEmptyChatThroughBothDoors(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(out.String(), "Paired with laptop-a. Run codeaf to open your chats.") {
+			if !strings.Contains(out.String(), pair.PairedWithLine("laptop-a")) {
 				t.Fatal(out.String())
 			}
 		})
+	}
+}
+
+// L4-H2c with --via: the other computer's relay has never heard of this
+// computer's set, so the set is read where this computer syncs, and an actively
+// paired computer is still refused before the code is used.
+func TestL4AlreadyPairedThroughAnotherRelay(t *testing.T) {
+	r := newPairRig(t)
+	t.Setenv(syncsetup.URLVar, r.url)
+	id, err := identity.Load(r.homeA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerHome := t.TempDir()
+	if _, err := identity.Adopt(peerHome, id, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := devname.Set(peerHome, "box-c"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ownDeviceRecord(context.Background(), peerHome, pair.Mailbox{URL: r.url}); err != nil {
+		t.Fatal(err)
+	}
+	other := newPairRig(t) // the relay the other computer pairs through
+	d := r.door(r.homeA, strings.NewReader(""), &pairScreenText{})
+	d.mailbox = func(flag string) (pair.Mailbox, error) {
+		url := r.url
+		if flag != "" {
+			url = flag
+		}
+		return pair.Mailbox{Box: pairbox.NewHTTP(url, &http.Client{Timeout: time.Minute}), URL: url, Host: "relay.test"}, nil
+	}
+	err = d.join(context.Background(), other.url, "42-715-302", false)
+	if err == nil || err.Error() != "this computer is already paired with box-c — codeaf devices lists them" {
+		t.Fatalf("through another relay the computer was told %v", err)
 	}
 }

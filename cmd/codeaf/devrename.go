@@ -17,44 +17,17 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
-
-// renameWithin bounds the one request a rename makes, so a silent relay cannot
-// hang the command.
-const renameWithin = 20 * time.Second
 
 // renameThisDevice keeps typed as the name of the computer whose home is dir,
 // tells the fleet when it may, and returns the sentence a person reads.
 func renameThisDevice(ctx context.Context, dir, typed string) (string, error) {
-	name, err := devname.Set(dir, typed)
-	if err != nil {
-		return "", err
-	}
-	if !syncsetup.MayTalk(dir) {
-		return pair.RenamedAloneLine(name), nil
-	}
-	if tellFleet(ctx, dir, name) != nil {
-		return pair.RenamedHereLine(name), nil
-	}
-	return pair.RenamedLine(name), nil
-}
-
-// tellFleet puts the new name in the directory, and says why not when it cannot.
-func tellFleet(ctx context.Context, dir, name string) error {
-	s, ok, err := syncsetup.Open(dir)
-	if err != nil || !ok {
-		return errors.Join(err, errors.New("sync is off"))
-	}
-	ctx, cancel := context.WithTimeout(ctx, renameWithin)
-	defer cancel()
-	return s.Rename(ctx, name)
+	return syncsetup.RenameDevice(ctx, dir, typed)
 }
 
 // runDevicesRename is `codeaf devices rename <name>`. The name may be several

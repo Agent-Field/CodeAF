@@ -69,6 +69,9 @@ var Program = delegate.Delegate{
 	// a few words that say little as a title.
 	Title:      title,
 	Unattended: Unattended,
+	// THE FILE THE PROGRAM WRITES FOR A LATER READ: the one name the engine will
+	// hand back byte for byte (delegate.ReadReport), kept beside reportJSON.
+	Reports: []string{reportJSON},
 	// THE OFFERS ARE THE PERSON'S TO TAKE. Posting is an outward-facing act on
 	// their pull request and mending is another program's work and more of
 	// their money, so the conversation offers both and waits.

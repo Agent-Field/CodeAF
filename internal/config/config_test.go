@@ -66,8 +66,14 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 			return nil, http.ErrServerClosed
 		})},
 	})
-	if got := resolved.ResolveImageModel(models); got != preferredImageModel {
-		t.Fatalf("resolved image = %q", got)
+	// The offline rows name these models but publish no price for them, and
+	// a default is only ever a priced one: drawing and filming have NO default
+	// on a machine that has read nothing, and say the list is unconfirmed.
+	if got := resolved.ResolveImageModel(models); got != "" {
+		t.Fatalf("resolved image = %q, want no unpriced default", got)
+	}
+	if reason := resolved.ResolveImageRoute(models).Reason; reason != RouteUnconfirmed {
+		t.Fatalf("offline image route reason = %q", reason)
 	}
 	if got := resolved.ResolveSpeechModel(models); got != preferredSpeechModel {
 		t.Fatalf("resolved speech = %q", got)
@@ -75,8 +81,8 @@ func TestMediaSlotsUseEnvironmentAndRuntimeCatalogOrder(t *testing.T) {
 	if got := resolved.ResolveMusicModel(models); got != preferredMusicModel {
 		t.Fatalf("resolved music = %q", got)
 	}
-	if got := resolved.ResolveVideoModel(models); got != preferredVideoModel {
-		t.Fatalf("resolved video = %q", got)
+	if got := resolved.ResolveVideoModel(models); got != "" {
+		t.Fatalf("resolved video = %q, want no unpriced default", got)
 	}
 }
 
@@ -120,6 +126,32 @@ func TestVisionModelResolutionOrder(t *testing.T) {
 	}
 }
 
+// An image editor takes pictures in and gives a picture back. Merging the
+// dedicated image listing put dozens of them in the catalog with exactly the
+// input a vision proxy looks for, and one of them was first.
+func TestVisionModelResolutionNeverPicksAPainterAsEyes(t *testing.T) {
+	t.Setenv("CODEAF_VISION_MODEL", "")
+	configured := settings(t)
+	models := runtimeCatalog(t, `
+		{"id":"paint/edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}},
+		{"id":"paint/captioning-edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image","text"]}},
+		{"id":"eyes/real","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}}`)
+	// A painter chosen as the live talk or work model is passed over too.
+	if got := configured.ResolveVisionModel(models, "paint/edit", "paint/captioning-edit"); got != "eyes/real" {
+		t.Fatalf("vision = %q, want the first model that answers in text only", got)
+	}
+	onlyPainters := runtimeCatalog(t, `
+		{"id":"paint/edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}}`)
+	if got := configured.ResolveVisionModel(onlyPainters, "paint/edit", ""); got != "" {
+		t.Fatalf("vision = %q, want no proxy rather than an image generator", got)
+	}
+	// The person's own slot is never second-guessed.
+	t.Setenv("CODEAF_VISION_MODEL", "paint/edit")
+	if got := settings(t).ResolveVisionModel(models, "eyes/real", ""); got != "paint/edit" {
+		t.Fatalf("explicit vision = %q, want the operator's choice untouched", got)
+	}
+}
+
 type configRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn configRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -140,8 +172,8 @@ func runtimeCatalog(t *testing.T, rows string) *catalog.Catalog {
 func TestImageAndSpeechPreferenceOrders(t *testing.T) {
 	models := runtimeCatalog(t, `
 		{"id":"first/image","architecture":{"output_modalities":["image"]}},
-		{"id":"bytedance-seed/seedream-5-0-pro","architecture":{"output_modalities":["image"]}},
-		{"id":"krea/krea-2-medium-turbo","architecture":{"output_modalities":["image"]}},
+		{"id":"bytedance-seed/seedream-5-0-pro","architecture":{"output_modalities":["image"]},"pricing":{"request":"0.04"}},
+		{"id":"krea/krea-2-medium-turbo","architecture":{"output_modalities":["image"]},"pricing":{"request":"0.02"}},
 		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},
 		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}},
 		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}},
@@ -160,8 +192,13 @@ func TestImageAndSpeechPreferenceOrders(t *testing.T) {
 		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},
 		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}},
 		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}}`)
-	if got := configured.ResolveImageModel(withoutPrimary); got != "first/image" {
-		t.Fatalf("image catalog fallback = %q", got)
+	// No remembered image model is advertised: the catalog's first row is NOT
+	// taken in its place. The refusal names what is available.
+	if got := configured.ResolveImageModel(withoutPrimary); got != "" {
+		t.Fatalf("image catalog fallback = %q, want a model-required refusal", got)
+	}
+	if route := configured.ResolveImageRoute(withoutPrimary); route.Reason != RouteModelRequired || len(route.Options) != 1 || route.Options[0] != "first/image" {
+		t.Fatalf("image route = %+v", route)
 	}
 	if got := configured.ResolveSpeechModel(withoutPrimary); got != kokoroSpeechModel {
 		t.Fatalf("speech secondary preference = %q", got)
@@ -195,8 +232,11 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	if got := configured.ResolveMusicModel(models); got != preferredMusicModel {
 		t.Fatalf("music preference = %q", got)
 	}
-	if got := configured.ResolveVideoModel(models); got != preferredVideoModel {
-		t.Fatalf("video preference = %q", got)
+	// A general listing cannot price a film (its per-token zero proves nothing),
+	// so even the remembered Seedance row is not a default here: see
+	// mediaroute_test.go for the priced path through the dedicated listing.
+	if got := configured.ResolveVideoModel(models); got != "" {
+		t.Fatalf("video default = %q, want none without a published price", got)
 	}
 
 	// The older pair is still reached for when the preferred row is missing,
@@ -209,8 +249,8 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	if got := configured.ResolveMusicModel(olderPair); got != fallbackMusicModel {
 		t.Fatalf("music secondary preference = %q", got)
 	}
-	if got := configured.ResolveVideoModel(olderPair); got != fallbackVideoModel {
-		t.Fatalf("video secondary preference = %q", got)
+	if got := configured.ResolveVideoModel(olderPair); got != "" {
+		t.Fatalf("video secondary default = %q, want none without a published price", got)
 	}
 
 	withoutPreferred := runtimeCatalog(t, `
@@ -220,8 +260,8 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	if got := configured.ResolveMusicModel(withoutPreferred); got != "first/music" {
 		t.Fatalf("music catalog fallback = %q", got)
 	}
-	if got := configured.ResolveVideoModel(withoutPreferred); got != "first/video" {
-		t.Fatalf("video catalog fallback = %q", got)
+	if got := configured.ResolveVideoModel(withoutPreferred); got != "" {
+		t.Fatalf("video catalog fallback = %q, want a model-required refusal", got)
 	}
 	if got := configured.ResolveMusicModel(runtimeCatalog(t, ``)); got != "" {
 		t.Fatalf("empty music catalog resolved %q", got)
@@ -719,15 +759,8 @@ func profileKeysWrittenByRows(t *testing.T) map[string]string {
 // retired key is silent, and that a genuinely unknown key is still named.
 func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {
 	dir := t.TempDir()
-	for name := range retiredRowEnv {
-		t.Setenv(retiredRowEnv[name], "")
-	}
 	for key := range retiredProfileKeys {
 		key := key
-		if RetiredRowNote(key) != "" {
-			// A told row is the other half of the mechanism, pinned below.
-			continue
-		}
 		t.Run(key, func(t *testing.T) {
 			values := map[string]json.RawMessage{key: json.RawMessage(`"x"`)}
 			if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
@@ -737,9 +770,7 @@ func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {
 	}
 	values := map[string]json.RawMessage{}
 	for key := range retiredProfileKeys {
-		if RetiredRowNote(key) == "" {
-			values[key] = json.RawMessage(`"x"`)
-		}
+		values[key] = json.RawMessage(`"x"`)
 	}
 	values["totally_unknown_key"] = json.RawMessage(`"x"`)
 	unread := warnUnreadProfileKeys(dir, values)
@@ -748,41 +779,42 @@ func TestRetiredProfileKeysAreNotReportedUnread(t *testing.T) {
 	}
 }
 
-// THE ATTRIBUTION ROW IS RETIRED, AND A PROFILE THAT STILL SAYS IT IS TOLD SO.
-// Signing has no off since 2026-09-23. A profile holding `attribution: false`
-// holds a person's decision, so it is neither obeyed (the row is gone, nothing
-// reads it) nor ignored in silence (the rest of the retired keys are): the key
-// is reported unread, and the surface prints the row's own sentence, which
-// names the one thing that can still be turned off. `CODEAF_ATTRIBUTION` set in
-// the shell is the same decision and is told the same way.
-func TestTheRetiredAttributionRowIsToldPlainly(t *testing.T) {
+// A profile holding `attribution: false` or `CODEAF_ATTRIBUTION=off` in the
+// shell is a consumed setting and never reported unread.
+func TestAttributionInProfileOrEnvironmentIsConsumedAndNeverUnread(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CODEAF_ATTRIBUTION", "")
-	if !retiredProfileKeys["attribution"] {
-		t.Fatal("attribution is not a retired profile key")
+	if retiredProfileKeys["attribution"] {
+		t.Fatal("attribution is still listed as a retired profile key")
 	}
-	for _, row := range NewSettings(SettingsOptions{ProfileDir: dir}).Rows() {
-		if row.Key == "attribution" || row.Env == "CODEAF_ATTRIBUTION" {
-			t.Fatalf("a settings row still reads the retired attribution switch: %+v", row)
-		}
-	}
-	note := RetiredRowNote("attribution")
-	for _, want := range []string{"attribution", "CODEAF_ATTRIBUTION", "gone", "always signs", KeyAttributionModel} {
-		if !strings.Contains(note, want) {
-			t.Fatalf("the retired row's sentence does not say %q: %q", want, note)
-		}
-	}
-
 	values := map[string]json.RawMessage{"attribution": json.RawMessage(`false`)}
-	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 1 || unread[0] != "attribution" {
-		t.Fatalf("a profile saying attribution: false was not told; unread = %v", unread)
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("a profile saying attribution: false was reported unread: %v", unread)
 	}
-
 	t.Setenv("CODEAF_ATTRIBUTION", "off")
-	if unread := warnUnreadProfileKeys(dir, nil); len(unread) != 1 || unread[0] != "attribution" {
-		t.Fatalf("CODEAF_ATTRIBUTION=off was not told; unread = %v", unread)
+	if unread := warnUnreadProfileKeys(dir, nil); len(unread) != 0 {
+		t.Fatalf("CODEAF_ATTRIBUTION=off was reported unread: %v", unread)
 	}
-	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 1 {
-		t.Fatalf("the profile and the shell saying it together were told twice: %v", unread)
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("attribution in both profile and shell was reported unread: %v", unread)
+	}
+}
+
+func TestIdleHandoffInProfileOrEnvironmentIsConsumedAndNeverUnread(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_IDLE_HANDOFF", "")
+	if retiredProfileKeys["idle_handoff"] {
+		t.Fatal("idle_handoff is listed as a retired profile key")
+	}
+	values := map[string]json.RawMessage{"idle_handoff": json.RawMessage(`true`)}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("a profile saying idle_handoff: true was reported unread: %v", unread)
+	}
+	t.Setenv("CODEAF_IDLE_HANDOFF", "on")
+	if unread := warnUnreadProfileKeys(dir, nil); len(unread) != 0 {
+		t.Fatalf("CODEAF_IDLE_HANDOFF=on was reported unread: %v", unread)
+	}
+	if unread := warnUnreadProfileKeys(dir, values); len(unread) != 0 {
+		t.Fatalf("idle_handoff in both profile and shell was reported unread: %v", unread)
 	}
 }

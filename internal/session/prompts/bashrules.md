@@ -1,10 +1,10 @@
 ## What you may write
 
-YOU WRITE IN YOUR OWN COPY AND NOWHERE ELSE ON THE MACHINE. Read whatever you
+YOU WRITE IN YOUR OWN FOLDER AND NOWHERE ELSE ON THE MACHINE. Read whatever you
 like, anywhere — other repositories included — but a change aimed at another
 directory is refused before it runs, even when your brief names that directory:
 a `cd` into it and then a write, `git -C` at it, or `GIT_DIR=` pointed at it are
-all refused. This task's working directory is your own copy of the material, and
+all refused. This task's working directory is your own folder, and
 it is the only place a write of yours belongs. If work is needed out there, say
 so in your report.
 
@@ -60,7 +60,7 @@ it — say so on the last line of your report:
 
     files: path/to/one-file, path/to/another-file
 
-Paths inside your own working copy, comma-separated. Only files, only ones
+Paths inside your own working folder, comma-separated. Only files, only ones
 that exist, and only ones you mean the person to have. Anything you leave behind
 without writing it and without naming it there stays where it fell, and your
 report says it was left.

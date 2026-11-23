@@ -389,12 +389,22 @@ func (a *app) runPair(typed string) tea.Cmd {
 	return a.startPair(pairJoiningWord, joinWork(door, typed, replace))
 }
 
-// joinWork is the joining side's errand: type the code, and end on the line for
+// joinWork pairs a computer, refusing submitted chats unless --replace was
+// explicitly requested and confirmed. It ends on the line for
 // how it went. It is the same errand from /pair <code> and from the first-run
 // screen's field, so the two cannot end in different words.
 func joinWork(door Pairing, typed string, replace bool) func(*pairRun) {
 	return func(run *pairRun) {
 		ui := pairUI{run}
+		// A REPLACE IS NEVER ASKED OF A COMPUTER THAT CANNOT JOIN: the door
+		// refuses a code that cannot be one, or a computer whose chats already
+		// sync elsewhere, before the question.
+		if replace {
+			if err := pairingBeforeJoin(run.ctx, door, typed, replace); err != nil {
+				run.send(pairEnded{line: joinedLine(pair.Joined{}, err)})
+				return
+			}
+		}
 		// THE REPLACE ASKS FIRST, and only the door knows whether there is
 		// anything to lose: a home with no identity of its own is joined as if
 		// it were plain. A no — typed or by closing the panel — leaves
@@ -537,4 +547,16 @@ func (a *app) pairLinkKey(msg tea.KeyPressMsg) tea.Cmd {
 func pairingHasTeams(door Pairing) bool {
 	state, ok := door.(interface{ HasTeams() bool })
 	return ok && state.HasTeams()
+}
+
+// pairingBeforeJoin runs a door's own refusals before the panel asks anything,
+// when the door has them.
+func pairingBeforeJoin(ctx context.Context, door Pairing, typed string, replace bool) error {
+	check, ok := door.(interface {
+		BeforeJoin(ctx context.Context, typed string, replace bool) error
+	})
+	if !ok {
+		return nil
+	}
+	return check.BeforeJoin(ctx, typed, replace)
 }

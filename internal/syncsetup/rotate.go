@@ -1,11 +1,12 @@
 package syncsetup
 
 import (
+	"context"
 	"errors"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -13,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/rotate"
@@ -35,9 +37,48 @@ func scratchDir(home string) string { return filepath.Join(home, "rotation-scrat
 // machine; a chat it does not know is fetched into a scratch folder.
 func (s *Sync) Rotation(eng cellstore.Engine, held func(id string) (cell.Cell, bool), name string, say func(string)) rotate.Env {
 	eng.WorkspaceOf = func(c cell.Cell) string { return workspaceOf(c.Root) }
+	hostedRelay := ""
+	if IsHostedRelay(s.Relay) {
+		hostedRelay = normalizeStorageURL(s.Relay)
+	}
 	return rotate.Env{
 		Home: s.Home, Identity: s.Identity, Device: s.Device, Say: say,
-		Connect: s.relayOf,
+		HostedRelay: hostedRelay,
+		Connect:     s.relayOf,
+		SaveSuccessorStorage: func(ctx context.Context, id string, successor blobstore.Store) error {
+			ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+			defer cancel()
+			counts, err := successor.(interface {
+				Stats(context.Context) (blobstore.Counts, error)
+			}).Stats(ctx)
+			if err != nil {
+				// An older self-hosted relay may not answer stats. Its old
+				// cache cannot authorize the successor and startup can retry.
+				if hostedRelay == "" {
+					return nil
+				}
+				return err
+			}
+			return SaveStorage(s.Home, s.Relay, id, counts.Storage)
+		},
+		StorageAllowed: func(ctx context.Context, successor blobstore.Store) (bool, error) {
+			if !IsHostedRelay(s.Relay) {
+				return true, nil
+			}
+			counts, err := s.Store.(interface {
+				Stats(context.Context) (blobstore.Counts, error)
+			}).Stats(ctx)
+			if err != nil {
+				return false, err
+			}
+			if counts.Storage == "off" || successor == nil {
+				return counts.Storage != "off", nil
+			}
+			next, err := successor.(interface {
+				Stats(context.Context) (blobstore.Counts, error)
+			}).Stats(ctx)
+			return err == nil && next.Storage != "off", err
+		},
 		Engine: func(id identity.Identity) cellsync.Engine {
 			keys := cellstore.SyncKeys{CellKey: id.CellKey(), Dedup: id.DedupSecret()}
 			return landing{Engine: eng.Sync(keys, cellstore.LedgerName(s.Relay, id.ID()))}
@@ -53,14 +94,32 @@ func (s *Sync) Rotation(eng cellstore.Engine, held func(id string) (cell.Cell, b
 }
 
 // Tidy removes what a rotation left to be cleaned: the scratch folders.
-func (s *Sync) Tidy() error { return os.RemoveAll(scratchDir(s.Home)) }
+func (s *Sync) Tidy() error { return fsreplace.RemoveAll(scratchDir(s.Home)) }
 
 // relayOf binds this machine's relay to a signer: the clients of a device of
 // whichever identity it belongs to.
 func (s *Sync) relayOf(sig reqsign.Signer) rotate.Relay {
 	sign := reqsign.SignFor(sig, time.Now)
 	dir := directory.NewHTTP(s.Relay, sign, &http.Client{Timeout: requestTimeout})
-	return rotate.Relay{Dir: dir, Store: blobstore.NewHTTP(s.Relay, sign, &http.Client{}), Gate: directory.Gate{Client: dir}}
+	store := GateStore(blobstore.NewHTTP(s.Relay, sign, &http.Client{}), s.Home, s.Relay, reqsign.IDOf(sig.IdentityKey()))
+	if IsHostedRelay(s.Relay) && reqsign.IDOf(sig.IdentityKey()) != s.Identity.ID() {
+		// The successor's permission is private to this rotation until the
+		// identity is installed. Abandon must leave the old binding intact.
+		var allowed atomic.Bool
+		store.OnStorageOff = func() { allowed.Store(false) }
+		store.CanStore = func() bool {
+			if allowed.Load() {
+				return true
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+			defer cancel()
+			counts, err := store.Stats(ctx)
+			ok := err == nil && (counts.Storage == "" || counts.Storage == "on")
+			allowed.Store(ok)
+			return ok
+		}
+	}
+	return rotate.Relay{Dir: dir, Store: store, Gate: directory.Gate{Client: dir, Store: store, Source: reqsign.IDOf(sig.IdentityKey())}}
 }
 
 // deviceRecord is a device's directory record under id: its name sealed under

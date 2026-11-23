@@ -2,8 +2,10 @@
 // what the identity asked of it. Route handlers talk to this and to nothing beneath it.
 import { LegacySource } from './raft/legacy.js';
 import { Directory } from './directory.js';
+import { Fabric } from './fabric.js';
 import { Quota } from './limits.js';
 import { Meta } from './meta.js';
+import { StorageAccess } from './storage.js';
 import { Stats } from './stats.js';
 import { encode } from './frame.js';
 import { rotateBy, rotationView } from './rotation.js';
@@ -33,9 +35,11 @@ export class Tenant {
     this.flight = flight;
     this.watchers = watchers;
     this.dir = new Directory(sql, identity, clock, policy, watchers);
+    this.fabric = new Fabric(sql, clock, this.dir);
     this.quota = new Quota(sql, limits);
-    this.store = new R2Store(bucket, sql, identity);
     this.meta = new Meta(sql);
+    this.storage = new StorageAccess(this.meta, limits);
+    this.store = new R2Store(bucket, sql, identity, () => this.storage.assert());
     this.stats = new Stats(this.meta, () => arm(clock() + limits.statsFlushMs));
   }
 
@@ -48,6 +52,7 @@ export class Tenant {
    * the store already holds costs the identity nothing, so a client that resends is never refused for it.
    */
   async putFrame(bytes) {
+    this.storage.assert();
     this.stats.add({ puts: 1, bytes_in: bytes.length });
     const frame = await sealFrame(bytes);
     const cost = { size: frame.size, objects: frame.objects.length };
@@ -150,6 +155,18 @@ export class Tenant {
 
   rotationView() {
     return rotationView(this.dir.rotation(), this.clock(), this.limits);
+  }
+
+  /** isClient answers whether the caller device is registered as a scoped client. */
+  isClient(device) {
+    return this.fabric.isClient(device);
+  }
+
+  /** revoke stops a device and wipes any client fabric state held for it. */
+  revoke(device, caller) {
+    const wasClient = this.isClient(device);
+    this.dir.revoke(device, caller);
+    if (wasClient) this.fabric.revokeClient(device);
   }
 
   /** retireAt is the directory time the identity is deleted at, or undefined while it is not retired. */

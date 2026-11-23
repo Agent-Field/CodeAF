@@ -3,6 +3,7 @@ package knowledge_test
 import (
 	"context"
 	"database/sql"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/knowledgefixture"
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
@@ -11,15 +12,21 @@ import (
 	"testing"
 )
 
-func TestCaptureIsOptInDurableAndProfileShared(t *testing.T) {
+func TestCaptureRespectsSavedOffIsDurableAndProfileShared(t *testing.T) {
 	profile := t.TempDir()
 	v := knowledge.Open(profile)
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
 	if v.Enabled() {
-		t.Fatal("must start disabled")
+		t.Fatal("saved off must disable capture")
 	}
 	s := knowledge.Source{ID: "turn-1", Session: "chat-1", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Use PostgreSQL for durable records", Kind: "user_statement"}
 	if err := v.Capture(s); err != nil {
 		t.Fatal(err)
+	}
+	if got, err := v.Snapshot(); err != nil || got.Pending != 0 {
+		t.Fatalf("saved off captured source: %+v, %v", got, err)
 	}
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
@@ -205,4 +212,23 @@ func corruptKnowledgePage(v *knowledge.Vault) error {
 	defer db.Close()
 	_, err = db.Exec("INSERT INTO pages(id,title,scope,payload) VALUES('broken','Broken','','invalid article projection')")
 	return err
+}
+
+func TestCaptureDefaultsOnWithoutSavedLearningChoice(t *testing.T) {
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
+	if !v.Enabled() {
+		t.Fatal("new profile must learn by default")
+	}
+	source := knowledge.Source{ID: "default-turn", Session: "chat", Role: "user", TS: "2026-10-25T12:00:00Z", Text: "Use PostgreSQL for durable records"}
+	if err := v.Capture(source); err != nil {
+		t.Fatal(err)
+	}
+	got, err := knowledge.Open(profile).Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Enabled || got.Pending != 1 || got.Build.Sources != 1 {
+		t.Fatalf("default learning did not capture durably: %+v", got)
+	}
 }

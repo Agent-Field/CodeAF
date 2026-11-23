@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 // windowsDir is the folder, inside the store's root, that holds one lock file
@@ -81,19 +82,19 @@ func (p *Presence) HoldAs(w Window) (release func(), err error) {
 	name := fmt.Sprintf("%d-%s", os.Getpid(), hex.EncodeToString(raw[:]))
 	staging := filepath.Join(p.dir, "."+name+".opening")
 	path := filepath.Join(p.dir, name+".lock")
-	file, err := os.OpenFile(staging, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0o600)
+	file, err := fsreplace.OpenFile(staging, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0o600)
 	if err != nil {
 		return func() {}, fmt.Errorf("automations: %w", err)
 	}
 	if err := filelock.Lock(file, true, true); err != nil {
 		_ = file.Close()
-		_ = os.Remove(staging)
+		_ = fsreplace.Remove(staging)
 		return func() {}, fmt.Errorf("automations: hold a window: %w", err)
 	}
 	body, _ := json.Marshal(Window{PID: os.Getpid(), Label: strings.TrimSpace(w.Label), Started: time.Now(), Env: strings.TrimSpace(w.Env)})
 	_, _ = file.Write(body)
-	if err := os.Rename(staging, path); err != nil {
-		_ = os.Remove(staging)
+	if err := fsreplace.Rename(staging, path); err != nil {
+		_ = fsreplace.Remove(staging)
 		_ = filelock.Unlock(file)
 		_ = file.Close()
 		return func() {}, fmt.Errorf("automations: hold a window: %w", err)
@@ -106,7 +107,7 @@ func (p *Presence) HoldAs(w Window) (release func(), err error) {
 		done = true
 		// REMOVED BEFORE IT IS UNLOCKED, so a counter never takes the lock of a
 		// file that is still going to be removed by its owner.
-		_ = os.Remove(path)
+		_ = fsreplace.Remove(path)
 		_ = filelock.Unlock(file)
 		_ = file.Close()
 	}, nil
@@ -140,7 +141,7 @@ func (p *Presence) Count() (int, error) {
 // alive reports whether a window file's owner still holds it, and removes the
 // file when it does not.
 func (p *Presence) alive(path string) bool {
-	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	file, err := fsreplace.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		// Gone between the listing and the open: its owner released it.
 		return false
@@ -148,7 +149,7 @@ func (p *Presence) alive(path string) bool {
 	defer file.Close()
 	err = filelock.Lock(file, true, true)
 	if err == nil {
-		_ = os.Remove(path)
+		_ = fsreplace.Remove(path)
 		_ = filelock.Unlock(file)
 		return false
 	}

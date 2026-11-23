@@ -142,6 +142,9 @@ func drawDevicesBand(a *app, ctx bandContext) []string {
 		marks = append(marks, paintPresence(ctx.pal, d.Mark(online[d.ID], DeviceRow{Self: d.Self, Online: online[d.ID]}.dot(ctx.pal)), online[d.ID] || d.Self))
 	}
 	rows := []string{fit(strings.Join(marks, deviceGap), ctx.width)}
+	if line := notSharedLine(a.notShared); line != "" {
+		rows = append(rows, ctx.pal.dim(fit(line, ctx.width)))
+	}
 	if len(a.devicePicks()) == 0 {
 		return rows
 	}

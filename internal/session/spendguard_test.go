@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -278,11 +279,17 @@ func TestTaskCrewDelegationEnforcesDailyBudget(t *testing.T) {
 	if crew.guard == nil {
 		t.Fatal("expected crew.guard to be non-nil")
 	}
-	if crew.guard.Cap != 1.00 {
-		t.Fatalf("crew.guard.Cap = %v, want 1.00", crew.guard.Cap)
+	// The daily limit is read at each call, not frozen into Cap (which is the
+	// crew's own cap): the guard carries the reader, and the reader says $1.00.
+	if crew.guard.Cap != 0 || crew.guard.DayLimit == nil || crew.guard.Day == nil {
+		t.Fatalf("crew.guard = cap %v, reader %v, day %v", crew.guard.Cap, crew.guard.DayLimit != nil, crew.guard.Day != nil)
 	}
-	if !strings.Contains(crew.guard.CapAction, "today's spending limit") {
-		t.Fatalf("crew.guard.CapAction = %q, want it to mention daily spending limit", crew.guard.CapAction)
+	limit, action, err := crew.guard.DayLimit()
+	if err != nil || limit != 1.00 {
+		t.Fatalf("daily limit = %v, %v, want 1.00", limit, err)
+	}
+	if !strings.Contains(action, "today's spending limit") {
+		t.Fatalf("daily limit action = %q, want it to mention daily spending limit", action)
 	}
 }
 
@@ -303,11 +310,12 @@ func TestHelperGuardEnforcesDailyBudget(t *testing.T) {
 	if helper == nil {
 		t.Fatal("expected helper to be non-nil")
 	}
-	if helper.Cap != 0.75 {
-		t.Fatalf("helper.Cap = %v, want 0.75", helper.Cap)
+	limit, action, err := helper.DayLimit()
+	if err != nil || limit != 0.75 {
+		t.Fatalf("helper daily limit = %v, %v, want 0.75", limit, err)
 	}
-	if !strings.Contains(helper.CapAction, "today's spending limit") {
-		t.Fatalf("helper.CapAction = %q, want it to mention daily spending limit", helper.CapAction)
+	if !strings.Contains(action, "today's spending limit") {
+		t.Fatalf("helper daily limit action = %q, want it to mention daily spending limit", action)
 	}
 }
 
@@ -338,5 +346,127 @@ func TestDailyGuardSeesOtherConversationsAndRollsOver(t *testing.T) {
 	}
 	if _, ok := day.hold("model", 0.1, 2); !ok {
 		t.Fatal("new day remained blocked")
+	}
+}
+
+// A LIMIT CHOSEN IN SETTINGS HOLDS THE GUARD ALREADY BUILT: the row is changed
+// after the guards exist, and the very next paid call meets the new line —
+// lowered, raised or removed — on the helper's guard and on a crew's, with the
+// per-task limit unmoved.
+func TestASettingsRowChangeReachesGuardsAlreadyBuilt(t *testing.T) {
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	dir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(dir, 500); err != nil {
+		t.Fatal(err)
+	}
+	row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyDailyBudget)
+	if !ok {
+		t.Fatal("no daily budget row")
+	}
+	a := &Agent{config: Config{ProfileDir: dir, RouteCrew: func(config.CrewAsk) (crewroute.Decision, error) {
+		return crewroute.Decision{Crew: []crewroute.Pick{{Seat: crewroute.Worker, Send: "test/worker"}}}, nil
+	}}}
+	a.crewDayOnce.Do(func() { a.crewDayHeld = NewSpendDay(2) })
+	crew, err := a.routeTaskCrew(t.Context(), 1, "task", "brief")
+	if err != nil {
+		t.Fatal(err)
+	}
+	crew.guard.Price = kimiPrice
+	helper := a.helperGuard(nil)
+	helper.Price = kimiPrice
+	guards := map[string]*SpendGuard{"crew": crew.guard, "helper": helper}
+	messages := []ai.Message{textMessage("user", "hello")}
+	for name, guard := range guards {
+		calls := &spendingCompleter{usd: 0.001}
+		wrapped := guard.Wrap("moonshotai/kimi-k3", calls)
+		if _, err := wrapped.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(100)); err != nil || calls.calls != 1 {
+			t.Fatalf("%s under $500: %v after %d calls", name, err, calls.calls)
+		}
+		if err := row.Apply("1"); err != nil {
+			t.Fatal(err)
+		}
+		_, err := wrapped.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(100))
+		var stopped ErrSpendStopped
+		if !errors.As(err, &stopped) || !strings.Contains(stopped.Action, "$1.00") || !strings.Contains(stopped.Action, "/budget") || calls.calls != 1 {
+			t.Fatalf("%s after the row said $1: %v after %d calls", name, err, calls.calls)
+		}
+		if err := row.Apply("10"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := wrapped.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(100)); err != nil || calls.calls != 2 {
+			t.Fatalf("%s after the row said $10: %v after %d calls", name, err, calls.calls)
+		}
+		if err := row.Apply("none"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := wrapped.CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(100)); err != nil || calls.calls != 3 {
+			t.Fatalf("%s after the row said none: %v after %d calls", name, err, calls.calls)
+		}
+		if err := row.Apply("500"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if crew.guard.TaskCap != config.CrewTaskCapDefault {
+		t.Fatalf("the per-task limit moved to %v", crew.guard.TaskCap)
+	}
+}
+
+// A DAILY LIMIT NOBODY CAN READ REFUSES WHAT MIGHT BE PAID — a priced call and
+// one whose price nobody knows — and never reads as the default or as no
+// limit; a call known to cost nothing is untouched.
+func TestAnUnreadableDailyLimitRefusesPaidCallsOnly(t *testing.T) {
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	dir := t.TempDir()
+	if err := os.WriteFile(config.BudgetConfigPath(dir), []byte(`{"daily_budget_usd":null}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	guard := &SpendGuard{Price: kimiPrice, DayLimit: config.CrewDailyLimit(dir)}
+	messages := []ai.Message{textMessage("user", "hello")}
+	for name, price := range map[string]SpendPrice{
+		"priced":   kimiPrice,
+		"unpriced": func(string) (float64, float64, float64, bool) { return 0, 0, 0, false },
+	} {
+		guard.Price = price
+		calls := &spendingCompleter{usd: 0.001}
+		_, err := guard.Wrap("some/model", calls).CompleteWithMessages(t.Context(), messages, ai.WithMaxTokens(100))
+		var stopped ErrSpendStopped
+		if !errors.As(err, &stopped) || stopped.Action != spendLimitUnread || calls.calls != 0 {
+			t.Fatalf("%s: %v after %d calls", name, err, calls.calls)
+		}
+	}
+	guard.Price = func(string) (float64, float64, float64, bool) { return 0, 0, 0, true }
+	calls := &spendingCompleter{}
+	if _, err := guard.Wrap("ollama/gemma", calls).CompleteWithMessages(t.Context(), messages); err != nil || calls.calls != 1 {
+		t.Fatalf("a known-free call: %v after %d calls", err, calls.calls)
+	}
+}
+
+// THE DAY EXISTS BEFORE THE LIMIT DOES: a crew admitted with no limit today,
+// and a guard handed one later, both measure the next one on a real day.
+func TestAGuardAlwaysHasADayWhereTheDailyLimitCouldTurnOn(t *testing.T) {
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	dir := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	if guard := crewSpendGuard(dir, crewroute.Decision{}, true); guard.Day == nil || guard.DayLimit == nil {
+		t.Fatalf("a crew guard under no limit has day %v, reader %v", guard.Day != nil, guard.DayLimit != nil)
+	}
+	if guard := crewSpendGuard(dir, crewroute.Decision{}, false); guard.DayLimit != nil {
+		t.Fatal("a run lifted past the daily limit still reads it")
+	}
+	guard := &SpendGuard{Price: kimiPrice, DayLimit: config.CrewDailyLimit(dir)}
+	calls := &spendingCompleter{usd: 0.001}
+	if _, err := guard.Wrap("m", calls).CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "hi")}, ai.WithMaxTokens(10)); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteDailyBudgetUSD(dir, 0.0000001); err != nil {
+		t.Fatal(err)
+	}
+	if guard.Day != nil {
+		t.Fatal("no limit should not have made a day")
+	}
+	if _, err := guard.Wrap("m", calls).CompleteWithMessages(t.Context(), []ai.Message{textMessage("user", "hi")}, ai.WithMaxTokens(10)); err == nil || guard.Day == nil {
+		t.Fatalf("a limit turned on later did not hold: %v (day %v)", err, guard.Day != nil)
 	}
 }

@@ -46,3 +46,56 @@ func TestC7CardCannotDisplaceAHolderThatArrivedBeforeConfirmation(t *testing.T) 
 		t.Fatalf("stale card changed holder: %v, %+v", err, w.cellRec(chatID).Lease)
 	}
 }
+
+func TestTakeF2SameHolderSameHeadFenceChange(t *testing.T) {
+	for _, change := range []string{"fence", "head", "holder"} {
+		t.Run(change, func(t *testing.T) {
+			w := newWorld(t)
+			a, b := w.device(devA), w.device(devB)
+			a.start(map[string]string{"a.txt": "one"})
+			old := w.cellRec(chatID)
+			seen := &directory.LeaseExpectation{Device: old.Lease.Device, Fence: old.Lease.Fence, Head: old.Head}
+			switch change {
+			case "fence":
+				_, err := a.dir.Acquire(context.Background(), chatID, directory.AcquireOpts{})
+				if err != nil {
+					t.Fatal(err)
+				}
+			case "head":
+				a.work(map[string]string{"a.txt": "two"})
+			case "holder":
+				if _, err := w.device("dev_c").taker().Take(context.Background(), chatID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := b.taker().TakeSeen(context.Background(), chatID, seen)
+			if !errors.Is(err, directory.ErrLeaseHeld) {
+				t.Fatalf("stale %s must conflict: %v", change, err)
+			}
+
+		})
+	}
+}
+
+// C6: when the caller passes the directory record down, handoff and priming
+// do not read the record again.
+func TestC6TakerReusesSuppliedRecordWithoutSecondDirectoryRead(t *testing.T) {
+	w := newWorld(t)
+	a, b := w.device(devA), w.device(devB)
+	a.start(map[string]string{"a.txt": "one"})
+	view, err := b.dir.Cell(context.Background(), chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.dir.down = errors.New("unexpected second Dir.Cell read")
+	taker := b.taker()
+	taker.View = &view
+	seen := &directory.LeaseExpectation{Device: view.Cell.Lease.Device, Fence: view.Cell.Lease.Fence}
+	taken, err := taker.TakeSeen(context.Background(), chatID, seen)
+	if err != nil {
+		t.Fatalf("TakeSeen with supplied view failed: %v", err)
+	}
+	if tree(t, taken.Cell.Root)["a.txt"] != "one" {
+		t.Fatalf("materialized tree = %v", tree(t, taken.Cell.Root))
+	}
+}

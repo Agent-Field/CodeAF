@@ -185,3 +185,76 @@ func TestTheRefusalForAnUnknownRungCallsAbsenceAuto(t *testing.T) {
 		t.Fatalf("the refusal still calls absence off: %q", err)
 	}
 }
+
+// AN EFFORT SET WHILE THE OPENING STAMP IS STILL OWED IS THE ONE KEPT (#2549).
+//
+// A person's message owes a deferred meta.json write that carries the model,
+// effort, approval, places and trees as they stood when the message was sent.
+// The app sets an effort right after a conversation opens, so that write can
+// still be owed. It used to land after the effort's own write and put the old,
+// empty rung back, so a restart read the conversation as unset. The opening
+// stamp is held here until the effort's write is waiting on it, which is the
+// whole ordering in question, with no clock in it. Before the fix there was no
+// wait: the effort wrote first and the held stamp overwrote it on release.
+//
+// THE STAMP IS OWED DIRECTLY AND NOT THROUGH A TURN. A turn that also publishes
+// the model owes [Agent.stampModel] behind it, and that write settles the user
+// stamp and then writes a fresh snapshot, which hides the overwrite. The app's
+// failure is the state where the opening stamp is the only write still owed.
+func TestAnEffortSetWhileTheOpeningStampIsOwedIsTheOneKept(t *testing.T) {
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(dir, "session.jsonl")
+		config.Place = Place{Dir: dir}
+	})
+
+	held := make(chan struct{}, 1)
+	release := make(chan struct{})
+	settling := make(chan struct{}, 1)
+	userStampHeld = func() {
+		select {
+		case held <- struct{}{}:
+		default:
+		}
+		<-release
+	}
+	metaStampSettling = func() {
+		select {
+		case settling <- struct{}{}:
+		default:
+		}
+	}
+	t.Cleanup(func() { userStampHeld, metaStampSettling = nil, nil })
+
+	agent.mu.Lock()
+	agent.stampUserLocked("say done")
+	agent.mu.Unlock()
+	<-held
+
+	done := make(chan bool, 1)
+	go func() { done <- agent.SetConversationEffort("low") }()
+	select {
+	case <-settling:
+		close(release)
+		if !<-done {
+			t.Fatal("low was refused; it is a rung on the ladder")
+		}
+	case took := <-done:
+		close(release)
+		if !took {
+			t.Fatal("low was refused; it is a rung on the ladder")
+		}
+	}
+	agent.SettleWrites()
+
+	meta, err := LoadMeta(dir)
+	if err != nil {
+		t.Fatalf("LoadMeta: %v", err)
+	}
+	if meta.Effort != "low" {
+		t.Fatalf("meta.json says %q after the opening stamp landed, want the low set after it was owed", meta.Effort)
+	}
+	if meta.LastUserAt.IsZero() {
+		t.Fatal("the opening stamp never landed, so this proved nothing about its order")
+	}
+}

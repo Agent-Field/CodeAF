@@ -26,6 +26,8 @@ func initGitRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	gitTestRun(t, dir, "init", "-q")
+	gitTestRun(t, dir, "config", "--local", "maintenance.auto", "false")
+	gitTestRun(t, dir, "config", "--local", "gc.auto", "0")
 	gitTestRun(t, dir, "config", "user.email", "test@example.com")
 	gitTestRun(t, dir, "config", "user.name", "Test")
 	return dir

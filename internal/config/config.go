@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -339,6 +339,8 @@ func LoadKeyless() (Config, error) { return load(false) }
 // first run write that are not settings-registry rows. They are consumed even
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
+	dailyAuthorityKey,
+	dailyTodayKey,
 	preferenceTimesKey,
 	KeySetupSeen,
 	// The talk lane's borrow row sits beside its lane row and is read by
@@ -373,6 +375,10 @@ var nonSettingProfileFields = []string{
 	KeyCrewRouteWorker,
 	KeyCrewRoutePlanner,
 	KeyCrewRouteChecker,
+	// Task models' mode and its one model (taskmodels.go), written from the
+	// app's Task models page and read at every task's admission.
+	KeyTaskModelsMode,
+	KeyTaskModelsOne,
 }
 
 // retiredProfileKeys are top-level config.json keys that a shipped version once
@@ -391,7 +397,6 @@ var retiredProfileKeys = map[string]bool{
 	"memory.consolidation": true, // reader removed by 10dcdfdd4
 	"practice_demand_pct":  true, // reader removed by 84ba8503e
 	"propose_new_skills":   true, // reader removed by 84ba8503e
-	"attribution":          true, // reader removed on 2026-09-23: signing has no off
 	// The v1 resident's scheduler knobs: the practice carve-out and its quiet
 	// period, the arrival brief's absence (whose value Load copied onto a field
 	// nothing read), and the clean-firing count that earned a charter tenure.
@@ -411,37 +416,6 @@ var retiredProfileKeys = map[string]bool{
 	legacyKeyCrewSource: true, // family row retired on 2026-09-24: `open` became the allowed rule
 	legacyKeyCrewPick:   true, // pick row retired on 2026-09-24
 }
-
-// retiredRowNotes are the retired keys a person set ON PURPOSE, each with the
-// plain sentence they are told instead of the silence the rest of
-// [retiredProfileKeys] gets.
-//
-// SILENCE IS RIGHT FOR A KEY NOBODY TYPED and wrong for one somebody did. A
-// profile holding `attribution: false` holds a person's decision not to sign,
-// and a build that stopped reading it without a word would be signing their
-// work behind their back — while one that kept obeying it would be a setting
-// the product says it no longer has. So such a key is reported unread, like a
-// key the loader never knew, and the surface prints this sentence in place of
-// the generic one ([RetiredRowNote]).
-//
-// The row's environment spelling counts as the row: `CODEAF_ATTRIBUTION` set in
-// a shell is the same decision made in a different place, and it is told the
-// same sentence ([retiredRowEnv]).
-var retiredRowNotes = map[string]string{
-	"attribution": "the attribution row and CODEAF_ATTRIBUTION are gone: codeaf always signs " +
-		"the commits, pull requests, issues and comments it writes. The one part you can turn off " +
-		"is the model's name in the Assisted-by line, with the " + KeyAttributionModel + " row.",
-}
-
-// retiredRowEnv is the environment spelling each told retired row had.
-var retiredRowEnv = map[string]string{
-	"attribution": "CODEAF_ATTRIBUTION",
-}
-
-// RetiredRowNote is the sentence a surface prints for a key the loader reported
-// unread because the row it belonged to is gone, and empty for every other
-// key: an unknown key still gets the surface's generic sentence.
-func RetiredRowNote(key string) string { return retiredRowNotes[key] }
 
 // consumedProfileKeys is every top-level config.json key a reader consumes at
 // head: every settings-registry row plus the non-setting loader and first run
@@ -465,27 +439,15 @@ func warnUnreadProfileKeys(profileDir string, values map[string]json.RawMessage)
 	consumed := consumedProfileKeys(profileDir)
 	var unread []string
 	for key := range values {
-		if consumed[key] || (retiredProfileKeys[key] && retiredRowNotes[key] == "") {
+		if consumed[key] || retiredProfileKeys[key] {
 			continue
 		}
 		unread = append(unread, key)
-	}
-	// A TOLD ROW SET IN THE SHELL IS THE SAME ROW. It is reported once, under
-	// the row's own key, whether the profile, the variable or both said it.
-	for key, name := range retiredRowEnv {
-		if strings.TrimSpace(env.Get(name)) != "" && !slices.Contains(unread, key) {
-			unread = append(unread, key)
-		}
 	}
 	sort.Strings(unread)
 	if len(unread) > 0 {
 		if _, warned := warnedProfileConfigs.LoadOrStore(path, struct{}{}); !warned {
 			log.Printf("codeaf: %s has unread top-level config key(s): %s", path, strings.Join(unread, ", "))
-			for _, key := range unread {
-				if note := RetiredRowNote(key); note != "" {
-					log.Printf("codeaf: %s", note)
-				}
-			}
 		}
 	}
 	return unread
@@ -540,6 +502,13 @@ func load(requireKey bool) (Config, error) {
 		return Config{}, err
 	}
 	config.DocumentEngine = engine
+	// A wait the person pinned for this launch must parse, and a launch that
+	// cannot read it says so here rather than waiting the wrong time (the pin
+	// policy in docs/LIMITS.md). The figure itself is installed with the other
+	// process-wide rows by [InstallLaneRows] below.
+	if _, err := ResponsePatienceAt(config.ProfileDir); err != nil {
+		return Config{}, err
+	}
 	// What earlier runs learned about how models answer, back into the adapter
 	// before it shapes its first request. Nothing here fails: a profile with no
 	// memo costs one rejected call per quirk, which is how the memo was written
@@ -640,15 +609,13 @@ func load(requireKey bool) (Config, error) {
 }
 
 // ResolveImageModel applies the runtime preference order: an explicit slot,
-// Seedream 5.0 Pro then Krea 2 Medium Turbo as each is advertised, then the
-// catalog's first image output model. Catalog's offline fallbacks make the
-// last resort usable while keeping the ordinary path free of unverified
-// defaults.
+// then Seedream 5.0 Pro or Krea 2 Medium Turbo — and only when the catalog
+// advertises it AND has published a price for it. There is no "first image
+// model" rung: see [DefaultMediaRoute], which also says why there was no
+// answer. Empty means no default, and the caller keeps image generation off
+// the belt or shows [MediaRoute.Err].
 func (c Config) ResolveImageModel(models *catalog.Catalog) string {
-	if configured := strings.TrimSpace(c.ImageModel); configured != "" {
-		return configured
-	}
-	return resolveOutputModel(models, "image", preferredImageModel, fallbackImageModel)
+	return c.ResolveImageRoute(models).Model
 }
 
 // ResolveSpeechModel prefers Fish Audio S2.1 Pro, then Fish Audio S1, then
@@ -761,13 +728,11 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 	}
 }
 
-// ResolveVideoModel prefers Seedance 2.5, then Seedance 2.0 Mini as each is
-// advertised, then the catalog's first exact video-output model.
+// ResolveVideoModel prefers Seedance 2.5, then Seedance 2.0 Mini — each only
+// when advertised and carrying a published per-second price. There is no
+// "first video model" rung; see [DefaultMediaRoute].
 func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
-	if configured := strings.TrimSpace(c.VideoModel); configured != "" {
-		return configured
-	}
-	return resolveOutputModel(models, "video", preferredVideoModel, fallbackVideoModel)
+	return c.ResolveVideoRoute(models).Model
 }
 
 // ResolveVisionModel applies the inspection-proxy order at the moment a leaf
@@ -775,6 +740,13 @@ func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
 // each advertises image input, Qwen VL when advertised, then the first model
 // with image input. Unlike generation slots, an unadvertised default is never
 // invented: no result means view_image can preserve its calm refusal.
+//
+// EVERY CANDIDATE MUST BE A PAIR OF EYES, NOT A PAINTER. Image input is also
+// what an image editor takes, and its answer is a picture: handed a photograph
+// and asked what is in it, it draws one. A candidate therefore has to take
+// images AND answer in text and nothing else ([seesAndAnswersInText]) — the
+// same reading the perception slots apply. The explicit slot above is the
+// person's own word and is not second-guessed.
 func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel string) string {
 	if configured := strings.TrimSpace(c.VisionModel); configured != "" {
 		return configured
@@ -784,15 +756,48 @@ func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel
 	}
 	for _, candidate := range []string{talkModel, workModel, preferredVisionModel} {
 		candidate = strings.TrimSpace(candidate)
-		if candidate != "" && models.Supports(candidate, "input", "image") {
+		if candidate == "" {
+			continue
+		}
+		if row, ok := models.Model(candidate); ok && seesAndAnswersInText(row) {
 			return candidate
 		}
 	}
-	candidates := models.ModelsWithInput("image")
-	if len(candidates) > 0 {
-		return candidates[0].ID
+	for _, candidate := range models.ModelsWithInput("image") {
+		if seesAndAnswersInText(candidate) {
+			return candidate.ID
+		}
 	}
 	return ""
+}
+
+// seesAndAnswersInText says a row takes images and replies in words. A row
+// that publishes no output list at all is a cache written before modalities
+// were kept, and is read as it always was: by its input alone.
+func seesAndAnswersInText(model catalog.Model) bool {
+	if !hasInput(model, "image") {
+		return false
+	}
+	return len(model.OutputModalities) == 0 ||
+		(hasOutput(model, "text") && !generatesMedia(model))
+}
+
+func hasInput(model catalog.Model, modality string) bool {
+	for _, input := range model.InputModalities {
+		if strings.EqualFold(strings.TrimSpace(input), modality) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasOutput(model catalog.Model, modality string) bool {
+	for _, output := range model.OutputModalities {
+		if strings.EqualFold(strings.TrimSpace(output), modality) {
+			return true
+		}
+	}
+	return false
 }
 
 // chatCandidatesWithInput is the three PERCEPTION slots' shared question: a
@@ -998,12 +1003,26 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		Direct:      !strings.EqualFold(strings.TrimSpace(service.Source.ID), modelsource.DefaultID),
 		KeyOptional: service.Source.KeyOptional,
 		BillingDoor: service.Door.Name,
+		Billing:     billingFactOf(service),
 		Effort:      effort,
 	}
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		configured.APIKey = codexauth.Sentinel
 		configured.HTTPClient = codexauth.Client(service.Home)
 		configured.BillingDoor = ""
+		// A sign-in is not a plan statement: until the plan claim is read and
+		// verified, a codex call's billing is nobody's word.
+		configured.Billing = provider.BillingFact{}
+		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
+	}
+	if strings.EqualFold(strings.TrimSpace(service.Source.ID), claudemodel.ID) {
+		// Claude Code answers through its own program on the person's own
+		// sign-in; a session that knows its folder replaces this client with
+		// one that works there (internal/session's clientConfig).
+		configured.APIKey = claudemodel.Sentinel
+		configured.HTTPClient = claudemodel.Client()
+		configured.BillingDoor = ""
+		configured.Billing = provider.BillingFact{}
 		configured.ModelPrice = func(string) (float64, float64, bool) { return 0, 0, false }
 	}
 	if service.Overflow != nil {
@@ -1012,6 +1031,23 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		configured.OverflowOnPlanPause = service.PlanPaused == PlanPausedUseMeter
 	}
 	return configured
+}
+
+// billingFactOf is the billing statement the connected service's bound door
+// makes, and nothing else. A named door says metered or included in so many
+// words (`modelsource.Door.Metered`, proved when it was connected); a service
+// with no named door — the default router, a one-door vendor, a custom
+// endpoint, a local runner — states nothing, and the client's fact stays
+// unknown rather than being inferred from a price, a key shape or a label.
+func billingFactOf(service modelsource.Connected) provider.BillingFact {
+	door := strings.TrimSpace(service.Door.ID)
+	if door == "" {
+		return provider.BillingFact{}
+	}
+	if service.Door.Metered {
+		return provider.MeteredDoorFact(service.Source.ID, door)
+	}
+	return provider.IncludedDoorFact(service.Source.ID, door)
 }
 
 // WithoutSeatPin is the settings a raw request path takes: the same account,

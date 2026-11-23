@@ -136,3 +136,26 @@ func TestLandRunTreeLeavesTheTreeAloneWithTheFlagOff(t *testing.T) {
 		t.Fatalf("the tree's own work is not still uncommitted:\n%s", out)
 	}
 }
+
+// When CODEAF_ATTRIBUTION is off, LandRunTree leaves worker commits at their
+// original hashes and writes its own landing commit without trailers.
+func TestLandRunTreeWithAttributionOffLeavesWorkerAndLandingCommitsUnsigned(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	t.Setenv("CODEAF_ATTRIBUTION", "off")
+	repo := newTestRepo(t)
+	base := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD"))
+	workerSHA := runCommitFile(t, repo, "worker.txt", "worker commit")
+	writeFile(t, filepath.Join(repo, "loose.txt"), "loose work\n")
+	branch, changed, refusal, err := LandRunTree(repo, base, "do the thing", "deepseek/deepseek-v4-flash")
+	if err != nil || refusal != "" || branch != "work" || !reflect.DeepEqual(changed, []string{"loose.txt", "worker.txt"}) {
+		t.Fatalf("landing = %q, %v, %q, %v", branch, changed, refusal, err)
+	}
+	if got := strings.TrimSpace(gitOut(t, repo, "rev-parse", "HEAD~1")); got != workerSHA {
+		t.Fatalf("worker commit sha moved with attribution off: %s -> %s", workerSHA, got)
+	}
+	for _, rev := range []string{"HEAD", "HEAD~1"} {
+		if message := gitOut(t, repo, "log", "-1", "--format=%B", rev); strings.Contains(message, "Assisted-by") || strings.Contains(message, "Co-Authored-By") {
+			t.Fatalf("%s carries attribution with CODEAF_ATTRIBUTION=off: %q", rev, message)
+		}
+	}
+}

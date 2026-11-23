@@ -3,11 +3,13 @@ package syncwords
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"strings"
 	"syscall"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/relay"
@@ -57,6 +59,12 @@ func NetworkFailure(err error) bool {
 	if errors.As(err, &upload) && upload.SyncFailure() {
 		return true
 	}
+	return TransportFailure(err)
+}
+
+// TransportFailure reports a failed network exchange even through a saving
+// error, without treating every pending upload as a connectivity problem.
+func TransportFailure(err error) bool {
 	var local *net.OpError
 	if errors.As(err, &local) && strings.HasPrefix(local.Net, "unix") {
 		return false
@@ -64,7 +72,14 @@ func NetworkFailure(err error) bool {
 	var request *url.Error
 	var operation *net.OpError
 	var dns *net.DNSError
-	return errors.As(err, &request) || errors.As(err, &operation) || errors.As(err, &dns) || errors.Is(err, directory.ErrUnreachable) || errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, clusterctl.ErrUnavailable) || errors.Is(err, relay.ErrUnreachable) || errors.Is(err, relay.ErrStruggling)
+	return errors.As(err, &request) || errors.As(err, &operation) || errors.As(err, &dns) || errors.Is(err, blobstore.ErrUnreachable) || errors.Is(err, directory.ErrUnreachable) || errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, clusterctl.ErrUnavailable) || errors.Is(err, relay.ErrUnreachable) || errors.Is(err, relay.ErrStruggling)
+}
+
+// RequestNotSent requires a failed dial, before an HTTP request could be sent.
+// A response timeout, reset or generic unreachable error proves no such thing.
+func RequestNotSent(err error) bool {
+	var operation *net.OpError
+	return errors.As(err, &operation) && operation.Op == "dial" && !errors.Is(err, syscall.ECONNRESET)
 }
 
 // UploadFailure marks a failure after local durability succeeded. It survives
@@ -113,4 +128,20 @@ func UploadPending(err error) bool {
 func IsStruggling(err error) bool {
 	var response interface{ HTTPStatus() int }
 	return errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, clusterctl.ErrUnavailable) || errors.Is(err, relay.ErrStruggling) || errors.As(err, &response) && response.HTTPStatus() >= 500
+}
+
+// SavedHereWords needs positive local durability before describing a pending upload.
+func SavedHereWords(err error, address string) string {
+	if !UploadPending(err) {
+		return ""
+	}
+	if SavedWithStorageOff(err) {
+		return SavedStorageOff
+	}
+	return fmt.Sprintf(SavedHerePending, Host(address))
+}
+
+// SavedWithStorageOff requires a positive local receipt so a mixed local failure stays a failure.
+func SavedWithStorageOff(err error) bool {
+	return UploadPending(err) && errors.Is(err, wireauth.ErrStorageOff)
 }

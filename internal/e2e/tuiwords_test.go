@@ -160,6 +160,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"skillNoShelfWord": {
 		screen: "this conversation has no skill shelf",
+		pkg:    "internal/skillpick",
 		why: "the picker row's tail when there is no shelf to attach against. It must be ABSENT on the " +
 			"ordinary launch with memory on and off: it once read `memory is off` on every machine",
 	},
@@ -259,10 +260,10 @@ var tuiWords = map[string]tuiWord{
 			"until the place was named for what is in it",
 	},
 	"barMemoryWord": {
-		screen: "Memories",
-		source: "memories",
+		screen: "Memory",
+		source: "memory",
 		why: "the fifth place on the wordmark row, which stands on the bar before the first memory is saved. It " +
-			"was `Memory` until 2026-10-14",
+			"was `Memories` from 2026-10-15 until decision #1943 restored `Memory` on 2026-10-25",
 	},
 	"barAutomationsWord": {
 		screen: "Automations",
@@ -325,6 +326,19 @@ var tuiWords = map[string]tuiWord{
 		screen: "waiting on you",
 		pkg:    tui3Pkg,
 		why:    "the tail on any row — an errand or another window's conversation — that is stopped on a person",
+	},
+	"conversationOpeningPage": {
+		screen: "opening conversation",
+		why: "the placeholder page a first message once waited on (conversation_open.go's conversationOpeningWord); " +
+			"the chat-start suite asserts the first message never lands on it",
+	},
+	"conversationOpeningState": {
+		screen: "opening chat",
+		why:    "the state the ordinary chat wears under a first message while its engine is still opening",
+	},
+	"chatTurnWorkingWord": {
+		screen: "working",
+		why:    "the state the ordinary chat wears once the first message's turn is in flight",
 	},
 	"homeAskWorkingWord": {
 		screen: "working",
@@ -582,9 +596,26 @@ var tuiWords = map[string]tuiWord{
 		pkg:    "internal/session",
 		why:    "the receipt proving the not-right answer reached the engine's settle door",
 	},
-	"doneRollupWord": {
-		screen: " tasks done",
-		why:    "the folded completion batch counts both seeded tasks after the nested landing is accepted",
+	"settleAcceptReceipt": {
+		screen: " → accept · you · ",
+		source: "accept",
+		pkg:    "internal/session",
+		why:    "the decision receipt names the accepted task and the person who answered, before its variable timestamp",
+	},
+	"settleNotRightReceipt": {
+		screen: " → not right · you · ",
+		source: "not right",
+		pkg:    "internal/session",
+		why:    "the decision receipt names the refused task and the person who answered, before its variable timestamp",
+	},
+	"backgroundWorkWord": {
+		screen: "background work",
+		why:    "routine task completions remain available behind the background-work disclosure",
+	},
+	"taskOpenResultWord": {
+		screen: " · open result",
+		source: "open result",
+		why:    "a named completion row offers its result beside its state, distinguishing it from model prose",
 	},
 	"taskIncompleteWord": {
 		screen: " · incomplete",
@@ -599,7 +630,11 @@ var tuiWords = map[string]tuiWord{
 	},
 	"starterTaskWord": {
 		screen: "/task <brief> starts work",
-		why:    "the greeting's own starter line, and the door a person is pointed at before they have typed anything",
+		why:    "the ordinary greeting's starter line, after the machine's first conversation",
+	},
+	"firstConversationStarterWord": {
+		screen: "What would you like to work on?",
+		why:    "the first conversation offers starting points instead of the ordinary greeting's task hint",
 	},
 	"refusedCallRowWord": {
 		screen: "the call was refused",
@@ -1207,6 +1242,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"autonomyUsageWord": {
 		screen: "/autonomy <kind> ask · recommend [duration] · decide",
+		pkg:    "internal/session",
 		why: "the sheet's foot and the only place it names a door. An earlier draft put `· change` on " +
 			"every row, which is a word with no key behind it",
 	},
@@ -1231,6 +1267,18 @@ var tuiWords = map[string]tuiWord{
 		screen: "Pick up your work anywhere, exactly where you left it.",
 		why: "the pitch on home's add-another-device card (homeband_addmachine.go's addMachinePitch), " +
 			"read by the pairing journey so a respelled card fails the untagged word gate before tmux runs",
+	},
+
+	"secretDeclineWord": {
+		screen: "Decline",
+		pkg:    "internal/session",
+		why: "the one answer a request_secret card offers besides its masked box (secret_request.go's " +
+			"SecretDeclineLabel): a card wearing it is the credential question, up and waiting",
+	},
+	"secretGivenReceipt": {
+		screen: "given, kept out of chat",
+		why: "what a secret question's receipt says was answered (question.go's questionSecretGiven). " +
+			"It said `with: <the token>` until the live run that found it",
 	},
 }
 

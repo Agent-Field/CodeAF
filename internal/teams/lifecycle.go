@@ -26,12 +26,19 @@ var ErrClosed = errors.New("teams: this team has been disbanded; its history is 
 // ErrOpen is [Delete] asked to delete a team that is not closed.
 var ErrOpen = errors.New("teams: only a closed team can be deleted; close it first")
 
+// ErrNotClosed is [File.Archive] asked to archive a team that is not closed.
+// Archiving puts a closed team away; it never closes one.
+var ErrNotClosed = errors.New("teams: only a closed team can be archived; close it first")
+
 // ErrParentClosed is [File.Reopen] asked to reopen a team whose parent is
 // closed.
 var ErrParentClosed = errors.New("teams: its parent team is closed; reopen that first")
 
 // Closed reports whether the team is closed.
 func (t Team) Closed() bool { return t.State == TeamClosed }
+
+// Archived reports whether the team is closed and put away.
+func (t Team) Archived() bool { return t.Closed() && !t.ArchivedAt.IsZero() }
 
 // Descendants is every team under id, at any depth, parents before children.
 func (f *File) Descendants(id string) []Team {
@@ -84,7 +91,7 @@ func (f *File) Disband(id string, at time.Time, report string) error {
 	for j := range f.Teams {
 		t := &f.Teams[j]
 		if ids[t.ID] && !t.Closed() {
-			t.State, t.ClosedAt, t.ClosedWith, t.Wrap = TeamClosed, at, id, nil
+			t.State, t.ClosedAt, t.ClosedWith, t.Wrap, t.JobEnded = TeamClosed, at, id, nil, false
 			if t.ID == id {
 				t.Report = report
 			}
@@ -101,6 +108,49 @@ func (f *File) Disband(id string, at time.Time, report string) error {
 // Close preserves the old store door for closing reports and older callers.
 // Its behavior follows disbanding: no session is stopped or implicitly reassigned.
 func (f *File) Close(id string, at time.Time, report string) error { return f.Disband(id, at, report) }
+
+// CloseForJob closes team id, and the teams under it, quietly, because the
+// factory job it is the room of ended. It is not a disband: there is no
+// report, and nobody's reporting is changed, so no member is made independent
+// and the room's managers stay where they were. The teams are marked
+// [Team.JobEnded], so that the job coming back opens them again
+// ([File.ReopenForJob]) with their reporting as it was, and nothing else does.
+// While the room is closed a member's home is in no open team, as it is for
+// any closed team; reopened, [tidy] gives it its home there again.
+func (f *File) CloseForJob(id string, at time.Time) error {
+	i, err := f.at(id)
+	if err != nil {
+		return err
+	}
+	if f.Teams[i].Root {
+		return ErrRoot
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	ids := map[string]bool{id: true}
+	for _, d := range f.Descendants(id) {
+		ids[d.ID] = true
+	}
+	for j := range f.Teams {
+		if t := &f.Teams[j]; ids[t.ID] && !t.Closed() {
+			t.State, t.ClosedAt, t.ClosedWith, t.Wrap, t.JobEnded = TeamClosed, at, id, nil, true
+		}
+	}
+	return nil
+}
+
+// ReopenForJob opens team id again because its factory job came back, when
+// that job's end is what closed it ([File.CloseForJob]) and nobody put it away
+// since. A team a person closed, or archived, stays as they left it, and so
+// does one closed for any other reason; none of those is an error.
+func (f *File) ReopenForJob(id string) error {
+	t, ok := f.Team(id)
+	if !ok || !t.Closed() || !t.JobEnded || t.Archived() {
+		return nil
+	}
+	return f.Reopen(id)
+}
 
 // Reopen opens team id again, and every team under it that its own close
 // closed. Its closing report stays recorded; a team reopened and closed again
@@ -120,7 +170,7 @@ func (f *File) Reopen(id string) error {
 	}
 	reopen := func(j int) {
 		t := &f.Teams[j]
-		t.State, t.ClosedAt, t.ClosedWith = "", time.Time{}, ""
+		t.State, t.ClosedAt, t.ClosedWith, t.ArchivedAt, t.JobEnded = "", time.Time{}, "", time.Time{}, false
 	}
 	for _, d := range f.Descendants(id) {
 		if d.Closed() && d.ClosedWith == id {
@@ -129,6 +179,50 @@ func (f *File) Reopen(id string) error {
 	}
 	reopen(i)
 	return nil
+}
+
+// Archive puts the closed team id away: it leaves the closed list and is read
+// only when archived teams are asked for. It marks that one team. The teams
+// under it, closed with it or not, are not touched, and nothing is closed,
+// stopped or deleted: the roster, Traffic and packets stay as they were and
+// [File.Reopen] brings the team back. A team that is open, or the root, is
+// refused; one already archived keeps its first time.
+func (f *File) Archive(id string, at time.Time) error {
+	i, err := f.at(id)
+	if err != nil {
+		return err
+	}
+	t := &f.Teams[i]
+	if t.Root {
+		return ErrRoot
+	}
+	if !t.Closed() {
+		return ErrNotClosed
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	if t.ArchivedAt.IsZero() {
+		t.ArchivedAt = at
+	}
+	return nil
+}
+
+// ArchivedTeams is the closed teams that were put away, most recently
+// archived first.
+func (f *File) ArchivedTeams() []Team {
+	var out []Team
+	for _, t := range f.Teams {
+		if t.Archived() {
+			out = append(out, t)
+		}
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j].ArchivedAt.After(out[j-1].ArchivedAt); j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
 }
 
 // Open is the teams that are open, in stored order.
@@ -142,8 +236,8 @@ func (f *File) Open() []Team {
 	return out
 }
 
-// ClosedTeams is the teams that are closed, most recently closed first, for
-// the folded `Closed · N` section.
+// ClosedTeams is the teams that are closed, archived ones included, most
+// recently closed first, for the folded `Closed · N` section.
 func (f *File) ClosedTeams() []Team {
 	var out []Team
 	for _, t := range f.Teams {
@@ -229,6 +323,23 @@ const QuietAfter = 7 * 24 * time.Hour
 // packet fold per team and stats each member's transcript, so it is asked off
 // the loop, when Organize is.
 func Quiet(profileDir string, f *File, now time.Time, idle time.Duration) ([]string, error) {
+	rows, err := QuietDetails(profileDir, f, now, idle)
+	var ids []string
+	for _, row := range rows {
+		ids = append(ids, row.Crew)
+	}
+	return ids, err
+}
+
+// QuietCrew is a proposed closure's activity age and direct member count.
+type QuietCrew struct {
+	Crew     string `json:"crew"`
+	IdleDays int    `json:"idle_days"`
+	Agents   int    `json:"agents"`
+}
+
+// QuietDetails reads the same quiet evidence as Quiet and exposes its measured age.
+func QuietDetails(profileDir string, f *File, now time.Time, idle time.Duration) ([]QuietCrew, error) {
 	waiting := map[string]bool{}
 	open, _, err := OpenPackets(profileDir, ScopeAll)
 	if err != nil {
@@ -238,15 +349,22 @@ func Quiet(profileDir string, f *File, now time.Time, idle time.Duration) ([]str
 		waiting[p.Team], waiting[p.Origin] = true, true
 	}
 	cut := now.Add(-idle)
-	var out []string
+	var out []QuietCrew
 	for _, t := range f.Teams {
 		if t.Closed() || t.Root || waiting[t.ID] {
 			continue
 		}
-		if last := lastActivity(profileDir, t); last.After(cut) {
+		last := lastActivity(profileDir, t)
+		if last.After(cut) {
 			continue
 		}
-		out = append(out, t.ID)
+		seen := map[string]bool{}
+		for _, m := range t.Members {
+			if m.Key != "" {
+				seen[m.Key] = true
+			}
+		}
+		out = append(out, QuietCrew{Crew: t.ID, IdleDays: int(now.Sub(last) / (24 * time.Hour)), Agents: len(seen)})
 	}
 	return out, nil
 }

@@ -825,7 +825,7 @@ func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
 	t.Parallel()
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("long-bash", "bash", `{"command":"sleep 4; echo steer-job-finished"}`), nil
+			return toolResponse("long-bash", "bash", `{"command":"sleep 4; echo steer-job-finished; exit 3"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return textResponse("I changed course while it finishes"), nil
@@ -860,7 +860,7 @@ func TestASteerAdoptsAnOldBashAndItsExitArrivesLater(t *testing.T) {
 	}
 	waitFor(t, "adopted job exit note", func() bool { return notesContain(agent, "steer-job-finished") })
 	waitFor(t, "owed exit request", func() bool { return completer.requests() >= 3 })
-	if got := strings.Join(userLines(completer.request(2)), "\n"); !strings.Contains(got, "job 1 exited 0") {
+	if got := strings.Join(userLines(completer.request(2)), "\n"); !strings.Contains(got, "job 1 exited 3") {
 		t.Fatalf("later request has no owed exit note: %q", got)
 	}
 }

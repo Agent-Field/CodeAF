@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
@@ -563,6 +564,9 @@ func (a *app) raiseQuestion(q questionShown) {
 	if a.qroom != nil && q.question.ClarificationDepth > a.qroom.head.question.ClarificationDepth {
 		a.closeQuestionRoom()
 	}
+	if q.question.Ask == session.AskPermission && approval.AlwaysAsksRule(q.question.Reason) {
+		q.question.Stakes = session.StakesIrreversible
+	}
 	q.pick = questionPointerStart(q.question)
 	// THE WAY BACK IS THE ASKER'S OWN CLAIM AND NOT THIS SURFACE'S GUESS. A
 	// caller that already knows this window can put the work back says so; for
@@ -590,7 +594,13 @@ func (a *app) raiseQuestion(q questionShown) {
 		// hand it a fresh settle guard every few seconds — which is a question
 		// that never becomes answerable on a link that reconnects.
 		q.shown = a.questions[i].shown
-		q.pick = a.questions[i].pick
+		if a.questions[i].question.Stakes == session.StakesIrreversible && q.question.Stakes != session.StakesIrreversible {
+			q.question.Stakes = session.StakesIrreversible
+			q.pick = questionPointerStart(q.question)
+		} else if questionSameAnswers(q.question.Options, a.questions[i].question.Options) &&
+			q.question.Stakes == a.questions[i].question.Stakes {
+			q.pick = a.questions[i].pick
+		}
 		// AND SO DOES EVERYTHING THE SURFACE KNOWS THAT THE OBJECT CANNOT
 		// CARRY. The same question arrives twice on purpose — the lane that
 		// raised it dresses it with the row it is about, its second beat and
@@ -783,7 +793,7 @@ func questionPointerStart(q session.Question) int {
 	// proposal is unaffected: an asker that recommended an answer said so on the
 	// row a person is reading (`suggested`), and `enter` taking the
 	// recommendation IS the pointer's law.
-	if q.Ask == session.AskPermission && q.Stakes == session.StakesCostly {
+	if q.Ask == session.AskPermission && q.Stakes == session.StakesCostly && !approval.AlwaysAsksRule(q.Reason) {
 		return 0
 	}
 	if questionHandsOnly(q) {
@@ -2817,12 +2827,22 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 		was = prior.Labels
 		delete(a.priorAnswers, q.token())
 	}
+	change := answer.Words()
+	if q.question.SecretAnswer() {
+		// A CREDENTIAL IS NEVER DRAWN BACK, not in the box and not in the
+		// receipt the answer leaves: the row says something was given and
+		// never what.
+		change = ""
+		if len(labels) == 0 {
+			labels = []string{questionSecretGiven}
+		}
+	}
 	record := session.DecisionRecord{
 		Was: was,
 		ID:  q.question.ID, Ref: q.question.Ref,
 		Kind: q.question.Kind, Ask: q.question.Ask,
 		Head: strings.TrimSpace(q.question.Head), Subject: q.question.Subject,
-		Picked: answer.Keys(), Labels: labels, Change: answer.Words(),
+		Picked: answer.Keys(), Labels: labels, Change: change,
 		By: answer.DecidedBy, Stakes: q.question.Stakes, Scope: answer.Scope,
 		At: answer.At,
 	}
@@ -2832,6 +2852,9 @@ func (a *app) recordQuestion(q questionShown, answer session.Answer) {
 		entries:  len(a.entries),
 	})
 }
+
+// questionSecretGiven is what a secret question's receipt says was answered.
+const questionSecretGiven = "given, kept out of chat"
 
 // countQuestionYes counts one answer towards the third same-shaped yes that
 // offers a rule. Only an answer that GRANTED something counts: a person who
@@ -4519,6 +4542,16 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// in its room (harnesscard.go, roomapproval.go). All three are deleted.
 		// What is left is the PAGE in the transcript, which is what is being
 		// judged, and the one line it keeps afterwards saying what became of it.
+		return true
+	case session.QuestionItem:
+		// THE FLOOR ITEM'S CHANGE CARD (`factory_item`), which no surface in
+		// this program drew at all: the engine raised the question, the tool
+		// waited on it, and a hosted terminal showed `running factory_item`
+		// until the person pressed esc. There is no older block to retire. The
+		// card's words are the engine's own ([session.ItemRows], carried as the
+		// question's reason), its two answers are [session.AnswerOptions], and a
+		// typed sentence reaches [session.Agent.ResolveItem] as a change — which
+		// changes nothing — through the same box every other card uses.
 		return true
 	case session.QuestionConnect:
 		// THE ACCOUNT OFFER, whose own three-row block, answers row, click

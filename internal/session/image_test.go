@@ -358,7 +358,9 @@ func TestImageReplayPlaceholderWhenTheFileChangedOrWentAway(t *testing.T) {
 			if err != nil {
 				t.Fatalf("replay: %v", err)
 			}
-			restored := replayed.messages[0]
+			// The replay holds a reference and opens nothing; the file is checked
+			// against its digest by the request that would carry it.
+			restored := materializeImageRefs(replayed.messages)[0]
 			if len(restored.Content) != 2 {
 				t.Fatalf("restored %+v, want text + placeholder", restored.Content)
 			}

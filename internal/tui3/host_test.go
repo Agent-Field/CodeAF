@@ -438,6 +438,17 @@ func TestAMovedChatIsNamedByTheProjectItCameFrom(t *testing.T) {
 	}
 }
 
+func TestAnOwnedMovedChatNamesItsOriginalProjectInTheFrame(t *testing.T) {
+	work := movedFolder(t, `{"id":"x","title":"fix it","owned":true,"origin":"/srv/other/proj-a"}`)
+	a, _ := hostLab(t)
+	a.host = ""
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}, Workspace: work, Owned: true}, true)
+	frame := plain(a.View().Content)
+	if !strings.Contains(frame, "project: proj-a (copy from another machine)") {
+		t.Fatalf("the continued chat's frame lost its original project:\n%s", frame)
+	}
+}
+
 // With no origin recorded the chat's own title stands in, marked the same way,
 // never the product.
 func TestAMovedChatWithNoOriginIsNamedByItsTitle(t *testing.T) {

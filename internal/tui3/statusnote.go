@@ -37,10 +37,9 @@ import (
 
 // statusText is /status: every fact the status line can carry, one per line.
 //
-// The list is [app.deckItems] whole, because the phone sheet and this command
-// are ONE surface asked for in two ways — its head even says "status"
-// ([deckSheetTitle]). A row that appears on one and not the other would make
-// "what does this session say about itself" a question with two answers.
+// The live facts are [app.deckItems] whole, because the phone sheet and this
+// command share the same status readings. The command also has room for lookup
+// facts and one bounded relay reading that the live frame never fetches.
 //
 // Its differences from the sheet are about the MEDIUM rather than about the
 // facts:
@@ -56,6 +55,9 @@ import (
 //	              written once and read once, so design-law-v2 §16 applies to it
 //	              plainly — and /cost's answer to the same session is "nothing
 //	              spent yet", which this list has to agree with.
+//	sync space    the relay's stored amount and limit, read at launch and again
+//	              after each /status, outside rendering; shown only when both
+//	              are known.
 //
 // The crew used to be a third difference — a line this command added under the
 // model and the sheet did not have. It is on [app.deckItems] now, directly under
@@ -66,8 +68,8 @@ func (a *app) statusText() string {
 	return labelledLines(a.statusItems())
 }
 
-// statusItems is the whole list /status prints: [app.deckItems] with the three
-// differences of medium this command makes, then the build and file rows. It is
+// statusItems is the whole list /status prints: the live facts from [app.deckItems],
+// the optional relay reading, then the build and file rows. It is
 // the ONE list behind both the text form and [app.statusJSON], so the two forms
 // cannot disagree about a fact. The transformations below are described at
 // length on [app.statusText]; they live here because they are the list rather
@@ -114,6 +116,11 @@ func (a *app) statusItems() []deckItem {
 			item.value = a.workspace
 		}
 		items = append(items, item)
+	}
+	if a.relayStorageOff() {
+		items = append(items, deckItem{label: storageLabel, value: "off"})
+	} else if word := a.syncSpaceWord(); word != "" {
+		items = append(items, deckItem{label: "sync space", value: word})
 	}
 	// phone lane: `keeping watch` used to be added HERE and nowhere else, which
 	// made it the one fact /status carried that the phone's own sheet did not —
@@ -200,11 +207,19 @@ func (a *app) statusJSON() string {
 func (a *app) statusFacts(text string) []string {
 	facts := columnFacts(text, false)
 	crew := a.crewWord()
-	if crew == "" {
+	space := a.syncSpaceWord()
+	if a.relayStorageOff() {
+		space = "off"
+	}
+	if crew == "" && space == "" {
 		return facts
 	}
 	out := make([]string, 0, len(facts)+2)
 	for _, fact := range facts {
+		// Sync space stays dim as a whole line, including when there is no crew row.
+		if fact == space {
+			continue
+		}
 		if fact == crew {
 			// AND UNDER `--one-model` THERE IS NOTHING HERE TO LIFT. The word names
 			// the flag rather than four rows ([app.crewReading]), the ids
@@ -280,8 +295,11 @@ func (a *app) costText() string {
 			add("tasks", dollars(tasks))
 		}
 	}
-	add("tokens", tokenHalves(a.inputTokens, a.outputTokens, a.tokens))
-	add(deckSegWords[segCache], cacheWords(a.cacheRead, a.cacheSaved))
+	in := max(a.inputTokens, a.tree.Input)
+	out := max(a.outputTokens, a.tree.Output)
+	tok := max(a.tokens, in+out)
+	add("tokens", tokenHalves(in, out, tok))
+	add(deckSegWords[segCache], cacheWords(max(a.cacheRead, a.tree.CacheRead), a.cacheSaved))
 	// "model calls" and not "turns". A turn is what the PERSON took — one message
 	// and everything that answered it — and a conversation of nine messages that
 	// reports "turns 41" is a surface using a person's word for a machine's
@@ -294,11 +312,11 @@ func (a *app) costText() string {
 	// which is the sum over exactly this many — Turns counts only the
 	// conversation's own steps by law, and would have named a smaller number
 	// than the money was spent over.
-	if u.Calls > 0 {
-		add("model calls", itoa(u.Calls))
+	if calls := max(u.Calls, a.tree.Calls); calls > 0 {
+		add("model calls", itoa(calls))
 	}
-	if u.EmptyReflex > 0 {
-		add("empty reflex answers", itoa(u.EmptyReflex))
+	if emptyReflex := max(u.EmptyReflex, a.tree.EmptyReflex); emptyReflex > 0 {
+		add("empty reflex answers", itoa(emptyReflex))
 	}
 	if a.tree.Unbilled > 0 {
 		add(spendUnbilledWord, itoa(a.tree.Unbilled)+" "+spendUnbilledSaid)
@@ -338,9 +356,9 @@ func tokenHalves(in, out, both int) string {
 // worth.
 //
 // The cash is printed ONLY when it is real, on the terms [app.cacheSaved] is
-// held: it is the session's cache reads priced at the model this conversation
-// is on, and only where BOTH a prompt price and a cache-read price are
-// published. So a session on a model that publishes no cache-read price says
+// held: it is the session's cache reads priced per call at the model that
+// served that call, and only where BOTH a prompt price and a cache-read price
+// are published. So a session on a model that publishes no cache-read price says
 // how much it read and stops there, rather than learning to say it saved the
 // whole prompt price. The count leads and the money follows it, which is
 // the order [app.warmSegment] puts the same pair in on the status line.
