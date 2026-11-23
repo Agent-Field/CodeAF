@@ -849,3 +849,19 @@ It caps retained paths and visited entries at `2*N+100`, and Go allocations at
 bytes; afterward it allocated 2,505,888 bytes. The 5,000+5,000 proof allocated
 21,807,368 bytes. Bounds tests require refusal for paths, entries, reply size
 and content bytes. Final metadata revalidation remains mandatory.
+
+## The last-seen copy of a chat on another computer
+
+A live view of a chat that another of the person's computers runs keeps, on the
+viewer's own disk, the last thing it drew (`internal/viewcache`, under
+`CODEAF_HOME/v3/viewed/<computer>/<chat>.json`, directories 0700, files 0600).
+The relay stores nothing of it. The bounds are constants in that package and
+this section changes in the same commit as they do: the newest 200 entries of a
+chat (`MaxEntries`), at most 1 MiB of file per chat (`MaxBytes`, oldest entries
+out first), 40 chats across every computer (`MaxChats`, oldest out), and at most
+one write of a chat every 2 seconds from `Save` (`WriteEvery`; `SaveNow` is for
+the beat that ends a view). Pruning reads file times, never file contents, so
+forty copies cost a directory read and not forty megabytes.
+`TestASnapshotIsBoundedAndPlainTextOnlyOnTheViewersDisk`,
+`TestOnlyTheNewestFortyChatsAreKept` and
+`TestACopyIsNotRewrittenMoreThanOnceInTwoSeconds` pin them.
