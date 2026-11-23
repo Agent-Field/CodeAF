@@ -20,7 +20,26 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
+// workingDiskIgnoresCase asks the disk the test repositories are made on, so a
+// disk that tells the cases apart skips before the run engine is set up.
+func workingDiskIgnoresCase(t *testing.T) bool {
+	t.Helper()
+	dir, err := os.MkdirTemp(".", "issue2884-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	if err := os.WriteFile(filepath.Join(dir, "case-probe"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = os.Lstat(filepath.Join(dir, "CASE-PROBE"))
+	return err == nil
+}
+
 func TestDoOnTheRunEngineRefusesCaseVariantsOfTheFoldersGitMetadata(t *testing.T) {
+	if !workingDiskIgnoresCase(t) {
+		t.Skip("this disk tells upper and lower case apart, so .GIT is not the repository's .git")
+	}
 	beltRunEnv(t)
 	t.Setenv("CODEAF_PLANDB_BIN", beltPlandbDoor(t))
 	parent, repo := nestedRunRepo(t)
@@ -68,13 +87,23 @@ func TestDoOnTheRunEngineRefusesCaseVariantsOfTheFoldersGitMetadata(t *testing.T
 	if _, err := os.Stat(filepath.Join(parent, ".git")); err == nil {
 		t.Fatal("the parent folder became a repository")
 	}
-	if len(seat.results) < len(seat.commands) {
-		t.Fatalf("the worker saw %d answers to its %d commands\nstdout:\n%s\nstderr:\n%s",
-			len(seat.results), len(seat.commands), stdout.String(), stderr.String())
+	// The seat is also called by the run's other callers, the checker among
+	// them, and a call with no tool result in front of it records an empty
+	// answer that can land between the real ones. A command that ran would have
+	// left a mark on the disk above, so only the non-empty answers are read.
+	var answers []string
+	for _, said := range seat.results {
+		if strings.TrimSpace(said) != "" {
+			answers = append(answers, said)
+		}
 	}
-	for index, said := range seat.results[:len(seat.commands)] {
+	if len(answers) < len(seat.commands) {
+		t.Fatalf("the worker saw %d answers to its %d commands\nstdout:\n%s\nstderr:\n%s",
+			len(answers), len(seat.commands), stdout.String(), stderr.String())
+	}
+	for index, said := range answers[:len(seat.commands)] {
 		if !strings.Contains(said, "is outside your copy") {
-			t.Errorf("command %d (%q) was answered %q, want the boundary's refusal", index+1, seat.commands[index], said)
+			t.Errorf("command %d (%q) was answered %q, want the boundary's refusal\nall answers: %q", index+1, seat.commands[index], said, answers)
 		}
 	}
 }
