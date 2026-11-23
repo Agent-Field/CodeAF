@@ -631,6 +631,16 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 	if listing.Method == "" && listing.Address == "" {
 		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, row, true
 	}
+	// A LISTING THAT ANSWERS FOR ANY BEARER PROVES NO PLAN, and one that is
+	// absent or refuses for payment proves none either. Where the row names a
+	// plan proof, the key is asked it first, so a key the subscription does not
+	// cover is refused in the vendor's own words instead of being bound to a door
+	// it cannot use, whichever way the listing then answers.
+	if proof := src.PlanProof; proof.Method != "" || proof.Address != "" {
+		if outcome, covered := provePlanCoverage(ctx, address, key, proof); !covered {
+			return outcome, row, false
+		}
+	}
 	status, body, answered := runServiceProbe(ctx, address, key, listing)
 	if !answered {
 		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
@@ -639,19 +649,6 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 		outcome, ok := listedOutcome(body)
 		if !ok {
 			return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
-		}
-		// A LISTING THAT ANSWERS FOR ANY BEARER PROVES NO PLAN. Where the row
-		// names a plan proof, the key is asked it before anything is saved, so a
-		// key the subscription does not cover is refused in the vendor's own
-		// words instead of being bound to a door it cannot use.
-		if proof := src.PlanProof; proof.Method != "" || proof.Address != "" {
-			proofStatus, proofBody, proofAnswered := runServiceProbe(ctx, address, key, proof)
-			switch {
-			case !proofAnswered || proofStatus >= http.StatusInternalServerError:
-				return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
-			case !acceptsStatus(proof.Accepts, proofStatus):
-				return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(proofBody), key), Status: proofStatus}, row, false
-			}
 		}
 		listed := true
 		row.Listed = &listed
@@ -681,6 +678,38 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key), Status: status}, row, false
 	}
 	return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, row, true
+}
+
+// provePlanCoverage runs a row's plan proof and says whether the key's
+// subscription covers the service. A refusal is the vendor's own verdict and is
+// reported in its words. A meter that is throttled, down or answering with
+// something that is not a usage reading gives no verdict, so nothing is saved
+// on it. A meter that is not at the address at all cannot prove a plan, and the
+// connection then rests on the listing alone, as it did before the proof.
+func provePlanCoverage(ctx context.Context, address, key string, proof modelsource.Probe) (modelsource.Outcome, bool) {
+	status, body, answered := runServiceProbe(ctx, address, key, proof)
+	switch {
+	case !answered || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError:
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, false
+	case status == http.StatusNotFound || status == http.StatusMethodNotAllowed:
+		return modelsource.Outcome{}, true
+	case !acceptsStatus(proof.Accepts, status):
+		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key), Status: status}, false
+	case !isUsageReading(body):
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, false
+	}
+	return modelsource.Outcome{}, true
+}
+
+// isUsageReading answers whether a plan proof's accepted reply is a reading
+// rather than a page or an error envelope an intermediary answered with 200.
+func isUsageReading(body []byte) bool {
+	var reading map[string]json.RawMessage
+	if json.Unmarshal(body, &reading) != nil || len(reading) == 0 {
+		return false
+	}
+	_, failed := reading["error"]
+	return !failed
 }
 
 func proveServiceDoors(ctx context.Context, row PersistedSource, src modelsource.Source, key string) (modelsource.Outcome, PersistedSource, bool) {
