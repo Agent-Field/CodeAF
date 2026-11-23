@@ -148,7 +148,7 @@ var shapes = []shape{
 		lead: 3,
 	},
 	{
-		// OpenCode's keys: `oc_sk_` and then the key. The `sk-` row above reads
+		// The Go plan's keys: `oc_sk_` and then the key. The `sk-` row above reads
 		// a hyphen after `sk`, and this prefix has an underscore and a word
 		// character before it, so it needs its own row. A saved key is also
 		// registered by value, but a launch that reads one without registering

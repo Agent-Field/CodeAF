@@ -34,7 +34,7 @@ var (
 	bearerLike = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._\-]{8,}`)
 	// keyLike catches the shape the keys this program uses are written in:
 	// OpenRouter's `sk-or-v1-…`, every other `sk-…` any provider mints, and
-	// OpenCode's `oc_sk_…`.
+	// the Go plan's `oc_sk_…`.
 	keyLike = regexp.MustCompile(`\b(?:sk-|oc_sk_)[A-Za-z0-9._\-]{8,}`)
 )
 

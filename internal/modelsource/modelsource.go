@@ -623,12 +623,12 @@ func Vendored() []Source {
 			Listing:  ListingNone, Probe: Probe{}, Preferred: "sonnet",
 		},
 		{
-			// OpenCode Go has one endpoint and one door. Its /models answers
+			// The Go plan has one endpoint and one door. Its /models answers
 			// for any bearer, so the door is proved by the usage meter instead:
 			// GET /usage answers 200 for a key a Go subscription covers and 403
-			// "OpenCode Go subscription required" for one it does not, whose
+			// "Go subscription required" for one it does not, whose
 			// calls would draw from the workspace balance. Extra Usage, an
-			// opt-in on OpenCode's console, can still spend credits past a
+			// opt-in on the service's console, can still spend credits past a
 			// spent window on this same endpoint; nothing on the wire says so.
 			ID: "opencode-go", Written: "opencode-go", Name: "OpenCode Go",
 			Address: opencodeGoAddress, KeyEnv: "OPENCODE_API_KEY", KeyShape: LooksLikeOpenCodeKey,
