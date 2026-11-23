@@ -197,7 +197,7 @@ func TestAMessageToAChatElsewhereIsNotOfferedAndLeavesNothingWhileSyncStorageIsO
 		}
 	}
 
-	_, _, w := appDeviceBackend(t, deskDir)
+	backend, _, w := appDeviceBackend(t, deskDir)
 	if slices.Contains(w.hello, appwire.FeatureChatsSend) {
 		t.Fatal("hello offers chats.send while sync storage is off")
 	}
@@ -213,10 +213,16 @@ func TestAMessageToAChatElsewhereIsNotOfferedAndLeavesNothingWhileSyncStorageIsO
 		t.Fatalf("the relay holds %d sealed messages from the desk", n)
 	}
 
-	// Approving storage brings the verb back for the next connection.
+	// Close the first connection and join its background refresh before
+	// changing the relay answer, as a real engine restart would.
+	w.close()
+	if err := backend.Close(); err != nil {
+		t.Fatal(err)
+	}
+	<-backend.sweepDone
 	says.Store("on")
-	for _, home := range []string{towerDir, deskDir} {
-		if err = syncsetup.SaveStorage(home, relay.URL, id.ID(), "on"); err != nil {
+	for _, peer := range []*syncsetup.Sync{tower, desk} {
+		if _, err := peer.RefreshStorage(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	}

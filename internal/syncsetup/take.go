@@ -2540,9 +2540,11 @@ func titleOf(root string) string {
 // not among them: they travel inside .cell/tasks and arrive where they are read.
 // A carry made before that (task journals under .cell/files) still restores
 // them beside the chat, and the open that follows files them into .cell/tasks.
-func restoreChatFiles(_ context.Context, c cell.Cell) error {
-	_, err := chatfiles.Carry{}.Restore(c)
-	return err
+func restoreChatFiles(ctx context.Context, c cell.Cell) error {
+	if _, err := (chatfiles.Carry{}).Restore(c); err != nil {
+		return err
+	}
+	return session.RestoreCarriedProcessHistory(ctx, c.Root)
 }
 
 // seedMeta writes the session folder's meta.json from the newly installed

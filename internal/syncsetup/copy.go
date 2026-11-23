@@ -233,8 +233,20 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		began := time.Now()
 		offered = true
 		attempt, err := s.publishLocalChat(ctx, pending.root, id, pending.sent)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if errors.Is(err, errNoChatHead) {
 			continue
+		}
+		// After the directory said the chat was absent, a foreground save can
+		// win or Create can commit before its response is lost. Reconcile that
+		// race without repeating a failed initial directory request.
+		if err != nil && attempt.absent && s.shareVisible(ctx, id) {
+			err = nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 		if err == nil && attempt.listed && pending.logged == "" {
 			// Shared before this launch: nothing happened worth a line.
@@ -265,11 +277,18 @@ func (s *Sync) PublishLocalChats(ctx context.Context, now func() time.Time, say 
 		failures = errors.Join(failures, err)
 		// Said only to a person with another computer to read the chat on
 		// (others.go): with none paired there is nobody it was not shared with.
-		if say != nil && s.OthersPaired() {
+		if say != nil && s.OthersPaired() && s.StorageAllowed() {
 			say(cell.Cell{ID: id, Root: pending.root}, "This chat could not be shared yet. It is still saved here; codeaf will try again.")
 		}
 	}
 	return failures
+}
+
+func (s *Sync) shareVisible(ctx context.Context, id string) bool {
+	ctx, cancel := context.WithTimeout(ctx, DeviceRequestWithin)
+	defer cancel()
+	view, err := s.Dir.Cell(ctx, id)
+	return err == nil && view.Cell.Head != "" && !view.Cell.Archived
 }
 
 // betweenChats runs BetweenChats with the pass's lock released, and takes it
@@ -296,6 +315,8 @@ type copyAttempt struct {
 	sent, size int64
 	// listed says the directory already named the chat; nothing was sent.
 	listed bool
+	// absent says the directory answered that no record existed.
+	absent bool
 }
 
 func (s *Sync) publishLocalChat(ctx context.Context, root, id string, earlier int64) (copyAttempt, error) {
@@ -414,6 +435,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	answered := watch.asking(0)
 	_, err := s.Dir.Cell(ctx, c.ID)
 	if errors.Is(err, directory.ErrNotFound) {
+		attempt.absent = true
 		err = s.putDevice(ctx, name)
 	} else if err == nil {
 		answered()
@@ -438,7 +460,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	engine := e.Sync(cellstore.SyncKeys{CellKey: s.Identity.CellKey(), Dedup: s.Identity.DedupSecret()}, s.Ledger)
 	publisher := cellsync.Publisher{Engine: engine, Store: store, Dir: s.Dir}
 	ex, err := publisher.Upload(ctx, c, head.Turn.ID)
-	attempt = copyAttempt{sent: landed, size: ex.Bytes}
+	attempt.sent, attempt.size = landed, ex.Bytes
 	if err != nil {
 		return attempt, err
 	}

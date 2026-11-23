@@ -370,6 +370,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.preview` | `{cell}` | `{last_user?: string, last_assistant?: string}` |
 | `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
 ## pair methods
@@ -1774,6 +1775,19 @@ which queues nothing. `keys.set` takes `github`, `jira`, `agentfield` and
 | method | params | result |
 |---|---|---|
 | `credentials.take` | `Empty` | `CredentialsTaken` |
+| `credentials.ready` | `Empty` | `Empty` |
+| `credentials.confirm` | `{ticket, applied}` | `Empty` |
+
+`credentials.ready` is also a hello feature. The native host calls it after its
+secure-store hand-back is complete, including a successful read of an empty store.
+Provider key sync stays idle until then. A provider change in `credentials.take`
+has a nonzero `ticket` and an `expected_key` (empty when the store had no key).
+The host compares the current stored key before persisting the proposed key or
+removal, then calls `credentials.confirm` with the ticket and result. The engine
+accepts a successful confirmation only while the captured local revision still
+matches. Failed writes can retry for the ticket's remaining lifetime. A client
+without these methods still uses the original `credentials.take` behavior for
+credentials entered through factory doors.
 
 ## manual methods
 
@@ -2114,6 +2128,10 @@ this optional field; older engines provide no Library breakdown.
 | `sync.acknowledge` | `in.IDParams` | `Empty` |
 | `sync.get` | `{}` | `SyncResult` |
 
+When `sync.storage.live_transfer` is true, the paired computers can move a chat
+by blind pass-through while both are running, with sync storage still off.
+The field is optional and does not indicate that provider keys can sync.
+
 ## tasks methods
 
 | method | params | result |
@@ -2320,10 +2338,23 @@ unavailable. `pair.start` starts one operation; a concurrent start is `busy`.
 Questions carry engine text and explicit options; copy their ids to
 `pair.answer`. `pair.cancel` waits for cleanup. `pair.get` without an id returns
 this process's current or last finished operation. Every snapshot has a lines
-array, including when empty. Final states emit exactly once. Joining with local
-chats first asks `replace_own_chats`; joining with live work is `busy`. A join
-that changes this computer's shared keys finishes with `restart:true`: restart
-the engine before sending work. Device and sync snapshots precede done.
+array, including when empty. Final states emit exactly once. Joining with live
+work is `busy`. A join refuses what this computer already holds, and changes
+nothing: chats that already sync with other computers, or chats of its own. It
+refuses before the other computer is asked whenever this computer's directory
+says so, and otherwise after the approval; either way the failure's `error.code`
+is `cannot_join`, because a new code or link would end the same way. The engine
+no longer asks `replace_own_chats` (the kind stays for older engines). The
+computer that showed the code finishes `done` only once the joining computer
+says it kept what it was sent; without that word it fails, with a message that
+names the other computer, including when the person cancels after answering yes. While `offer_code` shows a code, a computer that has
+never paired keeps Sync and Devices in mode `quiet`: they turn `on` only when a
+person answers yes and its identity is sent, and stay `on` after that even if
+the pairing then fails (both are emitted again before that failure). A code that
+is cancelled, runs out, is answered no or is used up by a wrong code leaves them
+`quiet`. A join that changes this computer's shared keys finishes with
+`restart:true`: restart the engine before sending work. Device and sync
+snapshots precede done.
 
 `sync.relay` advertises `Sync.relay`: resolved URL, source (`environment`,
 `paired`, `default`, `none`) and `off`. The source follows CODEAF_SYNC_URL, the
@@ -2347,7 +2378,9 @@ when sync is off or unavailable; in those modes `chats.list` returns `[]`.
 Never-paired homes also return `[]` without contacting a relay. The first
 inventory read starts one shared Sync.Follow subscription; later version
 changes reread and diff rows. Presence changes update cached online facts
-without a directory read. No inventory polling timer runs. Kept branches are
+without a directory read. While live transfer is active, the follower also
+refreshes cached titles from paired holders over the encrypted files door.
+The titles are never added to directory records. Kept branches are
 outside this v1 inventory. Crew is omitted because relay rows carry no crew
 membership; the local Agent keeps its existing crews.
 
@@ -2375,6 +2408,12 @@ is here can still say it; a followed inventory emits the row again when the take
 starts and when it ends without moving the chat. Once a take has acquired the
 chat, rows that still show it elsewhere keep `taking:true` until a row says the
 chat is here or a later take holds it, even when opening the moved chat fails.
+`chats.preview` in `hello` advertises a read of the selected saved conversation.
+The optional row field `can_preview` says a saved head appears readable. The
+result contains short text excerpts, with either field omitted when empty.
+The read uses store frames or the holder’s encrypted files door. It takes no
+lease and installs no local copy of the chat or its workspace.
+
 A client that stopped waiting for a take reads `taking:false`
 on a chat still elsewhere as a take that did not move it.
 

@@ -53,9 +53,9 @@ A computer with blind pass-through turned off that meets such a chat on its list
 
 ## Why a chat shows as untitled on my other computer — blind pass-through and chat titles
 
-While blind pass-through is the only road (hosted sync storage is off), a chat's title and folder are not shared with the sync service. The list on your other computer shows the chat as `untitled` until you take it there; after the take, the title comes from the chat itself and the row shows its real name.
+While blind pass-through is carrying chats, WorkAF reads the title directly from the computer that has the chat. The sync service keeps neither the title nor the folder name. If that computer is offline or runs an older version, Devices can show `untitled` until a title is available. After you move the chat, Devices reads the title from your local copy.
 
-This is on purpose: it keeps chat names and folder names off the sync service. It does not mean the chat lost its name. The computer that has the chat still shows it. Taking the chat is how the name arrives: choose `continue here` on the `untitled` row while the computer that has it is running codeaf.
+In WorkAF’s Devices page, **Preview** reads a short excerpt of the last saved message and reply. When the saved chat is unavailable, **Details** shows its device and move status. You can choose **Continue here** from either view when the move is available.
 
 ## Turn off blind pass-through — CODEAF_PASSTHROUGH=off, pass-through mode off switch
 
@@ -94,7 +94,7 @@ Your words stay in the box. Nothing was sent, and no branch nobody asked for was
 
 An attended window keeps following your other devices while the chat is open, so a move is shown without returning to home first. Slash commands such as `/help` always work.
 
-If you continue it, the other device's window stops taking new turns and says `<device> continued this chat; this window now only shows it`. The page *Home* has the rest of that card.
+If you continue it, the other device's window stops taking new turns and says `<device> continued this chat. This copy is read-only and may be behind`. The page *Home* has the rest of that card.
 
 ## Which folder does a continued chat use — repeated moves and long copy-folder names
 
@@ -350,7 +350,7 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-A chat has one holder at a time. To take a chat back from the computer that took it, press enter on its row on that computer: choose `continue here` by default (`idle handoff` is off by default; when turned on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `continue here`). Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat; this window now only shows it`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
+A chat has one holder at a time. To take a chat back from the computer that took it, press enter on its row on that computer: choose `continue here` by default (`idle handoff` is off by default; when turned on in **Settings → General → idle handoff** or with `CODEAF_IDLE_HANDOFF=1`, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `continue here`). Nothing has to be returned or switched off first. A computer with the chat open when another takes it says `<device> continued this chat. This copy is read-only and may be behind`, stops taking new turns, and keeps what it had not yet sent as a branch (`<K> turns from <device>: open separately / discard`). A tool call the model tries there answers with that same line. Taking the chat back leaves a `node_modules` or other install folder that computer already has alone.
 
 The choice covers the holder and turn of ownership shown on the card. If another computer continues the chat before you confirm or while the copy is arriving, your choice cannot take it from that new holder. The slower one sees `another device continued this chat first` on the card with `1 retry` and `2 leave it there`; its local copy is not replaced, and its row goes back to `held on <device>`. if the same holder picked it up again, the refreshed card says `<holder> picked this chat up again; press enter to continue it here` and asks for a new confirmation instead. a complete chat already held here gets one silent recovery attempt; another disagreement keeps the retry card and draft. No turn is lost on either side: whatever the earlier holder had not sent is kept for you as the branch above. This build offers discard, which archives a branch, and opening the branch as a separate chat; merging it into the original chat is unavailable. Pressing `2` (`leave it there`) on the question, or `esc`, changes nothing and leaves the chat where it is.
 
@@ -511,7 +511,7 @@ a chat this computer has never held opens as soon as its conversation records an
 
 ## Does first start send anything — local identity before pairing
 
-The first start may create a local identity for this computer. That file sends nothing: there is no sync traffic or network use until you pair or offer a pairing code. Reading the add-device instructions leaves it quiet. Offering a pairing code or running `codeaf pair` contacts the sync service for that pairing. `CODEAF_SYNC_URL=off` blocks sync traffic even after pairing.
+The first start may create a local identity for this computer. That file sends nothing: there is no sync traffic or network use until you pair or offer a pairing code. Reading the add-device instructions leaves it quiet. Offering a pairing code or running `codeaf pair` contacts the sync service for that pairing only: chats start syncing once you approve the other computer, and a code that is taken back, runs out, is answered no or is used up by a wrong code leaves this computer quiet. `CODEAF_SYNC_URL=off` blocks sync traffic even after pairing.
 
 ## What survives a crash or power loss — durability, killed process, lost call records
 

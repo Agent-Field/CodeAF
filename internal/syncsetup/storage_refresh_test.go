@@ -33,6 +33,48 @@ func TestStorageOptInFailedRefreshPreservesCache(t *testing.T) {
 		}
 	}
 }
+
+func TestQARepeatedStatusRequestsShareAStorageRefresh(t *testing.T) {
+	home := t.TempDir()
+	id, err := identity.Ensure(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveStorage(home, ProductionRelayURL, id.ID(), "off"); err != nil {
+		t.Fatal(err)
+	}
+	p := storageProcessFor(home)
+	at := time.Unix(100, 0)
+	p.now = func() time.Time { return at }
+	requests := 0
+	hc := &http.Client{Transport: storageTransport(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"storage":"off"}`))}, nil
+	})}
+	s := &Sync{Home: home, Relay: ProductionRelayURL, Identity: id, Store: blobstore.NewHTTP(ProductionRelayURL, func(*http.Request, []byte) {}, hc)}
+	refresh := func() {
+		t.Helper()
+		if StorageNeedsRefresh(home, s.Relay, id.ID()) {
+			if _, err := s.RefreshStorage(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for range 20 {
+		refresh()
+	}
+	if requests != 1 {
+		t.Fatalf("20 repeated status readings made %d requests, want one", requests)
+	}
+	at = at.Add(time.Minute)
+	refresh()
+	if requests != 2 {
+		t.Fatalf("a later status reading did not refresh: %d", requests)
+	}
+	if !StorageNeedsRefresh(home, StagingRelayURL, id.ID()) {
+		t.Fatal("a new relay inherited the previous relay's throttle")
+	}
+}
 func TestStorageOptInRefresherCadenceAndApplicability(t *testing.T) {
 	for _, mode := range []string{"off", "on", "self-hosted", "sync-off"} {
 		t.Run(mode, func(t *testing.T) {

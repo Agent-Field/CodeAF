@@ -52,7 +52,7 @@ already explains that the chat stays on this computer until you pair it again.
 ## The line the terminal prints after you quit, when another device took the chat over
 
 If codeaf learns while closing that another device took the chat, the restored
-terminal says `<device> continued this chat; this window now only shows it`
+terminal says `<device> continued this chat. This copy is read-only and may be behind`
 once. It keeps this notice even when the full-screen chat has already closed.
 
 ## Quitting while the sync service is slow — waiting for a final save

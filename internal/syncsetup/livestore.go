@@ -96,15 +96,7 @@ func (l *liveStore) others(ctx context.Context) []*liveSource {
 		}
 		seen[id] = true
 		name := l.sync.deviceName(id)
-		src := filesdoor.NewSource(filesdoor.SourceConfig{
-			Service:         l.sync.Relay,
-			Identity:        l.sync.Identity,
-			Device:          l.sync.Device,
-			TargetID:        id,
-			TargetName:      name,
-			RetryWithin:     liveRetryWithin,
-			NoMachineWithin: liveNoMachineWithin,
-		})
+		src := l.sync.peerFilesSource(id, name)
 		if liveSourceHook != nil {
 			liveSourceHook(self, id, src)
 		}

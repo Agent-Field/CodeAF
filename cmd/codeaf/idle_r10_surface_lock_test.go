@@ -64,28 +64,27 @@ func TestIdleRelease_R10_ReleasedRenameStillAdmitsWhileLiveMutexIsBusy(t *testin
 		t.Fatal("no installed drive")
 	}
 	done := make(chan error, 1)
-	acquired := func() bool {
+	completed, err := func() (bool, error) {
 		live.mu.Lock()
 		defer live.mu.Unlock()
-		go func() { _, err := f.b.Rename(f.agent.ID, "kept while catch-up is busy"); done <- err }()
-		// The existing RPC acknowledgement also publishes all facts, whose
-		// renewal reader uses this mutex. Check the acquire itself while it
-		// is held, then let that unchanged acknowledgement finish normally.
-		deadline := time.Now().Add(10 * time.Second)
-		for time.Now().Before(deadline) {
-			view, err := f.own.Dir.Cell(t.Context(), f.agent.ID)
-			if err == nil && view.Cell.Lease.Fence > before.Cell.Lease.Fence {
-				return true
-			}
-			time.Sleep(20 * time.Millisecond)
+		go func() {
+			_, err := f.b.Rename(f.agent.ID, "kept while catch-up is busy")
+			done <- err
+		}()
+		// Rename acknowledges only after publishing the new facts. Both
+		// admission and that acknowledgement must finish with the lock held.
+		select {
+		case err := <-done:
+			return true, err
+		case <-time.After(10 * time.Second):
+			return false, nil
 		}
-		return false
 	}()
-	if renamed := <-done; renamed != nil {
-		t.Fatal(renamed)
+	if !completed {
+		t.Fatal("busy live mutex blocked rename admission or its acknowledgement")
 	}
-	if !acquired {
-		t.Fatal("busy live mutex prevented or skipped released-window admission")
+	if err != nil {
+		t.Fatal(err)
 	}
 	after, err := f.own.Dir.Cell(t.Context(), f.agent.ID)
 	if err != nil || after.Cell.Lease.Fence <= before.Cell.Lease.Fence {

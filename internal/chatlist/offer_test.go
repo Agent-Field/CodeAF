@@ -82,7 +82,7 @@ func TestFrozenSentences(t *testing.T) {
 	if got := KeptEdits(2, "host-a"); got != "your unsaved edits here were kept as 2 turns from host-a" {
 		t.Error(got)
 	}
-	if got := Superseded("host-a"); got != "host-a continued this chat; this window now only shows it" {
+	if got := Superseded("host-a"); got != "host-a continued this chat. This copy is read-only and may be behind" {
 		t.Error(got)
 	}
 	for got, want := range map[string]string{

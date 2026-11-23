@@ -415,12 +415,12 @@ func TestAppDevicesV1V2V3PairedHomes(t *testing.T) {
 	if len(view.Devices) != 2 || !view.Devices[1].Removed || view.Devices[1].RemoveLine != "" {
 		t.Fatalf("removed device disappeared: %+v", view)
 	}
-	if _, err := wb.call("devices.list", struct{}{}); err != nil && (err.Code != appwire.CodeEngine || err.Message != chatlist.Removed) {
+	if _, err := wb.call("devices.list", struct{}{}); err != nil && (err.Code != appwire.CodeEngine || err.Message != appRemoved) {
 		t.Fatalf("the removed computer's refusal: %v", err)
 	}
 	before = removedRequests.Load()
 	unavailable := appDeviceList(t, wb)
-	if unavailable.Mode != appwire.DevicesUnavailable || unavailable.Line != chatlist.Removed || len(unavailable.Devices) != 1 || !unavailable.Devices[0].Removed || removedRequests.Load() != before {
+	if unavailable.Mode != appwire.DevicesUnavailable || unavailable.Line != appRemoved || len(unavailable.Devices) != 1 || !unavailable.Devices[0].Removed || removedRequests.Load() != before {
 		t.Fatalf("known removal was not answered locally: %+v", unavailable)
 	}
 	srv.Close()

@@ -10,6 +10,153 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 )
 
+func TestQAReceivedProviderRefreshesAndReachesTheNativeKeeper(t *testing.T) {
+	appDayProfile(t)
+	credentials := config.NewAppCredentials()
+	restore := config.UseAppCredentials(credentials)
+	defer restore()
+	rec := newAppRecorder()
+	b := newAppBackend(rec, appOpenInProcess)
+	defer b.Close()
+	credentials.ProposeSynced("aiand", config.AppKeyState{}, "FAKE-received-provider-key")
+	if taken, _ := b.CredentialsTake(t.Context()); len(taken.Changes) != 0 {
+		t.Fatal("a host that has not handed back its Keychain received an update")
+	}
+	b.CredentialsReady()
+	credentials.ProposeSynced("aiand", config.AppKeyState{}, "FAKE-received-provider-key")
+	taken, err := b.CredentialsTake(context.Background())
+	if err != nil || len(taken.Changes) != 1 || taken.Changes[0].Provider != "aiand" || taken.Changes[0].Key != "FAKE-received-provider-key" || taken.Changes[0].ExpectedKey == nil || *taken.Changes[0].ExpectedKey != "" || taken.Changes[0].Ticket == 0 {
+		t.Fatal("the received provider key was not handed to the native keeper once")
+	}
+	if _, known := credentials.Key("aiand"); known {
+		t.Fatal("the engine used a remote key before native storage confirmed it")
+	}
+	b.CredentialsConfirm(taken.Changes[0].Ticket, true)
+	rec.waitFor(t, 2*time.Second, func(event string, data any) bool {
+		if event != appwire.EventProviderChanged {
+			return false
+		}
+		changed := data.(appwire.ProviderChanged)
+		return changed.Provider.ID == "aiand" && changed.Provider.SignedIn && changed.Key == ""
+	})
+}
+
+func TestQASyncedCredentialQueueKeepsOriginalGuardAndDropsSupersededChanges(t *testing.T) {
+	appDayProfile(t)
+	keys := config.NewAppCredentials()
+	defer config.UseAppCredentials(keys)()
+	b := newAppBackend(newAppRecorder(), appOpenInProcess)
+	defer b.Close()
+	provider := "aiand"
+	keys.Set(provider, "FAKE-original-key")
+	b.CredentialsReady()
+	before := keys.State(provider)
+	keys.ProposeSynced(provider, before, "FAKE-intermediate-key")
+	keys.ProposeSynced(provider, before, "FAKE-current-key")
+	pending, err := b.CredentialsTake(t.Context())
+	if err != nil || len(pending.Changes) != 1 {
+		t.Fatal("app did not combine the synced changes")
+	}
+	change := pending.Changes[0]
+	if change.Key != "FAKE-current-key" || change.ExpectedKey == nil || *change.ExpectedKey != "FAKE-original-key" {
+		t.Fatal("combined change did not keep the original comparison and the latest value")
+	}
+	b.CredentialsConfirm(change.Ticket, false)
+	if held := keys.State(provider); held != before {
+		t.Fatal("native refusal changed the held provider key")
+	}
+	b.credentials.mu.Lock()
+	retry := b.credentials.synced[provider]
+	retry.retryAt = time.Time{}
+	b.credentials.synced[provider] = retry
+	b.credentials.mu.Unlock()
+	pending, err = b.CredentialsTake(t.Context())
+	if err != nil || len(pending.Changes) != 1 || pending.Changes[0].Ticket != change.Ticket {
+		t.Fatal("the native refusal was not retryable")
+	}
+	keys.Remove(provider)
+	b.CredentialsConfirm(change.Ticket, true)
+	pending, err = b.CredentialsTake(t.Context())
+	if err != nil || len(pending.Changes) != 0 {
+		t.Fatal("app took a change superseded by the local disconnect")
+	}
+	if key, known := keys.Key(provider); !known || key != "" {
+		t.Fatal("an obsolete confirmation reconnected a locally removed provider")
+	}
+}
+
+func TestQASyncedCredentialLostConfirmationReoffersCurrentTicket(t *testing.T) {
+	appDayProfile(t)
+	keys := config.NewAppCredentials()
+	defer config.UseAppCredentials(keys)()
+	clock := &closeClock{at: time.Unix(100, 0)}
+	recorder := newAppRecorder()
+	b := &appBackend{keys: keys, now: clock.now, after: clock.after, emit: recorder}
+	keys.OnSynced(b.queueSyncedCredential)
+	b.CredentialsReady()
+	const provider = "aiand"
+	const remote = "FAKE-reoffered-key"
+	keys.ProposeSynced(provider, keys.State(provider), remote)
+	announcements := 0
+	waitForAnnouncement := func() {
+		t.Helper()
+		seen := 0
+		recorder.waitFor(t, time.Second, func(event string, data any) bool {
+			if event == appwire.EventCredentialsChanged {
+				seen++
+			}
+			return seen > announcements
+		})
+		announcements++
+	}
+	take := func(want int) []appwire.CredentialChange {
+		t.Helper()
+		out, err := b.CredentialsTake(t.Context())
+		if err != nil || len(out.Changes) != want {
+			t.Fatalf("credentials.take returned %d changes (%v), want %d", len(out.Changes), err, want)
+		}
+		return out.Changes
+	}
+
+	waitForAnnouncement()
+	first := take(1)[0]
+	clock.advance(t, appCredentialAckWait-time.Millisecond)
+	take(0)
+	clock.advance(t, time.Millisecond)
+	waitForAnnouncement()
+	replayed := take(1)[0]
+	if replayed.Ticket == 0 || !reflect.DeepEqual(replayed, first) {
+		t.Fatal("a lost confirmation did not reoffer the same guarded change")
+	}
+	b.CredentialsConfirm(replayed.Ticket, true)
+	if key, _ := keys.Key(provider); key != remote {
+		t.Fatal("the reoffered ticket could not be confirmed")
+	}
+	clock.advance(t, appCredentialAckWait)
+	take(0)
+
+	keys.ProposeSynced(provider, keys.State(provider), "FAKE-next-remote-key")
+	waitForAnnouncement()
+	stale := take(1)[0]
+	keys.Set(provider, remote) // A same-value re-save is still a new local revision.
+	clock.advance(t, appCredentialAckWait)
+	take(0)
+	b.CredentialsConfirm(stale.Ticket, true)
+	if key, _ := keys.Key(provider); key != remote {
+		t.Fatal("a lost confirmation overwrote an intervening local edit")
+	}
+
+	keys.ProposeSynced(provider, keys.State(provider), "FAKE-expiring-key")
+	waitForAnnouncement()
+	expired := take(1)[0]
+	clock.advance(t, appwire.CredentialsTakeLife)
+	take(0)
+	b.CredentialsConfirm(expired.Ticket, true)
+	if key, _ := keys.Key(provider); key != remote {
+		t.Fatal("an expired ticket was confirmed")
+	}
+}
+
 // AN APP-RUN ENGINE KEEPS ITS CONNECTIONS ACROSS LAUNCHES. A credential a
 // door gave this launch (here an AgentField key) is announced by an empty
 // credentials.changed — THE KEY NEVER RIDES AN EVENT — and taken once with

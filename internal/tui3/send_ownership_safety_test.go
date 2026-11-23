@@ -37,7 +37,7 @@ func TestSendRequiresTheWindowsCurrentHold(t *testing.T) {
 			if len(agent.sent) != 0 {
 				t.Errorf("unheld copy ran a turn: %v", agent.sent)
 			}
-			if _, card := a.homeAsking(); !card && !strings.Contains(plain(lastNote(t, a)), "only shows it") {
+			if _, card := a.homeAsking(); !card && !strings.Contains(plain(lastNote(t, a)), "This copy is read-only and may be behind") {
 				t.Error("unheld copy has neither a continuation card nor a viewing explanation")
 			}
 			if got := string(a.mainComposer().box.value); got != "keep this unsent" {

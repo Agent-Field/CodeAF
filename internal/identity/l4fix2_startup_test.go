@@ -6,6 +6,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,25 @@ import (
 	"github.com/Agent-Field/codeaf/internal/sqliteuri"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
+
+func TestQARealStartupCredentialDigestsCanJoin(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CODEAF_HOME", home)
+	t.Setenv("CODEAF_PROFILE_DIR", "")
+	if _, err := identity.EnsureSolo(home); err != nil {
+		t.Fatal(err)
+	}
+	credentials := config.NewAppCredentials()
+	defer config.UseAppCredentials(credentials)()
+	credentials.Set("aiand", "FAKE-startup-provider-key")
+	raw, err := os.ReadFile(filepath.Join(home, "crew-credentials.json"))
+	if err != nil || strings.Contains(string(raw), "FAKE-startup-provider-key") {
+		t.Fatal("fixture did not make only credential digests")
+	}
+	if ok, err := identity.Joinable(home); err != nil || !ok {
+		t.Fatalf("the real digest writer prevented pairing: %v", err)
+	}
+}
 
 const startupChat = "v3/projects/project/chat/.cell"
 

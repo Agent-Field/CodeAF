@@ -3442,6 +3442,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"use my codex plan", "models-and-cost"},
 		// #1383 and #1391: what a Codex model holds, and who answered it.
 		{"what context window does a codex model have", "models-and-cost"},
+		// DeepSeek's own API reads its own thinking field, and the page that
+		// says which word each rung sends is the one a person asking must reach.
+		{"does max thinking work on deepseek direct", "models-and-cost"},
 		{"which server answered my codex request in the call lines", "sessions-and-rewind"},
 		{"connect from the terminal without opening the chat", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},
@@ -4867,7 +4870,7 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"how do I add another computer", add, "On the new device, install and run: codeaf pair"},
 		{"how do I add another machine", add, "alt+d how"},
 		{"can I paste the link here on home", add, "paste it anywhere on home"},
-		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-code>"},
+		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-token>"},
 		{"what is the check number on the new device", add, "Check number 4821. Approve only if"},
 		{"what does codeaf pair --code do", add, "codeaf pair --code"},
 		{"how do I remove a computer", add, "r remove"},

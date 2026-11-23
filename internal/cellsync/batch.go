@@ -36,13 +36,14 @@ type Publishing struct {
 // alive while nothing is being published, each on its own loop so a slow upload
 // cannot starve a heartbeat.
 type Batcher struct {
-	Publisher    *Publisher
-	Brancher     Brancher
-	Driving      *Driving
-	Interval     time.Duration // default DefaultInterval
-	Info         func() PublishInfo
-	OnFlush      func(Flush)      // telemetry hook
-	OnSuperseded func(Superseded) // the chat becomes a viewer (L7)
+	Publisher       *Publisher
+	Brancher        Brancher
+	Driving         *Driving
+	Interval        time.Duration // default DefaultInterval
+	Info            func() PublishInfo
+	OnFlush         func(Flush)      // successful publication
+	OnUploadFailure func(error)      // the pending head's upload could not finish
+	OnSuperseded    func(Superseded) // the chat becomes a viewer (L7)
 	// OnLost refuses new work before keeping pending work can fail.
 	OnLost  func()
 	OnError func(error)      // a refusal (see RefusalOf) the person should hear of, once per episode
@@ -536,6 +537,9 @@ func (b *Batcher) after(err error) time.Duration {
 		return 0
 	}
 	r, _ := b.surface(err)
+	if b.OnUploadFailure != nil && syncwords.UploadPending(err) {
+		b.OnUploadFailure(err)
+	}
 	b.backoff = r.next(b.backoff, interval, err)
 	return b.backoff
 }

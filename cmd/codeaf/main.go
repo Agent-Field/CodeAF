@@ -31,7 +31,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -631,8 +630,8 @@ Housekeeping — changes state on disk or on the network
       discard everything codeaf worked out from the journal and replay it
   codeaf pair [--via url] [--name name]
       add this device to yours: shows a link to approve from one you use
-  codeaf pair approve <link-or-code> | <code> [--replace] | --code
-      approve a device; or use or show a code such as ` + pair.ExampleChatCode + ` for your chats
+  codeaf pair approve <link-or-token>
+      approve a device's link or terminal token after comparing its check number
   codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
       an always-on computer of yours on your own Railway account
   codeaf serve [--workspace path] [--via url] [--take-tasks]
