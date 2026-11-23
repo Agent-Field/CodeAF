@@ -344,10 +344,18 @@ func (a *Agent) consentVerdict(answer consentAnswer, decision approval.Decision)
 		return refusal(consentDismissed), false
 	case !answer.allow:
 		a.markRefused()
-		return refusal("denied by the person: " + decision.Rule), false
+		return refusal("denied by the person: " + decision.Rule + personRefusedTheAct), false
 	}
 	return toolResult{}, true
 }
+
+// personRefusedTheAct follows a person's no, because the rule before it names
+// the PATTERN the call was graded by, and a model that reads only that learns
+// which spelling to avoid. After a no to `rm -rf /tmp/victim` the model ran
+// `rm -r /tmp/victim` one call later (#2813). The floor now grades that
+// spelling too, but it is a floor and not a sandbox, so this sentence says what
+// the no was about: the act, in any spelling.
+const personRefusedTheAct = ". They said no to this action, not to this spelling: ask before doing the same thing another way."
 
 // credentialRead asks the floor about one call, standing in this agent's folder.
 func (a *Agent) credentialRead(call ai.ToolCall) (approval.CredentialRead, bool) {
