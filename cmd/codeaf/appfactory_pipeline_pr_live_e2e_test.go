@@ -527,6 +527,9 @@ func TestLiveLocalServiceOpensPipelinePullRequestAsSignedInAccount(t *testing.T)
 		}
 	}
 	dirs = append(dirs, filepath.Dir(liveSetupGH))
+	// useLocalHome left git and the shell tools on the PATH; keep them, because a
+	// check step runs the bare name `bash` and calls `touch` and `grep` (issue #2621).
+	dirs = append(dirs, filepath.SplitList(os.Getenv("PATH"))...)
 	t.Setenv("PATH", strings.Join(dirs, string(os.PathListSeparator)))
 	t.Setenv("GH_CONFIG_DIR", liveSetupGHConfig)
 	t.Setenv("GH_PROMPT_DISABLED", "1")

@@ -129,6 +129,7 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 	if digest := a.planDigest(); digest != "" {
 		user = planDigestedParts(digest, user)
 	}
+	user.fromPerson = true
 	events, _, err := a.admitImageMessage(ctx, user)
 	return events, err
 }
@@ -154,16 +155,21 @@ func (a *Agent) admitImageMessage(ctx context.Context, user userMessage) (events
 		// happens then, not now.
 		a.mixCreationLocked(user)
 		a.steering = append(a.steering, user)
+		retired := a.personClosesQuestionsLocked(user)
+		a.notePersonWordsLocked(user)
 		events := a.hub.subscribePending(a.stillAskedLocked())
 		a.mu.Unlock()
+		a.sayTheQuestionsCameDown(retired)
 		return events, true, nil
 	}
 	if err := a.railBlockLocked(); err != nil {
 		a.mu.Unlock()
 		return refusedStream(err), false, nil
 	}
+	retired := a.personClosesQuestionsLocked(user)
 	started := a.startTurnLocked(ctx, user, nil)
 	a.mu.Unlock()
+	a.sayTheQuestionsCameDown(retired)
 	return started, false, nil
 }
 
@@ -341,7 +347,9 @@ func (a *Agent) visionTurn(ctx context.Context, text string, images []Image, mod
 	if err != nil {
 		return nil, err
 	}
-	return a.startVision(ctx, visionUserMessage(text, live.refs), live.message, model, seer)
+	kept := visionUserMessage(text, live.refs)
+	kept.fromPerson = true
+	return a.startVision(ctx, kept, live.message, model, seer)
 }
 
 // visionTurnMarked is [Agent.visionTurn] for an already assembled composed
@@ -350,6 +358,7 @@ func (a *Agent) visionTurn(ctx context.Context, text string, images []Image, mod
 func (a *Agent) visionTurnMarked(ctx context.Context, text, said string, live userMessage, model, seer string, mark *messagePresentation) (<-chan Event, error) {
 	kept := visionUserMessage(said, live.refs)
 	kept.person = mark
+	kept.fromPerson = true
 	return a.startVision(ctx, kept, live.message, model, seer)
 }
 
@@ -374,8 +383,10 @@ func (a *Agent) startVision(ctx context.Context, kept userMessage, live ai.Messa
 		a.mu.Unlock()
 		return refusedStream(err), nil
 	}
+	retired := a.personClosesQuestionsLocked(kept)
 	events := a.startVisionTurnLocked(ctx, kept, live, seer)
 	a.mu.Unlock()
+	a.sayTheQuestionsCameDown(retired)
 	return events, nil
 }
 
@@ -427,22 +438,47 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		return refusedStream(err)
 	}
 	a.running = true
+	a.runnerTurn = false
 	hub := a.newReplayHubLocked()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancelCause(ctx)
 	a.cancel = cancel
+	// IT CARRIES ITS OWN SECOND STAGE AND ITS OWN NUMBER, exactly as an ordinary
+	// turn does (abandon.go). Without the number a bounded stop armed on the turn
+	// before this one would find the count unchanged and let go of THIS turn,
+	// which nobody stopped; and without the disowned check below, the abandoned
+	// goroutine's cleanup would close a `done` that [Agent.Abandon] had already
+	// closed, which is a panic nothing recovers.
+	gone := make(chan struct{})
+	a.abandon = gone
+	turnCtx = withAbandon(turnCtx, gone)
+	a.turnSeq++
+	seq := a.turnSeq
+	a.turnSpend = Usage{}
 	done := make(chan struct{})
 	a.done = done
 	a.recordUserLocked(kept)
 	events := hub.subscribe()
 
+	exited := a.turnExited
 	go func() {
+		if exited != nil {
+			defer exited()
+		}
 		completed := false
 		// No cause: the turn is finishing, not being stopped (stopcause.go).
 		defer cancel(nil)
 		defer hub.close()
 		defer func() {
 			a.mu.Lock()
+			// A DISOWNED TURN CLEANS UP NOTHING, by the same law and for the same
+			// reason as an ordinary turn's cleanup (agent.go's startTurnLocked):
+			// [Agent.Abandon] has already done every act below, and the fields
+			// belong to whatever turn the session has started since.
+			if a.turnSeq != seq {
+				a.mu.Unlock()
+				return
+			}
 			// A VISION TURN HAS NO STEP BOUNDARY — it is one provider call — so a
 			// sentence spliced into it can only ever fall through, and it does so
 			// by the same law every other turn keeps (steer.go's
@@ -451,12 +487,18 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			// their own stream, not a reason to swallow their words.
 			a.liftSteersLocked(hub)
 			drained := a.drainQueueLocked(hub, true)
+			a.stopAbandonTimerLocked()
 			a.running = false
 			a.cancel = nil
 			a.hub = nil
 			a.done = nil
+			a.abandon = nil
 			close(done)
+			var retired []Question
 			if next, ok := a.nextFollowUpLocked(completed); ok {
+				// The person's queued words are their reply once their turn
+				// starts, as a sent message's are.
+				retired = a.personClosesQuestionsLocked(next.message)
 				// An ordinary turn, on the chat model: the follow-up is words,
 				// and words are what that model can read.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
@@ -466,6 +508,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 				a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer)
 			}
 			a.mu.Unlock()
+			a.sayTheQuestionsCameDown(retired)
 		}()
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -523,6 +566,12 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 		[]ai.Message{live}, seer)
 	if err == nil && response != nil {
 		a.addAuxiliaryUsageAs(response, seer, 1, string(roles.RoleVision))
+	}
+	// A TURN THE SESSION HAS ALREADY LET GO OF WRITES NOTHING MORE. The money
+	// above is banked; the messages belong to the turn the person started next
+	// (loop.go keeps the same law after its tool batch).
+	if abandoned(ctx) {
+		return false
 	}
 	answer := ""
 	if response != nil {

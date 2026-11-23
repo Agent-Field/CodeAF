@@ -320,6 +320,10 @@ var settingReaders = map[string]string{
 	// and lanes.go). The chooser reads the pin too, through the same reader.
 	LaneSettingKey(LaneSlotTalk): "LaneAt",
 	KeyLaneGuard:                 "LaneGuardAt",
+	// The patience row is INSTALLED into internal/lane's process-wide figure
+	// (InstallResponsePatience) rather than handed down, and the wait bounds
+	// across the transport and the turn read it back through PatienceFor.
+	KeyResponsePatience: "PatienceFor",
 	// The five team defaults are read together by internal/teams' DefaultsAt,
 	// which hands them to the resolver that walks a team's parent chain; they
 	// are one snapshot for [KeySSHControlPersist]'s reason.

@@ -155,6 +155,23 @@ by the official verifiers. It solved the most issues and paid the least for each
 one it solved.
 
 
+## How codeaf compares
+
+codeaf is built to run many agents at once, not one. A single native Go binary
+runs every task in its own isolated copy of the repository, each on a crew of
+models with a planner and a checker, from one terminal. On DeepSWE, with every
+harness on the same model (DeepSeek V4 Flash), senior-dev solved 62 of 113 issues
+(54.9%), first of ten harnesses, at 39.9 cents per solved issue.
+
+| | Built for | Where codeaf differs | DeepSWE, on DeepSeek V4 Flash |
+| --- | --- | --- | --- |
+| [Claude Code](https://agentfield.ai/compare/codeaf-vs-claude-code) | Anthropic's agent for Claude models | Any model, a different one per seat, and many tasks running at once | 16 solved, 3.4x cost per solve |
+| [Codex CLI](https://agentfield.ai/compare/codeaf-vs-codex-cli) | OpenAI's agent, one session per terminal | Many tasks at once from one window; the same Codex plan can be one of its models | 51 solved, 2.1x cost per solve |
+| [OpenCode](https://agentfield.ai/compare/codeaf-vs-opencode) | One agent session, with subagents, in a TypeScript app on the Bun runtime | One native Go binary built to manage many agents at scale, each task isolated on its own branch | 30 solved, 4.8x cost per solve |
+| [OpenHands](https://agentfield.ai/compare/codeaf-vs-openhands) | One sandboxed agent per conversation, each in its own Docker container, behind a web UI | Many agents from one terminal process, with no container to start per agent | Not in the comparison |
+
+Task by task, against every harness: [DeepSWE head to head](https://agentfield.ai/benchmarks/deepswe-head-to-head).
+
 ## The right model for each call
 
 One session, many models. The model you talk to is one seat. Every task you hand

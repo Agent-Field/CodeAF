@@ -903,6 +903,20 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if h.config.Record != nil {
 			trailer, _ = h.config.Record.TrailerFor(r.Context(), it.ID, it.HeadCommit)
 		}
+		// A FOLLOW PR ROUND THAT CHANGED NOTHING PUBLISHES NOTHING, so it ends
+		// watching its pull request with no approval to cite. It used to be
+		// refused here ("job requires proof approval") whenever the round had
+		// taken someone else's commits in first: the job's head was then a
+		// commit nobody had approved, the runner dropped the refusal, and the
+		// hold it never gave back ran out as "Runner went offline mid-step"
+		// (found by the scenario tests, 2026-11-17).
+		if trailer == "" && followRoundOver(*it) {
+			it.State = factory.StateShipped
+			factory.WatchPublishedPR(it)
+			it.Stream.Ended = now
+			it.Stream.Paused = false
+			return nil
+		}
 		if trailer == "" || (it.PullRequest == nil && it.CommentURL == "") {
 			return run.FinishReport(it, state, now)
 		}
@@ -922,6 +936,15 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: handle, Cost: jobCost(*it), Detail: detail})
 		return nil
 	})
+}
+
+// followRoundOver says the job's Follow PR round has already reported itself
+// over with nothing to publish: its open pull request is being watched again,
+// and nothing is asked or under way.
+func followRoundOver(it factory.Item) bool {
+	f, pr := it.FollowUp, it.PullRequest
+	return f != nil && pr != nil && pr.State == factory.PROpen && (f.State == "watching" || f.State == "healthy") &&
+		it.Publish == "pr" && it.Stream != nil && it.Question == "" && it.Asking == nil && !it.Publishing && !it.Manual
 }
 
 // approval is the job's recorded approval as its trailer, "" for none.

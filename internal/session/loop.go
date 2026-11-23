@@ -1203,7 +1203,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 				a.journalFailedCall(ctx, model, "", errEmptyAnswer, emptyReplies+1, a.requestEstimate())
 				emptyReplies++
 				if emptyUntil.IsZero() {
-					emptyUntil = turnNow().Add(a.giveUp())
+					emptyUntil = turnNow().Add(a.giveUpOn(model))
 				}
 				// AND IT GOES THROUGH THE SAME VERDICT ROAD AS EVERY OTHER FAILED
 				// CALL, SAYING SO. This was the second retry road in the turn: the
@@ -1330,7 +1330,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 			// answered that note; elsewhere it is an ordinary reply, even though every
 			// surface still leaves a reply containing only the token undrawn.
 			answer := response.Text()
-			withdrawn := IsNoChangeReply(answer) && answeredNoteUnchanged(a.snapshot())
+			withdrawn := IsNoChangeReply(answer) && (answeredNoteUnchanged(a.snapshot()) || answeredWakeUnchanged(user, a.snapshot()))
 			if withdrawn {
 				answer = checkpointLastSaid(a.snapshot())
 			}
@@ -2056,7 +2056,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 	// published where the limits are resolved) — so somebody who asks for more
 	// patience gets more time rather than more identical requests, and this loop
 	// has exactly one bound again.
-	deadline := turnNow().Add(a.giveUp())
+	deadline := turnNow().Add(a.giveUpOn(model))
 	// moveOn is THE BUDGET IS SPENT, SO THE MODEL MOVES, and it is a closure
 	// because two roads reach it: a verdict that says hop, and a wait that would
 	// outlast the deadline (below). Asking the same weights again is the one
@@ -2084,7 +2084,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		a.rideModel(next)
 		rung = a.effortFor(model)
 		cuts, rerouted, oneMachine, waitingSince = 0, false, true, time.Time{}
-		deadline, owed, unpaid = turnNow().Add(a.giveUp()), 0, 0
+		deadline, owed, unpaid = turnNow().Add(a.giveUpOn(next)), 0, 0
 	}
 	// takeTheModel is THE ONE PLACE THIS STEP CHANGES MODEL, and `root` is the
 	// only thing that differs between the two roads into it — which is a fact
@@ -2199,6 +2199,9 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			purpose = purposeTask
 			attemptCtx = provider.WithCallNode(attemptCtx, strconv.FormatUint(a.config.taskID, 10))
 		}
+		// THE FILES OF A MOVED CHAT MAY HAVE LANDED SINCE THE LAST REQUEST, and
+		// with them the project's own instructions (workspace_gate.go).
+		a.followArrivedFiles()
 		if err := a.preparePromptProfile(model); err != nil {
 			return nil, model, err
 		}
@@ -2752,6 +2755,24 @@ func roundWait(d time.Duration) string {
 func (a *Agent) giveUp() time.Duration {
 	a.failureLimits()
 	return a.laneRole().GiveUp()
+}
+
+// giveUpOn is [Agent.giveUp] for the model the turn is about to ask, with the
+// patience of the machine that model is served from on it.
+//
+// THE TURN'S BUDGET HAS TO AGREE WITH THE TRANSPORT'S. The provider multiplies
+// every silence bound on a call by [lanes.PatienceFor] for that call's endpoint
+// (internal/provider's localpatience.go), so a local model is allowed minutes of
+// quiet before one request is called dead; if this deadline stayed at ninety
+// seconds the conversation would hop to another model while the first was still,
+// by the transport's own reckoning, working. It is asked per model and not once
+// per turn because a hop changes the endpoint: the hosted model the chain falls
+// back to gets its hosted budget, exactly as it always had. A hosted endpoint
+// under `auto` multiplies by one, which is [lanes.Stretch]'s identity, so nothing
+// about a hosted turn moves.
+func (a *Agent) giveUpOn(model string) time.Duration {
+	a.refreshResponsePatience()
+	return lanes.Stretch(a.giveUp(), a.endpointPatience(model))
 }
 
 // emptyReplyNotice is the dim line for a 200 that carried nothing. It says what
@@ -3867,6 +3888,9 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 // owns its process, is recorded like every other. A seat that could not log the
 // call did not run it, and says so as the tool's own error.
 func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.RawMessage) (text string, isError bool, err error) {
+	if err := a.waitWorkspaceReady(ctx, tool.Name); err != nil {
+		return err.Error(), true, err
+	}
 	// File-only builtins have no arbitrary process/custom-tool execution road.
 	// Everything else must conservatively retain the workspace after restart.
 	switch tool.Name {
@@ -3921,6 +3945,9 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		}
 		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
 			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true, rejected: true})
+		}
+		if err := a.waitWorkspaceReady(ctx, call.Function.Name); err != nil {
+			return a.finishToolResult(ep, call, toolResult{text: err.Error(), isError: true, harness: true})
 		}
 		running, refused, allowed := ep.preAction(ctx, hub, call)
 		if !allowed {

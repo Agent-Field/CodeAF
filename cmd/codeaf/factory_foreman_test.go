@@ -177,7 +177,7 @@ func TestTheForemanStartsAndPrioritisesThroughTheJobPagesDoors(t *testing.T) {
 		t.Fatal(err)
 	}
 	door, ok := floorDoor(st, web, profile).(interface {
-		StartItem(context.Context, int) (string, error)
+		StartItem(context.Context, int, string) (string, error)
 		SetPriority(context.Context, int, string) (string, error)
 	})
 	if !ok {
@@ -203,7 +203,7 @@ func TestTheForemanStartsAndPrioritisesThroughTheJobPagesDoors(t *testing.T) {
 	if line, err := door.SetPriority(context.Background(), id, "high"); err != nil || !strings.Contains(line, "p1 (high)") {
 		t.Fatalf("priority = %q (%v)", line, err)
 	}
-	if line, err := door.StartItem(context.Background(), id); err != nil || !strings.Contains(line, "started") {
+	if line, err := door.StartItem(context.Background(), id, ""); err != nil || !strings.Contains(line, "started") {
 		t.Fatalf("start = %q (%v)", line, err)
 	}
 	if len(got) != 2 || got[0] != (sent{id, factoryVerbPriority}) || got[1] != (sent{id, factoryVerbStart}) {

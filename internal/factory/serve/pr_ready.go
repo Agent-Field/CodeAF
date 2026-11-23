@@ -37,9 +37,7 @@ func (h *Handler) prReady(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	httpClient := h.githubClient()
-	client := forge.NewClient(token).WithHTTPClient(&httpClient)
-	source := factorygithub.New(client, []string{factory.RepoOf(it)}, h.clock)
+	source := factorygithub.New(h.forgeFor(token), []string{factory.RepoOf(it)}, h.clock)
 	ready, err := source.MarkReady(ctx, it)
 	if err != nil {
 		h.prReadyFailed(w, err)

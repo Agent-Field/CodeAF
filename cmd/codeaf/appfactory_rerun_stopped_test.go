@@ -216,15 +216,18 @@ func TestFactoryRetryActionsDoNotReportStopped(t *testing.T) {
 				var ev struct {
 					Event string `json:"event"`
 					Data  struct {
-						Agent     string        `json:"agent"`
-						ErrorKind string        `json:"error_kind"`
-						Entry     appwire.Entry `json:"entry"`
+						// An agent id on turn events; agent.changed carries the whole agent here.
+						Agent     json.RawMessage `json:"agent"`
+						ErrorKind string          `json:"error_kind"`
+						Entry     appwire.Entry   `json:"entry"`
 					} `json:"data"`
 				}
-				if json.Unmarshal([]byte(line), &ev) != nil {
-					t.Fatal("invalid wire event")
+				if err := json.Unmarshal([]byte(line), &ev); err != nil {
+					t.Fatalf("invalid wire event: %v: %s", err, line)
 				}
-				if ev.Event == appwire.EventTurnDone && ev.Data.Agent == chats.Agent && ev.Data.ErrorKind == appwire.ErrorStopped {
+				var agent string
+				_ = json.Unmarshal(ev.Data.Agent, &agent)
+				if ev.Event == appwire.EventTurnDone && agent == chats.Agent && ev.Data.ErrorKind == appwire.ErrorStopped {
 					stopped = true
 					t.Logf("stopped manager turn: %s", line)
 				}

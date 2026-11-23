@@ -39,7 +39,9 @@ func ApproveBackTarget(s *Stream) (gate, prev int) {
 // is not finished work: the run never did it.
 func PreviousWork(ph []Phase, i int) int {
 	for k := i - 1; k >= 0; k-- {
-		if ph[k].Kind != StageGate && ph[k].State == PhaseDone {
+		// An extra task is not the pipeline's work: a no sends back the step
+		// the pipeline ran, never the task (task.go).
+		if ph[k].Kind != StageGate && ph[k].State == PhaseDone && !IsTask(ph[k]) {
 			return k
 		}
 	}

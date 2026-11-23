@@ -639,6 +639,12 @@ type Answer struct {
 	// [Agent.ResolveQuestion] takes it to the lane's own revise, which refuses
 	// where a decision cannot be walked back.
 	Revises bool `json:"revises,omitempty"`
+	// Dismissed says the person put the question away WITHOUT ANSWERING IT: the
+	// key that rides with it is only the answer that changes nothing, picked so
+	// the lane can close. On a permission it is not a refusal, so the call that
+	// asked reads that nothing was decided ([consentDismissed]) rather than that
+	// the person said no, and no decision is recorded, because none was.
+	Dismissed bool `json:"dismissed,omitempty"`
 }
 
 // Keys is what was picked, however the answer spelled it: [Answer.Picked] where

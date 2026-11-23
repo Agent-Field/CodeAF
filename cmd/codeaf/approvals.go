@@ -107,6 +107,7 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 		if err := identity.EndSolo(d.dir); err != nil {
 			return tui3.PendingDevice{}, err
 		}
+		notePaired(d.dir, route)
 		return tui3.PendingDevice{}, tui3.ErrAlreadyPaired
 	}
 	if err != nil {
@@ -146,7 +147,13 @@ func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error
 				return err
 			}
 		}
-		return identity.EndSolo(d.dir)
+		if err := identity.EndSolo(d.dir); err != nil {
+			return err
+		}
+		if route, err := d.mailbox(""); err == nil {
+			notePaired(d.dir, route)
+		}
+		return nil
 	})
 }
 

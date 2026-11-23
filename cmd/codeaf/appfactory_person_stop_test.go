@@ -51,7 +51,7 @@ func TestFactoryPersonStopLaunchAuthorities(t *testing.T) {
 			// manager tools, queue admission and a fresh desk as well as Launch.
 			switch authority {
 			case "manager", "standing_item":
-				_, err = runDoor(host.floor, "", s.backend.localProfile()).(session.RunStarter).StartRun(context.Background(), it.Talk)
+				_, err = runDoor(host.floor, "", s.backend.localProfile()).(session.RunStarter).StartRun(context.Background(), it.Talk, "")
 				if !errors.Is(err, factory.ErrPersonStopped) {
 					t.Fatalf("manager tool admitted %s: %v", authority, err)
 				}
@@ -78,7 +78,7 @@ func TestFactoryPersonStopLaunchAuthorities(t *testing.T) {
 				}
 			case "other_job_manager", "crew":
 				// A different conversation cannot borrow this manager's identity.
-				_, err = runDoor(host.floor, "", s.backend.localProfile()).(session.RunStarter).StartRun(context.Background(), filepath.Join(t.TempDir(), "other-manager.jsonl"))
+				_, err = runDoor(host.floor, "", s.backend.localProfile()).(session.RunStarter).StartRun(context.Background(), filepath.Join(t.TempDir(), "other-manager.jsonl"), "")
 				if !errors.Is(err, factory.ErrNotManager) {
 					t.Fatalf("foreign manager identity accepted: %v", err)
 				}

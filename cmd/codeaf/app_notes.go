@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -31,6 +32,9 @@ var appNoteWords = map[error]string{
 	syncsetup.ErrNoteEmpty:        "The message is empty.",
 	syncsetup.ErrNoteLong:         "Messages to another computer are limited to 2000 characters.",
 	syncsetup.ErrNoOwnRecord:      "This computer isn't listed by sync yet. Try again in a moment.",
+	// The verb is not offered while storage is off, so this answers only a
+	// client that sent anyway or one connected before storage was switched off.
+	syncwords.ErrNotesWaitForStorage: "Sync storage is off for this account, so a message can't wait for another computer. Bring the chat here to write to it.",
 }
 
 // appNoteUnreachable is a message this computer could not leave because its
@@ -134,6 +138,14 @@ func (n *appNotes) endDrop(ids []string) {
 	for _, id := range ids {
 		delete(n.dropping, id)
 	}
+}
+
+// ChatsSendOffered is whether hello advertises chats.send: a message to a chat
+// another computer holds waits on the relay as sealed text, so it is on offer
+// only where the account may store that. It reads the saved storage answer and
+// makes no request, like every hello fact.
+func (b *appBackend) ChatsSendOffered() bool {
+	return syncsetup.StorageForHome(b.relayHome()) != "off"
 }
 
 // SendToChat leaves text for the computer holding p.Cell. It answers once the

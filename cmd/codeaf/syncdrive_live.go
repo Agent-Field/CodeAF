@@ -31,8 +31,9 @@ type liveDrive struct {
 	say     func(string)
 	notices *driveNotices
 	// transcript identifies the retained turns if this writer's final publish fails.
-	transcript string
-	localGate  *localToolGate
+	transcript   string
+	savedLocally func(string)
+	localGate    *localToolGate
 
 	// published is visible before idle release is enabled. Settings must not
 	// wait for installation or catch-up disk work under mu.
@@ -41,12 +42,13 @@ type liveDrive struct {
 	drive          *syncsetup.Drive
 	working        bool   // A turn may start before asynchronous startup finishes.
 	turn           uint64 // A newer turn retires the previous capture waiter.
-	parked         bool   // Startup awaits a journal owner.
+	turnStop       context.CancelFunc
+	parked         bool // Startup awaits a journal owner.
 	storageWaiting bool
 	waiting        bool // local setup or a retryable failure still permits another attempt
 	ready          chan struct{}
 	attempted      bool
-	closed         bool
+	closed         atomic.Bool
 	retry          *time.Timer
 	retryAt        time.Time
 	retryWait      time.Duration
@@ -105,7 +107,7 @@ func (l *liveDrive) afterFunc(d time.Duration, fn func()) func() bool {
 func (l *liveDrive) try() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.parked || l.closed || l.storageWaiting || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
+	if l.parked || l.closed.Load() || l.storageWaiting || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
 		return
 	}
 	// Seals and idle notifications cannot shorten the relay's requested wait.
@@ -155,7 +157,8 @@ func (l *liveDrive) abandonLocked() bool {
 	if !l.parked {
 		return false
 	}
-	l.parked, l.closed = false, true
+	l.parked = false
+	l.closed.Store(true)
 	close(l.ready)
 	l.ready = nil
 	return true
@@ -189,7 +192,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 	l.ready = nil
 	l.drive, l.waiting, l.attempted = d, errors.Is(err, syncsetup.ErrNoIdentity) || errors.Is(err, syncsetup.ErrQuiet) || syncwords.NetworkFailure(err), true
 	l.published.Store(d)
-	if d == nil && !l.closed {
+	if d == nil && !l.closed.Load() {
 		if r, ok := cellsync.RefusalOf(err); ok {
 			now := l.nowTime()
 			if l.refusedSince.IsZero() {
@@ -224,11 +227,11 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
 		l.retryWait = 0
-	} else if !l.closed && cellsync.Unreachable(err) {
+	} else if !l.closed.Load() && cellsync.Unreachable(err) {
 		l.retryStartup()
 	}
 	l.renewalChanged()
-	return l.closed
+	return l.closed.Load()
 }
 
 func (l *liveDrive) setIdleCheck(check func() bool) {
@@ -246,7 +249,7 @@ func (l *liveDrive) idleReady() bool {
 func (l *liveDrive) idleChecks() (check, surface func() bool, closed bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.idleCheck, l.surfaceIdle, l.closed
+	return l.idleCheck, l.surfaceIdle, l.closed.Load()
 }
 
 // retryStartup owns the next attempt after a transport failure. It runs under
@@ -261,7 +264,7 @@ func (l *liveDrive) retryStartup() {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		l.retry = nil
-		if !l.closed {
+		if !l.closed.Load() {
 			l.attempted = false
 		}
 	}
@@ -271,23 +274,14 @@ func (l *liveDrive) retryStartup() {
 	})
 }
 
-// openDrive is the started drive, or nil when none has started or this writer
-// has closed. It never starts one.
-func (l *liveDrive) openDrive() *syncsetup.Drive {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.closed {
-		return nil
-	}
-	return l.drive
-}
-
 // RenewalStatus reads an already-started drive without starting one or waiting.
 func (l *liveDrive) RenewalStatus() (time.Time, time.Duration, bool) {
-	if l == nil {
+	if l == nil || l.closed.Load() {
 		return time.Time{}, 0, false
 	}
-	d := l.openDrive()
+	// Fact publication can hold the conversation's RPC lock. Reading the
+	// published drive keeps it independent of startup and catch-up.
+	d := l.published.Load()
 	if d == nil {
 		return time.Time{}, 0, false
 	}
@@ -363,6 +357,10 @@ func (l *liveDrive) Working(on bool) {
 	l.try()
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.turnStop != nil {
+		l.turnStop()
+		l.turnStop = nil
+	}
 	l.turn++
 	l.working = on
 	if l.drive != nil {
@@ -370,31 +368,76 @@ func (l *liveDrive) Working(on bool) {
 	}
 }
 
-// TurnEnded waits off the turn goroutine so the final capture can include the
-// closing bookkeeping as before. A newer turn invalidates this notification:
-// an older capture must never clear the newer turn's working flag.
-func (l *liveDrive) TurnEnded(c cell.Cell, report func(error)) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	turn := l.turn
+// TurnEnded keeps the shared working flag until all work the reply left behind
+// is settled and captured. Background jobs and their owed wake-up replies are
+// part of the same handoff boundary as the foreground turn.
+func (l *liveDrive) TurnEnded(c cell.Cell, watch *cellstore.SealWatch) {
+	ctx, stop, turn, surface := l.beginTurnWait()
+	if stop == nil {
+		return
+	}
+	ready := func() bool { return (surface == nil || surface()) && watch.IdleForCapture() }
 	guard.Go("chat sync turn end", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
-		defer cancel()
-		if err := cellstore.WaitCapture(ctx, c); err != nil {
-			report(err)
-		}
-		if l.finishTurn(turn) {
-			l.Idle()
+		defer stop()
+		// This is a local readiness check, never a relay poll. A newer turn
+		// owns its own waiter; closing the drive retires every waiter.
+		timer := time.NewTimer(0)
+		defer timer.Stop()
+		capture := cellstore.WaitCapture
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			}
+			if !ready() {
+				timer.Reset(100 * time.Millisecond)
+				continue
+			}
+			within, cancel := context.WithTimeout(ctx, cellstore.SealWithin)
+			err := capture(within, c)
+			cancel()
+			if ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				watch.Report(err)
+				capture = cellstore.Captured
+				timer.Reset(cellstore.TailQuiet)
+				continue
+			}
+			if !ready() {
+				timer.Reset(100 * time.Millisecond)
+				continue
+			}
+			if l.finishTurn(ctx, turn) {
+				l.Idle()
+			}
+			return
 		}
 	})
 }
 
-// finishTurn changes the flag under one lock so a newer start cannot race
-// between the generation check and the end notification.
-func (l *liveDrive) finishTurn(turn uint64) bool {
+func (l *liveDrive) beginTurnWait() (context.Context, context.CancelFunc, uint64, func() bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.closed || l.turn != turn {
+	if l.closed.Load() {
+		return nil, nil, 0, nil
+	}
+	if l.turnStop != nil {
+		l.turnStop()
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	l.turnStop = stop
+	return ctx, stop, l.turn, l.surfaceIdle
+}
+
+// finishTurn changes the flag under one lock so a newer start cannot race
+// between the generation check and the end notification.
+func (l *liveDrive) finishTurn(ctx context.Context, turn uint64) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if ctx.Err() != nil || l.closed.Load() || l.turn != turn {
 		return false
 	}
 	l.working = false
@@ -430,7 +473,11 @@ func (l *liveDrive) Close(ctx context.Context) error {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		l.abandonLocked()
-		l.closed = true
+		l.closed.Store(true)
+		if l.turnStop != nil {
+			l.turnStop()
+			l.turnStop = nil
+		}
 		if l.retry != nil {
 			l.retry.Stop()
 			l.retry = nil
@@ -478,7 +525,7 @@ func (l *liveDrive) superseded() bool {
 func (l *liveDrive) driveAndClosed() (*syncsetup.Drive, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.drive, l.closed
+	return l.drive, l.closed.Load()
 }
 
 // started is the drive side if one ever started, without trying to start it.

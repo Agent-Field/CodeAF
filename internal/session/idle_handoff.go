@@ -29,8 +29,15 @@ func (a *Agent) idleForHandoff() bool {
 	if !a.mu.TryLock() {
 		return false
 	}
-	idle := a.opened && !a.closed && !a.running && len(a.steering) == 0 && len(a.followups) == 0 && len(a.ambient) == 0 && len(a.settling) == 0 && !a.jobWakePending
-	graph, jobs := a.tasks, a.jobs
+	// Ambient watch progress is only next-turn context. The job's log keeps
+	// it, and an active watch still blocks handoff through its job entry.
+	idle := a.opened && !a.closed && !a.running && len(a.steering) == 0 && len(a.followups) == 0 && len(a.settling) == 0 && !a.jobWakePending
+	// Read jobs while their replies cannot enter the agent's queues. An exit
+	// that closed done but still owes a callback stays in delivering.
+	if idle && a.jobs != nil {
+		idle = a.jobs.idleForHandoff()
+	}
+	graph := a.tasks
 	if a.config.tasker != nil {
 		graph = a.config.tasker
 	}
@@ -72,20 +79,6 @@ func (a *Agent) idleForHandoff() bool {
 			return false
 		}
 	}
-	if jobs != nil {
-		if !jobs.mu.TryLock() {
-			return false
-		}
-		for _, job := range jobs.jobs {
-			select {
-			case <-job.done:
-			default:
-				jobs.mu.Unlock()
-				return false
-			}
-		}
-		jobs.mu.Unlock()
-	}
 	// Readiness must never join deferred disk work on an admission boundary.
 	if !a.metaStamp().idle() || !a.modelStamp().idle() || !a.spendStamp().idle() || !a.toldStamp().idle() || !a.treesAhead().Idle() {
 		return false
@@ -101,4 +94,21 @@ func (a *Agent) idleForHandoff() bool {
 	}
 	defer lane.mu.Unlock()
 	return len(lane.queue) == 0 && lane.done == nil
+}
+
+func (r *jobRegistry) idleForHandoff() bool {
+	if !r.mu.TryLock() {
+		return false
+	}
+	defer r.mu.Unlock()
+	for _, job := range r.jobs {
+		select {
+		case <-job.done:
+		default:
+			return false
+		}
+	}
+	// Settlement is registered before done closes, so check it after all the
+	// channels read as closed.
+	return r.delivering.Load() == 0
 }

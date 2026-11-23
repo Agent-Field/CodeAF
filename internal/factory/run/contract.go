@@ -320,6 +320,10 @@ type Runner struct {
 	stepBegins    sync.Map
 	stopReaders   sync.Map
 	publishChecks sync.Map
+
+	// boundaries are each leased job's way to hear its factory between two
+	// rounds (task.go's SetBoundary).
+	boundaries sync.Map
 }
 
 // New makes a runner. It starts nothing until Launch.

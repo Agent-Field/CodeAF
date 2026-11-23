@@ -99,7 +99,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		}
 		it.State = factory.StateQueued
 		it.Failure = nil
-		it.Proof, it.Policy = nil, nil
+		it.ResetChecks()
 		it.PublishError = ""
 		it.PublishStatus = nil
 		if it.FollowUp != nil {

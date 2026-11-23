@@ -165,7 +165,10 @@ func TestAFlushThatHitsItsDeadlineSaysSoAndStoppingTheWriterIsTheJoin(t *testing
 
 	// Releasing projection lets stop join the writer after the timed-out flush.
 	release()
-	StopUsageWriter(path)
+	usageFlushLimit = previous
+	if !StopUsageWriter(path) {
+		t.Fatal("writer did not stop after releasing projection")
+	}
 	usageWritersMu.Lock()
 	_, kept := usageWriters[path]
 	usageWritersMu.Unlock()

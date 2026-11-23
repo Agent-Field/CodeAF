@@ -102,6 +102,7 @@ func (p *Publisher) publish(ctx context.Context, d *Driving, head string, in Pub
 		return ex, syncwords.UploadFailure(err)
 	}
 	d.Fence, d.Head, d.Frames, d.Size = fence, head, frames, in.Size
+	markEngineFrames(p.Engine, d.Cell, frames)
 	return ex, nil
 }
 
@@ -162,6 +163,9 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, ke
 	if err != nil {
 		return Export{}, nil, err
 	}
+	if !keep {
+		cacheOpenObjects(p.Engine, c, head, ex.Frames)
+	}
 	ex = p.skipHeld(ctx, c, ex)
 	ids := make([]string, 0, len(ex.Frames))
 	paths := make([]string, len(ex.Frames))
@@ -174,7 +178,7 @@ func (p *Publisher) uploadPlan(ctx context.Context, c cell.Cell, head string, ke
 		defer p.OnUpload(0, 0)
 	}
 	for i, f := range ex.Frames {
-		id, actualBytes, err := p.put(ctx, f)
+		id, actualBytes, err := p.put(ctx, c, head, f, !keep && i == len(ex.Frames)-1)
 		if err != nil {
 			if keep {
 				p.keepSent(ctx, c, paths[:i])
@@ -210,10 +214,13 @@ func (p *Publisher) keepSent(ctx context.Context, c cell.Cell, paths []string) {
 
 // put stores one frame and answers the id the store named it, which is what
 // the plan records: the store's own name for the frame, not a local guess.
-func (p *Publisher) put(ctx context.Context, f FrameFile) (string, int64, error) {
+func (p *Publisher) put(ctx context.Context, c cell.Cell, head string, f FrameFile, carryOpen bool) (string, int64, error) {
 	frame, err := os.ReadFile(f.Path)
 	if err != nil {
 		return "", 0, err
+	}
+	if carryOpen {
+		frame = appendOpenObjects(p.Engine, c, head, frame)
 	}
 	id, err := p.Store.PutFrame(ctx, frame)
 	return id, int64(len(frame)), syncwords.UploadFailure(err)

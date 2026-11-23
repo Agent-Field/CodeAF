@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -34,32 +33,32 @@ func phaseState(it factory.Item, name string) factory.PhaseState {
 	return ""
 }
 
-// Start is the person's word for the first step and every later step waits for
-// its own, on the real service, lease and worker road: "Manual: before every step".
-func TestManualAsksBeforeEachStepOnTheRealRoad(t *testing.T) {
+// MANUAL HOLDS NO STEP FOR THE PERSON'S WORD BEFORE IT RUNS (the owner's
+// decision of 2026-11-17). Manual is about the plan and about anything
+// public; it used to ask "test is next · continue?" before every step, on the
+// real service, lease and worker road, and now runs them on.
+func TestManualRunsEachStepWithoutAskingOnTheRealRoad(t *testing.T) {
 	g := newRig(t)
 	id := manualJob(t, g, named("write"), named("test"))
 	if err := g.floor.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	held := g.waitFor(t, id, factory.StateNeedsYou)
-	if phaseState(held, "write") != factory.PhaseDone || phaseState(held, "test") != factory.PhaseWaiting {
-		t.Fatalf("steps at the ask: %+v", held.Stream.Phases)
-	}
-	if held.QKind != factory.QKindApprove || held.Question != factory.NextStepQuestion("test") {
-		t.Fatalf("the ask = %q (%s)", held.Question, held.QKind)
-	}
-	if err := g.doors.Answer(id, true, ""); err != nil {
-		t.Fatal(err)
-	}
 	it := g.waitFor(t, id, factory.StateLanded)
-	if ph := it.Stream.Phases[1]; ph.State != factory.PhaseDone || ph.Result == nil || ph.Round != 1 {
-		t.Fatalf("the step did not run once after the yes: %+v", ph)
+	if phaseState(it, "write") != factory.PhaseDone || phaseState(it, "test") != factory.PhaseDone {
+		t.Fatalf("steps at landing: %+v", it.Stream.Phases)
+	}
+	for _, line := range it.Stream.Log {
+		if line.Tone == "ask" {
+			t.Fatalf("Manual asked before a step: %q", line.Text)
+		}
+	}
+	if ph := it.Stream.Phases[1]; ph.Result == nil || ph.Round != 1 {
+		t.Fatalf("the step did not run once: %+v", ph)
 	}
 }
 
-// An approve step just passed already asked about the step after it.
-func TestManualDoesNotAskTwiceAfterAnApproveStep(t *testing.T) {
+// The pipeline's own approve step still asks, once, and the step after it runs.
+func TestManualStillAsksAtAnApproveStep(t *testing.T) {
 	g := newRig(t)
 	id := manualJob(t, g, named("plan"), factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate, On: true}, named("write"))
 	if err := g.floor.Launch(id); err != nil {
@@ -71,26 +70,6 @@ func TestManualDoesNotAskTwiceAfterAnApproveStep(t *testing.T) {
 	}
 	if it := g.waitFor(t, id, factory.StateLanded); phaseState(it, "write") != factory.PhaseDone {
 		t.Fatalf("steps: %+v", it.Stream.Phases)
-	}
-}
-
-// A no is the approve step's no: the step before runs again with the words, and
-// the next step asks again once it finishes.
-func TestManualNoBeforeAStepSendsTheOneBeforeBack(t *testing.T) {
-	g := newRig(t)
-	id := manualJob(t, g, named("write"), named("test"))
-	if err := g.floor.Launch(id); err != nil {
-		t.Fatal(err)
-	}
-	g.waitFor(t, id, factory.StateNeedsYou)
-	if err := g.doors.Answer(id, false, "use the other file"); err != nil {
-		t.Fatal(err)
-	}
-	var again factory.Item
-	for again = g.waitFor(t, id, factory.StateNeedsYou); again.Stream.Phases[0].Round < 2; again = g.waitFor(t, id, factory.StateNeedsYou) {
-	}
-	if again.Stream.Phases[1].Round != 0 || again.Stream.Phases[1].State != factory.PhaseWaiting {
-		t.Fatalf("after the no: %+v", again.Stream.Phases)
 	}
 }
 
@@ -112,93 +91,32 @@ func TestAutoDoesNotAskBeforeSteps(t *testing.T) {
 	}
 }
 
-// The person's yes reaches a job no worker holds (the worker restarted while the
-// ask stood): the step runs when a worker pulls it, without asking a second time.
-func TestManualYesOnAnUnheldJobIsNotAskedAgain(t *testing.T) {
+// A JOB SAVED WHILE IT WAITED ON MANUAL'S OLD HOLD STILL TAKES ITS ANSWER. The
+// hold is no longer made, but a job stopped on "test is next" before the
+// change is still there: a yes queues the step, and it runs when a worker
+// pulls it; a no sends the step before it back with the words.
+func TestAJobSavedOnManualsOldHoldStillTakesItsAnswer(t *testing.T) {
 	it := factory.Item{ID: 1, Autonomy: factory.AutonomyManual, State: factory.StateNeedsYou, QKind: factory.QKindApprove, Question: factory.NextStepQuestion("test"),
 		Stages: []factory.Stage{named("write"), named("test")},
 		Stream: &factory.Stream{Cur: 1, Phases: []factory.Phase{
 			{Name: "write", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 1},
 			{Name: "test", Kind: factory.StageCheck, State: factory.PhaseWaiting},
 		}}}
+	if kind := factory.NeedsKind(it); kind != factory.NeedsApproveStep {
+		t.Fatalf("the saved hold reads as %q", kind)
+	}
 	no := it
 	no.Stream = &factory.Stream{Cur: 1, Phases: append([]factory.Phase(nil), it.Stream.Phases...)}
 	if err := run.AnswerUnheld(&it, true, "", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if it.State != factory.StateQueued || factory.AsksBeforeStep(it, 1) {
-		t.Fatalf("after a yes: %s, asks again %v, %+v", it.State, factory.AsksBeforeStep(it, 1), it.Stream.Phases)
+	if it.State != factory.StateQueued || it.Question != "" || it.Stream.Phases[1].State != factory.PhaseRunning {
+		t.Fatalf("after a yes: %s %q %+v", it.State, it.Question, it.Stream.Phases)
 	}
 	if err := run.AnswerUnheld(&no, false, "use the other file", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if p := no.Stream.Phases; no.State != factory.StateQueued || p[0].State != factory.PhasePending || p[0].Round != 2 || p[1].State != factory.PhasePending || p[1].Round != 0 {
 		t.Fatalf("after a no: %s, %+v", no.State, p)
-	}
-}
-
-// A step that has run is the same step when it runs again: retries, and a later
-// check sending it back, do not ask. A switch to Manual applies from the next
-// step that has not run, as the job page says.
-func TestManualAsksOnlyBeforeAStepsFirstRound(t *testing.T) {
-	it := factory.Item{Autonomy: factory.AutonomyManual, Stream: &factory.Stream{Phases: []factory.Phase{
-		{Name: "write", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1},
-		{Name: "test", Kind: factory.StageCheck, State: factory.PhasePending, Round: 2},
-		{Name: "review", Kind: factory.StageChat, State: factory.PhasePending},
-	}}}
-	if factory.AsksBeforeStep(it, 1) {
-		t.Fatal("a step sent back asked as if it were new")
-	}
-	it.Stream.Phases[1] = factory.Phase{Name: "test", Kind: factory.StageCheck, State: factory.PhaseDone, Round: 2}
-	if !factory.AsksBeforeStep(it, 2) {
-		t.Fatal("a new step did not ask")
-	}
-	it.Autonomy = ""
-	if factory.AsksBeforeStep(it, 2) {
-		t.Fatal("a record with no saved mode gained asks it never had")
-	}
-}
-
-// The job page's Request changes goes through the revision door, with the job's
-// version, and the step sent back runs again and the ask comes back.
-func TestManualRequestChangesThroughTheRevisionDoorAsksAgain(t *testing.T) {
-	g := newRig(t)
-	id := manualJob(t, g, named("write"), named("verify"), named("review"))
-	if err := g.floor.Launch(id); err != nil {
-		t.Fatal(err)
-	}
-	g.waitFor(t, id, factory.StateNeedsYou)
-	if err := g.doors.Answer(id, true, ""); err != nil {
-		t.Fatal(err)
-	}
-	var held factory.Item
-	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-		held, _ = g.st.Get(id)
-		if held.Question == factory.NextStepQuestion("review") {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("never asked before review: %s %+v", held.State, held.Stream)
-		}
-	}
-	desk, err := lease.Open(g.st, lease.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	version, err := g.st.Revision(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := lease.NewDoors(desk).RejectPlan(id, version, "check it once more", nil); err != nil {
-		t.Fatal(err)
-	}
-	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-		it, _ := g.st.Get(id)
-		if it.State == factory.StateNeedsYou && it.Question == factory.NextStepQuestion("review") && it.Stream.Phases[1].Round == 2 {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("never asked again: %s %q %+v", it.State, it.Question, it.Stream)
-		}
 	}
 }

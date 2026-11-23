@@ -42,7 +42,8 @@ var offering atomic.Bool
 
 // Offer shares a grant with the next device that types the code, and answers
 // when a pairing has finished, been refused, or run out of time. A wrong code
-// is not an ending: it burns the code and the loop offers another.
+// is not an ending: it burns the code and the loop offers another. Nothing of
+// the grant leaves, and its BeforeSend does not run, until a person approves.
 //
 // It returns the name the joining device gave itself when it was let in.
 func Offer(ctx context.Context, route Mailbox, grant Grant, ui OfferUI) (string, error) {
@@ -92,8 +93,10 @@ func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI, burn
 	// The relay's own reckoning of the lifetime, and not this device's clock.
 	ctx, stop := context.WithTimeout(ctx, made.ExpiresIn)
 	defer stop()
-	link := &boxLink{ctx: ctx, box: route.Box, plate: made.Nameplate, mine: pairbox.SideA, theirs: pairbox.SideB,
-		key: key, gone: map[stage]error{awaitStart: ErrDidNotFinish, awaitOffer: ErrDidNotFinish}, sendGone: ErrDidNotFinish}
+	// A mailbox that vanishes after the answer went out is not a pairing that
+	// finished: the joining device never said it kept the answer.
+	link := &boxLink{ctx: ctx, box: route.Box, plate: made.Nameplate, mine: pairbox.SideA, theirs: pairbox.SideB, key: key,
+		gone: map[stage]error{awaitStart: ErrDidNotFinish, awaitOffer: ErrDidNotFinish, awaitAck: ErrNotConfirmed}, sendGone: ErrDidNotFinish}
 	joiner, err := answer(link, chatScheme(made.Nameplate), code.secret())
 	if err != nil {
 		return "", made.Nameplate, phraseBox(err, route.URL)
@@ -121,6 +124,16 @@ func createApart(ctx context.Context, box pairbox.Box, key pairbox.Key, burned s
 
 // conclude puts the joining device to a person and sends the answer: the grant
 // for a yes, a refusal for a no or for silence.
+//
+// A YES FINISHES ONLY WHEN THE JOINING DEVICE SAYS IT KEPT THE GRANT. It says
+// so once it has decided to, so a device that refuses what it was sent (chats
+// of its own, say) leaves this one saying it was not confirmed, and naming the
+// device where a person can read why, instead of saying they are paired.
+//
+// The grant's BeforeSend runs between the yes and the answer: after a pairing
+// that a cancel or the code's end overtook has stopped, so neither ends solo
+// with nothing sent, and before the identity leaves, so it never leaves a
+// computer that still says it is solo.
 func conclude(ctx context.Context, joiner *offered, grant Grant, ui OfferUI) (string, error) {
 	label := joinerLabel(joiner.Offer)
 	asked, stop := context.WithTimeout(ctx, ConfirmWithin)
@@ -133,7 +146,27 @@ func conclude(ctx context.Context, joiner *offered, grant Grant, ui OfferUI) (st
 	if err != nil {
 		return "", err
 	}
+	// A yes that arrives after a person stopped the pairing, or after the code
+	// ran out, is not one to act on.
+	if err := ctx.Err(); err != nil {
+		return "", phraseBox(err, "")
+	}
+	if grant.BeforeSend != nil {
+		if err := grant.BeforeSend(); err != nil {
+			// The person said yes, but this computer cannot send what it
+			// promised: the joining device hears no, and this one says why,
+			// in its own words rather than as a refusal.
+			_ = joiner.reply(sayVerdict("refused"))
+			return "", err
+		}
+	}
 	if err := joiner.reply(reply); err != nil {
+		// Once the answer may have gone out, every ending without the joining
+		// device's word is not confirmed, a person's stop included: the grant
+		// may be there, so this computer never says nothing was paired.
+		if errors.Is(err, ErrNotConfirmed) || errors.Is(err, context.Canceled) {
+			return "", NotConfirmedBy(label)
+		}
 		return "", phraseBox(err, "")
 	}
 	return label, nil

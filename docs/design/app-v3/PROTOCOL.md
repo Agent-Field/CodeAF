@@ -81,6 +81,17 @@ decides which combinations are accepted.
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
 
+`agents.stop` is a bounded stop. It interrupts the running turn and answers at
+once; a turn that has still not let go ten seconds later (one parked on a wait
+that never reads its cancelled context) is abandoned by the engine: its stream
+closes, the turn ends `turn.done` with `error_kind: stopped` and the "Stopped by
+you" footer as any stopped turn does, and the next `agents.send` opens an
+ordinary turn. The conversation's journal records the turn as let go of, with
+what it had spent. A running factory stage lent to the app, and a turn the
+factory's runner gives a job manager the app holds open, are interrupted but
+never abandoned from here: the runner reads those turns to their end. The job's
+own Stop ends them. A person's own turn in a job manager's chat keeps the bound.
+
 ## Conversation work scope
 
 `agents.set_scope {id, scope}` answers `{id, scope}` with the stored word.
@@ -359,6 +370,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.preview` | `{cell}` | `{last_user?: string, last_assistant?: string}` |
 | `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
 ## pair methods
@@ -403,6 +415,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.agentfield_run` | `in.FactoryAgentFieldRunParams` | `FactoryAgentFieldRun` |
 | `factory.agentfield_reasoners` | `in.FactoryAgentFieldReasonersParams` | `FactoryAgentFieldReasoners` |
 | `factory.foreman_open` | `in.FactoryRef` | `FactoryForeman` |
+| `factory.foreman_fresh` | `in.FactoryRef` | `FactoryForeman` |
 | `factory.job_send` | `in.FactoryJobSendParams` | `FactoryJobSent` |
 | `factory.job_close` | `in.FactoryJobActionParams` | `FactoryJobActed` |
 | `factory.job_control` | `in.FactoryJobControlParams` | `FactoryJobActed` |
@@ -1341,7 +1354,7 @@ first two segments (`"internal/factory/"`), and a file directly inside one is
 the container (`"internal/"`). Every response that carries the job says the
 same area. It is absent when the job changed no file or only files at the root.
 
-### Factory job facts (`factory.job_source`, `factory.job_steps`, `factory.job_runs_on`)
+### Factory job facts (`factory.job_source`, `factory.job_steps`, `factory.job_runs_on`, `factory.job_merge_offered`)
 
 Each fact below is computed once in the engine (`internal/factory`) and sent on
 every job of `factory.queue` and on `factory.job`; a client draws it and never
@@ -1382,6 +1395,81 @@ them, which reads as unknown.
   person's pick for the job, `factory_model` the default it was queued under,
   and `step.model` the model a step ran on; a worker's report never carries
   `runs_on`.
+- `factory.job_merge_offered`: `merge_offered_at` (RFC 3339) is when the job's
+  manager last offered the person the merge of its open pull request again
+  (`factory_answer` action `offer_merge`, through `POST
+  /v1/jobs/{id}/offer_merge`), which it does when the person asks to merge or
+  whether the job is ready to, and only while the merge gate offers Merge. A
+  client brings the job's Merge card up again, as it stands now, when the value
+  moves. Absent when never re-offered. It merges nothing.
+
+Public acts (no hello word yet; the app does not read them in this phase). A
+job carries `acts`, the public acts on its own pull request, oldest first:
+those that wait for the person's yes, those the factory is carrying out with
+the person's GitHub sign-in, and the last 20 that are over. Absent when the job
+has none.
+
+- Each act: `id`, `kind` (`edit_pr`, `change_base`, `reply`, `comment`,
+  `resolve_thread`, `rerequest_review`, `rerun_checks`, `mark_ready`), the
+  kind's own content (`title`, `body`, `base`, `thread`, `text`, `reviewers`),
+  `by` (`main_agent` or `you`), `why`, `at`, `state` (`proposed`, `approved`,
+  `running`, `done`, `failed`, `declined`), `approved_by`, and once it is over
+  `result` (what it did, or the person's words on a decline), `error` (why it
+  failed), `url` and `done_at`. `text` is a reply's or a comment's words
+  exactly as they are posted, with the footer line "Posted by a WorkAF factory
+  agent." already on. `after_push` is the commit whose push an approved act
+  waits for.
+- While acts are `proposed` the job's `wait` is `{who: "you", action:
+  "approve_acts", words: "Approve: post 2 replies and change the base to
+  dev?"}`, unless a narrower action of the person's is already waiting (a push
+  to approve, a merge, the budget, a question): that wait stays and its `words`
+  name the acts. `offers` then carries `acts_approve` and `acts_decline`.
+- `POST /v1/jobs/{id}/act` with `{acts: [{kind, ...}], by, why?, expect?}`
+  proposes acts; an act is approved at once when `by` may (the person, or the
+  job's manager in Auto) and waits as `proposed` otherwise. `push`, `open_pr`
+  and `merge` are accepted as kinds and never stored: a push presses or points
+  at the waiting publish approval, and a merge only offers the merge card
+  again. A proposal with one act the job refuses is refused whole.
+- `POST /v1/jobs/{id}/acts_approve` with `{ids?, expect?}` is the person's one
+  yes to every act that waits (`ids`, when sent, must be exactly the acts
+  waiting, or the answer is 409); `POST /v1/jobs/{id}/acts_decline` with
+  `{words?, expect?}` is their one no. Approving a waiting publish approval
+  (`approve`) approves the waiting acts with it; they are carried out after
+  that push has landed.
+- All three answer `{factory, job, results: [{id?, kind, state, words}],
+  waiting?, acts?, wait?}`. `expect` is the job's version as a number, or the
+  usual `{version, state, step}` object.
+- `pr.feedback_items[]` gains `Thread` (the review thread's node id),
+  `CommentID`, `ReplyTo`, `By`, `Association` (GitHub's word for the author's
+  standing) and `Untrusted` (anyone who is not an owner, member or
+  collaborator); `pr.reviews[]` gains `association` and `untrusted`; `pr.title`
+  is the pull request's title once an act has edited it.
+
+An extra task (no hello word yet). `POST /v1/jobs/{id}/task` with `{words,
+now?, by?, expect?}` sends a delegate into the job's checkout with `words` as
+its instructions; `by` is `main_agent` or `you`. It answers `{factory, step,
+runs}`: `step` is the step it runs as (`task`, `task2`, …, or `followpr` on a
+job whose pull request is open) and `runs` is `now` or `after_round`. A
+refusal is 409 with the reason in `error`. A task step is on the job's `steps`
+with its instructions as `ask` and who asked as `by`; a task that waits for a
+running Follow PR round is `follow_up.next`. `offers` carries `task` wherever
+one is taken.
+
+A stop the job's manager decides first (no hello word yet). A job that stops
+on something its manager may decide (out of rounds, a step's question, a failed
+step, results not saved, a failed publish that was approved, a Follow PR stop)
+stores `wait: {who: "main_agent", what: <the action the person would be asked
+for>, deadline}` and is read by the app as running, with `state_presentation`
+`{kind: "running", title: "Running", detail: "The main agent is deciding what
+to do."}` and no `needs_you`; `wait` and `offers` stay as stored. When the
+manager's one turn has not moved the job, the job reads as it would have:
+`needs_you`, and `wait.who` `you`. `POST /v1/jobs/{id}/manager_decide` with
+`{decision, step?, words?}` is the manager's decision: `another_round`,
+`send_back`, `rerun`, `accept`, `resume_pipeline`, `retry_publish`,
+`wait_github` or `hand_to_person`. A decision that does not fit the stop, a
+third time the manager puts one step back to work, and any stop that is the
+person's alone (an approval of something public in Manual, the merge, the
+budget, a take-over) are refused with 409 and a sentence in `error`.
 
 An engine whose hello carries the feature `factory.estimate` reads an issue
 with a complexity rubric and measures cost from its own finished jobs; a model
@@ -1655,10 +1743,14 @@ saved model. Provider health is transient and is not saved in setup. hello says
 |---|---|---|
 | `inbox.answer` | `{id, option, scope, text, why}` | `UndoUntilResult` |
 | `inbox.back` | `in.IDParams` | `Empty` |
+| `inbox.dismiss` | `in.IDParams` | `Empty` |
 | `inbox.later` | `in.IDParams` | `Empty` |
 | `inbox.list` | `{list, query}` | `ItemsCountsResult` |
 | `inbox.open` | `in.IDParams` | `AgentTaskResult` |
 | `inbox.undo` | `in.IDParams` | `Empty` |
+
+Hello says `inbox.dismiss` when the engine serves `inbox.dismiss`; a client offers
+Dismiss only then.
 
 ## keys methods
 
@@ -1683,6 +1775,19 @@ which queues nothing. `keys.set` takes `github`, `jira`, `agentfield` and
 | method | params | result |
 |---|---|---|
 | `credentials.take` | `Empty` | `CredentialsTaken` |
+| `credentials.ready` | `Empty` | `Empty` |
+| `credentials.confirm` | `{ticket, applied}` | `Empty` |
+
+`credentials.ready` is also a hello feature. The native host calls it after its
+secure-store hand-back is complete, including a successful read of an empty store.
+Provider key sync stays idle until then. A provider change in `credentials.take`
+has a nonzero `ticket` and an `expected_key` (empty when the store had no key).
+The host compares the current stored key before persisting the proposed key or
+removal, then calls `credentials.confirm` with the ticket and result. The engine
+accepts a successful confirmation only while the captured local revision still
+matches. Failed writes can retry for the ticket's remaining lifetime. A client
+without these methods still uses the original `credentials.take` behavior for
+credentials entered through factory doors.
 
 ## manual methods
 
@@ -2023,6 +2128,10 @@ this optional field; older engines provide no Library breakdown.
 | `sync.acknowledge` | `in.IDParams` | `Empty` |
 | `sync.get` | `{}` | `SyncResult` |
 
+When `sync.storage.live_transfer` is true, the paired computers can move a chat
+by blind pass-through while both are running, with sync storage still off.
+The field is optional and does not indicate that provider keys can sync.
+
 ## tasks methods
 
 | method | params | result |
@@ -2111,6 +2220,7 @@ and the reply is empty.
 | `deliverable.changed` | `DeliverableChanged` |
 | `devices.changed` | `DevicesResult` |
 | `entry.added` | `EntryAdded` |
+| `factory.foreman_changed` | `FactoryForemanChanged` |
 | `factory.jobs_changed` | `FactoryJobsChanged` |
 | `factory.sessions_changed` | `Empty` |
 | `factory.event` | `FactoryEvent` |
@@ -2228,10 +2338,23 @@ unavailable. `pair.start` starts one operation; a concurrent start is `busy`.
 Questions carry engine text and explicit options; copy their ids to
 `pair.answer`. `pair.cancel` waits for cleanup. `pair.get` without an id returns
 this process's current or last finished operation. Every snapshot has a lines
-array, including when empty. Final states emit exactly once. Joining with local
-chats first asks `replace_own_chats`; joining with live work is `busy`. A join
-that changes this computer's shared keys finishes with `restart:true`: restart
-the engine before sending work. Device and sync snapshots precede done.
+array, including when empty. Final states emit exactly once. Joining with live
+work is `busy`. A join refuses what this computer already holds, and changes
+nothing: chats that already sync with other computers, or chats of its own. It
+refuses before the other computer is asked whenever this computer's directory
+says so, and otherwise after the approval; either way the failure's `error.code`
+is `cannot_join`, because a new code or link would end the same way. The engine
+no longer asks `replace_own_chats` (the kind stays for older engines). The
+computer that showed the code finishes `done` only once the joining computer
+says it kept what it was sent; without that word it fails, with a message that
+names the other computer, including when the person cancels after answering yes. While `offer_code` shows a code, a computer that has
+never paired keeps Sync and Devices in mode `quiet`: they turn `on` only when a
+person answers yes and its identity is sent, and stay `on` after that even if
+the pairing then fails (both are emitted again before that failure). A code that
+is cancelled, runs out, is answered no or is used up by a wrong code leaves them
+`quiet`. A join that changes this computer's shared keys finishes with
+`restart:true`: restart the engine before sending work. Device and sync
+snapshots precede done.
 
 `sync.relay` advertises `Sync.relay`: resolved URL, source (`environment`,
 `paired`, `default`, `none`) and `off`. The source follows CODEAF_SYNC_URL, the
@@ -2255,7 +2378,9 @@ when sync is off or unavailable; in those modes `chats.list` returns `[]`.
 Never-paired homes also return `[]` without contacting a relay. The first
 inventory read starts one shared Sync.Follow subscription; later version
 changes reread and diff rows. Presence changes update cached online facts
-without a directory read. No inventory polling timer runs. Kept branches are
+without a directory read. While live transfer is active, the follower also
+refreshes cached titles from paired holders over the encrypted files door.
+The titles are never added to directory records. Kept branches are
 outside this v1 inventory. Crew is omitted because relay rows carry no crew
 membership; the local Agent keeps its existing crews.
 
@@ -2283,6 +2408,12 @@ is here can still say it; a followed inventory emits the row again when the take
 starts and when it ends without moving the chat. Once a take has acquired the
 chat, rows that still show it elsewhere keep `taking:true` until a row says the
 chat is here or a later take holds it, even when opening the moved chat fails.
+`chats.preview` in `hello` advertises a read of the selected saved conversation.
+The optional row field `can_preview` says a saved head appears readable. The
+result contains short text excerpts, with either field omitted when empty.
+The read uses store frames or the holder’s encrypted files door. It takes no
+lease and installs no local copy of the chat or its workspace.
+
 A client that stopped waiting for a take reads `taking:false`
 on a chat still elsewhere as a take that did not move it.
 
@@ -2334,7 +2465,12 @@ it, rows never say `working`, so a client says "open there", not "idle there".
 It is display only: `agents.take` does not consult it.
 
 `chats.send {cell, text, client_id?}` leaves a message for whichever computer
-holds the chat; `chats.send` in `hello` says it exists. The message travels in
+holds the chat; `chats.send` in `hello` says it exists, and it is absent while
+the account's hosted sync storage is off, because a waiting message is sealed
+text kept on the relay (a send that arrives anyway is refused with "Sync storage
+is off for this account, so a message can't wait for another computer. Bring the
+chat here to write to it." and leaves nothing there; a self-hosted relay and an
+approved account always have it). The message travels in
 this device's own directory record (`outbox`, sealed under the metadata key,
 at most 8 messages of at most 2000 bytes), only to a relay that answers
 `Codeaf-Chat-Notes: 1`; a relay that does not is refused with "This sync
@@ -2645,11 +2781,70 @@ Only the factory this engine serves is accepted; any other is `not_found`, as
 
 The Factory manager reads only the floor of the factory home it belongs to, through
 `factory_floor`: `ask` is `running`, `queue` (not started, most urgent then
-oldest), `waiting`, `shipped` (shipped today, with pull requests and changes),
-`risky`, `cheapest`, `oldest`, `all` or `item`. When the person asks, `start`
+oldest), `waiting`, `needs_you` (waiting on the person now, longest wait
+first), `shipped` (shipped today, with pull requests and changes),
+`risky`, `cheapest`, `oldest`, `all` or `item`. Every row says the job's stored
+wait and the actions it offers the person (the job's `wait` and `offers`). When the person asks, `start`
 starts one job and `priority` (`p0`–`p3`, with `item`) sets one job's priority,
 each through the same factory verb the job page's own Start and priority send,
-as the person. It never stops, ships, merges or posts.
+as the person. `press` (with `item`) sends, as the person, the job verb of one
+action the job offers them now (approve, answer, merge, pr-ready, acts_approve,
+task and the rest), and `tell` (with `item`) gives the job's main agent one turn
+of its own conversation with the person's words. Both are refused on a turn
+that carries no words of the person's own. No new wire method or event is
+involved: the desk sees the job change as it does after its own buttons. It
+never stops or drops a job. `repos` lists every
+repository with its jobs counted by state, `shipped` takes `days` (1 is today
+and the default, at most 90) and counts the pull requests merged, and every
+answer but `item` and `repos` says the whole factory's counts by state on its
+first line. One read or act waits a bounded time on the factory (20 s to read,
+60 s to act) and then answers that the factory did not, so a floor that never
+answers cannot hold the turn open.
+
+The open is the person's own: a Factory manager they closed or archived is
+taken out of Closed and answered open. Opens are answered one at a time, so two
+asks at once are answered the same manager.
+
+The Factory manager's conversation is the factory's on disk (a mark beside its
+journal), so `agents.open` and every other reading answer it `factory_owned`
+after a relaunch too, and it is left out of `agents.list`. A manager made
+before the mark existed takes it when the factory starts or when it is next
+opened, and an app that had already read it as an ordinary chat is sent
+`agent.changed` with `factory_owned: true`.
+
+A manager whose conversation works in a folder the factory refuses for its
+chats (the codeaf home, a folder above it, or a folder inside it outside the
+factory's own areas; one made by a build that gave it the engine's own folder)
+is made again in `<floor>/chats/foreman`. This happens as the factory on this
+machine starts, and on `factory.foreman_open` if it had not happened yet, so a
+tab the app brings back never writes to the old one as the manager. The
+conversation it replaces is stopped and archived after the new one is
+answered, on a best effort, and is no longer the factory's: it reads
+`factory_owned: false`, as one of the person's own chats in Archived, titled
+"Factory manager (earlier)" when its title was still the manager's own.
+
+Whenever the engine replaces the manager (here, by `factory.foreman_fresh`, or
+when a start or open finishes retiring an earlier manager left behind by an
+interrupted replacement)
+it sends the event `factory.foreman_changed {factory, agent, replaced}`:
+`agent` is the manager now and `replaced` the conversation that no longer is.
+A window showing `replaced` swaps it for `agent`; without the event a tab the
+app brought back went on showing the old conversation under the manager's name.
+
+### Starting the Factory manager over (`factory.foreman_fresh`)
+
+The hello feature `factory.foreman_fresh` announces the app's Clear for the
+Factory manager. `factory.foreman_fresh {factory}` answers `{factory, agent}`
+as the open does, but `agent` is a NEW conversation with only the manager's
+brief in it; it takes the manager's place (every later `factory.foreman_open`
+answers it) and its `@foreman` handle. It opens on the default model and
+settings, not the old conversation's. The conversation it replaces is stopped
+and archived after the new one is answered, on a best effort: its history
+stays on disk, and it is one of the person's own chats from then on
+(`factory_owned: false`). A manager has this where another conversation has
+Archive, because it is the factory's one conversation with one door: archived,
+that door opened a chat nobody could write to. Only the factory this engine
+serves is accepted.
 ### factory.job_publish_anyway
 
 Hello feature `factory.publish_anyway` advertises this person action. Params:

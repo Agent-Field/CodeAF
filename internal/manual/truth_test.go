@@ -108,6 +108,12 @@ func TestEveryFigureAChatPageQuotesComesFromTheCodeThatOwnsIt(t *testing.T) {
 // crew's own three by five — is appended by [crewFacts].
 func quotedFacts(t *testing.T) []quotedFact {
 	t.Helper()
+	stopSeconds := sourceDurationNumber(t, "../session/abandon.go", "StopGrace", "Second")
+	stopWords, notStopWords := counted(stopSeconds)
+	floorReadSeconds := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "floorReadWait", "Second"))
+	floorActSeconds := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "floorActWait", "Second"))
+	floorShippedDays := strconv.Itoa(sourceNumber(t, "../session/tools_floor.go", "floorShippedDaysMost"))
+	floorTellMinutes := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "FloorTellWait", "Minute"))
 	seats, notSeats := counted(len(crewroute.Seats))
 	decay, notDecay := counted(sourceNumber(t, "../router/crew.go", "redoDecayAfter"))
 	steps, notSteps := counted(sourceNumber(t, "../router/crew.go", "redoOffsetCeiling"))
@@ -182,11 +188,50 @@ func quotedFacts(t *testing.T) []quotedFact {
 		// THE STOP'S BOUND IS A NAMED CONSTANT AND THE PAGES QUOTE IT, so a
 		// ruling that moves the bound moves the manual in the same change
 		// rather than leaving two pages promising a window that is gone.
-		fact: "how long a stop waits before it detaches", owner: "tui3.stopGrace",
-		value: strconv.Itoa(sourceNumber(t, "../tui3/app.go", "stopGrace")),
+		fact: "how long a stop waits before it detaches", owner: "session.StopGrace",
+		value: strconv.Itoa(stopSeconds),
 		quotes: []quotedIn{
 			{"keys", "bounded at %s seconds"},
 			{"screen", "bounded at %s seconds"},
+		},
+	}, {
+		fact: "how long the app's stop waits before the engine lets the turn go", owner: "session.StopGrace",
+		value: stopWords, others: notStopWords,
+		quotes: []quotedIn{
+			{"factory", "a turn that has still not let go %s seconds later is let go of by the engine"},
+		},
+	}, {
+		fact: "how long a factory_floor read waits on the factory", owner: "session.floorReadWait",
+		value: floorReadSeconds,
+		quotes: []quotedIn{
+			{"factory", "One `factory_floor` read waits at most %s seconds on the factory"},
+			{"factory", `"the factory did not answer within %s seconds"`},
+		},
+	}, {
+		fact: "how long a factory_floor start, priority or selection waits on the factory", owner: "session.floorActWait",
+		value: floorActSeconds,
+		quotes: []quotedIn{
+			{"factory", "and a start, a priority or a selection %s seconds"},
+			{"factory", `seconds" (or %s) and the turn goes on`},
+		},
+	}, {
+		fact: "how long a factory_floor press waits on the factory", owner: "session.floorActWait",
+		value: floorActSeconds,
+		quotes: []quotedIn{
+			{"factory", "or a selection %s seconds (a press too)"},
+		},
+	}, {
+		fact: "how long words the Factory manager passes to a job's main agent wait for its turn", owner: "session.FloorTellWait",
+		value: floorTellMinutes,
+		quotes: []quotedIn{
+			{"factory", "The turn is charged to the job's budget and is stopped after %s minutes"},
+			{"factory", "wait for its whole turn, which is stopped after %s minutes"},
+		},
+	}, {
+		fact: "how many days back factory_floor shipped reads at most", owner: "session.floorShippedDaysMost",
+		value: floorShippedDays,
+		quotes: []quotedIn{
+			{"factory", "(1 is today and the default, at most %s)"},
 		},
 	}, {
 		fact: "the run supervisor's re-ask cadence", owner: "run.passInterval",

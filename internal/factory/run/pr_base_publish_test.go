@@ -14,9 +14,13 @@ func TestPublishPRBaseSyncRequiresTheVerifiedBase(t *testing.T) {
 		merge       bool
 		baseRace    bool
 		noPRBranch  bool
+		forgeBehind bool
 		wantRefusal string
 	}{
 		{name: "publish verified merge", merge: true},
+		// The base sync merged the base branch's live head; the forge still
+		// records the base the PR's last push left, which that head contains.
+		{name: "forge still records an older base", merge: true, forgeBehind: true},
 		{name: "base moved before publishing", merge: true, baseRace: true, wantRefusal: "base"},
 		{name: "approved head omits the base", wantRefusal: "base"},
 		{name: "existing PR branch unknown", merge: true, noPRBranch: true, wantRefusal: "branch"},
@@ -57,6 +61,9 @@ func TestPublishPRBaseSyncRequiresTheVerifiedBase(t *testing.T) {
 			}
 			fresh := pr
 			fresh.BaseSHA = remoteBase
+			if tc.forgeBehind {
+				fresh.BaseSHA = original
+			}
 			if tc.noPRBranch {
 				fresh.HeadBranch = ""
 			}
@@ -80,7 +87,7 @@ func TestPublishPRBaseSyncRequiresTheVerifiedBase(t *testing.T) {
 				}
 				return
 			}
-			if it.PublishStatus == nil || it.PublishStatus.State != "opened" || it.PullRequest == nil || it.PullRequest.Number != pr.Number || it.PullRequest.HeadSHA != head || it.PullRequest.BaseSHA != base {
+			if it.PublishStatus == nil || it.PublishStatus.State != "opened" || it.PullRequest == nil || it.PullRequest.Number != pr.Number || it.PullRequest.HeadSHA != head || it.PullRequest.BaseSHA != fresh.BaseSHA {
 				t.Fatalf("verified sync did not publish to the existing PR: %+v, %+v", it.PublishStatus, it.PullRequest)
 			}
 			if got := remoteTip(t, g, prBranch); got != head {

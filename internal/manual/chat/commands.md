@@ -29,7 +29,7 @@ restores the ordinary prompt. Combined stdout/stderr appears as plain text while
 the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
 control sequences are removed for safe display. The command and output remain in
 history after reopening. The model waits for your next message before responding.
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage). In a chat that can move between computers, file changes from `!` are included in
+In a chat that can move between computers, file changes from `!` are included in
 its next saved turn, just like changes from the model's shell commands.
 A failed command keeps its output and exit status too. Shell paths, `@` names and
 slash words remain literal, not mentions or send tags.
@@ -337,7 +337,7 @@ command).
 
 ## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
@@ -693,11 +693,13 @@ Tab completes the path as you type it.
 ## Does export save to my laptop — /export writes this conversation here
 
 `/export` (or `/save`) writes the **whole** conversation to a markdown file somebody else
-can read. It is built from the full transcript, not from the tail on screen.
+can read. It is built from the full journal — including turns from before `/compact` — not
+from the tail on screen.
 
 With no argument the file lands in the local root under a name derived from the session,
-like `20260817-150405_a3f2-port-the-resume-picker.md` — the transcript file stem plus the
-session name in kebab case, clipped to 48 characters. With neither file nor name it is
+`transcript-<session name>.md` (like `transcript-port-the-resume-picker.md`) — the
+transcript file stem plus the session name in kebab case, clipped to 48 characters, or
+`transcript.md` before the conversation has a name. With neither file nor name it is
 called `conversation.md`.
 
 With a path, `~` is home, a bare name is under the conversation's directory, and an
@@ -2339,4 +2341,4 @@ Limits: a setup turn is never replayed on another machine (the agent does it aga
 
 ## Why pairing commands do not turn on sync storage — request access in Devices
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

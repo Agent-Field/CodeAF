@@ -150,6 +150,9 @@ type appLocalFactory struct {
 	runner      bool
 	runnerDone  chan struct{}
 	closingDone chan struct{}
+	// foreman is held while the factory's foreman is named and held open, so
+	// two asks never each make one (appfactory_foreman.go).
+	foreman sync.Mutex
 	// githubHTTP, rules, seamHook and parent are test seams set before the
 	// first start. parent, when set, is the conversation config the runner
 	// opens its stages from, as a terminal launch hands one to its worker.
@@ -401,9 +404,12 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 	floor.SetOutputPolicy(appFactoryOutputPolicy(host.profile))
 	floor.ObserveWrites(func(before, after factory.Item) {
 		b.briefJobChanged(before, after)
+		// A stop handed to the job's main agent gets its turn now
+		// (appfactory_stops.go).
+		host.stopHanded(before, after)
 		// Queue filters change after filing too, when a background step waits or ends.
 		if before.State != after.State || before.Question != after.Question || before.QKind != after.QKind ||
-			before.DoneHow != after.DoneHow || !before.DoneAt.Equal(after.DoneAt) {
+			before.DoneHow != after.DoneHow || !before.DoneAt.Equal(after.DoneAt) || factory.WaitChanged(before, after) {
 			b.emit.Emit(appwire.EventFactoryJobsChanged, appwire.FactoryJobsChanged{Factory: appLocalID, Job: after.ID})
 		}
 	})
@@ -442,6 +448,9 @@ func (b *appBackend) startLocalLocked(ctx context.Context, resume bool) error {
 		l.host, l.server = nil, nil
 		return err
 	}
+	// The foreman is put right as the factory starts, off this call: a tab the
+	// app brings back reaches it without ever opening it by its door.
+	b.settleForeman(host)
 	return nil
 }
 

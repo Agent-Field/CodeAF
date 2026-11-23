@@ -525,11 +525,22 @@ func (b *appBackend) answerOrderAsk(askID, option string) (bool, error) {
 	if err := appValidateOrderAnswer(askID, option); err != nil {
 		return true, err
 	}
-	_, err = b.OrderVerdict(r.AutomationID, run, option)
-	if err == nil {
-		appOrderAnswered.Store(run, option)
+	// THE MARK IS WRITTEN BEFORE THE ANSWER, as [appBackend.dismissOrderRun]
+	// writes its own: an orders poll that lands between the answer and a mark
+	// written after it closes the ask as answered elsewhere, and the late mark
+	// then sits in the map for good. A refused answer puts back what it found:
+	// a second press before the poll is refused, and the first press's mark
+	// must stay.
+	was, marked := appOrderAnswered.Swap(run, option)
+	if _, err := b.OrderVerdict(r.AutomationID, run, option); err != nil {
+		if marked {
+			appOrderAnswered.CompareAndSwap(run, option, was)
+		} else {
+			appOrderAnswered.CompareAndDelete(run, option)
+		}
+		return true, err
 	}
-	return true, err
+	return true, nil
 }
 
 func appValidateOrderAnswer(id, option string) error {
@@ -641,11 +652,63 @@ func (b *appBackend) sayOrderAsksFrom(store *automation.Store, open map[int64]ap
 		}
 		delete(open, id)
 		closed := appwire.AskClosed{Agent: ask.Agent, ID: ask.ID, By: appwire.ClosedByElsewhere, At: now}
+		answeredElsewhere := false
 		if option, ok := appOrderAnswered.LoadAndDelete(id); ok {
 			closed.By, closed.Option = appwire.ClosedByApp, option.(string)
+		} else if option, ok := appOrderAnsweredElsewhere(store, id); ok {
+			closed.Option, answeredElsewhere = option, true
 		}
 		b.emit.Emit(appwire.EventAskClosed, closed)
+		// A RUN THAT STOPPED WAITING LEAVES THE INBOX TOO. Its ask has no receipt
+		// line in any chat, and the Inbox drops an item only on its receipt, so the
+		// closed run sat in Waiting and in the count until the engine restarted, and
+		// nothing could clear it (owner, 2026-11-16: "Run … now?" rows that stayed).
+		// AN ANSWER GIVEN ELSEWHERE READS AS ANSWERED, in the words every other
+		// Inbox item answered elsewhere leaves ([appReceipt]); only a run that
+		// stopped waiting with no answer is no longer needed.
+		// AND ONE ANSWERED HERE SAYS SO, in the words an answer here leaves on any
+		// other Inbox item, rather than leaving with no receipt at all.
+		receipt := appwire.Entry{}
+		switch {
+		case answeredElsewhere:
+			receipt.Text = appReceipt(appwire.ClosedByElsewhere, closed.Option, &session.Answer{}, now)
+		case closed.By != appwire.ClosedByApp:
+			receipt.Text = "No longer needed · " + now.Format("15:04")
+		case closed.Option == appwire.ResolvedDismissed:
+			receipt.Text = appDismissedReceipt(now)
+		default:
+			receipt.Text = appReceipt(appwire.ClosedByApp, closed.Option, nil, now)
+		}
+		b.inboxResolved(appInboxID(ask.Agent, ask.ID), receipt)
 	}
+}
+
+// appOrderAnsweredElsewhere reads a run that stopped waiting for the answer
+// the person gave it from another surface: Go queued it (so it is queued,
+// running, or over without being passed over), Skip and Not right passed it
+// over with their own line. A run passed over because its order was stopped,
+// or one gone from the store, was not answered.
+func appOrderAnsweredElsewhere(store *automation.Store, id int64) (string, bool) {
+	run, err := store.Run(id)
+	if err != nil {
+		return "", false
+	}
+	switch {
+	case run.Phase == automation.PhaseQueued || run.Phase == automation.PhaseRunning:
+		return appwire.VerdictGo, true
+	case run.Phase != automation.PhaseOver:
+		return "", false
+	case run.Outcome != automation.OutcomeSkipped:
+		return appwire.VerdictGo, true
+	case run.Line == automation.LineNotRight:
+		return appwire.VerdictNotRight, true
+	case run.Line == automation.LineSkipped:
+		if a, err := store.Get(run.AutomationID); err != nil || a.Status == automation.StatusStopped {
+			return "", false
+		}
+		return appwire.VerdictSkip, true
+	}
+	return "", false
 }
 
 // sayOrderResult puts a finished run's line in the chat it answers in.

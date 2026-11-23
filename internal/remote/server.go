@@ -129,6 +129,13 @@ type WrappedAgent interface {
 	RewindAt(index int) ([]session.DisplayEntry, error)
 }
 
+// boundedStopper is an agent whose stop can carry its own second stage: one
+// asked of the agent rather than required of [WrappedAgent], so a wrapped
+// agent that has never heard of abandoning a turn keeps the plain stop.
+type boundedStopper interface {
+	InterruptWithin(grace time.Duration)
+}
+
 // Engine is one opened conversation and the doors that replace it. The door
 // that builds it (cmd/codeaf) owns config resolution, session-file resolution
 // and the locked-file fallback; this package owns nothing about how an agent is
@@ -2638,6 +2645,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		door.HoldQuestion(args.Kind, args.Token)
 		return nil, nil
+	case MethodQuestionDismiss:
+		args, err := arg[QuestionHoldArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// A MISSING DOOR REFUSES: a person told their dismissal landed would
+		// leave a question standing that the model is still waiting on.
+		door, ok := agent.(interface{ DismissQuestion(string) error })
+		if !ok || args.Kind != session.QuestionAsk {
+			return nil, errors.New("engine: this session cannot dismiss that question")
+		}
+		return nil, door.DismissQuestion(args.Token)
 	case MethodQuestionClock:
 		args, err := arg[QuestionClockArgs](call)
 		if err != nil {
@@ -2981,9 +3000,12 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		switch {
 		case args.marked() && !ok:
 			return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
-		case args.marked() || (ok && args.Creation != nil):
-			// A creation context rides to a door that keeps it; a door that
-			// cannot queues the words and the team stays unknown.
+		case ok:
+			// A FOLLOW-UP BY THIS WIRE IS THE PERSON'S, marked or not, and the
+			// agent's mark door is its person door ([session.Agent.FollowUpMessage]):
+			// plain FollowUp is also an engine door and counts nobody. A creation
+			// context rides to it too; a door that cannot keep one queues the
+			// words and the team stays unknown.
 			events, err = door(args.submission())
 		default:
 			events, err = agent.FollowUp(args.Text)
@@ -3029,13 +3051,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if args.composed() {
 			return nil, errors.New("engine: a correction carries no pictures; send them as a message")
 		}
-		if args.marked() {
-			door, ok := steerMarksDoor(agent)
-			if !ok {
-				return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
-			}
+		door, ok := steerMarksDoor(agent)
+		switch {
+		case args.marked() && !ok:
+			return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
+		case args.marked():
 			events, err = door(args.submission())
-		} else {
+		case ok:
+			// A CORRECTION BY THIS WIRE IS THE PERSON'S, marked or not, and the
+			// agent's mark door is its person door ([session.Agent.SteerMessage]):
+			// plain Steer is also the engine's and runners' door and counts
+			// nobody. The words go alone, as they did by Steer.
+			events, err = door(session.Submission{Text: args.Text})
+		default:
 			events, err = agent.Steer(args.Text)
 		}
 		return s.stream(MethodSteer, args.Text, events, err)
@@ -3096,6 +3124,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		if door := session.StopDoor(strings.TrimSpace(args.Door)); door != "" && door != session.StopByPerson {
 			agent.InterruptFor(door)
+			return nil, nil
+		}
+		// A PERSON'S STOP THAT CAME WITH A BOUND ARMS THE SECOND STAGE HERE,
+		// because the surface that sent it has no door of its own to press
+		// when the bound runs out ([InterruptArgs]). An agent that cannot be
+		// abandoned is stopped as it always was.
+		if bounded, ok := agent.(boundedStopper); ok && args.Within > 0 {
+			bounded.InterruptWithin(time.Duration(args.Within) * time.Millisecond)
 			return nil, nil
 		}
 		agent.Interrupt()

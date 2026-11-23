@@ -851,7 +851,7 @@ long title could never push the numbers off the frame, and the name moved off ag
 **The keys row under the box** — the last row of the frame — is the hint slot. Until
 2026-09-17 it was the right end of the rule above the box; the numbers took that end and
 the keys got a row of their own. Since 2026-09-22 it carries `project: <path>` at its right
-end, and its LOWEST RUNG is the earned tip (see *hints and tips*): a conversation's tip
+end (on plain `codeaf`, `codeaf chat --no-host`, and `CODEAF_DEBUG=1 codeaf` alike), and its LOWEST RUNG is the earned tip (see *hints and tips*): a conversation's tip
 lives on this row, under every state's own keys, and takes the slot from the rest state
 whenever nothing is happening. Home's tip is the row above the rule instead. It names the
 keys that work right now when a state has

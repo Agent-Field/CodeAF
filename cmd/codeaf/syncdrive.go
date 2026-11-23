@@ -41,10 +41,11 @@ type driveBook struct {
 }
 
 type appDriveNotices struct {
-	firstRun func(*syncsetup.Sync)
-	say      func(cell.Cell, string)
-	viewer   func(cell.Cell, syncsetup.Viewer)
-	driving  func(cell.Cell)
+	firstRun     func(*syncsetup.Sync)
+	say          func(cell.Cell, string)
+	viewer       func(cell.Cell, syncsetup.Viewer)
+	driving      func(cell.Cell)
+	savedLocally func(string)
 }
 
 // driveOf is the drive side of c, made on first use. It answers nil, and the
@@ -112,6 +113,7 @@ func (b *driveBook) pendingDriveOf(c cell.Cell, engine cellstore.Engine, report 
 	}
 	if appNotices != nil {
 		d.say = sayNotice
+		d.savedLocally = appNotices.savedLocally
 	}
 	d.transcript = (session.Place{Dir: c.Root}).Transcript()
 	d.localGate = &localToolGate{cell: c, say: sayNotice}
@@ -191,7 +193,7 @@ func startLiveDrive(c cell.Cell, engine cellstore.Engine, report func(error), no
 	if syncsetup.Quiet(home.Dir()) {
 		return nil, syncsetup.ErrQuiet // a fleet of one has nothing to sync with yet
 	}
-	if !s.StorageAllowed() {
+	if s.ChatStorageOff() {
 		return nil, wireauth.ErrStorageOff
 	}
 	var viewer func(syncsetup.Viewer)
@@ -232,6 +234,15 @@ func (b *driveBook) renewalsOf(id string) *liveDrive {
 	return b.drive[id]
 }
 
+func init() {
+	// A computer whose chats move live is told the refusal for closed storage in
+	// the words that are true there (chatlist.StorageOffSentence).
+	chatlist.LiveCarriesChats = func() bool { return syncsetup.LiveTransferForHome(home.Dir()) }
+	// And when that stops being true after the sentence was said, the sentence
+	// that is true replaces it (storage_off_resay.go).
+	watchStorageOffSentence()
+}
+
 // sayRefusal tells the person what the relay refused when it refused this
 // device outright (removed from the fleet, replaced, over its limit) and
 // answers true, so the chat runs unsynced with the reason on screen instead
@@ -262,7 +273,7 @@ func (b *driveBook) closeAll() {
 	defer cancel()
 	for _, d := range drives {
 		defer func() { recordFinalSaveNotices(d.TakeSavingNotices()) }()
-		if err := d.Close(ctx); err != nil {
+		if err := d.closeSaved(ctx); err != nil {
 			log.Print("sync: closing a chat: ", err)
 			recordFinalSaveFailure(session.SavingError(d.transcript, err))
 		}
@@ -361,7 +372,7 @@ func (b *driveBook) closeCell(id string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), driveCloseWithin)
 	defer cancel()
-	return session.SavingError(d.transcript, d.Close(ctx))
+	return session.SavingError(d.transcript, d.closeSaved(ctx))
 }
 
 // takeCell forgets one drive under the book lock before any closing I/O begins.
@@ -508,7 +519,7 @@ func (n *driveNotices) say(line string) {
 func (n *driveNotices) clearStorageOff() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.last == chatlist.RelayStorageOff {
+	if n.last == chatlist.RelayStorageOff || n.last == chatlist.RelayStorageOffLive {
 		n.last = ""
 	}
 }

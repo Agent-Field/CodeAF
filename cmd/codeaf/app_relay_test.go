@@ -51,12 +51,14 @@ func TestAppRelayER1(t *testing.T) {
 	}
 }
 
-// E-P3: cancellation is terminal and recoverable on the wire.
+// E-P3: cancellation is terminal and recoverable on the wire, and a code that
+// was taken back leaves this computer solo and quiet.
 func TestAppPairEP3(t *testing.T) {
 	celltest.Available(t)
 	relay := e2Relay(t)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	_, rec, w := appDeviceBackend(t, t.TempDir())
+	dir := t.TempDir()
+	_, rec, w := appDeviceBackend(t, dir)
 	started := machineCall[appwire.PairResult](t, w, "pair.start", appwire.PairStartParams{Mode: "offer_code"}).Pairing
 	if started.Lines == nil {
 		t.Fatal("pair lines must be an array")
@@ -75,6 +77,9 @@ func TestAppPairEP3(t *testing.T) {
 	last := machineCall[appwire.PairGetResult](t, w, "pair.get", struct{}{}).Pairing
 	if last == nil || last.ID != started.ID || last.State != "cancelled" {
 		t.Fatalf("last: %+v", last)
+	}
+	if !identity.Solo(dir) || !syncsetup.Quiet(dir) {
+		t.Fatal("a code that was taken back ended this computer's solo state")
 	}
 	n := 0
 	rec.mu.Lock()
@@ -238,9 +243,15 @@ func TestM1M4M8M9M10AppPair(t *testing.T) {
 			if q.Question.Kind != "approve" || q.Words == "" {
 				t.Fatal(q)
 			}
+			if !identity.Solo(dirA) {
+				t.Fatal("showing a code ended A's solo state before anyone said yes")
+			}
 			machineCall[appwire.PairResult](t, wa, "pair.answer", appwire.PairAnswerParams{ID: offer.ID, Question: q.Question.ID, Option: "y"})
 			e2PairWait(t, wa, offer.ID, "done")
 			done := e2PairWait(t, wb, join.ID, "done")
+			if identity.Solo(dirA) {
+				t.Fatal("a pairing that finished left A solo")
+			}
 			if used {
 				if raw, err := os.ReadFile(kept); err != nil || !strings.Contains(string(raw), "keep me") {
 					t.Fatalf("M1 own chat lost: %s %v", raw, err)
@@ -264,6 +275,10 @@ func TestM1M4M8M9M10AppPair(t *testing.T) {
 		})
 	}
 }
+
+// bannedAppPairWords are terminal commands and engine words that app pairing
+// copy never uses. They are matched as whole words, so "Cancelled" is no cell.
+var bannedAppPairWords = regexp.MustCompile(`--replace|\b(codeaf pair|run codeaf|devices?|identit(y|ies)|cells?|leases?|fences?|ledgers?|vaults?)\b`)
 
 func TestAppPairCopyRetainedWordsM9(t *testing.T) {
 	for _, words := range []string{"shale ledger reef", "shale cello reef"} {
@@ -289,7 +304,8 @@ func TestAppPairCopyRetainedWordsM9(t *testing.T) {
 func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 	t.Helper()
 	inlineWords := regexp.MustCompile(`^(?:Waiting for approval on your other computer\. It should show|Pair only if your other computer shows the same (?:three words|check number)): (.+)\.$`)
-	allowed := regexp.MustCompile(`^(Paired with your other device\. Run codeaf to open your chats\.|Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\. Your chats can continue on both computers\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.)$`)
+	allowed := regexp.MustCompile(`^(Pairing shares your chats with another computer\.|On your other computer, choose Pair a computer, then Enter a code from the other computer, and type [0-9-]+ \(dashes optional\)\. This code lasts 10 minutes\.|Waiting for approval on your other computer\. It should show: .+\.|Paired with .+\.|Paired\. Your chats are kept\. Both computers' chats will appear as sharing finishes\.|Cancelled\. Nothing was paired\.|Pairing was declined\. Nothing was paired\.|Pair with .+\?|Pair only if your other computer shows the same (three words|check number): .+\.|Pair|Don't pair|Open this pairing link on a computer you already use\.|Compare the check number on both computers: .+\.|Waiting for approval\. This link lasts [0-9]+ minutes\.|This computer is already paired with .+\.|Pairing was not confirmed by .+\. Check that computer to see whether it joined\.)$`)
+	localWork := regexp.MustCompile(`^This computer has (local work|1 chat|[0-9]+ chats) of its own\.`)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
 	for i, name := range rec.events {
@@ -301,6 +317,10 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 			t.Error("M8 app asked to replace chats")
 		}
 		visible := slices.Clone(p.Lines)
+		// A failure's sentence is app copy too: the app shows it as it is.
+		if p.Error != nil {
+			visible = append(visible, p.Error.Message)
+		}
 		if q := p.Question; q != nil {
 			visible = append(visible, q.Title, q.Detail)
 			for _, option := range q.Options {
@@ -311,33 +331,32 @@ func assertAppPairCopyM9(t *testing.T, rec *appRecorder) {
 			}
 		}
 		for _, line := range visible {
-			if line != "" && !allowed.MatchString(line) {
+			if line != "" && !allowed.MatchString(line) && !localWork.MatchString(line) {
 				t.Errorf("L3 unexpected app copy: %q", line)
 			}
 
 			// The three check words are drawn at random from a word list that holds
 			// "ledger" and "cello", so only the copy around them is held to this list.
 			// Finished events clear Words but retain the earlier lines.
-			copyOnly := strings.ReplaceAll(line, "Paired with your other device. Run codeaf to open your chats.", "")
+			copyOnly := line
 			if match := inlineWords.FindStringSubmatch(copyOnly); match != nil {
 				copyOnly = strings.Replace(copyOnly, match[1], "", 1)
 			}
-			copyOnly = strings.ToLower(copyOnly)
-			for _, banned := range []string{"codeaf pair", "--replace", "device", "identity", "cell", "lease", "fence", "ledger", "vault"} {
-				if strings.Contains(copyOnly, banned) {
-					t.Errorf("L3 terminal copy: %q", line)
-				}
+			if bannedAppPairWords.MatchString(strings.ToLower(copyOnly)) {
+				t.Errorf("L3 terminal copy: %q", line)
 			}
 		}
 	}
 }
 
-// E-P4: a wrong code uses the engine's failure sentence and adds no computer.
+// E-P4: a wrong code uses the engine's failure sentence and adds no computer,
+// and the code it used up leaves the computer that showed it solo.
 func TestAppPairEP4(t *testing.T) {
 	celltest.Available(t)
 	relay := e2Relay(t)
 	t.Setenv(syncsetup.URLVar, relay.URL)
-	_, _, wa := appDeviceBackend(t, t.TempDir())
+	dirA := t.TempDir()
+	_, _, wa := appDeviceBackend(t, dirA)
 	_, _, wb := appDeviceBackend(t, t.TempDir())
 	offer := machineCall[appwire.PairResult](t, wa, "pair.start", appwire.PairStartParams{Mode: "offer_code"}).Pairing
 	p := e2PairWait(t, wa, offer.ID, "waiting")
@@ -353,6 +372,9 @@ func TestAppPairEP4(t *testing.T) {
 	}
 	if got := appDeviceList(t, wa); len(got.Devices) != 1 {
 		t.Fatal(got)
+	}
+	if !identity.Solo(dirA) {
+		t.Fatal("a code used up by a wrong one ended this computer's solo state")
 	}
 	machineCall[appwire.PairResult](t, wa, "pair.cancel", appwire.IDParams{ID: offer.ID})
 }

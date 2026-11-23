@@ -58,7 +58,7 @@ var noticePrompt = fmt.Sprintf(noticeTemplate, strings.Join(memoryScopes, " | ")
 
 const noticeTemplate = `You read one exchange between a person and an assistant. Answer two things.
 
-FIRST, keep: did the PERSON say something worth remembering in every future conversation? Only these count: a preference ("I like short answers"), a standing rule ("always run the tests first", "never touch the public API"), a correction of the assistant, a decision they made, or a lasting fact about them, their machine or this project. It must be TIMELESS: anything tied to a time or an event ("remind me at six", "every Monday", "when CI goes red") is not a memory — leave it out. Never keep what only the assistant said, the work in progress, code, or a question. Most exchanges keep nothing: keep is then "".
+FIRST, keep: did the PERSON say something worth remembering in every future conversation? Only these count: a preference ("I like short answers"), a standing rule ("always run the tests first", "never touch the public API"), a correction of the assistant, a decision they made, or a lasting fact about them, their machine or this project. It must be TIMELESS: anything tied to a time or an event ("remind me at six", "every Monday", "when CI goes red") is not a memory — leave it out. Never keep what only the assistant said, the work in progress, code, or a question. A permission the person denied, dismissed or never answered, a tool call that was refused or blocked, and the assistant saying it could not or may not do something are events in this conversation, never something the person said: they are not a rule, a preference or a fact, and keep is "". Most exchanges keep nothing: keep is then "".
 
 durability is one of standing_rule, decision, durable_fact, project_state, ephemeral. Ephemeral requests, progress chatter, and one-off instructions belong only in the transcript: keep must be empty. Lasting project state may be kept as project_state; prefer state for ordinary progress. Progress paragraphs about landed/passed/verified work, versions or issue IDs are project_state even if phrased with prefer, always or a decision verb; these words do not make status a standing rule. used is an array of KEPT line numbers actually applied in the ASSISTANT answer, never merely present or echoed. Use [] when none applied. contradicted lists KEPT numbers the PERSON explicitly corrected, even if the replacement was already saved. Never infer contradiction from the assistant alone.
 
@@ -124,6 +124,17 @@ remind me at 6 to check the build
 
 ASSISTANT:
 I can set that up as a reminder.
+
+KEPT:
+(nothing yet)
+
+{"keep":"","scope":"project","replaces":0}
+
+USER:
+run the tests
+
+ASSISTANT:
+I could not run them: the shell command was denied, so I stopped there.
 
 KEPT:
 (nothing yet)

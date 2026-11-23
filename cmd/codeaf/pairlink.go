@@ -15,7 +15,6 @@ import (
 	"errors"
 	"net/http"
 	"runtime"
-	"sort"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/devname"
@@ -122,14 +121,21 @@ func (s inviteScreen) Invited(in pair.Invite) { s.say(pair.InviteLines(in)) }
 
 // askToJoin is the new device: a link on screen until a device that is in says yes.
 func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) error {
+	// A computer whose chats sync elsewhere is refused before it is asked to
+	// replace anything.
+	home := d.joining(replace).Home
+	standing, err := joinStanding(ctx, home, d.standingRoute(home, relay))
+	if err != nil {
+		return err
+	}
+	if err := standing.refusal(); err != nil {
+		return err
+	}
 	if !d.confirmReplacement(ctx, replace) {
 		return nil
 	}
 	route, err := d.mailbox(relay)
 	if err != nil {
-		return err
-	}
-	if err := d.pairingStatus(ctx, route, replace); err != nil {
 		return err
 	}
 	joining := d.linking(route, replace)
@@ -248,7 +254,8 @@ func linkApprover(dir string) func(pair.Mailbox) (pair.Approver, error) {
 	}
 }
 
-// pairingPeer reads names after joining, so pairing needs no new wire fields.
+// A link grant does not identify its approver. With several possible peers,
+// keep the existing generic receipt instead of guessing from sorted names.
 func pairingPeer(l directory.Listing, key []byte, self string) string {
 	var names []string
 	for id, dev := range l.Devices {
@@ -256,8 +263,7 @@ func pairingPeer(l directory.Listing, key []byte, self string) string {
 			names = append(names, openName(key, dev.Name))
 		}
 	}
-	sort.Strings(names)
-	if len(names) > 0 {
+	if len(names) == 1 {
 		return names[0]
 	}
 	return ""

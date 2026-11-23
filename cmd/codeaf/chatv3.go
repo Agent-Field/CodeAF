@@ -294,7 +294,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// way it is shown on the surface's own notice line below rather than printed
 	// into a terminal the surface is about to take over.
 	entryNotice := ""
-	if workspace, take := v3HostRoad(v3HostChoice{
+	hostWorkspace, take := v3HostRoad(v3HostChoice{
 		noHost: *noHost,
 		once:   strings.TrimSpace(*once) != "",
 		// THE SWITCH AND NOT THE FLAG. --debug has already turned the record on
@@ -304,9 +304,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// record ([v3HostChoice.debug]).
 		debug: trace.Enabled(),
 		setup: !v3MachineIsSetUp(),
-	}); take {
+	})
+	if take {
 		err := openChatV3Local(localLaunch{
-			workspace: workspace,
+			workspace: hostWorkspace,
 			session:   strings.TrimSpace(*file),
 			model:     strings.TrimSpace(*model),
 			level:     level,
@@ -323,7 +324,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		case errors.As(err, &unreachable):
 			entryNotice = "this conversation opened in this terminal instead, and ends with it: " + unreachable.reason
 		default:
-			return finishChatRestart(err, restart, workspace)
+			return finishChatRestart(err, restart, hostWorkspace)
 		}
 	}
 
@@ -354,6 +355,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	}
 	seed := v3Options{
 		Model: *model,
+		// Anchor the in-process launch (--no-host, --debug, CODEAF_DEBUG=1, or a
+		// fallback from the host road) to the same resolved workspace the hosted
+		// door hands the engine, so both doors open the folder with the same
+		// project identity, memories and rules.
+		Workspace: hostWorkspace,
 		// A TERMINAL DOOR IS STEERED unless --once is it: --once is the
 		// headless fork below. The seed carries the fact into the boot
 		// launch, the seam's /new and /resume, and the hosted shape.
@@ -1493,6 +1499,9 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if handoff.Arriving(cfg.Place.Dir) {
 		return nil, cfg, "", errors.New(chatArrivingSentence)
 	}
+	// A CHAT THIS COMPUTER HOLDS WHOSE FILES FAILED TO ARRIVE IS RESTARTED BY
+	// BEING OPENED, here, in the one function every terminal open ends in (#2781).
+	restartHeldFilesBeforeOpen(cfg.Place.Dir)
 	model, modelNotice, err := continuedModel(cfg)
 	if err != nil {
 		var missing *continuedModelUnavailable
@@ -1569,7 +1578,7 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 	if !errors.Is(err, session.ErrSessionLocked) {
 		// With account storage off, startup is purely local and makes no relay
 		// writes, so retaining the drive lets callers observe watch retirement.
-		if syncsetup.StorageForHome(home.Dir()) == "off" {
+		if syncsetup.ChatStorageOffForHome(home.Dir()) {
 			claim(true)
 		}
 		return nil, cfg, "", err
@@ -2220,9 +2229,11 @@ func (rows v3ApprovalRows) build() (*approval.Policy, error) {
 // actions: a rule is written per tool name, so one tool could not have been
 // free to read and asked about to write.
 //
-// Nothing on this list acts outside this machine, so internal/approval's floor
-// under calls made in the person's name is untouched by every entry on it — as
-// is the critical-command table, which sits above this whole row either way.
+// Nothing on this list but the job manager's `factory_act` and `factory_task`
+// acts outside this machine (their own note says who consents to those), so
+// internal/approval's floor under calls made in the person's name is untouched
+// by every entry on it — as is the critical-command table, which sits above
+// this whole row either way.
 func v3BuiltinApprovals() map[string]any {
 	return map[string]any{
 		"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
@@ -2260,6 +2271,17 @@ func v3BuiltinApprovals() map[string]any {
 		// launches, resumes or continues the one item the conversation manages,
 		// within the floor's own rules.
 		"factory_start": "allow",
+		// THE MANAGER'S PUBLIC ACTS AND ITS OPEN TASK (tools_factory_manager.go).
+		// A turn the factory starts on a stop has nobody at its keyboard, so
+		// without these lines the manager could settle nothing there. THEY ARE
+		// THE ONE PAIR ON THIS LIST THAT CAN REACH OUTSIDE THIS MACHINE, and
+		// the consent for that is the job's own, held by the factory and not by
+		// this row: in Manual every public act waits for the person's approval
+		// on the job, in Auto the person has said the job's manager may carry
+		// them out, and a merge is never carried out for the manager in either
+		// (internal/factory's manager_authority.go, cmd/codeaf's
+		// factory_manager_press.go).
+		"factory_act": "allow", "factory_task": "allow",
 		// A manager taking back a team that never held anyone, which the
 		// person declined in its own conversation: one record nobody used is
 		// forgotten, and nothing is started, stopped or spent. A team that

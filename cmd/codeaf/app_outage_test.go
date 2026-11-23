@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // The relay retains its directory and store while the listener
@@ -314,8 +315,9 @@ func appRelayOutage(t *testing.T, competing bool) {
 		Agent appwire.Agent `json:"agent"`
 	}](t, a.w, "agents.create", map[string]any{"workspace": workspace}).Agent
 	e2Turn(t, a, created.ID, "before take")
+	first := outageChatRow(t, b, "", func(r appwire.ChatRow) bool { return r.Title != "" && r.Seen.Head != "" && r.CanTake && !r.Working })
 	e2Quit(t, a)
-	row := outageChatRow(t, b, "", func(r appwire.ChatRow) bool { return r.Title != "" && r.CanTake })
+	row := outageChatRow(t, b, first.Cell, func(r appwire.ChatRow) bool { return r.CanTake })
 	taken := machineCall[appwire.TakeResult](t, b.w, "agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}).Agent
 	e2Turn(t, b, taken.ID, "before outage")
 	a = e2StartApp(t, dirA)
@@ -337,6 +339,14 @@ func appRelayOutage(t *testing.T, competing bool) {
 		latest, err = cellstore.Head(c)
 		return err == nil && latest != nil && latest.Receipt.Transcript.End >= end
 	})
+	if !competing {
+		appSyncWait(t, "first outage notice", func() bool {
+			return e2SyncNoticeCount(b, taken.ID, syncwords.IsOutage) != 0
+		})
+		if count := e2SyncNoticeCount(b, taken.ID, outageRecovered); count != 0 {
+			t.Fatal("local save reported recovery while the relay's TCP listener was still closed")
+		}
+	}
 	if competing {
 		s := appDeviceSync(t, dirB)
 		cert, _ := json.Marshal(s.Device.Cert)
@@ -399,8 +409,25 @@ func appRelayOutage(t *testing.T, competing bool) {
 	if recovered.Seen.Device != before.Seen.Device || recovered.Seen.Fence < before.Seen.Fence {
 		t.Fatalf("O5 wrong recovered holder: %+v", recovered)
 	}
+	waitForOutageEpisode(t, b, taken.ID, 1)
 	// O3 recovery above required no send, quit or reopen. A later send still works.
 	e2Turn(t, b, taken.ID, "after recovery")
+	secondHead := outageChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool {
+		return r.Seen.Head != recovered.Seen.Head && !r.Working
+	})
+	relay.stop()
+	e2Turn(t, b, taken.ID, "during a second outage")
+	appSyncWait(t, "second outage notice", func() bool {
+		return e2SyncNoticeCount(b, taken.ID, syncwords.IsOutage) >= 2
+	})
+	if count := e2SyncNoticeCount(b, taken.ID, outageRecovered); count != 1 {
+		t.Fatalf("got %d recovery notices before the second reconnection", count)
+	}
+	relay.start()
+	outageChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool {
+		return r.Seen.Head != secondHead.Seen.Head && !r.Working
+	})
+	waitForOutageEpisode(t, b, taken.ID, 2)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, f := range b.events {
@@ -415,6 +442,18 @@ func appRelayOutage(t *testing.T, competing bool) {
 		if f.Event == appwire.EventEntryAdded && strings.Contains(string(f.Data), "B continued this chat") {
 			t.Fatalf("O1 self displacement notice: %s", f.Data)
 		}
+	}
+}
+
+func outageRecovered(line string) bool { return line == syncwords.Recovered }
+
+func waitForOutageEpisode(t *testing.T, app *e2App, agent string, want int) {
+	t.Helper()
+	appSyncWait(t, "relay recovery notice", func() bool {
+		return e2SyncNoticeCount(app, agent, outageRecovered) >= want
+	})
+	if down, up := e2SyncNoticeCount(app, agent, syncwords.IsOutage), e2SyncNoticeCount(app, agent, outageRecovered); down != want || up != want {
+		t.Fatalf("outage notices = %d down, %d recovered; want %d of each", down, up, want)
 	}
 }
 

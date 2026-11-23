@@ -10,7 +10,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
-	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -56,10 +55,10 @@ func TestAppDevicesV1V3RePairClearsRemovalWithoutRestart(t *testing.T) {
 	if err := sa.Dir.Revoke(context.Background(), old.Device.ID()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.call("devices.list", struct{}{}); err != nil && (err.Code != appwire.CodeEngine || err.Message != chatlist.Removed) {
+	if _, err := w.call("devices.list", struct{}{}); err != nil && (err.Code != appwire.CodeEngine || err.Message != appRemoved) {
 		t.Fatalf("learned removal: %v", err)
 	}
-	if view := appDeviceList(t, w); view.Mode != appwire.DevicesUnavailable || view.Line != chatlist.Removed || len(view.Devices) != 1 || !view.Devices[0].Removed {
+	if view := appDeviceList(t, w); view.Mode != appwire.DevicesUnavailable || view.Line != appRemoved || len(view.Devices) != 1 || !view.Devices[0].Removed {
 		t.Fatalf("remembered self removal: %+v", view)
 	}
 	appDevicePairByLink(t, rig, "--replace")

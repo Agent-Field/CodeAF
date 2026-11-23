@@ -249,7 +249,7 @@ func TestNothingWorksOnAJobOfARepoThatIsOff(t *testing.T) {
 	t.Cleanup(f.h.Close)
 	it := f.create(t, factory.Item{Num: 9, State: factory.StateNew, Assignee: "sam"})
 	const want = "acme/api is off · turn it on in Repos to run its jobs."
-	for _, verb := range []string{"run", "start_now", "run_again", "steps/write/rerun", "approve", "retry_publish", "merge", "request_changes", "recheck", "resume", "sync"} {
+	for _, verb := range []string{"run", "start_now", "run_again", "steps/write/rerun", "approve", "retry_publish", "merge", "request_changes", "recheck", "resume", "resume_auto", "sync"} {
 		w := verbRequest(f.h, "POST", "/v1/jobs/"+strconv.Itoa(it.ID)+"/"+verb, `{}`)
 		if w.Code != 409 {
 			t.Fatalf("%s on an off repository = %d %s", verb, w.Code, w.Body)

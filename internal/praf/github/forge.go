@@ -122,6 +122,9 @@ type Review struct {
 	User  string
 	State string
 	At    time.Time
+	// Association is GitHub's own word for the reviewer's standing on the
+	// repository ([Untrusted] reads it).
+	Association string
 }
 
 // RepoInfo is one repository a token can see, for the picker.
@@ -507,13 +510,14 @@ func (c *client) Reviews(ctx context.Context, owner, repo string, number int) ([
 			SubmittedAt time.Time `json:"submitted_at"`
 			Body        string    `json:"body"`
 			URL         string    `json:"html_url"`
+			Association string    `json:"author_association"`
 		}
 		if err = json.Unmarshal(body, &rows); err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
 			if r.User.Login != "" || r.State != "" {
-				out = append(out, Review{User: r.User.Login, State: r.State, At: r.SubmittedAt, Body: r.Body, URL: r.URL})
+				out = append(out, Review{User: r.User.Login, State: r.State, At: r.SubmittedAt, Body: r.Body, URL: r.URL, Association: strings.ToUpper(strings.TrimSpace(r.Association))})
 			}
 		}
 		if len(rows) < 100 {

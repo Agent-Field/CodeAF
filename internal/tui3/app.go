@@ -26,6 +26,7 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
@@ -1249,28 +1250,17 @@ type app struct {
 	inputTokens int
 	cacheRead   int
 	cacheWrite  int
-	// cacheSaved is what those reads have been WORTH, in dollars: cacheRead ×
-	// (prompt price − cache-read price) for the model this conversation is on,
-	// worked out from the totals every time they move ([app.repriceCache], the
-	// one place it is written). It is what turns the warm share from a statistic
-	// into a fact about the bill: the percentage is the hit RATE, this is what
-	// the rate MEANT.
-	//
-	// IT IS DERIVED RATHER THAN ACCUMULATED, and that is a fix rather than a
-	// simplification. It used to be summed per turn as each turn landed, which
-	// meant a RESUMED conversation — whose cache reads are restored whole from
-	// the journal and whose turns are all in the past — read `⟲ 28% cached` with
-	// no `saved $…` beside it until the next turn happened to land. The share
-	// was restored and the money was not, on the one figure a person opens a
-	// resumed session to check.
-	//
-	// A MIXED-MODEL SESSION IS PRICED AT THE MODEL IT IS ON NOW. The price is a
-	// property of whoever was answering at the time, and one total of cache
-	// reads cannot be split back out over the models that made them — so the
-	// current model's price is applied to all of them. That is the honest
-	// approximation a resume can make: every alternative is either a figure
-	// nobody can reconstruct or no figure at all, and the second was what this
-	// surface used to draw.
+	// cacheReadByModel records how many cached prompt tokens were served under
+	// each model id in this conversation, so [app.repriceCache] prices each
+	// model's reads at that model's own rate rather than the currently selected
+	// model's rate.
+	cacheReadByModel map[string]int
+	// cacheSaved is what those reads have been WORTH, in dollars: for each model
+	// that served cached tokens, its reads × (prompt price − cache-read price),
+	// summed across [app.cacheReadByModel] ([app.repriceCache], the one place it
+	// is written). Switching the selected model for future turns never reprices
+	// savings already earned, and a reopened conversation prices each row at the
+	// model that row named.
 	cacheSaved float64
 
 	// outputTokens is what the session has WRITTEN, and it is held apart from
@@ -1496,6 +1486,15 @@ type app struct {
 	// LEAVING. The open's landing spends it; a shared window opens in place
 	// and spends it at once.
 	homeTakenSaid func() tea.Cmd
+	// setupOffered is the resume the setup card was last raised from, and
+	// setupOfferedFor the conversation it was raised in. A look taken after a
+	// moved chat's files arrived is compared with it, so the card is raised
+	// again only when it has something new to say ([app.arrivedAfterFiles]).
+	setupOffered    machine.Resume
+	setupOfferedFor string
+	// heldArrival is a look that finished before the window had landed in its
+	// chat, by the chat's folder name, until the landing takes it.
+	heldArrival map[string]machine.Resume
 	// homeTaking keeps a retiring session on its own continuation until arrival.
 	homeTaking string
 	// homeMoveSaid is the progress line home shows for the running continue.
@@ -3414,6 +3413,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// nothing restores a zero Usage and every one of these fields stays as it
 	// was, so the sheet and /cost still draw nothing.
 	a.refreshUsage()
+	a.readTreeSpend()
 	// The notices get their first look now that the conversation, the box and
 	// the directory's facts are all in place: a news line lands here, under the
 	// replay and above the door's own notice, and the hints that wait on this
@@ -4285,6 +4285,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.homeFilesLoaded(msg.paths, msg.root)
 			return a, nil
 		}
+		if msg.root != "" && a.comp.walked != "" && msg.root != a.comp.walked {
+			return a, nil
+		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.fillMentions()
 		a.comp.refresh(&a.input)
@@ -4409,6 +4412,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.toldNote(filesOpenFailedWord + drawableLine(msg.path))
 		}
+		return a, nil
+
+	case storageRequestOpenedMsg:
+		a.storageRequestOpened(msg)
 		return a, nil
 
 	case copiedMsg:
@@ -7393,12 +7400,15 @@ func (a *app) take(u session.Usage) {
 	if u.Input > a.inputTokens {
 		a.inputTokens = u.Input
 	}
+	deltaCacheRead := 0
 	if u.CacheRead > a.cacheRead {
+		deltaCacheRead = u.CacheRead - a.cacheRead
 		a.cacheRead = u.CacheRead
 	}
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
 	}
+	a.recordCacheReads(deltaCacheRead)
 	// AND WHAT THE CACHE GAVE BACK IS RE-DERIVED FROM THE TOTAL THAT JUST MOVED,
 	// which is what carries the figure across a RESUME: this is the one door
 	// every reading of the session's cache reads comes through — a turn landing,
@@ -9343,7 +9353,7 @@ func (a *app) interruptTurn() {
 	// surface says what it is while it runs down. It is measured from the KEY and
 	// not from the last event, because the key is the moment the person is
 	// certain of and the only one they are timing from.
-	a.stopBy = a.now().Add(stopGrace)
+	a.stopBy = a.now().Add(session.StopGrace)
 	// THE ROWS STOP AT THE KEY. Leaving the state word was already enough to
 	// still the spinners and the count-ups — both renderers stand down outside
 	// stateWorking (toolview.go's [app.mark] and [app.countClock]) — but only for
@@ -9448,24 +9458,6 @@ func (a *app) interruptTurn() {
 // surface detaches. A silent countdown is not a stop anybody can trust, so the
 // bound is on the screen before it fires and never only after.
 
-// stopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the surface lets go
-// of the turn without it ([app.stopSweep]).
-//
-// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
-// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
-// graces any more: this change put the call's context on both of those, so a
-// stop ends them at once rather than waiting them out. What is left behind the
-// bound is the class this change cannot reach from outside — a wait that never
-// looks at its context at all, a command whose output a grandchild still holds,
-// anything a tool blocks on that was written before cancellation existed. Ten
-// seconds is chosen to sit far above every settle we can measure, so the
-// deadline fires only on that class and never on a turn that was about to end
-// tidily and hand back what it did.
-//
-// IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
-// is the only moment the person is timing from.
-const stopGrace = 10 * time.Second
-
 // windingDown reports that the turn on screen was STOPPED BY HAND and its stream
 // has not closed yet: the seconds between a person's ctrl+c and the engine letting
 // go of the turn.
@@ -9478,7 +9470,7 @@ const stopGrace = 10 * time.Second
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
 // the context until the tool batch it is inside has finished. What can still
 // outlast the cancel is the context-blind class — a wait that never looks at the
-// context it was given — and that is what the bound is for. [stopGrace] above
+// context it was given — and that is what the bound is for. [session.StopGrace]
 // carries the argument in full; it is not repeated here, so that moving the
 // reasoning cannot leave two versions of it disagreeing.
 //
@@ -10133,6 +10125,7 @@ func (a *app) syncLists() tea.Cmd {
 		recents = a.loadMentionRecents()
 	}
 	a.fillMentions()
+	a.alignFiles(a.pathRoot())
 	a.comp.sync(&a.input)
 	if opening {
 		// Both halves of the list are asked for at the same moment, and neither
@@ -10140,6 +10133,9 @@ func (a *app) syncLists() tea.Cmd {
 		// walk lands when it lands (taskmention.go, files.go). The recent
 		// conversations ride the same opening (mention.go).
 		return tea.Batch(a.loadFiles(), a.loadTasks(), recents)
+	}
+	if a.comp.open && a.comp.words == nil {
+		return a.loadFiles()
 	}
 	return nil
 }
@@ -10193,6 +10189,7 @@ func (a *app) resetMeters() {
 	a.cost = 0
 	a.tokens, a.inputTokens, a.outputTokens = 0, 0, 0
 	a.cacheRead, a.cacheWrite = 0, 0
+	a.cacheReadByModel = nil
 	a.cacheSaved = 0
 	// AND THE TREE'S TOTAL, which is a fact about one conversation exactly as
 	// a.cost above it is: it is what THIS conversation and the work it started
@@ -10420,10 +10417,73 @@ func (a *app) cacheNote(u session.Usage) {
 	a.feed.note(line)
 }
 
+// cacheModel is the model id a newly observed cache read is attributed to when
+// no per-row breakdown named one.
+func (a *app) cacheModel() string {
+	if model := strings.TrimSpace(a.model); model != "" {
+		return model
+	}
+	if a.agent != nil {
+		return strings.TrimSpace(a.agent.Model())
+	}
+	return ""
+}
+
+// transcriptCacheReads reads the per-model cached prompt tokens from this
+// conversation's journal on disk when one is present.
+func (a *app) transcriptCacheReads() map[string]int {
+	if path := strings.TrimSpace(a.file); path != "" {
+		if reads := session.TranscriptCacheReads(path); len(reads) > 0 {
+			return reads
+		}
+	}
+	if a.resumed && strings.TrimSpace(a.workspace) != "" {
+		for _, name := range []string{"session.jsonl", "transcript.jsonl"} {
+			if reads := session.TranscriptCacheReads(filepath.Join(a.workspace, name)); len(reads) > 0 {
+				return reads
+			}
+		}
+	}
+	return nil
+}
+
+// recordCacheReads attributes newly arrived cache reads to the model that
+// served them so a later /model switch never reprices earned savings.
+func (a *app) recordCacheReads(delta int) {
+	if len(a.cacheReadByModel) == 0 && a.cacheRead > 0 {
+		if fromTranscript := a.transcriptCacheReads(); len(fromTranscript) > 0 {
+			a.cacheReadByModel = fromTranscript
+		}
+	}
+	if a.cacheReadByModel != nil {
+		if unattributed := a.cacheReadByModel[""]; unattributed > 0 {
+			if model := a.cacheModel(); model != "" {
+				a.cacheReadByModel[model] += unattributed
+				delete(a.cacheReadByModel, "")
+			}
+		}
+	}
+	if delta <= 0 {
+		return
+	}
+	var attributed int
+	for _, reads := range a.cacheReadByModel {
+		attributed += reads
+	}
+	if a.cacheRead <= attributed {
+		return
+	}
+	add := min(delta, a.cacheRead-attributed)
+	if a.cacheReadByModel == nil {
+		a.cacheReadByModel = make(map[string]int)
+	}
+	a.cacheReadByModel[a.cacheModel()] += add
+}
+
 // repriceCache is what the session's cache reads have been worth, worked out
-// from the totals rather than remembered from the turns that made them
-// ([app.cacheSaved] states the bargain, the resume it fixes and the mixed-model
-// approximation it accepts). It is called wherever [app.cacheRead] moves.
+// per model that served those reads rather than repriced at the currently
+// selected model ([app.cacheSaved]). It is called wherever [app.cacheRead] or
+// [app.cacheReadByModel] moves.
 //
 // BOTH PRICES OR NO MONEY, which is [app.cacheNote]'s own guard said again at
 // the second site that spends it: around two rows in five publish a prompt
@@ -10436,7 +10496,30 @@ func (a *app) repriceCache() {
 	if a.cacheRead <= 0 {
 		return
 	}
-	model, known := a.priceFor(a.model)
+	if len(a.cacheReadByModel) > 0 {
+		if unattributed := a.cacheReadByModel[""]; unattributed > 0 {
+			if model := a.cacheModel(); model != "" {
+				a.cacheReadByModel[model] += unattributed
+				delete(a.cacheReadByModel, "")
+			}
+		}
+		var total float64
+		for id, reads := range a.cacheReadByModel {
+			if reads <= 0 {
+				continue
+			}
+			model, known := a.priceFor(id)
+			if !known || model.CacheReadPrice <= 0 {
+				continue
+			}
+			if saved := float64(reads) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
+				total += saved
+			}
+		}
+		a.cacheSaved = total
+		return
+	}
+	model, known := a.priceFor(a.cacheModel())
 	if !known || model.CacheReadPrice <= 0 {
 		return
 	}

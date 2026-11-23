@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,7 +47,7 @@ func newPRBaseFixture(t *testing.T, conflict bool) prBaseFixture {
 	local := "contributor/7-local-name"
 	mustGit(t, clone, "worktree", "add", "-q", "-b", local, dir, "origin/"+prBranch)
 	mustGit(t, clone, "config", "--local", "commit.gpgsign", "false")
-	src := &recoveringPRSource{fresh: factory.PullRequest{Number: 17, State: factory.PROpen, HeadSHA: head, BaseSHA: base, HeadBranch: prBranch}}
+	src := &recoveringPRSource{fresh: factory.PullRequest{Number: 17, State: factory.PROpen, HeadSHA: head, BaseSHA: base, BaseBranch: "main", HeadBranch: prBranch}}
 	g := newRig(t, nil, func(o *Options) {
 		o.Workdir = func(factory.Item) (string, error) { return dir, nil }
 		o.RepoDir = func(string) string { return clone }
@@ -241,5 +242,212 @@ func TestFollowPRSyncBaseRechecksAuthorityAfterFetching(t *testing.T) {
 	}
 	if got := mustGit(t, f.dir, "rev-parse", "HEAD"); got != f.head {
 		t.Fatalf("revoked sync changed HEAD to %q", got)
+	}
+}
+
+// THE BASE SYNC MERGES THE BASE BRANCH AS IT IS NOW (the owner's decision of
+// 2026-11-17, "use latest dev"). Job 31: the forge's recorded base (BaseSHA)
+// stays where the PR's last push left it, while main moves on with a change
+// that conflicts with the PR. The door merges main's live head, so the
+// conflict surfaces against it; a live head that merges cleanly is merged and
+// recorded as the synced base.
+func TestFollowPRSyncBaseMergesTheLiveBaseHead(t *testing.T) {
+	t.Run("conflict against the live head", func(t *testing.T) {
+		f := newPRBaseFixture(t, false)
+		prBaseFixtureCommit(t, f.remote, "feature.txt", "the base's newer change\n")
+		live := mustGit(t, f.remote, "rev-parse", "main")
+		base, words, err := f.rig.r.loop().syncPRBase(context.Background(), f.id, f.dir)
+		if err != nil || base != live || !strings.Contains(words, "conflict") || strings.Contains(words, "Could not use") {
+			t.Fatalf("sync base = %q, %q, %v (live %s, recorded %s)", base, words, err, live, f.base)
+		}
+		if got := mustGit(t, f.dir, "rev-parse", "MERGE_HEAD"); got != live {
+			t.Fatalf("merge in progress points at %q, want the live head %s", got, live)
+		}
+		if got := mustGit(t, f.dir, "diff", "--name-only", "--diff-filter=U"); got != "feature.txt" {
+			t.Fatalf("conflicts = %q", got)
+		}
+		// Asked again, the door finds its own merge still in progress.
+		if again, words, err := f.rig.r.loop().syncPRBase(context.Background(), f.id, f.dir); err != nil || again != live || !strings.Contains(words, "in progress") {
+			t.Fatalf("repeated sync = %q, %q, %v", again, words, err)
+		}
+	})
+
+	t.Run("a base is named on the history once, however often the door is asked (review 4)", func(t *testing.T) {
+		f := newPRBaseFixture(t, false)
+		prBaseFixtureCommit(t, f.remote, "feature.txt", "the base's newer change\n")
+		c := &loopCtl{id: f.id, ctx: context.Background()}
+		sync := func() {
+			t.Helper()
+			it, err := f.rig.st.Get(f.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.rig.r.loop().baseSyncAction(c, it, chat(factory.FollowPRStep), f.dir)(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		sync() // begins the merge, which conflicts
+		sync() // the merge is still open
+		// Resolved and committed, then checked again.
+		if err := os.WriteFile(filepath.Join(f.dir, "feature.txt"), []byte("both\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		mustGit(t, f.dir, "add", "feature.txt")
+		mustGit(t, f.dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "--no-edit")
+		sync()
+		// A later attempt clears BaseSyncSHA; the same base checked then is not new to the job.
+		if err := f.rig.st.Update(f.id, func(it *factory.Item) error { it.FollowUp.BaseSyncSHA = ""; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		sync()
+		current, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, l := range current.Stream.Log {
+			if strings.HasPrefix(l.Text, "Follow PR base sync:") {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Fatalf("history names the base sync %d times: %+v", n, current.Stream.Log)
+		}
+	})
+
+	t.Run("a merge the agent began itself is named once (review 4)", func(t *testing.T) {
+		f := newPRBaseFixture(t, false)
+		prBaseFixtureCommit(t, f.remote, "feature.txt", "the base's newer change\n")
+		live := mustGit(t, f.remote, "rev-parse", "main")
+		mustGit(t, f.dir, "fetch", "--no-tags", "origin", "main")
+		if _, err := (ExecGit{}).Run(f.dir, "-c", "user.name=t", "-c", "user.email=t@example.com", "merge", "--no-edit", "FETCH_HEAD"); err == nil {
+			t.Fatal("the agent's merge did not conflict")
+		}
+		it, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := &loopCtl{id: f.id, ctx: context.Background()}
+		if _, err := f.rig.r.loop().baseSyncAction(c, it, chat(factory.FollowPRStep), f.dir)(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		current, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !logHas(current, "Follow PR base sync: the base branch's live head "+live[:9]) {
+			t.Fatalf("the history does not name the base the agent's merge brings in: %+v", current.Stream.Log)
+		}
+	})
+
+	t.Run("clean merge of the live head", func(t *testing.T) {
+		f := newPRBaseFixture(t, false)
+		prBaseFixtureCommit(t, f.remote, "later.txt", "the base moved on\n")
+		live := mustGit(t, f.remote, "rev-parse", "main")
+		it, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := &loopCtl{id: f.id, ctx: context.Background()}
+		action := f.rig.r.loop().baseSyncAction(c, it, chat(factory.FollowPRStep), f.dir)
+		words, err := action(context.Background())
+		if err != nil || !strings.Contains(words, "merged locally") || strings.Contains(words, "Could not use") {
+			t.Fatalf("sync = %q, %v", words, err)
+		}
+		parents := strings.Fields(mustGit(t, f.dir, "show", "-s", "--format=%P", "HEAD"))
+		if len(parents) != 2 || parents[0] != f.head || parents[1] != live {
+			t.Fatalf("merge parents = %v, want %s and the live head %s", parents, f.head, live)
+		}
+		current, err := f.rig.st.Get(f.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current.FollowUp.BaseSyncSHA != live {
+			t.Fatalf("recorded base = %s, want the live head %s", current.FollowUp.BaseSyncSHA, live)
+		}
+		if !logHas(current, "Follow PR base sync: the base branch's live head "+live[:9]) {
+			t.Fatalf("history does not say which base came in: %+v", current.Stream.Log)
+		}
+		if err := f.rig.r.loop().checkCIScope(current); err != nil {
+			t.Fatal(err)
+		}
+		if got := mustGit(t, f.remote, "rev-parse", f.prBranch); got != f.head {
+			t.Fatalf("sync wrote the remote PR branch to %s", got)
+		}
+		if got := mustGit(t, f.remote, "rev-parse", "main"); got != live {
+			t.Fatalf("sync wrote the base branch to %s", got)
+		}
+	})
+}
+
+// prBaseNoRemote fails every read of origin's branches and every fetch of one
+// commit, as a lost network or a revoked token does.
+type prBaseNoRemote struct {
+	Git
+	fail func(args []string) bool
+}
+
+func (g prBaseNoRemote) Run(dir string, args ...string) (string, error) {
+	if g.fail(args) {
+		return "", errors.New("fatal: unable to access origin: Could not resolve host")
+	}
+	return g.Git.Run(dir, args...)
+}
+
+// WHEN THE LIVE HEAD CANNOT BE HAD, THE DOOR SAYS SO AND MERGES THE RECORDED
+// BASE, and the job's history keeps the line.
+func logStarts(it factory.Item, prefix string) bool {
+	for _, l := range it.Stream.Log {
+		if strings.HasPrefix(l.Text, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestFollowPRSyncBaseFallsBackToTheRecordedBase(t *testing.T) {
+	for name, mode := range map[string]func(f *prBaseFixture, live string){
+		"the branch read fails": func(f *prBaseFixture, live string) {
+			f.rig.r.opts.Publisher = func(context.Context, factory.Item) (PublishTarget, error) {
+				return PublishTarget{Source: f.source, Git: prBaseNoRemote{Git: ExecGit{}, fail: func(args []string) bool { return args[0] == "ls-remote" }}}, nil
+			}
+		},
+		"the live fetch fails": func(f *prBaseFixture, live string) {
+			f.rig.r.opts.Publisher = func(context.Context, factory.Item) (PublishTarget, error) {
+				return PublishTarget{Source: f.source, Git: prBaseNoRemote{Git: ExecGit{}, fail: func(args []string) bool { return args[0] == "fetch" && args[len(args)-1] == live }}}, nil
+			}
+		},
+		"the forge names no base branch": func(f *prBaseFixture, live string) { f.source.fresh.BaseBranch = "" },
+		"the base branch is gone":        func(f *prBaseFixture, live string) { f.source.fresh.BaseBranch = "release/gone" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newPRBaseFixture(t, false)
+			prBaseFixtureCommit(t, f.remote, "feature.txt", "the base's newer change\n")
+			live := mustGit(t, f.remote, "rev-parse", "main")
+			mode(&f, live)
+			it, err := f.rig.st.Get(f.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := &loopCtl{id: f.id, ctx: context.Background()}
+			words, err := f.rig.r.loop().baseSyncAction(c, it, chat(factory.FollowPRStep), f.dir)(context.Background())
+			if err != nil || !strings.Contains(words, "merged locally") || !strings.Contains(words, "Could not use the live head of the base branch") || !strings.Contains(words, "recorded base "+f.base[:9]) {
+				t.Fatalf("sync = %q, %v", words, err)
+			}
+			parents := strings.Fields(mustGit(t, f.dir, "show", "-s", "--format=%P", "HEAD"))
+			if len(parents) != 2 || parents[0] != f.head || parents[1] != f.base {
+				t.Fatalf("merge parents = %v, want %s and the recorded base %s", parents, f.head, f.base)
+			}
+			current, err := f.rig.st.Get(f.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if current.FollowUp.BaseSyncSHA != f.base {
+				t.Fatalf("recorded base = %s, want %s", current.FollowUp.BaseSyncSHA, f.base)
+			}
+			if !logStarts(current, "Follow PR base sync: Could not use the live head of the base branch") {
+				t.Fatalf("history does not say it fell back: %+v", current.Stream.Log)
+			}
+		})
 	}
 }

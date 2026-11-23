@@ -2097,7 +2097,12 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	// The answered event still goes out: the window holding the card closes on
 	// the event, not on the record. Other lanes banked nothing and leave no
 	// record for the same law.
-	if said || (landingSaid && strings.TrimSpace(q.Head) != "") {
+	//
+	// A QUESTION PUT AWAY LEAVES NO RECORD, because nothing was decided: a line
+	// saying `deny · you` would sit in the model's context beside the real
+	// decisions and read as a standing refusal. The same law keeps the model's
+	// own dismissed question out of it ([Agent.DismissQuestion]).
+	if (said || (landingSaid && strings.TrimSpace(q.Head) != "")) && !(answer.Dismissed && answer.Kind == QuestionConsent) {
 		a.recordDecision(decisionRecordOf(q, answer))
 		// THE COMPLETION CHECK READS THIS, NOT THE TOOL RESULT. A digest clips
 		// results, and "nothing was set up" then reads as work still owed. The
@@ -2258,6 +2263,14 @@ func (a *Agent) applyToLane(answer Answer) error {
 		}
 		switch action.Kind {
 		case QuestionConsent:
+			// A PERMISSION PUT AWAY IS NOT A PERMISSION REFUSED. The Inbox's
+			// dismiss rides the one answer that changes nothing (`deny`), and
+			// the call parked on it must not read that as the person's no
+			// ([consentDismissed]).
+			if answer.Dismissed {
+				a.dismissConsent(answer.ID)
+				return nil
+			}
 			a.ResolveConsentRemember(answer.ID, action.Allow, ConsentScopeOf(action, answer))
 		case QuestionTask:
 			// AND THE HOLE IN THE SENTENCE IS PART OF THE YES. A proposal whose

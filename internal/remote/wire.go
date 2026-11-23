@@ -583,6 +583,12 @@ const (
 	// surface that is told so shows the question at once rather than holding
 	// it on a clock it cannot stop.
 	MethodQuestionClock = "Question.Clock" // QuestionClockArgs → QuestionClockReply
+	// MethodQuestionDismiss takes one of the model's own questions down because
+	// the person dismissed it from the Inbox: nothing is decided and the model
+	// is told ([session.Agent.DismissQuestion]). It names the question the way
+	// [MethodQuestionHold] does, and it answers, because a refusal — the
+	// question was answered first — must reach the person who pressed it.
+	MethodQuestionDismiss = "Question.Dismiss" // QuestionHoldArgs → nothing (or a refusal)
 	// MethodQuestionWatch is the surface saying it draws questions, and it buys
 	// exactly what [MethodTaskWatch] and [MethodDesignWatch] buy: "question"
 	// frames from here on, including everything already open replayed the
@@ -1599,8 +1605,15 @@ type Moved struct {
 // AN EMPTY DOOR IS A PERSON'S OWN STOP, which is what an older surface that
 // sends no arguments at all means and what it always meant. That is the one
 // direction this may fail in that costs nothing: a stop is still a stop.
+//
+// WITHIN IS THE STOP'S BOUND, IN MILLISECONDS, for a surface that cannot keep
+// the deadline itself: a turn that has not let go by then is abandoned by the
+// engine ([session.Agent.InterruptWithin]). Zero is the plain stop every
+// surface sent before the field existed, and an engine too old to read it
+// stops as it always did, with no second stage: the field can only add one.
 type InterruptArgs struct {
-	Door string `json:"door,omitempty"`
+	Door   string `json:"door,omitempty"`
+	Within int64  `json:"within,omitempty"`
 }
 
 type SubmitArgs struct {

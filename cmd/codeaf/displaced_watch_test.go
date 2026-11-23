@@ -65,7 +65,7 @@ func TestHostedWatchDisplacedWindowAsksBeforeHeartbeat(t *testing.T) {
 	defer deadline.Stop()
 	frames := time.NewTicker(time.Millisecond)
 	defer frames.Stop()
-	for !strings.Contains(screen.String(), "continued this chat; this window now only shows it") {
+	for !strings.Contains(screen.String(), "continued this chat. This copy is read-only and may be behind") {
 		select {
 		case <-frames.C:
 		case <-deadline.C:
