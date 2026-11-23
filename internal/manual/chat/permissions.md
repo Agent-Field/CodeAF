@@ -804,6 +804,14 @@ The entries, verbatim:
 `poweroff`, `poweroff *` — plus the fork bomb, matched with all whitespace
 removed and reported to you as `:(){:|:&};:`.
 
+**A recursive delete asks in any spelling.** An `rm` with `-r`, `-R` or
+`--recursive` — clustered as `-rf` or `-fR`, split as `-r -f`, with or without
+`-f`, after `sudo` or as `/bin/rm`, with the path quoted or after `--` — is asked
+about when it is aimed at an absolute path, `~`, `$HOME` or a bare `*`. The first
+three are reported as `critical command "rm -rf /*"`, a bare `*` as
+`critical command "rm -rf *"`. A relative target such as `rm -rf build` or
+`rm -r ./tmp` is not.
+
 Before matching, the line is normalised: runs of whitespace collapse to one
 space, the gap after `>` closes (so `> /dev/sda` and `>/dev/sda` are the same
 thing), and a leading `sudo` or `doas` is dropped (so `sudo reboot` reads as
@@ -1203,7 +1211,7 @@ hang, and never the end of the turn. The exact sentences:
 
 - `denied by approval rule: <rule>`
 - `denied by approval rule: <rule> (remembered for this session)`
-- `denied by the person: <rule>`
+- `denied by the person: <rule>. They said no to this action, not to this spelling: ask before doing the same thing another way.`
 - `not approved: the question timed out`
 - `not approved: ended before an answer`
 - `needs approval but no resolver is attached: <rule>`
