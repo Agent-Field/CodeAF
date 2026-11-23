@@ -114,6 +114,7 @@ func v3Subharnesses(settings config.Config, models *catalog.Catalog, model strin
 	// internal/session does for the window it was handed. One question, one
 	// non-blocking answer, two readers.
 	linear := exec.NewLinear(client, space, web, 0, 0, 0).
+		WithAttribution(config.AttributionAt(settings.ProfileDir)).
 		WithAssistedBy(config.AssistedByModelAt(settings.ProfileDir, model)).
 		WithContextLength(window)
 	registry := exec.NewRegistry(linear)

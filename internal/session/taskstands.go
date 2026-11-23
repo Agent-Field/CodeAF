@@ -56,6 +56,7 @@ package session
 // paragraph is the signpost between them.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -75,6 +76,7 @@ import (
 // not a stand with a guess in it as well, because the guess would be what
 // actually ran the moment a caller forgot to look.
 type taskStand struct {
+	workspaceSet *WorkspaceSetRequest
 	// dir is the absolute path the work stands in: a repository root, or a
 	// folder.
 	dir string
@@ -152,6 +154,21 @@ const taskGroundPathsRead = 400
 // card. A second reading of the same evidence somewhere else would be a second
 // answer to the one question this file exists to have one answer to.
 func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
+	if spec.workspaceSet != nil {
+		request := cloneWorkspaceSetRequest(spec.workspaceSet)
+		if err := validateWorkspaceSetRequest(request); err != nil {
+			return taskStand{refusal: err.Error()}
+		}
+		if _, err := validateWorkspaceSetSources(context.Background(), a.config.Place, *request, ""); err != nil {
+			return taskStand{refusal: err.Error()}
+		}
+		for _, root := range request.Roots {
+			if root.Slot == request.Primary {
+				return taskStand{dir: root.Source, mode: TaskModeMirror, workspaceSet: request}
+			}
+		}
+		return taskStand{refusal: "workspace_set primary is missing"}
+	}
 	workspace := canonicalPath(strings.TrimSpace(a.config.Workspace))
 	if program, err := a.delegateFor(spec.via); err == nil {
 		return programGround(spec, workspace, program)
@@ -172,6 +189,9 @@ func (a *Agent) resolveTaskGround(spec taskSpec) taskStand {
 // the placement a model asked for, the ladder, the brief's last word, and the
 // mode.
 func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
+	if stand, handled := a.ownershipPlacement(spec, workspace); handled {
+		return stand
+	}
 	redirect := ""
 	// A MODEL'S PLACEMENT IS EVIDENCE, NOT AUTHORITY, INSIDE A REPOSITORY. A
 	// branch is the repository's isolation boundary even when `where` asked for
@@ -200,7 +220,7 @@ func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
 			if err != nil {
 				return taskStand{refusal: "this task names a folder it cannot work in: " + where}
 			}
-			return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
+			return a.namedWhereStand(dir)
 		}
 	}
 	stand := a.groundLadder(spec, workspace)
@@ -217,15 +237,25 @@ func (a *Agent) ordinaryTaskGround(spec taskSpec, workspace string) taskStand {
 	} else if reground != "" {
 		stand.dir, stand.rung = reground, taskGroundSaid
 	}
-	stand.mode, redirect = groundModeAfterPlacement(stand, spec, workspace, redirect, a.config.Place.Trees())
+	stand.mode, redirect = groundModeAfterPlacement(stand, spec, workspace, redirect, a.config.Place.Trees(), WorkspaceOwnershipEnabled(a.config.Place))
 	stand.redirect = redirect
 	return stand
+}
+
+// namedWhereStand is where a model's named folder puts a task outside a
+// repository: in place, except that a folder holding the home folder is read
+// from the task's own folder unless the person saved it as in place.
+func (a *Agent) namedWhereStand(dir string) taskStand {
+	if saved, found := a.knownPlace(dir); HoldsHomeFolder(dir) && (!found || TaskMode(saved.Mode) != TaskModeInPlace) {
+		return taskStand{dir: dir, mode: TaskModeReference, rung: taskGroundNamed, redirect: homeTaskRedirect(dir)}
+	}
+	return taskStand{dir: dir, mode: TaskModeInPlace, rung: taskGroundNamed}
 }
 
 // groundModeAfterPlacement is the mode phase of [Agent.resolveTaskGround]. It
 // keeps the person's referred-place word authoritative while letting a model's
 // declined `in place` request become ordinary evidence for [groundMode].
-func groundModeAfterPlacement(stand taskStand, spec taskSpec, workspace, redirect, trees string) (TaskMode, string) {
+func groundModeAfterPlacement(stand taskStand, spec taskSpec, workspace, redirect, trees string, owned bool) (TaskMode, string) {
 	// A MODE THE PERSON SAID IS NOT RECOMPUTED. Every ordinary rung leaves this
 	// blank; a referred place may carry the person's own word about how work
 	// happens there ([PlaceRef.Mode]), and that word is obeyed rather than read.
@@ -245,7 +275,7 @@ func groundModeAfterPlacement(stand taskStand, spec taskSpec, workspace, redirec
 		// reference, exactly as it would on every other ladder rung.
 		modeStand.rung = ""
 	}
-	return groundMode(modeStand, spec, workspace, trees), redirect
+	return groundMode(modeStand, spec, workspace, trees, owned), redirect
 }
 
 // whereInsideRepository reports the committed repository a model-authored
@@ -894,9 +924,12 @@ func groundRoot(dir string) string {
 // looks like — this design came to place work that was going somewhere WRONG,
 // and it may not quietly take a worktree away from work that was already going
 // somewhere right.
-func groundMode(stand taskStand, spec taskSpec, workspace string, trees string) TaskMode {
+func groundMode(stand taskStand, spec taskSpec, workspace string, trees string, owned bool) TaskMode {
 	_, isRepo := repositoryRoot(stand.dir)
 	writes := groundNamesWorkUnder(stand.dir, spec, trees)
+	if owned && !isRepo {
+		return ownershipPlainMode(stand.dir)
+	}
 	switch {
 	case isRepo && (stand.rung == taskGroundStandingIn || writes):
 		return TaskModeWorktree
@@ -905,7 +938,7 @@ func groundMode(stand taskStand, spec taskSpec, workspace string, trees string) 
 	case stand.rung == taskGroundNothing || stand.dir == workspace:
 		return TaskModeFolder
 	case writes:
-		return TaskModeMirror
+		return ownershipPlainMode(stand.dir)
 	}
 	return TaskModeReference
 }

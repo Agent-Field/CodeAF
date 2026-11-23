@@ -471,6 +471,14 @@ it says `no engine is holding /home/you/api on this machine`. `--status-all` doe
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.
 
+## An older engine holds the chat — why its models can't be changed in the app
+
+The desktop app opens a chat that an older codeaf engine holds, and you can read it there.
+Its models stay as that engine set them, and a pick answers `An older codeaf engine holds
+this conversation, so its models can't be changed here. Stop that engine, then open this
+chat again to change them.` The same sentence shows in the chat when it opens. Closing the
+older window is not enough while its engine runs on: `codeaf engine stop` ends it.
+
 ## An older engine cannot move chats — what happens when a new window needs them
 
 Moving chats is available by default on Linux, macOS and native Windows with a compatible engine.
@@ -654,7 +662,7 @@ the same stream and its recorded events.
 ## Are saved memories available on the default engine launch?
 
 Yes. Plain `codeaf` holds the conversation in this machine's engine and reads
-its memories. `/memory` or `alt+8` opens the Memories tab; `/remember <text>`
+its memories. `/memory` or `alt+8` opens the Memory tab; `/remember <text>`
 keeps one line, `/memories` lists them, and the tab forgets one. The page and commands use the same engine store. A demo
 home's seeded lines are available on this road too.
 
@@ -662,8 +670,9 @@ Over `--host`, these same doors reach the other machine's store. When a
 machine's memory store could not be opened, the page and the commands say so
 (`memory is unavailable in this conversation · the store could not be opened`
 here, `memory is unavailable on this machine · …` from a far engine). The
-`notice things to remember` row is read on every turn, so even an engine that
-has been running for days follows a change from the next turn.
+`learn from chats and jobs` row is read at every memory step, so even an engine
+that has been running for days follows a change without a restart. Off stops
+automatic memory model calls; saved lines remain available.
 
 ## Executable handoff on Windows
 

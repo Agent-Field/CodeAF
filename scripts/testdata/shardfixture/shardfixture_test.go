@@ -24,6 +24,11 @@ func record(t *testing.T, phase string) {
 }
 
 func TestAlpha(t *testing.T) {
+	if os.Getenv("SHARD_FIXTURE_MISMATCH") != "" {
+		// An extra result, as a helper process sharing stdout would print. Its
+		// lower-case name sorts differently outside the C locale.
+		fmt.Println("--- PASS: TestaGhost (0.00s)")
+	}
 	record(t, "done")
 }
 
@@ -35,6 +40,10 @@ func TestBravoWithSubtest(t *testing.T) {
 func TestCharlieCanFail(t *testing.T) {
 	if os.Getenv("SHARD_FIXTURE_FAIL") != "" {
 		t.Fatal("fixture failure requested")
+	}
+	if os.Getenv("SHARD_FIXTURE_MISMATCH") != "" {
+		// No newline: this test's own result line is no longer at a line start.
+		fmt.Print("unfinished line")
 	}
 	record(t, "done")
 }

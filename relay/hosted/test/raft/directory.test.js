@@ -84,7 +84,7 @@ test('R1 R2 R4 R14 R16 R17 R21 hosted facade uses committed Go policy and native
     }, cluster);
     const stored=new Map(); let failPut=true;
     const bucket={async put(id,b) {if(failPut) throw new Error('blob write failed');stored.set(id,b.slice());},async get(id,opts) {const b=stored.get(id);if(!b)return null;const offset=opts?.range?.offset??0,length=opts?.range?.length??b.length;return {arrayBuffer:async()=>b.slice(offset,offset+length).buffer};}};
-    const sqlHost=new Host();hostStores.push(sqlHost);const store=new R2Store(bucket,sqlHost.sql,cluster);
+    const sqlHost=new Host();hostStores.push(sqlHost);const store=new R2Store(bucket, sqlHost.sql, cluster, () => {});
     const rid='1'.repeat(64), f=await sealFrame(encodeFrame('0'.repeat(32),[{rid,bytes:enc.encode('AGEO\x01sealed-object')}]));
     const receipt={device:'a',head:'sealed-one',head_rid:rid};let durable=0;
     await assert.rejects(store.put(f),/blob write failed/);

@@ -2,10 +2,14 @@ package directory
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"net/http"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
@@ -136,10 +140,53 @@ func retire(cur *Rotation, device string, req RotationReq, now int64, b GraceBou
 }
 
 // Gate is a Client's rotation calls as the three moves a rotation makes.
-type Gate struct{ Client Client }
+type Gate struct {
+	Client Client
+	// Store discovers the hosted handoff route without changing the rotation wire.
+	Store interface {
+		Stats(context.Context) (blobstore.Counts, error)
+	}
+	Source string
+}
 
 // Freeze stops every write to the identity.
 func (g Gate) Freeze(ctx context.Context) error { return g.move(ctx, RotationReq{Op: OpFreeze}) }
+
+// HandoffTo carries hosted storage permission after freezing and before uploads.
+// It reports whether a binding was accepted; relays without the stats field
+// receive no additional request and need no saved successor after cancellation.
+func (g Gate) HandoffTo(ctx context.Context, successor identity.Identity) (bool, error) {
+	if g.Store == nil {
+		return false, nil
+	}
+	counts, err := g.Store.Stats(ctx)
+	if err != nil {
+		return false, err
+	}
+	if counts.Storage == "" {
+		return false, nil
+	}
+	client, ok := g.Client.(interface {
+		HandoffStorage(context.Context, string, identity.Identity) error
+	})
+	if !ok {
+		return false, ErrTooOld
+	}
+	err = client.HandoffStorage(ctx, g.Source, successor)
+	return err == nil, err
+}
+
+// HandoffStorage signs consent with the successor root; the HTTP request is
+// still signed by a device of the source, just like other store requests.
+func (h *HTTP) HandoffStorage(ctx context.Context, source string, successor identity.Identity) error {
+	proof := successor.Sign([]byte("codeaf/storage-handoff/v1\n" + source + "\n" + successor.ID()))
+	request := struct {
+		Successor    string `json:"successor"`
+		SuccessorKey string `json:"successor_key"`
+		Proof        string `json:"proof"`
+	}{successor.ID(), hex.EncodeToString(successor.PublicKey()), hex.EncodeToString(proof)}
+	return h.do(ctx, http.MethodPost, "/v1/store/handoff", request, nil)
+}
 
 // Thaw undoes a freeze.
 func (g Gate) Thaw(ctx context.Context) error { return g.move(ctx, RotationReq{Op: OpThaw}) }

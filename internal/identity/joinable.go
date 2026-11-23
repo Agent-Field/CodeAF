@@ -1,11 +1,6 @@
 package identity
 
-import (
-	"database/sql"
-	"github.com/Agent-Field/codeaf/internal/sqliteuri"
-	"path/filepath"
-	"strings"
-)
+import "os"
 
 // Joinable accepts startup state plus personal memory and preferences, which
 // merge into the new fleet (C30.4). Chats and unknown files still require the
@@ -16,7 +11,12 @@ func Joinable(home string) (bool, error) {
 		rulesCopy[key] = judge
 	}
 	rulesCopy["graph.db"] = memoryOnlyGraph
-	for _, key := range []string{"provider-keys.ledger", "preferences-sync.ledger", "memory-sync.ledger", "state-sync.lock"} {
+	// These files are relay selection and an identity-bound permission cache.
+	// Neither contains work that needs the old identity, and the cached
+	// permission cannot apply to the account we join.
+	rulesCopy["sync-url"] = regularRelayMetadata
+	rulesCopy["sync-storage"] = regularRelayMetadata
+	for _, key := range []string{"provider-keys.ledger", "preferences-sync.ledger", "memory-sync.ledger", "teams-sync.ledger", "teams-traffic-sync.ledger", "state-sync.lock"} {
 		rulesCopy[key] = never
 	}
 	used, err := within(rulesCopy)(home)
@@ -24,30 +24,13 @@ func Joinable(home string) (bool, error) {
 }
 
 func memoryOnlyGraph(path string) (bool, error) {
-	if sound, err := soundDatabase(path); !sound || err != nil {
-		return true, err
-	}
-	uri, err := sqliteuri.FromPath(filepath.Clean(path))
+	return databaseWork(path, graphStartupTables(), true)
+}
+
+func regularRelayMetadata(path string) (bool, error) {
+	info, err := os.Lstat(path)
 	if err != nil {
 		return true, err
 	}
-	uri.RawQuery = "mode=ro"
-	db, err := sql.Open("sqlite", uri.String())
-	if err != nil {
-		return true, err
-	}
-	defer db.Close()
-	tables, err := graphTables(db)
-	if err != nil {
-		return true, err
-	}
-	for _, table := range tables {
-		if table == "memories" || strings.HasPrefix(table, "memory_") {
-			continue
-		}
-		if used, err := holdsWork(db, table); used || err != nil {
-			return true, err
-		}
-	}
-	return false, nil
+	return !info.Mode().IsRegular(), nil
 }

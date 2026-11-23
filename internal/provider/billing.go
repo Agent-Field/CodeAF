@@ -45,17 +45,27 @@ import (
 // have to re-derive it: the same [WithCallNode] the call log is keyed by names
 // the work, and a call made without one is spend nobody can file.
 type Billed struct {
+	// GenerationID identifies the provider receipt for this physical attempt.
+	GenerationID string
 	// Node is what [WithCallNode] named, empty when nothing did.
 	Node string
 	// Model is who actually served the call — the rung a panel picked or an
 	// escalation moved to — rather than the name the caller asked for.
 	Model string
+	// ReportedModel is the model ID in the answer, when the provider supplied
+	// one. Strict callers retain this evidence even when rejecting a substitution.
+	ReportedModel string
 	// The four figures the usage table holds. CachedTokens is the share of
 	// PromptTokens the provider billed at the cached rate.
 	PromptTokens     int
 	CompletionTokens int
 	CachedTokens     int
 	Cost             float64
+	// Billing is the fact the answered attempt went out under, captured at
+	// that attempt (billingfact.go). It rides a late receipt unchanged, so a
+	// receipt is billed as the road that was charged rather than as whatever
+	// the client says when the receipt arrives.
+	Billing BillingFact
 }
 
 // Empty reports a response the adapter cannot bill: the provider sent no usage
@@ -71,10 +81,16 @@ func (b Billed) Empty() bool {
 // tools can each be waiting on a call of their own.
 type BillingSink func(Billed)
 
-// Reconciled is what became of one call the wire never priced. Found says the
-// provider's own receipt supplied the embedded figures; when it is false every
-// figure is zero and nothing may be banked.
+// Reconciled delivers a final receipt or retained measured interim usage.
+// Found says usable measured figures exist; Interim distinguishes the fallback.
+// PriceMissing says the measured figures did not include a monetary charge.
 type Reconciled struct {
+	// Tag identifies the purpose of the original call.
+	Tag string
+	// Interim marks measured usage retained when a final receipt was unavailable.
+	Interim bool
+	// PriceMissing distinguishes token-only measurements from an explicit zero price.
+	PriceMissing bool
 	Billed
 	// Ref is the provider's generation id, and is empty when the stream never
 	// named the call well enough for a receipt to be requested.
@@ -84,7 +100,7 @@ type Reconciled struct {
 	Reason string
 	// Hedged says this was a rescue arm, so any money on its receipt is waste.
 	Hedged bool
-	// Found says the provider supplied a receipt. False means the figures above
+	// Found says measured figures are available. False means the figures above
 	// stay empty and the missing price is counted instead.
 	Found bool
 }
@@ -112,7 +128,9 @@ type ReceiptPending func() (done func())
 type billingContextKey struct{}
 type reconcileContextKey struct{}
 type receiptPendingContextKey struct{}
+type receiptSettlementContextKey struct{}
 type unmeteredReceiptsContextKey struct{}
+type finalReceiptsContextKey struct{}
 
 // WithBilling arms one piece of work's banking. Like the transcript sink it
 // belongs to the work rather than to the client, because one client serves
@@ -145,6 +163,14 @@ func WithReceiptPending(ctx context.Context, pending ReceiptPending) context.Con
 	return context.WithValue(ctx, receiptPendingContextKey{}, pending)
 }
 
+// WithReceiptSettlement registers the lifetime of receipts that still owe
+// accounting, including unmetered answers that do not delay the next job step.
+// The returned release runs after the receipt sink, even if queue admission fails.
+// Stage readiness remains the separate responsibility of WithReceiptPending.
+func WithReceiptSettlement(ctx context.Context, pending ReceiptPending) context.Context {
+	return context.WithValue(ctx, receiptSettlementContextKey{}, pending)
+}
+
 // WithUnmeteredReceipts arms one piece of work to have an answer that arrived
 // whole but carried no usage block settled the way a cut one is ([Client.settle]):
 // its receipt is asked for by generation id, or it is told as a call nobody
@@ -159,6 +185,18 @@ func WithReceiptPending(ctx context.Context, pending ReceiptPending) context.Con
 // one: its missing usage block is a subscription's silence, not a charge.
 func WithUnmeteredReceipts(ctx context.Context) context.Context {
 	return context.WithValue(ctx, unmeteredReceiptsContextKey{}, true)
+}
+
+// WithFinalReceipts asks for a failed call's final receipt even when its stream
+// carried interim usage. Successful unmetered answers also seek a receipt.
+// Callers bank successful usage themselves and must not also install a billing sink.
+func WithFinalReceipts(ctx context.Context) context.Context {
+	return context.WithValue(WithUnmeteredReceipts(ctx), finalReceiptsContextKey{}, true)
+}
+
+func finalReceiptsFrom(ctx context.Context) bool {
+	armed, _ := ctx.Value(finalReceiptsContextKey{}).(bool)
+	return armed
 }
 
 // unmeteredReceiptsFrom reports whether [WithUnmeteredReceipts] armed ctx.
@@ -208,20 +246,45 @@ func reconcileFrom(ctx context.Context) ReconcileSink {
 // reads it: the slot's model unless the routing lane recorded a served rung,
 // because a row naming the model somebody asked for is a row that cannot be
 // summed per model after an escalation.
-func (c *Client) bill(ctx context.Context, model string, response *ai.Response) {
+func (c *Client) bill(ctx context.Context, model string, response *ai.Response, traces ...*callTrace) {
+	// THE ATTEMPT'S OWN TOKEN HEARS THE PRICE FIRST AND INDEPENDENTLY of every
+	// sink below (attemptobserver.go): Billed.Empty cannot tell a stated zero
+	// from a missing figure, so the typed fact is read straight off the usage
+	// block. An answer with no usage block is unknown, never zero.
+	handle := attemptOf(traces...)
+	if response == nil || response.Usage == nil {
+		handle.unknown()
+		return
+	}
+	handle.financial(costFrom(response.Usage.Cost))
+	c.bankBilledUsage(ctx, model, response, traces...)
+}
+
+// bankBilledUsage preserves the existing usage consumers independently of the
+// observed attempt's final price. An interrupted stream may have interim usage;
+// its observed token still needs its own final receipt.
+func (c *Client) bankBilledUsage(ctx context.Context, model string, response *ai.Response, traces ...*callTrace) {
+	// THE CALLER'S SLOT HEARS THE ROAD BEFORE ANY SINK IS ASKED FOR, because a
+	// session banks the answer itself and arms no sink: the fact has to reach
+	// it beside the answer or not at all.
+	fact := c.answeredBilling(traces...)
+	noteAnsweredBilling(ctx, fact)
 	sink := billingFrom(ctx)
-	if sink == nil || response == nil || response.Usage == nil {
+	if sink == nil {
 		return
 	}
 	if served := CallFrom(ctx).Model(); served != "" {
 		model = served
 	}
 	billed := Billed{
+		GenerationID:     canonicalGenerationID(response.ID),
 		Node:             callNode(ctx),
 		Model:            model,
+		ReportedModel:    response.Model,
 		PromptTokens:     response.Usage.PromptTokens,
 		CompletionTokens: response.Usage.CompletionTokens,
 		CachedTokens:     response.Usage.CacheReadTokens(),
+		Billing:          fact,
 	}
 	if response.Usage.Cost != nil {
 		billed.Cost = *response.Usage.Cost
@@ -240,13 +303,13 @@ func (c *Client) billAnswered(ctx context.Context, model string, response *ai.Re
 		// A direct client's receipt bearer belongs to its original service.
 		// Preserve the whole-answer boundary until recovery can carry the
 		// overflow attempt's own credential to its different host.
-		if c.config.Direct {
+		if c.config.Direct && !finalReceiptsFrom(ctx) {
 			return
 		}
 		c.settle(ctx, model, response, receiptUnmeteredReason, answerBytes, traces...)
 		return
 	}
-	c.bill(ctx, model, response)
+	c.bill(ctx, model, response, traces...)
 }
 
 // BillingSinkFrom and CallNodeFrom read back what a leaf's context was armed

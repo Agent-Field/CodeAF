@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
@@ -2083,6 +2084,11 @@ func (a *app) crewWarnings() []string {
 	var out []string
 	if a.oneModel {
 		out = append(out, crewOneModelWord)
+	} else if config.TaskModelsModeAt(a.profileDir) == crewroute.ModeOne {
+		// THE ONE-MODEL ROW IS SAID HERE TOO: every task runs it, and the seats
+		// and allowed models below wait, unchanged, for Auto.
+		one, _ := config.TaskOneModelAt(a.profileDir)
+		out = append(out, crewTaskOneWord+crewroute.ShortModel(one.Model)+crewTaskOneTail)
 	}
 	if len(p.providers) == 0 {
 		out = append(out, crewNoProviderWord)
@@ -2237,12 +2243,19 @@ func (a *app) crewRouteText(offer config.CrewOffer, route int, pin config.CrewPi
 	return a.pal.ink(r.Provider) + a.pal.dim(" · "+string(r.Kind))
 }
 
+// crewClaudePlanWord is what a claude-code row shows in place of a per-token price.
+const crewClaudePlanWord = "on your Claude plan"
+
 // crewPerM is a model's price as the list shows it: the model picker's own
 // words ([priceWord]), `$0.08/$0.16 per M`, dollars per million tokens in and
-// out. It once drew the two figures bare, which a person had no way to read as
+// out, or [crewClaudePlanWord] for a claude-code model on a subscription plan.
+// It once drew the two figures bare, which a person had no way to read as
 // a unit, and a second spelling of one price is a second thing to keep true.
 // A model with no published price says nothing (the emptiness law).
 func crewPerM(m crewroute.Model) string {
+	if strings.HasPrefix(strings.ToLower(m.ID), claudemodel.ID+"/") {
+		return crewClaudePlanWord
+	}
 	return priceWord(m.PromptPrice, m.CompletionPrice)
 }
 

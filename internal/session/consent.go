@@ -42,6 +42,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
@@ -91,7 +92,17 @@ const ConsentWaiting = "waiting"
 type consentAnswer struct {
 	allow bool
 	scope ConsentScope
+	// dismissed is a question put away with no answer: the call did not run,
+	// and nothing was decided about it or about any later call.
+	dismissed bool
 }
+
+// consentDismissed is what a call reads when the person put its permission
+// question away from the Inbox without answering it. It says three things on
+// purpose: the call did not run, the person did not refuse it (so it is no rule
+// about this tool or this project), and it may ask again. A model that read
+// "denied" here would carry the refusal on as a standing restriction.
+const consentDismissed = "not run: the person put this permission question away without answering it. They did not refuse the call and decided nothing, and this says nothing about later calls. Carry on without it, or ask again if you still need it."
 
 // ResolveConsent answers one EventConsentRequest. An id nobody is waiting on —
 // a question whose turn was interrupted, a double click — is ignored rather
@@ -117,6 +128,13 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope ConsentScope
 		scope = ConsentOnce
 	}
 	a.deliverConsent(id, consentAnswer{allow: allow, scope: scope})
+}
+
+// dismissConsent closes one permission question the person put away without
+// answering it. The waiting call gets [consentDismissed], and the turn it ran
+// in is marked refused like any other call that did not run for want of a yes.
+func (a *Agent) dismissConsent(id uint64) {
+	a.deliverConsent(id, consentAnswer{scope: ConsentOnce, dismissed: true})
 }
 
 // deliverConsent hands one answer to whoever is waiting for it, and drops it if
@@ -167,6 +185,12 @@ func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 // it is answered before this, in [Agent.approve], because a capability that is
 // off must not produce a question about a call that is never going to run.
 func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
+	// THE CREDENTIAL FLOOR HOLDS WITH NO POLICY AT ALL, and it is asked here so the
+	// early start of a read (loop.go) refuses it too. It runs with the workspace,
+	// which the policy does not have, so a relative path and a link are placed.
+	if read, hit := a.credentialRead(call); hit {
+		return read.Decision(), true
+	}
 	policy := a.approvalGate()
 	if policy == nil {
 		return approval.Decision{}, false
@@ -194,7 +218,7 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 	}
 	switch a.connect.CapabilityState(service, capability) {
 	case connect.StateYes:
-		if decision.Action == approval.ActionPrompt {
+		if decision.Action == approval.ActionPrompt && decision.ProfileReadError == "" {
 			return approval.Decision{
 				Action: approval.ActionAllow,
 				Rule:   "you said yes to " + strconv.Quote(phrase),
@@ -214,6 +238,13 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 // approve is the gate. It returns the refusal to hand the model and false when
 // the call must not run.
 func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
+	// AN AGENT DOES NOT READ THE PERSON'S CREDENTIALS, and nothing below can say
+	// otherwise: no mode, rule, memo, guardian or setup grant is asked about it
+	// (internal/approval's credentials.go). It reads as the refusal itself, with
+	// no rule's name in front of it, because the wording is what ends the attempt.
+	if read, hit := a.credentialRead(call); hit {
+		return refusal(read.Message()), false
+	}
 	// WHAT THE PERSON HAS TURNED OFF NEVER RUNS, and it is answered here rather
 	// than by the policy: it is not a judgement about this call, it is a hand
 	// this build does not have. It comes FIRST, ahead of the policy, the memo
@@ -227,7 +258,10 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	if governed {
 		decision = a.setupFloor(ctx, decision)
 	}
-	if !governed || decision.Action == approval.ActionAllow || setupGranted(ctx, call, decision) {
+	if governed && decision.Action == approval.ActionAllow && decision.Scope != "" && hub != nil {
+		hub.send(Event{Kind: EventConsentAllowed, Tool: call.Function.Name, Args: argsText(call), CallID: call.ID, Hint: a.gloss(call), Rule: decision.Scope})
+	}
+	if !governed || decision.Action == approval.ActionAllow || (decision.ProfileReadError == "" && setupGranted(ctx, call, decision)) {
 		return toolResult{}, true
 	}
 	if decision.Action == approval.ActionDeny {
@@ -247,7 +281,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//     ran silently for the rest of the session. The memo is somebody saying
 	//     they are done being asked about ordinary work. It is not somebody
 	//     saying they have read a message that has not been written yet.
-	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+	if decision.ProfileReadError == "" && !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		if remembered, known := a.rememberedConsent(call.Function.Name); known {
 			if remembered {
 				return toolResult{}, true
@@ -266,7 +300,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// refusal, which is the whole point of having said so in advance; with it off
 	// — the default — this line does nothing and a headless run refuses exactly as
 	// it always did.
-	if a.guardianAllows(ctx, hub, call, decision) {
+	if decision.ProfileReadError == "" && a.guardianAllows(ctx, hub, call, decision) {
 		return toolResult{}, true
 	}
 
@@ -277,28 +311,48 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// worker with no colleague in the room is that this one needed a person and
 	// there is not one.
 	if a.config.InTask {
-		return refusal("refused in a task: " + decision.Rule + " — nobody to ask"), false
+		return approvalRefusal("refused in a task: "+decision.Rule+" — nobody to ask", decision), false
 	}
 
 	// Nobody is watching. Denying is the only honest answer: blocking would
 	// hang a headless run forever on a question with no reader, and allowing
 	// would make "prompt" mean "allow" wherever the surface is not a terminal.
 	if !a.config.AskConsent || hub == nil {
-		return refusal("needs approval but no resolver is attached: " + decision.Rule), false
+		return approvalRefusal("needs approval but no resolver is attached: "+decision.Rule, decision), false
 	}
 
-	allowed, err := a.ask(ctx, hub, call, decision)
+	answer, err := a.askAnswer(ctx, hub, call, decision)
 	if err != nil {
 		// A WAIT THAT ENDED IS NOT A NO. ctx.Done — a timeout, an interrupt,
 		// the agent closing — means nobody answered. Saying "denied by the
 		// person" here is how a late Esc and a ten-second clock used to
 		// write a refusal nobody gave (F41, R2).
+		a.markRefused()
 		return refusal(notApprovedWording(err)), false
 	}
-	if !allowed {
+	return a.consentVerdict(answer, decision)
+}
+
+// consentVerdict is what a call reads about the answer its permission question
+// got. A yes runs it. A no is "denied by the person", a question put away is
+// [consentDismissed], and either one marks the turn refused
+// ([Agent.markRefused]).
+func (a *Agent) consentVerdict(answer consentAnswer, decision approval.Decision) (toolResult, bool) {
+	switch {
+	case answer.dismissed:
+		a.markRefused()
+		return refusal(consentDismissed), false
+	case !answer.allow:
+		a.markRefused()
 		return refusal("denied by the person: " + decision.Rule), false
 	}
 	return toolResult{}, true
+}
+
+// credentialRead asks the floor about one call, standing in this agent's folder.
+func (a *Agent) credentialRead(call ai.ToolCall) (approval.CredentialRead, bool) {
+	scope := approval.DefaultCredentialScope(a.config.Workspace)
+	return scope.Read(call.Function.Name, json.RawMessage(call.Function.Arguments))
 }
 
 // notApprovedWording is what the model is told when the wait ended without
@@ -390,7 +444,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	// three away the moment the event went out — so home, a second window and
 	// the phone had the sentence and nothing under it. The short form goes up
 	// beside it unchanged, for the builds that only ever read that.
-	defer a.presenceAskingWhole(a.consentAsk(id, call, decision), announce)()
+	defer a.presenceAskingWhole(ctx, a.consentAsk(id, call, decision), announce)()
 
 	select {
 	case answer := <-answers:
@@ -427,12 +481,29 @@ func (a *Agent) rememberConsent(tool string, allow bool) {
 		a.approvalParent.rememberConsent(tool, allow)
 		return
 	}
+	if a.config.ApprovalGate != nil {
+		_, _ = a.refreshApprovalGate()
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.consentMemo == nil {
 		a.consentMemo = make(map[string]bool, 1)
 	}
 	a.consentMemo[tool] = allow
+}
+
+// syncConsentMemoLocked drops any remembered tool allow that the newly
+// installed policy no longer allows, so a rule banked for a tool and then
+// dropped in /permissions asks again on the very next call.
+func (a *Agent) syncConsentMemoLocked(policy *approval.Policy) {
+	if policy == nil || len(a.consentMemo) == 0 {
+		return
+	}
+	for tool, allow := range a.consentMemo {
+		if allow && policy.Tools[tool] != approval.ActionAllow {
+			delete(a.consentMemo, tool)
+		}
+	}
 }
 
 // grantMade is the standing half of a yes, remembered so it can be TAKEN BACK.
@@ -534,6 +605,14 @@ func (a *Agent) PendingConsent() []uint64 {
 	return ids
 }
 
+func approvalRefusal(reason string, decision approval.Decision) toolResult {
+	result := refusal(reason)
+	if decision.ProfileReadError != "" {
+		result.err = &approval.ProfileReadFailure{Reason: reason}
+	}
+	return result
+}
+
 // refusal is one refused call as the model sees it: an error result, with the
 // reason in the words the person would read.
 func refusal(reason string) toolResult {
@@ -573,6 +652,11 @@ func withoutWidening(options []AnswerOption) []AnswerOption {
 // repository's generic-and-meta law: internal/approval says which shapes are
 // grave, and this lane carries the grade.
 func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decision) Question {
+	scopes, alwaysAsk := config.ApprovalScopes(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	outside := ""
+	if policy := a.approvalGate(); policy != nil {
+		outside = policy.OutsideRule(call.Function.Name, []byte(call.Function.Arguments))
+	}
 	irreversible := approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments))
 	stakes := StakesCostly
 	options := AnswerOptions(QuestionConsent)
@@ -589,14 +673,17 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		scope = []AnswerScope{ScopeOnce}
 	}
 	return Question{
-		ID:      id,
-		Kind:    QuestionConsent,
-		Ask:     AskPermission,
-		Form:    FormLine,
-		Asker:   Asker{Kind: AskerEngine},
-		Head:    ConsentHead(call.Function.Name, call.Function.Arguments),
-		Reason:  consentReason(call, decision),
-		Subject: SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
+		ID:            id,
+		Outside:       outside,
+		ConsentScopes: scopes,
+		AlwaysAsk:     alwaysAsk,
+		Kind:          QuestionConsent,
+		Ask:           AskPermission,
+		Form:          FormLine,
+		Asker:         Asker{Kind: AskerEngine},
+		Head:          ConsentHead(call.Function.Name, call.Function.Arguments),
+		Reason:        consentReason(call, decision),
+		Subject:       SubjectRef{Kind: SubjectCall, CallID: call.ID, Name: call.Function.Name},
 		// AND WHICH STEP ASKED, so that three approvals raised by one tool batch
 		// are drawn and answered as the one thing they are (question.go's
 		// [Question.Batch]).

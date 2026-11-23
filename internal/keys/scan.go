@@ -89,6 +89,8 @@ func ScanTree(root string) []Finding { return Scanner{}.Walk(root) }
 // Ledger remembers the files found clean, so a file that has not changed since
 // is not read again.
 type Scanner struct {
+	readerBuffer []byte
+
 	Skip   func(rel string) bool
 	Ledger *Ledger
 	// Visit observes screened entries so a caller can reuse this metadata walk.
@@ -248,11 +250,33 @@ func contentInFile(abs string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	const overlap, readSize = 128, 64 << 10
-	buf := make([]byte, readSize+overlap)
-	kept := 0
+	return contentInReader(f, make([]byte, scanBufferSize))
+}
+
+const scanOverlap, scanReadSize = 128, 64 << 10
+const scanBufferSize = scanReadSize + scanOverlap
+
+// Reader screens a named byte stream without a filesystem walk or clean-file
+// ledger. It reads the entire stream unless it finds a rule or a read error.
+// A framing caller must verify its object length independently. Reader reuses
+// bounded scratch memory; use a separate Scanner for concurrent streams.
+func (s *Scanner) Reader(rel string, input io.Reader) (Finding, error) {
+	if !isTemplate(rel) {
+		if rule, hit := firstRule(nameRules, rel, nil); hit {
+			return Finding{Path: rel, Rule: rule}, nil
+		}
+	}
+	if len(s.readerBuffer) != scanBufferSize {
+		s.readerBuffer = make([]byte, scanBufferSize)
+	}
+	rule, err := contentInReader(input, s.readerBuffer)
+	return Finding{Path: rel, Rule: rule}, err
+}
+
+func contentInReader(input io.Reader, buf []byte) (string, error) {
+	kept, emptyReads := 0, 0
 	for {
-		n, err := f.Read(buf[kept : kept+readSize])
+		n, err := input.Read(buf[kept : kept+scanReadSize])
 		end := kept + n
 		if name, hit := firstRule(contentRules, "", buf[:end]); hit {
 			return name, nil
@@ -263,7 +287,15 @@ func contentInFile(abs string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		kept = copy(buf, buf[max(0, end-overlap):end])
+		if n == 0 {
+			emptyReads++
+		} else {
+			emptyReads = 0
+		}
+		if emptyReads >= 100 {
+			return "", io.ErrNoProgress
+		}
+		kept = copy(buf, buf[max(0, end-scanOverlap):end])
 	}
 }
 

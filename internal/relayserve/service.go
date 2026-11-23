@@ -32,7 +32,7 @@ type Config struct {
 	Logf   func(string, ...any)
 	Note   func(name, what string) // the pipe's arrival and departure line; nil says nothing
 
-	// TrustProxy makes the pairing mailbox's per-network limits count the
+	// TrustProxy makes registration, dial and pairing limits count the
 	// address in X-Forwarded-For. Only a relay behind a proxy that sets it may
 	// say so; anywhere else a caller could name any network it liked.
 	TrustProxy bool
@@ -59,6 +59,7 @@ type Config struct {
 type Service struct {
 	Handler http.Handler
 	ns      *namespaces
+	fabric  *fabric
 	stop    chan struct{}
 	swept   sync.WaitGroup
 }
@@ -80,7 +81,12 @@ func (s *Service) Sweep() error {
 	if s.ns == nil {
 		return nil
 	}
-	return s.ns.sweep()
+	s.fabric.mu.Lock()
+	defer s.fabric.mu.Unlock()
+	if err := s.ns.sweep(); err != nil {
+		return err
+	}
+	return s.fabric.cleanRevoked()
 }
 
 // sweepLoop sweeps once at start, so a relay that was down past a deadline
@@ -108,7 +114,7 @@ func New(cfg Config) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	mux := pipeMux(&relay.Server{Note: cfg.Note}, cfg.Status)
+	mux := pipeMux(&relay.Server{Note: cfg.Note, Peer: peerOf(cfg)}, cfg.Status)
 	mountPairing(mux, cfg, now)
 	mountCluster(mux, cfg.Cluster)
 	mux.HandleFunc("/p/", servePairPage)
@@ -118,6 +124,7 @@ func New(cfg Config) *Service {
 	}
 	links := directory.NewLinks(now, directory.DefaultLinkLimits)
 	svc.ns = newNamespaces(cfg.Store, now, cfg.Grace, cfg.MaxWatchers)
+	svc.ns.logf = cfg.Logf
 	svc.ns.after = cfg.After
 	svc.ns.links = links
 	mux.HandleFunc(clusterstate.ClusterAPIPath, svc.ns.clusterAPI)
@@ -129,7 +136,11 @@ func New(cfg Config) *Service {
 	}
 	mux.Handle(clusterctl.Path, clusterctl.Handler(svc.ns.controlAuthenticate, svc.ns.controlBackend))
 	auth := noting(svc.ns.authenticate)
-	dirs := logged(cfg.Logf, directory.Handler(auth, svc.ns.directory))
+	fabric := &fabric{ns: svc.ns, auth: noting(svc.ns.authenticateFabric)}
+	svc.fabric = fabric
+	dirs := logged(cfg.Logf, fabric.directoryHandler(directory.Handler(auth, svc.ns.directory)))
+	mux.Handle("/v1/clients/", logged(cfg.Logf, fabric.handler()))
+	mux.Handle("POST /v1/dir/devices/{device}/revoke", logged(cfg.Logf, fabric.serve(revokeClient)))
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)
 	mux.Handle(directory.LinkPath+"/", logged(cfg.Logf, directory.LinkHandler(links, peerOf(cfg))))
@@ -140,9 +151,9 @@ func New(cfg Config) *Service {
 	return svc
 }
 
-// peerOf names the network of a link-pairing request: the proxy's word when
-// the relay sits behind one, the socket otherwise.
-func peerOf(cfg Config) directory.PeerFunc {
+// peerOf keeps registrations, dials and both pairing paths on one explicit
+// proxy policy. An untrusted forwarding header can never select an allowance.
+func peerOf(cfg Config) func(*http.Request) string {
 	if cfg.TrustProxy {
 		return pairbox.ForwardedPeer
 	}
@@ -165,10 +176,7 @@ func mountPairing(mux *http.ServeMux, cfg Config, now func() time.Time) {
 	if limits == (pairbox.Limits{}) {
 		limits = pairbox.DefaultLimits
 	}
-	peer := pairbox.SocketPeer
-	if cfg.TrustProxy {
-		peer = pairbox.ForwardedPeer
-	}
+	peer := peerOf(cfg)
 	h := logged(cfg.Logf, pairbox.Handler(pairbox.NewMemory(limits, now), peer))
 	mux.Handle(pairbox.Path, h)
 	mux.Handle(pairbox.Path+"/", h)

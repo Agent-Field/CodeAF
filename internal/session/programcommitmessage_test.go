@@ -1,6 +1,10 @@
 package session
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,5 +83,108 @@ func TestABriefWithoutNotesSteersAwayFromCommitsAndAsksForNoMessage(t *testing.T
 	note := folder.BriefNote()
 	if !strings.Contains(note, "Leave your work uncommitted") || strings.Contains(note, programCommitMessageFile) {
 		t.Fatalf("the brief for a program without notes = %q", note)
+	}
+}
+
+// A finishing commit must not start maintenance that can outlive the run.
+func TestTheFinishingCommitStartsNoAutomaticGC(t *testing.T) {
+	finishingMaintenance(t, false)
+}
+
+func TestTheFinishingCommitStartsNoGeometricMaintenance(t *testing.T) {
+	out, err := osexec.Command("git", "version").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var major, minor int
+	if _, err := fmt.Sscanf(string(out), "git version %d.%d", &major, &minor); err != nil {
+		t.Fatal(err)
+	}
+	if major < 2 || major == 2 && minor < 56 {
+		t.Skipf("default geometric maintenance requires Git 2.56 or newer; found %s", strings.TrimSpace(string(out)))
+	}
+	finishingMaintenance(t, true)
+}
+
+func finishingMaintenance(t *testing.T, geometric bool) {
+	t.Helper()
+	for _, control := range []bool{true, false} {
+		name := "codeaf"
+		if control {
+			name = "plain-git-control"
+		}
+		t.Run(name, func(t *testing.T) {
+			repo := newTestRepo(t)
+			folder := prepareIn(t, notedProgram(), repo, "Save the fix")
+			if control {
+				// Release the copy only after checking the plain-git evidence.
+				t.Cleanup(func() { folder.Finish("control complete") })
+			}
+			writeFile(t, filepath.Join(folder.Dir, "fix.go"), "package fix\n")
+			marker := filepath.Join(t.TempDir(), "pre-auto-gc-ran")
+			hooks := filepath.Join(t.TempDir(), "hooks")
+			if err := os.MkdirAll(hooks, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			exit := "1"
+			if geometric {
+				exit = "0"
+			}
+			writeFile(t, filepath.Join(hooks, "pre-auto-gc"), "#!/bin/sh\necho ran > '"+marker+"'\nexit "+exit+"\n")
+			if err := os.Chmod(filepath.Join(hooks, "pre-auto-gc"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			gitT(t, folder.Dir, "config", "core.hooksPath", hooks)
+			gitT(t, folder.Dir, "config", "gc.autoDetach", "false")
+			gitT(t, folder.Dir, "config", "maintenance.autoDetach", "false")
+			gitT(t, folder.Dir, "config", "maintenance.auto", "true")
+			if geometric {
+				// Leave maintenance.strategy unset: exercise Git 2.56's default.
+				// Its loose-object threshold rounds up to a multiple of 256.
+				gitT(t, folder.Dir, "config", "maintenance.geometric-repack.auto", "1")
+			} else {
+				gitT(t, folder.Dir, "config", "maintenance.strategy", "gc")
+				gitT(t, folder.Dir, "config", "gc.auto", "1")
+			}
+			looseObjects(t, folder.Dir, 2000)
+			trace := filepath.Join(t.TempDir(), "trace.json")
+			t.Setenv("GIT_TRACE2_EVENT", trace)
+			if control {
+				gitT(t, folder.Dir, "add", "fix.go")
+				gitT(t, folder.Dir, "commit", "-q", "-m", "Save the fix")
+			} else {
+				folder.Passed = true
+				end := folder.Finish("the fix passed")
+				if !end.Kept || end.Refused != "" {
+					t.Fatalf("finishing the run: %+v", end)
+				}
+			}
+			_, err := os.Stat(marker)
+			if control && err != nil {
+				t.Fatalf("plain git never started automatic maintenance; fixture proves nothing: %v", err)
+			}
+			if !control && !os.IsNotExist(err) {
+				t.Errorf("automatic maintenance hook ran during codeaf's finishing commit: %v", err)
+			}
+			if geometric {
+				data, err := os.ReadFile(trace)
+				if err != nil {
+					t.Fatal(err)
+				}
+				ran := false
+				for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+					var event struct{ Event, Category, Label string }
+					if err := json.Unmarshal([]byte(line), &event); err != nil {
+						t.Fatal(err)
+					}
+					if event.Event == "region_enter" && event.Category == "maintenance" && event.Label == "geometric-repack" {
+						ran = true
+					}
+				}
+				if ran != control {
+					t.Errorf("geometric repack ran = %v, want %v", ran, control)
+				}
+			}
+		})
 	}
 }

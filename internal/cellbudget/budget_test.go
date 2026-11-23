@@ -40,6 +40,16 @@ func newRig(t *testing.T, limit int64) *rig {
 	r.m = New(cellstore.Engine{Binary: bin, DataRoot: filepath.Join(r.dirs, "stores")},
 		func(c cell.Cell) string { return r.work[c.ID] },
 		func(c cell.Cell) bool { return r.busy[c.ID] })
+	t.Cleanup(func() {
+		// Seals acknowledge reads before the engine's group commit. Drain the
+		// pending syncs before stopping our daemon and removing its storage.
+		flushCtx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+		defer cancel()
+		if err := cellstore.Flush(flushCtx); err != nil {
+			t.Errorf("flush fixture storage: %v", err)
+		}
+		cellstore.StopSpawned()
+	})
 	r.m.Limit = limit
 	r.m.Now = func() time.Time { return r.now }
 	return r

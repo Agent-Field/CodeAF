@@ -57,6 +57,15 @@ type DelegateReport struct {
 // answers the zero report, and the surface draws no rows.
 func (a *Agent) Delegates() DelegateReport { return a.config.delegateReport() }
 
+// DelegateRowsFor is the rows a surface draws for these programs, without a
+// conversation to ask. The app's engine serves its command catalogue from the
+// build's programs before any conversation exists, and it must fold them exactly
+// as [Agent.Delegates] does — the same defaults for where a program lands and for
+// whether a bare command runs its default brief — so the fold is this one.
+func DelegateRowsFor(programs []delegate.Delegate) []DelegateRow {
+	return Config{Delegates: programs}.delegateReport().Rows
+}
+
 func (c Config) delegateReport() DelegateReport {
 	var report DelegateReport
 	for _, program := range c.Delegates {
@@ -296,7 +305,7 @@ func programCopyReceipt(ground string, via delegate.Delegate, record *TaskCopyRe
 // or advising `git init` inside their dotfiles; it names the repository, the
 // way the run's ending does ([ProgramFolderEnd.Sentence]).
 func delegateFolderReceipt(ground string, via delegate.Delegate) string {
-	if _, _, outer, _ := programFolderOf(ground); outer != "" && !holdsHomeFolder(outer) {
+	if _, _, outer, _ := programFolderOf(ground); outer != "" && !HoldsHomeFolder(outer) {
 		return "It is " + via.Name + "'s: it works alone in " + ground + " itself; git ignores this folder inside " + outer +
 			", so codeaf cuts no branch there and commits nothing; its changes are there as it makes them."
 	} else if outer != "" {
@@ -357,7 +366,7 @@ func delegateStartedReceipt(id uint64, title, on, where, elsewhere string) strin
 // what it changed — every file under the home folder, and a refusal from the
 // first one macOS keeps to itself. instead is what the one refused can do.
 func programHomeRefusal(program delegate.Delegate, dir, instead string) string {
-	if !program.LandsTree() || !holdsHomeFolder(dir) {
+	if !program.LandsTree() || !HoldsHomeFolder(dir) {
 		return ""
 	}
 	what := "holds your home folder"
@@ -367,8 +376,8 @@ func programHomeRefusal(program delegate.Delegate, dir, instead string) string {
 	return program.Name + " works in one project's folder, and " + dir + " " + what + "; " + instead
 }
 
-// holdsHomeFolder says dir is the person's home folder or a folder above it.
-func holdsHomeFolder(dir string) bool {
+// HoldsHomeFolder says dir is the person's home folder or a folder above it.
+func HoldsHomeFolder(dir string) bool {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" || strings.TrimSpace(dir) == "" {
 		return false
@@ -427,6 +436,9 @@ func programWords(brief string, program delegate.Delegate) string {
 // carries no program for, an empty brief, and a build whose run road is not
 // linked.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
+	if err := a.CheckWork(); err != nil {
+		return 0, "", "", err
+	}
 	brief = strings.TrimSpace(brief)
 	program, err := a.delegateFor(name)
 	if brief == "" && err == nil {

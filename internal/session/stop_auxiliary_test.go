@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -30,6 +31,8 @@ func TestConversationStopPreventsBackgroundMemoryRetryAndRestoresOnlyForFreshInp
 		t.Cleanup(stopMemory)
 		t.Cleanup(stopTitle)
 		agent := &Agent{memoryCtx: memory, memoryStop: stopMemory, titleCtx: title, titleStop: stopTitle}
+		agent.config.ProfileDir = t.TempDir()
+		writeProfileRow(t, agent.config.ProfileDir, config.KeyMemoryEnabled, config.MemoryOn)
 		oldMemory, oldTitle := agent.memoryCtx, agent.titleCtx
 		probe := &stoppedMemoryRetryProbe{first: make(chan struct{})}
 		if !agent.startMemoryJob() {

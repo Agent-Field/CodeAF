@@ -451,6 +451,27 @@ func settleOrAsk(word string) TaskSettle {
 // the top half, an update the bottom, and no surface reads a field its kind
 // did not set.
 type TaskNotice struct {
+	// JobCommand, JobCallID and JobExitCode keep facts a job's title cannot carry.
+	// A nil code means the ending was never observed.
+	JobCommand  string `json:"job_command,omitempty"`
+	JobCallID   string `json:"job_call_id,omitempty"`
+	JobExitCode *int   `json:"job_exit_code,omitempty"`
+
+	// Retryable says this producer supports a fresh attempt; admission is checked when requested.
+	Retryable bool
+
+	// Worker is who this task's commands act as: its conversation's agent DID
+	// with the task's fragment, `<did>#w<id>` (internal/agentdid), the same
+	// value its worker's commands see as $CODEAF_AGENT_DID. It is empty when the
+	// conversation has no DID. A surface that keeps anything under that name
+	// (a writer's lease, a claim) lets it go when the task ends.
+	Worker string `json:"worker,omitempty"`
+
+	// Placement is separate from the state word: empty Computer means here.
+	Computer     string            `json:",omitempty"`
+	Unreachable  bool              `json:",omitempty"`
+	RanElsewhere bool              `json:",omitempty"`
+	Remote       *TaskRemoteRecord `json:",omitempty"`
 	// Thinking is the effective setup, including a saved continuation choice.
 	Thinking string
 	// ID is the proposal's token: a surface hands it back to
@@ -485,6 +506,13 @@ type TaskNotice struct {
 	// publisher that forgets it has not changed it ([Agent.publishRunRow] carries
 	// it forward).
 	Program string
+	// Source is the message or directive this row's work was started by, captured
+	// when the row was first kept and carried by every republish (task_source.go).
+	// Nil is unknown.
+	Source *TaskSource
+	// Dismissed says the person hid this task from the default view. It is a
+	// visibility fact and changes nothing about the work (task_dismiss.go).
+	Dismissed bool
 	// Ceiling is the finite allowance a proposed program run will start with,
 	// spelled for the approval card. Ordinary tasks leave it empty.
 	Ceiling string
@@ -503,6 +531,8 @@ type TaskNotice struct {
 	// Where says where the task will work. A proposal carries the resolved task
 	// folder or explicit path; later notices carry the worker's actual directory.
 	Where string
+	// Workspace identities name legacy task placement without run-copy UI semantics.
+	WorkspaceURI, ChatURI, ProjectURI, GroundURI, RootURI string
 	// Ground is the repository or folder THE WORK IS ABOUT, absolute, and Mode is
 	// how the task stands on it (taskstands.go resolves both). Where says which
 	// directory the worker types in; these two say which project that directory is
@@ -544,6 +574,9 @@ type TaskNotice struct {
 	// countdown (task.autoapprove_seconds). A zero Deadline means the clock is
 	// off or has been held by typing, and only an answer resolves the proposal.
 	Deadline time.Time
+	// Irreversible marks work that cannot be undone, which never starts on a
+	// clock: its Deadline is always zero and only an answer admits it.
+	Irreversible bool
 	// Withdrawn is set on the one rebroadcast of a proposal that takes it back
 	// before anybody's answer admitted it, and it is the reason in the engine's
 	// words. It happens to exactly one kind of proposal: one whose card went up
@@ -632,7 +665,8 @@ type TaskNotice struct {
 	// RUN's row and nowhere else: a node of the session's own graph already
 	// carries these facts in its own record. Nil is a row whose copy was never
 	// recorded, which is a run that cannot be carried on.
-	Copy *TaskCopyRecord
+	Copy         *TaskCopyRecord
+	WorkspaceSet *WorkspaceSet
 	// RecoveredCompletion identifies a completed plan recovered before its final landing receipt.
 	RecoveredCompletion bool
 	// PendingRun keeps an admitted request before it owns a working copy.
@@ -710,6 +744,11 @@ type TaskNotice struct {
 	// starting and a hold ending are both news that arrives without the state
 	// moving, so an update carrying only this is still one a surface folds in.
 	Waiting string
+	// park is what a hand-off WAITING ON A MODEL needs to start again, on the
+	// row and nowhere else (taskrouting.go's [taskParkRecord]): the row is
+	// what the checkpoint keeps, so a waiting task comes back waiting after a
+	// restart rather than interrupted. Unexported: no surface reads it.
+	park *taskParkRecord
 	// Paused says this row is HELD AT A GATE only a person can open: an adaptive
 	// run that has spent its tank and stopped launching, waiting to be topped up,
 	// finished or stopped ([EventOrchestratePause], [Agent.ResolveOrchestrate]).
@@ -855,6 +894,9 @@ type TaskAnswer struct {
 	Approved bool
 	Redirect string
 	Model    string
+	// Computer is an explicit card choice. Empty preserves the proposal and
+	// default; the local alias overrides both without naming another device.
+	Computer string `json:",omitempty"`
 }
 
 // ── the phases of a running node ────────────────────────────────────────────
@@ -989,8 +1031,9 @@ func (c *TaskCall) Received() int {
 // PendingRunRecord is the accepted work needed to rejoin machine admission after
 // restart. It is cleared once the working copy is recorded, before workers start.
 type PendingRunRecord struct {
-	Brief  string   `json:"brief"`
-	Ground string   `json:"ground"`
-	Mode   TaskMode `json:"mode"`
-	Asked  []string `json:"asked,omitempty"`
+	WorkspaceSet *WorkspaceSetRequest `json:"workspaceSet,omitempty"`
+	Brief        string               `json:"brief"`
+	Ground       string               `json:"ground"`
+	Mode         TaskMode             `json:"mode"`
+	Asked        []string             `json:"asked,omitempty"`
 }

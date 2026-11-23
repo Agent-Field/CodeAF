@@ -86,7 +86,7 @@ func (a *app) openWorkCompletion(c *workCompletion) tea.Cmd {
 			}
 		}
 		if node := a.tasks[c.task]; node != nil {
-			return a.openTaskRecord(&session.TaskIndexEntry{ID: id, Title: node.label, Label: node.label, Status: string(node.state), SessionID: a.taskSheetSelfID(), Crew: node.crew, Cost: node.spent(), Model: node.model})
+			return a.openTaskRecord(&session.TaskIndexEntry{ID: id, Title: node.label, Label: node.label, Status: string(node.state), SessionID: a.taskSheetSelfID(), Crew: node.crew, Cost: node.spent(), Model: node.model, Computer: node.computer, Unreachable: node.unreachable, RanElsewhere: node.ranElsewhere})
 		}
 	}
 	return nil
@@ -141,12 +141,15 @@ func (a *app) completionRows(cs []workCompletion, width int) []row {
 			word = session.ProjectTask(session.TaskFacts{State: session.TaskFailed}).Word
 		}
 		action := ""
+		placement := ""
 		door := false
 		if c.task != 0 {
 			door = a.tasks[c.task] != nil
+			placement = a.taskComputerWords(a.tasks[c.task])
 			for _, saved := range a.comp.tasks {
 				if saved.ID == strconv.FormatUint(c.task, 10) && a.taskSheetOwnsEntry(&saved) {
 					door = true
+					placement = a.taskEntryComputerWords(saved)
 					break
 				}
 			}
@@ -165,11 +168,15 @@ func (a *app) completionRows(cs []workCompletion, width int) []row {
 			hit = hitWorkCompletion
 		}
 		tail := railSep + word
+		if placement != "" {
+			tail += railSep + placement
+		}
+		facts := tail
 		if action != "" {
 			tail += railSep + action
 		}
 		name := fit(title, max(1, width-2-ansi.StringWidth(tail)))
-		line := "  " + a.pal.ink(name) + a.pal.dim(railSep+word)
+		line := "  " + a.pal.ink(name) + a.pal.dim(facts)
 		if action != "" {
 			line += a.pal.dim(railSep) + a.pal.accent(action)
 		}
@@ -236,6 +243,7 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 	byTurn := map[int]*group{}
 	unknown := map[int]*group{}
 	unknownIdentity := map[string]*group{}
+	unknownFamily := map[uint64]*group{}
 	add := func(c workCompletion, at int) {
 		c.at = at
 		if c.owner == 0 && c.task != 0 {
@@ -247,10 +255,33 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 			return
 		}
 		var g *group
+		var family uint64
 		if c.owner != 0 {
 			g = byTurn[c.owner]
 		} else {
+			// A family's landings share background work even when accepting a part starts a later turn.
+			family = c.task
+			seen := map[uint64]bool{}
+			for family != 0 {
+				if seen[family] {
+					family = 0
+					break
+				}
+				seen[family] = true
+				node := a.tasks[family]
+				if node == nil {
+					break
+				}
+				parent, err := strconv.ParseUint(node.parent, 10, 64)
+				if err != nil || parent == 0 {
+					break
+				}
+				family = parent
+			}
 			g = unknownIdentity[workCompletionKey(c)]
+			if g == nil && family != 0 {
+				g = unknownFamily[family]
+			}
 			if g == nil {
 				g = unknown[d.entries[at].turn]
 			}
@@ -267,6 +298,9 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		key := workCompletionKey(c)
 		if c.owner == 0 {
 			unknownIdentity[key] = g
+			if family != 0 {
+				unknownFamily[family] = g
+			}
 		}
 		if prev, ok := g.keys[key]; ok {
 			old := &g.items[prev]
@@ -294,16 +328,42 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		g.items = append(g.items, c)
 	}
 	latestTaskKey := map[uint64]string{}
-	for _, e := range d.entries {
+	latestLanding := map[uint64]int{}
+	for i, e := range d.entries {
 		if c := e.completion; c != nil && c.task != 0 {
 			latestTaskKey[c.task] = workCompletionKey(*c)
+		}
+		if e.done != nil {
+			latestLanding[e.done.id] = i
 		}
 	}
 	for i, e := range d.entries {
 		if e.completion != nil {
-			add(*e.completion, i)
+			c := *e.completion
+			if at, ok := latestLanding[c.task]; c.task != 0 && ok {
+				card := d.entries[at].done
+				// The current card speaks for the task until it is hidden or dismissed.
+				if !card.hidden() {
+					continue
+				}
+				c.title, c.state = card.title, card.status.Word
+				// EACH RECORDED REVISION KEEPS ITS OWN ROW (an attempt is its own piece of
+				// history, #1893), but none of them may speak an older state than the
+				// task's newest landing: every row of a task says where it stands now.
+				// An owner the session cannot name keeps the one the journal carried,
+				// rather than turning a known request into background work.
+				if owner, ok := a.workCompletionTurn(c.task); ok {
+					c.owner = owner
+				}
+			}
+			add(c, i)
 		}
-		if e.done == nil || !e.done.quiet {
+		if e.done == nil || !e.done.hidden() {
+			continue
+		}
+		// Only a task's newest landing projects a row. A card with no task behind
+		// it is a notification: dismissing it leaves nothing, not an empty fold.
+		if e.done.id != 0 && latestLanding[e.done.id] != i || e.done.id == 0 && !e.done.quiet {
 			continue
 		}
 		owner, ok := a.workCompletionTurn(e.done.id)
@@ -340,7 +400,7 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		}
 		if at >= 0 {
 			f := folds[at]
-			f.completions = g.items
+			f.completions = append(f.completions, g.items...)
 			folds[at] = f
 			continue
 		}
@@ -362,7 +422,10 @@ func (a *app) withWorkCompletions(d deck, folds map[int]workfold) map[int]workfo
 		if anchor >= len(d.entries) {
 			anchor = len(d.entries) - 1
 		}
-		if _, exists := folds[anchor]; exists {
+		if f, exists := folds[anchor]; exists {
+			// Another owner's fold at this anchor must keep both groups.
+			f.completions = append(f.completions, g.items...)
+			folds[anchor] = f
 			continue
 		}
 		folds[anchor] = workfold{key: key, turn: g.owner, start: anchor, answer: anchor, virtual: true, background: g.unknown, completions: g.items}

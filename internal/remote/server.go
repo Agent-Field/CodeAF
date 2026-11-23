@@ -58,6 +58,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"path/filepath"
 	"sort"
@@ -67,6 +70,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -125,11 +129,31 @@ type WrappedAgent interface {
 	RewindAt(index int) ([]session.DisplayEntry, error)
 }
 
+// boundedStopper is an agent whose stop can carry its own second stage: one
+// asked of the agent rather than required of [WrappedAgent], so a wrapped
+// agent that has never heard of abandoning a turn keeps the plain stop.
+type boundedStopper interface {
+	InterruptWithin(grace time.Duration)
+}
+
 // Engine is one opened conversation and the doors that replace it. The door
 // that builds it (cmd/codeaf) owns config resolution, session-file resolution
 // and the locked-file fallback; this package owns nothing about how an agent is
 // made and everything about how one is spoken to.
 type Engine struct {
+	// EntryNotice reads home-owned recovery news when an interactive surface opens.
+	EntryNotice func(string) string
+	// ClientTools is the conversation's connection-owned forwarding door.
+	ClientTools *ClientToolHub
+	// SyncService is the engine's address for chat outage notices.
+	SyncService string
+	// DeltaWindow lets each of this conversation's streams fold streamed text
+	// for up to this long before it is framed (deltawindow.go): the first chunk
+	// still goes at once and nothing but text ever waits. Every delta otherwise
+	// costs a frame's encoding and a handful of goroutine handoffs on the way to
+	// the surface. Zero keeps one frame per event, which is what every surface
+	// that has not opted in, and its replay tests, are written against.
+	DeltaWindow time.Duration
 	// Headless records the approval context the agent was built for. Reusing an
 	// interactive agent must not silently give a headless caller its default gate.
 	Headless bool
@@ -156,6 +180,8 @@ type Engine struct {
 	// conversation in it. Nil for a door that retains nothing. It changes no
 	// wire shape — a conversation ending is already the end of its stream.
 	Closed func(agent WrappedAgent)
+	// FinishSaving publishes and releases a closed writer before its reply is sent.
+	FinishSaving func(agent WrappedAgent) error
 	// ReleaseOnLeave enables immediate idle retirement after the last deliberate
 	// detach for a paired movable chat. Torn links retain their existing grace.
 	ReleaseOnLeave func(WrappedAgent) bool
@@ -163,6 +189,8 @@ type Engine struct {
 	// carried in Welcome so a linked-local surface writes every local row back
 	// to the profile the running conversation actually reads. A remote surface
 	// does not use the path for local writes.
+	// TeamsPaired supplies the engine computer's current pairing gate.
+	TeamsPaired       func() bool
 	ProfileDir        string
 	UnreadProfileKeys []string
 	// Workspace is the directory the engine resolved and works in — the answer
@@ -185,7 +213,8 @@ type Engine struct {
 	// Note is the one sentence worth showing once: "session open elsewhere —
 	// started a new one" travels here, the same words the local door puts on
 	// the surface's entry notice.
-	Note string
+	Note        string
+	Interrupted []string
 	// Launch is the shape this conversation was built with, echoed on every
 	// welcome so a surface can tell the conversation it asked for from the one
 	// it joined ([LaunchShape]). Nil is the engine's own defaults.
@@ -283,6 +312,12 @@ type Engine struct {
 	// is automations off on this engine, the welcome says nothing, and every
 	// door answers a refusal rather than an empty list.
 	Automations *EngineAutomations
+
+	// JoinedWith takes the launch a window that JOINED this conversation asked
+	// for ([Hello.Join] with [Hello.Launch]) and applies what of it can be
+	// applied to a conversation another window opened, until release. Nil
+	// applies nothing.
+	JoinedWith func(shape LaunchShape) (release func())
 }
 
 // Options is what [Serve] needs, which is one function: how to open the
@@ -290,7 +325,9 @@ type Engine struct {
 // handshake, because the workspace and the session file are things the surface
 // says.
 type Options struct {
-	Boot func(Hello) (*Engine, error)
+	// SyncService carries the engine's service choice to remote outage notices.
+	SyncService string
+	Boot        func(Hello) (*Engine, error)
 }
 
 // AttachOptions is [ServeAttach]'s one function: which conversation this hello
@@ -363,6 +400,9 @@ func Serve(in io.Reader, out io.Writer, opts Options) error {
 				return nil, errors.New("this engine opens one conversation for one connection, so there is none already open here to join")
 			}
 			engine, err := opts.Boot(hello)
+			if engine != nil && engine.SyncService == "" {
+				engine.SyncService = opts.SyncService
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -403,8 +443,17 @@ type Session struct {
 	persistent bool
 	// releaseOnIdle remembers a paired window's clean departure while its last
 	// stream finishes. A new attached window cancels that departure (C31.1).
-	releaseOnIdle bool
-	instance      string
+	releaseOnIdle  bool
+	instance       string
+	closeDone      chan struct{}
+	localSaved     chan struct{}
+	localSavedOnce sync.Once
+	// closeErr retains the completed saving result for concurrent and repeated departures.
+	closeErr     error
+	closeNotices []string
+	// renewalStop ends idle health forwarding when this conversation changes or closes.
+	renewalStop chan struct{}
+	renewalDone chan struct{}
 
 	// generation counts the session swaps. Every pump remembers the generation
 	// it was born in and goes quiet the moment it is not the current one — see
@@ -530,6 +579,8 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		agent:      engine.Agent,
 		persistent: persistent,
 		instance:   rand.Text(),
+		closeDone:  make(chan struct{}),
+		localSaved: make(chan struct{}),
 		rings:      map[uint64]*ring{},
 		follows:    map[uint64]followQueued{},
 		held:       newHeldSet(),
@@ -544,6 +595,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 	// arriving surface reads in its welcome — and the turn itself is journalled
 	// either way, because the engine is the only writer of the session file.
 	sess.watchOwnTurns()
+	sess.watchRenewals()
 	// AND THE CONVERSATION IS FILED UNDER THE NAME ITS OWN NEWS ARRIVES UNDER,
 	// from the moment it exists, so the phase of a wake that runs before
 	// anybody attaches has somewhere to be steered to (news.go).
@@ -765,31 +817,53 @@ func (sess *Session) lastWatched() string {
 // interrupted with its journal flushed, exactly as a person's own /quit would.
 // The window is that walk, not the whole idle span.
 func (sess *Session) RetireIfIdle(olderThan time.Duration) bool {
+	retired, _ := sess.retireIfIdle(olderThan)
+	return retired
+}
+
+func (sess *Session) retireIfIdle(olderThan time.Duration) (bool, error) {
 	if sess.releasePending() {
 		olderThan = 0
 	}
 	idle := sess.IdleSince()
 	if idle.IsZero() || time.Since(idle) <= olderThan {
-		return false
+		return false, nil
 	}
 	sess.mu.Lock()
 	if again := sess.idleSinceLocked(); again.IsZero() || time.Since(again) <= olderThan {
 		// Somebody came back, a turn opened, or a card was raised while the
 		// question was being asked. The conversation stays.
 		sess.mu.Unlock()
-		return false
+		return false, nil
 	}
 	agent, already := sess.agent, sess.closed
 	name := sess.lastWatch
 	sess.closed = true
 	sess.mu.Unlock()
-	_ = sess.shutDown(agent, already, session.StopByRetired, name)
-	return true
+	return true, sess.shutDown(agent, already, session.StopByRetired, name)
 }
 
 // shutDown is what ending a conversation does once the caller has won the
 // closed flag: every lane left, the turn interrupted, the journal flushed.
-func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.StopDoor, name string) error {
+func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.StopDoor, name string) (saveErr error) {
+	if already {
+		// A concurrent final stream may already be releasing this chat. Its
+		// closed flag cannot acknowledge a departure before that release ends.
+		if sess.closeDone != nil {
+			<-sess.closeDone
+		}
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		return sess.closeErr
+	}
+	defer func() {
+		sess.mu.Lock()
+		sess.closeErr = saveErr
+		sess.mu.Unlock()
+		if sess.closeDone != nil {
+			close(sess.closeDone)
+		}
+	}()
 	// The rails are left BEFORE the agent is, so no lane is still delivering off
 	// a conversation that is being flushed and shut (tasklane.go), and version
 	// 11's subscription goes the same way (standinglane.go).
@@ -799,13 +873,14 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 	// a rail left open on a conversation being flushed is a subscription the
 	// sweep has already decided is over (wakelane.go).
 	sess.stopWakeLane()
+	sess.stopRenewals()
 	// AND THE NEWSROOM LOSES THIS CONVERSATION, which is what puts the two
 	// global readers back when the last one on this process goes: a host
 	// holding nothing has to read as a build with nobody watching, because that
 	// is what decides whether a stalled pinned lane is asked about or quietly
 	// borrowed against (news.go).
 	sess.dropNews()
-	if agent == nil || already {
+	if agent == nil {
 		return nil
 	}
 	// THE DOOR IS THE ONE THIS ENDING CAME THROUGH, not a single sentence
@@ -820,8 +895,10 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 		agent.InterruptFor(door)
 	}
 	err := agent.Close()
-	sess.noteClosed(agent)
-	return err
+	if err == nil && sess.localSaved != nil {
+		sess.localSavedOnce.Do(func() { close(sess.localSaved) })
+	}
+	return errors.Join(err, sess.noteClosed(agent))
 }
 
 // noteClosed tells the door that built this agent that its conversation is
@@ -833,11 +910,30 @@ func (sess *Session) shutDown(agent WrappedAgent, already bool, door session.Sto
 // It is read off the engine rather than captured at construction for the reason
 // [Session.folder] gives about its own reading — the engine behind a session
 // can be swapped under it.
-func (sess *Session) noteClosed(agent WrappedAgent) {
-	if agent == nil || sess.engine == nil || sess.engine.Closed == nil {
-		return
+func (sess *Session) noteClosed(agent WrappedAgent) error {
+	if agent == nil || sess.engine == nil {
+		return nil
 	}
-	sess.engine.Closed(agent)
+	var err error
+	if sess.engine.FinishSaving != nil {
+		err = sess.engine.FinishSaving(agent)
+	}
+	if sess.engine.Closed != nil {
+		sess.engine.Closed(agent)
+	}
+	var lines []string
+	if source, ok := agent.(interface{ TakeSavingNotices() []string }); ok {
+		lines = append(lines, source.TakeSavingNotices()...)
+	}
+	if source, ok := agent.(interface{ TakeSealNotice() string }); ok {
+		for line := source.TakeSealNotice(); line != ""; line = source.TakeSealNotice() {
+			lines = append(lines, line)
+		}
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	sess.closeNotices = append(sess.closeNotices, lines...)
+	return err
 }
 
 // folder is where a picture arriving on this wire gets written down: the
@@ -1069,6 +1165,9 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// Attached counts the OTHERS, so it is read before this one is added
 	// (wire.go's Welcome.Attached states why the number is carried at all).
 	welcome := sess.welcomeLocked(s)
+	// The initial capability reads the arrival directly, preserving the machine's
+	// existing point at which a watcher becomes registered.
+	welcome.TaskComputers = !hello.Watch && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent)
 	welcome.Encoding = s.encoding
 	welcome.Attached = len(sess.surfaces)
 	sess.surfaces[s] = struct{}{}
@@ -1126,6 +1225,7 @@ func (sess *Session) attach(s *server, hello Hello) error {
 // gets around to reporting the end, which may be after the window that replaced
 // it has already been welcomed (held.go states the whole rule).
 func (sess *Session) detach(s *server, deliberate bool) {
+	s.dropClientTools()
 	// THE RAIL'S SUBSCRIPTION GOES WITH THE WINDOW. It is left before anything
 	// else because leaving it is what ends the goroutine pumping frames at a
 	// pipe that is closing (tasklane.go).
@@ -1196,9 +1296,69 @@ func steerRepeatKnown(agent any) bool {
 	return ok && door.SteerRepeatKnown()
 }
 
+// queuedMarksKnown is whether the agent this engine has open keeps a message's
+// mark at all: this build's Submit hands a queued mark to that door and to
+// nothing else.
+func queuedMarksKnown(agent any) bool {
+	_, ok := agent.(interface {
+		SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+	})
+	return ok
+}
+
 func memoryCommandsKnown(agent any) bool {
 	door, ok := agent.(MemoryCommands)
 	return ok && door.Remembers()
+}
+
+// composedDoor is the agent's door for a Submit that carries pictures.
+type composedDoor interface {
+	SubmitComposed(context.Context, session.Submission) (session.SubmissionReceipt, <-chan session.Event, error)
+}
+
+func composedKnown(agent any) bool {
+	_, ok := agent.(composedDoor)
+	return ok
+}
+
+func messageMarksKnown(agent any) bool {
+	_, ok := agent.(interface {
+		SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+	})
+	return ok
+}
+
+// markedDoor is the agent's door for a marked Steer or FollowUp.
+type markedDoor = func(session.Submission) (<-chan session.Event, error)
+
+func steerMarksDoor(agent any) (markedDoor, bool) {
+	door, ok := agent.(interface {
+		SteerMessage(session.Submission) (<-chan session.Event, error)
+	})
+	if !ok {
+		return nil, false
+	}
+	return door.SteerMessage, true
+}
+
+func followUpMarksDoor(agent any) (markedDoor, bool) {
+	door, ok := agent.(interface {
+		FollowUpMessage(session.Submission) (<-chan session.Event, error)
+	})
+	if !ok {
+		return nil, false
+	}
+	return door.FollowUpMessage, true
+}
+
+func steerMarksKnown(agent any) bool {
+	_, ok := steerMarksDoor(agent)
+	return ok
+}
+
+func followUpMarksKnown(agent any) bool {
+	_, ok := followUpMarksDoor(agent)
+	return ok
 }
 
 func (sess *Session) welcomeLocked(s *server) Welcome {
@@ -1206,13 +1366,42 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 	// this reading in the welcome is what makes an old persistent engine say
 	// it was replaced before somebody has to spend a turn to discover it.
 	note := strings.TrimSpace(sess.engine.Note)
+	if !sess.engine.Headless && sess.engine.EntryNotice != nil {
+		if recovery := sess.engine.EntryNotice(sess.engine.SessionFile); recovery != "" {
+			if note != "" {
+				note += " · "
+			}
+			note += recovery
+		}
+	}
 	if newer := buildinfo.StaleNotice(); newer != "" {
 		if note != "" {
 			note += " · "
 		}
 		note += newer
 	}
+	var users *int
+	if counter, ok := sess.agent.(interface{ UserMessageCount() int }); ok {
+		count := counter.UserMessageCount()
+		users = &count
+	}
+	_, workAdmission := sess.agent.(interface{ CheckWork() error })
 	return Welcome{
+		ClientTools:                sess.engine.ClientTools != nil,
+		WorkAdmission:              workAdmission,
+		UserMessages:               users,
+		MessageMarks:               messageMarksKnown(sess.agent),
+		ComposedMessages:           composedKnown(sess.agent),
+		MessageReceipts:            composedKnown(sess.agent),
+		MessageClientIDs:           messageMarksKnown(sess.agent),
+		MessageFrom:                messageMarksKnown(sess.agent),
+		HarnessRequests:            harnessRequestsKnown(sess.agent),
+		AttachmentSources:          messageMarksKnown(sess.agent),
+		SteerMarks:                 steerMarksKnown(sess.agent),
+		FollowUpMarks:              followUpMarksKnown(sess.agent),
+		LocalSavingReceipts:        s.localSavingReceipts,
+		Machine:                    MachineName(),
+		SyncService:                sess.engine.SyncService,
 		Version:                    Version,
 		Workspace:                  sess.engine.Workspace,
 		SessionFile:                sess.engine.SessionFile,
@@ -1221,6 +1410,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Build:                      buildinfo.String(),
 		Title:                      sess.agent.Title(),
 		Note:                       note,
+		Interrupted:                append([]string(nil), sess.engine.Interrupted...),
 		ApprovalMode:               sess.engine.ApprovalMode,
 		BashBackgroundAfterSeconds: sess.engine.BashBackgroundAfterSeconds,
 		ProfileDir:                 sess.engine.ProfileDir,
@@ -1233,6 +1423,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
+		QueuedMarks:                queuedMarksKnown(sess.agent),
+		AppTaskReceipt:             appTaskReceiptKnown(sess.agent),
 		// Whether this engine can hold a folder at all, asked of the agent it has
 		// open — for [Welcome.Folders]'s stated reason: the surface's own type
 		// assertion cannot see across the wire.
@@ -1252,12 +1444,16 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// And the wrap-up's two doors, for the same reason.
 		WrapUp: true,
 		// The two model asks are the agent's, so they are asked of it.
-		TeamAsk: teamAskKnown(sess.agent),
+		TeamAsk:         teamAskKnown(sess.agent),
+		ReplySuggestion: replySuggestionKnown(sess.agent),
+		Errand:          errandKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
-		SteerOwner: true,
-		TaskSetup:  taskSetupKnown(sess.agent),
-		TaskRetry:  taskRetryKnown(sess.agent),
+		SteerOwner:    true,
+		TaskSetup:     taskSetupKnown(sess.agent),
+		TaskRetry:     taskRetryKnown(sess.agent),
+		TaskComputers: !s.watching && sess.engine.SessionFile != "" && taskComputersKnown(sess.agent),
+		TaskWorkspace: taskWorkspaceKnown(sess.agent),
 		// Whether this engine has a dial on the conversation's own thinking,
 		// asked of the agent it has open — for [Welcome.Effort]'s stated reason:
 		// neither a type assertion at the far end nor the rung itself can tell an
@@ -1276,14 +1472,18 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		// Whether this conversation can carry skills put in front of it by
 		// hand, asked of the agent it has open — for [Welcome.Skills]'s stated
 		// reason (skills.go).
-		Skills: skillsKnown(sess.agent),
+		Skills:       skillsKnown(sess.agent),
+		SkillFolders: skillsKnown(sess.agent),
 		// Whether this engine answers the automations doors, and the zone a
 		// rhythm typed over the connection is read in. Both are about the
 		// MACHINE and not the conversation, so they are asked of the engine and
 		// survive every swap (wire_automations.go).
 		Automations:     sess.engine.Automations.on(),
 		AutomationsZone: sess.engine.Automations.zone(),
-		Setup:           setupKnown(sess.agent),
+		// The side ask is the agent's, so it is asked of it (sideask.go).
+		SideAsk:       sideAskKnown(sess.agent),
+		SideAskStream: sideAskStreamKnown(sess.agent),
+		Setup:         setupKnown(sess.agent),
 	}
 }
 
@@ -1344,7 +1544,8 @@ func (sess *Session) announce() {
 // text and reasoning deltas carry no changed frame facts.
 func factsMoved(kind session.EventKind) bool {
 	switch kind {
-	case session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+	case session.EventModelIdentity, session.EventTurnDone, session.EventError, session.EventTitleChanged, session.EventCompacted,
+		session.EventSummaryStarted, session.EventSummaryFailed,
 		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
 		session.EventConnectAsk, session.EventConnectDone,
 		session.EventTaskProposal, session.EventTaskUpdate,
@@ -1470,8 +1671,18 @@ func (sess *Session) mintLocked() (id, generation uint64) {
 func (sess *Session) pump(id, generation uint64, events <-chan session.Event) {
 	defer sess.pumps.Done()
 	defer guard.Recover("remote/engine stream")
-	for event := range events {
-		sess.emit(id, generation, event)
+	sess.mu.Lock()
+	var window time.Duration
+	if sess.engine != nil {
+		window = sess.engine.DeltaWindow
+	}
+	sess.mu.Unlock()
+	if window > 0 {
+		pumpDeltaWindow(window, events, func(event session.Event) { sess.emit(id, generation, event) })
+	} else {
+		for event := range events {
+			sess.emit(id, generation, event)
+		}
 	}
 	sess.finish(id, generation)
 }
@@ -1589,6 +1800,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	if next == nil {
 		return nil, errors.New("engine: the session swap opened no conversation")
 	}
+	sess.stopRenewals()
 	sess.mu.Lock()
 	previous := sess.agent
 	sess.agent = next
@@ -1597,10 +1809,19 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.follows = map[uint64]followQueued{}
 	sess.held.forget()
 	sess.engine.SessionFile = file
+	// AND THE APP TOOLS OF THE CONVERSATION LEFT BEHIND STAY WITH IT. The hub
+	// is shared across openings, so without this an app that joined the old
+	// conversation would lend its tools, and its calls, to the new one. It is
+	// done before the new agent is reachable, so its first step already sees
+	// the empty snapshot.
+	if sess.engine.ClientTools != nil {
+		sess.engine.ClientTools.forget(file)
+	}
 	sess.engine.Resumed = resumed
 	// The note belonged to the launch and to nothing after it: a swap the
 	// person asked for is not a session that moved under them.
 	sess.engine.Note = ""
+	sess.engine.Interrupted = nil
 	welcome := sess.welcomeLocked(asked)
 	welcome.Attached = len(sess.surfaces) - 1
 	if welcome.Attached < 0 {
@@ -1631,6 +1852,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 	sess.retakeTaskLanes()
 	sess.retakeLanes()
 	sess.retakeWakeLane()
+	sess.watchRenewals()
 	// AND THE NEWSROOM IS TOLD THE ROOM'S NAME HAS CHANGED. /new and /resume
 	// mint a whole new agent, whose news arrives under a name of its own, and a
 	// conversation still filed under the old one would draw a status row that
@@ -1642,6 +1864,7 @@ func (sess *Session) swap(asked *server, build func() (WrappedAgent, string, boo
 // ── one connection ──────────────────────────────────────────────────────────
 
 type server struct {
+	clientToolsGone atomic.Bool
 	// write guards the writer. ONE FRAME IS ONE LINE IS ONE WRITE: a torn frame
 	// is not a slow surface, it is a surface that can never parse this stream
 	// again, so every writer on this process goes through here.
@@ -1652,7 +1875,13 @@ type server struct {
 	dead bool
 	// encoding is selected from the hello before the welcome is sent. Empty is
 	// the old wire, which keeps a new engine compatible with an older surface.
-	encoding string
+	encoding            string
+	localSavingReceipts bool
+	syncNoticeWords     bool
+	// renewalNotices remain owned by this window until a live write or saving reply.
+	// The session mutex protects the queue; the writer serializes its delivery.
+	renewalNotices []string
+	renewalWrite   <-chan struct{}
 
 	open    func(Hello) (*Session, error)
 	session *Session
@@ -1701,8 +1930,9 @@ type server struct {
 	// running does not write into a session that has already been closed.
 	side sync.WaitGroup
 	// Observers leave with the view, independently of the durable turn pump.
-	observersMu sync.Mutex
-	observers   map[uint64]*taskFeed
+	workspaceCalls sync.Map
+	observersMu    sync.Mutex
+	observers      map[uint64]*taskFeed
 
 	// leaving records how this connection ends, and it is the whole of version
 	// 2's three-roads-out. detached is [MethodDetach] — the surface is going and
@@ -1717,6 +1947,7 @@ type server struct {
 	// happens after the lane has drained.
 	detached atomic.Bool
 	goodbye  atomic.Bool
+	left     atomic.Bool
 
 	// window releases the automations presence this connection holds on this
 	// machine because its hello said it is a window ([Hello.Window]), and nil
@@ -1724,6 +1955,9 @@ type server struct {
 	// go once, on the way out ([server.letWindowGo]); both happen on the one
 	// goroutine that runs [server.serve], so it needs no lock.
 	window func()
+	// joinedWith releases what a joining window's launch applied
+	// ([Engine.JoinedWith]), on the same road out as window.
+	joinedWith func()
 }
 
 func (s *server) serve(in io.Reader) (err error) {
@@ -1744,6 +1978,10 @@ func (s *server) serve(in io.Reader) (err error) {
 		// the conversation, and it holds on every road out — the detach, the
 		// torn pipe, the close, the refusal and the fault alike.
 		s.letWindowGo()
+		if release := s.joinedWith; release != nil {
+			s.joinedWith = nil
+			release()
+		}
 	}()
 
 	scan := bufio.NewScanner(in)
@@ -1771,6 +2009,7 @@ func (s *server) serve(in io.Reader) (err error) {
 	s.ordered = newOrderedLane()
 	go s.ordered.run(s.dispatch)
 	defer func() {
+		s.dropClientTools()
 		s.ordered.close()
 		s.ordered.wait()
 	}()
@@ -1850,10 +2089,13 @@ func (s *server) serve(in io.Reader) (err error) {
 //     money into a journal nobody will reopen. The interrupt goes first so the
 //     turn stops where it is and keeps its partial reply — exactly what ctrl+c
 //     does locally — and then the agent is closed, which flushes the file.
-func (s *server) leave() {
+func (s *server) leave() error {
+	if s.left.Swap(true) {
+		return nil
+	}
 	sess := s.session
 	if sess == nil {
-		return
+		return nil
 	}
 	sess.detach(s, s.detached.Load())
 	if s.detached.Load() {
@@ -1861,12 +2103,11 @@ func (s *server) leave() {
 		engine, agent := sess.engine, sess.agent
 		sess.mu.Unlock()
 		if engine != nil && engine.ReleaseOnLeave != nil && engine.ReleaseOnLeave(agent) {
-			sess.releaseAfterLeave()
+			return sess.releaseAfterLeave()
 		}
 	}
 	if s.goodbye.Load() {
-		_ = sess.closeLeaving()
-		return
+		return sess.closeLeaving()
 	}
 	if !sess.persistent {
 		// AND THIS ONE IS THE UNATTENDED DOOR BY CONSTRUCTION, whatever the
@@ -1874,8 +2115,9 @@ func (s *server) leave() {
 		// conversation's whole life, so nothing is ever going to attach to it
 		// again and there is no window left to come back. It names the one it
 		// had, which is the last thing anybody reading the journal can use.
-		_ = sess.closeFor(session.StopByRetired, sess.lastWatched())
+		return sess.closeFor(session.StopByRetired, sess.lastWatched())
 	}
+	return nil
 }
 
 // handshake reads the first line and answers it. A version mismatch and a line
@@ -1907,6 +2149,8 @@ func (s *server) handshake(line []byte) error {
 	if supportsEncoding(hello.Encodings, frameEncodingGzip) {
 		s.encoding = frameEncodingGzip
 	}
+	s.localSavingReceipts = hello.LocalSavingReceipts
+	s.syncNoticeWords = hello.SyncNoticeWords
 	sess, err := s.open(hello)
 	if err != nil {
 		return s.refuse("engine: " + err.Error())
@@ -1925,6 +2169,14 @@ func (s *server) handshake(line []byte) error {
 	// are open already includes it (automations.go's [server.holdWindow]). A
 	// refusal below lets it go on the way out with everything else.
 	s.holdWindow(hello)
+	if hello.Join && hello.Launch != nil {
+		sess.mu.Lock()
+		apply := sess.engine.JoinedWith
+		sess.mu.Unlock()
+		if apply != nil {
+			s.joinedWith = apply(*hello.Launch)
+		}
+	}
 	// The arrival is one act: attached, welcomed, and caught up, with this
 	// connection's writer held throughout so nothing overtakes the welcome.
 	s.write.Lock()
@@ -2018,12 +2270,59 @@ func (s *server) dispatch(call Frame) {
 	// here — the one funnel every keystroke takes — is what keeps that
 	// gap from reading as an empty room.
 	s.noteAct()
+	// A progress receipt precedes the upload wait and carries no transcript or key.
+	progressDone := make(chan struct{})
+	if s.localSavingReceipts && (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
+		saved := s.session.localSaved
+		go func() {
+			select {
+			case <-saved:
+				_ = s.send(Frame{Kind: "localSaved", ID: call.ID})
+			case <-progressDone:
+			}
+		}()
+	}
 	payload, err := s.invoke(call)
+	close(progressDone)
+	if err == nil && call.Method == MethodAppRename {
+		// Acknowledgement is a read-after-write boundary: the local title
+		// replica must see owner facts before RenameByPerson returns, even
+		// without a standing title event. Existing revisions reject old facts.
+		s.session.announce()
+	}
 	result := Frame{Kind: "result", ID: call.ID, Payload: payload}
+	if (call.Method == MethodClose || call.Method == MethodDetach) && s.session != nil {
+		select {
+		case <-s.session.localSaved:
+			if s.localSavingReceipts {
+				result.LocalSaved = true
+			} else if syncwords.UploadPending(err) {
+				// A legacy surface cannot distinguish an upload from a local
+				// failure. A completed local close keeps its successful reply.
+				err = nil
+			}
+		default:
+		}
+	}
+
 	if err != nil {
 		result.Payload, result.Error = nil, err.Error()
+		var refusal *executor.WorkRefusal
+		if errors.As(err, &refusal) {
+			result.WorkRefusal = refusal
+		}
+		result.SyncPending = result.LocalSaved && syncwords.UploadPending(err)
+		result.StorageOff = result.SyncPending && errors.Is(err, wireauth.ErrStorageOff)
+		var unsaved *session.UnsavedChatError
+		if errors.As(err, &unsaved) {
+			result.UnsavedTranscript = unsaved.Transcript
+		}
 	}
-	_ = s.send(result)
+	if s.session != nil && (call.Method == MethodClose || call.Method == MethodDetach || call.Method == MethodSessionNew || call.Method == MethodSessionOpen) {
+		_ = s.sendSavingResult(result)
+	} else {
+		_ = s.send(result)
+	}
 	// And only now does a turn opened by that call begin to speak.
 	// ONLY A TURN EVER OPENS A STREAM, so only a turn releases one: two calls
 	// of any other class running at once would race the one slot, and one of
@@ -2083,14 +2382,36 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
-		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
+	case MethodRunHarness, MethodSubmitBash, MethodSubmitSetup, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+		MethodTaskSteer, MethodTaskStop, MethodTaskRetry, MethodProcessRerun, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll, MethodRenderCancel, MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
+		MethodAppTaskRoutingAct, MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskStartOn, MethodTaskRunHere:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
 		}
 	}
 
+	if out, handled, err := invokeConversation(sess.engine, agent, call.Method, call.Payload); handled {
+		return out, err
+	}
 	switch call.Method {
+	case MethodClientToolsSet, MethodClientToolAnswer:
+		return s.invokeClientTools(call)
+	case MethodProcessList, MethodProcessRerun, MethodProcessPage, MethodProcessRecord,
+		MethodProcessActions, MethodProcessRerunAt, MethodProcessStopAt, MethodProcessStopAll:
+		return serveAppProcesses(agent, call)
+	case MethodRenderList, MethodRenderGet, MethodRenderCancel:
+		return dispatchRender(agent, call)
+	case MethodAppTasks, MethodAppTask, MethodAppTaskAction, MethodAppQuickTasks, MethodAppQuickTaskAction, MethodAppMoveToTask, MethodAppResumeAfterQuit, MethodAppResumeAfterClose, MethodAppRename,
+		MethodAppTaskRouting, MethodAppTaskRoutingAct, MethodAppTaskRoutingOptions, MethodAppProgramActions:
+		return dispatchAppTask(agent, call)
+	case MethodTaskStartOn, MethodTaskRunHere:
+		return s.taskComputerInvoke(call)
+	case MethodTaskWorkspaceReview, MethodTaskWorkspaceApply, MethodTaskWorkspaceCancel:
+		args, err := arg[taskWorkspaceArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return s.taskWorkspaceInvoke(call.Method, args)
 	case MethodTaskRetry:
 		args, err := arg[TaskSetupArgs](call)
 		if err != nil {
@@ -2324,6 +2645,47 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		door.HoldQuestion(args.Kind, args.Token)
 		return nil, nil
+	case MethodQuestionDismiss:
+		args, err := arg[QuestionHoldArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// A MISSING DOOR REFUSES: a person told their dismissal landed would
+		// leave a question standing that the model is still waiting on.
+		door, ok := agent.(interface{ DismissQuestion(string) error })
+		if !ok || args.Kind != session.QuestionAsk {
+			return nil, errors.New("engine: this session cannot dismiss that question")
+		}
+		return nil, door.DismissQuestion(args.Token)
+	case MethodQuestionClock:
+		args, err := arg[QuestionClockArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		// A MISSING DOOR REFUSES here, where Hold's costs nothing: a surface
+		// told this clock was deferred would hold a question whose suggestion
+		// is still being counted down unseen.
+		door, ok := agent.(interface {
+			DeferQuestionClock(session.QuestionKind, string) bool
+			StartQuestionClock(session.QuestionKind, string) bool
+			OpenQuestions() []session.Question
+		})
+		if !ok {
+			return nil, errors.New("engine: this session cannot defer a question's clock")
+		}
+		changed := false
+		if args.Start {
+			changed = door.StartQuestionClock(args.Kind, args.Token)
+		} else {
+			changed = door.DeferQuestionClock(args.Kind, args.Token)
+		}
+		reply := QuestionClockReply{Changed: changed}
+		for _, q := range door.OpenQuestions() {
+			if q.Kind == args.Kind && q.Token() == args.Token {
+				reply.Deadline = q.Deadline
+			}
+		}
+		return json.Marshal(reply)
 
 	case MethodAutonomy:
 		// THE READ SIDE OF THE ROW BELOW. It is asserted rather than called on
@@ -2382,7 +2744,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this session has no task proposals to answer")
 		}
 		door.ResolveTask(args.ID, session.TaskAnswer{
-			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model,
+			Approved: args.Approved, Redirect: args.Redirect, Model: args.Model, Computer: args.Computer,
 		})
 		return nil, nil
 	case MethodTaskSettle:
@@ -2502,6 +2864,11 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		// The empty answer is the point: elapsed time belongs to the surface's
 		// clock, so the engine contributes no timestamp and no machine-clock skew.
 		return nil, nil
+	case MethodCheckWork:
+		if door, ok := agent.(interface{ CheckWork() error }); ok {
+			return nil, door.CheckWork()
+		}
+		return nil, nil
 
 	case MethodTyping:
 		// SOMEBODY IS WRITING, WHICH IS THE CHEAPEST THING THIS ENGINE IS EVER
@@ -2524,6 +2891,23 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			door.Typing()
 		}
 		return nil, nil
+
+	case MethodRunHarness:
+		args, err := arg[RunHarnessArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(harnessRequestDoor)
+		if !ok {
+			return nil, errors.New("harnesses are unavailable here")
+		}
+		var events <-chan session.Event
+		if marked, ok := agent.(harnessClientDoor); ok && args.ClientID != "" {
+			events, err = marked.RunHarnessRequestWithClientID(context.Background(), args.Name, args.Text, args.Model, args.ClientID)
+		} else {
+			events, err = door.RunHarnessRequest(context.Background(), args.Name, args.Text, args.Model)
+		}
+		return s.stream(MethodRunHarness, args.Text, events, err)
 
 	case MethodSubmitBash:
 		args, err := arg[SubmitArgs](call)
@@ -2551,7 +2935,40 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := agent.Submit(context.Background(), args.Text)
+		// A MESSAGE WITH A MARK IS RECORDED WITH IT OR REFUSED WHOLE. Running
+		// only its words would silently lose what the person attached or read.
+		var events <-chan session.Event
+		door, marked := agent.(interface {
+			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+		})
+		hasMark := args.marked()
+		if args.composed() || args.WantReceipt {
+			// PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT, and the
+			// receipt rides the answer that names the stream.
+			composer, ok := agent.(composedDoor)
+			if !ok {
+				return nil, errors.New("engine: this session cannot take pictures with a message; update the engine before sending it")
+			}
+			receipt, events, err := composer.SubmitComposed(context.Background(), args.submission())
+			if err != nil {
+				return nil, err
+			}
+			if _, err := s.stream(MethodSubmit, args.Text, events, nil); err != nil {
+				return nil, err
+			}
+			return json.Marshal(StreamRef{Stream: s.pending.id, Receipt: &receipt})
+		}
+		if hasMark && !marked {
+			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
+		}
+		// A creation context alone is no mark a door must keep, but a door that
+		// can take it is handed it; one that cannot runs the words, and the team
+		// stays unknown there.
+		if hasMark || (marked && args.Creation != nil) {
+			events, err = door.SubmitMessage(context.Background(), args.submission())
+		} else {
+			events, err = agent.Submit(context.Background(), args.Text)
+		}
 		return s.stream(MethodSubmit, args.Text, events, err)
 
 	case MethodQuestionReplace:
@@ -2572,7 +2989,27 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := agent.FollowUp(args.Text)
+		// A MARKED FOLLOW-UP IS QUEUED WITH ITS MARK OR REFUSED before anything
+		// is queued; its stream is registered for the take-back below exactly as
+		// a plain one's is.
+		var events <-chan session.Event
+		if args.composed() {
+			return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
+		}
+		door, ok := followUpMarksDoor(agent)
+		switch {
+		case args.marked() && !ok:
+			return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
+		case ok:
+			// A FOLLOW-UP BY THIS WIRE IS THE PERSON'S, marked or not, and the
+			// agent's mark door is its person door ([session.Agent.FollowUpMessage]):
+			// plain FollowUp is also an engine door and counts nobody. A creation
+			// context rides to it too; a door that cannot keep one queues the
+			// words and the team stays unknown.
+			events, err = door(args.submission())
+		default:
+			events, err = agent.FollowUp(args.Text)
+		}
 		return s.stream(MethodFollowUp, args.Text, events, err)
 
 	case MethodUnqueueFollowUp:
@@ -2608,7 +3045,27 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := agent.Steer(args.Text)
+		// A MARKED CORRECTION IS SPLICED WITH ITS MARK OR REFUSED before it
+		// reaches the turn.
+		var events <-chan session.Event
+		if args.composed() {
+			return nil, errors.New("engine: a correction carries no pictures; send them as a message")
+		}
+		door, ok := steerMarksDoor(agent)
+		switch {
+		case args.marked() && !ok:
+			return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
+		case args.marked():
+			events, err = door(args.submission())
+		case ok:
+			// A CORRECTION BY THIS WIRE IS THE PERSON'S, marked or not, and the
+			// agent's mark door is its person door ([session.Agent.SteerMessage]):
+			// plain Steer is also the engine's and runners' door and counts
+			// nobody. The words go alone, as they did by Steer.
+			events, err = door(session.Submission{Text: args.Text})
+		default:
+			events, err = agent.Steer(args.Text)
+		}
 		return s.stream(MethodSteer, args.Text, events, err)
 
 	case MethodSubmitImage:
@@ -2669,6 +3126,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			agent.InterruptFor(door)
 			return nil, nil
 		}
+		// A PERSON'S STOP THAT CAME WITH A BOUND ARMS THE SECOND STAGE HERE,
+		// because the surface that sent it has no door of its own to press
+		// when the bound runs out ([InterruptArgs]). An agent that cannot be
+		// abandoned is stopped as it always was.
+		if bounded, ok := agent.(boundedStopper); ok && args.Within > 0 {
+			bounded.InterruptWithin(time.Duration(args.Within) * time.Millisecond)
+			return nil, nil
+		}
 		agent.Interrupt()
 		return nil, nil
 
@@ -2690,7 +3155,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return mustJSON(door.AnswerLaneOffer(yes)), nil
 
 	case MethodCompact:
-		err := agent.Compact(context.Background())
+		err := sess.compactSaid(agent)
 		if why, skipped := session.SummarySkippedWhy(err); skipped {
 			// An older surface ignores a successful call's optional result and
 			// still reads a true success, while a newer one can show the reason.
@@ -2703,6 +3168,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, err
 
 	case MethodClose:
+		s.dropClientTools()
 		// The surface said goodbye politely, and it is saying it about the
 		// CONVERSATION rather than about this window — so [server.leave] closes
 		// the session behind it whoever else is attached. The journal is flushed
@@ -2713,12 +3179,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return nil, sess.closeLeaving()
 
 	case MethodDetach:
-		// THE ONE METHOD WHOSE VALUE IS THE DIFFERENCE BETWEEN IT AND SILENCE.
-		// Nothing is interrupted and nothing is closed; the reader loop sees
-		// this flag on its next pass and ends the connection, leaving the turn
-		// to finish (wire.go's MethodDetach states the whole case).
+		_, err := arg[DetachArgs](call)
+		if err != nil {
+			return nil, err
+		}
 		s.detached.Store(true)
-		return nil, nil
+		// An idle writer's final save belongs in the departure reply while
+		// somebody can still hear its failure. Running work stays hosted.
+		return nil, s.leave()
 
 	case MethodHeldQuestions:
 		sess.mu.Lock()
@@ -2729,6 +3197,39 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodModel:
 		return json.Marshal(agent.Model())
 
+	case MethodSetAutomaticModels:
+		enabled, err := arg[bool](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ SetAutomaticModels(bool) error })
+		if !ok {
+			return nil, fmt.Errorf("automatic model selection is unsupported")
+		}
+		if err := door.SetAutomaticModels(enabled); err != nil {
+			return nil, err
+		}
+		s.session.announce()
+		return nil, nil
+	case MethodSetConversationModels:
+		pair, err := arg[session.ConversationModels](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			SetConversationModels(session.ConversationModels) ([]session.ModelSwitch, error)
+		})
+		if !ok {
+			return nil, errors.New("main/fallback selection is unsupported by this engine")
+		}
+		if refresh := sess.engine.RefreshModelSources; refresh != nil {
+			refresh()
+		}
+		notes, err := door.SetConversationModels(pair)
+		if err == nil {
+			s.session.announce()
+		}
+		return mustJSON(notes), err
 	case MethodSetModel:
 		model, err := arg[string](call)
 		if err != nil {
@@ -2737,7 +3238,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if refresh := sess.engine.RefreshModelSources; refresh != nil {
 			refresh()
 		}
-		agent.SetModel(model)
+		if checked, ok := agent.(interface{ SetModelChecked(string) error }); ok {
+			if err := checked.SetModelChecked(model); err != nil {
+				return nil, err
+			}
+		} else {
+			agent.SetModel(model)
+		}
 		// AND EVERY SURFACE IS TOLD, not only the one that turned the knob. Two
 		// windows on one conversation is a shape this protocol supports
 		// ([Welcome.Attached]), and a model changed in one of them is a fact the
@@ -2755,6 +3262,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("conversation limit cannot be changed here")
 		}
 		return nil, binder.SetSpendRail(usd)
+
+	case MethodSpendRail:
+		reader, ok := agent.(interface{ SpendRail() float64 })
+		if !ok {
+			return nil, errors.New("conversation limit cannot be read here")
+		}
+		return json.Marshal(reader.SpendRail())
 
 	case MethodSetContext:
 		tokens, err := arg[int](call)
@@ -2779,6 +3293,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.SetReasoningFor(args.Model, args.Level)
 		s.session.announce()
 		return nil, nil
+
+	case MethodSkillFolders:
+		return serveSkillFolders(s.session.engine.Workspace)
 
 	case MethodAttachSkills, MethodDetachSkill, MethodAttachedSkills, MethodClearSkills, MethodSkillShelf:
 		payload, err := serveSkills(agent, call)
@@ -2807,7 +3324,15 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		took := door.SetConversationEffort(rung)
+		var took bool
+		if checked, ok := agent.(interface{ SetConversationEffortChecked(string) (bool, error) }); ok {
+			took, err = checked.SetConversationEffortChecked(rung)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			took = door.SetConversationEffort(rung)
+		}
 		// AND EVERY SURFACE IS TOLD, on [MethodSetModel]'s terms: the rung rides
 		// the fact set every window on this conversation draws from, and a dial
 		// moved in one of them is a cell the others are painting right now.
@@ -2956,6 +3481,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		page, found := door.PlanTaskPage(args.ID)
 		return json.Marshal(PlanTaskPageResult{Page: page, OK: found})
+
+	case MethodOpenPlanTaskWork:
+		args, err := arg[PlanTaskArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(session.PlanWorkOpener)
+		if !ok {
+			return json.Marshal(PlanTaskWorkResult{Work: session.PlanTaskWork{NoDoor: true}})
+		}
+		work, found := door.OpenPlanTaskWork(args.ID)
+		return json.Marshal(PlanTaskWorkResult{Work: work, OK: found})
 
 	case MethodPlanTaskWork:
 		args, err := arg[PlanTaskArgs](call)
@@ -3172,6 +3709,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// bargain: a surface that meets it says the sentence its place has always
 	// said rather than waiting on a call nobody is going to answer
 	// (wire_places.go states the law).
+	if payload, handled, err := s.modelForNowCall(agent, call); handled {
+		return payload, err
+	}
 	if payload, handled, err := s.placesCall(call); handled {
 		return payload, err
 	}
@@ -3182,7 +3722,20 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	if payload, handled, err := s.delegationCall(call); handled {
 		return payload, err
 	}
+	if payload, handled, err := factoryStatusCall(agent, call); handled {
+		return payload, err
+	}
+	if payload, handled, err := replySuggestionCall(agent, call); handled {
+		return payload, err
+	}
+	if payload, handled, err := errandCall(agent, call); handled {
+		return payload, err
+	}
 	if payload, handled, err := teamAskCall(agent, call); handled {
+		return payload, err
+	}
+	// And the side ask, additive in the same way (sideask.go).
+	if payload, handled, err := sideAskCall(agent, call, s.send); handled {
 		return payload, err
 	}
 	// And the automations doors, which answer about this MACHINE's store and
@@ -3365,6 +3918,24 @@ func (s *server) send(frame Frame) error {
 // what an arrival uses ([Session.attach]) so that the welcome and the replay
 // behind it cannot be overtaken by a live event.
 func (s *server) sendLocked(frame Frame) error {
+	if !s.syncNoticeWords && frame.Kind == "event" {
+		var event EventWire
+		if err := json.Unmarshal(frame.Payload, &event); err != nil {
+			return err
+		}
+		if event.Kind == session.EventNotice {
+			text := chatlist.LegacySyncNotice(event.Text)
+			if text != event.Text {
+				event.Text = text
+				payload, err := json.Marshal(event)
+				if err != nil {
+					return err
+				}
+				frame.Payload = payload
+			}
+		}
+	}
+
 	if frame.Kind != "welcome" {
 		if err := compressFrame(&frame, s.encoding); err != nil {
 			return err
@@ -3380,9 +3951,14 @@ func (s *server) sendLocked(frame Frame) error {
 	}
 	if _, err := s.out.Write(line); err != nil {
 		s.dead = true
+		s.dropClientTools()
 		return err
 	}
-	return flushFrame(s.out)
+	err = flushFrame(s.out)
+	if err != nil {
+		s.dropClientTools()
+	}
+	return err
 }
 
 func (s *server) hungUp() bool {
@@ -3409,17 +3985,26 @@ func mustJSON(value any) json.RawMessage {
 
 // releaseAfterLeave retains a clean departure until the final stream ends.
 // The idle decision still checks attached windows and unfinished work together.
-func (sess *Session) releaseAfterLeave() {
+func (sess *Session) releaseAfterLeave() error {
 	func() {
 		sess.mu.Lock()
 		defer sess.mu.Unlock()
 		sess.releaseOnIdle = len(sess.surfaces) == 0
 	}()
-	sess.RetireIfIdle(0)
+	_, err := sess.retireIfIdle(0)
+	return err
 }
 
 func (sess *Session) releasePending() bool {
 	sess.mu.Lock()
 	defer sess.mu.Unlock()
 	return sess.releaseOnIdle
+}
+
+func (sess *Session) takeCloseNotices() []string {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	lines := sess.closeNotices
+	sess.closeNotices = nil
+	return lines
 }

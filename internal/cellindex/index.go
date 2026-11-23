@@ -46,6 +46,7 @@ func RebuildAt(dir, workspace string) ([]string, error) {
 // A sealed transcript names no folder of any machine, so the opener says where
 // the workspace is HERE; when it does, that answer is the digest's workspace.
 func Rebuild(c cell.Cell, workspace string) ([]string, error) {
+	session.RecoverUsage(session.UsageLedgerPath())
 	missing := missingOf(c)
 	if len(missing) == 0 {
 		return nil, nil

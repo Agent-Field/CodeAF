@@ -17,6 +17,7 @@ var (
 		FilesOnly: {Spawns: false},
 		Sandboxed: {Spawns: true, Net: NetPolicy{}, Setup: openNet},
 		HostBound: {Spawns: true, Net: openNet, Setup: openNet},
+		Fenced:    {Spawns: true, Net: openNet, Setup: openNet},
 	}
 	classNames = map[string]Class{"files-only": FilesOnly, "sandboxed": Sandboxed, "host-bound": HostBound}
 )

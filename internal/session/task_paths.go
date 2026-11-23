@@ -13,16 +13,38 @@ import (
 )
 
 func (r *taskRecord) pathFields() []*string {
-	return []*string{&r.Journal, &r.Beat, &r.OriginJournal, &r.Worktree}
+	return []*string{&r.Journal, &r.Beat, &r.OriginJournal, &r.Worktree, &r.Ground}
 }
 
 func (r *runRecord) pathFields() []*string {
-	if r.Copy == nil {
-		return nil
+	var fields []*string
+	if r.Copy != nil {
+		copied := *r.Copy
+		r.Copy = &copied
+		fields = append(fields, &copied.Dir, &copied.Root, &copied.Ground)
 	}
-	copied := *r.Copy // the pointer is shared with the live graph
-	r.Copy = &copied
-	return []*string{&copied.Dir, &copied.Root, &copied.Ground}
+	r.WorkspaceSet = cloneWorkspaceSet(r.WorkspaceSet)
+	if r.WorkspaceSet != nil {
+		for i := range r.WorkspaceSet.Roots {
+			if copied := r.WorkspaceSet.Roots[i].Copy; copied != nil {
+				fields = append(fields, &copied.Dir, &copied.Root, &copied.Ground)
+			}
+		}
+	}
+	if r.PendingRun != nil {
+		pending := *r.PendingRun
+		r.PendingRun = &pending
+		fields = append(fields, &pending.Ground)
+		if pending.WorkspaceSet != nil {
+			request := *pending.WorkspaceSet
+			request.Roots = append([]WorkspaceRootRequest(nil), request.Roots...)
+			pending.WorkspaceSet = &request
+			for i := range request.Roots {
+				fields = append(fields, &request.Roots[i].Source, &request.Roots[i].Landing)
+			}
+		}
+	}
+	return fields
 }
 
 // clearPaths returns a copy of in with every non-empty path field rewritten by

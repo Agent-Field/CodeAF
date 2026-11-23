@@ -1976,6 +1976,10 @@ func TestAStoppedTaskResultCannotAutoStartItsRequestAgain(t *testing.T) {
 			graph := agent.graph()
 			id := graph.reserve()
 			graph.admit(id, taskSpec{title: "the requested audit", request: tc.request, brief: "audit", acceptance: "done"})
+			// Admission starts the original stub runner. Join setup before asking
+			// whether reporting its result starts any additional work.
+			graph.runners.Wait()
+			runsBefore := nodes.count()
 			if tc.stopped {
 				graph.mu.Lock()
 				graph.nodes[id].state = TaskFailed
@@ -2006,9 +2010,14 @@ func TestAStoppedTaskResultCannotAutoStartItsRequestAgain(t *testing.T) {
 			if completer.asked() != wantCalls || completer.confirms() != wantCalls {
 				t.Fatalf("screen calls = %d, confirms = %d, want %d each", completer.asked(), completer.confirms(), wantCalls)
 			}
-			if !tc.want {
-				agent.applyRouteJudge(newEventHub(), ruling)
-				if nodes.count() != 0 || admitted(graph) != 1 {
+			agent.applyRouteJudge(newEventHub(), ruling)
+			graph.runners.Wait()
+			if tc.want {
+				if nodes.count() != runsBefore+1 || admitted(graph) != 2 {
+					t.Fatal("authorized work did not admit exactly one additional task")
+				}
+			} else {
+				if nodes.count() != runsBefore || admitted(graph) != 1 {
 					t.Fatal("reporting a stopped result admitted or ran another task")
 				}
 				// A person can repeat the same request after the stopped wake.
@@ -2016,6 +2025,11 @@ func TestAStoppedTaskResultCannotAutoStartItsRequestAgain(t *testing.T) {
 				defer fresh.release()
 				if !fresh.start || completer.asked() != 1 || completer.confirms() != 1 {
 					t.Fatal("a fresh human request was suppressed after the stopped result")
+				}
+				agent.applyRouteJudge(newEventHub(), fresh)
+				graph.runners.Wait()
+				if nodes.count() != runsBefore+1 || admitted(graph) != 2 {
+					t.Fatal("the repeated human request did not admit exactly one additional task")
 				}
 			}
 		})

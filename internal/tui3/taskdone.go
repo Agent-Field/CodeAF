@@ -22,6 +22,8 @@ import (
 type taskDone struct {
 	id    uint64
 	ident taskIdent
+	// Placement survives the live node, just like the rest of this receipt.
+	placement string
 	// program is the program the work was handed to, "" for codeaf's own.
 	// Its ending is the conversation's to act on (session's program_outcome.go),
 	// so its card says it ended and that the chat has the rest
@@ -205,6 +207,7 @@ func (a *app) landedCard(node *taskNode) {
 		landed = a.now()
 	}
 	card := &taskDone{
+		placement:   a.taskComputerWords(node),
 		id:          node.id,
 		ident:       node.ident,
 		program:     a.nodeProgram(node),
@@ -231,7 +234,7 @@ func (a *app) landedCard(node *taskNode) {
 		cost:        node.spent(),
 	}
 	card.attention = node.actionNeeded()
-	card.quiet = card.status.Tier != session.TaskTierYourCall && card.attention == ""
+	card.quiet = card.status.Tier != session.TaskTierYourCall && card.attention == "" && !card.status.ChangesUnlanded()
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
 	}
@@ -472,6 +475,11 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 		return nil
 	}
 	out := []string{a.doneHead(card, width, sel)}
+	if card.placement != "" {
+		for _, line := range wrap(card.placement, width-2) {
+			out = append(out, "  "+a.pal.dim(line))
+		}
+	}
 	if card.attention != "" {
 		for _, line := range wrap(card.attention, width-2) {
 			out = append(out, "  "+a.pal.warn(line))
@@ -1263,8 +1271,8 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 	return fitPainted(head, width)
 }
 
-// supersededIn reports whether the card at i lands again LATER IN THE SAME RUN:
-// the first landing of a node that asked `your call` and was then decided.
+// supersededIn reports whether a later landing replaces the card at i.
+// A task's current state replaces earlier cards across turn boundaries too.
 //
 // A BATCH COUNTS WORK, NOT LANDINGS. A decision lands a node a second time, and
 // when the answer comes straight under the question both cards fall into one
@@ -1277,6 +1285,7 @@ func supersededIn(d deck, i, to int) bool {
 	if card == nil || card.id == 0 {
 		return false
 	}
+	to = len(d.entries)
 	for j := i + 1; j < to; j++ {
 		if next := d.entries[j].done; next != nil && next.id == card.id {
 			return true

@@ -1,0 +1,166 @@
+package api
+
+import "time"
+
+// FactorySetup carries first-run progress from the engine, including unfinished reads after restart.
+type FactorySetup struct {
+	ID     string      `json:"id"`
+	State  string      `json:"state" jsonschema:"enum=github,enum=repos,enum=reading,enum=checkouts,enum=done"`
+	Mode   string      `json:"mode" jsonschema:"enum=solo,enum=team"`
+	Server string      `json:"server,omitempty"`
+	GitHub SetupGitHub `json:"github"`
+	Repos  []SetupRepo `json:"repos"`
+}
+type SetupGitHub struct {
+	// The connected credential's verified GitHub profile, distinct from the optional gh CLI account.
+	Handle       string   `json:"handle,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	AvatarURL    string   `json:"avatar_url,omitempty"`
+	GH           *SetupGH `json:"gh"`
+	Organization string   `json:"organization"`
+	VisibleRepos int      `json:"visible_repos"`
+	Connected    bool     `json:"connected"`
+	Error        *string  `json:"error"`
+}
+type SetupGH struct {
+	Login string `json:"login"`
+	Path  string `json:"path"`
+}
+type SetupRepo struct {
+	ID         string `json:"id"`
+	FullName   string `json:"full_name"`
+	OpenIssues int    `json:"open_issues"`
+	// OpenIssuesExact is true when OpenIssues counts issues alone. False is
+	// GitHub's open_issues_count, issues and pull requests together, kept
+	// when GraphQL did not count the repository.
+	OpenIssuesExact   bool       `json:"open_issues_exact"`
+	Pipeline          *string    `json:"pipeline" jsonschema:"enum=file,enum=defaults"`
+	Archived          bool       `json:"archived"`
+	Selected          bool       `json:"selected"`
+	Checkout          *string    `json:"checkout"`
+	SuggestedCheckout string     `json:"suggested_checkout"`
+	CloneMB           int        `json:"clone_mb"`
+	Read              string     `json:"read" jsonschema:"enum=next,enum=reading,enum=done,enum=empty,enum=waiting,enum=rate_limited,enum=skipped"`
+	ReadCount         int        `json:"read_count"`
+	WaitingS          int        `json:"waiting_s"`
+	ResumesAt         *time.Time `json:"resumes_at"`
+	Clone             string     `json:"clone" jsonschema:"enum=missing,enum=cloning,enum=found,enum=skipped,enum=failed"`
+	CloneError        *string    `json:"clone_error"`
+}
+type FactorySetupRequest struct {
+	ID      string   `json:"id,omitempty"`
+	Verb    string   `json:"verb" jsonschema:"enum=discover,enum=scope,enum=ingest,enum=retry,enum=connect,enum=select_repos,enum=retry_read,enum=clone,enum=checkout,enum=skip,enum=back,enum=done,enum=continue"`
+	Source  string   `json:"source,omitempty" jsonschema:"enum=gh,enum=token"`
+	Token   string   `json:"token,omitempty"`
+	RepoIDs []string `json:"repo_ids,omitempty"`
+	RepoID  string   `json:"repo_id,omitempty"`
+	Path    string   `json:"path,omitempty"`
+}
+
+// FactoryAccess reports a link's validity separately from the caller's GitHub sign-in.
+type FactoryAccess struct {
+	// AccessToken is a completed native session grant; the app host consumes it before replying.
+	AccessToken string        `json:"access_token,omitempty"`
+	State       string        `json:"state" jsonschema:"enum=ready,enum=waiting,enum=joined,enum=expired,enum=revoked,enum=used_up,enum=no_access,enum=unreachable,enum=already_joined"`
+	Factory     AccessFactory `json:"factory"`
+	Link        string        `json:"link"`
+	Detail      string        `json:"detail"`
+	Message     string        `json:"message,omitempty"`
+	Help        string        `json:"help,omitempty"`
+	SignInURL   string        `json:"sign_in_url,omitempty"`
+	UserCode    string        `json:"user_code,omitempty"`
+	// MaxUses, Used and Remaining count the link's people; ExpiresAt is when
+	// it stops admitting them, and EndedAt when a revoked, expired or used-up
+	// link did. All stay empty for a link the factory did not recognise.
+	MaxUses   int        `json:"max_uses,omitempty"`
+	Used      int        `json:"used,omitempty"`
+	Remaining int        `json:"remaining,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	EndedAt   *time.Time `json:"ended_at,omitempty"`
+}
+type AccessFactory struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Operator string `json:"operator"`
+	// OperatorName and OperatorAvatarURL are that handle's GitHub profile as
+	// recorded when they signed in; absent when no sign-in has recorded one.
+	OperatorName      string   `json:"operator_name,omitempty"`
+	OperatorAvatarURL string   `json:"operator_avatar_url,omitempty"`
+	Repos             []string `json:"repos"`
+}
+type FactoryAccessRequest struct {
+	Link string `json:"link"`
+	// check only reads or polls; it never starts a sign-in. A factory advertises
+	// support with access_check_post:true in GET /v1/about; older ones take only
+	// sign_in and cancel and answer a check as GET with the link in the query.
+	Verb string `json:"verb" jsonschema:"enum=sign_in,enum=cancel,enum=check"`
+}
+
+// FactoryDay counts visible jobs once per calendar day; unknown waiting time is null.
+type FactoryDay struct {
+	ID                   string   `json:"id"`
+	Host                 string   `json:"host,omitempty"`
+	Started              int      `json:"started"`
+	Posted               int      `json:"posted"`
+	Merged               int      `json:"merged"`
+	WaitingMedianSeconds *float64 `json:"waiting_median_seconds"`
+}
+
+// JobDisplay is a binary-owned presentation rule, evaluated against the host clock.
+type JobDisplay struct {
+	RunningVisible bool `json:"running_visible"`
+}
+
+// SpendByRepo is GET /v1/spend/repos: what each repository's jobs spent over
+// a range of the factory's own calendar days, from and to inclusive, for the
+// repositories the caller can read. A JOB'S WHOLE SPEND IS PLACED ON ONE DAY:
+// the day its run started, or, for a job that never ran, the day it was
+// created (its chat's spend). The job document keeps one running figure, not
+// spend by day, so a run that crosses midnight or a month counts entirely on
+// its start day. A job that runs again starts its spend from nothing, so an
+// earlier run's spend is not counted. Only jobs that spent something are
+// counted, and only jobs with an owner/name repository. Repos is sorted by
+// name and is [] when nothing was spent; total_usd is their sum.
+type SpendByRepo struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// TimeZone is the IANA name of the zone the days are read in, such as
+	// "Europe/London". It is absent when the factory cannot name its zone.
+	TimeZone string      `json:"time_zone,omitempty"`
+	Repos    []RepoSpend `json:"repos"`
+	TotalUSD float64     `json:"total_usd"`
+}
+
+// RepoSpend is one repository's line: dollars spent and how many jobs spent it.
+type RepoSpend struct {
+	Repo     string  `json:"repo"`
+	SpentUSD float64 `json:"spent_usd"`
+	Jobs     int     `json:"jobs"`
+}
+
+// SpendByModel is GET /v1/spend/models: the same jobs and the same days as
+// [SpendByRepo], split by the model recorded on each priced call. A dollar
+// with no recorded model is unknown_usd, never guessed and never dropped.
+// Models is dearest first, then by name, and is [] when nothing was spent
+// on a named model. The sum of cost_usd and unknown_usd is [SpendByRepo]'s
+// total_usd for the same days. Factory AI that is not booked on a job
+// (a triage read, a scout, a page AI call that only reached the session
+// ledger) is in neither figure.
+type SpendByModel struct {
+	From       string       `json:"from"`
+	To         string       `json:"to"`
+	TimeZone   string       `json:"time_zone,omitempty"`
+	Models     []ModelSpend `json:"models"`
+	UnknownUSD float64      `json:"unknown_usd,omitempty"`
+}
+
+// ModelSpend is one model's line over the range.
+type ModelSpend struct {
+	Model        string  `json:"model"`
+	CostUSD      float64 `json:"cost_usd"`
+	Calls        int     `json:"calls"`
+	InputTokens  int64   `json:"input_tokens,omitempty"`
+	OutputTokens int64   `json:"output_tokens,omitempty"`
+	Jobs         int     `json:"jobs"`
+}

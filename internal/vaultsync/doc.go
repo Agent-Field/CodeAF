@@ -11,19 +11,35 @@
 // a tombstone, and two machines that edited different files keep both. The file
 // is written back at the same path with the same bytes and mode (files.go).
 //
-// The carried-state rule. Two kinds of profile state ride in the vault beside
-// the secrets, sealed with the cell key, pushed when they change, deleted by a
-// tombstone and merged by the newer stamp exactly like a secret. credentials.json
-// is one whole-file slot, stamped with the file's save time. The provider keys of
-// the profile config (syncsetup) are one entry per key, like a secret's name: a key is
-// stamped only when its value changed since the last capture (a local ledger of
-// digests remembers), so an edit to anything else in config.json never ages a
-// key; a machine with no place for a key has no opinion on it, and only a key
-// this machine once shared can be tombstoned by it. Everything is captured
-// before every push and pull and restored after every merge. A damaged copy is
-// never captured, so it cannot bury a good one. The rest of config.json
-// (budgets, rails, model picks) is never carried: those belong to the machine
-// they were set on.
+// BLIND PASS-THROUGH CARRIES THE WITHHELD FILES AND NOTHING ELSE. With hosted
+// sync storage off, Files.Offer reads a chat's withheld files in pages and
+// Files.Receive installs them on the computer taking the chat (passthrough.go).
+// Both read and write the real files directly and never touch the vault, so no
+// saved key, credential, preference, memory or team can ride along. They apply
+// the whole-file rules above: a file too large for one slot stays where it is,
+// the newest whole file wins by its save time, and the sender never decides
+// where a write lands.
+//
+// THE CARRIED-STATE LAW. Credentials, provider keys, profile preferences,
+// shared memories and portable teams ride beside secrets. Whole files use
+// their save time; Keyed gives individual fields independent clocks and
+// deletion tombstones. Existing Keys keep their original equal-stamp, removal
+// and apply rules. Team records use GuardedKeys to preserve edits across a
+// network round and check ownership before removal. Desktop provider keys
+// additionally require an explicit removal because native credentials can be
+// unread at startup. A damaged copy is neither captured nor overwritten. Teams
+// and their Traffic carriers run only while this computer's
+// local sharing switch is on; that switch is never a synced preference.
+//
+// ONE TRAFFIC VALUE PER WRITING DEVICE AND TEAM. DeviceWindows replaces a
+// writer's bounded window without republishing received history. The source
+// owns the limits (internal/teams): 32 lines and 16 KiB per team, text shortened
+// past 2 KiB, 64 KiB across a device's teams, publication at most every 30
+// seconds. Team records are never rate-limited. Removing a team's own value
+// happens on the next round; no writer deletes another writer's value. A
+// receiving source replaces its display mirror from locally known paired
+// writers, or every other writer when no local roster is available. Optional
+// team sharing uses BestEffort so its failures cannot block other carried state.
 //
 // Nothing here ever logs, returns or notifies a secret value; only names.
 package vaultsync

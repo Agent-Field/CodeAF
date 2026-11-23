@@ -1,4 +1,4 @@
-# Providers — the places models come from
+# Providers and services — the places models come from
 
 Older builds called these **services** (or connections, or model services); this page and
 the surfaces it describes now say **provider**. The word `codeaf services` in a shell is
@@ -220,6 +220,10 @@ A provider answering the current turn cannot be cut:
 the disconnected sentence first and then says
 `this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest`, or, when nothing can replace it,
 `this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a provider or pick a model`.
+The replacement is for this run only; it leaves the saved model and profile model
+settings unchanged. Later turns use the replacement the sentence names while it is
+listed, and the configured model returns when it is available again.
+Choosing the replacement yourself saves it, even if it is already running.
 
 OpenRouter uses the same two-Enter confirmation. A saved profile key is cleared from the
 profile and the running session; its models disappear, while Ollama and other connected
@@ -271,6 +275,46 @@ its models appear under the provider's heading in `/model`. A custom address tha
 fails this check remains editable with the error shown. A local
 provider has one host, so there is nothing to choose between and that is not a fault.
 
+## My local model keeps timing out — Ollama gives up after 2 minutes. How do I make codeaf wait longer? (slow local model timeout and patience)
+
+Ollama and llama.cpp can spend minutes reading a long prompt before the first token.
+
+Set **patience** (`response.patience`) in **Models** in `/settings`. The default
+`auto` uses 1x for hosted endpoints and 10x for local endpoints. A number from
+1 to 100 (`10`, `10x`, or `2.5`) uses the same multiplier and rescue policy
+everywhere. Set `1` to get the old behaviour exactly. Try
+`CODEAF_RESPONSE_PATIENCE=30 codeaf` for 30x everywhere.
+
+These are the hosted defaults.
+
+- 2 minutes for reply headers, or 20 minutes on a local endpoint.
+- After headers, 10 seconds with no answer byte on a conversation turn, or
+  90 seconds for the first token with keepalives.
+- 45 seconds between pieces of a reply. Keepalives can extend either silence
+  wait to 2 minutes 30 seconds.
+- 5 minutes for a reply below about 6 tokens per second. A reply that keeps
+  pace can run up to 20 minutes.
+- 2 minutes 30 seconds for a non-streamed reply once the server has answered once.
+- 2 minutes for one compaction summary request.
+- 90 seconds for a conversation turn to give up on an unreachable model.
+- 10 seconds before a slow hosted call can send a second request.
+
+Local addresses include `localhost`, `127.0.0.0/8`, `::1`,
+`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (Tailscale),
+IPv6 unique-local or link-local addresses, names ending in `.local`, `.lan` or
+`.internal` (including `host.docker.internal`), and names without a dot like
+`gpu-box`. The Ollama row counts as local wherever it runs. codeaf reads the
+address text without DNS.
+
+Under `auto`, codeaf only sends a second request while the first is in flight
+if the local gateway has advertised multiple providers for the model. Without
+them it never cuts a silent request to ask the same machine again; a first token
+minutes after the headers is waited on for up to 15 minutes on a conversation
+turn. If a request fails, the turn can move to another model. A cut can say
+`nothing came back from the model in 15m0s`,
+`the model stopped mid-reply and went quiet for 7m30s`, or
+`the model did not answer in time` if the connection never answered.
+
 ## Custom OpenAI-compatible API — a proxy, a gateway, or your own endpoint
 
 The **Custom OpenAI-compatible API** row in `/connect` accepts an OpenAI-compatible base URL and key.
@@ -306,7 +350,9 @@ empty key box keeps the saved key. A changed name is a rename: every model id al
 name is re-spelled with the new one, the conversation's own pick first (a turn still
 answering is waited out), and with it the stored ones: reasoning levels, the
 worker, checker and planner pins, role pins, the fallback chain and the capability slots. A rename changes a label and nothing
-else; it does not move the conversation onto a different model. `ctrl+r` on the row
+else; it carries saved and temporary selections separately, keeping a temporary
+replacement unsaved. A deferred rename stays with its conversation; a later
+explicit model or main/fallback choice supersedes it. `ctrl+r` on the row
 reconnects with the saved details. The `+ add a provider` row checks the address and asks for a name,
 requesting a key only when the server requires authentication, so the tab never sends you to `/connect` to add one.
 The `active provider` row reads

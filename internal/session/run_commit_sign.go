@@ -37,7 +37,7 @@ func signUnbornRunCommits(dir string, sign gitSignature) (int, error) {
 // Plumbing creates objects without moving the index or worktree, then one
 // compare-and-swap moves the branch if it still points at the observed head.
 func signRunCommitsFrom(dir, base string, unborn bool, sign gitSignature) (int, error) {
-	if (base == "" && !unborn) || repositoryRefusesTrailers(dir) {
+	if sign.off || (base == "" && !unborn) || repositoryRefusesTrailers(dir) {
 		return 0, nil
 	}
 	refOut, err := git(dir, "symbolic-ref", "-q", "HEAD")

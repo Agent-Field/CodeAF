@@ -7,6 +7,9 @@ a build, a test suite, a dev server — and get on with something else. Each one
 writes to its own log under `.codeaf/jobs/`, so a chatty build can never block
 anything, and the worker reads that log incrementally as it goes.
 
+Background shells use login bash (`bash -lc`) with pipefail, so login profiles
+can supply PATH.
+
 Background groups get **900 seconds** by default, are reniced to **+10** so they
 yield your machine, and are killed cleanly when the task that started them ends.
 That last part is deliberate: nothing survives its task by accident.
@@ -27,6 +30,12 @@ asked — you already said so. On yes, the receipt tells you how to end it:
 `dev server keeps running · port 5173 — say 'stop the dev server' to end it`.
 
 ## Health checks
+
+Command checks and service launches use login bash (`bash -lc`). They inherit
+the launching environment, then load login profiles, which can supply PATH.
+Service launches use pipefail on every OS. Command health checks retain bash
+pipeline exit status on Linux and macOS; Windows checks select Git Bash or
+another MSYS2-family bash and enable pipefail.
 
 Every service declares how it can be checked: a **port**, a **URL** that must
 return 200, or a **command** that must exit clean. codeaf probes it roughly
@@ -83,3 +92,7 @@ each is still the same process. One that died while it was away is reported
 honestly rather than shown as healthy:
 
 > dev server was not running anymore — say "start it again" to relaunch
+
+## Stopping background processes on Windows
+
+Windows background jobs and services retain ownership of their descendants through `.cmd` shims and after an intermediate parent exits. Stop first asks them to exit, then forces the whole tree after the existing grace. A stop that cannot verify the tree ended returns a failure instead of confirming it stopped. Deliberately kept services still outlive the task that started them.

@@ -51,7 +51,7 @@ func TestC12ProbeIsCached(t *testing.T) {
 	probes := 0
 	cellsAvailable = sync.OnceValue(func() bool {
 		probes++
-		binary, err := cellsBinary()
+		binary, err := OwnedBinary()
 		return err == nil && probeCells(binary)
 	})
 	if CellsAvailable() {
@@ -68,7 +68,7 @@ func TestC12ProbeIsCached(t *testing.T) {
 // TestC12RealEngineCapabilities proves C12 against the provided engine, whose
 // 0.1.0 version string must not cause a false refusal.
 func TestC12RealEngineCapabilities(t *testing.T) {
-	binary, err := cellsBinary()
+	binary, err := OwnedBinary()
 	if err != nil {
 		t.Skipf("no engine binary: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestC12RealEngineCapabilities(t *testing.T) {
 func TestC12ExplicitEngineNeverFallsBack(t *testing.T) {
 	for _, path := range []string{t.TempDir(), filepath.Join(t.TempDir(), "missing")} {
 		t.Setenv(BinaryEnvVar, path)
-		if binary, err := cellsBinary(); err == nil || binary != "" {
+		if binary, err := OwnedBinary(); err == nil || binary != "" {
 			t.Fatalf("configured %q fell through to %q: %v", path, binary, err)
 		}
 	}

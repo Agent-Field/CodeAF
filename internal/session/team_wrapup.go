@@ -129,7 +129,7 @@ func (a *Agent) teamWrapUpNote(profile string) {
 		if bound <= 0 {
 			bound = wrapUpFor
 		}
-		if _, _, err := teams.Change(profile, func(f *teams.File) error {
+		if err := teams.UpdateOpen(profile, func(f *teams.File) error {
 			return f.SetWrap(w.team, w.started, bound)
 		}); err != nil {
 			continue
@@ -180,7 +180,7 @@ func (a *Agent) teamWrapUpResume(profile string, now time.Time) {
 // clearTeamWrap forgets a wrap-up the clock has finished with. A missing team
 // is not an error worth the report's road.
 func clearTeamWrap(profile, id string) {
-	_, _, _ = teams.Change(profile, func(f *teams.File) error {
+	_ = teams.UpdateOpen(profile, func(f *teams.File) error {
 		return f.ClearWrap(id)
 	})
 }
@@ -321,13 +321,13 @@ func (a *Agent) teamCloseReportTool(ctx context.Context, args json.RawMessage) (
 		Team  string   `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	done := strings.TrimSpace(parsed.Done)
 	if done == "" {
-		return invalidArgumentsPrefix + "done is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"done is empty"), true, nil
 	}
-	team, _, refusal := a.teamTarget(parsed.Team, true)
+	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -346,9 +346,9 @@ func (a *Agent) teamCloseReportTool(ctx context.Context, args json.RawMessage) (
 	// team, and a report drawn with no spend line is the emptiness law's
 	// unknown, where a refused report would leave the wrap-up to run out.
 	spent, _ := a.teamPoolSpend(profile, team.ID, teamToday())
-	raised, err := teams.Raise(profile, closingPacket(team.Name, team.ID, teams.ClosingReport{
+	raised, err := teams.RaiseFrom(profile, closingPacket(team.Name, team.ID, teams.ClosingReport{
 		Done: done, Left: strings.TrimSpace(parsed.Left), Files: files, SpendUSD: roundCents(spent),
-	}))
+	}), turnOriginFrom(ctx).provenance(role.key))
 	if err != nil {
 		return "The report could not be sent: " + err.Error(), true, nil
 	}

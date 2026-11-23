@@ -71,6 +71,7 @@ package tui3
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -586,6 +587,13 @@ func (a *app) landTakeover(transcript string) {
 // (draft.go's [adoptDraft]), so the sentence the person was in the middle of
 // walks to the other terminal with the conversation.
 func (a *app) takeOver() tea.Cmd {
+	if a.homeTaking != "" && filepath.Base(session.DirOf(a.file)) == a.homeTaking {
+		// This window is reopening the same chat, so retirement needs no new chat.
+		a.dropParked()
+		a.writeDraftsNow(a.leavingDraft())
+		a.retainSavingDurability([]Agent{a.agent})
+		return closeConversationLater(a.agent, session.StopByTakeover, a.saveFailure, a.closingStarted, nil, a.syncService)
+	}
 	a.dropParked()
 	if a.draftFile != "" {
 		// The whole composer, so the window taking this conversation over takes
@@ -631,11 +639,12 @@ type turnResumer interface {
 	ResumeStoppedTurn(ctx context.Context) (<-chan session.Event, bool)
 }
 
-// resumedTurnMsg is that door's answer on its way back to the loop, and it is
-// sent only when a turn really started.
+// resumedTurnMsg is that door's answer on its way back to the loop. It carries
+// either an admitted turn or the refusal of an owed turn.
 type resumedTurnMsg struct {
-	gen int
-	ch  <-chan session.Event
+	gen     int
+	ch      <-chan session.Event
+	resumed bool
 }
 
 // resumeStoppedTurn is the one line [app.attachConversation] spends on this: ask
@@ -657,13 +666,16 @@ func (a *app) resumeStoppedTurn() tea.Cmd {
 	if !ok || a.stream != nil {
 		return nil
 	}
-	gen, ctx := a.gen, a.ctx
+	gen, ctx, agent := a.gen, a.ctx, a.agent
 	return func() tea.Msg {
-		events, resumed := door.ResumeStoppedTurn(ctx)
-		if !resumed {
+		if err := waitModelSelection(ctx, agent); err != nil {
 			return nil
 		}
-		return resumedTurnMsg{gen: gen, ch: events}
+		events, resumed := door.ResumeStoppedTurn(ctx)
+		if events == nil {
+			return nil
+		}
+		return resumedTurnMsg{gen: gen, ch: events, resumed: resumed}
 	}
 }
 
@@ -683,7 +695,9 @@ func (a *app) tookResumedTurn(msg resumedTurnMsg) tea.Cmd {
 	if msg.ch == nil || msg.gen != a.gen || a.stream != nil {
 		return nil
 	}
-	a.note(session.ResumedWord)
+	if msg.resumed {
+		a.note(session.ResumedWord)
+	}
 	return a.takeStream(msg.ch)
 }
 
@@ -708,7 +722,7 @@ func (a *app) freshAfterLeaving(let func(Agent)) tea.Cmd {
 	}
 	if !whole {
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
-			Workspace: a.workspace, Place: a.place, Owned: a.owned,
+			Workspace: a.workspace, Place: a.place, Owned: a.owned && a.movedName == "",
 			ContextWindow: a.ctxWindow, History: a.history,
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}

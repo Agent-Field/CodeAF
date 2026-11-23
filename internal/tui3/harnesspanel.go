@@ -229,26 +229,15 @@ func (a *app) openHarness() {
 // person is asking about is the harness as it stands — the older pages are
 // pinned pointers for a caller, not rows for a list.
 func (a *app) harnessRows() []harnessRow {
-	names, err := a.harn.Names()
+	saved, err := a.harn.Saved()
 	if err != nil {
 		return nil
 	}
-	rows := make([]harnessRow, 0, len(names))
-	for _, name := range names {
-		harness, err := a.harn.Load(name, 0)
-		if err != nil {
-			continue
-		}
-		row := harnessRow{harness: harness}
-		if paths, err := a.harn.Runs(name); err == nil {
-			row.runs = len(paths)
-			if len(paths) > 0 {
-				// Runs come back oldest first (the stamp is the filename), so
-				// the newest is the last one.
-				if trace, err := a.harn.LoadRun(paths[len(paths)-1]); err == nil {
-					row.last, row.hasLast = trace, true
-				}
-			}
+	rows := make([]harnessRow, 0, len(saved))
+	for _, item := range saved {
+		row := harnessRow{harness: item.Harness, runs: item.Runs}
+		if item.Last != nil {
+			row.last, row.hasLast = *item.Last, true
 		}
 		rows = append(rows, row)
 	}

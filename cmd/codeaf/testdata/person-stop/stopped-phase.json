@@ -1,0 +1,1 @@
+{"Repo":"acme/api","Kind":"issue","State":"new","Stream":{"Ended":"2020-01-01T00:00:00Z","Phases":[{"Name":"test","State":"failed","Failure":{"Code":"stopped","Detail":"Stopped by you","Next":"stopped"}}]}}

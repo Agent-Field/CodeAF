@@ -264,6 +264,38 @@ func TestTeamWakeFinishedAfterReplyStillDeduplesAfterManagerRestart(t *testing.T
 	}
 }
 
+// A FINISHED EVENT WAKES THE MANAGER ONCE, NOT ONCE PER LAUNCH. A member's
+// finished event gives the manager's boundary no line (the digest carries it),
+// so the delivery cursor that passed it was kept in memory only; the next
+// process seeded the watch from the old written cursor and woke the manager on
+// the same event again, every launch (owner, 2026-11-16: Afi thinking on
+// startup).
+func TestTeamWakeAFinishedEventDoesNotWakeTheManagerAgainAfterRestart(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	firstCalls := oneAnswer(2)
+	manager := teamAgent(t, fixture, fixture.manager, firstCalls, nil)
+	// A reply first, so the manager's cursor is written down (as Afi's was).
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "parser", To: teams.ToManager, Text: "The grammar is done."})
+	waitRequests(t, firstCalls, 1)
+	waitIdle(t, manager)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateFinished, Text: "finished"})
+	waitRequests(t, firstCalls, 2)
+	waitIdle(t, manager)
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondCalls := oneAnswer(1)
+	teamAgent(t, fixture, fixture.manager, secondCalls, nil)
+	time.Sleep(3*teamWakeDelay() + 10*teamWatchInterval())
+	if got := secondCalls.requests(); got != 0 {
+		t.Fatalf("the restarted manager was woken %d times by the finished event it already had", got)
+	}
+	if woke := trafficEvents(t, fixture, "woke ◆"); len(woke) != 2 {
+		t.Fatalf("a reply and one finished event caused %d wakes across a restart, want 2", len(woke))
+	}
+}
+
 func TestTeamWakeTheLoopBreakerCountsTenMemberReplies(t *testing.T) {
 	// The real traffic reader is driven at explicit logical instants, so no
 	// timer can consume a reply before the test advances the settle clock.

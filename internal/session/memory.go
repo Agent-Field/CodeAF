@@ -27,10 +27,9 @@ package session
 //     does it by hand, and the model's `forget` is the one place it is asked
 //     for in words.
 //
-//   - THE SWITCH GOVERNS NOTICING, NOT MEMORY. The person's `memory.enabled`
-//     row turns the noticing pass off; saved lines remain available and
-//     /remember goes on working. It is read live, at the end of every
-//     turn, so a long-lived engine follows a change without a restart.
+//   - THE SWITCH GOVERNS AUTOMATIC LEARNING. The person's memory.enabled
+//     row stops noticing and knowledge compilation. Saved lines remain
+//     available and /remember goes on working. Each memory step reads it live.
 //
 // A READ-ONLY POSTURE (an automation's run, [Config.bindingOnlyMemory]) reads
 // the block and does nothing else: no noticing, no verbs, no lines said.
@@ -179,6 +178,10 @@ type memoryBrain struct {
 	// typed is whether the person typed the turn now running. The model's
 	// `remember` and `forget` act only on such a turn ([Agent.memoryTools]).
 	typed atomic.Bool
+	// refused is whether a call in the turn now running did not run for want of
+	// a yes: the person said no, put the question away, or never answered
+	// ([Agent.markRefused]). The pass after such a turn keeps nothing.
+	refused atomic.Bool
 	// failureSaid is when the last failure line went out.
 	failureSaid time.Time
 	// surfaced prevents a cache refresh from rehearsing the same line repeatedly.
@@ -572,7 +575,7 @@ func memoryOffUpgradeWords(count int) string {
 	if count == 1 {
 		lines = "1 kept memory line now rides every conversation it holds in"
 	}
-	return lines + " — memory off now only stops noticing · see or forget them on the Memories tab"
+	return lines + " — memory off stops automatic learning · see or forget them on the Memories tab"
 }
 
 // memoryOverflowWords is that one line.
@@ -763,6 +766,11 @@ func (a *Agent) RememberAlways(text string, everywhere bool) (string, error) {
 }
 
 func (a *Agent) rememberAs(text, scope string) (string, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return "", err
+	}
 	memory, reach, added, err := a.keep(text, scope, store.OriginPerson, nil)
 	if errors.Is(err, store.ErrMemoryFull) {
 		return "", a.memoryFullError(err)
@@ -814,6 +822,11 @@ func (a *Agent) AlwaysMemories(everywhere bool) ([]MemoryLine, error) {
 // or `project` (this conversation's project, or the person everywhere when it
 // has none). It answers the receipt.
 func (a *Agent) MoveMemory(id, scope string) (string, error) {
+	a.settingsWrites.Add(1)
+	defer a.settingsWrites.Add(-1)
+	if err := a.CheckSettingsWork(); err != nil {
+		return "", err
+	}
 	if !a.memoryWritable() {
 		return "", errors.New("this conversation keeps no memory")
 	}
@@ -869,7 +882,11 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 	// AN ASK-HERE ERRAND IS NOT NOTICED: it is usually one exchange, so the
 	// line saying what was kept would have no turn after it to be said on, and
 	// what is typed there is a reminder or a watch rather than a preference.
-	askMemory := personTyped(user) && a.noticing() && !a.config.Errand
+	//
+	// NOR IS A TURN IN WHICH A PERMISSION WAS REFUSED, DISMISSED OR LEFT
+	// UNANSWERED ([Agent.markRefused]): its state card is still kept, and
+	// nothing is kept about the person from it.
+	askMemory := personTyped(user) && a.noticing() && !a.config.Errand && !a.memory.refused.Load()
 	words := user.said
 	if strings.TrimSpace(words) == "" {
 		words = user.text()
@@ -941,6 +958,9 @@ func (a *Agent) reportNoticeFailure(err error) {
 // set stay together, so a correction never applies to a newer turn's memories.
 // The job remains owned by memoryCtx and memoryJobs, including its backoff.
 func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string, texts []string, askMemory bool) (reflex.NoticeResult, error) {
+	if !config.MemoryEnabledAt(a.config.ProfileDir) {
+		return reflex.NoticeResult{}, nil
+	}
 	found, err := reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
 	kind, _ := provider.RouteFailureOf(err)
 	if err == nil || kind != provider.RouteTransient || a.memoryCtx.Err() != nil {
@@ -955,6 +975,9 @@ func (a *Agent) noticeWithRecovery(client reflex.Completer, words, answer string
 	}
 	if err := a.memoryCtx.Err(); err != nil {
 		return reflex.NoticeResult{}, err
+	}
+	if !config.MemoryEnabledAt(a.config.ProfileDir) {
+		return reflex.NoticeResult{}, nil
 	}
 	return reflex.Notice(a.memoryCtx, client, words, answer, texts, askMemory)
 }
@@ -992,14 +1015,13 @@ func (a *Agent) keepNoticedDurable(text, scope string, replaced *store.Memory, d
 // [Agent.SetModel]'s sake: the last rung of the reflex ladder is the model the
 // conversation is talking to.
 func (a *Agent) reflexClient() reflex.Completer {
-	a.mu.Lock()
-	source, model := a.config.RolesSource, a.model
-	a.mu.Unlock()
-	named, err := reflex.Model(roles.Source(source), model)
+	reader := a.roleModels()
+	model := reader.model
+	named, err := reflex.Model(reader.Source(), model)
 	if err != nil {
 		return nil
 	}
-	fallback := reflex.FallbackModel(roles.Source(source), model)
+	fallback := reflex.FallbackModel(reader.Source(), model)
 	routed := a.routedCompleter()
 	if routed == nil {
 		return nil
@@ -1081,10 +1103,26 @@ func personTyped(user userMessage) bool {
 // session opened — a task's landing, a job's ending, an answer to a question —
 // is not armed, with one exception: the empty turn started to answer a line the
 // person typed in the last seconds of the turn before
-// ([userMessage.answersPerson]), which is answering them.
+// ([userMessage.answersPerson]), which is answering them. It also clears the
+// turn's refused mark, which belongs to one turn.
 func (a *Agent) armMemoryVerbs(user userMessage) {
 	if a.memory != nil {
 		a.memory.typed.Store(personTyped(user) || user.answersPerson)
+		a.memory.refused.Store(false)
+	}
+}
+
+// markRefused says a call in this turn did not run for want of a yes: the person
+// refused it, put its question away, or never answered. It keeps the pass after
+// the turn from reading the exchange for memory ([Agent.learnFromTurn]).
+//
+// A REFUSED CALL IS AN EVENT AND NEVER A RULE. The assistant's closing words
+// then talk about a tool that "was denied", and a small reading model takes
+// that for something the person said and keeps "shell commands are denied" for
+// every conversation they have. One answer to one question is not that.
+func (a *Agent) markRefused() {
+	if a.memory != nil {
+		a.memory.refused.Store(true)
 	}
 }
 
@@ -1112,14 +1150,14 @@ func (a *Agent) memoryTools() []bare.Tool {
 		Name:        "remember",
 		Description: rememberDescription,
 		Schema:      json.RawMessage(rememberSchemaJSON),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Text       string `json:"text"`
 				Scope      string `json:"scope"`
 				Durability string `json:"durability"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if !a.memory.typed.Load() {
 				return memoryNotTypedWords, true, nil
@@ -1146,12 +1184,12 @@ func (a *Agent) memoryTools() []bare.Tool {
 		Name:        "forget",
 		Description: forgetDescription,
 		Schema:      json.RawMessage(forgetSchemaJSON),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Text string `json:"text"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if strings.TrimSpace(parsed.Text) == "" {
 				return "Name the line to forget by its words.", true, nil
@@ -1185,7 +1223,7 @@ func (a *Agent) sayMemory(text string) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	event := Event{Kind: EventNotice, Text: text, Unrecorded: true}
+	event := Event{Kind: EventNotice, Text: text, Unrecorded: true, NoticeKind: NoticeKindMemory}
 	if a.hub.send(event) {
 		return
 	}

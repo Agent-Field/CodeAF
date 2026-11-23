@@ -115,6 +115,9 @@ func (a *Agent) settingsTools() []bare.Tool {
 	// the LIST of rows, which changes only when the binary does.
 	registry := config.NewSettings(config.SettingsOptions{
 		ProfileDir: dir,
+		Include: func(key string) bool {
+			return key != config.KeyTaskRunsOn || a.config.TaskComputers != nil
+		},
 		// THE ONE LIVE SEAM, AND IT IS A READER. Without it the conversation's
 		// model row reads BLANK — the registry has no way to ask a running
 		// session what it is on — and a sheet whose first row is empty is a
@@ -145,7 +148,7 @@ func (a *Agent) settingsTool(registry *config.Settings) bare.Tool {
 				Search string `json:"search"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			if key := strings.TrimSpace(parsed.Key); key != "" {
 				row, found := registry.Row(key)
@@ -171,11 +174,11 @@ func (a *Agent) changeSettingTool(registry *config.Settings) bare.Tool {
 				Value string `json:"value"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			key := strings.TrimSpace(parsed.Key)
 			if key == "" {
-				return "Invalid arguments: key is required — the row's registry key, as the " + settingsToolName + " tool lists it", true, nil
+				return rejectToolArguments(ctx, "Invalid arguments: key is required — the row's registry key, as the "+settingsToolName+" tool lists it"), true, nil
 			}
 			row, found := registry.Row(key)
 			if !found {

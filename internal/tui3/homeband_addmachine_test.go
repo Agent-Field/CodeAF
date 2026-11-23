@@ -38,7 +38,7 @@ func addMachineFrame(a *app, width int) string {
 func TestAddMachineCardShowsForAFleetOfOne(t *testing.T) {
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	got := addMachineFrame(a, 80)
-	for _, want := range []string{"Add another device", "pick up your work anywhere, exactly where you left it.", addMachineShow} {
+	for _, want := range []string{"Add another device", "Pick up your work anywhere, exactly where you left it.", addMachineShow} {
 		if !strings.Contains(strings.Join(strings.Fields(got), " "), want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}

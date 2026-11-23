@@ -6,6 +6,7 @@
 // maxWatchers 5, named by RELAY_WATCH_CAP; the restart case talks to RELAY_PERSIST.
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import WebSocket from 'ws';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { newIdentity, newDevice, signed, deviceId } from './party.js';
 import { init } from './helpers.js';
@@ -20,7 +21,7 @@ const record = { V: 1, name: '', added_by: '', revoked: false, caps: { os: 'linu
 /** openWatch dials the watch route signed by dev and answers a socket that remembers every text frame. */
 async function openWatch(dev, base = BASE, query = '') {
   const headers = await signed(dev, 'GET', `/v1/dir/watch${query}`);
-  const ws = new WebSocket(base.replace(/^http/, 'ws') + `/v1/dir/watch${query}`, { headers });
+  const ws = new WebSocket(base.replace(/^http/, 'ws') + `/v1/dir/watch${query}`, { headers, closeTimeout: 200 });
   const w = { frames: [], cursor: 0, ws, send: (text) => ws.send(text), close: () => ws.close(), wake: () => {} };
   w.closed = new Promise((done) => ws.addEventListener('close', (e) => done({ code: e.code, reason: e.reason })));
   ws.addEventListener('message', (e) => (w.frames.push(e.data), w.wake()));
@@ -137,7 +138,7 @@ const cases = {
     assert.match(await next(wc), WIRE);
     await next(wc);
     assert.deepEqual(await event(wa), { t: 'presence', device: idc, online: true });
-    assert.equal((await call(a, 'POST', `/v1/dir/devices/${idc}/revoke`, {})).status, 204);
+    assert.equal((await call(a, 'POST', `/v1/dir/devices/${idc}/revoke`)).status, 204);
     assert.match(await next(wa), WIRE);
     assert.deepEqual(await event(wa), { t: 'revoked', device: idc });
     assert.deepEqual((await wc.closed).code, 4401);
@@ -207,7 +208,7 @@ const cases = {
       ['acquire', () => call(a, 'POST', '/v1/dir/cells/c1/acquire', {})],
       ['publish', () => call(a, 'POST', '/v1/dir/cells/c1/publish', pub(2, 'h1', 'h0'))],
       ['release', () => call(a, 'POST', '/v1/dir/cells/c1/release', { fence: 2 })],
-      ['archive', () => call(a, 'POST', '/v1/dir/cells/c1/archive', {})],
+      ['archive', () => call(a, 'POST', '/v1/dir/cells/c1/archive')],
       ['device put', async () => call(a, 'PUT', `/v1/dir/devices/${await deviceId(a)}`, { ...record, name: 'renamed' })],
       ['vault', () => call(a, 'POST', '/v1/dir/vault', { old: '', new: 'x' })],
     ];
@@ -299,9 +300,9 @@ const cases = {
   async holdQuery() {
     const [a] = await party();
     const plain = await dialled(a, '');
-    assert.deepEqual([plain.status, plain.headers['codeaf-vouch']], [101, '1'], 'a relay that vouches says so on every upgrade');
+    assert.deepEqual([plain.status, plain.headers['codeaf-presence'], plain.headers['codeaf-vouch']], [101, '1', undefined], 'presence is advertised while lease authority stays with committed holds');
     const held = await dialled(a, '?hold=c1:1&hold=nowhere:9&hold=c1:1');
-    assert.deepEqual([held.status, held.headers['codeaf-vouch']], [101, '1'], 'holds of cells that do not exist are accepted');
+    assert.deepEqual([held.status, held.headers['codeaf-presence'], held.headers['codeaf-vouch']], [101, '1', undefined], 'holds of cells that do not exist are accepted without claiming socket lease authority');
     const sixteen = Array.from({ length: 16 }, (_, i) => `hold=c${i}:1`).join('&');
     assert.equal((await dialled(a, `?${sixteen}`)).status, 101);
     const refusals = ['?hold=c1', '?hold=:1', '?hold=c1:', '?hold=c1:x', '?hold=c1:-1', `?hold=${'c'.repeat(65)}:1`, `?${sixteen}&hold=c16:1`];
@@ -406,6 +407,10 @@ async function lease() {
 }
 
 const [mode, file] = process.argv.slice(2);
+if (mode === '--list') {
+  console.log(Object.keys(cases).join('\n'));
+  process.exit(0);
+}
 if (mode === 'idle') await idle();
 else if (mode === 'lease') await lease();
 else if (mode === 'put') await putState(file);

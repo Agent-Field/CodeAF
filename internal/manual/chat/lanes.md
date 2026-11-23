@@ -20,7 +20,7 @@ has ever timed — and it tells you which one served you, in the status line:
 via cloudflare · 0.6s · 61 t/s
 ```
 
-## Why a model name starts with ~ — the tilde or squiggle in front of a model name, and whether it is a typo
+## Why a model name starts with ~ — why does this model start with a tilde, the squiggle in front of a model name, and whether it is a typo
 
 Some rows on the model list are prefixed with `~`. The model codeaf ships with is spelled
 `~deepseek/deepseek-v4-flash-latest`, and that is the name on the model picker and on the
@@ -410,8 +410,8 @@ just picked.
 reasoning is writing, so the clock the ceiling runs on is the time since the
 host last sent anything at all — readable or not. A thought that has been
 arriving steadily for two minutes has never been silent for one second of it,
-and nothing acts on it. The moment the deltas stop, the ceiling starts from
-there and fires exactly where it always did.
+and nothing acts on it. The moment the deltas stop, the configured silence
+limit starts from there.
 
 Keepalives buy nothing. A router that holds the connection open by saying
 nothing in a well-formed way is proof about the path and about nothing else, so
@@ -435,11 +435,15 @@ blank. So `connecting`, `first word`, `thinking`, `paced`, `waiting for
 connection` — one of those is on the status line the whole time, with the clock
 counting up under it.
 
-**The second is action, and it is ten seconds.** Ten seconds of nothing arriving
-is when codeaf stops waiting and does something about it: a second request to
-another host, and the line changes to `switching`. That is a ceiling, not a
-target — a host codeaf has timed is acted on at its own measured pace, which
-for a fast one is a second or two.
+**The second is action.** With hosted defaults, ten seconds of nothing arriving
+is when codeaf stops waiting and can send a second request to another host.
+The line then changes to `switching`. That is a ceiling, not a target — a host codeaf has timed is
+acted on at its own measured pace, which for a fast one is a second or two.
+Under `auto`, a local endpoint gets ten times the hosted wait. codeaf sends a
+rescue while that request is in flight only if the gateway has advertised
+multiple providers for the model. Without them the deadline cuts nothing
+either: a second request would reach the same machine and start reading the
+prompt again, so a silent local request is left to the first-token limit.
 
 Ten seconds is measured, not chosen. Across ten days of real calls the first
 word of a conversation turn arrives in 1.6 seconds at the middle, 8.4 seconds
@@ -454,8 +458,8 @@ seconds and a watch's judgment of what it saw sixty, because nobody is sitting i
 front of them and a second request costs money. A task's row is never silent
 either — the same sentence is on it.
 
-**Ten seconds always does something, even when a second request is too
-expensive.** A second request to another host costs real money, so every
+**The action deadline still matters when a second request is too expensive.**
+A second request to another host costs real money, so every
 rescue is priced before it goes out — against what THIS call may spend, which is
 how long it is allowed to keep trying converted into money at what a second of
 your waiting is worth. A rescue costing a couple of cents against a minute and a
@@ -479,12 +483,14 @@ quota said no on behalf of requests that had already finished. What bounds a
 rescue now is this call's own budget and how many requests one question may have
 running at once, which is four.
 
-**A conversation turn gives up after ninety seconds** of not reaching any model
-at all, and tells you so in one line. It is the point where every model in the
-chain has had one fair try with a move between them: of the calls that recovered
-in ten days of logs, two thirds had landed by then, and the ones that took
+**A conversation turn gives up after ninety seconds** of not reaching a hosted
+model with default settings. If the turn cannot reach any model, it tells you
+so in one line. It is the point where every model in the chain has had one fair
+try with a move between them: of the calls that recovered in ten days of logs,
+two thirds had landed by then, and the ones that took
 longer were spending the time asking the same host again — which codeaf no
-longer does.
+longer does. A local endpoint gets ten times the hosted figure by default,
+so the ninety-second wait becomes fifteen minutes.
 
 **And that one number is the whole of how long a failed call goes on trying.**
 There is no separate allowance for how many times to ask, how long to wait out a
@@ -493,7 +499,10 @@ request — each of those was its own number until 2026-09-11, and together they
 came to a total nobody could have told you. Now there is a clock, it scales with
 who the work is for, and it is the same clock for every kind of failure:
 
-| whose work | gives up after |
+These are the hosted figures with default settings. A local endpoint gets ten
+times as long by default.
+
+| whose work | hosted give-up with default settings |
 | --- | --- |
 | a turn you are watching, or a task node with its room open | 90 seconds |
 | a task node nobody is watching, an automation's scheduled work, a memory pass, a side errand | 4 minutes 30 |
@@ -505,14 +514,18 @@ While it is trying, the status row counts the hosts rather than the tries:
 codeaf cannot tell how many there are it shows no number instead of a made-up
 one.
 
-## How long codeaf keeps trying, and the one setting that changes it
+## How long codeaf keeps trying — give-up time and silence limits
 
-The table above is the whole answer, and **`response.attempts` is the one thing
-you can turn about it**. It is a multiplier on those times, not a number of
-requests: `3` means three times as long — four and a half minutes on a turn you
-are watching instead of ninety seconds — and the default is `1`, which is exactly
-the table. Set it on the **Models** tab of `/settings`, or with
-`CODEAF_RESPONSE_ATTEMPTS`.
+**`response.attempts` multiplies only the give-up times in the table above.**
+With default patience on a hosted endpoint, `3` gives a turn you are watching
+four and a half minutes instead of ninety seconds. The default is `1`. Set it
+on the **Models** tab of `/settings`, or with `CODEAF_RESPONSE_ATTEMPTS`.
+
+**`response.patience` multiplies the silence bounds and the give-up clock.**
+Its default, `auto`, uses the hosted figures and gives a local endpoint ten
+times as long. A number uses the same multiplier and rescue policy for every
+endpoint. Set `1` to get the old behaviour exactly. The give-up time uses the
+product of both multipliers. See [slow local model timeout and patience](services.md#my-local-model-keeps-timing-out--ollama-gives-up-after-2-minutes-how-do-i-make-codeaf-wait-longer-slow-local-model-timeout-and-patience).
 
 ```
 response.attempts: 3      # every give-up above, three times as long
@@ -525,8 +538,9 @@ anyway. The intent behind the setting was always "try harder before you tell me
 you could not", and trying harder is time: more hosts walked, more shapes of
 the request tried, longer waited out of a busy pool. **What it will never buy is
 the same bytes sent to the same host again.** If you had written a number into
-this row when it meant sends, it now means that many times the patience — a `3`
-you set to get three tries is three times ninety seconds.
+this row when it meant sends, it now means that many times the give-up time — a
+`3` you set to get three tries is three times the hosted default of ninety
+seconds when patience is `auto`.
 
 **Nothing else in codeaf counts attempts.** Not the turn, not a task's worker,
 not the naming errand, not the side calls that write a title or judge a route.
@@ -542,11 +556,9 @@ with no countdown, because nothing in codeaf knows which of the calls ahead of i
 will finish first, and a countdown to a moment nobody can name is worse than
 none.
 
-**A reply that is arriving is never cut for taking a long time.** The clocks
-above are all clocks on SILENCE. A model writing steadily is left alone however
-long the answer is; the only bound on a reply that is still arriving is twenty
-minutes, which no healthy reply in ten days of logs has come close to — the
-longest was twelve minutes.
+**A reply that keeps pace can run up to twenty minutes with hosted `auto`.**
+`response.patience` scales that limit too. No healthy reply in ten days of logs
+came close to the hosted limit — the longest was twelve minutes.
 
 ## Why is it writing one word at a time — it never stopped, it just crawled
 
@@ -893,7 +905,8 @@ address is inspected; a router is recognised by what it answers.
 
 A base with **no endpoints page at all** — it answers with a not-found page
 rather than the router's own error message, the way a plain proxy does — is
-remembered as having none for five minutes, then asked again in the background.
+remembered as having none for at least five minutes, then asked again in the
+background when routing is active. An idle engine waits until routing resumes.
 A router that has the page but **does not publish that one model** says so in
 its own words, about the model, and nothing is remembered about the base. A 500,
 a timeout or a rate limit is a bad afternoon rather than an answer.
@@ -916,6 +929,10 @@ that proxy from one honouring your pin silently — nothing in the answer says
 which host served — so it tells you, sends later requests bare, and the proxy
 then routes your model however it likes. Your work still goes out; your pin is
 not honoured there, and you know rather than guess.
+
+If that base later serves an endpoints page, a background refresh can restore
+host preferences. A real model request wakes that recheck even after earlier
+answers named no host, once the five-minute backoff has passed.
 
 Neither question costs an extra call of its own, and pointing `CODEAF_BASE_URL`
 somewhere else asks the new address afresh about both.

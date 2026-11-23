@@ -54,8 +54,8 @@ func (m Mode) String() string {
 }
 
 // Sources records where each resolved value came from. Every field holds one
-// of four words: "default", "setting", "env" or "ci" — and Mode alone may hold
-// a fifth, "telemetry", when the telemetry off switch capped it at Read.
+// of three words: "default", "setting" or "env" — and Mode alone may hold
+// "telemetry", when the telemetry off switch capped it at Read.
 type Sources struct {
 	Mode      string
 	RelayURL  string
@@ -87,7 +87,7 @@ type Config struct {
 	Source    Sources
 }
 
-// The eleven names Resolve reads, and no others. The first three are the
+// The ten names Resolve reads, and no others. The first three are the
 // telemetry off switch's environment rungs, spelled exactly as
 // internal/telemetry's ladder spells them — the variable, the ecosystem's
 // word, and an endpoint set to nothing — so the one switch the notice names
@@ -97,7 +97,6 @@ const (
 	envDoNotTrack = "DO_NOT_TRACK"
 	envEndpoint   = "CODEAF_TELEMETRY_ENDPOINT"
 	envMode       = "CODEAF_MODEL_POOL"
-	envCI         = "CI"
 	envRelay      = "CODEAF_MODEL_POOL_RELAY_URL"
 	envIndex      = "CODEAF_MODEL_POOL_URL"
 	envSubmit     = "CODEAF_MODEL_POOL_SUBMIT_URL"
@@ -111,7 +110,6 @@ const (
 	srcDefault = "default"
 	srcSetting = "setting"
 	srcEnv     = "env"
-	srcCI      = "ci"
 	// srcTelemetry is the Mode source when the telemetry off switch capped
 	// an On at Read: the pool still reads, and sends nothing.
 	srcTelemetry = "telemetry"
@@ -148,7 +146,6 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 		return strings.TrimSpace(value), true
 	}
 	modeWord, _ := get(envMode)
-	ciWord, _ := get(envCI)
 	telemetryWord, _ := get(envTelemetry)
 	doNotTrackWord, _ := get(envDoNotTrack)
 	endpointWord, endpointSet := get(envEndpoint)
@@ -160,16 +157,14 @@ func Resolve(setting, publicKey string, lookup func(name string) (value string, 
 	keyWord, _ := get(envKey)
 
 	// The mode is the first of these that answers, and that answer is its
-	// source: the environment, the stored setting, CI, then the default. A
+	// source: the environment, the stored setting, then off. A
 	// word neither the environment nor the setting knows is simply not an
 	// answer and the next line gets its turn.
-	mode, modeSrc := On, srcDefault
+	mode, modeSrc := Off, srcDefault
 	if m, ok := parseMode(modeWord); ok {
 		mode, modeSrc = m, srcEnv
 	} else if m, ok := parseMode(strings.TrimSpace(setting)); ok {
 		mode, modeSrc = m, srcSetting
-	} else if ciSaysYes(ciWord) {
-		mode, modeSrc = Read, srcCI
 	}
 	// THE TELEMETRY OFF SWITCH WINS OVER EVERY ANSWER ABOVE, an explicit
 	// `on` included. The notice says "Turn off: CODEAF_TELEMETRY=off" without
@@ -312,15 +307,6 @@ func (c Config) Quieted() Config {
 		c.Source.Mode = srcTelemetry
 	}
 	return c
-}
-
-// ciSaysYes reads the CI word: one of true, 1 or yes, without regard to case.
-func ciSaysYes(word string) bool {
-	switch strings.ToLower(word) {
-	case "true", "1", "yes":
-		return true
-	}
-	return false
 }
 
 // acceptURL reads one of the four shapes a pool address may take, and nothing

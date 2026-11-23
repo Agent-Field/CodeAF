@@ -41,6 +41,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/furrow"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -113,7 +114,7 @@ func writeUniverseFalls(falls map[string]universeFall) {
 	name := staged.Name()
 	_, werr := staged.Write(append(raw, '\n'))
 	cerr := staged.Close()
-	if werr != nil || cerr != nil || os.Rename(name, path) != nil {
+	if werr != nil || cerr != nil || fsreplace.Rename(name, path) != nil {
 		_ = os.Remove(name)
 	}
 }

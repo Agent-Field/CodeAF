@@ -93,7 +93,7 @@ export class MemberActor {
         this.checkpointIndex = BigInt(app.applied); this.cache = this.store.one('SELECT coalesce(sum(length(data)),0) AS n FROM journal').n; continue;
       }
       if (this.cache > CACHE_BYTES) { this.stopped = true; throw new Error('raft member: log cache capacity; recover'); }
-      return { send: sends, reads, status: this.status };
+      return { send: sends, reads, status: this.status, applicationVersion:app.version??'0' };
     }
   }
   input(tag, value) { value = value instanceof Uint8Array ? value.slice() : value && typeof value === 'object' ? structuredClone(value) : value; return this.serial(() => this.drive(tag, value)); }
@@ -117,6 +117,18 @@ export class MemberActor {
   }); }
   // Evidence is an internal authenticated target reply, derived under the
   // durable member queue. No public request may set its own applied index.
+  formation() {return this.serial(async()=>{
+    const manifest=this.store.read('membership','legacy-import'),registry=this.store.read('membership','registry');
+    const r=response(this.reactor.call(frame(49).u32(this.handle).blob(manifest).blob(new TextEncoder().encode(encodeCanonical(this.config.birth))).blob(registry??new Uint8Array()).finish()));
+    const change=r.blob(),checkpoint=r.u32()!==0,settle=r.u32()!==0,configure=r.u32()!==0;r.end();
+    let effect=configure?await this.drive(8,change):{send:[],reads:[],status:this.status};
+    if(checkpoint){
+      const snapshot=await this.store.checkpoint(),next=await this.drive(11,snapshot);
+      this.checkpointIndex=this.status.applied;
+      effect={...next,send:[...effect.send,...next.send],reads:[...effect.reads,...next.reads]};
+    }
+    return {...effect,settle:!configure&&settle,progressed:configure||checkpoint};
+  });}
   leadershipEvidence(revision, barrier) { return this.serial(() => {
     if(this.stopped||this.store.stopped||!this.handle)throw new Error('raft member: stopped; recover from durable storage');
     const header = this.store.read('membership', 'registry');

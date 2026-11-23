@@ -1,6 +1,11 @@
 package tui3
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/Agent-Field/codeaf/internal/chatlist"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
+)
 
 // ── THE NOTICE SEAM: A SENTENCE FROM OUTSIDE THE LOOP, SHOWN AT ONCE ────────
 //
@@ -21,16 +26,80 @@ import "sync"
 // Notices is the desk. The zero value is not usable; make one with
 // [NewNotices]. It is safe from any goroutine.
 type Notices struct {
-	mu    sync.Mutex
-	lines []outsideNotice
-	said  map[string]bool // sentences SayOnce has put on the desk
-	bell  *doorbell
+	mu          sync.Mutex
+	lines       []outsideNotice
+	said        map[string]bool // sentences SayOnce has put on the desk
+	bell        *doorbell
+	restoring   bool
+	finalReport func([]string)
 }
 
 // outsideNotice keeps urgent account news visible on home as well as in chat.
 type outsideNotice struct {
-	text string
-	home bool
+	text  string
+	home  bool
+	final bool
+	// arrived is not a sentence but the whole look at this computer that a
+	// moved chat's after-work ended with ([Notices.Arrived]).
+	arrived *arrivedLook
+}
+
+// arrivedLook is that look, and the chat (its folder's name) it is about.
+type arrivedLook struct {
+	chat   string
+	resume machine.Resume
+}
+
+// saving keeps final sentences on the desk until the loop displays them or
+// quitting hands them to the restored-terminal report. Both roads share this owner.
+func (n *Notices) saving(lines []string) {
+	if n == nil || len(lines) == 0 {
+		return
+	}
+	report, bell, restoring := func() (func([]string), *doorbell, bool) {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		if !n.restoring {
+			for _, line := range lines {
+				n.lines = append(n.lines, outsideNotice{text: line, final: true})
+			}
+		}
+		return n.finalReport, n.bell, n.restoring
+	}()
+	if restoring {
+		if report != nil {
+			report(lines)
+		}
+	} else {
+		bell.ring()
+	}
+}
+
+// finishSaving transfers only sentences the loop has not shown, and redirects
+// later completions before any close work leaves the update loop.
+func (n *Notices) finishSaving(report func([]string)) {
+	if n == nil {
+		return
+	}
+	lines := func() []string {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		n.restoring, n.finalReport = true, report
+		var lines []string
+		kept := n.lines[:0]
+		for _, line := range n.lines {
+			if line.final {
+				lines = append(lines, line.text)
+			} else {
+				kept = append(kept, line)
+			}
+		}
+		n.lines = kept
+		return lines
+	}()
+	if len(lines) > 0 && report != nil {
+		report(lines)
+	}
 }
 
 // NewNotices makes an empty desk that no surface listens to yet.
@@ -48,6 +117,25 @@ func (n *Notices) say(line string, home bool) {
 	}
 	n.mu.Lock()
 	n.lines = append(n.lines, outsideNotice{text: line, home: home})
+	bell := n.bell
+	n.mu.Unlock()
+	bell.ring()
+}
+
+// Arrived puts on the desk the whole look at this computer that a moved chat's
+// background after-work ended with, for the chat whose folder is named chat.
+//
+// A CHAT THAT OPENS BEFORE ITS FILES ARRIVE CANNOT KNOW what this computer lacks
+// for the project, or what is uncommitted in the folder: both are read from the
+// files. The card the open raised could say only what the record held, so this
+// is the second beat of it, and the loop raises the same card again with the
+// rest ([app.arrivedAfterFiles]). A look with nothing to show says nothing.
+func (n *Notices) Arrived(chat string, r machine.Resume) {
+	if n == nil || chat == "" || !r.Worth() {
+		return
+	}
+	n.mu.Lock()
+	n.lines = append(n.lines, outsideNotice{arrived: &arrivedLook{chat: chat, resume: r}})
 	bell := n.bell
 	n.mu.Unlock()
 	bell.ring()
@@ -124,11 +212,18 @@ func (a *app) useNotices(desk *Notices) {
 // loop on the door again.
 func (a *app) saidNotices() {
 	for _, line := range a.outsideDesk.take() {
-		if line.home {
+		if line.arrived != nil {
+			a.arrivedAfterFiles(line.arrived.chat, line.arrived.resume)
+			continue
+		}
+		if chatlist.IsRemovedNotice(line.text) {
+			a.removedComputer()
+		}
+		if line.home && !chatlist.IsRemovedNotice(line.text) {
 			a.homeAccountNotice = firstLine(line.text)
 		}
 		before := a.echoHome
-		a.echoHome = before || line.home
+		a.echoHome = before || (line.home && !chatlist.IsRemovedNotice(line.text))
 		a.note(line.text)
 		a.echoHome = before
 	}

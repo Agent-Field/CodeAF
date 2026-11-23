@@ -23,6 +23,10 @@ var helloFields = map[string]bool{
 	// Window says the connection is a person's window, so the far machine holds
 	// automations presence for it (wire_automations.go). A boolean, not a credential.
 	"Window": true,
+	// LocalSavingReceipts is a boolean capability, with no key or address.
+	"LocalSavingReceipts": true,
+	// SyncNoticeWords is a boolean vocabulary capability, with no key or address.
+	"SyncNoticeWords": true,
 }
 
 // TestNoServiceKeyOrAddressCrossesTheWire refuses model-service credential

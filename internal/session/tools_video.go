@@ -27,9 +27,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -107,27 +107,35 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 		Name:        "generate_video",
 		Description: generateVideoDescription,
 		Schema:      a.mediaSchema(generateVideoSchemaJSON, "video"),
-		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+		Execute: func(callCtx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed generateVideoArguments
 			if err := decodeToolArguments(args, &parsed); err != nil {
-				return "Invalid arguments: " + err.Error(), true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+err.Error()), true, nil
 			}
 			prompt := strings.TrimSpace(parsed.Prompt)
 			if prompt == "" {
-				return "Invalid arguments: prompt is required", true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: prompt is required"), true, nil
+			}
+			resolvedDefault := defaultModel
+			if a.config.MediaAdmission != nil {
+				admission := a.config.MediaAdmission(modalityVideo, parsed.Model)
+				if admission.Model == "" {
+					return a.refuseMediaAdmission(callCtx, modalityVideo, admission)
+				}
+				resolvedDefault, parsed.Model = admission.Model, ""
 			}
 			// The call's own choice, resolved before the job starts, so a word
 			// that matches nothing costs neither money nor a job row
 			// (tools_image.go states the shape).
-			model, refusal := a.mediaPick(modalityVideo, parsed.Model, defaultModel)
+			model, refusal := a.mediaPick(modalityVideo, parsed.Model, resolvedDefault)
 			if refusal != "" {
-				return "Invalid arguments: " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: "+refusal), true, nil
 			}
 			if parsed.Duration < 0 {
-				return "Invalid arguments: duration is a number of seconds and cannot be negative", true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: duration is a number of seconds and cannot be negative"), true, nil
 			}
 			if len(parsed.FramePaths) > videoFrameLimit {
-				return fmt.Sprintf("Invalid arguments: frame_paths takes at most %d — the opening frame and the closing one; pictures that set the look go in reference_paths", videoFrameLimit), true, nil
+				return rejectToolArguments(callCtx, fmt.Sprintf("Invalid arguments: frame_paths takes at most %d — the opening frame and the closing one; pictures that set the look go in reference_paths", videoFrameLimit)), true, nil
 			}
 			// EVERY picture is read here, in the call, and not in the job. A
 			// path with a typo in it must cost nothing: discovering it inside
@@ -135,14 +143,14 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			// never started, which is the worst of both shapes.
 			frames, refusal := a.videoFrames(parsed.FramePaths)
 			if refusal != "" {
-				return "Invalid arguments: frame " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: frame "+refusal), true, nil
 			}
 			// A style reference is the envelope WITHOUT a frame type, which is
 			// how the wire tells a look from a keyframe — so it is exactly what
 			// the shared builder makes, with nothing added.
 			styles, refusal := a.mediaReferences(parsed.ReferencePaths)
 			if refusal != "" {
-				return "Invalid arguments: reference " + refusal, true, nil
+				return rejectToolArguments(callCtx, "Invalid arguments: reference "+refusal), true, nil
 			}
 
 			request := provider.VideoRequest{
@@ -157,9 +165,18 @@ func (a *Agent) generateVideoTool(client MediaGenerator, defaultModel string) ba
 			if err != nil {
 				return "Could not start the video render: " + err.Error(), true, nil
 			}
+			if err := a.jobs.beginRender(started, "video", model, runIdentity(callCtx), callIDFrom(callCtx)); err != nil {
+				if started.stop != nil {
+					started.stop()
+				}
+				a.jobs.finish(started, 1, "")
+				started.releaseRender()
+				return "Could not start the video render: " + err.Error(), true, nil
+			}
+			markMediaAttempt(callCtx)
 			fmt.Fprintf(started.sink, "filming on %s: %s\n", model, firstLine(prompt))
 
-			go a.renderVideo(ctx, client, started, request, parsed.Path, model)
+			go a.renderVideo(ctx, client, started, request, parsed.Path, model, madeBy(callCtx, append(append([]string(nil), parsed.FramePaths...), parsed.ReferencePaths...)))
 
 			// The id, the model and the log, and nothing else. There is no
 			// output yet by construction, and the three things the model needs
@@ -194,11 +211,18 @@ func (a *Agent) videoFrames(paths []string) ([]provider.ImageReference, string) 
 // started it and dies to `jobs kill` and to Close like any other job. Nothing
 // here returns an error to anybody: the caller is a goroutine, and the only
 // audience for a failure is the model, which hears about it in the note.
-func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, rendering *job, request provider.VideoRequest, asked, model string) {
+func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, rendering *job, request provider.VideoRequest, asked, model string, made mediaMade) {
+	// Keep admission until the actual provider goroutine exits, including late cancellation.
+	defer rendering.releaseRender()
 	response, err := client.GenerateVideo(ctx, request)
 	if err != nil {
 		a.failVideo(rendering, videoFailure(model, err))
 		return
+	}
+	// WHAT THE PROVIDER SAYS IT CHARGED goes to the ledger the moment the call
+	// returns, whatever became of the render meanwhile.
+	if response != nil {
+		rendering.noteCharge(response.Usage)
 	}
 	if response == nil || len(response.Video) == 0 {
 		a.failVideo(rendering, "video generation returned no video ("+model+")")
@@ -210,29 +234,45 @@ func (a *Agent) renderVideo(ctx context.Context, client MediaGenerator, renderin
 	// states the law).
 	a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 
-	path, err := a.mediaDestination(asked, request.Prompt, videoExtension,
-		VideoDir(a.config.Place, a.config.Workspace))
-	if err == nil {
-		err = os.MkdirAll(filepath.Dir(path), 0o755)
-	}
-	if err == nil {
-		err = os.WriteFile(path, response.Video, 0o644)
-	}
-	if err != nil {
+	path, landing, err := a.landRender(rendering, asked, request.Prompt, videoExtension,
+		VideoDir(a.config.Place, a.config.Workspace), response.Video, writeFileAtomic)
+	switch landing {
+	case renderStopped:
+		// The provider finished after the stop was accepted. The bytes are
+		// dropped unwritten, and the log says what is and is not known.
+		reason := "stopped before the video was saved; the provider had already finished it, so it may have been charged"
+		fmt.Fprintln(rendering.sink, reason)
+		rendering.sealRender(renderPatch{state: RenderCancelled})
+		a.jobs.finish(rendering, 1, "job "+strconv.Itoa(rendering.id)+" "+reason)
+		return
+	case renderNotSaved:
 		a.failVideo(rendering, "could not save the generated video: "+err.Error())
 		return
 	}
-	a.recordArtifact(path, mediaTitle(request.Prompt, path), "video")
+	// The fact keeps what the render was given (frames first, then style
+	// references, exactly as named) and the length the file's own boxes state.
+	// GeneratedMedia reads the length and the frame size off the bytes in hand;
+	// nothing is taken from the request's own duration or resolution.
+	fact := GeneratedMedia(path, response.Video, model).WithUsage(response.Usage).WithMade(made)
+	a.recordMedia(Artifact{
+		Path:    path,
+		Title:   mediaTitle(request.Prompt, path),
+		Kind:    "video",
+		Created: time.Now(),
+	}, fact)
 
+	rendering.sealRender(renderPatch{state: RenderFinished, committed: true, path: path, usage: response.Usage})
 	landed := describeGeneratedVideo(a.config.Workspace, path, response.Video, model)
 	fmt.Fprintln(rendering.sink, landed)
 	a.jobs.finish(rendering, 0, fmt.Sprintf("job %d finished: %s", rendering.id, landed))
 }
 
 // failVideo ends a render that produced nothing. The exit code is 1 for the
-// same reason a failed command's is: `jobs list` renders a video's status as
-// "finished" either way, and the code is what a reader of the log has left.
+// same reason a failed command's is, and it is what `jobs list` reads to say
+// "failed" rather than "finished". A failure is never retried: the provider
+// call is made once, and any further attempt is the model's decision.
 func (a *Agent) failVideo(rendering *job, reason string) {
+	rendering.sealRender(renderPatch{state: RenderFailed, committed: rendering.isCommitted(), err: reason})
 	fmt.Fprintln(rendering.sink, reason)
 	a.jobs.finish(rendering, 1, fmt.Sprintf("job %d failed: %s", rendering.id, reason))
 }
@@ -246,7 +286,7 @@ func videoFailure(model string, err error) string {
 	case errors.Is(err, provider.ErrVideoTimeout):
 		return "video generation timed out (" + model + "); no video was saved"
 	case errors.Is(err, context.Canceled):
-		return "video generation was stopped (" + model + "); no video was saved"
+		return "video generation was stopped (" + model + "); no video was saved. The provider was not told to cancel, so whether it is charged is unknown"
 	default:
 		return "video generation failed (" + model + "): " + clip(firstLine(err.Error()), jobExitNoteLimit)
 	}

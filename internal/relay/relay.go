@@ -70,18 +70,22 @@ const (
 
 // The tuning, all in one place so that a relay operator changes a number here
 // and every sentence in this package that quotes it changes with it. ONE SOURCE
-// OF TRUTH: nothing below re-states a limit as a literal.
+// OF TRUTH: nothing below re-states a limit as a literal, and the hosted Worker
+// mirrors these constants in relay/hosted/src/engine/carrier.js (and its
+// front-door rate-limit bindings in relay/hosted/wrangler.toml).
 const (
-	// MaxPayload is the largest body one framed message may carry. It is a
-	// little over 64 KiB because the tunnel above frames its ciphertext at
-	// Noise's own 65535-byte ceiling and adds a small header; a limit under
-	// that would cut a legal message in half.
+	// MaxPayload is the largest body one framed message may carry (MAX_PAYLOAD
+	// in relay/hosted/src/engine/carrier.js). It is a little over 64 KiB
+	// because the tunnel above frames its ciphertext at Noise's own 65535-byte
+	// ceiling and adds a small header; a limit under that would cut a legal
+	// message in half.
 	MaxPayload = 1 << 17
 
-	// MaxStreams is how many surfaces may be attached to one machine at once.
-	// It is a limit on the relay's memory and on nothing else — the engine
-	// machine has its own opinion about how many surfaces a session will have,
-	// and this is only the number the pipe will carry.
+	// MaxStreams is how many surfaces may be attached to one machine at once
+	// (MAX_STREAMS in relay/hosted/src/engine/carrier.js). It is a limit on
+	// the relay's memory and on nothing else — the engine machine has its own
+	// opinion about how many surfaces a session will have, and this is only
+	// the number the pipe will carry.
 	MaxStreams = 16
 
 	// PingEvery is how often the relay pokes an idle carrier, and IdleAfter is
@@ -91,15 +95,25 @@ const (
 	PingEvery = 45 * time.Second
 	IdleAfter = 2 * PingEvery
 
-	// HandshakeWithin bounds the registration exchange. A connection that has
-	// claimed a name but not yet proved it holds the key is a connection that
-	// could hold a name for free, so it is given one round trip's worth of time
-	// and no more.
+	// HandshakeWithin bounds the registration exchange (HANDSHAKE_MS in
+	// relay/hosted/src/engine/carrier.js). A connection that has claimed a name
+	// but not yet proved it holds the key is a connection that could hold a
+	// name for free, so it is given one round trip's worth of time and no more.
 	HandshakeWithin = 20 * time.Second
 
-	// DialsPerMinute and RegistrationsPerMinute are the per-address ceilings.
-	// They are deliberately generous for a person and stingy for a script: a
-	// person dials once and stays, and reconnects a handful of times a day.
+	// ProbeWithin is how long a registration waits for an older carrier under
+	// the same key to answer a ping before replacing it (PROBE_MS in
+	// relay/hosted/src/engine/carrier.js). A machine whose network dropped can
+	// come back before IdleAfter runs out; a live carrier answers in one round
+	// trip and keeps its name.
+	ProbeWithin = 5 * time.Second
+
+	// DialsPerMinute and RegistrationsPerMinute are the per-address ceilings
+	// (DIALS_PER_MINUTE and REGISTRATIONS_PER_MINUTE in
+	// relay/hosted/src/engine/carrier.js, and MACHINE_DIAL_LIMIT /
+	// MACHINE_REGISTER_LIMIT in relay/hosted/wrangler.toml). They are
+	// deliberately generous for a person and stingy for a script: a person
+	// dials once and stays, and reconnects a handful of times a day.
 	DialsPerMinute         = 30
 	RegistrationsPerMinute = 10
 )

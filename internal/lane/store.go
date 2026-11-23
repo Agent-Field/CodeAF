@@ -119,6 +119,8 @@ type store struct {
 	// path overrides the file, for a test that must not write into the state
 	// root of whoever is running it. Empty is [StorePath].
 	path string
+	// beforeCompact lets lifecycle tests hold the writer before its first write.
+	beforeCompact func()
 }
 
 // newStore builds the store on the real file. It is called from the registry
@@ -364,6 +366,12 @@ func (s *store) log(entry record) error {
 // the journal's shared lock and nothing else, so it can never be holding one of
 // these while waiting for the other.
 func (s *store) hold(fold func(storeState, []record, int) (storeState, bool)) error {
+	s.mu.Lock()
+	before := s.beforeCompact
+	s.mu.Unlock()
+	if before != nil {
+		before()
+	}
 	path := s.where()
 	if path == "" {
 		return ErrNoStore

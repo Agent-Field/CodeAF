@@ -72,6 +72,20 @@ func CrewSpendCap(profileDir string, withDaily bool) (float64, string) {
 	return capUSD, action
 }
 
+// CrewDailyLimit reads the daily spending limit afresh on every call, for a
+// guard that must hold the limit as it stands when a call is made rather than
+// as it stood when the guard was built. An unreadable limit is an error, never
+// a default: the guard refuses what might be paid.
+func CrewDailyLimit(profileDir string) func() (float64, string, error) {
+	return func() (float64, string, error) {
+		daily, err := DailyBudgetUSDAt(profileDir)
+		if err != nil || daily <= 0 {
+			return 0, "", err
+		}
+		return daily, fmt.Sprintf("today's spending limit of $%.2f is reached · raise it with /budget", daily), nil
+	}
+}
+
 // CrewTaskSpendCap is the per-task limit every priced call of one task is
 // held to ([CrewTaskCapAt]) and the sentence a call it stops ends on. It is
 // not lifted by --yes-spend: that flag answers the day's questions, not this.

@@ -119,7 +119,14 @@ func (f *Feed) leave(s *sub) (last bool) {
 func (f *Feed) snapshot() State {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.state
+	st := f.state
+	// A suspended timer cannot keep presence fresh. Read-time expiry also covers
+	// a blocked write and the first frame after this computer wakes from sleep.
+	now := f.clock.Now()
+	if st.Up && (f.heard.IsZero() || now.Before(f.heard) || now.Sub(f.heard) >= DeadAfter) {
+		st.Up, st.Vouching, st.Online = false, false, nil
+	}
+	return st
 }
 
 // set replaces the state and wakes the followers when it differs.
@@ -242,6 +249,9 @@ func (f *Feed) serve(ctx context.Context, s Stream) error {
 		f.events = f.events.forgotten()
 		st.Online = f.events.online
 	})
+	f.mu.Lock()
+	f.heard = time.Time{}
+	f.mu.Unlock()
 	f.drainKick()
 	in := pump(ctx, s)
 	k := newKeeper(f.clock)
@@ -252,6 +262,13 @@ func (f *Feed) serve(ctx context.Context, s Stream) error {
 		case r := <-in:
 			if r.err != nil {
 				return r.err
+			}
+			last := f.lastHeard()
+			now := f.clock.Now()
+			if !last.IsZero() && (now.Before(last) || now.Sub(last) >= DeadAfter) {
+				// A late pong is not a replacement roster. Subscribe again before
+				// believing any presence retained from the stalled connection.
+				return errDead
 			}
 			f.hear(r.frame, vouching)
 			k.heard()

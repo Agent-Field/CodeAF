@@ -133,7 +133,7 @@ and neither does a test binary.
 ## The Model Pool is a second stream, under its own switch
 
 The usage counts are not the only thing this binary sends to AgentField. With
-`model_pool` set to `on` — the default — a judge scores each crew seat after a
+`model_pool` explicitly set to `on` — it defaults to `off` — a judge scores each crew seat after a
 task lands, and one row per seat leaves for
 `https://codeaf.agentfield.ai/pool/v1/rows`: the model slug that held the
 seat, the judge's slug, the seat (the worker, checker or planner, spelled on the wire as `worker`,
@@ -150,22 +150,6 @@ switch, `model_pool` in settings or `CODEAF_MODEL_POOL`, adds `off` (ask no
 judge at all). `codeaf pool status` says how many rows wait to leave for the
 pool; this page describes both streams, so "what is collected" is answered
 for everything the binary sends.
-
-## Download counts
-
-The download numbers this repository reports come from public GitHub release
-data: the GitHub API publishes a cumulative download count for every asset on
-a release, and a daily scheduled workflow reads those counts and sends one
-event per binary asset to PostHog (`codeaf:release_downloads`). No code in
-the binary is involved, nothing is collected from the person downloading, and
-the only facts in the event are the release tag, the asset's platform, and
-the count GitHub already shows on the release page. Sidecar files such as
-`checksums.txt` are not counted. The workflow lives in
-`.github/workflows/release-downloads.yml`; the script behind it is
-`scripts/release_downloads.py`, and running it with `--dry-run` prints the
-batch it would send.
-
-The release-download workflow fails visibly when its production PostHog key or GitHub token is missing; dry-run still works without a PostHog key.
 
 ## Estimates and recovered receipts
 

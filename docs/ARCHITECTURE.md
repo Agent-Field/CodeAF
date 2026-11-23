@@ -34,6 +34,10 @@ specific action rather than reading either large package from beginning to end.
 | Remote sessions and movable chats | [remote](../internal/remote/), [enginehost](../internal/enginehost/), [cell](../internal/cell/) | [Remote architecture](REMOTE.md), [remote testing](testing-anywhere.md) |
 | Relay coordination across computers and workers | [relay server](../internal/relayserve/), [committed directory](../internal/raftdirectory/), [consensus core](../internal/raftcore/), [hosted relay](../relay/hosted/), [cluster command](../cmd/codeaf/cluster.go) | [Run a relay](relay.md), [coordination and workers](../internal/manual/chat/coordination-and-workers.md) |
 
+Before delegating across folders, cooperating on private copies, receiving a chat,
+applying results or cleaning task storage, read the
+[task workspace and relay agent contract](architecture/workspaces-storage-relay.md).
+
 ## Find the right storage and knowledge owner
 
 There is no single Markdown file that acts as every kind of memory. Keep these
@@ -50,6 +54,19 @@ Repository documentation is not automatically part of the shipped manual, and a
 user's project knowledge vault is not the repository's developer documentation.
 A project-knowledge feature needs both developer guidance here when structure
 changes and product guidance in the manual when behavior changes.
+
+## Change profile knowledge through its owner
+
+The knowledge vault owns source admission, background compilation, publication,
+search, and human overrides. The session history reader decides which saved records
+can enter the vault. Memory renders published pages and does not run compilation
+on the UI loop. Agent recall reads the same effective publication.
+
+Start with the [knowledge architecture](knowledge.md) for entry points and module
+contracts. Preserve immutable sources, stable page identities, cancellation,
+revision-checked edits, and deletion intent when changing this path. Keep provider
+requests outside database write transactions and publish pages and search entries
+as one revision.
 
 ## Contracts and design rationale
 

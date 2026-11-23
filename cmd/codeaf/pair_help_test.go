@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 )
 
 // TestPairHelpWithoutAnEngine proves C27.3 and C15: help remains available
@@ -26,5 +27,25 @@ func TestPairHelpWithoutAnEngine(t *testing.T) {
 	err := newPairDoor(strings.NewReader(""), io.Discard).run(context.Background(), nil)
 	if err == nil || err.Error() != cell.UnavailableReason() {
 		t.Fatalf("pairing with no engine: %v, want %q", err, cell.UnavailableReason())
+	}
+}
+
+func TestQANumericCodeNamesTheJoinCommand(t *testing.T) {
+	celltest.Available(t)
+	_, errs := captureUsage(t)
+	err := newPairDoor(strings.NewReader(""), io.Discard).run(t.Context(), []string{"approve", "42-715-302"})
+	if !strings.Contains(errs.String(), "use: codeaf pair 42-715-302") || exitCodeOf(err) == 0 {
+		t.Fatalf("numeric approval did not name the right command and fail: %v", err)
+	}
+}
+
+func TestQAPairHelpSeparatesLinkApprovalAndNumericCodes(t *testing.T) {
+	t.Cleanup(cell.UseAvailabilityInTests(false))
+	out, _ := captureUsage(t)
+	_ = newPairDoor(strings.NewReader(""), io.Discard).run(t.Context(), []string{"--help"})
+	for _, line := range []string{"codeaf pair approve <link-or-token>", "codeaf pair <code> [--replace]", "codeaf pair --code"} {
+		if !strings.Contains(out.String(), line) {
+			t.Errorf("pair help does not explain %q", line)
+		}
 	}
 }

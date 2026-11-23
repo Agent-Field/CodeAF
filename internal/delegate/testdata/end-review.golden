@@ -1,0 +1,2 @@
+{"at":"2026-10-16T09:30:00Z","kind":"end","status":"pass","data":{"reports":["review-report.md","review-report.json"],"findings":7,"blocking":2,"partial":true},"message":"7 findings, 2 blocking the merge"}
+{"at":"2026-10-16T09:30:00Z","text":"7 findings, 2 blocking the merge","ending":{"reports":["review-report.md","review-report.json"],"findings":7,"blocking":2,"partial":true}}

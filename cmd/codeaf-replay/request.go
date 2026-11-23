@@ -266,6 +266,21 @@ var callSiteRoles = map[string]lane.Role{
 	// it reached the log with NO TAG AT ALL until #996 — which made the dearest
 	// side-call on the ceiling road invisible to every reading of this file.
 	"handoff-draft": lane.RoleAuxiliary,
+	// cmd/codeaf/factory_triage.go: the factory's read of one new issue, on the
+	// low seat. Nobody is waiting on it and nobody reads its stream, so it is
+	// the same patient background errand as the draft above.
+	"factory triage": lane.RoleAuxiliary,
+	// cmd/codeaf/factory_scout.go: a look closer\'s turns, on the same low
+	// seat as the read. Nobody reads its stream; the answer arrives whole.
+	"factory scout": lane.RoleAuxiliary,
+	// cmd/codeaf/factory_judge.go: an AI filter's one yes/no question about
+	// one arriving item, on the read's model unless the factory names one.
+	"factory filter": lane.RoleAuxiliary,
+	// cmd/codeaf/appfactory_ai_search.go: the job search bar's Ask AI, a
+	// screen read over a batch of items or the judge's question about one,
+	// on the factory's default model. The person waits on the whole answer,
+	// never on a stream.
+	"factory search": lane.RoleAuxiliary,
 	// internal/session/subharness_env.go: one AI step of a saved program, which
 	// runs on the program's own model rather than on any role's. Nobody is
 	// reading its stream and nobody is waiting on its first word.
@@ -374,10 +389,24 @@ var callSiteRoles = map[string]lane.Role{
 	"taskname": lane.RoleAuxiliary,
 	"jobname":  lane.RoleAuxiliary,
 	"caption":  lane.RoleAuxiliary,
-	"shaper":   lane.RoleAuxiliary,
-	"intake":   lane.RoleAuxiliary,
-	"careful":  lane.RoleAuxiliary,
-	"distill":  lane.RoleAuxiliary,
+	// cmd/codeaf/appfactory_brief_writer.go writes a factory job's brief as an
+	// errand nobody waits on: the page keeps the previous version meanwhile.
+	"brief":   lane.RoleAuxiliary,
+	"shaper":  lane.RoleAuxiliary,
+	"intake":  lane.RoleAuxiliary,
+	"careful": lane.RoleAuxiliary,
+	"distill": lane.RoleAuxiliary,
+	// internal/session/errand_insight.go registers the page-AI family, and
+	// errandRole answers auxiliary for every one of them, so these rows are that
+	// file's own reading.
+	"insight":               lane.RoleAuxiliary,
+	"insight_notes":         lane.RoleAuxiliary,
+	"insight_ask":           lane.RoleAuxiliary,
+	"insight_themes":        lane.RoleAuxiliary,
+	"insight_pipeline":      lane.RoleAuxiliary,
+	"insight_views":         lane.RoleAuxiliary,
+	"insight_factory_read":  lane.RoleAuxiliary,
+	"insight_factory_scout": lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.

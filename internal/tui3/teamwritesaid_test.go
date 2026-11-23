@@ -12,7 +12,7 @@ import (
 // that hands every change the file as fake holds it and answers err, or, when
 // err is nil, whatever the changes made of it.
 func refusingSeam(a *app, err error) TeamsSeam {
-	seam := localTeams(a.profileDir, &a.teamsDisk.watch)
+	seam := localTeams(a.profileDir, &a.teamsDisk.watch, nil)
 	seam.Update = func(change func(*teamstore.File) error) ([]teamstore.Team, string, error) {
 		if err != nil {
 			return nil, "", err

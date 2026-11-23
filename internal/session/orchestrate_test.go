@@ -3,8 +3,13 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -270,6 +275,540 @@ func TestARunPlansExecutesAndSynthesizes(t *testing.T) {
 	}
 	if _, err := agent.ResolveOrchestrate(id, "topup:1"); err == nil {
 		t.Fatalf("a finished run is not at the gate")
+	}
+}
+
+// amendmentReplier exposes the provider request without using a network.
+type amendmentReplier func([]ai.Message, ...ai.Option) (*ai.Response, error)
+
+func (r amendmentReplier) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	return r(messages, options...)
+}
+
+func TestLaterPlannerRejectsLostRepliesAndContinues(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw, finish, repair string
+		refused                   bool
+	}{
+		{"cut-off JSON", `{"cancel":[{"id":"n2"}`, "length", "{}", true},
+		{"cut-off complete JSON", `{"cancel":[{"id":"n2"}]}`, "length", "{}", true},
+		{"blank reply", "", "stop", "", true},
+		{"blank repair", `{"cancel":[`, "stop", "", true},
+		{"empty repair", `{"cancel":[`, "stop", "{}", true},
+		{"null repair", `{"cancel":[`, "stop", "null", true},
+		{"explicit no change", "{}", "stop", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var calls atomic.Int32
+			refusalSeen := make(chan struct{})
+			var once sync.Once
+			fake := amendmentReplier(func(messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+				if isPlannerCall(messages) {
+					switch calls.Add(1) {
+					case 1:
+						return textResponse(`{"add":[{"id":"n1","goal":"read notes"},{"id":"n2","goal":"check notes","needs":["n1"]}]}`), nil
+					case 2:
+						response := textResponse(tc.raw)
+						response.Choices[0].FinishReason = tc.finish
+						return response, nil
+					default:
+						return textResponse(`{"done":{"brief":"report findings"}}`), nil
+					}
+				}
+				if strings.Contains(messageText(messages[0]), "You repair malformed JSON") {
+					return textResponse(tc.repair), nil
+				}
+				if strings.Contains(lastUserText(messages), "for:\ncheck notes") {
+					select {
+					case <-refusalSeen:
+					case <-time.After(5 * time.Second):
+						return nil, errors.New("refusal note did not arrive before the next node finished")
+					}
+				}
+				return textResponse("read the notes"), nil
+			})
+			agent, _ := newTestAgent(t, fake, func(config *Config) { config.AskConsent = true })
+			events, stop := agent.WatchOrchestrations()
+			defer stop()
+			// Release the second worker only after the refused amendment is visible.
+			// The explicit no-change case needs no refusal.
+			if !tc.refused {
+				once.Do(func() { close(refusalSeen) })
+			}
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				for {
+					select {
+					case event := <-events:
+						if event.Kind == EventOrchestrateNote && strings.Contains(event.Text, "planner") {
+							once.Do(func() { close(refusalSeen) })
+						}
+					case <-done:
+						return
+					}
+				}
+			}()
+			id, err := agent.RunOrchestrate(t.Context(), "read and check notes", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap := waitForRun(t, agent, id)
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			notes := strings.Join(snap.Notes, "\n")
+			if got := strings.Contains(notes, "the planner's reply was cut off"); got != tc.refused {
+				t.Errorf("refusal note = %t, want %t; Notes = %q", got, tc.refused, notes)
+			}
+			if len(snap.Nodes) != 2 {
+				t.Fatalf("plan changed: %+v", snap.Nodes)
+			}
+			for _, node := range snap.Nodes {
+				if node.State != orchestrate.Done {
+					t.Errorf("kept node did not finish: %+v", node)
+				}
+			}
+			if calls.Load() != 3 || snap.Answer == "" || snap.Stopped {
+				t.Errorf("run did not continue through the next planner round: calls=%d snapshot=%+v", calls.Load(), snap)
+			}
+		})
+	}
+}
+
+func TestPlannerRepairBudgetCoversOriginalCompletion(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		opening, retry bool
+	}{
+		{"opening", true, false},
+		{"later", false, false},
+		{"opening retry", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var repairBudget, calls int
+			fake := amendmentReplier(func(messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+				if isPlannerCall(messages) {
+					calls++
+					response := textResponse(`{"add":[`)
+					response.Usage = &ai.Usage{CompletionTokens: 12000}
+					if tc.retry && calls == 1 {
+						response.Choices[0].FinishReason = "length"
+						response.Usage.CompletionTokens = 2048
+					}
+					return response, nil
+				}
+				request := &ai.Request{}
+				for _, option := range options {
+					if err := option(request); err != nil {
+						return nil, err
+					}
+				}
+				if request.MaxTokens != nil {
+					repairBudget = *request.MaxTokens
+				}
+				return textResponse(`{"add":[{"id":"n1","goal":"read notes"}]}`), nil
+			})
+			agent, _ := newTestAgent(t, fake, func(config *Config) { config.AskConsent = true })
+			planner := &orchestratePlanner{agent: agent, orch: orchestrate.New("goal", nil, nil, orchestrate.Options{})}
+			view := orchestrate.View{}
+			if !tc.opening {
+				view.Frontier = []orchestrate.NodeStatus{{Node: orchestrate.Node{ID: "existing"}}}
+			}
+			if _, err := planner.Plan(t.Context(), view); err != nil {
+				t.Fatal(err)
+			}
+			if repairBudget < 24000 {
+				t.Errorf("repair max_tokens = %d, want >= 24000 for 12000 completion tokens plus headroom", repairBudget)
+			}
+		})
+	}
+}
+
+// openingPlannerReplier keeps syntax repair separate from planning so a repair
+// that discards the nodes cannot masquerade as a successful opening.
+type openingPlannerReplier struct {
+	mu                            sync.Mutex
+	first, second, repair, finish string
+	secondFinish                  string
+	outputTokens                  int
+	repairFinish                  string
+	repairs                       int
+	openings                      int
+	budgets                       []int
+}
+
+func (r *openingPlannerReplier) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if isPlannerCall(messages) {
+		opening := false
+		for _, message := range messages {
+			if strings.Contains(messageText(message), "nothing yet") {
+				opening = true
+			}
+		}
+		if !opening {
+			return textResponse(`{"done":{"brief":"report the findings"}}`), nil
+		}
+		r.openings++
+		request := &ai.Request{}
+		for _, option := range options {
+			if err := option(request); err != nil {
+				return nil, err
+			}
+		}
+		budget := 0
+		if request.MaxTokens != nil {
+			budget = *request.MaxTokens
+		}
+		r.budgets = append(r.budgets, budget)
+		raw, finish := r.first, r.finish
+		if r.openings > 1 {
+			raw, finish = r.second, "stop"
+			if r.secondFinish != "" {
+				finish = r.secondFinish
+			}
+		}
+		response := textResponse(raw)
+		response.Choices[0].FinishReason = finish
+		tokens := r.outputTokens
+		if tokens == 0 {
+			tokens = 2048
+		}
+		response.Usage = &ai.Usage{CompletionTokens: tokens}
+		return response, nil
+	}
+	if strings.Contains(messageText(messages[0]), "You repair malformed JSON") {
+		r.repairs++
+		response := textResponse(r.repair)
+		if r.repairFinish != "" {
+			response.Choices[0].FinishReason = r.repairFinish
+		}
+		return response, nil
+	}
+	return textResponse("read the notes"), nil
+}
+
+func TestOpeningPlannerRejectsLostReplies(t *testing.T) {
+	const plan = `{"add":[{"id":"read-notes","title":"read notes","goal":"read the release notes"}]}`
+	for _, tc := range []struct {
+		name, first, finish, repair, second string
+		proceeds                            bool
+		calls                               int
+	}{
+		{"cut-off twice", `{"add":[{"id":"n1","goal":"read`, "length", "{}", `{"add":[`, false, 2},
+		{"cut-off then complete", `{"add":[`, "length", "{}", plan, true, 2},
+		{"large cut-off then complete", `{"add":[`, "length", "{}", plan, true, 2},
+		{"cut-off empty JSON", "{}", "length", "{}", "{}", false, 2},
+		{"cut-off valid JSON", plan, "length", "{}", plan, true, 2},
+		{"retry stays malformed", `{"add":[`, "length", "[", `{"add":[`, false, 2},
+		{"blank twice", "", "stop", "", "", false, 2},
+		{"blank then complete", "", "stop", "", plan, true, 2},
+		{"repair loses nodes", `{"add":[{"id":"n1",`, "stop", "{}", "", false, 2},
+		{"repair becomes blank", `{"add":[`, "stop", "", "", false, 2},
+		{"repair becomes null", `{"add":[`, "stop", "null", "", false, 2},
+		{"repair becomes empty add", `{"add":[`, "stop", `{"add":[]}`, "", false, 2},
+		{"repair itself cut off", `{"add":[`, "stop", plan, plan, true, 2},
+		{"repair retains nodes", `{"add":[{"id":"n1",`, "stop", plan, "", true, 1},
+		{"explicit empty", "{}", "stop", "", "", false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			fake := &openingPlannerReplier{first: tc.first, finish: tc.finish, repair: tc.repair, second: tc.second}
+			if tc.name == "cut-off twice" {
+				fake.secondFinish = "length"
+			}
+			if tc.name == "large cut-off then complete" {
+				fake.outputTokens = 6000
+			}
+			if tc.name == "repair itself cut off" {
+				fake.repairFinish = "length"
+			}
+			agent, _ := newTestAgent(t, fake, func(config *Config) { config.AskConsent = true })
+			updates, stop := agent.WatchTaskUpdates()
+			defer stop()
+			runNotes, stopRun := agent.WatchOrchestrations()
+			defer stopRun()
+			id, err := agent.RunOrchestrate(t.Context(), "read the release notes", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap := waitForRun(t, agent, id)
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if fake.openings != tc.calls {
+				t.Errorf("opening calls = %d, want %d; snapshot = %+v", fake.openings, tc.calls, snap)
+			}
+			if fake.budgets[0] != 0 {
+				t.Errorf("initial output cap = %d, want provider default", fake.budgets[0])
+			}
+			if tc.calls == 2 && len(fake.budgets) == 2 {
+				want := 8192
+				if tc.name == "large cut-off then complete" {
+					want = 12000
+				}
+				if fake.budgets[1] != want {
+					t.Errorf("retry budget = %d, want %d", fake.budgets[1], want)
+				}
+			}
+			if tc.finish == "length" && tc.name != "retry stays malformed" && fake.repairs != 0 {
+				t.Errorf("cut-off reply reached syntax repair %d times", fake.repairs)
+			}
+			if tc.proceeds {
+				if len(snap.Nodes) != 1 || snap.Nodes[0].State != orchestrate.Done || snap.Answer == "" {
+					t.Fatalf("recovered plan did not execute and synthesize: %+v", snap)
+				}
+				return
+			}
+			want := "the planner's reply was cut off"
+			if tc.name == "explicit empty" {
+				want = "The crew didn't plan any work for this goal."
+			}
+			if snap.EmptyPlanReason() != want {
+				t.Errorf("ending = %q, want %q; snapshot = %+v", snap.EmptyPlanReason(), want, snap)
+			}
+			var notices []string
+			var root TaskNotice
+		readUpdates:
+			for {
+				select {
+				case event := <-updates:
+					if event.Kind == EventNotice {
+						notices = append(notices, event.Text)
+					}
+					if event.Kind == EventTaskUpdate && event.Task != nil && event.Task.Run == id && event.Task.Parent == 0 {
+						root = *event.Task
+					}
+				case <-time.After(20 * time.Millisecond):
+					break readUpdates
+				}
+			}
+			if len(notices) != 1 || notices[0] != want {
+				t.Errorf("chat notices = %q, want exactly %q", notices, want)
+			}
+			if root.State != TaskFailed || root.Report != want || !root.Retryable {
+				t.Errorf("crew ending: state=%s report=%q retryable=%t", root.State, root.Report, root.Retryable)
+			}
+			var saved []string
+			for _, entry := range agent.Transcript() {
+				if entry.Role == "assistant" {
+					saved = append(saved, entry.Text)
+				}
+			}
+			if len(saved) != 1 || saved[0] != want {
+				t.Errorf("saved notices = %q, want exactly %q", saved, want)
+			}
+		readRunNotes:
+			for {
+				select {
+				case event := <-runNotes:
+					if event.Kind == EventOrchestrateNote {
+						t.Errorf("duplicate ending on run lane: %q", event.Text)
+					}
+				case <-time.After(20 * time.Millisecond):
+					break readRunNotes
+				}
+			}
+		})
+	}
+}
+
+func TestEmptyCrewPlanReportsWhyAndOffersRecovery(t *testing.T) {
+	for _, reason := range []string{"", "The goal needs a repository path."} {
+		t.Run(reason, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			completer := replier(func(messages []ai.Message) string {
+				if isPlannerCall(messages) {
+					reply, err := json.Marshal(orchestrate.Amendment{Note: reason})
+					if err != nil {
+						t.Error(err)
+					}
+					return string(reply)
+				}
+				return "repository audit"
+			})
+			path := filepath.Join(t.TempDir(), "session.jsonl")
+			agent, _ := newTestAgent(t, completer, func(config *Config) {
+				config.AskConsent = true
+				config.SessionFile = path
+			})
+			runNotes, stopRunNotes := agent.WatchOrchestrations()
+			defer stopRunNotes()
+			lane, stopNotes := agent.WatchTaskUpdates()
+			defer stopNotes()
+			updates, stopUpdates := agent.WatchTaskUpdates()
+			defer stopUpdates()
+			id, err := agent.RunOrchestrate(context.Background(), "audit the repository", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snap := waitForRun(t, agent, id)
+			if len(snap.Nodes) != 0 {
+				t.Fatalf("fake planner unexpectedly created workers: %+v", snap.Nodes)
+			}
+			if err := agent.Close(); err != nil {
+				t.Fatal(err)
+			}
+			want := reason
+			if want == "" {
+				want = "The crew didn't plan any work for this goal."
+			}
+			if !snap.Done || snap.Stopped || snap.Answer != "" {
+				t.Errorf("empty plan ending = %+v", snap)
+			}
+			// The ending is an ordinary saved assistant notice, like a budget stop.
+			var endings []string
+		readNotes:
+			for {
+				select {
+				case event := <-lane:
+					if event.Kind == EventNotice {
+						endings = append(endings, event.Text)
+					}
+				case <-time.After(250 * time.Millisecond):
+					break readNotes
+				}
+			}
+			if len(endings) != 1 || endings[0] != want {
+				t.Errorf("want one exact ending notice %q, got %q", want, endings)
+			}
+			var saved []string
+			for _, entry := range agent.Transcript() {
+				if entry.Role == "assistant" {
+					saved = append(saved, entry.Text)
+				}
+			}
+			if len(saved) != 1 || saved[0] != want {
+				t.Errorf("want one saved assistant line %q, got %q", want, saved)
+			}
+			var reopened []string
+			for _, entry := range ReadTranscript(path).Entries {
+				if entry.Role == "assistant" {
+					reopened = append(reopened, entry.Text)
+				}
+			}
+			if len(reopened) != 1 || reopened[0] != want {
+				t.Errorf("saved journal lost ending: %q", reopened)
+			}
+		readRunNotes:
+			for {
+				select {
+				case event := <-runNotes:
+					if event.Kind == EventOrchestrateNote {
+						t.Errorf("duplicate chat line on orchestration lane: %q", event.Text)
+					}
+				case <-time.After(250 * time.Millisecond):
+					break readRunNotes
+				}
+			}
+
+			var root TaskNotice
+			for _, notice := range familyNotices(t, updates) {
+				if notice.Run == id && notice.Parent == 0 {
+					root = notice
+				}
+			}
+			if root.State != TaskFailed || !root.Retryable || root.Stopped || root.Report != want {
+				t.Errorf("empty crew must offer non-success recovery: state=%s retryable=%t", root.State, root.Retryable)
+			}
+		})
+	}
+}
+
+func TestEmptyCrewRetryStartsFreshAndChecksAdmission(t *testing.T) {
+	for _, via := range []string{"task", "app"} {
+		t.Run(via, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			var calls atomic.Int32
+			completer := replier(func(messages []ai.Message) string {
+				if !isPlannerCall(messages) {
+					return "audit"
+				}
+				if calls.Add(1) == 1 {
+					return `{"note":"Need the repository path."}`
+				}
+				asked := lastUserText(messages)
+				if strings.Contains(asked, "Need the repository path.") {
+					t.Errorf("retry reused earlier plan output: %s", asked)
+				}
+				if strings.Contains(asked, "nothing yet") {
+					return `{"add":[{"id":"fresh","goal":"read the repository"}]}`
+				}
+				return `{"done":{"brief":"report the new audit"}}`
+			})
+			agent, _ := newTestAgent(t, completer, func(c *Config) { c.SpendRailUSD = 5 })
+			defer agent.Close()
+			id, err := agent.RunOrchestrate(context.Background(), "audit the repository", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitForRun(t, agent, id)
+			var row TaskNotice
+			waitFor(t, "empty-plan root", func() bool {
+				for _, r := range agent.appRunRows() {
+					if r.Run == id && r.Parent == 0 {
+						row = r
+					}
+				}
+				return row.State == TaskFailed
+			})
+			view, found, err := agent.AppTask(strconv.FormatUint(row.ID, 10))
+			if err != nil || !found || !view.Retryable || view.State != "failed" || view.Result != "Need the repository path." {
+				t.Fatalf("app ending = %+v, %v", view, err)
+			}
+			retry := func() error {
+				if via == "app" {
+					return agent.AppTaskAction(AppTaskIntent{ID: view.ID, Action: "retry"})
+				}
+				return agent.RetryTask(row.ID)
+			}
+			spend(agent, 5)
+			if err := retry(); !errors.Is(err, ErrSpendRail) {
+				t.Fatalf("over-budget retry = %v", err)
+			}
+			if _, err := agent.RunOrchestrate(context.Background(), "edited goal", "", 5); !errors.Is(err, ErrSpendRail) {
+				t.Fatalf("normal admission bypassed budget: %v", err)
+			}
+			if calls.Load() != 1 {
+				t.Fatal("refused retry called planner")
+			}
+			spend(agent, 0)
+			if err := retry(); err != nil {
+				t.Fatal(err)
+			}
+			fresh := waitForRun(t, agent, "2")
+			if fresh.Goal != "audit the repository" || fresh.Answer != "audit" || len(fresh.Nodes) != 1 || fresh.Nodes[0].ID != "fresh" || len(fresh.Notes) != 0 {
+				t.Fatalf("retry reused old state: %+v", fresh)
+			}
+			var completed TaskNotice
+			waitFor(t, "fresh run landing", func() bool {
+				for _, r := range agent.appRunRows() {
+					if r.Run == "2" && r.Parent == 0 {
+						completed = r
+					}
+				}
+				return completed.State == TaskDone
+			})
+			before := calls.Load()
+			if completed.Retryable || agent.RetryTask(completed.ID) == nil || calls.Load() != before {
+				t.Fatal("non-empty ending supported an empty-plan retry")
+			}
+			old, _ := agent.OrchestrateSnapshot(id)
+			if len(old.Notes) != 1 || old.Notes[0] != "Need the repository path." {
+				t.Fatalf("retry mutated old run: %+v", old)
+			}
+			edited, err := agent.RunOrchestrate(context.Background(), "audit /tmp/example", "", 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := waitForRun(t, agent, edited).Goal; got != "audit /tmp/example" {
+				t.Fatal(got)
+			}
+		})
 	}
 }
 
@@ -622,6 +1161,57 @@ func TestWriteScopeBindsTheHandsThatKnowTheirPath(t *testing.T) {
 }
 
 // ── the small parts ─────────────────────────────────────────────────────────
+
+func TestWorkerWriteScopeAcceptsSegmentGlobs(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.writeScope = []string{"crew-0-*.md"}
+	})
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"crew-0-a.md", true},
+		{"crew-1-a.md", false},
+		{"../x", false},
+		{"crew-0-sub/a.md", false},
+	} {
+		_, result, allowed := (writeGuard{agent: agent}).PreAction(context.Background(), nil, nil,
+			scopedCall("write", workspace+"/"+tc.path))
+		if allowed != tc.want {
+			t.Errorf("write %s: allowed=%v, want %v; result: %s", tc.path, allowed, tc.want, result.text)
+		}
+	}
+}
+
+func TestWorkerGlobScopeRefusesSymlinkEscapes(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.writeScope = []string{"crew-*"}
+	})
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(workspace, "crew-outside")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(workspace, "crew-inside"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "missing.md"), filepath.Join(workspace, "crew-dangling.md")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"crew-outside/new/deep.md", false},
+		{"crew-dangling.md", false},
+		{"crew-inside/new/deep.md", true},
+	} {
+		_, result, allowed := (writeGuard{agent: agent}).PreAction(context.Background(), nil, nil,
+			scopedCall("write", filepath.Join(workspace, tc.path)))
+		if allowed != tc.want {
+			t.Errorf("write %s: allowed=%v, want %v; result: %s", tc.path, allowed, tc.want, result.text)
+		}
+	}
+}
 
 func TestOrchestrateBriefCarriesTheDigestsAndTheBound(t *testing.T) {
 	brief := orchestrateBrief("",

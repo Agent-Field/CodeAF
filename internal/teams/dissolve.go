@@ -86,11 +86,11 @@ func Dissolve(profileDir, id, manager string) error {
 	return nil
 }
 
-// HasTraffic reports whether team id's Traffic has anything in it, either
-// file of it. An unreadable log counts as said, so a doubt keeps the team.
+// HasTraffic reports whether either local log or the display mirror has
+// history. An unreadable file counts as said, so a doubt keeps the team.
 func HasTraffic(profileDir, id string) bool {
 	path := TrafficPath(profileDir, id)
-	for _, file := range []string{path, trafficRotated(path)} {
+	for _, file := range []string{path, trafficRotated(path), TrafficMirrorPath(profileDir, id)} {
 		info, err := os.Stat(file)
 		if err == nil && info.Size() > 0 {
 			return true

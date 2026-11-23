@@ -117,19 +117,24 @@ const threadHops = 16
 // threads, the thread with the newest activity FIRST and the entries inside
 // each in the order they were written. An entry answering an id that is not
 // among entries (older than the window, or never written) begins a thread of
-// its own, as does every entry that answers nothing.
+// its own, as does every entry that answers nothing. Display history arrives
+// in time order: portable ids from different writers are never compared as
+// positions. The hop bound also protects a malformed mirror's reference graph.
 func Threads(entries []Entry) []Thread {
 	if len(entries) == 0 {
 		return nil
 	}
 	at := make(map[string]int, len(entries))
+	mirrored := false
 	for i, e := range entries {
 		at[e.ID] = i
+		mirrored = mirrored || e.Origin != ""
 	}
 	rootOf := func(i int) int {
 		for hop := 0; hop < threadHops; hop++ {
 			up, ok := at[entries[i].Answers]
-			if entries[i].Answers == "" || !ok || up == i || entries[up].ID >= entries[i].ID {
+			if entries[i].Answers == "" || !ok || up == i ||
+				(entries[up].Origin == "" && entries[i].Origin == "" && entries[up].ID >= entries[i].ID) {
 				return i
 			}
 			i = up
@@ -149,10 +154,15 @@ func Threads(entries []Entry) []Thread {
 		if root != i {
 			out[n].Replies = append(out[n].Replies, e)
 		}
-		if e.ID > out[n].Latest {
+		if (!mirrored && e.ID > out[n].Latest) || (mirrored && at[e.ID] > at[out[n].Latest]) {
 			out[n].Latest = e.ID
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Latest > out[j].Latest })
+	sort.SliceStable(out, func(i, j int) bool {
+		if !mirrored {
+			return out[i].Latest > out[j].Latest
+		}
+		return at[out[i].Latest] > at[out[j].Latest]
+	})
 	return out
 }

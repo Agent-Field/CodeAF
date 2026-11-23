@@ -24,7 +24,7 @@ type homeRepoReading struct {
 }
 
 var homeGitStatus = func(ctx context.Context, workspace string) ([]byte, error) {
-	return exec.CommandContext(ctx, "git", "-C", workspace, "status", "--porcelain=v2", "--branch").Output()
+	return exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", workspace, "status", "--porcelain=v2", "--branch").Output()
 }
 
 func init() {

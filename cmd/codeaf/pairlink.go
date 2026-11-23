@@ -17,13 +17,19 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
+
+// pairAnswerNotArrived is an approval that timed out with the request still
+// waiting: nothing was decided, so the same command can simply run again.
+const pairAnswerNotArrived = "sync did not answer in time and nothing was decided — run the same command again"
 
 // linkTimeout outlasts one held poll so the answer, not the client, ends a wait.
 const linkTimeout = directory.MaxWait + 10*time.Second
@@ -63,12 +69,22 @@ func (s homeSigner) Sign(msg []byte) []byte         { return s.dev.Sign(msg) }
 // pullFleet counts what the identity holds, as this computer now sees it.
 func pullFleet(dir string, route pair.Mailbox) func(context.Context) (pair.Fleet, error) {
 	return func(ctx context.Context) (pair.Fleet, error) {
-		client, _, err := homeDirectory(dir, route)
+		waitStorage := startPairedStorage(ctx, dir, route)
+		defer waitStorage()
+		client, id, err := homeDirectory(dir, route)
 		if err != nil {
 			return pair.Fleet{}, err
 		}
 		listing, err := client.List(ctx)
-		return fleetOf(listing), err
+		fleet := fleetOf(listing)
+		if err == nil {
+			dev, e := identity.Device(dir)
+			if e != nil {
+				return fleet, e
+			}
+			fleet.With = pairingPeer(listing, directory.MetadataKey(id.CellKey()), dev.ID())
+		}
+		return fleet, err
 	}
 }
 
@@ -92,7 +108,7 @@ func fleetOf(l directory.Listing) pair.Fleet {
 func linkJoining(dir string) func(pair.Mailbox, bool) pair.LinkJoining {
 	return func(route pair.Mailbox, replace bool) pair.LinkJoining {
 		return pair.LinkJoining{
-			Joining: pairJoiningAt(dir)(replace), Platform: runtime.GOOS, Host: route.Host, Via: syncsetup.Named(route.URL),
+			Joining: pairJoiningAt(dir)(replace), Platform: runtime.GOOS, Host: route.URL, Via: syncsetup.Named(route.URL),
 			Pull: pullFleet(dir, route),
 		}
 	}
@@ -105,11 +121,33 @@ func (s inviteScreen) Invited(in pair.Invite) { s.say(pair.InviteLines(in)) }
 
 // askToJoin is the new device: a link on screen until a device that is in says yes.
 func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) error {
+	// A computer whose chats sync elsewhere is refused before it is asked to
+	// replace anything.
+	home := d.joining(replace).Home
+	standing, err := joinStanding(ctx, home, d.standingRoute(home, relay))
+	if err != nil {
+		return err
+	}
+	if err := standing.refusal(); err != nil {
+		return err
+	}
+	if !d.confirmReplacement(ctx, replace) {
+		return nil
+	}
 	route, err := d.mailbox(relay)
 	if err != nil {
 		return err
 	}
-	joined, err := pair.JoinByLink(ctx, d.requests(route), d.linking(route, replace), inviteScreen{d.term})
+	joining := d.linking(route, replace)
+	if d.name != "" {
+		joining.Label = d.name
+	}
+	joined, err := pair.JoinByLink(ctx, d.requests(route), joining, inviteScreen{d.term})
+	if err != nil {
+		if line := pair.TeamsAsideLine(joined.TeamsAside); line != "" {
+			d.term.say(line)
+		}
+	}
 	if err != nil && !errors.Is(err, pair.ErrPairedNotRead) {
 		return d.endedByPerson(ctx, err)
 	}
@@ -117,8 +155,18 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 		d.term.say(err.Error())
 		return nil
 	}
-	d.term.say(pair.JoinedFleetLine(joined.Fleet.Workspaces))
-	d.recordOwnDeviceOrSay(ctx, route)
+	if !joined.Already && d.name != "" {
+		if _, err := devname.Set(joining.Home, d.name); err != nil {
+			return err
+		}
+	}
+	if joined.Already {
+		d.term.say(joined.Sentence())
+	} else {
+		d.recordOwnDeviceOrSay(ctx, route)
+		joined.Joined.With = joined.Fleet.With
+		d.term.say(joined.Joined.Sentence())
+	}
 	return nil
 }
 
@@ -129,11 +177,17 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 	if err != nil {
 		return err
 	}
-	if relay == "" {
+	// A page already on this computer's service keeps that explicit route.
+	// A different service must still face the mailbox's configured route below,
+	// so a pasted link cannot redirect approval to another service.
+	if relay == "" && pair.CheckLinkService(typed, pairingRelay(home.Dir()).URL) == nil {
 		relay = pair.LinkRelay(typed)
 	}
 	route, err := d.mailbox(relay)
 	if err != nil {
+		return err
+	}
+	if err := pair.CheckLinkService(typed, route.URL); err != nil {
 		return err
 	}
 	who, err := d.approver(route)
@@ -141,6 +195,15 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return err
 	}
 	asking, err := who.Look(ctx, ref)
+	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
+		// An approval whose reply was lost: the device is in, so this computer is shared.
+		if err := identity.EndSolo(d.joining(false).Home); err != nil {
+			return err
+		}
+		d.recordOwnDeviceOrSay(ctx, route)
+		d.term.say(tui3.ErrAlreadyPaired.Error())
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -149,13 +212,19 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return d.decline(ctx, who, asking)
 	}
 	if err := who.Approve(ctx, asking); err != nil {
+		err = settleApproval(who, asking, err)
+		if errors.Is(err, tui3.ErrAnswerNotArrived) {
+			return errors.New(pairAnswerNotArrived)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if err := identity.EndSolo(d.joining(false).Home); err != nil {
 		return err
 	}
-	if err := identity.EndSolo(home.Dir()); err != nil {
-		return err
-	}
-	d.term.say(pair.ApprovedLine(asking.Name))
 	d.recordOwnDeviceOrSay(ctx, route)
+	d.term.say(pair.ApprovedLine(asking.Name))
 	return nil
 }
 
@@ -179,7 +248,23 @@ func linkApprover(dir string) func(pair.Mailbox) (pair.Approver, error) {
 		}
 		return pair.Approver{
 			Requests: linkRequests(route), Dir: client, Identity: id,
-			SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir),
+			AfterApprove: func(ctx context.Context) { samplePairedStorage(ctx, dir, route) },
+			SyncURL:      syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir),
 		}, nil
 	}
+}
+
+// A link grant does not identify its approver. With several possible peers,
+// keep the existing generic receipt instead of guessing from sorted names.
+func pairingPeer(l directory.Listing, key []byte, self string) string {
+	var names []string
+	for id, dev := range l.Devices {
+		if id != self && !dev.Revoked {
+			names = append(names, openName(key, dev.Name))
+		}
+	}
+	if len(names) == 1 {
+		return names[0]
+	}
+	return ""
 }

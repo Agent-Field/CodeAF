@@ -139,7 +139,7 @@ func TestC9CommandsBackgroundWritersAndEditorsStayOutOfUploads(t *testing.T) {
 				real := realEngine(t)
 				e := EngineFor(r.tree)
 				e.Binary, e.Transport, e.DataRoot = real.Binary, real.Transport, real.DataRoot
-				e.Guard.Home, e.Guard.Notify = r.guard.Home, r.guard.Notify
+				e.Guard.Home, e.Guard.Notify, e.Guard.Kept = r.guard.Home, r.guard.Notify, r.guard.Kept
 				r.write("safe.txt", "C9_SAFE_CAPTURE_MARKER")
 				if _, err := e.Seal(t.Context(), r.cell, TurnInfo{}); err != nil {
 					t.Fatal(err)

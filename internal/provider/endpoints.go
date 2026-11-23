@@ -890,6 +890,18 @@ func (c *Client) FallbackModels(model string) []string {
 	return carried
 }
 
+// fallbacksWritten reports whether the configured list names any model. A list
+// naming only the failing model is still an explicit answer, even though that
+// model is removed from the chain; blank rows leave the catalog free to help.
+func (c *Client) fallbacksWritten() bool {
+	for _, model := range c.config.Fallbacks {
+		if strings.TrimSpace(model) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // fallbackChain is the models to try after the ladder, in order.
 //
 // The operator's own list wins outright, and the catalog is only asked when
@@ -913,7 +925,7 @@ func (c *Client) fallbackChain(model string) []string {
 		}
 	}
 	add(c.config.Fallbacks)
-	if len(chain) == 0 && c.config.NearestModels != nil {
+	if !c.fallbacksWritten() && c.config.NearestModels != nil {
 		add(c.config.NearestModels(model))
 	}
 	if len(chain) > maxFallbackModels {

@@ -84,13 +84,13 @@ func (a *Agent) useSkillTool() []bare.Tool {
 // runUseSkill renders the shelf. Every bad call is an ordinary tool result
 // rather than a Go error, the way the rest of the belt answers: a mode spelled
 // wrongly is a call the model can make again.
-func (a *Agent) runUseSkill(_ context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) runUseSkill(ctx context.Context, args json.RawMessage) (string, bool, error) {
 	var parsed struct {
 		Mode string `json:"mode"`
 		Name string `json:"name"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	switch strings.TrimSpace(parsed.Mode) {
 	case "list":
@@ -98,11 +98,11 @@ func (a *Agent) runUseSkill(_ context.Context, args json.RawMessage) (string, bo
 	case "get":
 		name := strings.TrimSpace(parsed.Name)
 		if name == "" {
-			return invalidArgumentsPrefix + `mode "get" needs a name — the skill's directory name, as the list shows it`, true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+`mode "get" needs a name — the skill's directory name, as the list shows it`), true, nil
 		}
 		return a.getSkill(name)
 	default:
-		return invalidArgumentsPrefix + `mode takes "list" or "get"`, true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+`mode takes "list" or "get"`), true, nil
 	}
 }
 

@@ -47,6 +47,13 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
+// maySweepReads says whether the loop may hand this agent's reading off.
+// Conversations only: a task worker's own reads are its work, not a sweep, and
+// so are a factory stage's. A plan stage IS a reading, and handing it to a
+// quick task on another model left the stage waiting on a worker that answered
+// `done` to a question nobody had asked it (2026-10-18).
+func (c Config) maySweepReads() bool { return !c.InTask && !c.mayStage() }
+
 // readSweepTargets is the number of distinct read-only targets at which a turn
 // stops being a reader and starts being a sweeper. Three, because two files is
 // a comparison the chat may be holding and three is a set.
@@ -154,8 +161,9 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 		}
 	}
 	id, _, refusal := a.admitQuick(quickAsk{
-		line:  sweepBrief(user, sweep.glosses, readers),
-		title: sweepTitle(user),
+		line:    sweepBrief(user, sweep.glosses, readers),
+		title:   sweepTitle(user),
+		reading: true,
 	})
 	if refusal.said != "" {
 		return nil
@@ -188,7 +196,32 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 	if len(rest) > 0 {
 		restResults = a.runToolsWarm(ctx, ep, rest, hub, warm)
 	}
-	answer, ok := a.awaitQuickAnswer(ctx, id)
+	answer, ok, moving := a.awaitQuickAnswer(ctx, id)
+	// A PERSON WHO MOVES THE REPLY DOES NOT WAIT FOR ITS READING. The move is
+	// taken at the next step boundary, and a batch held on a quick task is
+	// minutes from one; so the reading is let go, the readers answer that it
+	// was not done here, and the task the reply becomes reads what it needs.
+	if moving {
+		a.cancelTask(id, "the reply moved to a task")
+		took := time.Since(started)
+		byID := map[string]toolResult{}
+		for index, call := range readers {
+			if hub != nil {
+				hub.send(Event{Kind: EventToolFinished, Tool: call.Function.Name, Args: rendered[index], CallID: call.ID, Took: took})
+			}
+			byID[call.ID] = a.finishToolResult(ep, call, toolResult{text: sweepMovedWord, harness: true})
+		}
+		for index, call := range rest {
+			byID[call.ID] = restResults[index]
+		}
+		results := make([]toolResult, len(calls))
+		for index, call := range calls {
+			results[index] = byID[call.ID]
+		}
+		sweep.targets, sweep.glosses = nil, nil
+		a.noteCallOutcomes(calls, results)
+		return results
+	}
 	if !ok || strings.TrimSpace(answer) == "" {
 		// FALLBACK: The quick task failed, timed out, or returned an empty answer.
 		// Clean up the task node so it does not linger in the graph consuming resources.
@@ -240,6 +273,12 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 			text = sweepHandoffWord(id) + "\n\n" + answer
 		}
 		byID[call.ID] = a.finishToolResult(ep, call, toolResult{text: text, harness: true})
+		if hub != nil {
+			hub.send(Event{
+				Kind: EventToolEnd, Tool: call.Function.Name, CallID: call.ID,
+				Args: rendered[index], Output: byID[call.ID].text,
+			})
+		}
 	}
 	for index, call := range rest {
 		byID[call.ID] = restResults[index]
@@ -259,21 +298,26 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 // the batch runs inline and the task is cancelled. Once started, the wait is
 // the conversation's patience and the turn's own context: a stopped turn
 // abandons the wait.
-func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (string, bool) {
-	timer := time.NewTimer(readSweepWait)
-	defer timer.Stop()
-	startTimer := time.NewTimer(readSweepStartWait)
-	defer startTimer.Stop()
+//
+// AND A MOVE ENDS THE WAIT: moving answers true when the person asked for the
+// reply to move to a task while it waited.
+func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (answer string, ok, moving bool) {
+	timer, stop := a.taskClockTimer(readSweepWait)
+	defer stop()
+	startTimer, stopStart := a.taskClockTimer(readSweepStartWait)
+	defer stopStart()
+	look, stopLook := a.taskClockTimer(readSweepMoveLook)
+	defer func() { stopLook() }()
 	for {
 		node := a.graph().node(id)
 		if node == nil {
-			return "", false
+			return "", false, false
 		}
 		switch node.stateNow() {
 		case TaskDone:
-			return node.result().text, true
+			return node.result().text, true, false
 		case TaskFailed:
-			return "", false
+			return "", false, false
 		case TaskQueued:
 			// Verified via startTimer below.
 		}
@@ -282,16 +326,29 @@ func (a *Agent) awaitQuickAnswer(ctx context.Context, id uint64) (string, bool) 
 			// done is per-attempt and reopened on a retry, so a closed channel
 			// is a reason to look at the state again, never a verdict.
 		case <-ctx.Done():
-			return "", false
-		case <-startTimer.C:
-			if node.stateNow() == TaskQueued {
-				return "", false
+			return "", false, false
+		case <-look:
+			if a.moveAsked.Load() {
+				return "", false, true
 			}
-		case <-timer.C:
-			return "", false
+			stopLook()
+			look, stopLook = a.taskClockTimer(readSweepMoveLook)
+		case <-startTimer:
+			if node.stateNow() == TaskQueued {
+				return "", false, false
+			}
+		case <-timer:
+			return "", false, false
 		}
 	}
 }
+
+// readSweepMoveLook is how often a wait on a reading asks whether the person
+// moved the reply.
+const readSweepMoveLook = 100 * time.Millisecond
+
+// sweepMovedWord is what a reading let go for a move answers.
+const sweepMovedWord = "not read here: the reply is moving to a task, which reads what it needs"
 
 // sweepBrief is the whole of what the worker knows: the person's question, the
 // reading already done, and the calls to perform first. A quick task opens

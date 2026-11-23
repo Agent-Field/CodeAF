@@ -42,8 +42,11 @@ import (
 // session keeps whatever window it was configured with (design-law-v2 §16
 // EMPTINESS, and the same rule catalog.Model.ContextLength states).
 type Model struct {
-	ID            string `json:"id"`
-	ContextLength int    `json:"context_length,omitempty"`
+	ID string `json:"id"`
+	// ListedAt is the provider catalog's listing time, in Unix seconds.
+	// Zero is unknown; this is not a release date inferred from a model name.
+	ListedAt      int64 `json:"listed_at,omitempty"`
+	ContextLength int   `json:"context_length,omitempty"`
 
 	// The three prices are PER TOKEN in US dollars, as the catalog publishes
 	// them. They are here — on a row a picker draws — because of one line this
@@ -117,12 +120,10 @@ type Model struct {
 	Direct bool `json:"-"`
 }
 
-// modelCacheName is the file under the codeaf state root. It is v3's own list
-// and deliberately NOT internal/catalog's cache: this one holds the two fields
-// a picker draws, so reading it costs a kilobyte or two rather than the whole
-// six-hundred-row catalog, and a schema change on either side cannot break the
-// other.
-var modelCacheName = []string{"v3", "models.json"}
+// The default filename is derived once so reading the default picker cache
+// keeps its existing path-only cost. Its smaller schema stays independent of
+// the catalog's cache even though catalog owns both filenames.
+var modelCacheName = []string{"v3", modelcatalog.PickerCacheName("", modelcatalog.DefaultBaseURL)}
 
 // ModelCachePath is ~/.codeaf/v3/models.json, moved wholesale by CODEAF_HOME
 // the way every other file codeaf writes is.
@@ -131,11 +132,7 @@ func ModelCachePath() string { return home.Join(modelCacheName...) }
 // ModelCachePathFor returns the cache owned by one service-and-base pair. The
 // default pair keeps the legacy path so an ordinary upgrade stays warm.
 func ModelCachePathFor(source, base string) string {
-	key := modelcatalog.CacheKey(source, base)
-	if key == "" {
-		return ModelCachePath()
-	}
-	return home.Join("v3", "models-"+key+".json")
+	return home.Join("v3", modelcatalog.PickerCacheName(source, base))
 }
 
 // modelCache is the file's shape. The list is wrapped in an object so a field
@@ -358,6 +355,9 @@ func cleanModels(models []Model) []Model {
 			continue
 		}
 		seen[model.ID] = true
+		if model.ListedAt < 0 {
+			model.ListedAt = 0
+		}
 		if model.ContextLength < 0 {
 			model.ContextLength = 0
 		}

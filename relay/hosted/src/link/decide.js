@@ -26,10 +26,16 @@ async function certDevice(c, cert) {
   return proof.device;
 }
 
+/** checkApprovalDevice validates the certificate before a request can be reserved. */
+export async function checkApprovalDevice(c, body, request) {
+  if (!isObject(body) || !isObject(body.device)) throw badRequest();
+  if ((body.device.kind ?? '') !== '' || (body.device.methods?.length ?? 0) > 0) throw badRequest();
+  if ((await certDevice(c, body.cert)) !== request.device) throw badRequest();
+}
+
 /** asApproval checks the approve body against the request it answers, and answers the device record to write. */
 async function asApproval(c, body, request) {
-  if (!isObject(body.device)) throw badRequest();
-  if ((await certDevice(c, body.cert)) !== request.device) throw badRequest();
+  await checkApprovalDevice(c, body, request);
   if (c.tenant.dir.revoked(request.device)) throw badRequest(); // a revoked device re-joins only as a new request and a new key
   const grant = asGrant(body.grant, c.tenant.limits.linkMaxGrant);
   return { grant, device: { ...body.device, platform: platformOf(body.device.platform ?? request.platform) } };

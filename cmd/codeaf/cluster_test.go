@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"strings"
 	"testing"
 )
@@ -22,12 +23,12 @@ func (c clusterFixture) LeadCluster(context.Context, uint64) (cs.LeadershipRecei
 	return c.receipt, c.err
 }
 
-// R6/R8/R30 pin the actual CLI receipt and refusal. A pending transfer never
-// prints a successful role, and help remains usable before pairing or setup.
+// R6/R8/R30 retain the dormant client's receipt and refusal checks for #2559.
+// A pending transfer never prints success, and help needs no pairing or setup.
 func TestR6R8R30ClusterCommandReceiptAndRefusal(t *testing.T) {
 	var out bytes.Buffer
 	c := clusterFixture{receipt: cs.LeadershipReceipt{Node: 4, Term: 8, Revision: 3, Barrier: 19, Voters: []uint64{1, 2, 4}}}
-	if e := clusterCommand(context.Background(), c, "lead", &out); e != nil {
+	if e := clusterCommandMode(context.Background(), c, "lead", &out, true); e != nil {
 		t.Fatal(e)
 	}
 	if got := out.String(); got != "computer 4 is coordinating · term 8 · revision 3 · read barrier 19\n" {
@@ -35,11 +36,11 @@ func TestR6R8R30ClusterCommandReceiptAndRefusal(t *testing.T) {
 	}
 	out.Reset()
 	c.err = clusterctl.ErrUnavailable
-	if e := clusterCommand(context.Background(), c, "lead", &out); !errors.Is(e, clusterctl.ErrUnavailable) || out.Len() != 0 {
+	if e := clusterCommandMode(context.Background(), c, "lead", &out, true); !errors.Is(e, clusterctl.ErrUnavailable) || out.Len() != 0 {
 		t.Fatal(e, out.String())
 	}
 	c.err = nil
-	if e := clusterCommand(context.Background(), c, "status", &out); e != nil {
+	if e := clusterCommandMode(context.Background(), c, "status", &out, true); e != nil {
 		t.Fatal(e)
 	}
 	if !strings.Contains(out.String(), "voting computers [1 2 4]") {
@@ -52,14 +53,41 @@ func TestR6R8R30ClusterCommandReceiptAndRefusal(t *testing.T) {
 	}
 }
 
-// R6/R30 require command help to offer the leadership that both relays serve.
-func TestR6R30ClusterHelpOffersHostedLeadership(t *testing.T) {
-	for _, phrase := range []string{"hosted or self-hosted relay", "Persistent storage is required", "Three voters tolerate one unavailable member"} {
-		if !strings.Contains(clusterHelp, phrase) {
-			t.Errorf("cluster help omits %q", phrase)
+// The design law makes an unusable capability absent for this release, per #2559.
+func TestR3bClusterHelpOffersOnlyStatus(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	out, _ := captureUsage(t)
+	if code := exitCodeOf(runCluster([]string{"--help"})); code != 0 {
+		t.Fatalf("cluster help exited %d", code)
+	}
+	if !strings.Contains(out.String(), "codeaf cluster status [--verbose]") {
+		t.Fatalf("cluster help omits status: %s", out.String())
+	}
+	for _, help := range []string{out.String(), usageText} {
+		if strings.Contains(help, "lead") {
+			t.Errorf("help offers removed leadership: %s", help)
 		}
 	}
-	if strings.Contains(clusterHelp, "not available yet") {
-		t.Fatal("cluster help denies available leadership")
+}
+
+func TestR3bClusterLeadIsUnknown(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_SYNC_URL", "off")
+	for _, args := range [][]string{{"lead"}, {"lead", "--verbose"}} {
+		err := runCluster(args)
+		const want = "there is no `codeaf cluster lead`.\nrun `codeaf --help` for every command"
+		if err == nil || err.Error() != want || exitCodeOf(err) != 1 {
+			t.Errorf("cluster %v = %v, want unknown-command refusal %q", args, err, want)
+		}
+	}
+}
+
+func TestR3bClusterStatusStillDispatches(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_SYNC_URL", "off")
+	for _, args := range [][]string{{"status"}, {"status", "--verbose"}} {
+		if err := runCluster(args); !errors.Is(err, syncsetup.ErrQuiet) {
+			t.Errorf("cluster %v did not reach sync setup: %v", args, err)
+		}
 	}
 }

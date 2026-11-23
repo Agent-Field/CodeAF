@@ -2,9 +2,13 @@ package cellstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 )
 
 // Capture snapshots the cell's folder as it stands and answers the snapshot
@@ -12,12 +16,22 @@ import (
 // takes one just before it removes a working tree, so nothing the tree held
 // since the last seal is lost.
 func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
+	if err := cell.WaitWorkspace(ctx, c.Root, e.tree(c)); err != nil {
+		return "", err
+	}
 	if err := Await(ctx, c); err != nil {
 		return "", err
 	}
 	if err := e.recoverCompleted(ctx, c); err != nil {
 		return "", err
 	}
+	// Recovery can seal independently; acquire after it to avoid nesting this
+	// process lock while still fencing composition through the native snapshot.
+	release, err := taskcopy.LockWorkspaceCheckpoint(ctx, c)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	if err := e.composeExtra(c); err != nil {
 		return "", err
 	}
@@ -36,7 +50,14 @@ func (e Engine) Capture(ctx context.Context, c cell.Cell) (string, error) {
 // composed .cell/ is restored in place, chain files included, so this is for a
 // snapshot that is the cell's newest state; a rewind uses restoreKeepingChain.
 func (e Engine) Restore(ctx context.Context, c cell.Cell, snapshot string, paths []string) error {
-	return e.restore(ctx, c, snapshot, paths, e.cellDir(c))
+	if err := cell.WaitWorkspace(ctx, c.Root, e.tree(c)); err != nil {
+		return err
+	}
+	err := e.restore(ctx, c, snapshot, paths, e.cellDir(c))
+	if err == nil && len(paths) == 0 {
+		e.recordMaterializedStat(c, snapshot)
+	}
+	return err
 }
 
 func (e Engine) restore(ctx context.Context, c cell.Cell, snapshot string, paths []string, cellDir string) error {
@@ -64,11 +85,11 @@ func (e Engine) screenCapture(ctx context.Context, c cell.Cell) error {
 // of a completed external call even if death preceded its background seal (D4,
 // L9). Incomplete intents remain unresolved and are never executed here.
 func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
-	_, recovery, err := OpenWAL(e.WALPath(c))
+	_, recovery, err := openRecovery(c, e.WALPath(c))
 	if err != nil {
 		return err
 	}
-	if len(recovery.Completed) == 0 {
+	if len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return nil
 	}
 	_, err = e.SealRecovered(ctx, c)
@@ -79,13 +100,105 @@ func (e Engine) recoverCompleted(ctx context.Context, c cell.Cell) error {
 // same turn before take-back sets them aside as a branch (D4, L9). A call that
 // only returned external output is still work; incomplete intents stay local.
 func (e Engine) SealRecovered(ctx context.Context, c cell.Cell) (Sealed, error) {
-	wal, recovery, err := OpenWAL(e.WALPath(c))
+	wal, recovery, err := openRecovery(c, e.WALPath(c))
 	if err != nil {
 		return Sealed{}, err
 	}
-	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Changed: changedOf(recovery.Completed)})
-	if err != nil || len(recovery.Completed) == 0 {
+	models, err := unsealedModels(c, recovery.Models)
+	if err != nil {
+		return Sealed{}, err
+	}
+	sealed, err := e.Seal(ctx, c, TurnInfo{Calls: recovery.Completed, Models: models, Changed: changedOf(recovery.Completed)})
+	if err != nil || len(recovery.Completed) == 0 && len(recovery.Models) == 0 {
 		return sealed, err
 	}
-	return sealed, wal.Sealed(recovery.Completed)
+	return sealed, wal.Sealed(recovery.Completed, recovery.Models...)
+}
+
+var stageStatePaths = []string{
+	cell.MetaPath,
+	cell.TranscriptPath,
+	TurnsPath,
+	cell.EnvPath,
+	cell.StateDir + "/session.json",
+	cell.StateDir + "/state.json",
+	cell.StateDir + "/tasks.json",
+	cell.StateDir + "/team.json",
+	cell.StateDir + "/memories.jsonl",
+	cell.StateDir + "/artifacts.jsonl",
+	cell.StateDir + "/artifacts",
+	cell.StateDir + "/tasks",
+	cell.StateDir + "/processes/head.json",
+	OwnFolderPath,
+	taskcopy.WorkspaceCarrierPath + "/manifest.json",
+}
+
+// StageState restores the incoming chat's conversation records (.cell/) into
+// private scratch space so the chat can open before workspace files arrive (C1).
+func (e Engine) StageState(ctx context.Context, c cell.Cell, head string) error {
+	err := e.stageIncoming(ctx, c, head, []string{cell.StateDir})
+	if err != nil {
+		err = e.stageIncoming(ctx, c, head, stageStatePaths)
+	}
+	if err != nil {
+		err = e.stageIncomingPartial(ctx, c, head)
+	}
+	if err != nil {
+		return err
+	}
+	if _, statErr := os.Stat(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath))); statErr != nil {
+		return statErr
+	}
+	return nil
+}
+
+func (e Engine) stageIncomingPartial(ctx context.Context, c cell.Cell, head string) error {
+	if err := os.MkdirAll(c.Root, 0700); err != nil {
+		return err
+	}
+	target := e.target(c)
+	target.Tree, target.CellDir = canonicalTree(c.Root), ""
+	target.Timeline = fmt.Sprintf("incoming-admission-%x", sha256.Sum256([]byte(target.Tree)))
+	transport := Spawn{Binary: e.Binary, Run: e.Run}
+	if _, err := transport.Do(ctx, target, indexScratchOp{}); err != nil {
+		return err
+	}
+	defer func() { _, _ = transport.Do(ctx, target, indexScratchOp{forget: true}) }()
+	if _, err := transport.Do(ctx, target, restoreOp{Snapshot: head, Paths: []string{cell.MetaPath, cell.TranscriptPath, TurnsPath}}); err != nil {
+		return err
+	}
+	for _, p := range stageStatePaths[3:] {
+		_, _ = transport.Do(ctx, target, restoreOp{Snapshot: head, Paths: []string{p}})
+	}
+	return nil
+}
+
+// StageAdmission reads only the incoming workspace policy and checkpoint into
+// private scratch space. Ordinary chats need no full tree before their lease.
+func (e Engine) StageAdmission(ctx context.Context, c cell.Cell, head string) error {
+	return e.stageIncoming(ctx, c, head, []string{cell.MetaPath, cell.StateDir + "/session.json", cell.StateDir + "/tasks.json", taskcopy.WorkspaceCarrierPath + "/manifest.json"})
+}
+
+// StageWorkspace restores a workspace for admission in an independent timeline,
+// leaving the real chat's binding and folder untouched if admission refuses it.
+func (e Engine) StageWorkspace(ctx context.Context, c cell.Cell, head string) error {
+	return e.stageIncoming(ctx, c, head, nil)
+}
+
+func (e Engine) stageIncoming(ctx context.Context, c cell.Cell, head string, paths []string) error {
+	if err := os.MkdirAll(c.Root, 0700); err != nil {
+		return err
+	}
+	target := e.target(c)
+	target.Tree, target.CellDir = canonicalTree(c.Root), ""
+	// Filing a copy changes its next staging folder. Detached timelines retain
+	// their folder binding, so admission identity belongs to the scratch path.
+	target.Timeline = fmt.Sprintf("incoming-admission-%x", sha256.Sum256([]byte(target.Tree)))
+	transport := Spawn{Binary: e.Binary, Run: e.Run}
+	if _, err := transport.Do(ctx, target, indexScratchOp{}); err != nil {
+		return err
+	}
+	defer func() { _, _ = transport.Do(ctx, target, indexScratchOp{forget: true}) }()
+	_, err := transport.Do(ctx, target, restoreOp{Snapshot: head, Paths: paths})
+	return err
 }

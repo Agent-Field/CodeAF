@@ -27,7 +27,7 @@ zero already meant something narrower and truer.
 
 | Row | Key | Was | Now | What it does when it fires | `0` |
 | --- | --- | --- | --- | --- | --- |
-| **daily budget** | `daily_budget_usd` | $20 | **$500** | posts a blocking question — *"Daily budget reached -- $x spent of $y. Say the word and I'll continue"*. Nothing dies. An automation's run of work does not start, and reads `your call`. | no limit |
+| **daily budget** | `daily_budget_usd` | $20 | **$500** | chat cancels running owned work on a recorded crossing; `/budget day` raises the limit before a fresh submission. An automation's run of work does not start, and reads `your call`. | no limit |
 | **ask before spending** | `plan_consent_usd` | $3 | **$100** | a planned job above this estimate quotes its step count and price and waits | never asks |
 | **session ceiling** | `session.spendRailUSD` | $0 | **$0** (unchanged) | refuses the NEXT turn; the turn in flight always finishes; the refused message is never journaled | no ceiling |
 
@@ -51,7 +51,7 @@ cap** beside it is unset until somebody sets it with `/crew cap <dollars>`, and
 
 | # | Rail | Where the number lives | Was | Now | Unit | What it blocks | `0` = no limit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | daily budget | `internal/config/config.go` `DefaultDailyBudgetUSD` | 20 | **500** | USD/day | asks; nothing dies | yes |
+| 1 | daily budget | `internal/config/config.go` `DefaultDailyBudgetUSD` | 20 | **500** | USD/day | chat stops owned work on a recorded crossing | yes |
 | 2 | plan consent | `internal/config/settings.go` `DefaultPlanConsentUSD` | 3 | **100** | USD estimate | plan waits for a yes | yes (never asks) |
 | 4 | session ceiling | `internal/config/settings.go` `DefaultSpendRailUSD` | 0 | **0** | USD/session | refuses the next turn | yes |
 | 5 | lifted-tier cap | `internal/taxonomy/limits.go` `DefaultTierCapUSD` | 2 | **25** | USD per piece of work | stops buying a stronger model; the verdict comes back as work | yes |

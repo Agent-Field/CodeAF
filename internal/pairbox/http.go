@@ -154,6 +154,14 @@ func answer(resp *http.Response, want int, into any) error {
 	if resp.StatusCode == http.StatusNoContent {
 		return errNoContent
 	}
+	if resp.StatusCode >= http.StatusInternalServerError {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		var body errorBody
+		if resp.StatusCode == http.StatusServiceUnavailable && json.Unmarshal(raw, &body) == nil && body.Err == "full" {
+			return ErrRelayFull
+		}
+		return wireauth.ErrUnavailable
+	}
 	err, ok := errorFor(resp.StatusCode)
 	switch {
 	case !ok:

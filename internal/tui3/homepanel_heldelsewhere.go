@@ -2,14 +2,23 @@ package tui3
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // ── A WINDOW ON A CHAT ANOTHER MACHINE NOW HOLDS ────────────────────────────
@@ -19,9 +28,8 @@ import (
 // instead: home, with the chat's row from that machine under the cursor and the
 // `Continue here` card up. The words stay in the box.
 //
-// The cached reading catches a known move immediately. A submitted message
-// also asks once off the loop, because its ownership-change frame may still be
-// on the way; the draft stays intact until that answer arrives.
+// Local authority lets an ordinary message send without a relay request. A copy
+// without that authority asks once off the loop before choosing its door.
 
 // heldElsewhere is the row of the chat on screen when another machine holds it.
 func (a *app) heldElsewhere() (chatlist.Row, bool) {
@@ -30,43 +38,77 @@ func (a *app) heldElsewhere() (chatlist.Row, bool) {
 	}
 	cell := filepath.Base(session.DirOf(a.file))
 	for _, row := range a.machineRead.rows {
-		if row.Cell == cell && !row.Mine && (row.Status == chatlist.Running || row.Status == chatlist.Off || row.Status == chatlist.Idle) {
+		if row.Cell == cell && heldElsewhere(row) {
 			return row, true
 		}
 	}
 	return chatlist.Row{}, false
 }
 
-// heldElsewhereDoor shows the door and reports that it did, so the caller sends
-// nothing.
-func (a *app) heldElsewhereDoor() (tea.Cmd, bool) {
-	row, ok := a.heldElsewhere()
-	if !ok {
-		return nil, false
-	}
-	if a.taker == nil || a.machineRead.down {
-		a.note(chatlist.Superseded(row.Device))
-		return nil, true
-	}
-	cmd := a.openHome()
-	a.home.pointAt(func(l homeLine) bool { return l.kind == homeMachineRow && l.remote != nil && l.remote.Cell == row.Cell })
-	return tea.Batch(cmd, a.askContinue(row)), true
-}
-
 // ownershipReadMsg carries one submission's directory reading. The draft and
 // tray identify what was waiting, so an answer cannot send words the person
 // changed or move a message into a different conversation.
 type ownershipReadMsg struct {
+	retryIdle    bool
+	admissionErr error
+	// reopen records a drive refusal that requires a fresh conditional take.
+	reopen      bool
 	file, draft string
+	host        string
 	chips       []chip
-	reading     homeMachinesMsg
-	resume      func() tea.Cmd
-	first       *composerState
+	pastes      []pasteChip
+	// A local startup timeout is not a failed Home directory listing.
+	writerWaitFailed bool
+	// Displacement has already been explained by the notice that ended this wait.
+	writerDisplaced bool
+	reading         homeMachinesMsg
+	resume          func() tea.Cmd
+	first           *composerState
+	head, leaseCell string
+	fence           uint64
+	ownFence        uint64
+	proof           bool
+	local           bool
+	extends         bool
+	// fresh records the directory answer even when admission then proves a local hold.
+	fresh bool
+	// notHeld prevents a saved receipt from reviving a displaced writer offline.
+	notHeld       bool
+	writerStopped bool
 }
 
-// checkBeforeSend closes the interval between another device's acquire and
-// its change frame arriving. This one read per submitted message stays off the
-// update loop, and a never-paired home remains quiet through its source's gate.
+type sendHold struct {
+	// retryIdle belongs only to an uncertain take-back by this open window.
+	retryIdle bool
+	// awaitingWriter belongs only to this window's successful move, never to a listing receipt.
+	awaitingWriter bool
+	// A listing or notice wakes every send waiting for this window's writer.
+	writerStop chan struct{}
+	fence      uint64
+	blocked    bool
+	// seen marks a block that only news of another holder set: a listing row
+	// or the displaced notice. A fresh reading made for this send that finds
+	// the chat held here again lifts it, because that reading is newer than
+	// the news; a block a take decided, or a failed take, never lifts that way.
+	seen bool
+	// failed prevents reusing a stopped writer or an unfinished take, even
+	// when a later reading finds a complete chat held by this computer.
+	failed bool
+}
+
+func (h *sendHold) stopWriterWait() {
+	if h.writerStop != nil {
+		close(h.writerStop)
+		h.writerStop = nil
+	}
+}
+
+type sendLeaseSource interface {
+	SendLease(string) (string, uint64, error)
+}
+
+// checkBeforeSend reads local authority before requesting any missing ownership.
+// The read stays off the update loop, including its bounded network fallback.
 func (a *app) checkBeforeSend() tea.Cmd {
 	return a.checkBeforeSendWith(func() tea.Cmd { return a.enterCheckedLine(true) })
 }
@@ -79,8 +121,37 @@ func (a *app) needsOwnershipRead() bool {
 }
 
 func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
-	src, file, draft := a.machines, a.file, a.input.String()
+	src, file, draft, agent := a.machines, a.file, a.input.String(), a.agent
+	// A read that only ran out of time does not show the connection is down,
+	// so the next Enter asks again rather than replaying the cached failure.
+	offline := a.machineRead.down && !readTimedOut(a.machineRead.err)
+	hold := a.machineRead.sendHolds[filepath.Base(session.DirOf(file))]
+	blocked := hold.blocked
+	if hold.awaitingWriter && !blocked && hold.writerStop == nil {
+		hold.writerStop = make(chan struct{})
+		a.machineRead.sendHolds[filepath.Base(session.DirOf(file))] = hold
+	}
+	host := a.relayHost()
+	takeBack := hold.retryIdle
+	for _, row := range a.machineRead.rows {
+		if row.Cell == filepath.Base(session.DirOf(file)) && row.Mine {
+			takeBack = true
+		}
+		if row.Cell == filepath.Base(session.DirOf(file)) && (hold.retryIdle || row.AutoOpen && row.Mine && row.Released) {
+			waiting := a.machineRead
+			waiting.checking, waiting.host = true, host
+			if !blocked && !hold.failed {
+				// This progress describes the new check, not Home's prior failure.
+				waiting.down = false
+			}
+			if line := waiting.waitWord(); line != "" {
+				a.note(line)
+			}
+			break
+		}
+	}
 	chips := slices.Clone(a.chips)
+	pastes := slices.Clone(a.pastes)
 	var first *composerState
 	if a.conversationPreview != nil && !a.conversationOpening {
 		a.conversationPreview.ownershipPending = true
@@ -88,10 +159,106 @@ func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
 		first = &composer
 	}
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), machinesAskTimeout)
+		readWithin := sendOwnershipTimeout
+		ctx, cancel := context.WithTimeout(context.Background(), readWithin)
 		defer cancel()
-		rows, version, err := chatlist.RowsAt(ctx, src)
-		return ownershipReadMsg{file: file, draft: draft, chips: chips, resume: resume, first: first, reading: homeMachinesMsg{rows: rows, version: version, err: err}}
+		var rows []chatlist.Row
+		var version uint64
+		var local bool
+		var err error
+		writerStopped := false
+		writerWaitFailed := false
+		writerDisplaced := false
+		holding, notHeld := false, false
+		if writer, ok := agent.(renewalReader); ok {
+			_, _, holding = writer.RenewalStatus()
+			if hold.awaitingWriter && !blocked && !holding {
+				// A new writer's installation is separate from taking ownership. Waiting
+				// grants no authority; its live status and receipt must still agree below.
+				cancel()
+				readWithin = writerStartTimeout
+				ctx, cancel = context.WithTimeout(context.Background(), readWithin)
+				defer cancel()
+				holding, err = awaitSendWriter(ctx, writer, hold.writerStop)
+				writerDisplaced = errors.Is(err, errSendWriterDisplaced)
+				writerWaitFailed = err != nil && !writerDisplaced
+			}
+			notHeld = !holding
+			if notHeld {
+				_, period, _ := writer.RenewalStatus()
+				writerStopped = period > 0
+			}
+		}
+		if blocked {
+			holding, notHeld = false, true
+		}
+		if holding {
+			if receipts, ok := src.(sendLeaseSource); ok {
+				receiptCell, receiptFence, receiptErr := receipts.SendLease(filepath.Base(session.DirOf(file)))
+				if receiptErr != nil || receiptCell == "" || receiptFence == 0 {
+					// Receipt retirement can precede the engine's writer-status
+					// frame. That cached status cannot suppress a recovery probe.
+					holding, notHeld = false, true
+				}
+			}
+		}
+		// A released or lapsed window needs current ownership to take its chat
+		// back. Home's cached refusal cannot answer the person's next Enter.
+		fresh := notHeld
+		sendOffline := offline
+		if fresh && err == nil {
+			sendOffline = false
+			cancel()
+			readWithin = idleSendProbeTimeout
+			ctx, cancel = context.WithTimeout(context.Background(), readWithin)
+			defer cancel()
+		}
+		if err != nil {
+			// An expired startup wait keeps the original submission unsent.
+		} else if scoped, ok := src.(interface {
+			RowsForChatSend(context.Context, string, bool, bool) ([]chatlist.Row, uint64, bool, error)
+		}); ok {
+			rows, version, local, err = scoped.RowsForChatSend(ctx, file, sendOffline, holding)
+		} else if sendOffline {
+			err = directory.ErrUnreachable
+		} else {
+			rows, version, err = chatlist.RowsForSend(ctx, src)
+		}
+		msg := ownershipReadMsg{retryIdle: hold.retryIdle, file: file, draft: draft, chips: chips, resume: resume, first: first, local: local, notHeld: notHeld, reading: homeMachinesMsg{rows: rows, version: version, err: err, readWithin: readWithin}, host: host, pastes: pastes, writerWaitFailed: writerWaitFailed, writerStopped: writerStopped, writerDisplaced: writerDisplaced}
+		msg.fresh = fresh && !local && err == nil
+		if fresh && takeBack && !writerWaitFailed && (syncwords.NetworkFailure(err) || readTimedOut(err)) {
+			msg.admissionErr = &executor.WorkRefusal{Line: chatlist.TakeBackUnreachable, Retryable: true}
+		}
+		id := filepath.Base(session.DirOf(file))
+		if local, ok := src.(sendLeaseSource); ok {
+			msg.proof = true
+			msg.leaseCell, msg.fence, _ = local.SendLease(id)
+			msg.reading.holdCell, msg.reading.holdFence = id, msg.fence
+		}
+		msg.ownFence = hold.fence
+		if msg.ownFence == 0 {
+			msg.ownFence = msg.fence
+		}
+		if msg.notHeld {
+			msg.leaseCell = ""
+		}
+		remote := id
+		if msg.leaseCell != "" {
+			remote = msg.leaseCell
+		}
+		for _, row := range rows {
+			if row.Cell == remote && (row.Status == chatlist.Idle || row.Status == chatlist.Off || hold.retryIdle && row.Mine) {
+				at := cell.Cell{ID: id, Root: session.DirOf(file)}
+				if head, _ := cellstore.Head(at); head != nil {
+					msg.head = head.Turn.ID
+				}
+				if msg.local && row.Mine && row.Head != "" {
+					msg.extends, _ = cellstore.Extends(at, row.Head)
+				}
+				break
+			}
+		}
+		return resumeIdleSend(ctx, agent, src, msg, blocked || hold.failed)
 	}
 }
 
@@ -115,6 +282,7 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 				side.pastes, side.draftCursor = nil, nil
 			}
 		}
+		a.note("chat changed before sending; your words are still unsent")
 		return nil
 	}
 	if msg.first != nil {
@@ -122,8 +290,11 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		// draft, which must not invalidate that send while ownership is read.
 		next := a.liveComposer()
 		a.putComposer(*msg.first)
-		reading := a.tookMachines(msg.reading)
-		cmd := msg.resume()
+		var reading tea.Cmd
+		if !msg.writerWaitFailed && !msg.writerDisplaced && (!msg.local || msg.fresh || msg.reading.err != nil) {
+			reading = a.recordMachines(msg.reading)
+		}
+		cmd := a.resumeOwnedSend(msg)
 		if a.liveComposer().empty() {
 			a.putComposer(next)
 		} else {
@@ -135,9 +306,321 @@ func (a *app) afterOwnershipRead(msg ownershipReadMsg) tea.Cmd {
 		}
 		return tea.Batch(reading, cmd)
 	}
-	if a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) {
+	if a.input.String() != msg.draft || !slices.Equal(a.chips, msg.chips) || !slices.Equal(a.pastes, msg.pastes) {
+		a.note("draft changed before sending; press enter to send your current words")
 		return nil
 	}
-	reading := a.tookMachines(msg.reading)
-	return tea.Batch(reading, msg.resume())
+	var reading tea.Cmd
+	if !msg.writerWaitFailed && !msg.writerDisplaced && (!msg.local || msg.fresh || msg.reading.err != nil) {
+		reading = a.recordMachines(msg.reading)
+	}
+	return tea.Batch(reading, a.resumeOwnedSend(msg))
+}
+
+// resumeOwnedSend spends only the submitted gesture after its fresh ownership
+// reading. The taker preserves pending turns before replacing an unheld writer.
+func (a *app) resumeOwnedSend(msg ownershipReadMsg) tea.Cmd {
+	if msg.writerDisplaced || a.refuseIdleSend(msg) {
+		return nil
+	}
+	id := filepath.Base(session.DirOf(msg.file))
+	remote := id
+	if msg.leaseCell != "" {
+		remote = msg.leaseCell
+	}
+	if a.machineRead.computerRemoved {
+		// A REMOVED COMPUTER KEEPS WORKING ON ITS OWN CHATS. It can no longer
+		// sync, so a chat this window held, or one that was never shared, goes on
+		// here only. A chat another computer took stays as this window last saw
+		// it, because this computer can never take it back.
+		if a.offlineSendHeld(id, remote, msg) {
+			return msg.resume()
+		}
+		a.note(chatlist.RemovedChat)
+		return nil
+	}
+	if msg.writerWaitFailed {
+		a.note(messageKept(msg.host))
+		return nil
+	}
+	if msg.reading.err != nil {
+		// AN UNREACHABLE SERVICE DOES NOT TAKE A HELD CHAT AWAY. The window
+		// keeps working on a chat whose hold it recorded and last saw as its
+		// own, and on a chat that was never shared; its turns wait to publish.
+		// Anything else stays unsent, because this window cannot show it holds
+		// the chat.
+		if a.offlineSendHeld(id, remote, msg) {
+			return msg.resume()
+		}
+		a.note(messageKept(msg.host))
+		return nil
+	}
+	for _, row := range msg.reading.rows {
+		if row.Cell != remote {
+			continue
+		}
+		held := a.machineRead.sendHolds[id]
+		fence := held.fence
+		if msg.proof {
+			fence = msg.fence
+		}
+		if !msg.reopen && row.Status == chatlist.Here && row.Fence == fence && !(msg.notHeld && (held.awaitingWriter || msg.writerStopped) && !msg.local) && (!held.blocked || held.seen && row.Mine && !held.failed) {
+			if held.awaitingWriter {
+				held.awaitingWriter = false
+				a.machineRead.sendHolds[id] = held
+			}
+			if held.blocked {
+				held.blocked, held.seen = false, false
+				a.machineRead.sendHolds[id] = held
+			}
+			if held.retryIdle {
+				held.retryIdle = false
+				a.machineRead.sendHolds[id] = held
+			}
+			return msg.resume()
+		}
+		// A failed move to a different chat can block this window too. An
+		// unchanged own fence may recover through the full conditional reopen;
+		// it never authorizes reuse of the writer that the failure stopped.
+		localHead := row.Head != "" && (row.Head == msg.head || (a.idleOpenEnabled() || msg.reopen) && row.Mine) || row.Mine && (row.Head == "" || msg.local && msg.extends)
+		if row.Mine && (msg.ownFence == 0 || row.Fence == msg.ownFence) && (!held.blocked || msg.ownFence != 0) && (msg.reopen || held.blocked || !row.AutoOpen && (row.Status == chatlist.Idle || row.Status == chatlist.Off)) && localHead {
+			if _, ok := a.taker.(conditionalTaker); ok {
+				draft := a.mainComposer()
+				return a.takeRemoteState(homeTakenMsg{row: row, draft: &draft, send: msg.resume})
+			}
+		}
+		if a.taker == nil {
+			a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
+			return nil
+		}
+		a.machineRead.sendHolds[id] = sendHold{fence: fence, blocked: true, failed: msg.writerStopped}
+		cmd := a.openHome()
+		return tea.Batch(cmd, a.askContinue(row))
+	}
+	if held, known := a.machineRead.sendHolds[id]; held.blocked || (known && held.fence != 0) || (msg.proof && msg.fence != 0) {
+		a.note(chatlist.Superseded("another device"))
+		return nil
+	}
+	return msg.resume()
+}
+
+// offlineSendHeld judges a send by the last good reading when the fresh one
+// could not be made: the chat is this window's own at the fence it recorded, or
+// it was never shared and nobody is known to hold it.
+func (a *app) offlineSendHeld(id, remote string, msg ownershipReadMsg) bool {
+	if msg.notHeld && msg.proof && !msg.local && !a.machineRead.computerRemoved {
+		return false
+	}
+	held := a.machineRead.sendHolds[id]
+	if held.blocked {
+		return false
+	}
+	fence := held.fence
+	if msg.proof && (!a.machineRead.computerRemoved || msg.fence != 0) {
+		fence = msg.fence
+	}
+	for _, row := range a.machineRead.rows {
+		if row.Cell == remote {
+			return fence != 0 && row.Status == chatlist.Here && row.Fence == fence
+		}
+	}
+	return fence == 0 && (!a.machineRead.computerRemoved || !msg.proof || msg.local)
+}
+
+func nonemptyDevice(device string) string {
+	if device == "" {
+		return "another device"
+	}
+	return device
+}
+
+func (a *app) rememberSendHolds(msg homeMachinesMsg) {
+	if a.machineRead.sendHolds == nil {
+		a.machineRead.sendHolds = map[string]sendHold{}
+	}
+	for _, row := range msg.rows {
+		held, known := a.machineRead.sendHolds[row.Cell]
+		if heldElsewhere(row) && (!known || row.Fence >= held.fence) {
+			held.blocked, held.seen = true, !known || held.seen || !held.blocked
+			held.stopWriterWait()
+			a.machineRead.sendHolds[row.Cell] = held
+		}
+		if row.Status != chatlist.Here || held.blocked || held.failed {
+			continue
+		}
+		// The directory can show another local window's fence. Only the
+		// publishing receipt lets this window follow its own drive's new hold.
+		if !known || (msg.holdCell == row.Cell && msg.holdFence != 0 && msg.holdFence == row.Fence) {
+			a.machineRead.sendHolds[row.Cell] = sendHold{fence: row.Fence, awaitingWriter: held.awaitingWriter, writerStop: held.writerStop}
+		}
+	}
+}
+
+var displacedSendSuffix = chatlist.Superseded("")
+
+// blockDisplacedSend keeps a shown displacement stronger than a cached writer
+// reading. A successful continuation makes this window writable again, and so
+// does a fresh reading for a send that finds the chat held here.
+func (a *app) blockDisplacedSend(text string) {
+	if a.file == "" || !strings.HasSuffix(text, displacedSendSuffix) {
+		return
+	}
+	if a.machineRead.sendHolds == nil {
+		a.machineRead.sendHolds = map[string]sendHold{}
+	}
+	id := filepath.Base(session.DirOf(a.file))
+	held, known := a.machineRead.sendHolds[id]
+	held.blocked, held.seen = true, !known || held.seen || !held.blocked
+	held.stopWriterWait()
+	a.machineRead.sendHolds[id] = held
+}
+
+func (a *app) failedTake(msg homeTakenMsg) string {
+	if a.machineRead.sendHolds == nil {
+		a.machineRead.sendHolds = map[string]sendHold{}
+	}
+	held := a.machineRead.sendHolds[msg.row.Cell]
+	held.blocked, held.failed = true, true
+	a.machineRead.sendHolds[msg.row.Cell] = held
+	if a.file != "" {
+		current := filepath.Base(session.DirOf(a.file))
+		if current != msg.row.Cell {
+			returned := a.machineRead.sendHolds[current]
+			returned.blocked = true
+			a.machineRead.sendHolds[current] = returned
+		}
+	}
+	return a.continueFailure(msg)
+}
+
+// continueCheckError marks an error that came back from the look at this
+// computer's copy of a chat, which runs before any take starts. It reads and
+// unwraps as the error it carries, so every classified failure above still
+// matches, and only the catch-all tells it apart from a failed take.
+type continueCheckError struct{ err error }
+
+func (e *continueCheckError) Error() string { return e.err.Error() }
+func (e *continueCheckError) Unwrap() error { return e.err }
+
+// keptWordsTail is the clause a failed move adds when what the person typed is
+// still in front of them.
+const keptWordsTail = "; your words are still in the box"
+
+// wordsAreKept says whether a failed move leaves something the person typed in
+// a box: the draft taken from the chat window the move started from, or what
+// stands in Home's own box (which a failed move does not touch).
+func (a *app) wordsAreKept(msg homeTakenMsg) bool {
+	if msg.draft != nil && !msg.draft.empty() {
+		return true
+	}
+	return a.at(pageHome) && (!a.home.box.empty() || len(a.home.chips) > 0)
+}
+
+// continueFailure describes an error without retiring local authority. A failed
+// safety reading has not started a take and must not cancel one already running.
+func (a *app) continueFailure(msg homeTakenMsg) string {
+	switch {
+	case errors.Is(msg.err, syncwords.ErrContinueStorageOff):
+		return syncwords.ErrContinueStorageOff.Error()
+	case errors.Is(msg.err, syncwords.ErrHolderOffline):
+		// The computer that has the chat is not running codeaf, so there is
+		// nothing to copy from. Name it, and say where the words went.
+		name := msg.row.Device
+		var off *syncwords.HolderOfflineError
+		if errors.As(msg.err, &off) && off.Name != "" {
+			name = off.Name
+		}
+		// THE TAIL IS ONLY TRUE WITH WORDS. A launch that continues a chat by
+		// itself has nothing typed, and a line that promised words in the box
+		// told the person about words that were never there.
+		if a.wordsAreKept(msg) {
+			return syncwords.HolderOffline(name) + keptWordsTail
+		}
+		return syncwords.HolderOffline(name)
+	case errors.Is(msg.err, syncwords.ErrLiveTransferOff):
+		return syncwords.ErrLiveTransferOff.Error()
+	case errors.Is(msg.err, directory.ErrLeaseHeld):
+		return lostRaceWord
+	case errors.Is(msg.err, ErrMoveStalled):
+		// Before unreachable: the stall ends the request it waited on, and
+		// that request's error reads as an unreachable relay.
+		return fmt.Sprintf("stopped: nothing came through for 2 minutes; the chat is still on %s", nonemptyDevice(msg.row.Device))
+	case errors.Is(msg.err, directory.ErrUnreachable), msg.row.AutoOpen && errors.Is(msg.err, context.DeadlineExceeded):
+		return continueUnreachable
+	case errors.Is(msg.err, directory.ErrConditionalTake):
+		return directory.ErrConditionalTake.Error()
+	case errors.Is(msg.err, directory.ErrRevoked):
+		a.removedComputer()
+		return chatlist.RemovedChat
+	case errors.Is(msg.err, cellstore.ErrStoreBusy):
+		var busy *cellstore.StoreBusyError
+		if errors.As(msg.err, &busy) {
+			if who := busy.Holder.Describe(); who != "" {
+				return continueFails + " because the engine store is busy (held by " + who + ")"
+			}
+		}
+		return continueStoreBusy
+	case strings.Contains(msg.err.Error(), "rewind cancelled"), strings.Contains(msg.err.Error(), "changed during rewind"):
+		return continueFails + " because the folder changed during the move; your words are still in the box"
+	case errors.As(msg.err, new(*continueCheckError)):
+		log.Printf("continue chat %s: could not check this computer's copy: %v", msg.row.Cell, msg.err)
+		return continueCheckFails
+	default:
+		log.Printf("continue chat %s: %v", msg.row.Cell, msg.err)
+		return continueFails + " because the chat could not be put in this folder; your words are still in the box. Try continue here again."
+	}
+}
+
+// awaitSendWriter waits only for an uninstalled writer. Displacement ends the
+// wait even when the writer's renewal facts are indistinguishable from startup.
+func awaitSendWriter(ctx context.Context, writer renewalReader, displaced <-chan struct{}, retaking ...bool) (bool, error) {
+	// A stopped writer still ends an ordinary startup wait. Only a previously
+	// uncertain take-back waits for its successful admission's cached status.
+	pendingTakeBack := len(retaking) > 0 && retaking[0]
+	var poll *time.Ticker
+	defer func() {
+		if poll != nil {
+			poll.Stop()
+		}
+	}()
+	for {
+		select {
+		case <-displaced:
+			return false, errSendWriterDisplaced
+		default:
+		}
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		var changed <-chan struct{}
+		if source, ok := writer.(interface{ WriterChanges() <-chan struct{} }); ok {
+			changed = source.WriterChanges()
+		} else if source, ok := writer.(interface{ RenewalChanges() <-chan struct{} }); ok {
+			changed = source.RenewalChanges()
+		}
+		_, period, holding := writer.RenewalStatus()
+		if holding || period > 0 && !pendingTakeBack {
+			return holding, nil
+		}
+		if changed == nil {
+			if poll == nil {
+				poll = time.NewTicker(100 * time.Millisecond)
+			}
+			select {
+			case <-displaced:
+				return false, errSendWriterDisplaced
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-poll.C:
+			}
+		} else {
+			select {
+			case <-displaced:
+				return false, errSendWriterDisplaced
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-changed:
+			}
+		}
+	}
 }

@@ -110,21 +110,24 @@ func spendRateLines(window store.SpendWindow, median float64) []string {
 	if days < 0.5 || window.Cost <= 0 {
 		return lines
 	}
-	daily := window.Cost / days
+	whole := spendWholeDays(days)
+	daily := window.Cost / float64(whole)
 	lines = append(lines, fmt.Sprintf(
 		"that is %s a day over those %s; at the same rate a week is %s and thirty days is %s "+
 			"(computed from the rows above — say these figures, never work one out yourself)",
-		moneyUSD(daily), spendDayCount(days), moneyUSD(daily*7), moneyUSD(daily*30)))
+		moneyUSD(daily), spendDayCount(whole), moneyUSD(daily*7), moneyUSD(daily*30)))
 	return lines
 }
 
-// spendDayCount renders the window's length the way a person says it, so the
-// rate line can quote its own basis without a second unit vocabulary.
-func spendDayCount(days float64) string {
-	whole := int(math.Round(days))
-	if whole < 1 {
-		return "less than a day"
-	}
+// spendWholeDays is the window's length the way a person says it. The rate is
+// worked from this number and not from the exact hours, so a reader can multiply
+// the line's own figures back, and a clock change inside the window moves nothing.
+// A window that reaches this code is at least half a day, so it is at least one.
+func spendWholeDays(days float64) int { return int(math.Round(days)) }
+
+// spendDayCount spells a whole number of days, so the rate line can quote its own
+// basis without a second unit vocabulary.
+func spendDayCount(whole int) string {
 	return fmt.Sprintf("%d %s", whole, pluralWord(whole, "day", "days"))
 }
 

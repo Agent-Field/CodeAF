@@ -120,7 +120,9 @@ func (s *countingStubAgent) Submit(ctx context.Context, text string) (<-chan ses
 func TestTelemetryTheHostedBootAgentIsCounted(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	client, _ := swapClient(t, &swapEngine{})
-	options, _ := hostOptions(onePipeFleet("devbox", client), client.Welcome(), false)
+	fleet := onePipeFleet("devbox", client)
+	t.Cleanup(fleet.closeAll)
+	options, _ := hostOptions(fleet, client.Welcome(), false)
 	if _, counted := options.Agent.(*countingAgent); !counted {
 		t.Fatalf("the hosted door's boot agent is a %T, so a hosted chat's session_ended carries zeros again", options.Agent)
 	}

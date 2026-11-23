@@ -979,3 +979,25 @@ func TestANodeTranscriptsToolCallsOpenOnAClick(t *testing.T) {
 		t.Fatalf("the journal growing snapped the expansion shut:\n%s", roomText(a))
 	}
 }
+
+func TestEmptyCrewEndingShowsNotDoneAndReason(t *testing.T) {
+	for _, reason := range []string{"", "The goal needs a repository path."} {
+		snap := orchestrate.Snapshot{Goal: "audit repository", Done: true}
+		if reason != "" {
+			snap.Notes = []string{reason}
+		}
+		a, _ := orchApp(t, snap)
+		want := reason
+		if want == "" {
+			want = "The crew didn't plan any work for this goal."
+		}
+		head := plain(strings.Join(a.roomHeadRows(a.width), "\n"))
+		if a.orchStateWord() != taskRecordStoppedWord || !strings.Contains(head, taskRecordStoppedWord) {
+			t.Fatalf("empty ending claims success: %s", head)
+		}
+		page := roomText(a)
+		if !strings.Contains(page, want) || strings.Contains(page, orchEmptyWord) {
+			t.Fatalf("empty ending does not explain itself: %s", page)
+		}
+	}
+}

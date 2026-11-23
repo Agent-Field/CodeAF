@@ -142,6 +142,13 @@ type summaryPlan struct {
 	ceiling int
 	// pointer says where the original lines can be read back.
 	pointer string
+	// address and source name the endpoint that serves model, read while the
+	// plan is made under the agent's lock. The summary call stretches its
+	// window by that endpoint's patience WITHOUT TAKING THE LOCK AGAIN: Close
+	// holds it while it joins a canceled summary, so a call that asked for the
+	// sources there would wait on the very Close that is waiting on it.
+	address string
+	source  string
 }
 
 // summaryWanted says whether a pass that has already stubbed and folded still
@@ -194,6 +201,13 @@ func (a *Agent) beltTokens() int {
 		return 0
 	}
 	return EstimateTokens(len(encoded))
+}
+
+// summaryEndpointLocked names the endpoint that serves model, from the
+// sources the agent holds, for [summaryPlan.address]. The caller holds a.mu.
+func (a *Agent) summaryEndpointLocked(model string) (address, source string) {
+	service, _ := a.config.Sources.OrDefault(a.config.APIKey, a.config.BaseURL).For(model)
+	return service.Address, service.Source.ID
 }
 
 // planSummaryLocked chooses the region a summary replaces, and reports false
@@ -292,6 +306,7 @@ func (a *Agent) planSummaryLocked(policy compactPolicy) (summaryPlan, string, bo
 		end: end, region: region, model: a.model, window: window,
 		answer: chosen.answer, ceiling: min(most, 2*chosen.answer),
 	}
+	plan.address, plan.source = a.summaryEndpointLocked(a.model)
 	if text := messageContentText(region[0]); region[0].Role == "user" && strings.HasPrefix(text, summaryNotePrefix) {
 		plan.previous = summaryNoteBody(text)
 	}
@@ -466,7 +481,16 @@ func (a *Agent) regionClosedLocked(end int) bool {
 // time when the region is larger than one request can carry. It is called
 // with the session lock released.
 func (a *Agent) writeSummary(ctx context.Context, plan summaryPlan) (string, error) {
+	summary, _, err := a.writeSummaryAs(ctx, plan)
+	return summary, err
+}
+
+// writeSummaryAs is [Agent.writeSummary] and the model that actually answered
+// its last request — the same name the spending ledger books the call under,
+// which a reroute can make different from the model the plan asked for.
+func (a *Agent) writeSummaryAs(ctx context.Context, plan summaryPlan) (string, string, error) {
 	summary := plan.previous
+	answeredBy := ""
 	lines := summaryLines(plan.region)
 	reserve := plan.ceiling
 	if a.config.ReasoningProfile != nil {
@@ -478,7 +502,7 @@ func (a *Agent) writeSummary(ctx context.Context, plan summaryPlan) (string, err
 	for len(lines) > 0 {
 		budget := summaryChunkTokens(plan.window, reserve, EstimateTokens(len(summary))) * bytesPerToken
 		if budget <= 0 {
-			return "", errors.New("session: the summary no longer fits the window")
+			return "", "", errors.New("session: the summary no longer fits the window")
 		}
 		var chunk strings.Builder
 		taken := 0
@@ -494,13 +518,13 @@ func (a *Agent) writeSummary(ctx context.Context, plan summaryPlan) (string, err
 			taken++
 		}
 		lines = lines[taken:]
-		next, err := a.askForSummary(ctx, plan, summary, chunk.String())
+		next, answered, err := a.askForSummary(ctx, plan, summary, chunk.String())
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		summary = next
+		summary, answeredBy = next, answered
 	}
-	return summary, nil
+	return summary, answeredBy, nil
 }
 
 // summaryChunkTokens is how much conversation one summary request may carry
@@ -512,7 +536,7 @@ func summaryChunkTokens(window, answer, previous int) int {
 
 // askForSummary asks the conversation's own model with no tools or stream. An
 // empty length finish gets one larger request; both calls are billed.
-func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, chunk string) (string, error) {
+func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, chunk string) (string, string, error) {
 	ctx = provider.WithRole(provider.WithoutStream(ctx), lane.RoleAuxiliary)
 	ctx = provider.WithReasoningEffort(ctx, provider.EffortLow)
 	ctx = provider.WithContextBudget(ctx, provider.ContextBudget{Window: plan.window, Reserve: plan.ceiling})
@@ -530,10 +554,16 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 		textMessage("system", summaryInstruction(plan.answer)),
 		textMessage("user", ask.String()),
 	}
+	answeredBy := ""
 	call := func(ceiling int) (*ai.Response, error) {
-		callCtx, cancel := context.WithTimeout(ctx, summaryCallWindow)
+		a.refreshResponsePatience()
+		window := lane.Stretch(summaryCallWindow, lane.PatienceFor(plan.address, plan.source))
+		callCtx, cancel := context.WithTimeout(ctx, window)
 		response, answered, err := a.completeWithNamedModel(callCtx, purposeSummary, messages, plan.model, ai.WithMaxTokens(ceiling))
 		cancel()
+		if err == nil && strings.TrimSpace(answered) != "" {
+			answeredBy = strings.TrimSpace(answered)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -552,7 +582,7 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 	}
 	response, err := call(plan.ceiling)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if provider.EmptyAtCeiling(response, plan.ceiling) {
 		// TWICE THE ALLOWANCE, NOT A SHARE OF THE WINDOW. The provider already
@@ -564,11 +594,15 @@ func (a *Agent) askForSummary(ctx context.Context, plan summaryPlan, previous, c
 		if retryCeiling > plan.ceiling {
 			response, err = call(retryCeiling)
 			if err != nil {
-				return "", err
+				return "", "", err
 			}
 		}
 	}
-	return summaryAnswer(response, chunk, plan.ceiling)
+	text, err := summaryAnswer(response, chunk, plan.ceiling)
+	if answeredBy == "" {
+		answeredBy = plan.model
+	}
+	return text, answeredBy, err
 }
 
 func summaryAnswer(response *ai.Response, chunk string, ceiling int) (string, error) {
@@ -736,12 +770,15 @@ func summaryNoteBody(note string) string {
 	return ""
 }
 
+// summaryChangedWhy is what a splice says when the region moved under the call.
+const summaryChangedWhy = "the conversation changed while the summary was being written"
+
 // spliceSummaryLocked replaces the planned region with the summary note, if
 // the region is still exactly what was summarized. It reports how many
 // messages the note replaced, and zero with the reason when nothing changed.
 func (a *Agent) spliceSummaryLocked(plan summaryPlan, summary string) (int, string) {
 	if len(a.messages) < plan.end || !reflect.DeepEqual(a.messages[1:plan.end], plan.region) {
-		return 0, "the conversation changed while the summary was being written"
+		return 0, summaryChangedWhy
 	}
 	note := textMessage("user", summaryNote(summary, plan.pointer))
 	replaced := 0

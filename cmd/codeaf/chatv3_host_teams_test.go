@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/config"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -237,5 +239,40 @@ func TestHostTeamsKeepsClosedHistoryOffTheWire(t *testing.T) {
 	}
 	if seam := hostTeamsSeam(hostFar{client: loop.Client}, welcome); seam.History != nil {
 		t.Fatal("the host seam offered to read closed history from this laptop")
+	}
+}
+
+// R4/F1/F7 carries effective sharing from the actual engine response through the hosted seam.
+func TestHostedTeamsSeamReadsEngineEffectiveSharing(t *testing.T) {
+	dir := t.TempDir()
+	var paired atomic.Bool
+	loop, err := remote.Loopback(remote.Hello{Version: remote.Version}, remote.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
+		return &remote.Engine{Agent: &quietAgent{}, ProfileDir: dir, TeamsPaired: paired.Load}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	seam := hostTeamsSeam(hostFar{client: loop.Client}, loop.Client.Welcome())
+	if seam.Sharing == nil {
+		t.Fatal("hosted seam has no engine sharing read")
+	}
+	if _, _, _, err := seam.ReadSince("", nil); err != nil {
+		t.Fatal(err)
+	}
+	row, _ := config.NewSettings(config.SettingsOptions{ProfileDir: dir}).Row(config.KeyTeamsShare)
+	for _, tc := range []struct {
+		paired bool
+		choice string
+		want   bool
+	}{{true, "on", true}, {false, "on", false}, {true, "off", false}, {true, "on", true}} {
+		paired.Store(tc.paired)
+		if err := row.Apply(tc.choice); err != nil {
+			t.Fatal(err)
+		}
+		got, err := seam.Sharing()
+		if err != nil || got != tc.want {
+			t.Fatalf("engine paired=%v preference=%s: sharing=%v err=%v", tc.paired, tc.choice, got, err)
+		}
 	}
 }

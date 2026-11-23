@@ -2,7 +2,7 @@
 // that empties it.
 //
 // `codeaf cache` answers the question and changes nothing. `codeaf cache clean`
-// deletes ~/.codeaf/cache — the shared toolchain caches every task worker fills
+// deletes the displayed cache locations — the shared caches task workers fill
 // (internal/cachedir says what lives there and what never does) — and because a
 // deletion cannot be undone it is guarded the way destructive command lines are
 // guarded everywhere a person has already learned: the blast radius is printed
@@ -62,12 +62,12 @@ func runCacheWith(args []string, input io.Reader, output io.Writer) error {
 func showCache(output io.Writer) error {
 	size := cachedir.Size()
 	if size == 0 {
-		_, err := fmt.Fprintf(output, "the cache is empty · %s\n", cachedir.Root())
+		_, err := fmt.Fprintf(output, "the cache is empty · %s\n", strings.Join(cachedir.Locations(), ", "))
 		return err
 	}
 	_, err := fmt.Fprintf(output,
 		"the cache holds %s · %s\nshared toolchain caches — go modules, builds, npm, pip, cargo. `codeaf cache clean` frees it.\n",
-		cachedir.Human(size), cachedir.Root())
+		cachedir.Human(size), strings.Join(cachedir.Locations(), ", "))
 	return err
 }
 
@@ -96,7 +96,7 @@ func cleanCache(args []string, input io.Reader, output io.Writer) error {
 		// stdout means `codeaf cache clean | tee clean.log` puts the question
 		// into the file and leaves the person looking at a blank terminal,
 		// waiting for a word they cannot see. See streams.go.
-		fmt.Fprintf(aside, "This deletes the shared build cache — %s at %s.\n", cachedir.Human(size), cachedir.Root())
+		fmt.Fprintf(aside, "This deletes the shared build cache — %s at %s.\n", cachedir.Human(size), strings.Join(cachedir.Locations(), ", "))
 		fmt.Fprintln(aside, "Toolchains and modules are re-downloaded cold on the next task. Conversations,")
 		fmt.Fprintln(aside, "settings and credentials live elsewhere and are not touched.")
 		fmt.Fprint(aside, `Type "`+cacheCleanWord+`" to delete it; anything else keeps it: `)

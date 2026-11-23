@@ -165,7 +165,7 @@ var doorsStillOnTheLoop = map[string]string{
 // doorsOnTheLoopBudget is how many such call sites there may be, and it is a
 // ratchet in `internal/ci`'s own shape: it may only ever be lowered. Move one
 // off the loop and lower this number in the same commit.
-const doorsOnTheLoopBudget = 38
+const doorsOnTheLoopBudget = 37
 
 // NO DOOR IS ASKED FROM THE UPDATE LOOP.
 //
@@ -222,7 +222,9 @@ func TestNoEngineDoorIsAskedFromTheUpdateLoop(t *testing.T) {
 				if _, named := doorsStillOnTheLoop[sel.Sel.Name]; named {
 					// Named debt, carrying where it is asked from. Counted so
 					// the ratchet can hold, and not reported.
-					debt++
+					if !inside(sel) {
+						debt++
+					}
 					return true
 				}
 				found++
@@ -304,22 +306,41 @@ func agentNames(file *ast.File) map[string]bool {
 	return names
 }
 
-// offLoopSpans is every function literal handed to [app.offLoop] or to
-// [app.besideLine] in one file — the only places a door may be asked, both off
-// the update loop — and beside it every literal nested
-// inside one of those, which is where a door may NOT be asked: the fold runs on
-// the update loop.
+// offLoopSpans includes explicit goroutines and function literals handed to
+// [app.offLoop] or [app.besideLine], which run outside the update loop,
+// and beside them every literal nested inside a queued command, where a door
+// may not be asked because the fold runs on the update loop.
 func offLoopSpans(file *ast.File) (allowed, folds []*ast.FuncLit) {
 	ast.Inspect(file, func(n ast.Node) bool {
+		if launch, ok := n.(*ast.GoStmt); ok {
+			if lit, ok := launch.Call.Fun.(*ast.FuncLit); ok {
+				allowed = append(allowed, lit)
+			}
+		}
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || (sel.Sel.Name != "offLoop" && sel.Sel.Name != "besideLine") || len(call.Args) != 1 {
+		if !ok || len(call.Args) == 0 {
 			return true
 		}
-		lit, ok := call.Args[0].(*ast.FuncLit)
+		// A START handed to [app.submitting] or [app.submittingShown] is its
+		// last argument, and those two call it only inside the tea.Cmd they
+		// return (app.go), so it is as far from the loop as an offLoop body.
+		var arg ast.Expr
+		switch sel.Sel.Name {
+		case "offLoop", "besideLine":
+			if len(call.Args) != 1 {
+				return true
+			}
+			arg = call.Args[0]
+		case "submitting", "submittingShown":
+			arg = call.Args[len(call.Args)-1]
+		default:
+			return true
+		}
+		lit, ok := arg.(*ast.FuncLit)
 		if !ok {
 			return true
 		}
@@ -440,6 +461,7 @@ var doorsBesideTheLine = map[string]string{
 	"Delegates":         "reads the programs the engine machine's build carries to generate their command rows at the launch and on a switch (delegate.go); nobody pressed for it",
 	"NameTeam":          "asks a model for a suggested team name under a budget of seconds; it changes nothing on the engine, typing overrides it, and a message sent while it thinks must not wait behind it",
 	"ProposeTeams":      "asks a model for Organize's proposals under a budget of seconds; it changes nothing on the engine (Apply writes through the teams store), and nothing after it depends on the engine having seen it",
+	"SkillFolders":      "scans the far engine's skill folders for the /skill list, the same read as the local disk scan (skillpick.go readSkillDisk); it changes nothing, and the list opens on what is known before it answers",
 	"NameTeamWords":     "asks a model for the name of a team the Teams row just made, under a budget of seconds; it changes nothing on the engine (the rename is a teams-store edit, and only while the team keeps its first name), and the /helpers sent right after the click must not wait behind it",
 }
 

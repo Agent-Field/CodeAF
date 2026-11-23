@@ -42,7 +42,7 @@ func (a *Agent) indexRunRow(notice TaskNotice) {
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
-	entry := crewRunEntry(notice, session)
+	entry := withLocalWorkerHistory(crewRunEntry(notice, session), a.config.Place)
 	worktree := ""
 	if where := notice.Copy; where != nil {
 		worktree = where.Dir
@@ -68,6 +68,7 @@ func (a *Agent) indexRunRow(notice TaskNotice) {
 // machine is a lie anywhere else.
 func crewRunEntry(notice TaskNotice, session string) TaskIndexEntry {
 	entry := TaskIndexEntry{
+		Computer: notice.Computer, Unreachable: notice.Unreachable, RanElsewhere: notice.RanElsewhere,
 		ID:         strconv.FormatUint(notice.ID, 10),
 		Parent:     taskIndexParent(notice.Parent),
 		Name:       TaskSlug(notice.Title),

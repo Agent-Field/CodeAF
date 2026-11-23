@@ -144,7 +144,7 @@ build if the two disagree), so a tip you saw is on it word for word.
   has three or more earlier conversations. Retired the first time the automations place
   opens, by any door (`/automations`, `alt+7`, a row that leads there), or the first time
   an automation is proposed to you on a card in a conversation.
-- `space space takes you back to home` — after the first exchange, in a conversation only
+- `space space brings you back to home` — after the first exchange, in a conversation only
   (never on home itself). Retired the first time two spaces in an empty box open home,
   from a conversation or from a place; reaching home by `/home` or the tab does not retire
   it. It is the first tip a conversation says, ahead of `/task`.
@@ -204,9 +204,8 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 **Memory, accounts and the rest**
 
-- `/remember carries a fact forward, and the Memories tab forgets it` — retired when `/remember` is typed.
-  It is the only row that names two commands as a pair: the fact, and the way back out of
-  it.
+- `/remember carries a fact forward, and the Memory tab forgets it` — retired
+  when `/remember` is typed. The Memory tab lets you forget the saved fact.
 - `/connect links Notion, Slack and other accounts` — retired when the connect panel
   is reached for.
 - `/autonomy sets how questions are handled while you are away` — after the first

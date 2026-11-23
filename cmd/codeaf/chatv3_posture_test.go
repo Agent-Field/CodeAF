@@ -102,7 +102,8 @@ func TestTheFlagAndTheAllowPostureBuildTheSameGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--yolo did not build: %v", err)
 	}
-	walked, _, err := v3ApprovalGate{workspace: workspace, profileDir: profile}.Build(session.PostureAllow)
+	gate := v3ApprovalGate{workspace: workspace, profileDir: profile}
+	walked, _, err := gate.Build(session.PostureAllow)
 	if err != nil {
 		t.Fatalf("allow did not build: %v", err)
 	}

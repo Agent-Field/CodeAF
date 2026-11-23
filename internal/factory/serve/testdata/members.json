@@ -1,0 +1,11 @@
+{
+  "factory": {"name": "agentfield", "address": "http://factory", "version": "test"},
+  "members": [{
+    "handle": "priya",
+    "name": "Priya Nair",
+    "avatar_url": "https://avatars.githubusercontent.com/u/42",
+    "joined_at": "2026-10-11T12:00:05Z",
+    "last_seen": "2026-10-11T12:00:05Z",
+    "sessions": 1
+  }]
+}

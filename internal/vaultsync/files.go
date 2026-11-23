@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/keys"
 )
 
 // fileScopePrefix keeps the withheld files apart from the variables of a
@@ -115,32 +117,53 @@ func (m fileMedium) relative() (string, error) {
 	return rel, nil
 }
 
+// Read answers the file as the vault holds it: its mode and bytes in one text.
 func (m fileMedium) Read() (string, time.Time, error) {
-	rel, err := m.relative()
+	mode, data, at, err := m.read()
 	if err != nil {
 		return "", time.Time{}, err
 	}
+	return encodeFile(mode, data), at, nil
+}
+
+// read is the one way a withheld file is looked at, for the vault and for blind
+// pass-through alike, so the two can never disagree about what a file is: its
+// permission bits, its exact bytes and when it was last saved.
+func (m fileMedium) read() (fs.FileMode, []byte, time.Time, error) {
+	rel, err := m.relative()
+	if err != nil {
+		return 0, nil, time.Time{}, err
+	}
 	root, err := os.OpenRoot(m.root)
 	if err != nil {
-		return "", time.Time{}, err
+		return 0, nil, time.Time{}, err
 	}
 	defer root.Close()
 	// Root resolves symlinks without escaping the directory, including when a
 	// parent is replaced concurrently. Inspect and read the same opened file.
 	f, err := root.Open(rel)
 	if err != nil {
-		return "", time.Time{}, err
+		return 0, nil, time.Time{}, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return "", time.Time{}, err
+		return 0, nil, time.Time{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return "", time.Time{}, ErrDamaged
+		return 0, nil, time.Time{}, ErrDamaged
+	}
+	// A FILE TOO LARGE FOR ONE VAULT SLOT IS NEVER READ. It stays withheld
+	// from the seals and stays on this computer; the size is known before a
+	// byte is read, so a withheld database or git pack costs one stat a look.
+	if !canTravel(info.Size()) {
+		return 0, nil, time.Time{}, keys.ErrTooLarge
 	}
 	raw, err := io.ReadAll(f)
-	return encodeFile(info.Mode().Perm(), raw), info.ModTime(), err
+	if err != nil {
+		return 0, nil, time.Time{}, err
+	}
+	return info.Mode().Perm(), raw, info.ModTime(), nil
 }
 
 // Realized reflects Windows account permissions without mistaking the absence
@@ -153,11 +176,19 @@ func (m fileMedium) Realized(content string) string {
 	if err != nil {
 		return content
 	}
-	actual := os.FileMode(0666)
-	if mode&0222 == 0 {
-		actual = 0444
+	return encodeFile(realizedMode(mode), data)
+}
+
+// realizedMode is the permission bits a file given mode reads back with on this
+// computer: Windows keeps only whether the file may be written.
+func realizedMode(mode fs.FileMode) fs.FileMode {
+	if runtime.GOOS != "windows" {
+		return mode
 	}
-	return encodeFile(actual, data)
+	if mode&0222 == 0 {
+		return 0444
+	}
+	return 0666
 }
 
 // recorded keeps an incoming file's Unix mode when Windows edits its bytes.
@@ -178,6 +209,11 @@ func (m fileMedium) recorded(content, previous string) string {
 }
 
 func (m fileMedium) Clear() error {
+	// A file too large to travel was never in the vault, so a removal that
+	// came through the vault cannot be about this copy of it.
+	if _, _, err := m.Read(); errors.Is(err, keys.ErrTooLarge) {
+		return nil
+	}
 	parent, name, close, err := m.parent(false)
 	if err != nil {
 		return ignoreMissing(err)
@@ -187,12 +223,26 @@ func (m fileMedium) Clear() error {
 }
 
 // Write restores the bytes and mode without changing an identical file save time.
-func (m fileMedium) Write(content string) error {
+// The file's own save time is whenever the write happens.
+func (m fileMedium) Write(content string) error { return m.writeAt(content, time.Time{}) }
+
+// writeAt is Write that also dates the file: blind pass-through gives a file the
+// save time of the computer it came from, so the newest whole file still wins
+// on the next move. The zero time leaves the save time as the write made it,
+// which is what the vault's own restore has always done.
+func (m fileMedium) writeAt(content string, at time.Time) error {
 	mode, data, err := decodeFile(content)
 	if err != nil {
 		return ErrDamaged
 	}
-	if have, _, err := m.Read(); err == nil && have == m.Realized(content) {
+	have, _, err := m.Read()
+	if err == nil && have == m.Realized(content) {
+		return nil
+	}
+	// NEVER WRITE OVER A FILE TOO LARGE TO TRAVEL. Its edits here were never
+	// captured, so the slot's stamp says nothing about which copy is newer,
+	// and a small copy from another machine would silently replace it.
+	if errors.Is(err, keys.ErrTooLarge) {
 		return nil
 	}
 	parent, name, close, err := m.parent(true)
@@ -219,6 +269,13 @@ func (m fileMedium) Write(content string) error {
 	}
 	if err := f.Close(); err != nil {
 		return err
+	}
+	// Dated before the rename, so the file is never seen at its name with a
+	// save time that is not the sender's.
+	if !at.IsZero() {
+		if err := parent.Chtimes(tmp, at, at); err != nil {
+			return err
+		}
 	}
 	return fsreplace.Retry(func() error { return parent.Rename(tmp, name) })
 }
@@ -286,6 +343,17 @@ func (m fileMedium) parent(create bool) (*os.Root, string, func(), error) {
 }
 
 // encodeFile keeps the mode and binary bytes together in one vault slot.
+// fileSlotLen is the length of the slot value [encodeFile] makes from a file
+// of size bytes: four octal digits, a colon, and the bytes in base64.
+func fileSlotLen(size int64) int64 {
+	return int64(len("0644:")) + (size+2)/3*4
+}
+
+// canTravel says whether a file of size bytes fits one vault slot, which is the
+// whole rule of what a withheld file is carried as, by the vault and by blind
+// pass-through alike: a larger one stays on the computer it is on.
+func canTravel(size int64) bool { return fileSlotLen(size) <= keys.MaxSlotValue }
+
 func encodeFile(mode fs.FileMode, data []byte) string {
 	return fmt.Sprintf("%04o:%s", mode, base64.StdEncoding.EncodeToString(data))
 }

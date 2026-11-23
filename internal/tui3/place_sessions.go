@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -531,9 +530,7 @@ func (a *app) taskSheetSelfRow() session.SessionRow {
 		Model:      a.model,
 		Workspace:  a.workspace,
 	}
-	if file := row.Transcript; file != "" {
-		row.ID = filepath.Base(filepath.Dir(file))
-	}
+	row.ID = taskSessionOf(row.Transcript)
 	row.Open, row.Live = true, true
 	row.Presence.State = a.taskSheetSelfState()
 	return row
@@ -562,8 +559,7 @@ func (a *app) taskSheetSelfState() session.PresenceState {
 // the bug this whole reading exists to stop telling.
 //
 // A NODE THE INDEX ALREADY CARRIES IS LEFT TO THE INDEX. The file's row is the
-// richer of the two — it has the outcome, the branch, the transcript and the
-// files, none of which the graph keeps — and [session.Agent.TaskIndex] has
+// richer of the two — it also has the saved transcript — and [session.Agent.TaskIndex] has
 // already merged this session's live state over it, so it is no staler either.
 // What the graph contributes is the work no row anywhere names yet.
 // AND A WINDOW THAT CANNOT NAME ITSELF LEAVES ITS OWN NODES TO THE GRAPH. The
@@ -602,7 +598,8 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 		if label == "" {
 			label = node.title
 		}
-		rows = append(rows, session.TaskIndexEntry{
+		rows = append(rows, a.currentTaskEntry(session.TaskIndexEntry{
+			Computer: node.computer, Unreachable: node.unreachable, RanElsewhere: node.ranElsewhere,
 			ID:        strconv.FormatUint(node.id, 10),
 			Parent:    node.parent,
 			Label:     label,
@@ -618,7 +615,7 @@ func (a *app) taskSheetOwnRows() []session.TaskIndexEntry {
 			// The program the node's work was handed to, so the row drawn off it
 			// wears the badge the node's own row does (programbadge.go).
 			Program: a.nodeProgram(node),
-		})
+		}))
 	}
 	return rows
 }

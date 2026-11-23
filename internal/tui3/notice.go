@@ -12,7 +12,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
-	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // THE NOTICES: telling a person one thing at the moment it becomes true.
@@ -402,7 +401,7 @@ var notices = []notice{
 		// it.
 		id: "home-by-two-spaces", slot: slotHint,
 		armed:  awayFromHome,
-		text:   "space space takes you back to home",
+		text:   "space space brings you back to home",
 		retire: eventHomeGesture,
 	},
 	{
@@ -538,7 +537,7 @@ var notices = []notice{
 		id: "remember-one-thing", slot: slotHint,
 		armed: ready,
 		// The other half of the pair above: a fact, and the way back out of it.
-		text:   "/remember carries a fact forward, and the Memories tab forgets it",
+		text:   "/remember carries a fact forward, and the Memory tab forgets it",
 		retire: eventRemembered,
 	},
 	{
@@ -1375,19 +1374,5 @@ func (a *app) showUnreadProfileKeys(keys []string) {
 	a.notices.ledger.show(id)
 	a.notices.ledger.retire(id)
 	a.notices.save()
-	// A KEY WHOSE ROW WAS RETIRED ON PURPOSE GETS ITS OWN SENTENCE. "Ignored and
-	// defaults apply" is true of it and says nothing a person can act on: the
-	// row's note says what is always true now and what can still be chosen
-	// (internal/config's RetiredRowNote).
-	var unknown []string
-	for _, key := range keys {
-		if note := config.RetiredRowNote(key); note != "" {
-			a.note(note)
-			continue
-		}
-		unknown = append(unknown, key)
-	}
-	if len(unknown) > 0 {
-		a.note("config.json keys are not read: " + strings.Join(unknown, ", ") + "; anything set under them is ignored and defaults apply.")
-	}
+	a.note("config.json keys are not read: " + strings.Join(keys, ", ") + "; anything set under them is ignored and defaults apply.")
 }

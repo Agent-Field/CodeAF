@@ -17,13 +17,14 @@ package pair
 import (
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"time"
 )
 
 // The facts, so a caller can tell them apart before phrasing them.
 var (
 	// ErrNoRelay is this machine having no relay address at all.
-	ErrNoRelay = errors.New("pair: no sync address is configured")
+	ErrNoRelay = errors.New("pair: no sync service is configured")
 	// ErrNotPaired is this device never having been let in to that machine.
 	ErrNotPaired = errors.New("pair: this device is not paired with that machine")
 	// ErrWrongCode is the pairing code not matching.
@@ -31,23 +32,31 @@ var (
 	// ErrNotThatMachine is a completed dial to something that does not hold
 	// the key this device pinned.
 	ErrNotThatMachine = errors.New("pair: that is not the machine this device paired with")
+	// ErrNotConnected means the service answered but the machine has not registered.
+	ErrNotConnected = errors.New("pair: machine is not connected")
 	// ErrNoAnswer is a handshake that got no reply at all.
 	ErrNoAnswer = errors.New("pair: that machine did not answer the handshake")
 )
 
 // NoRelay is the first sentence: nothing is configured.
 func NoRelay(name string) error {
-	return fmt.Errorf("no service address is set up on this machine, so --at has nowhere to look for %s — set %s to a service address, or reach that machine with --host over ssh", name, RelayEnv)
+	return fmt.Errorf("no sync service is set up on this machine, so --at has nowhere to look for %s — set %s to a sync service, or reach that machine with --host over ssh", name, RelayEnv)
 }
 
 // Unreachable is the second: something is configured and it is not answering.
 func Unreachable(service string) error {
-	return fmt.Errorf("the service at %s cannot be reached from here — check this machine's network, or reach that machine with --host over ssh", service)
+	return errors.New(syncwords.Unreachable(service))
+}
+
+// NoDoor is a service that answers but cannot connect machines: one that only
+// syncs chats, or one from before machines could register with it.
+func NoDoor(service string) error {
+	return fmt.Errorf("%s, or reach that machine with --host over ssh", NoDoorForServe(service))
 }
 
 // NotConnected is the third: the relay is fine and that machine is not there.
 func NotConnected(name string) error {
-	return fmt.Errorf("%s is not connected to the service right now — run `codeaf serve` on that machine", name)
+	return notConnectedError{name: name}
 }
 
 // NotPaired is the fourth: this device has never been let in.
@@ -80,7 +89,7 @@ func NoAnswer(name string) error {
 
 // Busy is the relay turning connections away.
 func Busy() error {
-	return errors.New("the service is turning connections away right now — try again in a minute")
+	return errors.New("the sync service is turning connections away right now — try again in a minute")
 }
 
 // Stopped is what a machine says to a device it no longer lets in. It travels
@@ -127,27 +136,54 @@ var (
 	ErrSomeoneElse = errors.New("someone else used that code")
 	// ErrDidNotFinish is a pairing that ran out of time part way.
 	ErrDidNotFinish = errors.New("the pairing did not finish; nothing was changed")
+	// ErrNotConfirmed is a pairing whose answer went out and whose joining
+	// device never said it kept it: it refused what it was sent, it stopped, or
+	// its word was lost. The answer carried the whole identity and may have
+	// arrived, so this is never said as nothing having been shared: the sentence
+	// points at the other device, which knows how it ended ([NotConfirmedBy]).
+	ErrNotConfirmed = errors.New("the other device did not confirm the pairing")
 	// ErrOffering is a second code asked for while one is showing.
 	ErrOffering = errors.New("a pairing code is already showing on this computer")
 	// ErrBadGrant is what arrived as a grant and could not be used.
 	ErrBadGrant = errors.New("what the other device sent could not be read; nothing was changed")
 	// ErrSyncOff is a person who has turned the relay off.
-	ErrSyncOff = errors.New("sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address")
+	ErrSyncOff = errors.New("sync is off (CODEAF_SYNC_URL=off); pairing needs the sync service")
 	// ErrNoSync is a person with no relay set at all.
-	ErrNoSync = errors.New("no sync address is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to a sync address, or pass --via <address>")
+	ErrNoSync = errors.New("no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>")
 	// ErrRelayBusy is a relay at one of its global caps.
 	ErrRelayBusy = errors.New("sync is full right now; try again in a few minutes")
 	// ErrRelayTooOld is a relay that does not know pairing yet.
 	ErrRelayTooOld = errors.New("that sync service is too old for pairing")
 	// ErrDifferentChats is a computer that already has chats of its own.
-	ErrDifferentChats = errors.New("this computer already has chats of its own, so they stay local and nothing was changed; to replace them with the other device's, run this again with --replace")
+	ErrDifferentChats = errors.New("this computer has local work, so nothing was changed. To pair it anyway, run this again with --replace: local chats stay on this computer but no longer sync; shared memories and settings are cleared")
 	// ErrAlreadyPaired is a computer that already holds the chats being offered.
-	ErrAlreadyPaired = errors.New("already paired; nothing changed")
+	ErrAlreadyPaired = errors.New(AlreadyPairedLine)
 	// ErrCannotReach is a relay that does not answer, with its host after it.
 	ErrCannotReach = errors.New("cannot reach")
 	// ErrTooManyPairings is a network that asked for too many codes in an hour.
 	ErrTooManyPairings = errors.New("too many pairings from this network")
 )
+
+// NotConfirmedBy is [ErrNotConfirmed] naming the joining device, because that
+// device's screen is where a person can see whether it joined and why not.
+func NotConfirmedBy(label string) error { return notConfirmedError{label: label} }
+
+// UnconfirmedBy answers the joining device a pairing was not confirmed by, for
+// a screen that words the sentence itself.
+func UnconfirmedBy(err error) (string, bool) {
+	var e notConfirmedError
+	if errors.As(err, &e) {
+		return e.label, true
+	}
+	return "", false
+}
+
+type notConfirmedError struct{ label string }
+
+func (e notConfirmedError) Error() string {
+	return "pairing was not confirmed by " + e.label + "; check that computer to see whether it joined"
+}
+func (e notConfirmedError) Unwrap() error { return ErrNotConfirmed }
 
 // NothingWaitingUnder is the sentence for a nameplate that is unknown or over,
 // the same words for both because the person's next step is the same.
@@ -157,7 +193,7 @@ func NothingWaitingUnder(plate string) error {
 
 // CannotReachHost names the relay that did not answer.
 func CannotReachHost(host string) error {
-	return fmt.Errorf("%w %s \u2014 check your internet connection and try again", ErrCannotReach, host)
+	return cannotReachError{syncwords.Unreachable(host)}
 }
 
 // TooManyFor says how long until a network may ask again.
@@ -183,5 +219,23 @@ var (
 	// ErrPairedNotRead is a pairing that worked and a list of devices that did not load.
 	ErrPairedNotRead = errors.New("paired, but your devices could not be read yet; open codeaf again in a moment")
 	// ErrNotJoined is an approver that has no device of its own to answer with.
-	ErrNotJoined = errors.New("this device has no codeaf identity yet; start codeaf here once before approving another device")
+	ErrNotJoined = errors.New("open codeaf on this computer once, then approve again")
 )
+
+type cannotReachError struct{ line string }
+
+func (e cannotReachError) Error() string { return e.line }
+func (e cannotReachError) Unwrap() error { return ErrCannotReach }
+
+// NoDoorForServe gives the machine operator a remedy on this machine.
+func NoDoorForServe(service string) error {
+	return fmt.Errorf("the sync service at %s syncs chats but does not connect machines — run your own with `codeaf relay` and set %s to it", service, RelayEnv)
+}
+
+// notConnectedError keeps readiness checks independent of the visible sentence.
+type notConnectedError struct{ name string }
+
+func (e notConnectedError) Error() string {
+	return fmt.Sprintf("%s is not connected to the sync service right now — run `codeaf serve` on that machine", e.name)
+}
+func (e notConnectedError) Unwrap() error { return ErrNotConnected }

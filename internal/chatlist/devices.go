@@ -60,11 +60,11 @@ func deviceBefore(a, b Device) bool {
 // Mark is the dot and name of a device, filled when it is online. A device that
 // is not online says so in words as well, since a hollow dot alone is easy to
 // miss on a plain terminal.
-func (d Device) Mark(online bool) string {
+func (d Device) Mark(online bool, mark string) string {
 	if online || d.Self {
-		return "● " + d.Name
+		return mark + " " + d.Name
 	}
-	return "○ " + d.Name + " " + offlineTag
+	return mark + " " + d.Name + " " + offlineTag
 }
 
 // VerbFor is the verb the devices row offers for a chat on another device.

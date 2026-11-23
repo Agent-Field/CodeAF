@@ -24,7 +24,11 @@ func OwnsWithheld(recordPath string) bool { return strings.HasPrefix(recordPath,
 // noteLeftOut replaces the record's entries for task copies with the install
 // folders each live copy holds.
 func noteLeftOut(c cell.Cell, live []string) error {
-	var entries []inventory.Withheld
+	return noteLeftOutWith(c, live, nil)
+}
+
+func noteLeftOutWith(c cell.Cell, live []string, cold []inventory.Withheld) error {
+	entries := append([]inventory.Withheld(nil), cold...)
 	for _, tree := range live {
 		entries = append(entries, leftOutOf(tree)...)
 	}

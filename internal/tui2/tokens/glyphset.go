@@ -204,6 +204,12 @@ const (
 	GMapLeft
 	GMapUp
 	GMapDown
+	// Platform marks accompany a system word on device approval cards.
+	GPlatformMac
+	GPlatformLinux
+	GPlatformWindows
+	GPlatformMobile
+	GPlatformOther
 	glyphIDCount
 )
 

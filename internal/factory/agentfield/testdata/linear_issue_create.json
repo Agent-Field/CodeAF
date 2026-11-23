@@ -1,0 +1,32 @@
+{
+  "action": "create",
+  "actor": {"id": "6b2b7a8e-2f0c-4a2a-9b55-9f3c1c2a0e11", "type": "user", "name": "Ada Lovelace", "email": "ada@example.com", "url": "https://linear.app/acme/profiles/ada"},
+  "createdAt": "2026-11-06T15:04:05.000Z",
+  "data": {
+    "id": "2174add1-f7c8-44e3-bbf3-2d60b5ea8bc9",
+    "createdAt": "2026-11-06T15:04:05.000Z",
+    "updatedAt": "2026-11-06T15:04:05.000Z",
+    "number": 142,
+    "title": "Ledger needs a Len method",
+    "description": "In ledger.go, add `func (l *Ledger) Len() int` with a table test.",
+    "priority": 2,
+    "priorityLabel": "High",
+    "boardOrder": 0,
+    "sortOrder": -72.5,
+    "teamId": "a5a8ef1c-0c1b-4b1e-9a4b-1b7f0f6c9a10",
+    "previousIdentifiers": [],
+    "creatorId": "6b2b7a8e-2f0c-4a2a-9b55-9f3c1c2a0e11",
+    "stateId": "0ea3a4d5-6a52-4b0c-8a5f-3b7d6c0f1e22",
+    "labelIds": ["e2f1c9d4-3c4b-4f0c-9b1a-6d1b2c3a4f55"],
+    "identifier": "ENG-142",
+    "url": "https://linear.app/acme/issue/ENG-142/ledger-needs-a-len-method",
+    "team": {"id": "a5a8ef1c-0c1b-4b1e-9a4b-1b7f0f6c9a10", "key": "ENG", "name": "Engineering"},
+    "state": {"id": "0ea3a4d5-6a52-4b0c-8a5f-3b7d6c0f1e22", "color": "#bec2c8", "name": "Backlog", "type": "backlog"},
+    "labels": [{"id": "e2f1c9d4-3c4b-4f0c-9b1a-6d1b2c3a4f55", "color": "#eb5757", "name": "Bug"}]
+  },
+  "type": "Issue",
+  "url": "https://linear.app/acme/issue/ENG-142/ledger-needs-a-len-method",
+  "organizationId": "4f1b8a2c-1d2e-4c3b-9a8f-7e6d5c4b3a21",
+  "webhookTimestamp": 1793977445000,
+  "webhookId": "000042e3-d123-4980-b49f-8e140eef9329"
+}

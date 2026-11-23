@@ -3,13 +3,17 @@ package knowledge_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"strings"
+	"sync"
 	"testing"
 )
 
 func TestKnowledgeRecallUsesCurrentCitationsAndHumanEdits(t *testing.T) {
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	v := knowledge.Open(profile)
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
@@ -49,14 +53,34 @@ func TestKnowledgeRecallUsesCurrentCitationsAndHumanEdits(t *testing.T) {
 	if err != nil || !strings.Contains(answer.Answer, "invoices") || len(answer.Citations) != 1 || !strings.HasPrefix(answer.Citations[0].Source, "human-edit:") {
 		t.Fatalf("human edit not authoritative as its own source: %+v %v", answer, err)
 	}
+
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	before, err := v.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err = v.RecallSaved(context.Background(), "fixture", "Which items does Cedar queue now?", "Cedar")
+	if err != nil || !strings.Contains(answer.Answer, "invoices") || len(answer.Citations) != 1 {
+		t.Fatalf("explicit question lost saved knowledge while learning was paused: %+v %v", answer, err)
+	}
+	after, err := v.Status()
+	if err != nil || after.Enabled || before.Revision != after.Revision {
+		t.Fatal("asking must not resume learning or change published knowledge")
+	}
+	if _, err := v.Recall(context.Background(), "fixture", "What does Cedar queue?", "Cedar"); !errors.Is(err, knowledge.ErrDisabled) {
+		t.Fatal("automatic recall must still honor paused learning")
+	}
 }
 
-func TestKnowledgeRefinesNextDirtySubjectOnLaterPass(t *testing.T) {
+func TestKnowledgeRefinesTwoDirtySubjectsWithoutUnchangedRetries(t *testing.T) {
 	v := knowledge.Open(t.TempDir())
 	if err := v.StartBuild(); err != nil {
 		t.Fatal(err)
 	}
 	guides := map[string]int{}
+	var guidesMu sync.Mutex
 	withKnowledgeModel(t, func(p map[string]any) map[string]any {
 		if messages, ok := p["messages"].([]any); ok {
 			claims := []any{}
@@ -78,7 +102,9 @@ func TestKnowledgeRefinesNextDirtySubjectOnLaterPass(t *testing.T) {
 		if p["remaining_steps"] != nil {
 			s := p["subject"].(map[string]any)
 			scope := s["scope"].(string)
+			guidesMu.Lock()
 			guides[scope]++
+			guidesMu.Unlock()
 			refs := []any{}
 			for _, raw := range p["claims"].([]any) {
 				refs = append(refs, raw.(map[string]any)["id"])
@@ -100,14 +126,8 @@ func TestKnowledgeRefinesNextDirtySubjectOnLaterPass(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if len(guides) != 1 {
-		t.Fatalf("expected one bounded guide job, got %v", guides)
-	}
-	if err := v.Flush(context.Background(), "fixture", true); err != nil {
-		t.Fatal(err)
-	}
 	if len(guides) != 2 {
-		t.Fatalf("second dirty subject was stranded: %v", guides)
+		t.Fatalf("expected two bounded guide jobs, got %v", guides)
 	}
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)
@@ -131,6 +151,9 @@ func TestKnowledgeRefinesNextDirtySubjectOnLaterPass(t *testing.T) {
 
 func TestKnowledgeFrozenReplayReportsFailedSourceContracts(t *testing.T) {
 	v := knowledge.Open(t.TempDir())
+	if err := v.StartBuild(); err != nil {
+		t.Fatal(err)
+	}
 	withKnowledgeModel(t, func(p map[string]any) map[string]any { return map[string]any{"claims": []any{}} })
 	raw, err := v.RunSupportContracts(context.Background(), "fixture")
 	if err == nil {

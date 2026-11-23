@@ -12,16 +12,18 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 type knowledgeHistory struct {
-	root  string
-	cache *knowledgeHistoryCache
+	root    string
+	profile string
+	cache   *knowledgeHistoryCache
 }
 
 type knowledgeHistoryCache struct {
@@ -42,11 +44,30 @@ type knowledgeHistoryRecord struct {
 }
 
 // KnowledgeHistory reads every saved conversation under the named places root,
-// across projects and including archives. Task journals are never candidates.
-func KnowledgeHistory(placesRoot string) knowledge.History {
-	return knowledgeHistory{root: placesRoot, cache: &knowledgeHistoryCache{}}
+// across projects and including archives and their saved task reports.
+func KnowledgeHistory(placesRoot string, profile ...string) knowledge.History {
+	h := knowledgeHistory{root: placesRoot, cache: &knowledgeHistoryCache{}}
+	if len(profile) > 0 {
+		h.profile = profile[0]
+	}
+	return h
 }
 func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, error) {
+	owned := map[string]bool{}
+	if h.profile != "" {
+		roster, _, err := teams.ReadSnapshot(ctx, h.profile)
+		if err != nil {
+			return nil, err
+		}
+		for _, team := range roster.Teams {
+			for _, member := range append(append([]teams.Member{}, team.Members...), team.FormerMembers...) {
+				if member.FactoryStage || (team.FactoryManaged && member.Key == team.Manager) {
+					owned[filepath.Clean(member.File)] = true
+					owned[filepath.Clean(member.Key)] = true
+				}
+			}
+		}
+	}
 	var previous map[string]knowledgeHistoryFile
 	current := make(map[string]knowledgeHistoryFile)
 	if h.cache != nil {
@@ -83,17 +104,30 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 	}
 	buckets, err := os.ReadDir(h.root)
 	if os.IsNotExist(err) {
-		return nil, nil
+		err = nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	journals := []knowledge.Journal{}
 	seen := map[string]bool{}
-	add := func(path, session, project string) error {
+	owners := map[string]string{}
+	jobOwners := map[string]string{}
+	deletedOwners := map[string]bool{}
+	add := func(path, session, project string, task bool) error {
 		if seen[path] {
 			return nil
 		}
+		owner, marked, err := knowledgeJobOwner(path)
+		if err != nil {
+			return err
+		}
+		job := owned[filepath.Clean(path)] || marked
+		if inherited := jobOwners[filepath.Clean(path)]; inherited != "" {
+			owner, job = inherited, true
+		}
+		owned[filepath.Clean(path)] = job
+		jobOwners[filepath.Clean(path)] = owner
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
 			return nil
@@ -111,7 +145,7 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			return nil
 		}
 		if header.Type == "session" {
-			if header.ID != "" {
+			if header.ID != "" && !task {
 				session = header.ID
 			}
 			if header.Cwd != "" {
@@ -119,7 +153,70 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			}
 		}
 		seen[path] = true
-		journals = append(journals, knowledge.Journal{ID: path, Session: session, Project: project, Size: info.Size(), Modified: info.ModTime()})
+		journals = append(journals, knowledge.Journal{ID: path, Session: session, Project: project, Size: info.Size(), Modified: info.ModTime(), Job: job, JobOwner: owner})
+		return nil
+	}
+	addTasks := func(dir, owner, file, project, run string) error {
+		deleted, err := readTaskDeletions(file)
+		if err != nil {
+			journals = append(journals, knowledge.Journal{ID: dir, Error: err.Error()})
+			return nil
+		}
+		blocked := map[string]bool{}
+		if run != "" && len(deleted) > 0 {
+			rows := readTaskIndexRows(TaskIndexPath(file), 0, false)
+			receipts, err := taskCleanupReceipts(file)
+			if err != nil {
+				journals = append(journals, knowledge.Journal{ID: dir, Error: err.Error()})
+				return nil
+			}
+			for id, receipt := range receipts {
+				if deleted[id] {
+					rows = append(rows, receipt.Rows...)
+				}
+			}
+			for id, gone := range deleted {
+				if gone {
+					for child := range taskDeletionScope(rows, owner, id) {
+						deleted[child] = true
+					}
+				}
+			}
+			for _, row := range rows {
+				if row.SessionID == owner && deleted[row.ID] {
+					blocked[TaskRecordPath(row.TranscriptURI)] = true
+				}
+			}
+		}
+		entries, err := os.ReadDir(dir)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			journals = append(journals, knowledge.Journal{ID: dir, Error: err.Error()})
+			return nil
+		}
+		for _, entry := range entries {
+			if err = ctx.Err(); err != nil {
+				return err
+			}
+			id := knowledgeTaskNumber(entry.Name())
+			path := filepath.Join(dir, entry.Name())
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") || (run == "" && (id == "" || deleted[id])) || blocked[path] {
+				continue
+			}
+			jobOwners[filepath.Clean(path)] = jobOwners[filepath.Clean(owners[owner])]
+			identity := "task:" + owner + ":" + run + ":" + strings.TrimSuffix(entry.Name(), ".jsonl")
+			if owned[filepath.Clean(owners[owner])] {
+				owned[filepath.Clean(path)] = true
+			}
+			if _, err := os.Stat(owners[owner] + ".knowledge-job"); err == nil {
+				owned[filepath.Clean(path)] = true
+			}
+			if err = add(path, identity, project, true); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	for _, bucket := range buckets {
@@ -139,17 +236,23 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			if err = ctx.Err(); err != nil {
 				return nil, err
 			}
-			path := filepath.Join(dir, entry.Name())
-			if !entry.IsDir() {
-				if strings.HasSuffix(entry.Name(), ".jsonl") {
-					if err = add(path, strings.TrimSuffix(entry.Name(), ".jsonl"), ""); err != nil {
-						return nil, err
-					}
-				}
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 				continue
 			}
-			place := Place{Dir: cell.Copied(path)}
+			path := filepath.Join(dir, entry.Name())
+			owners[strings.TrimSuffix(entry.Name(), ".jsonl")] = path
+			if err = add(path, strings.TrimSuffix(entry.Name(), ".jsonl"), "", false); err != nil {
+				return nil, err
+			}
+		}
+		for _, sessionDir := range BucketSessionDirs(dir) {
+			if err = ctx.Err(); err != nil {
+				return nil, err
+			}
+			place := Place{Dir: sessionDir}
+			owners[place.ID()] = place.Transcript()
 			if _, err = os.Stat(filepath.Join(place.Dir, conversationDeletedFile)); err == nil {
+				deletedOwners[place.ID()] = true
 				continue
 			} else if !os.IsNotExist(err) {
 				return nil, err
@@ -167,14 +270,78 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 				journals = append(journals, knowledge.Journal{ID: place.Transcript(), Session: place.ID(), Error: metaErr.Error()})
 				continue
 			}
-			if err = add(place.Transcript(), place.ID(), meta.Workspace); err != nil {
+			if err = add(place.Transcript(), place.ID(), meta.Workspace, false); err != nil {
 				return nil, err
+			}
+			if err = addTasks(place.NodeJournals(), place.ID(), place.Transcript(), meta.Workspace, ""); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// Sibling roots are read only for the configured places root. A caller
+	// importing a copied collection must never also import the machine's history.
+	if filepath.Clean(h.root) == filepath.Clean(PlacesRoot()) {
+		for _, root := range []string{LooseTasksRoot(), RunsRoot()} {
+			sessions, readErr := os.ReadDir(root)
+			if os.IsNotExist(readErr) {
+				continue
+			}
+			if readErr != nil {
+				journals = append(journals, knowledge.Journal{ID: root, Error: readErr.Error()})
+				continue
+			}
+			for _, owner := range sessions {
+				if err = ctx.Err(); err != nil {
+					return nil, err
+				}
+				if !owner.IsDir() || deletedOwners[owner.Name()] {
+					continue
+				}
+				dir := filepath.Join(root, owner.Name())
+				file := owners[owner.Name()]
+				if file == "" {
+					file = filepath.Join(dir, placeTranscript)
+				}
+				if root == LooseTasksRoot() {
+					if err = addTasks(dir, owner.Name(), file, "", ""); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				runs, readErr := os.ReadDir(dir)
+				if readErr != nil {
+					journals = append(journals, knowledge.Journal{ID: dir, Error: readErr.Error()})
+					continue
+				}
+				for _, run := range runs {
+					if run.IsDir() {
+						if err = addTasks(filepath.Join(dir, run.Name()), owner.Name(), file, "", run.Name()); err != nil {
+							return nil, err
+						}
+					}
+				}
 			}
 		}
 	}
 	sort.Slice(journals, func(i, j int) bool { return journals[i].ID < journals[j].ID })
 	return journals, nil
 }
+
+func knowledgeTaskNumber(name string) string {
+	if !strings.HasSuffix(name, ".jsonl") {
+		return ""
+	}
+	stem := strings.TrimSuffix(name, ".jsonl")
+	if _, tail, found := strings.Cut(stem, "_"); found {
+		stem = tail
+	}
+	id, _, _ := strings.Cut(stem, "-")
+	if number, err := strconv.ParseUint(id, 10, 64); err != nil || number == 0 {
+		return ""
+	}
+	return id
+}
+
 func (h knowledgeHistory) Read(ctx context.Context, journal knowledge.Journal, cursor knowledge.JournalCursor) (knowledge.JournalBatch, error) {
 	result := knowledge.JournalBatch{Cursor: cursor}
 	file, err := os.Open(journal.ID)
@@ -242,6 +409,7 @@ func (h knowledgeHistory) Read(ctx context.Context, journal knowledge.Journal, c
 	}
 	reader := bufio.NewReaderSize(file, 64*1024)
 	sessionID := journal.Session
+	task := strings.HasPrefix(sessionID, "task:")
 	for lines := 0; lines < 256 && len(result.Sources) < 64; lines++ {
 		if err = ctx.Err(); err != nil {
 			return result, err
@@ -268,7 +436,7 @@ func (h knowledgeHistory) Read(ctx context.Context, journal knowledge.Journal, c
 			if header.Version > sessionFileVersion {
 				return result, errors.New("knowledge source journal uses a newer format")
 			}
-			if header.ID != "" {
+			if header.ID != "" && !task {
 				sessionID = header.ID
 			}
 			if header.Cwd != "" {
@@ -290,7 +458,16 @@ func (h knowledgeHistory) Read(ctx context.Context, journal knowledge.Journal, c
 			if entry.Note || strings.TrimSpace(entry.Content) == "" || (entry.Role != "user" && entry.Role != "assistant") {
 				continue
 			}
-			if entry.Role == "assistant" && (len(entry.ToolCalls) > 0 || (mark != nil && mark.Audience != "human")) {
+			if entryRows(textMessage(entry.Role, entry.Content)) == 0 {
+				continue
+			}
+			if entry.Role == "assistant" {
+				if len(entry.ToolCalls) > 0 || (mark != nil && mark.Audience != "human" && (!task || entry.Presentation == nil || mark.Interrupted || mark.RoutineCompletion || mark.Attention)) {
+					continue
+				}
+			} else if (task && mark == nil) || (mark != nil && mark.Audience != "human" && mark.Audience != "person") {
+				// Task prompts contain copied context and instructions from the parent,
+				// so only explicitly person-authored input is admitted as a user fact.
 				continue
 			}
 			source := knowledge.Source{ID: fmt.Sprintf("%s:journal:%d", sessionID, offset), Session: sessionID, Project: result.Cursor.Scope, Role: entry.Role, TS: entry.Timestamp, Text: entry.Content}
@@ -313,4 +490,33 @@ func readKnowledgeLine(reader *bufio.Reader) ([]byte, error) {
 		}
 		return line, err
 	}
+}
+
+// Both markers are durable ownership facts. The old factory marker identifies
+// sibling stages even after their team roster has been replaced.
+func knowledgeJobOwner(path string) (owner string, job bool, err error) {
+	data, err := os.ReadFile(path + ".knowledge-job")
+	if err == nil {
+		job = true
+		owner = path
+		if strings.HasPrefix(strings.TrimSpace(string(data)), "job:") {
+			owner = strings.TrimSpace(string(data))
+		}
+	} else if !os.IsNotExist(err) {
+		return "", false, err
+	}
+	data, err = os.ReadFile(filepath.Join(filepath.Dir(path), "factory-owner.json"))
+	if err == nil {
+		job = true
+		var saved struct {
+			Root string
+			Job  int
+		}
+		if json.Unmarshal(data, &saved) == nil && saved.Root != "" && saved.Job > 0 {
+			owner = fmt.Sprintf("%s:%d", filepath.Clean(saved.Root), saved.Job)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", false, err
+	}
+	return owner, job, nil
 }

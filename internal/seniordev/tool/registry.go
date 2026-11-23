@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/config"
 	"github.com/Agent-Field/codeaf/internal/seniordev/core"
@@ -399,6 +401,11 @@ func definition(name, description, schema string, validate func(json.RawMessage)
 // Execute dispatches an already-validated call to its named tool.
 func (r *Registry) Execute(ctx context.Context, call steploop.ToolCall) (steploop.ToolResult, error) {
 	r = r.forContext(ctx)
+	// This program runs its own tool loop and does not come through the session's
+	// approval gate, so the credential floor is asked here for every tool it has.
+	if read, hit := approval.DefaultCredentialScope(r.workDir).Read(call.Name, call.Input); hit {
+		return steploop.ToolResult{}, errors.New(read.Message())
+	}
 	var result steploop.ToolResult
 	var err error
 	switch call.Name {

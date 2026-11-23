@@ -28,6 +28,6 @@ const (
 
 // GitArgv is a git command line that carries senior-dev's commit identity.
 func GitArgv(args ...string) []string {
-	argv := []string{"git", "-c", "user.name=" + CommitterName, "-c", "user.email=" + CommitterEmail}
+	argv := []string{"git", "--no-optional-locks", "-c", "user.name=" + CommitterName, "-c", "user.email=" + CommitterEmail}
 	return append(argv, args...)
 }

@@ -1,5 +1,7 @@
 package session
 
+import "time"
+
 // facts.go is the SMALL SET OF FACTS A FRAME READS, gathered in one place.
 //
 // A surface sitting in front of a local agent asks these one at a time and each
@@ -29,6 +31,7 @@ package session
 // these five here — a frame or a keystroke reads it, so waiting on the wire for
 // it is a terminal that has stopped repainting.
 type Facts struct {
+	ModelIdentity *ModelIdentity `json:"modelIdentity,omitempty"`
 	// Memory is whether this request profile can use its saved notes. A missing
 	// field identifies an older engine that only states it in the welcome;
 	// an explicit false must travel when a full profile becomes lean.
@@ -46,6 +49,13 @@ type Facts struct {
 	// ContextTokens is what the conversation weighs right now
 	// ([Agent.ContextTokens]).
 	ContextTokens int `json:"contextTokens,omitempty"`
+	// ContextWindow and CompactAt are the window the conversation runs in and
+	// the weight at which it compacts on its own, and Summarizing says a
+	// summary request is in flight ([Agent.ContextUse], read with
+	// ContextTokens under one lock). Absent means unknown — never zero room.
+	ContextWindow int  `json:"contextWindow,omitempty"`
+	CompactAt     int  `json:"compactAt,omitempty"`
+	Summarizing   bool `json:"summarizing,omitempty"`
 	// Reasoning is the level held for each model id anybody has dialled, keyed
 	// the way [ReasoningKey] folds an id.
 	//
@@ -113,6 +123,15 @@ type Facts struct {
 	// that is not sealed at all and an engine that predates the field all state
 	// nothing, and the emptiness law draws nothing for each.
 	Unsealed bool `json:"unsealed,omitempty"`
+	// Renewal carries optional writer health; older engines leave it absent.
+	Renewal *RenewalFact `json:"renewal,omitempty"`
+}
+
+// RenewalFact is a local renewal reading carried whole to a watching surface.
+type RenewalFact struct {
+	Since  time.Time     `json:"since,omitzero"`
+	Period time.Duration `json:"period,omitempty"`
+	Held   bool          `json:"held,omitempty"`
 }
 
 // LevelFor is the reasoning level held for one model id, and "" for a model
@@ -164,6 +183,14 @@ func FactsOf(source FactSource) Facts {
 		ContextTokens: source.ContextTokens(),
 		Reasoning:     source.ReasoningLevels(),
 	}
+	if door, ok := source.(interface{ ModelIdentity() ModelIdentity }); ok {
+		identity := door.ModelIdentity()
+		facts.ModelIdentity = &identity
+	}
+	if door, ok := source.(interface{ ContextUse() ContextUse }); ok {
+		use := door.ContextUse()
+		facts.ContextTokens, facts.ContextWindow, facts.CompactAt, facts.Summarizing = use.Tokens, use.Window, use.Threshold, use.Summarizing
+	}
 	if door, ok := source.(interface{ Remembers() bool }); ok {
 		memory := door.Remembers()
 		facts.Memory = &memory
@@ -203,6 +230,14 @@ func FactsOf(source FactSource) Facts {
 	// AND WHETHER THE LAST SEAL FAILED, on the same terms.
 	if door, ok := source.(interface{ SealFailing() bool }); ok {
 		facts.Unsealed = door.SealFailing()
+	}
+	if door, ok := source.(interface {
+		RenewalStatus() (time.Time, time.Duration, bool)
+	}); ok {
+		since, period, held := door.RenewalStatus()
+		if period > 0 {
+			facts.Renewal = &RenewalFact{Since: since, Period: period, Held: held}
+		}
 	}
 	return facts
 }

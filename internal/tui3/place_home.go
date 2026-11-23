@@ -212,6 +212,13 @@ func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
 	}
+	// THE COPIES COME FROM THE DIRECTORY'S READING, NOT FROM THE SWITCHER'S ROW,
+	// so they are the one verb this function names itself: the reading of the
+	// row has no way to know them, and the cell that carries them is the same
+	// row the strip is about (homepanel_continue.go's [app.keptTurnsVerb]).
+	if v, ok := a.keptTurnsVerb(line); ok && row.kind == switcherConversation {
+		verbs = append(verbs, v)
+	}
 	return verbs
 }
 
@@ -579,6 +586,10 @@ func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 // while the cursor is on that exchange's row, so walking away can never leave
 // the arrows moving a pane nobody is looking at ([app.settleExchangeFocus]).
 func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.pair.open {
+		return a.pairKey(msg), true
+	}
+
 	if cmd, took := a.homeSheetKeyFirst(msg); took {
 		return cmd, true
 	}

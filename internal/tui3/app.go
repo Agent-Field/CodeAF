@@ -18,6 +18,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/atlas"
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -25,12 +26,14 @@ import (
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	machine "github.com/Agent-Field/codeaf/internal/preflight"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
+	"github.com/Agent-Field/codeaf/internal/upgradenotice"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -674,6 +677,8 @@ type (
 		call *hostCall
 		ch   <-chan session.Event
 		err  error
+		// refused keeps the submitted words until the engine accepts them.
+		refused string
 		// echo names WHICH echoed line this answer settles, and ZERO when none
 		// was drawn (echo.go). It is stamped where the line was drawn rather
 		// than looked up when the answer lands, because by then the person may
@@ -886,6 +891,11 @@ type (
 )
 
 type app struct {
+	taskComputerHere    string
+	taskHerePending     tasksKey
+	taskComputerRows    []session.TaskComputer
+	taskComputers       session.TaskComputers
+	waitForRelease      func() bool
 	chatStarts          map[string]bool
 	conversationRequest uint64
 	conversationOpening bool
@@ -1240,28 +1250,17 @@ type app struct {
 	inputTokens int
 	cacheRead   int
 	cacheWrite  int
-	// cacheSaved is what those reads have been WORTH, in dollars: cacheRead ×
-	// (prompt price − cache-read price) for the model this conversation is on,
-	// worked out from the totals every time they move ([app.repriceCache], the
-	// one place it is written). It is what turns the warm share from a statistic
-	// into a fact about the bill: the percentage is the hit RATE, this is what
-	// the rate MEANT.
-	//
-	// IT IS DERIVED RATHER THAN ACCUMULATED, and that is a fix rather than a
-	// simplification. It used to be summed per turn as each turn landed, which
-	// meant a RESUMED conversation — whose cache reads are restored whole from
-	// the journal and whose turns are all in the past — read `⟲ 28% cached` with
-	// no `saved $…` beside it until the next turn happened to land. The share
-	// was restored and the money was not, on the one figure a person opens a
-	// resumed session to check.
-	//
-	// A MIXED-MODEL SESSION IS PRICED AT THE MODEL IT IS ON NOW. The price is a
-	// property of whoever was answering at the time, and one total of cache
-	// reads cannot be split back out over the models that made them — so the
-	// current model's price is applied to all of them. That is the honest
-	// approximation a resume can make: every alternative is either a figure
-	// nobody can reconstruct or no figure at all, and the second was what this
-	// surface used to draw.
+	// cacheReadByModel records how many cached prompt tokens were served under
+	// each model id in this conversation, so [app.repriceCache] prices each
+	// model's reads at that model's own rate rather than the currently selected
+	// model's rate.
+	cacheReadByModel map[string]int
+	// cacheSaved is what those reads have been WORTH, in dollars: for each model
+	// that served cached tokens, its reads × (prompt price − cache-read price),
+	// summed across [app.cacheReadByModel] ([app.repriceCache], the one place it
+	// is written). Switching the selected model for future turns never reprices
+	// savings already earned, and a reopened conversation prices each row at the
+	// model that row named.
 	cacheSaved float64
 
 	// outputTokens is what the session has WRITTEN, and it is held apart from
@@ -1289,6 +1288,11 @@ type app struct {
 	stamps     map[int]turnStamp
 	timestamps string
 	workMode   string
+	// teamsShare is adopted with profile preferences, keeping config reads off the loop.
+	teamsShare           bool
+	teamsPaired          func() bool
+	teamsShareGeneration uint64
+	teamsSharingCmd      tea.Cmd
 	// Icon repertoire is independent of colour; detection is a boot fact and
 	// the person can override it through the live Display setting.
 	actionAuto tokens.GlyphSet
@@ -1482,6 +1486,39 @@ type app struct {
 	// LEAVING. The open's landing spends it; a shared window opens in place
 	// and spends it at once.
 	homeTakenSaid func() tea.Cmd
+	// setupOffered is the resume the setup card was last raised from, and
+	// setupOfferedFor the conversation it was raised in. A look taken after a
+	// moved chat's files arrived is compared with it, so the card is raised
+	// again only when it has something new to say ([app.arrivedAfterFiles]).
+	setupOffered    machine.Resume
+	setupOfferedFor string
+	// heldArrival is a look that finished before the window had landed in its
+	// chat, by the chat's folder name, until the landing takes it.
+	heldArrival map[string]machine.Resume
+	// homeTaking keeps a retiring session on its own continuation until arrival.
+	homeTaking string
+	// homeMoveSaid is the progress line home shows for the running continue.
+	homeMoveSaid string
+	// homeTakeSeq keeps each answer and cleanup tied to the operation that created it.
+	homeTakeSeq uint64
+	// homeTakeCancel belongs to the active mutation; automatic cleanup keeps it until settlement.
+	homeTakeCancel context.CancelFunc
+	// Abandonment bounds the outstanding answer without shortening an unattended move.
+	homeTakeAbandonTimer *time.Timer
+	// homeTakeDraft moves the source composer only after the arriving door opens.
+	homeTakeDraft *homeTakenMsg
+	// Automatic navigation remains subordinate to a confirmed choice until its door lands.
+	homeTakeAutomatic bool
+	// The origin survives an explicit join so cancellation still settles its acquisition.
+	homeTakeOriginAutomatic bool
+	homeTakeAbandoned       bool
+	homeTakeOpening         bool
+	homeTakeRow             chatlist.Row
+	homeTakePending         *homeTakenMsg
+	homeTakeResult          *homeTakenMsg
+	// continueAskSeq gives each surface card its own token so re-raising inside
+	// an answer closure is not wiped by closeQuestion.
+	continueAskSeq uint64
 	// teamsDisk is where the teams are kept and the edits not yet written
 	// there (teamseam.go).
 	teamsDisk teamsDisk
@@ -1933,6 +1970,11 @@ type app struct {
 	// MID-SENTENCE, and dropping the move would leave them on the service they
 	// just replaced, so the one pending id lands at the turn boundary.
 	deferredModelServiceModel string
+	deferredModelRename       *modelRename
+	// A later explicit choice keeps its wire and preference-write order even
+	// across a chat switch. Sends wait by agent inside their commands instead.
+	pendingModelSelection <-chan struct{}
+	modelCommands         []tea.Cmd
 	// harn is the subharness registry (Options.Harnesses) and harnPanel the
 	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
 	// that cannot show harnesses and says so; nothing about the OFFER depends on
@@ -2123,7 +2165,8 @@ type app struct {
 	link LinkSeam
 	// seal is what the door can tell this surface about the sealing of the
 	// conversation's calls (sealseam.go). Its zero value draws nothing.
-	seal SealSeam
+	seal           SealSeam
+	stopSealNotice func()
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
 	// once per window, because it is a fact about a machine and not about a turn.
@@ -2137,6 +2180,7 @@ type app struct {
 	// every local session and before the first hosted answer, which the
 	// emptiness law draws as no segment at all.
 	linkLatency    time.Duration
+	linkLatencyAt  time.Time
 	linkPingAsking bool
 	// spell is the spell-it-out block under the draft, and the call that made it
 	// while one is out (spellout.go). Its resting state is the zero value, which
@@ -2298,6 +2342,7 @@ type app struct {
 	// (draft.go); empty means it is not kept at all.
 	draftFile    string
 	draftPending bool
+	draftLoaded  map[string]bool
 	// artifacts is the deliverables index a finished /export records itself in
 	// (export.go). Empty is the door saying nothing, which [app.artifactsIndex]
 	// turns into the product's own path.
@@ -2314,10 +2359,15 @@ type app struct {
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
-	machinePoll    machinePoll
+	machinesAskSeq uint64
+	// machinesRetaken replaces a listing begun before a completed take, so
+	// its late answer cannot put the previous holder back on screen.
+	machinesRetaken bool
+	machinePoll     machinePoll
 	// fleet counts this person's devices and addMachine is the home card that
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
+	notShared  func() (NotShared, bool)
 	addMachine addMachine
 	// resume is the one-time "continue where you left off" offer (homeband_resume.go).
 	leftOff resumeOffer
@@ -2359,7 +2409,8 @@ type app struct {
 	// sheet is the settings panel (settings.go): the FIRST fullscreen thing this
 	// surface drew, and the only overlay that is modal for the pointer as well
 	// as for the keyboard. Closed, it costs the frame nothing.
-	sheet sheet
+	sheet       sheet
+	storageRead storageSampling
 	// deck is the phone tier's status sheet (statusdeck.go): the SECOND
 	// fullscreen thing, and the only one that exists at one size class only —
 	// under sixty columns the status row is a two-row deck, and this is where
@@ -2507,7 +2558,9 @@ type app struct {
 	landing            bool
 	autoContinue       bool
 	continueGeneration uint64
-	pickSession        bool
+	// A safety answer belongs to one explicit choice, so later navigation can withdraw it.
+	continueChecking *continuationChecked
+	pickSession      bool
 	// takeOverAt is a conversation this launch met a lock on
 	// ([Options.TakeOver]). It is a transcript path, and the launch lands on
 	// home with that row armed instead of quietly starting a second
@@ -2707,6 +2760,9 @@ type app struct {
 	// cannot; closed, the panel costs the frame nothing.
 	cellsUnavailable string
 	pairing          Pairing
+	syncService      string
+	syncStats        func(context.Context) (blobstore.Counts, error)
+	syncSpace        blobstore.Counts
 	pair             pairPanel
 
 	// approvals answers a new device's request and revokes devices, and
@@ -2836,6 +2892,25 @@ type app struct {
 	owned bool
 	// movedName names a chat moved here whose project is not on this machine.
 	movedName string
+	// deviceID excludes this computer from offers to continue another computer's chat.
+	deviceID string
+	// syncOutages remembers which chats have already announced their current outage.
+	syncOutages map[string]bool
+	// renewalFailures binds recovery evidence to a failure observed during this outage.
+	renewalFailures map[string]bool
+	// conversationClosing discards keys while a departing chat finishes closing.
+	conversationClosing bool
+	// quitting keeps new input out of teardown while allowing another interrupt to leave.
+	quitting bool
+	// saveFailure retains closing errors for the report after the screen is restored.
+	saveFailure   func(error)
+	savingNotices func([]string)
+	// closingStarted retains pending engine replies after the terminal is restored.
+	closingStarted      func(<-chan struct{})
+	savingDurability    func(func() bool)
+	savingCompatibility func(func() bool)
+	// forceQuit requests immediate process exit after a second interrupt restores the screen.
+	forceQuit func()
 	// handedApproval is the tool-approval posture this launch knows the
 	// surface's own profile cannot answer, carried in Options.ApprovalMode. Over
 	// --host it is the engine's row; locally it is --yolo's forced allow. Empty
@@ -3044,12 +3119,18 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	a := &app{
 		knowledgeProfile:    opts.Knowledge,
+		waitForRelease:      opts.WaitForRelease,
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		pairing:             opts.Pairing,
+		teamsPaired:         opts.TeamsPaired,
+		syncService:         opts.SyncService,
+		syncStats:           opts.SyncStats,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
+		taskComputers:       opts.TaskComputers,
 		fleet:               opts.Fleet,
+		notShared:           opts.NotShared,
 		branches:            opts.Branches,
 		ctx:                 ctx,
 		doorLine:            newDoorLine(),
@@ -3073,6 +3154,13 @@ func newApp(ctx context.Context, opts Options) *app {
 		bashBackgroundAfter: opts.BashBackgroundAfterSeconds,
 		owned:               owned,
 		movedName:           movedName,
+		deviceID:            opts.DeviceID,
+		saveFailure:         opts.SaveFailure,
+		savingNotices:       opts.SavingNotices,
+		closingStarted:      opts.ClosingStarted,
+		savingDurability:    opts.SavingDurability,
+		savingCompatibility: opts.SavingCompatibility,
+		forceQuit:           opts.ForceQuit,
 		landing:             opts.Landing,
 		autoContinue:        opts.Landing && !opts.PickSession && opts.Host == "",
 		takeOverAt:          opts.TakeOver,
@@ -3245,6 +3333,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
+	if a.teamsDisk.door.Sharing == nil {
+		a.adoptTeamsSharing(config.TeamsSharingAt(a.profileDir, a.teamsPaired))
+	}
 	a.actionAuto, _ = tokens.DetectGlyphSet(env)
 	a.adoptIcons()
 	// AND THE COLUMN'S POSTURE IS READ HERE AND NOWHERE ELSE — at boot, never at
@@ -3322,6 +3413,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// nothing restores a zero Usage and every one of these fields stays as it
 	// was, so the sheet and /cost still draw nothing.
 	a.refreshUsage()
+	a.readTreeSpend()
 	// The notices get their first look now that the conversation, the box and
 	// the directory's facts are all in place: a news line lands here, under the
 	// replay and above the door's own notice, and the hints that wait on this
@@ -3339,7 +3431,14 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
-		eachLine(notice, a.note)
+		if upgradenotice.IsRecovery(notice) {
+			if opts.Notices == nil {
+				opts.Notices = NewNotices()
+			}
+			eachLine(notice, opts.Notices.SayHomeOnce)
+		} else {
+			eachLine(notice, a.note)
+		}
 	}
 	if from := strings.TrimSpace(opts.UpdatedFrom); from != "" {
 		a.note(updatedFromNote(from, a.updateRunning))
@@ -3412,7 +3511,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.titleSent = terminalTitle(a)
 	a.refreshCreditWarnings()
 	// AND THE NOTICE DESK, once the surface can say a note (notices.go).
+	if opts.Notices == nil {
+		opts.Notices = NewNotices()
+	}
 	a.useNotices(opts.Notices)
+	a.useSeal(opts.Seal)
 	return a
 }
 
@@ -3558,7 +3661,7 @@ func (a *app) Init() tea.Cmd {
 	// legend needs before it may name the switcher (hop.go), and it is asked off
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
-	standing := []tea.Cmd{a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
+	standing := []tea.Cmd{a.takeModelCommands(), a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
@@ -3571,7 +3674,7 @@ func (a *app) Init() tea.Cmd {
 		// raised, and on the settings page — and reading it on the way up means
 		// neither of those ever pays a round trip. The fold re-stamps whatever
 		// questions the attach already replayed.
-		a.readAutonomy(),
+		a.readAutonomy(), a.readPreferredTaskComputers(),
 		// AND THE PULSE'S OWN BEAT, whose first reading is taken now rather than
 		// ten seconds from now (pulsebeat.go).
 		pulseNow,
@@ -3584,7 +3687,7 @@ func (a *app) Init() tea.Cmd {
 		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(), a.noticeBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
-		a.teamsWrite()}
+		a.teamsWrite(), a.refreshTeamsSharing()}
 	if a.warmEmptyProviders != nil {
 		warm := a.warmEmptyProviders
 		standing = append(standing, func() tea.Msg {
@@ -3623,6 +3726,12 @@ func (a *app) Init() tea.Cmd {
 	// (delegate.go). The list is the engine's, so a switch asks again
 	// ([app.attachConversation]).
 	standing = append(standing, a.installDelegates())
+	// The relay's sync-space reading is asked for once here, off the loop, so the
+	// first /status can answer at once instead of waiting on the network
+	// (syncspace.go). Nil when sync is off or no relay can report it.
+	if read := a.refreshSyncSpace(); read != nil {
+		standing = append(standing, read)
+	}
 	return tea.Batch(standing...)
 }
 
@@ -3653,6 +3762,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	model, cmd := a.update(msg)
+	cmd = tea.Batch(cmd, a.takeTeamsSharingCmd())
 	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
 	// the frame may only note that it drew it (view.go), because the door's
 	// record is a write to disk.
@@ -3719,7 +3829,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// message, and this is the one place every one of them has happened by
 	// (teamtraffic.go). It costs a walk of the loaded teams when it is not
 	// turning and nothing when it is.
-	if tick := a.trafficArm(); tick != nil {
+	if tick := tea.Batch(a.trafficArm(), a.teamsRefreshArm()); tick != nil {
 		cmd = tea.Batch(cmd, tick)
 	}
 	// AND AN EDIT TO THE TEAMS IS WRITTEN HERE, off the loop, for the same
@@ -3752,7 +3862,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if summary := a.refreshRunSummary(); summary != nil {
 		cmd = tea.Batch(cmd, summary)
 	}
-	return model, cmd
+	return model, tea.Batch(cmd, a.takeModelCommands())
 }
 
 // route is the message switch: every message this surface handles, handled once.
@@ -3769,6 +3879,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// waiting for whatever repaints next.
 	a.takeLinkNotice()
 	a.takeSealNotice()
+	a.takeRenewalNotice()
 	// An explicit gesture after View replaces its pending navigation intent.
 	switch msg.(type) {
 	case tea.KeyPressMsg, tea.PasteMsg, tea.MouseClickMsg, tea.MouseWheelMsg:
@@ -3783,6 +3894,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 	}
 	switch msg := msg.(type) {
+	case conversationClosedMsg:
+		a.conversationClosing = false
+		a.saidNotices()
+		for _, line := range msg.notices {
+			a.note(line)
+		}
+		if line := closeSaveWords(msg.err, msg.finishing, msg.address); line != "" {
+			a.note(line)
+		}
+		a.touch()
+		return a, nil
 	case completionToastExpiredMsg:
 		if msg.serial == a.completionToast.serial {
 			a.dismissCompletionToast()
@@ -3904,13 +4026,25 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
+		if a.quitting {
+			if msg.String() == "ctrl+c" {
+				if a.forceQuit != nil {
+					a.forceQuit()
+				}
+				return a, tea.Quit
+			}
+			return a, nil
+		}
+		if a.conversationClosing && msg.String() != "ctrl+c" {
+			return a, nil
+		}
 		if a.cdelete.on {
 			return a, a.conversationDeleteKey(msg)
 		}
 		// A repeated enter keeps the pending conversation; ctrl+enter does
 		// the same only on the start page, where it is another enter spelling.
 		// Draft edits stay with the pending chat; navigation cancels the transition.
-		if a.conversationOpening {
+		if a.conversationOpening && !(a.homeTakeAutomatic && !a.homeTakeAbandoned) {
 			if a.openingDraftKey(msg) {
 				return a, nil
 			}
@@ -3918,6 +4052,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 			a.cancelConversationOpening()
+			if msg.String() == "esc" {
+				return a, nil
+			}
 		}
 		a.sawAPerson()
 		a.stirred()
@@ -4068,6 +4205,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.dropSettled()
 
 	case tea.PasteStartMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			view.pasting, view.pasted, view.pasteAt = true, view.pasted[:0], a.now()
@@ -4079,6 +4219,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.PasteMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			if view.pasting {
@@ -4109,6 +4252,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.paste(msg.Content)
 
 	case tea.PasteEndMsg:
+		if a.conversationClosing || a.quitting {
+			return a, nil
+		}
 		if a.conversationOpening && a.conversationPreview != nil {
 			view := a.conversationPreview.view
 			if view.pasting {
@@ -4137,6 +4283,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case filesLoadedMsg:
 		if msg.home {
 			a.homeFilesLoaded(msg.paths, msg.root)
+			return a, nil
+		}
+		if msg.root != "" && a.comp.walked != "" && msg.root != a.comp.walked {
 			return a, nil
 		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
@@ -4215,6 +4364,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case wallTickMsg:
 		return a, a.wallTick()
 
+	case teamsSharingMsg:
+		a.takeTeamsSharing(msg)
+		return a, nil
+	case teamsRefreshTickMsg:
+		return a, a.teamsRefreshTick()
+
 	case trafficTickMsg:
 		// A TURN THAT FOUND NOTHING DRAWS NOTHING: the frame before it stands
 		// (teamtraffic.go), which is what a quiet second over ssh costs.
@@ -4257,6 +4412,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.toldNote(filesOpenFailedWord + drawableLine(msg.path))
 		}
+		return a, nil
+
+	case storageRequestOpenedMsg:
+		a.storageRequestOpened(msg)
 		return a, nil
 
 	case copiedMsg:
@@ -4589,7 +4748,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
 			return a, cmd
 		}
-		if a.conversationOpening {
+		if a.conversationOpening && !(a.homeTakeAutomatic && !a.homeTakeAbandoned) {
 			previewing := a.conversationPreview != nil
 			if previewing {
 				mouse := msg.Mouse()
@@ -5238,6 +5397,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// mean the same thing on every page, so the button under the pointer
 		// takes its ground wherever a person is standing (topnav.go's
 		// [app.headHover]).
+		a.hoverAddMachine(msg.Mouse().X, msg.Mouse().Y)
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
 		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
 			// AND THE HEAD TAKES THE POINTER OFF HOME'S PROJECT NAMES, which
@@ -5476,8 +5636,14 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.tookHomeLeftOff(msg)
 		return a, nil
 
+	case continueConflictMsg:
+		return a, a.continueConflictRead(msg)
+	case homeTakeSettledMsg:
+		return a, a.automaticTakeSettled(msg)
 	case homeTakenMsg:
 		return a, a.tookTakeover(msg)
+	case homeMoveTickMsg:
+		return a, a.followMove(msg)
 
 	case homeBranchMsg:
 		return a, a.tookBranch(msg)
@@ -5490,6 +5656,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case continuationChecked:
 		return a, a.continuationReady(msg)
+	case homeMachinesSlowMsg:
+		a.machinesStillChecking(msg)
+		return a, nil
+	case homeLocalOpenMsg:
+		return a, a.homeLocalOpenReady(msg)
 	case homeMachinesMsg:
 		// THE OTHER MACHINES' CHATS, COMING BACK, off the update loop for the
 		// reason the repository's reading is (homepanel_machines.go).
@@ -5811,6 +5982,29 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.toldNote(msg.line)
 		return a, nil
 
+	case storageAccountMsg:
+		if msg.serial <= a.storageRead.applied || msg.serial != a.storageRead.pending {
+			return a, nil
+		}
+		a.storageRead.pending = 0
+		a.storageRead.applied = msg.serial
+		a.storageRead.code, a.storageRead.state = msg.code, msg.state
+		if a.at(pageSettings) && (a.sheet.storageCode != msg.code || a.sheet.storageState != msg.state) {
+			a.sheet.storageCode, a.sheet.storageState = msg.code, msg.state
+			a.sheet.build()
+			a.touch()
+		}
+		return a, nil
+
+	case syncSpaceMsg:
+		// The reading is the identity's, not one chat's, so it is kept whichever
+		// chat is on screen. It is only ever read by the next /status.
+		if msg.counts.Storage == "" {
+			msg.counts.Storage = a.syncSpace.Storage
+		}
+		a.syncSpace = msg.counts
+		return a, a.sampleStorageAccount(true)
+
 	case spelledMsg:
 		// The expansion, or nothing at all — a failure, a timeout and a model that
 		// ignored the format all arrive here as an empty block and are answered by
@@ -5909,7 +6103,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case linkPingMsg:
 		a.linkPingBack(msg)
-		return a, a.linkPingTick()
+		var sharing tea.Cmd
+		if a.teamsDisk.door.Sharing != nil {
+			sharing = a.refreshTeamsSharing()
+		}
+		return a, tea.Batch(a.linkPingTick(), a.linkLatencyExpiry(), sharing)
+	case linkLatencyExpiredMsg:
+		if msg.at == a.linkLatencyAt {
+			a.touch()
+		}
+		return a, nil
 
 	case levelsMsg:
 		// What each of a batch of models is dialled to, asked off this loop
@@ -6269,6 +6472,16 @@ func (a *app) adopt(msg submittedMsg) (cmd tea.Cmd) {
 	// its pictures, an accepted one has spent them (attach.go).
 	a.chipsSettled(msg.err)
 	if msg.err != nil {
+		if msg.refused != "" {
+			a.atMainComposer(func(state *composerState) {
+				words := msg.refused
+				if !state.box.empty() {
+					words += "\n" + unfoldPastes(state.box.String(), state.pastes)
+				}
+				state.box.setText(words)
+				state.pastes = nil
+			})
+		}
 		// A MESSAGE THE ENGINE REFUSED NEVER HAPPENED, so the line the surface
 		// drew for it comes off the page and the refusal is put where it was
 		// (echo.go). The sentence is the engine's own, unchanged: it knows why —
@@ -6417,6 +6630,12 @@ func (a *app) apply(ev session.Event) tea.Cmd {
 // clock should walk (reveal.go). Only [waitEvent] can answer that for a folded
 // run, which is why the bit is a parameter rather than a length read here.
 func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
+	if ev.Kind == session.EventNotice {
+		ev.Text = a.chatNotice(ev.Text)
+		if !a.acceptSyncNotice(ev.Text) {
+			return nil
+		}
+	}
 	if owner, ok := a.agent.(interface{ ReplayCovers(session.Event) bool }); ok && owner.ReplayCovers(ev) {
 		return nil
 	}
@@ -6956,7 +7175,7 @@ func (a *app) settle() tea.Cmd {
 		}
 		a.stick = false
 	}
-	return tea.Batch(a.probeGit(), fadeTicks())
+	return tea.Batch(a.probeGit(), fadeTicks(), a.takeTeamsSharingCmd())
 }
 
 // dropForming resolves every call that was still ARRIVING when the turn ended.
@@ -7181,12 +7400,15 @@ func (a *app) take(u session.Usage) {
 	if u.Input > a.inputTokens {
 		a.inputTokens = u.Input
 	}
+	deltaCacheRead := 0
 	if u.CacheRead > a.cacheRead {
+		deltaCacheRead = u.CacheRead - a.cacheRead
 		a.cacheRead = u.CacheRead
 	}
 	if u.CacheWrite > a.cacheWrite {
 		a.cacheWrite = u.CacheWrite
 	}
+	a.recordCacheReads(deltaCacheRead)
 	// AND WHAT THE CACHE GAVE BACK IS RE-DERIVED FROM THE TOTAL THAT JUST MOVED,
 	// which is what carries the figure across a RESUME: this is the one door
 	// every reading of the session's cache reads comes through — a turn landing,
@@ -7225,7 +7447,15 @@ func (a *app) take(u session.Usage) {
 
 // note answers a UI action or reports something requiring the person's attention.
 // Engine bookkeeping uses feed.note so its audience is explicit at the producer.
-func (a *app) note(text string) { a.noteWritten(text, false, nil) }
+func (a *app) note(text string) {
+	text = a.chatNotice(text)
+	if !a.acceptSyncNotice(text) {
+		return
+	}
+
+	a.blockDisplacedSend(text)
+	a.noteWritten(text, false, nil)
+}
 
 // noteWritten is the one body behind all three of the app's note doors, and the
 // only thing it adds to the feed's own is THE ECHO ONTO HOME'S MESSAGE LINE.
@@ -7318,7 +7548,12 @@ func (a *app) submitShown(text, shown string, plain []segment) tea.Cmd {
 // counts as an accepted turn, and keeps the update-loop door budget from growing
 // merely because a conversation can now send while it is behind the screen.
 func submitStart(agent Agent, ctx context.Context, text string) func() (<-chan session.Event, error) {
-	return func() (<-chan session.Event, error) { return agent.Submit(ctx, text) }
+	return func() (<-chan session.Event, error) {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return nil, err
+		}
+		return agent.Submit(ctx, text)
+	}
 }
 
 // submitting is that body with the CALL left to the caller: everything a
@@ -7390,9 +7625,13 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	a.startClock()
 	a.follow()
 	a.touch()
+	ctx, agent := a.ctx, a.agent
 	return tea.Batch(func() tea.Msg {
+		if err := waitModelSelection(ctx, agent); err != nil {
+			return submittedMsg{err: err, echo: mark, call: call, refused: text}
+		}
 		ch, err := start()
-		return submittedMsg{ch: ch, err: err, echo: mark, call: call}
+		return submittedMsg{ch: ch, err: err, echo: mark, call: call, refused: text}
 	}, a.wake())
 }
 
@@ -8472,13 +8711,7 @@ func (a *app) slash(line string) tea.Cmd {
 		// serialized object would corrupt the JSON. Any other words after the
 		// name fall through to the bare form, the route this command has always
 		// answered on.
-		if rest == "--json" {
-			a.note(a.statusJSON())
-			return nil
-		}
-		text := a.statusText()
-		a.noteFacts(text, a.statusFacts(text)...)
-		return nil
+		return a.runStatusCommand(rest)
 
 	case "cost":
 		// THE FIGURE IS THE PAYLOAD AND THE LABEL IS THE FURNITURE (payload.go).
@@ -8713,7 +8946,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	a.history = conv.History
 	// AND THE SEALS ARE THIS CONVERSATION'S OWN, cleared by a zero for the same
 	// reason: one chat's failed seal is not another's (sealseam.go).
-	a.seal = conv.Seal
+	a.useSeal(conv.Seal)
 	a.saveApproval = conv.SaveApproval
 	a.saveBashApproval = conv.SaveBashApproval
 	a.applyApprovals = conv.ApplyApprovals
@@ -8819,6 +9052,7 @@ func (a *app) renew() (tea.Cmd, bool) { return a.renewRefusing(a.note) }
 // the new conversation's entry line, because by then that conversation is what is
 // on screen.
 func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
+	a.abandonAutomaticTake()
 	if !a.canStart() {
 		say(newUnavailableWord)
 		return nil, false
@@ -8871,7 +9105,7 @@ func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 		// The older seam hands back an agent alone, so the surface keeps every
 		// other seam it was holding ([app.takeUp] states this).
 		conv = Conversation{Agent: conv.Agent, SessionFile: conv.SessionFile,
-			Workspace: a.workspace, Place: a.place, Owned: a.owned,
+			Workspace: a.workspace, Place: a.place, Owned: a.owned && a.movedName == "",
 			ContextWindow: a.ctxWindow, DraftFile: a.draftFile, History: a.history,
 			RecentSessions: a.recentSessions, SaveApproval: a.saveApproval,
 			SaveBashApproval: a.saveBashApproval, ApplyApprovals: a.applyApprovals}
@@ -8900,14 +9134,15 @@ func (a *app) finishRenew(conv Conversation, whole, replacing bool) tea.Cmd {
 	// AND THE NOTE SAYS WHICH OF THE TWO HAPPENED. A count appearing on the
 	// status line is not enough on its own to tell somebody whether the
 	// conversation they were in is still running.
-	switch {
-	case replacing && a.file != "":
-		a.toldNote("new session · " + a.hostedPath(a.file))
-	case replacing:
-		a.toldNote("new session")
-	default:
-		a.toldNote("new conversation · " + a.place)
+	project := filepath.Base(a.workspace)
+	if a.workspace == "" {
+		project = ""
 	}
+	note := "new conversation"
+	if project != "" {
+		note += " · " + project
+	}
+	a.toldNote(note)
 	if conv.Notice != "" {
 		// The door had something to say about HOW this conversation came to be
 		// open — "session open elsewhere — started a new one" is the sentence
@@ -9017,6 +9252,10 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 // conversation it is holding — ending the ones this process runs, detaching from
 // the ones a host runs (keeper.go's [app.leaveEverything]).
 func (a *app) quit() tea.Cmd {
+	if a.quitting {
+		return nil
+	}
+	a.quitting = true
 	if a.creditHookStop != nil {
 		a.creditHookStop()
 		a.creditHookStop = nil
@@ -9026,6 +9265,14 @@ func (a *app) quit() tea.Cmd {
 	// surface even when the browser is still open, just as account connections
 	// and file doors below do.
 	a.cancelSetupAuth()
+	if a.conversationOpening {
+		a.cancelConversationOpening()
+	}
+	if a.pasting {
+		a.pasting = false
+		a.paste(string(a.pasted))
+		a.pasted = nil
+	}
 	// The draft goes to disk on the way out, synchronously and before anything
 	// else: the debounce may be mid-window, and a sentence typed in the last
 	// three hundred milliseconds of a session is exactly the one a person would
@@ -9046,7 +9293,7 @@ func (a *app) quit() tea.Cmd {
 	// thing running it. The ones held behind the screen have their own drafts
 	// already on disk — written when they were left — so what is above is the
 	// only box that still needs saving.
-	a.leaveEverything()
+	leave := a.leavingWork()
 	// AND THE FILE DOOR GOES WITH THE SURFACE THAT OPENED IT. Every minted id and
 	// the browse token die here, which is the whole of the capability bargain: a
 	// URL that outlived the conversation would be a door onto somebody else's
@@ -9056,8 +9303,7 @@ func (a *app) quit() tea.Cmd {
 	// transcript; one left open by a process that has gone is a conversation
 	// nobody can reopen, and a stood one's folder would never reach the item it
 	// made (homeexchange.go's [app.fileEveryExchange]).
-	a.fileEveryExchange()
-	return tea.Quit
+	return quitAfterClosing(leave, a.closingStarted)
 }
 
 // interrupt is esc: stop the turn, keep what it said.
@@ -9107,7 +9353,7 @@ func (a *app) interruptTurn() {
 	// surface says what it is while it runs down. It is measured from the KEY and
 	// not from the last event, because the key is the moment the person is
 	// certain of and the only one they are timing from.
-	a.stopBy = a.now().Add(stopGrace)
+	a.stopBy = a.now().Add(session.StopGrace)
 	// THE ROWS STOP AT THE KEY. Leaving the state word was already enough to
 	// still the spinners and the count-ups — both renderers stand down outside
 	// stateWorking (toolview.go's [app.mark] and [app.countClock]) — but only for
@@ -9212,24 +9458,6 @@ func (a *app) interruptTurn() {
 // surface detaches. A silent countdown is not a stop anybody can trust, so the
 // bound is on the screen before it fires and never only after.
 
-// stopGrace is HOW LONG A STOP WAITS FOR THE ENGINE before the surface lets go
-// of the turn without it ([app.stopSweep]).
-//
-// TEN SECONDS, AND THE FIGURE IS ARGUED RATHER THAN PICKED. It is NOT argued
-// from bash's three-second `WaitDelay` or the `jobs` kill's two-plus-two second
-// graces any more: this change put the call's context on both of those, so a
-// stop ends them at once rather than waiting them out. What is left behind the
-// bound is the class this change cannot reach from outside — a wait that never
-// looks at its context at all, a command whose output a grandchild still holds,
-// anything a tool blocks on that was written before cancellation existed. Ten
-// seconds is chosen to sit far above every settle we can measure, so the
-// deadline fires only on that class and never on a turn that was about to end
-// tidily and hand back what it did.
-//
-// IT IS MEASURED FROM THE KEYPRESS and not from the last event, because the key
-// is the only moment the person is timing from.
-const stopGrace = 10 * time.Second
-
 // windingDown reports that the turn on screen was STOPPED BY HAND and its stream
 // has not closed yet: the seconds between a person's ctrl+c and the engine letting
 // go of the turn.
@@ -9242,7 +9470,7 @@ const stopGrace = 10 * time.Second
 // event hub until [session.Agent]'s loop returns, and the loop cannot look at
 // the context until the tool batch it is inside has finished. What can still
 // outlast the cancel is the context-blind class — a wait that never looks at the
-// context it was given — and that is what the bound is for. [stopGrace] above
+// context it was given — and that is what the bound is for. [session.StopGrace]
 // carries the argument in full; it is not repeated here, so that moving the
 // reasoning cannot leave two versions of it disagreeing.
 //
@@ -9505,6 +9733,14 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.copy.on {
 		return nil
 	}
+	if a.pair.open {
+		if (a.pair.offering || a.pair.rejoining) && a.pair.ask == nil && !a.pair.done && a.pair.card == nil {
+			a.pair.linkBox.insert(strings.TrimSpace(text))
+			a.pair.linkFocus = true
+			a.touch()
+		}
+		return nil
+	}
 	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
 	// same terms every other input does (welcome.go): everything puts the box
 	// away except the two keys that walk its list, and a paste is not one of
@@ -9579,6 +9815,16 @@ func (a *app) paste(text string) tea.Cmd {
 		}
 		a.touch()
 		return nil
+	}
+	// The folder sheet owns its path box and suspends the conversation draft.
+	if a.folder.open {
+		a.folder.filter.insert(strings.ReplaceAll(text, "\n", " "))
+		a.folder.rank()
+		if a.folder.browsing {
+			a.folder.browseSync(a.resolvePath)
+		}
+		a.touch()
+		return a.folderWork()
 	}
 	// A KEY BOX IS THE PASTE THIS SURFACE MOST EXPECTS, and it reads first. A
 	// key is a thing nobody types — it comes out of a clipboard — so the two
@@ -9879,6 +10125,7 @@ func (a *app) syncLists() tea.Cmd {
 		recents = a.loadMentionRecents()
 	}
 	a.fillMentions()
+	a.alignFiles(a.pathRoot())
 	a.comp.sync(&a.input)
 	if opening {
 		// Both halves of the list are asked for at the same moment, and neither
@@ -9886,6 +10133,9 @@ func (a *app) syncLists() tea.Cmd {
 		// walk lands when it lands (taskmention.go, files.go). The recent
 		// conversations ride the same opening (mention.go).
 		return tea.Batch(a.loadFiles(), a.loadTasks(), recents)
+	}
+	if a.comp.open && a.comp.words == nil {
+		return a.loadFiles()
 	}
 	return nil
 }
@@ -9939,6 +10189,7 @@ func (a *app) resetMeters() {
 	a.cost = 0
 	a.tokens, a.inputTokens, a.outputTokens = 0, 0, 0
 	a.cacheRead, a.cacheWrite = 0, 0
+	a.cacheReadByModel = nil
 	a.cacheSaved = 0
 	// AND THE TREE'S TOTAL, which is a fact about one conversation exactly as
 	// a.cost above it is: it is what THIS conversation and the work it started
@@ -10166,10 +10417,73 @@ func (a *app) cacheNote(u session.Usage) {
 	a.feed.note(line)
 }
 
+// cacheModel is the model id a newly observed cache read is attributed to when
+// no per-row breakdown named one.
+func (a *app) cacheModel() string {
+	if model := strings.TrimSpace(a.model); model != "" {
+		return model
+	}
+	if a.agent != nil {
+		return strings.TrimSpace(a.agent.Model())
+	}
+	return ""
+}
+
+// transcriptCacheReads reads the per-model cached prompt tokens from this
+// conversation's journal on disk when one is present.
+func (a *app) transcriptCacheReads() map[string]int {
+	if path := strings.TrimSpace(a.file); path != "" {
+		if reads := session.TranscriptCacheReads(path); len(reads) > 0 {
+			return reads
+		}
+	}
+	if a.resumed && strings.TrimSpace(a.workspace) != "" {
+		for _, name := range []string{"session.jsonl", "transcript.jsonl"} {
+			if reads := session.TranscriptCacheReads(filepath.Join(a.workspace, name)); len(reads) > 0 {
+				return reads
+			}
+		}
+	}
+	return nil
+}
+
+// recordCacheReads attributes newly arrived cache reads to the model that
+// served them so a later /model switch never reprices earned savings.
+func (a *app) recordCacheReads(delta int) {
+	if len(a.cacheReadByModel) == 0 && a.cacheRead > 0 {
+		if fromTranscript := a.transcriptCacheReads(); len(fromTranscript) > 0 {
+			a.cacheReadByModel = fromTranscript
+		}
+	}
+	if a.cacheReadByModel != nil {
+		if unattributed := a.cacheReadByModel[""]; unattributed > 0 {
+			if model := a.cacheModel(); model != "" {
+				a.cacheReadByModel[model] += unattributed
+				delete(a.cacheReadByModel, "")
+			}
+		}
+	}
+	if delta <= 0 {
+		return
+	}
+	var attributed int
+	for _, reads := range a.cacheReadByModel {
+		attributed += reads
+	}
+	if a.cacheRead <= attributed {
+		return
+	}
+	add := min(delta, a.cacheRead-attributed)
+	if a.cacheReadByModel == nil {
+		a.cacheReadByModel = make(map[string]int)
+	}
+	a.cacheReadByModel[a.cacheModel()] += add
+}
+
 // repriceCache is what the session's cache reads have been worth, worked out
-// from the totals rather than remembered from the turns that made them
-// ([app.cacheSaved] states the bargain, the resume it fixes and the mixed-model
-// approximation it accepts). It is called wherever [app.cacheRead] moves.
+// per model that served those reads rather than repriced at the currently
+// selected model ([app.cacheSaved]). It is called wherever [app.cacheRead] or
+// [app.cacheReadByModel] moves.
 //
 // BOTH PRICES OR NO MONEY, which is [app.cacheNote]'s own guard said again at
 // the second site that spends it: around two rows in five publish a prompt
@@ -10182,7 +10496,30 @@ func (a *app) repriceCache() {
 	if a.cacheRead <= 0 {
 		return
 	}
-	model, known := a.priceFor(a.model)
+	if len(a.cacheReadByModel) > 0 {
+		if unattributed := a.cacheReadByModel[""]; unattributed > 0 {
+			if model := a.cacheModel(); model != "" {
+				a.cacheReadByModel[model] += unattributed
+				delete(a.cacheReadByModel, "")
+			}
+		}
+		var total float64
+		for id, reads := range a.cacheReadByModel {
+			if reads <= 0 {
+				continue
+			}
+			model, known := a.priceFor(id)
+			if !known || model.CacheReadPrice <= 0 {
+				continue
+			}
+			if saved := float64(reads) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
+				total += saved
+			}
+		}
+		a.cacheSaved = total
+		return
+	}
+	model, known := a.priceFor(a.cacheModel())
 	if !known || model.CacheReadPrice <= 0 {
 		return
 	}
@@ -10545,7 +10882,7 @@ func gitHead(dir string) (string, bool, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	run := func(args ...string) (string, bool) {
-		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 		cmd.Dir = dir
 		out, err := cmd.Output()
 		if err != nil {
@@ -10559,7 +10896,7 @@ func gitHead(dir string) (string, bool, bool) {
 	}
 	// An unreadable status is reported as CLEAN rather than dirty: the star is a
 	// claim, and a claim this surface could not check is one it should not make.
-	status, _ := run("--no-optional-locks", "status", "--porcelain", "--untracked-files=no")
+	status, _ := run("status", "--porcelain", "--untracked-files=no")
 	return branch, status != "", true
 }
 

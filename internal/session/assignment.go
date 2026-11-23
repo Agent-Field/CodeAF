@@ -133,8 +133,10 @@ const (
 // taskDirection is one line said to a running task, as the node's record keeps
 // it: what was said, when, by whom, and what became of it.
 type taskDirection struct {
-	id    uint64
-	words string
+	// The receipt names the next step only when a request carries these words.
+	readAtStep *int
+	id         uint64
+	words      string
 	// at is WHEN THE PERSON SAID IT, which for a line typed into this task's room
 	// is when it arrived and for a forwarded one is when they typed it in the
 	// conversation (task_forward.go). It is the order their corrections are
@@ -154,6 +156,10 @@ type taskDirection struct {
 	// on this record however they arrived: both are decided in
 	// [taskAssignment.hear], where the receipt is minted.
 	source personSourceID
+	// clientID is the authored note's opaque correlation key, written in the same
+	// admission as the words and never changed after. It is not part of
+	// [taskDirection.source]: nothing is recognised as a repeat by it.
+	clientID string
 }
 
 // taskAssignment is the node's effective instruction and the record it came
@@ -305,12 +311,13 @@ func (a *taskAssignment) hear(words string, from directionFrom, at time.Time, so
 	}
 	a.next++
 	a.directions = append(a.directions, taskDirection{
-		id:     a.next,
-		words:  words,
-		at:     at,
-		from:   from,
-		state:  directionPending,
-		source: source.id,
+		id:       a.next,
+		words:    words,
+		at:       at,
+		from:     from,
+		state:    directionPending,
+		source:   source.id,
+		clientID: source.clientID,
 	})
 	return a.next, true, directionHeardNow
 }
@@ -760,8 +767,21 @@ func (a *Agent) markDirectionsCarried(ids []uint64) {
 		return
 	}
 	node.graph.mu.Lock()
-	node.assignment.markCarried(ids)
+	recorder := node.room.recorder()
 	node.graph.mu.Unlock()
+	live := recorder.state(0)
+	node.graph.mu.Lock()
+	node.assignment.markCarried(ids)
+	for i := range node.assignment.directions {
+		for _, id := range ids {
+			if node.assignment.directions[i].id == id && node.assignment.directions[i].readAtStep == nil {
+				step := live.Steps + 1
+				node.assignment.directions[i].readAtStep = &step
+			}
+		}
+	}
+	node.graph.mu.Unlock()
+	node.graph.checkpoint()
 }
 
 // reviseAssignment applies one of the person's directions and answers the new
@@ -890,13 +910,15 @@ func recordedAssignment(a taskAssignment) *assignmentRecord {
 	}
 	for _, said := range a.directions {
 		record.Directions = append(record.Directions, directionRecord{
-			ID:      said.id,
-			Words:   said.words,
-			At:      said.at,
-			From:    said.from.String(),
-			State:   string(said.state),
-			Version: said.version,
-			Source:  recordedSource(said.source),
+			ID:         said.id,
+			Words:      said.words,
+			At:         said.at,
+			From:       said.from.String(),
+			State:      string(said.state),
+			ReadAtStep: said.readAtStep,
+			Version:    said.version,
+			Source:     recordedSource(said.source),
+			ClientID:   said.clientID,
 		})
 	}
 	return record
@@ -928,13 +950,17 @@ func restoredAssignment(record *assignmentRecord) taskAssignment {
 	}
 	for _, said := range record.Directions {
 		restored.directions = append(restored.directions, taskDirection{
-			id:      said.ID,
-			words:   said.Words,
-			at:      said.At,
-			from:    directionFromWord(said.From),
-			state:   directionStateWord(said.State),
-			version: said.Version,
-			source:  restoredSource(said.Source),
+			id:         said.ID,
+			words:      said.Words,
+			at:         said.At,
+			from:       directionFromWord(said.From),
+			state:      directionStateWord(said.State),
+			readAtStep: said.ReadAtStep,
+			version:    said.Version,
+			source:     restoredSource(said.Source),
+			// A key this build would not have accepted is restored as none, which
+			// is unknown, rather than handed to a surface to match against.
+			clientID: AppNoteClientID(said.ClientID),
 		})
 		// A record written by a build with a different idea of the counter still
 		// leaves this one able to mint ids nothing else holds.
@@ -1147,7 +1173,7 @@ func (g *TaskGraph) runAgainForDirections(node *TaskNode) bool {
 	node.finding = composeDirectedFinding(node.deliveredLocked(), waiting)
 	node.publishing = false
 	node.continuing = true
-	node.state = TaskQueued
+	node.setStateLocked(TaskQueued)
 	node.claimed = false
 	node.stopped = false
 	node.ending = ""

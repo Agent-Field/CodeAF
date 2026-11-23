@@ -68,6 +68,31 @@ func (a *app) readTreeSpend() {
 		return
 	}
 	a.tree = session.UsageTree(lines, self)
+	if a.turnBegan.IsZero() {
+		if a.tree.Input > a.inputTokens {
+			a.inputTokens = a.tree.Input
+		}
+		if a.tree.Output > a.outputTokens {
+			a.outputTokens = a.tree.Output
+		}
+		if n := a.inputTokens + a.outputTokens; n > a.tokens {
+			a.tokens = n
+		}
+	}
+	if a.tree.CacheRead > a.cacheRead {
+		a.cacheRead = a.tree.CacheRead
+	}
+	if len(a.tree.CacheReads) > 0 {
+		if a.cacheReadByModel == nil || a.tree.CacheRead >= a.cacheRead {
+			a.cacheReadByModel = make(map[string]int, len(a.tree.CacheReads))
+		}
+		for model, reads := range a.tree.CacheReads {
+			if reads > a.cacheReadByModel[model] {
+				a.cacheReadByModel[model] = reads
+			}
+		}
+		a.repriceCache()
+	}
 }
 
 // treeLines is the ledger the tree is summed over, through THE SAME TWO DOORS
@@ -173,11 +198,11 @@ func (a *app) spendSplit() (conversation, tasks float64, ok bool) {
 func (a *app) selfSessionID() string { return sessionIDOf(a.file) }
 
 // sessionIDOf is the conversation id a journal at file is kept under: the name
-// of its folder. "" for no file.
+// of its session folder in either transcript layout. "" for no file.
 func sessionIDOf(file string) string {
 	file = strings.TrimSpace(file)
 	if file == "" {
 		return ""
 	}
-	return filepath.Base(filepath.Dir(file))
+	return filepath.Base(session.DirOf(file))
 }

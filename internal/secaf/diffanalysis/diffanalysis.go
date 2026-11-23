@@ -20,6 +20,7 @@ package diffanalysis
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -99,6 +100,7 @@ func runGit(ctx context.Context, dir string, argv []string) (string, error) {
 
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

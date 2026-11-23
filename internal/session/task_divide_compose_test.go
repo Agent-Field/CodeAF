@@ -189,7 +189,10 @@ func TestAPartsBriefHoldsItsBoundWhateverLengthTheFieldsArriveAt(t *testing.T) {
 		}, false},
 		{"every field at once", []dividePart{
 			{Title: huge, Summary: huge, Brief: huge},
-			{Title: huge, Summary: huge, Brief: huge},
+			// A division refuses two parts naming the same work, so the second
+			// part's title differs from its first word while every field stays
+			// at full length.
+			{Title: "the beta adapter " + huge, Summary: huge, Brief: huge},
 		}, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {

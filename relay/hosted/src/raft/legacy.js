@@ -52,11 +52,11 @@ export class LegacySource {
   }
   gate() { const r=this.sql.exec('SELECT doc FROM legacy_gate WHERE one=1').toArray()[0];return r?decodeCanonical(r.doc):null; }
   keep(g) { this.sql.exec('INSERT OR REPLACE INTO legacy_gate VALUES(1,?)',encodeCanonical(g)); }
-  async freeze(config) {
-    if(this.admission)return this.admission.drain(()=>this.freezeSource(config));
-    return this.freezeSource(config);
+  async freeze(config,singleton=false) {
+    if(this.admission)return this.admission.drain(()=>this.freezeSource(config,singleton));
+    return this.freezeSource(config,singleton);
   }
-  async freezeSource(config) {
+  async freezeSource(config,singleton=false) {
     if(await this.storage.get?.('gone'))throw new Wire('gone',410);
     // Go validates the binding before the source acquires an irreversible gate.
     convertLegacy(this.runtime,config,'identity','',JSON.stringify({V:1,identity:config.identity}));
@@ -69,7 +69,8 @@ export class LegacySource {
         const until=c.lease.expires===0?0:this.dir.watchers.vouchedUntil(c.lease.device,id,c.lease.fence);
         if(until>c.lease.expires)this.sql.exec('INSERT INTO legacy_holds VALUES(?,?)',id,until);
       }
-      this.keep({stage:'frozen',config});
+      const empty=!this.sql.exec('SELECT 1 FROM dir LIMIT 1').toArray().length;
+      this.keep({stage:'frozen',config,...(singleton&&empty?{birth:true}:{})});
     });
     await this.storage.sync();
     this.dir.watchers.closeAll(1012,'reconnecting');
@@ -99,6 +100,7 @@ export class LegacySource {
       manifest={config:g.config,version:String(version),rows:String(count),bytes:String(total),digest:hex(digestRows),ceiling:"0"};
       for(let i=0;i<8;i++){const next=String(Math.max(DEFAULT_ROWS_BYTES,total+size({namespace:'membership',key:importKey,data:data(manifest)})));if(next===manifest.ceiling)break;manifest.ceiling=next;}
       this.codec.genesis(data(manifest));
+      if(g.birth===true)g.birth={cluster:manifest.config.cluster,digest:manifest.digest,voters:[manifest.config.anchors[0]]};
       g.stage='inventoried';g.manifest=manifest;this.keep(g);
     });await this.storage.sync();return manifest;
   }
@@ -107,7 +109,10 @@ export class LegacySource {
     this.storage.transactionSync(()=>{
       const g=this.gate();check(g?.manifest);const nodes=new Set();
       for(const r of receipts)if(g.config.anchors.includes(String(r.node))&&BigInt(r.applied)>=1n&&encodeCanonical(r.manifest)===encodeCanonical(g.manifest))nodes.add(String(r.node));
-      check(nodes.size>=2);g.stage='raft-owned';this.keep(g);
+      if(g.birth){
+        const genesis=this.codec.genesis(data(g.manifest),g.birth);
+        check(nodes.has(g.birth.voters[0])&&receipts.some(r=>r.node===g.birth.voters[0]&&r.conf===b64(genesis.conf)&&encodeCanonical(r.birth)===encodeCanonical(g.birth)));
+      }else check(nodes.size>=2);g.stage='raft-owned';this.keep(g);
     });await this.storage.sync();
   }
   // A stale routing hint can never resurrect the old writer. The host assembles
@@ -117,7 +122,7 @@ export class LegacySource {
 
 // Member storage imports a bounded row stream in one durable genesis. Existing
 // imported stores return their provenance without overwriting later cluster work.
-export async function importLegacy(store, manifest, source) {
+export async function importLegacy(store, manifest, source, birth=null) {
   const m=manifest, encoded=data(m), k={namespace:'membership',key:importKey};
   check(m.config.cluster===store.identity.cluster&&m.config.anchors.includes(store.identity.id)&&encoded.length+128<=reserve);
   check(String(store.identity.ceiling)===m.ceiling);
@@ -139,7 +144,7 @@ export async function importLegacy(store, manifest, source) {
     check(String(count)===m.rows&&String(total)===m.bytes&&hex(digest)===m.digest);add({...k,data:encoded});
     // These protobuf messages contain only the common genesis term/index and
     // the source-authorized complete voter set, encoded by the Go ABI below.
-    const genesis=store.codec.genesis(data(m));
+    const genesis=store.codec.genesis(data(m),birth);
     store.rows('INSERT INTO journal VALUES(?,?,?)','0000000000000001',genesis.entry,store.hash(genesis.entry));
     store.put('tip','1');store.put('hard',b64(genesis.hard));
     store.put('application',{applied:'1',conf:b64(genesis.conf),version:m.version,now:String(m.config.now),count:count+1,size:total+size({...k,data:encoded}),hash:hex(aggregate)});
@@ -150,8 +155,8 @@ export async function importLegacy(store, manifest, source) {
 // Cross-object import stages one bounded row per request. Incomplete stages
 // never start a core and never become application authority. Retries compare
 // exact bytes; final installation rechecks the source's complete stream digest.
-export async function stageLegacyImport(store, manifest, row) {
-  store.codec.genesis(data(manifest));
+export async function stageLegacyImport(store, manifest, row, birth=null) {
+  store.codec.genesis(data(manifest),birth);
   check(manifest.config.cluster===store.identity.cluster&&manifest.config.anchors.includes(store.identity.id)&&String(store.identity.ceiling)===manifest.ceiling);
   await store.transaction(()=>{
     store.rows('CREATE TABLE IF NOT EXISTS legacy_stage (one INTEGER PRIMARY KEY CHECK(one=1), doc TEXT NOT NULL)');
@@ -167,8 +172,8 @@ export async function stageLegacyImport(store, manifest, row) {
     store.rows('INSERT INTO legacy_stage_rows VALUES(?,?,?)',row.namespace,row.key,row.data);
   });
 }
-export async function finishLegacyImport(store, manifest) {
-  const snapshot=await importLegacy(store,manifest,function*(){for(const r of store.rows('SELECT namespace,key,data FROM legacy_stage_rows ORDER BY namespace,key'))yield {...r,data:bytes(r.data)};});
+export async function finishLegacyImport(store, manifest, birth=null) {
+  const snapshot=await importLegacy(store,manifest,function*(){for(const r of store.rows('SELECT namespace,key,data FROM legacy_stage_rows ORDER BY namespace,key'))yield {...r,data:bytes(r.data)};},birth);
   // These are redundant staging bytes. The immutable legacy ORIGINAL remains
   // at its source; imported provenance and rows remain in every snapshot.
   await store.transaction(()=>{store.rows('DROP TABLE IF EXISTS legacy_stage_rows');store.rows('DROP TABLE IF EXISTS legacy_stage');});

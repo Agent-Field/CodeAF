@@ -55,6 +55,8 @@ func shellRepo(t *testing.T) string {
 	repo := t.TempDir()
 	for _, args := range [][]string{
 		{"init", "-q", "-b", "main"},
+		{"config", "--local", "maintenance.auto", "false"},
+		{"config", "--local", "gc.auto", "0"},
 		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "first"},
 	} {
 		shellGit(t, repo, args...)

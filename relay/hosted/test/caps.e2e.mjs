@@ -73,8 +73,15 @@ const tests = {
   },
 };
 
-for (const [name, run] of Object.entries(tests)) {
-  await run();
-  console.log('caps ok', name);
+const selected = process.argv[2];
+if (selected === '--list') {
+  console.log(Object.keys(tests).join('\n'));
+} else {
+  const cases = Object.entries(tests).filter(([name]) => !selected || name === selected);
+  if (!cases.length) throw new Error(`unknown caps case: ${selected}`);
+  for (const [name, run] of cases) {
+    await run();
+    console.log('caps ok', name);
+  }
+  console.log('caps: all pass');
 }
-console.log('caps: all pass');

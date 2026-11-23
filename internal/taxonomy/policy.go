@@ -106,6 +106,12 @@ func (transportPolicy) Decide(e Evidence, l Limits) Verdict {
 	if e.TerminalTransport {
 		return Verdict{Action: ActionReport, Reason: ReasonUnauthorized, Attempts: spent}
 	}
+	// A REFUSED ADMISSION HAS NO AUTOMATIC MOVE EITHER, and its reason is its
+	// own: a spending boundary the caller owns is not a credential failure, and
+	// a walk or model hop would simply buy the send it refused somewhere else.
+	if e.AdmissionRefused {
+		return Verdict{Action: ActionReport, Reason: ReasonAdmissionRefused, Attempts: spent}
+	}
 	// A PAUSED PLAN HAS NO AUTOMATIC MOVE. The dispatcher either uses the
 	// separately authorised metered door itself or returns the typed pause; an
 	// endpoint walk or model hop here would evade that billing decision.
@@ -378,6 +384,8 @@ func transportReason(e Evidence) string {
 		return ReasonWithdrawn
 	case e.TerminalTransport:
 		return ReasonUnauthorized
+	case e.AdmissionRefused:
+		return ReasonAdmissionRefused
 	case e.Unserved:
 		return ReasonUnauthorized
 	case e.Spent:
@@ -423,24 +431,27 @@ func transportReason(e Evidence) string {
 // list rather than two — and the day a shape is added, every caller that did not
 // grow a case for it still compiles and falls to its own default.
 const (
-	ReasonEmpty        = "the reply arrived empty"
-	ReasonMalformed    = "the tool call did not parse"
-	ReasonTimeout      = "nobody answered in time"
-	ReasonIdle         = "it went silent and stopped working"
-	ReasonDegenerate   = "the reply stopped being language"
-	ReasonCut          = "the reply stopped part-way"
-	ReasonWire         = "the connection did not hold"
-	ReasonRefused      = "the endpoint refused"
-	ReasonPaced        = "the account is being asked to slow down"
-	ReasonUnserved     = "the provider could not serve it"
-	ReasonPlanPaused   = "the plan is paused"
-	ReasonUnreached    = "the request did not reach anybody"
-	ReasonWithdrawn    = "the model is no longer carried"
-	ReasonUnauthorized = "this account could not be served"
-	ReasonUnservable   = "no shape of this request could be served"
-	ReasonOverflow     = "the request did not fit"
-	ReasonTooBig       = "the request did not fit even after it was shortened"
-	ReasonOurBytes     = "the request itself could not be served"
+	ReasonEmpty      = "the reply arrived empty"
+	ReasonMalformed  = "the tool call did not parse"
+	ReasonTimeout    = "nobody answered in time"
+	ReasonIdle       = "it went silent and stopped working"
+	ReasonDegenerate = "the reply stopped being language"
+	ReasonCut        = "the reply stopped part-way"
+	ReasonWire       = "the connection did not hold"
+	ReasonRefused    = "the endpoint refused"
+	ReasonPaced      = "the account is being asked to slow down"
+	ReasonUnserved   = "the provider could not serve it"
+	ReasonPlanPaused = "the plan is paused"
+	// ReasonAdmissionRefused is the journal word for a send the caller's own
+	// admission authority declined; it names no policy.
+	ReasonAdmissionRefused = "this attempt was not admitted"
+	ReasonUnreached        = "the request did not reach anybody"
+	ReasonWithdrawn        = "the model is no longer carried"
+	ReasonUnauthorized     = "this account could not be served"
+	ReasonUnservable       = "no shape of this request could be served"
+	ReasonOverflow         = "the request did not fit"
+	ReasonTooBig           = "the request did not fit even after it was shortened"
+	ReasonOurBytes         = "the request itself could not be served"
 )
 
 // ── capability ──────────────────────────────────────────────────────────────

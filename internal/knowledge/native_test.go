@@ -172,18 +172,21 @@ func TestKnowledgeCompilationKeepsExplicitGenerationControls(t *testing.T) {
 	}
 	original := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = original })
+	// Transport assertions report without exiting the provider worker, which
+	// must return its response to let Flush finish even when an assertion fails.
 	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
+		// R1 uses EffortOff, whose wire contract explicitly disables reasoning.
 		reasoning, ok := body["reasoning"].(map[string]any)
-		if !ok || reasoning["effort"] != "none" || body["max_tokens"] != float64(8000) || body["temperature"] != float64(0) {
-			t.Fatalf("knowledge generation controls changed: reasoning=%v max_tokens=%v temperature=%v", body["reasoning"], body["max_tokens"], body["temperature"])
+		if !ok || reasoning["enabled"] != false || len(reasoning) != 1 || body["max_tokens"] != float64(8000) || body["temperature"] != float64(0) {
+			t.Errorf("knowledge generation controls changed: reasoning=%v max_tokens=%v temperature=%v", body["reasoning"], body["max_tokens"], body["temperature"])
 		}
 		format, ok := body["response_format"].(map[string]any)
 		if !ok || format["type"] != "json_object" {
-			t.Fatalf("structured response mode missing: %+v", body["response_format"])
+			t.Errorf("structured response mode missing: %+v", body["response_format"])
 		}
 		raw, _ := json.Marshal(map[string]any{"model": body["model"], "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": `{"claims":[]}`}}}})
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(raw))}, nil
@@ -193,5 +196,65 @@ func TestKnowledgeCompilationKeepsExplicitGenerationControls(t *testing.T) {
 	}
 	if err := v.Flush(context.Background(), "fixture", true); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestKnowledgeCompilationKeepsRoleAffinityAcrossReopen(t *testing.T) {
+	withKnowledgeModel(t, func(p map[string]any) map[string]any {
+		if messages, ok := p["messages"].([]any); ok {
+			s := messages[0].(map[string]any)
+			return map[string]any{"claims": []any{map[string]any{"local_id": "c", "text": s["text"], "scope": "Cedar", "topic": s["id"], "kind": "fact", "evidence": []any{map[string]any{"source": s["id"], "quote": s["text"]}}}}}
+		}
+		return map[string]any{"subjects": []any{}}
+	})
+	transport := http.DefaultTransport
+	keys := map[string]string{}
+	profiles := []string{t.TempDir(), t.TempDir()}
+	profileIndex := 0
+	http.DefaultTransport = knowledgeTransport(func(r *http.Request) (*http.Response, error) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		var body struct{ Messages []struct{ Content string } }
+		if err := json.Unmarshal(raw, &body); err != nil {
+			return nil, err
+		}
+		key := r.Header.Get("X-Session-Id")
+		if key == "" {
+			t.Error("background compilation did not establish provider cache affinity")
+		}
+		role := body.Messages[0].Content
+		group := profiles[profileIndex] + role
+		if prior := keys[group]; prior != "" && prior != key {
+			t.Error("role affinity changed across compilation/reopen")
+		}
+		for other, prior := range keys {
+			if other != group && prior == key {
+				t.Error("different profiles or roles share provider affinity")
+			}
+		}
+		keys[group] = key
+		return transport.RoundTrip(r)
+	})
+	for i, profile := range profiles {
+		profileIndex = i
+		v := knowledge.Open(profile)
+		if err := v.StartBuild(); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []string{"baseline", "added"} {
+			v = knowledge.Open(profile)
+			if err := v.Capture(knowledge.Source{ID: id, Session: "chat", Role: "user", TS: "2026-10-26T12:00:00Z", Text: "Cedar " + id + " operations."}); err != nil {
+				t.Fatal(err)
+			}
+			if err := v.Flush(context.Background(), "fixture", true); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if len(keys) != 4 {
+		t.Fatalf("expected two roles in each of two profiles: got %d", len(keys))
 	}
 }

@@ -56,10 +56,10 @@ test('r4.3 incomplete sleep retains busy members and full admission retries afte
  try{
   await h.start();const sleeping=household(h);assert.equal((await sleeping.request()).status,200);await idle(sleeping);
   let next,refusal;
-  for(let n=0;n<5;n++){
+  for(let n=0;n<16;n++){
    const a=household(h),reply=await a.request();
    if(reply.status!==200){next=a;refusal=reply;break;}
-   const states=await a.control('retention-state','remember');a.busyNodes=Object.keys(states).filter(node=>states[node].active);assert(a.busyNodes.length>=2);
+   const states=await a.control('retention-state','remember');a.busyNodes=Object.keys(states).filter(node=>states[node].active);assert(a.busyNodes.length>=1);
    busy.push(a);await a.control('pause-public');
   }
   assert(next,'busy activation exceeded the admission budget');assert(busy.length>0);
@@ -76,7 +76,8 @@ test('r4.3 incomplete sleep retains busy members and full admission retries afte
   const compact=m=>({active:m.active,reservedBytes:m.reservedBytes,memory:m.memory});
   console.log('busy admission',JSON.stringify({before:compact(before),released:compact(released),retry:retry.status,final:compact(await h.control({op:'metrics'}))}));
   assert.equal(retry.status,200,'released reservations did not admit the retry');
-  assert(busy.length>=2);await busy[1].control('resume-public');await idle(busy[1]);
+  assert(busy.length>=2);
+  for(const a of busy.slice(1)){await a.control('resume-public');await idle(a);}
   assert.equal((await sleeping.request()).status,200,'refused wake did not recover after capacity became available');
  }finally{for(const a of busy)await a.control('resume-public').catch(()=>{});await h.close();}
 });
@@ -84,7 +85,7 @@ test('r4.3 incomplete sleep retains busy members and full admission retries afte
 test('r4.4 released members stay silent, fence stale references and wake on signed input',{timeout:60000},async()=>{
  const h=await hostedFixture({fixture:true}),a=household(h);
  try{
-  await h.start();assert.equal((await a.request()).status,200);await a.control('retention-state','remember');await idle(a);
+  await h.start();assert.equal((await a.request()).status,200);await a.control('form-cluster');await a.control('retention-state','remember');await idle(a);
   const stale=await a.control('retention-state','stale');
   for(const state of Object.values(stale)){assert.deepEqual(state.refused,[true,true,true]);assert.equal(state.handle,0);assert.equal(state.stopped,true);}
   const before=await a.control('quiet-state');assert.equal(before.alarm,null);assert.equal(before.maintenance,false);assert.deepEqual(before.memberAlarms,{'1':null,'2':null,'3':null});

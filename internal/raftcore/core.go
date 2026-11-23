@@ -258,14 +258,10 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 			effects.SnapshotNeeded = c.SnapshotNeeded()
 		}
 	}()
+	idleRead := false
 	if idle, ok := input.(IdleRead); ok {
-		active, sleeping := c.schedule.active, c.schedule.sleeping
+		idleRead = true
 		input = Read{RequestID: idle.RequestID}
-		defer func() {
-			if err == nil && !sleeping {
-				c.schedule.active = active
-			}
-		}()
 	}
 	if c.stopped {
 		return effects, ErrStopped
@@ -315,7 +311,11 @@ func (c *Core) Step(input Input) (effects Effects, err error) {
 		return effects, ErrBusy
 	}
 	switch input.(type) {
-	case Read, Propose, Configure, Transfer:
+	case Read:
+		if !idleRead || c.schedule.sleeping {
+			c.wakeScheduling()
+		}
+	case Propose, Configure, Transfer:
 		c.wakeScheduling()
 	case PeerMessage:
 		if c.schedule.sleeping {

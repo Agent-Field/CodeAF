@@ -1,0 +1,37 @@
+{
+  "action": "created",
+  "installation": {"uuid": "7a485448-a9e2-4c85-8a3c-4f44175783c9"},
+  "data": {
+    "issue": {
+      "id": "1170820242",
+      "shortId": "FACTORY-DEMO-7",
+      "title": "panic: runtime error: index out of range [3] with length 3",
+      "culprit": "ledger.(*Ledger).At",
+      "permalink": null,
+      "logger": null,
+      "level": "error",
+      "status": "unresolved",
+      "statusDetails": {},
+      "isPublic": false,
+      "platform": "go",
+      "project": {"id": "1", "name": "factory-demo", "slug": "factory-demo", "platform": "go"},
+      "type": "error",
+      "metadata": {"type": "panic", "value": "runtime error: index out of range [3] with length 3", "filename": "ledger.go", "function": "(*Ledger).At"},
+      "numComments": 0,
+      "assignedTo": null,
+      "isBookmarked": false,
+      "isSubscribed": false,
+      "hasSeen": false,
+      "annotations": [],
+      "isUnhandled": true,
+      "count": "3",
+      "userCount": 1,
+      "firstSeen": "2026-11-06T15:00:00.000000Z",
+      "lastSeen": "2026-11-06T15:04:00.000000Z",
+      "url": "https://sentry.io/api/0/organizations/acme/issues/1170820242/",
+      "web_url": "https://acme.sentry.io/issues/1170820242/",
+      "project_url": "https://acme.sentry.io/issues/?project=1"
+    }
+  },
+  "actor": {"type": "application", "id": "sentry", "name": "Sentry"}
+}

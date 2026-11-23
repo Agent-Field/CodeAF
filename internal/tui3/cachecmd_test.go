@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cachedir"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // seedCacheDir fills the cache under the state root the fixture has already
@@ -93,5 +94,25 @@ func TestCacheRefusesAnUnknownArgumentCalmly(t *testing.T) {
 	}
 	if cachedir.Size() == 0 {
 		t.Fatal("an unknown argument deleted the cache")
+	}
+}
+
+func TestCacheQuestionNamesRetainedLegacyLocation(t *testing.T) {
+	a, _ := sheetApp(t)
+	path := home.Join("workspace-caches", "legacy", "cache")
+	if err := os.MkdirAll(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "compiler"), []byte("cache"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"/cache", "/cache clean"} {
+		note := runCacheNote(t, a, command)
+		if !strings.Contains(note, "workspace-caches") {
+			t.Fatalf("%s omitted retained cache location: %s", command, note)
+		}
+	}
+	if raw, err := os.ReadFile(filepath.Join(path, "compiler")); err != nil || string(raw) != "cache" {
+		t.Fatal("cache question changed old cache bytes")
 	}
 }

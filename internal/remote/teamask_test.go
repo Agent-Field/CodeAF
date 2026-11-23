@@ -34,6 +34,7 @@ func (a *askAgent) ProposeTeams(ctx context.Context, in session.TeamProposalInpu
 		Additions:   []session.ProposedAddition{{TeamID: "0a0a0a0a0a0a", Members: []string{"/srv/c.jsonl"}}},
 		Model:       "cheap",
 		PromptChars: 412,
+		CostUSD:     func() *float64 { v := 0.0123; return &v }(),
 	}, nil
 }
 
@@ -151,7 +152,7 @@ func TestTheWallsTeamAsksCrossTheWire(t *testing.T) {
 		t.Fatalf("the engine was asked about %+v", far.in)
 	}
 	if len(got.New) != 1 || got.New[0].Name != "parser" || len(got.New[0].Members) != 2 || got.New[0].Reason != "one lexer" ||
-		len(got.Additions) != 1 || got.Additions[0].TeamID != "0a0a0a0a0a0a" || got.Model != "cheap" || got.PromptChars != 412 {
+		len(got.Additions) != 1 || got.Additions[0].TeamID != "0a0a0a0a0a0a" || got.Model != "cheap" || got.PromptChars != 412 || got.CostUSD == nil || *got.CostUSD != 0.0123 {
 		t.Fatalf("the proposal came back as %+v", got)
 	}
 	if !far.deadline || far.left <= 0 || far.left > 5*time.Second {

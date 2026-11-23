@@ -150,7 +150,7 @@ func Sign(c Command, key ed25519.PrivateKey) (Command, error) {
 // immutable records from unread records.
 func Dependencies(c Command) []RecordKey {
 	keys := []RecordKey{QuiescenceKey(), IdentityKey(), DeviceKey(c.Actor), AuthorityKey(c.Actor), SessionKey(c.Actor, c.Session), SessionsKey()}
-	if c.Change.InitMembership != nil {
+	if c.Change.InitMembership != nil || c.Change.PrepareQuiescence != nil {
 		keys = append(keys, LegacyImportKey())
 	}
 	m := c.Change
@@ -165,6 +165,9 @@ func Dependencies(c Command) []RecordKey {
 	keys = append(keys, assignmentDependencies(c)...)
 	if m.PutDevice != nil {
 		keys = append(keys, DeviceKey(m.PutDevice.ID))
+	}
+	if m.RegisterClient != nil {
+		keys = append(keys, DeviceKey(m.RegisterClient.Device), AuthorityKey(m.RegisterClient.Device))
 	}
 	if m.Revoke != nil {
 		keys = append(keys, DeviceKey(m.Revoke.Device))
@@ -360,11 +363,13 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 	// Old imported groups retain their exact manifest and rows. Their FIRST
 	// registry command may use only a manifest-provisioned anchor key; it logs
 	// the authority installation instead of rewriting a frozen import snapshot.
-	if rows[AuthorityKey(c.Actor)] == nil && c.Change.InitMembership != nil {
+	// Before that installation, the initial singleton anchor may only prepare
+	// a quorum-confirmed idle marker for its actual one-voter configuration.
+	if rows[AuthorityKey(c.Actor)] == nil && (c.Change.InitMembership != nil || c.Change.PrepareQuiescence != nil && len(meta.Configuration.Voters) == 1 && !meta.Configuration.Joint()) {
 		var manifest LegacyManifest
 		if raw := rows[LegacyImportKey()]; raw != nil && Decode(raw, &manifest) == nil && manifest.Validate() == nil && manifest.Config.Cluster == c.Cluster && bytes.Equal(manifest.Config.SigningKey, identity.SigningKey) {
 			for i, node := range manifest.Config.Anchors {
-				if c.Actor == AnchorActor(node) && i < len(manifest.Config.AnchorKeys) {
+				if c.Actor == AnchorActor(node) && i < len(manifest.Config.AnchorKeys) && (c.Change.InitMembership != nil || i == 0 && meta.Configuration.Voters[0] == node) {
 					auth = Authority{Cluster: c.Cluster, Key: manifest.Config.AnchorKeys[i], Anchor: true}
 				}
 			}
@@ -410,6 +415,10 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 		out.Result.Code = Revoked
 		return out, nil
 	}
+	if actor.Kind == "client" {
+		out.Result.Code = Unauthorized
+		return out, nil
+	}
 	// Worker incarnation and scope precede dedup so an old successful result
 	// cannot restart activity after a process replacement, expiry or revocation.
 	if auth.Worker != nil {
@@ -419,7 +428,7 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 			return out, nil
 		}
 	}
-	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && (c.Change.WorkerBeatBatch != nil || c.Change.DeviceSeen != nil)
+	service := c.Change.RenewHolds != nil || c.Change.RecordUpload != nil || c.Change.AdmitJoin != nil || c.Change.CompleteJoin != nil || auth.Effects && (c.Change.WorkerBeatBatch != nil || c.Change.DeviceSeen != nil || c.Change.AdvanceTime != nil)
 	if service != auth.Effects || auth.Personal && auth.Effects || auth.Anchor && (auth.Personal || auth.Effects || (c.Change.EnrollMember == nil || c.Change.EnrollMember.Admission == nil) && (c.Change.RemoveMember == nil || c.Change.RemoveMember.Admission == nil) && c.Change.InitMembership == nil && c.Change.PrepareQuiescence == nil && c.Change.SettleMembership == nil && c.Change.SettleLeadership == nil && c.Change.CompleteLeadership == nil && c.Change.RestoreAnchors == nil && c.Change.CloseSession == nil) {
 		return out, nil
 	}
@@ -515,13 +524,16 @@ func evaluateCommand(c Command, meta ApplicationMeta, read ReadRecord, paged boo
 				if Decode(d, &seen) != nil {
 					return out, ErrDependency
 				}
-				if !seen.Revoked {
+				if !seen.Revoked && seen.Kind != "client" {
 					seen.LastSeen = out.Now
 					put(DeviceKey(c.Change.DeviceSeen.Device), seen)
 				}
 			}
 		} else if service {
-			code = applyEffect(c, out.Now, rows, put)
+			// A clock witness advances logical time without stamping presence.
+			if c.Change.AdvanceTime == nil {
+				code = applyEffect(c, out.Now, rows, put)
+			}
 		} else {
 			if assignmentMutation(c.Change) {
 				code = applyAssignment(c, out.Now, identity, rows, put, &out.Result)
@@ -736,8 +748,42 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 		return OK
 	case m.PutDevice != nil:
 		v := m.PutDevice
+		if v.Device.Kind != "" || len(v.Device.Methods) > 0 {
+			return BadRequest
+		}
 		old, had := device(v.ID)
 		put(DeviceKey(v.ID), Stamped(old, had, v.Device, now))
+		return OK
+	case m.RegisterClient != nil:
+		v := m.RegisterClient
+		if !validClientDeviceID(v.Device) || len(v.Name) > MaxClientName || len(v.Methods) > MaxClientMethods {
+			return BadRequest
+		}
+		seen := map[string]bool{}
+		for _, method := range v.Methods {
+			if !validFabricName(method) || seen[method] {
+				return BadRequest
+			}
+			seen[method] = true
+		}
+		if _, had := device(v.Device); had || rows[AuthorityKey(v.Device)] != nil || v.Device == c.Actor {
+			return Exists
+		}
+		if PersonalCertificate(identity, v.Device, v.Cert) != nil {
+			return BadRequest
+		}
+		var methods []string
+		if len(v.Methods) > 0 {
+			methods = append([]string(nil), v.Methods...)
+		}
+		put(DeviceKey(v.Device), Device{
+			V:       1,
+			Kind:    "client",
+			Methods: methods,
+			Name:    v.Name,
+			AddedBy: identity.Identity,
+			Created: now,
+		})
 		return OK
 	case m.Revoke != nil:
 		v := m.Revoke
@@ -837,6 +883,9 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 			old, had := device(v.Device)
 			if old.Revoked {
 				return Revoked
+			}
+			if old.Kind == "client" || v.Record.Kind != "" || len(v.Record.Methods) > 0 {
+				return BadRequest
 			}
 			public, e := JoinCertificate(identity, request, v.Cert)
 			if e != nil || validGrant(v.Grant) == false {
@@ -950,6 +999,7 @@ func applyMutation(c Command, now int64, identity IdentityRec, rows map[RecordKe
 // Visible versions follow the existing projection: renewed expiry within the
 // same held state and advisory last-seen timestamps do not repaint Home.
 func visibleCellChange(a, b Cell, now int64) bool {
+	a.FrameHints, b.FrameHints = nil, nil
 	if a.Lease.Expires > now {
 		a.Lease.Expires = 1
 	} else {

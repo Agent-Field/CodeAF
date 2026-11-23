@@ -406,6 +406,7 @@ func fingerprint(v any, now int64) []byte {
 			return fingerprint(*r, now)
 		}
 	case Cell:
+		r.FrameHints = nil
 		if r.Lease.Expires > now {
 			r.Lease.Expires = 1
 		} else {

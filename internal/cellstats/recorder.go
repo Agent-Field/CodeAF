@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/cellsync"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // Counts is a snapshot of what one store client has asked of the store so far.
@@ -32,6 +33,8 @@ type Recorder struct {
 	Path  string
 	Meter Meter // nil records zero request figures
 
+	home string
+
 	mu   sync.Mutex
 	last Counts
 	err  error
@@ -39,7 +42,7 @@ type Recorder struct {
 
 // NewRecorder records one cell's flushes under home. A meter is optional.
 func NewRecorder(home, cellID string, m Meter) *Recorder {
-	return &Recorder{Path: Path(home, cellID), Meter: m}
+	return &Recorder{Path: Path(home, cellID), Meter: m, home: home}
 }
 
 // OnFlush is the cellsync.Batcher hook. It never fails the flush: a stats file
@@ -47,7 +50,7 @@ func NewRecorder(home, cellID string, m Meter) *Recorder {
 func (r *Recorder) OnFlush(f cellsync.Flush) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.err = appendLine(r.Path, r.line(f))
+	r.err = appendLine(r.home, r.Path, r.line(f))
 }
 
 // Settle writes what the meter has counted since the last line as a line of its
@@ -59,7 +62,7 @@ func (r *Recorder) Settle() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if l := r.line(cellsync.Flush{}); l != (Line{V: Version}) {
-		r.err = appendLine(r.Path, l)
+		r.err = appendLine(r.home, r.Path, l)
 	}
 }
 
@@ -88,8 +91,8 @@ func (r *Recorder) snapshot() Counts {
 
 // appendLine adds one line with a single write on an append-only handle, so a
 // line is never split and an earlier line is never touched.
-func appendLine(path string, l Line) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+func appendLine(root, path string, l Line) error {
+	if err := home.MkdirAllUnder(root, filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)

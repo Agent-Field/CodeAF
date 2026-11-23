@@ -53,9 +53,10 @@ type trafficJumpTo struct {
 }
 
 type trafficLanding struct {
-	entry int
-	older bool
-	until time.Time
+	entry     int
+	older     bool
+	elsewhere bool
+	until     time.Time
 }
 
 // trafficLandedMsg is the lift expiring: one repaint.
@@ -74,6 +75,12 @@ func (a *app) trafficJump(key, id string) tea.Cmd {
 // An overview link carries its originating team through an asynchronous open.
 // Numbers are scoped to that team even when the member belongs to several.
 func (a *app) trafficJumpFromTeam(teamID, key, id string) tea.Cmd {
+	if key == "" {
+		key = a.frontTabKey()
+	}
+	if cmd, remote := a.teamsRemoteFront(key); remote {
+		return cmd
+	}
 	var cmd tea.Cmd
 	if key != "" && key != a.frontTabKey() {
 		cmd = a.trafficGo(key)
@@ -119,6 +126,7 @@ func (a *app) trafficLand() tea.Cmd {
 	if at < 0 {
 		a.offset, a.stick = 0, true
 		land.older = true
+		land.elsewhere = strings.Contains(j.id, "/")
 		land.until = a.now().Add(3 * trafficLandFor)
 	} else {
 		a.revealTrafficEntry(at)
@@ -304,6 +312,13 @@ func sentElsewhere(e *entry, shown team) bool {
 // A shared conversation can post to one team and receive another team's
 // message with the same number. The receipt's team name disambiguates it.
 func postedElsewhere(e *entry, shown team) bool {
+	// A post up says the team above by name and id and its line's number there.
+	if post, ok := session.ReadTeamPost(e.detail.Output); ok && post.Up {
+		if post.TeamID != "" {
+			return post.TeamID != shown.ID
+		}
+		return post.Team != shown.Name && post.Team != shown.ID
+	}
 	_, rest, named := strings.Cut(e.detail.Output, " in ")
 	if !named {
 		return false
@@ -363,6 +378,9 @@ func (a *app) trafficLandRows(rows []row, width int) []row {
 func (a *app) trafficJumpWords() string {
 	l := a.traffic.landing
 	if l.older && a.now().Before(l.until) {
+		if l.elsewhere {
+			return "that message is on the other computer's history"
+		}
 		return trafficOlderWords
 	}
 	return ""

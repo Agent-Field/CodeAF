@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"strings"
@@ -51,7 +52,7 @@ type farTeams struct {
 }
 
 func (f *farTeams) seam() TeamsSeam {
-	local := localTeams(f.dir, &f.watch)
+	local := localTeams(f.dir, &f.watch, nil)
 	return TeamsSeam{
 		Load: func(reserved []float64) ([]teamstore.Team, string, bool) {
 			f.mu.Lock()
@@ -75,10 +76,11 @@ func (f *farTeams) seam() TeamsSeam {
 // THE LOCAL SEAM IS THE STORE IN THE PROFILE. A load of no file is known and
 // empty; an update answers what it wrote and a stamp; a read at that stamp is
 // "same" and carries nothing; a quiet log after its cursor is nothing.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestTheLocalTeamsSeamIsTheStoreInTheProfile(t *testing.T) {
 	dir := t.TempDir()
 	var watch teamstore.Watch
-	seam := localTeams(dir, &watch)
+	seam := localTeams(dir, &watch, nil)
 	teams, stamp, known := seam.Load(nil)
 	if !known || len(teams) != 0 || stamp != teamstore.MissingStamp {
 		t.Fatalf("a load of no file: %v, %q, %v", teams, stamp, known)
@@ -274,11 +276,12 @@ func TestAHostedSeamThatHoldsNothingYetIsReadOffTheLoop(t *testing.T) {
 // handed without them says so. A packet raised through the local seam is read
 // back through it, a second read at the stamp is same, and the spend of a team
 // nobody has spent in is zero with a stamp that answers same.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestTheLocalTeamsSeamCarriesTheDelegationDoors(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	var watch teamstore.Watch
-	seam := localTeams(dir, &watch)
+	seam := localTeams(dir, &watch, nil)
 	if !seam.delegation() {
 		t.Fatal("the local seam has no delegation doors")
 	}
@@ -310,5 +313,44 @@ func TestTheLocalTeamsSeamCarriesTheDelegationDoors(t *testing.T) {
 	}
 	if _, _, same, _ := seam.Spend("0a0a0a0a0a0a", "", at); !same {
 		t.Fatal("a quiet spend was not same")
+	}
+}
+
+// A STORE THE LOCAL SEAM REFUSES IS NOT AN EMPTY ONE. A newer build's store
+// is never set aside, so the window does not hold it as known and empty, where
+// every edit would fail with nothing said: it reads it off the loop, as a
+// connection's first read, and says why it holds no teams.
+func TestALocalStoreItCannotReadIsNotHeldEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := saveTeams(dir, []team{{ID: "0a0a0a0a0a0a", Name: "harbor"}}); err != nil {
+		t.Fatal(err)
+	}
+	teamstore.Close()
+	db, err := sql.Open("sqlite", teamstore.Path(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec("PRAGMA user_version = 1000"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var watch teamstore.Watch
+	seam := localTeams(dir, &watch, nil)
+	if teams, _, known := seam.Load(nil); known {
+		t.Fatalf("a newer store loaded as known with %d teams", len(teams))
+	}
+
+	a, _, _ := tabApp(t)
+	a.teamsDisk.door = seam
+	a.wall.loaded = false
+	a.teamsEnsure()
+	teamsFlush(t, a)
+	if a.wall.loaded {
+		t.Fatal("the window holds a store it cannot read as loaded")
+	}
+	if got := plain(lastNote(t, a)); !strings.Contains(got, "newer") {
+		t.Fatalf("the window said %q", got)
 	}
 }

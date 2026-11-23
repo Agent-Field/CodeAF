@@ -82,11 +82,11 @@ func TestC28KillAtEveryRecordBoundary(t *testing.T) {
 				if boundary == "group" && len(rec.Incomplete[0].Groups) != 1 {
 					t.Fatal("lost process-group record")
 				}
-			case "done", "turn":
+			case "done":
 				if len(rec.Completed) != 1 || string(rec.Completed[0].Stdout) != "saved once" {
 					t.Fatalf("lost external result: %+v", rec)
 				}
-			case "compact", "resolved":
+			case "turn", "compact", "resolved":
 				if len(rec.Completed) != 0 || len(rec.Incomplete) != 0 {
 					t.Fatalf("closed record came back: %+v", rec)
 				}
@@ -95,6 +95,10 @@ func TestC28KillAtEveryRecordBoundary(t *testing.T) {
 				head, err := Head(c)
 				if err != nil || head == nil || len(head.Receipt.Calls) != 1 {
 					t.Fatalf("lost sealed turn: %+v %v", head, err)
+				}
+				out, err := os.ReadFile(rel(c, BlobsDir+"/"+head.Receipt.Calls[0].StdoutHash))
+				if err != nil || string(out) != "saved once" {
+					t.Fatalf("lost sealed external result: %q %v", out, err)
 				}
 			}
 		})
@@ -130,6 +134,7 @@ func TestC28KilledWriter(t *testing.T) {
 		must(w.Started(i, GroupRec{PGID: 123, Start: 0, Owner: os.Getpid()}))
 	}
 	done := Executed{Call: Call{Tool: i.Tool, ArgsHash: i.ArgsHash, Started: i.Started, SideEffect: i.SideEffect}, Stdout: []byte("saved once")}
+	done.Call.StdoutHash = hashHex(done.Stdout)
 	if strings.Contains(" done turn compact ", " "+boundary+" ") {
 		must(w.Finish(i, done))
 	}

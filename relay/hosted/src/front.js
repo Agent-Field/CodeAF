@@ -2,12 +2,14 @@
 // Durable Object classes (which only load inside the Workers runtime).
 import { peerPath,peerLimits } from './raft/peers.js';
 import { stripBase } from './base.js';
+import { serveStorageAdmin } from './storage.js';
 import { clusterRequestLimit } from './raft/ingress.js';
 import { sharedRuntime } from './raft/actor.js';
 import { checkDeclared,readBody } from './body.js';
 import { serveLink } from './link/front.js';
 import { isPagePath, servePage } from './page.js';
 import { servePair } from './pair/front.js';
+import { isMachineDoor, serveMachineDoor } from './engine/door.js';
 import { matchRoute } from './routes.js';
 import { identityOf } from './verify.js';
 import { notFound, respond } from './wire.js';
@@ -34,8 +36,10 @@ export function dispatch(outer, env) {
   const request = stripBase(outer, env);
   if (!request) throw notFound();
   const { pathname } = new URL(request.url);
+  if (pathname === '/v1/admin/storage') return serveStorageAdmin(request, env);
   if (pathname.startsWith('/v1/link/')) return serveLink(request, env);
   if (pathname.startsWith('/v1/pair')) return servePair(request, env);
+  if (isMachineDoor(pathname)) return serveMachineDoor(request, env);
   if (pathname.startsWith('/v1/') || pathname.startsWith('/v2/cluster/')) return forward(request, env);
   throw notFound();
 }

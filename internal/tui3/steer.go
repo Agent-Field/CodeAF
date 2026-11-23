@@ -127,6 +127,29 @@ type steerAgent interface {
 	Steer(words string) (<-chan session.Event, error)
 }
 
+// steerAsPerson splices words the person typed. Plain Steer is also the
+// engine's and runners' door and counts nobody, so a session in this process
+// is steered by the person's door ([session.Agent.SteerMessage]). A linked
+// engine's agent, and any wrapper around one, keeps plain Steer: its wire's
+// server takes a correction as the person's, and a wrapper's own Steer may
+// count the stream.
+func steerAsPerson(agent steerAgent, words string) (<-chan session.Event, error) {
+	if local, ok := agent.(*session.Agent); ok {
+		return local.SteerMessage(session.Submission{Text: words})
+	}
+	return agent.Steer(words)
+}
+
+// followUpAsPerson queues words the person typed, by the person's door
+// ([session.Agent.FollowUpMessage]) on a session in this process, for
+// [steerAsPerson]'s reasons.
+func followUpAsPerson(agent Agent, text string) (<-chan session.Event, error) {
+	if local, ok := agent.(*session.Agent); ok {
+		return local.FollowUpMessage(session.Submission{Text: text})
+	}
+	return agent.FollowUp(text)
+}
+
 // steerable reports whether this session has the verb at all.
 func (a *app) steerable() bool {
 	_, ok := a.agent.(steerAgent)
@@ -361,7 +384,7 @@ func (a *app) promoteParked(at int) tea.Cmd {
 	// carry is the message as it was parked (pastechip.go).
 	spoken := one.spoken()
 	return func() tea.Msg {
-		ch, err := agent.Steer(spoken)
+		ch, err := steerAsPerson(agent, spoken)
 		return steeredMsg{words: one.text, park: one, ch: ch, err: err}
 	}
 }

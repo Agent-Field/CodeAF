@@ -66,6 +66,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -110,10 +111,11 @@ type ProgramFolderOrder struct {
 	// line's first run and for every shell run.
 	Carry *programCarry
 	// SignModel is the model the attribution line on the commit that finishes
-	// the run names, and "" for the line that names none: codeaf signs every
-	// commit it writes, and the only choice is whether the model is named
-	// ([gitSignature]).
+	// the run names, and "" for the line that names none ([gitSignature]).
+	// Unsigned turns off attribution on that finishing commit altogether when
+	// the person turned attribution off.
 	SignModel string
+	Unsigned  bool
 }
 
 // ProgramFolder is one program run's folder as [PrepareProgramFolder] readied
@@ -174,7 +176,10 @@ type ProgramFolder struct {
 	SignModel string `json:"signModel,omitempty"`
 	// NoAttribution is true when the run had no answered model call, so its
 	// finishing commit does not credit a model that did no work in this run.
+	// Unsigned is true when the person turned attribution off, persisted so
+	// recovery of an interrupted run respects their setting too.
 	NoAttribution bool `json:"noAttribution,omitempty"`
+	Unsigned      bool `json:"unsigned,omitempty"`
 	// message is the commit message the program wrote for the commit that
 	// ends its run, read from its notes just before they are moved
 	// ([ProgramFolder.readCommitMessage]); never written to the record.
@@ -262,7 +267,7 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 	folder := &ProgramFolder{
 		Program: order.Program.Name, Title: title, Dir: dir, Outer: outer,
 		Notes: order.Program.Notes, Keep: order.Keep, SignModel: order.SignModel,
-		key: canonicalPath(dir), place: order.Place,
+		Unsigned: order.Unsigned, key: canonicalPath(dir), place: order.Place,
 	}
 	if repo {
 		return prepareProgramCopy(order, folder)
@@ -304,7 +309,7 @@ func PrepareProgramFolder(order ProgramFolderOrder) (*ProgramFolder, error) {
 		folder.release()
 		return nil, err
 	}
-	if outer != "" && !holdsHomeFolder(outer) {
+	if outer != "" && !HoldsHomeFolder(outer) {
 		folder.IgnoredOuter = outer
 		folder.Outer = ""
 	}
@@ -359,7 +364,7 @@ func programFolderOf(asked string) (dir string, repo bool, outer string, refusal
 	switch {
 	case !ok || !hasCommit(root):
 		return asked, false, "", ""
-	case holdsHomeFolder(root):
+	case HoldsHomeFolder(root):
 		// A REPOSITORY AT THE HOME FOLDER IS NOBODY'S PROJECT. A dotfiles
 		// repository there would otherwise have every folder under home read as
 		// its subfolder, and the program's branch cut in the person's dotfiles.
@@ -757,13 +762,13 @@ func (f *ProgramFolder) commitLeftovers(result string) string {
 		}
 	}
 	args := append([]string{"-c", "commit.gpgsign=false"}, codeafGitIdentity()...)
-	if !f.NoAttribution {
+	if !f.NoAttribution && !f.Unsigned {
 		// signOnce, because a message the program wrote may already carry a
 		// line of the signature, which would otherwise appear twice.
 		message = gitSignature{named: f.SignModel != "", model: f.SignModel}.signOnce(message)
 	}
 	args = append(args, "commit", "-q", "--no-verify", "-m", message)
-	if out, err := git(f.Dir, args...); err != nil {
+	if out, err := privateGit(f.Dir, args...); err != nil {
 		return "git commit: " + firstLine(out)
 	}
 	return ""
@@ -1102,7 +1107,7 @@ func (f *ProgramFolder) write() {
 	if err := os.WriteFile(temporary, body, 0o600); err != nil {
 		return
 	}
-	_ = os.Rename(temporary, path)
+	_ = fsreplace.Rename(temporary, path)
 }
 
 // readProgramFolder is the record of the last run in one folder.

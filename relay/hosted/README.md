@@ -102,11 +102,17 @@ JavaScript directory rules serve only source conversion and legacy fixtures.
 
 ## Run it locally
 
+Use Node 22, the version CI uses (`node --version`); wrangler refuses anything older. The build hook
+compiles `src/raft/core.wasm` with Go first, on Linux and macOS alike.
+
 ```sh
 cd relay/hosted
 npm ci
 npm run dev                       # http://127.0.0.1:8787, R2 and Durable Objects simulated in workerd
 ```
+
+If `npm ci` finishes but `npm run dev` then says esbuild or workerd is missing, their install scripts
+did not run; install again with Node 22's npm.
 
 `npm run dev` lifts the new-identity cap (the conformance suite makes one identity per case, all from
 127.0.0.1); a bare `wrangler dev` keeps the default of 200 a day per network. Conformance, against
@@ -157,14 +163,17 @@ canonical names, so the stricter side is the safe one.
 | `MAILBOX` | Durable Object `Mailbox` | one pairing, one per nameplate |
 | `LINK_GATE` | Durable Object `LinkGate` (SQLite) | link-request codes, per-IP counters, one object |
 | `LINK_REQUEST` | Durable Object `LinkRequest` | one pending request, one per code |
+| `MACHINE` | Durable Object `MachineDO` (SQLite) | one machine name's `codeaf serve` socket and the surfaces dialled to it |
+| `MACHINE_DIAL_LIMIT` | Rate limit (`30` / `60 s`) | per-network dial ceiling at the Worker front door before `MACHINE` wakes |
+| `MACHINE_REGISTER_LIMIT` | Rate limit (`10` / `60 s`) | per-network registration ceiling at the Worker front door before `MACHINE` wakes |
 | `LEASE_POLICY` | var | `amended` (default: 90 s, a publish renews) or `stage1` (30 s leases) |
 | `CAF_LIMITS` | var, optional | JSON that overrides the numbers below |
 | `BASE_PATH` | var, optional | a path prefix every route is served beneath (for example, `/fabric`); empty, the default, serves from the root. A request outside the prefix is `404 not_found` |
 | `TRUST_PROXY` | var, optional | `1` takes the caller's network from the first `X-Forwarded-For` address (the self-hosted relay's `--trust-proxy`); for test rigs only, never production, where `CF-Connecting-IP` is the one truth |
 
 `wrangler.toml` declares all of them and the migration `v1` that creates the four classes as
-SQLite-backed; migration `v2` adds the link classes and `v3-raft-members` adds the three-anchor
-namespace. A deployment's own configuration must carry the `RAFT_MEMBERS` binding, the
+SQLite-backed; migration `v2` adds the link classes, `v3-raft-members` adds the three-anchor
+namespace and `v4-machines` adds `MachineDO`. A deployment's own configuration must carry the `RAFT_MEMBERS` binding, the
 `v3-raft-members` migration, the `src/raft-worker.js` entry and the build command that
 `wrangler.toml` declares; the first authenticated use of an existing identity then upgrades it in place, and that upgrade cannot
 be rolled back to the single-object writer.
@@ -175,6 +184,25 @@ requests return HTTP 500 `internal`, with the storage error
 Running an older relay after the upgrade is not supported. Restore current code
 with the same complete storage to resume; the original directory and encrypted
 frames remain retained.
+
+## Machine doors
+
+`codeaf serve` registers at `/v1/engine` and `codeaf chat --at <name>` dials at `/v1/dial/<name>`, the
+two doors of the self-hosted `codeaf relay` (`internal/relay`). A Worker answers only WebSocket
+upgrades, so both doors take a WebSocket offering the `aforge-relay/1` subprotocol and answer anything
+else with `426`, which is what tells a client to use the WebSocket. Over it run the same bytes as
+over the self-hosted relay's raw upgrade: the registration proof, then the carrier's frames, one frame
+to a message (`src/engine/carrier.js`, a port of `handshake.go` and `mux.go`).
+
+Each machine name has one `MachineDO` (`src/engine/machine.js`). It checks that the name is the one
+the machine's key derives and that the machine holds that key, then holds the machine's socket and
+splices each dialled socket onto it as one stream. It reads no payload. Every socket hibernates, and
+the routing lives in socket tags and attachments, so a quiet machine costs nothing: the machine
+proves the socket alive with WebSocket pings, which the platform answers without waking the object.
+A second registration under a live name is refused; one with the **same public key** under a name whose
+socket stopped answering (a pong is asked for and not given within 5 s) replaces it, which is how a
+machine whose network dropped comes back before the platform has closed its old socket. A colliding
+key never replaces an existing registration, silent or live.
 
 ## Base path
 
@@ -229,6 +257,8 @@ npx wrangler deploy --config wrangler.custom.toml
 | link requests: creates an hour, pending at once, per IP | 10, 3 | `429 rate_limited`, `Retry-After` |
 | link requests: reads a minute, misses a minute, open polls, per IP | 60, 20, 4 | `429 rate_limited` |
 | link requests: live in all | 2,000 | `503 full` |
+| machine doors: surfaces on one machine at once (`MAX_STREAMS`) | 16 | `429` |
+| machine doors: dials and registrations a minute, per network at the Worker front (`MACHINE_DIAL_LIMIT`, `MACHINE_REGISTER_LIMIT`) and per machine name in memory | 30, 10 | `429` |
 
 Stored quotas (bytes, objects, frames a day), the stats counts and the per-IP counters live in the identity object's SQLite and survive
 eviction. A frame the store already holds costs no quota, so a client that resends is never refused
@@ -236,15 +266,22 @@ for it. The per-minute rates are kept in memory: an eviction can only forgive a 
 
 ## Deployment limits and data erasure
 
-`CAF_LIMITS` optionally sets `globalNewIdentitiesPerDay` and `globalStoreBytes`.
-Both are unlimited by default. Set either to a finite number to enable that limit;
-`0` closes new admission or storage respectively. Per-identity and per-network limits
-still apply.
+`CAF_LIMITS` optionally sets `globalNewIdentitiesPerDay`, `globalStoreBytes` and
+`globalHardStoreBytes`. All three are unlimited (`Infinity`) by default. A finite
+`globalNewIdentitiesPerDay` caps daily admission. `globalStoreBytes` closes admission
+when stored bytes reach it; `0` closes admission immediately. Existing identities
+keep storing up to their own `storeBytes`, `storeObjects` and `framesPerDay` ceilings,
+which still answer `507 full`. Per-network limits still apply.
 
 A new identity over the daily admission limit gets `429 relay_admission_full` with
-`Retry-After`. New identities at the storage limit, and new frames that would exceed
-it, get `507 relay_storage_full`. Existing data stays readable, held frames can be
-retried, and identity erasure remains available.
+`Retry-After`. New identities at the shared storage ceiling get
+`507 relay_storage_full`. Every frame still counts in the deployment total as existing
+identities grow, so admission stays closed. This brake bounds total storage at roughly
+(identities admitted before it closed) × `storeBytes`, rather than at `globalStoreBytes`.
+The operator's opt-in emergency stop is `globalHardStoreBytes`: any new frame that would
+pass it gets `507 relay_storage_full`, for every identity. `0` closes all new writes.
+Under either brake, existing data stays readable, held frames can be retried, and
+identity erasure remains available and returns the owner's counted bytes.
 
 Every frame is under an identity prefix. Its owner can retire the identity through the
 signed rotation route (normally `codeaf identity rotate`); after the grace period, an
@@ -260,3 +297,28 @@ metrics and update prompts off, no dependency on a writable home. Use that wrapp
 local Wrangler commands too. The project `.npmrc` keeps npm's own installation cache and
 logs below the ignored `.wrangler/npm-cache` directory, so `npm ci && npm test` also
 works with a read-only home. `npm ci` installs only the lockfile's dependencies.
+
+## Hosted storage approvals
+
+Hosted R2 writes are closed by default, including dev and staging, while the privacy terms are being finished. Pairing, presence, directory coordination, live tunnels and existing frame reads remain available. Account approval is stored separately from newcomer admission. A self-hosted Go relay does not use this policy.
+
+Build the operator-only command with `go build -o /tmp/codeaf-relay-admin ./cmd/codeaf-relay-admin` from the repository root; it is not packaged in releases or installers. An operator supplies their own Ed25519 seed file, one unpadded base64url 32-byte seed per file with owner-only permissions. The default is `~/.config/codeaf-relay-admin/admin.key`; `CODEAF_RELAY_ADMIN_KEY` or `--key` overrides it. Never place a private key in this repository.
+
+```sh
+codeaf-relay-admin public-key --key <seed-file>
+codeaf-relay-admin approve id_<32-hex> --relay prod --key <seed-file>
+codeaf-relay-admin revoke id_<32-hex> --relay staging --key <seed-file>
+```
+
+`--relay` defaults to `prod`; `staging`, `dev` and an explicit HTTP URL are also accepted. URL prefixes such as `/fabric` are preserved. The command signs the exact JSON body after `codeaf/relay-admin/v1\n` and posts to `/v1/admin/storage`. The front Worker verifies an Ed25519 signature from `CAF_ADMIN_KEYS`, the arrived host and a ten-minute clock window. The identity object rejects replayed or reordered timestamps with `409 stale`. Revocation stops future writes without deleting existing frames.
+
+`CAF_ADMIN_KEYS` contains comma-separated unpadded base64url raw public keys; an empty value permits no approvals. The committed public key in `[vars]` is retained by every channel configuration. `CAF_LIMITS.storageOpen` accepts `true` or `1` to open storage for everyone later; no deployment configuration enables it by default.
+
+
+## Storage handoff during rotation
+
+Relays advertise handoff support through the `storage` field in signed store stats. The client always sends the original freeze body, then posts a device-signed `POST /v1/store/handoff` as the source identity before resealing uploads. Its JSON body is `{"successor":"id_…","successor_key":"<hex Ed25519 public key>","proof":"<hex signature>"}`. The successor identity key signs `codeaf/storage-handoff/v1\n<source id>\n<successor id>`.
+
+The hosted object checks its committed rotation view: a source that is neither frozen nor retired receives `409 not_rotating`. WebCrypto verifies the successor's key-derived ID and proof. The first accepted successor is permanently bound in the source's local `meta`, surviving thaw and object restart. A different successor receives `409 conflict`; the same successor may retry. This does not change coordination commands, records or the shared evaluator.
+
+Only an `on` approval can be inherited, only into a successor with no approval record, and only while storage is closed globally. The response is `200 {"successor":…, "storage":"on"|"off"}` with the successor's resulting state. A frozen rotation journal repeats this handoff before uploads; `--abandon` keeps its bound successor keys for reuse. Storage-off rotation completes locally with no store writes. An older relay receives no handoff request.

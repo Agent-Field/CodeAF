@@ -122,6 +122,29 @@ type Probe struct {
 	Timeout time.Duration
 }
 
+// ReasoningDialect names the request field a service reads its thinking level
+// from. It is a fact about the endpoint, declared on the row that describes it,
+// because two endpoints serving the same model can read the same request
+// differently: OpenRouter translates its unified `reasoning` object for every
+// machine behind it, while DeepSeek's own API ignores that object and reads a
+// top-level word of its own. Reading the address to tell them apart would be a
+// guess, and this package does not guess (see [Source]).
+type ReasoningDialect string
+
+const (
+	// ReasoningUnified is OpenRouter's `reasoning` object, an effort word or a
+	// thinking budget. It is the zero value so every row that has not declared
+	// otherwise keeps sending exactly the bytes it always sent.
+	ReasoningUnified ReasoningDialect = ""
+
+	// ReasoningEffortLowHighMax is a top-level `reasoning_effort` that takes
+	// exactly the three words `low`, `high` and `max`. DeepSeek's first-party
+	// API speaks it and advertises it per model on its listing
+	// (`"effort":{"supported_levels":["low","high","max"]}`); it has no budget
+	// form and no word between low and high.
+	ReasoningEffortLowHighMax ReasoningDialect = "reasoning_effort:low,high,max"
+)
+
 // Source is one place models come from: an address, a key description, and the
 // facts about what lives there. IT IS CONFIGURATION AND NEVER A GUESS — nothing
 // here reads a hostname to decide anything, because a router is recognised by
@@ -140,9 +163,15 @@ type Source struct {
 	// KeyOptional is true only when this service explicitly accepts no key.
 	// It is a fact about the service, never inferred from a validation function.
 	KeyOptional bool
-	Probe       Probe
-	Listing     Listing
-	ProbeModel  string
+	// AddressOwned says the address is the person's to give: the service runs
+	// wherever they run it, so a persisted row may carry an address of its own
+	// and Address is only where it usually is. Ollama's is; a vendor's hosted
+	// API never is, because there the address belongs to the vendor and moving
+	// it would send the key somewhere the vendor is not.
+	AddressOwned bool
+	Probe        Probe
+	Listing      Listing
+	ProbeModel   string
 	// A ROW'S PREFERRED MUST BE ANSWERABLE ON EVERY DOOR IT CAN BIND. The door
 	// is chosen by what the key proves, so this is the vendor's best model both
 	// its subscription and metered roads serve, not simply its flagship.
@@ -159,6 +188,11 @@ type Source struct {
 	// here and written only into the call row (internal/session's
 	// [Agent.attributedEndpoint]), never put on the answer (#1391).
 	ServedAs string
+	// Reasoning is the dialect this service reads a thinking level in. Zero is
+	// OpenRouter's unified object, which every router-shaped row speaks; a row
+	// whose endpoint reads a field of its own declares it here, and the
+	// provider adapter writes that field instead ([ReasoningDialect]).
+	Reasoning ReasoningDialect
 }
 
 // Connected is one service with the two facts only a caller that may read the
@@ -450,6 +484,10 @@ func Vendored() []Source {
 			Address: "https://api.deepseek.com/v1", KeyEnv: "DEEPSEEK_API_KEY",
 			KeyShape: LooksLikeAPIKey, Listing: ListingModels, Probe: listingProbe(),
 			Preferred: "deepseek-v4-pro",
+			// OBSERVED 2026-11-22: api.deepseek.com ignores OpenRouter's
+			// `reasoning` object, so every level ran at DeepSeek's default and
+			// max was unreachable. Its listing names the field it does read.
+			Reasoning: ReasoningEffortLowHighMax,
 		},
 		{
 			ID: "z-ai", Written: "z-ai", Name: "Z.ai", KeyEnv: "ZHIPU_API_KEY",
@@ -548,12 +586,23 @@ func Vendored() []Source {
 		},
 		{
 			ID: "ollama", Written: "ollama", Name: "Ollama",
-			Address: "http://localhost:11434/v1", KeyOptional: true,
+			Address: "http://localhost:11434/v1", KeyOptional: true, AddressOwned: true,
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
 		},
 		{
 			ID: CustomID, Written: CustomID, Name: "Custom OpenAI-compatible API",
 			Listing: ListingModels, Probe: listingProbe(), Preferred: "",
+		},
+		{
+			// CLAUDE CODE IS THE PERSON'S OWN PROGRAM, SIGNED IN ON THEIR OWN
+			// ACCOUNT. Nothing is dialled at this address: the service's
+			// transport (internal/claudemodel) answers every request by running
+			// the installed Claude Code, and its key is only a sentinel that
+			// says it is signed in.
+			ID: "claude-code", Written: "claude-code", Name: "Claude Code", ServedAs: "Claude Code",
+			Address:  "http://claude-code.local/v1",
+			KeyShape: func(key string) bool { return strings.TrimSpace(key) == "claude-code" },
+			Listing:  ListingNone, Probe: Probe{}, Preferred: "sonnet",
 		},
 	}
 }
@@ -684,7 +733,10 @@ const (
 type Outcome struct {
 	Kind       OutcomeKind
 	VendorSaid string
-	Models     int
+	// Status is the service's own status code on a refusal, when it answered
+	// one; zero when it did not, or when the outcome is not a refusal.
+	Status int
+	Models int
 	// ModelIDs are the non-empty ids carried by an answered listing. Keeping
 	// them lets the surface retain the list it already paid for instead of
 	// making a second catalog-shaped response the only road to the picker.

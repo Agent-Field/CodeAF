@@ -128,24 +128,31 @@ func TestTheFrameClockPicksUpWhatTheWorkHasJustSpent(t *testing.T) {
 // /cost STATES THE SPLIT, so the total is auditable from one place: the two
 // halves are printed under it and they add up to it.
 func TestCostStatesTheSplitBetweenTheConversationAndItsWork(t *testing.T) {
-	a := spendTreeLab(t, 2.53, treeFixture())
-	text := a.costText()
-	for _, want := range []string{
-		"spend", dollars(53.58),
-		"conversation", dollars(2.53),
-		"tasks", dollars(51.05),
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("/cost does not say %q:\n%s", want, text)
-		}
-	}
-	// The total leads and the halves follow it, because the figure a person is
-	// deciding on is the whole bill.
-	total := strings.Index(text, dollars(53.58))
-	own := strings.Index(text, dollars(2.53))
-	work := strings.Index(text, dollars(51.05))
-	if total < 0 || own < total || work < own {
-		t.Fatalf("/cost does not lead with the total:\n%s", text)
+	for _, layout := range []string{"legacy", "cell"} {
+		t.Run(layout, func(t *testing.T) {
+			a := spendTreeLab(t, 2.53, treeFixture())
+			if layout == "cell" {
+				a.file = filepath.Join(filepath.Dir(a.file), ".cell", "transcript.jsonl")
+			}
+			text := a.costText()
+			for _, want := range []string{
+				"spend", dollars(53.58),
+				"conversation", dollars(2.53),
+				"tasks", dollars(51.05),
+			} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("/cost does not say %q:\n%s", want, text)
+				}
+			}
+			// The total leads and the halves follow it, because the figure a person is
+			// deciding on is the whole bill.
+			total := strings.Index(text, dollars(53.58))
+			own := strings.Index(text, dollars(2.53))
+			work := strings.Index(text, dollars(51.05))
+			if total < 0 || own < total || work < own {
+				t.Fatalf("/cost does not lead with the total:\n%s", text)
+			}
+		})
 	}
 }
 

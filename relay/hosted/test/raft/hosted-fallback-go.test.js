@@ -17,6 +17,8 @@ try{
  await run(['go','test','-p=1','-timeout=15m','./internal/syncsetup','-c','-o',binary]);
  // Each identity proof gets a fresh isolate, retaining the shared admission cap.
  for(const name of [
+  'TestHostedLeaderCleanQuitReleasesAndHandsBack',
+  'TestHostedUnreachableAndNonLeaderQuit',
   'TestR7HostedPersonalLeaderFallbackAndNoAutomaticRegain',
   'TestR7HostedPersonalLeaderProcessDeathRestoresAnchors',
   'TestR8HostedPersonalLeaderAndAnchorLossNeverCreatesSecondCluster',

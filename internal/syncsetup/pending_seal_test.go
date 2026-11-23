@@ -88,7 +88,7 @@ func TestD4TakebackKeepsDeadCallsWithoutWorkspaceEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	fetcher := h.b.Continuer(eng, TakeOptions{RootFor: func(string) string { return root }})
-	if err := fetcher.taker(h.b.scope(h.cell.ID)).Fetch.Fetch(t.Context(), cell.Cell{ID: h.cell.ID, Root: root}, branch.Cell.Head); err != nil {
+	if err := fetcher.taker(t.Context(), h.b.scope(h.cell.ID)).Fetch.Fetch(t.Context(), cell.Cell{ID: h.cell.ID, Root: root}, branch.Cell.Head); err != nil {
 		t.Fatal(err)
 	}
 	for path, file := range readTree(t, root) {

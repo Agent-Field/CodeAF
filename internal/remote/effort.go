@@ -1,6 +1,11 @@
 package remote
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+
+	"github.com/Agent-Field/codeaf/internal/executor"
+)
 
 // ── THE CONVERSATION'S THINKING RUNG, ACROSS THE WIRE ───────────────────────
 //
@@ -102,19 +107,34 @@ func (a *Agent) ConversationEffort() string {
 // — and the engine's own push is still on the wire at that moment. A read that
 // waited for the push would report the rung from before the keystroke.
 func (a *Agent) SetConversationEffort(rung string) bool {
+	took, err := a.SetConversationEffortChecked(rung)
+	a.c.settingError.Store(&settingResult{err: err})
+	return took
+}
+
+func (a *Agent) SetConversationEffortChecked(rung string) (bool, error) {
+	took, err := a.setConversationEffort(rung)
+	var refusal *executor.WorkRefusal
+	if !errors.As(err, &refusal) {
+		err = nil
+	}
+	return took, err
+}
+
+func (a *Agent) setConversationEffort(rung string) (bool, error) {
 	if !a.EffortSupported() {
-		return false
+		return false, nil
 	}
 	payload, err := a.c.call(nil, MethodSetEffort, rung)
 	if err != nil {
-		return false
+		return false, err
 	}
 	var took bool
 	if err := json.Unmarshal(payload, &took); err != nil || !took {
-		return false
+		return false, nil
 	}
 	a.c.facts.setThinking(a.farResolvedEffort())
-	return true
+	return true, nil
 }
 
 // farResolvedEffort asks the engine what the rung resolved to, once, on the

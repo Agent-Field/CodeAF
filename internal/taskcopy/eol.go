@@ -109,6 +109,11 @@ func applyEOL(dest string, styles map[string]string) error {
 // cannot represent them; a new Windows path gets 0644 (K3/K4).
 func portableModes(tree, dest string) map[string]fs.FileMode {
 	modes := modesOfTree(tree)
+	for path := range modes {
+		if portableNativeMetadataPath(path) {
+			delete(modes, path)
+		}
+	}
 	if runtime.GOOS != "windows" {
 		return modes
 	}

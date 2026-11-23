@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // wireVersion is the daemon protocol's V; every message carries it (L11).
@@ -53,11 +55,40 @@ var nextID atomic.Uint64
 // An interrupted operation answer is surfaced because the engine may already
 // have completed the writes; a fallback must never replay that request (C28).
 func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
+	// Join daemon starts before an explicit owner stop takes its child list.
+	// A queued durability retry must not start a replacement after that stop.
+	if err := daemonLifecycle.Acquire(ctx, 1); err != nil {
+		return nil, err
+	}
+	generation, owned := ctx.Value(daemonOwnerKey{}).(uint64)
+	if owned && generation < recorderFence.Load() {
+		daemonLifecycle.Release(1)
+		return nil, errDaemonStopped
+	}
+	var stopped *stoppedDaemon
+	if value, ok := stoppedDaemons.Load(d.Socket); ok {
+		stopped = value.(*stoppedDaemon)
+		if (owned && generation < stopped.generation) || (op.Verb() == "sync" && !stopped.resumed.Load()) {
+			daemonLifecycle.Release(1)
+			return nil, errDaemonStopped
+		}
+	}
 	conn, err := d.connect(ctx)
+	if err == nil && op.Verb() != "sync" && stopped != nil {
+		// Only a new owner or a direct foreground request can resume saving.
+		// Keep the generation so old captures remain refused after reuse.
+		stopped.resumed.Store(true)
+	}
+	daemonLifecycle.Release(1)
 	if err != nil {
 		return nil, unavailable(err)
 	}
-	defer conn.Close()
+	pending := false
+	defer func() {
+		if !pending {
+			_ = conn.Close()
+		}
+	}()
 	// The watch on ctx starts before the health check, so a cancelled take
 	// frees a check that is waiting on a daemon that never answers.
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
@@ -65,14 +96,59 @@ func (d Daemon) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	if err := d.verify(conn); err != nil {
 		return nil, unavailable(err)
 	}
-	response, err := exchange(conn, newRequest(t, op))
+	// Once a request can write, cancellation must not release its store gate:
+	// closing the connection does not stop the daemon's already-running seal.
+	stop()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	release, err := lockStoreOperation(ctx, t.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	type answer struct {
+		response wireResponse
+		err      error
+	}
+	done := make(chan answer, 1)
+	finished := make(chan struct{})
+	req := newRequest(t, op)
+	pending = true
+	guard.Go("saving engine operation", func() {
+		defer release()
+		defer conn.Close()
+		defer close(finished)
+		response, err := exchange(conn, req)
+		done <- answer{response, err}
+	})
+	var response wireResponse
+	select {
+	case result := <-done:
+		response, err = result.response, result.err
+	case <-ctx.Done():
+		// The gate stays held while a cancelled request may still be writing,
+		// but never forever: a daemon that has not answered within the grace is
+		// treated as hung, and closing its connection frees the store for every
+		// other save, which would otherwise wait on it until this process exits.
+		wait := abandonedOperationGrace
+		guard.Go("abandoned engine operation", func() {
+			grace := time.NewTimer(wait)
+			defer grace.Stop()
+			select {
+			case <-finished:
+			case <-grace.C:
+				_ = conn.Close()
+			}
+		})
+		return nil, fmt.Errorf("engine %s answer interrupted: %w", op.Verb(), ctx.Err())
+	}
 	if err != nil {
 		// The engine may have completed its writes before the answer was lost.
 		// Replaying a mutation through a fallback would cross C28's no-repeat boundary.
 		return nil, fmt.Errorf("engine %s answer interrupted: %w", op.Verb(), err)
 	}
 	if response.Err != "" {
-		return nil, fmt.Errorf("engine %s: %s", op.Verb(), response.Err)
+		return nil, classifyStoreBusyError(t.DataDir, d.Socket, fmt.Errorf("engine %s: %s", op.Verb(), response.Err))
 	}
 	return response.Ok, nil
 }
@@ -105,9 +181,20 @@ func (d Daemon) verify(conn net.Conn) error {
 // where without this bound a caller with no deadline of its own waited for ever.
 var healthWait = 5 * time.Second
 
+// abandonedOperationGrace is how long a cancelled request keeps its store gate
+// waiting for the daemon's answer. It is long enough for any real seal to land,
+// so the first-pack race stays closed, and short enough that one hung daemon
+// cannot wedge a chat's saving for the rest of the session.
+var abandonedOperationGrace = 2 * time.Minute
+
 // Stop asks the daemon to finish what it is doing and exit. A daemon that is
 // not running is already stopped.
 func (d Daemon) Stop(ctx context.Context) error {
+	if err := daemonLifecycle.Acquire(ctx, daemonStopWeight); err != nil {
+		return err
+	}
+	defer daemonLifecycle.Release(daemonStopWeight)
+	stoppedDaemons.Store(d.Socket, &stoppedDaemon{generation: daemonClock.Add(1)})
 	conn, err := dial(ctx, d.Socket)
 	if err != nil && ctx.Err() != nil {
 		return ctx.Err()
@@ -134,7 +221,7 @@ func (d Daemon) Stop(ctx context.Context) error {
 	return nil
 }
 
-func unavailable(err error) error { return fmt.Errorf("%w: %v", ErrUnavailable, err) }
+func unavailable(err error) error { return fmt.Errorf("%w: %w", ErrUnavailable, err) }
 
 func newRequest(t Target, op Op) wireRequest {
 	args, _ := json.Marshal(op) // an Op is plain data
@@ -169,6 +256,12 @@ func exchange(conn net.Conn, req wireRequest) (wireResponse, error) {
 
 // connect dials the daemon, starting it when nothing listens.
 func (d Daemon) connect(ctx context.Context) (net.Conn, error) {
+	if d.Socket == "" {
+		return nil, fmt.Errorf("no private saving-engine socket directory fits the address limit")
+	}
+	if err := validateSocket(d.Socket); err != nil {
+		return nil, err
+	}
 	if conn, err := dial(ctx, d.Socket); err == nil {
 		return conn, nil
 	}
@@ -176,6 +269,9 @@ func (d Daemon) connect(ctx context.Context) (net.Conn, error) {
 }
 
 func dial(ctx context.Context, socket string) (net.Conn, error) {
+	if err := validateSocket(socket); err != nil {
+		return nil, err
+	}
 	var dialer net.Dialer
 	return dialer.DialContext(ctx, "unix", socket)
 }

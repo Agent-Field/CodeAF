@@ -19,11 +19,13 @@ The separate `relay` binary accepts the same flags.
 | `--store <dir>` | Persistent coordination and encrypted chunks. Without it, only the blind transport and pairing mailbox run; chat sync needs storage. |
 | `--quiet` | Suppress arrival, departure and request logs. |
 | `--status=false` | Disable `GET /status`. |
-| `--trust-proxy` | Use the first `X-Forwarded-For` address for pairing limits, only behind a proxy that sets it. |
+| `--trust-proxy` | use the first `X-Forwarded-For` address for registration, dial and pairing limits; absent or blank falls back to the socket peer. only behind a proxy that sets it. |
 
 Set `CODEAF_SYNC_URL=https://relay.example.com` on each computer, or use
 `codeaf pair --via https://relay.example.com`. Pair the computers with the same
 identity and relay. `CODEAF_SYNC_URL=off` stops sync, including existing clients.
+
+forwarding headers are ignored by default. behind Railway, a load balancer or nginx, pass `--trust-proxy` or every caller shares one allowance. enable it only behind a proxy that sets the header.
 
 The relay supplies no TLS or list of allowed people. Use a TLS proxy and a private
 network or a proxy that checks callers: any valid signature can create an identity.
@@ -46,22 +48,22 @@ either to stay awake. From a joined computer using this relay:
 
 ```sh
 codeaf cluster status
-codeaf cluster lead
 ```
 
-Status shows this computer, the leader, voters and learners when known, after a fresh
-majority read. Lead catches up this computer, replaces the third anchor's vote through
-a joint membership change, finishes that change with the anchor still learning, then
-transfers leadership. Success prints `computer <node> is coordinating` followed by its
-term, revision and read barrier. A pending request is not success; retrying lead reuses
-the saved signed request. Keep codeaf open: without an open terminal the member runs
-only for that command. Leadership does not transfer chat ownership or fetch content.
+Status shows which computer coordinates, along with the voters and learners when
+known, after a fresh majority read. In this release the coordinating computer cannot
+be chosen by hand: `codeaf cluster lead` is an unknown command. Tracked in issue #2559.
+Leadership does not transfer chat ownership or fetch content.
 
-When that personal leader sleeps, exits or turns sync off, the two remaining anchors
-can elect a leader and restore the third anchor. Healthy fallback targets about
+If a personal leader remains from an earlier release, on a clean terminal quit it
+releases its idle chats and returns coordination to an anchor before stopping.
+Returning coordination adds at most five seconds (`syncsetup.LeaderQuitWithin`);
+unavailable anchors retain ordinary fallback. When that personal leader sleeps,
+crashes, loses its connection or turns sync off, the two remaining anchors can
+elect a leader and restore the third anchor. Healthy fallback targets about
 65 seconds; delays and partitions can take longer. Returning computers remain learners
-until explicitly asked to lead again. Losing the personal leader and either voting
-anchor leaves no majority. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
+and cannot be chosen to lead by hand in this release. Losing the personal leader
+and either voting anchor leaves no majority. The refusal is `this cluster cannot coordinate right now; reconnect enough of its voting computers and try again; your saved chats are still here`.
 Saved local chats remain. There is no phone app yet, so a phone cannot lead yet.
 
 ## Storage layout and capacity
@@ -164,3 +166,15 @@ segments such as `/a/relay`. Use that complete address when pairing. Signatures 
 the prefix, and directory operations and computer enrollment keep working there
 when a joined computer leads. Requests outside the configured prefix return
 HTTP 404 `not_found`.
+
+## Architecture and workspace boundaries
+
+See [workspace storage and relay architecture](architecture/workspaces-storage-relay.md)
+for the shipped transport and the implemented, opt-in private-task and multi-root
+contract. Private task copies and Review/Apply require
+`CODEAF_PROTOTYPE_WORKSPACE_OWNERSHIP=1` with an absolute `CODEAF_HOME` on Linux or
+macOS when creating the chat. Saved policies travel with compatible builds;
+ordinary chats keep automatic task landing. Windows cannot enable this policy.
+Every receiving computer needs a build that understands the private-task format:
+an older build can take the chat and drop its tasks. Seal cost grows with retained
+private roots. Warm-transfer frame hints use the Raft relay and stay off by default.

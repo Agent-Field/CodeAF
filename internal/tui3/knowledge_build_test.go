@@ -5,12 +5,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/knowledge"
 )
 
 func TestKnowledgeBuildActionDoesNotHoldNavigation(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: v}
 	drive(t, a, key(placeChord(pageMemory)), key("alt+u"))
 	if got := placeFrameText(a); !strings.Contains(got, "Build knowledge base") {
@@ -69,7 +74,11 @@ func TestKnowledgeRefreshShowsCompletedBackgroundPages(t *testing.T) {
 
 func TestKnowledgeLocalEngineReadsInjectedProfileVault(t *testing.T) {
 	a := placeApp(t)
-	v := knowledge.Open(t.TempDir())
+	profile := t.TempDir()
+	if err := config.WriteMemoryEnabled(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	v := knowledge.Open(profile)
 	// The local engine adapter has no file-backed Knowledge method; the local
 	// application door supplies the engine's resolved profile explicitly.
 	a.agent = &knowledgeTestAgent{fakeAgent: &fakeAgent{model: "m"}, vault: nil}
@@ -86,5 +95,23 @@ func TestKnowledgeLocalEngineReadsInjectedProfileVault(t *testing.T) {
 	a.kb = knowledgePlace{}
 	if a.knowledgeVault() != nil {
 		t.Fatal("hosted conversation read local profile knowledge")
+	}
+}
+
+func TestKnowledgeBuildShowsStageProgressWithoutClaimingCompletion(t *testing.T) {
+	a := knowledgeArticleApp(t)
+	a.kb.reading.Build = knowledge.BuildStatus{Phase: knowledge.BuildRunning, Chats: 303, Imported: 303, Sources: 8149}
+	a.kb.reading.Pending = 7929
+	a.touch()
+	got := placeFrameText(a)
+	for _, want := range []string{"History imported: 303 of 303", "Sources processed: 220 of 8149", "2%"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q:\n%s", want, got)
+		}
+	}
+	a.kb.reading.Pending = 0
+	a.touch()
+	if got = placeFrameText(a); !strings.Contains(got, "Organizing knowledge pages") {
+		t.Fatalf("finished sources hid remaining organization:\n%s", got)
 	}
 }

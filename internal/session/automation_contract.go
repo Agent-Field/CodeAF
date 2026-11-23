@@ -98,7 +98,9 @@ const AutomationChangeHead = "save this change?"
 // that tells the two cards apart, on the engine's side of the wire and on every
 // surface's, without a field of its own to keep in step.
 func AutomationHead(item automation.Automation) string {
-	if strings.TrimSpace(item.ID) != "" {
+	// A standing order saved as proposed before its card has an id and is
+	// still a proposal, never a change.
+	if strings.TrimSpace(item.ID) != "" && item.Status != automation.StatusProposed {
 		return AutomationChangeHead
 	}
 	switch item.Kind() {
@@ -181,7 +183,7 @@ func AutomationQuestion(notice AutomationNotice) Question {
 		Asker:   Asker{Kind: AskerModel},
 		Head:    AutomationHead(notice.Automation),
 		Reason:  AutomationAskReason,
-		Subject: SubjectRef{Kind: SubjectOrder, ID: notice.ID, Name: strings.TrimSpace(notice.Automation.Title)},
+		Subject: SubjectRef{Kind: SubjectOrder, ID: notice.ID, Ref: notice.Automation.ID, Name: strings.TrimSpace(notice.Automation.Title)},
 		Options: options,
 		Stakes:  StakesReversible,
 		// THE TURN IS STOPPED ON IT: the `automation` call waits for the answer

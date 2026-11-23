@@ -19,20 +19,12 @@ package processgroup
 // missed kill leaks one process; a wrong kill destroys someone else's work, and
 // the second is never traded away to avoid the first.
 
-// Group is a process group recorded when a job starts: the leader's pid and the
-// identity that pid had then.
-type Group struct {
-	pid   int
-	start uint64
-	known bool
-}
-
 // CaptureGroup records a just-started process-group leader. It is called while
 // the process is known to be this job's own, which is the only moment the
 // identity is trustworthy.
 func CaptureGroup(pid int) Group {
 	start, ok := processStart(pid)
-	return Group{pid: pid, start: start, known: ok}
+	return capturedGroup(pid, start, ok)
 }
 
 // processStart reads the platform's identity for a live pid. It is a variable

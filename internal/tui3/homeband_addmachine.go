@@ -29,6 +29,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -46,13 +47,18 @@ const (
 	// fleetAskTimeout bounds one ask, so a silent directory is an unknown fleet.
 	fleetAskTimeout = 5 * time.Second
 
-	addMachineHeading = "+ Add another device"
-	addMachinePitch   = "Add another device — pick up your work anywhere, exactly where you left it."
-	addMachineStepRun = "1. On the new device, install and run: codeaf pair"
-	addMachineStepPut = "2. It shows a link. Paste it here:"
-	addMachineField   = "> "
-	addMachineShow    = addMachineKey + " how"
-	addMachineHide    = addMachineKey + " hide"
+	// addDeviceWord is the one person-facing name for adding a computer, shared
+	// between the home card and the /settings Devices tab so the two never drift.
+	addDeviceWord         = "Add another device"
+	addMachineHeading     = "+ " + addDeviceWord
+	addMachinePitch       = "Pick up your work anywhere, exactly where you left it."
+	addMachineStepRun     = "1. On the new device, install and run: codeaf pair"
+	addMachineStepPut     = "2. It shows a link. Paste it here:"
+	addMachineField       = "> "
+	addMachinePlaceholder = "Paste pairing link"
+	addMachineLinkError   = "Enter a pairing link"
+	addMachineShow        = addMachineKey + " how"
+	addMachineHide        = addMachineKey + " hide"
 
 	bandOrderAddMachine = 20 // a one-machine fleet is told it can have two
 )
@@ -79,6 +85,7 @@ type addMachine struct {
 	asking bool
 	// open says the steps are showing.
 	open    bool
+	hovered bool
 	targets []addMachineTarget
 	focused bool
 	box     editor
@@ -87,8 +94,11 @@ type addMachine struct {
 
 // wanted says the card is on: a door that can approve, and a fleet known to be one.
 func (a *app) addMachineWanted() bool {
+	if a.hosted() {
+		return false
+	}
 	m := a.addMachine
-	return a.approvals != nil && m.known && m.size < fleetEnough
+	return a.approvals != nil && (a.machineRead.computerRemoved || m.known && m.size < fleetEnough)
 }
 
 // fleetMsg is one answer from the [Fleet].
@@ -101,7 +111,7 @@ type fleetMsg struct {
 // card has no more job and nothing is asked again.
 func (a *app) askFleet() tea.Cmd {
 	m := &a.addMachine
-	if a.fleet == nil || m.asking || (m.known && m.size >= fleetEnough) {
+	if a.hosted() || a.fleet == nil || m.asking || (m.known && m.size >= fleetEnough) {
 		return nil
 	}
 	m.asking = true
@@ -120,6 +130,10 @@ func (a *app) tookFleet(msg fleetMsg) tea.Cmd {
 	m.asking = false
 	if msg.err == nil {
 		m.size, m.known = msg.size, true
+		if a.sheet.registry != nil {
+			a.sheet.taskComputers = a.taskComputersAvailable()
+			a.sheet.build()
+		}
 	}
 	return nil
 }
@@ -134,6 +148,7 @@ func (a *app) toggleAddMachine() tea.Cmd {
 		return nil
 	}
 	m.open = !m.open
+	m.hovered = false
 	m.focused = m.open
 	a.touch()
 	return nil
@@ -155,15 +170,34 @@ func (a *app) pasteLink(text string) (tea.Cmd, bool) {
 func (m *addMachine) grew() { m.size++ }
 
 func drawAddMachineBand(a *app, ctx bandContext) []string {
+	if a.pair.open {
+		rows := a.pair.rows(ctx.width, ctx.now, ctx.pal)
+		rows = append(rows, ctx.pal.dim(a.pair.hint()))
+		return rows
+	}
+
 	if !a.addMachineWanted() {
+		// Account news must remain visible even when this connection cannot
+		// offer the pairing card and its keys.
+		if a.machineRead.computerRemoved && a.homeAccountNotice != "" {
+			return dressed(wrap(a.homeAccountNotice, ctx.width), ctx.pal.dim)
+		}
 		return nil
 	}
 	m := a.addMachine
-	rows := []string{ctx.pal.muted(fit(addMachineHeading, ctx.width))}
+	heading := ctx.pal.bold(ctx.pal.muted(fit(addMachineHeading, ctx.width)))
+	if m.hovered {
+		heading = ctx.pal.underline(heading)
+	}
+	rows := []string{heading}
+	if a.homeAccountNotice != "" {
+		rows = append(rows, dressed(wrap(a.homeAccountNotice, ctx.width), ctx.pal.dim)...)
+	}
 	for _, line := range wrap(addMachinePitch, ctx.width) {
 		rows = append(rows, ctx.pal.dim(fit(line, ctx.width)))
 	}
 	if m.open {
+		rows = append(rows, "")
 		rows = append(rows, a.addMachineHow(ctx)...)
 	}
 	key := addMachineShow
@@ -180,9 +214,15 @@ func drawAddMachineBand(a *app, ctx bandContext) []string {
 // addMachineHow is the opened card: two steps, and the field the link goes in.
 func (a *app) addMachineHow(ctx bandContext) []string {
 	var rows []string
-	for _, line := range []string{addMachineStepRun, addMachineStepPut} {
-		for _, wrapped := range wrap(line, ctx.width) {
-			rows = append(rows, ctx.pal.ink(fit(wrapped, ctx.width)))
+	command := pair.Command("", "")
+	if door, ok := a.pairing.(interface{ PairCommand() string }); ok {
+		command = door.PairCommand()
+	}
+	for _, line := range []string{strings.TrimSuffix(addMachineStepRun, pair.Command("", "")) + command, addMachineStepPut} {
+		text := ctx.pal.muted(line)
+		text = strings.ReplaceAll(text, "codeaf pair", ctx.pal.bold(ctx.pal.data("codeaf pair")))
+		for _, wrapped := range wrap(text, ctx.width) {
+			rows = append(rows, fit(wrapped, ctx.width))
 		}
 	}
 	line, _ := a.addMachineLine(ctx.width, ctx.pal)
@@ -208,6 +248,9 @@ func (a *app) addMachinePress(x, y, width int) (tea.Cmd, bool) {
 		a.touch()
 		return nil, true
 	}
+	if !a.addMachineAt(x, y, a.home.painted.lines) {
+		return nil, false
+	}
 	return a.toggleAddMachine(), true
 }
 
@@ -229,9 +272,16 @@ func (a *app) addMachineLine(width int, pal palette) (string, int) {
 	b := &a.addMachine.box
 	column := ansi.StringWidth(addMachineField) + ansi.StringWidth(string(b.value[start:b.cursor]))
 	if b.empty() {
-		shown = "Paste pairing link"
+		shown = addMachinePlaceholder
 	}
-	line := pal.accent(addMachineField) + pal.ink(fit(shown, max(0, width-ansi.StringWidth(addMachineField))))
+	ink := pal.ink
+	if b.empty() {
+		ink = pal.dim
+	}
+	line := pal.accent(addMachineField) + ink(fit(shown, max(0, width-ansi.StringWidth(addMachineField))))
+	if a.addMachine.focused {
+		line = pal.selected(line, width)
+	}
 
 	return line, column
 }
@@ -254,7 +304,7 @@ func (a *app) addMachineInputKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter":
 		link := strings.TrimSpace(b.String())
 		if !isPairLink(link) {
-			m.error = "Enter a pairing link"
+			m.error = addMachineLinkError
 			return nil, true
 		}
 		m.open, m.focused = false, false
@@ -284,4 +334,27 @@ func (a *app) addMachineInputKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 	}
 	return nil, true
+}
+
+// addMachineAt resolves only the heading's painted cells, so description text
+// and blank space never promise to open the instructions.
+func (a *app) addMachineAt(x, y int, lines []string) bool {
+	if !a.at(pageHome) || !a.addMachineWanted() || y < 0 || y >= len(lines) {
+		return false
+	}
+	line := ansi.Strip(lines[y])
+	at := strings.Index(line, addMachineHeading)
+	if at < 0 {
+		return false
+	}
+	from := ansi.StringWidth(line[:at])
+	return x >= from && x < from+ansi.StringWidth(addMachineHeading)
+}
+
+func (a *app) hoverAddMachine(x, y int) {
+	next := a.addMachineAt(x, y, a.home.painted.lines)
+	if next != a.addMachine.hovered {
+		a.addMachine.hovered = next
+		a.touch()
+	}
 }

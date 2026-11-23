@@ -75,3 +75,11 @@ func objectsIn(frame []byte) int64 {
 	}
 	return int64(len(h.Objects))
 }
+
+// GetFrameBounded preserves the optional bounded capability and request counts.
+func (c Counting) GetFrameBounded(ctx context.Context, id string, maxEncoded int64) ([]byte, error) {
+	c.C.Gets.Add(1)
+	raw, err := ReadFrameBounded(ctx, c.Inner, id, maxEncoded)
+	c.C.BytesDown.Add(int64(len(raw)))
+	return raw, err
+}

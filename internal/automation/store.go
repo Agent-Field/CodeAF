@@ -19,13 +19,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/sqliteuri"
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 	_ "modernc.org/sqlite"
 )
 
@@ -79,8 +80,7 @@ func Open(root string) (*Store, error) {
 	} else if err := f.Close(); err != nil {
 		return nil, fmt.Errorf("automations: %w", err)
 	}
-	u := sqliteuri.File(path)
-	q := u.Query()
+	q := make(url.Values)
 	q.Set("mode", "rw")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout.Milliseconds()))
 	// WAL lets every window read while the clock writes; FULL keeps a run that
@@ -88,8 +88,7 @@ func Open(root string) (*Store, error) {
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "synchronous(FULL)")
 	q.Set("_txlock", "immediate")
-	u.RawQuery = q.Encode()
-	db, err := sql.Open("sqlite", u.String())
+	db, err := sql.Open("sqlite", sqlitefile.URI(path, q.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("automations: %w", err)
 	}
@@ -151,7 +150,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	}
 	switch {
 	case app == applicationID && version == schemaVersion:
-		return tx.Commit()
+		return finishAutomationSchema(ctx, tx)
 	case app != 0 || version != 0:
 		return fmt.Errorf("automations: %s is not an automations database this build can read (application %d, version %d)", filepath.Join(s.root, DatabaseName), app, version)
 	}
@@ -204,6 +203,18 @@ CREATE INDEX runs_by_seq ON runs(seq);
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA application_id=%d; PRAGMA user_version=%d", applicationID, schemaVersion)); err != nil {
 		return fmt.Errorf("automations: %w", err)
 	}
+	return finishAutomationSchema(ctx, tx)
+}
+
+// finishAutomationSchema keeps both supported schema paths on the same
+// additive migrations and commits them in the transaction that admitted the store.
+func finishAutomationSchema(ctx context.Context, tx *sql.Tx) error {
+	if err := ensureOriginRevision(ctx, tx); err != nil {
+		return err
+	}
+	if err := ensureRunAsked(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -217,7 +228,11 @@ func (s *Store) Create(a Automation) (Automation, error) {
 	if a.ID == "" {
 		a.ID = newID()
 	}
-	a.Status = StatusActive
+	// A PROPOSED ONE STAYS PROPOSED: it is saved so it can be shown and
+	// changed, and nothing runs before the person ratifies it (trust.go).
+	if a.Status != StatusProposed {
+		a.Status = StatusActive
+	}
 	a.Created, a.Updated = now, now
 	a.Revision = 1
 	a.Seen, a.Memo = "", ""
@@ -337,6 +352,14 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		}
 		a.Workspace = workspace
 		a.Status, a.Next, a.Seen, a.Memo = current.Status, current.Next, current.Seen, current.Memo
+		// THE LADDER IS THE STORE'S TO MOVE, never an edit's: a changed brief
+		// keeps the trust it had, and only a verdict or the person's own
+		// trust setting moves it.
+		a.Trust, a.Approved, a.Granted = current.Trust, current.Approved, current.Granted
+		// WHERE AN AUTOMATION WAS MADE IS A FACT OF ITS MAKING, never an edit's:
+		// the creation team recorded at create is kept whatever the caller
+		// passes, so no change can retarget, upgrade or erase it.
+		a.Origin.Team = current.Origin.Team
 		if lookChanged(current.Look, a.Look) {
 			a.Seen, a.Memo = "", ""
 		}
@@ -397,6 +420,13 @@ func (s *Store) SetStatus(id string, status Status) (Automation, error) {
 		if a.Status == status || a.Status == StatusFinished {
 			saved = a
 			return nil
+		}
+		// A PROPOSED ONE IS RATIFIED, NEVER RESUMED, and a stopped one is over.
+		switch a.Status {
+		case StatusProposed:
+			return fmt.Errorf("%s has not been agreed to yet", a.Title)
+		case StatusStopped:
+			return fmt.Errorf("%s was stopped", a.Title)
 		}
 		a.Status = status
 		if status == StatusActive {
@@ -655,12 +685,20 @@ func (s *Store) advance(a Automation, next time.Time) error {
 
 // QueueNow asks for a run outside the schedule. Any window may ask; the clock
 // takes it on its next look, within seconds.
-func (s *Store) QueueNow(id string) (Run, error) {
+func (s *Store) QueueNow(id string) (Run, error) { return s.queueNow(id, PhaseQueued) }
+
+// QueueAsking asks for a run outside the schedule that waits for the person's
+// go before the clock may start it: the person's own "run it now" on work not
+// yet trusted, answered with [Store.Answer] at once. Queued any other way,
+// the clock could start it between the two writes.
+func (s *Store) QueueAsking(id string) (Run, error) { return s.queueNow(id, PhaseAsking) }
+
+func (s *Store) queueNow(id string, phase Phase) (Run, error) {
 	if _, err := s.Get(id); err != nil {
 		return Run{}, err
 	}
 	now := s.now()
-	run := Run{AutomationID: id, Due: now, Why: WhyNow, Phase: PhaseQueued}
+	run := Run{AutomationID: id, Due: now, Why: WhyNow, Phase: phase}
 	err := s.write(func(tx *sql.Tx, seq int64) error {
 		var waiting int
 		if err := tx.QueryRow(`SELECT count(*) FROM runs WHERE automation_id = ? AND phase != ?`, id, string(PhaseOver)).Scan(&waiting); err != nil {
@@ -670,11 +708,15 @@ func (s *Store) QueueNow(id string) (Run, error) {
 			return errors.New("it is already running")
 		}
 		res, err := tx.Exec(`INSERT INTO runs (automation_id, due_ms, why, phase, seq) VALUES (?, ?, ?, ?, ?)`,
-			id, ms(now), string(WhyNow), string(PhaseQueued), seq)
+			id, ms(now), string(WhyNow), string(phase), seq)
 		if err != nil {
 			return err
 		}
 		run.ID, _ = res.LastInsertId()
+		if phase == PhaseAsking {
+			run.Asked = now
+			return noteAsked(tx, run.ID, now)
+		}
 		return nil
 	})
 	return run, err
@@ -900,7 +942,8 @@ func (s *Store) Cursor() (int64, error) {
 }
 
 func (s *Store) queryRuns(where string, args ...any) ([]Run, error) {
-	rows, err := s.db.Query(`SELECT id, automation_id, due_ms, why, phase, started_ms, finished_ms, outcome, line, detail, usd, transcript FROM runs `+where, args...)
+	// When a run asked rides along in the same read (store_asked.go).
+	rows, err := s.db.Query(`SELECT runs.id, runs.automation_id, runs.due_ms, runs.why, runs.phase, runs.started_ms, runs.finished_ms, runs.outcome, runs.line, runs.detail, runs.usd, runs.transcript, COALESCE(run_asked.asked_ms, 0) FROM runs LEFT JOIN run_asked ON run_asked.run_id = runs.id `+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -908,12 +951,12 @@ func (s *Store) queryRuns(where string, args ...any) ([]Run, error) {
 	var runs []Run
 	for rows.Next() {
 		var r Run
-		var due, started, finished int64
+		var due, started, finished, asked int64
 		var why, phase, outcome string
-		if err := rows.Scan(&r.ID, &r.AutomationID, &due, &why, &phase, &started, &finished, &outcome, &r.Line, &r.Detail, &r.USD, &r.Transcript); err != nil {
+		if err := rows.Scan(&r.ID, &r.AutomationID, &due, &why, &phase, &started, &finished, &outcome, &r.Line, &r.Detail, &r.USD, &r.Transcript, &asked); err != nil {
 			return nil, err
 		}
-		r.Due, r.Started, r.Finished = fromMS(due), fromMS(started), fromMS(finished)
+		r.Due, r.Started, r.Finished, r.Asked = fromMS(due), fromMS(started), fromMS(finished), fromMS(asked)
 		r.Why, r.Phase, r.Outcome = Why(why), Phase(phase), Outcome(outcome)
 		runs = append(runs, r)
 	}
@@ -946,6 +989,11 @@ func scanAutomation(row scanner) (Automation, error) {
 	if err := row.Scan(&doc, &status, &next, &seen, &memo, &revision); err != nil {
 		return Automation{}, err
 	}
+	return decodeAutomation(doc, status, next, seen, memo, revision)
+}
+
+// decodeAutomation is one stored row's columns made an automation.
+func decodeAutomation(doc, status string, next int64, seen, memo string, revision int64) (Automation, error) {
 	var a Automation
 	if err := json.Unmarshal([]byte(doc), &a); err != nil {
 		return Automation{}, fmt.Errorf("automations: a damaged row: %w", err)

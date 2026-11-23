@@ -114,7 +114,7 @@ func crewStubAgent(t *testing.T, stub *crewStub) (*Agent, string) {
 		{ID: "vendor/stranger:free", ContextLength: 262144, CodingIndex: 40, Parameters: []string{"tools"}},
 	}
 	config.CrewCatalog = func() []catalog.Model { return rows }
-	agent, err := New(Config{
+	agent, err := newTestProviderAgent(t, Config{
 		Workspace: t.TempDir(), Model: "somelab/the-chat-model", ProfileDir: dir,
 		Sources:   modelsource.NewSet(modelsource.Connected{Source: modelsource.DefaultSource(stub.URL), Key: "sk-or-v1-crewstub-0123456789", Address: stub.URL}),
 		RouteCrew: func(ask config.CrewAsk) (crewroute.Decision, error) { return config.RouteCrew(dir, ask) },
@@ -438,7 +438,7 @@ func crewStubAgentOnDefault(t *testing.T, stub *crewStub, values map[string]any)
 			t.Fatal(err)
 		}
 	}
-	defaulted, err := New(Config{
+	defaulted, err := newTestProviderAgent(t, Config{
 		Workspace: t.TempDir(), Model: "somelab/the-chat-model", ProfileDir: "",
 		Sources:   modelsource.NewSet(modelsource.Connected{Source: modelsource.DefaultSource(stub.URL), Key: "sk-or-v1-crewstub-0123456789", Address: stub.URL}),
 		RouteCrew: func(ask config.CrewAsk) (crewroute.Decision, error) { return config.RouteCrew("", ask) },

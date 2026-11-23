@@ -96,6 +96,7 @@ func TestTheSettingsPairIsAbsentInsideATaskAndPresentWithTheDefaultProfile(t *te
 // write tool takes, grouped the way the sheet groups them.
 func TestSettingsListsEveryRowByItsRegistryKey(t *testing.T) {
 	agent, profile := settingsAgent(t)
+	agent.config.TaskComputers = testTaskComputers{}
 	agent.model = "anthropic/claude-opus-5"
 	read, _ := settingsHands(t, agent)
 	text, isError := callSetting(t, read, map[string]string{})
@@ -198,6 +199,7 @@ func TestChangeSettingRefusesEveryRowThatRestrainsIt(t *testing.T) {
 		{config.KeyTaskMaxLoad, "0"},
 		{config.KeyTaskMinFreeMB, "0"},
 		{config.KeyTaskAudit, "off"},
+		{config.KeyAttribution, "off"},
 		{config.KeyAttributionModel, "off"},
 		{config.KeyExaKey, "sk-invented"},
 		{config.KeyJinaKey, "jina-invented"},

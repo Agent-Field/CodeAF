@@ -39,8 +39,20 @@ import "github.com/Agent-Field/codeaf/internal/clusterstate"
 // remain usable without linking the directory transports and stores.
 type IdentityRec = clusterstate.IdentityRec
 type Caps = clusterstate.Caps
+
+// Device is one device's row. Name and Outbox are opaque sealed bytes; the
+// relay checks only their size. Kind is "" for a full device and "client" for
+// a scoped client that may only read its slots and append to its call queue.
 type Device = clusterstate.Device
 type Lease = clusterstate.Lease
+
+// Note is one sealed message in a device's outbox; see [clusterstate.Note].
+type Note = clusterstate.Note
+type FrameHint = clusterstate.FrameHint
+
+const MaxFrameHints = clusterstate.MaxFrameHints
+const FrameHintBudget = clusterstate.FrameHintBudget
+
 type Cell = clusterstate.Cell
 type Listing = clusterstate.Listing
 type CellView = clusterstate.CellView
@@ -53,6 +65,7 @@ type Publish = clusterstate.Publish
 func withoutFrames(l Listing) Listing {
 	for id, c := range l.Cells {
 		c.Frames = nil
+		c.FrameHints = nil
 		l.Cells[id] = c
 	}
 	return l

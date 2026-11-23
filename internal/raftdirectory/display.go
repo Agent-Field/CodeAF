@@ -51,6 +51,7 @@ func DisplayListing(ctx context.Context, s *raftstore.SQLite, app raftstore.Appl
 				if e = clusterstate.Decode(r.Value, &v); e != nil {
 					return l, e
 				}
+				v.Frames, v.FrameHints = nil, nil
 				l.Cells[string(id)] = v
 			}
 		}

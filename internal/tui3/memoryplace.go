@@ -344,7 +344,10 @@ func memoryOpenByDefault(shelves store.MemoryShelves, here string) map[string]bo
 
 // memoryCounts is the head row.
 func memoryCounts(held, letGo, outside int) string {
-	parts := []string{groupedInt(held) + " kept"}
+	var parts []string
+	if held > 0 {
+		parts = append(parts, groupedInt(held)+" kept")
+	}
 	if outside > 0 {
 		parts = append(parts, groupedInt(outside)+" more in memory")
 	}

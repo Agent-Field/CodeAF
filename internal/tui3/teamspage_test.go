@@ -432,6 +432,7 @@ func TestTeamsDisbandedSubteamHasNoReopenAction(t *testing.T) {
 }
 
 // Contract 6.1: A linked local team with a history door draws its closing report in the closed pane.
+// F1 preserves the existing team surface contract with an explicit pairing gate.
 func TestLinkedLocalClosedTeamDrawsItsReport(t *testing.T) {
 	a, harbor, _ := teamsPlaceLabIDs(t)
 	p := teamstore.Packet{ID: "closing-report", Team: teamstore.Person, Origin: harbor,
@@ -441,7 +442,7 @@ func TestLinkedLocalClosedTeamDrawsItsReport(t *testing.T) {
 	if err := a.teamEdit(func(f *teamstore.File) error { return f.Close(harbor, a.now(), p.ID) }); err != nil {
 		t.Fatal(err)
 	}
-	door := localTeams(a.profileDir, &a.teamsDisk.watch)
+	door := localTeams(a.profileDir, &a.teamsDisk.watch, nil)
 	door.History = func(team string) ([]teamstore.Packet, error) {
 		if team == harbor {
 			return []teamstore.Packet{p}, nil

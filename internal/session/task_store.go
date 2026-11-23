@@ -66,28 +66,35 @@ package session
 // model reads one grammar for one kind of news.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/taskcopy"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
 const (
-	// taskFileVersion is the schema of <journal>.tasks.json. A file carrying any
-	// other version is IGNORED rather than migrated, for state.go's reason: the
+	// taskFileVersion names the checkpoint schema. Unsupported versions are
+	// ignored rather than migrated because the
 	// graph is a record of work that has already happened, and guessing at an
 	// older shape risks rehydrating a report into a field that no longer means
 	// what it meant — which here would mean briefing a dependent with it.
 	taskFileVersion = 1
+	// Set-bearing documents require V2 so older singleton readers fail closed.
+	taskWorkspaceSetFileVersion = 2
 
 	// taskDocumentType is the type tag. A file that is JSON, parses, and is not
 	// this is not this store's file.
@@ -142,10 +149,15 @@ func (c Config) checkpointFile() string {
 // the reports its prerequisites left, which is the same thing it would have done
 // had nothing died.
 type taskRecord struct {
-	Restart *taskRestartRecord `json:"restart,omitempty"`
-	ID      uint64             `json:"id"`
-	Title   string             `json:"title"`
-	Summary string             `json:"summary,omitempty"`
+	App          appTaskRecord      `json:"app_control,omitempty,omitzero"`
+	Irreversible bool               `json:"irreversible,omitempty"`
+	Restart      *taskRestartRecord `json:"restart,omitempty"`
+	ID           uint64             `json:"id"`
+	Title        string             `json:"title"`
+	Summary      string             `json:"summary,omitempty"`
+	// StorageBlocked is conservative launch uncertainty; a clean later attempt
+	// does not establish that an older writer or detached descendant has exited.
+	StorageBlocked bool `json:"storage_blocked,omitempty"`
 	// Request is the person's own message, kept because a node that resumes
 	// without it would be re-opened on the model's paraphrase alone — the one
 	// part of what it was told that nothing downstream could reconstruct
@@ -159,6 +171,10 @@ type taskRecord struct {
 	// always did: the brief has no origin section.
 	OriginJournal string `json:"origin_journal,omitempty"`
 	OriginLine    int    `json:"origin_line,omitempty"`
+	// Source is the message or directive that started the task (task_source.go),
+	// captured at admission. Absent in every checkpoint written before it existed:
+	// the task has no known source, and nothing is reconstructed.
+	Source *TaskSource `json:"source,omitempty"`
 	// Admission is the working context the node was admitted with: bounded
 	// quotations of what was said around the work and handles to the calls that
 	// already ran (admission.go). A resumed node that lost it would be re-opened
@@ -192,6 +208,19 @@ type taskRecord struct {
 	// as it always did: no plan task, no plan lines, nothing dispatched.
 	PlanID    string   `json:"plan_id,omitempty"`
 	DependsOn []uint64 `json:"depends_on,omitempty"`
+	// WaitsExternal are the tasks of OTHER conversations this node waits on
+	// ([Agent.WaitOnTask]): stored, and enforced by the same frontier that
+	// enforces DependsOn (task_external.go). Absent on every node that waits on
+	// nothing outside its conversation and on every checkpoint written before
+	// the link existed, which reads as "no such link recorded" and nothing more.
+	WaitsExternal []taskWaitRecord `json:"waits_external,omitempty"`
+	// AdmittedAt is the instant the node entered the graph, and StateAt the
+	// instant it entered the state it is in. BOTH ARE THE EVENT'S OWN CLOCK,
+	// stamped where the transition happens and never where a reader looks: a
+	// record written before they existed carries neither, and a reader must say
+	// the instant is not recorded rather than date old work with today.
+	AdmittedAt time.Time `json:"admittedAt,omitzero"`
+	StateAt    time.Time `json:"stateAt,omitzero"`
 
 	// Ground is the repository or folder the work IS ABOUT and Mode is how the
 	// node stands on it ([TaskMode]). Where says which directory the worker typed
@@ -320,10 +349,15 @@ type taskRecord struct {
 	// back to the report exactly as it did then.
 	Result *taskResultRecord `json:"result,omitempty"`
 
-	Changed  []string `json:"changed,omitempty"`
-	Branch   string   `json:"branch,omitempty"`
-	Worktree string   `json:"worktree,omitempty"`
-	Merge    string   `json:"merge,omitempty"`
+	Changed      []string `json:"changed,omitempty"`
+	Branch       string   `json:"branch,omitempty"`
+	Worktree     string   `json:"worktree,omitempty"`
+	WorkspaceURI string   `json:"workspace_uri,omitempty"`
+	ChatURI      string   `json:"chat_uri,omitempty"`
+	ProjectURI   string   `json:"project_uri,omitempty"`
+	GroundURI    string   `json:"ground_uri,omitempty"`
+	RootURI      string   `json:"root_uri,omitempty"`
+	Merge        string   `json:"merge,omitempty"`
 
 	// Wrote is what a node's own hands have written SO FAR, kept while it runs
 	// rather than only when it lands ([TaskNode.noteWrote]).
@@ -397,11 +431,16 @@ type taskRecord struct {
 	// carried a bill, which resumes as zero — the same thing an unpriced model
 	// leaves behind, and the same thing every surface here already draws as
 	// nothing rather than as "$0.00".
-	CostUSD    float64 `json:"costUsd,omitempty"`
-	Input      int     `json:"input,omitempty"`
-	Output     int     `json:"output,omitempty"`
-	CacheRead  int     `json:"cacheRead,omitempty"`
-	CacheWrite int     `json:"cacheWrite,omitempty"`
+	CostUSD float64 `json:"costUsd,omitempty"`
+	// FoldedUSD is the part of CostUSD that is other nodes' bills, folded in
+	// when the parts this node's worker proposed landed ([TaskNode.folded]). A
+	// restored tree's spend total counts those dollars once, on their own rows.
+	FoldedUSD  float64        `json:"foldedUsd,omitempty"`
+	TreeLimit  *nodeTreeLimit `json:"tree_limit,omitempty"`
+	Input      int            `json:"input,omitempty"`
+	Output     int            `json:"output,omitempty"`
+	CacheRead  int            `json:"cacheRead,omitempty"`
+	CacheWrite int            `json:"cacheWrite,omitempty"`
 
 	// Noted says this node's completion note has been handed to the steering
 	// lane. It is what stops a resumed session re-announcing work the transcript
@@ -583,10 +622,15 @@ type taskRecord struct {
 //
 // Done is parallel to Items, one tick per item, exactly as it is in memory.
 type quickRecord struct {
-	Line  string   `json:"line"`
-	Items []string `json:"items,omitempty"`
-	Done  []bool   `json:"done,omitempty"`
-	Files []string `json:"files,omitempty"`
+	Reading   bool               `json:"reading,omitempty"`
+	Captures  []QuickFileCapture `json:"captures,omitempty"`
+	Promotion uint64             `json:"promotion,omitempty"`
+	Promoted  bool               `json:"promoted,omitempty"`
+	Undone    bool               `json:"undone,omitempty"`
+	Line      string             `json:"line"`
+	Items     []string           `json:"items,omitempty"`
+	Done      []bool             `json:"done,omitempty"`
+	Files     []string           `json:"files,omitempty"`
 }
 
 // quickRecordLocked copies a quick body out, with the graph held — the lock the
@@ -597,7 +641,10 @@ func quickRecordLocked(spec *quickTaskSpec) *quickRecord {
 		return nil
 	}
 	return &quickRecord{
-		Line:  spec.line,
+		Reading:   spec.reading,
+		Line:      spec.line,
+		Captures:  cloneQuickCaptures(spec.captures),
+		Promotion: spec.promotion, Promoted: spec.promoted, Undone: spec.undone,
 		Items: append([]string(nil), spec.items...),
 		Done:  append([]bool(nil), spec.done...),
 		Files: append([]string(nil), spec.files...),
@@ -614,6 +661,9 @@ func (r *quickRecord) body() *quickTaskSpec {
 		return nil
 	}
 	spec := newQuickTaskSpec(r.Line, append([]string(nil), r.Items...), append([]string(nil), r.Files...))
+	spec.reading = r.Reading
+	spec.captures = cloneQuickCaptures(r.Captures)
+	spec.promotion, spec.promoted, spec.undone = r.Promotion, r.Promoted, r.Undone
 	for index := range spec.done {
 		spec.done[index] = index < len(r.Done) && r.Done[index]
 	}
@@ -650,16 +700,22 @@ type revisionRecord struct {
 // stops a landing publishing, and a process that died between the words and the
 // landing must not come back having forgotten them.
 type directionRecord struct {
-	ID      uint64    `json:"id"`
-	Words   string    `json:"words"`
-	At      time.Time `json:"at,omitzero"`
-	From    string    `json:"from,omitempty"`
-	State   string    `json:"state,omitempty"`
-	Version uint64    `json:"version,omitempty"`
+	ReadAtStep *int      `json:"read_at_step,omitempty"`
+	ID         uint64    `json:"id"`
+	Words      string    `json:"words"`
+	At         time.Time `json:"at,omitzero"`
+	From       string    `json:"from,omitempty"`
+	State      string    `json:"state,omitempty"`
+	Version    uint64    `json:"version,omitempty"`
 	// Source is the person's message this was forwarded from (task_forward.go),
 	// absent on a line said into the node's own room and on every checkpoint
 	// written before forwarding existed.
 	Source *sourceRecord `json:"source,omitempty"`
+	// ClientID is the authored note's opaque key, written in the same write that
+	// first put the words on the disk ([TaskGraph.admitWritten]). Absent on every
+	// line nobody keyed and on every checkpoint written before keys existed,
+	// which a reader takes as unknown.
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // sourceRecord is [personSourceID] on disk. THE SCOPE IS WRITTEN WITH THE
@@ -715,8 +771,18 @@ type harnessOfferRecord struct {
 // exists, and no answer could reach one. Left out, the row comes back settled
 // like every other row that was moving, which is the truth about it.
 type runRecord struct {
-	RecoveredCompletion bool            `json:"recoveredCompletion,omitempty"`
-	CrewState           *TaskCrewRecord `json:"crewState,omitempty"`
+	// JobCommand, JobCallID and JobExitCode keep facts a job's title cannot carry.
+	// A nil code means the ending was never observed.
+	JobCommand  string `json:"job_command,omitempty"`
+	JobCallID   string `json:"job_call_id,omitempty"`
+	JobExitCode *int   `json:"job_exit_code,omitempty"`
+
+	Remote              *TaskRemoteRecord `json:"remote,omitempty"`
+	Computer            string            `json:"computer,omitempty"`
+	Unreachable         bool              `json:"unreachable,omitempty"`
+	RanElsewhere        bool              `json:"ran_elsewhere,omitempty"`
+	RecoveredCompletion bool              `json:"recoveredCompletion,omitempty"`
+	CrewState           *TaskCrewRecord   `json:"crewState,omitempty"`
 
 	ID     uint64 `json:"id"`
 	Run    string `json:"run,omitempty"`
@@ -736,6 +802,9 @@ type runRecord struct {
 	// runs from these records long before any plan row is read. Absent is every
 	// run no program had, and every record written before the field existed.
 	Program string `json:"program,omitempty"`
+	// Source is the message or directive that started the run (task_source.go);
+	// absent on a row written before it existed.
+	Source *TaskSource `json:"source,omitempty"`
 
 	State   TaskState `json:"state"`
 	Stopped bool      `json:"stopped,omitempty"`
@@ -755,8 +824,14 @@ type runRecord struct {
 	// saved before this field existed decodes with nil, and a run with no copy
 	// recorded is one that cannot be carried on — which [runCopyTree] says out
 	// loud rather than repairing.
-	Copy       *TaskCopyRecord   `json:"copy,omitempty"`
-	PendingRun *PendingRunRecord `json:"pendingRun,omitempty"`
+	WorkspaceSet *WorkspaceSet     `json:"workspaceSet,omitempty"`
+	Copy         *TaskCopyRecord   `json:"copy,omitempty"`
+	PendingRun   *PendingRunRecord `json:"pendingRun,omitempty"`
+	// Park is A HAND-OFF WAITING ON A MODEL (taskrouting.go): why no role
+	// could be seated and what starting it again needs. A queued row that
+	// carries it comes back waiting, its Ask standing, rather than interrupted;
+	// absent on every other row and on every record written before it existed.
+	Park *taskParkRecord `json:"park,omitempty"`
 
 	// PlanTask is WHICH TASK OF THE PLAN STORE THIS ROW IS
 	// ([TaskNotice.PlanTask]), carried across a restart for the same reason the
@@ -788,6 +863,9 @@ type runRecord struct {
 	Merge   string     `json:"merge,omitempty"`
 	Result  string     `json:"result,omitempty"`
 	Changed []string   `json:"changed,omitempty"`
+	// The landing question must keep naming the same files after a restart.
+	Conflicts  []string `json:"conflicts,omitempty"`
+	GroundHeld bool     `json:"groundHeld,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, the nodes in
@@ -807,11 +885,15 @@ type runRecord struct {
 // with no runs in it and resumes precisely as it always did, and this code's own
 // files are still version 1 documents that older builds can read.
 type taskDocument struct {
-	Type    string       `json:"type"`
-	Version int          `json:"version"`
-	Seq     uint64       `json:"seq"`
-	Nodes   []taskRecord `json:"nodes"`
-	Runs    []runRecord  `json:"runs,omitempty"`
+	WorkspaceTransfer *taskcopy.WorkspacePlan `json:"workspace_transfer,omitempty"`
+	Type              string                  `json:"type"`
+	Version           int                     `json:"version"`
+	Seq               uint64                  `json:"seq"`
+	Nodes             []taskRecord            `json:"nodes"`
+	Runs              []runRecord             `json:"runs,omitempty"`
+	// Dismissed names the tasks the person hid, by app id (task_dismiss.go). An
+	// added, omitted-when-empty field, so version-1 files stay version-1 files.
+	Dismissed []string `json:"dismissed,omitempty"`
 }
 
 // taskStore is the file and the lock that serializes writes to it.
@@ -903,24 +985,62 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if s.duringWrite != nil {
 		s.duringWrite()
 	}
-	document = filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(s.path), placeTranscript)))
-	if codec, sealed := checkpointCodec(s.path); sealed {
-		document = document.mapPaths(codec.encode)
+	root := filepath.Dir(s.path)
+	if filepath.Base(root) == cellStateDir {
+		root = filepath.Dir(root)
 	}
-	encoded, err := json.MarshalIndent(document, "", "  ")
+	if err := workspaceFinalizationPending(Place{Dir: root}); err != nil {
+		return err
+	}
+	release, err := taskcopy.LockWorkspaceCheckpoint(context.Background(), cell.Cell{Root: root})
 	if err != nil {
 		return err
 	}
-	if directory := filepath.Dir(s.path); directory != "" && directory != "." {
+	defer release()
+	if err := workspaceFinalizationPending(Place{Dir: root}); err != nil {
+		return err
+	}
+	encoded, err := encodeTaskCheckpoint(document, s.path)
+	if err != nil {
+		return err
+	}
+
+	return replaceTaskCheckpoint(s.path, encoded)
+}
+
+// replaceTaskCheckpoint makes stale temporary files private before writing
+// and installs the complete checkpoint only after the file closes successfully.
+func replaceTaskCheckpoint(path string, encoded []byte) error {
+	raw := append(encoded, '\n')
+	if sameFileBytes(path, raw) {
+		return nil
+	}
+	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return err
 		}
 	}
-	temporary := s.path + ".tmp"
-	if err := os.WriteFile(temporary, append(encoded, '\n'), 0o644); err != nil {
+	temporary := path + ".tmp"
+	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(temporary, s.path); err != nil {
+	// A stale temporary file may predate private byte captures, so chmod comes
+	// before truncation or writing, rather than trusting its creation mode.
+	if err := file.Chmod(0o600); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Truncate(0); err != nil {
+		file.Close()
+		return err
+	}
+	_, writeErr := file.Write(raw)
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		return err
+	}
+	if err := fsreplace.Rename(temporary, path); err != nil {
 		_ = os.Remove(temporary)
 		return err
 	}
@@ -1014,6 +1134,7 @@ func (g *TaskGraph) admitWritten(take func() directionHeard, drop func(direction
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	heard := take()
@@ -1022,7 +1143,7 @@ func (g *TaskGraph) admitWritten(take func() directionHeard, drop func(direction
 	if !heard.fresh() {
 		return heard, nil
 	}
-	if err := store.writeLocked(g.documentLocked()); err != nil {
+	if err := store.writeLocked(g.documentLocked(bills)); err != nil {
 		drop(heard)
 		return heard, err
 	}
@@ -1048,31 +1169,39 @@ func (g *TaskGraph) dropWritten(drop func()) error {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	drop()
-	return store.writeLocked(g.documentLocked())
+	return store.writeLocked(g.documentLocked(bills))
 }
 
 // document is the graph as the file sees it, in admission order — the order that
 // makes the frontier deterministic, and the order a person reads the file in.
 func (g *TaskGraph) document() taskDocument {
+	bills := g.nodeTreeBills()
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.documentLocked()
+	return g.documentLocked(bills)
 }
 
 // documentLocked is the same reading with the graph's lock already held, for the
 // admission that publishes and writes under one hold of it
 // ([TaskGraph.admitWritten]).
-func (g *TaskGraph) documentLocked() taskDocument {
+func (g *TaskGraph) documentLocked(bills ...map[uint64]nodeBill) taskDocument {
 	document := taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: g.seq}
 	for _, id := range g.order {
 		node := g.nodes[id]
 		if node == nil || g.deleted[id] {
 			continue
 		}
-		document.Nodes = append(document.Nodes, node.recordLocked())
+		record := node.recordLocked()
+		if len(bills) > 0 {
+			// A fold after the live snapshot may already have raised the frozen bill.
+			record.CostUSD = max(record.CostUSD, bills[0][id].spend)
+			record.FoldedUSD = max(record.FoldedUSD, bills[0][id].folded)
+		}
+		document.Nodes = append(document.Nodes, record)
 	}
 	// AND THE ADAPTIVE RUNS' ROWS GO DOWN IN THE SAME DOCUMENT, written by the
 	// same store on the same beats. There is no second writer of tasks.json: a
@@ -1081,7 +1210,16 @@ func (g *TaskGraph) documentLocked() taskDocument {
 	// a record.
 	for _, notice := range g.runRowsLocked() {
 		document.Runs = append(document.Runs, runRowRecord(notice))
+		if notice.WorkspaceSet != nil || notice.PendingRun != nil && notice.PendingRun.WorkspaceSet != nil {
+			document.Version = taskWorkspaceSetFileVersion
+		}
 	}
+	for id, hidden := range g.dismissed {
+		if hidden {
+			document.Dismissed = append(document.Dismissed, id)
+		}
+	}
+	sort.Strings(document.Dismissed)
 	return document
 }
 
@@ -1100,6 +1238,8 @@ func runRowRecord(notice TaskNotice) runRecord {
 		state = TaskRunning
 	}
 	return runRecord{
+		JobCommand: notice.JobCommand, JobCallID: notice.JobCallID, JobExitCode: notice.JobExitCode,
+		Remote: cloneTaskRemote(notice.Remote), Computer: notice.Computer, Unreachable: notice.Unreachable, RanElsewhere: notice.RanElsewhere,
 		CrewState:           notice.CrewState,
 		ID:                  notice.ID,
 		Run:                 notice.Run,
@@ -1108,6 +1248,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		Title:               notice.Title,
 		Kind:                notice.Kind,
 		Program:             notice.Program,
+		Source:              cloneSource(notice.Source),
 		State:               state,
 		Stopped:             notice.Stopped,
 		Report:              notice.Report,
@@ -1117,12 +1258,16 @@ func runRowRecord(notice TaskNotice) runRecord {
 		StartedAt:           notice.StartedAt,
 		EndedAt:             notice.EndedAt,
 		Copy:                notice.Copy,
+		WorkspaceSet:        cloneWorkspaceSet(notice.WorkspaceSet),
 		PendingRun:          notice.PendingRun,
+		Park:                notice.park.bounded(),
 		Ending:              notice.Ending,
 		Branch:              notice.Branch,
 		Merge:               notice.Merge,
 		Result:              notice.Result,
 		Changed:             append([]string(nil), notice.Changed...),
+		Conflicts:           append([]string(nil), notice.Conflicts...),
+		GroundHeld:          notice.GroundHeld,
 		PlanTask:            notice.PlanTask,
 		RecoveredCompletion: notice.RecoveredCompletion,
 	}
@@ -1147,6 +1292,8 @@ func runRowRecord(notice TaskNotice) runRecord {
 // That is a fact about this reader and not a statement that the work is over.
 func runRowNotice(record runRecord) TaskNotice {
 	notice := TaskNotice{
+		JobCommand: record.JobCommand, JobCallID: record.JobCallID, JobExitCode: record.JobExitCode,
+		Remote: cloneTaskRemote(record.Remote), Computer: record.Computer, Unreachable: record.Unreachable, RanElsewhere: record.RanElsewhere,
 		CrewState: record.CrewState,
 		ID:        record.ID,
 		Run:       record.Run,
@@ -1155,6 +1302,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		Title:     record.Title,
 		Kind:      record.Kind,
 		Program:   record.Program,
+		Source:    cloneSource(record.Source),
 		State:     record.State,
 		Stopped:   record.Stopped,
 		Report:    record.Report,
@@ -1165,18 +1313,29 @@ func runRowNotice(record runRecord) TaskNotice {
 		StartedAt:           record.StartedAt,
 		EndedAt:             record.EndedAt,
 		Copy:                record.Copy,
+		WorkspaceSet:        cloneWorkspaceSet(record.WorkspaceSet),
 		PendingRun:          record.PendingRun,
 		Ending:              record.Ending,
 		Branch:              record.Branch,
 		Merge:               record.Merge,
 		Result:              record.Result,
 		Changed:             append([]string(nil), record.Changed...),
+		Conflicts:           append([]string(nil), record.Conflicts...),
+		GroundHeld:          record.GroundHeld,
 		PlanTask:            record.PlanTask,
 		RecoveredCompletion: record.RecoveredCompletion,
 	}
 	if record.CrewState != nil && record.CrewState.Routed {
 		decision := record.CrewState.Decision
 		notice.Crew = &decision
+	}
+	// A TASK WAITING ON A MODEL WAS NEVER RUNNING, so nothing about it stopped
+	// when the process did: it comes back waiting, with the same reason and
+	// the same Ask, and starts only when a person says so ([Agent.RetryParkedTask]).
+	if record.Park != nil && record.State == TaskQueued {
+		notice.park = record.Park.bounded()
+		notice.Waiting, notice.Report = TaskWaitingNoModel, record.Park.Message
+		return notice
 	}
 	if !notice.State.settled() {
 		// WORK NOTHING IS DRIVING IS INTERRUPTED, NOT FAILED. This row was live
@@ -1252,6 +1411,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Request:        n.spec.request,
 		OriginJournal:  n.spec.origin.journal,
 		OriginLine:     n.spec.origin.line,
+		Source:         cloneSource(n.spec.source),
 		Admission:      recordedAdmission(n.spec.admission),
 		Brief:          n.spec.brief,
 		Deliverable:    n.spec.deliverable,
@@ -1274,6 +1434,9 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Acceptance:     n.spec.acceptance,
 		PlanID:         n.spec.planID,
 		DependsOn:      dependsOn,
+		WaitsExternal:  waitRecords(n.waitsExt),
+		AdmittedAt:     n.admittedAt,
+		StateAt:        n.stateAt,
 		Parent:         n.parent,
 		Depth:          n.depth,
 		State:          n.state,
@@ -1287,6 +1450,11 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Wrote:          wrote,
 		Branch:         n.branch,
 		Worktree:       n.worktree,
+		WorkspaceURI:   n.WorkspaceURI,
+		ChatURI:        n.ChatURI,
+		ProjectURI:     n.ProjectURI,
+		GroundURI:      n.GroundURI,
+		RootURI:        n.RootURI,
 		Merge:          n.merge,
 		Journal:        n.journal,
 		Beat:           beat,
@@ -1301,6 +1469,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		StartedAt:      n.started,
 		EndedAt:        n.ended,
 		CostUSD:        n.cost,
+		FoldedUSD:      n.folded,
+		TreeLimit:      n.treeLimit,
 		Input:          n.input,
 		Output:         n.output,
 		CacheRead:      n.cacheRead,
@@ -1309,6 +1479,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		NotedState:     n.notedState,
 		Attempt:        n.attempt,
 		Interrupted:    n.interrupted,
+		StorageBlocked: n.storageBlocked,
 		Decider:        n.decider,
 		Clashing:       n.clashing,
 		Shifted:        n.shifted,
@@ -1317,10 +1488,11 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Kind:           n.kind,
 		Offer:          n.offer,
 		Quick:          quickRecordLocked(n.spec.quick),
-		Unshaped:       n.spec.unshaped,
-		Unsized:        n.spec.unsized,
-		Expects:        append([]Expectation(nil), n.spec.expects...),
-		Assignment:     recordedAssignment(n.assignment),
+		App:            cloneAppTaskRecord(n.app), Irreversible: n.spec.irreversible,
+		Unshaped:   n.spec.unshaped,
+		Unsized:    n.spec.unsized,
+		Expects:    append([]Expectation(nil), n.spec.expects...),
+		Assignment: recordedAssignment(n.assignment),
 	}
 }
 
@@ -1399,8 +1571,8 @@ func decodeTasks(content []byte) (taskDocument, error) {
 	if document.Type != taskDocumentType {
 		return taskDocument{}, fmt.Errorf("type is %q, want %q", document.Type, taskDocumentType)
 	}
-	if document.Version != taskFileVersion {
-		return taskDocument{}, fmt.Errorf("version %d, want %d", document.Version, taskFileVersion)
+	if err := validateTaskDocumentVersion(document); err != nil {
+		return taskDocument{}, err
 	}
 	seen := make(map[uint64]bool, len(document.Nodes))
 	var highest uint64
@@ -1747,6 +1919,10 @@ func (a *Agent) recoverTasks() {
 	document, found := loadTaskCheckpoint(a.config.checkpointFile())
 	if !found {
 		a.setAsideRefusedCheckpoint()
+	}
+	var recoveredPreparation bool
+	document, recoveredPreparation = recoverWorkspaceSetPreparations(a.config.Place, document)
+	if !found && !recoveredPreparation {
 		return
 	}
 	if len(document.Nodes) == 0 && len(document.Runs) == 0 {
@@ -1758,13 +1934,20 @@ func (a *Agent) recoverTasks() {
 	// one already on the column — and would write its journal into that run's
 	// folder (orchestrate.go's orchestrateJournalPath).
 	a.reserveRunNames(document.Runs)
+	a.restoreWorkerHistory(&document)
 
 	graph := a.graph()
 	recovery := graph.rehydrate(document, a.config.Workspace, a.settlePolicy())
+	graph.prepareNodeTreeLimits()
 	// The consume-once receipt reaches the disk BEFORE anything else happens: a
 	// second crash between here and the first turn must not hand the same
 	// interrupt to a second recovery.
 	graph.checkpoint()
+	// A recovered job must settle both durable views. Leaving its process
+	// file running would make the next background look open this chat again.
+	if err := reconcileProcessRecords(a.config.SessionFile, graph.document()); err != nil {
+		log.Printf("session: settling recovered processes: %v", err)
+	}
 	// AND THE HAND-BACK IS TOLD. Every landing the floor took off the model on the
 	// way in is one ordinary task update, on the lane a surface already folds into
 	// the row it is drawing — the same lane and the same shape the end-of-turn
@@ -1882,6 +2065,14 @@ func highestTaskOnDisk(dirs ...string) uint64 {
 }
 
 func (r *taskRecovery) reconcile(record taskRecord, workspace string) taskRecord {
+	// A reading belonged to a turn that is over. Keep its ending, including an
+	// interruption, without counting it as work the conversation must report.
+	if record.Quick != nil && record.Quick.Reading {
+		if nothingIsComingBackForIt(record) {
+			record, _ = interrupt(record, workspace)
+		}
+		return record
+	}
 	if !nothingIsComingBackForIt(record) {
 		r.countSettled(&record)
 		return record
@@ -1990,6 +2181,12 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string, settle Ta
 	if document.Seq > g.seq {
 		g.seq = document.Seq
 	}
+	for _, id := range document.Dismissed {
+		if g.dismissed == nil {
+			g.dismissed = make(map[string]bool, len(document.Dismissed))
+		}
+		g.dismissed[id] = true
+	}
 	// THE ADAPTIVE RUNS' ROWS COME BACK AS ROWS AND AS NOTHING ELSE. They are put
 	// where the live ones live — [TaskGraph.runs], which the roster replay walks —
 	// so the column has ONE door and ONE row-space whether a run is happening now
@@ -2080,6 +2277,11 @@ func (g *TaskGraph) owedNotes(unannounced []*TaskNode, settle TaskSettle, addres
 		deliveries []durableDelivery
 	)
 	for _, node := range unannounced {
+		// A reading's answer belonged to the read that waited for it. There is
+		// no waiting turn after a restart and no second answer to deliver.
+		if node.spec.quick != nil && node.spec.quick.reading {
+			continue
+		}
 		claim, claimed := node.claimNote(node.attemptNow())
 		if !claimed {
 			continue
@@ -2122,13 +2324,17 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		record.Title = taskPersonTitle(subject)
 	}
 	node := &TaskNode{
+		app:        cloneAppTaskRecord(record.App),
 		nextModel:  record.NextModel,
 		nextEffort: record.NextEffort, graph: graph,
-		id:        record.ID,
-		dependsOn: record.DependsOn,
-		parent:    record.Parent,
-		depth:     record.Depth,
-		done:      make(chan struct{}),
+		id:         record.ID,
+		dependsOn:  record.DependsOn,
+		waitsExt:   waitRefs(record.WaitsExternal),
+		admittedAt: record.AdmittedAt,
+		stateAt:    record.StateAt,
+		parent:     record.Parent,
+		depth:      record.Depth,
+		done:       make(chan struct{}),
 		spec: taskSpec{
 			parent:      record.Parent,
 			depth:       record.Depth,
@@ -2136,6 +2342,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			summary:     record.Summary,
 			request:     record.Request,
 			origin:      taskOrigin{journal: record.OriginJournal, line: record.OriginLine},
+			source:      cloneSource(record.Source),
 			admission:   restoredAdmission(record.Admission),
 			brief:       record.Brief,
 			deliverable: record.Deliverable,
@@ -2150,7 +2357,8 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			expects:     record.Expects,
 			// AND A QUICK NODE'S BODY, which is what tells the runner it is quick
 			// and what the next checkpoint writes back ([taskRecord.Quick]).
-			quick: record.Quick.body(),
+			quick:        record.Quick.body(),
+			irreversible: record.Irreversible,
 			// AND THE READINGS THIS NODE IS STILL OWED, so that a `/task` that was
 			// queued when the engine went down still has its brief written and its
 			// width read beside the worker it finally gets ([taskRecord.Unshaped]).
@@ -2186,30 +2394,38 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		ending:         record.Ending,
 		// The ending already persists a person's cancellation. Rebuild the
 		// runtime flag so restored results retain the same routing protection.
-		stopped:     record.Ending == TaskEndingStopped,
-		kind:        record.Kind,
-		claim:       record.Claim,
-		checkedOn:   record.CheckedOn,
-		produced:    resultFromRecord(record.Result),
-		changed:     record.Changed,
-		wrote:       record.Wrote,
-		branch:      record.Branch,
-		worktree:    record.Worktree,
-		merge:       record.Merge,
-		journal:     record.Journal,
-		elapsed:     time.Duration(record.ElapsedMS) * time.Millisecond,
-		started:     record.StartedAt,
-		ended:       record.EndedAt,
-		cost:        record.CostUSD,
-		input:       record.Input,
-		output:      record.Output,
-		cacheRead:   record.CacheRead,
-		cacheWrite:  record.CacheWrite,
-		noted:       record.Noted,
-		notedRead:   record.Noted,
-		notedState:  record.NotedState,
-		attempt:     record.Attempt,
-		interrupted: record.Interrupted,
+		stopped:        record.Ending == TaskEndingStopped,
+		kind:           record.Kind,
+		claim:          record.Claim,
+		checkedOn:      record.CheckedOn,
+		produced:       resultFromRecord(record.Result),
+		changed:        record.Changed,
+		wrote:          record.Wrote,
+		branch:         record.Branch,
+		worktree:       record.Worktree,
+		WorkspaceURI:   record.WorkspaceURI,
+		ChatURI:        record.ChatURI,
+		ProjectURI:     record.ProjectURI,
+		GroundURI:      record.GroundURI,
+		RootURI:        record.RootURI,
+		merge:          record.Merge,
+		journal:        record.Journal,
+		elapsed:        time.Duration(record.ElapsedMS) * time.Millisecond,
+		started:        record.StartedAt,
+		ended:          record.EndedAt,
+		cost:           record.CostUSD,
+		folded:         record.FoldedUSD,
+		treeLimit:      record.TreeLimit,
+		input:          record.Input,
+		output:         record.Output,
+		cacheRead:      record.CacheRead,
+		cacheWrite:     record.CacheWrite,
+		noted:          record.Noted,
+		notedRead:      record.Noted,
+		notedState:     record.NotedState,
+		attempt:        record.Attempt,
+		interrupted:    record.Interrupted,
+		storageBlocked: record.StorageBlocked,
 		// AND WHO WAS HOLDING ITS DECISION, which is read back exactly as it was
 		// written and then put right by the floor a few lines above this node's
 		// arrival ([TaskGraph.handBackOnLoad], called out of [TaskGraph.rehydrate]).
@@ -2335,6 +2551,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		record.State = TaskFailed
 		record.Report = harnessInterruptedReport
 		record.EndedAt = interruptedAt(record)
+		record.StateAt = record.EndedAt
 		return record, ""
 	}
 
@@ -2344,6 +2561,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		record.State = TaskFailed
 		record.Report = subharnessInterruptedReport
 		record.EndedAt = interruptedAt(record)
+		record.StateAt = record.EndedAt
 		return record, ""
 	}
 
@@ -2355,12 +2573,16 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		record.State = TaskFailed
 		record.Changed = mergePaths(record.Changed, record.Wrote)
 		record.EndedAt = interruptedAt(record)
+		record.StateAt = record.EndedAt
 		return record, ""
 	}
 
 	// A process exit pauses ordinary work; it does not make a finding about it.
 	// Put the node back on the frontier so the next session resumes it once.
 	record.State = TaskQueued
+	// WHEN IT WENT BACK TO QUEUED IS NOT KNOWN — the process that could have said
+	// so is gone — so the instant is left unrecorded rather than guessed.
+	record.StateAt = time.Time{}
 	// AND THE CUT ATTEMPT'S REASON DOES NOT RIDE INTO THE NEXT ONE. A node
 	// machinery cut where it stood carries [TaskEndingInterrupted] on its record
 	// (task_run.go's paused road), and [TaskNode.end] writes only the FIRST cause —
@@ -2465,4 +2687,41 @@ func LoadLandedForJudge(tasksPath string) ([]TaskLanding, error) {
 		})
 	}
 	return landed, nil
+}
+
+func encodeTaskCheckpoint(document taskDocument, path string) ([]byte, error) {
+	root := filepath.Dir(path)
+	if filepath.Base(root) == cellStateDir {
+		root = filepath.Dir(root)
+	}
+	document = filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(path), placeTranscript)))
+	projection, err := workspaceTransferProjection(document, Place{Dir: root})
+	if err != nil {
+		return nil, err
+	}
+	document.WorkspaceTransfer = projection
+	if projection != nil {
+		document.Version = taskWorkspaceSetFileVersion
+	} else if document.Version == taskWorkspaceSetFileVersion {
+		document.Version = taskFileVersion
+	}
+
+	if codec, sealed := checkpointCodec(path); sealed {
+		document = document.mapPaths(codec.encode)
+	}
+	return json.MarshalIndent(document, "", "  ")
+}
+
+func validateTaskDocumentVersion(document taskDocument) error {
+	if document.Version != taskFileVersion && document.Version != taskWorkspaceSetFileVersion {
+		return fmt.Errorf("version %d, want %d", document.Version, taskFileVersion)
+	}
+	if document.Version == taskFileVersion {
+		for _, run := range document.Runs {
+			if run.WorkspaceSet != nil || run.PendingRun != nil && run.PendingRun.WorkspaceSet != nil {
+				return errors.New("workspace-set checkpoint requires version 2; version 1 would silently discard required roots in older builds")
+			}
+		}
+	}
+	return nil
 }

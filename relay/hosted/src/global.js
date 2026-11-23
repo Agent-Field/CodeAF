@@ -1,4 +1,6 @@
-// One durable budget bounds the whole deployment, including frames written before this budget existed.
+// One durable total closes admission at the shared ceiling, including bytes stored before this budget existed.
+// Existing identities can grow to their own quotas, so storage is roughly admitted identities times storeBytes.
+// The opt-in hard ceiling is the emergency stop for every identity's new frames.
 import { Counters } from './counters.js';
 import { DAY_MS } from './newcount.js';
 import { Lazy } from './lazy.js';
@@ -38,16 +40,16 @@ export class GlobalBudget {
     this.sql.exec('UPDATE global_usage SET bytes = bytes + ?', bytes);
   }
 
-  #full(extra = 0) {
+  #full(limit, extra = 0) {
     const used = this.sql.exec('SELECT bytes FROM global_usage').one().bytes;
-    return used + extra > this.limits.globalStoreBytes || (extra === 0 && used >= this.limits.globalStoreBytes);
+    return used + extra > limit || (extra === 0 && used >= limit);
   }
 
   // Admission counts successful new identities only; existing identities bypass this door.
   admit(network, now) {
     return this.#serial.run(async () => {
       await this.#ready.get();
-      if (this.#full()) throw new Wire('relay_storage_full', 507);
+      if (this.#full(this.limits.globalStoreBytes)) throw new Wire('relay_storage_full', 507);
       for (const [key, limit, code] of [
         [`new:${network}`, this.limits.newIdentitiesPerIpPerDay, 'too_many_identities'],
         ['global:new', this.limits.globalNewIdentitiesPerDay, 'relay_admission_full'],
@@ -61,12 +63,13 @@ export class GlobalBudget {
   }
 
   // Reservations precede R2 writes and survive a crash; a failed write can retain capacity until owner erasure.
+  // Every frame still counts toward admission, but only the emergency ceiling stops an existing owner.
   reserve(owner, frame, bytes) {
     return this.#serial.run(async () => {
       await this.#ready.get();
       const key = `${owner}/f/${frame}`;
       if (this.sql.exec('SELECT key FROM global_frames WHERE key = ?', key).toArray().length) return;
-      if (this.#full(bytes)) throw new Wire('relay_storage_full', 507);
+      if (this.#full(this.limits.globalHardStoreBytes, bytes)) throw new Wire('relay_storage_full', 507);
       this.#record(key, owner, bytes);
     });
   }

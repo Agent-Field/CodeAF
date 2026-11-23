@@ -193,6 +193,104 @@ func TestTaskPartInheritsOriginalParentRequestRatherThanCurrentChat(t *testing.T
 	}
 }
 
+func TestOwnerlessTaskFamilyKeepsOneBackgroundGroupAcrossResumedTurn(t *testing.T) {
+	t.Run("unrelated completions keep arrival turns", func(t *testing.T) {
+		a, _, _ := taskApp(t)
+		a.workMode, a.turn = config.WorkFold, 1
+		a.taskUpdate(update(7, "Earlier task", session.TaskDone, session.TaskNotice{Merge: "inplace"}))
+		a.turn++
+		a.entries = append(a.entries, entry{kind: entryAssistant, turn: a.turn, text: "A later turn.", settled: true})
+		a.taskUpdate(update(8, "Later task", session.TaskDone, session.TaskNotice{Merge: "inplace"}))
+		a.taskUpdate(update(9, "Another later task", session.TaskDone, session.TaskNotice{Merge: "inplace"}))
+		groups := 0
+		for _, f := range a.deckFolds(a.conversation()) {
+			if !f.background {
+				continue
+			}
+			groups++
+			if len(f.completions) == 1 && f.completions[0].task == 7 {
+				continue
+			}
+			if len(f.completions) != 2 || f.completions[0].task != 8 || f.completions[1].task != 9 {
+				t.Errorf("unrelated completions changed their arrival-turn grouping: %+v", f.completions)
+			}
+		}
+		if groups != 2 {
+			t.Errorf("unrelated completions have %d background groups, want two arrival turns", groups)
+		}
+	})
+	for _, nested := range []bool{false, true} {
+		for _, late := range []bool{false, true} {
+			name := "direct/before resumed turn"
+			if nested {
+				name = "nested/before resumed turn"
+			}
+			if late {
+				name = strings.ReplaceAll(name, "before", "after")
+			}
+			t.Run(name, func(t *testing.T) {
+				a, _, _ := taskApp(t)
+				a.width, a.height, a.workMode = 200, 80, config.WorkFold
+				a.turn = 1
+				a.entries = []entry{{kind: entryAssistant, turn: 1, text: "Restored work.", settled: true}}
+				a.taskUpdate(update(7, "Rebuild the index", session.TaskDone, session.TaskNotice{Merge: "inplace"}))
+				parent := uint64(7)
+				if nested {
+					a.taskUpdate(update(8, "Split parser work", session.TaskRunning, session.TaskNotice{Parent: 7}))
+					parent = 8
+				}
+				a.taskUpdate(update(9, "Port the parser", session.TaskUnverified, session.TaskNotice{Parent: parent, Merge: "conflict", Branch: "task/parser"}))
+				if !strings.Contains(taskText(a), "your call") {
+					t.Fatal("the child's pending landing must be visible before it is accepted")
+				}
+				if late {
+					a.turn++
+					a.entries = append(a.entries, entry{kind: entryAssistant, turn: a.turn, text: "I will accept the parser work.", settled: true})
+				}
+				a.taskUpdate(update(9, "Port the parser", session.TaskDone, session.TaskNotice{Parent: parent, Merge: "merged"}))
+				groups := 0
+				for _, f := range a.deckFolds(a.conversation()) {
+					if !f.background {
+						continue
+					}
+					groups++
+					if len(f.completions) != 2 {
+						t.Errorf("background group holds %d rows, want both family members", len(f.completions))
+					}
+					a.openWorkfold(f.key)
+				}
+				a.touch()
+				text := taskText(a)
+				if groups != 1 || strings.Count(text, "background work · 2 tasks · ctrl+e") != 1 {
+					t.Errorf("family has %d background groups, want one two-task disclosure:\n%s", groups, text)
+				}
+				for id, title := range map[uint64]string{7: "Rebuild the index", 9: "Port the parser"} {
+					if strings.Count(text, title+" · done · open result") != 1 {
+						t.Errorf("%s must have exactly one current result row:\n%s", title, text)
+					}
+					var result *workCompletion
+					for _, r := range a.visible(a.bodyWidth()) {
+						if r.hit == hitWorkCompletion && r.completion.task == id {
+							result = r.completion
+						}
+					}
+					if result == nil {
+						t.Errorf("%s has no reachable result", title)
+						continue
+					}
+					a.openWorkCompletion(result)
+					if !a.taskSheet.detailOn || a.taskSheet.detail.ID != itoa(int(id)) {
+						t.Errorf("%s result door did not open its task", title)
+					}
+				}
+				if strings.Contains(text, "your call") {
+					t.Errorf("accepted child's old decision is still drawn:\n%s", text)
+				}
+			})
+		}
+	}
+}
+
 func TestRestoredManualTaskWithoutReceiptKeepsLocalResultDisclosure(t *testing.T) {
 	a := completionFoldApp(t)
 	a.turn = 2

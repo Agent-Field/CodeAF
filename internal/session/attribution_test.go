@@ -21,9 +21,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec"
 )
 
-// TestTheAttributionLawIsOnEveryBelt is the belt half. Signing has no off, so
-// every page spells the law, and the `Assisted-by` line names the model this
-// session runs — filled by the render, never left for the model to guess.
+// TestTheAttributionLawIsOnEveryBelt is the belt half. By default signing is
+// on, so every page spells the law, and the `Assisted-by` line names the model
+// this session runs — filled by the render, never left for the model to guess.
 func TestTheAttributionLawIsOnEveryBelt(t *testing.T) {
 	page := promptWithBeltFacts(Config{Workspace: t.TempDir(), Model: "deepseek/deepseek-v4-flash"})
 	want := "`Assisted-by: CodeAF (deepseek-v4-flash)` and `" + exec.AttributionTrailer + "` as its last two lines"
@@ -81,6 +81,44 @@ func TestTheModelOffLineIsBareAndStillSigns(t *testing.T) {
 	}
 }
 
+// THE ATTRIBUTION-OFF LINE. A person who turned `attribution` off gets the one
+// sentence forbidding attribution marks instead of the signing law, both on the
+// conversation belt and on the bash worker belt.
+func TestTheAttributionOffLineReplacesTheLaw(t *testing.T) {
+	for _, bashBelt := range []bool{false, true} {
+		name := "chat belt"
+		if bashBelt {
+			name = "bash worker belt"
+		}
+		t.Run(name, func(t *testing.T) {
+			if bashBelt {
+				t.Setenv("CODEAF_TASK_BELT", "bash")
+			}
+			cfg := Config{
+				Workspace:      t.TempDir(),
+				Model:          "deepseek/deepseek-v4-flash",
+				AttributionOff: true,
+				InTask:         bashBelt,
+			}
+			page := promptWithBeltFacts(cfg)
+			if !strings.Contains(page, exec.AttributionOffLaw) {
+				t.Fatalf("the attribution-off page does not carry AttributionOffLaw:\n%s", page)
+			}
+			for _, unwanted := range []string{
+				exec.AttributionTrailer,
+				exec.AttributionPullFooter,
+				exec.AttributionCommentFooter,
+				exec.AttributionAssistedBySlot,
+				"Assisted-by: CodeAF",
+			} {
+				if strings.Contains(page, unwanted) {
+					t.Fatalf("the attribution-off page still carries %q", unwanted)
+				}
+			}
+		})
+	}
+}
+
 // TestALandedCommitCarriesTheExactTrailerBytes is the harness half: the commit
 // nobody was asked about. It is the one attribution nothing else can catch — no
 // model saw this message, so a wrong trailer here is wrong forever. So it is
@@ -91,6 +129,7 @@ func TestALandedCommitCarriesTheExactTrailerBytes(t *testing.T) {
 		name string
 		sign gitSignature
 		want string
+		off  bool
 	}{
 		{
 			name: "model on",
@@ -107,6 +146,12 @@ func TestALandedCommitCarriesTheExactTrailerBytes(t *testing.T) {
 			sign: gitSignature{},
 			want: "task: write the report\n\nAssisted-by: CodeAF\n" + coAuthor + "\n",
 		},
+		{
+			name: "attribution off",
+			sign: gitSignature{off: true, named: true, model: "deepseek/deepseek-v4-flash"},
+			want: "task: write the report\n",
+			off:  true,
+		},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			repo := newTestRepo(t)
@@ -115,7 +160,7 @@ func TestALandedCommitCarriesTheExactTrailerBytes(t *testing.T) {
 				t.Fatalf("prepareTaskTree: %v", err)
 			}
 			writeFile(t, filepath.Join(tree.dir, "report.md"), "# what happened\n")
-			if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, row.sign, false); problem != "" {
+			if _, problem, _ := commitTaskWork(tree.dir, "write the report", []string{"report.md"}, row.sign, false, true); problem != "" {
 				t.Fatalf("the landing could not commit: %s", problem)
 			}
 			// The commit object itself: headers, one blank line, and the message
@@ -125,9 +170,13 @@ func TestALandedCommitCarriesTheExactTrailerBytes(t *testing.T) {
 			if !found || message != row.want {
 				t.Fatalf("the landed commit's message is\n%q\nwant\n%q", message, row.want)
 			}
-			// AND GIT READS BOTH AS TRAILERS, in order.
+			// AND GIT READS BOTH AS TRAILERS, in order, or none when off.
 			trailers := gitOut(t, tree.dir, "log", "-1", "--format=%(trailers:only)")
-			if lines := strings.Split(strings.TrimSpace(trailers), "\n"); len(lines) != 2 ||
+			if row.off {
+				if strings.TrimSpace(trailers) != "" {
+					t.Fatalf("attribution-off commit still has trailers: %q", trailers)
+				}
+			} else if lines := strings.Split(strings.TrimSpace(trailers), "\n"); len(lines) != 2 ||
 				!strings.HasPrefix(lines[0], "Assisted-by: CodeAF") || lines[1] != coAuthor {
 				t.Fatalf("git does not read the two lines as the trailer block: %q", trailers)
 			}
@@ -173,5 +222,24 @@ func TestATaskNodeInheritsTheModelNameRow(t *testing.T) {
 	}
 	if worker.signsGitWork().named {
 		t.Fatal("a worker that inherited the row still names the model in what it lands")
+	}
+}
+
+// THE ATTRIBUTION ROW TRAVELS WITH THE WORK TOO. A child worker built from a
+// conversation with attribution off must neither sign what it lands nor tell
+// its model to add attribution lines.
+func TestATaskNodeInheritsTheAttributionRow(t *testing.T) {
+	session, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.AttributionOff = true
+	})
+	worker, _ := workerFor(t, session, taskSpec{
+		title: "land the change", request: "land the change", brief: "land the change",
+		acceptance: "it lands", depth: 1,
+	})
+	if !worker.config.AttributionOff {
+		t.Fatal("the person's attribution choice did not travel from the conversation to the worker it built")
+	}
+	if !worker.signsGitWork().off {
+		t.Fatal("a worker that inherited attribution off still signs what it lands")
 	}
 }

@@ -14,7 +14,7 @@ function bucket() {
 }
 
 test('R21 an upload receipt waits for blob completion, indexing and the storage durability boundary',async()=>{
-  const b=bucket(),store=new R2Store(b,memorySql(),'one'),f=await frame();let release,started;
+  const b=bucket(),store=new R2Store(b, memorySql(), 'one', () => {}),f=await frame();let release,started;
   const wait=new Promise(r=>{release=r;}),entered=new Promise(r=>{started=r;});const put=b.put;
   b.put=async(...args)=>{started();await wait;return put(...args);};
   const writing=store.put(f);await entered;let ready=false,synced=false;
@@ -26,7 +26,7 @@ test('R21 an upload receipt waits for blob completion, indexing and the storage 
 });
 
 test('R16 R21 a freeze or revoke during external I/O leaves bytes and returns no upload success',async()=>{
-  const b=bucket(),store=new R2Store(b,memorySql(),'one'),f=await frame();let calls=0;
+  const b=bucket(),store=new R2Store(b, memorySql(), 'one', () => {}),f=await frame();let calls=0;
   const guarded=new RaftBlobTenant(store,async()=>{if(++calls===2)throw Error('revoked');},async()=>{});
   await assert.rejects(guarded.putFrame(f),/revoked/);
   assert(b.data.has('one/f/'+f.id));assert.deepEqual(await store.get(rid),enc.encode('AGEO\x01sealed'));
@@ -56,7 +56,7 @@ test('R17 expired public delivery records a terminal outcome and never invents a
 test('R21 an interrupted R2 index has no completion marker and a repeated immutable upload repairs it',async()=>{
   const sql=memorySql(),original=sql.exec.bind(sql);let fail=true;
   sql.exec=(q,...args)=>{if(fail&&q.startsWith('INSERT OR IGNORE INTO objs')){fail=false;throw Error('index failed');}return original(q,...args);};
-  const store=new R2Store(bucket(),sql,'one'),f=await frame();
+  const store=new R2Store(bucket(),sql,'one',()=>{}),f=await frame();
   await assert.rejects(store.put(f),/index failed/);assert.equal(await store.put(f),true);
   await store.checkReferences(rid,[f.id],async()=>{});assert.equal(await store.put(f),false);
 });

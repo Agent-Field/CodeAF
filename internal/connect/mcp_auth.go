@@ -323,6 +323,7 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 		manager: m,
 		plug:    plug,
 		cancel:  cancel,
+		ctx:     runContext,
 		done:    make(chan flowResult, 1),
 	}
 	loopback := &mcpLoopback{answers: make(chan mcpAnswer, 1)}
@@ -342,7 +343,7 @@ func (m *Manager) beginToolServer(ctx context.Context, plug *toolServer, answer 
 
 	ready := make(chan string, 1)
 	go func() {
-		status, err := m.connectToolServer(runContext, plug, answer, redirect, loopback, ready)
+		status, err := m.connectToolServer(runContext, plug, answer, redirect, loopback, ready, flow.commit)
 		// The callback listener must be released before this flow reports done, so
 		// a reconnect that follows at once finds the registered loopback port free
 		// and keeps its identity instead of falling through to a fresh redirect and
@@ -401,7 +402,7 @@ func reconnectAddresses(record mcpRegistration, fallback []string) []string {
 
 // connectToolServer is the whole trip, from the first question to the keys on
 // disk. It runs on its own goroutine and reports through [Flow.finish].
-func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, given, redirect string, loopback *mcpLoopback, ready chan<- string) (Status, error) {
+func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, given, redirect string, loopback *mcpLoopback, ready chan<- string, commit func(func() error) error) (Status, error) {
 	filled, err := plug.at(given)
 	if err != nil {
 		return Status{}, err
@@ -475,7 +476,7 @@ func (m *Manager) connectToolServer(ctx context.Context, plug *toolServer, given
 		Scopes: granted(keys, found.scopes),
 		Blank:  given,
 	}
-	if err := m.store.put(service.ID, entry); err != nil {
+	if err := m.store.putConnected(ctx, service.ID, entry, commit); err != nil {
 		return Status{}, err
 	}
 	forgetTools(service.ID)

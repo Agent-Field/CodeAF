@@ -493,3 +493,45 @@ func TestAFinishedFlowReleasesItsCallbackListenerBeforeItReportsDone(t *testing.
 		t.Fatal("Flow.Wait did not return after the listener was released")
 	}
 }
+
+func TestCancelledToolServerDoesNotSaveAfterCredentialsLock(t *testing.T) {
+	for _, stage := range []string{"credentials lock", "final commit"} {
+		t.Run(stage, func(t *testing.T) {
+			fake := startFakeToolServer(t, fakeShape{})
+			manager, _ := withToolServer(t, fake)
+			entered, release := make(chan struct{}), make(chan struct{})
+			hold := func() { close(entered); <-release }
+			if stage == "credentials lock" {
+				manager.store.afterLoad = hold
+			} else {
+				manager.store.beforeCommit = hold
+			}
+			flow, err := manager.BeginAuth(context.Background(), "example", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			openInBrowser(t, flow)
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				close(release)
+				flow.Cancel()
+				t.Fatal("credential commit did not start")
+			}
+			flow.Cancel()
+			close(release)
+			select {
+			case <-flow.done:
+			case <-time.After(time.Second):
+				t.Fatal("cancelled connection did not finish")
+			}
+			status, err := flow.Wait(context.Background())
+			if err == nil || status.Connected {
+				t.Errorf("cancelled Wait = %+v, %v", status, err)
+			}
+			if manager.Connected("example") {
+				t.Error("cancelled browser connection saved after credentials lock")
+			}
+		})
+	}
+}

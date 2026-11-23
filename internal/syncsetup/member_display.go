@@ -213,6 +213,7 @@ func (s *memberDisplayStream) refresh(ctx context.Context) (<-chan struct{}, boo
 			return nil, false, dirwatch.ErrRotated
 		}
 		if listing.Devices[s.owner.Device.ID()].Revoked {
+			s.owner.rememberRemoved()
 			return nil, false, dirwatch.ErrRevoked
 		}
 		s.project(listing)
@@ -258,11 +259,15 @@ func (s *Sync) currentDisplaySync() (*Sync, error) {
 	if err != nil {
 		return nil, err
 	}
+	dev, err := identity.LoadDevice(s.Home)
+	if err != nil {
+		return nil, err
+	}
 	base, err := relayBase(Resolve(s.Home).URL)
 	if err != nil {
 		return nil, err
 	}
-	if id.ID() == s.Identity.ID() && base == s.Relay {
+	if id.ID() == s.Identity.ID() && dev.ID() == s.Device.ID() && base == s.Relay {
 		return s, nil
 	}
 	next, ok, err := Open(s.Home)

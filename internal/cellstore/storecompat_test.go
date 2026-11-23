@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
-	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 )
 
 // oldEngineEnv names an older furrow release binary. The store-format tests
@@ -25,10 +25,7 @@ func TestStoreWrittenByAnOlderEngineOpensUnderTheEmbeddedOne(t *testing.T) {
 	if old == "" {
 		t.Skipf("%s not set", oldEngineEnv)
 	}
-	current, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no embedded engine: %v", err)
-	}
+	current := celltest.Engine(t)
 	if current == old {
 		t.Skip("the embedded engine is the old engine")
 	}

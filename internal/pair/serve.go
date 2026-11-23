@@ -24,12 +24,15 @@ import (
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/relay"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // Host is the machine side.
 type Host struct {
 	// Service is the relay's address.
 	Service string
+	// DisplayName is the sync device name, when this computer is paired for chats.
+	DisplayName string
 	// Device is this machine's key.
 	Device Device
 	// Devices is the book of devices this machine lets in.
@@ -50,9 +53,38 @@ type Host struct {
 	// TUNNEL IS AN io.ReadWriteCloser AND NOTHING MORE, which is what lets the
 	// caller hand it straight to internal/remote.
 	Open func(io.ReadWriteCloser)
+	// OpenNamed returns a connection outcome for one plain terminal sentence.
+	OpenNamed func(string, io.ReadWriteCloser) error
 	// Now is the clock, swapped by tests.
 	Now func() time.Time
+
+	// handshake overrides [HandshakeWithin] in tests so silent-stream
+	// deadlines can be checked without waiting thirty real seconds.
+	handshake time.Duration
+	// sleep overrides the retry wait in tests so backoff schedules can be
+	// checked with an injected clock.
+	sleep func(context.Context, time.Duration) error
+
+	bannerMu    sync.Mutex
+	shownBanner string
 }
+
+// steadyAfter is how long a registration must stay up before a later drop is
+// counted as a fresh outage rather than the same flapping connection.
+const steadyAfter = time.Minute
+
+// TooManyRegistrationsLine is what `codeaf serve` prints when the relay turns
+// registrations away at its per-minute ceiling.
+const TooManyRegistrationsLine = "the sync service is turning registrations away right now — waiting before trying again"
+
+// LostSyncLine is what `codeaf serve` prints, once per outage, when its
+// connection to the relay is lost and it starts trying again.
+const LostSyncLine = "lost sync — trying again"
+
+// BackLine is what `codeaf serve` prints when it is reachable again after
+// saying [LostSyncLine]. It names the machine because that is the fact a
+// person checking the screen wants: devices can reach it under this name.
+func BackLine(name string) string { return "back — reachable as " + name + " again" }
 
 func (h *Host) now() time.Time {
 	if h.Now != nil {
@@ -61,9 +93,56 @@ func (h *Host) now() time.Time {
 	return time.Now()
 }
 
+func (h *Host) handshakeWithin() time.Duration {
+	if h.handshake > 0 {
+		return h.handshake
+	}
+	return HandshakeWithin
+}
+
+func (h *Host) wait(ctx context.Context, d time.Duration) error {
+	if h.sleep != nil {
+		return h.sleep(ctx, d)
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
+}
+
 func (h *Host) say(line string) {
 	if h.Say != nil {
 		h.Say(line)
+	}
+}
+
+func (h *Host) banner(name string, code *Code, codeErr error) string {
+	var line string
+	if codeErr == nil {
+		line = strings.TrimRight(Lines(name, code), "\n")
+	} else {
+		line = "  this machine is reachable as  " + name
+	}
+	if h.DisplayName != "" {
+		// A device name is only a hint; instructions must keep the machine name.
+		first, rest, more := strings.Cut(line, "\n")
+		line = first + " (" + h.DisplayName + ")"
+		if more {
+			line += "\n" + rest
+		}
+	}
+	return line
+}
+
+func (h *Host) sayBanner(line string, force bool) {
+	h.bannerMu.Lock()
+	same := line == h.shownBanner
+	h.shownBanner = line
+	h.bannerMu.Unlock()
+	if force || !same {
+		h.say(line)
 	}
 }
 
@@ -77,52 +156,100 @@ func (h *Host) say(line string) {
 // again cannot fix.
 func (h *Host) Run(ctx context.Context) error {
 	if strings.TrimSpace(h.Service) == "" {
-		return errors.New("no sync address is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync address")
+		return errors.New("no sync service is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync service")
+	}
+	if h.Desk != nil && h.Desk.Now == nil && h.Now != nil {
+		h.Desk.Now = h.Now
 	}
 	wait := time.Second
 	announced := false
+	// told and throttled are each said once per spell, not once per retry.
+	// told is set when the person has been told sync was lost and not yet
+	// that it came back, so the two lines always arrive as a pair.
+	told := false
+	throttled := false
+	tellLost := func() {
+		if !told {
+			h.say(LostSyncLine)
+		}
+		told = true
+	}
 	for {
 		registration, err := relay.Register(ctx, h.Service, h.Device.Private())
 		switch {
 		case err == nil:
+		case errors.Is(err, relay.ErrTooMany):
+			if !throttled {
+				h.say(TooManyRegistrationsLine)
+			}
+			throttled = true
+		case errors.Is(err, relay.ErrNameTaken) && announced:
+			// This machine held the name a moment ago, so what holds it now is
+			// its own dead connection, which the relay forgets when it times
+			// out. That is the outage still going on, and is waited out.
+			tellLost()
 		case errors.Is(err, relay.ErrNameTaken):
 			// RULE THREE OF THE NAME POLICY, MET FROM THIS SIDE. Something is
 			// already connected under this machine's name, which in practice
 			// means a second `codeaf serve` on this same machine. Trying again
 			// forever would be two processes fighting over one name.
 			return fmt.Errorf("this machine is already connected to sync as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
+		case errors.Is(err, relay.ErrUnreachable) && announced:
+			tellLost()
+		case syncwords.IsStruggling(err):
+			if !told {
+				h.say(syncwords.Explain(err, h.Service).Error())
+			}
+			told = true
 		case errors.Is(err, relay.ErrUnreachable):
 			if !announced {
-				return Unreachable(h.Service)
+				return syncwords.Explain(err, h.Service)
 			}
-			h.say("lost sync — trying again")
+			tellLost()
+		case errors.Is(err, relay.ErrNoDoor) && announced:
+			// The door was there a moment ago, so this is a relay being
+			// redeployed, and is waited out like any other outage.
+			tellLost()
+		case errors.Is(err, relay.ErrNoDoor):
+			// Trying again cannot add a door the service does not have.
+			return NoDoorForServe(h.Service)
 		default:
 			if !announced {
-				return err
+				return syncwords.Explain(err, h.Service)
 			}
-			h.say("sync refused this machine: " + err.Error())
+			h.say(syncwords.Explain(err, h.Service).Error())
 		}
 
 		if err == nil {
-			wait = time.Second
-			if !announced {
-				announced = true
+			announced = true
+			// A LOST LINE IS ANSWERED BY A BACK LINE. The banner is reprinted only
+			// when the name or code changed, so without this the last thing on
+			// the screen of a machine that recovered would still say it was lost.
+			if told {
+				h.say(BackLine(registration.Name()))
+				told = false
 			}
-			if code, codeErr := h.Desk.Offer(); codeErr == nil {
-				h.say(strings.TrimRight(Lines(registration.Name(), code), "\n"))
-			} else {
-				h.say("  this machine is reachable as  " + registration.Name())
-			}
+			code, codeErr := h.Desk.Offer()
+			// Reprints happen only when the name or pairing code actually
+			// changed, so a brief network blip neither spams the screen nor
+			// disguises a flapping carrier as a fresh start.
+			h.sayBanner(h.banner(registration.Name(), code, codeErr), false)
+			since := h.now()
 			h.hold(ctx, registration)
+			// Backoff resets only after the carrier stayed up for a meaningful
+			// stretch; an upgrade that drops right after Register keeps
+			// backing off instead of hammering the relay every second.
+			if h.now().Sub(since) >= steadyAfter {
+				wait = time.Second
+				throttled = false
+			}
 		}
 
-		select {
-		case <-ctx.Done():
+		if err := h.wait(ctx, wait); err != nil {
 			return nil
-		case <-time.After(wait):
 		}
-		if wait < time.Minute {
-			wait *= 2
+		if wait *= 2; wait > time.Minute {
+			wait = time.Minute
 		}
 	}
 }
@@ -135,9 +262,14 @@ func (h *Host) Run(ctx context.Context) error {
 // fails; waiting for them is what makes "Run returned" mean that nothing of
 // this machine is still writing its book or speaking to its screen.
 func (h *Host) hold(ctx context.Context, registration *relay.Registration) {
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		<-ctx.Done()
-		_ = registration.Close()
+		select {
+		case <-ctx.Done():
+			_ = registration.Close()
+		case <-done:
+		}
 	}()
 	var workers sync.WaitGroup
 	defer workers.Wait()
@@ -158,7 +290,7 @@ func (h *Host) hold(ctx context.Context, registration *relay.Registration) {
 // answer takes one arriving stream through whichever of the two exchanges it
 // asked for.
 func (h *Host) answer(stream io.ReadWriteCloser) {
-	withDeadline(stream, h.now().Add(HandshakeWithin))
+	withDeadline(stream, time.Now().Add(h.handshakeWithin()))
 	var intent [1]byte
 	if _, err := io.ReadFull(stream, intent[:]); err != nil {
 		_ = stream.Close()
@@ -196,7 +328,7 @@ func (h *Host) pair(stream io.ReadWriteCloser) {
 	// one: a person who watched a code burn must not have to ask for another.
 	h.Desk.Retire()
 	if next, err := h.Desk.Offer(); err == nil {
-		h.say(strings.TrimRight(Lines(h.Device.Name(), next), "\n"))
+		h.sayBanner(h.banner(h.Device.Name(), next, nil), true)
 	}
 }
 
@@ -205,8 +337,8 @@ func (h *Host) pair(stream io.ReadWriteCloser) {
 // nobody is sitting at never admits anything.
 func (h *Host) approver(stream io.ReadWriteCloser) func(label, words string) error {
 	return func(label, words string) error {
-		withDeadline(stream, h.now().Add(ConfirmWithin+HandshakeWithin))
-		defer withDeadline(stream, h.now().Add(HandshakeWithin))
+		withDeadline(stream, time.Now().Add(ConfirmWithin+h.handshakeWithin()))
+		defer withDeadline(stream, time.Now().Add(h.handshakeWithin()))
 		if h.Approve == nil || !h.Approve(label, words) {
 			return ErrRefused
 		}
@@ -271,12 +403,17 @@ func (h *Host) connect(stream io.ReadWriteCloser) {
 	withDeadline(stream, time.Time{})
 	h.Devices.Touch(key, h.now())
 	h.say(who.Label + " connected")
+	if h.OpenNamed != nil {
+		err := h.OpenNamed(who.Label, tunnel)
+		h.say(ConnectionEndedLine(who.Label, err))
+		return
+	}
 	if h.Open == nil {
 		_ = tunnel.Close()
 		return
 	}
 	h.Open(tunnel)
-	h.say(who.Label + " left")
+	h.say(ConnectionEndedLine(who.Label, nil))
 }
 
 // ThisMachineLabel is what this device calls itself when it pairs: the name a
@@ -284,3 +421,12 @@ func (h *Host) connect(stream io.ReadWriteCloser) {
 // they already use for their laptop. It is only ever a label — a connection is
 // checked against a key.
 func ThisMachineLabel() string { return readableLabel(devname.Name(home.Dir())) }
+
+// ConnectionEndedLine keeps process and pipe internals in the serving log.
+func ConnectionEndedLine(name string, err error) string {
+	line := "the connection to " + name + " ended"
+	if errors.Is(err, context.DeadlineExceeded) {
+		line += " — it stopped answering"
+	}
+	return line
+}

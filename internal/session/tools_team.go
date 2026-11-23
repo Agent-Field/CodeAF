@@ -174,13 +174,13 @@ func (a *Agent) teamTarget(want string, manager bool) (teams.Team, teamRole, str
 	if profile == "" {
 		return teams.Team{}, teamRole{}, "This conversation is not in a team."
 	}
-	file, err := teams.Load(profile)
-	if err != nil {
-		return teams.Team{}, teamRole{}, "The teams file could not be read: " + err.Error()
-	}
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
+	file, err := teamView(profile, keys)
+	if err != nil {
+		return teams.Team{}, teamRole{}, "The teams file could not be read: " + err.Error()
+	}
 	defaults := a.teamDefaults(profile)
 	var fits []teamRole
 	for _, role := range rolesFor(file, keys, defaults) {
@@ -257,7 +257,7 @@ func (a *Agent) teamStatusTool(ctx context.Context, args json.RawMessage) (strin
 		Team string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	team, _, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
@@ -267,7 +267,7 @@ func (a *Agent) teamStatusTool(ctx context.Context, args json.RawMessage) (strin
 	a.team.mu.Lock()
 	keys := append([]string(nil), a.teamKeysLocked()...)
 	a.team.mu.Unlock()
-	log, _ := teams.ReadTraffic(profile, team.ID, "", teamStateLook)
+	log, _ := teams.ReadHistory(profile, team.ID, teamStateLook, a.teamsSharing())
 	file, _, _, _ := a.teamSnapshot(profile)
 	states := memberStates(team, keys, time.Now(), log, &a.team.journals)
 	markShared(file, team, states)
@@ -324,7 +324,7 @@ func (a *Agent) teamReadTool(ctx context.Context, args json.RawMessage) (string,
 		Team     string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	team, _, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
@@ -428,7 +428,13 @@ func journalRow(entry sessionEntry) string {
 
 // ── team_send ───────────────────────────────────────────────────────────────
 
-func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (said string, failed bool, callErr error) {
+	missedReceipt := ""
+	defer func() {
+		if !failed && callErr == nil {
+			said += missedReceipt
+		}
+	}()
 	var parsed struct {
 		To   string `json:"to"`
 		Text string `json:"text"`
@@ -436,11 +442,11 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		Team string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	text := strings.TrimSpace(parsed.Text)
 	if text == "" {
-		return invalidArgumentsPrefix + "text is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"text is empty"), true, nil
 	}
 	kind := teams.KindNote
 	switch strings.TrimSpace(parsed.Kind) {
@@ -448,7 +454,7 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 	case teams.KindDirective:
 		kind = teams.KindDirective
 	default:
-		return invalidArgumentsPrefix + "kind is note or directive", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"kind is note or directive"), true, nil
 	}
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
@@ -475,6 +481,13 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		}
 	}
 	entry.Kind, entry.From, entry.Text = kind, teams.FromManager, text
+	refusal, missed, local := a.teamSendPreflight(ctx, teamSendTargets(team, entry))
+	missedReceipt = missed
+	if refusal != "" {
+		return refusal, true, nil
+	}
+	prov := turnOriginFrom(ctx).provenance(role.key)
+	entry.Provenance = prov
 	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
 	if err != nil {
 		return "The message could not be written to the team's traffic: " + err.Error(), true, nil
@@ -490,7 +503,7 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (string,
 		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
 		// (team_wakewatch.go). The answer says what will happen and no more:
 		// whether the wake ran is the Traffic's to say, where the person reads it.
-		a.teamRouse(a.config.teamProfile(), team, role.wakes, teamSendTargets(team, entry), id)
+		a.teamRouse(a.config.teamProfile(), team, role.wakes, local, id, prov)
 		if len(shared) > 0 {
 			return fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you: %s. Not sent to %s: they report to another team's manager; send them a note.",
 				len(entry.Recipients()), team.Name, who, strings.Join(shared, ", ")), false, nil
@@ -600,12 +613,21 @@ func linkRefusal(member teams.Member, where, what string) string {
 		"Nothing was sent. Send it a note (kind note), or raise it with its manager.", member.Handle, where, what)
 }
 
-// teamSendTargets is who a manager's message is addressed to: the members it
-// names, or every member but the manager.
+// teamSendTargets follows local delivery: a member's post reaches its manager,
+// and room posts reach teammates as well as explicitly addressed messages.
 func teamSendTargets(team teams.Team, entry teams.Entry) []teams.Member {
 	var out []teams.Member
 	for _, member := range team.Members {
-		if member.Key != team.Manager && entry.Addressed(member.Handle) {
+		if member.Key == team.Manager {
+			if entry.From != teams.FromManager && entry.From != teams.FromYou && entry.From != teams.FromSystem {
+				out = append(out, member)
+			}
+			continue
+		}
+		if member.Handle == entry.From && entry.From != "" {
+			continue
+		}
+		if entry.To == teams.ToRoom || entry.Addressed(member.Handle) {
 			out = append(out, member)
 		}
 	}
@@ -621,9 +643,9 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 		Team   string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
-	team, _, refusal := a.teamTarget(parsed.Team, true)
+	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
 	}
@@ -642,7 +664,11 @@ func (a *Agent) teamStopTool(ctx context.Context, args json.RawMessage) (string,
 	if reason == "" {
 		reason = "stopped by the manager"
 	}
-	entry := teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: member.Handle, Member: member.Key, Text: reason}
+	if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{member}); refusal != "" {
+		return refusal, true, nil
+	}
+	entry := teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: member.Handle, Member: member.Key, Text: reason,
+		Provenance: turnOriginFrom(ctx).provenance(role.key)}
 	if err := teams.AppendTraffic(a.config.teamProfile(), team.ID, entry); err != nil {
 		return "The stop could not be written to the team's traffic: " + err.Error(), true, nil
 	}
@@ -662,24 +688,29 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 		Team    string   `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	switch strings.TrimSpace(parsed.Kind) {
 	case "", "member", "team":
 	default:
-		return invalidArgumentsPrefix + "kind is member or team", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"kind is member or team"), true, nil
 	}
 	brief := strings.TrimSpace(parsed.Brief)
 	if brief == "" {
-		return invalidArgumentsPrefix + "brief is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"brief is empty"), true, nil
 	}
 	handle := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(parsed.Handle)), "@")
 	if err := teams.ValidHandle(handle); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	team, role, refusal := a.teamTarget(parsed.Team, true)
 	if refusal != "" {
 		return refusal, true, nil
+	}
+	if member, taken := team.ByHandle(handle); taken {
+		if refusal := a.teamDeliveryRefusal(ctx, []teams.Member{member}); refusal != "" {
+			return refusal, true, nil
+		}
 	}
 	model := ""
 	if word := strings.TrimSpace(parsed.Model); word != "" {
@@ -693,11 +724,11 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 		model = choice.model
 	}
 	if strings.TrimSpace(parsed.Kind) == "team" {
-		said, failed := a.teamStartSubTeam(team, role, handle, brief, parsed.Name, parsed.Members, model)
+		said, failed := a.teamStartSubTeam(ctx, team, role, handle, brief, parsed.Name, parsed.Members, model, turnOriginFrom(ctx).provenance(role.key))
 		return said, failed, nil
 	}
 	if strings.TrimSpace(parsed.Name) != "" || len(parsed.Members) > 0 {
-		return invalidArgumentsPrefix + "name and members are for kind team", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"name and members are for kind team"), true, nil
 	}
 	if reason := a.teamCapHold(a.config.teamProfile(), []teamRole{role}); reason != "" {
 		return "No new member starts: " + reason + ".", true, nil
@@ -705,7 +736,8 @@ func (a *Agent) teamStartTool(ctx context.Context, args json.RawMessage) (string
 	if _, taken := team.ByHandle(handle); taken {
 		return fmt.Sprintf("@%s is already a member of %q. Pick another handle, or team_send it the work.", handle, team.Name), true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture(), Model: model}
+	entry := teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: handle, Text: brief, Approval: a.ResolvedApprovalPosture(), Model: model,
+		Provenance: turnOriginFrom(ctx).provenance(role.key)}
 	id, err := teams.AppendTrafficID(a.config.teamProfile(), team.ID, entry)
 	if err != nil {
 		return "The start could not be written to the team's traffic: " + err.Error(), true, nil
@@ -764,7 +796,13 @@ func teamStartGloss(arguments string) string {
 
 // ── team_post ───────────────────────────────────────────────────────────────
 
-func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string, bool, error) {
+func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (said string, failed bool, callErr error) {
+	missedReceipt := ""
+	defer func() {
+		if !failed && callErr == nil {
+			said += missedReceipt
+		}
+	}()
 	var parsed struct {
 		To     string `json:"to"`
 		Text   string `json:"text"`
@@ -772,17 +810,17 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		Team   string `json:"team"`
 	}
 	if err := decodeToolArguments(args, &parsed); err != nil {
-		return invalidArgumentsPrefix + err.Error(), true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+err.Error()), true, nil
 	}
 	text := strings.TrimSpace(parsed.Text)
 	if text == "" {
-		return invalidArgumentsPrefix + "text is empty", true, nil
+		return rejectToolArguments(ctx, invalidArgumentsPrefix+"text is empty"), true, nil
 	}
 	thread := ""
 	if strings.TrimSpace(parsed.Thread) != "" {
 		id, ok := teams.ThreadID(parsed.Thread)
 		if !ok {
-			return invalidArgumentsPrefix + "thread is a message's number, like #42", true, nil
+			return rejectToolArguments(ctx, invalidArgumentsPrefix+"thread is a message's number, like #42"), true, nil
 		}
 		thread = id
 	}
@@ -793,7 +831,8 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 	if role.handle == "" {
 		return "You have no handle in " + strconv.Quote(team.Name) + " yet, so nobody could tell who posted. It is given once this conversation has a title.", true, nil
 	}
-	entry := teams.Entry{Kind: teams.KindNote, From: role.handle, Text: text}
+	prov := turnOriginFrom(ctx).provenance(role.key)
+	entry := teams.Entry{Kind: teams.KindNote, From: role.handle, Text: text, Provenance: prov}
 	to := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(parsed.To)), "@")
 	switch to {
 	case teams.ToRoom, "", teams.ToEveryone:
@@ -829,6 +868,20 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		return a.teamPostUp(team, role, entry)
 	}
 	entry.Answers = thread
+	targets := teamSendTargets(team, entry)
+	// A specifically named destination must be reachable even when the
+	// manager would also observe that post in its ordinary local news.
+	if entry.To != teams.ToRoom && entry.To != teams.ToManager {
+		targets = nil
+		if member, ok := team.ByHandle(entry.To); ok {
+			targets = []teams.Member{member}
+		}
+	}
+	refusal, missed, _ := a.teamSendPreflight(ctx, targets)
+	if refusal != "" {
+		return refusal, true, nil
+	}
+	missedReceipt = missed
 	// THE POST'S OWN NUMBER IS IN ITS ANSWER, ` as #N`, so the surface can find
 	// this call in the member's transcript when somebody asks to be taken to
 	// the message (tui3's teamjump.go).
@@ -848,16 +901,8 @@ func (a *Agent) teamPostTool(ctx context.Context, args json.RawMessage) (string,
 		// A REPLY TO THE MANAGER WAKES IT, so a manager nobody has open is
 		// opened (team_wakewatch.go).
 		if manager, ok := team.Member(team.Manager); ok {
-			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager}, "")
+			a.teamRouse(a.config.teamProfile(), team, role.wakes, []teams.Member{manager}, "", prov)
 		}
 	}
-	answered := ""
-	if thread != "" {
-		answered = ", answering " + teams.ThreadNumber(thread)
-	}
-	as := ""
-	if own != "" {
-		as = " as " + teams.ThreadNumber(own)
-	}
-	return "Posted to " + where + " in " + strconv.Quote(team.Name) + as + answered + ". It arrives at the start of their next step.", false, nil
+	return teamPostSaid(where, team.Name, own, thread), false, nil
 }

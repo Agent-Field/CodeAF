@@ -270,7 +270,8 @@ func TestATaskLineFollowsItsConversationIntoAnotherWindow(t *testing.T) {
 // A SENTENCE ADOPTED FROM A DEAD WINDOW ON THIS DIRECTORY BRINGS NOTHING WITH
 // IT. The draft follows the person and the directory; a task page follows its
 // conversation, and two directories matching is not that conversation.
-func TestAnAdoptedSentenceDoesNotBringAStrangersTaskLine(t *testing.T) {
+// Contract J23.2 keeps another chat's draft and task line with that chat.
+func TestAnotherChatsDraftAndTaskLineAreNeverAdopted(t *testing.T) {
 	dir := t.TempDir()
 
 	gone, _, _ := roomApp(t)
@@ -283,13 +284,13 @@ func TestAnAdoptedSentenceDoesNotBringAStrangersTaskLine(t *testing.T) {
 	gone.writeDraftsNow(gone.leavingDraft())
 	left := draftKeepPath(gone.draftFile)
 
-	// A DIFFERENT conversation opens in this directory and adopts the orphan.
+	// Sharing a project does not give the next conversation these words.
 	next, _, _ := roomApp(t)
 	next.workspace, next.file = "/tmp/lab", filepath.Join(dir, "s2.jsonl")
 	next.draftFile = DraftFile(dir, "/tmp/lab")
 	next.restoreDraft()
-	if got := next.input.String(); got != "yesterday's sentence" {
-		t.Fatalf("the orphan sentence came back as %q", got)
+	if got := next.input.String(); got != "" {
+		t.Fatalf("another chat's sentence came back as %q", got)
 	}
 	next.openRoom(7, "Fix the nil-map crash")
 	if got := next.input.String(); got != "" {

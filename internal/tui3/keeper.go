@@ -1083,6 +1083,9 @@ func (a *app) holding(file string) bool {
 // conversation in the keeper is not something to open. It is something to look
 // at again.
 func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
+	if !a.homeTakeOpening {
+		a.abandonAutomaticTake()
+	}
 	if a.startingChat() {
 		back := a.parkChatStart()
 		defer func() { cmd = tea.Batch(back, cmd) }()
@@ -1185,6 +1188,7 @@ func (a *app) startBeside(workspace string) (tea.Cmd, string) {
 // takeBeside is the two lines both doors above end in: the conversation on
 // screen steps aside and goes on running, and the new one takes the surface.
 func (a *app) takeBeside(conv Conversation) tea.Cmd {
+	a.moveTakeDraft(conv)
 	// The name of what is being left, read while it is still in front, and said
 	// afterwards on a door that could not keep it (below). Notes are cleared by
 	// the detach, so this is remembered rather than written now.
@@ -1205,9 +1209,6 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 		}
 	}
 	cmd := tea.Batch(parked, a.attachConversation(conv, nil))
-	if a.shared {
-		a.restoreDraft()
-	}
 	if key := a.convKey(conv.SessionFile); key != "" {
 		a.rememberOpen(key)
 	}
@@ -1268,7 +1269,27 @@ func (a *app) closeFront() (tea.Cmd, bool) {
 // arrived, and "you closed this conversation" and "another window took it" are
 // two different sentences to be owed (internal/session's stopcause.go).
 func (a *app) closeFrontFor(door session.StopDoor) (tea.Cmd, bool) {
-	return a.leaveFront(func(agent Agent) { a.endAgentFor(agent, door) }, true)
+	address := a.syncService
+	name := a.sessionName()
+	if name == "" {
+		name = a.place
+	}
+	var leaving Agent
+	cmd, more := a.leaveFront(func(agent Agent) { leaving = agent }, true)
+	if !more || leaving == nil {
+		return cmd, more
+	}
+	a.conversationClosing = true
+	a.retainSavingDurability([]Agent{leaving})
+	desk := a.outsideDesk
+	return tea.Batch(cmd, closeConversationLater(leaving, door, a.saveFailure, a.closingStarted, func(err error) {
+		desk.Say(name + ": " + closeSaveWords(err, false, address))
+	}, address, func(lines []string) {
+		for i, line := range lines {
+			lines[i] = name + ": " + line
+		}
+		desk.saving(lines)
+	})), true
 }
 
 // stepBackFront is the same act for a window that is NOT ending anything: another
@@ -1298,8 +1319,7 @@ func (a *app) endAgent(agent Agent) { a.endAgentFor(agent, session.StopByLeaving
 // CONVERSATION to go, not for the reply to be thrown away — so the engine owes
 // them a sentence about the answer that never came.
 func (a *app) endAgentFor(agent Agent, door session.StopDoor) {
-	agent.InterruptFor(door)
-	if err := agent.Close(); err != nil {
+	if err := leaveAgentFor(agent, door); err != nil {
 		a.note("close failed: " + err.Error())
 	}
 }
@@ -1374,6 +1394,17 @@ func (a *app) leaveFront(let func(Agent), say bool) (tea.Cmd, bool) {
 // serial quit would get slower the more of them somebody had open; this one
 // does not.
 func (a *app) leaveEverything() {
+	a.leavingWork()()
+}
+
+// leavingWork captures surface state before any engine work leaves the loop.
+// The returned work owns only the captured agents and thread-safe callbacks.
+func (a *app) leavingWork() func() {
+	a.outsideDesk.finishSaving(a.savingNotices)
+	if a.stopSealNotice != nil {
+		a.stopSealNotice()
+		a.stopSealNotice = nil
+	}
 	agents := make([]Agent, 0, len(a.behind)+1)
 	if a.agent != nil {
 		agents = append(agents, a.agent)
@@ -1386,31 +1417,94 @@ func (a *app) leaveEverything() {
 		delete(a.behind, key)
 	}
 	a.prev = nil
-	var wg sync.WaitGroup
-	for _, agent := range agents {
-		wg.Add(1)
-		go func(agent Agent) {
-			defer wg.Done()
-			leaveAgent(agent)
-		}(agent)
+	type errandClose struct {
+		agent   Agent
+		working bool
 	}
-	wg.Wait()
+	var errands []errandClose
+	for _, ex := range a.exchanges {
+		if ex != nil && !ex.filed {
+			ex.filed = true
+			errands = append(errands, errandClose{agent: ex.agent, working: ex.working})
+		}
+	}
+	departures := a.retainSavingDurability(agents)
+	errandsDone := make([][]func(error), len(errands))
+	for i, ex := range errands {
+		errandsDone[i] = a.retainSavingDurability([]Agent{ex.agent})
+	}
+	a.exchanges, a.home.exchanges = nil, nil
+	waitForRelease, report, savingNotices := a.waitForRelease, a.saveFailure, a.savingNotices
+	return func() {
+		waitRelease := waitForRelease != nil && waitForRelease()
+		var wg sync.WaitGroup
+		for i, agent := range agents {
+			wg.Add(1)
+			go func(agent Agent) {
+				complete := func(err error) {
+					if savingNotices != nil {
+						savingNotices(takeSavingNotices(agent))
+					}
+					if len(departures) > i {
+						departures[i](err)
+					}
+				}
+				defer wg.Done()
+				if waitRelease {
+					if hosted, ok := agent.(interface{ DetachAndWait() error }); ok {
+						err := hosted.DetachAndWait()
+						complete(err)
+						if err != nil && report != nil {
+							report(err)
+						}
+						return
+					}
+				}
+				err := leaveAgentError(agent)
+				complete(err)
+				if err != nil && report != nil {
+					report(err)
+				}
+			}(agent)
+		}
+		for i, ex := range errands {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if ex.working {
+					ex.agent.InterruptFor(session.StopByLeaving)
+				}
+				err := ex.agent.Close()
+				if len(errandsDone[i]) > 0 {
+					errandsDone[i][0](err)
+				}
+				if err != nil && report != nil {
+					report(err)
+				}
+			}()
+		}
+		wg.Wait()
+	}
 }
 
 // leaveAgent takes this terminal off one conversation: a detach where the work
 // outlives the window, and the ordinary interrupt-and-close where it does not.
 func leaveAgent(agent Agent) {
+	_ = leaveAgentError(agent)
+}
+
+func leaveAgentError(agent Agent) error {
 	if hosted, ok := agent.(detachable); ok {
-		_ = hosted.Detach()
-		return
+		return hosted.Detach()
 	}
-	leaveAgentFor(agent, session.StopByLeaving)
+	agent.InterruptFor(session.StopByLeaving)
+	return finishAgentSaving(agent, agent.Close())
 }
 
 // Permanent deletion closes the owner rather than detaching its view.
-func leaveAgentFor(agent Agent, door session.StopDoor) {
+func leaveAgentFor(agent Agent, door session.StopDoor) error {
 	agent.InterruptFor(door)
-	_ = agent.Close()
+	return finishAgentSaving(agent, agent.Close())
 }
 
 // leaveOffFrame is [leaveAgent] started away from the caller. Detach and
@@ -1686,4 +1780,32 @@ func (a *app) keptQuiet(held *kept, now time.Time) bool {
 	// And it has to have been left alone for long enough that letting go of it is
 	// not a surprise. An undated sidecar is not evidence of age, so it waits.
 	return !side.since.IsZero() && now.Sub(side.since) >= keptIdleGrace
+}
+
+// retainSavingDurability captures only thread-safe receipt readers, before the
+// update loop forgets the conversations whose closing work remains pending.
+func (a *app) retainSavingDurability(agents []Agent) []func(error) {
+	if a.savingCompatibility != nil {
+		for _, agent := range agents {
+			if receipts, ok := agent.(interface{ SavingReceipts() bool }); ok {
+				a.savingCompatibility(receipts.SavingReceipts)
+			}
+		}
+	}
+	if a.savingDurability == nil {
+		return nil
+	}
+	completed := make([]func(error), 0, len(agents))
+	for _, agent := range agents {
+		// A successful detach is this chat's completed departure, even when
+		// its work stays hosted and no local close receipt is expected.
+		var departed atomic.Bool
+		local := func() bool { return false }
+		if receipt, ok := agent.(interface{ LocalDurable() bool }); ok {
+			local = receipt.LocalDurable
+		}
+		a.savingDurability(func() bool { return departed.Load() || local() })
+		completed = append(completed, func(err error) { departed.Store(err == nil) })
+	}
+	return completed
 }

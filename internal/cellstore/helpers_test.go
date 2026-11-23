@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/shell"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,8 +12,9 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/executor"
-	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/shell"
 )
 
 func newCell(t *testing.T) cell.Cell {
@@ -34,10 +34,7 @@ func realEngineB(b *testing.B) Engine { return engineFor(b, b.TempDir()) }
 
 func engineFor(t testing.TB, dataRoot string) Engine {
 	t.Helper()
-	bin, err := furrow.ResolveOwned()
-	if err != nil {
-		t.Skipf("no engine binary: %v", err)
-	}
+	bin := celltest.Engine(t)
 	engine := Engine{Binary: bin, DataRoot: dataRoot, Transport: current.make(t, bin)}
 	// Retire this fixture before stopping its daemon, or a background group could
 	// restart that writer while Windows removes its now-closed catalog (U4/C28).

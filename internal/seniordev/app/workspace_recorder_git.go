@@ -198,7 +198,7 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	// even after the model rewrote .gitignore. This is a private temporary index;
 	// the real index never stages these paths.
 	//codeaf:plumbing git recorder of workspace changes
-	listed := exec.Command("git", "ls-files", "--cached", "-z")
+	listed := exec.Command("git", "--no-optional-locks", "ls-files", "--cached", "-z")
 	listed.Dir, listed.Env = recorder.workspace, env
 	staged, err := listed.CombinedOutput()
 	if err != nil {
@@ -387,7 +387,7 @@ func (recorder *gitRecorder) ListPaths(
 ) ([]string, int, bool, error) {
 	//codeaf:plumbing git recorder of workspace changes
 	command := exec.CommandContext(
-		ctx, "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard",
+		ctx, "git", "--no-optional-locks", "ls-files", "-z", "--cached", "--others", "--exclude-standard",
 	)
 	command.Dir = recorder.workspace
 	stdout, err := command.StdoutPipe()
@@ -469,7 +469,7 @@ func (recorder *gitRecorder) Summary(
 	var patchBytes countingWriter
 	var diffError bytes.Buffer
 	//codeaf:plumbing git recorder of workspace changes
-	command := exec.CommandContext(ctx, "git", diffArgs("--binary", "--no-renames")...)
+	command := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, diffArgs("--binary", "--no-renames")...)...)
 	command.Dir, command.Stdout, command.Stderr = workspace, &patchBytes, &diffError
 	status := "completed"
 	if err := command.Run(); err != nil {

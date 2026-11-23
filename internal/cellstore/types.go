@@ -2,11 +2,23 @@ package cellstore
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 const schemaV = 1
+
+// ErrReadOnly leaves pending records local when this window may only view the chat.
+var ErrReadOnly = errors.New("this window only shows the chat")
+
+// ErrWorkspaceGone is a seal asked of a chat whose folder is no longer there:
+// a factory job closed locally takes its checkout away while the job's chat is
+// still open. There is nothing on disk to keep, so it is NOT a chat that could
+// not be saved. Its transcript is the session file's, and its pending calls
+// stay in the WAL exactly as [ErrReadOnly] leaves them. The ninth live WorkAF
+// round's idle quit exited 1 with "codeaf could not save this chat" for one.
+var ErrWorkspaceGone = errors.New("the chat's folder is no longer on this computer")
 
 // Cell-relative paths of the files this package persists inside a cell.
 const (
@@ -58,6 +70,8 @@ type Range struct {
 // Call is one tool call in a receipt. For a call whose SideEffect is external
 // the output also lives at BlobsDir/<hash> (SCHEMAS.md ruling 3).
 type Call struct {
+	// ID is the WAL call identity, absent on older receipts.
+	ID         string `json:"id,omitempty"`
 	Tool       string `json:"tool"`
 	ArgsHash   string `json:"args_hash"`
 	Started    int64  `json:"started"`
@@ -75,8 +89,11 @@ type ServiceRec struct {
 	Ports []int    `json:"ports,omitempty"`
 }
 
-// ModelCall is one model call of the turn, by hashes.
+// ModelCall is one model call or missing-receipt marker saved with a turn.
 type ModelCall struct {
+	// ID is the live usage ledger row identity, absent on older saved calls.
+	ID           string `json:"id,omitempty"`
+	CallID       string `json:"call_id,omitempty"`
 	Model        string `json:"model"`
 	Role         string `json:"role,omitempty"`
 	ParamsHash   string `json:"params_hash"`
@@ -86,6 +103,19 @@ type ModelCall struct {
 	TokensOut    uint32 `json:"tokens_out"`
 	TokensCached uint32 `json:"tokens_cached,omitempty"`
 	CostMicroUSD int64  `json:"cost_micro_usd"`
+	Kind         string `json:"kind,omitempty"`
+	Billing      string `json:"billing,omitempty"`
+	BillingBasis string `json:"billing_basis,omitempty"`
+	Unbilled     bool   `json:"unbilled,omitempty"`
+	FactoryJob   string `json:"factory_job,omitempty"`
+}
+
+// ExplicitID returns the caller-assigned model call identity when present.
+func (m ModelCall) ExplicitID() string {
+	if m.CallID != "" {
+		return m.CallID
+	}
+	return m.ID
 }
 
 // Receipt is what a phone needs to render a turn (SCHEMAS.md 5).

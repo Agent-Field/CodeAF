@@ -94,7 +94,7 @@ func setEnvValue(env []string, name, value string) []string {
 func runGit(parent context.Context, token string, timeout time.Duration, args ...string) (stdout, stderr string, err error) {
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 	configureGitProcess(cmd)
 	cmd.Env = gitEnv(token)
 	cmd.WaitDelay = time.Second

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // recordedPost is one POST the relay saw.
@@ -492,26 +494,22 @@ func TestFlushPartialFailure(t *testing.T) {
 // something under -race, where the interleavings are shaken out.
 func TestSpoolConcurrent(t *testing.T) {
 	testHome(t)
+	t.Cleanup(spoolPending.Wait)
 	const goroutines = 8
 	const perGoroutine = 50
 	var group sync.WaitGroup
 	group.Add(goroutines)
 	for worker := 0; worker < goroutines; worker++ {
-		go func(worker int) {
+		worker := worker
+		guard.Go("telemetry.test.spool", func() {
 			defer group.Done()
 			for i := 0; i < perGoroutine; i++ {
 				Spool(SessionStarted(ModeChat, false, fmt.Sprintf("session-%02d-%02d", worker, i), freshClock(t)))
 			}
-		}(worker)
+		})
 	}
 	group.Wait()
-	// Spool returns before its append runs; wait for the lines to land.
-	for deadline := time.Now().Add(10 * time.Second); len(SpoolContents()) != goroutines*perGoroutine; {
-		if time.Now().After(deadline) {
-			t.Fatalf("only %d of %d events were spooled, the rest were lost", len(SpoolContents()), goroutines*perGoroutine)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	spoolPending.Wait()
 	seen := map[string]bool{}
 	for _, raw := range SpoolContents() {
 		var row map[string]any
@@ -535,6 +533,7 @@ func TestSpoolConcurrent(t *testing.T) {
 // the flush is about to delete.
 func TestFlushRacesSpool(t *testing.T) {
 	testHome(t)
+	t.Cleanup(spoolPending.Wait)
 	recorder := newRelay(t)
 	// Warm the spool so the flush has lines to send while the spooler runs.
 	for i := 0; i < 30; i++ {
@@ -547,19 +546,19 @@ func TestFlushRacesSpool(t *testing.T) {
 	const spoolers = 4
 	const perSpooler = 25
 	group.Add(1)
-	go func() {
+	guard.Go("telemetry.test.spool", func() {
 		defer group.Done()
 		for i := 0; i < perSpooler; i++ {
 			Spool(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("race-%02d", i), freshClock(t))))
 		}
-	}()
+	})
 	group.Add(1)
-	go func() {
+	guard.Go("telemetry.test.spool", func() {
 		defer group.Done()
 		_ = Flush(context.Background())
-	}()
+	})
 	group.Add(1)
-	go func() {
+	guard.Go("telemetry.test.spool", func() {
 		defer group.Done()
 		// A spooler that waits for the append to land, so the race is with a
 		// flush that may already hold the mutex.
@@ -568,26 +567,20 @@ func TestFlushRacesSpool(t *testing.T) {
 				t.Error(err)
 			}
 		}
-	}()
+	})
 	// An extra spooler that starts while the flush may be mid-rename.
 	group.Add(spoolers)
 	for worker := 0; worker < spoolers; worker++ {
-		go func(worker int) {
+		worker := worker
+		guard.Go("telemetry.test.spool", func() {
 			defer group.Done()
 			for i := 0; i < 10; i++ {
 				Spool(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("late-%d-%d", worker, i), freshClock(t))))
 			}
-		}(worker)
+		})
 	}
 	group.Wait()
-	// Wait out the fire-and-forget appends.
-	for deadline := time.Now().Add(10 * time.Second); ; {
-		left := len(SpoolContents())
-		if left == 0 || time.Now().After(deadline) {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	spoolPending.Wait()
 	totalSent := 0
 	for i := range recorder.posts {
 		totalSent += len(recorder.posts[i].events)

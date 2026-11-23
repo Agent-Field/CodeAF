@@ -114,7 +114,11 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 	// with one release rather than by a counter each ending has to remember.
 	hands := divisionHands{graph: graph, parent: a.config.taskID}
 	defer hands.release()
-	if refusal := hands.take(len(parts)); refusal != "" {
+	partTitles := make([]string, len(parts))
+	for i, part := range parts {
+		partTitles[i] = part.Title
+	}
+	if refusal := hands.take(len(parts), partTitles...); refusal != "" {
 		line.Decision = divisionRefusedCap
 		return nil, nil, refusal
 	}
@@ -191,6 +195,7 @@ func (a *Agent) startTheParts(node *TaskNode, parts []dividePart, line *journalD
 		// has already gone back ([TaskGraph.admit] releases it under the graph's
 		// own lock) and this is the book agreeing with it.
 		hands.held--
+		hands.titles = hands.titles[1:]
 		ids = append(ids, id)
 		titles = append(titles, part.Title)
 	}
@@ -209,11 +214,19 @@ type divisionHands struct {
 	graph  *TaskGraph
 	parent uint64
 	held   int
+	titles []string
 }
 
 // take claims one hand per part, or answers the cap's own refusal having given
 // back whatever it managed to claim first.
-func (h *divisionHands) take(parts int) string {
+func (h *divisionHands) take(parts int, titles ...string) string {
+	if len(titles) > 0 {
+		if refusal := h.graph.claimChild(h.parent, titles...); refusal != "" {
+			return refusal
+		}
+		h.held, h.titles = parts, titles
+		return ""
+	}
 	for i := 0; i < parts; i++ {
 		if refusal := h.graph.claimChild(h.parent); refusal != "" {
 			return refusal
@@ -225,7 +238,12 @@ func (h *divisionHands) take(parts int) string {
 
 func (h *divisionHands) release() {
 	for ; h.held > 0; h.held-- {
-		h.graph.releaseChild(h.parent)
+		if len(h.titles) > 0 {
+			h.graph.releaseChild(h.parent, h.titles[0])
+			h.titles = h.titles[1:]
+		} else {
+			h.graph.releaseChild(h.parent)
+		}
 	}
 }
 
@@ -278,7 +296,7 @@ func (a *Agent) freezeFamilyWorld(node *TaskNode) (frozen, checkpoint, problem s
 		return "", "", ""
 	}
 	if ledger := node.rememberedWrites(); len(ledger) > 0 {
-		_, commit, _, err := commitTaskWorkAs(dir, wipCheckpointMessage(node.title()), ledger, a.signsGitWork(), a.config.mayBashBelt())
+		_, commit, _, err := commitTaskWorkAs(dir, wipCheckpointMessage(node.title()), ledger, a.signsGitWork(), a.config.mayBashBelt(), true)
 		if err != nil {
 			return "", "", err.Error()
 		}

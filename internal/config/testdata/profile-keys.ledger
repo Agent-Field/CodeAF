@@ -27,6 +27,7 @@ effort
 google_oauth_client
 google_oauth_secret
 history.enabled
+idle_handoff
 knowledge.model
 lane.guard
 lane.talk
@@ -61,6 +62,8 @@ models.fallbacks
 models.pool.public_key
 models.quick_switch
 models.roles
+models.tasks.mode
+models.tasks.one
 models.tiers.high
 models.tiers.low
 models.tiers.mastermind
@@ -78,6 +81,7 @@ reply.guard
 response.attempts
 response.lift_after
 response.lift_cap_usd
+response.patience
 routing
 search.exaKey
 search.firecrawlKey
@@ -99,11 +103,13 @@ task.min_free_mb
 task.model
 task.parallel
 task.repair_rounds
+task.runs_on
 task.settle
 task.start
 teams.cap_usd_day
 teams.depth_limit
 teams.questions_up
+teams.share
 teams.sub_share_pct
 teams.wake
 telemetry
@@ -122,4 +128,7 @@ update.auto
 vision_model
 work.workers
 working_set_tokens
+
+daily_budget_authority
+daily_budget_today
 sync.preference_times

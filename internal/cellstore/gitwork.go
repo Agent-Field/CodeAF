@@ -34,7 +34,7 @@ func (e Engine) sameIndex(ctx context.Context, base string, target Target) (bool
 	if err != nil {
 		return false, err
 	}
-	locate := exec.CommandContext(ctx, "git", "-C", target.Tree, "rev-parse", "--git-path", "index")
+	locate := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", target.Tree, "rev-parse", "--git-path", "index")
 	found, err := locate.Output()
 	if err != nil {
 		return false, err
@@ -62,7 +62,7 @@ func (e Engine) sameIndex(ctx context.Context, base string, target Target) (bool
 }
 
 func indexEntries(ctx context.Context, root, index string) ([]byte, error) {
-	command := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "--stage", "-v", "-z")
+	command := exec.CommandContext(ctx, "git", "--no-optional-locks", "-C", root, "ls-files", "--stage", "-v", "-z")
 	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	if index != "" {
 		command.Env = append(command.Env, "GIT_INDEX_FILE="+index)

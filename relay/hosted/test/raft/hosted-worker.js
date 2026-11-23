@@ -11,7 +11,7 @@ import {CORE_MEMORY_BUDGET} from '../../src/raft/abi.js';
 import { runtimeMetrics,sharedRuntime } from '../../src/raft/actor.js';
 import {coordinationPolicy} from '../../src/raft/liveness.js';
 const recoveryHistory=new Map();
-const measurements={turns:0,wall:[],membership:0,campaigns:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0};
+const measurements={turns:0,wall:[],membership:0,campaigns:0,http:0,peerIn:0,peerOut:0,sweeps:0,writes:0,presenceCommits:0,proposals:0,barriers:0,authorizations:0,idleReads:0,peerFailures:0};
 async function measured(fn){const start=performance.now();measurements.turns++;try{return await fn();}finally{measurements.wall.push(performance.now()-start);}}
 import { policyOf } from '../../src/rules.js';
 
@@ -19,6 +19,14 @@ export class IdentityDO extends Source {
   constructor(ctx,env){
     Date.now();if(globalThis.fixtureClockOffset){const setAlarm=ctx.storage.setAlarm.bind(ctx.storage);ctx.storage.setAlarm=at=>setAlarm(Number(at)-globalThis.fixtureClockOffset);}
     super(ctx,env);
+    let host;
+    Object.defineProperty(this,'host',{get:()=>host,set:value=>{
+      host=value;if(!host)return;
+      const commit=host.commit.bind(host);host.commit=raw=>{this.lastCommand=raw.slice();return commit(raw);};
+      const effect=host.commitEffect.bind(host);host.commitEffect=(change,...args)=>{if(change.device_seen)measurements.presenceCommits++;return effect(change,...args);};
+      const input=host.input.bind(host);host.input=(node,tag,...args)=>{if(tag===15)measurements.idleReads++;if(tag===12)measurements.peerFailures++;return input(node,tag,...args);};
+      for(const [method,counter]of [['commit','proposals'],['barrier','barriers'],['authorize','authorizations']]){const original=host[method].bind(host);host[method]=(...args)=>{measurements[counter]++;return original(...args);};}
+    }});
     const accept=ctx.acceptWebSocket.bind(ctx);
     ctx.acceptWebSocket=(ws,tags)=>{accept(ws,tags);const send=ws.send.bind(ws);ws.send=raw=>{if(ws.deserializeAttachment()?.clusterPeer)measurements.peerOut++;return send(raw);};};
     for(const key of ['put','delete']){const call=ctx.storage[key].bind(ctx.storage);ctx.storage[key]=(...args)=>{measurements.writes++;return call(...args);};}
@@ -26,7 +34,81 @@ export class IdentityDO extends Source {
     const exec=ctx.storage.sql.exec.bind(ctx.storage.sql);
     ctx.storage.sql.exec=(query,...args)=>{if(!/^\s*(SELECT|PRAGMA)/i.test(query))measurements.writes++;return exec(query,...args);};
   }
+  interruptNextRead(mode){
+    this.stopReadInterruption?.();
+    if(mode===false)return true;
+    const host=this.current.host;let pending=true,views=0;
+    this.stopReadInterruption=()=>{pending=false;};
+    for(const [id,member] of host.members){
+      host.members.set(id,new Proxy(member,{get(target,name){
+        const call=Reflect.get(target,name,target);
+        if(name==='hostView')return async(...args)=>{
+          const result=await Reflect.apply(call,target,args);
+          if(pending){
+            pending=false;views++;const leader=host.leader()??host.replica();
+            try{
+              await host.members.get(leader).scheduled();
+              if(mode==='advance')await host.commitEffect({device_seen:{device:host.seen.keys().next().value}});
+              if(mode?.command&&views>=mode.after)await host.commit(unb64(mode.command));
+              if(mode==='no-quorum'){for(const node of [...host.members.keys()])if(node!==leader){host.members.delete(node);host.states.delete(node);}host.queue=[];}
+            }finally{pending=mode==='always'||mode==='advance'||!!mode?.command&&views<mode.after;}
+          }
+          return result;
+        };
+        return typeof call==='function'?(...args)=>Reflect.apply(call,target,args):call;
+      }}));
+    }
+    return true;
+  }
+  transientPeerFailure(blocked){
+    this.blockedPeerCalls=blocked;
+    if(!blocked)return true;
+    const host=this.current.host,self=this,leader=host.leader();
+    for(const [id,member]of host.members){
+      if(id===leader)continue;
+      host.members.set(id,new Proxy(member,{get(target,name){
+        const call=Reflect.get(target,name,target);
+        if(name==='peer')return async(...args)=>{
+          if(self.blockedPeerCalls)throw new Error('fixture: temporary peer RPC failure');
+          return Reflect.apply(call,target,args);
+        };
+        return typeof call==='function'?(...args)=>Reflect.apply(call,target,args):call;
+      }}));
+    }
+    return true;
+  }
+  async transientCapacity(blocked){
+    this.blockedAnchors=blocked;
+    if(!this.transientEnvironment){
+      const cfg=await this.ctx.storage.get('raft-provision'),ns=this.env.RAFT_MEMBERS,self=this;
+      const missing=new Set(cfg.config.anchors.slice(1).map(node=>ns.idFromName(cfg.config.cluster+'/'+node).toString()));
+      this.transientEnvironment={...this.env,RAFT_MEMBERS:{idFromName:name=>ns.idFromName(name),get:id=>{
+        const stub=ns.get(id);return new Proxy(stub,{get(target,name){
+          if(name==='initialize'&&missing.has(id.toString())&&self.blockedAnchors)return async()=>({capacity:true});
+          const value=Reflect.get(target,name,target);return typeof value==='function'?async(...args)=>Reflect.apply(value,target,args):value;
+        }});
+      }}};
+      this.rebuilt=new Source(this.ctx,this.transientEnvironment);
+    }
+    return true;
+  }
   get current(){return this.rebuilt??this;}
+  async directCommit(raw){return this.host.operation(async()=>(await this.host.commit(unb64(raw))).value.code);}
+  async formed(){
+    if(!this.host?.forming)return;
+    await this.host.operation(async()=>{
+      for(let turn=0;turn<16&&this.host.forming;turn++)await this.host.maintenance(Date.now(),Math.floor(performance.now()));
+      if(this.host.forming){const id=this.host.replica(),view=await this.host.members.get(id).hostView(this.host.states.get(id).applied,'state','identity'),conf=this.host.configuration(view.app.conf);if(conf.voters.length!==3||conf.outgoing?.length)throw new Error('fixture: three-voter formation did not complete');}
+      await this.host.readAuthority();
+    });
+  }
+  async formationTurn(){
+    return this.host.operation(async()=>{
+      let error;try{await this.host.maintenance(Date.now(),Math.floor(performance.now()));}catch(e){error=e.message;}
+      const id=this.host.replica(),view=await this.host.members.get(id).hostView(this.host.states.get(id).applied,'membership','registry');
+      return {conf:this.host.configuration(view.app.conf),registry:!!view.raw,forming:this.host.forming,error:error??null};
+    });
+  }
   async evictIdle(){
     const old=this.current.host;
     if(old){old.ready=false;old.members.clear();old.states.clear();old.queue=[];old.reads=[];old.peers=null;old.holds=null;}
@@ -69,11 +151,7 @@ export class IdentityDO extends Source {
   webSocketClose(ws,code){return this.rebuilt?this.rebuilt.webSocketClose(ws,code):super.webSocketClose(ws,code);}
   webSocketError(ws){return this.rebuilt?this.rebuilt.webSocketError(ws):super.webSocketError(ws);}
   async fetch(request){
-    const result=await measured(()=>this.rebuilt?this.rebuilt.fetch(request):super.fetch(request));
-    if(this.host&&!this.capturing){
-      const commit=this.host.commit.bind(this.host);this.host.commit=async raw=>{this.lastCommand=raw.slice();return commit(raw);};this.capturing=true;
-    }
-    return result;
+    return measured(()=>this.rebuilt?this.rebuilt.fetch(request):super.fetch(request));
   }
   async sequenceProof(){return this.host.operation(async()=>{
     const from=this.host.manifest.config.anchors[0],to=this.host.manifest.config.anchors[1],term=Number(this.host.states.get(this.host.leader()).term);
@@ -93,18 +171,36 @@ export class IdentityDO extends Source {
     return this.host.members.get(id).transportCheckpoint();
   }
   holdUpload(){
-    const put=this.host.tenant.store.put.bind(this.host.tenant.store);
+    const put=this.host.tenant.store.put.bind(this.host.tenant.store),has=this.host.tenant.has.bind(this.host.tenant);
+    this.host.tenant.has=async(...args)=>{this.hasWaiting=true;try{return await has(...args);}finally{this.hasWaiting=false;}};
     this.pauseUpload=new Promise(resolve=>{this.releaseUpload=resolve;});
     this.host.tenant.store.put=async(...args)=>{this.uploadStarted=true;await this.pauseUpload;return put(...args);};
   }
+  startedUpload(){return !!this.uploadStarted;}
+  waitingHas(){return !!this.hasWaiting;}
   releaseHeldUpload(){this.releaseUpload?.();}
   async retryWithoutQuorum(){
+    if(!(this.lastCommand instanceof Uint8Array))throw new Error('fixture: no committed command to replay');
+    const original=this.lastCommand.slice();await this.formed();
     return this.host.operation(async()=>{
       const leader=this.host.leader();for(const id of [...this.host.members.keys()])if(id!==leader)this.host.members.delete(id);
       this.host.queue=[];
-      try{await this.host.commit(this.lastCommand);return 'acknowledged';}catch{return 'unavailable';}
+      try{await this.host.commit(original);return 'acknowledged';}catch{return 'unavailable';}
     });
   }
+  async expireReadQuorum(){
+    await this.formed();
+    const host=this.host,leader=host.leader();
+    if(!host.readLease)throw new Error('fixture: expected cached authority');
+    host.readLease.until=performance.now()-1;
+    for(const id of [...host.members.keys()])if(id!==leader)host.members.delete(id);
+    host.queue=[];return true;
+  }
+  async replaceReadMember(){
+    const lease=this.host.readLease;if(!lease)throw new Error('fixture: expected cached authority');
+    return this.env.RAFT_MEMBERS.get(this.env.RAFT_MEMBERS.idFromName(this.host.manifest.config.cluster+'/'+lease.node)).replaceActivation();
+  }
+  invalidateReadAuthority(){this.host?.invalidateRead();}
   async seed(identity,records) {
     const dir=new Directory(this.ctx.storage.sql,identity,Date.now,policyOf());
     for(const r of records){
@@ -114,6 +210,7 @@ export class IdentityDO extends Source {
     await this.ctx.storage.put({identity,admitted:true});await this.ctx.storage.sync();
   }
   async replayStale() {
+    await this.formed();
     return this.host.operation(async()=>{
       const from=this.host.leader(),to=this.host.manifest.config.anchors.find(id=>id!==from);
       const member=this.host.member(to),snapshot=await member.oldSnapshotAndCheckpoint();
@@ -187,7 +284,7 @@ export class RaftMemberDO extends Member {
     await this.load();const old=this.actor,before=old.store.application().applied;
     const restored=new Member(this.ctx,this.env);await restored.load();
     let refused=false;try{await old.input(1);}catch{refused=true;}
-    for(const key of ['actor','config','registry','results','resultBytes','recoveredEffects'])this[key]=restored[key];
+    for(const key of ['actor','config','registry','results','resultBytes','recoveredEffects','readActivation'])this[key]=restored[key];
     return {before,after:this.actor.store.application().applied,refused,oldHandle:old.handle,active:runtimeMetrics().active};
   }
   async retentionState(op){
@@ -245,10 +342,17 @@ export default {
       if(op==='leadership-ticks')return new Response(encodeCanonical(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).leadershipTicks(ticks,missing)));
       if(op==='stale-retirement')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).staleRetirement());
       if(op==='diagnostic'){console.warn('local runtime warning capture');console.error('local runtime error capture');return Response.json(true);}
+      if(op==='shift-clock'){globalThis.fixtureClockOffset+=records;return Response.json(true);}
       if(op==='evict-minority')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictMinority());
       if(op==='presence-schedule')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).presenceSchedule());
       if(op==='retention-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).retentionState(records));
+      if(op==='direct-commit')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).directCommit(records));
+      if(op==='form-cluster'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).formed();return Response.json(true);}
+      if(op==='formation-turn')return new Response(encodeCanonical(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).formationTurn()));
       if(op==='quiet-state')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).quietState());
+      if(op==='interrupt-next-read')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).interruptNextRead(records));
+      if(op==='transient-peer-failure')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).transientPeerFailure(records));
+      if(op==='transient-capacity')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).transientCapacity(records));
       if(op==='evict-idle')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).evictIdle());
       if(op==='presence-turn')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).presenceTurn()??true);
       if(op==='member-alarm')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).alarmState());
@@ -264,16 +368,24 @@ export default {
       if(op==='reset-metrics'){for(const key of Object.keys(measurements))measurements[key]=key==='wall'?[]:0;return Response.json(true);}
       if(op==='seed'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).seed(identity,records);return Response.json(true);}
       if(op==='hold-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).holdUpload();return Response.json(true);}
+      if(op==='upload-started')return Response.json(!!await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).startedUpload());
+      if(op==='has-waiting')return Response.json(!!await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).waitingHas());
       if(op==='release-upload'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).releaseHeldUpload();return Response.json(true);}
       if(op==='retry-without-quorum')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).retryWithoutQuorum());
+      if(op==='expire-read-quorum')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).expireReadQuorum());
+      if(op==='replace-read-member')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).replaceReadMember());
       if(op==='stale-snapshot')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).replayStale());
       if(op==='idle-schedule')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).idleSchedule());
       if(op==='source')return Response.json(await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).inspect());
-      if(op==='seed-transport-tail'){await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).seedTransportTail();return Response.json(true);}
+      if(op==='seed-transport-tail'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).formed();await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).seedTransportTail();return Response.json(true);}
       if(op==='retained-control')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).retainedControl());
-      if(op==='discard-member'){await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).discardStore();return Response.json(true);}
+      if(op==='discard-unformed-member'){await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).discardStore();return Response.json(true);}
+      if(op==='discard-member'){await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).formed();await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).discardStore();return Response.json(true);}
       if(op==='has-member')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).hasStore());
-      if(op==='replace-activation')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).replaceActivation());
+      if(op==='replace-activation'){
+        await env.IDENTITY.get(env.IDENTITY.idFromName(identity)).invalidateReadAuthority();
+        return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).replaceActivation());
+      }
       if(op==='staging')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).staging());
       if(op==='member')return Response.json(await env.RAFT_MEMBERS.get(env.RAFT_MEMBERS.idFromName(cluster+'/'+node)).inspect());
       return new Response(null,{status:404});

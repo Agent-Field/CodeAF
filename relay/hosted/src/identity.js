@@ -8,6 +8,8 @@ import { HostedIdentity } from './raft/hosted.js';
 import { clusterIngress,clusterRequestLimit } from './raft/ingress.js';
 import { sharedRuntime } from './raft/actor.js';
 import { identityOf } from './verify.js';
+import { Meta } from './meta.js';
+import { StorageAccess } from './storage.js';
 import { b64,unb64 } from './raft/storage.js';
 import { fromBase64Url } from './codec.js';
 import { signedUri } from './base.js';
@@ -21,7 +23,7 @@ import { policyOf } from './rules.js';
 import { Tenant, HAS_WAIT_MS } from './tenant.js';
 import { finishClose, Watchers } from './watch.js';
 import { checkCert, checkRequest } from './verify.js';
-import { gone, ipOf, rateLimited, respond, unwrap, Wire } from './wire.js';
+import { gone, guarded, ipOf, rateLimited, respond, unwrap, Wire } from './wire.js';
 
 const SIGNED = { identity: 'codeaf-identity', cert: 'codeaf-cert', time: 'codeaf-time', sig: 'codeaf-sig' };
 const signedHeaders = (request) => Object.fromEntries(Object.entries(SIGNED).map(([k, h]) => [k, request.headers.get(h)]));
@@ -51,8 +53,26 @@ export class IdentityDO extends DurableObject {
     this.deviceRate = new RateLimit(this.limits.requestsPerMinutePerDevice);
   }
 
+  // Approval creates only its own small record; first device contact still pays admission.
+  setStorage(approval) {
+    return guarded(() => {
+      new StorageAccess(new Meta(this.ctx.storage.sql), this.limits).set(approval);
+    });
+  }
+
+  inheritStorage(approval) {
+    return guarded(() => {
+      const storage = new StorageAccess(new Meta(this.ctx.storage.sql), this.limits);
+      if (approval) storage.set(approval, true);
+      return storage.state();
+    });
+  }
+
   fetch(request) {
-    return respond(() => this.#serve(request));
+    return respond(() => this.#serve(request)).then(reply => {
+      if (new URL(request.url).pathname.startsWith('/v1/dir/')) { reply.headers.set('Codeaf-Saved-Turn-Times', '1'); reply.headers.set('Codeaf-Working-Beats', '1'); reply.headers.set('Codeaf-Chat-Notes', '1'); reply.headers.set('Codeaf-Chat-Folders', '1'); }
+      return reply;
+    });
   }
 
   /** Peer frames drive replication; the platform answers watch keepalives without waking this object. */
@@ -85,7 +105,7 @@ export class IdentityDO extends DurableObject {
   async #noteLeft(ws) {
     const device = this.watchers.left(ws);
     const identity = device && (await this.ctx.storage.get('identity'));
-    if (identity && !(await this.#isGone()) && this.host?.ready) await this.host.operation(async()=>{await this.host.wakeMaintenance();await this.host.commitEffect({device_seen:{device}},Date.now());});
+    if (identity && !(await this.#isGone()) && this.host?.ready) this.host.noteSeen(device);
   }
 
   async #serve(request) {
@@ -116,7 +136,7 @@ export class IdentityDO extends DurableObject {
       const reply=await this.host.operation(async()=>{
         await this.host.ensure(fromBase64Url(request.headers.get('codeaf-identity')));
         await this.host.wakeMaintenance();
-        return enrolling?this.host.enroll(this.host.proof(request,body)):this.host.control(request.method,who.device,request.headers.get('codeaf-cert'),this.host.proof(request,body));
+        return enrolling?this.host.enroll(this.host.proof(request,body)):this.host.control(request.method,who.device,request.headers.get('codeaf-cert'),this.host.proof(request,body),request.headers.get('Codeaf-Cluster-Names')==='1');
       });this.watchers=this.host.watchers;reply.headers.set('cache-control','no-store');return reply;
     }
     if(url.pathname==='/v2/cluster/api'){
@@ -137,6 +157,7 @@ export class IdentityDO extends DurableObject {
     const route = matchRoute(request.method, url.pathname);
     const caller = await checkCert(signedHeaders(request));
     const leave = route.frames ? this.#enterPut() : () => {};
+    let putWork;
     try {
       const body = await readBody(request, route.limit, route.over);
       const who = await checkRequest(caller, { method: request.method, uri: signedUri(this.env, url) }, body, Date.now());
@@ -145,10 +166,12 @@ export class IdentityDO extends DurableObject {
       const tenant = this.#tenantOf(who.identity);
       this.#admit(tenant, who.device);
       this.host ??= new HostedIdentity(this.ctx,this.env,tenant,this.legacyAdmission,at=>this.#arm(at));
-      const reply=await this.host.dispatch({tenant,device:who.device,body,request,env:this.env},route);
+      const reply=await this.host.dispatch({tenant,device:who.device,body,request,env:this.env,retainPut:work=>{if(route.frames)putWork=work;}},route);
       this.watchers=this.host.watchers;return reply;
     } finally {
-      leave();
+      // A rejected response can precede the actual blob write. Has and erasure
+      // must still wait for that write, including its durable index updates.
+      if(putWork)this.ctx.waitUntil(putWork.then(leave,leave));else leave();
     }
   }
 

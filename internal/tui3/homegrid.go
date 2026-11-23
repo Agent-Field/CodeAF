@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -327,6 +328,7 @@ type homeGridInput struct {
 	// ([homeGridPanel.growsARow]), and paying that on a narrow terminal for a
 	// column that is not on the screen costs a row a person could have read.
 	desc bool
+	far  bool
 }
 
 // gridInput gathers it. EVERY FIELD IS A CACHE HOME ALREADY HOLDS, and the one
@@ -348,7 +350,7 @@ func (h *homeView) gridInput() homeGridInput {
 	open, closed := h.conversationRows()
 	return homeGridInput{openChats: open, closedChats: closed, rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
 		opened: h.opened, openedOn: h.openedOn,
-		desc: homeDescOn(h.cols), world: world, autos: h.autos, active: h.active,
+		desc: homeDescOn(h.cols), far: h.far, world: world, autos: h.autos, active: h.active,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
 		repos: h.repos, others: h.others, spend: h.spend, seen: h.seen, now: h.world.Read}
 }
@@ -512,6 +514,11 @@ type homeCell struct {
 	// row is the switcher's own row behind a conversation or a watch, which is
 	// what its verbs are read from (place_home.go's [app.homeRowVerbs]).
 	row *switcherRow
+	// copies are the branch copies folded onto this conversation's row, the
+	// ones its dim `N copy` note counts. The row's strip names the key that
+	// reaches them ([app.keptTurnsVerb]); without it a copy that was folded
+	// away has no door at all.
+	copies []chatlist.BranchCopy
 	// key tells apart two rows of one panel that stand for the same
 	// conversation — two of its tasks running — so the cursor that was on the
 	// second is put back on the second after a rebuild ([homeLine.sameRow]).

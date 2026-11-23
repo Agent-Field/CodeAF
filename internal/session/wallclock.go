@@ -187,7 +187,10 @@ func (a *Agent) stopWorkOnTheWall() {
 // ownedWorkIsMoving observes the same producers StopWork owns. A standalone
 // job or adaptive run need not have a moving row in the task graph.
 func (a *Agent) ownedWorkIsMoving() bool {
-	graph := a.tasker()
+	a.mu.Lock()
+	graph := a.tasks
+	a.mu.Unlock()
+	// A child borrows its parent's graph for task queries, not ownership.
 	if graph != nil {
 		graph.mu.Lock()
 		moving := len(graph.flightLocked().moving) > 0

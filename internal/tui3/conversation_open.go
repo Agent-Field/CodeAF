@@ -10,6 +10,7 @@ import (
 
 const conversationOpeningWord = "opening conversation… · esc cancels"
 const conversationOpeningState = "opening chat"
+const openingCancelledDraftWord = "opening cancelled; your words are back in this chat, unsent"
 
 // A first message gets its own screen before the engine has opened its journal.
 // The old conversation and both composers remain intact until opening succeeds.
@@ -35,6 +36,9 @@ func (a *app) previewConversation(text string) tea.Cmd {
 		feed:                feed{live: -1, think: -1, entries: []entry{{kind: entryUser, text: text, pending: true}}},
 	}
 	a.conversationPreview = &conversationPreview{view: view}
+	if text == "" {
+		view.entries = nil
+	}
 	a.touch()
 	return a.wake()
 }
@@ -55,6 +59,23 @@ func (a *app) conversationPreviewFrame(width, height int) (string, int, int) {
 // cancels through the existing door, preserving both unsent sentences.
 func (a *app) openingDraftKey(msg tea.KeyPressMsg) bool {
 	if a.conversationPreview == nil {
+		if a.at(pageHome) && (a.homeTaking != "" || a.homeTakenSaid != nil) {
+			if msg.Key().Text == "" {
+				switch msg.String() {
+				case "backspace", "delete", "left", "right", "home", "end",
+					"ctrl+a", "ctrl+e", "ctrl+u", "super+backspace", "ctrl+k",
+					"alt+backspace", "ctrl+backspace", "ctrl+w", "ctrl+b", "ctrl+f",
+					"ctrl+z", "ctrl+shift+z",
+					"super+left", "super+right", "meta+left", "meta+right",
+					"shift+left", "shift+right", "super+a", "meta+a",
+					"shift+enter", "alt+enter", "ctrl+enter", "ctrl+j":
+				default:
+					return false
+				}
+			}
+			_ = a.homeKey(msg)
+			return true
+		}
 		return false
 	}
 	view := a.conversationPreview.view
@@ -81,14 +102,27 @@ func (a *app) openingDraftKey(msg tea.KeyPressMsg) bool {
 }
 
 func (a *app) restoreOpeningDraft(preview *conversationPreview) {
-	if preview == nil || preview.view.input.empty() {
+	if preview == nil {
+		return
+	}
+	view := preview.view
+	if view.pasting {
+		view.pasting = false
+		view.paste(string(view.pasted))
+		view.pasted = nil
+	}
+	if view.input.empty() {
 		return
 	}
 	box := &a.input
 	if a.at(pageHome) {
 		box = &a.home.box
 	}
-	box.setText(box.String() + "\n" + preview.view.pastesUnfolded(preview.view.input.String()))
+	text := preview.view.pastesUnfolded(preview.view.input.String())
+	if !box.empty() {
+		text = box.String() + "\n" + text
+	}
+	box.setText(text)
 }
 
 // conversationLater separates preparing a conversation from committing its
@@ -101,12 +135,22 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 	}
 	a.conversationRequest++
 	request, page, ctx := a.conversationRequest, a.page, a.ctx
+	var automatic *homeTakenMsg
+	if a.homeTakeOpening && a.homeTakeResult != nil && a.homeTakeResult.automatic {
+		result := *a.homeTakeResult
+		automatic = &result
+	}
+	taker := a.taker
 	a.conversationOpening = true
 	say(conversationOpeningWord)
 	a.touch()
 	return a.offLoop(func() func(bool) tea.Cmd {
 		conv, err := ask()
 		if ctx.Err() != nil {
+			if automatic != nil {
+				releaseUnusedTake(taker, *automatic, conv.Agent)
+				return nil
+			}
 			if conv.Agent != nil {
 				leaveAgent(conv.Agent)
 			}
@@ -115,11 +159,24 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 		return func(here bool) tea.Cmd {
 			preview := a.conversationPreview
 			current := a.conversationOpening && request == a.conversationRequest
+			if automatic != nil && (automatic.seq != a.homeTakeSeq || a.homeTakeAbandoned || !current || !here || !a.at(page)) {
+				if automatic.seq == a.homeTakeSeq {
+					a.homeTakeAbandoned = true
+				}
+				if current {
+					a.conversationOpening = false
+					a.conversationPreview = nil
+				}
+				return a.settleAutomaticTake(*automatic, conv.Agent)
+			}
 			if current {
 				a.conversationOpening = false
 				a.conversationPreview = nil
 			}
 			if !current || !here || !a.at(page) {
+				if current {
+					a.finishHomeTake(true)
+				}
 				if conv.Agent != nil {
 					leaveOffFrame(conv.Agent)
 				}
@@ -145,6 +202,10 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 				} else {
 					a.putComposer(preview.view.liveComposer())
 				}
+				if preview.view.pasting {
+					a.pasting, a.pasteAt = true, preview.view.pasteAt
+					a.pasted = append([]rune(nil), preview.view.pasted...)
+				}
 			}
 			return cmd
 		}
@@ -152,6 +213,9 @@ func (a *app) conversationLater(ask func() (Conversation, error), say func(strin
 }
 
 func (a *app) cancelConversationOpening() {
+	a.abandonAutomaticTake()
+	a.finishHomeTake(true)
+	hadDraft := a.conversationPreview != nil && (!a.conversationPreview.view.input.empty() || len(a.conversationPreview.view.pasted) > 0)
 	if a.conversationPreview == nil {
 		defer a.tabSettleTeam()
 	}
@@ -160,9 +224,17 @@ func (a *app) cancelConversationOpening() {
 	a.conversationPreview = nil
 	a.conversationRequest++
 	if a.at(pageHome) {
-		a.home.say("", "")
+		if hadDraft {
+			a.home.say(openingCancelledDraftWord, "")
+		} else {
+			a.home.say("", "")
+		}
 	} else {
-		a.note("opening cancelled")
+		if hadDraft {
+			a.note(openingCancelledDraftWord)
+		} else {
+			a.note("opening cancelled")
+		}
 	}
 	a.touch()
 }
@@ -182,6 +254,7 @@ func (a *app) startDoor(workspace string) (func() (Conversation, error), bool) {
 }
 
 func (a *app) renewLater(say func(string), after func() tea.Cmd) tea.Cmd {
+	a.abandonAutomaticTake()
 	if a.shared {
 		cmd, ok := a.renewRefusing(say)
 		if ok && after != nil {
@@ -195,13 +268,14 @@ func (a *app) renewLater(say func(string), after func() tea.Cmd) tea.Cmd {
 	}
 	replacing := a.renewReplaces()
 	ask, whole := a.startDoor("")
-	return a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
+	cmd := a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
 		cmd := a.finishRenew(conv, whole, replacing)
 		if after != nil {
 			return tea.Batch(cmd, after())
 		}
 		return cmd
 	})
+	return tea.Batch(cmd, a.previewConversation(""))
 }
 
 func (a *app) homeStartLater(text, place string) tea.Cmd {
@@ -282,8 +356,17 @@ func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
 		agent, err := resume(file)
 		return Conversation{Agent: agent, Workspace: where, SessionFile: file}, err
 	}
-	say := func(text string) { a.home.say(text, "") }
+	say := func(text string) {
+		if text == conversationOpeningWord && (a.homeTaking != "" || a.homeTakenSaid != nil) && strings.HasPrefix(a.homeMoveSaid, "opening conversation…") {
+			a.home.say(a.homeMoveSaid, "")
+			return
+		}
+		a.home.say(text, "")
+	}
 	return a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
+		if a.homeTakeDraft != nil && !a.homeTakeDraft.automatic {
+			a.foldHomeBoxIntoDraft(a.homeTakeDraft)
+		}
 		opened := a.takeBeside(conv)
 		a.closeHome()
 		// AND THE CALLER'S OWN LANDING WORK ([app.homeTakenSaid]) — the
@@ -293,8 +376,10 @@ func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
 		if a.homeTakenSaid != nil {
 			said, a.homeTakenSaid = a.homeTakenSaid(), nil
 		}
+		a.finishHomeTake(false)
 		return tea.Batch(opened, a.homeLandOnTask(line), said)
 	}, func(err error) tea.Cmd {
+		a.finishHomeTake(true)
 		if errors.Is(err, session.ErrSessionLocked) || err.Error() == sessionBusyWord {
 			if takeover {
 				return a.homeTakeoverEnter(line)

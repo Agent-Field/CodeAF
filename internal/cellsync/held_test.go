@@ -2,6 +2,7 @@ package cellsync
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -44,4 +45,43 @@ func TestAFreshLedgerDoesNotResendWhatTheStoreHolds(t *testing.T) {
 	if err != nil || again.Objects != 0 {
 		t.Fatalf("after the publish the ledger still lacks %d objects (%v)", again.Objects, err)
 	}
+}
+
+// A new relay holds no objects. Recording a held subset would add a native
+// bookkeeping round trip and an avoidable error before the ordinary upload.
+func TestEmptyRelaySkipsHeldObjectBookkeeping(t *testing.T) {
+	ctx := context.Background()
+	c := cell.Cell{ID: cellID, Root: t.TempDir()}
+	engine := NewFakeEngine(t.TempDir())
+	checked := &nonemptyPublishedEngine{Engine: engine}
+	store := blobstore.NewMemory()
+	publisher := Publisher{Engine: checked, Store: store}
+	head := engine.Seal(c, map[string]string{"mock.txt": strings.Repeat("mock fresh relay content\n", 8192)})
+	exported, err := publisher.Upload(ctx, c, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exported.Bytes < askFloor {
+		t.Fatal("fixture does not exercise the holdings question")
+	}
+	if checked.emptyRecords != 0 {
+		t.Fatalf("new relay caused %d empty native bookkeeping calls", checked.emptyRecords)
+	}
+	again, err := engine.Export(ctx, c, head)
+	if err != nil || again.Objects != 0 {
+		t.Fatalf("uploaded objects not recorded: %d, %v", again.Objects, err)
+	}
+}
+
+type nonemptyPublishedEngine struct {
+	Engine
+	emptyRecords int
+}
+
+func (e *nonemptyPublishedEngine) Published(ctx context.Context, c cell.Cell, paths []string) error {
+	if len(paths) == 0 {
+		e.emptyRecords++
+		return errors.New("native engine requires at least one published frame")
+	}
+	return e.Engine.Published(ctx, c, paths)
 }

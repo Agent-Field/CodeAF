@@ -362,6 +362,8 @@ func gitWorkspaceOn(t *testing.T, branch string) string {
 	dir := t.TempDir()
 	for _, args := range [][]string{
 		{"init", "-q", "-b", branch},
+		{"config", "--local", "maintenance.auto", "false"},
+		{"config", "--local", "gc.auto", "0"},
 		{"config", "user.email", "test@example.invalid"},
 		{"config", "user.name", "test"},
 	} {

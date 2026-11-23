@@ -45,6 +45,11 @@ func (a *Agent) beltRunQuiet(run *beltRun) bool {
 	return run.quiet
 }
 func (a *Agent) settleBeltStopIfNeeded(run *beltRun, summary RunSummary) bool {
+	// A remote stop still needs its partial result. A closed watch or failed
+	// transfer cannot retire the untouched local copy as though it came back.
+	if run.remoteEngine != nil && summary.KeepCopy {
+		return false
+	}
 	if stopped, why := a.beltRunStopped(run); stopped {
 		a.settleStoppedBeltRun(run, why, summary.Cut)
 		a.settleTaskCrew(run.row, router.CrewStopped, summary.USD)

@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/rotate"
 )
@@ -40,6 +41,15 @@ const (
 	URLVar = "CODEAF_SYNC_URL"
 	// IntervalVar is how often unsaved turns are flushed, in milliseconds.
 	IntervalVar = "CODEAF_SYNC_INTERVAL_MS"
+	// ServeStateVar opts `codeaf serve` into keeping this computer's saved keys,
+	// settings, shared memories and directory presence in step while it serves,
+	// the way an open terminal does. A dev box's boot script sets it to 1.
+	// UNSET, SERVE BEHAVES EXACTLY AS IT ALWAYS HAS: it syncs nothing and
+	// publishes no presence, so nobody who never asked sees a change.
+	ServeStateVar = "CODEAF_SERVE_SYNC"
+	// MoveFilesFirstVar restores the legacy continue order (workspace files
+	// fetched and materialized before the chat opens) when set to 1 (C10).
+	MoveFilesFirstVar = "CODEAF_MOVE_FILES_FIRST"
 	// DefaultInterval is the flush interval when IntervalVar is unset.
 	DefaultInterval = 5 * time.Second
 	// requestTimeout bounds one directory request so a silent relay cannot hang
@@ -47,12 +57,34 @@ const (
 	requestTimeout = 30 * time.Second
 )
 
+// ServeKeepsState reports whether ServeStateVar asks `codeaf serve` to keep
+// home state and presence in step; only the value 1 does.
+func ServeKeepsState() bool { return strings.TrimSpace(env.Get(ServeStateVar)) == "1" }
+
+// MoveFilesFirst reports whether MoveFilesFirstVar asks a continue to finish
+// copying all workspace files before opening the chat (C10).
+func MoveFilesFirst() bool { return strings.TrimSpace(env.Get(MoveFilesFirstVar)) == "1" }
+
 // ErrNoIdentity is what a machine says when a relay is set but it has no
 // identity to sign with. Its words are the list's own, so every surface agrees.
 var ErrNoIdentity = errors.New(chatlist.NoIdentity)
 
 // Sync is everything that talks to the relay, bound to this device.
 type Sync struct {
+	publicationMu   sync.Mutex
+	publication     map[string]*pendingPublication
+	publicationSeen map[string]struct{}
+	suppliedMu      sync.Mutex
+	suppliedViews   map[string]suppliedCellView
+	suppliedDevices map[string]string
+	// BetweenChats, when set, runs after each chat a PublishLocalChats pass
+	// offers, with the pass's lock released: a pass lasts as long as its
+	// uploads keep moving, and the caller counts (CountUnshared) and does its
+	// other sharing work between chats instead of after the whole backlog.
+	BetweenChats      func()
+	teamsCache        *teamIdentityCache // Guarded by stateMu across vault rounds.
+	teamsShared       bool               // Enabling sharing must restore an already-known vault.
+	removed           atomic.Bool
 	memberRetries     uint64
 	clock             func() time.Time
 	relayAttempts     atomic.Uint64
@@ -77,6 +109,8 @@ type Sync struct {
 	ProfileDir string
 	Ledger     string        // cellstore.LedgerName of Relay and the identity
 	Interval   time.Duration // flush interval
+
+	stateCredentialRefresh uint64 // guarded by stateMu across vault rounds
 }
 
 // Open builds the clients for the relay Resolve names. It answers ok = false
@@ -113,6 +147,9 @@ func OpenFirst(home string) (*Sync, bool, error) {
 }
 
 func open(home string) (*Sync, bool, error) {
+	if err := pair.Resume(home, func(url string) error { return SaveRelayURL(home, url) }); err != nil {
+		return nil, false, err
+	}
 	relay := Resolve(home)
 	if !relay.On() {
 		return nil, false, nil
@@ -190,8 +227,8 @@ func buildAt(home, base string, id identity.Identity, dev identity.Dev, interval
 		Ledger:     cellstore.LedgerName(base, id.ID()),
 		Interval:   interval,
 	}
-	s.Dir = directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout}))
-	s.Store = blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{}))
+	s.Dir = &deviceDirectory{HTTP: directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout})), home: home, binding: deviceBindingFor(base, id, dev), withholdNames: s.recordsWithholdNames}
+	s.Store = GateStore(blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{})), home, base, id.ID())
 	return s
 }
 
@@ -215,20 +252,34 @@ func (s *Sync) Rows(ctx context.Context) ([]chatlist.Row, error) {
 
 // RowsAt is Rows and the directory version the listing was read at.
 func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
+	rows, _, version, err := s.RowsMailAt(ctx)
+	return rows, version, err
+}
+
+// RowsMailAt is [Sync.RowsAt] with what the same read says about messages
+// between computers ([MailOf]), so a screen that lists chats delivers and
+// clears messages without reading the directory twice.
+func (s *Sync) RowsMailAt(ctx context.Context) ([]chatlist.Row, Mail, uint64, error) {
 	current, err := s.currentDisplaySync()
 	if err != nil {
-		return nil, 0, err
+		return nil, Mail{}, 0, err
 	}
 	if current != s {
-		return current.RowsAt(ctx)
+		return current.RowsMailAt(ctx)
 	}
 	l, err := s.list(ctx)
 	if err != nil {
-		return nil, 0, err
+		return nil, Mail{}, 0, err
 	}
 	key := directory.MetadataKey(s.Identity.CellKey())
 	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
-	return chatlist.Rows(l, s.Device.ID(), open), l.Version, nil
+	rows := chatlist.Rows(l, s.Device.ID(), open)
+	if !s.IdleHandoffAllowed() {
+		for i := range rows {
+			rows[i].AutoOpen = false
+		}
+	}
+	return rows, MailOf(l, s.Device.ID(), key), l.Version, nil
 }
 
 // Follow joins this process's change feed for the identity on this relay, so a
@@ -236,11 +287,14 @@ func (s *Sync) RowsAt(ctx context.Context) ([]chatlist.Row, uint64, error) {
 // nil when the directory client cannot open a watch socket, which is a screen
 // that polls alone.
 func (s *Sync) Follow() dirwatch.Follower {
+	if current, err := s.currentDisplaySync(); err == nil && current != s {
+		return current.Follow()
+	}
 	w, ok := s.Dir.(directory.Watcher)
 	if !ok {
 		return nil
 	}
-	return dirwatch.Follow(s.Ledger+"#home:"+s.Home, func(ctx context.Context) (dirwatch.Stream, error) {
+	return dirwatch.Follow(s.Ledger+"#home:"+s.Home+":"+s.Device.ID(), func(ctx context.Context) (dirwatch.Stream, error) {
 		if Quiet(s.Home) {
 			return nil, ErrQuiet
 		}
@@ -260,13 +314,13 @@ func (s *Sync) Follow() dirwatch.Follower {
 		if err != nil {
 			return nil, err
 		}
-		return quietStream{Stream: stream, home: s.Home}, nil
+		return quietStream{Stream: stream, home: current.Home, owner: current}, nil
 	})
 }
 
 // holdKey keeps the holding socket's feed apart from the home screen's, which
 // is keyed by the ledger alone: the home socket names no holds.
-func (s *Sync) holdKey() string { return s.Ledger + "#holding" }
+func (s *Sync) holdKey() string { return s.Ledger + "#holding:" + s.Device.ID() }
 
 // Liveness is the process's holding socket for this identity, which lets the
 // chats it holds stop heartbeating while committed hold receipts cover them. It answers
@@ -285,7 +339,7 @@ func (s *Sync) Liveness() cellsync.Liveness {
 		if err != nil {
 			return nil, err
 		}
-		return quietStream{Stream: stream, home: s.Home}, nil
+		return quietStream{Stream: stream, home: s.Home, owner: s}, nil
 	})}
 }
 
@@ -310,4 +364,122 @@ func (s *Sync) now() time.Time {
 		return s.clock()
 	}
 	return time.Now()
+}
+
+type suppliedCellView struct {
+	view     directory.CellView
+	explicit bool
+}
+
+// SupplyCellView caches an already-read directory record for the next take of id on s (C6).
+func (s *Sync) SupplyCellView(id string, view directory.CellView) {
+	if s == nil || id == "" {
+		return
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedViews == nil {
+		s.suppliedViews = map[string]suppliedCellView{}
+	}
+	s.suppliedViews[id] = suppliedCellView{view: view, explicit: true}
+}
+
+// RememberViews caches the cell views from a directory listing for subsequent takes on s (F1).
+func (s *Sync) RememberViews(l directory.Listing) {
+	if s == nil || len(l.Cells) == 0 {
+		return
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedViews == nil {
+		s.suppliedViews = map[string]suppliedCellView{}
+	}
+	for id, c := range l.Cells {
+		s.suppliedViews[id] = suppliedCellView{
+			view:     directory.CellView{Cell: c, Now: l.Now},
+			explicit: false,
+		}
+	}
+}
+
+// CachedCellView returns a cached directory record for id without consuming it.
+func (s *Sync) CachedCellView(id string) (directory.CellView, bool) {
+	if s == nil || id == "" {
+		return directory.CellView{}, false
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	entry, ok := s.suppliedViews[id]
+	return entry.view, ok
+}
+
+func (s *Sync) takeCellView(id string) (directory.CellView, bool, bool) {
+	if s == nil || id == "" {
+		return directory.CellView{}, false, false
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	entry, ok := s.suppliedViews[id]
+	if ok {
+		delete(s.suppliedViews, id)
+	}
+	return entry.view, entry.explicit, ok
+}
+
+// SupplyDeviceName remembers a device's display name for takes on s (C6).
+func (s *Sync) SupplyDeviceName(id, name string) {
+	if s == nil || id == "" || name == "" {
+		return
+	}
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedDevices == nil {
+		s.suppliedDevices = map[string]string{}
+	}
+	s.suppliedDevices[id] = name
+}
+
+// RememberDevices decrypts and caches the device names from a directory listing.
+func (s *Sync) RememberDevices(devices map[string]directory.Device) {
+	if s == nil || len(devices) == 0 {
+		return
+	}
+	key := directory.MetadataKey(s.Identity.CellKey())
+	open := func(sealed string) (string, error) { return directory.OpenName(key, sealed) }
+	s.suppliedMu.Lock()
+	defer s.suppliedMu.Unlock()
+	if s.suppliedDevices == nil {
+		s.suppliedDevices = map[string]string{}
+	}
+	for id := range devices {
+		if name := chatlist.DeviceName(devices, id, open); name != "" {
+			s.suppliedDevices[id] = name
+		}
+	}
+}
+
+func (s *Sync) cachedDeviceName(id string) (string, bool) {
+	if s == nil || id == "" {
+		return "", false
+	}
+	s.suppliedMu.Lock()
+	if name := s.suppliedDevices[id]; name != "" {
+		s.suppliedMu.Unlock()
+		return name, true
+	}
+	s.suppliedMu.Unlock()
+	binding := deviceBindingFor(s.Relay, s.Identity, s.Device)
+	deviceObservers.Lock()
+	snap, ok := deviceObservers.snapshots[binding]
+	deviceObservers.Unlock()
+	if ok {
+		if _, found := snap.Devices[id]; found {
+			key := directory.MetadataKey(s.Identity.CellKey())
+			name := chatlist.DeviceName(snap.Devices, id, func(sealed string) (string, error) { return directory.OpenName(key, sealed) })
+			if name != "" {
+				return name, true
+			}
+		}
+	}
+	return "", false
 }

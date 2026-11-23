@@ -143,7 +143,7 @@ func TestALaunchThatMeetsALockOpensAFreshOneAndCarriesTheHeldRow(t *testing.T) {
 	}
 	defer func() { _ = first.Close() }()
 
-	_, _, _, err = openV3Agent(cfg, workspace, v3OpenSession)
+	_, seated, _, err := openV3Agent(cfg, workspace, v3OpenSession)
 	// THE FAILURE IS TYPED AND CARRIES THE PATH, because the sentence
 	// deliberately does not contain one and the surface needs one to point at.
 	var held *sessionHeldElsewhere
@@ -159,7 +159,7 @@ func TestALaunchThatMeetsALockOpensAFreshOneAndCarriesTheHeldRow(t *testing.T) {
 		t.Fatalf("%v no longer reads as a locked session", err)
 	}
 
-	second, fresh, err := v3TakeOverInstead(cfg, workspace)
+	second, fresh, err := v3TakeOverInstead(seated, workspace)
 	if err != nil {
 		t.Fatalf("the second window was left with nothing: %v", err)
 	}

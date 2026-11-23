@@ -1,11 +1,13 @@
 package tui3
 
 import (
-	tea "charm.land/bubbletea/v2"
-
+	"encoding/json"
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -104,15 +106,31 @@ func (a *app) askConsent(ev session.Event) {
 // an always reaches is a fact about this surface's write seams and not about the
 // engine ([app.alwaysWord]).
 func (a *app) consentQuestion(ev session.Event) session.Question {
+	args := strings.TrimSpace(ev.Args)
+	if args == "" && strings.TrimSpace(ev.CallID) != "" {
+		for i := range a.entries {
+			if a.entries[i].kind == entryTool && a.entries[i].callID == ev.CallID {
+				args = strings.TrimSpace(a.entries[i].detail.Args)
+				break
+			}
+		}
+	}
+	irreversible := approval.AlwaysAsks(ev.Tool, json.RawMessage(args)) || approval.AlwaysAsksRule(ev.Rule)
+	stakes := session.StakesCostly
+	if irreversible {
+		stakes = session.StakesIrreversible
+	}
+	memo := ev.Memo && !irreversible
 	options := make([]session.AnswerOption, 0, 3)
 	for _, option := range session.AnswerOptions(session.QuestionConsent) {
 		if option.Widening {
-			if !ev.Memo {
+			if !memo {
 				// THE ONE ANSWER A QUESTION MAY NOT OFFER AT ALL. The same lane
 				// carries the stuck-turn question, whose tool-session scope the
-				// engine drops, and an offer that does nothing is worse than a
-				// missing one — a person who presses it believes they have
-				// stopped being asked.
+				// engine drops, and the floor's irreversible calls that ask
+				// every time regardless of any banked rule: an offer that does
+				// nothing is worse than a missing one — a person who presses it
+				// believes they have stopped being asked.
 				continue
 			}
 			option.Label = a.alwaysWord(ev.Tool)
@@ -120,7 +138,7 @@ func (a *app) consentQuestion(ev session.Event) session.Question {
 		options = append(options, option)
 	}
 	scope := []session.AnswerScope{session.ScopeOnce}
-	if ev.Memo {
+	if memo {
 		scope = append(scope, session.ScopeAlways)
 	}
 	reason := strings.TrimSpace(ev.Rule)
@@ -137,7 +155,7 @@ func (a *app) consentQuestion(ev session.Event) session.Question {
 		Reason:   reason,
 		Subject:  session.SubjectRef{Kind: session.SubjectCall, CallID: ev.CallID, Name: ev.Tool},
 		Options:  options,
-		Stakes:   session.StakesCostly,
+		Stakes:   stakes,
 		Blocking: session.Blocking{Turn: true},
 		Scope:    scope,
 	}
@@ -297,32 +315,10 @@ const consentBash = "bash"
 // name means every command for the rest of the conversation, and a person who
 // read `git status*` must not buy silence for `rm -rf`.
 func (a *app) rememberAlways(tool, shape string) (string, bool) {
-	if tool == consentBash {
-		if a.saveBashApproval == nil {
-			return "", false
-		}
-		// The shape the person picked in the second beat, and the line itself
-		// where there was no beat to pick in — a command that never arrived
-		// whole, a compound line nothing can be derived from.
-		command := strings.TrimSpace(shape)
-		if command == "" {
-			command = a.askCommand(tool)
-		}
-		if command == "" {
-			return "", false
-		}
-		if a.saveBashApproval(command) != nil {
-			return "", false
-		}
-		return command, true
+	if tool == consentBash && strings.TrimSpace(shape) == "" {
+		shape = a.askCommand(tool)
 	}
-	if a.saveApproval == nil {
-		return "", false
-	}
-	// A PLAIN TOOL BANKS NO RULE, only a setting keyed by the same name the
-	// engine's own memo is keyed by — so the two agree and the engine writes its
-	// memo as it always did ([session.AnswerBanked] is what would stop it).
-	return "", a.saveApproval(tool) == nil
+	return config.SaveApproval(tool, strings.TrimSpace(shape), a.saveBashApproval, a.saveApproval)
 }
 
 // askCommand is the exact command line a bash question is about.

@@ -50,7 +50,10 @@ func Render(version, date string, entries []Entry) string {
 func renderEntry(e Entry) string {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "- **%s** — [#%d](%s/pull/%d)", e.Title, e.PR, repoURL, e.PR)
+	fmt.Fprintf(&b, "- **%s**", e.Title)
+	if e.PR > 0 {
+		fmt.Fprintf(&b, " — [#%d](%s/pull/%d)", e.PR, repoURL, e.PR)
+	}
 	if len(e.Surface) > 0 {
 		tags := make([]string, 0, len(e.Surface))
 		for _, s := range e.Surface {

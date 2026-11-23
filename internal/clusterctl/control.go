@@ -5,8 +5,10 @@ package clusterctl
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	cs "github.com/Agent-Field/codeaf/internal/clusterstate"
+	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
 	"net/http"
@@ -15,11 +17,14 @@ import (
 
 const Path = "/v2/cluster/control"
 
+// NamesHeader opts into optional membership labels without changing older status replies.
+const NamesHeader = "Codeaf-Cluster-Names"
+
 var ErrUnavailable = errors.New(cs.LeadershipUnavailable)
 
 // ErrUnsupported distinguishes an absent leadership capability from a lost
 // quorum. Clients can refuse before saving an intent the relay cannot finish.
-var ErrUnsupported = errors.New("this relay does not offer cluster leadership yet; your saved chats are still here")
+var ErrUnsupported = errors.New("this sync service does not offer cluster leadership yet; your saved chats are still here")
 
 type CommittedRefusal struct {
 	Code     cs.Code `json:"code"`
@@ -31,6 +36,7 @@ func (e CommittedRefusal) Error() string {
 }
 
 type Status struct {
+	Members               []cs.MemberLabel `json:"members,omitempty"`
 	Ready                 []uint64         `json:"ready,omitempty"`
 	LeadershipUnavailable bool             `json:"leadership_unavailable,omitempty"`
 	Cluster               string           `json:"cluster"`
@@ -103,6 +109,10 @@ func Handler(auth wireauth.Authenticate, open func(string) (Backend, error)) htt
 			http.Error(w, cs.LeadershipUnavailable, http.StatusServiceUnavailable)
 			return
 		}
+		if status, ok := result.(Status); ok && r.Header.Get(NamesHeader) != "1" {
+			status.Members = nil
+			result = status
+		}
 		b, err := cs.Encode(result)
 		if err != nil {
 			http.Error(w, cs.LeadershipUnavailable, 503)
@@ -127,6 +137,7 @@ func (c Client) request(ctx context.Context, method string, body []byte, out any
 	if c.Sign == nil {
 		return wireauth.ErrUnauthorized
 	}
+	req.Header.Set(NamesHeader, "1")
 	c.Sign(req, body)
 	hc := http.Client{Timeout: ForwardTimeout}
 	if c.HTTP != nil {
@@ -155,6 +166,14 @@ func (c Client) request(ctx context.Context, method string, body []byte, out any
 		}
 	}
 	if res.StatusCode != 200 {
+		if res.StatusCode == http.StatusUnauthorized {
+			var refusal struct {
+				Err string `json:"err"`
+			}
+			if json.Unmarshal(b, &refusal) == nil && refusal.Err == "revoked" {
+				return directory.ErrRevoked
+			}
+		}
 		if res.StatusCode == 404 {
 			return ErrUnsupported
 		}

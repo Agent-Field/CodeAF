@@ -38,7 +38,7 @@ func TestR6R9R30NativeControlReportsCommittedAnchorsAndRefusesLead(t *testing.T)
 		t.Fatal(err)
 	}
 	c.Signature = a.dev.Sign(b)
-	if _, err = client.Lead(bg, c); !errors.Is(err, clusterctl.ErrUnsupported) || err.Error() != "this relay does not offer cluster leadership yet; your saved chats are still here" {
+	if _, err = client.Lead(bg, c); !errors.Is(err, clusterctl.ErrUnsupported) || err.Error() != clusterctl.ErrUnsupported.Error() {
 		t.Fatalf("R6 unsupported lead: %v", err)
 	}
 	after, err := client.Status(bg)

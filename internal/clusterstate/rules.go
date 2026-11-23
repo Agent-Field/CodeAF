@@ -25,7 +25,7 @@ func Lifted(c Cell, vouchedUntil int64) Cell {
 func Acquire(c Cell, device string, now int64, force bool, expected ...*LeaseExpectation) (Cell, error) {
 	if len(expected) > 0 && expected[0] != nil {
 		seen := expected[0]
-		if c.Lease.Device != seen.Device || c.Lease.Fence != seen.Fence {
+		if !seen.Matches(c) {
 			return c, ErrLeaseHeld
 		}
 	}
@@ -44,6 +44,11 @@ func Heartbeat(c Cell, device string, b Beat, now int64) (Cell, error) {
 	}
 	c.Lease.Expires = now + ttlMs
 	c.Lease.Pending = b.Pending
+	c.Lease.Working = b.Working
+	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
+	if b.Pending > 0 && b.UploadTotal > 0 {
+		c.Lease.UploadSent, c.Lease.UploadTotal = min(b.UploadSent, b.UploadTotal), b.UploadTotal
+	}
 	return c, nil
 }
 
@@ -62,9 +67,15 @@ func PublishTo(c Cell, device string, p Publish, now int64) (Cell, error) {
 	// the list wholesale: an empty or absent list is a true statement ("the
 	// publisher did not say"), a stale one is not kept.
 	c.Frames = p.Frames
+	c.FrameHints = boundedFrameHints(p.FrameHints)
 	c.Lease.Pending, c.DurableAt = p.Pending, now
+	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
+	if p.Head != p.OldHead || p.SavedAt > 0 {
+		c.SavedAt = p.SavedAt
+	}
 	c.Lease.Expires = now + ttlMs
 	c.Title = keepIfEmpty(p.Title, c.Title)
+	c.Folder = keepIfEmpty(p.Folder, c.Folder)
 	return c, nil
 }
 
@@ -74,7 +85,8 @@ func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 	if err := holder(c, device, fence); err != nil {
 		return c, err
 	}
-	c.Lease.Expires, c.Lease.Pending = 0, 0
+	c.Lease.Expires, c.Lease.Pending, c.Lease.Working = 0, 0, false
+	c.Lease.UploadSent, c.Lease.UploadTotal = 0, 0
 	if len(at) > 0 {
 		c.Lease.ReleasedAt = at[0]
 	}
@@ -85,10 +97,10 @@ func ReleaseOf(c Cell, device string, fence uint64, at ...int64) (Cell, error) {
 // at fence 1. The caller has already checked that the id is free.
 func Created(in CellInit, device string, now int64) Cell {
 	return Cell{
-		V: 1, Head: in.Head, DurableAt: now, Class: in.Class, Size: in.Size,
-		ParentCell: in.ParentCell, Title: in.Title, Keys: in.Keys, OrphanTurns: in.OrphanTurns,
-		Frames: in.Frames,
-		Lease:  Lease{Device: device, Fence: 1, Expires: now + ttlMs},
+		V: 1, Head: in.Head, DurableAt: now, SavedAt: in.SavedAt, Class: in.Class, Size: in.Size,
+		ParentCell: in.ParentCell, Title: in.Title, Folder: in.Folder, Keys: in.Keys, OrphanTurns: in.OrphanTurns,
+		Frames: in.Frames, FrameHints: boundedFrameHints(in.FrameHints),
+		Lease: Lease{Device: device, Fence: 1, Expires: now + ttlMs},
 	}
 }
 
@@ -123,6 +135,7 @@ func RevokeOf(target Device, caller, targetID string) (Device, error) {
 // relay-owned fields are never taken from the client: Revoked and LastSeen stay
 // as stored, and Created is the time of the first write.
 func Stamped(old Device, had bool, d Device, now int64) Device {
+	d.Kind, d.Methods = old.Kind, old.Methods
 	d.Revoked, d.LastSeen, d.Created = old.Revoked, old.LastSeen, old.Created
 	if !had {
 		d.Created = now
@@ -140,4 +153,32 @@ func PlatformOf(p string) string {
 	default:
 		return "other"
 	}
+}
+
+// boundedFrameHints copies optional untrusted metadata. Invalid sets are omitted,
+// never a reason to accept a head without the authoritative object closure.
+func boundedFrameHints(in []FrameHint) []FrameHint {
+	if len(in) == 0 || len(in) > MaxFrameHints {
+		return nil
+	}
+	remaining := FrameHintBudget
+	out := make([]FrameHint, 0, len(in))
+	for _, h := range in {
+		if h.Bytes <= 0 || h.Bytes >= remaining || len(h.ID) != 64 {
+			return nil
+		}
+		for _, c := range h.ID {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return nil
+			}
+		}
+		for _, old := range out {
+			if old.ID == h.ID {
+				return nil
+			}
+		}
+		remaining -= h.Bytes + 1
+		out = append(out, h)
+	}
+	return out
 }

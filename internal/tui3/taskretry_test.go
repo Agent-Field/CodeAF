@@ -175,3 +175,29 @@ func TestAProgramsFailedTaskOffersNoRetry(t *testing.T) {
 		t.Fatalf("the card offers %q on a program's task:\n%s", taskRetryWord, text)
 	}
 }
+
+func TestEmptyCrewRetryUsesTheExistingTaskControl(t *testing.T) {
+	a, f, entry := retryFixture(t)
+	a.taskUpdate(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
+		ID: 7, Run: "1", Kind: session.TaskKindAdaptive, State: session.TaskFailed,
+		Retryable: true, Report: "The crew didn't plan any work for this goal.",
+	}})
+	if !a.taskCanRetry(entry) {
+		t.Fatal("empty plan has no retry control")
+	}
+	cmd := a.taskCardKey("enter")
+	if cmd == nil {
+		t.Fatal("enter did not retry empty plan")
+	}
+	a.Update(cmd())
+	if len(f.ids) != 1 || f.ids[0] != 7 {
+		t.Fatalf("retry calls = %v", f.ids)
+	}
+	a.taskUpdate(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
+		ID: 7, Run: "1", Kind: session.TaskKindAdaptive, State: session.TaskFailed,
+		Report: "Worker failed after partial work.",
+	}})
+	if a.taskCanRetry(entry) {
+		t.Fatal("other adaptive endings offered retry")
+	}
+}

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // TestARefusedRunThatWroteNothingNamesTheDirectory proves C1: a refused run
@@ -339,5 +341,39 @@ func TestAPriceRefusalDoesNotClaimTheRunEditedAWorkspace(t *testing.T) {
 	outcome := headlessOutcome{Nodes: 1, workspace: t.TempDir(), stop: stopPrice, Deliverable: "Nothing was started."}
 	if got := groundedInTheTree(outcome); got != outcome.Deliverable {
 		t.Fatalf("a price refusal claims it worked in the directory: %q", got)
+	}
+}
+
+// A cancelled provider arm can owe an unbilled marker after the worker lands.
+// The command owns both that producer and the writer it starts.
+func TestDoReturnsAfterCancelledAccountingAndItsWriterStop(t *testing.T) {
+	session.CloseUsage()
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	script := newScriptedBrain(t)
+	script.stall = true
+	defer script.close()
+	t.Cleanup(session.CloseUsage)
+	var stdout, stderr strings.Builder
+	err := doErrand(doRequest{task: "write the release note and include migration steps", workspace: t.TempDir(),
+		timeout: 2 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client})
+	var status exitStatus
+	if !asExitStatus(err, &status) || status != exitLimit {
+		t.Fatalf("timeout exit = %v; stderr %s", err, stderr.String())
+	}
+	rows, err := session.ReadUsage(session.UsageLedgerPath(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, row := range rows {
+		if row.Unbilled && row.Task != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("command returned before cancelled-call accounting: %+v", rows)
+	}
+	if n := liveUsageWriters(); n != 0 {
+		t.Fatalf("command returned with %d usage writers still running", n)
 	}
 }

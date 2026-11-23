@@ -918,6 +918,14 @@ const (
 // surface advertising a key that does nothing.
 func (placeSpend) about() string { return "what the work has cost" }
 
+func spendCanOpenSubject(subject session.SubjectSpend) bool {
+	switch subject.Kind {
+	case session.SubjectTask, session.SubjectAutomation, session.SubjectConversation:
+		return true
+	}
+	return false
+}
+
 func (placeSpend) hint(a *app) string {
 	var parts []string
 	stop := a.spendStopAt(a.spend.cursor)
@@ -929,7 +937,7 @@ func (placeSpend) hint(a *app) string {
 		// frame. A control with two positions has one useful thing to say about
 		// itself, and it is where the key goes.
 		parts = append(parts, spendSliceWord+a.spend.slice.step(1).word())
-	case stop.rails || stop.subject.Kind != "":
+	case stop.rails || spendCanOpenSubject(stop.subject):
 		// AND `enter` IS NAMED ONLY ON A ROW IT OPENS SOMETHING FROM. The rows of
 		// `by model` are stops so that a long table scrolls under the cursor
 		// ([spendReading.paint]), and they open nothing — a model is not a thing

@@ -244,7 +244,7 @@ func seatTranscript(s *seat) string {
 // cannot see either of the two failures that matters:
 //
 //   - A NOTE REACHING A WORKER IT WAS NOT ADDRESSED TO. The reader is scoped to
-//     the worker's own task ([unreadNotes] takes the task's id), and with one
+//     the worker's own task (its note reader takes the task's id), and with one
 //     worker at a time a reader that ignored the scope would look correct,
 //     because there is nothing else in the store to deliver.
 //   - A NOTE LOST TO A MARK TWO LOOPS SHARE. The mark is a map local to one

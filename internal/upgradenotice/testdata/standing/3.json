@@ -1,0 +1,1 @@
+{"schema": 4, "id": "3", "words": "earlier probe", "workspace": "/work/project", "status": "active", "when": {"kind": "probe", "words": "old schedule", "every": "1h"}, "brief": {"prompt": "instruction probe"}}

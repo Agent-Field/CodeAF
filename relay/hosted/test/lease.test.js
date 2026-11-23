@@ -190,3 +190,38 @@ test('parseHolds reads distinct pairs, splits at the last colon, and refuses wha
   assert.equal(code(() => parseHolds(Array.from({ length: 17 }, (_, i) => `c${i}:1`), 16)), 'bad_request');
   assert.equal(code(() => parseHolds(Array.from({ length: 16 }, (_, i) => `c${i}:1`), 16)), 'ok');
 });
+
+test('a beat that says a turn started or ended is a change even while a socket vouches; a publish keeps it, a release clears it', () => {
+  const { clock, socks, dir, heard } = rig();
+  dir.create('c1', init(), 'dev_a');
+  const w = socks.add('dev_a', [['c1', 1]], clock.now);
+  w.pinged = clock.now;
+  heard.length = 0;
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0, working: true });
+  assert.equal(heard.length, 1, 'other computers hear that a turn runs here');
+  assert.equal(dir.list().cells.c1.lease.working, true);
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0, working: true });
+  assert.equal(heard.length, 1, 'the same flag again is not news');
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0 });
+  assert.equal(heard.length, 2, 'the turn ending is news');
+  assert.equal('working' in dir.list().cells.c1.lease, false, 'false is absent, as the Go relay writes it');
+  dir.heartbeat('c1', 'dev_a', { fence: 1, pending: 0, working: true });
+  dir.release('c1', 'dev_a', 1);
+  assert.equal('working' in dir.list().cells.c1.lease, false, 'a released chat is not working anywhere');
+});
+
+test('a device record carries its outbox and took lists whole, a change to them is news, and an outsized list is refused', () => {
+  const { dir, heard } = rig();
+  const code = (f) => { try { f(); return 'ok'; } catch (e) { return e.code; } };
+  dir.putDevice('dev_a', { V: 1, name: 'a' });
+  heard.length = 0;
+  const note = { id: 'n1', cell: 'c1', text: 'sealed', at: 5 };
+  dir.putDevice('dev_a', { V: 1, name: 'a', outbox: [note] });
+  assert.deepEqual(dir.list().devices.dev_a.outbox, [note], 'the relay keeps the sealed message as written');
+  assert.ok(heard.length >= 1, 'the holder hears a message arrive');
+  dir.putDevice('dev_b', { V: 1, name: 'b', took: ['n1'] });
+  assert.deepEqual(dir.list().devices.dev_b.took, ['n1']);
+  const many = Array.from({ length: 9 }, (_, i) => ({ ...note, id: `n${i}` }));
+  assert.equal(code(() => dir.putDevice('dev_a', { V: 1, name: 'a', outbox: many })), 'bad_request');
+  assert.equal(code(() => dir.putDevice('dev_a', { V: 1, name: 'a', took: Array.from({ length: 65 }, (_, i) => `t${i}`) })), 'bad_request');
+});

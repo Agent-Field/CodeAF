@@ -25,7 +25,7 @@ import (
 // v3Profile writes one profile config.json and answers with its directory.
 func v3Profile(t *testing.T, rows map[string]any) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir := testHome(t)
 	raw, err := json.Marshal(rows)
 	if err != nil {
 		t.Fatal(err)
