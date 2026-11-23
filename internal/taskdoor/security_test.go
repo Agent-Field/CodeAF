@@ -346,7 +346,10 @@ func TestATaskDoorComesBackWithoutRestartingItsAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	lost, back := 0, 0
-	deadline := time.NewTimer(5 * time.Second)
+	// The first retry after a drop comes after one second plus up to five more,
+	// and the retry after a failed one after up to two and a half, so the pair of
+	// lines can take as long as eight and a half seconds even when nothing is wrong.
+	deadline := time.NewTimer(15 * time.Second)
 	defer deadline.Stop()
 	for back == 0 {
 		select {
