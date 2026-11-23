@@ -43,6 +43,10 @@ func ProjectKey(workspace string) (string, error) {
 	if err != nil {
 		return "", nil
 	}
+	// A folder reached through a symlink is the same project as the folder.
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		absolute = resolved
+	}
 	return hashKey(absolute), nil
 }
 
