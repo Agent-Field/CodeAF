@@ -91,6 +91,24 @@ var (
 	// file is not a check: reducing it the way a qualified name reduces would
 	// leave every such reading identified as `py`.
 	sourceFileSuffix = lazyRegexp(`(?i)\.(?:py|go|ts|tsx|js|jsx|mjs|cjs|rb|java|kt|kts|cs|rs|php|swift|scala|c|cc|cpp|h|hpp|m|mm|ex|exs|sh)$`)
+	// playwrightLocation is the line and column playwright prints after a spec
+	// file inside its ` › ` chain. Both move whenever a line above the check is
+	// edited, so a name that kept them would read one unchanged red check as a
+	// new failure. Only the ` › ` chain is touched: rspec's `./spec/a_spec.rb:12`
+	// carries a single number and is its runner's identity for the check.
+	playwrightLocation = lazyRegexp(`(\.[cm]?[jt]sx?):\d+:\d+(\s+›)`)
+	// playwrightFailedBlock is the `N failed` section of playwright's closing
+	// summary, which its list, line and dot reporters all print: a count, then
+	// one indented line per red check. The section is the only place it names
+	// red checks and nothing else. The numbered banners above it also describe
+	// a check that went red and then passed on retry, which the summary lists
+	// under `N flaky` instead, and the `✘` progress line carries a counter
+	// that changes with worker scheduling.
+	playwrightFailedBlock = lazyRegexp(`(?m)^[ 	]*\d+ failed[ 	]*\n((?:[ 	]+\S[^\n]*›[^\n]*(?:\n|$))+)`)
+	// playwrightCheck is one line of that section: an optional project in
+	// brackets, the spec file with its line and column, and the chain of titles.
+	// The project is kept because one test in two browsers is two checks.
+	playwrightCheck = lazyRegexp(`(?m)^[ 	]+((?:\[[^\]\n]+\][ 	]+›[ 	]+)?\S+:\d+:\d+[ 	]+›[ 	]+.+?)[ 	─]*$`)
 )
 
 // FailingTests reads every test identity a runner named as failing, sorted and
@@ -100,14 +118,22 @@ func FailingTests(output string) []string {
 	clean := ansiEscape().ReplaceAllString(output, "")
 	seen := map[string]bool{}
 	var names []string
+	add := func(raw string) {
+		name := normalizeTestName(raw)
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
 	for _, pattern := range failingTestPatterns() {
 		for _, match := range pattern.FindAllStringSubmatch(clean, -1) {
-			name := normalizeTestName(match[1])
-			if name == "" || seen[name] {
-				continue
-			}
-			seen[name] = true
-			names = append(names, name)
+			add(match[1])
+		}
+	}
+	for _, block := range playwrightFailedBlock().FindAllStringSubmatch(clean, -1) {
+		for _, match := range playwrightCheck().FindAllStringSubmatch(block[1], -1) {
+			add(match[1])
 		}
 	}
 	sort.Strings(names)
@@ -122,6 +148,7 @@ func FailingTests(output string) []string {
 // two readings of.
 func normalizeTestName(raw string) string {
 	name := strings.TrimSpace(trailingTiming().ReplaceAllString(strings.TrimSpace(raw), ""))
+	name = playwrightLocation().ReplaceAllString(name, "$1$2")
 	name = spaceRun().ReplaceAllString(name, " ")
 	name = strings.Trim(name, ":.,")
 	// A "name" that is a count, a bare verb or a punctuation run is a false
