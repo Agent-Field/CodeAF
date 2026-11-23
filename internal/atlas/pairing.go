@@ -6,11 +6,11 @@ package atlas
 var Pairing = &Map{
 	Name:        "pairing",
 	Title:       "Pairing",
-	Description: "codeaf on two computers: pair with a link, continue a chat on the other",
+	Description: "codeaf on two computers: pair with a link, move a chat to the other",
 	Nodes: []Node{
 		// ── machines ──────────────────────────────────────────────────────
 		{ID: "machineA", Label: "Machine A", Short: "existing device", Kind: KindMachine, X: 0.08, Y: 0.1,
-			Summary: "The computer that already runs codeaf. It approves new machines and publishes each chat's turns so another machine can continue them.",
+			Summary: "The computer that already runs codeaf. It approves new machines and publishes each chat's turns so another machine can pick them up.",
 			Details: []string{"Holds the identity key and a device cert signed by it", "Publishes encrypted frames every turn while it holds the chat's lease"},
 			Files: []FileRef{
 				{Path: "cmd/codeaf/approvals.go", Symbols: []string{"approvalsDoor"}},
@@ -91,7 +91,7 @@ var Pairing = &Map{
 				{Path: "cmd/codeaf/syncdrive.go", Symbols: []string{"startDrive"}},
 				{Path: "internal/syncsetup/syncsetup.go", Symbols: []string{"Sync", "Open", "Follow"}},
 				{Path: "internal/syncsetup/drive.go", Symbols: []string{"Drive", "syncVault"}},
-				{Path: "internal/syncsetup/take.go", Symbols: []string{"Continuer.Take", "restoreCopies", "pullVault"}},
+				{Path: "internal/syncsetup/take.go", Symbols: []string{"Continuer.Take", "restoreCopies", "pullVaultVia"}},
 				{Path: "internal/keys/seal.go", Symbols: []string{"seal", "open"}},
 			}},
 		{ID: "cells", Label: "cells", Short: "move here", Kind: KindGo, X: 0.8, Y: 0.38,
@@ -197,7 +197,7 @@ var Pairing = &Map{
 			{From: "pair", To: "hosted", Message: "POST /v1/dir/requests/{code}/approve (signed); relay writes the Device record", Edge: "pair-hosted"},
 			{From: "hosted", To: "machineB", Message: "awaitDecision gets the grant; openLinkGrant installs identity, cert and SyncURL", Note: "single use: a second approver gets 409"},
 		}},
-		{ID: "continue", Title: "Continue chat", Summary: "Machine B takes over a chat running on A: workspace, history, tool output and task records.", Steps: []Step{
+		{ID: "continue", Title: "Move chat", Summary: "Machine B takes over a chat running on A: workspace, history, tool output and task records.", Steps: []Step{
 			{From: "machineB", To: "cells", Message: "home shows 'running on A'; the person picks move here", Edge: "b-cells", Note: "internal/tui3/homepanel_continue.go"},
 			{From: "cells", To: "sync", Message: "syncsetup's Continuer.Take runs the takeover (internal/handoff): B's own unsealed edits are sealed into a branch first, then the lease moves", Edge: "cells-sync"},
 			{From: "sync", To: "hosted", Message: "Dir.Cell(id): read head, frame list and lease", Edge: "sync-hosted"},
