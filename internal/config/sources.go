@@ -437,6 +437,7 @@ func ConnectClaudeCode(ctx context.Context, profileDir string) (modelsource.Outc
 		_ = DisconnectService(profileDir, claudemodel.ID)
 		return modelsource.Outcome{}, err
 	}
+	bumpSettingsGeneration()
 	// A PROFILE WITH NOTHING ELSE TO TALK WITH TALKS WITH CLAUDE. Connecting
 	// Claude Code as the first service moves new conversations onto it, the way
 	// a first connection of any service does; one that already has a key or a
@@ -508,6 +509,9 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 		_ = DisconnectService(profileDir, "codex")
 		return modelsource.Outcome{}, err
 	}
+	// The defaults read this list; a snapshot built while it was still being
+	// fetched is built again.
+	bumpSettingsGeneration()
 	return outcome, nil
 }
 

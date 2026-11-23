@@ -163,8 +163,10 @@ providers you did connect instead:
 
 Strength is read from the provider's published intelligence score or price,
 then from the model's name (mini, flash or haiku against pro, opus or max), its
-size (8b, 70b) and how many thinking levels it takes. With several providers,
-the defaults follow the provider of the conversation model you chose. A model you
+size (8b, 70b) and how many thinking levels it takes, each counted only when every
+model in the list has it. With several providers, every default follows the
+conversation model's provider: the one you chose, else a hosted provider before a
+local server. A model you
 chose yourself is never replaced. On a Claude Code plan the light seats run on its
 `haiku`, so titles, routing and the memory pass after each turn count against that
 plan's limits; with one local model they share it with the conversation, which

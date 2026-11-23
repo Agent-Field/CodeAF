@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -319,7 +320,7 @@ func TestEveryShippedProviderGetsReachableDefaultsOfItsOwn(t *testing.T) {
 			name:    "ai&",
 			service: modelsource.Connected{Source: vendoredSource(t, "aiand"), Key: "sk-aiand"},
 			models:  ids("zai-org/glm-5.3-flash", "deepseek-ai/deepseek-v4-flash", "zai-org/glm-5.3", "moonshotai/kimi-k3"),
-			talk:    "aiand/zai-org/glm-5.3-flash", fallback: "aiand/zai-org/glm-5.3", light: "aiand/zai-org/glm-5.3-flash",
+			talk:    "aiand/zai-org/glm-5.3-flash", fallback: "aiand/zai-org/glm-5.3", light: "aiand/deepseek-ai/deepseek-v4-flash",
 		},
 		{
 			name:    "OpenCode Go",
@@ -361,8 +362,8 @@ func TestEveryShippedProviderGetsReachableDefaultsOfItsOwn(t *testing.T) {
 	}
 }
 
-// A BUILT-IN ID THAT ROUTES TO A CONNECTED ACCOUNT BY ITS PREFIX IS KEPT ONLY
-// WHEN THAT ACCOUNT LISTS IT: `deepseek/deepseek-v4.1-flash` routes to a direct
+// A built-in id that routes to a connected account by its prefix is kept only
+// when that account lists it: `deepseek/deepseek-v4.1-flash` routes to a direct
 // DeepSeek connection, whose own list need not carry that id.
 func TestABuiltInIDThatRoutesByPrefixIsKeptOnlyWhenListed(t *testing.T) {
 	deepseek := modelsource.Connected{Source: vendoredSource(t, "deepseek"), Key: "sk-ds"}
@@ -380,7 +381,7 @@ func TestABuiltInIDThatRoutesByPrefixIsKeptOnlyWhenListed(t *testing.T) {
 	}
 }
 
-// AN OPENROUTER KEY KEEPS EVERY BUILT-IN AS IT WAS, even when another connected
+// An OpenRouter key keeps every built-in as it was, even when another connected
 // account captures a built-in id by its prefix and does not list it: choosing
 // among OpenRouter's whole catalog would send a fallback to its most expensive
 // model and a helper to its cheapest.
@@ -521,7 +522,7 @@ func TestAModelWithAnUnknownPriceIsNotTakenForTheCheapest(t *testing.T) {
 		{ID: "vendor/small-mini", PromptPrice: 1e-8, CompletionPrice: 1e-8},
 		{ID: "vendor/mid", IntelligenceIndex: 30, PromptPrice: 1e-6, CompletionPrice: 1e-6},
 	}
-	if got := pickLight(models).ID; got != "vendor/small-mini" {
+	if got := pickLight(models, modelsource.Connected{}, "").ID; got != "vendor/small-mini" {
 		t.Fatalf("light = %q, want the model whose name says it is small", got)
 	}
 	if got := rankByStrength(models)[len(models)-1].ID; got != "vendor/big-flagship-pro" {
@@ -537,8 +538,8 @@ func TestHelpersFollowTheConversationsProviderOverAListedBuiltIn(t *testing.T) {
 	if got := f.pick(SlotLight, DefaultLowModel, "codex/gpt-6.1-terra"); got != "codex/gpt-6-luna" {
 		t.Fatalf("small work with a ChatGPT conversation = %q, want ChatGPT's light model", got)
 	}
-	if got := f.pick(SlotLight, DefaultLowModel, ""); got != DefaultLowModel {
-		t.Fatalf("small work with no saved conversation model = %q, want the listed built-in", got)
+	if got := f.pick(SlotLight, DefaultLowModel, ""); got != "codex/gpt-6-luna" {
+		t.Fatalf("small work with no saved conversation model = %q, want the chosen conversation provider's light model", got)
 	}
 }
 
@@ -552,5 +553,134 @@ func TestAModelVariableSkipsTheDefaultInLoad(t *testing.T) {
 	}
 	if cfg.Model != "vendor/chosen-model" {
 		t.Fatalf("Load().Model = %q, want the model variable", cfg.Model)
+	}
+}
+
+func TestEquallyLightModelsDoNotPutTheHelpersOnTheConversationModel(t *testing.T) {
+	f := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "ollama")}}, models: map[string][]catalog.Model{"ollama": ids("llama3:latest", "mistral:latest")}}
+	talk := f.pick(SlotTalk, DefaultModel, "")
+	light := f.pick(SlotLight, DefaultLowModel, talk)
+	if talk == light {
+		t.Fatalf("talk and light are both %q; with another equal model offered, the helpers take it", talk)
+	}
+}
+
+func TestChatGPTCrewRoutesStayAsTheyWereWithOpenRouter(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-1234567890")
+	dir := t.TempDir()
+	if err := codexauth.Save(dir, codexauth.Tokens{AccessToken: "placeholder", RefreshToken: "placeholder", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	listed := true
+	if err := WriteSources(dir, []PersistedSource{{ID: "codex", Written: "codex", Listed: &listed}}); err != nil {
+		t.Fatal(err)
+	}
+	service, _ := ResolveSources(dir, "", DefaultBaseURL).ByID("codex")
+	if err := catalog.Remember(CatalogOptionsFor(service, dir), codexRows()); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range CrewProvidersAt(dir) {
+		if p.ID == "codex" {
+			if len(p.Serves) != 1 || p.Serves[0] != vendoredSource(t, "codex").Preferred {
+				t.Fatalf("with OpenRouter, ChatGPT serves %v, want only the preferred model as before", p.Serves)
+			}
+			return
+		}
+	}
+	t.Fatal("ChatGPT is not a crew provider")
+}
+
+func TestARememberedListIsReadAgainWhenItChanges(t *testing.T) {
+	dir := t.TempDir()
+	options := catalog.Options{Source: "ollama", BaseURL: "http://localhost:11434/v1", Dir: dir}
+	if err := catalog.Remember(options, ids("qwen3:8b")); err != nil {
+		t.Fatal(err)
+	}
+	if got := recallCached(options); len(got) != 1 || got[0].ID != "qwen3:8b" {
+		t.Fatalf("first read = %+v", got)
+	}
+	if err := catalog.Remember(options, ids("qwen3:8b", "llama3.2:3b")); err != nil {
+		t.Fatal(err)
+	}
+	if got := recallCached(options); len(got) != 2 {
+		t.Fatalf("after the list changed = %+v, want both models", got)
+	}
+}
+
+func TestProviderFollowingRowsAreChangedOnlyWhenWritten(t *testing.T) {
+	dir := t.TempDir()
+	for _, key := range []string{KeyKnowledgeModel, KeyModelFallbacks, KeyTierReflexModel, KeyTierLowModel} {
+		if !FollowsProviders(key) {
+			t.Fatalf("%s does not follow the providers", key)
+		}
+		if WrittenAt(dir, key) {
+			t.Fatalf("%s reads as written on an empty profile", key)
+		}
+	}
+	if err := writeText(dir, KeyKnowledgeModel, "vendor/model"); err != nil {
+		t.Fatal(err)
+	}
+	if !WrittenAt(dir, KeyKnowledgeModel) {
+		t.Fatal("a written knowledge row does not read as written")
+	}
+	if FollowsProviders(KeyChatModelRotation) {
+		t.Fatal("an unrelated row follows the providers")
+	}
+}
+
+func TestTheDefaultFallbackIgnoresTheWrittenRow(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-1234567890")
+	t.Setenv("OPENAI_API_KEY", "")
+	dir := t.TempDir()
+	if err := writeText(dir, KeyModelFallbacks, "vendor/mine"); err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultFallbackAt(dir); got != DefaultFallbackModel {
+		t.Fatalf("DefaultFallbackAt = %q, want codeaf's default %q whatever the row says", got, DefaultFallbackModel)
+	}
+}
+
+// An unchanged provider list is decoded and ranked once, however often the
+// defaults are asked for: the settings sheet asks on every paint.
+func TestUnchangedProviderListsAreReadAndRankedOnce(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	dir := t.TempDir()
+	listed := true
+	if err := WriteSources(dir, []PersistedSource{{ID: "deepseek", Written: "deepseek", Key: "sk-ds-1234567890", Listed: &listed}, {ID: "ollama", Written: "ollama", Listed: &listed}}); err != nil {
+		t.Fatal(err)
+	}
+	set := ResolveSources(dir, "", DefaultBaseURL)
+	deepseek, _ := set.ByID("deepseek")
+	ollama, _ := set.ByID("ollama")
+	var rows []catalog.Model
+	for i := 0; i < 400; i++ {
+		rows = append(rows, catalog.Model{ID: "vendor-model-" + strconv.Itoa(i), PromptPrice: 1e-6, CompletionPrice: 1e-6})
+	}
+	if err := catalog.Remember(CatalogOptionsFor(deepseek, dir), rows); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.Remember(CatalogOptionsFor(ollama, dir), ids("qwen3:8b", "llama3.2:3b")); err != nil {
+		t.Fatal(err)
+	}
+	lookups := func() {
+		_ = ChatDefaultAt(dir)
+		_ = ModelFallbacksAt(dir)
+		_ = KnowledgeModelAt(dir)
+		_ = TierModelAt(dir, ModelTierReflex)
+		_ = TierModelAt(dir, ModelTierLow)
+	}
+	lookups()
+	reads, ranks := listReads.Load(), listRanks.Load()
+	for i := 0; i < 100; i++ {
+		lookups()
+	}
+	if got := listReads.Load() - reads; got != 0 {
+		t.Fatalf("500 lookups decoded unchanged lists %d times, want 0", got)
+	}
+	if got := listRanks.Load() - ranks; got != 0 {
+		t.Fatalf("500 lookups ranked unchanged lists %d times, want 0", got)
 	}
 }

@@ -2591,7 +2591,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
 			Label: "knowledge", EmptyLabel: "codeaf's default",
-			Hint: "the model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default: " + DefaultKnowledgeModel + " with OpenRouter connected, otherwise the lightest model your connected providers offer.",
+			Hint: "the model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default: " + DefaultKnowledgeModel + " with OpenRouter connected, otherwise the lightest model of your conversation's provider.",
 			read: func() string { return KnowledgeModelAt(dir) },
 			write: func(raw string) error {
 				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))

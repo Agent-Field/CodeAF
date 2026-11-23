@@ -496,6 +496,22 @@ fifty checks while the registry is rewritten decode none (`factoryStopCheckDecod
 one changed job costs one decode, and a job that takes the conversation is seen
 on the next look.
 
+## Default model lookups
+
+Without an OpenRouter key, `config.ReachableDefaultAt` picks each built-in
+default (conversation, fallback, reflex and small-work tiers, knowledge) from
+the connected providers' remembered lists. It is asked on every paint of the
+settings sheet and under the model-client lock, so a provider's list is
+decoded again only when its cache file's size or modification time changes
+(`recallCached`), and each list is filtered and ranked once (`rankView`).
+`listReads` and `listRanks` count that work without a clock.
+`TestUnchangedProviderListsAreReadAndRankedOnce`: 500 lookups over a
+400-model DeepSeek list and an Ollama list decode and rank nothing again. With
+an OpenRouter key the lookup returns before any source is resolved. Measured
+on an M4: about 1,750 allocations and 2 ms per lookup over that list before,
+about 100 allocations and 35 µs after; an OpenRouter profile about 10
+allocations and 6 µs.
+
 ## Idle key vault reads
 
 A local key vault (`internal/keys/vault.go`) whose sealed bytes on disk equal

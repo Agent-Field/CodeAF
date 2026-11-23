@@ -816,7 +816,7 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 			}
 		case strings.EqualFold(source.ID, "codex"):
 			p.Kind = crewroute.Plan
-			p.Serves = codexServes(service, profileDir)
+			p.Serves = codexServes(service, profileDir, openRouterConnected(set))
 		case strings.EqualFold(source.ID, "claude-code"):
 			p.Kind = crewroute.Plan
 		case strings.EqualFold(source.ID, "ollama"):
@@ -904,9 +904,16 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 // 2026-11-23 a ChatGPT account answered `gpt-5.5` with "not supported when
 // using Codex with a ChatGPT account", and the crew's second router look sent
 // it there anyway.
-func codexServes(service modelsource.Connected, profileDir string) []string {
+//
+// With OpenRouter connected it stays the preferred id alone, as it always was:
+// that profile's crew is routed among OpenRouter's models, and widening what the
+// plan serves would move seats off OpenRouter.
+func codexServes(service modelsource.Connected, profileDir string, openRouter bool) []string {
+	if openRouter {
+		return []string{service.Source.Preferred}
+	}
 	var ids []string
-	for _, row := range CodexRememberedModels(service, profileDir) {
+	for _, row := range recallCached(CatalogOptionsFor(service, profileDir)) {
 		if id := strings.TrimSpace(row.ID); id != "" {
 			ids = append(ids, id)
 		}

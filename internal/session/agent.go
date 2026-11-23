@@ -235,15 +235,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// slot. It is not a callable model or an explicit user choice. Migrate only
 	// that exact legacy value; saved valid pairs and explicit None are untouched.
 	if pair := agent.conversationModels; pair != nil && pair.Fallback == "nearest in the catalog" {
-		// The first model of the profile's fallback chain: the person's own
-		// fallback models row when written, else codeaf's default, which is a
-		// model the profile's providers can serve. The built-in OpenRouter one
-		// is used only when there is no profile.
+		// codeaf's default fallback for this profile: the built-in OpenRouter
+		// model with OpenRouter connected or no profile, else a model the
+		// profile's providers can serve.
 		pair.Fallback = preferences.DefaultFallbackModel
 		if config.ProfileDir != "" {
-			if chain := preferences.ParseModelFallbacks(preferences.ModelFallbacksAt(config.ProfileDir)); len(chain) > 0 {
-				pair.Fallback = chain[0]
-			}
+			pair.Fallback = preferences.DefaultFallbackAt(config.ProfileDir)
 		}
 		if pair.Fallback == pair.Main {
 			pair.Fallback = ""

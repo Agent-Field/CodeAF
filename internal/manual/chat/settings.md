@@ -218,7 +218,7 @@ Settings → Models has a **knowledge** model choice (`knowledge.model`).
 It controls the model used to extract, organize and review project
 knowledge, separately from your conversation and task models. The default is
 `deepseek/deepseek-v4.1-flash` while OpenRouter is connected, and otherwise the
-lightest model your connected providers offer. Clearing the choice restores that default.
+lightest model of your conversation's provider. Clearing the choice restores that default.
 
 A saved change applies to the next compilation without restarting your chats.
 A compilation already running finishes with its original model. The compiler

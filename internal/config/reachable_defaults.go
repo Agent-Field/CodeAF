@@ -2,10 +2,14 @@ package config
 
 import (
 	"math"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/claudemodel"
@@ -90,7 +94,13 @@ func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTal
 	if len(connected) == 0 {
 		return builtIn
 	}
-	if builtIn != "" && offered(sources, builtIn, modelsOf) && sameProvider(sources, builtIn, chosenTalk, modelsOf) {
+	// With no saved conversation model, the one chosen below is the provider
+	// every other slot follows.
+	follow := chosenTalk
+	if strings.TrimSpace(follow) == "" || !offered(sources, follow, modelsOf) {
+		follow = reachableDefault(sources, connected, SlotTalk, "", modelsOf)
+	}
+	if builtIn != "" && offered(sources, builtIn, modelsOf) && sameProvider(sources, builtIn, follow, modelsOf) {
 		return builtIn
 	}
 	if chosen := reachableDefault(sources, connected, slot, chosenTalk, modelsOf); chosen != "" {
@@ -99,11 +109,11 @@ func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTal
 	return builtIn
 }
 
-// sameProvider reports whether builtIn is on the provider of the saved
-// conversation model, or there is no saved one to follow. A built-in another
-// connected account happens to list is not taken while the conversation runs
-// elsewhere, so the helpers and the fallback stay on the conversation's
-// provider.
+// sameProvider reports whether builtIn is on the provider of the conversation
+// model (the saved one, else the one chosen for it), or there is none to
+// follow. A built-in another connected account happens to list is not taken
+// while the conversation runs elsewhere, so the helpers and the fallback stay
+// on the conversation's provider.
 func sameProvider(sources modelsource.Set, builtIn, chosenTalk string, modelsOf func(modelsource.Connected) []catalog.Model) bool {
 	chosenTalk = strings.TrimSpace(chosenTalk)
 	if chosenTalk == "" || !offered(sources, chosenTalk, modelsOf) {
@@ -154,7 +164,7 @@ func reachableDefault(sources modelsource.Set, connected []modelsource.Connected
 	case SlotLight:
 		for _, service := range ordered {
 			if models := usableModels(modelsOf(service)); len(models) > 0 {
-				return service.Qualify(pickLight(models).ID)
+				return service.Qualify(pickLight(models, service, talk).ID)
 			}
 		}
 	case SlotFallback:
@@ -284,7 +294,7 @@ func serviceModelsAt(profileDir string, service modelsource.Connected) []catalog
 	case claudemodel.ID:
 		return claudemodel.Models()
 	case "codex":
-		if rows := CodexRememberedModels(service, profileDir); len(rows) > 0 {
+		if rows := recallCached(CatalogOptionsFor(service, profileDir)); len(rows) > 0 {
 			return rows
 		}
 		rows := make([]catalog.Model, 0, len(codexauth.FallbackModels))
@@ -293,10 +303,84 @@ func serviceModelsAt(profileDir string, service modelsource.Connected) []catalog
 		}
 		return rows
 	}
-	if rows := catalog.Recall(CatalogOptionsFor(service, profileDir)).ModelsNow(); len(rows) > 0 {
+	if rows := recallCached(CatalogOptionsFor(service, profileDir)); len(rows) > 0 {
 		return rows
 	}
 	return namedModels(service)
+}
+
+// recalled is one remembered model list and the cache file's metadata when it
+// was read.
+type recalled struct {
+	size     int64
+	modified time.Time
+	rows     []catalog.Model
+}
+
+var (
+	recalledMu sync.Mutex
+	recalledAt = map[string]recalled{}
+	// listReads and listRanks count the remembered-list decodes and the
+	// rankings the defaults have done, without a clock (PERF.md, "Default
+	// model lookups").
+	listReads atomic.Int64
+	listRanks atomic.Int64
+)
+
+// recallCached is [catalog.Recall]'s rows, read again only when the cache file
+// changes. The defaults are asked for on every paint of the settings sheet and
+// under the model-client lock, where a full read and decode of a provider's
+// list is not affordable; an unchanged file costs one stat. The rows are shared
+// and must not be modified.
+func recallCached(options catalog.Options) []catalog.Model {
+	path := catalog.CacheFile(options)
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil
+	}
+	recalledMu.Lock()
+	held, ok := recalledAt[path]
+	recalledMu.Unlock()
+	if ok && held.size == info.Size() && held.modified.Equal(info.ModTime()) {
+		return held.rows
+	}
+	rows := catalog.Recall(options).ModelsNow()
+	listReads.Add(1)
+	recalledMu.Lock()
+	recalledAt[path] = recalled{size: info.Size(), modified: info.ModTime(), rows: rows}
+	recalledMu.Unlock()
+	return rows
+}
+
+// NoteModelListChanged tells the settings readers that a connected provider's
+// model list was written, so a snapshot built from the defaults
+// ([ReachableDefaultAt]) is built again: a helper tier read while a listing was
+// still arriving must not keep the model it settled on then.
+func NoteModelListChanged() { bumpSettingsGeneration() }
+
+// FollowsProviders reports whether a settings row's blank default depends on
+// the connected providers, so a surface comparing it against an untouched
+// profile's reading would mark it changed when nobody changed it.
+func FollowsProviders(key string) bool {
+	switch key {
+	case KeyKnowledgeModel, KeyModelFallbacks, KeyTierReflexModel, KeyTierLowModel:
+		return true
+	}
+	return false
+}
+
+// WrittenAt reports whether the profile holds a value of its own for key,
+// blank included.
+func WrittenAt(profileDir, key string) bool {
+	_, ok := persistedString(profileDir, key)
+	return ok
+}
+
+// DefaultFallbackAt is codeaf's default fallback for the profile, whatever the
+// fallback models row says: the built-in one with OpenRouter connected, else a
+// model the connected providers offer.
+func DefaultFallbackAt(profileDir string) string {
+	return ReachableDefaultAt(profileDir, SlotFallback, DefaultFallbackModel)
 }
 
 // namedModels is what a service says it serves without a listing: a plan
@@ -338,6 +422,52 @@ func codexCatalogRow(model codexauth.Model) catalog.Model {
 // usableModels keeps the models a conversation can talk to: text in, text out,
 // and not an embedding, speech, image or moderation model.
 func usableModels(models []catalog.Model) []catalog.Model {
+	if len(models) == 0 {
+		return nil
+	}
+	key := listKey{first: &models[0], n: len(models)}
+	viewMu.Lock()
+	held, ok := usableMemo[key]
+	viewMu.Unlock()
+	if ok {
+		return held
+	}
+	out := filterUsable(models)
+	viewMu.Lock()
+	if len(usableMemo) > maxListMemo {
+		usableMemo = map[listKey][]catalog.Model{}
+	}
+	usableMemo[key] = out
+	viewMu.Unlock()
+	return out
+}
+
+// listKey names one list by its backing array and length. The lists the
+// defaults rank are shared and never modified ([recallCached]), so an
+// unchanged provider list is filtered and ranked once rather than on every
+// call; holding the key keeps that array alive, so the address is not reused
+// while the entry stands.
+type listKey struct {
+	first *catalog.Model
+	n     int
+}
+
+// rankedView is one list ranked from lightest to strongest, with each model's
+// strength key in the list's own order.
+type rankedView struct {
+	ranked []catalog.Model
+	keys   [][5]float64
+}
+
+const maxListMemo = 256
+
+var (
+	viewMu     sync.Mutex
+	usableMemo = map[listKey][]catalog.Model{}
+	rankMemo   = map[listKey]rankedView{}
+)
+
+func filterUsable(models []catalog.Model) []catalog.Model {
 	out := make([]catalog.Model, 0, len(models))
 	for _, model := range models {
 		id := strings.ToLower(strings.TrimSpace(model.ID))
@@ -363,10 +493,19 @@ func containsFold(values []string, want string) bool {
 	return false
 }
 
-// pickTalk is the provider's own preferred model when it offers it, else the
-// strongest model it offers.
+// pickTalk is, for a provider that names a starting model (a plan door's
+// documented list, or a preferred model), the model a connection starts on by
+// the same rule the picker and the terminal's connect use
+// ([modelsource.Source.PreferredModel]). A provider that names none (Ollama, a
+// custom endpoint) lists its models in no order of strength, so for it, and
+// whenever that rule names nothing offered, it is the strongest model offered.
 func pickTalk(service modelsource.Connected, models []catalog.Model) catalog.Model {
-	if preferred := strings.TrimSpace(service.Source.Preferred); preferred != "" {
+	listed := make([]string, 0, len(models))
+	for _, model := range models {
+		listed = append(listed, strings.TrimSpace(model.ID))
+	}
+	names := len(service.Door.Models) > 0 || strings.TrimSpace(service.Source.Preferred) != ""
+	if preferred := service.Source.PreferredModel(service.Door, listed); names && preferred != "" {
 		for _, model := range models {
 			if strings.EqualFold(strings.TrimSpace(model.ID), preferred) {
 				return model
@@ -382,13 +521,35 @@ func pickTalk(service modelsource.Connected, models []catalog.Model) catalog.Mod
 // current model before older versions and bulkier variants: the coding plan's
 // `haiku` before `claude-haiku-4-5`, Z.ai's `glm-5.3-flash` before its
 // 1M-context `glm-5.3-flash[1m]`.
-func pickLight(models []catalog.Model) catalog.Model {
-	useIndex, usePrice := rankingSignals(models)
-	lightest := strengthKey(rankByStrength(models)[0], useIndex, usePrice)
-	for _, model := range models {
-		if strengthKey(model, useIndex, usePrice) == lightest {
-			return model
+//
+// When several models are equally light, the conversation model is passed over
+// if another of them is offered, so models that cannot be told apart (a list of
+// equally priced ids, Ollama tags such as `llama3:latest`) do not put the
+// helpers on the conversation's own model.
+func pickLight(models []catalog.Model, service modelsource.Connected, talk string) catalog.Model {
+	view := rankView(models)
+	lightest := [5]float64{}
+	for index := range models {
+		if models[index].ID == view.ranked[0].ID {
+			lightest = view.keys[index]
+			break
 		}
+	}
+	talk = strings.ToLower(stripLevel(talk))
+	first := -1
+	for index := range models {
+		if view.keys[index] != lightest {
+			continue
+		}
+		if first < 0 {
+			first = index
+		}
+		if strings.ToLower(service.Qualify(models[index].ID)) != talk {
+			return models[index]
+		}
+	}
+	if first >= 0 {
+		return models[first]
 	}
 	return models[0]
 }
@@ -436,6 +597,33 @@ func withoutVariant(id string) string {
 // Models that cannot be told apart keep the provider's own order, the first one
 // listed counting as the stronger, since providers list their flagship first.
 func rankByStrength(models []catalog.Model) []catalog.Model {
+	return rankView(models).ranked
+}
+
+// rankView is [rankByStrength] with each model's key, kept per list.
+func rankView(models []catalog.Model) rankedView {
+	if len(models) == 0 {
+		return rankedView{}
+	}
+	key := listKey{first: &models[0], n: len(models)}
+	viewMu.Lock()
+	held, ok := rankMemo[key]
+	viewMu.Unlock()
+	if ok {
+		return held
+	}
+	view := computeRank(models)
+	viewMu.Lock()
+	if len(rankMemo) > maxListMemo {
+		rankMemo = map[listKey]rankedView{}
+	}
+	rankMemo[key] = view
+	viewMu.Unlock()
+	return view
+}
+
+func computeRank(models []catalog.Model) rankedView {
+	listRanks.Add(1)
 	useIndex, usePrice := rankingSignals(models)
 	type scored struct {
 		model catalog.Model
@@ -443,8 +631,10 @@ func rankByStrength(models []catalog.Model) []catalog.Model {
 		key   [5]float64
 	}
 	rows := make([]scored, len(models))
+	keys := make([][5]float64, len(models))
 	for index, model := range models {
-		rows[index] = scored{model: model, index: index, key: strengthKey(model, useIndex, usePrice)}
+		keys[index] = strengthKey(model, useIndex, usePrice)
+		rows[index] = scored{model: model, index: index, key: keys[index]}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		for k := range rows[i].key {
@@ -458,7 +648,7 @@ func rankByStrength(models []catalog.Model) []catalog.Model {
 	for index := range rows {
 		out[index] = rows[index].model
 	}
-	return out
+	return rankedView{ranked: out, keys: keys}
 }
 
 // rankingSignals reports which published signals every model in the list
