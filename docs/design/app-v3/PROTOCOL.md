@@ -15,7 +15,10 @@ Logs go to stderr.
 The first output is `hello` with sequence 1, contract, version, process id,
 home and features. Clients check `hello.features` before using optional
 capabilities; an unavailable method answers `unknown_method`. End of input
-or `shutdown` closes the engine. `codeaf app --home <dir>` chooses its state root.
+or `shutdown` closes the engine. `codeaf app --home <dir>` chooses its state root. It moves codeaf's own state and
+its own `.codeaf/skills`, and not the person's login home, so other programs'
+skills are still read from that home; the engine records it in
+`CODEAF_LOGIN_HOME` for the processes it starts.
 
 An `uncertain` mutation may already have happened. Read its receipt or current
 state before taking further action; never blindly repeat an uncertain write.

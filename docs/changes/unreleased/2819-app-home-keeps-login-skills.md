@@ -1,0 +1,11 @@
+---
+kind: fixed
+title: codeaf app --home is a home the person keeps, not a disposable one
+pr: 2819
+surface: [app, engine, chat]
+invalidates:
+  - "Was true: under `codeaf app --home <dir>` the login home the engine read other programs' skills from followed `CODEAF_HOME`, so the desktop app looked for `<dir>/.claude/skills`, `<dir>/.codex/skills`, the Claude plugins and the other harnesses' folders and no longer imported the skills a person kept for Claude Code, Codex and the rest. Is true now: `codeaf app --home <dir>` records the person's real login home in `CODEAF_LOGIN_HOME` beside the `CODEAF_HOME` it sets, `home.Login()` answers it, and those folders, plugins and Codex's bundled skills are read from the real home exactly as a plain `codeaf app` reads them, in the engine and in the processes it starts. Codeaf's own user folder stays `<dir>/.codeaf/skills`, and the command line's `~/.codeaf/skills` is not read. A process that sets only `CODEAF_HOME` still gets that folder as its login home, so disposable runs and tests keep their quarantine."
+  - "Was true: under `codeaf app --home <dir>` a program's disposable git worktree copies were made in `<dir>/worktrees`, inside the home the person keeps and backs up, as for any moved `CODEAF_HOME`. Is true now: a home the person keeps (`home.Kept`, which `--home` sets) makes them in the account's cache folder, in a folder named for the state home, and every install's copies count when deciding whether the repository's exclude lines can come out; a home that only `CODEAF_HOME` moved, and a test, still keep them inside it."
+  - "Was true: `codeaf app --home <dir>` took effect after the legacy-folder adoption, the first witness of the state root and the crash-telemetry configuration had already read the command line's folder. Is true now: `--home` is read for `app` at the start of `main`, so those three follow the app's folder."
+  - "Was true: the unattended fence of an app run hid only the secret files of the app's own folder, leaving the command line's `~/.codeaf/config.json` and credentials readable. Is true now: the fence hides the secret files of the person's default codeaf folder too when the state home is a different one."
+---

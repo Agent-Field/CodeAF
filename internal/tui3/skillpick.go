@@ -87,8 +87,9 @@ const (
 
 // skillHomeDir is where discovery looks beside the workspace: the same login
 // home the launch's import pass reads (internal/home's Login, which follows
-// CODEAF_HOME), so the list a person picks from and the shelf a choice
-// resolves against are read out of the same folders. It is a door rather than
+// CODEAF_HOME unless the desktop app's --home kept the real home), so the list
+// a person picks from and the shelf a choice resolves against are read out of
+// the same folders. It is a door rather than
 // a call so the suite can point it at a temporary home.
 var skillHomeDir = func() string {
 	dir, err := home.Login()
@@ -422,7 +423,7 @@ func (a *app) readSkillDisk() tea.Cmd {
 		if remoteFolders {
 			found, _ = folders.SkillFolders()
 		} else {
-			found, _ = skillDiscover(skills.Options{ProjectDir: workspace, HomeDir: homeDir})
+			found, _ = skillDiscover(skills.Options{ProjectDir: workspace, HomeDir: homeDir, OwnHomeDir: home.OwnLogin(homeDir)})
 		}
 		return func(here bool) tea.Cmd {
 			if !here {

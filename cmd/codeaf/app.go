@@ -105,10 +105,8 @@ const appQuitReceiptWait = 3 * time.Second
 
 func runApp(args []string) error {
 	localGUI := consumeAppLocalGUI()
-	flags := commandFlags("app")
-	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
-	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
-	schema := flags.Bool("schema", false, "print the wire's JSON Schema, generated from its Go types, and exit")
+	names := newAppFlags()
+	flags, homeFlag, turnLong, schema := names.set, names.home, names.turnLong, names.schema
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
@@ -123,15 +121,11 @@ func runApp(args []string) error {
 		_, err = os.Stdout.Write(out)
 		return err
 	}
-	if dir := strings.TrimSpace(*homeFlag); dir != "" {
-		abs, err := filepath.Abs(dir)
-		if err != nil {
-			return err
-		}
-		if err := os.Setenv(home.EnvVar, abs); err != nil {
-			return err
-		}
+	restoreHome, homeErr := useAppHome(*homeFlag)
+	if homeErr != nil {
+		return homeErr
 	}
+	defer restoreHome()
 	if err := holdAppHome(); err != nil {
 		return err
 	}

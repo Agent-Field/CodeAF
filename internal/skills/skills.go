@@ -64,7 +64,7 @@ const (
 // by hand, so any skill a person did place by hand, in any of the hand-kept
 // folders, owns the name over them.
 var skillRoots = []string{
-	".codeaf/skills",
+	RootCodeaf,
 	".agents/skills",
 	".claude/skills",
 	".codex/skills",
@@ -86,6 +86,11 @@ var homeSkillRoots = []string{
 	".config/goose/skills",
 }
 
+// RootCodeaf is codeaf's own skills folder: the first root, and the only one
+// that belongs to codeaf and not to another harness. [Options.OwnHomeDir]
+// moves it alone.
+const RootCodeaf = ".codeaf/skills"
+
 // RootCodexSystem is the folder Codex installs its own bundled skills into.
 // It sits INSIDE .codex/skills, where the folder scan sees it as one child
 // with no SKILL.md and passes over it, so it is read as a root of its own.
@@ -99,7 +104,16 @@ const RootCodexSystem = ".codex/skills/.system"
 // directory, not any skills folder under them.
 type Options struct {
 	ProjectDir string
-	HomeDir    string
+	// HomeDir is the person's login home, where the other harnesses keep their
+	// folders, plugins and settings.
+	HomeDir string
+	// OwnHomeDir is where codeaf's own user folder, <dir>/.codeaf/skills, is
+	// read, when that is not HomeDir. The desktop app keeps codeaf's state, and
+	// the skills it installs for codeaf, in a folder of its own while the
+	// person's other programs stay in their real home; reading <HomeDir>/.codeaf
+	// there would be reading the command line's skills. Empty means HomeDir,
+	// which is every caller that does not move codeaf's own folder.
+	OwnHomeDir string
 	// OmitSize leaves every Skill.SizeBytes zero. Sizing a skill walks its
 	// whole folder, so a caller that never reads the weight — the import pass,
 	// which walks the same folders again to sign them — says so and skips a
@@ -155,13 +169,22 @@ func Discover(opts Options) ([]Skill, error) {
 	if projectDir == "" && homeDir == "" {
 		return nil, fmt.Errorf("discover skills: neither a project nor a home directory was given")
 	}
+	// own is where this base's RootCodeaf is read, and dir is where every other
+	// root is. They are one directory except in the user scope of a caller that
+	// moved codeaf's own folder (Options.OwnHomeDir), and ownOnly marks the base
+	// that exists for that folder alone.
 	type scanBase struct {
-		dir   string
-		scope string
+		dir, own string
+		scope    string
+		ownOnly  bool
 	}
-	bases := make([]scanBase, 0, 2)
+	ownDir := strings.TrimSpace(opts.OwnHomeDir)
+	if ownDir == "" {
+		ownDir = homeDir
+	}
+	bases := make([]scanBase, 0, 3)
 	if projectDir != "" {
-		bases = append(bases, scanBase{dir: absolute(projectDir), scope: ScopeProject})
+		bases = append(bases, scanBase{dir: absolute(projectDir), own: absolute(projectDir), scope: ScopeProject})
 	}
 	// The project bases come first, so collection order is precedence order:
 	// anything found under the project shadows the same name under the home,
@@ -174,7 +197,11 @@ func Discover(opts Options) ([]Skill, error) {
 	// base also matters to callers that scan only HomeDir: it remains user
 	// scope rather than becoming project scope merely by being first.
 	if homeDir != "" && absolute(homeDir) != absolute(projectDir) {
-		bases = append(bases, scanBase{dir: absolute(homeDir), scope: ScopeUser})
+		bases = append(bases, scanBase{dir: absolute(homeDir), own: absolute(ownDir), scope: ScopeUser})
+	} else if homeDir != "" && absolute(ownDir) != absolute(projectDir) {
+		// The home folded into the project, but codeaf's own folder is not the
+		// project's: it is still a user skill folder, and still owed a read.
+		bases = append(bases, scanBase{own: absolute(ownDir), scope: ScopeUser, ownOnly: true})
 	}
 
 	// The plugin registry is read once for both scopes: it lives under the
@@ -219,7 +246,16 @@ func Discover(opts Options) ([]Skill, error) {
 	for _, base := range bases {
 		scope := base.scope
 		for _, root := range skillRoots {
-			collect(filepath.Join(base.dir, root), root, scope, "")
+			folder := base.dir
+			if root == RootCodeaf {
+				folder = base.own
+			} else if base.ownOnly {
+				continue
+			}
+			collect(filepath.Join(folder, root), root, scope, "")
+		}
+		if base.ownOnly {
+			continue
 		}
 		// The home-only folders follow the shared ones in whichever base IS
 		// the home directory: the user scope, or the project scope when codeaf

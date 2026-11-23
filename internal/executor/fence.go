@@ -55,6 +55,11 @@ type FenceOptions struct {
 	// CodeafHome is codeaf's own folder (CODEAF_HOME), whose secret files are
 	// hidden; "" hides none of them.
 	CodeafHome string
+	// OtherCodeafHomes are further codeaf folders on this machine whose secret
+	// files are hidden too: the person's own default folder when this run's
+	// state lives in another one, as the desktop app's does, so the command
+	// line's keys and sign-ins stay out of reach of the app's unattended runs.
+	OtherCodeafHomes []string
 	// StateDir is where the job's own temp and cache folders are made, one
 	// pair per checkout. It must not be inside a hidden folder.
 	StateDir string
@@ -306,11 +311,14 @@ func NewFence(opts FenceOptions) (*Fence, error) {
 			hidden = append(hidden, filepath.Join(home, rel))
 		}
 	}
-	if opts.CodeafHome != "" {
-		if entries, err := os.ReadDir(opts.CodeafHome); err == nil {
+	for _, dir := range append([]string{opts.CodeafHome}, opts.OtherCodeafHomes...) {
+		if dir == "" {
+			continue
+		}
+		if entries, err := os.ReadDir(dir); err == nil {
 			for _, e := range entries {
 				if codeafSecretFile.MatchString(e.Name()) {
-					hidden = append(hidden, filepath.Join(opts.CodeafHome, e.Name()))
+					hidden = append(hidden, filepath.Join(dir, e.Name()))
 				}
 			}
 		}
