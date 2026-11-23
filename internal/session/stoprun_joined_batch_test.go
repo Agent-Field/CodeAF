@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -150,5 +151,72 @@ func TestStoppingBatchConcurrentlyNeverSaysAlreadyFinishedForJoined(t *testing.T
 		agent.beltMu.Lock()
 		defer agent.beltMu.Unlock()
 		return agent.beltRun == nil
+	})
+}
+
+// A JOINED STOP THAT LOSES THE RACE TO ITS RUN'S STOP IS ANSWERED, NOT REFUSED.
+// The stop reads the joined task open and the run's StopRoot ends it before the
+// stop's own cancel is written, so the store refuses that cancel. The refusal
+// is taken from the store itself here (the race's window is too narrow to hit
+// on demand), so the answer is tied to what the store really says, and it must
+// be the sentence an ended task earns, never an error and never "already
+// finished" over work the run's stop killed.
+func TestJoinedStopRefusedByTheStoreForAnEndedTaskIsAnswered(t *testing.T) {
+	open := func(t *testing.T) (*plandb.Store, *beltRun) {
+		t.Helper()
+		store, err := OpenRunPlan(t.TempDir(), "task C", "the run's own brief")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { store.Close() })
+		if _, err := store.AddMany([]plandb.TaskSpec{{ID: "72", Title: "task D", Description: "its own words"}}); err != nil {
+			t.Fatal(err)
+		}
+		return store, &beltRun{store: store, root: store.RootID(), row: 71, title: "task C", joined: []uint64{72}}
+	}
+	name := taskStopName(72, "task D")
+
+	t.Run("the run's stop wrote first", func(t *testing.T) {
+		store, run := open(t)
+		if err := store.StopRoot(stopBecause(taskStoppedWord, "")); err != nil {
+			t.Fatal(err)
+		}
+		_, refused := store.Cancel("72", stopBecause(taskStoppedWord, ""))
+		if refused == nil {
+			t.Fatal("the store let a second cancel through; the race this guards no longer exists")
+		}
+		line, lost := joinedStopLostTheRace(run, "72", name, refused)
+		if !lost || strings.Contains(line, "already finished") || !strings.Contains(line, "already stopped") {
+			t.Fatalf("a stop that lost the race to the run's stop answered %q (answered=%t), want an \"already stopped\" sentence", line, lost)
+		}
+	})
+
+	t.Run("the task ended on its own", func(t *testing.T) {
+		store, run := open(t)
+		if _, err := store.Cancel("72", "hand-off retired"); err != nil {
+			t.Fatal(err)
+		}
+		_, refused := store.Cancel("72", stopBecause(taskStoppedWord, ""))
+		if refused == nil {
+			t.Fatal("the store let a second cancel through")
+		}
+		line, lost := joinedStopLostTheRace(run, "72", name, refused)
+		if !lost || !strings.Contains(line, "already finished") {
+			t.Fatalf("a stop on a task that ended on its own answered %q (answered=%t), want \"already finished\"", line, lost)
+		}
+	})
+
+	t.Run("a refusal that is not an ended task is handed back", func(t *testing.T) {
+		_, run := open(t)
+		if line, lost := joinedStopLostTheRace(run, "72", name, errors.New("disk full")); lost {
+			t.Fatalf("an unrelated store error was swallowed as %q", line)
+		}
+		if line, lost := joinedStopLostTheRace(run, "72", name, nil); lost {
+			t.Fatalf("a nil error was answered as %q", line)
+		}
+		// A still-open task whose error text merely matches is not ours.
+		if line, lost := joinedStopLostTheRace(run, "72", name, errors.New(`task "72" is already terminal`)); lost {
+			t.Fatalf("a still-open task was answered as ended: %q", line)
+		}
 	})
 }
