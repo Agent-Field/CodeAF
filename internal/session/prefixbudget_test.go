@@ -329,15 +329,20 @@ func widestLoadOrder(config Config) []string {
 }
 
 // widestLoadGroups is the one reading both share, so the schema and the
-// sentence can never name two different sets of groups.
+// sentence can never name two different sets of groups. It reads THIS SHAPE'S
+// shelf ([Config.capabilityShelf]) and not the shipped table alone: a lean belt
+// shelves four groups more (tasks, watching, memory, documents), and the live
+// loader names them, so leaving them out would weigh the lean enum lighter than
+// the belt it describes.
 func widestLoadGroups(config Config) ([]string, map[string][]string) {
 	prearmed := map[string]bool{}
 	for _, group := range config.prearmedGroups() {
 		prearmed[group] = true
 	}
-	order := make([]string, 0, len(capabilityGroups))
-	members := make(map[string][]string, len(capabilityGroups))
-	for _, group := range capabilityGroups {
+	shelf := config.capabilityShelf()
+	order := make([]string, 0, len(shelf))
+	members := make(map[string][]string, len(shelf))
+	for _, group := range shelf {
 		if prearmed[group.name] {
 			continue
 		}

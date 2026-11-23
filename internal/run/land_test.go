@@ -179,6 +179,10 @@ func TestLandLeavesOutUntrackedBuildCachesOnly(t *testing.T) {
 	// about the repository's rules, so it is read with no others.
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	// With no global config git falls back to its default excludes file,
+	// $XDG_CONFIG_HOME/git/ignore (or ~/.config/git/ignore), so that is
+	// pointed at an empty folder too.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	repo := t.TempDir()
 	runGit(t, repo, "init")
 	runGit(t, repo, "checkout", "-b", "work")

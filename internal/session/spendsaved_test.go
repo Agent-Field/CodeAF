@@ -232,4 +232,12 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 		int(captures.Load()) != len(figures) {
 		t.Fatalf("concurrent stamps saved %+v and said %v after %d captures, want .25 then .375 once or twice", meta, figures, captures.Load())
 	}
+	// The two reads above checked the first two captures. A third (the writer
+	// performing once more for what was owed while it ran) is queued in the
+	// buffer, and it must be the latest meter taken inside the stamp lock too.
+	for len(captured) > 0 {
+		if extra := <-captured; extra.spent != .375 || !extra.locked {
+			t.Fatalf("extra capture = %+v; want .375 with the stamp lock held", extra)
+		}
+	}
 }
