@@ -13,7 +13,11 @@ type OrgCanvas struct {
 	Shares    []Share         `json:"shares,omitempty"`
 	Private   bool            `json:"private,omitempty"`
 	CreatedBy string          `json:"created_by"`
-	CreatedAt time.Time       `json:"created_at"`
+	// PolicyPrivate keeps an explicitly configured creation default inside a workstream.
+	PolicyPrivate bool `json:"policy_private,omitempty"`
+	// AgentCreated retains the sponsor as owner when the canvas is in a workstream.
+	AgentCreated bool      `json:"agent_created,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 	// UpdatedBy is the handle of whoever wrote it last.
 	UpdatedBy string `json:"updated_by,omitempty"`
 	// FromLocal is "<handle>/<local id>" for a canvas a person moved in from
