@@ -14,6 +14,8 @@ Use **New chat** in the Chats header to open a private conversation. What you an
 
 Afi's pane is private to you on a Personal workstream. On an organization, read its header: "Private to you" means the server keeps your conversation apart; "Everyone in <workstream> sees this" means an older server keeps a shared conversation. Anything on a task or a file is shared.
 
+On an organization's server, the owner of a chat can later share it read only with someone or move it to another workstream or back to My space, and the operator's policy can make new chats visible beyond the owner; none of that happens unless someone does it. "Sharing and moving in an organization" says how.
+
 ## the Chats tab — Waiting on you, Working, Resting, New chat
 
 The Chats tab lists your own chats as rows with one grey preview line, grouped in **Waiting on you**, **Working**, then **Resting**. The newest three resting chats show; the rest fold under "N earlier". Open a row to read or answer in the conversation. New chat is in the header and opens a chat with its own box. The list has only Afi's box, never a second box for starting chats.

@@ -3952,6 +3952,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
 		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
 		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
+		// Sharing and moving inside an organization: roles, grants, the
+		// operator's policy, a shared chat read-only, move against share, an
+		// expiry, and Afi's pane and a task's conversation as sessions.
+		{"can I share a chat with a teammate so they can read it", "organization-sharing"},
+		{"what is the difference between the view comment edit and full roles", "organization-sharing"},
+		{"who can change the organization's sharing rules", "organization-sharing"},
+		{"does the operator see a chat I shared with only one person", "organization-sharing"},
+		{"can the person I shared my chat with type into it", "organization-sharing"},
+		{"is moving a chat the same as sharing it", "organization-sharing"},
+		{"move my chat from my space into a workstream", "organization-sharing"},
+		{"why can't I move a chat that is answering me", "organization-sharing"},
+		{"can I give someone access until a date, and what happens when it ends", "organization-sharing"},
+		{"can I share my Afi pane with someone in the organization", "organization-sharing"},
+		{"what is a grant on a workstream and who may add one", "organization-sharing"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

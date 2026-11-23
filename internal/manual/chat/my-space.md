@@ -34,7 +34,7 @@ In My space, a document's or file's menu has **Move to workstream…**: pick one
 
 A note says "Moved to Pantry" with **Undo** for 10 seconds; Undo brings it back into My space. The workstream's Decisions keep one line, "Priya moved “Launch plan” in from their space", and Undo withdraws it. After the note has gone, only whoever looks after that workstream can move the file out to a space again; you are told "moving a file back to your space once its Undo has gone needs whoever looks after this workstream".
 
-A chat never moves: it stays private. What the chat made does move.
+A chat is not moved with a file's **Move to workstream…**: what a chat made moves that way, and the chat itself moves only as "Moving a chat between My space and a workstream" says, by its owner.
 
 ## What My space cannot do yet
 
