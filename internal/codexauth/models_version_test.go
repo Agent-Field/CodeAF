@@ -35,7 +35,7 @@ func TestCatalogVersionExposesNewModelsThroughBothDoors(t *testing.T) {
 				}
 				// The backend fixture pins the released version independently of
 				// clientVersion, so restoring the old advertisement hides the row.
-				if r.URL.Query().Get("client_version") == "0.162.1" {
+				if r.URL.Query().Get("client_version") == "0.167.0" {
 					rows = append(rows, map[string]any{
 						"slug": "new-model", "visibility": "list", "context_window": 272000,
 						"supported_reasoning_levels": []map[string]string{{"effort": "high"}},
