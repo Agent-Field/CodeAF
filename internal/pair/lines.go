@@ -158,8 +158,14 @@ func CheckQuestion(check string) string {
 	return "Check number " + check + ". Approve only if the new device shows the same number."
 }
 
+// PairedControlLine tells the approving person that a newly paired computer can
+// view and type into chats on this computer and where to change that permission.
+func PairedControlLine(name string) string {
+	return name + " can also see and control your chats here. Change that in /devices."
+}
+
 // ApprovedLine is what the approving device says when it let one in.
-func ApprovedLine(name string) string { return name + " is now paired. Your chats can continue there." }
+func ApprovedLine(name string) string { return name + " is now paired. " + PairedControlLine(name) }
 
 // RecordUnsaidLine is what a device says when its own record did not reach the
 // directory after a pairing that itself worked: the pairing stands, and the
