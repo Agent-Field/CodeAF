@@ -537,6 +537,31 @@ func TestATaskNamingAFolderItDoesNotStandInIsRefused(t *testing.T) {
 	}
 }
 
+// A ROUTE IN A CONTRACT IS A ROUTE, not a folder. A web task says what it
+// delivers as `/top` or `/links`, and none of those is a folder this work
+// could stand in outside its ground: the first component along the path is not
+// a directory on this machine, so the ground lint reads it as a name the
+// deliverable is written down as, exactly as it reads a path on another
+// machine. The refusal cites no such folder, and the task starts.
+func TestARouteInTheContractIsNotAFolder(t *testing.T) {
+	repo := newTestRepo(t)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+	})
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "top links page", Summary: "s", Brief: "Add a page listing the most clicked links.",
+		Deliverable: "a GET /top handler and its test",
+		Acceptance:  "GET /top returns 200 and lists links by clicks; POST /links still returns 201",
+	})
+	result, isError, err := agent.proposeTask(context.Background(), arguments)
+	if err != nil {
+		t.Fatalf("proposeTask errored the turn: %v", err)
+	}
+	if isError {
+		t.Fatalf("refused: %q", result)
+	}
+}
+
 // A COMMAND IN THE WORKING DIRECTORY IS NOT A FOLDER AT THE ROOT OF THE MACHINE.
 //
 // A live run wrote `./slow-build.sh` in its acceptance and no ground at all, and
