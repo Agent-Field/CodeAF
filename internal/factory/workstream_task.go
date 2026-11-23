@@ -297,7 +297,7 @@ type TaskAsk struct {
 	CoveredBy *PersonRef `json:"covered_by,omitempty"`
 }
 
-// TaskAnswered is one answer given to a reversible Ask, kept on the task so
+// TaskAnswered is one answer given to a reversible Ask or a person's Ask, kept on the task so
 // whoever gave it can undo it (TaskPatch.UndoAnswer): the Ask as it was, the
 // answer, who gave it and when, and the decision it kept.
 type TaskAnswered struct {
@@ -307,6 +307,14 @@ type TaskAnswered struct {
 	By       PersonRef `json:"by"`
 	At       string    `json:"at"`
 	Decision string    `json:"decision,omitempty"`
+}
+
+// AskFromPerson is whether a person raised a, not an agent, Afi or the
+// factory. Its answer can be undone like a reversible Ask's ([TaskAnswered]).
+// The invite chase and the can't-do Ask are not: their answers move the task
+// to someone else, which an undo does not move back.
+func AskFromPerson(a TaskAsk) bool {
+	return a.By != nil && a.By.Kind == TaskByPerson && !IsInviteChaseAsk(a) && !IsCantDoAsk(a)
 }
 
 // TaskUndoableMost is how many answers a task keeps to undo; the oldest goes
@@ -1428,7 +1436,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	}
 	if id := strings.TrimSpace(p.UndoAnswer); id != "" {
 		// UNDO AN ANSWER (OWNER-DECISIONS 2026-11-17 §13): only a reversible
-		// Ask's answer, only by whoever gave it, and only while the task is
+		// Ask's answer (or a person's Ask's, [AskFromPerson]), only by whoever gave it, and only while the task is
 		// not done (a done task is sent back instead). The Ask opens again
 		// as it was asked, the task waits on it, and its decision is withdrawn.
 		k := slices.IndexFunc(t.Undoable, func(x TaskAnswered) bool { return x.Ask.ID == id })
@@ -1779,9 +1787,11 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 	if kept {
 		ch.Decisions = append(ch.Decisions, d)
 	}
-	if ask.Reversible && t.State != TaskDone {
+	if (ask.Reversible || AskFromPerson(ask)) && t.State != TaskDone {
 		// A REVERSIBLE ASK'S ANSWER CAN BE UNDONE FROM ITS TASK: kept here
 		// with the decision it made, so the undo withdraws exactly that one.
+		// So can the answer to a person's question: it lets nothing happen by
+		// itself, it only tells them, so a slip is taken back before they act.
 		keep := TaskAnswered{Ask: ask, Option: option, Answer: strings.Join(nonEmpty(chose, words), " · "), By: who, At: stamp}
 		if kept {
 			keep.Decision = d.ID
