@@ -252,7 +252,9 @@ func (a *app) setupProvidersFrame(width, height int) ([]string, int, int) {
 	}
 	body = append(body, "")
 	hits := []setupProviderHit{}
-	for at := range rows {
+	// Keep the selected provider visible when the catalog exceeds the height.
+	first := max(0, a.setup.providerAt-height+1)
+	for at := first; at < min(len(rows), first+height); at++ {
 		mark, ink := "  ", a.pal.dim
 		if at == a.setup.providerAt {
 			mark, ink = setupLead, a.pal.ink
