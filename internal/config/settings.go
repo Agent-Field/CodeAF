@@ -1264,6 +1264,9 @@ var OperatorEnvPins = []string{
 	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
 	// tests. It is test plumbing, never a preference.
 	"CODEAF_GITHUB_LOGIN_URL",
+	// CODEAF_GITHUB_MCP_URL points GitHub's hosted tool server at a stand-in
+	// for tests (internal/connect's github.go). It is test plumbing too.
+	"CODEAF_GITHUB_MCP_URL",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",

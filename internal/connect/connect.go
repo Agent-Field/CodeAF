@@ -255,6 +255,9 @@ type Manager struct {
 	store *store
 	creds map[string]ClientCredential
 	plugs []Plug
+	// github is how GitHub is reached, nil until [Manager.UseGitHub]. GitHub
+	// is not offered without it (github.go).
+	github *GitHubDoors
 }
 
 // NewManager opens the store under profileDir and binds it to the credentials
@@ -306,6 +309,13 @@ func (m *Manager) Services() []Status {
 			continue
 		}
 		status := Status{Service: service}
+		if service.ID == GitHubID {
+			if record, ok := m.githubStanding(); ok {
+				status.Connected, status.Account = true, record.Account
+			}
+			out = append(out, status)
+			continue
+		}
 		if record, ok := entries[service.ID]; ok && record.usable() && record.covers(service.Scopes) {
 			status.Connected = true
 			status.Account = record.Account
@@ -326,6 +336,11 @@ func (m *Manager) offered(service Service) bool {
 	// SEAM(mcp): a service that introduces itself to its vendor at connect time
 	// has no client credential for a build to be missing, so it is offered in
 	// every build. See mcp.go's registersItself.
+	if service.ID == GitHubID {
+		// GITHUB IS OFFERED WHERE IT CAN BE KEPT: the doors over the Factory's
+		// own token are what connecting it means (github.go).
+		return m.github != nil
+	}
 	return service.Auth == AuthKey || registersItself(service) || m.creds[service.ID].ok()
 }
 
@@ -355,6 +370,9 @@ func (m *Manager) standing(p Plug) (stored, bool) {
 	if !m.offered(service) {
 		return stored{}, false
 	}
+	if service.ID == GitHubID {
+		return m.githubStanding()
+	}
 	record, ok, err := m.store.get(service.ID)
 	if err != nil || !ok || !record.usable() || !record.covers(service.Scopes) {
 		return stored{}, false
@@ -373,6 +391,12 @@ func (m *Manager) Disconnect(id string) error {
 	plug, err := m.plug(id)
 	if err != nil {
 		return err
+	}
+	if plug.Service().ID == GitHubID {
+		if !m.offered(plug.Service()) {
+			return nil
+		}
+		return m.disconnectGitHub(context.Background())
 	}
 	if err := m.store.remove(plug.Service().ID); err != nil {
 		return fmt.Errorf("disconnect %s: %w", plug.Service().Name, err)

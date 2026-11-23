@@ -2896,13 +2896,17 @@ The optional `plugins` hello feature enables these methods. They use
 | `plugins.connect_browser` | `in.PluginBrowserParams` | `PluginBrowserResult` |
 | `plugins.cancel` | `in.PluginID` | `Empty` |
 | `plugins.connect_key` | `in.PluginKeyParams` | `PluginKeyResult` |
+| `plugins.connect_local` | `in.PluginID` | `PluginKeyResult` |
 | `plugins.set_capability` | `in.PluginCapabilityParams` | `Empty` |
 | `plugins.disconnect` | `in.PluginDisconnectParams` | `Empty` |
 
 `plugins.list` returns `{plugins, providers, featured, featured_words}`.
 Each plugin has `id, name, kind, category, blurb, connected, key_checkable`, and optionally
 `account, key_env, expired, connected_at, key_saved_at, ask: {label, answers?},
-key_hint: {words, url?}`.
+key_hint: {words, url?}, also_key, local_login: {account, source}`.
+`also_key: true` marks a `browser` plugin that ALSO accepts `plugins.connect_key`.
+`local_login` is present when a login already on this computer can be adopted
+with `plugins.connect_local`; `source` is `gh`.
 Kind is `browser`, `key` or `server`. Category uses the catalog's spelling.
 `key_checkable` is true only for key connectors with a catalog probe.
 Blurb shortens the existing catalog words. Counts come from the returned
@@ -2948,7 +2952,10 @@ Connected servers' `tools` come from the existing MCP listing, as
 its `covers` text.
 
 `plugins.connect_browser {id, answer?}` answers
-`{state: "waiting", link}`. The desk opens `link` in the browser.
+`{state: "waiting", link, code?}`. The desk opens `link` in the browser.
+`code` is a device sign-in's one-time code (GitHub's): the sheet shows it
+with a copy control and an open-the-page button, and does not open `link`
+before the code is on screen.
 Completion emits `plugins.changed`; `error` carries a safe sign-in failure.
 `plugins.cancel {id}` abandons an unfinished attempt. Closing the engine
 also cancels pending attempts.
@@ -2961,8 +2968,42 @@ It returns `{checked: bool, account?}` on success, or
 catalog probe returns false and is first tested on real use.
 A shape failure reaches no vendor, a refusal retains at most 120 characters,
 and a missing answer saves nothing. Key values never appear in replies.
+`plugins.connect_local {id}` adopts the login named by `local_login` and
+answers in `connect_key`'s shape: `{checked: true, account}`, or
+`{checked: false, error, words}`.
 `plugins.disconnect {id, account?}` uses the existing disconnect path.
 The optional account must match the stored account.
+
+### GitHub
+
+The `plugins_github` hello feature says this engine lists `github` and serves
+`plugins.connect_local`; an engine without it does not list GitHub at all.
+GitHub is featured first, category `developer`. Its `kind` is `browser` with
+`also_key: true` when the build names the GitHub OAuth app (device flow,
+scope `repo`), and `key` when it does not. `key_hint.url` is
+`https://github.com/settings/tokens/new?scopes=repo&description=codeaf`.
+`local_login` appears when `gh auth status` reports a login GitHub accepts;
+codeaf reads gh's token only after `plugins.connect_local`.
+
+`plugins.connect_browser {id: "github"}` answers
+`{state: "waiting", link: "https://github.com/login/device", code}`. The
+engine polls GitHub at its pace; approval emits `plugins.changed {id}`, and an
+expired or declined code emits `plugins.changed {id, error}` with a sentence
+("The code expired before it was approved. Start again for a new code." or
+"GitHub sign-in was declined, so nothing was connected."). `plugins.cancel`
+stops polling. `plugins.connect_key` checks a pasted token with `GET /user`;
+a refused token is `refused`, an unanswered check `no_answer`.
+
+THERE IS ONE GITHUB TOKEN. Every way in keeps it where the Factory keeps its
+GitHub connection (the profile's `github_token` or the yes to gh, and in app
+mode the app's keychain through `credentials.changed`), so connecting in Factory
+setup shows GitHub connected here, a setup connect also emits
+`plugins.changed {id: "github"}`, and `plugins.disconnect {id: "github"}`
+disconnects the Factory too. `plugins.describe` reads capabilities from
+GitHub's hosted tool server (`https://api.githubcopilot.com/mcp/`, with the
+token as a bearer): reads default to yes, acts to ask. `accounts` is the
+GitHub login, and `notes` says the Factory uses this connection while this
+app serves or joins the local Factory.
 
 `settings.set` accepts `when_plan_paused: {[provider]: policy}`, where policy
 is `wait` or `use pay-as-you-go`. It changes the existing persisted source
