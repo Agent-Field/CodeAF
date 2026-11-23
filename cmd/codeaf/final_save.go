@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -174,6 +176,7 @@ func recordFinalSaveFailure(err error) {
 	if err == nil {
 		return
 	}
+	logFinalSaveFailure(err)
 	finalSaving.Lock()
 	defer finalSaving.Unlock()
 	if errors.Is(err, session.ErrSavingUnanswered) {
@@ -193,6 +196,62 @@ func recordFinalSaveFailure(err error) {
 		!unanswered && unsavedTranscript(finalSaving.failure) == "" && unsavedTranscript(err) != "" {
 		finalSaving.failure = err
 	}
+}
+
+// loggedFinalSaves holds the failures already written to the chat log, so a
+// failure that reaches the quit by two roads is written once.
+var loggedFinalSaves struct {
+	sync.Mutex
+	seen map[string]bool
+}
+
+// logFinalSaveFailure writes the cause of a final-save failure to the chat log,
+// once, with the transcript it names. THE SENTENCE A PERSON READS SAYS ONLY THAT
+// A CHAT COULD NOT BE SAVED; the cause was nowhere, so a sentence that was wrong
+// could not be traced (a window that only showed a chat printed it, and no log
+// held the reason). It appends to the same file the surface's logger writes to
+// and never to the terminal, because this runs after the screen is restored and
+// an upload that is only waiting for the relay is recorded here too.
+func logFinalSaveFailure(err error) {
+	line := fmt.Sprintf("quit: final save failure (transcript %s): %v", unsavedTranscriptOrNone(err), err)
+	if !firstFinalSaveLogging(line) {
+		return
+	}
+	path := chatLogPath(config.ProfileDir())
+	if mkdir := os.MkdirAll(filepath.Dir(path), 0o755); mkdir != nil {
+		return
+	}
+	file, openErr := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if openErr != nil {
+		return
+	}
+	defer file.Close()
+	fmt.Fprintf(file, "%s %s\n", time.Now().Format("2006/01/02 15:04:05"), line)
+}
+
+// firstFinalSaveLogging records line and reports whether it had not been seen.
+// It is its own function so the lock is released by a defer, which is the law
+// for every critical section in the guarded tree.
+func firstFinalSaveLogging(line string) bool {
+	loggedFinalSaves.Lock()
+	defer loggedFinalSaves.Unlock()
+	if loggedFinalSaves.seen[line] {
+		return false
+	}
+	if loggedFinalSaves.seen == nil {
+		loggedFinalSaves.seen = map[string]bool{}
+	}
+	loggedFinalSaves.seen[line] = true
+	return true
+}
+
+// unsavedTranscriptOrNone is the transcript a failure names, or "none" when the
+// failure carries no location.
+func unsavedTranscriptOrNone(err error) string {
+	if transcript := unsavedTranscript(err); transcript != "" {
+		return transcript
+	}
+	return "none"
 }
 
 // unsavedTranscript reads only the typed location supplied by the writer.
