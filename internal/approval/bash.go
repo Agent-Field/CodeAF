@@ -428,7 +428,10 @@ func recursiveRemoveHit(command string) (string, bool) {
 				targets = append(targets, word)
 			case word == "--":
 				options = false
-			case word == "--recursive":
+			case len(word) > 2 && strings.HasPrefix("--recursive", word):
+				// GNU rm takes any unambiguous prefix of a long option, and
+				// `--r` is only ever --recursive, so `--rec` and `--recurs`
+				// are the same flag.
 				recursive = true
 			case strings.HasPrefix(word, "--"):
 			case strings.HasPrefix(word, "-") && len(word) > 1:
