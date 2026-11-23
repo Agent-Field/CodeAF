@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -182,6 +183,42 @@ func TestAListingProbeConnectsAndCountsModels(t *testing.T) {
 	requests := server.Requests()
 	if len(requests) != 1 || requests[0].Bearer != "Bearer sk-direct-1234567890" {
 		t.Fatalf("requests = %+v", requests)
+	}
+}
+
+// OPENCODE GO IS A PLAN WITH ONE ROAD. The saved door is what tells the crew
+// the account bills as a subscription, so a one-door connection must persist it
+// even though the listing check has no second road to choose between.
+func TestOneDoorPlanPersistsItsDoorAndRoutesAsAPlan(t *testing.T) {
+	t.Setenv("OPENCODE_API_KEY", "")
+	server := sourcestub.New("glm-5.3", "kimi-k3")
+	defer server.Close()
+	source := vendoredSource(t, "opencode-go")
+	source.Address = server.URL()
+	source.Doors[0].Address = server.URL()
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{
+		ID: source.ID, Written: source.Written, Key: "oc_sk_opencode-0123456789abcdef", Order: 1,
+	}, source, nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeConnected || !outcome.Listed || outcome.Models != 2 {
+		t.Fatalf("connect = %+v, %v", outcome, err)
+	}
+	rows := PersistedSources(dir)
+	if len(rows) != 1 || rows[0].Door != "go" {
+		t.Fatalf("persisted rows = %+v", rows)
+	}
+	connected, ok := ResolveSources(dir, "", DefaultBaseURL).ByID("opencode-go")
+	if !ok || connected.Door.ID != "go" || connected.Door.Metered {
+		t.Fatalf("resolved connection = %+v, found=%t", connected, ok)
+	}
+	var provider CrewProvider
+	for _, p := range CrewProvidersAt(dir) {
+		if p.ID == "opencode-go" {
+			provider = p
+		}
+	}
+	if provider.Kind != crewroute.Plan || provider.Written != "opencode-go" {
+		t.Fatalf("crew provider = %+v, want the Go plan", provider)
 	}
 }
 

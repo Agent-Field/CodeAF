@@ -1,0 +1,11 @@
+harness,version,source_revision,release_published_at_utc,source_url
+senior-dev,v0.5.0,dd0fcc654a4a77b4cbf6beae27e6af1cfe4e4c28,2026-09-30T02:08:08Z,https://github.com/Agent-Field/CodeAF/releases/tag/v0.5.0
+mini-swe-agent,2.4.6,a83fcae82d2a08f0ee0c688f9d137b3566c097f8,2026-07-23T03:12:33Z,https://github.com/SWE-agent/mini-swe-agent/releases/tag/v2.4.6
+codex,0.154.0,6b9826e3aa83b1a5947db50f4332cb9c65f1b340,2026-09-09T22:35:38Z,https://github.com/openai/codex/releases/tag/rust-v0.154.0
+pi,0.85.1,d981de1229ef899957bbe968bc8dcda02a21f477,2026-09-05T12:29:01Z,https://github.com/earendil-works/pi/releases/tag/v0.85.1
+omp,18.1.17,3b3a6dc9bbd85102ce19d0b1c11bf6870915f6ec,2026-09-10T19:33:46Z,https://github.com/can1357/oh-my-pi/releases/tag/v18.1.17
+opencode,1.18.30,3104c1428ec91f809e5ab86631300de41eb6952e,2026-09-09T03:34:27Z,https://github.com/anomalyco/opencode/releases/tag/v1.18.30
+kilo,7.6.2,3d04228b6a642acb3daf68a649269618b6018250,2026-09-10T17:39:12Z,https://github.com/Kilo-Org/kilocode/releases/tag/v7.6.2
+deepseek-harness,0.1.5-rc.1,,2026-09-10T03:09:00Z,https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.1.5-rc.1
+claude-code,2.1.267,,2026-09-09T19:58:14Z,https://github.com/anthropics/claude-code/releases/tag/v2.1.267
+muse-code,1.1.1-R2514.1,,,

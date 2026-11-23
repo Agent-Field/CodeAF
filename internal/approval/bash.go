@@ -347,6 +347,13 @@ func criticalHit(command string, segments []string) (string, bool) {
 	if globMatch(forkBomb, stripSpace(command)) {
 		return ":(){:|:&};:", true
 	}
+	// THE PERSON'S NO HOLDS FOR THE ACT, NOT FOR ONE SPELLING OF IT. The table
+	// below matches text, and every `rm` entry in it spells `rm -rf /`, so a
+	// model refused that line ran `rm -r /tmp/victim` one call later and was
+	// never asked (#2813). The table still answers first, so a line it already
+	// catches keeps the rule it has always been reported under (`rm -rf /` is
+	// `rm -rf /`). Only what it misses is then read the way the shell reads it —
+	// quotes stripped, flags in any spelling, a path-qualified `rm`.
 	candidates := make([]string, 0, len(segments)+1)
 	candidates = append(candidates, command)
 	candidates = append(candidates, segments...)
@@ -361,7 +368,7 @@ func criticalHit(command string, segments []string) (string, bool) {
 			}
 		}
 	}
-	return "", false
+	return recursiveRemoveHit(command)
 }
 
 // normalizeCritical flattens the spellings that would otherwise let a critical
@@ -381,6 +388,85 @@ func normalizeCritical(command string) string {
 		}
 		normalized = strings.TrimSpace(rest)
 	}
+}
+
+// The two names a recursive delete is reported under. They are the table's
+// own spellings, so the rule a person reads on the card is a line they can find
+// in the manual: an absolute or home path is the `rm -rf /*` they were already
+// asked about, and a bare `*` is the `rm -rf *` the manual has always promised.
+const (
+	criticalRemoveRoot = "rm -rf /*"
+	criticalRemoveAll  = "rm -rf *"
+)
+
+// recursiveRemoveHit reports a recursive `rm` aimed at a target whose loss
+// cannot be taken back: an absolute path, the home folder (`~`, `$HOME`,
+// `${HOME}`), or a bare `*` that empties the folder it runs in.
+//
+// IT GRADES THE ACT AND NOT THE FLAGS. `-r`, `-R` and `--recursive` are one
+// flag, clustered (`-rf`, `-fR`) or split (`-r -f`), with or without `-f`, and
+// after `--` every word is a target. The words come from [CommandWords], so a
+// quoted path is the path, and a leading `sudo`, `env` or `/bin/rm` reads as the
+// `rm` it runs ([unwrap], [commandBase]).
+//
+// A RELATIVE TARGET IS NOT GRADED. `rm -rf build` and `rm -r ./tmp/x` are the
+// ordinary cleanup of a project, and a floor that asked about them would be
+// pressed through without reading. The table is a floor and not a sandbox:
+// `find -delete` and a script that removes a tree are the policy's job, and the
+// sentence the model reads after a no is what covers those ([consent.go]).
+func recursiveRemoveHit(command string) (string, bool) {
+	for _, words := range CommandWords(command) {
+		words = unwrap(words, map[string]string{}, CredentialScope{})
+		if len(words) == 0 || commandBase(words[0]) != "rm" {
+			continue
+		}
+		recursive, options := false, true
+		var targets []string
+		for _, word := range words[1:] {
+			switch {
+			case !options:
+				targets = append(targets, word)
+			case word == "--":
+				options = false
+			case len(word) > 2 && strings.HasPrefix("--recursive", word):
+				// GNU rm takes any unambiguous prefix of a long option, and
+				// `--r` is only ever --recursive, so `--rec` and `--recurs`
+				// are the same flag.
+				recursive = true
+			case strings.HasPrefix(word, "--"):
+			case strings.HasPrefix(word, "-") && len(word) > 1:
+				if strings.ContainsAny(word[1:], "rR") {
+					recursive = true
+				}
+			default:
+				targets = append(targets, word)
+			}
+		}
+		if !recursive {
+			continue
+		}
+		for _, target := range targets {
+			if hit := removeTargetHit(target); hit != "" {
+				return hit, true
+			}
+		}
+	}
+	return "", false
+}
+
+// removeTargetHit names the table entry one delete target falls under, or ""
+// for a target this floor leaves to the policy.
+func removeTargetHit(target string) string {
+	switch {
+	case target == "*":
+		return criticalRemoveAll
+	case strings.HasPrefix(target, "/"),
+		target == "~", strings.HasPrefix(target, "~/"),
+		target == "$HOME", strings.HasPrefix(target, "$HOME/"),
+		target == "${HOME}", strings.HasPrefix(target, "${HOME}/"):
+		return criticalRemoveRoot
+	}
+	return ""
 }
 
 func stripSpace(text string) string {
