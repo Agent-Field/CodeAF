@@ -1,51 +1,21 @@
 package manual
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 )
 
-// The chat manual's words for two things changed on 2026-11-23, and these are
-// the contract lines a person can watch hold:
-//
-//   - The act of carrying a chat from another computer to this one is "Move
-//     here". No page offers "Continue here".
-//   - The manual still answers somebody who remembers the old label: one
-//     heading holds both the new words and the old ones, and a question in the
-//     old words reaches it.
-//   - "sync service" is gone. The server is "the relay", and "relay" names only
-//     that server and its storage switch, never a feature or something a person
-//     does.
+// The chat manual's words for two things changed on 2026-11-23. That no page
+// offers the old words is internal/wordlaw's law (it reads the pages as text);
+// what is tested here is the other half of the contract, that the manual still
+// ANSWERS somebody who remembers them: one heading holds both the new words and
+// the old ones, and a question in the old words reaches it.
 
-// oldLabelSection is the one section that may spell the retired label. The
-// heading carries both spellings so the page answers by either.
+// oldLabelSection is the one section that spells the retired label, in its
+// heading, so the page answers by either spelling.
 func oldLabelSection(title string) bool {
 	lower := strings.ToLower(title)
 	return strings.Contains(lower, "continue here") && strings.Contains(lower, "move here")
-}
-
-// relayAsAFeature matches "relay" used as a verb or as the name of a feature.
-// A server plural ("both relays") and the server's own nouns are fine; a person
-// never "relays a chat", and there is no "relay mode".
-var relayAsAFeature = regexp.MustCompile(`(?i)\b(relayed|relaying|relay mode|relay feature|relays? (a|the|your) (chat|chats|message|messages|answer|conversation)|relay (a|your) (chat|chats|message|messages))\b`)
-
-func TestChatCorpusKeepsTheRetiredWordsOutOfSight(t *testing.T) {
-	retiredLabel := regexp.MustCompile(`(?i)continue[- ]here`)
-	for _, section := range Chat().Sections() {
-		where := section.Page + " / " + section.Title
-		if retiredLabel.MatchString(section.Title+"\n"+section.Body) && !oldLabelSection(section.Title) {
-			t.Errorf("%s offers the retired label %q; the act is Move here", where, retiredLabel.FindString(section.Title+"\n"+section.Body))
-		}
-		for _, text := range []string{section.Title, section.Body} {
-			if strings.Contains(strings.ToLower(text), "sync service") {
-				t.Errorf("%s says \"sync service\"; the server is the relay", where)
-			}
-			if found := relayAsAFeature.FindString(text); found != "" {
-				t.Errorf("%s uses %q; relay names only the server and its storage switch", where, found)
-			}
-		}
-	}
 }
 
 func TestTheOldLabelStillReachesTheMovePage(t *testing.T) {

@@ -165,7 +165,7 @@ With `idle handoff` on, a shared chat explicitly released by its holder advertis
 ## Moving a desktop chat here — fences, retries and local copies
 
 An already local chat that moved away keeps its place and becomes read-only.
-Move here is available when the engine says it can move. Continuing here
+Move here is available when the engine says it can move. Moving a chat here
 stops new work on the other computer. If another computer moved it after the
 preview was read, the engine says `another device moved this chat first`;
 refresh the row and choose again. Only a Move here that waited for a turn retries itself. Unsent drafts
@@ -195,9 +195,8 @@ chat comes here its transcript shows what ran, and those lines go.
 The chat is the address, not the computer: if the chat moves before the message
 is taken, whichever computer holds it then takes it, which can be this one. So
 moving a chat here runs your messages still waiting for the other computer
-on this computer, right after the move; the chat says so beside every Continue
-here (`Continuing here runs your 2 waiting messages on this computer.`). A
-waiting message cannot be taken back.
+on this computer, right after the move; the chat says so beside every Move here, with the count of waiting messages
+that will run on this computer. A waiting message cannot be taken back.
 
 To bring the chat here instead, choose Move here. While a turn runs there
 it waits (`Comes here when this turn ends.`, with Cancel), then moves, retrying
@@ -246,7 +245,7 @@ Sending into your own released chat opens it again when its hold is still free;
 its own idle release does not require Move here.
 Steering still needs a running turn. A task or job can also open it. Running
 turns, unanswered questions, held crew members and kept services retain their
-conversations. If another computer continues a chat, the existing Move here
+conversations. If another computer moves a chat, the existing Move here
 and kept-work rules still apply.
 
 Stopped processes, finished tasks and settled jobs do not reopen a background

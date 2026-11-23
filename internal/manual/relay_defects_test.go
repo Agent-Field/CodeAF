@@ -18,7 +18,7 @@ func TestRelayDefectAnswersSurvivePacking(t *testing.T) {
 	compressed := newCorpus(packed.New(archive), "chat/*.md")
 	for _, corpus := range []*Corpus{Chat(), compressed} {
 		for _, probe := range []struct{ query, page, words string }{
-			{"my chosen chat while a startup chat is still arriving", "home", "continuing <Y> next; <X> is still on its way here"},
+			{"my chosen chat while a startup chat is still arriving", "home", "moving <Y> next; <X> is still on its way here"},
 			{"slow chat listing timeout waiting for a service host", "continuing-a-chat-on-another-computer", "<host> did not answer in 25s; still trying"},
 			{"my typed message after continue here is kept does it send by itself", "continuing-a-chat-on-another-computer", "your message is still in the box; press enter to send it"},
 			{"continue here another device continuing first picked this chat up again", "continuing-a-chat-on-another-computer", "<holder> picked this chat up again; press enter to move it here"},

@@ -44,7 +44,7 @@ Once relay storage is approved the record carries the sealed title and folder na
 
 ## Why can't I send a message to a chat on another computer — messages wait for relay storage
 
-A message to a chat that another of your computers holds is left in your computer's own record on the relay until that computer takes it, sealed with your key. That is keeping your text on the service, so while hosted relay storage is off nothing is sent: the desktop does not offer the message box for such a chat, and a send that arrives anyway is refused with `Relay storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.` Continue the chat here instead; blind pass-through moves it while both computers run codeaf.
+A message to a chat that another of your computers holds is left in your computer's own record on the relay until that computer takes it, sealed with your key. That is keeping your text on the service, so while hosted relay storage is off nothing is sent: the desktop does not offer the message box for such a chat, and a send that arrives anyway is refused with `Relay storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.` Move the chat here instead; blind pass-through moves it while both computers run codeaf.
 
 Messages already waiting when storage was switched off can still be taken off the service. A self-hosted relay and an approved account send messages as before. *Send a message to a chat working on another computer* has the details.
 

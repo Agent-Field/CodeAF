@@ -8,11 +8,11 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
-## Move here (it used to say Continue here) — what happened to the Continue here button, where did Continue here go, the old label on Home, the card and the desktop app
+## Move here: also called "continue here", "take over" or "continue on this machine"
 
-**Move here** is the one verb for carrying a chat from another computer to this one. Older builds, older notes and older versions of this manual called the same act `Continue here`, on Home's rows, on the card that asks first, on the devices row and in the desktop app. Only the word changed. The card, its `1 move here` and `2 leave it there` answers, the `alt+m` chord on the devices row and the `alt+c` chord on the resume offer all work as they did.
+**Move here** is the one verb for carrying a chat from another computer to this one. If you are asking what happened to the continue button, or where did it go: nothing was removed, it was renamed. Older builds, older notes and older versions of this manual used the three names in this section's heading for the same act, on Home's rows, on the card that asks first, on the devices row and in the desktop app. Only the word changed. The card, its `1 move here` and `2 leave it there` answers, the `alt+m` chord on the devices row and the `alt+c` chord on the resume offer all work as they did.
 
-If you remember `Continue here`, read it as `Move here` in every section of this page and on every page that names it. The sections below keep what the act does and what it refuses to do: *Move here says the computer that has this chat is not on*, *Move here does nothing* and *why move here failed* are the ones people reach most often.
+If you remember one of those names, read it as `Move here` in every section of this page and on every page that names it. The sections below keep what the act does and what it refuses to do: *Move here says the computer that has this chat is not on*, *Move here does nothing* and *why move here failed* are the ones people reach most often.
 
 ## Blind pass-through — move a chat without relay storage (it used to be called sync storage), pass-through mode, move a chat while relay storage is off, does my other computer need to be on, move here without relay storage approval
 
@@ -570,7 +570,7 @@ A running chat on the other computer never moves automatically. Neither does a n
 
 bare startup still chooses the most recently released eligible chat and checks local safety first. input before that check answers cancels the automatic choice.
 
-if its move is already running, confirming a different chat on Home or using `alt+c` chooses what opens next. Home says `continuing <Y> next; <X> is still on its way here`, with the titles from the move cards. the automatic move settles first and is let go with its files and kept work intact; it never opens over your choice. the next move uses exactly the computer and turn of ownership you confirmed. `esc` cancels the waiting choice and the automatic chat still settles and is let go.
+if its move is already running, confirming a different chat on Home or using `alt+c` chooses what opens next. Home says `moving <Y> next; <X> is still on its way here`, with the titles from the move cards. the automatic move settles first and is let go with its files and kept work intact; it never opens over your choice. the next move uses exactly the computer and turn of ownership you confirmed. `esc` cancels the waiting choice and the automatic chat still settles and is let go.
 
 confirming the automatic chat itself joins its move and opens it once. explicitly opening another local chat or starting a new one also prevents a late automatic arrival from replacing it. moving the cursor, opening Home or inspecting and declining another card does not choose a different chat. an explicit move already in progress still gives the usual busy sentence for another explicit pick.
 
