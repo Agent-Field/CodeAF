@@ -73,8 +73,8 @@ To build it yourself: `git clone`, `make build`, `bin/codeaf`
 </details>
 
 On first start it connects OpenRouter in your browser, or takes a key. Codex signs in
-a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax
-and Qwen take keys; Ollama needs none.
+a ChatGPT plan from `/connect` or `codeaf connect codex`; DeepSeek, GLM, Kimi, MiniMax,
+Qwen and OpenCode Go take keys; Ollama needs none.
 
 ## One window for every project
 
@@ -158,6 +158,23 @@ Every number, every task and the tested versions:
 [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
 
 
+## How codeaf compares
+
+codeaf is built to run many agents at once, not one. A single native Go binary
+runs every task in its own isolated copy of the repository, each on a crew of
+models with a planner and a checker, from one terminal. On DeepSWE, with every
+harness on the same model (DeepSeek V4 Flash), senior-dev solved 62 of 113 issues
+(54.9%), first of ten harnesses, at 39.9 cents per solved issue.
+
+| | Built for | Where codeaf differs | DeepSWE, on DeepSeek V4 Flash |
+| --- | --- | --- | --- |
+| [Claude Code](https://agentfield.ai/compare/codeaf-vs-claude-code) | Anthropic's agent for Claude models | Any model, a different one per seat, and many tasks running at once | 16 solved, 3.4x cost per solve |
+| [Codex CLI](https://agentfield.ai/compare/codeaf-vs-codex-cli) | OpenAI's agent, one session per terminal | Many tasks at once from one window; the same Codex plan can be one of its models | 51 solved, 2.1x cost per solve |
+| [OpenCode](https://agentfield.ai/compare/codeaf-vs-opencode) | One agent session, with subagents, in a TypeScript app on the Bun runtime | One native Go binary built to manage many agents at scale, each task isolated on its own branch | 30 solved, 4.8x cost per solve |
+| [OpenHands](https://agentfield.ai/compare/codeaf-vs-openhands) | One sandboxed agent per conversation, each in its own Docker container, behind a web UI | Many agents from one terminal process, with no container to start per agent | Not in the comparison |
+
+Task by task, against every harness: [DeepSWE head to head](https://agentfield.ai/benchmarks/deepswe-head-to-head).
+
 ## The right model for each call
 
 One session, many models. The model you talk to is one seat. Every task you hand
@@ -186,8 +203,8 @@ request goes to the provider that has been fastest for that kind of call.
 
 <img src="assets/readme/screens/models.webp" alt="The right model for each call: the spend page showing what ran it, by model and role: glm-5.3, deepseek-v4-flash and qwen3.8-27b with calls, tokens and dollars" width="100%">
 
-Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, Codex through a
-ChatGPT plan, Ollama and any OpenAI-compatible endpoint.
+Providers built in: OpenRouter, DeepSeek, GLM, Kimi, MiniMax, Qwen, OpenCode Go,
+Codex through a ChatGPT plan, Ollama and any OpenAI-compatible endpoint.
 
 ## Model Pool
 
