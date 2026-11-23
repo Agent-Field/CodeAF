@@ -287,7 +287,7 @@ func TestAForemanLeftMarkedByAMakingCutShortIsRetired(t *testing.T) {
 // "only from" factory_floor, so it could not use what the app tells it with
 // each message, nor answer anything a plain assistant can.
 func TestTheForemansBriefLetsItAnswerBeyondTheFloor(t *testing.T) {
-	for _, want := range []string{"factory_floor", "tagged afi-now", "tagged app-places", "is the person, never you", "your other tools", "only when the person asks", "Never stop, ship, merge or post"} {
+	for _, want := range []string{"factory_floor", "tagged afi-now", "tagged app-places", "is the person, never you", "your other tools", "only when the person asks", "Never stop or drop a job, and never press, ship, merge or post on your own judgment"} {
 		if !strings.Contains(foremanOpening, want) {
 			t.Errorf("the brief lacks %q: %s", want, foremanOpening)
 		}

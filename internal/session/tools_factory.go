@@ -159,6 +159,12 @@ func (a *Agent) factoryTools() []bare.Tool {
 		if a.config.mayStart() {
 			tools = append(tools, a.factoryStartTool())
 		}
+		// `factory_act` and `factory_task` (tools_factory_manager.go), the
+		// manager's public acts and its open task, ride on the same door
+		// where that door can press.
+		if a.config.mayPress() {
+			tools = append(tools, a.factoryActTool(), a.factoryTaskTool())
+		}
 	}
 	return tools
 }
@@ -197,6 +203,13 @@ func (a *Agent) factoryAddTool() bare.Tool {
 				if err := decodeToolArguments(args, &parsed); err != nil {
 					return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 				}
+			}
+			// A JOB'S MAIN AGENT OFFERS A NEW JOB ONLY WHEN THE PERSON SPOKE.
+			// Its turns mostly start from its team's replies or a stop, and a
+			// card raised there reaches the person's Inbox about work they
+			// never asked for (job 31, codeaf#1758: "add what exactly?").
+			if a.jobChatOf() != nil && a.turnPersonWords() == "" {
+				return factoryJobChatUnasked, false, nil
 			}
 			notice := FactoryNotice{
 				Title: strings.Join(strings.Fields(parsed.Title), " "),
@@ -243,6 +256,10 @@ func (a *Agent) factoryAddTool() bare.Tool {
 		},
 	}
 }
+
+// factoryJobChatUnasked is what a job's main agent reads when it proposes a
+// new job on a turn the person did not start.
+const factoryJobChatUnasked = "Nothing was proposed: the person did not speak this turn, and a job's chat offers a new job only when they ask. If the finding matters, say it in one plain sentence in your reply, as something that could be its own job."
 
 // factoryItem is the card as the floor's row: new, from chat, the owner's own,
 // with its stages left for the store to fill from the repo's recipe.

@@ -178,6 +178,10 @@ type memoryBrain struct {
 	// typed is whether the person typed the turn now running. The model's
 	// `remember` and `forget` act only on such a turn ([Agent.memoryTools]).
 	typed atomic.Bool
+	// refused is whether a call in the turn now running did not run for want of
+	// a yes: the person said no, put the question away, or never answered
+	// ([Agent.markRefused]). The pass after such a turn keeps nothing.
+	refused atomic.Bool
 	// failureSaid is when the last failure line went out.
 	failureSaid time.Time
 	// surfaced prevents a cache refresh from rehearsing the same line repeatedly.
@@ -878,7 +882,11 @@ func (a *Agent) learnFromTurn(user userMessage, answer string) {
 	// AN ASK-HERE ERRAND IS NOT NOTICED: it is usually one exchange, so the
 	// line saying what was kept would have no turn after it to be said on, and
 	// what is typed there is a reminder or a watch rather than a preference.
-	askMemory := personTyped(user) && a.noticing() && !a.config.Errand
+	//
+	// NOR IS A TURN IN WHICH A PERMISSION WAS REFUSED, DISMISSED OR LEFT
+	// UNANSWERED ([Agent.markRefused]): its state card is still kept, and
+	// nothing is kept about the person from it.
+	askMemory := personTyped(user) && a.noticing() && !a.config.Errand && !a.memory.refused.Load()
 	words := user.said
 	if strings.TrimSpace(words) == "" {
 		words = user.text()
@@ -1095,10 +1103,26 @@ func personTyped(user userMessage) bool {
 // session opened — a task's landing, a job's ending, an answer to a question —
 // is not armed, with one exception: the empty turn started to answer a line the
 // person typed in the last seconds of the turn before
-// ([userMessage.answersPerson]), which is answering them.
+// ([userMessage.answersPerson]), which is answering them. It also clears the
+// turn's refused mark, which belongs to one turn.
 func (a *Agent) armMemoryVerbs(user userMessage) {
 	if a.memory != nil {
 		a.memory.typed.Store(personTyped(user) || user.answersPerson)
+		a.memory.refused.Store(false)
+	}
+}
+
+// markRefused says a call in this turn did not run for want of a yes: the person
+// refused it, put its question away, or never answered. It keeps the pass after
+// the turn from reading the exchange for memory ([Agent.learnFromTurn]).
+//
+// A REFUSED CALL IS AN EVENT AND NEVER A RULE. The assistant's closing words
+// then talk about a tool that "was denied", and a small reading model takes
+// that for something the person said and keeps "shell commands are denied" for
+// every conversation they have. One answer to one question is not that.
+func (a *Agent) markRefused() {
+	if a.memory != nil {
+		a.memory.refused.Store(true)
 	}
 }
 

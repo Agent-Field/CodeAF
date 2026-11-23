@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
@@ -703,5 +704,58 @@ func TestStartingAProgramWithoutChatIsImmediatelyResumable(t *testing.T) {
 	}
 	if _, ok := rows[place.Transcript()]; !ok {
 		t.Fatal("program opening missing from home")
+	}
+}
+
+// markedSeat is a seat a test can tell apart on a context: the host's stance
+// under a type of its own, so it is never the test binary's fallback.
+type markedSeat struct {
+	procexec.Stance
+	name string
+}
+
+// A PROGRAM'S RUN CARRIES THE SESSION'S SEAT, WHATEVER DOOR STARTED IT. A typed
+// `/senior-dev <brief>`, the app's start action and the engine wire all hand
+// StartDelegate a context no turn seated, and the program's launch asks
+// procexec.For for its seat: a production binary refused it with "executor:
+// this call carries no session seat" before senior-dev started. This test binary
+// falls back to the host seat, so the assertion is on the seat the run's own
+// context names: the session's, and never the fallback. A context a turn already
+// seated keeps its own seat.
+func TestAProgramRunStartedFromASeatlessDoorRunsOnTheSessionsSeat(t *testing.T) {
+	turn := markedSeat{Stance: procexec.Host.(procexec.Stance), name: "turn"}
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		want func(*Agent) procexec.Seat
+	}{
+		{"a person's door", context.Background(), func(agent *Agent) procexec.Seat { return agent.config.seat() }},
+		{"a turn that seated its context", procexec.With(context.Background(), turn), func(*Agent) procexec.Seat { return turn }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			double := newBeltRunDouble("done")
+			registerBeltRunEngine(t, double)
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "done"}, func(config *Config) {
+				config.Workspace = t.TempDir()
+				config.Place = Place{Dir: t.TempDir()}
+				config.AskConsent = false
+				config.Delegates = testPrograms("senior-dev")
+				config.Seat = markedSeat{Stance: procexec.Host.(procexec.Stance), name: "session"}
+			})
+			if _, _, _, err := agent.StartDelegate(tc.ctx, "senior-dev", "make a file in this folder"); err != nil {
+				t.Fatalf("StartDelegate: %v", err)
+			}
+			<-double.entered
+			double.mu.Lock()
+			ctx := double.ctx
+			double.mu.Unlock()
+			defer endBeltRun(t, agent, double)
+			if !procexec.Seated(ctx) {
+				t.Fatal("the run's context carries no seat: the program's launch is refused with executor.ErrNoSeat")
+			}
+			if got, want := procexec.For(ctx), tc.want(agent); !reflect.DeepEqual(got, want) {
+				t.Fatalf("the run's context carries seat %#v, want %#v", got, want)
+			}
+		})
 	}
 }

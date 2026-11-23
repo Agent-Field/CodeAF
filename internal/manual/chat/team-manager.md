@@ -596,7 +596,7 @@ while it was closed.
 
 ## Team sharing and Traffic on another computer
 
-Hosted sync storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: teams, shared team settings and Traffic wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only

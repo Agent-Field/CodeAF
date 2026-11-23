@@ -184,3 +184,105 @@ func TestFactoryRepositoryRefreshHelp(t *testing.T) {
 	}
 	t.Fatal("repository refresh help was not found")
 }
+
+// WHAT A JOB'S MANAGER MAY DO IS REACHED BY THE ASKER'S WORDS: who pushes and
+// replies in each mode, what a public act is and whose name a reply carries,
+// the task a delegate is given, and where a stop goes first. Each section
+// states the fact that makes the answer true, in the factory's own words.
+func TestTheManagersAuthorityQuestionsReachTheirSections(t *testing.T) {
+	asked := []struct {
+		question string
+		title    string
+		says     []string
+	}{
+		{
+			question: "can the job's manager push in Manual",
+			title:    "what a job's manager may do by itself",
+			says: []string{"| Merge | you | you |", "Nothing is posted until you say yes", "The factory checks this itself",
+				"Nothing changed: merging is the person's alone, in Manual and in Auto", "Nothing changed: this job is not in Auto, so approving publication is the person's"},
+		},
+		{
+			question: "does the manager reply to a review comment on GitHub as me",
+			title:    "public acts from the manager",
+			says: []string{"`factory_act`", "Posted by a WorkAF factory agent.", "`merge` never merges", "action=approve_acts", "action=decline_acts",
+				"marked untrusted", "only with your word", "at most 20 acts", "`inline:<number>`", "`conversation:<number>`"},
+		},
+		{
+			question: "ask the manager to rebase on main",
+			title:    "give a delegate a task in the checkout",
+			says:     []string{"`factory_task`", "the checks that had passed run again", "do it now", "waiting for your yes in Manual"},
+		},
+		{
+			question: "the job ran out of rounds, what does the manager do",
+			title:    "a stopped job goes to its manager first",
+			says:     []string{"`another_round`", "`send_back`", "`rerun`", "`accept`", "`resume_pipeline`", "`retry_publish`", "`wait_github`", "`hand_to_person`", "After two extra rounds on one step"},
+		},
+	}
+	for _, ask := range asked {
+		reached := false
+		for _, section := range Chat().Search(ask.question, DefaultResults) {
+			if section.Page != "factory" || !strings.Contains(section.Title, ask.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range ask.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", ask.question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			t.Errorf("%q did not reach factory › %s", ask.question, ask.title)
+		}
+	}
+}
+
+// WHAT THE FACTORY MANAGER DOES FOR THE PERSON IS REACHED BY THE ASKER'S
+// WORDS: what waits on them, the actions it presses and the rule each press
+// is under, and how their words reach a job's main agent and what that turn
+// cannot do.
+func TestTheFactoryManagersQuestionsReachTheirSections(t *testing.T) {
+	asked := []struct {
+		question string
+		title    string
+		says     []string
+	}{
+		{
+			question: "can the Factory manager approve or merge a job for me",
+			title:    "the Factory manager acts for you",
+			says: []string{"`approve`", "`answer`", "`merge`", "`pr_ready`", "`acts_approve`", "`acts_decline`", "`task`", "`raise_budget`", "`resume_pipeline`", "`rerun_step`",
+				"Nothing changed: you press a job's action only when the person asks for it, and nothing in this turn came from them.",
+				"in Manual and in Auto", "handed to its main agent, which is deciding what to do", "accepts from the person: approve, task",
+				"takes only a choice", "`spend_answer` and `publish_anyway` stay on the job page"},
+		},
+		{
+			question: "tell a job's main agent to rebase through the Factory manager",
+			title:    "tell a job's main agent through the Factory manager",
+			says: []string{"The person told the Factory manager, for you:", "charged to the job's budget", "stopped after 3 minutes",
+				"no main agent conversation yet", "its budget is spent", "it never merges on it",
+				"outside Auto the main agent cannot push, approve publication, mark the pull request ready or approve public acts on it"},
+		},
+		{
+			question: "which jobs are waiting on me, ask the Factory manager",
+			title:    "the Factory manager — the factory's own manager",
+			says:     []string{"`needs_you`: the jobs that wait on you now, the longest wait first", "`waiting`: every job that waits on you, the ones you put away included", "past an approve step needs your own words"},
+		},
+	}
+	for _, ask := range asked {
+		reached := false
+		for _, section := range Chat().Search(ask.question, DefaultResults) {
+			if section.Page != "factory" || !strings.Contains(section.Title, ask.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range ask.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", ask.question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			t.Errorf("%q did not reach factory › %s", ask.question, ask.title)
+		}
+	}
+}

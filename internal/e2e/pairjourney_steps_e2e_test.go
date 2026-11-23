@@ -19,7 +19,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 	var a, b *rig
 	var link string
 
-	j.step("A has used sync before (identity exists)", false, func() {
+	j.step("A has an identity (it showed a code once, which leaves it solo)", false, func() {
 		setup := startCommand(t, env, "a-setup", homeA, wsA, "pair", "--code")
 		_, ok := waitPlain(setup, 15*time.Second, "codeaf pair")
 		j.check(ok, "pair --code never showed a code")

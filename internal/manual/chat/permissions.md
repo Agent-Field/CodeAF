@@ -552,22 +552,23 @@ nothing.
 A stored glob is stored as a glob. `ls *.go` approved becomes `ls *.go` allowed,
 wildcard and all — the dialect has no escape for `*`.
 
-## The approval modes, and the default — does changing "ask before running" affect the conversation I am in
+## The approval modes, and the default — does changing "tool approvals" (once "ask before running") affect the conversation I am in
 
 `tools.approvalMode` decides what happens when the model asks to run a tool and
 nothing more specific applies. It is in `/settings`, under **Permissions**, on the row
-labelled **"ask before running"**.
+labelled **"tool approvals"** (it used to be called "ask before running"). The row shows
+three words, and the file keeps the three values beside them:
 
-| value | what it means |
-|---|---|
-| `prompt` | ask you |
-| `allow` | run it. **This is the interactive default, shown as YOLO.** |
-| `deny` | refuse it |
+| shown | stored | what it means |
+|---|---|---|
+| `ask by default` | `prompt` | ask you |
+| `allow by default` | `allow` | run it. **This is the interactive default, shown as YOLO.** |
+| `block by default` | `deny` | refuse it |
 
-The row's own hint reads: "what happens when the model asks to run a tool:
-prompt asks you, allow runs it, deny refuses it. Dangerous shell commands are
-asked about whichever way this is set. A change reaches this conversation
-straight away, unless the panel says it lands on the next session."
+The row's own description reads: "Allow by default runs tools without asking. Ask by
+default requests approval except for safe read-only calls and tools that ask for
+permission themselves. Block by default refuses tools. Tool exceptions override this
+choice; dangerous shell commands still require approval."
 
 **Cycling the row changes the gate you are already behind — or says it could
 not.** The rules are rebuilt from this row and the two under it on the same
@@ -657,7 +658,7 @@ bypass.
 ## Per-tool exceptions — how do I make it never touch a file, or never run a tool at all
 
 `tools.approval` overrides the blanket mode for named tools. It is the
-`/settings` row **"tool approvals"** — empty it reads `none`, filled it looks
+`/settings` row **"tool exceptions"** — empty it reads `none`, filled it looks
 like `read:allow, bash:prompt`. The consent card's always writes here one entry
 at a time.
 
@@ -718,8 +719,8 @@ posture is never invisible.
 It replaces **the default and nothing else**. If you wrote `bash:prompt`, you
 are still asked about bash, and your ordered shell command rules are untouched.
 
-And the row cannot close a gate the flag opened. Cycling "ask before running" to
-`prompt` in `/settings` writes the row for the next launch, while this run stays
+And the row cannot close a gate the flag opened. Cycling "tool approvals" to
+`ask by default` in `/settings` writes the row for the next launch, while this run stays
 on `allow` — so the badge stays up, because it reports the posture in force.
 
 `--yolo` cannot lift either of the two floors below.
@@ -733,16 +734,16 @@ inside a running conversation — see the next section — and `codeaf resume
 "Stop asking me for this chat" is one keystroke, and so is asking again. Every
 conversation has its own posture on the gate, moved from inside it. The
 legend above the message box names it after the thinking rung — `◇ asks`,
-`◇ guardian`, `◇ YOLO` or `◇ refuses` — and two controls move it:
+`◇ guardian`, `◇ YOLO` or `◇ blocks` — and two controls move it:
 
 - **`alt+a`** walks `asks → guardian → YOLO → asks`. It never lands on
-  `refuses`.
+  `blocks`.
 - **a press on the cell** is the same step.
 
 The change is **live** — the next tool call is decided under it — and
 **sticky**: it is written into this session's `meta.json` and is still in force
 after `/resume`. It changes **this conversation only**; every other conversation
-follows the "ask before running" and guardian rows on `/settings`' Permissions category.
+follows the "tool approvals" and guardian rows on `/settings`' Permissions category.
 
 What each posture is, in the gate's terms:
 
@@ -803,6 +804,14 @@ The entries, verbatim:
 `poweroff`, `poweroff *` — plus the fork bomb, matched with all whitespace
 removed and reported to you as `:(){:|:&};:`.
 
+**A recursive delete asks in any spelling.** An `rm` with `-r`, `-R` or
+`--recursive` — clustered as `-rf` or `-fR`, split as `-r -f`, with or without
+`-f`, after `sudo` or as `/bin/rm`, with the path quoted or after `--` — is asked
+about when it is aimed at an absolute path, `~`, `$HOME` or a bare `*`. The first
+three are reported as `critical command "rm -rf /*"`, a bare `*` as
+`critical command "rm -rf *"`. A relative target such as `rm -rf build` or
+`rm -r ./tmp` is not.
+
 Before matching, the line is normalised: runs of whitespace collapse to one
 space, the gap after `>` closes (so `> /dev/sda` and `>/dev/sda` are the same
 thing), and a leading `sudo` or `doas` is dropped (so `sudo reboot` reads as
@@ -841,6 +850,26 @@ The floor holds under the **default**, and it yields to a rule that **names the
 tool**. `gmail_send:allow` in `tools.approval` runs it silently. So does a
 capability set to `yes`. So does a remembered "always" answer to this approval
 question. Nothing else lifts it.
+
+## Can a task delete my repository's .git or its history? No, it is refused in its own copy
+
+The dangerous-command floor above asks before an absolute recursive delete, but it would not
+notice `rm -rf .git`, written relative to the folder the task stands in. So a task, and a
+`codeaf do --dir` worker, is separately refused any command that removes, moves, overwrites
+or rewrites the `.git` of the folder it was given: `rm -rf .git`, `mv .git …`,
+`cp -r … .git`, `echo … > .git/HEAD`, or removing the folder itself with `rm -rf .`. The
+refusal is the same one every write outside the task's folder gets:
+
+> replacing /Users/you/code/project/.git is outside your copy — this task works in
+> /Users/you/code/project; read anywhere, write only there. …
+
+This is not a question and no setting lifts it, because a task has nobody to ask. If every
+action the worker attempts is refused and it then claims `done`, a headless run exits
+**incomplete** (status 2) and its JSON receipt carries the refusal; a refusal followed by
+real work can still finish normally. Ordinary git work is untouched: `git commit`,
+`git checkout` and the rest write inside `.git` on the task's behalf and run as before, and
+reading `.git` is reading. A conversation you are sitting in is not held by it. The full
+list is on how-tasks-run.
 
 ## Neither floor can be swallowed by "stop asking me"
 
@@ -926,7 +955,7 @@ is the approval mode, and you would have lost the gate without ever deciding to.
 The refusal names the row and points here:
 
 ```
-"ask before running" (tools.approvalMode) decides what I may do without asking you first, so it is not mine to change. Open /settings and change it yourself.
+"tool approvals" (tools.approvalMode) decides what I may do without asking you first, so it is not mine to change. Open /settings and change it yourself.
 ```
 
 The whole list, by settings key:
@@ -1202,7 +1231,7 @@ hang, and never the end of the turn. The exact sentences:
 
 - `denied by approval rule: <rule>`
 - `denied by approval rule: <rule> (remembered for this session)`
-- `denied by the person: <rule>`
+- `denied by the person: <rule>. They said no to this action, not to this spelling: ask before doing the same thing another way.`
 - `not approved: the question timed out`
 - `not approved: ended before an answer`
 - `needs approval but no resolver is attached: <rule>`
@@ -1232,8 +1261,8 @@ tool. Shell rules keep the order they were written in, because first match wins
 and reordering them would lie. Tool exceptions are sorted alphabetically.
 
 The dim right-hand tail carries only what the heading has not already said:
-nothing for a shell allow, `every call` for a tool row, `asks every time` for a
-`prompt` row, `refused` for a `deny` row.
+nothing for a shell allow, `every call` for a tool row, `ask` for a
+`prompt` row, `block` for a `deny` row — the settings sheet's own words.
 
 Keys: `↑`/`ctrl+p` and `↓`/`ctrl+n` move, `pgup`/`pgdown` page by 9, `enter` or
 `d` arms and then drops, `esc` un-arms first and closes second. Clicking a row
@@ -1347,3 +1376,13 @@ hold leaves the question waiting and sends nothing.
 A question can close or its conversation can fail during those five seconds.
 The eventual send still checks it again; the app protocol does not publish a
 separate deferred-send failure event.
+
+## Desktop Inbox — dismissing a permission question is not denying it
+
+Dismiss puts a permission question away without answering it. The call does not
+run, and the model is told `not run: the person put this permission question away
+without answering it`, that nothing was decided, and that it may ask again. That is
+different from `3 deny`, which hands it `denied by the person: <rule>`. A dismissal
+leaves no line in the conversation's decision record, and no turn in which a
+permission was denied, dismissed or left unanswered is read for memory, so neither
+becomes a remembered rule in this or another conversation.

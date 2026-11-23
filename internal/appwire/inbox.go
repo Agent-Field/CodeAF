@@ -96,6 +96,20 @@ type InboxDismisser interface {
 	DismissInbox(id string) error
 }
 
+// FeatureInboxDismiss is hello's word for an engine that is an
+// [InboxDismisser], so a client offers Dismiss only where inbox.dismiss is
+// served.
+const FeatureInboxDismiss = "inbox.dismiss"
+
+// withInboxDismissFeature is hello carrying [FeatureInboxDismiss] for an
+// engine with the door.
+func withInboxDismissFeature(hello Hello, e Engine) Hello {
+	if _, ok := e.(InboxDismisser); ok {
+		return withFeature(hello, FeatureInboxDismiss)
+	}
+	return hello
+}
+
 func init() {
 	for name, m := range inboxMethods {
 		methods[name] = m

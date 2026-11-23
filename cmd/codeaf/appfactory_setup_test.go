@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -96,7 +97,9 @@ type localSetup struct {
 
 // useLocalHome points the app home, the person's home and the profile at
 // folders of this test, keeps the ambient profile and tokens out, and gives
-// the process git and the check fixtures' shell utilities on its PATH.
+// the process only git and the shell tools a check step is written with on its
+// PATH ([testToolDir] says why those come as links and not as the folders they
+// live in).
 func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Helper()
 	appHome, userHome, decoy = testHome(t), testHome(t), testHome(t)
@@ -108,16 +111,14 @@ func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	t.Setenv(config.ProfileDirEnv, decoy)
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "")
-	// Homebrew's git directory does not contain touch or sleep. Keep the
-	// check fixtures runnable when git and the system utilities live apart.
-	var paths []string
-	for _, name := range []string{"git", "touch", "sleep"} {
-		if binary, err := exec.LookPath(name); err == nil {
-			paths = append(paths, filepath.Dir(binary))
+	if git, err := exec.LookPath("git"); err == nil {
+		// The tools are resolved BEFORE the PATH narrows, or there is nothing
+		// left to find them with.
+		dirs := []string{filepath.Dir(git)}
+		if tools := testToolDir(t); tools != "" {
+			dirs = append(dirs, tools)
 		}
-	}
-	if len(paths) > 0 {
-		t.Setenv("PATH", strings.Join(paths, string(os.PathListSeparator)))
+		t.Setenv("PATH", strings.Join(dirs, string(os.PathListSeparator)))
 	}
 	restore := config.UseAppCredentials(config.NewAppCredentials())
 	t.Cleanup(restore)
@@ -131,6 +132,100 @@ func useLocalHome(t *testing.T) (appHome, userHome, decoy string) {
 	// Errand catalog reads can start the shared process and its profile writers.
 	freshEngineProcess(t)
 	return appHome, userHome, decoy
+}
+
+// testShellTools are the programs a factory check step's script is written
+// with: the two shells, and the file and text utilities a one-line check calls
+// (`touch`, `sleep`, `grep`, `cat`, ...). Nothing here reaches a network or a
+// person's logins, which is the whole reason the list is short.
+var testShellTools = []string{
+	"bash", "sh",
+	"awk", "basename", "cat", "chmod", "cp", "cut", "date", "diff", "dirname", "env",
+	"find", "grep", "head", "ln", "ls", "mkdir", "mktemp", "mv", "readlink", "rm",
+	"rmdir", "sed", "sleep", "sort", "tail", "tee", "touch", "tr", "uniq", "wc", "xargs",
+}
+
+// testToolDir is a folder of this test holding links to [testShellTools] and to
+// nothing else, so a PATH narrowed to git's folder can still run the shells and
+// the utilities a factory check step names. It answers "" on Windows, where the
+// product finds bash through git and not through the PATH, and when this machine
+// has none of them. It reads the CURRENT PATH, so it must run before a test
+// narrows it; a tool this machine lacks is simply left out.
+//
+// IT IS A FOLDER OF LINKS AND NOT THE FOLDERS THE TOOLS LIVE IN, because those
+// hold the machine's other programs too: on a Linux box /usr/bin has bash and
+// the person's own gh, and a test that can run gh can reach the person's GitHub
+// login, which is the thing the narrowed PATH keeps out. It only ADDS to git's
+// folder, so a machine whose git folder already has everything (macOS's
+// /usr/bin) keeps exactly what it had.
+func testToolDir(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	dir := t.TempDir()
+	linked := 0
+	for _, name := range testShellTools {
+		found, err := exec.LookPath(name)
+		if err != nil {
+			continue
+		}
+		if found, err = filepath.Abs(found); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(found, filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+		linked++
+	}
+	if linked == 0 {
+		return ""
+	}
+	return dir
+}
+
+// A FACTORY TEST'S PATH HOLDS GIT AND THE SHELL TOOLS, AND NOTHING ELSE. The
+// factory runs a check step as the bare name `bash`, and the steps themselves
+// call `touch`, `sleep` and `grep`, so a PATH that is only git's folder fails
+// every such step with exit 127 wherever git's folder has none of them: macOS
+// keeps git in /usr/bin and bash in /bin, and a Linux git installed under
+// /usr/local/bin has no shell or utility beside it (issue #2621). The remedy is not
+// to widen the PATH to the folders those programs live in, because those
+// folders also hold the machine's other tools, the person's own gh among them,
+// and reaching those is what narrowing the PATH exists to prevent.
+func TestALocalFactoryTestsPathHoldsTheShellToolsAndNoOtherTool(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows finds bash through git, not through the PATH")
+	}
+	git, gitErr := exec.LookPath("git")
+	_, bashErr := exec.LookPath("bash")
+	if gitErr != nil || bashErr != nil {
+		t.Skip("this machine has no git or no bash to keep on the PATH")
+	}
+	useLocalHome(t)
+	for _, name := range []string{"bash", "sh", "touch", "sleep", "grep", "cat"} {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Errorf("%s is not on the narrowed PATH: %v", name, err)
+		}
+	}
+	allowed := map[string]bool{}
+	for _, name := range testShellTools {
+		allowed[name] = true
+	}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == filepath.Dir(git) {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("PATH entry %s: %v", dir, err)
+		}
+		for _, entry := range entries {
+			if !allowed[entry.Name()] {
+				t.Errorf("PATH reaches %s in %s, which is neither git's folder nor one of the shell tools", entry.Name(), dir)
+			}
+		}
+	}
 }
 
 func newLocalSetup(t *testing.T) *localSetup {

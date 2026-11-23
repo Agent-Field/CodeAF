@@ -251,21 +251,38 @@ func IsContinue(yes bool, words string) bool {
 }
 
 // OutOfAttemptsChoice reads a person's answer to a step that used its rounds.
-// yes, or the word try_once_more, runs one more round. send_back returns to
-// the previous step. accept takes the step as it stands, where the job
-// offers it ([OffersAccept]). Anything else cancels the job.
+// yes, or the word try_once_more, runs one more round, and try_once_more:
+// with words after it runs that round with them as its instructions
+// ([RoundNote]). send_back returns to the previous step. accept takes the
+// step as it stands, where the job offers it ([OffersAccept]). Anything else
+// cancels the job.
 func OutOfAttemptsChoice(yes bool, words string) string {
 	w := strings.ToLower(strings.TrimSpace(words))
 	switch {
 	case w == ChoiceAccept:
 		return ChoiceAccept
-	case w == ChoiceTryOnceMore || w == "yes" || (yes && (w == "" || w == "yes")):
+	case w == ChoiceTryOnceMore || strings.HasPrefix(w, ChoiceTryOnceMore+":") || w == "yes" || (yes && (w == "" || w == "yes")):
 		return ChoiceTryOnceMore
 	case w == ChoiceSendBack || strings.HasPrefix(w, ChoiceSendBack+":"):
 		return ChoiceSendBack
 	default:
 		return ChoiceCancel
 	}
+}
+
+// RoundNote is what an answer that gives a step another round says to that
+// round: the text after try_once_more:, or the words themselves when they are
+// no token. The bare word and a plain yes say nothing.
+func RoundNote(words string) string {
+	w := strings.TrimSpace(words)
+	low := strings.ToLower(w)
+	switch {
+	case low == ChoiceTryOnceMore || low == "yes":
+		return ""
+	case strings.HasPrefix(low, ChoiceTryOnceMore+":"):
+		return strings.TrimSpace(w[len(ChoiceTryOnceMore)+1:])
+	}
+	return w
 }
 
 // SendBackReason is the text after send_back:, or the words themselves when
@@ -298,6 +315,8 @@ func NeedsKind(it Item) string {
 			return NeedsRunnerOffline
 		}
 		return NeedsFailed
+	case FollowUpUpdateWaiting(it):
+		return NeedsApproveProof
 	case it.PullRequest != nil && it.PullRequest.Conflict:
 		return NeedsConflict
 	case it.PullRequest != nil && it.PullRequest.ReviewDecision == "changes_requested":
@@ -324,6 +343,31 @@ func NeedsKind(it Item) string {
 	default:
 		return ""
 	}
+}
+
+// QuestionKind is the needs-you kind of the job's open question: the job's
+// [NeedsKind], except where the pull request's own wait outranks a step's open
+// question for the kind (a conflict, changes requested). The kind stays the
+// pull request's, since the queue groups by it, but the question still stands
+// and is the only door that moves the step: its words, its options (Send back
+// among them) and the step it sends back to. Job 31 (2026-11-17) was kind
+// conflict while Follow PR waited on "followpr is not proven after 3 rounds
+// · try again, send it back, or stop the job?", and needs_you carried no
+// question. Where nothing outranks a question it is the job's [NeedsKind].
+func QuestionKind(it Item) string {
+	kind := NeedsKind(it)
+	if (kind != NeedsConflict && kind != NeedsChangesRequested) || it.PullRequest == nil {
+		return kind
+	}
+	bare := it
+	pr := *it.PullRequest
+	pr.Conflict, pr.ReviewDecision = false, ""
+	bare.PullRequest = &pr
+	switch k := NeedsKind(bare); k {
+	case NeedsQuestion, NeedsOutOfAttempts, NeedsRunnerOffline:
+		return k
+	}
+	return kind
 }
 
 // publishFailed is a landed publish the person can retry. Either the first
@@ -366,13 +410,19 @@ func QuestionForm(it Item) (kind string, options []string, who string) {
 	if it.QKind == QKindSpendStopped {
 		return AskYesNo, []string{"yes", "no"}, WhoJobPerson
 	}
-	switch NeedsKind(it) {
+	switch QuestionKind(it) {
 	case NeedsRunnerOffline:
 		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
 	case NeedsOutOfAttempts:
 		return AskOptions, OutOfAttemptChoices(it), WhoJobPerson
 	case NeedsQuestion:
 		who = WhoAnyoneWithRepo
+		// Under a pull request's own wait (a conflict, changes requested) the
+		// answer door takes only the job's person (serve's mayAnswer reads
+		// [JobPersonOnly] of [NeedsKind]), so the question says so.
+		if NeedsKind(it) != NeedsQuestion {
+			who = WhoJobPerson
+		}
 		var opts []string
 		// A STEP'S QUESTION IS KIND STEP, WITH ITS OPTIONS AS ITS ANSWERS,
 		// however many there are and whatever they say: the answer door and
@@ -654,9 +704,13 @@ func MayAct(it Item, caller string) Acts {
 		return Acts{RunAgain: owner, CancelJob: owner, Reply: true}
 	}
 	var answer bool
-	switch NeedsKind(it) {
+	// The open question decides who answers, also where a pull request's wait
+	// outranks it for the kind ([QuestionKind]); under that wait only the
+	// job's person answers, as the answer door does.
+	asked := QuestionKind(it)
+	switch asked {
 	case NeedsQuestion:
-		answer = true
+		answer = asked == NeedsKind(it) || owner
 	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveStep, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
 		answer = owner
 	}

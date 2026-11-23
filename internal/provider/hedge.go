@@ -530,6 +530,19 @@ func (r *hedgeRace) start(index int, lane string) {
 	r.startArm(index, lane, nil)
 }
 
+// watchFor builds an arm's watch with the two facts about its endpoint that
+// nothing later in the call can learn: whether its waits are stretched
+// ([Client.patience]), and whether it is the one machine a local endpoint has
+// ([Client.soleLocalHost]). It is its own method so a test can ask what an arm
+// would be built with without sending the request.
+func (r *hedgeRace) watchFor(index int, plan control.Plan, now time.Time) *streamWatch {
+	return &streamWatch{
+		race: r, arm: index, plan: plan, control: r.build(plan), began: now,
+		stretched: r.client != nil && r.client.patience() > 1,
+		sole:      r.client != nil && r.client.soleLocalHost(r.model),
+	}
+}
+
 // startArm is [hedgeRace.start] with the one thing only the race's own ladder
 // arm carries: the refusal its doors deferred, which sends that arm's request
 // straight into the endpoint ladder instead of paying the same refusal again
@@ -549,7 +562,7 @@ func (r *hedgeRace) startArm(index int, lane string, ladder []byte) {
 		plan.Pinned = false
 	}
 	plan.Alts = r.untriedAlts()
-	watch := &streamWatch{race: r, arm: index, plan: plan, control: r.build(plan), began: now}
+	watch := r.watchFor(index, plan, now)
 	watch.deadline = watch.control.Deadline()
 	if !watch.deadline.IsZero() {
 		watch.armed = watch.deadline.Sub(now)
@@ -663,13 +676,18 @@ func (r *hedgeRace) armsSnapshot() (arms []*hedgeArm, done bool) {
 	return append([]*hedgeArm(nil), r.arms...), r.winner >= 0
 }
 
-// wakeAt is the deadline this arm's controller wants waking at, zero when it
-// has none. It is the one read [hedgeRace.nextWake] makes of an arm, taken in
-// its own locked half so the scan's defer law holds per arm rather than across
-// a loop of them.
+// wakeAt is the next decision for this arm, either the controller's wake or
+// the stretched ceiling after a report. [hedgeRace.nextWake] reads it under
+// this arm's lock, so an arm can change its deadline while the beat is asleep.
 func (w *streamWatch) wakeAt() time.Time {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if !w.deadPathAt.IsZero() {
+		if w.guard == nil {
+			return time.Time{}
+		}
+		return w.deadPathAt
+	}
 	return w.deadline
 }
 

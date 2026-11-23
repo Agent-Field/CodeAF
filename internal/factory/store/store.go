@@ -65,6 +65,9 @@ type Store struct {
 	root         string
 	outputPolicy func() (int, int)
 	observer     atomic.Pointer[func(before, after factory.Item)]
+	// asked says whose main agents can be asked about a stop now
+	// ([Store.AskMainAgent]); nil asks nobody's.
+	asked atomic.Pointer[factory.MainAgentAsked]
 	// shared is the last [Store.ListShared], reused while the floor is unchanged.
 	shared sharedList
 	// clock is the store's now. A test may hold it still; it is nil in every
@@ -151,6 +154,7 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 		}
 		it.ID = highest + 1
 		st.retainOutput(&it)
+		factory.SettleWait(factory.Item{}, &it, st.now())
 		data, err := marshalDoc(doc{Revision: 1, BudgetRevision: 1, ActionRevision: 1, Item: it})
 		if err != nil {
 			return err
@@ -364,6 +368,7 @@ func (st *Store) Save(it factory.Item) error {
 			it.Failure = current.Item.Failure
 		}
 		factory.NoteWait(current.Item, &it, st.now())
+		factory.SettleWaitAsking(current.Item, &it, st.now(), st.mainAgentAsked())
 		st.retainOutput(&it)
 		data, err := marshalDoc(nextDoc(current, it, rev))
 		if err != nil {
@@ -493,6 +498,34 @@ func (st *Store) ObserveWrites(fn func(before, after factory.Item)) {
 	st.observer.Store(&fn)
 }
 
+// AskMainAgent tells the store whose main agents its host can ask about a
+// stop now. A write that makes a stop on a job asked says no for leaves it
+// with the job's person at once, instead of handing it to a main agent
+// nobody will ask ([factory.SettleWaitAsking]). It is called under the job's
+// lock, so it must not write the store.
+//
+// NOBODY IS ASKED UNTIL A HOST SAYS WHO IS. A store no host told, or told
+// nil, asks no job's main agent: a CLI process opening the floor, a service
+// with no main agent to ask (serve's Config.Stopped nil), or the app before
+// its service starts never hands a stop over only for it to be handed back.
+func (st *Store) AskMainAgent(asked factory.MainAgentAsked) {
+	if asked == nil {
+		st.asked.Store(nil)
+		return
+	}
+	st.asked.Store(&asked)
+}
+
+func (st *Store) mainAgentAsked() factory.MainAgentAsked {
+	if p := st.asked.Load(); p != nil {
+		return *p
+	}
+	return nobodyAsked
+}
+
+// nobodyAsked is the asker of a store no host told: no main agent is asked.
+func nobodyAsked(factory.Item) bool { return false }
+
 func (st *Store) tellWritten(before, after factory.Item) {
 	if fn := st.observer.Load(); fn != nil && *fn != nil {
 		(*fn)(before, after)
@@ -591,6 +624,7 @@ func (st *Store) update(id int, mode writeMode, expect *int, change func(*factor
 		factory.RecordIssueTouch(before, &it)
 		factory.NoteChanges(before, &it, now)
 		factory.NoteWait(before, &it, now)
+		factory.SettleWaitAsking(before, &it, now, st.mainAgentAsked())
 		st.retainOutput(&it)
 		rev := current.Revision
 		if mode.bump {
@@ -716,6 +750,17 @@ func nextDoc(before doc, it factory.Item, revision int) doc {
 	// The wait's clock is the store's bookkeeping, as Changed is.
 	prior.NeedsAt, next.NeedsAt = time.Time{}, time.Time{}
 	prior.BriefWriting, next.BriefWriting = nil, nil
+	// The stored wait and offers are read off the other fields ([factory.SettleWait]),
+	// so they never make a write an action of its own.
+	prior.Wait, next.Wait = nil, nil
+	prior.Offers, next.Offers = nil, nil
+	// The watchdog's record of a stall is its own bookkeeping about the same
+	// facts: sighting one must not make a person's press on the job stale.
+	prior.Stall, next.Stall = nil, nil
+	// So is the main agent's hold on a stop (factory's handoff.go): handing a
+	// stop over, counting its turn or handing it back must not make a
+	// person's press on the job stale.
+	prior.Handoff, next.Handoff = nil, nil
 	return doc{Revision: revision,
 		BudgetRevision: revisionSince(before.BudgetRevision, revision, before.Item.Cap != it.Cap),
 		ActionRevision: revisionSince(before.ActionRevision, revision, !sameAction(prior, next)),

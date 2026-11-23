@@ -29,7 +29,7 @@ restores the ordinary prompt. Combined stdout/stderr appears as plain text while
 the command runs, preserving line breaks and indentation. Wide lines wrap; terminal
 control sequences are removed for safe display. The command and output remain in
 history after reopening. The model waits for your next message before responding.
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage). In a chat that can move between computers, file changes from `!` are included in
+In a chat that can move between computers, file changes from `!` are included in
 its next saved turn, just like changes from the model's shell commands.
 A failed command keeps its output and exit status too. Shell paths, `@` names and
 slash words remain literal, not mentions or send tags.
@@ -337,7 +337,7 @@ command).
 
 ## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
@@ -888,12 +888,12 @@ Over `--host` the `place` and `file` values are written in full as `machine:/pat
 
 `/status` carries the tool gate's posture on a line of its own, labelled `approvals`, in
 the person's words: `asks` (it asks you), `guardian` (a small model answers the plainly
-safe ones first), `YOLO` (it runs things without asking) or `refuses` (it refuses).
+safe ones first), `YOLO` (it runs things without asking) or `blocks` (it blocks every call the rules do not name).
 It is **this conversation's** posture — the one the `◇` cell on the legend shows — whichever
 setting decided it. `/status --json` carries the same fact under the `approvals` key, and
 the phone's status sheet has the same row.
 
-The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ refuses`. The
+The legend spells that fact as a cell: `◇ asks`, `◇ guardian`, `◇ YOLO`, `◇ blocks`. The
 status line draws `YOLO` only while the gate is open **and** the legend has no cell — a
 conversation whose engine has no approvals door — because there a permanent badge is a badge
 nobody reads. The welcome box draws neither the cell nor the badge: the legend and its cell come up the
@@ -903,7 +903,7 @@ cell, `◇ on its own`, and the badge stays off. A page has room for the whole a
 names the posture whichever it is.
 
 The cell, the badge and the line always agree, because all three read one posture. Walk
-it with `alt+a` and all three move on the keystroke; change "ask before running" in
+it with `alt+a` and all three move on the keystroke; change "tool approvals" in
 `/settings` and they move together for a conversation that follows the rows, or the panel
 says `saved · from the next session`.
 
@@ -1445,7 +1445,7 @@ time — an armed row first, then the panel.
 The heading is `what runs without asking`, drawn whether or not anything is under it. A
 `$` marks a row about one shell command, a `◇` (or `o` in linear mode) a row about a
 whole tool. The dim tail carries only what the heading did not already say: `every call`
-for a tool row, `refused` for a deny, `asks every time` for a prompt, and nothing at all
+for a tool row, `block` for a deny, `ask` for a prompt, and nothing at all
 for an ordinary shell allow. With nothing banked you get the heading and nothing under it.
 
 Shell command rules keep the order they were written in, because first match wins. Tool
@@ -2343,4 +2343,4 @@ Limits: a setup turn is never replayed on another machine (the agent does it aga
 
 ## Why pairing commands do not turn on sync storage — request access in Devices
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.

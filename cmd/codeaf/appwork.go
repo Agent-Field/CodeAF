@@ -1351,6 +1351,7 @@ func (b *appBackend) processRows(agent string) ([]session.JobNotice, error) {
 			for i := range rows {
 				rows[i] = appRecoverJob(rows[i], live.replayJobs)
 			}
+			rows = appMovedProcessRecords(transcript, rows)
 			b.locked(func() {
 				for _, row := range rows {
 					live.logs[appProcessOf(agent, row).ID] = row.LogPath
@@ -1367,7 +1368,7 @@ func (b *appBackend) processRows(agent string) ([]session.JobNotice, error) {
 	if err != nil {
 		return nil, appListError(err)
 	}
-	return rows, nil
+	return appMovedProcessRecords(transcript, rows), nil
 }
 
 // appListError says a history the whole list cannot carry as too_large,

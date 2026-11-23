@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 func TestAStaleDriveRefusalImmediatelyMakesTheWindowAViewer(t *testing.T) {
@@ -39,6 +40,8 @@ func TestStalePublishRefusalMakesViewerAndNotifiesOnce(t *testing.T) {
 	h.durable(h.cell.ID, h.cell)
 	h.block.set(true)
 	a.mustSay("orphaned")
+	outage := syncwords.Outage(h.a.Relay)
+	waitFor(t, "A to report the failed upload", func() bool { return h.wall.has(outage) })
 	h.lapse()
 	mustNil(t, h.b.putDevice(ctx, nameB))
 	if _, err := h.continuerB().Take(ctx, h.cell.ID); err != nil {
@@ -54,8 +57,9 @@ func TestStalePublishRefusalMakesViewerAndNotifiesOnce(t *testing.T) {
 		t.Fatalf("viewer = %q, %v; want %q, true", line, viewer, want)
 	}
 	kept := chatlist.KeptEdits(1, nameA)
-	if got := h.wall.all(); !slices.Equal(got, []string{kept, want}) {
-		t.Fatalf("notices = %v, want [%q %q]", got, kept, want)
+	expected := []string{outage, kept, want}
+	if got := h.wall.all(); !slices.Equal(got, expected) {
+		t.Fatalf("notices = %q, want %q once each", got, expected)
 	}
 }
 

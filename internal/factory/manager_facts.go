@@ -29,7 +29,7 @@ func managerFactsLines(it Item) (out, guide []string) {
 		out = append(out, "Autonomy: Auto. Routine approve steps and publication pass by themselves; merging stays the person's decision.")
 		guide = append(guide, "This job is in Auto: never say a gate holds the run or that nothing posts before the person approves.")
 	case it.Autonomy == AutonomyManual || it.Manual:
-		out = append(out, "Autonomy: Manual. Approve steps wait for the person's word.")
+		out = append(out, "Autonomy: Manual. Approve steps and everything that goes public wait for the person's word.")
 	default:
 		out = append(out, "Autonomy: the pipeline's own. Its approve steps wait for the person's word.")
 	}
@@ -164,7 +164,7 @@ func managerPRDecision(it Item) (person, actions []string) {
 	}
 	if OffersPublishApproval(it) {
 		person = append(person, "Waiting on the person: Approve publishing this job's checked work?")
-		actions = append(actions, "To approve publishing when the person asks in this conversation, call factory_answer with action=approve and answer set to their words; it waits out its Undo window first.")
+		actions = append(actions, "To approve publishing when the person asks in this conversation, call factory_answer with action=approve and answer set to their words; it waits out its Undo window first. Outside Auto it is refused on a turn the person did not speak in.")
 	}
 	pr := it.PullRequest
 	if pr == nil || pr.Number <= 0 || pr.State != PROpen {
@@ -179,13 +179,16 @@ func managerPRDecision(it Item) (person, actions []string) {
 	}
 	if OffersMarkReady(it) {
 		person = append(person, fmt.Sprintf("Waiting on the person: Mark pull request #%d ready for review? (%s)", pr.Number, "it is a draft: "+DraftWhy(it)))
-		actions = append(actions, "To mark it ready when the person asks in this conversation, call factory_answer with action=mark_ready and answer set to their words.")
+		actions = append(actions, "To mark it ready when the person asks in this conversation, call factory_answer with action=mark_ready and answer set to their words. Outside Auto it is refused on a turn the person did not speak in.")
 	}
 	if v := MergeOffered(it); v.OK {
 		person = append(person, fmt.Sprintf("Waiting on the person: Merge pull request #%d?", pr.Number))
-		actions = append(actions, "To merge when the person asks in this conversation, call factory_answer with action=merge and answer set to their words; the merge waits out its Undo window first. Never merge on your own judgment, in Auto or Manual.")
+		// THE MERGE CARD IS THE PAUSE (the owner's decision of 2026-11-16): a
+		// person who asks to merge is shown it again, never sent to find it.
+		actions = append(actions, "When the person asks in this conversation to merge, or whether it is ready to merge, call factory_answer with action=offer_merge and answer set to their words: it shows them the Merge card again, as it stands now. Call action=merge only when the person, with the card shown, tells you here to merge it now; the merge waits out its Undo window first. Never merge on your own judgment, in Auto or Manual: it is refused on a turn the person did not speak in.")
 	} else if it.Kind != KindPR && it.Publish == "pr" {
 		person = append(person, "Merge is not offered yet: "+v.Why+".")
+		actions = append(actions, "If the person asks to merge, tell them plainly why it cannot merge yet, in these words, and offer nothing.")
 	}
 	return person, actions
 }

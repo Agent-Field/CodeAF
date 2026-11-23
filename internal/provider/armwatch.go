@@ -33,6 +33,9 @@ type streamWatch struct {
 	// beat sleeps until it rather than polling, so it is compared on every
 	// reading and the beat is kicked only when it MOVES.
 	deadline time.Time
+	// deadPathAt keeps the stretched ceiling armed after the controller has
+	// reported once and has no further act to offer.
+	deadPathAt time.Time
 	// armed is the first deadline this arm was given, as a duration from when
 	// it went out. It is what the call log's `hazard_ceiling_ms` records: the rows
 	// where a deadline was set and not reached are what say the deadline was
@@ -102,6 +105,19 @@ type streamWatch struct {
 	// NEVER NEITHER below.
 	guard *stallWatch
 	free  bool
+	// A stretched wait leaves a silent path open until the ceiling because
+	// the measured habits of a fast prompt can make an early report premature.
+	stretched bool
+	// sole is a request to the one machine a local endpoint has
+	// ([Client.soleLocalHost]). The ceiling still reports on it and never cuts
+	// it, stretched or not: the cut exists so that the next request reaches a
+	// different machine, and this one would reach the same machine and start
+	// reading the prompt again from the beginning. The silence is left to the
+	// stall watch's stretched first-word bound, which still ends a request that
+	// never answers. Measured on 2026-11-19 against a server that sent its
+	// headers at once and its first word at 150 seconds: v0.8.3-rc.2 cut the
+	// request at 100 seconds and asked the same server again, every time.
+	sole bool
 	// progress is whoever asked to watch this call run (callprogress.go), and
 	// nil on every call nobody is watching — which is nearly all of them.
 	//
@@ -239,6 +255,9 @@ func (w *streamWatch) rebuildFor(plan control.Plan, now time.Time) {
 	w.served = ""
 	w.acted, w.silence, w.fault = control.Act{}, 0, false
 	w.applied, w.appliedWord = 0, ""
+	if w.stretched {
+		w.deadPathAt, w.guard, w.free = time.Time{}, nil, false
+	}
 	w.deadline = w.control.Deadline()
 	if !w.deadline.IsZero() {
 		w.armed = w.deadline.Sub(now)
@@ -333,6 +352,18 @@ func (w *streamWatch) quietAct(now time.Time) (control.Act, bool) {
 	if w.recovering {
 		return control.Act{}, false
 	}
+	if !w.deadPathAt.IsZero() {
+		if w.guard == nil || now.Before(w.deadPathAt) {
+			return control.Act{}, false
+		}
+		act := w.after(w.control.Quiet(now), now)
+		w.deadPathAt = time.Time{}
+		// The ceiling can still choose a rescue if the plan can afford one.
+		if act.Kind == control.None || act.Kind == control.Report {
+			w.free, w.deadline = true, time.Time{}
+		}
+		return act, true
+	}
 	return w.after(w.control.Quiet(now), now), true
 }
 
@@ -360,6 +391,9 @@ func (w *streamWatch) freeMove() (take bool, guard *stallWatch, waited time.Dura
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	take, guard, waited = w.free, w.guard, w.silence
+	if take && w.stretched {
+		waited = max(w.plan.Ceiling, lanes.DeadPathFloor)
+	}
 	w.free = false
 	return take, guard, waited
 }
@@ -374,6 +408,11 @@ func (w *streamWatch) freeMove() (take bool, guard *stallWatch, waited time.Dura
 // heartbeat is proof about the path and moves nothing in the arithmetic. This
 // layer is where both facts are held, so this is where they are joined.
 func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
+	live := w.tokens > 0 || w.beats > 0
+	if live && !w.deadPathAt.IsZero() {
+		w.deadPathAt = time.Time{}
+		w.race.rearm()
+	}
 	if act.Kind != control.None {
 		// AN ACT TAKEN WITH NO SIGN OF LIFE AT ALL IS ABOUT THE PATH. A router
 		// that is working says so in comments long before the model does, so a
@@ -381,7 +420,11 @@ func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
 		// machine at the other end and must not be charged to it — and the row
 		// says which of the two it was, because "this lane is slow" and "this
 		// connection never opened" are different autopsies.
-		dead := w.tokens == 0 && w.beats == 0 && act.Silence >= lanes.DeadPathFloor
+		dead := !live && act.Silence >= lanes.DeadPathFloor
+		if w.stretched && !w.sole && !live && act.Kind == control.Report {
+			w.deadPathAt = w.began.Add(max(w.plan.Ceiling, lanes.DeadPathFloor))
+			w.race.rearm()
+		}
 		if dead {
 			act.Reason = pathFaultReason
 			// AND THE CEILING ACTS EVEN WHEN THE PURSE SAYS NO. A report is the
@@ -390,8 +433,10 @@ func (w *streamWatch) after(act control.Act, now time.Time) control.Act {
 			// purse is empty. On a path fault that leaves the question with a
 			// machine that has sent nothing at all, so the free move is taken
 			// instead: cut here, and the layer above asks somewhere else. See
-			// THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER.
-			if act.Kind == control.Report {
+			// THE CEILING PICKS ONE OR THE OTHER, NEVER NEITHER. The one
+			// exception is a sole local host ([streamWatch.sole]), which has no
+			// somewhere else for the layer above to ask.
+			if act.Kind == control.Report && !w.stretched && !w.sole {
 				w.free = true
 			}
 		}
@@ -725,4 +770,7 @@ func (w *streamWatch) guardedBy(guard *stallWatch) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.guard = guard
+	if !w.deadPathAt.IsZero() {
+		w.race.rearm()
+	}
 }

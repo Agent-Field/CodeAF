@@ -394,8 +394,9 @@ BUILD OK
 [job 3 · last 50 lines · full log: <path>]
 ```
 
-A plain background process that exits 0 waits silently for the next turn; it
-never starts a reply. Set `notify: true` beside `background: true` in `bash` when
+A plain background process that exits 0 leaves its ending in the chat as
+context for the next turn, even if you move the chat. It starts no reply. Set
+`notify: true` beside `background: true` in `bash` when
 the person asked to be told when it ends. Failures, explicitly requested
 notifications, and commands whose call or task worker is still waiting keep the
 waking path: their note lands at the next step while a turn is running. When

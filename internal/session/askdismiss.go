@@ -19,8 +19,8 @@ import (
 // with [askDismissed] as its result. A question the turn did not wait for —
 // [Question.Later], one a task is stopped on, a ratify, one they asked back on
 // — has no call left, so the same sentence is queued as step guidance that
-// never starts a turn ([Agent.enqueueAmbientNote]); the model reads it at its
-// next step.
+// never starts a turn ([Agent.enqueueNextTurnNote]); the model reads it at its
+// next step, or at the first step of the next turn when none is running.
 
 // askDismissed is what the model reads about a question the person dismissed.
 const askDismissed = "the person dismissed this question without answering it: nothing was decided. Carry on without the answer; ask again later only if you still need it."
@@ -63,6 +63,6 @@ func (a *Agent) DismissQuestion(token string) error {
 		// claimed, so it says nothing a second time.
 		open.letGo()
 	}
-	a.enqueueAmbientNote("Your question \"" + strings.TrimSpace(q.Head) + "\": " + askDismissed)
+	a.enqueueNextTurnNote("Your question \"" + strings.TrimSpace(q.Head) + "\": " + askDismissed)
 	return nil
 }

@@ -4,17 +4,23 @@ import "time"
 
 const (
 	FeatureChatsTake = "chats.take"
+	// FeatureChatsRead says agents.entries follows saved remote heads without taking the chat.
+	FeatureChatsRead = "chats.read"
+	// FeatureChatReadSource identifies engines that tag remote and fallback pages.
+	FeatureChatReadSource = "chats.read_source"
 	// FeatureChatsMove says chat rows carry move and move_ended, and
 	// agents.take_cancel exists: a client learns how every move ends from the
 	// rows and needs its own timer only as a fallback.
-	FeatureChatsMove = "chats.move"
+	FeatureChatsMove    = "chats.move"
+	FeatureChatsPreview = "chats.preview"
 	// FeatureChatsWorking says chat rows carry working: the holder said at its
-	// last beat that a turn is running there. A relay that does not keep the
+	// last beat that work is still running or settling there. A relay that does not keep the
 	// flag leaves it false, so a client says "open there", never "idle there".
 	FeatureChatsWorking = "chats.working"
 	// FeatureChatsSend says chats.send exists and chat rows carry notes: a
 	// message written here to a chat another computer holds, which that
 	// computer puts in the chat's queue, so it runs when the turn there ends.
+	// It is absent while the account's hosted sync storage is off ([ChatsSendOffer]).
 	FeatureChatsSend = "chats.send"
 	// FeatureChatsRead says chats.read exists: the transcript of a chat another
 	// computer holds, read page by page from what that computer last sealed,
@@ -38,6 +44,7 @@ type Seen struct {
 	Head   string `json:"head,omitempty"`
 }
 type ChatRow struct {
+	CanPreview bool            `json:"can_preview,omitempty"`
 	CanOpen    bool            `json:"can_open,omitempty"`
 	Cell       string          `json:"cell"`
 	Title      string          `json:"title"`
@@ -71,8 +78,8 @@ type ChatRow struct {
 	MoveEnded    *ChatMoveEnded `json:"move_ended,omitempty"`
 	Line         string         `json:"line,omitempty"`
 	TakeoverLine string         `json:"takeover_line,omitempty"`
-	// Working says the computer holding the chat is in the middle of a turn
-	// (status running only). Absent while it is merely open there.
+	// Working says the holder has a turn or background work still to settle
+	// and save (status running only). Absent while it is merely open there.
 	Working bool `json:"working,omitempty"`
 	// Notes are the messages this computer wrote to the chat while another
 	// computer held it, oldest first: waiting until that computer takes one into
@@ -113,6 +120,14 @@ type ChatSendResult struct {
 type ChatsSender interface {
 	SendToChat(ChatSendParams) (ChatNote, error)
 }
+
+// ChatsSendOffer is an engine's answer to whether a message to a chat another
+// computer holds can be sent now. A message waits on the sync service as sealed
+// text until the holder takes it, which an account whose hosted storage is off
+// may not keep there, and a capability that cannot work is absent, not broken:
+// an engine that answers false does not advertise chats.send. An engine that
+// does not implement it keeps advertising chats.send, as before.
+type ChatsSendOffer interface{ ChatsSendOffered() bool }
 
 // ChatSharing says the computer holding the chat has sealed turns it has not
 // finished sharing yet; can_take stays false until it has, while that
@@ -230,7 +245,36 @@ type RelayReporter interface{ RelayKnown() bool }
 // ChatsCrewer is an engine whose chat rows carry crew facts.
 type ChatsCrewer interface{ ChatRowsCarryCrews() bool }
 
+type ChatReadFollower interface{ ChatReadsFollow() bool }
+
+type ChatEntryPageReader interface {
+	EntriesWithFallback(id, before string, limit int) (EntriesResult, error)
+}
+
+// ChatPreview is a read-only excerpt of recently saved conversation text.
+type ChatPreview struct {
+	LastUser      string `json:"last_user,omitempty"`
+	LastAssistant string `json:"last_assistant,omitempty"`
+}
+
+type ChatPreviewParams struct {
+	Cell string `json:"cell"`
+}
+
+type ChatPreviewReader interface {
+	PreviewChat(cell string) (ChatPreview, error)
+}
+
 func withChatsFeatures(h Hello, e Engine) Hello {
+	if _, ok := e.(ChatPreviewReader); ok {
+		h = withFeature(h, FeatureChatsPreview)
+	}
+	if d, ok := e.(ChatReadFollower); ok && d.ChatReadsFollow() {
+		h = withFeature(h, FeatureChatsRead)
+		if _, ok := e.(ChatEntryPageReader); ok {
+			h = withFeature(h, FeatureChatReadSource)
+		}
+	}
 	if _, ok := e.(ChatsTaker); ok {
 		h = withFeature(h, FeatureChatsTake)
 	}
@@ -241,7 +285,9 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 		h = withFeature(h, FeatureChatsWorking)
 	}
 	if _, ok := e.(ChatsSender); ok {
-		h = withFeature(h, FeatureChatsSend)
+		if offer, asked := e.(ChatsSendOffer); !asked || offer.ChatsSendOffered() {
+			h = withFeature(h, FeatureChatsSend)
+		}
 	}
 	if d, ok := e.(ChatsReader); ok && d.CanReadChats() {
 		h = withFeature(h, FeatureChatsRead)
@@ -255,6 +301,17 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 	return h
 }
 func init() {
+	methods["chats.preview"] = typed(func(e Engine, p ChatPreviewParams) (*ChatPreview, error) {
+		d, ok := e.(ChatPreviewReader)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not preview chats on other computers")
+		}
+		if _, err := required("cell", p.Cell); err != nil {
+			return nil, err
+		}
+		got, err := d.PreviewChat(p.Cell)
+		return &got, err
+	})
 	methods["chats.list"] = typed(func(e Engine, _ struct{}) (*ChatsResult, error) {
 		d, ok := e.(ChatsTaker)
 		if !ok {

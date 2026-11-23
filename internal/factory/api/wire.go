@@ -480,7 +480,16 @@ type Job struct {
 	Manual         bool                `json:"manual,omitempty"`
 	Effort         string              `json:"effort,omitempty"`
 	FollowUp       *factory.PRFollowUp `json:"follow_up,omitempty"`
-	SetupHeld      bool                `json:"setup_held,omitempty"`
+	// Wait is what the job waits on and Offers the actions the service
+	// takes on it now, as the service stored them (factory.SettleWait).
+	// Readers show them; none works the wait out again.
+	Wait   *factory.Wait   `json:"wait,omitempty"`
+	Offers []factory.Offer `json:"offers,omitempty"`
+	// Acts are the public acts on the job's pull request (factory.PublicAct):
+	// those that wait for the person's yes (state proposed), those the service
+	// is carrying out, and the last few that are over, each with its result.
+	Acts      []factory.PublicAct `json:"acts,omitempty"`
+	SetupHeld bool                `json:"setup_held,omitempty"`
 	// Hold is why a job that never ran waits in Backlog when nothing else on it
 	// says so: `import` (it was already open when the factory was set up or
 	// its repository was turned on, [factory.Item.SetupHeld]) or
@@ -693,7 +702,12 @@ type Job struct {
 	Publishing *factory.Publishing `json:"publishing,omitempty"`
 	// Merge is the job's merging; absent until it has opened a pull request.
 	Merge *JobMerge `json:"merge,omitempty"`
-	Desk  *JobDesk  `json:"desk,omitempty"`
+	// MergeOfferedAt is when the job's manager last offered the person the
+	// merge of its open pull request again (factory_answer offer_merge), so
+	// the job page brings its Merge card up anew; absent when never
+	// re-offered. Hello word `factory.job_merge_offered`.
+	MergeOfferedAt *time.Time `json:"merge_offered_at,omitempty"`
+	Desk           *JobDesk   `json:"desk,omitempty"`
 	// Can is computed for the caller. It is not stored on the job.
 	Can Can `json:"can"`
 }
@@ -1130,6 +1144,14 @@ type PR struct {
 	NoChecks      bool       `json:"no_checks,omitempty"`
 	// HeadBranch is the branch the pull request comes from.
 	HeadBranch string `json:"head_branch,omitempty"`
+	// BaseBranch is the branch the pull request asks to merge into, as the
+	// forge names it; Follow PR's base sync merges its live head.
+	BaseBranch string `json:"base_branch,omitempty"`
+	// Title is the pull request's title once a public act has edited it.
+	Title string `json:"title,omitempty"`
+	// Body is the pull request's description once a public act has edited
+	// it; a repair push leaves it as it is.
+	Body string `json:"body,omitempty"`
 	// Files is the pull request's own file list as the forge reports it, each
 	// path with its status (added, modified, removed, renamed, ...), at most
 	// [factory.PRFilesMost] of FilesTotal, read on the commit FilesHead. A
@@ -1171,6 +1193,10 @@ type PRReview struct {
 	By    string    `json:"by"`
 	State string    `json:"state"`
 	At    time.Time `json:"at"`
+	// Association is GitHub's word for the reviewer's standing on the
+	// repository; Untrusted says it carries no write access.
+	Association string `json:"association,omitempty"`
+	Untrusted   bool   `json:"untrusted,omitempty"`
 }
 
 // RuleChecks is what the factory's own two checks found on a job, each

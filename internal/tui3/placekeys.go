@@ -227,6 +227,9 @@ func (a *app) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// swallowed rather than passed down, so it cannot put a newline into a
 		// filter — the same arm every other undeclared chord takes.
 		if a.at(pageHome) {
+			if a.homeContinueInFlight() {
+				return nil, true
+			}
 			return a.placeSend(), true
 		}
 		return nil, true

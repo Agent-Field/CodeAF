@@ -236,7 +236,7 @@ func (r *Runner) Launch(id int) error {
 		it.PublishStatus, it.Publishing = nil, false
 		it.PublishError = ""
 		it.Question, it.QKind = "", ""
-		it.Proof, it.Policy = nil, nil
+		it.ResetChecks()
 		if it.Stream != nil && begun(it.Stream) {
 			factory.ClearJobRun(it)
 		}
@@ -885,7 +885,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	if st.Kind == factory.StageGate {
 		return lp.approve(c, i, name)
 	}
-	if factory.AsksBeforeStep(it, i) {
+	if asksBeforeStep(it, i) {
 		return lp.askBeforeStep(c, i, name)
 	}
 

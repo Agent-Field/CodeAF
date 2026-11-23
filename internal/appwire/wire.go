@@ -83,6 +83,13 @@ const (
 	// that failed on the way: the message names the job, and the repository
 	// is still on.
 	CodeHasRunning = "has_running"
+	// CodeCannotJoin is the code of a failed joining pairing (use_code or
+	// request_link) that this computer refused because of what it already
+	// holds: it is paired with other computers, or has chats of its own. The
+	// message says which. A new code or link would end the same way, so the app
+	// does not suggest one. It is additive: an app that does not know the word
+	// treats it as any failure.
+	CodeCannotJoin = "cannot_join"
 )
 
 // The states an agent can be in, as the app draws them.
@@ -189,7 +196,9 @@ type Agent struct {
 	DID       string `json:"did,omitempty"`
 	Title     string `json:"title"`
 	Workspace string `json:"workspace"`
-	Model     string `json:"model,omitempty"`
+	// WorkspaceOrigin is the sender folder of a received private working copy.
+	WorkspaceOrigin string `json:"workspace_origin,omitempty"`
+	Model           string `json:"model,omitempty"`
 	// Effort is the conversation override: low, medium, high, xhigh or max.
 	// It is omitted when unset (auto); other effort scopes can still apply.
 	Effort    string    `json:"effort,omitempty"`

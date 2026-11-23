@@ -23,7 +23,8 @@ package main
 //	a crew proposal            let go, as keeping the agent alone does
 //	a budget ask               closed; the budget stays as it is
 //	a kept-running process     its line closes; the process is left as it is
-//	                           and this episode's line does not open again
+//	                           and this episode's line does not open again,
+//	                           even after a restart (the app's state file)
 //	a Library choice           refused: it is the Library guide's choice, owned
 //	                           by no agent, and it stands until the guide
 //	                           settles it
@@ -43,8 +44,10 @@ import (
 const appDismissedWords = "Dismissed by the person without a decision; raise it again later if it is still needed."
 
 // appDismissedNote is the words a dismissed question's answer carries to its
-// lane, where the lane passes words on.
-const appDismissedNote = "Dismissed from the Inbox without an answer."
+// lane, where the lane passes words on. It says plainly that the person put the
+// question away and decided nothing, so no lane reads it as a no, a change or a
+// rule about later requests.
+const appDismissedNote = "Dismissed from the Inbox without an answer: the person put the question away and decided nothing. This says nothing about later requests."
 
 // appCrewDismissed is the crew asks this app dismissed, so the packet's
 // closing says dismissed rather than decided.
@@ -125,6 +128,11 @@ func (b *appBackend) dismissOrderRun(ask string) error {
 	if err != nil {
 		return appwire.Errorf(appwire.CodeNotFound, "the ask %s is not open", ask)
 	}
+	// Dismissed already (a second press before the next orders poll closes the
+	// ask): nothing more to do, and the first press's mark must stay.
+	if was, ok := appOrderAnswered.Load(run); ok && was == appwire.ResolvedDismissed {
+		return nil
+	}
 	appOrderAnswered.Store(run, appwire.ResolvedDismissed)
 	if _, err := b.OrderVerdict(r.AutomationID, run, appwire.VerdictSkip); err != nil {
 		appOrderAnswered.Delete(run)
@@ -152,7 +160,8 @@ func (b *appBackend) dismissProposal(agent, proposal string) error {
 }
 
 // dismissServiceLine closes a kept-running process's line and leaves the
-// process as it is; the same episode's line does not open again.
+// process as it is; the same episode's line does not open again, in this run
+// of the app or the next ([appStateFile.ServiceDismissed]).
 func (b *appBackend) dismissServiceLine(id string) error {
 	svc, err := b.servicesOf()
 	if err != nil {
@@ -173,8 +182,30 @@ func (b *appBackend) dismissServiceLine(id string) error {
 	if !found {
 		return appwire.Errorf(appwire.CodeNotFound, "the Inbox item %s is no longer waiting", id)
 	}
+	b.saveServiceDismissed(key, line.episode)
 	b.serviceLineResolved(svc, key, line, appwire.ResolvedDismissed, b.now())
 	return nil
+}
+
+// saveServiceDismissed keeps a process's dismissed episode in the app's
+// file, or forgets it when episode is "", so a restart does not open the line
+// again. A file that cannot be written leaves the dismissal standing for this
+// run of the app.
+func (b *appBackend) saveServiceDismissed(key, episode string) {
+	if b.state == nil {
+		return
+	}
+	_ = b.state.write(func(f *appStateFile) error {
+		if episode == "" {
+			delete(f.ServiceDismissed, key)
+			return nil
+		}
+		if f.ServiceDismissed == nil {
+			f.ServiceDismissed = map[string]string{}
+		}
+		f.ServiceDismissed[key] = episode
+		return nil
+	})
 }
 
 // dismissQuestion closes one of a held conversation's asks: a budget ask, the
@@ -218,6 +249,11 @@ func (b *appBackend) dismissQuestion(agent, ask string) error {
 		}
 		return nil
 	}
+	// A landing's or a conflict's cards all decide the task: its "not right"
+	// is marked safe, but it refutes the task and fails what depends on it.
+	if q.Kind == session.QuestionLanding || q.Kind == session.QuestionConflict {
+		return appwire.Errorf(appwire.CodeBadParams, "every answer to this question decides the task, so dismissing it would decide it; answer it instead")
+	}
 	safe, ok := appSafeOption(q)
 	if !ok {
 		return appwire.Errorf(appwire.CodeBadParams, "this question has no answer that changes nothing, so dismissing it would decide it; answer it instead")
@@ -225,7 +261,7 @@ func (b *appBackend) dismissQuestion(agent, ask string) error {
 	a.gate.Lock()
 	defer a.gate.Unlock()
 	b.locked(func() { live.answered[ask] = appAnsweredMark + appwire.ResolvedDismissed })
-	resolved := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: safe, Picked: []string{safe}, Change: appDismissedNote}
+	resolved := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: safe, Picked: []string{safe}, Change: appDismissedNote, Dismissed: true}
 	if err := live.conn.Conv.ResolveQuestion(resolved); err != nil {
 		b.locked(func() { delete(live.answered, ask) })
 		return appEngineError(err)

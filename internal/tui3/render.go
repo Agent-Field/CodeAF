@@ -2098,6 +2098,10 @@ const (
 	// a narrow frame gives up a number rather than the one segment saying that
 	// the session has stopped and is waiting for them.
 	segQuestions
+	// segFiles is `files arriving · 40 of 112 MB` while workspace files arrive in
+	// the background after the chat opens, or the plain-words failure and retry
+	// when they could not arrive (C2, C4).
+	segFiles
 	// segSeal is `not sealed`, drawn while the last seal of the conversation's
 	// calls failed and never otherwise (sealseam.go). It is not in
 	// [dropOrder]: a narrow frame gives up a number before the fact that there
@@ -2689,6 +2693,7 @@ func (a *app) telemetry(width int) []hudPart {
 	// link's own reason said one rung louder: the numbers are not moving, and
 	// this is the segment that says whose move it is (question.go).
 	add(segQuestions, a.questionSegment())
+	add(segFiles, a.filesSegment())
 	add(segSeal, a.sealSegment())
 	if word, painted := a.stateSegment(); word != "" {
 		parts = append(parts, hudPart{kind: segState, text: word, paint: painted})
@@ -2808,6 +2813,11 @@ func (a *app) paintPart(part hudPart) string {
 		// own argument at the one hue this surface reserves for a person being
 		// waited on (question.go, styles.go's [hueWarn]).
 		return a.pal.warn(part.text)
+	case segFiles:
+		if a.filesMoveFailed() {
+			return a.pal.warn(part.text)
+		}
+		return a.pal.dim(part.text)
 	case segSeal:
 		// LOUD FOR WHAT IT MEANS, [segYolo]'s argument: it is true for exactly as
 		// long as it is drawn, so its age says nothing.

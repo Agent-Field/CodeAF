@@ -54,6 +54,23 @@ type Config struct {
 	// Auto ([factory.PassOf]): the factory's AI filter, on its default model.
 	// Nil leaves every such approval to a person, with the reason said.
 	PassJudge route.Judge
+	// Stalled gives the manager of a stalled job one turn on it (watchdog.go):
+	// the host puts the stall's facts to the job's own conversation, which may
+	// move the job through its own doors, and answers what the manager said.
+	// It is called off the settle pass, one turn at a time for a job, under a
+	// context that ends when the service closes. Nil is a factory with no
+	// manager to ask: a stall then goes straight to the job's person.
+	Stalled func(ctx context.Context, it factory.Item, stall factory.Stall) (said string, err error)
+	// Stopped gives the main agent of a job its one turn on a stop it may
+	// decide (handoff.go): the host puts the stop to the job's own
+	// conversation, which carries its decision out through the manager_decide
+	// door, and answers what the main agent said. wait is what the person
+	// would be asked for. It is called off the settle pass, one turn at a
+	// time for a job, under a context that ends at the handoff's deadline or
+	// when the service closes. Nil is a factory with no main agent: every
+	// stop then goes straight to the job's person. A host with nobody to ask
+	// just now answers [ErrNotAsked].
+	Stopped func(ctx context.Context, it factory.Item, wait factory.Wait) (said string, err error)
 	// Scout is Look closer on this factory (scout.Door.Look): nil when the
 	// factory has no model to look with, and the route then says so.
 	Scout func(ctx context.Context, id int, refresh bool) (factory.Scout, bool, error)
@@ -149,6 +166,11 @@ type Config struct {
 	Team           []string
 	// GitHubHTTPClient permits a fake transport while keeping production URLs fixed.
 	GitHubHTTPClient *http.Client
+	// ActsClient, when set, is the GitHub client public acts are carried out
+	// with for a sign-in (acts.go), and the pull request marked ready with
+	// (pr_ready.go), in place of the real one: a whole-factory test supplies
+	// its own forge. Nil is GitHub itself.
+	ActsClient func(token string) factorygithub.API
 	// Now supplies the session clock, including pruning at startup.
 	Now func() time.Time
 	// TokensPath names access-token rows beside the host config. Empty means
@@ -253,12 +275,19 @@ type Handler struct {
 	// key, so one approval is never judged twice at once.
 	judgingMu sync.Mutex
 	judging   map[int]string
+	// repairing is held while one settle sends Auto repairs back, so two
+	// settles at once never count two attempts for one send-back.
+	repairing sync.Mutex
 	// floorList, when set, is how a test counts floor reads. A real handler
 	// leaves it nil and reads the store.
 	floorList func(*store.Store) ([]factory.Item, error)
 	// floorKept is the last look that found nothing due. A later request
 	// skips the decode while those files and the clock still say so.
 	floorKept floorLook
+	// stalls is the stall watchdog's manager turns in flight (watchdog.go).
+	stalls stallWatch
+	// acts is the one sender of public acts (acts.go).
+	acts actRun
 
 	// teamOwnership answers whether a team owns a workstream (teams.go);
 	// nil means no team owns any.
@@ -371,6 +400,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/audit", h.audit)
 	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
+	h.taskRoutes()
 	h.scoutRoutes()
 	h.readRoutes()
 	h.workerRoutes()
@@ -476,6 +506,11 @@ func (h *Handler) Close() {
 			h.jobsTimer.Stop()
 		}
 		h.jobsMu.Unlock()
+		// A manager turn on a stall is ended, not waited out.
+		h.stalls.stop()
+		// So is a public act being sent: its call ends, and what it wrote
+		// about the act is waited for below.
+		h.acts.stop()
 		h.jobsBusy.Wait()
 	}
 
@@ -737,8 +772,16 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	if h.githubNotConnected(r) {
 		q.GitHub = api.GitHubNotConnected
 	}
+	held := false
 	for i := range q.Jobs {
+		was := q.Jobs[i].NeedsYou
 		h.presentJob(r, &q.Jobs[i])
+		held = held || (was != nil && q.Jobs[i].NeedsYou == nil)
+	}
+	// A stop its main agent holds leaves the needs-you groups with the cards
+	// (api.PresentMainAgentHold).
+	if held {
+		api.RegroupNeedsYou(&q)
 	}
 	h.repoCheckouts(r.Context(), q.Repos)
 	summarize := h.summaries(r)

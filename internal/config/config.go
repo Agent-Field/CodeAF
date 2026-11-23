@@ -502,6 +502,13 @@ func load(requireKey bool) (Config, error) {
 		return Config{}, err
 	}
 	config.DocumentEngine = engine
+	// A wait the person pinned for this launch must parse, and a launch that
+	// cannot read it says so here rather than waiting the wrong time (the pin
+	// policy in docs/LIMITS.md). The figure itself is installed with the other
+	// process-wide rows by [InstallLaneRows] below.
+	if _, err := ResponsePatienceAt(config.ProfileDir); err != nil {
+		return Config{}, err
+	}
 	// What earlier runs learned about how models answer, back into the adapter
 	// before it shapes its first request. Nothing here fails: a profile with no
 	// memo costs one rejected call per quirk, which is how the memo was written
@@ -997,6 +1004,11 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		BillingDoor: service.Door.Name,
 		Billing:     billingFactOf(service),
 		Effort:      effort,
+		// The dialect travels from the service row rather than being inferred
+		// from the address, so a router that happens to serve DeepSeek's
+		// models keeps the unified object and only the vendor's own API gets
+		// the field it reads.
+		ReasoningDialect: service.Source.Reasoning,
 	}
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		configured.APIKey = codexauth.Sentinel

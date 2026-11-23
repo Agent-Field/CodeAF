@@ -865,6 +865,11 @@ func InstallLaneRows(profileDir string) {
 	InstallRoutingRow(profileDir)
 	provider.SetLanePin(LanePinAt(profileDir, LaneSlotTalk))
 	provider.SetLaneGuard(LaneGuardAt(profileDir))
+	// How long a slow model may stay quiet is the same kind of process-wide
+	// fact, and it travels with the routing posture for the same reason: every
+	// door that installs one installs the other, so no client runs on a wait the
+	// person did not write.
+	InstallResponsePatience(profileDir)
 }
 
 // InstallRoutingRow hands the routing row ALONE to the transport, and it is the
@@ -1445,6 +1450,12 @@ var OperatorEnvPins = []string{
 	// a machine at a relay it was never told about.
 	"CODEAF_SYNC_URL",
 	"CODEAF_SYNC_INTERVAL_MS",
+	"CODEAF_MOVE_FILES_FIRST",
+	// CODEAF_PASSTHROUGH=off turns off moving a chat between this person's
+	// computers through the relay's pipe while sync storage is closed
+	// (internal/syncsetup). It is the owners' off switch while that road is
+	// new, not a preference, so it stays in the environment.
+	"CODEAF_PASSTHROUGH",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -2202,16 +2213,16 @@ func (s *Settings) build() []Setting {
 		// stopping to ask you. The dollars are above; the actions are here.
 		Setting{
 			Key: KeyToolApprovalMode, Category: CategorySafety, Kind: SettingChoice,
-			Label: "ask before running", Choices: ToolApprovalModes,
-			Hint: "what happens when the model asks to run a tool: prompt asks you, allow runs it, " +
-				"deny refuses it. Dangerous shell commands are asked about whichever way this is set. " +
+			Label: "tool approvals", Choices: ToolApprovalModes,
+			Hint: "what happens when the model asks to run a tool: ask by default asks you, allow by default runs it, " +
+				"block by default refuses it. Dangerous shell commands are asked about whichever way this is set. " +
 				"A change reaches this conversation straight away, unless the panel says it lands on the next session.",
 			read:  func() string { return ToolApprovalModeAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyToolApprovalMode, raw, ToolApprovalModes) },
 		},
 		Setting{
 			Key: KeyToolApprovals, Category: CategorySafety, Kind: SettingText,
-			Label: "tool approvals", EmptyLabel: "none",
+			Label: "tool exceptions", EmptyLabel: "none",
 			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
 				"What you write here changes only the tools you name. Reading files and " +
 				"codeaf's own notes are allowed unless you name them, and everything else " +
@@ -2858,6 +2869,13 @@ func (s *Settings) build() []Setting {
 		},
 	)
 	rows = append(rows, teamRows(dir)...)
+	// THE RESPONSE PATIENCE ROW IS REGISTERED LAST, which makes it the last row of
+	// the Models tab and moves no row above it: a row added in the middle of a
+	// tab shifts every row under it, and the panel's own tests (and a person's
+	// muscle memory) count down from the model row. The tab is a filter over this
+	// list in order, so where it is registered is only where it lands inside its
+	// own tab.
+	rows = append(rows, responsePatienceSetting(dir))
 	return rows
 }
 

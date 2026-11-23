@@ -45,6 +45,7 @@ func (h *HTTP) List(ctx context.Context) (l Listing, err error) {
 	hdr, err := h.doHeader(ctx, http.MethodGet, dirBase+"/list", nil, &l)
 	if err == nil {
 		l.Version, _ = strconv.ParseUint(hdr.Get(VersionHeader), 10, 64)
+		conditionalServices.Store(h.serviceKey(), hdr.Get(ConditionalTakeHeader) == "1")
 		headTakeServices.Store(h.serviceKey(), hdr.Get(HeadTakeHeader) == "1")
 	}
 	return l, err

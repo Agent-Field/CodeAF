@@ -262,7 +262,7 @@ func TestJobWakeWindowOwedEndingAbsorbsPending(t *testing.T) {
 func TestJobWakeWindowCleanAndKilledStayQuiet(t *testing.T) {
 	for _, killed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("killed=%v", killed), func(t *testing.T) {
-			a, client, clock, wakes, _ := jobWakeFixture(t)
+			a, client, clock, wakes, file := jobWakeFixture(t)
 			one := settlementJob(t, a.jobs)
 			if killed {
 				one.requestKill()
@@ -274,16 +274,18 @@ func TestJobWakeWindowCleanAndKilledStayQuiet(t *testing.T) {
 				t.Fatalf("turns = %d", got)
 			}
 			a.mu.Lock()
-			defer a.mu.Unlock()
-			if len(a.steering) != 0 || a.jobWake != nil {
+			queued := len(a.steering) != 0 || len(a.ambient) != 0 || a.jobWake != nil
+			a.mu.Unlock()
+			if queued {
 				t.Fatal("quiet ending scheduled work")
 			}
 			want := 1
 			if killed {
 				want = 0
 			}
-			if len(a.ambient) != want {
-				t.Fatalf("quiet notes = %d, want %d", len(a.ambient), want)
+			journal, err := os.ReadFile(file)
+			if got := strings.Count(string(journal), fmt.Sprintf("job %d exited 0", one.id)); err != nil || got != want {
+				t.Fatalf("saved quiet endings = %d, want %d (%v)", got, want, err)
 			}
 		})
 	}

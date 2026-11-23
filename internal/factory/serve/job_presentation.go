@@ -68,6 +68,16 @@ func (h *Handler) presentJob(r *http.Request, j *api.Job) {
 	}
 	withholdChats(j)
 	withholdTalk(j)
+	h.presentHold(j)
+}
+
+// presentHold shows a reader a job whose main agent holds its stop as a job
+// at work (api.PresentMainAgentHold). The worker's job never comes through
+// here. A FACTORY WITH NO MAIN AGENT SHOWS THE STOP AS IT IS STORED: its
+// handoff ends at the next pass with nobody asked, and until then the line
+// "the main agent is deciding" would be false.
+func (h *Handler) presentHold(j *api.Job) bool {
+	return h.config.Stopped != nil && api.PresentMainAgentHold(j)
 }
 
 // pickUpOff is the request's one answer to "is this factory's Pick up issues

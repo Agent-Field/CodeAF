@@ -42,9 +42,10 @@ func markedReads() []session.MessageRead {
 
 // A MARKED CORRECTION AND A MARKED FOLLOW-UP CROSS THE WIRE WHOLE, on the same
 // Steer and FollowUp calls a plain one makes: the far agent's own doors get the
-// words, the person's words and every count; plain calls go by the plain doors;
-// and a marked follow-up's stream is the take-back's receipt exactly as a plain
-// one's is. The welcome says the two doors are there and the Submit door is not.
+// words, the person's words and every count; a plain correction goes by the same
+// door with its words alone, because that door is the person's and plain Steer
+// is also the engine's; and a marked follow-up's stream is the take-back's
+// receipt exactly as a plain one's is. The welcome says the two doors are there and the Submit door is not.
 func TestAMarkedSteerAndFollowUpReachTheHostedAgentsOwnDoors(t *testing.T) {
 	agent := &steeringAgent{fakeAgent: &fakeAgent{model: "m"}}
 	l := dialAgent(t, &Engine{Agent: agent})
@@ -68,8 +69,8 @@ func TestAMarkedSteerAndFollowUpReachTheHostedAgentsOwnDoors(t *testing.T) {
 	steers, follows := agent.steers, agent.follows
 	steered, plainFollows := agent.fakeAgent.steered, agent.fakeAgent.follows
 	agent.mu.Unlock()
-	if len(steers) != 1 || !reflect.DeepEqual(steers[0], steer.submission()) {
-		t.Fatalf("the marked steer door was handed %+v", steers)
+	if len(steers) != 2 || !reflect.DeepEqual(steers[0], steer.submission()) || !reflect.DeepEqual(steers[1], session.Submission{Text: "plain correction"}) {
+		t.Fatalf("the steer door was handed %+v, want the marked correction then the plain one's words alone", steers)
 	}
 	if len(follows) != 1 || follows[0].Said != nil || !reflect.DeepEqual(follows[0].Reads, markedReads()) {
 		t.Fatalf("the marked follow-up door was handed %+v", follows)
@@ -166,3 +167,26 @@ func TestAnOlderHostIsRefusedAMarkedSteerOrFollowUpWithNoCallMade(t *testing.T) 
 var _ interface {
 	SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
 } = (*markedAgent)(nil)
+
+// A PLAIN CORRECTION OR FOLLOW-UP BY THE WIRE IS THE PERSON'S. An engine whose
+// agent has the person's doors hands the words to them, alone, rather than to
+// plain Steer and FollowUp, which an engine's own callers use too and which
+// count nobody as the person.
+func TestAPlainSteerAndFollowUpGoByThePersonsDoors(t *testing.T) {
+	agent := &steeringAgent{fakeAgent: &fakeAgent{model: "m"}}
+	l := dialAgent(t, &Engine{Agent: agent})
+	if frame := l.hello(Hello{Version: Version}); frame.Kind != "welcome" {
+		t.Fatalf("handshake: %s", frame.Error)
+	}
+	l.ok(1, MethodSteer, SubmitArgs{Text: "go left instead"})
+	l.ok(2, MethodFollowUp, SubmitArgs{Text: "then tidy up"})
+	agent.mu.Lock()
+	steers, follows := agent.steers, agent.follows
+	agent.mu.Unlock()
+	if !reflect.DeepEqual(steers, []session.Submission{{Text: "go left instead"}}) {
+		t.Fatalf("the person's steer door was handed %+v", steers)
+	}
+	if !reflect.DeepEqual(follows, []session.Submission{{Text: "then tidy up"}}) {
+		t.Fatalf("the person's follow-up door was handed %+v", follows)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
@@ -65,6 +66,14 @@ func TestL4LocalStorageIsNotSyncOutage(t *testing.T) {
 	err := &net.OpError{Op: "dial", Net: "unix", Addr: &net.UnixAddr{Name: "storage.sock", Net: "unix"}, Err: syscall.ECONNREFUSED}
 	if NetworkFailure(err) {
 		t.Fatal("local storage failure was called an upload outage")
+	}
+}
+
+func TestQAStorageRefusalsAreNotSyncOutages(t *testing.T) {
+	for _, err := range []error{blobstore.ErrFull, wireauth.ErrStorageOff, wireauth.ErrRevoked, wireauth.ErrRateLimited} {
+		if NetworkFailure(err) {
+			t.Fatalf("a specific storage refusal became an outage: %v", err)
+		}
 	}
 }
 

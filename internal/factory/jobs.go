@@ -361,6 +361,9 @@ func JobReason(it Item) string {
 			}
 			return "failed"
 		}
+		if FollowUpUpdateWaiting(it) {
+			return "approval_proof"
+		}
 		if it.PullRequest != nil && it.PullRequest.Conflict {
 			return "conflict"
 		}

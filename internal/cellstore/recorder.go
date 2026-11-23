@@ -346,10 +346,16 @@ func (r *Recorder) Settle(ctx context.Context) {
 		return
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if len(r.pending) == 0 && len(r.models) == 0 && !r.transcriptGrew() {
+		r.mu.Unlock()
 		return
 	}
+	if len(r.pending) == 0 && cell.WorkspaceArriving(r.cell.Root) {
+		r.mu.Unlock()
+		r.schedule(context.WithoutCancel(ctx))
+		return
+	}
+	defer r.mu.Unlock()
 	r.seal(context.WithoutCancel(ctx))
 }
 

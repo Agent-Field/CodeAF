@@ -145,7 +145,10 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	case it.State == StateRunning:
 		out.Text += step + " has no live worker. The saved running state is not active work. Use Try again to recover the step."
 	case it.State == StateLanded:
-		out.Text += "Local work is complete; publication is pending. Check the approval controls."
+		out.Text += "Local work is complete; publication is pending."
+		if OffersPublishApproval(it) {
+			out.Text += " Check the approval controls."
+		}
 	default:
 		out.Text += "Pipeline state: " + string(it.State) + "."
 	}
@@ -156,10 +159,39 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	for _, line := range facts {
 		out.Text += "\n" + line
 	}
+	// THE WAIT THE SERVICE STORED IS SAID HERE IN ITS OWN LINE, so the manager
+	// names the wait the job page shows and the actions the doors take now.
+	if line := WaitLine(it); line != "" {
+		out.Text += "\n" + line
+	}
 	decisions, actions := managerPRDecision(it)
 	actions = append(guide, actions...)
+	// THE PUBLIC ACTS THE JOB CARRIES are said beside the other decisions:
+	// what waits for the person's yes, and what was carried out lately.
+	decisions = append(decisions, ManagerActsWords(it)...)
 	for _, line := range decisions {
 		out.Text += "\n" + line
+	}
+	// WHAT THE MANAGER MAY DO ABOUT IT is said on every open job, because a
+	// job made before these rules keeps the brief it was made with.
+	threads, more := ManagerThreads(it)
+	if managerLive(it) {
+		actions = append(actions, managerAuthorityGuide(it))
+		wait := WaitOf(it)
+		if it.Wait != nil {
+			wait = *it.Wait
+		}
+		// A job its person put away (a paused recovery) is theirs to
+		// resume, so the guide to settling a stop is not said there.
+		if wait.Who == WaitMainAgent || (wait.Who == WaitYou && !wait.PutAway && !RecoveryPaused(it)) {
+			actions = append(actions, managerStopGuide)
+		}
+		if managerActsWaiting(it) {
+			actions = append(actions, managerActsGuide)
+		}
+		if len(threads) > 0 {
+			actions = append(actions, managerThreadsGuide)
+		}
 	}
 	if out.QuestionID != "" {
 		out.Text += "\nPending question ID: " + out.QuestionID + "."
@@ -173,7 +205,25 @@ func StatusForManagerWaiting(it Item, held, threadOnly bool, waitingFor string, 
 	if len(actions) > 0 {
 		out.Text += ManagerActionsMarker + strings.Join(actions, " ")
 	}
+	// THE THREADS COME LAST, AFTER THE MARKER: their ids are the manager's to
+	// name in a reply, and a status read straight to the person stops before
+	// them ([ManagerActionsMarker]).
+	if managerLive(it) && len(threads) > 0 {
+		out.Text += "\nReview threads, open, each by its id:"
+		for _, line := range threads {
+			out.Text += "\n- " + line
+		}
+		if more > 0 {
+			out.Text += fmt.Sprintf("\n- and %d more.", more)
+		}
+	}
 	return out
+}
+
+// managerLive says the job is one its manager can still act on: not
+// finished, not dropped or closed, and not stopped by its person.
+func managerLive(it Item) bool {
+	return !StoppedByPerson(it) && JobState(it) != "done"
 }
 
 // Status questions describe the run, never an implementation change. Keep the

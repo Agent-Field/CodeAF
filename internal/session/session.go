@@ -2577,8 +2577,9 @@ type Config struct {
 	RepairStage bool
 
 	// Floor is the foreman's door onto the whole floor (tools_floor.go): the
-	// floor's read and its marks. NIL IS NO DOOR: `factory_floor` is off the
-	// belt. It is set only on the foreman's own conversation (cmd/codeaf's
+	// floor's read and its marks, and, when the door is also a [FloorActor]
+	// or a [FloorHand], what the foreman does on the person's word. NIL IS NO
+	// DOOR: `factory_floor` is off the belt. It is set only on the foreman's own conversation (cmd/codeaf's
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
 
@@ -3015,6 +3016,11 @@ type Agent struct {
 	// [Agent.system].
 	systemAt  time.Time
 	systemOwn bool
+	// filesArriving says this agent has seen its chat's workspace files still
+	// arriving in the background, so the first request after the arrival
+	// completes re-renders the page that reads the project's own instructions
+	// from them ([Agent.followArrivedFiles]). Under mu with [Agent.system].
+	filesArriving bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction. Built-ins grow under armMu (connect.go), before the replaceable
 	// client-tool tail. Team verbs leave when their role ends (team.go).
@@ -3742,6 +3748,13 @@ type Agent struct {
 	// loop recovery and task control are instructions for the next step, not
 	// periodic telemetry.
 	ambient []userMessage
+	// heldNotes is step guidance owed to the NEXT turn, queued while no turn
+	// was running ([Agent.enqueueNextTurnNote]): a question the person
+	// dismissed or talked past while the session sat idle. It is not a queue
+	// anything is waiting on, so unlike steering and ambient it does not keep
+	// the session from being handed off idle ([Agent.idleForHandoff]); the turn
+	// that opens next moves it onto steering, and its first step reads it.
+	heldNotes []userMessage
 	// settling is the acknowledgements this conversation's record has earned and
 	// not yet sent: news whose sender is owed an answer once the record holds it
 	// rather than when the queue took it ([durableDelivery]). They are held here
@@ -4336,6 +4349,23 @@ func (c Config) seatFor(ctx context.Context) procexec.Seat {
 // says and never falls back to the host by accident.
 func (a *Agent) rootContext() context.Context {
 	return procexec.With(context.Background(), a.config.seat())
+}
+
+// seatedRun is ctx carrying this session's seat when it carries none of its own.
+//
+// A RUN BELONGS TO THE SESSION EVEN WHEN ITS DOOR DOES NOT SAY SO. A run keeps
+// the context it was started under, and a person's own door — a typed
+// `/senior-dev <brief>`, the app's start action, the engine wire — hands one that
+// no turn ever seated. Every call beneath the run must still run where the
+// session says: a program's launch asks [procexec.For] for its seat, and from a
+// seatless context it was refused with [procexec.ErrNoSeat] before the program
+// started. A context a turn or [Agent.rootContext] already seated keeps the
+// seat it has.
+func (a *Agent) seatedRun(ctx context.Context) context.Context {
+	if procexec.Seated(ctx) {
+		return ctx
+	}
+	return procexec.With(ctx, a.config.seatFor(ctx))
 }
 
 // rootContext is the graph's own: its owner's, and the host's only for a graph

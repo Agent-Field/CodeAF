@@ -638,6 +638,13 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 	if src.KeyShape != nil && !src.KeyShape(key) {
 		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, row, false
 	}
+	// A ONE-DOOR ROW STILL PERSISTS ITS DOOR. The one-token probe and the
+	// model listing do not need an ID to choose between roads, but the crew
+	// reads the saved door to know the account bills as a plan rather than
+	// metered, and the provider row reads it to name what was connected.
+	if len(src.Doors) == 1 && strings.TrimSpace(row.Door) == "" {
+		row.Door = src.Doors[0].ID
+	}
 	if len(src.Doors) > 1 {
 		return proveServiceDoors(ctx, row, src, key)
 	}

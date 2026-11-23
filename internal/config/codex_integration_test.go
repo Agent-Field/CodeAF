@@ -77,6 +77,73 @@ func TestC13C14RealConfigChainAndProviderClientReachCodexTransport(t *testing.T)
 	}
 }
 
+func TestConnectCodexListingCarriesTheCurrentClientVersionAndOffersTheCurrentModels(t *testing.T) {
+	// The account backend composes the visible catalog for the client_version
+	// it is asked about, so a stale pin resurfaces an old era: the releases
+	// pinned at 0.144.1 (the 5.6-era CLI) were offered only the 5.6 trio while
+	// current codex accounts are also offered the 6.x generations. The version
+	// must be full three-part semver — the backend answers 400 "Invalid
+	// client_version format" to "0.167". The fixture mirrors the real 0.167.0
+	// answer observed 2026-11-19 against chatgpt.com/backend-api/codex: the
+	// current generations visible, retired rows marked hide.
+	const currentClientVersion = "0.167.0"
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/models" {
+			t.Fatalf("listing reached %q, want /models", request.URL.Path)
+		}
+		if got := request.URL.Query().Get("client_version"); got != currentClientVersion {
+			t.Fatalf("listing asked as client_version %q, want %q — the pin in internal/codexauth/tokens.go has gone stale or lost its three-part format", got, currentClientVersion)
+		}
+		_ = json.NewEncoder(writer).Encode(map[string]any{"models": []any{
+			map[string]any{"slug": "gpt-6.2-sol", "display_name": "GPT-6.2 Sol", "visibility": "list", "context_window": 400000},
+			map[string]any{"slug": "gpt-6.2-astra", "display_name": "GPT-6.2 Astra", "visibility": "list", "context_window": 400000},
+			map[string]any{"slug": "gpt-6-luna", "display_name": "Luna 6.0", "visibility": "list", "context_window": 272000},
+			map[string]any{"slug": "gpt-5.6-sol", "visibility": "list", "context_window": 272000},
+			map[string]any{"slug": "gpt-5.6-terra", "visibility": "list", "context_window": 272000},
+			map[string]any{"slug": "gpt-5.6-luna", "visibility": "list", "context_window": 272000},
+			map[string]any{"slug": "gpt-reserve", "visibility": "hide"},
+		}})
+	}))
+	defer backend.Close()
+	t.Setenv("CODEAF_CODEX_BACKEND", backend.URL)
+	dir := t.TempDir()
+	tokens := codexauth.Tokens{AccessToken: "era-access", RefreshToken: "era-refresh", IDToken: "era-identity", AccountID: "acct-era", ExpiresAt: time.Now().Add(time.Hour)}
+	outcome, err := ConnectCodex(context.Background(), dir, tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !outcome.Refreshed {
+		t.Fatalf("the live listing was not reached (outcome = %+v)", outcome)
+	}
+	offered := map[string]bool{}
+	for _, id := range outcome.ModelIDs {
+		offered[id] = true
+	}
+	for _, want := range []string{"gpt-6.2-sol", "gpt-6.2-astra", "gpt-6-luna", "gpt-5.6-luna"} {
+		if !offered[want] {
+			t.Fatalf("offered models = %v, want %q among them", outcome.ModelIDs, want)
+		}
+	}
+	if offered["gpt-reserve"] {
+		t.Fatalf("offered models = %v, a hidden row escaped the filter", outcome.ModelIDs)
+	}
+	service, ok := ResolveSources(dir, "", DefaultBaseURL).ByID("codex")
+	if !ok {
+		t.Fatal("the codex connection was not saved")
+	}
+	remembered := CodexRememberedModels(service, dir)
+	if len(remembered) != 6 {
+		t.Fatalf("remembered catalog = %+v, want the six visible models", remembered)
+	}
+	windows := map[string]int{}
+	for _, row := range remembered {
+		windows[row.ID] = row.ContextLength
+	}
+	if windows["gpt-6.2-sol"] != 400000 || windows["gpt-6-luna"] != 272000 {
+		t.Fatalf("remembered windows = %+v, want each row to keep its listing window", windows)
+	}
+}
+
 func TestC12ConnectCodexFallsBackAndResolvedModelsRemainQualified(t *testing.T) {
 	// C12: an unreachable live list persists the connection and returns the four bare fallback ids for qualification by the service.
 	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) { writer.WriteHeader(http.StatusBadGateway) }))

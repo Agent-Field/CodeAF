@@ -116,6 +116,17 @@ func TestFactoryMeasuredOnlyPublication(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(bin, "cargo"), []byte(stub), 0700); err != nil {
 				t.Fatal(err)
 			}
+			// A PLAIN sh, WHICHEVER sh THE MACHINE HAS. The observer's wrappers are
+			// bash functions handed on with `export -f`, so a script run by a shell
+			// that does not import them (dash, Linux's /bin/sh) is not observed, and
+			// the case `sh_script` is about exactly that. macOS's /bin/sh is bash 3.2,
+			// which does import them, so the same case measured the script's check
+			// there (issue #2621). This `sh` starts the machine's real one with an
+			// empty environment, so nothing is left to import.
+			plainSh := "#!/bin/sh\nexec /usr/bin/env -i PATH=\"$PATH\" CHECK_EXIT=\"$CHECK_EXIT\" /bin/sh \"$@\"\n"
+			if err := os.WriteFile(filepath.Join(bin, "sh"), []byte(plainSh), 0700); err != nil {
+				t.Fatal(err)
+			}
 			if err := os.WriteFile(filepath.Join(root, "script.sh"), []byte("go test ./...\n"), 0600); err != nil {
 				t.Fatal(err)
 			}

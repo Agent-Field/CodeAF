@@ -90,8 +90,8 @@ func TestAppInboxDismissClosesTheQuestionWithNothingDecided(t *testing.T) {
 	if err := backend.DismissInbox(consentItem); err != nil {
 		t.Fatal(err)
 	}
-	if answer := <-answered; answer.Key != "3" || answer.Change != appDismissedNote {
-		t.Fatalf("the permission was answered %+v, want deny with the dismissal", answer)
+	if answer := <-answered; answer.Key != "3" || answer.Change != appDismissedNote || !answer.Dismissed {
+		t.Fatalf("the permission was answered %+v, want the answer that changes nothing, marked dismissed", answer)
 	}
 	if got := resolvedEvent(t, rec, consentItem); got.By != appwire.ResolvedDismissed || !strings.HasPrefix(got.Receipt, "Dismissed · you · ") {
 		t.Fatalf("the permission resolved as %+v", got)
@@ -107,6 +107,24 @@ func TestAppInboxDismissClosesTheQuestionWithNothingDecided(t *testing.T) {
 	}
 	if waiting, _, _ := backend.ListInbox(appwire.InboxWaiting, ""); len(waiting) != 1 || waiting[0].ID != fuelItem {
 		t.Fatalf("waiting after a refused dismissal = %+v", waiting)
+	}
+
+	// A landed task's "your call": its safe-looking "not right" refutes the task
+	// and fails what depends on it, so dismissing it is refused, not answered.
+	landing := session.Question{ID: 6, Kind: session.QuestionLanding, Head: "Task 2 landed unverified", Options: []session.AnswerOption{{Key: "y", Label: "Accept"}, {Key: session.LandingNoKey, Label: "Not right", Safe: true}}}
+	conv.raise(session.Event{Kind: session.EventQuestion, Question: &landing})
+	landingItem := appInboxID(agent.ID, appAskID(agent.ID, landing))
+	added(landingItem)
+	if err := backend.DismissInbox(landingItem); err == nil || !strings.Contains(err.Error(), "decides the task") {
+		t.Fatalf("a landing was dismissed: %v", err)
+	}
+	select {
+	case answer := <-answered:
+		t.Fatalf("dismissing a landing answered it %+v", answer)
+	default:
+	}
+	if waiting, _, _ := backend.ListInbox(appwire.InboxWaiting, ""); len(waiting) != 2 {
+		t.Fatalf("waiting after a refused landing dismissal = %+v", waiting)
 	}
 
 	done, counts, _ := backend.ListInbox(appwire.InboxDone, "")
@@ -263,6 +281,28 @@ func TestAppInboxDismissClosesEveryKindThroughItsOwnDoor(t *testing.T) {
 		dismissedAs(t, w.backend, w.rec, id)
 		if waiting, _, _ := w.backend.ListInbox(appwire.InboxWaiting, ""); len(waiting) != 0 {
 			t.Fatalf("the process's line came back: %+v", waiting)
+		}
+		// AND AFTER A RESTART: the episode is still open, and still dismissed.
+		w = w.relaunch(t, nil)
+		if waiting, _, _ := w.backend.ListInbox(appwire.InboxWaiting, ""); len(waiting) != 0 {
+			t.Fatalf("the dismissed line came back after a restart: %+v", waiting)
+		}
+		// A NEW EPISODE OPENS ITS LINE: the process recovers, then fails again.
+		w.rt.Failing(false)
+		w.check(t, w.agent.ID+":"+row.ID, 0)
+		w.changed(t, w.agent.ID+":"+row.ID, func(p appwire.Process) bool { return !p.Service.EpisodeOpen })
+		w.rt.Failing(true)
+		for fails := 1; fails <= 3; fails++ {
+			w.check(t, w.agent.ID+":"+row.ID, fails)
+		}
+		w.rec.waitFor(t, 5*time.Second, func(_ string, data any) bool {
+			v, ok := data.(appwire.InboxAddedEvent)
+			return ok && v.Item.Ask.Subkind == appwire.SubkindServiceHealth
+		})
+		var kept map[string]string
+		_ = w.backend.state.read(func(f *appStateFile) { kept = f.ServiceDismissed })
+		if len(kept) != 0 {
+			t.Fatalf("a closed episode's dismissal is still kept: %v", kept)
 		}
 	})
 }

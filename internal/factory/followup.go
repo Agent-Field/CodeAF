@@ -17,6 +17,18 @@ const DefaultPRRepairAttempts = 3
 const FollowBlockedBudget = "budget"
 const FollowBlockedAttempts = "attempts"
 
+// FollowUpUpdateWaiting says a landed job holds a Follow PR repair that passed
+// its checks here and waits only to be pushed to its existing pull request.
+// That wait outranks the pull request's own conflict or changes requested: the
+// forge still shows them because the repair that answers them is not pushed
+// yet. Read the other way round, nothing could push it and nothing could clear
+// them (job 31, 2026-11-17: "PR has a conflict" for hours over a resolved,
+// checked merge; Auto never published it and the manager's approve found no
+// approval waiting).
+func FollowUpUpdateWaiting(it Item) bool {
+	return it.State == StateLanded && it.FollowUp != nil && it.FollowUp.State == "waiting_approval"
+}
+
 // PRFollowUp keeps the publication record and the PR maintenance cursor.
 // Every later tested head receives its own service-side publication approval.
 type PRFollowUp struct {
@@ -42,6 +54,11 @@ type PRFollowUp struct {
 	Request         string            `json:"request,omitempty"`
 	AutoPush        bool              `json:"auto_push,omitempty"`
 	PublishConsent  string            `json:"publish_consent,omitempty"`
+
+	// Next is the request of the round after the one running now: the tasks
+	// asked for while it ran (task.go). The service keeps it; a runner's
+	// report never carries it.
+	Next string `json:"next,omitempty"`
 }
 type CIRepairResult struct {
 	Decision  string           `json:"decision"`
@@ -286,7 +303,13 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	releasedBudget := monitorChanged
 	// Only a spending-owned pause may reopen on a fresh observation. Critical
 	// questions, Manual control and exhausted attempts retain their own doors.
-	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && Automatic(*it) && it.Question == "" && it.Cap > JobLifetimeSpent(*it) && f.Attempt < f.Limit {
+	//
+	// A RAISED BUDGET LIFTS THE STOP IN MANUAL TOO. It used to lift only for a
+	// job in Auto, so in Manual the person raised the budget and the job went
+	// on saying "raise the budget" (2026-11-17). The raise is the person's own
+	// word to go on; what Manual keeps is the approval before a repair is
+	// pushed, and that is asked when the round lands.
+	if f.State == "needs_you" && f.BlockedBy == FollowBlockedBudget && !RecoveryPaused(*it) && it.Question == "" && it.Cap > JobLifetimeSpent(*it) && f.Attempt < f.Limit {
 		f.State, f.BlockedBy = "watching", ""
 		f.Reason = "Budget raised. Watching CI, reviews and merge conflicts automatically. Merge remains your decision."
 		if it.Stream != nil {
@@ -437,8 +460,11 @@ func QueueCIFollowUp(it *Item, now time.Time) bool {
 	it.State = StateQueued
 	it.Question, it.QKind = "", ""
 	it.Asking, it.Failure, it.Approval = nil, nil, nil
+	// The queued run is a new one, so no override the person gave the last
+	// run carries into it, even when its findings are kept.
+	it.Overrides = nil
 	if !readinessQueued || f.Readiness.External {
-		it.Proof, it.Policy = nil, nil
+		it.ResetChecks()
 	}
 	it.Stream.Log = append(it.Stream.Log, LogLine{At: now, Tone: "said", Text: fmt.Sprintf("Follow PR queued · repair %d · PR #%d", f.Attempt, pr.Number)})
 	return true

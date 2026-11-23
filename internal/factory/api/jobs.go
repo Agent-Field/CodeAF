@@ -274,6 +274,10 @@ var ServiceRoutes = []ServiceRoute{
 	{"GET", "/v1/jobs/{id}/brief/spots/{spot}", nil, JobBriefSpot{}},
 	{"POST", "/v1/jobs/{id}/hand-off/{card}/not-now", JobAction{}, ActionResult{}},
 	{"POST", "/v1/jobs/{id}/follow", FollowRequest{}, ActionResult{}},
+	// Public acts on the job's own pull request (acts.go).
+	{"POST", "/v1/jobs/{id}/" + ActVerb, ActsRequest{}, ActsAnswer{}},
+	{"POST", "/v1/jobs/{id}/" + ActsApproveVerb, ActsApproveRequest{}, ActsAnswer{}},
+	{"POST", "/v1/jobs/{id}/" + ActsDeclineVerb, ActsDeclineRequest{}, ActsAnswer{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/edit-source", nil, PipelineEditSource{}},
 	{"GET", "/v1/repos/{owner}/{repo}/read", nil, RepoRead{}},
 	{"GET", "/v1/repos/{owner}/{repo}/pipeline/prs", nil, PipelinePRs{}},

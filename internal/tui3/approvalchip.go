@@ -80,13 +80,13 @@ import (
 const approvalKey = "alt+a"
 
 // The words a PERSON reads for each posture. `YOLO` is the flag's own word and
-// the manual's; the other three are the permissions panel's vocabulary
-// (permissions.go's `asks every time`, `refused`) said in one word.
+// the manual's; the other three are the settings sheet's vocabulary (ask by
+// default, block by default) said in one word.
 const (
 	approvalAsksWord     = "asks"
 	approvalGuardianWord = "guardian"
 	approvalYoloWord     = "YOLO"
-	approvalRefusesWord  = "refuses"
+	approvalRefusesWord  = "blocks"
 )
 
 // approvalFlashFor is how long the chip wears its change — the thinking chip's
@@ -343,7 +343,7 @@ var approvalLines = map[string]string{
 	session.PostureAsk:      "every call the rules say to ask about is asked about",
 	session.PostureGuardian: "a small model answers the plainly safe ones, you get the rest",
 	session.PostureAllow:    "tools run without asking, including overwrites · critical commands still ask",
-	session.PostureDeny:     "every call the rules do not name is refused",
+	session.PostureDeny:     "every call the rules do not name is blocked",
 }
 
 // noteApprovalUnavailable is what a conversation with no dial answers, and it

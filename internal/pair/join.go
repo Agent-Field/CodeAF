@@ -38,6 +38,13 @@ type Joining struct {
 	// Revoked says this computer's own device was removed. Rejoining the same
 	// identity then mints a new device key without replacing local state.
 	Revoked bool
+	// Alone says no other device that is still in holds this computer's
+	// identity, which the caller learned from the directory. Such an identity
+	// is solo in all but its marker, so its own work refuses before a code is
+	// used, as a solo one's does. It lost the marker when its identity was
+	// sent and not kept, when every computer it shared with was removed, or
+	// when an earlier build ended it just for showing a code.
+	Alone bool
 	// ProfileDir names the preferences being joined, when outside Home.
 	ProfileDir string
 	// TeamsPaired supplies the live quiet gate after adopting the new identity.
@@ -72,9 +79,10 @@ func Join(ctx context.Context, route Mailbox, j Joining, typed string, ui JoinUI
 		return Joined{}, err
 	}
 	// A solo identity cannot be the grant's identity, so known local work can
-	// refuse before the approver spends an approval or hears a success receipt.
+	// refuse before the approver spends an approval. One that no other device
+	// still holds is refused the same way: nobody else could be offering it.
 	if !j.Replace {
-		if _, err := identity.Load(j.Home); err == nil && identity.Solo(j.Home) {
+		if _, err := identity.Load(j.Home); err == nil && (identity.Solo(j.Home) || j.Alone) {
 			if can, err := identity.Joinable(j.Home); err != nil || !can {
 				return Joined{}, differentChats(j.Home)
 			}
@@ -83,18 +91,28 @@ func Join(ctx context.Context, route Mailbox, j Joining, typed string, ui JoinUI
 	if err := checkRelay(ctx, route); err != nil {
 		return Joined{}, err
 	}
-	grant, err := joinRun(ctx, route, j, code, ui)
+	grant, intro, err := joinRun(ctx, route, j, code, ui)
 	if err != nil {
 		return Joined{}, err
 	}
-	return adopt(j, grant)
+	if err := ctx.Err(); err != nil {
+		return Joined{}, err
+	}
+	joined, err := adoptWithDevice(ctx, j, grant, nil)
+	if err == nil {
+		// The other device can only confirm after this home has kept the grant.
+		// If the confirmation is lost, this home still holds the approved grant.
+		_ = intro.took()
+	}
+	return joined, err
 }
 
-// joinRun is the exchange: it answers the grant, and touches no file.
-func joinRun(ctx context.Context, route Mailbox, j Joining, code JoinCode, ui JoinUI) (Grant, error) {
+// joinRun is the exchange: it answers the grant and the introduction it came
+// on, whose word that the grant is kept is still unsaid, and touches no file.
+func joinRun(ctx context.Context, route Mailbox, j Joining, code JoinCode, ui JoinUI) (Grant, *introduction, error) {
 	key, err := pairbox.NewKey()
 	if err != nil {
-		return Grant{}, err
+		return Grant{}, nil, err
 	}
 	ctx, stop := context.WithTimeout(ctx, CodeValidFor+ConfirmWithin)
 	defer stop()
@@ -103,18 +121,24 @@ func joinRun(ctx context.Context, route Mailbox, j Joining, code JoinCode, ui Jo
 		sendGone: NothingWaitingUnder(code.Plate)}
 	offer, err := joinOffer(j.Label, j.Platform)
 	if err != nil {
-		return Grant{}, err
+		return Grant{}, nil, err
 	}
 	intro, err := begin(link, chatScheme(code.Plate), code.Digits, offer)
 	if err != nil {
-		return Grant{}, phraseJoin(err, route)
+		return Grant{}, nil, phraseJoin(err, route)
 	}
 	ui.Waiting(intro.Words)
 	said, err := intro.verdict()
 	if err != nil {
-		return Grant{}, phraseJoin(err, route)
+		return Grant{}, nil, phraseJoin(err, route)
 	}
-	return hearGrant(said)
+	grant, err := hearGrant(said)
+	if errors.Is(err, ErrRefused) {
+		// A no is read and kept like any answer, so the other device ends its
+		// own no at once instead of waiting for a word that would never come.
+		_ = intro.took()
+	}
+	return grant, intro, err
 }
 
 // phraseJoin gives the joining device's failures their sentences: the code that
@@ -144,10 +168,11 @@ func joinOffer(label string, platform ...string) ([]byte, error) {
 // adopt takes the grant into this home. Submitted chats require explicit
 // replacement; a startup-only home retains its state through the durable switch.
 func adopt(j Joining, grant Grant) (Joined, error) {
-	return adoptWithDevice(j, grant, nil)
+	return adoptWithDevice(context.Background(), j, grant, nil)
 }
 
-func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
+// adoptWithDevice installs the device included in a pairing-link grant.
+func adoptWithDevice(ctx context.Context, j Joining, grant Grant, dev *identity.Dev) (Joined, error) {
 	recovered, err := j.resumeApproved()
 	if err != nil {
 		if recovered != nil {
@@ -178,15 +203,26 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 			return Joined{}, differentChats(j.Home)
 		}
 	}
+	if err != nil && !j.Replace {
+		if refuses, err := identity.AdoptRefuses(j.Home, grant.Identity); err != nil || refuses {
+			return Joined{}, legacyRefusal(err)
+		}
+	}
 	unlock, err := keys.LockHome(j.Home)
 	if err != nil {
 		return Joined{}, err
 	}
 	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return Joined{}, err
+	}
 	if _, err := j.resume(); err != nil {
 		return Joined{}, err
 	}
 	held, err = identity.Load(j.Home)
+	if stopped := ctx.Err(); stopped != nil {
+		return Joined{}, stopped
+	}
 	switch {
 	case err == nil && held.ID() == grant.Identity.ID():
 		if !j.Replace {
@@ -206,31 +242,46 @@ func adoptWithDevice(j Joining, grant Grant, dev *identity.Dev) (Joined, error) 
 	if err != nil && !errors.Is(err, identity.ErrNone) {
 		return Joined{}, err
 	}
-	joined := Joined{}
 	if j.Replace {
 		return j.merge(grant, dev, nil)
 	}
-	merge := false
 	if err == nil {
-		var checkErr error
-		merge, checkErr = identity.Joinable(j.Home)
-		if checkErr != nil || !merge {
+		if merge, checkErr := identity.Joinable(j.Home); checkErr != nil || !merge {
 			return Joined{}, differentChats(j.Home)
 		}
-	}
-	if merge && err == nil {
+		if err := ctx.Err(); err != nil {
+			return Joined{}, err
+		}
 		return j.merge(grant, dev, held.CellKey())
 	}
-	if _, err := identity.Adopt(j.Home, grant.Identity, j.Replace || merge); err != nil {
+	// No identity here. A vault key from before identities is still chats of
+	// its own, which Adopt would refuse only after making it an identity.
+	if refuses, err := identity.AdoptRefuses(j.Home, grant.Identity); err != nil || refuses {
+		return Joined{}, legacyRefusal(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return Joined{}, err
+	}
+	if _, err := identity.Adopt(j.Home, grant.Identity, false); err != nil {
 		return Joined{}, adoptFailure(err)
 	}
 	if err := markSharing(j.Home, grant.Identity.ID()); err != nil {
 		return Joined{}, err
 	}
 	if grant.SyncURL != "" && j.SaveSyncURL != nil {
-		return joined, j.SaveSyncURL(grant.SyncURL)
+		return Joined{}, j.SaveSyncURL(grant.SyncURL)
 	}
-	return joined, nil
+	return Joined{}, nil
+}
+
+// legacyRefusal is what a home holding a vault key from before identities
+// answers a grant it will not adopt without replacement: chats of its own, or
+// the error that kept the question from being answered.
+func legacyRefusal(err error) error {
+	if err != nil {
+		return err
+	}
+	return ErrDifferentChats
 }
 
 // follow moves this computer from an identity that was rotated to the one that
@@ -272,10 +323,24 @@ func differentChats(home string) error {
 	if n == 1 {
 		count, kept = "1 chat", "that chat stays on this computer but no longer syncs"
 	}
-	return differentChatError{"this computer already has " + count + " of its own, so nothing was changed. To pair it anyway, run this again with --replace: " + kept + "; shared memories and settings are cleared"}
+	return differentChatError{line: "this computer already has " + count + " of its own, so nothing was changed. To pair it anyway, run this again with --replace: " + kept + "; shared memories and settings are cleared", chats: n}
 }
 
-type differentChatError struct{ line string }
+// OwnChats is how many chats of its own a computer that refused to join counted,
+// so a screen with no --replace to offer can word the refusal itself. It is 0
+// when the refusal had no count: the work was not chats, or could not be read.
+func OwnChats(err error) int {
+	var e differentChatError
+	if errors.As(err, &e) {
+		return e.chats
+	}
+	return 0
+}
+
+type differentChatError struct {
+	line  string
+	chats int
+}
 
 func (e differentChatError) Error() string { return e.line }
 func (e differentChatError) Unwrap() error { return ErrDifferentChats }

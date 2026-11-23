@@ -55,7 +55,11 @@ type appRaise struct {
 type appStateFile struct {
 	// LibraryLater keeps a deferred knowledge question in Later across restarts.
 	LibraryLater map[string]bool `json:"library_later,omitempty"`
-	Setup        *appwire.Setup  `json:"setup,omitempty"`
+	// ServiceDismissed is the episode each kept-running process's Inbox line
+	// was dismissed for (appinbox_dismiss.go), by process id, so that episode
+	// stays out of the Inbox across restarts; a new episode's line opens.
+	ServiceDismissed map[string]string `json:"service_dismissed,omitempty"`
+	Setup            *appwire.Setup    `json:"setup,omitempty"`
 	// SetupSteps is how many steps the kept setup's step is counted in. A
 	// file kept before setup became three steps has none, and its step is
 	// counted in four ([appSetupStepFromFour]).
@@ -214,6 +218,10 @@ func (f appStateFile) clone() appStateFile {
 	out.LibraryLater = make(map[string]bool, len(f.LibraryLater))
 	for id, later := range f.LibraryLater {
 		out.LibraryLater[id] = later
+	}
+	out.ServiceDismissed = make(map[string]string, len(f.ServiceDismissed))
+	for k, v := range f.ServiceDismissed {
+		out.ServiceDismissed[k] = v
 	}
 	if f.Setup != nil {
 		setup := *f.Setup

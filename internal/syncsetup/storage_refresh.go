@@ -13,6 +13,10 @@ import (
 
 const StorageRefreshEvery = 10 * time.Minute
 
+// StorageStatusRefreshEvery bounds explicit status refreshes without changing
+// the background discovery cadence or delaying the first request on a new binding.
+const StorageStatusRefreshEvery = 30 * time.Second
+
 // One coordinator owns both approval discovery and startup waits in a process.
 // Running batchers use their own bounded retry and never poll permission files.
 var storageProcesses = struct {
@@ -43,9 +47,17 @@ type storageProcess struct {
 	counts                      blobstore.Counts
 	countsRelay, countsIdentity string
 	probeRelay, probeIdentity   string
+	statusRelay, statusIdentity string
+	statusRefresh               time.Time
 	// These seams count actual scheduled work without relying on elapsed time.
 	after func(time.Duration, func()) func() bool
 	read  func() (string, string, string)
+	// live says live transfer would carry this home's chats now, which wakes a
+	// chat that waits to be shared exactly as an approval does. It is told what
+	// the check just read, so asking costs no second read of the same files.
+	live func(relay, identity, state string) bool
+	// self is this computer's device id once read; check runs one at a time.
+	self  string
 	fetch func(context.Context) error
 	now   func() time.Time
 }
@@ -73,6 +85,7 @@ func storageProcessFor(home string) *storageProcess {
 			}
 			return relay.URL, id.ID(), state
 		}
+		p.live = p.liveReady
 		p.fetch = func(ctx context.Context) error {
 			s, ok, err := Open(home)
 			if err != nil || !ok {
@@ -271,6 +284,7 @@ func (p *storageProcess) check(refresh bool) {
 		p.mu.Unlock()
 		relay, _, state = p.read()
 	}
+	liveReady := state == "off" && p.live != nil && p.live(relay, id, state)
 	p.mu.Lock()
 	p.active = false
 	close(p.inflight)
@@ -279,7 +293,7 @@ func (p *storageProcess) check(refresh bool) {
 	again := p.dirty && !removed
 	p.dirty = false
 	var callbacks []func()
-	if !removed && state == "on" {
+	if !removed && (state == "on" || liveReady) {
 		for id, fn := range p.waiting {
 			callbacks = append(callbacks, fn)
 			delete(p.waiting, id)
@@ -377,6 +391,14 @@ func StorageCounts(home, relay, identity string) blobstore.Counts {
 func StorageNeedsRefresh(home, relay, id string) bool {
 	state, gating, answered := storagePolicy(home, relay, id)
 	if state == "off" {
+		p := storageProcessFor(home)
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		address := normalizeStorageURL(relay)
+		if p.statusRelay == address && p.statusIdentity == id && p.now().Before(p.statusRefresh.Add(StorageStatusRefreshEvery)) {
+			return false
+		}
+		p.statusRelay, p.statusIdentity, p.statusRefresh = address, id, p.now()
 		return true
 	}
 	if answered || gating {

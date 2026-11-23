@@ -201,11 +201,22 @@ func MergeGate(it Item, ask MergeAsk) MergeVerdict {
 		return refuseMerge("the branch needs " + plural(pr.Required, "approving review", "approving reviews"))
 	}
 	if ask.Auto {
+		// A FAILING ROW A LATER ROUND REPLACED IS NOT COUNTED
+		// ([FindingReplaced]): the claim that replaced it in other words is
+		// on the sheet and counts in its place.
 		total, shown := 0, 0
-		for _, c := range append(append([]Claim(nil), it.Proof...), it.Policy...) {
-			total++
-			if c.OK {
-				shown++
+		for _, list := range []struct {
+			kind   string
+			claims []Claim
+		}{{OverrideProof, it.Proof}, {OverridePolicy, it.Policy}} {
+			for _, c := range list.claims {
+				if FindingReplaced(it, list.kind, c) {
+					continue
+				}
+				total++
+				if c.OK {
+					shown++
+				}
 			}
 		}
 		if total == 0 || shown < total {

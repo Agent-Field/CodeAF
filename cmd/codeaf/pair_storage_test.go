@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -32,7 +35,36 @@ func TestPairingFinishesPromptlyWhenStorageStatsStall(t *testing.T) {
 	testPairingStorageAnswer(t, "stalled")
 }
 
-func testPairingStorageAnswer(t *testing.T, state string) {
+func TestQAPairingStorageWaitsForItsDeviceRecord(t *testing.T) {
+	testPairingStorageAnswer(t, "off", true)
+}
+
+func TestQAPairingRetriesItsOptionalStorageReading(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			home := t.TempDir()
+			id, err := identity.Ensure(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var asks atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if asks.Add(1) == 1 {
+					http.Error(w, "temporary refusal", status)
+					return
+				}
+				_, _ = w.Write([]byte(`{"storage":"off"}`))
+			}))
+			defer srv.Close()
+			samplePairedStorage(context.Background(), home, pair.Mailbox{URL: srv.URL})
+			if asks.Load() != 2 || syncsetup.ReportedStorage(home, srv.URL, id.ID()) != "off" {
+				t.Fatalf("temporary %d lost the pairing storage answer, requests=%d", status, asks.Load())
+			}
+		})
+	}
+}
+
+func testPairingStorageAnswer(t *testing.T, state string, requireRegistered ...bool) {
 	celltest.Available(t)
 	rig := &pairRig{homeA: t.TempDir(), homeB: t.TempDir()}
 	if _, err := identity.Ensure(rig.homeA); err != nil {
@@ -52,6 +84,15 @@ func testPairingStorageAnswer(t *testing.T, state string) {
 			return
 		}
 		asks.Add(1)
+		if len(requireRegistered) > 0 && requireRegistered[0] {
+			_, device, err := reqsign.AuthenticateAt(time.Now)(r, nil)
+			listing, listErr := dir.For(device).List(r.Context())
+			_, registered := listing.Devices[device]
+			if err != nil || listErr != nil || !registered {
+				http.Error(w, "device is not registered", http.StatusUnauthorized)
+				return
+			}
+		}
 		if state == "stalled" {
 			<-r.Context().Done()
 			return
@@ -92,7 +133,16 @@ func testPairingStorageAnswer(t *testing.T, state string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if state == "off" || state == "on" {
+		if state == "" {
+			raw, readErr := os.ReadFile(filepath.Join(dir, syncsetup.StorageFile))
+			var saved struct {
+				Identity       string
+				ReportsStorage *bool `json:"reports_storage"`
+			}
+			if readErr != nil || json.Unmarshal(raw, &saved) != nil || saved.Identity != id.ID() || saved.ReportsStorage == nil || *saved.ReportsStorage {
+				t.Errorf("a successful legacy answer was not saved for this identity: %v", readErr)
+			}
+		} else if state == "off" || state == "on" {
 			if got := syncsetup.ReportedStorage(dir, srv.URL, id.ID()); got != state {
 				t.Errorf("separate reader got %q, want %q immediately", got, state)
 			}
@@ -103,7 +153,11 @@ func testPairingStorageAnswer(t *testing.T, state string) {
 			}
 		}
 	}
-	if got := asks.Load(); got != 2 {
-		t.Errorf("storage asks = %d, want one per successful side", got)
+	want := int32(2)
+	if state == "unreachable" {
+		want = 6
+	}
+	if got := asks.Load(); got != want {
+		t.Errorf("storage asks = %d, want %d bounded attempts", got, want)
 	}
 }

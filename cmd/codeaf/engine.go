@@ -161,6 +161,7 @@ func runRemoteEngine(args []string) error {
 	}
 	stopStorage := syncsetup.StartStorageRefresh(context.Background(), home.Dir())
 	defer stopStorage()
+	defer syncsetup.StartLiveTransfer(context.Background(), home.Dir())()
 	err := remote.Serve(os.Stdin, os.Stdout, remote.Options{
 		SyncService: chatSyncService(),
 		Boot: func(hello remote.Hello) (*remote.Engine, error) {
@@ -933,6 +934,10 @@ func placesWord(n int) string {
 func runEngineHost(workspaceFlag, sessionFlag string) error {
 	stopStorage := syncsetup.StartStorageRefresh(context.Background(), home.Dir())
 	defer stopStorage()
+	// THE HOST OUTLIVES THE WINDOWS THAT STARTED ITS CHATS, so it is the process
+	// that goes on answering for the chats this computer shared live after the
+	// terminal that opened them has quit.
+	defer syncsetup.StartLiveTransfer(context.Background(), home.Dir())()
 	workspace, err := engineWorkspace(workspaceFlag)
 	if err != nil {
 		return err

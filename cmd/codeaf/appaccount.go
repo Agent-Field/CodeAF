@@ -52,6 +52,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/trace"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
@@ -746,6 +747,11 @@ func (b *appBackend) SetProvider(params appwire.KeyParams) error {
 			p.id, p.source.ID = params.Connection.ID, params.Connection.ID
 		}
 	}
+	if b.keys.SyncReady() {
+		if err := syncsetup.RememberAppProviderEdit(b.relayHome(), p.id, key); err != nil {
+			return appEngineError(err)
+		}
+	}
 	if key != "" {
 		b.keys.Set(p.id, key)
 	} else {
@@ -863,6 +869,11 @@ func (b *appBackend) RemoveKey(provider string) error {
 	if p.kind != appwire.ProviderBrowser {
 		// THE SIGN-IN IS NOT A HELD KEY, and marking it removed in memory would
 		// hide the next sign-in of this same launch behind the removal.
+		if b.keys.SyncReady() {
+			if err := syncsetup.RememberAppProviderEdit(b.relayHome(), p.id, ""); err != nil {
+				return appEngineError(err)
+			}
+		}
 		b.keys.Remove(p.id)
 	}
 	b.keysMoved(p.id)
@@ -881,6 +892,7 @@ func (b *appBackend) RemoveKey(provider string) error {
 // ([openAppEngineProcess]) and reads this key then; an open one is updated
 // here, whoever opened it.
 func (b *appBackend) keysMoved(provider string) {
+	b.chats.wakePublication()
 	if provider == modelsource.DefaultID {
 		b.refreshKeyHealth()
 	}
@@ -967,7 +979,7 @@ func (b *appBackend) SignIn(provider string) (string, error) {
 		if err != nil || strings.TrimSpace(key) == "" || b.isClosing() {
 			return
 		}
-		b.keys.Set(p.id, key)
+		b.keys.SetTentative(p.id, key)
 		b.keysMoved(p.id)
 		b.providerChanged(p, key)
 		b.warmProviderModels()

@@ -526,7 +526,7 @@ on the other computer's history.
 
 ## How do I turn on team sharing?
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Team sharing waits for hosted sync storage approval (Settings → Devices → sync storage); pairing alone does not enable it. A self-hosted sync service with `--store` needs no request.
 
 Team sharing is on by default for paired computers. If it was turned off, open
 **Settings → General → share teams** on that computer and choose **on** to resume.

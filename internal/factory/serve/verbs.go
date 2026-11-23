@@ -55,7 +55,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "pause" || verb == "publish_anyway" || verb == ResumeAutoVerb || verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "open_pr" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" {
+			if verb == "pause" || verb == "publish_anyway" || verb == ResumeAutoVerb || verb == "sync" || verb == "approve" || verb == "retry_publish" || verb == "merge" || verb == "pr-ready" || verb == "open_pr" || verb == "answer" || verb == "spend_answer" || verb == "reject_plan" || verb == "undo" || verb == "assign_to_me" || verb == "change_assignee" || verb == "assignee" || verb == "unassign" || actVerb(verb) {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -100,7 +100,8 @@ func decisionAction(verb string) bool {
 	case "answer", "spend_answer", "approve", "reject_plan", "publish_anyway", "retry_publish", "merge", "pr-ready", "request_changes", "recheck", "resume":
 		return true
 	}
-	return false
+	// Public acts and their approval are decisions too (acts.go).
+	return actVerb(verb)
 }
 
 // take is POST /v1/jobs/{id}/take. It names the connected person on the job

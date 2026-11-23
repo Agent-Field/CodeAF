@@ -52,12 +52,10 @@ already explains that the chat stays on this computer until you pair it again.
 ## The line the terminal prints after you quit, when another device took the chat over
 
 If codeaf learns while closing that another device took the chat, the restored
-terminal says `<device> continued this chat; this window now only shows it`
+terminal says `<device> continued this chat. This copy is read-only and may be behind`
 once. It keeps this notice even when the full-screen chat has already closed.
 
 ## Quitting while the sync service is slow — waiting for a final save
-
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 A removed computer quits quietly; it no longer says it is saving to your other devices.
 
@@ -763,7 +761,7 @@ cannot send it delivers plain enter on many keyboards, or a newline on some.
 | `ctrl+s` | Hand the pointer to your terminal so you can drag-select. Toggles; any other key takes it back |
 | `ctrl+,` | Open the settings panel |
 | `alt+e` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam; on the other places it does nothing |
-| `alt+a` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home it walks the gate of the **next** conversation — the `◇` cell on the rule above home's box — and that pin is spent by the conversation that uses it; on the other places it does nothing |
+| `alt+a` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `blocks`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home it walks the gate of the **next** conversation — the `◇` cell on the rule above home's box — and that pin is spent by the conversation that uses it; on the other places it does nothing |
 | `ctrl+.` | Open the activity page (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
@@ -1451,10 +1449,10 @@ control. The word is what is in force, whichever setting decided it:
 | `asks` | every call the rules say to ask about is asked about |
 | `guardian` | a small model answers the plainly safe ones first; you get the rest |
 | `YOLO` | every tool runs without asking — the posture `--yolo` opens. Painted in the warning hue for as long as it is true |
-| `refuses` | every call the rules do not name is refused. Also painted as a warning |
+| `blocks` | every call the rules do not name is blocked. Also painted as a warning |
 
 **`alt+a` walks it**: asks → guardian → YOLO → asks. Three stops, each more autonomy than
-the last, and **the wheel never lands on `refuses`** — a press past YOLO that refused every
+the last, and **the wheel never lands on `blocks`** — a press past YOLO that refused every
 call would break the session you are in. It works with a sentence half typed and leaves
 your draft and caret where they were. **Pressing the cell walks it too**, one stop per
 press; it brightens under the pointer over exactly its own cells first.
@@ -2560,8 +2558,8 @@ cross into the neighbouring column; that ended on 2026-09-17.) **`→` opens the
 verbs** on a strip drawn **directly under that row**, pushing the rest of the list down by
 its own height, and while that strip is drawn its letters are the verbs and the box is
 asleep — a question's own answer keys and words; `x delete`, `c copy name`,
-`n new in project` and `o open folder` on a conversation; `s stop it` on work this window
-is running. An `automations` row has no verbs on home; its verbs are on `/automations`.
+`n new in project` and `o open folder` on a conversation, and `k kept turns` on one with
+kept copies; `s stop it` on work this window is running. An `automations` row has no verbs on home; its verbs are on `/automations`.
 `esc` or `←` closes it, `enter` still opens the row, and walking off the row closes it too.
 A row with no verbs draws no strip: on an `ask here` row `→` hands the errand's pane the
 keyboard instead, and on a panel's fold line (`N more`) `enter` opens the panel and shows

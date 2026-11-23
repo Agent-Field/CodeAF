@@ -10,7 +10,24 @@ const ChoiceAccept = "accept"
 // accepted. THE NOTE IS THE WHOLE RECORD: a step's notes cross between the
 // factory and a worker both ways and reach every later step's brief, so an
 // acceptance kept anywhere else would be lost on one of those trips.
-const AcceptedPrefix = "Accepted by the owner:"
+//
+// IT NAMES NOBODY. The job's main agent may accept a step too, and this line
+// reaches the pull request: "by the owner" over an agent's decision would be
+// a public untruth. Who accepted, and why, is on the job's log and record.
+const AcceptedPrefix = "Accepted as it stands:"
+
+// acceptedPrefixOwner is how the note began before the main agent could
+// accept; saved jobs carry it, and it is read as the same note.
+const acceptedPrefixOwner = "Accepted by the owner:"
+
+// CutAccepted answers what an accepted-shortfall note says after its lead,
+// and whether n is such a note, in either spelling.
+func CutAccepted(n string) (string, bool) {
+	if rest, ok := strings.CutPrefix(n, AcceptedPrefix); ok {
+		return rest, true
+	}
+	return strings.CutPrefix(n, acceptedPrefixOwner)
+}
 
 // unresolvedCheckPrefix is verification.FailurePrefix, which this package
 // cannot import. run's tests hold the two together.
@@ -135,7 +152,7 @@ func AcceptedSteps(it Item) []AcceptedStep {
 		}
 		var what []string
 		for _, n := range ph.Result.Notes {
-			if rest, ok := strings.CutPrefix(n, AcceptedPrefix); ok {
+			if rest, ok := CutAccepted(n); ok {
 				what = append(what, strings.TrimSpace(rest))
 			}
 		}
@@ -164,4 +181,62 @@ func unresolvedChecks(notes []string) []string {
 		}
 	}
 	return out
+}
+
+// ── A CLAIM AN ACCEPTED STEP DID NOT SHOW NO LONGER BLOCKS ──────────────────
+//
+// Proof with a claim not shown is a step that can be taken as it stands
+// ([OffersAccept]): the person says so on its card, or the job's main agent
+// does with its reason. Until this rule that acceptance finished the step and
+// nothing more. The claim stayed on the job's sheet as a failing finding, so
+// the job landed reading "Checked and ready to publish", offered Approve, and
+// the approval's own gate refused it ("has a claim not shown"). In Manual
+// nothing the job offered moved it; in Auto it ran three repairs of a finding
+// already accepted and then paused.
+//
+// An accepted step's unshown claim is accepted with it. It stays on the sheet
+// and on the step's result, with what was accepted and why, for the approval
+// and the pull request to show; it only stops counting as a finding that
+// still stands ([FindingStands]).
+
+// FindingAccepted says a failing proof row was taken as it stands: every step
+// whose latest round reports the claim as not shown is finished with an
+// acceptance on its result ([AcceptStep]). A step sent back to run again has
+// a new result and no acceptance, so its claim stands again. A repository
+// policy row is never accepted this way: the repository's own rules stay
+// hard.
+func FindingAccepted(it Item, kind string, cl Claim) bool {
+	if cl.OK || kind != OverrideProof || it.Stream == nil {
+		return false
+	}
+	key := ClaimKey(cl.Text)
+	accepted := false
+	for _, ph := range it.Stream.Phases {
+		if ph.Result == nil {
+			continue
+		}
+		for _, reported := range ph.Result.Claims {
+			if reported.OK || reported.Medium == "policy" || ClaimKey(reported.Text) != key {
+				continue
+			}
+			if ph.State != PhaseDone || !stepAccepted(ph) {
+				return false
+			}
+			accepted = true
+		}
+	}
+	return accepted
+}
+
+// stepAccepted says the step's result carries an acceptance.
+func stepAccepted(ph Phase) bool {
+	if ph.Result == nil {
+		return false
+	}
+	for _, n := range ph.Result.Notes {
+		if _, ok := CutAccepted(n); ok {
+			return true
+		}
+	}
+	return false
 }

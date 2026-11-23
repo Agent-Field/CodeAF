@@ -24,8 +24,8 @@ import (
 //     with its steps as they stand, as the button launches it;
 //   - a paused run goes on with the same step in the same chat ([factory.Seam.Hold]);
 //   - a run held at an approve step goes past it ([factory.Seam.Answer] with
-//     yes), which the tool's description reserves for the person's own clear
-//     word in the chat, unless a rule holds the plan for the person;
+//     yes), which outside Auto needs the person's own word in the turn
+//     ([seamRunDoor.StartRun]), unless a rule holds the plan for the person;
 //   - anything else (a running item, a queued one, a question that is not an
 //     approve step, a run that is over) changes nothing and says why.
 //
@@ -127,11 +127,23 @@ func heldStep(it factory.Item) string {
 }
 
 // StartRun is `factory_start` for the conversation that asks: the item it
-// manages, started, resumed or continued.
-func (d seamRunDoor) StartRun(_ context.Context, conversation string) (string, error) {
+// manages, started, resumed or continued. said is the person's own words in
+// the running turn.
+//
+// GOING PAST AN APPROVE STEP IS HELD TO THE AUTHORITY TABLE
+// ([factory.ManagerMay]): outside Auto it is the person's, so it is refused on
+// a turn they did not speak in, and in Auto the manager does not pass a step
+// only a person passes. A launch and a resume approve nothing and are not
+// held.
+func (d seamRunDoor) StartRun(_ context.Context, conversation, said string) (string, error) {
 	it, err := d.managed(conversation)
 	if err != nil {
 		return "", err
+	}
+	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove && !factory.StoppedByPerson(it) {
+		if err := factory.ManagerMay(it, factory.ManagerPassStep, strings.TrimSpace(said) != ""); err != nil {
+			return "", err
+		}
 	}
 	return startItem(d.st, d.workspace, d.profileDir, it)
 }

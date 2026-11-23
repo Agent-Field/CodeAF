@@ -598,8 +598,14 @@ func steerMessage(steer *turnSteer) userMessage {
 // journals durable references; a steer that took attachments would be a second
 // copy of that assembly, and it is not cheap enough to carry along. A surface
 // with a picture to add sends it that way, and it lands at the same boundary.
+//
+// THE WORDS ARE NOT THE PERSON'S BY THIS DOOR. Engine and runner callers steer
+// through it too — a bash worker's belt note, a factory stage's delivery, a
+// once-run's steer file — so a steer by Steer never sets the words the
+// person-gated tools act on ([Agent.turnPersonWords]). The person's own doors
+// come by [Agent.SteerMessage], which does.
 func (a *Agent) Steer(words string) (<-chan Event, error) {
-	return a.steerMarked(words, nil)
+	return a.steerMarked(words, nil, false)
 }
 
 // SteerMessage is [Agent.Steer] for a door that knows more about the
@@ -608,6 +614,10 @@ func (a *Agent) Steer(words string) (<-chan Event, error) {
 // and reads on the correction's own line — on its steer line when a boundary
 // carries it, on the message it becomes when it falls through. A mark that does
 // not fit refuses the correction whole, before anything is queued.
+//
+// It is THE PERSON'S door, marked or not: what it splices are the person's
+// words for the rest of the turn ([Agent.turnPersonWords]), and the message
+// it becomes on a fall-through is theirs too.
 func (a *Agent) SteerMessage(message Submission) (<-chan Event, error) {
 	// A correction that falls through becomes the message that opens a turn,
 	// so a creation context on it is proven like any other.
@@ -616,12 +626,13 @@ func (a *Agent) SteerMessage(message Submission) (<-chan Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	return a.steerMarked(message.Text, mark)
+	return a.steerMarked(message.Text, mark, true)
 }
 
 // steerMarked is Steer's body with the person's mark beside the words, nil for
-// a door that said nothing beyond them.
-func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan Event, error) {
+// a door that said nothing beyond them, and whether the words came by one of
+// the person's own doors.
+func (a *Agent) steerMarked(words string, person *messagePresentation, fromPerson bool) (<-chan Event, error) {
 	if statusOnlyPresentation(person, words) {
 		if reply, handled, err := a.ReadFactoryStatus(context.Background(), words); handled {
 			if err != nil {
@@ -654,9 +665,12 @@ func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan E
 	}
 	queued := steerMessage(steer)
 	queued.person = person
+	queued.fromPerson = fromPerson
 	a.mixCreationLocked(queued)
 	a.steering = append(a.steering, queued)
-	a.personWords = words
+	if fromPerson {
+		a.personWords = words
+	}
 	// A stage parked on a check must still answer a person or runner correction.
 	if a.config.mayStage() {
 		a.releaseTaskWaitLocked()
@@ -673,7 +687,7 @@ func (a *Agent) steerMarked(words string, person *messagePresentation) (<-chan E
 	// stands — `a.generation` is nil and the first arm is unreachable — and the
 	// batch it holds is the one no bash can be running inside. The arm this
 	// really replaces is the last one, and that is where its landing is set.
-	retired := a.talkedPastQuestionsLocked()
+	retired := a.talkedPastQuestionsLocked(true)
 	if len(retired) > 0 {
 		// Outside the lock, with the announcements, for the reason they are:
 		// this is person-visible news and the claim above is not.
@@ -931,6 +945,7 @@ func (a *Agent) liftSteersLocked(hub *eventHub) {
 		// message it becomes is kept without it.
 		follow := userText(steer.note.Words)
 		follow.person = message.person
+		follow.fromPerson = message.fromPerson
 		a.followups = append(a.followups, followUp{
 			message: follow,
 			stream:  steer.stream,

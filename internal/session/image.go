@@ -505,7 +505,11 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			a.done = nil
 			a.abandon = nil
 			close(done)
+			var retired []Question
 			if next, ok := a.nextFollowUpLocked(completed); ok {
+				// The person's queued words are their reply once their turn
+				// starts, as a sent message's are.
+				retired = a.personClosesQuestionsLocked(next.message)
 				// An ordinary turn, on the chat model: the follow-up is words,
 				// and words are what that model can read.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
@@ -515,6 +519,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 				a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer)
 			}
 			a.mu.Unlock()
+			a.sayTheQuestionsCameDown(retired)
 		}()
 		defer func() {
 			if recovered := recover(); recovered != nil {

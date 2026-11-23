@@ -182,16 +182,36 @@ func TestRecoveryHTTPLiveLeaseKeepsAnOldWorkerStepRunning(t *testing.T) {
 	}
 }
 
-func TestRecoveryHTTPManualWorkerJobWaitsForAnExplicitRetry(t *testing.T) {
+// MANUAL DOES NOT PAUSE THE RETRY OF AN INTERRUPTED STEP: running a step again
+// is never the person's, in Manual or in Auto (factory.RecoveryBlockReason).
+// A Manual job whose runner was lost used to wait on its person for a Try
+// again; it is retried by itself, as an Auto job is.
+func TestRecoveryHTTPManualWorkerJobIsRetriedByItself(t *testing.T) {
 	f := newV2Jobs(t)
 	clock := time.Unix(0, f.clock.Load())
 	it := staleWorkerJob(clock.Add(-time.Hour))
 	it.Autonomy = factory.AutonomyManual
 	it = f.create(t, it)
 	job := f.read(t, it)
-	if job.State != api.StateNeedsYou || job.NeedsYou == nil || job.NeedsYou.Kind != factory.NeedsRunnerOffline ||
-		job.Recovery == nil || job.Recovery.State != "exhausted" || !job.Controls.RerunStep {
-		t.Fatalf("manual job lacks an explicit retry: state=%s needs=%+v recovery=%+v", job.State, job.NeedsYou, job.Recovery)
+	if job.Recovery == nil || job.Recovery.State != "waiting" {
+		t.Fatalf("a Manual job's interrupted step has no retry planned: state=%s recovery=%+v", job.State, job.Recovery)
+	}
+	f.clock.Store(job.Recovery.NextAt.UnixNano())
+	job = f.read(t, it)
+	if job.State != api.StateQueued || job.Recovery.State != "queued" || job.Recovery.Attempts != 1 || job.NeedsYou != nil {
+		t.Fatalf("a Manual job's interrupted step waits on its person: state=%s needs=%+v recovery=%+v", job.State, job.NeedsYou, job.Recovery)
+	}
+}
+
+// A JOB ITS PERSON TOOK OVER IS NOT RETRIED BY ITSELF: they have the checkout.
+func TestRecoveryBlockReasonKeepsATakeOverAndDropsManual(t *testing.T) {
+	it := factory.Item{ID: 1, Autonomy: factory.AutonomyManual, Cap: 10, State: factory.StateQueued, Stream: &factory.Stream{Phases: []factory.Phase{{Name: "write"}}}}
+	if why := factory.RecoveryBlockReason(it); why != "" {
+		t.Fatalf("Manual alone pauses the retry: %q", why)
+	}
+	it.Manual = true
+	if why := factory.RecoveryBlockReason(it); why != factory.RecoveryTakenOver {
+		t.Fatalf("a take-over does not pause the retry: %q", why)
 	}
 }
 

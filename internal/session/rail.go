@@ -76,7 +76,9 @@ func (a *Agent) dailyCeilingUSD() float64 {
 
 // dailyCeiling keeps the profile's read error for every paid-call gate, so
 // unreadable spending authority cannot silently become an unlimited allowance.
-func (c Config) dailyCeiling() (float64, error) {
+// Reading the budget fields in place avoids copying the sources a session may
+// be replacing while its budget watcher runs.
+func (c *Config) dailyCeiling() (float64, error) {
 	if c.dailyBudgetAuthority != nil {
 		return c.dailyBudgetAuthority()
 	}

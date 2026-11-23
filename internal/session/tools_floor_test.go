@@ -267,7 +267,7 @@ type actingFloorDoor struct {
 	acted []string
 }
 
-func (d *actingFloorDoor) StartItem(_ context.Context, id int) (string, error) {
+func (d *actingFloorDoor) StartItem(_ context.Context, id int, _ string) (string, error) {
 	d.acted = append(d.acted, "start "+itoaFloor(id))
 	return "#" + itoaFloor(id) + " started", nil
 }
@@ -590,9 +590,9 @@ func (d *faultyFloorDoor) Mark(ctx context.Context, ids []int, on bool) error {
 	return d.actingFloorDoor.Mark(ctx, ids, on)
 }
 
-func (d *faultyFloorDoor) StartItem(ctx context.Context, id int) (string, error) {
+func (d *faultyFloorDoor) StartItem(ctx context.Context, id int, _ string) (string, error) {
 	d.fault("start")
-	return d.actingFloorDoor.StartItem(ctx, id)
+	return d.actingFloorDoor.StartItem(ctx, id, "")
 }
 
 func (d *faultyFloorDoor) SetPriority(ctx context.Context, id int, value string) (string, error) {

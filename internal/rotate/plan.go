@@ -14,11 +14,12 @@ const (
 
 // Plan is what a rotation would do, told before anything changes.
 type Plan struct {
-	Chats     int           // chats the old identity lists
-	Missing   int           // of those, chats whose objects are not all on this machine
-	DownBytes int64         // what fetching the missing ones costs
-	UpBytes   int64         // what publishing all of them costs
-	Wait      time.Duration // an estimate of both
+	StorageOff bool          // chats stay local while relay storage is off
+	Chats      int           // chats the old identity lists
+	Missing    int           // of those, chats whose objects are not all on this machine
+	DownBytes  int64         // what fetching the missing ones costs
+	UpBytes    int64         // what publishing all of them costs
+	Wait       time.Duration // an estimate of both
 }
 
 // Plan asks the old relay what it lists and this machine what it already holds.
@@ -41,6 +42,7 @@ func (e Env) Plan(ctx context.Context) (Plan, error) {
 			return Plan{}, err
 		}
 	}
+	p.StorageOff = !upload
 	for id, c := range l.Cells {
 		if upload {
 			p.UpBytes += int64(c.Size)

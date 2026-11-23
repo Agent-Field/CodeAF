@@ -179,3 +179,113 @@ func TestC31AStartupSaveIsNotAChoice(t *testing.T) {
 		})
 	}
 }
+
+// TestC31AFolderGoneIsNoLocalFiles proves the launch walk's check for a chat
+// whose project folder was deleted on this computer. A folder that is not
+// there holds no local files, so only the conversation can be work: the check
+// answers clean when nothing was left unsaved and not clean when something was,
+// and in neither case an error, which a launch used to show on every start as
+// a chat that "could not be put in this folder". Folders that ARE there keep
+// their edits, and a path that is not a folder is still a refusal.
+func TestC31AFolderGoneIsNoLocalFiles(t *testing.T) {
+	celltest.RequireEngine(t)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(cellstoretest.EngineDir(t), "no-global-config"))
+
+	appendRecord := func(t *testing.T, c cell.Cell) {
+		t.Helper()
+		f, err := os.OpenFile(filepath.Join(c.Root, cell.TranscriptPath), os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = f.WriteString("{\"type\":\"message\",\"role\":\"user\",\"content\":\"keep this turn\"}\n")
+		_ = f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct {
+		name string
+		// last is what the chat did after its shared turn, before the folder changed.
+		last cellstore.TurnInfo
+		// change happens after the second seal, to the chat and to its folder.
+		change    func(t *testing.T, c cell.Cell, work string)
+		wantClean bool
+		wantErr   bool
+	}{
+		{name: "gone and nothing unsaved", change: func(t *testing.T, _ cell.Cell, work string) { os.RemoveAll(work) }, wantClean: true},
+		{name: "gone and a turn not yet saved", change: func(t *testing.T, c cell.Cell, work string) { os.RemoveAll(work); appendRecord(t, c) }},
+		{name: "gone and a tool call not yet saved", last: cellstore.TurnInfo{Calls: []cellstore.Executed{{Call: cellstore.Call{Tool: "bash", SideEffect: "external"}, Exact: true}}}, change: func(t *testing.T, _ cell.Cell, work string) { os.RemoveAll(work) }},
+		{name: "gone and the saved conversation rewritten in place", change: func(t *testing.T, c cell.Cell, work string) {
+			os.RemoveAll(work)
+			path := filepath.Join(c.Root, cell.TranscriptPath)
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, bytes.Replace(raw, []byte("\"version\":1"), []byte("\"version\":2"), 1), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "there and a file edited", change: func(t *testing.T, _ cell.Cell, work string) {
+			if err := os.WriteFile(filepath.Join(work, "work.txt"), []byte("edited before startup"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "there and untouched", change: func(*testing.T, cell.Cell, string) {}, wantClean: true},
+		{name: "a file where the folder was", change: func(t *testing.T, _ cell.Cell, work string) {
+			os.RemoveAll(work)
+			if err := os.WriteFile(work, []byte("not a folder"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(home.EnvVar, cellstoretest.EngineDir(t))
+			work := t.TempDir()
+			if err := os.WriteFile(filepath.Join(work, "work.txt"), []byte("already shared"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			c, err := cell.CreateIn(home.Join("v3/projects/fixture"), cell.Options{Class: cell.HostBound})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				ctx, cancel := context.WithTimeout(context.Background(), cellstore.SealWithin)
+				defer cancel()
+				_ = cellstore.Await(ctx, c)
+			})
+			if err := session.SaveMeta(c.Root, session.Meta{ID: c.ID, Workspace: work}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(c.Root, cell.TranscriptPath), []byte(fmt.Sprintf("{\"type\":\"session\",\"version\":1,\"id\":%q}\n", c.ID)), 0600); err != nil {
+				t.Fatal(err)
+			}
+			e := cellstore.EngineFor(work)
+			at := time.Unix(1700000000, 0)
+			e.Now = func() time.Time { at = at.Add(time.Second); return at }
+			first, err := e.Seal(t.Context(), c, cellstore.TurnInfo{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cellstore.NotePublished(c, first.Turn.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.Seal(t.Context(), c, tc.last); err != nil {
+				t.Fatal(err)
+			}
+			tc.change(t, c, work)
+
+			clean, err := (takeover{}).SafeToContinue(t.Context(), c.ID, "", false)
+			switch {
+			case tc.wantErr && err == nil:
+				t.Fatalf("clean=%v with no error; a path that is not a folder must still be refused", clean)
+			case !tc.wantErr && err != nil:
+				t.Fatalf("SafeToContinue = %v; want an answer, not an error", err)
+			case !tc.wantErr && clean != tc.wantClean:
+				t.Fatalf("clean=%v, want %v", clean, tc.wantClean)
+			}
+		})
+	}
+}
