@@ -96,7 +96,7 @@ var (
 	ErrTooOld       = errors.New("directory: this relay is too old for that")
 	// ErrConditionalTake is the one feature an older service cannot offer
 	// safely. It says what still works and the one thing to do instead.
-	ErrConditionalTake = errors.New(conditionalTakeFeature + " waits for a sync service update; all else works, so close it there and continue here")
+	ErrConditionalTake = errors.New(conditionalTakeFeature + " waits for a relay update; all else works, so close it there and move it here")
 )
 
 // ReleaseQuiet distinguishes background preparation from quitting an open

@@ -158,7 +158,7 @@ func Dial(ctx context.Context, service, name string) (io.ReadWriteCloser, error)
 func upgrade(ctx context.Context, service, path string, header http.Header) (net.Conn, error) {
 	address, err := url.Parse(strings.TrimSpace(service))
 	if err != nil || address.Host == "" || (address.Scheme != "http" && address.Scheme != "https") {
-		return nil, fmt.Errorf("%q is not a sync service URL — it looks like https://relay.example.com", service)
+		return nil, fmt.Errorf("%q is not a relay URL — it looks like https://relay.example.com", service)
 	}
 	// The relay address may carry a path of its own (https://host/fabric), and
 	// the door is beneath it, as every other client's route is. Refusals name
@@ -264,7 +264,7 @@ func refusal(base, path string, status int, said string) error {
 	case relaySentence(said):
 		return errors.New(said)
 	default:
-		return fmt.Errorf("the sync service at %s refused this connection (%d) — check the address it was given", base, status)
+		return fmt.Errorf("the relay at %s refused this connection (%d) — check the address it was given", base, status)
 	}
 }
 

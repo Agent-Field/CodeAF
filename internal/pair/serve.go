@@ -75,7 +75,7 @@ const steadyAfter = time.Minute
 
 // TooManyRegistrationsLine is what `codeaf serve` prints when the relay turns
 // registrations away at its per-minute ceiling.
-const TooManyRegistrationsLine = "the sync service is turning registrations away right now — waiting before trying again"
+const TooManyRegistrationsLine = "the relay is turning registrations away right now — waiting before trying again"
 
 // LostSyncLine is what `codeaf serve` prints, once per outage, when its
 // connection to the relay is lost and it starts trying again.
@@ -156,7 +156,7 @@ func (h *Host) sayBanner(line string, force bool) {
 // again cannot fix.
 func (h *Host) Run(ctx context.Context) error {
 	if strings.TrimSpace(h.Service) == "" {
-		return errors.New("no sync service is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync service")
+		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your relay")
 	}
 	if h.Desk != nil && h.Desk.Now == nil && h.Now != nil {
 		h.Desk.Now = h.Now

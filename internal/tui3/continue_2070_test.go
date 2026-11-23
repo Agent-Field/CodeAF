@@ -454,7 +454,7 @@ func TestBusyStoreNamedWithHolderAndOffersRetry(t *testing.T) {
 	}
 	exeBase := filepath.Base(os.Args[0])
 	for _, want := range []string{
-		"could not continue this chat here because the engine store is busy (held by " + exeBase + ", pid ",
+		"could not move this chat here because the engine store is busy (held by " + exeBase + ", pid ",
 		continueRetry,
 	} {
 		if !strings.Contains(card, want) {
@@ -473,7 +473,7 @@ func TestBusyStoreNamedWithHolderAndOffersRetry(t *testing.T) {
 	}
 }
 
-// Contract 3: Under `--host`, `continue here` is not offered and a chat the
+// Contract 3: Under `--host`, `move here` is not offered and a chat the
 // remote host already holds never shows as held elsewhere or duplicated.
 func TestHostedSurfaceNeverOffersContinueOrShowsHeldElsewhere(t *testing.T) {
 	lab := newHomeLab(t)

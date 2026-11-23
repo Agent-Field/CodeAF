@@ -24,7 +24,7 @@ import (
 // The facts, so a caller can tell them apart before phrasing them.
 var (
 	// ErrNoRelay is this machine having no relay address at all.
-	ErrNoRelay = errors.New("pair: no sync service is configured")
+	ErrNoRelay = errors.New("pair: no relay is configured")
 	// ErrNotPaired is this device never having been let in to that machine.
 	ErrNotPaired = errors.New("pair: this device is not paired with that machine")
 	// ErrWrongCode is the pairing code not matching.
@@ -40,7 +40,7 @@ var (
 
 // NoRelay is the first sentence: nothing is configured.
 func NoRelay(name string) error {
-	return fmt.Errorf("no sync service is set up on this machine, so --at has nowhere to look for %s — set %s to a sync service, or reach that machine with --host over ssh", name, RelayEnv)
+	return fmt.Errorf("no relay is set up on this machine, so --at has nowhere to look for %s — set %s to a relay, or reach that machine with --host over ssh", name, RelayEnv)
 }
 
 // Unreachable is the second: something is configured and it is not answering.
@@ -89,7 +89,7 @@ func NoAnswer(name string) error {
 
 // Busy is the relay turning connections away.
 func Busy() error {
-	return errors.New("the sync service is turning connections away right now — try again in a minute")
+	return errors.New("the relay is turning connections away right now — try again in a minute")
 }
 
 // Stopped is what a machine says to a device it no longer lets in. It travels
@@ -147,13 +147,13 @@ var (
 	// ErrBadGrant is what arrived as a grant and could not be used.
 	ErrBadGrant = errors.New("what the other device sent could not be read; nothing was changed")
 	// ErrSyncOff is a person who has turned the relay off.
-	ErrSyncOff = errors.New("sync is off (CODEAF_SYNC_URL=off); pairing needs the sync service")
+	ErrSyncOff = errors.New("sync is off (CODEAF_SYNC_URL=off); pairing needs the relay")
 	// ErrNoSync is a person with no relay set at all.
-	ErrNoSync = errors.New("no sync service is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>")
+	ErrNoSync = errors.New("no relay is set, so there is nowhere to pair through: set CODEAF_SYNC_URL to its address, or pass --via <address>")
 	// ErrRelayBusy is a relay at one of its global caps.
 	ErrRelayBusy = errors.New("sync is full right now; try again in a few minutes")
 	// ErrRelayTooOld is a relay that does not know pairing yet.
-	ErrRelayTooOld = errors.New("that sync service is too old for pairing")
+	ErrRelayTooOld = errors.New("that relay is too old for pairing")
 	// ErrDifferentChats is a computer that already has chats of its own.
 	ErrDifferentChats = errors.New("this computer has local work, so nothing was changed. To pair it anyway, run this again with --replace: local chats stay on this computer but no longer sync; shared memories and settings are cleared")
 	// ErrAlreadyPaired is a computer that already holds the chats being offered.
@@ -229,13 +229,13 @@ func (e cannotReachError) Unwrap() error { return ErrCannotReach }
 
 // NoDoorForServe gives the machine operator a remedy on this machine.
 func NoDoorForServe(service string) error {
-	return fmt.Errorf("the sync service at %s syncs chats but does not connect machines — run your own with `codeaf relay` and set %s to it", service, RelayEnv)
+	return fmt.Errorf("the relay at %s syncs chats but does not connect machines — run your own with `codeaf relay` and set %s to it", service, RelayEnv)
 }
 
 // notConnectedError keeps readiness checks independent of the visible sentence.
 type notConnectedError struct{ name string }
 
 func (e notConnectedError) Error() string {
-	return fmt.Sprintf("%s is not connected to the sync service right now — run `codeaf serve` on that machine", e.name)
+	return fmt.Sprintf("%s is not connected to the relay right now — run `codeaf serve` on that machine", e.name)
 }
 func (e notConnectedError) Unwrap() error { return ErrNotConnected }

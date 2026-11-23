@@ -15,8 +15,8 @@ package tui3
 //
 // ONE CHORD OFFERS THE WORK. It picks the newest chat an online device holds
 // and raises the takeover card home already has ([app.homeMachineEnter]): the
-// verb is Move here for a chat that device is running and Continue here for one
-// it let go of ([chatlist.VerbFor]). With several devices in reach the chord
+// verb is Move here, whether that device is running the chat or let it go
+// ([chatlist.VerbFor]). With several devices in reach the chord
 // asks which first.
 
 import (
@@ -39,9 +39,9 @@ type Roster interface {
 const (
 	// deviceKey is the chord that brings a device's work here.
 	deviceKey      = "alt+m"
-	deviceBring    = deviceKey + " bring work here"
+	deviceBring    = deviceKey + " move here"
 	deviceArriving = "chats are still arriving from your other computer; this opens when they are ready"
-	deviceNothing  = "no other device that is online has a chat to bring here"
+	deviceNothing  = "no other device that is online has a chat to move here"
 	devicePickAsk  = "Which device?"
 	devicePickLeav = "leave it there"
 	deviceGap      = "  "

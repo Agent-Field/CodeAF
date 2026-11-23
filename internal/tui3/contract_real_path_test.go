@@ -14,7 +14,7 @@ func TestC5DisplacedCellWindowOffersContinuation(t *testing.T) {
 	typeText(t, a, "hello")
 	drive(t, a, key("enter"))
 	if len(agent.sent) != 0 {
-		t.Fatalf("cell-layout stale window sent %v instead of offering continue here; file=%s", agent.sent, a.file)
+		t.Fatalf("cell-layout stale window sent %v instead of offering move here; file=%s", agent.sent, a.file)
 	}
 	if !a.at(pageHome) {
 		t.Fatal("no move door was shown")

@@ -331,7 +331,7 @@ func TestC3WorkspaceToolNeverRunsAfterTheOwnerOfAFailedArrivalDied(t *testing.T)
 		t.Fatalf("tool executed %d times on a partial workspace tree after its fetch failed and its owner left; want 0", executedOnPartialTree.Load())
 	}
 	combined := toolErrText + "\n" + finalText
-	for _, want := range []string{"workspace files could not arrive", "sync could not be reached", "continue the chat here again"} {
+	for _, want := range []string{"workspace files could not arrive", "sync could not be reached", "move the chat here again"} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("expected %q in what the person is told, got:\n%s", want, combined)
 		}

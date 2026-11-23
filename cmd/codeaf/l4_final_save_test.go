@@ -47,7 +47,7 @@ func TestL4QuitSaveWords(t *testing.T) {
 		finishing, ok bool
 		want          string
 	}{
-		{syncwords.UploadFailure(context.DeadlineExceeded), false, true, "saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers"},
+		{syncwords.UploadFailure(context.DeadlineExceeded), false, true, "saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers"},
 		{nil, true, false, "saving on this computer has not finished; its written turns stay here"},
 		{errors.New("disk full"), false, false, "codeaf could not save this chat"},
 	} {
@@ -72,7 +72,7 @@ func TestL4QuitWaitCanBeCanceled(t *testing.T) {
 		t.Fatal("unanswered upload not retained locally")
 	}
 	line, ok := finalSaveWords(syncwords.UploadFailure(context.DeadlineExceeded), finalSavingFinishing(), "http://127.0.0.1:8901")
-	if !ok || line != "saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers" {
+	if !ok || line != "saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers" {
 		t.Fatalf("%v %q", ok, line)
 	}
 	finalSaving.Lock()
@@ -253,7 +253,7 @@ func TestL4InterruptedFinalSavingUsesLocalReceipt(t *testing.T) {
 			}
 			want := "saving on this computer has not finished; its written turns stay here\n"
 			if safe {
-				want = "saved here; it reaches your other devices when the sync service at 127.0.0.1:8901 answers\n"
+				want = "saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers\n"
 			}
 			if string(raw) != want {
 				t.Fatalf("receipt=%q", raw)

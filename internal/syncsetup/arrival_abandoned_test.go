@@ -62,8 +62,8 @@ func TestW10bTakingAChatAgainRestartsTheFilesOfAnAbandonedArrival(t *testing.T) 
 
 	// Until the restart, a seal refuses, with what to do.
 	_, sealErr := h.engB.Seal(t.Context(), bCell, cellstore.TurnInfo{})
-	if !errors.Is(sealErr, cell.ErrWorkspaceArrivalAbandoned) || !strings.Contains(sealErr.Error(), "sync could not be reached") || !strings.Contains(sealErr.Error(), "continue the chat here again") {
-		t.Fatalf("a seal of the partial tree = %v; want a refusal carrying the reason and saying to continue the chat here again", sealErr)
+	if !errors.Is(sealErr, cell.ErrWorkspaceArrivalAbandoned) || !strings.Contains(sealErr.Error(), "sync could not be reached") || !strings.Contains(sealErr.Error(), "move the chat here again") {
+		t.Fatalf("a seal of the partial tree = %v; want a refusal carrying the reason and saying to move the chat here again", sealErr)
 	}
 
 	// Opening the chat again is the restart.

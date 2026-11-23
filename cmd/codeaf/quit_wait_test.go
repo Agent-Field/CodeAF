@@ -46,7 +46,7 @@ func TestQuitWaitReportsStillFinishingAtTheSavingCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(raw), "saved here; it reaches your other devices when the sync service at") != 1 || strings.Contains(string(raw), "could not save") {
+	if strings.Count(string(raw), "saved here; it reaches your other devices when the relay at") != 1 || strings.Contains(string(raw), "could not save") {
 		t.Fatalf("long wait=%q", raw)
 	}
 	finalSaving.Lock()

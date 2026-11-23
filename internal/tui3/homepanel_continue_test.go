@@ -137,7 +137,7 @@ func TestTakeoverScreenEscLeavesIt(t *testing.T) {
 }
 
 func TestTakeoverCardCursorByEntryPoint(t *testing.T) {
-	// An explicit continue starts on `continue here`; a card nobody asked for
+	// An explicit continue starts on `move here`; a card nobody asked for
 	// starts on `leave it there`.
 	entries := map[string]struct {
 		raise func(*app, chatlist.Row) tea.Cmd
@@ -209,7 +209,7 @@ func TestTakeoverScreenLostRace(t *testing.T) {
 	standOn(t, a, "c-off")
 	confirm(t, a)
 	text := homeText(a)
-	if !strings.Contains(text, "another device continued this chat first") {
+	if !strings.Contains(text, "another device moved this chat first") {
 		t.Fatalf("R25 visible refusal changed:\n%s", text)
 	}
 	q, card := a.homeAsking()
@@ -363,7 +363,7 @@ func TestC7HomeExplainsAnOldSyncService(t *testing.T) {
 	a := continueHome(t, &fakeTaker{err: directory.ErrConditionalTake}, continueRows, 220)
 	standOn(t, a, "c-off")
 	confirm(t, a)
-	if !strings.Contains(homeText(a), "waits for a sync service update") {
+	if !strings.Contains(homeText(a), "waits for a relay update") {
 		t.Fatalf("old service refusal missing:\n%s", homeText(a))
 	}
 }
@@ -407,21 +407,21 @@ func cardRows(a *app) []string {
 func TestTakeoverScreenGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
-			"╭─ ? Continue this chat here? ────────────────────────────────────────────────╮",
+			"╭─ ? Move this chat here? ────────────────────────────────────────────────────╮",
 			"│ host-a offline; last saved turn 3h ago; up to 3 turns may still be on host- │",
 			"│ a                                                                           │",
 			"│                                                                             │",
-			"│ ▸ 1  continue here                                                          │",
+			"│ ▸ 1  move here                                                              │",
 			"│   2  leave it there                                            safe answer  │",
 			"│                                                                             │",
 			"╰─ esc leave it there ────────────────────────────────────────────────────────╯",
 		},
 		40: {
-			"╭─ ? Continue this chat here? ────────╮",
+			"╭─ ? Move this chat here? ────────────╮",
 			"│ host-a offline; last saved turn 3h  │",
 			"│ ago; up to 3 turns may still be on  │",
 			"│                                     │",
-			"│ ▸ 1  continue here                  │",
+			"│ ▸ 1  move here                      │",
 			"│   2  leave it there    safe answer  │",
 			"│                                     │",
 			"╰─ esc leave it there ────────────────╯",

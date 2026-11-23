@@ -26,7 +26,7 @@ import (
 // A message typed into a chat whose lease another machine holds would not reach
 // the chat: it would make a branch nobody asked for. So enter shows the door
 // instead: home, with the chat's row from that machine under the cursor and the
-// `Continue here` card up. The words stay in the box.
+// `Move here` card up. The words stay in the box.
 //
 // Local authority lets an ordinary message send without a relay request. A copy
 // without that authority asks once off the loop before choosing its door.
@@ -567,7 +567,7 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		return continueCheckFails
 	default:
 		log.Printf("continue chat %s: %v", msg.row.Cell, msg.err)
-		return continueFails + " because the chat could not be put in this folder; your words are still in the box. Try continue here again."
+		return continueFails + " because the chat could not be put in this folder; your words are still in the box. Try move here again."
 	}
 }
 

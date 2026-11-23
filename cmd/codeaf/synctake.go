@@ -33,7 +33,7 @@ import (
 var surfaceNotices = tui3.NewNotices()
 
 // wireSync gives the surface everything that needs a relay: the chats on other
-// machines, `continue here`, and what a branch row can do. With sync off, or
+// machines, `move here`, and what a branch row can do. With sync off, or
 // when it cannot start, it adds nothing and the home screen must not fail to
 // start over a relay setting: every seam stays nil, and a nil seam is absent.
 func wireSync(o *tui3.Options) {

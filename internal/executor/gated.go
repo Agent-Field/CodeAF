@@ -9,7 +9,7 @@ import (
 const TakeBackWithin = 15 * time.Second
 
 // TakeBackRetryLine keeps an unknown ownership write distinct from displacement.
-const TakeBackRetryLine = "couldn't confirm taking this chat back from the sync service; try again"
+const TakeBackRetryLine = "couldn't confirm taking this chat back from the relay; try again"
 
 // WorkRefusal retains the drive's sentence and the device that continued the
 // chat. Surfaces may dress the facts without classifying the sentence.

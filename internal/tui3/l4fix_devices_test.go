@@ -13,14 +13,14 @@ func TestL4FixDeviceCardsSyncOff(t *testing.T) {
 	a.syncService = "off"
 	r.run(a.openDevices())
 	r.until("devices", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
-	if text := plain(frame(a)); strings.Contains(text, "sync service:") {
+	if text := plain(frame(a)); strings.Contains(text, "relay:") {
 		t.Fatal(text)
 	}
 	a.pair.close()
 	a.openSettings()
 	walkToDevicesTab(t, a, r)
 	r.until("settings devices", func() bool { return a.sheet.dev != nil && a.sheet.dev.loaded })
-	if text := plain(frame(a)); strings.Contains(text, "sync service:") {
+	if text := plain(frame(a)); strings.Contains(text, "relay:") {
 		t.Fatal(text)
 	}
 }

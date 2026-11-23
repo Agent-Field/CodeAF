@@ -240,8 +240,8 @@ already has your work, B is the new one. This is what each step should look like
 6. **See B from A.** A's home shows a devices row with both machines online (filled dots).
    `/devices` lists both.
 7. **The continue card.** Close the chat on B (or leave B idle), reopen A. A offers "Continue
-   where you left off on <B>?". Enter chooses "continue here".
-8. **Move.** A asks "Continue this chat here?". Confirm. A prints a banner "Moved from <B>
+   where you left off on <B>?". Enter chooses "move here".
+8. **Move.** A asks "Move this chat here?". Confirm. A prints a banner "Moved from <B>
    in N s" and opens the chat with a resume card: the files not yet committed, the last test
    run and what B saw. Your folder is the same, file for file.
 9. **Take it back.** Do step 5 to 8 the other way: work on A, then on B continue the same chat

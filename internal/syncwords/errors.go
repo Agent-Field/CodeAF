@@ -41,7 +41,7 @@ func Explain(err error, address string) error {
 	}
 	switch {
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &network) && network.Timeout():
-		return explained{"the sync service at " + address + " did not answer in time — try again", err}
+		return explained{"the relay at " + address + " did not answer in time — try again", err}
 	case IsStruggling(err):
 		return explained{Struggling(address), err}
 	case network != nil, errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH), errors.Is(err, relay.ErrUnreachable):

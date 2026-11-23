@@ -258,7 +258,7 @@ func init() {
 	methods["agents.take"] = typed(func(e Engine, p TakeParams) (*TakeResult, error) {
 		d, ok := e.(ChatsTaker)
 		if !ok {
-			return nil, Errorf(CodeUnknownMethod, "this engine does not continue chats here")
+			return nil, Errorf(CodeUnknownMethod, "this engine does not move chats here")
 		}
 		if _, err := required("cell", p.Cell); err != nil {
 			return nil, err

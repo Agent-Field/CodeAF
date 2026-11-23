@@ -350,7 +350,7 @@ func TestIdleOpen_P9X1_BashCommandRunsOwnershipCheckAndKeepsWords(t *testing.T) 
 		}
 	})
 
-	t.Run("held elsewhere raises Continue here and keeps bash line in box", func(t *testing.T) {
+	t.Run("held elsewhere raises Move here and keeps bash line in box", func(t *testing.T) {
 		a, old, source := r8OwnLiveWindow(t, false)
 		bash := &p9xBashAgent{r9SendAgent: &r9SendAgent{r8SendAgent: old}}
 		a.agent = bash
@@ -362,7 +362,7 @@ func TestIdleOpen_P9X1_BashCommandRunsOwnershipCheckAndKeepsWords(t *testing.T) 
 		a.input.setText(cmdLine)
 		drive(t, a, key("enter"))
 		if len(bash.bashSent) != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) || a.input.String() != cmdLine {
-			t.Fatalf("displaced bash did not offer Continue here: bashSent=%v home=%v box=%q", bash.bashSent, a.at(pageHome), a.input.String())
+			t.Fatalf("displaced bash did not offer Move here: bashSent=%v home=%v box=%q", bash.bashSent, a.at(pageHome), a.input.String())
 		}
 	})
 

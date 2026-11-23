@@ -232,7 +232,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyHistoryEnabled, KeyDraftPersist:
 		p.Aliases = append(p.Aliases, "privacy", "saved messages")
 	case KeyIdleHandoff:
-		p.Aliases = append(p.Aliases, "handoff", "idle release", "continue here", "other computers", "sync")
+		p.Aliases = append(p.Aliases, "handoff", "idle release", "move here", "continue here", "other computers", "sync")
 	}
 	return p
 }

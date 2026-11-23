@@ -265,7 +265,7 @@ func arrivalFailure(reason string) error {
 type abandonedArrivalError struct{ reason string }
 
 func (e *abandonedArrivalError) Error() string {
-	const next = "the window that was fetching them has closed, so continue the chat here again to fetch them"
+	const next = "the window that was fetching them has closed, so move the chat here again to fetch them"
 	if e.reason == "" {
 		return fmt.Sprintf("workspace files could not arrive: %v; %s", ErrWorkspaceArrivalAbandoned, next)
 	}

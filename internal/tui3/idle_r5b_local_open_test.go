@@ -73,7 +73,7 @@ func TestIdleOpen_R5b_LocalOpenWithUnreachableSyncOpensLocal(t *testing.T) {
 			}
 			source.read = func(ctx context.Context) ([]chatlist.Row, uint64, error) {
 				if mode != "timeout" {
-					return nil, 0, errors.New("fixture sync service unreachable")
+					return nil, 0, errors.New("fixture relay unreachable")
 				}
 				deadline, ok := ctx.Deadline()
 				if !ok || time.Until(deadline) > 2500*time.Millisecond {

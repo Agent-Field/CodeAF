@@ -52,8 +52,8 @@ const (
 	// where the person left off.
 	resumeRecent = 24 * time.Hour
 
-	resumeAskFormat = "Continue %s's latest chat here?"
-	resumeYes       = resumeKey + " continue here"
+	resumeAskFormat = "Move %s's latest chat here?"
+	resumeYes       = resumeKey + " move here"
 	resumeNo        = resumeSkipKey + " not now"
 
 	bandOrderResume = 2 // above everything: it is the first thing worth doing

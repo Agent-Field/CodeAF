@@ -1476,7 +1476,7 @@ const (
 	DefaultAttributionModel = true
 
 	// DefaultIdleHandoff leaves an open chat's hold on the computer that
-	// holds it and keeps remote chats waiting for Continue here unless the
+	// holds it and keeps remote chats waiting for Move here unless the
 	// person turns idle handoff on.
 	DefaultIdleHandoff = false
 
@@ -3328,7 +3328,7 @@ func AssistedByModelAt(profileDir, model string) string {
 // shared chat goes idle with the row on, and what happens with it off. It never
 // says "pair": that word is how a person searching settings finds the Devices
 // tab, and a General row matching it took the search there instead.
-const IdleHandoffHint = "On, an idle chat shared with your other computers releases its hold after upload and free shared chats open here without asking; off, open chats keep their hold and remote chats wait for Continue here."
+const IdleHandoffHint = "On, an idle chat shared with your other computers releases its hold after upload and free shared chats open here without asking; off, open chats keep their hold and remote chats wait for Move here."
 
 // IdleHandoffAt resolves whether an idle chat on a paired computer releases its
 // hold to the relay after upload and whether free shared chats auto-open. A

@@ -75,21 +75,22 @@ func StorageOffChanged() (string, bool) {
 // from here so a respelling happens once.
 const (
 	// Available describes a free lease while work admission acquires a new fence.
-	Available     = "This chat is available to continue here."
-	OfferContinue = "continue here"
-	// MoveHere is the verb for a chat another device is running right now, and
-	// ContinueVerb for one it let go of; the devices row offers them by name.
+	Available     = "This chat is available to move here."
+	OfferContinue = "move here"
+	// MoveHere is the verb the devices row offers for a chat on another device.
+	// ContinueVerb, for one the device let go of, used to read differently; one
+	// verb now names the one act, and both names keep that one spelling.
 	MoveHere        = "Move here"
-	ContinueVerb    = "Continue here"
-	LostRace        = "another device continued this chat first"
+	ContinueVerb    = "Move here"
+	LostRace        = "another device moved this chat first"
 	PickedUpAgain   = "%s picked this chat up again"
 	NoIdentity      = "this machine has no identity yet: codeaf identity import"
 	RelayStorageOff = "sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
-	SyncOff         = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
-	Unreachable     = "the sync service is not answering"
+	SyncOff         = "sync is off: set CODEAF_SYNC_URL to your relay's address"
+	Unreachable     = "the relay is not answering"
 	// TakeBackUnreachable explains why a released writer keeps a send unsent.
 	TakeBackUnreachable = Unreachable + ", so this chat cannot be taken back yet; your words are still in the box"
-	ReadTimedOut        = "the sync service did not answer in time"
+	ReadTimedOut        = "the relay did not answer in time"
 	SyncPaused          = syncwords.UnknownOutage
 	SyncRestored        = "this chat is syncing again"
 	ClockOff            = "this computer's clock is off by more than 5 minutes"
@@ -119,7 +120,7 @@ const (
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	keptTurns      = "kept %s from %s as a separate chat"
-	supersededLine = "%s continued this chat. This copy is read-only and may be behind"
+	supersededLine = "%s moved this chat. This copy is read-only and may be behind"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
 	setupAsk       = "Set this machine up like %s had it?"

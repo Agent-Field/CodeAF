@@ -200,8 +200,8 @@ func TestW10bSealAndCaptureRefuseAfterTheOwnerOfAFailedArrivalDied(t *testing.T)
 			defer cancel()
 			callErr = call.do(ctx)
 		}()
-		if !errors.Is(callErr, cell.ErrWorkspaceArrivalAbandoned) || !strings.Contains(callErr.Error(), reason) || !strings.Contains(callErr.Error(), "continue the chat here again") {
-			t.Fatalf("%s after the owner of a failed arrival died = %v; want a refusal that carries %q and says to continue the chat here again", call.name, callErr, reason)
+		if !errors.Is(callErr, cell.ErrWorkspaceArrivalAbandoned) || !strings.Contains(callErr.Error(), reason) || !strings.Contains(callErr.Error(), "move the chat here again") {
+			t.Fatalf("%s after the owner of a failed arrival died = %v; want a refusal that carries %q and says to move the chat here again", call.name, callErr, reason)
 		}
 	}
 	if _, err := os.Stat(marker); err != nil {

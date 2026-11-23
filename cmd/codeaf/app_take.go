@@ -179,7 +179,7 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 				busy = existing.opening || existing.starting || existing.live != nil && (existing.live.running || existing.live.needsYou())
 			})
 			if busy {
-				return appwire.Errorf(appwire.CodeBusy, "Finish this chat's work before continuing it here.")
+				return appwire.Errorf(appwire.CodeBusy, "Finish this chat's work before moving it here.")
 			}
 			if available || moved {
 				b.release(existing)

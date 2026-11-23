@@ -26,7 +26,7 @@ function holder(c, device, fence) {
 
 /** makeRules binds the pure lease rules to one policy. Nothing here reads a clock or a store. */
 export function makeRules({ ttlMs, renewOnPublish }) {
-  // force is the amendment: a person who chose "continue here" takes a live lease at once.
+  // force is the amendment: a person who chose "move here" takes a live lease at once.
   // The fence still goes up, so the old holder's next write is refused as before.
   const acquire = (c, device, now, force = false, expect = undefined) => {
     if (expect != null && (c.lease.device !== expect.device ||

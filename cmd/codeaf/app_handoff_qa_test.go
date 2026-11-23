@@ -17,7 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
-// Observe the same row a second desktop uses to arm Continue here, with a real
+// Observe the same row a second desktop uses to arm Move here, with a real
 // background process and its owed follow-up on the first desktop.
 func TestQAMoveWaitsForBackgroundJobAndItsReply(t *testing.T) {
 	celltest.RequireEngine(t)
@@ -80,7 +80,7 @@ func TestQAMoveWaitsForBackgroundJobAndItsReply(t *testing.T) {
 		rows := machineCall[appwire.ChatsResult](t, b.w, "chats.list", struct{}{}).Chats
 		for _, r := range rows {
 			if r.Cell == row.Cell && !r.Working {
-				t.Fatalf("Continue here became ready while the background job was running; source processes: %+v", machineCall[appwire.ProcessesResult](t, a.w, "processes.list", map[string]any{"agent": created.ID}).Processes)
+				t.Fatalf("Move here became ready while the background job was running; source processes: %+v", machineCall[appwire.ProcessesResult](t, a.w, "processes.list", map[string]any{"agent": created.ID}).Processes)
 			}
 		}
 		time.Sleep(30 * time.Millisecond)
@@ -169,7 +169,7 @@ func TestQAReadOnlyChatFollowsRemoteSavesWithoutTaking(t *testing.T) {
 	a = e2StartApp(t, dirA)
 	old := workingChatRow(t, a, row.Cell, func(r appwire.ChatRow) bool { return !r.Here && r.Seen.Device != row.Seen.Device })
 	// Reading the remote saved history must not replace the journal/tools root
-	// that an eventual Continue here still needs to reconcile.
+	// that an eventual Move here still needs to reconcile.
 	local := takeRootForAt(dirA, row.Cell)
 	before, err := os.ReadFile(filepath.Join(local, ".cell", "transcript.jsonl"))
 	if err != nil {

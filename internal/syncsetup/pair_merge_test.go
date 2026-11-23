@@ -21,7 +21,7 @@ import (
 )
 
 // M1–M5 exercise real local history, encrypted export/import, the pairing
-// mailbox, directory publication, outage/retry and Continue here both ways.
+// mailbox, directory publication, outage/retry and Move here both ways.
 func TestM1M2M3M4M5PairMergeRealHomes(t *testing.T) {
 	h := newTwoHomes(t)
 	ctx := t.Context()

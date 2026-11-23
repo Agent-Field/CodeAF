@@ -25,7 +25,7 @@ func TestIdleOpen_C6_C8_ReleasedAndLapsedChatNeedsOnlyRelay(t *testing.T) {
 			taker.FreeOnly = true
 			if !released {
 				if _, err := taker.Take(t.Context(), chatID); !errors.Is(err, directory.ErrLeaseHeld) {
-					t.Fatalf("lapsed hold bypassed Continue here: %v", err)
+					t.Fatalf("lapsed hold bypassed Move here: %v", err)
 				}
 				// The confirmed continuation still needs only the relay.
 				taker.FreeOnly = false

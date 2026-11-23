@@ -134,7 +134,7 @@ func (b *appBackend) PreviewChat(id string) (appwire.ChatPreview, error) {
 			return appwire.ChatPreview{}, appEntriesBusy(err)
 		}
 		if errors.Is(err, cellsync.ErrTranscriptTooLarge) {
-			return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "This saved conversation is too large to preview. Continue here to read its full history.")
+			return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "This saved conversation is too large to preview. Move here to read its full history.")
 		}
 		return appwire.ChatPreview{}, appwire.Errorf(appwire.CodeUnreachable, "Couldn't load the saved messages. Check that the other computer is running and try again.")
 	}

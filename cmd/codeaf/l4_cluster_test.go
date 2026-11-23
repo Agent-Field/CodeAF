@@ -19,7 +19,7 @@ func (l4Cluster) LeadCluster(context.Context, uint64) (cs.LeadershipReceipt, err
 	return cs.LeadershipReceipt{Node: 1}, nil
 }
 func (l4Cluster) ClusterNames(context.Context, clusterctl.Status) map[uint64]string {
-	return map[uint64]string{1: "laptop-a", 2: "desk-b", 3: "the sync service", 4: "box-c", 5: ""}
+	return map[uint64]string{1: "laptop-a", 2: "desk-b", 3: "the relay", 4: "box-c", 5: ""}
 }
 
 // L4-M14a, L4-M14b, L4-M14d: ordinary status and leadership use names; verbose keeps debugging details.

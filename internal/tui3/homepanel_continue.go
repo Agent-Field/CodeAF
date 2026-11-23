@@ -31,11 +31,11 @@ import (
 // card home already has for a question about a row (homeconfirm.go), with the
 // cursor on the answer that loses nothing, except where the person just chose to
 // continue (enter on the row, the left-off chord, the device chord): there it
-// starts on `continue here`. The takeover sentence is the card's
+// starts on `move here`. The takeover sentence is the card's
 // reason, quoted whole from [chatlist.TakeoverLine].
 //
 // A VERB THAT CANNOT WORK IS ABSENT. With no [Taker] injected a chat that went
-// off has no `continue here`, and a branch offers only the recovery verbs
+// off has no `move here`, and a branch offers only the recovery verbs
 // injected here: its card never promises a verb nothing is behind.
 
 // Taken is what a takeover reports to the surface. Kept names the branch that
@@ -98,13 +98,13 @@ type BranchActions struct {
 // The words of the two cards. The sentences that are contract copy come from
 // [chatlist]; these are the questions around them.
 const (
-	continueAsk            = "Continue this chat here?"
+	continueAsk            = "Move this chat here?"
 	continueStay           = "leave it there"
 	continueRetry          = "retry"
-	continueAlreadyRunning = "a chat is already continuing here; wait for it to open"
+	continueAlreadyRunning = "a chat is already moving here; wait for it to open"
 	lostRaceWord           = chatlist.LostRace
-	continuing             = "continuing here…"
-	continueFails          = "could not continue this chat here"
+	continuing             = "moving here…"
+	continueFails          = "could not move this chat here"
 	continueStoreBusy      = continueFails + " because the engine store is busy"
 	// continueUnreachable names what did not happen, not only why, because
 	// the box still holds words the person meant to send in the moved chat.
@@ -117,7 +117,7 @@ const (
 	// comes BEFORE a move. It says what was being done, because nothing had been
 	// put in any folder yet, and a sentence about a folder sends the person to
 	// look for a problem that is not there.
-	continueCheckFails = "could not check this computer's copy before continuing; your words are still in the box"
+	continueCheckFails = "could not check this computer's copy before moving; your words are still in the box"
 )
 
 // homeContinueKind and homeBranchKind are the lanes the two questions travel
@@ -225,7 +225,7 @@ func (a *app) sayOffer(_ chatlist.Row, offer chatlist.Offer) tea.Cmd {
 	return nil
 }
 
-// ── continue here ───────────────────────────────────────────────────────────
+// ── move here ───────────────────────────────────────────────────────────
 
 // The two places the takeover card's cursor can start.
 const (
@@ -312,7 +312,7 @@ func (a *app) spendHomeTakeFor(line homeLine) tea.Cmd {
 
 // offerContinue raises the takeover screen for a person who chose to continue
 // (enter on the row, the left-off chord, the device chord): the cursor starts
-// on `continue here`, so enter completes the move they just asked for.
+// on `move here`, so enter completes the move they just asked for.
 func (a *app) offerContinue(row chatlist.Row, _ chatlist.Offer) tea.Cmd {
 	return a.raiseContinue(row, continueYesAt)
 }
@@ -347,7 +347,7 @@ func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 	return nil
 }
 
-// continueShown is the takeover question: `continue here` as the yes, and the
+// continueShown is the takeover question: `move here` as the yes, and the
 // takeover sentence as the reason. The cursor starts on option `at`.
 func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 	row = a.presentRow(row)
@@ -880,7 +880,7 @@ func (a *app) continueConflictRead(msg continueConflictMsg) tea.Cmd {
 			}
 			sameHolder := row.DeviceID != "" && row.DeviceID == failed.row.DeviceID || row.DeviceID == "" && failed.row.DeviceID == "" && row.Device == failed.row.Device
 			if sameHolder && row.Fence != failed.row.Fence && row.Device != "" {
-				failure = fmt.Sprintf(chatlist.PickedUpAgain+"; press enter to continue it here", nonemptyDevice(row.Device))
+				failure = fmt.Sprintf(chatlist.PickedUpAgain+"; press enter to move it here", nonemptyDevice(row.Device))
 			} else if !sameHolder && !row.Mine {
 				failure = lostRaceWord
 			}

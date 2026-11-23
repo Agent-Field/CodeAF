@@ -24,7 +24,7 @@ import (
 const (
 	// LostLine and BackLine are the only two things the door says on its own,
 	// once each per spell of the sync service being out of reach.
-	LostLine = "moving chats between your computers is paused while the sync service is out of reach"
+	LostLine = "moving chats between your computers is paused while they cannot reach each other"
 	BackLine = "moving chats between your computers works again"
 
 	// The registration backoff doubles from a second up to ten seconds. In a
@@ -77,7 +77,7 @@ type ServeConfig struct {
 func (c ServeConfig) check() error {
 	address, err := url.Parse(strings.TrimSpace(c.Service))
 	if err != nil || address.Host == "" || (address.Scheme != "http" && address.Scheme != "https") {
-		return errors.New("filesdoor: a door needs a sync service address that looks like https://relay.example.com")
+		return errors.New("filesdoor: a door needs a relay address that looks like https://relay.example.com")
 	}
 	if c.Roster == nil || c.Store == nil || c.LockPath == "" {
 		return errors.New("filesdoor: a door needs a roster, a store and a lock file")

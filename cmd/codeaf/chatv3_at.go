@@ -274,7 +274,7 @@ func runServe(args []string) error {
 	flags := commandFlags("serve")
 	takeTasks := flags.Bool(taskdoor.TakeTasksFlag, false, "take tasks from your paired computers")
 	workspace := flags.String("workspace", "", "directory a connection works in when it does not name one; empty is the directory this command was run in")
-	relayAddress := flags.String("via", "", "the sync service to be reachable through; empty reads "+pair.RelayEnv+", ~/.codeaf/v3/remote/relay, then the address this machine syncs through")
+	relayAddress := flags.String("via", "", "the relay to be reachable through; empty reads "+pair.RelayEnv+", ~/.codeaf/v3/remote/relay, then the address this machine syncs through")
 	renamedFlag(flags, "relay", "via")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
@@ -290,7 +290,7 @@ func runServe(args []string) error {
 	if service == "" {
 		// Only a machine whose person turned sync off and named no relay
 		// gets here; every other machine has sync's address.
-		return errors.New("no sync service is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to your sync service")
+		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + pair.RelayEnv + " to your relay")
 	}
 
 	here := strings.TrimSpace(*workspace)

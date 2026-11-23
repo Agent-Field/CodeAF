@@ -68,7 +68,7 @@ func TestResumeIsDecidedAgainWhenTheFeedSaysTheDeviceWentOffline(t *testing.T) {
 	// D6: The relay's offline debounce is over: the feed drops the device.
 	feed.state.Online = nil
 	a.tookWatch(dirWatchMsg{from: feed})
-	if got := leftOffFrame(a); !strings.Contains(got, "Continue tower's latest chat here?") {
+	if got := leftOffFrame(a); !strings.Contains(got, "Move tower's latest chat here?") {
 		t.Fatalf("no card after the device went offline:\n%s", got)
 	}
 	// It comes back: the reason is gone and the card with it.
@@ -108,7 +108,7 @@ func TestResumeOffersOnceAndLeadsToTheTakeoverCard(t *testing.T) {
 	a := leftOffApp(&fakeTaker{})
 	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "tower", chatlist.Off, time.Hour)}})
 	got := leftOffFrame(a)
-	for _, want := range []string{"Continue tower's latest chat here?", resumeYes, resumeNo} {
+	for _, want := range []string{"Move tower's latest chat here?", resumeYes, resumeNo} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
@@ -122,7 +122,7 @@ func TestResumeOffersOnceAndLeadsToTheTakeoverCard(t *testing.T) {
 		t.Fatal("the takeover card was not raised")
 	}
 	if ask.pick != continueYesAt {
-		t.Fatalf("alt+c left the cursor on %d, not on `continue here`", ask.pick)
+		t.Fatalf("alt+c left the cursor on %d, not on `move here`", ask.pick)
 	}
 	if leftOffFrame(a) != "" {
 		t.Fatal("the offer stayed after it was taken up")
@@ -164,7 +164,7 @@ func TestResumeAppearsWithinTheBoundWhenTheLeaseLapses(t *testing.T) {
 	}
 	src.rows = row(chatlist.Off)
 	lapsed := *now
-	for !strings.Contains(leftOffFrame(a), "Continue tower's latest chat here?") {
+	for !strings.Contains(leftOffFrame(a), "Move tower's latest chat here?") {
 		if waited := now.Sub(lapsed); waited > machinesCap+homeEvery {
 			t.Fatalf("no card %s after the lease lapsed, want within %s", waited, machinesCap)
 		}

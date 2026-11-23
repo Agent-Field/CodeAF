@@ -64,7 +64,7 @@ func TestARefreshedHoldAsksAgainInsteadOfBlamingAnotherDevice(t *testing.T) {
 	if !ok {
 		t.Fatalf("no refreshed card:\n%s", homeText(a))
 	}
-	if a.home.msg != "tower picked this chat up again; press enter to continue it here" {
+	if a.home.msg != "tower picked this chat up again; press enter to move it here" {
 		t.Fatal(a.home.msg)
 	}
 	if len(taker.seen) != 1 {

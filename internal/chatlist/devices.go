@@ -7,8 +7,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
-// The words of the devices row. The two verbs it offers, MoveHere and
-// ContinueVerb, are in copy.go with the other contract sentences.
+// The words of the devices row. The verb it offers, MoveHere (and ContinueVerb,
+// which spells the same words), is in copy.go with the other contract sentences.
 const (
 	thisMac    = "This Mac"
 	thisDevice = "This computer"

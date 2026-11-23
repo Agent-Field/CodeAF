@@ -116,7 +116,7 @@ func TestL4ServeRemedyIsLocal(t *testing.T) {
 // L4-H6d: code-pairing server failures use the same sentence as devices and cluster.
 func TestL4CodePairServiceFailure(t *testing.T) {
 	got := phraseBox(wireauth.ErrUnavailable, "http://127.0.0.1:8901")
-	if got.Error() != "the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute" {
+	if got.Error() != "the relay at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute" {
 		t.Fatal(got)
 	}
 }

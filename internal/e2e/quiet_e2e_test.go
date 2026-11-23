@@ -63,7 +63,7 @@ func TestFreshInstallSendsNothingToTheSyncService(t *testing.T) {
 	}
 	time.Sleep(5 * time.Second)
 	if got := count.seen(); len(got) != 0 {
-		t.Fatalf("a fresh install reached the sync service %d times: %s", len(got), strings.Join(got, "; "))
+		t.Fatalf("a fresh install reached the relay %d times: %s", len(got), strings.Join(got, "; "))
 	}
 
 	app.kill()
@@ -75,7 +75,7 @@ func TestFreshInstallSendsNothingToTheSyncService(t *testing.T) {
 		t.Fatalf("the card is gone on the second launch:\n%s", plain(app))
 	}
 	if got := count.seen(); len(got) != 0 {
-		t.Fatalf("a second quiet launch reached the sync service: %s", strings.Join(got, "; "))
+		t.Fatalf("a second quiet launch reached the relay: %s", strings.Join(got, "; "))
 	}
 	app.keys("M-d")
 	deadline := time.Now().Add(15 * time.Second)
@@ -83,6 +83,6 @@ func TestFreshInstallSendsNothingToTheSyncService(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	if len(count.seen()) == 0 {
-		t.Fatal("opening the add-machine card never reached the sync service")
+		t.Fatal("opening the add-machine card never reached the relay")
 	}
 }

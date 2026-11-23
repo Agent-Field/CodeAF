@@ -218,7 +218,7 @@ func TestIdleRelease_C2_C7_AppRunningAndQueuedWorkKeepTheLiveHold(t *testing.T) 
 	t.Cleanup(func() { e2Quit(t, peer) })
 	row := outageChatRow(t, peer, f.agent.ID, func(row appwire.ChatRow) bool { return row.Seen.Fence == before.Cell.Lease.Fence })
 	if row.CanOpen || !row.CanTake || row.Here {
-		t.Fatalf("C7 running chat lost its explicit Continue here choice: %+v", row)
+		t.Fatalf("C7 running chat lost its explicit Move here choice: %+v", row)
 	}
 	after, err := f.own.Dir.Cell(t.Context(), f.agent.ID)
 	if err != nil || after.Cell.Lease.Device != before.Cell.Lease.Device || after.Cell.Lease.Fence != before.Cell.Lease.Fence {

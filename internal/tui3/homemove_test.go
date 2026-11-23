@@ -122,7 +122,7 @@ func TestContinueNamesTheComputerThatIsNotOn(t *testing.T) {
 		row := continueRows[0]
 		row.Device = "tower"
 		got := a.continueFailure(homeTakenMsg{row: row, err: err})
-		if !strings.Contains(got, "tower has this chat and is not on right now; open codeaf there, then continue here") {
+		if !strings.Contains(got, "tower has this chat and is not on right now; open codeaf there, then move here") {
 			t.Fatalf("a continue whose computer is off says %q", got)
 		}
 	}
@@ -135,7 +135,7 @@ func TestHolderOffSentenceWithoutADraftDoesNotMentionTheBox(t *testing.T) {
 	row := continueRows[0]
 	row.Device = "tower"
 	err := fmt.Errorf("handoff: %w", &syncwords.HolderOfflineError{Name: "tower"})
-	want := "tower has this chat and is not on right now; open codeaf there, then continue here"
+	want := "tower has this chat and is not on right now; open codeaf there, then move here"
 	for name, msg := range map[string]homeTakenMsg{
 		"automatic continue, no draft": {row: row, err: err, automatic: true},
 		"a draft holding nothing":      {row: row, err: err, draft: &composerState{}},
@@ -460,7 +460,7 @@ func TestR3ResumeBandAltCOpensEarly(t *testing.T) {
 
 	drain(t, a, a.openHome())
 	drain(t, a, a.askMachines())
-	if !strings.Contains(homeText(a), "Continue tower's latest chat here?") {
+	if !strings.Contains(homeText(a), "Move tower's latest chat here?") {
 		t.Fatalf("expected resume band on Home:\n%s", homeText(a))
 	}
 

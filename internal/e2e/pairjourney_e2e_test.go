@@ -151,7 +151,7 @@ func startRelayAt(t *testing.T, store string) string {
 	build := exec.Command("go", "build", "-o", bin, "./cmd/relay")
 	build.Dir = repoRoot(t)
 	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build the sync service: %v\n%s", err, out)
+		t.Fatalf("build the relay: %v\n%s", err, out)
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -170,7 +170,7 @@ func startRelayAt(t *testing.T, store string) string {
 			return "http://" + addr
 		}
 	}
-	t.Fatal("the sync service never listened")
+	t.Fatal("the relay never listened")
 	return ""
 }
 

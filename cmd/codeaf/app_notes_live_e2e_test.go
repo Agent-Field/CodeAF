@@ -172,7 +172,7 @@ func TestLiveAMessageToAnotherComputerFollowsTheChat(t *testing.T) {
 		return waiting && row.CanTake
 	})
 
-	// 3. Continue here: the waiting message runs on B, with B's model.
+	// 3. Move here: the waiting message runs on B, with B's model.
 	taken := machineCall[appwire.TakeResult](t, b.w, "agents.take", appwire.TakeParams{Cell: row.Cell, Seen: row.Seen}).Agent
 	if taken.Location == nil || !taken.Location.Here {
 		t.Fatalf("taken: %+v", taken)
