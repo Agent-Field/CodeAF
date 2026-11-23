@@ -6,7 +6,7 @@ To move a chat to this computer, select it on home and choose `move here` (the d
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+Older chats move through an independent copy. Once paired, codeaf prepares chats active in the last 30 days in the background, one at a time; opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 ## Move here (it used to say Continue here) — what happened to the Continue here button, where did Continue here go, the old label on Home, the card and the desktop app
 
@@ -14,31 +14,31 @@ Older chats move through an independent copy. Once paired, codeaf prepares chats
 
 If you remember `Continue here`, read it as `Move here` in every section of this page and on every page that names it. The sections below keep what the act does and what it refuses to do: *Move here says the computer that has this chat is not on*, *Move here does nothing* and *why move here failed* are the ones people reach most often.
 
-## Blind pass-through — move a chat without sync storage, pass-through mode, move a chat while sync storage is off, does my other computer need to be on, move here without sync storage approval
+## Blind pass-through — move a chat without relay storage (it used to be called sync storage), pass-through mode, move a chat while relay storage is off, does my other computer need to be on, move here without relay storage approval
 
-On the hosted relay, sync storage is off for an account until it is approved (**Settings → Devices → sync storage**), and the service keeps no chat or file content while it is off. You can still move a chat between your own paired computers without it. This is **blind pass-through**, also called pass-through mode: the computer that has the chat sends its already-encrypted bytes straight through the relay to the computer taking it, and the service, which cannot read them, stores nothing. It is on by default; beyond pairing there is nothing to set up. Everything stays encrypted end to end.
+On the hosted relay, relay storage is off for an account until it is approved (**Settings → Devices → relay storage**), and the service keeps no chat or file content while it is off. You can still move a chat between your own paired computers without it. This is **blind pass-through**, also called pass-through mode: the computer that has the chat sends its already-encrypted bytes straight through the relay to the computer taking it, and the service, which cannot read them, stores nothing. It is on by default; beyond pairing there is nothing to set up. Everything stays encrypted end to end.
 
-Blind pass-through needs **both computers running codeaf**: a terminal, the app, or a background engine for that computer. It covers ordinary chats and their files, including a chat's `.env` and other secret files (*Do my .env files and secrets move to my other computer without sync storage*), and applies only when you have at least one other paired computer. Choose `move here` as usual. If the computer that has the chat is not on, see *Move here says the computer that has this chat is not on*.
+Blind pass-through needs **both computers running codeaf**: a terminal, the app, or a background engine for that computer. It covers ordinary chats and their files, including a chat's `.env` and other secret files (*Do my .env files and secrets move to my other computer without relay storage*), and applies only when you have at least one other paired computer. Choose `move here` as usual. If the computer that has the chat is not on, see *Move here says the computer that has this chat is not on*.
 
 Taking a chat on a second computer remembers it there, so that computer can serve it in turn: a third computer can take it from the second while the first is off.
 
-Still waiting for sync storage approval, even with blind pass-through: saved provider keys and connections, memories, teams, shared preferences, idle handoff (an idle chat handing itself over) and task copies. They behave exactly as before while storage is off. A chat's own secret files are not in that list: they move with the chat.
+Still waiting for relay storage approval, even with blind pass-through: saved provider keys and connections, memories, teams, shared preferences, idle handoff (an idle chat handing itself over) and task copies. They behave exactly as before while storage is off. A chat's own secret files are not in that list: they move with the chat.
 
-When sync storage is approved later, chats that only lived on computers upload in the background by themselves. Until that finishes they can still be taken from a computer that is on.
+When relay storage is approved later, chats that only lived on computers upload in the background by themselves. Until that finishes they can still be taken from a computer that is on.
 
 Blind pass-through does nothing when storage is approved or when you use a self-hosted relay: those behave as they always did. *Turn off blind pass-through* says how to switch it off.
 
-## Do my .env files and secrets move to my other computer without sync storage — will my secrets come with the chat, git shows my .env files deleted after moving a chat
+## Do my .env files and secrets move to my other computer without relay storage — will my secrets come with the chat, git shows my .env files deleted after moving a chat
 
-Yes. While hosted sync storage is off and a chat moves by blind pass-through, the files codeaf keeps out of a chat's saved history move with it: every `.env` and `.env.*` file anywhere in the folder, committed templates such as `.env.example` included, and any other file that looks like it holds a secret, such as a private key or a README with a token in it. They arrive in the same step that brings the chat's files, byte for byte at the same path with the same file permissions, so git on the other computer does not show them as deleted.
+Yes. While hosted relay storage is off and a chat moves by blind pass-through, the files codeaf keeps out of a chat's saved history move with it: every `.env` and `.env.*` file anywhere in the folder, committed templates such as `.env.example` included, and any other file that looks like it holds a secret, such as a private key or a README with a token in it. They arrive in the same step that brings the chat's files, byte for byte at the same path with the same file permissions, so git on the other computer does not show them as deleted.
 
-They leave the computer that has the chat sealed under your key, inside the encrypted pipe, and nothing about them is stored anywhere but the two folders. Only the chat's own secret files move this way: saved provider keys, connections and credentials, preferences, shared memories and teams still wait for sync storage approval.
+They leave the computer that has the chat sealed under your key, inside the encrypted pipe, and nothing about them is stored anywhere but the two folders. Only the chat's own secret files move this way: saved provider keys, connections and credentials, preferences, shared memories and teams still wait for relay storage approval.
 
 Where it stops:
 
 - Both computers must run codeaf and be your own paired computers; a computer you removed gets nothing more.
 - If the computer that has the chat is off, nothing moves, secret files included, and `move here` ends with the sentence in *Move here says the computer that has this chat is not on*.
-- `CODEAF_PASSTHROUGH=off` turns blind pass-through off, and these files then wait for sync storage like the rest. With sync storage approved they travel through the key vault, as always.
+- `CODEAF_PASSTHROUGH=off` turns blind pass-through off, and these files then wait for relay storage like the rest. With relay storage approved they travel through the key vault, as always.
 - A file you edit on the second computer comes back when you take the chat back there. The file saved last wins, so a copy saved later on the receiving computer is kept.
 - A secret file you delete on one computer is not deleted on the other by this road. A file too large for the key vault stays on the computer it is on (*A large file that looks like a secret did not arrive*).
 - A secret file the computer that has the chat has not saved a turn since creating may not have been noticed yet, so it can miss the move until the chat's next saved turn.
@@ -51,7 +51,7 @@ When the computer that has the chat is not running codeaf, `move here` fails wit
 
 It says so within a few seconds. Nothing was moved and nothing is lost, and the chat's record still names the computer that has it. If you had typed words before choosing `move here`, they stay in the box and the sentence ends `; your words are still in the box`; a chat that opens by itself at launch has no typed words, so that ending is left off. It works as soon as codeaf runs there again: open a terminal, the app or its background engine on that computer, then choose `move here` again.
 
-This happens while hosted sync storage is off, because blind pass-through carries the chat from the computer that has it. A chat that another of your computers has already taken can be served by that computer instead, so a third computer can take it from the second while the first is off.
+This happens while hosted relay storage is off, because blind pass-through carries the chat from the computer that has it. A chat that another of your computers has already taken can be served by that computer instead, so a third computer can take it from the second while the first is off.
 
 If the other computer goes off after the chat has opened but before its files finish arriving, the chat stays open and the status line says `files couldn't arrive: <reason> · retry`. Once codeaf runs on that computer again, retrying fetches the rest.
 
@@ -65,15 +65,15 @@ In WorkAF’s Devices page, **Preview** reads a short excerpt of the last saved 
 
 ## Turn off blind pass-through — CODEAF_PASSTHROUGH=off, pass-through mode off switch
 
-Set the environment variable `CODEAF_PASSTHROUGH=off` before starting codeaf to turn blind pass-through off. Chats then stay on the computer that has them while hosted sync storage is off, exactly as before blind pass-through existed: see *Continue a chat on its own computer while sync storage is off*. Any other value, or no value, leaves blind pass-through on. `codeaf help env` lists it.
+Set the environment variable `CODEAF_PASSTHROUGH=off` before starting codeaf to turn blind pass-through off. Chats then stay on the computer that has them while hosted relay storage is off, exactly as before blind pass-through existed: see *Continue a chat on its own computer while relay storage is off*. Any other value, or no value, leaves blind pass-through on. `codeaf help env` lists it.
 
-It changes nothing when sync storage is approved or when you use a self-hosted relay: those behave exactly as before. It is not a Settings row, and it does not turn off pairing, `--at` or anything else. With sync off (`CODEAF_SYNC_URL=off`) nothing leaves the computer, so there is no blind pass-through either.
+It changes nothing when relay storage is approved or when you use a self-hosted relay: those behave exactly as before. It is not a Settings row, and it does not turn off pairing, `--at` or anything else. With sync off (`CODEAF_SYNC_URL=off`) nothing leaves the computer, so there is no blind pass-through either.
 
 A computer with blind pass-through off that meets a chat living only on another computer says so in a plain sentence instead of waiting. The switch holds on a computer that already shared chats by blind pass-through too: while it is off, that computer neither answers for those chats nor fetches a chat from another computer. Set it on each computer where you want the previous behaviour.
 
 ## Idle chats release their hold — open on another paired computer, even when the first is off
 
-**Settings → General → idle handoff** (`idle_handoff`, or `CODEAF_IDLE_HANDOFF=1`) is **off by default**: while off, open idle chats keep renewing their hold and a released remote chat still uses **Move here**. When you turn `idle handoff` on with two or more paired computers (and sync storage on), an idle chat lets go of its hold about 2 seconds after it goes idle, once its saved turns, journal, working files, shared memory and settings are on the relay. The open window stays as a reader. A running turn, queued or steering work, a running task or job, unsaved tail writes or an upload failure keeps the hold. Rebuildable folders such as `node_modules` follow the usual transfer exclusions.
+**Settings → General → idle handoff** (`idle_handoff`, or `CODEAF_IDLE_HANDOFF=1`) is **off by default**: while off, open idle chats keep renewing their hold and a released remote chat still uses **Move here**. When you turn `idle handoff` on with two or more paired computers (and relay storage on), an idle chat lets go of its hold about 2 seconds after it goes idle, once its saved turns, journal, working files, shared memory and settings are on the relay. The open window stays as a reader. A running turn, queued or steering work, a running task or job, unsaved tail writes or an upload failure keeps the hold. Rebuildable folders such as `node_modules` follow the usual transfer exclusions.
 
 With `idle handoff` on, a chat explicitly released by its holder opens directly on another paired computer with no Move-here step: press Enter on terminal Home, or open its `can_open` row through `agents.open` in the app. The original computer can be off. A chat another computer still holds (`held on <device>` or `working on <device>`, including an idle chat when `idle handoff` is off or on an older build that never releases) still asks, with **Move here** as your choice. A hold that lapsed without a release also keeps that card, including one whose holder was working. This applies even when the last working state is unknown. Existing local edits use the ordinary kept-work rules during transfer.
 
@@ -81,7 +81,7 @@ Sending new work in the window that released its idle hold takes the unchanged s
 
 ## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
 
-While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -160,19 +160,19 @@ at five seconds without a chat-list answer, Home says `waiting for <host>; still
 
 these are Home's listing sentences. a message left unsent by a failed send check gets its own explanation: `<host> has not answered; your message is still in the box, press enter to send it`.
 
-## Continue a chat on its own computer while sync storage is off
+## Continue a chat on its own computer while relay storage is off
 
-This section describes the road used while sync storage is off when blind pass-through is off (`CODEAF_PASSTHROUGH=off`) or unavailable, for example when this computer has no other paired computer. With blind pass-through on, a chat moves between your computers live while both are running codeaf: see *Blind pass-through*.
+This section describes the road used while relay storage is off when blind pass-through is off (`CODEAF_PASSTHROUGH=off`) or unavailable, for example when this computer has no other paired computer. With blind pass-through on, a chat moves between your computers live while both are running codeaf: see *Blind pass-through*.
 
 Reading history already stored for your account needs no storage approval. With no local work to keep, `1 move here` brings that recorded history here, even if this computer has no copy yet or its clean copy is older.
 
 After a live `--at` session, come back to the original computer and choose `1 move here`. If its local history contains the last shared turn and any later local turns, or no turn was shared yet, the chat continues in place. Every local turn stays, the move card goes away, and you can send messages and use tools immediately. Nothing is uploaded while storage is off. Quit and reopen normally; after approval, opening the chat on this same computer publishes the preserved turns even if its earlier hold expired.
 
-Keeping turns made here that another computer lacks waits for storage access only when they must be saved separately before replacing this copy. If those turns diverge from newer stored history, codeaf preserves them and says `cannot move this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here`. Your typed message stays in the box. Request access in Settings → Devices → sync storage before continuing this divergent copy.
+Keeping turns made here that another computer lacks waits for storage access only when they must be saved separately before replacing this copy. If those turns diverge from newer stored history, codeaf preserves them and says `cannot move this chat here while relay storage is off because this computer is missing saved turns; your local turns stay here`. Your typed message stays in the box. Request access in Settings → Devices → relay storage before continuing this divergent copy.
 
-## Tools stop when the chat moves away while sync storage is off — a running turn, its tools and saved turns
+## Tools stop when the chat moves away while relay storage is off — a running turn, its tools and saved turns
 
-This describes how tools are guarded while sync storage is off when blind pass-through is off or unavailable. With blind pass-through on, an ordinary chat is handled the way it is with sync storage on.
+This describes how tools are guarded while relay storage is off when blind pass-through is off or unavailable. With blind pass-through on, an ordinary chat is handled the way it is with relay storage on.
 
 Before tools run in a shared chat while storage is off, codeaf checks who holds it. A reading is reused for at most 15 seconds with live updates, or two seconds without them. A change announced by the service refreshes it at once, even within those bounds. A failed reading is also reused for two seconds after it finishes.
 
@@ -182,7 +182,7 @@ An expired hold belonging to this computer or a free chat still allows tools. An
 
 ## Why does move here say this chat was last held here — my only computer asks to continue
 
-A chat this computer held last can resume sending after its hold expires when nobody else holds it. While sync storage is off and blind pass-through is not carrying the chat, Enter sends without a question if the local history contains every shared turn, including when later turns stayed only here or nothing was shared yet. The conversation stays open and the storage-off sentence is not repeated after idle time. After approval, opening the chat here sends its preserved turns to your other computers.
+A chat this computer held last can resume sending after its hold expires when nobody else holds it. While relay storage is off and blind pass-through is not carrying the chat, Enter sends without a question if the local history contains every shared turn, including when later turns stayed only here or nothing was shared yet. The conversation stays open and the storage-off sentence is not repeated after idle time. After approval, opening the chat here sends its preserved turns to your other computers.
 
 With storage on, differing saved turns still raise the question. Missing shared turns also require a choice or show the existing refusal while storage is off; local turns stay here.
 
@@ -202,7 +202,7 @@ Opening a chat with a live hold still asks before moving it: the devices row off
 
 ## Continue on this machine — Continue where you left off, alt+c and alt+x
 
-While hosted sync storage is off, a chat on a computer that is not running codeaf cannot be taken: `move here` says `<computer name> has this chat and is not on right now; open codeaf there, then move here`. See *Move here says the computer that has this chat is not on*.
+While hosted relay storage is off, a chat on a computer that is not running codeaf cannot be taken: `move here` says `<computer name> has this chat and is not on right now; open codeaf there, then move here`. See *Move here says the computer that has this chat is not on*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -340,7 +340,7 @@ a failed move keeps the draft and shows `1 retry` and `2 leave it there`. retry 
 
 - `another device moved this chat first`: another device was faster. The row goes back to `held on <device>`. Nothing changed.
 - `the relay is not answering`: this device cannot reach the service. Nothing can be moved until it can.
-- `<computer name> has this chat and is not on right now; open codeaf there, then move here`: sync storage is off and codeaf is not running on that computer. Open it there, then choose `retry`. Nothing changed.
+- `<computer name> has this chat and is not on right now; open codeaf there, then move here`: relay storage is off and codeaf is not running on that computer. Open it there, then choose `retry`. Nothing changed.
 - `could not move this chat here because the engine store is busy` or `could not move this chat here because the engine store is busy (held by codeaf chat, pid 4321)`: another `codeaf` process holds this computer's engine store writer. Close or finish that process, then choose `retry`.
 - `could not check this computer's copy before moving; your words are still in the box`: the look at what this computer holds for the chat, which comes before anything is moved, could not finish. Nothing was put in any folder and the chat stays where it was; the engine log has the reason after `continue chat <id>`. A folder that was deleted is not a reason: see *I deleted the project folder a chat worked in*.
 - `could not move this chat here`: the move failed. The row stays where it was; choose `retry` or try again.
@@ -455,7 +455,7 @@ Moving chats and pairing are available by default on Linux, macOS and native Win
 
 Your repository's `.git`, including its history, branches and settings, moves with the chat to your own paired devices. A task's commits travel too, and its working-copy bookkeeping is rebuilt on arrival. A key in an old commit remains in that history: codeaf does not remove or rewrite it. Git history travels sealed end to end; the relay sees only ciphertext, including when the history contains keys.
 
-The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried on its own: through the encrypted vault when sync storage is approved, and by blind pass-through with the chat while sync storage is off (*Do my .env files and secrets move to my other computer without sync storage*). If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only by that separate road.
+The current working files are checked separately. A `.env` or source file that the guard recognises as holding a key is left out of the chat's file capture and carried on its own: through the encrypted vault when relay storage is approved, and by blind pass-through with the chat while relay storage is off (*Do my .env files and secrets move to my other computer without relay storage*). If you committed that secret earlier, its historical Git copy still moves with the repository. An untracked `.env` with no committed copy arrives only by that separate road.
 
 ## How are secret files screened before saving or moving a chat — .env, ignored folders and changing files
 
@@ -497,7 +497,7 @@ Quitting another chat does not invalidate a chat's earlier confirmed local save.
 
 A save wait lasts at most 30 seconds. After the screen closes, a pending sync save says `saving this chat to your other devices…`. After about three seconds, a confirmed local save adds `still saving — ctrl+c leaves it saved here`; without confirmation, it says `still saving on this computer — ctrl+c leaves the written turns here`.
 
-If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers`, using your service’s host. If that pending upload was refused because storage is off, the successful receipt is `saved here; sync storage is off for this account, so it stays on this computer`. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
+If the turns are saved locally but not uploaded, the final sentence is `saved here; it reaches your other devices when the relay at 127.0.0.1:8901 answers`, using your service’s host. If that pending upload was refused because storage is off, the successful receipt is `saved here; relay storage is off for this account, so it stays on this computer`. That is a successful exit. Ctrl+c during this wait leaves promptly with the same receipt when local saving is confirmed. Without confirmation, it says `saving on this computer has not finished; its written turns stay here` and exits unsuccessfully. Only a failed local write says `codeaf could not save this chat`; that failure may include the local recovery path.
 
 If the last upload fails when you quit, for example because the connection dropped, this computer does not let the chat go. Your other computer keeps showing it as running here and does not open the older save by itself; the unsent turns stay on this computer until an upload succeeds.
 
@@ -556,7 +556,7 @@ show no warning rather than guessing. A headless open does not consume the notic
 
 ## I quit on my laptop and opened my desktop — do I need alt+c
 
-While hosted sync storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop (a terminal, the app or its background engine). See *Blind pass-through*.
+While hosted relay storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop (a terminal, the app or its background engine). See *Blind pass-through*.
 
 A clean quit lets go after the last save is durable, and when **Settings → General → idle handoff** (`CODEAF_IDLE_HANDOFF=1`, off by default) is turned on, an idle paired chat also lets go about 2 seconds after it goes idle once everything is on the relay. Opening bare `codeaf` on your other paired computer within 24 hours continues the released chat automatically, with the usual `Moved from` banner and `not brought along:` lines. `esc` goes Home. A laptop that went to sleep while still holding the chat (for example mid-turn, before the save finished, while `idle handoff` is off, or on an older build) has not let go: while its hold is live, Home offers the chat and `alt+c` continues it, asking only if local work needs a choice; once the hold lapses, pressing Enter on its Home row still asks Move here.
 
@@ -582,7 +582,7 @@ An older chat that worked in your home folder, or in a folder that holds it, is 
 
 ## A save has not reached the other computer yet — upload failed or another device continued first
 
-While hosted sync storage is off, nothing is uploaded; the other computer reads the saved chat straight from this one by blind pass-through while both are running codeaf. See *Blind pass-through*.
+While hosted relay storage is off, nothing is uploaded; the other computer reads the saved chat straight from this one by blind pass-through while both are running codeaf. See *Blind pass-through*.
 
 A saved chat reaches your other computers only after its encrypted objects have
 been uploaded and its new saved head has been accepted. If an upload fails, the
@@ -680,11 +680,11 @@ presence; it does not guess which computers are online.
 
 A current window understands the earlier outage and removed-computer notices too. It uses one outage line while local work continues, and points to `/pair` for recovery in a chat. A current engine keeps the earlier notice spelling for an older window, so that window's existing outage and removal handling still works.
 
-## Why can't I continue new turns from my offline computer — sync storage is off, and blind pass-through needs both computers on
+## Why can't I continue new turns from my offline computer — relay storage is off, and blind pass-through needs both computers on
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats do not wait: with blind pass-through a chat and its files move between your paired computers while both are running codeaf, so a chat on a computer that is off cannot be taken until codeaf runs there again (*Move here says the computer that has this chat is not on*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted relay with `--store` needs no request. Existing saved content remains readable; turning storage off deletes nothing.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats do not wait: with blind pass-through a chat and its files move between your paired computers while both are running codeaf, so a chat on a computer that is off cannot be taken until codeaf runs there again (*Move here says the computer that has this chat is not on*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request. Existing saved content remains readable; turning storage off deletes nothing.
 
-While blind pass-through carries your chats, the notice about closed storage says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)`. When blind pass-through is off or unavailable (`CODEAF_PASSTHROUGH=off`, or no other paired computer), chats stay on their computer and the refusal is `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. Once approval is read in the background, waiting chats start within a minute without restarting.
+While blind pass-through carries your chats, the notice about closed storage says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for relay storage (request access in Settings under Devices)`. When blind pass-through is off or unavailable (`CODEAF_PASSTHROUGH=off`, or no other paired computer), chats stay on their computer and the refusal is `relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. Once approval is read in the background, waiting chats start within a minute without restarting.
 
 ## Changing thinking or model settings after idle release
 

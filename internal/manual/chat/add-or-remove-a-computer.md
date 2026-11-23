@@ -2,7 +2,7 @@
 
 ## How do I add another computer — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
-While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -56,9 +56,9 @@ The card goes away once you have two devices. After that, `/pair` or Settings �
 
 ## Do older chats move after pairing?
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted relay with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
-Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted sync storage is off, that background preparation sends nothing to the relay: an older chat that is not open on its computer cannot move to another one until it is opened there (*Blind pass-through*) or sync storage is approved.
+Older chats move through an independent copy. Once paired, the terminal chat prepares chats active in the last 30 days in the background while it is open, one at a time; the desktop app does not. Opening another older chat prepares its copy then. This build shows and writes to the copy. The original files stay untouched and remain usable in older codeaf builds. While hosted relay storage is off, that background preparation sends nothing to the relay: an older chat that is not open on its computer cannot move to another one until it is opened there (*Blind pass-through*) or relay storage is approved.
 
 ## Pairing a server with no browser — the link, token and check number
 
@@ -263,7 +263,7 @@ this device was removed by another of your devices, so this chat stays here only
 
 ## Can a removed computer rejoin — /devices, pairing again and retained local chats
 
-Pairing again restores device access. On the hosted relay, sending keys or shared state needs sync storage approval (Settings → Devices → sync storage); chats move by blind pass-through while both computers are running codeaf.
+Pairing again restores device access. On the hosted relay, sending keys or shared state needs relay storage approval (Settings → Devices → relay storage); chats move by blind pass-through while both computers are running codeaf.
 
 `/devices` on a removed computer says the removal notice in place of the list. A terminal refusal uses `this device was removed by another of your devices, so this chat stays here only — run codeaf pair --replace to bring it back`. Home says `removed by another of your devices — pair again to sync`. The terminal command `codeaf devices` gives its removal explanation once, without following it with `nothing is paired yet`. Removal appears immediately in an open window and on Home, and after restarting, once only. Your local chats stay usable while this computer is removed, and no longer follow your other devices.
 
@@ -298,7 +298,7 @@ Too many requests from one network are refused too: at most 10 new links in an h
 
 ## I quit on my laptop and opened my desktop after pairing
 
-While hosted sync storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop. See *Blind pass-through*.
+While hosted relay storage is off, `idle handoff` does not run, and a laptop where codeaf has quit cannot hand the chat over: the desktop can take it only while codeaf is running on the laptop. See *Blind pass-through*.
 
 After a clean quit and final durable save, bare `codeaf` on another paired computer within 24 hours opens the released chat automatically. By default (**Settings → General → idle handoff** is off), open idle chats keep their hold and selecting a released chat on Home asks **Move here**. Turn on **idle handoff** in `/settings` (or set `CODEAF_IDLE_HANDOFF=1`) so an idle paired chat lets go about 2 seconds after it goes idle once saved to the relay, and Enter on Home (or `agents.open` in the app) opens a released chat directly. A lapsed hold on another computer still asks Move here, including when its holder was working or its last working state is unknown. A laptop that went to sleep or disconnected while still holding the chat needs `alt+c` on Home while its hold is live. Local unsaved edits, another open local window, a named chat, `--host`, `--at` or `--session` prevent automatic continuation. A running chat never moves by itself. The arrival retains its `Moved from` banner and `not brought along:` facts; `esc` goes Home.
 
@@ -383,9 +383,9 @@ ports omitted (`:443` for HTTPS, `:80` for HTTP) and trailing slashes omitted.
 An actual difference in scheme, port, host or path prefix remains a different
 service. A link for a different service is refused before any lookup there.
 
-## The first /status after pairing — sync storage on your own service
+## The first /status after pairing — relay storage on your own service
 
-Successful pairing asks the relay for your account's storage permission and saves its answer on this computer. It makes up to three attempts inside about 1.5 seconds, so a temporary startup refusal need not lose the answer. This applies to `codeaf pair`, `codeaf pair approve`, a link pasted on Home and `/pair`. An already-open window's next `/status` shows `sync storage  off` when that answer is off, including with your own service address. A service that does not report storage permission adds no terminal line but its successful answer is saved; an unavailable service leaves the previous saved answer alone.
+Successful pairing asks the relay for your account's storage permission and saves its answer on this computer. It makes up to three attempts inside about 1.5 seconds, so a temporary startup refusal need not lose the answer. This applies to `codeaf pair`, `codeaf pair approve`, a link pasted on Home and `/pair`. An already-open window's next `/status` shows `relay storage  off` when that answer is off, including with your own service address. A service that does not report storage permission adds no terminal line but its successful answer is saved; an unavailable service leaves the previous saved answer alone.
 
 The desktop's pairing receipt confirms that the computers paired. It does not
 promise that chats can continue elsewhere while storage is off. A refusal

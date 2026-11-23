@@ -2,7 +2,7 @@
 
 ## How do I use this on my laptop — pair a second computer with a code, connect another computer, and log in on a new machine
 
-While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -12,7 +12,7 @@ There is no account and no password to log in with. You pair: a code on one scre
 
 Use a code shown on a screen you own.
 
-The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them when sync storage is on, and move by blind pass-through while both computers are running codeaf when it is off (*Blind pass-through*).
+The computer that has your chats shows the code. The other computer types it. After that, both computers share the identity; chats copy between them when relay storage is on, and move by blind pass-through while both computers are running codeaf when it is off (*Blind pass-through*).
 
 This page is the code way. A new computer can also ask to join and be approved from a link, with a four-digit check: the page *Adding a computer to your devices, approving it, and removing it* tells it.
 
@@ -201,7 +201,7 @@ too many pairings from this network; wait 7 min
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; vault content such as saved keys still needs enabled sync storage to copy; chats, with their `.env` and other secret files, move by blind pass-through while both computers are running codeaf even when it is off.
+**Pairing gives the other computer your whole identity.** Your chats, your saved keys and your sync are all part of it. The other computer receives the identity keys; vault content such as saved keys still needs enabled relay storage to copy; chats, with their `.env` and other secret files, move by blind pass-through while both computers are running codeaf even when it is off.
 
 It is not a view of your chats. It is a copy of you. Pair only a computer you own and trust.
 
@@ -321,7 +321,7 @@ writes made after the replacement was installed.
 
 ## I got a new laptop — move my chats to a new machine
 
-While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -404,7 +404,7 @@ The first-run line about the hosted relay is said once, when chats are first cop
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
-Your chats live on your own computer first. When sync storage is enabled they are also copied, sealed,
+Your chats live on your own computer first. When relay storage is enabled they are also copied, sealed,
 to the relay, so your other computers can open them. While hosted storage is off, a chat can still move by blind pass-through, sealed, from the computer that has it to the one taking it while both are running codeaf, and nothing is stored. Which relay is one setting,
 `CODEAF_SYNC_URL`, and there is no sign-in and no account:
 
@@ -604,6 +604,6 @@ If this computer has no saved pairing keys yet — for example it has only ever 
 
 A computer that already has its own saved pairing keys follows the local-work refusal and explicit `--replace` rules above.
 
-## Why pairing alone does not copy saved chats — sync storage access
+## Why pairing alone does not copy saved chats — relay storage access
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted relay with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.

@@ -6,7 +6,7 @@ An older service cannot promise that taking a chat displaces only the computer y
 
 ## Is there a storage limit on the relay — how much can I sync
 
-Hosted uploads need sync storage approval (Settings → Devices → sync storage); these limits apply with storage on.
+Hosted uploads need relay storage approval (Settings → Devices → relay storage); these limits apply with storage on.
 
 **A hosted relay has limits.** The hosted relay in this repository sets, for each identity:
 
@@ -22,10 +22,10 @@ With storage on, a chunk already held costs nothing again. Storage off refuses e
 
 ## How much sync space have I used
 
-When hosted storage is off, `/status` shows one dim `sync storage  off` line instead of sync space. The cached permission is refreshed in the background at launch and after each `/status`.
+When hosted storage is off, `/status` shows one dim `relay storage  off` line instead of sync space. The cached permission is refreshed in the background at launch and after each `/status`.
 
 With storage on, open `/status` in a chat to see a dim `sync space` line, for example
-`sync space  2.8 GiB of 5 GiB`. It shows how big your sync storage is and how
+`sync space  2.8 GiB of 5 GiB`. It shows how big your relay storage is and how
 close you are to the relay limit: the amount stored, then the byte limit the
 hosted relay reports. The same reading appears in `/status --json`. The permission refresher retains its last successful amount in this process. While hosted storage is on it makes no further permission requests, so this amount can trail new uploads. After a restart only the remembered on/off choice remains, and unknown usage draws no line.
 
@@ -47,11 +47,11 @@ The hosted relay lets one network make **200 new identities in a day**. A networ
 
 Pairing has limits on both kinds of relay: 10 new codes in an hour for one network, and a relay holds at most 2,000 waiting pairings. The messages are on the pairing page, for example `too many pairings from this network; wait 7 min` and `sync is full right now; try again in a few minutes`.
 
-## Sync storage is off — approval, retries and chats staying here
+## Relay storage is off — approval, retries and chats staying here
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted relay with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
-**Sync storage is off** (`403`, code `storage_off`). While blind pass-through carries your chats, the notice says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)`, once while it waits. When blind pass-through is off or unavailable, it says `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. No upload requests are made when this computer knows storage is off. A refresh that sees approval wakes sync automatically. This is separate from every full refusal; reads, pairing and live `--at` still work. Running uploads retry through the local gate on their normal backoff, capped at 60 seconds. One process-wide waiter starts chats waiting for storage within a minute of another process learning approval. Approval discovery runs at launch, after `/status`, and every ten minutes while a relay that reports storage is off (or a hosted address is unknown); serving computers use it too. It stops polling once storage is on.
+**Relay storage is off** (`403`, code `storage_off`). While blind pass-through carries your chats, the notice says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for relay storage (request access in Settings under Devices)`, once while it waits. When blind pass-through is off or unavailable, it says `relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. No upload requests are made when this computer knows storage is off. A refresh that sees approval wakes sync automatically. This is separate from every full refusal; reads, pairing and live `--at` still work. Running uploads retry through the local gate on their normal backoff, capped at 60 seconds. One process-wide waiter starts chats waiting for storage within a minute of another process learning approval. Approval discovery runs at launch, after `/status`, and every ten minutes while a relay that reports storage is off (or a hosted address is unknown); serving computers use it too. It stops polling once storage is on.
 
 ## What do I see when the relay says no
 

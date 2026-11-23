@@ -67,3 +67,25 @@ func TestTheOldLabelStillReachesTheMovePage(t *testing.T) {
 		}
 	}
 }
+
+// The storage switch is "relay storage" now. Contract: a person who remembers
+// "sync storage" still reaches the sections that answer for it, and the name
+// they find says what it is called now.
+func TestTheOldStorageNameStillReachesRelayStorage(t *testing.T) {
+	for _, probe := range []struct{ asked, page string }{
+		{"what happened to sync storage", "relay-what-it-stores-and-sees"},
+		{"how do I turn on sync storage", "relay-what-it-stores-and-sees"},
+		{"where is the sync storage row in settings", "settings"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			lower := strings.ToLower(section.Title)
+			if section.Page == probe.page && strings.Contains(lower, "relay storage") && strings.Contains(lower, "sync storage") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q did not reach %s under a heading that names both spellings", probe.asked, probe.page)
+		}
+	}
+}

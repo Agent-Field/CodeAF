@@ -454,7 +454,7 @@ profile or changes the requesting chat's model.
 
 ## Do my teams show on my other computer?
 
-Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). Use
+Team sharing is on by default for paired computers and needs relay storage approval on the hosted service (Settings → Devices → relay storage). Use
 **Settings → General → share teams**. Sharing includes teams, members, handles, the
 manager and team settings, plus recent Traffic as read-only history. Team changes
 show within a few seconds, even with no chat open. The Teams dropdown, Teams page
@@ -482,7 +482,7 @@ is down, and may wait briefly while an earlier change finishes uploading.
 
 ## Will deleting a team on my laptop delete it on my desktop?
 
-Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). With **Settings → General →
+Team sharing is on by default for paired computers and needs relay storage approval on the hosted service (Settings → Devices → relay storage). With **Settings → General →
 share teams** enabled on both computers, a deleted team stays deleted. A desktop that was
 offline catches up when it reconnects. Renaming its old copy while offline does
 not bring the team back. Deleting a team does not delete its conversations.
@@ -496,7 +496,7 @@ consistently, and a removed member cannot remain the manager.
 
 ## Does Traffic sync between computers?
 
-On the hosted relay this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 Traffic sharing is on by default for paired computers through **Settings → General →
 share teams**. Turning it off on either computer stops sharing between them.
@@ -524,7 +524,7 @@ on the other computer's history.
 
 ## How do I turn on team sharing?
 
-Team sharing waits for hosted sync storage approval (Settings → Devices → sync storage); pairing alone does not enable it. A self-hosted relay with `--store` needs no request.
+Team sharing waits for hosted relay storage approval (Settings → Devices → relay storage); pairing alone does not enable it. A self-hosted relay with `--store` needs no request.
 
 Team sharing is on by default for paired computers. If it was turned off, open
 **Settings → General → share teams** on that computer and choose **on** to resume.
@@ -539,7 +539,7 @@ Turn **share teams** to **off** to stop all team sharing immediately. Teams alre
 
 ## Stop sharing teams with my other computer
 
-Team sharing is on by default for paired computers and needs sync storage approval on the hosted service (Settings → Devices → sync storage). Open **Settings → General →
+Team sharing is on by default for paired computers and needs relay storage approval on the hosted service (Settings → Devices → relay storage). Open **Settings → General →
 share teams** on either computer and choose **off**. Turning it off on either computer stops sharing
 teams, members, manager choices and settings, and recent Traffic between them immediately.
 That computer stops sending and receiving teams and Traffic. Teams already received
@@ -554,7 +554,7 @@ arrive within a few seconds; recent Traffic can take about 2 minutes.
 
 ## First team sharing: backup, duplicate names and global managers
 
-On the hosted relay this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 Paired computers exchange teams automatically while **Settings → General →
 share teams** is on, its default. An unpaired computer is unaffected. Before the
@@ -576,7 +576,7 @@ the original teams. Review manager choices in Teams.
 
 ## Does a shared team's spending cap cover both computers?
 
-On the hosted relay this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs relay storage approval (Settings → Devices → relay storage).
 
 A team's spending cap counts spending on each computer separately. Sharing the
 team and its cap does not combine the usage meters. A member continued on the

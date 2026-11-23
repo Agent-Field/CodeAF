@@ -5169,7 +5169,7 @@ func TestStorageOptInSettingsAndTeamsQuestions(t *testing.T) {
 		t.Run(probe.question, func(t *testing.T) {
 			for _, section := range Chat().Search(probe.question, DefaultResults) {
 				if section.Page == probe.page && strings.HasPrefix(section.Title, probe.heading) {
-					if !strings.Contains(section.Body, "sync storage approval") {
+					if !strings.Contains(section.Body, "relay storage approval") {
 						t.Fatalf("approval missing: %s", section.Body)
 					}
 					return

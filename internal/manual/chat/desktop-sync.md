@@ -17,7 +17,7 @@ The app pins `Continued on <computer>` above the transcript with
 computer indicator. Move here replaces an inert composer; a composer that
 can send to the other computer names that destination. Hidden drafts stay kept.
 With a compatible engine, the open view follows newly saved messages through
-sync storage or live transfer, without moving the chat or restoring remote files.
+relay storage or live transfer, without moving the chat or restoring remote files.
 If the latest history is unavailable, you can still read the local copy. Remote
 history and previews read saved transcripts up to 24 MiB. For a larger transcript,
 use Move here to move the chat and read its full history. Unsealed
@@ -64,7 +64,7 @@ continues to count it when it says it.
 
 ## Which desktop provider keys sync between paired computers
 
-With sync storage enabled, saved keys for supported model providers can sync
+With relay storage enabled, saved keys for supported model providers can sync
 through the encrypted vault. Connections that can point to different servers
 on different computers, such as custom endpoints and Ollama, keep their keys
 on the computer where you entered them. This includes an OpenRouter connection
@@ -203,11 +203,11 @@ To bring the chat here instead, choose Move here. While a turn runs there
 it waits (`Comes here when this turn ends.`, with Cancel), then moves, retrying
 once if that computer saved again first.
 
-## Why can't I message a chat on another computer — the composer is read-only while sync storage is off
+## Why can't I message a chat on another computer — the composer is read-only while relay storage is off
 
-While the account's hosted sync storage is off, the desktop does not offer `Message <name>` for a chat another computer holds, and `chats.send` is not in `hello`. A waiting message is sealed text kept in this computer's record on the relay until the holder takes it, and the service keeps nothing of the kind until storage is approved. A send that arrives anyway is refused with `Sync storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.` and leaves nothing on the service.
+While the account's hosted relay storage is off, the desktop does not offer `Message <name>` for a chat another computer holds, and `chats.send` is not in `hello`. A waiting message is sealed text kept in this computer's record on the relay until the holder takes it, and the service keeps nothing of the kind until storage is approved. A send that arrives anyway is refused with `Relay storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.` and leaves nothing on the service.
 
-Choose Move here to write to the chat: blind pass-through moves it while both computers run codeaf. Approving sync storage brings the message box back on the next connection, and a self-hosted relay always had it. Messages already waiting when storage was switched off can still be taken off the service.
+Choose Move here to write to the chat: blind pass-through moves it while both computers run codeaf. Approving relay storage brings the message box back on the next connection, and a self-hosted relay always had it. Messages already waiting when storage was switched off can still be taken off the service.
 
 ## A message to another computer is not delivered, the computer is offline, or it didn't send
 
@@ -231,7 +231,7 @@ Limits and refusals:
 
 By default (**Settings → General → idle handoff** is off), a chat opened for viewing keeps its conversation and sync-service hold until it is explicitly closed, including while its tab is hidden; heartbeats renew the same hold without releasing it or moving its fence, and reading the chat does not cause ownership changes or repeat unchanged chat rows.
 
-When you turn **idle handoff** on in `/settings` or with `CODEAF_IDLE_HANDOFF=1` with two or more paired computers (and sync storage on), an idle chat lets go of its hold about 2 seconds after it goes idle once its journal, working files, shared memory and settings are on the relay, including when its tab stays open. The conversation remains open as a reader. Running turns, queued or steering work, running tasks or jobs, deferred writes and failed uploads retain the hold. Rebuildable files keep their existing transfer exclusions.
+When you turn **idle handoff** on in `/settings` or with `CODEAF_IDLE_HANDOFF=1` with two or more paired computers (and relay storage on), an idle chat lets go of its hold about 2 seconds after it goes idle once its journal, working files, shared memory and settings are on the relay, including when its tab stays open. The conversation remains open as a reader. Running turns, queued or steering work, running tasks or jobs, deferred writes and failed uploads retain the hold. Rebuildable files keep their existing transfer exclusions.
 
 New work in the window that released its idle hold takes the unchanged chat back in place, with no prompt, before recording it or calling a model. If another computer took it, the existing moved notice and held-elsewhere refusal name that computer. A hold that merely lapsed (not released by its window) admits nothing until you reopen or continue it. A released window stays read-only when ownership cannot be confirmed. Unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their existing hold and renewal behavior.
 

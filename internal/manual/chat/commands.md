@@ -337,7 +337,7 @@ command).
 
 ## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
 
-While hosted sync storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
+While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
@@ -1974,7 +1974,7 @@ the Memory tab. Tasks controls delegated work; AI teams sets defaults
 for groups of AI chats. Permissions controls approvals. Spending holds limits.
 Connections holds accounts, keys, web search and remote connection settings.
 Devices lists your paired computers, renames this one, removes another, and starts
-`/pair` from `Add another device`. A paired account on a relay that reports storage permission also has `sync storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
+`/pair` from `Add another device`. A paired account on a relay that reports storage permission also has `relay storage`: when off, Enter opens a request and shows its code and link, including from Settings search. Self-hosted storage needs no request.
 Privacy holds history, drafts and data-sharing choices.
 
 Old saved keys and values are unchanged. Search accepts old labels and keys,
@@ -2339,6 +2339,6 @@ nothing was left behind, `/setup` says so and does nothing.
 
 Limits: a setup turn is never replayed on another machine (the agent does it again there), never attempts impossible items, and can be rewound like any turn. When it ends, codeaf looks at what is now on this machine and updates the record. Existing cells keep their declared class: an older sandboxed cell still has its folder limits and opens its network for the setup turn only. Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first. A compatible furrow engine is required. Without a cell there is nothing to set up.
 
-## Why pairing commands do not turn on sync storage — request access in Devices
+## Why pairing commands do not turn on relay storage — request access in Devices
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted relay with `--store` needs no request.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
