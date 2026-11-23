@@ -172,6 +172,15 @@ type Source struct {
 	Probe        Probe
 	Listing      Listing
 	ProbeModel   string
+	// PlanProof is the request that proves the key is covered by the plan this
+	// row's one door names, for a service whose listing answers for any bearer
+	// and so proves nothing about billing. A key it refuses is not saved: the
+	// door would claim a subscription the key does not hold, and the calls would
+	// bill whatever balance the account has instead.
+	PlanProof Probe
+	// KeyStartsWith is how the service's keys begin, for the sentence a wrong
+	// paste is answered with. Empty means the OpenAI-shaped `sk-`.
+	KeyStartsWith string
 	// A ROW'S PREFERRED MUST BE ANSWERABLE ON EVERY DOOR IT CAN BIND. The door
 	// is chosen by what the key proves, so this is the vendor's best model both
 	// its subscription and metered roads serve, not simply its flagship.
@@ -614,14 +623,19 @@ func Vendored() []Source {
 			Listing:  ListingNone, Probe: Probe{}, Preferred: "sonnet",
 		},
 		{
-			// This service is a fixed monthly subscription whose endpoint
-			// serves the models its vendor tests against it. It has one road
-			// and no metered overflow, so the door exists to say the billing
-			// product is a plan and not a pay-as-you-go account.
+			// OpenCode Go has one endpoint and one door. Its /models answers
+			// for any bearer, so the door is proved by the usage meter instead:
+			// GET /usage answers 200 for a key a Go subscription covers and 403
+			// "OpenCode Go subscription required" for one it does not, whose
+			// calls would draw from the workspace balance. Extra Usage, an
+			// opt-in on OpenCode's console, can still spend credits past a
+			// spent window on this same endpoint; nothing on the wire says so.
 			ID: "opencode-go", Written: "opencode-go", Name: "OpenCode Go",
 			Address: opencodeGoAddress, KeyEnv: "OPENCODE_API_KEY", KeyShape: LooksLikeOpenCodeKey,
-			Doors:   []Door{{ID: "go", Name: "Go", Address: opencodeGoAddress}},
-			Listing: ListingModels, Probe: listingProbe(), ProbeModel: opencodeGoPreferred, Preferred: opencodeGoPreferred,
+			KeyStartsWith: "oc_sk_",
+			Doors:         []Door{{ID: "go", Name: "Go", Address: opencodeGoAddress}},
+			Listing:       ListingModels, Probe: listingProbe(), Preferred: opencodeGoPreferred,
+			PlanProof: Probe{Address: "/usage", Method: "GET", Accepts: []int{200}, Timeout: ProbeTimeout},
 		},
 	}
 }
@@ -765,6 +779,9 @@ type Outcome struct {
 	// It is meaningful only when Listed is true.
 	Refreshed bool
 	Door      Door
+	// KeyStartsWith is carried on a wrong-shape outcome: how the service's keys
+	// begin, when it is not the OpenAI-shaped `sk-`.
+	KeyStartsWith string
 	// PlanPaused records that the selected door proved the plan exists but its
 	// current usage window is spent. PlanReset is the vendor's readable reset
 	// time when it supplied one, and Overflow is the separately billed road the

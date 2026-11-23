@@ -35,6 +35,8 @@ type Server struct {
 	completionBody   string
 	hang             time.Duration
 	listingless      bool
+	usageStatus      int
+	usageBody        string
 }
 
 // New starts a service that publishes models and answers completions.
@@ -42,6 +44,7 @@ func New(models ...string) *Server {
 	server := &Server{models: append([]string(nil), models...)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/models", server.serveModels)
+	mux.HandleFunc("GET /v1/usage", server.serveUsage)
 	mux.HandleFunc("POST /v1"+modelsource.ChatCompletionsPath, server.serveCompletion)
 	server.http = httptest.NewServer(mux)
 	return server
@@ -66,6 +69,14 @@ func (s *Server) RefuseCompletion(status int, body string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.completionStatus, s.completionBody = status, body
+}
+
+// RefuseUsage makes only GET /usage answer with the chosen status and body. It
+// models a key the service accepts for listing but whose plan does not cover it.
+func (s *Server) RefuseUsage(status int, body string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.usageStatus, s.usageBody = status, body
 }
 
 // Hang delays both routes long enough for a caller's timeout to fire.
@@ -142,6 +153,22 @@ func (s *Server) serveModels(writer http.ResponseWriter, request *http.Request) 
 		rows = append(rows, map[string]string{"id": model})
 	}
 	_ = json.NewEncoder(writer).Encode(map[string]any{"data": rows})
+}
+
+func (s *Server) serveUsage(writer http.ResponseWriter, request *http.Request) {
+	if s.staged(writer, request) {
+		return
+	}
+	s.mu.Lock()
+	status, body := s.usageStatus, s.usageBody
+	s.mu.Unlock()
+	if status != 0 {
+		writer.WriteHeader(status)
+		_, _ = io.WriteString(writer, body)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(writer, `{"usage":{"rolling":{"status":"ok","percent":0}}}`)
 }
 
 func (s *Server) serveCompletion(writer http.ResponseWriter, request *http.Request) {

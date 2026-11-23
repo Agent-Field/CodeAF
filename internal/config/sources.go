@@ -614,7 +614,7 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, row, false
 	}
 	if src.KeyShape != nil && !src.KeyShape(key) {
-		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, row, false
+		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape, KeyStartsWith: src.KeyStartsWith}, row, false
 	}
 	// A ONE-DOOR ROW STILL PERSISTS ITS DOOR. The one-token probe and the
 	// model listing do not need an ID to choose between roads, but the crew
@@ -639,6 +639,19 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 		outcome, ok := listedOutcome(body)
 		if !ok {
 			return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
+		}
+		// A LISTING THAT ANSWERS FOR ANY BEARER PROVES NO PLAN. Where the row
+		// names a plan proof, the key is asked it before anything is saved, so a
+		// key the subscription does not cover is refused in the vendor's own
+		// words instead of being bound to a door it cannot use.
+		if proof := src.PlanProof; proof.Method != "" || proof.Address != "" {
+			proofStatus, proofBody, proofAnswered := runServiceProbe(ctx, address, key, proof)
+			switch {
+			case !proofAnswered || proofStatus >= http.StatusInternalServerError:
+				return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, row, false
+			case !acceptsStatus(proof.Accepts, proofStatus):
+				return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(proofBody), key), Status: proofStatus}, row, false
+			}
 		}
 		listed := true
 		row.Listed = &listed

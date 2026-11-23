@@ -33,8 +33,9 @@ var (
 	// a message, a curl line in a tool result — with the token after it.
 	bearerLike = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._\-]{8,}`)
 	// keyLike catches the shape the keys this program uses are written in:
-	// OpenRouter's `sk-or-v1-…` and every other `sk-…` any provider mints.
-	keyLike = regexp.MustCompile(`\bsk-[A-Za-z0-9._\-]{8,}`)
+	// OpenRouter's `sk-or-v1-…`, every other `sk-…` any provider mints, and
+	// OpenCode's `oc_sk_…`.
+	keyLike = regexp.MustCompile(`\b(?:sk-|oc_sk_)[A-Za-z0-9._\-]{8,}`)
 )
 
 // secrets are the exact values this process knows to be credentials — the
