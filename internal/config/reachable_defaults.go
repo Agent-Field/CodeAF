@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // DefaultSlot names the kind of work a built-in default model is chosen for.
@@ -39,22 +40,52 @@ const (
 	SlotLight DefaultSlot = "light"
 )
 
-// ReachableDefaultAt is builtIn when a connected service can send it, else the
-// model a connected service offers for slot. With no connected service at all
-// it is builtIn unchanged, so a profile that has not been set up keeps naming
-// the model setup will connect, and the first-run screens keep working. It is
-// "" only when services are connected and none of them offers a model.
+// ReachableDefaultAt is builtIn when OpenRouter is connected or a connected
+// service can send it, else the model a connected service offers for slot.
+//
+// AN OPENROUTER KEY KEEPS EVERY BUILT-IN EXACTLY AS IT WAS. The built-ins are
+// OpenRouter's models, chosen for it; with OpenRouter connected nothing here
+// second-guesses them, and nothing past the key check is read, which keeps the
+// common profile's cost to one source resolution.
+//
+// With no connected service at all it is builtIn unchanged, so a profile that
+// has not been set up keeps naming the model setup will connect, and the
+// first-run screens keep working. It is never "" when builtIn is not: when the
+// connected services can say nothing about their models, builtIn is kept.
 func ReachableDefaultAt(profileDir string, slot DefaultSlot, builtIn string) string {
-	sources := ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL)
-	return chooseDefault(sources, slot, builtIn, ChatModelAt(profileDir), func(service modelsource.Connected) []catalog.Model {
-		return serviceModelsAt(profileDir, service)
-	})
+	key := APIKeyAt(profileDir)
+	if app, ok := appKey(modelsource.DefaultID); ok {
+		key = app
+	}
+	if strings.TrimSpace(key) != "" {
+		return strings.TrimSpace(builtIn)
+	}
+	sources := ResolveSources(profileDir, key, DefaultBaseURL)
+	if openRouterConnected(sources) {
+		return strings.TrimSpace(builtIn)
+	}
+	// Each service's models are read once per call, however many slots and
+	// checks below ask for them.
+	read := map[string][]catalog.Model{}
+	modelsOf := func(service modelsource.Connected) []catalog.Model {
+		id := strings.ToLower(strings.TrimSpace(service.Source.ID))
+		if rows, ok := read[id]; ok {
+			return rows
+		}
+		rows := serviceModelsAt(profileDir, service)
+		read[id] = rows
+		return rows
+	}
+	return chooseDefault(sources, slot, builtIn, ChatModelAt(profileDir), modelsOf)
 }
 
 // chooseDefault is [ReachableDefaultAt] over a set of services and a reader of
 // each one's models, so it can be checked without a profile on disk.
 func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTalk string, modelsOf func(modelsource.Connected) []catalog.Model) string {
 	builtIn = strings.TrimSpace(builtIn)
+	if openRouterConnected(sources) {
+		return builtIn
+	}
 	connected := connectedServices(sources)
 	if len(connected) == 0 {
 		return builtIn
@@ -62,7 +93,16 @@ func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTal
 	if builtIn != "" && offered(sources, builtIn, modelsOf) {
 		return builtIn
 	}
-	return reachableDefault(sources, connected, slot, chosenTalk, modelsOf)
+	if chosen := reachableDefault(sources, connected, slot, chosenTalk, modelsOf); chosen != "" {
+		return chosen
+	}
+	return builtIn
+}
+
+// openRouterConnected reports whether the OpenRouter row has a key.
+func openRouterConnected(sources modelsource.Set) bool {
+	service, ok := sources.ByID(modelsource.DefaultID)
+	return ok && service.HasCredentials()
 }
 
 // reachableDefault is the file-free half of [ReachableDefaultAt]: it chooses
@@ -117,17 +157,32 @@ func reachableDefault(sources modelsource.Set, connected []modelsource.Connected
 			// The talk provider offers one model: another provider's own talk model.
 			return service.Qualify(pickTalk(service, models).ID)
 		}
+		// NO OTHER MODEL ANYWHERE: the fallback names the conversation model
+		// itself. A fallback row naming only the current model keeps the answer
+		// on that model, where an empty one would let the catalog suggest a
+		// model on a provider nobody connected.
+		return talk
 	}
 	return ""
 }
 
 // hostedFirst puts the services that run elsewhere ahead of the ones on this
-// machine, keeping the person's order within each group.
+// machine, and a paused plan after both, keeping the person's order within each
+// group. A paused plan is still chosen when it is the only service connected.
 func hostedFirst(services []modelsource.Connected) []modelsource.Connected {
+	rank := func(service modelsource.Connected) int {
+		switch {
+		case strings.TrimSpace(service.PlanPaused) != "":
+			return 2
+		case isLocalService(service):
+			return 1
+		}
+		return 0
+	}
 	out := make([]modelsource.Connected, 0, len(services))
-	for _, local := range []bool{false, true} {
+	for group := 0; group <= 2; group++ {
 		for _, service := range services {
-			if isLocalService(service) == local {
+			if rank(service) == group {
 				out = append(out, service)
 			}
 		}
@@ -206,17 +261,12 @@ func preferService(services []modelsource.Connected, id string) []modelsource.Co
 	return out
 }
 
-// stripLevel removes a thinking level (`model:high`) so the id routes; a free
-// suffix (`…:free`) is part of the id and stays.
+// stripLevel removes a thinking level (`model:high`) so the id routes, with the
+// same rule every call uses ([roles.SplitEffort]); a free suffix (`…:free`) is
+// part of the id and stays.
 func stripLevel(model string) string {
-	model = strings.TrimSpace(model)
-	if i := strings.LastIndex(model, ":"); i > 0 {
-		switch strings.ToLower(model[i+1:]) {
-		case "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "none", "off":
-			return model[:i]
-		}
-	}
-	return model
+	bare, _ := roles.SplitEffort(model)
+	return bare
 }
 
 // serviceModelsAt is what one connected service is known to offer, without
@@ -338,16 +388,36 @@ func pickLight(models []catalog.Model) catalog.Model {
 }
 
 // pickFallback is the strongest model on service other than main, qualified,
-// or "" when service offers only main.
+// or "" when service offers only main. A variant of main (`glm-5.3[1m]`, the
+// same model with a longer window) is used only when nothing else is offered,
+// because a fallback is for when main itself is failing.
 func pickFallback(service modelsource.Connected, models []catalog.Model, main string) string {
 	ranked := rankByStrength(models)
+	mainID := strings.ToLower(stripLevel(main))
+	variant := ""
 	for index := len(ranked) - 1; index >= 0; index-- {
 		id := service.Qualify(ranked[index].ID)
-		if !strings.EqualFold(id, stripLevel(main)) {
-			return id
+		lower := strings.ToLower(id)
+		if lower == mainID {
+			continue
 		}
+		if withoutVariant(lower) == withoutVariant(mainID) {
+			if variant == "" {
+				variant = id
+			}
+			continue
+		}
+		return id
 	}
-	return ""
+	return variant
+}
+
+// withoutVariant drops a bracketed variant suffix (`[1m]`) from a model id.
+func withoutVariant(id string) string {
+	if open := strings.Index(id, "["); open > 0 && strings.HasSuffix(id, "]") {
+		return id[:open]
+	}
+	return id
 }
 
 // rankByStrength orders models from lightest to strongest. Each model's

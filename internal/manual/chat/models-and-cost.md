@@ -154,7 +154,9 @@ providers you did connect instead:
 
 - the conversation opens on the provider's preferred model, else its strongest;
 - the fallback is a different strong model, on the same provider when it offers
-  one, else on another connected provider; with only one model, there is none;
+  one, else on another connected provider; with only one model, the fallback is
+  that model, so a failed reply stays on it rather than moving to a provider you
+  did not connect;
 - reflex, small work and knowledge use the provider's lightest model. A provider
   that publishes no model list offers its preferred model and the model its
   connection check uses (Qwen's `qwen3.8-flash`), so these seats can still be light.
@@ -163,8 +165,11 @@ Strength is read from the provider's published intelligence score or price,
 then from the model's name (mini, flash or haiku against pro, opus or max), its
 size (8b, 70b) and how many thinking levels it takes. With several providers,
 the defaults follow the provider of the conversation model you chose. A model you
-chose yourself is never replaced. With nothing connected at all, the built-in
-OpenRouter models stay named until setup connects a provider.
+chose yourself is never replaced. A paused plan is used only when nothing else is
+connected. On a Claude Code plan the light seats run on its `haiku`, so titles,
+routing and the memory pass after each turn count against that plan's limits.
+With an OpenRouter key, or with nothing connected at all, the built-in OpenRouter
+models stay exactly as they are.
 
 ## Sign in with ChatGPT and use my Codex plan — models, context window, price, limits and expiry
 
@@ -1504,8 +1509,9 @@ planner, checker and probe — whatever your crew rows say, and `CODEAF_CHECK_MO
 down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
-another. That includes the catalog's own guess: with no `fallback models` row written, an
-ordinary run defaults to DeepSeek V4.1 Flash, and this flag withholds that too.
+another. That includes codeaf's default: with no `fallback models` row written, an
+ordinary run defaults to DeepSeek V4.1 Flash (with OpenRouter connected; otherwise another
+model your providers offer), and this flag withholds that too.
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
 decides whether a long answer is moved to a task, and the writer of the brief that task opens
@@ -1827,7 +1833,7 @@ the model · asking again · 2 of 3`, or `the model went quiet mid-reply · aski
 2 of 3`.
 
 **If all three attempts come back with nothing, codeaf finishes the reply on another
-model** — the next one in your `fallback models` row, or DeepSeek V4.1 Flash by default when you have written no row. It is said out loud before it happens, naming
+model** — the next one in your `fallback models` row, or codeaf's default when you have written no row: DeepSeek V4.1 Flash with OpenRouter connected, otherwise another model your providers offer. It is said out loud before it happens, naming
 where the rest of the answer is coming from:
 
 ```
@@ -2097,7 +2103,8 @@ while it is replying* above, and *I changed the model but my task is still on th
 
 Yes. **A model that will not take your request at all is given up on the same way a model
 that goes quiet is: codeaf finishes the reply on the next model in your `fallback models`
-row**, or on DeepSeek V4.1 Flash when you have written no row.
+row**, or on codeaf's default when you have written no row: DeepSeek V4.1 Flash with
+OpenRouter connected, otherwise another model your providers offer.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
 your model, a `502`, a torn connection, a deadline — is asked again, with a dim line each

@@ -2590,8 +2590,8 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
-			Label: "knowledge", EmptyLabel: DefaultKnowledgeModel,
-			Hint: "the OpenRouter model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default.",
+			Label: "knowledge", EmptyLabel: "codeaf's default",
+			Hint: "the model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default: " + DefaultKnowledgeModel + " with OpenRouter connected, otherwise the lightest model your connected providers offer.",
 			read: func() string { return KnowledgeModelAt(dir) },
 			write: func(raw string) error {
 				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
@@ -2614,12 +2614,13 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
-			Label: "fallback models", EmptyLabel: "DeepSeek V4.1 Flash",
+			Label: "fallback models", EmptyLabel: "codeaf's default",
 			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
 				"it will take the request, it keeps going quiet mid-reply, or it is being " +
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
-				"to use DeepSeek V4.1 Flash by default. The turn says which " +
+				"for codeaf's default: DeepSeek V4.1 Flash with OpenRouter connected, " +
+				"otherwise another model your connected providers offer. The turn says which " +
 				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },

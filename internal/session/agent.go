@@ -235,7 +235,14 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// slot. It is not a callable model or an explicit user choice. Migrate only
 	// that exact legacy value; saved valid pairs and explicit None are untouched.
 	if pair := agent.conversationModels; pair != nil && pair.Fallback == "nearest in the catalog" {
+		// The profile's default fallback, which is a model its own providers
+		// can serve; the built-in OpenRouter one only when there is no profile.
 		pair.Fallback = preferences.DefaultFallbackModel
+		if config.ProfileDir != "" {
+			if chain := preferences.ParseModelFallbacks(preferences.ModelFallbacksAt(config.ProfileDir)); len(chain) > 0 {
+				pair.Fallback = chain[0]
+			}
+		}
 		if pair.Fallback == pair.Main {
 			pair.Fallback = ""
 		}

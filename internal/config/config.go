@@ -462,11 +462,17 @@ func load(requireKey bool) (Config, error) {
 	unreadProfileKeys := warnUnreadProfileKeys(profileDir, profileValues)
 	apiKey := apiKeyFrom(profileValues)
 	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
+	// The profile's default is resolved only when no model variable names one,
+	// because it reads the profile's services ([ReachableDefaultAt]).
+	model := strings.TrimSpace(env.Get(ModelEnv))
+	if model == "" {
+		model = ChatDefaultAt(profileDir)
+	}
 	config := Config{
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
 		UnreadProfileKeys: unreadProfileKeys,
-		Model:             firstNonEmpty(env.Get(ModelEnv), ChatDefaultAt(profileDir)),
+		Model:             model,
 		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,

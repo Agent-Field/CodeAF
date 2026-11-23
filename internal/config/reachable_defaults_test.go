@@ -96,8 +96,8 @@ func TestOllamaDefaultsUseTheLocalModels(t *testing.T) {
 	if got := one.pick(SlotLight, DefaultReflexModel, ""); got != "ollama/qwen3:8b" {
 		t.Fatalf("light = %q, want the one local model", got)
 	}
-	if got := one.pick(SlotFallback, DefaultFallbackModel, "ollama/qwen3:8b"); got != "" {
-		t.Fatalf("fallback with one local model = %q, want none rather than an unreachable model", got)
+	if got := one.pick(SlotFallback, DefaultFallbackModel, "ollama/qwen3:8b"); got != "ollama/qwen3:8b" {
+		t.Fatalf("fallback with one local model = %q, want that model, never an unreachable one", got)
 	}
 
 	two := defaultsFixture{services: []modelsource.Connected{ollama}, models: map[string][]catalog.Model{"ollama": {{ID: "qwen3:8b"}, {ID: "llama3.2:3b"}, {ID: "nomic-embed-text"}}}}
@@ -209,8 +209,8 @@ func TestReachableDefaultAtReadsTheProfile(t *testing.T) {
 	if got := KnowledgeModelAt(dir); got != "ollama/qwen3:8b" {
 		t.Fatalf("KnowledgeModelAt with only Ollama = %q", got)
 	}
-	if got := ModelFallbacksAt(dir); got != "" {
-		t.Fatalf("ModelFallbacksAt with one local model = %q, want none", got)
+	if got := ModelFallbacksAt(dir); got != "ollama/qwen3:8b" {
+		t.Fatalf("ModelFallbacksAt with one local model = %q, want that model", got)
 	}
 	if err := WriteAPIKey(dir, "sk-or-1234567890"); err != nil {
 		t.Fatal(err)
@@ -295,19 +295,19 @@ func TestEveryShippedProviderGetsReachableDefaultsOfItsOwn(t *testing.T) {
 			name:    "Z.ai coding plan",
 			service: modelsource.Connected{Source: zai, Key: "zai", Door: codingPlan},
 			models:  namedModels(modelsource.Connected{Source: zai, Door: codingPlan}),
-			talk:    "z-ai/" + zai.Preferred, light: "z-ai/glm-5.3-flash",
+			talk:    "z-ai/" + zai.Preferred, fallback: "z-ai/glm-5.3-flash", light: "z-ai/glm-5.3-flash",
 		},
 		{
 			name:    "Moonshot",
 			service: modelsource.Connected{Source: vendoredSource(t, "moonshot"), Key: "sk-moon"},
 			models:  namedModels(modelsource.Connected{Source: vendoredSource(t, "moonshot")}),
-			talk:    "moonshot/" + vendoredSource(t, "moonshot").Preferred, fallback: "", light: "moonshot/" + vendoredSource(t, "moonshot").Preferred,
+			talk:    "moonshot/" + vendoredSource(t, "moonshot").Preferred, fallback: "moonshot/" + vendoredSource(t, "moonshot").Preferred, light: "moonshot/" + vendoredSource(t, "moonshot").Preferred,
 		},
 		{
 			name:    "MiniMax",
 			service: modelsource.Connected{Source: vendoredSource(t, "minimax"), Key: "sk-mm"},
 			models:  namedModels(modelsource.Connected{Source: vendoredSource(t, "minimax")}),
-			talk:    "minimax/" + vendoredSource(t, "minimax").Preferred, fallback: "", light: "minimax/" + vendoredSource(t, "minimax").Preferred,
+			talk:    "minimax/" + vendoredSource(t, "minimax").Preferred, fallback: "minimax/" + vendoredSource(t, "minimax").Preferred, light: "minimax/" + vendoredSource(t, "minimax").Preferred,
 		},
 		{
 			name:    "Qwen",
@@ -325,7 +325,7 @@ func TestEveryShippedProviderGetsReachableDefaultsOfItsOwn(t *testing.T) {
 			name:    "OpenCode Go",
 			service: modelsource.Connected{Source: vendoredSource(t, "opencode-go"), Key: "sk-oc"},
 			models:  ids("kimi-k3", vendoredSource(t, "opencode-go").Preferred, "qwen3.8-flash"),
-			talk:    "opencode-go/" + vendoredSource(t, "opencode-go").Preferred, light: "opencode-go/qwen3.8-flash",
+			talk:    "opencode-go/" + vendoredSource(t, "opencode-go").Preferred, fallback: "opencode-go/kimi-k3", light: "opencode-go/qwen3.8-flash",
 		},
 		{
 			name:    "Claude Code",
@@ -348,10 +348,8 @@ func TestEveryShippedProviderGetsReachableDefaultsOfItsOwn(t *testing.T) {
 			if talk != c.talk {
 				t.Fatalf("talk = %q, want %q", talk, c.talk)
 			}
-			if c.fallback != "" || c.name == "Moonshot" || c.name == "MiniMax" {
-				if got := f.pick(SlotFallback, DefaultFallbackModel, talk); got != c.fallback {
-					t.Fatalf("fallback = %q, want %q", got, c.fallback)
-				}
+			if got := f.pick(SlotFallback, DefaultFallbackModel, talk); got != c.fallback {
+				t.Fatalf("fallback = %q, want %q", got, c.fallback)
 			}
 			if got := f.pick(SlotLight, DefaultLowModel, talk); got != c.light {
 				t.Fatalf("light = %q, want %q", got, c.light)
@@ -379,5 +377,110 @@ func TestABuiltInIDThatRoutesByPrefixIsKeptOnlyWhenListed(t *testing.T) {
 	unknown := defaultsFixture{services: []modelsource.Connected{deepseek}, models: map[string][]catalog.Model{}}
 	if got := unknown.pick(SlotFallback, DefaultFallbackModel, ""); got != DefaultFallbackModel {
 		t.Fatalf("with no known list, fallback = %q, want the built-in on routing alone", got)
+	}
+}
+
+// AN OPENROUTER KEY KEEPS EVERY BUILT-IN AS IT WAS, even when another connected
+// account captures a built-in id by its prefix and does not list it: choosing
+// among OpenRouter's whole catalog would send a fallback to its most expensive
+// model and a helper to its cheapest.
+func TestAnOpenRouterKeyKeepsEveryBuiltInEvenBesideDeepSeekDirect(t *testing.T) {
+	f := defaultsFixture{
+		openRouterKey: "sk-or-1234567890",
+		services:      []modelsource.Connected{{Source: vendoredSource(t, "deepseek"), Key: "sk-ds"}},
+		models: map[string][]catalog.Model{
+			"openrouter": {{ID: "anthropic/claude-opus-4.5", PromptPrice: 1e-4}, {ID: "some/model:free"}},
+			"deepseek":   ids("deepseek-v4-pro", "deepseek-v4-flash"),
+		},
+	}
+	for _, c := range []struct {
+		slot    DefaultSlot
+		builtIn string
+	}{
+		{SlotTalk, DefaultModel}, {SlotFallback, DefaultFallbackModel}, {SlotLight, DefaultLowModel},
+		{SlotLight, DefaultReflexModel}, {SlotLight, DefaultKnowledgeModel},
+	} {
+		for _, chosen := range []string{"", "deepseek/deepseek-v4-pro"} {
+			if got := f.pick(c.slot, c.builtIn, chosen); got != c.builtIn {
+				t.Fatalf("%s (talk %q) = %q, want the built-in %q unchanged", c.slot, chosen, got, c.builtIn)
+			}
+		}
+	}
+}
+
+func TestTheTalkDefaultIsNeverEmptyWhenNoModelsAreKnown(t *testing.T) {
+	f := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "ollama")}}, models: map[string][]catalog.Model{}}
+	for _, slot := range []DefaultSlot{SlotTalk, SlotFallback, SlotLight} {
+		if got := f.pick(slot, DefaultModel, ""); got != DefaultModel {
+			t.Fatalf("%s with a cold local catalog = %q, want the built-in rather than nothing", slot, got)
+		}
+	}
+}
+
+func TestTheSavedTalkModelIsTheTalkDefaultWhenTheBuiltInIsUnreachable(t *testing.T) {
+	f := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "codex"), Key: "codex-sentinel"}}, models: map[string][]catalog.Model{"codex": codexRows()}}
+	if got := f.pick(SlotTalk, DefaultModel, "codex/gpt-6-astra"); got != "codex/gpt-6-astra" {
+		t.Fatalf("talk = %q, want the saved conversation model", got)
+	}
+}
+
+func TestAPausedPlanIsChosenOnlyWhenNothingElseIsConnected(t *testing.T) {
+	paused := modelsource.Connected{Source: vendoredSource(t, "codex"), Key: "codex-sentinel", PlanPaused: "limit reached"}
+	alone := defaultsFixture{services: []modelsource.Connected{paused}, models: map[string][]catalog.Model{"codex": codexRows()}}
+	if got := alone.pick(SlotTalk, DefaultModel, ""); got != "codex/gpt-6.1-terra" {
+		t.Fatalf("talk with only a paused plan = %q, want that plan", got)
+	}
+	beside := defaultsFixture{services: []modelsource.Connected{paused, {Source: vendoredSource(t, "ollama")}}, models: map[string][]catalog.Model{"codex": codexRows(), "ollama": ids("qwen3:8b")}}
+	if got := beside.pick(SlotTalk, DefaultModel, ""); got != "ollama/qwen3:8b" {
+		t.Fatalf("talk with a paused plan beside Ollama = %q, want Ollama", got)
+	}
+}
+
+func TestAFallbackSkipsAVariantOfTheTalkModel(t *testing.T) {
+	zai := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "z-ai"), Key: "zai"}}, models: map[string][]catalog.Model{"z-ai": ids("glm-5.3", "glm-5.3[1m]")}}
+	if got := zai.pick(SlotFallback, DefaultFallbackModel, "z-ai/glm-5.3"); got != "z-ai/glm-5.3[1m]" {
+		t.Fatalf("fallback with only a variant = %q, want the variant", got)
+	}
+}
+
+func TestChatGPTThinkingLevelsSurviveTheCatalog(t *testing.T) {
+	dir := t.TempDir()
+	service := modelsource.Connected{Source: vendoredSource(t, "codex"), Key: "codex-sentinel", Address: "https://chatgpt.example/backend"}
+	row := codexCatalogRow(codexauth.Model{ID: "gpt-6-luna", ContextLength: 272000, ReasoningLevels: []string{"low", "high"}})
+	if err := catalog.Remember(CatalogOptionsFor(service, dir), []catalog.Model{row}); err != nil {
+		t.Fatal(err)
+	}
+	rows := catalog.Recall(CatalogOptionsFor(service, dir)).ModelsNow()
+	if len(rows) != 1 || len(rows[0].Reasoning.Efforts) != 2 || rows[0].Reasoning.Known {
+		t.Fatalf("remembered = %+v, want the two levels kept for ranking and no published profile", rows)
+	}
+}
+
+func TestTheSettingsRowsShowWhatAProfileWithoutOpenRouterUses(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	dir := t.TempDir()
+	listed := true
+	if err := WriteSources(dir, []PersistedSource{{ID: "ollama", Written: "ollama", Listed: &listed}}); err != nil {
+		t.Fatal(err)
+	}
+	ollama, _ := ResolveSources(dir, "", DefaultBaseURL).ByID("ollama")
+	if err := catalog.Remember(CatalogOptionsFor(ollama, dir), ids("qwen3:8b")); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{KeyKnowledgeModel, KeyModelFallbacks} {
+		var row *Setting
+		for _, s := range registry(t, dir).Rows() {
+			if s.Key == key {
+				s := s
+				row = &s
+			}
+		}
+		if row == nil {
+			t.Fatalf("no %s row", key)
+		}
+		if got := row.Value(); got != "ollama/qwen3:8b" {
+			t.Fatalf("%s row = %q, want the reachable model", key, got)
+		}
 	}
 }
