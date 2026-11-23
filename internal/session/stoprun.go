@@ -221,9 +221,18 @@ func (a *Agent) stopJoinedRow(run *beltRun, id uint64, why string) (string, bool
 		return a.stopUndrivenRow(id, run.row, why)
 	}
 	if terminalStoreStatus(task.Status) {
-		return name + " has already finished; there is nothing to stop", true, nil
+		return joinedEndedAnswer(run, name, task), true, nil
 	}
 	if _, err := run.store.Cancel(key, stopBecause(taskStoppedWord, why)); err != nil {
+		// A STOP THAT LOST THE RACE READS THE TASK AGAIN. The task was open
+		// when it was read above and the run's stop (or another joined stop)
+		// ended it before this cancel was written, so the store answers that it
+		// is already terminal. That is the same situation as reading it ended
+		// in the first place, and it is answered the same way rather than
+		// handed back as a refused stop.
+		if line, lost := joinedStopLostTheRace(run, key, name, err); lost {
+			return line, true, nil
+		}
 		return "", true, err
 	}
 	if g := a.graph(); g != nil {
@@ -239,6 +248,47 @@ func (a *Agent) stopJoinedRow(run *beltRun, id uint64, why string) (string, bool
 		a.publishRunRow(g, notice)
 	}
 	return "stopped " + stopBecause(name, why), true, nil
+}
+
+// joinedStopLostTheRace answers a cancel the store refused because the joined
+// task ended after the stop read it open: the run's stop, or another joined
+// stop, wrote first. It reads the task again and answers it as an ended task,
+// and says false for any other refusal so that one is still handed back.
+func joinedStopLostTheRace(run *beltRun, key, name string, cancelErr error) (string, bool) {
+	if cancelErr == nil || !strings.Contains(cancelErr.Error(), "already terminal") {
+		return "", false
+	}
+	ended := run.store.Task(key)
+	if ended == nil || !terminalStoreStatus(ended.Status) {
+		return "", false
+	}
+	return joinedEndedAnswer(run, name, ended), true
+}
+
+// joinedEndedAnswer is the sentence a stop on a joined task earns when the task
+// is already over.
+//
+// A JOINED TASK ITS RUN'S STOP ENDED IS STOPPED, NOT FINISHED. The run's stop
+// cancels every open task in its store under the stop's own reason
+// ([plandb.Store.StopRoot]), root included, so a joined task carrying that
+// reason under a root carrying the same one was ended by the run's stop. In a
+// batch of concurrent stops, whether the joined task's own stop reached the
+// store before that write is a race, and the answer cannot depend on the race's
+// outcome. "Already finished" is said only for a task that landed or failed on
+// its own. A joined task cancelled under the stop's reason while its run is
+// still open was stopped on its own, and says only that.
+func joinedEndedAnswer(run *beltRun, name string, task *plandb.Task) string {
+	if task.Status == plandb.StatusCancelled && planStopReason(task.Error) {
+		// The run's stop writes every task it ends, root included, in one
+		// transaction at one instant, so a task cancelled earlier under the same
+		// words (its own stop, before the run's) ended at another instant and is
+		// not credited to the run's stop.
+		if root := run.store.Task(run.root); root != nil && root.Status == plandb.StatusCancelled && root.Error == task.Error && task.CompletedAt.Equal(root.CompletedAt) {
+			return name + " was already stopped with " + taskStopName(run.row, run.title) + ", whose run it shared"
+		}
+		return name + " was already stopped; there is nothing to stop"
+	}
+	return name + " has already finished; there is nothing to stop"
 }
 
 // endedBeltRow answers a stop on a run's row whose run is already over. The
@@ -262,6 +312,13 @@ func (a *Agent) endedBeltRow(id uint64, why string) (string, bool, error) {
 			}
 			if stopped {
 				return a.stopUndrivenRow(id, kept.Parent, why)
+			}
+			// A ROW THAT READS STOPPED WAS STOPPED, however long ago the
+			// run settled: a batch stop that reaches a joined row only
+			// after its run's settle publishes it gets this road, and the
+			// row and the sentence must agree ([Agent.stopJoinedRow]).
+			if kept.Stopped {
+				return taskStopName(id, kept.Title) + " was already stopped; there is nothing to stop", true, nil
 			}
 			return taskStopName(id, kept.Title) + " has already finished; there is nothing to stop", true, nil
 		}
