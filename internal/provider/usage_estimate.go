@@ -270,18 +270,21 @@ func (c *Client) usageEndpoint(knobs callKnobs) string {
 	return c.config.BaseURL
 }
 
-func (c *Client) streamUsageSupported(knobs callKnobs) bool {
+func (c *Client) directUsageEndpoint(knobs callKnobs) bool {
 	base := c.usageEndpoint(knobs)
-	direct := c.config.Direct
-	if base != c.config.BaseURL {
-		direct = telemetry.RoutingProvider(base) != modelsource.DefaultID
+	if base == c.config.BaseURL {
+		return c.config.Direct
 	}
+	return telemetry.RoutingProvider(base) != modelsource.DefaultID
+}
+
+func (c *Client) streamUsageSupported(knobs callKnobs) bool {
 	// The router already receives usage.include. Only a connected service
 	// needs the compatible API's opt-in, including after a billing-road move.
-	if !direct {
+	if !c.directUsageEndpoint(knobs) {
 		return false
 	}
-	_, refused := c.streamUsageUnsupported.Load(base)
+	_, refused := c.streamUsageUnsupported.Load(c.usageEndpoint(knobs))
 	return !refused
 }
 
