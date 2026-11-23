@@ -28,6 +28,9 @@ type fakeHub struct {
 	acks   map[string][]ackBody
 	// statusCode is what a status or progress frame is answered.
 	statusCode int
+	// delegate, when set, answers a delegate frame: the ok to send, and false
+	// to stay silent as a control plane that predates the frame does.
+	delegate func() (okBody, bool)
 }
 
 func (h *fakeHub) serve(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +72,14 @@ func (h *fakeHub) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		h.mu.Unlock()
 		if f.T != tAck {
-			ok, _ := encodeFrame(frame{T: tOK, Seq: f.Seq, Exec: f.Exec}, okBody{Code: code})
+			reply := okBody{Code: code}
+			if f.T == tDelegate && h.delegate != nil {
+				var answer bool
+				if reply, answer = h.delegate(); !answer {
+					continue
+				}
+			}
+			ok, _ := encodeFrame(frame{T: tOK, Seq: f.Seq, Exec: f.Exec}, reply)
 			_ = conn.Write(ctx, websocket.MessageText, ok)
 		}
 	}
@@ -123,11 +133,21 @@ type linkWorld struct {
 
 // newLinkWorld is a LINK-ONLY node (no base_url) against a fake control
 // plane that offers the link.
-func newLinkWorld(t *testing.T) *linkWorld {
+func newLinkWorld(t *testing.T) *linkWorld { return newLinkWorldWith(t, nil, nil) }
+
+// newLinkWorldWith is newLinkWorld with the hub set up by hub and extra routes
+// on the plane: how a test shapes a control plane's answers.
+func newLinkWorldWith(t *testing.T, hub func(*fakeHub), routes func(*http.ServeMux), tune ...func(*Node)) *linkWorld {
 	t.Helper()
 	lw := &linkWorld{world: &world{t: t}, hub: &fakeHub{t: t, acks: map[string][]ackBody{}}}
+	if hub != nil {
+		hub(lw.hub)
+	}
 	lw.plane = newFakePlaneWith(t, "af-key-1", func(mux *http.ServeMux) {
 		mux.HandleFunc("GET /api/v1/nodes/{id}/link", lw.hub.serve)
+		if routes != nil {
+			routes(mux)
+		}
 	}, func() bool {
 		lw.mu.Lock()
 		defer lw.mu.Unlock()
@@ -153,6 +173,9 @@ func newLinkWorld(t *testing.T) *linkWorld {
 			lw.mu.Unlock()
 			return nil
 		}}
+	for _, f := range tune {
+		f(lw.node)
+	}
 	if err := lw.node.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}

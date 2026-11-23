@@ -1532,7 +1532,7 @@ func (h *appFactoryHost) agentFieldConn() (afClient, string, bool) {
 	if afTestConn != nil {
 		return afTestConn()
 	}
-	client, settings, ok := h.agentFieldNode().Conn.Client()
+	client, settings, ok := h.agentFieldNode().Client()
 	if !ok || client == nil {
 		return nil, "", false
 	}
