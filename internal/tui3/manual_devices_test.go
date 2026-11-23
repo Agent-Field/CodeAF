@@ -52,14 +52,26 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 	}
 }
 
-// The person-facing words keep the vocabulary law: the two pages never speak
-// of the machinery behind the devices.
-var banned = regexp.MustCompile(`\b(relay|node|lease|manifest|takeover|take over)\b`)
+// The person-facing words keep the vocabulary law: the pages never speak of the
+// machinery behind the devices.
+//
+// "relay" IS NOT ON THIS LIST ANY MORE. Until 2026-11-23 the pages called the
+// server "the sync service" and kept the word relay out. The server is "the
+// relay" in every sentence a person reads now, the refusals these pages quote
+// verbatim (TestEverySentenceOfTheDeviceScreensIsOnItsPage) say it, and what the
+// word may name is fenced by internal/wordlaw instead: the server and its
+// storage switch, never a feature or an act.
+var banned = regexp.MustCompile(`\b(node|lease|manifest|takeover|take over)\b`)
+
+// oldNamesHeading is the one heading that spells the old names of Move here,
+// "take over" among them, so a person who asks in those words reaches the page.
+// It is the only place the pages may say them.
+const oldNamesHeading = `## Move here: also called "continue here", "take over" or "continue on this machine"`
 
 func TestTheDevicePagesKeepTheVocabularyLaw(t *testing.T) {
 	for _, name := range []string{"add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"} {
 		page, _ := manual.Chat().Page(name)
-		if word := banned.FindString(strings.ToLower(page)); word != "" {
+		if word := banned.FindString(strings.ReplaceAll(strings.ToLower(page), strings.ToLower(oldNamesHeading), "")); word != "" {
 			t.Errorf("the page %s uses %q", name, word)
 		}
 	}
