@@ -83,7 +83,7 @@ not the local profile the panel could write.
 
 ## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen, MiniMax or OpenCode Go directly
 
-Open `/connect` and choose the vendor in the `models` group. DeepSeek, MiniMax and
+Open `/connect` and choose the vendor in the `providers` group. DeepSeek, MiniMax and
 OpenCode Go open `your key` directly. Z.ai, Moonshot and Alibaba Qwen first open
 `your region` as a choice with `International` under the cursor and `China` below it;
 a region is never typed. Up and down, or `ctrl+p` and `ctrl+n`, move the cursor. A
@@ -103,16 +103,18 @@ OpenCode Go is a monthly subscription from OpenCode for open coding models. Open
 `opencode.ai/auth` and press Enter. The key variable is `OPENCODE_API_KEY`, and a key
 that starts with `oc_sk_` is accepted without another question. No region is asked.
 
-The plan has one billing road and no pay-as-you-go overflow. codeaf saves that road as
-a plan, lists the models the subscription serves and moves the conversation onto
-`glm-5.3` when the plan lists it. A successful line says `opencode-go is connected`
-with the number of models the plan listed, and models read `opencode-go/glm-5.3`. Every
-request carries a stable session identity because the service requires one before it
-reads the key.
+Before it saves anything codeaf asks OpenCode's usage meter whether a Go subscription
+covers the key. A key from a workspace without one is refused in OpenCode's own words
+(`OpenCode Go subscription required`) rather than saved, because its calls would bill
+the workspace balance. codeaf saves the connection as a plan, lists the models the
+subscription serves and moves the conversation onto `glm-5.3` when the plan lists it. A successful line
+says `opencode-go is connected` with the number of models the plan listed, and
+models read `opencode-go/glm-5.3`. Chat completions carry a stable session identity
+because the service requires one before it reads the key.
 
-From a shell, `codeaf connect opencode-go` asks for the same key. The monthly limits
-are OpenCode's own, and a spent window stays a pause rather than a billable overflow
-road.
+From a shell, `codeaf connect opencode-go` asks for the same key. If Extra Usage is
+enabled on the Go page in the OpenCode Console, requests past the plan limits can
+draw from your Console credits.
 
 A provider name cannot be confused with the author part of a model already on the default
 provider. When `deepseek` is already an author there, codeaf connects the direct provider

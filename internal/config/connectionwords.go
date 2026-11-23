@@ -58,7 +58,11 @@ func ConnectionOutcomeWord(service string, outcome modelsource.Outcome) string {
 	case modelsource.OutcomeUnanswered:
 		return service + " did not answer · nothing was saved"
 	case modelsource.OutcomeWrongShape:
-		return "that is not the shape of a " + service + " key — they start with sk-"
+		starts := strings.TrimSpace(outcome.KeyStartsWith)
+		if starts == "" {
+			starts = "sk-"
+		}
+		return "that is not the shape of a " + service + " key — they start with " + starts
 	}
 	return service + " did not connect"
 }

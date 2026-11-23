@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -827,6 +828,14 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 		case service.Door.ID != "" && !service.Door.Metered:
 			p.Kind = crewroute.Plan
 			p.Serves = append([]string(nil), service.Door.Models...)
+			if p.ID == "opencode-go" && len(p.Serves) == 0 {
+				for _, model := range catalog.Recall(CatalogOptionsFor(service, profileDir)).ModelsNow() {
+					p.Serves = append(p.Serves, model.ID)
+				}
+				if len(p.Serves) == 0 {
+					p.Serves = []string{source.Preferred}
+				}
+			}
 		}
 		if !strings.EqualFold(source.ID, modelsource.DefaultID) && !modelsource.IsCustomID(source.ID) && !strings.EqualFold(source.ID, "ollama") {
 			p.vendors = append([]string{strings.ToLower(source.Written)}, crewVendors[strings.ToLower(source.ID)]...)
@@ -883,7 +892,13 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 	if !served {
 		return crewroute.Route{}, false
 	}
-	if len(p.Serves) > 0 {
+	if p.ID == "opencode-go" {
+		// The Go plan needs the exact ID. Lineage can equate a listed
+		// snapshot with an alias the endpoint never listed.
+		if !slices.Contains(p.Serves, tail) {
+			return crewroute.Route{}, false
+		}
+	} else if len(p.Serves) > 0 {
 		ok := false
 		for _, s := range p.Serves {
 			if strings.EqualFold(crewroute.Lineage(s), crewroute.Lineage(tail)) {

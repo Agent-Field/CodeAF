@@ -222,6 +222,120 @@ func TestOneDoorPlanPersistsItsDoorAndRoutesAsAPlan(t *testing.T) {
 	}
 }
 
+// A KEY THE PLAN DOES NOT COVER IS NOT A PLAN KEY. OpenCode's /models answers
+// for any bearer, so the listing alone would bind the Go door to a key whose
+// calls bill the workspace balance instead. The usage meter is what says the
+// subscription covers the key, and a key it refuses is refused in the service's
+// own words and saved nowhere.
+func TestOpenCodeGoRefusesAKeyItsSubscriptionDoesNotCover(t *testing.T) {
+	t.Setenv("OPENCODE_API_KEY", "")
+	server := sourcestub.New("glm-5.3", "kimi-k3")
+	defer server.Close()
+	server.RefuseUsage(http.StatusForbidden, `{"type":"error","error":{"type":"EntitlementError","message":"OpenCode Go subscription required."}}`)
+	source := vendoredSource(t, "opencode-go")
+	source.Address = server.URL()
+	source.Doors[0].Address = server.URL()
+	dir := t.TempDir()
+	key := "oc_sk_zen-0123456789abcdef"
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{ID: source.ID, Written: source.Written, Key: key, Order: 1}, source, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Kind != modelsource.OutcomeRefused || outcome.Status != http.StatusForbidden || !strings.Contains(outcome.VendorSaid, "subscription required") {
+		t.Fatalf("a key the subscription does not cover = %+v, want it refused in the service's words", outcome)
+	}
+	if rows := PersistedSources(dir); len(rows) != 0 {
+		t.Fatalf("a refused key was saved: %+v", rows)
+	}
+	if said := ConnectionOutcomeWord("OpenCode Go", outcome); !strings.Contains(said, "subscription required") {
+		t.Fatalf("the person was told %q, want the service's own words", said)
+	}
+	for _, request := range server.Requests() {
+		if request.Bearer != "Bearer "+key {
+			t.Errorf("%s %s carried %q, want the key under test", request.Method, request.Path, request.Bearer)
+		}
+	}
+}
+
+func TestOpenCodeGoUsageMeterOutageIsNotAKeyRefusal(t *testing.T) {
+	t.Setenv("OPENCODE_API_KEY", "")
+	server := sourcestub.New("glm-5.3")
+	defer server.Close()
+	server.RefuseUsage(http.StatusServiceUnavailable, `upstream down`)
+	source := vendoredSource(t, "opencode-go")
+	source.Address = server.URL()
+	source.Doors[0].Address = server.URL()
+	dir := t.TempDir()
+	outcome, err := ConnectService(context.Background(), dir, PersistedSource{ID: source.ID, Written: source.Written, Key: "oc_sk_outage-0123456789", Order: 1}, source, nil)
+	if err != nil || outcome.Kind != modelsource.OutcomeUnanswered {
+		t.Fatalf("a meter outage = %+v, %v, want unanswered", outcome, err)
+	}
+	if rows := PersistedSources(dir); len(rows) != 0 {
+		t.Fatalf("an unproved key was saved: %+v", rows)
+	}
+}
+
+// THE METER'S VERDICT DECIDES THE PLAN, WHATEVER THE LISTING SAYS. A listing
+// that is absent can no more prove a subscription than one that answers for any
+// bearer, and a meter that gives no reading gives no verdict.
+func TestOpenCodeGoPlanProofDecidesWhateverTheListingSays(t *testing.T) {
+	cases := []struct {
+		name       string
+		stage      func(*sourcestub.Server)
+		wantKind   modelsource.OutcomeKind
+		wantStatus int
+		saved      bool
+	}{
+		{"uncovered key and an absent listing", func(s *sourcestub.Server) {
+			s.Listingless()
+			s.RefuseUsage(http.StatusForbidden, `{"error":{"message":"Go subscription required."}}`)
+		}, modelsource.OutcomeRefused, http.StatusForbidden, false},
+		{"throttled meter", func(s *sourcestub.Server) { s.RefuseUsage(http.StatusTooManyRequests, `slow down`) }, modelsource.OutcomeUnanswered, 0, false},
+		{"a sign-in page answered with 200", func(s *sourcestub.Server) { s.RefuseUsage(http.StatusOK, `<html>sign in</html>`) }, modelsource.OutcomeUnanswered, 0, false},
+		{"an error envelope answered with 200", func(s *sourcestub.Server) { s.RefuseUsage(http.StatusOK, `{"error":{"message":"nope"}}`) }, modelsource.OutcomeUnanswered, 0, false},
+		{"an empty 200", func(s *sourcestub.Server) { s.RefuseUsage(http.StatusOK, ``) }, modelsource.OutcomeUnanswered, 0, false},
+		{"a meter that is not there leaves the listing to decide", func(s *sourcestub.Server) { s.RefuseUsage(http.StatusNotFound, `not found`) }, modelsource.OutcomeConnected, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("OPENCODE_API_KEY", "")
+			server := sourcestub.New("glm-5.3")
+			defer server.Close()
+			tc.stage(server)
+			source := vendoredSource(t, "opencode-go")
+			source.Address = server.URL()
+			source.Doors[0].Address = server.URL()
+			dir := t.TempDir()
+			outcome, err := ConnectService(context.Background(), dir, PersistedSource{ID: source.ID, Written: source.Written, Key: "oc_sk_matrix-0123456789", Order: 1}, source, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if outcome.Kind != tc.wantKind || tc.wantStatus != 0 && outcome.Status != tc.wantStatus {
+				t.Fatalf("outcome = %+v, want kind %v status %d", outcome, tc.wantKind, tc.wantStatus)
+			}
+			if saved := len(PersistedSources(dir)) == 1; saved != tc.saved {
+				t.Fatalf("saved = %t, want %t (rows %+v)", saved, tc.saved, PersistedSources(dir))
+			}
+		})
+	}
+}
+
+func TestAWrongPasteIsToldHowTheServicesOwnKeysBegin(t *testing.T) {
+	source := vendoredSource(t, "opencode-go")
+	outcome, _, keep := ProveService(context.Background(), PersistedSource{ID: source.ID, Written: source.Written}, source, "sk-not-an-opencode-key-0123456789")
+	if keep || outcome.Kind != modelsource.OutcomeWrongShape {
+		t.Fatalf("an OpenAI-shaped key for OpenCode Go = %+v, keep=%t, want a wrong shape", outcome, keep)
+	}
+	if said := ConnectionOutcomeWord("OpenCode Go", outcome); !strings.Contains(said, "start with oc_sk_") || strings.Contains(said, "sk-") && !strings.Contains(said, "oc_sk_") {
+		t.Fatalf("a wrong paste was answered %q, want the service's own key start", said)
+	}
+	other := vendoredSource(t, "deepseek")
+	outcome, _, _ = ProveService(context.Background(), PersistedSource{ID: other.ID, Written: other.Written}, other, "not-a-key")
+	if said := ConnectionOutcomeWord("DeepSeek", outcome); !strings.Contains(said, "start with sk-") {
+		t.Fatalf("an OpenAI-shaped service's wrong paste was answered %q, want it unchanged", said)
+	}
+}
+
 func TestAListingWinsEvenWhenTheBillableProbeCannotBePaid(t *testing.T) {
 	t.Setenv("ZHIPU_API_KEY", "")
 	server := sourcestub.New("glm-5.3", "glm-5.3-flash")

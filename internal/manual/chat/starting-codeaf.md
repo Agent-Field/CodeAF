@@ -72,8 +72,9 @@ instead of silently discarding the pending work.
 | `codeaf chat --host devbox` | the chat here, the work on another machine |
 
 **The very first launch on a machine with nothing configured** begins with **choose a
-model provider**. One flat list shows every built-in provider.
-On a short terminal the key hint yields before any provider row.
+model provider**. The chooser puts the built-in providers in one list.
+On a short terminal the key hint yields first, and the list scrolls as you move
+the selection.
 The chosen provider's connection screen follows, then the chat model and daily limit.
 Ollama asks for no key. OpenRouter and Codex say `enter connects in browser` on their
 connection screens and wait for Enter before opening sign-in. `alt+left` returns to provider choice; `esc` skips an idle setup
