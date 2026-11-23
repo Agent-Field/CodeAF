@@ -489,9 +489,14 @@ func replacedGroundMetadata(ground, cwd, program string, rest []string) string {
 	case writesItsLastOperand[program]:
 		return copiedGroundMetadata(metadata, cwd, program, rest, operands)
 	case writesEveryOperand[program]:
-		// mkdir/chmod/touch on `.` are ordinary upkeep, not replacement of
-		// everything the directory contains. Only a protected metadata path
-		// they name directly is held.
+		// mkdir, touch, chmod, chown and chgrp create an entry or change its
+		// mode or owner. They remove nothing and replace no content, so they
+		// are upkeep (`chmod -R u+w .git` to clear a read-only object, `mkdir -p
+		// .git/refs/heads`), not the loss this law is about, and dev allows them.
+		switch program {
+		case "mkdir", "touch", "chmod", "chown", "chgrp":
+			return ""
+		}
 		return protectedMetadataOperand(metadata, cwd, operands, false, true)
 	default:
 		return ""
@@ -573,7 +578,7 @@ func movedGroundMetadata(metadata, cwd string, operands []string) string {
 // directory destination, and rsync --delete aimed at an ancestor can remove the
 // existing metadata, so those two forms are refused by name.
 func copiedGroundMetadata(metadata, cwd, program string, rest, operands []string) string {
-	destination, sources, ok := copyDestination(rest, operands)
+	destination, sources, ok := copyDestination(program, rest, operands)
 	if !ok {
 		return ""
 	}
@@ -589,25 +594,42 @@ func copiedGroundMetadata(metadata, cwd, program string, rest, operands []string
 }
 
 // copyDestination returns cp/ln/install/rsync's destination and sources. GNU
-// cp and install may put the destination before the sources with `-t DIR` or
-// `--target-directory=DIR`; commandOperands deliberately drops flags, so that
-// value must be read from the original words before the ordinary final-operand
-// rule (#2097 review).
-func copyDestination(rest, operands []string) (destination string, sources []string, ok bool) {
-	for index := 0; index < len(rest); index++ {
+// cp, ln and install may put the destination before the sources with `-t DIR`,
+// `-tDIR`, `--target-directory=DIR`, or `-t` ending a cluster of short flags
+// (`cp -rt DIR`, `cp -at DIR`); commandOperands deliberately drops flags, so
+// that value must be read from the original words before the ordinary
+// final-operand rule (#2097 review). rsync has no target-directory option, and
+// its `-t` means "preserve times", so it is never read that way.
+func copyDestination(program string, rest, operands []string) (destination string, sources []string, ok bool) {
+	for index := 0; index < len(rest) && program != "rsync"; index++ {
 		word := rest[index]
+		if word == "--" {
+			break
+		}
 		switch {
-		case word == "-t" || word == "--target-directory":
+		case word == "--target-directory":
 			if index+1 >= len(rest) {
 				return "", nil, false
 			}
 			destination = rest[index+1]
-			sources = removeOperand(operands, destination)
-			return destination, sources, true
+			return destination, removeOperand(operands, destination), true
 		case strings.HasPrefix(word, "--target-directory="):
 			destination = strings.TrimPrefix(word, "--target-directory=")
-			sources = removeOperand(operands, destination)
-			return destination, sources, destination != ""
+			return destination, removeOperand(operands, destination), destination != ""
+		case strings.HasPrefix(word, "--"), !strings.HasPrefix(word, "-"), len(word) < 2:
+			continue
+		}
+		// A cluster of short flags: `t` takes the rest of the word, or the next
+		// word when it ends the cluster.
+		if at := strings.IndexByte(word, 't'); at > 0 {
+			if attached := word[at+1:]; attached != "" {
+				destination = attached
+			} else if index+1 < len(rest) {
+				destination = rest[index+1]
+			} else {
+				return "", nil, false
+			}
+			return destination, removeOperand(operands, destination), true
 		}
 	}
 	if len(operands) == 0 {
@@ -668,18 +690,33 @@ func protectedGroundMetadata(metadata, target string, followFinal bool) bool {
 		if path == "" {
 			continue
 		}
-		relative, err := filepath.Rel(metadata, path)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			continue
-		}
-		relative = filepath.ToSlash(relative)
-		if relative == "." || relative == "HEAD" || relative == "config" || relative == "packed-refs" ||
-			withinMetadataTree(relative, "objects") || withinMetadataTree(relative, "refs") ||
-			withinMetadataTree(relative, "worktrees") || withinMetadataTree(relative, "modules") {
-			return true
+		for _, base := range metadataSpellings(metadata) {
+			relative, err := filepath.Rel(base, path)
+			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				continue
+			}
+			relative = filepath.ToSlash(relative)
+			if relative == "." || relative == "HEAD" || relative == "config" || relative == "packed-refs" ||
+				withinMetadataTree(relative, "objects") || withinMetadataTree(relative, "refs") ||
+				withinMetadataTree(relative, "worktrees") || withinMetadataTree(relative, "modules") {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// metadataSpellings are the names the ground's `.git` answers to: the spelling
+// the ground was given by, and the filesystem's own. A ground reached through a
+// symlink (macOS's /tmp and /var are links into /private, and a person's folder
+// may be one too) has its `.git` under two names, and a worker that spells the
+// real one is naming the same history. Every comparison against the metadata
+// reads both.
+func metadataSpellings(metadata string) []string {
+	if real := resolveSymlinks(metadata); real != "" && real != metadata {
+		return []string{metadata, real}
+	}
+	return []string{metadata}
 }
 
 // withinMetadataTree answers whether relative (always forward-slashed) is a
@@ -695,8 +732,10 @@ func withinMetadataTree(relative, name string) bool {
 // answer true: removing `.git/index.lock` does not remove `.git`.
 func holdsGroundMetadata(metadata, target string) bool {
 	for _, path := range [2]string{target, resolveParentSymlinks(target)} {
-		if withinDir(path, metadata) {
-			return true
+		for _, base := range metadataSpellings(metadata) {
+			if withinDir(path, base) {
+				return true
+			}
 		}
 	}
 	return false

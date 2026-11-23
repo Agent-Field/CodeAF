@@ -317,7 +317,26 @@ func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
 		"cp --target-directory=.git /tmp/payload/HEAD",
 		"install -t .git /tmp/payload/HEAD",
 		"install --target-directory=.git /tmp/payload/HEAD",
+		// A SOURCE INSIDE THE GROUND, because a source outside it is refused by
+		// the path law for being the last operand, which would pass these for
+		// a reason that has nothing to do with `.git`.
+		"cp -t .git payload/HEAD",
+		"cp --target-directory=.git payload/HEAD",
+		"install -t .git payload/HEAD",
+		"install --target-directory=.git payload/HEAD",
+		// GNU's short flags cluster: `-t` ends the cluster and takes the next
+		// word, or takes the rest of its own word. It is the same destination
+		// as `-t .git` under another spelling.
+		"cp -rt .git payload",
+		"cp -at .git payload/HEAD",
+		"cp -vt .git payload/HEAD",
+		"cp -t.git payload/HEAD",
+		"install -Dt .git payload/HEAD",
+		"ln -sft .git payload/HEAD",
 		"rsync -a --delete /tmp/empty/ .git/",
+		// rsync's `-t` preserves times; it is not a target directory, so the
+		// destination is still the last operand.
+		"rsync -avt payload/ .git/",
 		// Rewriting it in place.
 		"sed -i 's/main/x/' .git/HEAD",
 		"echo 'ref: refs/heads/x' > .git/HEAD",
@@ -371,6 +390,41 @@ func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
 	}
 }
 
+// A GROUND REACHED THROUGH A SYMLINK HAS ITS `.git` UNDER TWO NAMES. On macOS
+// /tmp and /var are links into /private, and a person's folder can be a link
+// too: the ground is spelled one way and a worker that asks the filesystem
+// (`pwd -P`, a path out of a tool's own output) spells it the other way. The
+// history is the same, and so is the refusal.
+func TestAGroundSpelledThroughASymlinkProtectsItsMetadataUnderTheRealName(t *testing.T) {
+	real := groundWithMetadata(t)
+	if err := os.MkdirAll(filepath.Join(real, "payload"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(filepath.Dir(filepath.Dir(real)), "alias")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	for _, command := range []string{
+		"rm -rf " + filepath.Join(real, ".git"),
+		"echo x > " + filepath.Join(real, ".git", "HEAD"),
+		"cp payload/HEAD " + filepath.Join(real, ".git", "HEAD"),
+		"cp -t " + filepath.Join(real, ".git") + " payload/HEAD",
+		"rm -rf " + real,
+	} {
+		if why := refusedOutsideGround(alias, command); !strings.Contains(why, outsideYourCopy) {
+			t.Errorf("%q in a ground spelled %s was answered %q, want the boundary's refusal", command, alias, why)
+		}
+	}
+	for _, command := range []string{
+		"rm -f " + filepath.Join(real, ".git", "index.lock"),
+		"echo x > " + filepath.Join(real, "add.py"),
+	} {
+		if why := refusedOutsideGround(alias, command); why != "" {
+			t.Errorf("%q in a ground spelled %s was refused with %q, want ordinary work allowed", command, alias, why)
+		}
+	}
+}
+
 // AND THE WORK THE GROUND IS FOR STILL RUNS. Protecting .git by refusing the
 // folder would protect nothing anybody wanted done, so ordinary writes, git's
 // own verbs (which write inside .git on the task's behalf), a .gitignore beside
@@ -383,6 +437,9 @@ func TestATaskStillWorksInAGroundWhoseMetadataIsProtected(t *testing.T) {
 		"rm -rf build dist",
 		"mv old.py new.py",
 		"cp template.py add.py",
+		"cp -rt vendor template.py",
+		"cp -t vendor template.py",
+		"rsync -avt src/ vendor/",
 		"sed -i 's/a/b/' add.py",
 		"echo node_modules/ >> .gitignore",
 		"rm .gitignore",
@@ -408,6 +465,10 @@ func TestATaskStillWorksInAGroundWhoseMetadataIsProtected(t *testing.T) {
 		// history. A worker may clear a stale lock, write local excludes, or
 		// install a hook.
 		"rm -f .git/index.lock",
+		"chmod -R u+w .git",
+		"touch .git/index.lock",
+		"mkdir -p .git/refs/heads",
+		"chown -R user .git",
 		"printf 'scratch/\\n' >> .git/info/exclude",
 		"cp /tmp/pre-commit .git/hooks/pre-commit",
 		"install /tmp/pre-commit .git/hooks/pre-commit",
