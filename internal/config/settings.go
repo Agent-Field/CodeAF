@@ -2620,7 +2620,7 @@ func (s *Settings) build() []Setting {
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
 				"for codeaf's default: DeepSeek V4.1 Flash with OpenRouter connected, " +
-				"otherwise another model your connected providers offer. The turn says which " +
+				"otherwise a model your connected providers offer. The turn says which " +
 				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
@@ -4286,9 +4286,10 @@ func RetiredPinNote(raw string) string {
 const DefaultFallbackModel = "deepseek/deepseek-v4.1-flash"
 
 // ModelFallbacksAt resolves an explicit chain, or the shared default when blank.
-// The shared default is kept only while a connected service can send it; a
-// profile without OpenRouter falls back to another model its own providers
-// offer, or to none when they offer only the conversation's model.
+// The shared default is kept while OpenRouter is connected or a connected
+// service lists it; a profile without OpenRouter falls back to another model its
+// own providers offer, or names the conversation's model when they offer only
+// that one, which keeps a failed reply on it ([ReachableDefaultAt]).
 func ModelFallbacksAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok && strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "nearest in the catalog" {
 		return strings.TrimSpace(value)

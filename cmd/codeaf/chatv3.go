@@ -1794,12 +1794,18 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// picked, by being cloned. Which models a person's questions may go to is
 	// theirs to say.
 	cfg.ModelFallbacks = config.ParseModelFallbacks(config.ModelFallbacksAt(profileDir))
+	// The default chain follows the providers connected since launch: a client
+	// built for a provider connected mid-session asks for it again.
+	cfg.ModelFallbacksNow = func() []string {
+		return config.ParseModelFallbacks(config.ModelFallbacksAt(profileDir))
+	}
 	if oneModel {
 		// A chain that hops to a second model on a failure is the one remaining
 		// way a single-model run stops being one, and it fires exactly when
 		// nobody is watching. Empty is "no hop", which is what this build has
 		// always done for a person who set no chain.
 		cfg.ModelFallbacks = nil
+		cfg.ModelFallbacksNow = nil
 		// AND THE CATALOG'S GUESS WITH IT. Nilling the row alone was not enough
 		// and quietly never had been: the chain falls through to NearestModels
 		// when no row is written (internal/provider's fallbackChain), so a

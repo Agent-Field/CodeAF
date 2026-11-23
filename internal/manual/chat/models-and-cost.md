@@ -165,9 +165,10 @@ Strength is read from the provider's published intelligence score or price,
 then from the model's name (mini, flash or haiku against pro, opus or max), its
 size (8b, 70b) and how many thinking levels it takes. With several providers,
 the defaults follow the provider of the conversation model you chose. A model you
-chose yourself is never replaced. A paused plan is used only when nothing else is
-connected. On a Claude Code plan the light seats run on its `haiku`, so titles,
-routing and the memory pass after each turn count against that plan's limits.
+chose yourself is never replaced. On a Claude Code plan the light seats run on its
+`haiku`, so titles, routing and the memory pass after each turn count against that
+plan's limits; with one local model they share it with the conversation, which
+makes each turn slower.
 With an OpenRouter key, or with nothing connected at all, the built-in OpenRouter
 models stay exactly as they are.
 
@@ -176,7 +177,9 @@ models stay exactly as they are.
 Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way
 the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. The
 service reads the model list belonging to that account, and a new connection moves this
-conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
+conversation to `codex/gpt-5.5` when the account lists it, otherwise to the first model the
+account lists. Every model from it is qualified as `codex/<slug>`, and a crew seat on the
+plan may use any model the account lists.
 
 While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
 the conversation stays on its previous model and `enter` on Codex tries again.

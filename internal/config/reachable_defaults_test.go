@@ -424,18 +424,6 @@ func TestTheSavedTalkModelIsTheTalkDefaultWhenTheBuiltInIsUnreachable(t *testing
 	}
 }
 
-func TestAPausedPlanIsChosenOnlyWhenNothingElseIsConnected(t *testing.T) {
-	paused := modelsource.Connected{Source: vendoredSource(t, "codex"), Key: "codex-sentinel", PlanPaused: "limit reached"}
-	alone := defaultsFixture{services: []modelsource.Connected{paused}, models: map[string][]catalog.Model{"codex": codexRows()}}
-	if got := alone.pick(SlotTalk, DefaultModel, ""); got != "codex/gpt-6.1-terra" {
-		t.Fatalf("talk with only a paused plan = %q, want that plan", got)
-	}
-	beside := defaultsFixture{services: []modelsource.Connected{paused, {Source: vendoredSource(t, "ollama")}}, models: map[string][]catalog.Model{"codex": codexRows(), "ollama": ids("qwen3:8b")}}
-	if got := beside.pick(SlotTalk, DefaultModel, ""); got != "ollama/qwen3:8b" {
-		t.Fatalf("talk with a paused plan beside Ollama = %q, want Ollama", got)
-	}
-}
-
 func TestAFallbackSkipsAVariantOfTheTalkModel(t *testing.T) {
 	zai := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "z-ai"), Key: "zai"}}, models: map[string][]catalog.Model{"z-ai": ids("glm-5.3", "glm-5.3[1m]")}}
 	if got := zai.pick(SlotFallback, DefaultFallbackModel, "z-ai/glm-5.3"); got != "z-ai/glm-5.3[1m]" {
@@ -482,5 +470,87 @@ func TestTheSettingsRowsShowWhatAProfileWithoutOpenRouterUses(t *testing.T) {
 		if got := row.Value(); got != "ollama/qwen3:8b" {
 			t.Fatalf("%s row = %q, want the reachable model", key, got)
 		}
+	}
+}
+
+// The ordering rules read services the way a real profile resolves them: every
+// persisted row carries a plan-pause policy, and the person's order may put a
+// local server first.
+func TestAHostedProviderIsChosenBeforeALocalOneOnARealProfile(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	dir := t.TempDir()
+	listed := true
+	if err := WriteSources(dir, []PersistedSource{
+		{ID: "ollama", Written: "ollama", Listed: &listed, Order: 0},
+		{ID: "deepseek", Written: "deepseek", Key: "sk-ds-1234567890", Listed: &listed, Order: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	set := ResolveSources(dir, "", DefaultBaseURL)
+	for id, rows := range map[string][]catalog.Model{"ollama": ids("qwen3:8b", "llama3.2:3b"), "deepseek": ids("deepseek-v4-pro", "deepseek-v4-flash")} {
+		service, ok := set.ByID(id)
+		if !ok {
+			t.Fatalf("no %s row", id)
+		}
+		if err := catalog.Remember(CatalogOptionsFor(service, dir), rows); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := ChatDefaultAt(dir); got != "deepseek/deepseek-v4-pro" {
+		t.Fatalf("talk = %q, want DeepSeek before the local server", got)
+	}
+	if got := ModelFallbacksAt(dir); got != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("fallback = %q, want the talk provider's other model", got)
+	}
+	if got := TierModelAt(dir, ModelTierReflex); got != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("reflex seat = %q, want the talk provider's light model", got)
+	}
+	if got := TierModelAt(dir, ModelTierLow); got != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("small work seat = %q, want the talk provider's light model", got)
+	}
+	if got := KnowledgeModelAt(dir); got != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("knowledge = %q, want the talk provider's light model", got)
+	}
+}
+
+func TestAModelWithAnUnknownPriceIsNotTakenForTheCheapest(t *testing.T) {
+	models := []catalog.Model{
+		{ID: "vendor/big-flagship-pro", PriceUnknown: true},
+		{ID: "vendor/small-mini", PromptPrice: 1e-8, CompletionPrice: 1e-8},
+		{ID: "vendor/mid", IntelligenceIndex: 30, PromptPrice: 1e-6, CompletionPrice: 1e-6},
+	}
+	if got := pickLight(models).ID; got != "vendor/small-mini" {
+		t.Fatalf("light = %q, want the model whose name says it is small", got)
+	}
+	if got := rankByStrength(models)[len(models)-1].ID; got != "vendor/big-flagship-pro" {
+		t.Fatalf("strongest = %q, want the flagship by its name", got)
+	}
+}
+
+func TestHelpersFollowTheConversationsProviderOverAListedBuiltIn(t *testing.T) {
+	f := defaultsFixture{
+		services: []modelsource.Connected{{Source: vendoredSource(t, "codex"), Key: "codex-sentinel"}, {Source: vendoredSource(t, "deepseek"), Key: "sk-ds"}},
+		models:   map[string][]catalog.Model{"codex": codexRows(), "deepseek": ids("deepseek-v4-pro", "deepseek-v4-flash-0731")},
+	}
+	if got := f.pick(SlotLight, DefaultLowModel, "codex/gpt-6.1-terra"); got != "codex/gpt-6-luna" {
+		t.Fatalf("small work with a ChatGPT conversation = %q, want ChatGPT's light model", got)
+	}
+	if got := f.pick(SlotLight, DefaultLowModel, ""); got != DefaultLowModel {
+		t.Fatalf("small work with no saved conversation model = %q, want the listed built-in", got)
+	}
+}
+
+func TestAModelVariableSkipsTheDefaultInLoad(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-1234567890")
+	t.Setenv(ModelEnv, "vendor/chosen-model")
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Model != "vendor/chosen-model" {
+		t.Fatalf("Load().Model = %q, want the model variable", cfg.Model)
 	}
 }

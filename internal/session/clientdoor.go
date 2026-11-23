@@ -267,6 +267,9 @@ func newProviderClient(config Config, model string) (*provider.Client, error) {
 	// really carries a row of its own still hands it down and still wins.
 	settings.Routing = provider.StaticRouting(config.Routing)
 	settings.Fallbacks = config.ModelFallbacks
+	if config.ModelFallbacksNow != nil {
+		settings.Fallbacks = config.ModelFallbacksNow()
+	}
 	settings.NearestModels = config.NearestModels
 	client, err := provider.NewClient(settings)
 	if err != nil {

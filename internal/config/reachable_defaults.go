@@ -16,7 +16,7 @@ import (
 
 // DefaultSlot names the kind of work a built-in default model is chosen for.
 //
-// A DEFAULT IS ONLY A DEFAULT IF IT CAN ANSWER. Every built-in model id in this
+// A default is only a default if it can answer. Every built-in model id in this
 // package is an OpenRouter id, and an id without a connected prefix is sent to
 // the OpenRouter row, which is always present, key or none. So a profile that
 // connected only ChatGPT, or only Ollama, opened its conversations, its titles,
@@ -43,7 +43,7 @@ const (
 // ReachableDefaultAt is builtIn when OpenRouter is connected or a connected
 // service can send it, else the model a connected service offers for slot.
 //
-// AN OPENROUTER KEY KEEPS EVERY BUILT-IN EXACTLY AS IT WAS. The built-ins are
+// An OpenRouter key keeps every built-in exactly as it was. The built-ins are
 // OpenRouter's models, chosen for it; with OpenRouter connected nothing here
 // second-guesses them, and nothing past the key check is read, which keeps the
 // common profile's cost to one source resolution.
@@ -90,13 +90,28 @@ func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTal
 	if len(connected) == 0 {
 		return builtIn
 	}
-	if builtIn != "" && offered(sources, builtIn, modelsOf) {
+	if builtIn != "" && offered(sources, builtIn, modelsOf) && sameProvider(sources, builtIn, chosenTalk, modelsOf) {
 		return builtIn
 	}
 	if chosen := reachableDefault(sources, connected, slot, chosenTalk, modelsOf); chosen != "" {
 		return chosen
 	}
 	return builtIn
+}
+
+// sameProvider reports whether builtIn is on the provider of the saved
+// conversation model, or there is no saved one to follow. A built-in another
+// connected account happens to list is not taken while the conversation runs
+// elsewhere, so the helpers and the fallback stay on the conversation's
+// provider.
+func sameProvider(sources modelsource.Set, builtIn, chosenTalk string, modelsOf func(modelsource.Connected) []catalog.Model) bool {
+	chosenTalk = strings.TrimSpace(chosenTalk)
+	if chosenTalk == "" || !offered(sources, chosenTalk, modelsOf) {
+		return true
+	}
+	talk, _ := sources.For(stripLevel(chosenTalk))
+	builtInService, _ := sources.For(stripLevel(builtIn))
+	return strings.EqualFold(talk.Source.ID, builtInService.Source.ID)
 }
 
 // openRouterConnected reports whether the OpenRouter row has a key.
@@ -108,7 +123,7 @@ func openRouterConnected(sources modelsource.Set) bool {
 // reachableDefault is the file-free half of [ReachableDefaultAt]: it chooses
 // among the connected services, reading each one's models through modelsOf.
 //
-// EVERY SLOT FOLLOWS ONE PROVIDER: the provider of the conversation model. That
+// Every slot follows one provider: the provider of the conversation model. That
 // is the model the person saved when a connected service can send it; else it
 // is chosen here, from a hosted provider (a plan or a keyed service) before a
 // local server, because a model on this machine is the one most likely to be
@@ -132,7 +147,7 @@ func reachableDefault(sources modelsource.Set, connected []modelsource.Connected
 	if talk == "" {
 		return ""
 	}
-	ordered := preferService(connected, talkService)
+	ordered := preferService(hostedFirst(connected), talkService)
 	switch slot {
 	case SlotTalk:
 		return talk
@@ -157,7 +172,7 @@ func reachableDefault(sources modelsource.Set, connected []modelsource.Connected
 			// The talk provider offers one model: another provider's own talk model.
 			return service.Qualify(pickTalk(service, models).ID)
 		}
-		// NO OTHER MODEL ANYWHERE: the fallback names the conversation model
+		// No other model anywhere: the fallback names the conversation model
 		// itself. A fallback row naming only the current model keeps the answer
 		// on that model, where an empty one would let the catalog suggest a
 		// model on a provider nobody connected.
@@ -167,22 +182,12 @@ func reachableDefault(sources modelsource.Set, connected []modelsource.Connected
 }
 
 // hostedFirst puts the services that run elsewhere ahead of the ones on this
-// machine, and a paused plan after both, keeping the person's order within each
-// group. A paused plan is still chosen when it is the only service connected.
+// machine, keeping the person's order within each group.
 func hostedFirst(services []modelsource.Connected) []modelsource.Connected {
-	rank := func(service modelsource.Connected) int {
-		switch {
-		case strings.TrimSpace(service.PlanPaused) != "":
-			return 2
-		case isLocalService(service):
-			return 1
-		}
-		return 0
-	}
 	out := make([]modelsource.Connected, 0, len(services))
-	for group := 0; group <= 2; group++ {
+	for _, local := range []bool{false, true} {
 		for _, service := range services {
-			if rank(service) == group {
+			if isLocalService(service) == local {
 				out = append(out, service)
 			}
 		}
@@ -221,7 +226,7 @@ func connectedServices(sources modelsource.Set) []modelsource.Connected {
 }
 
 // offered reports whether model routes to a connected service that can serve
-// it. ROUTING ALONE IS NOT ENOUGH: a built-in `deepseek/…` id routes to a
+// it. Routing alone is not enough: a built-in `deepseek/…` id routes to a
 // connected DeepSeek account by its prefix, and that account's own list need
 // not carry the id. So a service whose models are known must list the model;
 // one that can say nothing about its models, and the OpenRouter row, whose
@@ -305,7 +310,7 @@ func namedModels(service modelsource.Connected) []catalog.Model {
 		}
 		return rows
 	}
-	// A SERVICE THAT PUBLISHES NO LIST STILL NAMES TWO MODELS IT SERVES: the
+	// A service that publishes no list still names two models it serves: the
 	// preferred one and the one its connection check is sent to, which is a
 	// small model on purpose (Qwen's `qwen3.8-flash` beside `qwen3.7-plus`).
 	// Offering both gives the helper seats a light model instead of the flagship.
@@ -378,9 +383,10 @@ func pickTalk(service modelsource.Connected, models []catalog.Model) catalog.Mod
 // `haiku` before `claude-haiku-4-5`, Z.ai's `glm-5.3-flash` before its
 // 1M-context `glm-5.3-flash[1m]`.
 func pickLight(models []catalog.Model) catalog.Model {
-	lightest := strengthKey(rankByStrength(models)[0])
+	useIndex, usePrice := rankingSignals(models)
+	lightest := strengthKey(rankByStrength(models)[0], useIndex, usePrice)
 	for _, model := range models {
-		if strengthKey(model) == lightest {
+		if strengthKey(model, useIndex, usePrice) == lightest {
 			return model
 		}
 	}
@@ -420,15 +426,17 @@ func withoutVariant(id string) string {
 	return id
 }
 
-// rankByStrength orders models from lightest to strongest. Each model's
-// strength is read from the best signal its provider published, in this order:
-// a published intelligence index, a published price, then what its name and
+// rankByStrength orders models from lightest to strongest. Strength is read
+// from the best signal the provider published for every model in the list, in
+// this order: an intelligence index, then a price, then what the names and the
 // listing say (family words such as mini, flash or haiku against pro, opus or
-// max; a parameter count such as 8b or 70b; how many thinking levels it
-// takes). Models that cannot be told apart keep the provider's own order, the
-// first one listed counting as the stronger, since providers list their
-// flagship first.
+// max; a parameter count such as 8b or 70b; how many thinking levels a model
+// takes). A published signal counts only when every model carries it: a model
+// whose price or index is unknown is not thereby the cheapest or the weakest.
+// Models that cannot be told apart keep the provider's own order, the first one
+// listed counting as the stronger, since providers list their flagship first.
 func rankByStrength(models []catalog.Model) []catalog.Model {
+	useIndex, usePrice := rankingSignals(models)
 	type scored struct {
 		model catalog.Model
 		index int
@@ -436,7 +444,7 @@ func rankByStrength(models []catalog.Model) []catalog.Model {
 	}
 	rows := make([]scored, len(models))
 	for index, model := range models {
-		rows[index] = scored{model: model, index: index, key: strengthKey(model)}
+		rows[index] = scored{model: model, index: index, key: strengthKey(model, useIndex, usePrice)}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		for k := range rows[i].key {
@@ -453,18 +461,38 @@ func rankByStrength(models []catalog.Model) []catalog.Model {
 	return out
 }
 
-func strengthKey(model catalog.Model) [5]float64 {
-	price := 0.0
-	if !model.PriceUnknown && !strings.HasSuffix(strings.ToLower(model.ID), ":free") {
-		price = model.PromptPrice + model.CompletionPrice
+// rankingSignals reports which published signals every model in the list
+// carries, so a ranking reads only those.
+func rankingSignals(models []catalog.Model) (useIndex, usePrice bool) {
+	useIndex, usePrice = true, true
+	for _, model := range models {
+		useIndex = useIndex && model.IntelligenceIndex > 0
+		usePrice = usePrice && knownPrice(model) > 0
 	}
-	return [5]float64{
-		model.IntelligenceIndex,
-		price,
-		float64(familyWeight(model.ID)),
-		parameterBillions(model.ID),
-		float64(len(model.Reasoning.Efforts)),
+	return useIndex, usePrice
+}
+
+// knownPrice is a model's published price per token, or zero when it is
+// unknown or the model is a free route.
+func knownPrice(model catalog.Model) float64 {
+	if model.PriceUnknown || strings.HasSuffix(strings.ToLower(model.ID), ":free") {
+		return 0
 	}
+	return model.PromptPrice + model.CompletionPrice
+}
+
+func strengthKey(model catalog.Model, useIndex, usePrice bool) [5]float64 {
+	var key [5]float64
+	if useIndex {
+		key[0] = model.IntelligenceIndex
+	}
+	if usePrice {
+		key[1] = knownPrice(model)
+	}
+	key[2] = float64(familyWeight(model.ID))
+	key[3] = parameterBillions(model.ID)
+	key[4] = float64(len(model.Reasoning.Efforts))
+	return key
 }
 
 // familyWeight is the hand-written half of the ranking: words providers use for

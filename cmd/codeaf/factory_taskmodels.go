@@ -187,6 +187,7 @@ func factoryApplyTaskPolicy(cfg session.Config, profileDir string) (session.Conf
 	cfg.Sources = sources
 	cfg.Model, cfg.OneModel, cfg.TaskModel = send, true, ""
 	cfg.RolesSource, cfg.RouteCrew, cfg.ModelFallbacks, cfg.NearestModels = nil, nil, nil, nil
+	cfg.ModelFallbacksNow = nil
 	// NO SECOND TEXT MODEL: the pool judge scores landings with a crew model,
 	// and the launch model's window is not the one model's.
 	cfg.TaskLanded = nil
@@ -211,6 +212,7 @@ func factoryGovernedParent(cfg session.Config, profileDir string) (session.Confi
 func factoryRefusedParent(cfg session.Config) session.Config {
 	cfg.Model, cfg.OneModel, cfg.TaskModel = "", true, ""
 	cfg.RolesSource, cfg.RouteCrew, cfg.ModelFallbacks, cfg.NearestModels = nil, nil, nil, nil
+	cfg.ModelFallbacksNow = nil
 	cfg.TaskLanded = nil
 	cfg.ContextWindow = 0
 	return cfg
