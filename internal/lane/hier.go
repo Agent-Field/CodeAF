@@ -1,6 +1,7 @@
 package lane
 
 import (
+	"maps"
 	"math"
 	"sort"
 	"strings"
@@ -239,6 +240,22 @@ type chains struct {
 	// opened yesterday and has measured nothing knows less about the world's
 	// pace than it did when it opened.
 	Since time.Time `json:"since,omitzero"`
+}
+
+// copied is this hierarchy with every map of its own, so that nothing a later
+// observation writes into the original can reach the copy. A struct copy is not
+// that: it carries the same map headers, which is how the belief writer once
+// encoded the ledger's live maps while a sighting wrote to them
+// (snapshot_race_test.go). The levels are small (a few dozen lanes and models,
+// a few hundred pairs) and a compaction is rare, so the copy costs nothing
+// that matters beside the file it is about to write.
+func (c chains) copied() chains {
+	c.Lane = maps.Clone(c.Lane)
+	c.Model = maps.Clone(c.Model)
+	c.Pair = maps.Clone(c.Pair)
+	c.Drift = maps.Clone(c.Drift)
+	c.Spread = maps.Clone(c.Spread)
+	return c
 }
 
 // levelVariance is the prior variance at one level.
@@ -546,6 +563,14 @@ type tally struct {
 type tallies struct {
 	Lane  map[string]tally `json:"lane,omitempty"`
 	Model map[string]tally `json:"model,omitempty"`
+}
+
+// copied is these tallies with maps of their own, for the reason
+// [chains.copied] gives.
+func (t tallies) copied() tallies {
+	t.Lane = maps.Clone(t.Lane)
+	t.Model = maps.Clone(t.Model)
+	return t
 }
 
 // observe folds one outcome into both parents, forgetting first so that three

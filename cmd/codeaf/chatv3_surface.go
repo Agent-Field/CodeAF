@@ -183,6 +183,8 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		// A BREW, DISTRO OR NIX FILE, OR ONE IN A FOLDER THIS ACCOUNT CANNOT
 		// WRITE, is not ours to replace in place.
 		Refusal: func() string { return codeupdate.InstallRefusal(executable, curl) },
+		// The desktop app's engine is a source build, so /update asks this first.
+		BundleRefusal: func() string { return codeupdate.BundleRefusal(executable, curl) },
 		// THE BUILD'S HALF OF THE AUTOMATIC ROAD, decided by the check off the
 		// frame on the resolved file (codeupdate.AutomaticFor), exactly as the
 		// launch's own road decides it (prelaunch.go): only a stable codeaf

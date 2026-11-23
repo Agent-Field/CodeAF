@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
@@ -387,8 +388,28 @@ func (e Engine) recordMaterializedStat(c cell.Cell, snapshot string) {
 	if tree == "" {
 		return
 	}
+	entries, ok := stampTree(tree)
+	if !ok {
+		return
+	}
+	e.writeStatIndex(c, snapshot, tree, entries)
+}
+
+// stampWalks counts the walks that stat every file of a chat's folder, so a test
+// can state the cost of a seal as a number: ONE WALK PER SEAL, which is what the
+// stat index has always cost and what catching an in-place edit may not add to
+// (stampscan.go). It is a counter and not a clock because wall time is a
+// property of the machine and a count is a property of the code.
+var stampWalks atomic.Int64
+
+// stampTree is the stat record of every file under tree that the stat index
+// covers: size, modified time and mode, and nothing that needs a file opened.
+// It answers false when the walk could not finish, which is "no record" and
+// never "an empty folder".
+func stampTree(tree string) (map[string]statEntry, bool) {
+	stampWalks.Add(1)
 	entries := map[string]statEntry{}
-	walkErr := filepath.WalkDir(tree, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(tree, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -417,9 +438,13 @@ func (e Engine) recordMaterializedStat(c cell.Cell, snapshot string) {
 		}
 		return nil
 	})
-	if walkErr != nil {
-		return
-	}
+	return entries, err == nil
+}
+
+// writeStatIndex records entries as the stat record of snapshot's folder, with
+// the chat's own journal beside them. The files' stamps are whatever the caller
+// took; the journal's are read here, at the end of the seal that wrote it.
+func (e Engine) writeStatIndex(c cell.Cell, snapshot, tree string, entries map[string]statEntry) {
 	tPath := rel(c, cell.TranscriptPath)
 	var tEnd, tMod int64
 	var tHash string

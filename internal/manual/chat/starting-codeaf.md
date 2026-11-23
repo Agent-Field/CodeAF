@@ -774,7 +774,7 @@ second terminal while codeaf is running.
 the screen.** That is on purpose: codeaf takes over the whole terminal, so a warning
 printed to it would land spliced into the middle of what you are typing and be gone with
 the next redraw. It holds internal warnings, recovered internal faults with their stacks,
-and notes about things codeaf fell back from — the kind of thing to send along if you are
+notes about things codeaf fell back from, and the cause of a save that failed at quit — the kind of thing to send along if you are
 reporting something odd. The redirect lasts exactly as long as the conversation is up, and
 ordinary output goes back to the terminal when you quit.
 

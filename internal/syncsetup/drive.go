@@ -722,6 +722,16 @@ func (d *Drive) Viewer() (string, bool) {
 	return d.viewer.Line, d.viewer.Line != ""
 }
 
+// Viewing says this window may only show the chat: another computer took it, or
+// this window let go of it and has not taken it back. It is the fact the saving
+// boundary reads to tell a window with turns of its own to keep from one that
+// has none, so it reads the same two fields [Drive.Gate] refuses work on.
+func (d *Drive) Viewing() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lost || d.viewer.Line != ""
+}
+
 // RenewalStatus reads this writer's cached renewal health without network work.
 func (d *Drive) RenewalStatus() (time.Time, time.Duration, bool) {
 	if d.batcher == nil || d.sync.removed.Load() {
@@ -932,6 +942,10 @@ type stamping struct {
 }
 
 var _ cellstore.Store = stamping{}
+
+// Viewing lets the recorder behind this store ask whether its window only
+// shows the chat ([Drive.Viewing]).
+func (s stamping) Viewing() bool { return s.drive.Viewing() }
 
 // Seal implements cellstore.Store.
 func (s stamping) Seal(ctx context.Context, c cell.Cell, info cellstore.TurnInfo) (cellstore.Sealed, error) {

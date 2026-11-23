@@ -43,8 +43,8 @@ The 31 browser ones are **Google** (Gmail and Calendar), **Slack**, **GitHub**, 
 **Airtable, Atlassian, Buildkite, Calendly, Canva, CircleCI, ClickUp, Cloudflare,
 Datadog, GitLab, Grafana, Heroku, Hugging Face, Klaviyo, LaunchDarkly, Linear,
 Miro, Neon, Netlify, Notion, PayPal, PostHog, Postman, Railway, Sanity, Sentry,
-Supabase** and **Todoist**. A build without GitHub's sign-in application lists GitHub
-as a pasted-token account instead (see "Connect GitHub").
+Supabase** and **Todoist**. In the desktop app, a build without GitHub's sign-in
+application lists GitHub as a pasted-token account instead (see "Connect GitHub").
 The 99 key accounts come from the bundled connectors catalog and are filed under
 eleven categories: `crm`, `support`, `billing`, `marketing`, `sales & outreach`,
 `calls & meetings`, `analytics`, `hr & recruiting`, `developer`, `productivity`,
@@ -450,7 +450,8 @@ GitHub is one connection per computer, and it is **the same one the Factory read
 connecting it on the Connectors page or in the Factory's first step shows it connected
 in both, and disconnecting it in either disconnects both. codeaf keeps no second copy.
 
-There are three ways in:
+There are three ways in. The desktop app offers all three; the terminal's `/connect`
+offers only the first:
 
 - **Sign in in your browser.** codeaf shows a one-time code such as `ABCD-1234` and
   the page `https://github.com/login/device`; type the code there and approve. The
@@ -468,9 +469,12 @@ There are three ways in:
 Agents get **GitHub's own tools** from its hosted tool server,
 `https://api.githubcopilot.com/mcp/`: reading code, issues and pull requests is on
 (yes), and anything that changes GitHub asks first. The browser sign-in asks for the
-`repo` permission. A build without GitHub's sign-in application offers only the gh
-login and a pasted token. `GH_TOKEN` or `GITHUB_TOKEN` in the shell also counts as
-connected, and a disconnect says to unset it.
+`repo` permission. A build without GitHub's sign-in application offers the desktop app
+only the gh login and a pasted token; the terminal's `/connect` answers "This build
+cannot sign in to GitHub in the browser. Paste a token or use the gh login on this
+computer." and offers neither. `GH_TOKEN` or `GITHUB_TOKEN` in the shell counts as
+connected, and a disconnect says to unset it; without the sign-in application it is the
+terminal's only way in.
 
 ## How MCP tool names are built, and how many can be armed
 

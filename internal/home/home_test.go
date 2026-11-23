@@ -312,3 +312,116 @@ func TestH10LoginHomeFollowsOverrideAndQuarantinesTheInherited(t *testing.T) {
 		t.Fatalf("Login with nothing named = %q, want the quarantine %q", got, quarantine)
 	}
 }
+
+// clearLoginRecord leaves no recorded login home, in either spelling, and puts
+// the process back as it was when the test ends.
+func clearLoginRecord(t *testing.T) {
+	t.Helper()
+	t.Setenv(LoginEnvVar, "")
+	t.Setenv(env.Legacy(LoginEnvVar), "")
+	for _, name := range []string{LoginEnvVar, env.Legacy(LoginEnvVar)} {
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// H11: under `codeaf app --home` the state root moves and the person's login
+// home does not. Login keeps naming the real home, which is where every
+// other program's folders are read; the state root and codeaf's own skills
+// folder stay on the app's folder; and a process that set only CODEAF_HOME is
+// exactly what it was, a disposable home that reads nobody's.
+func TestH11AppHomeMovesTheStateRootAndNotTheLoginHome(t *testing.T) {
+	login := t.TempDir()
+	state := filepath.Join(t.TempDir(), "app-state")
+	t.Setenv("HOME", login)
+	t.Setenv(EnvVar, state)
+	clearLoginRecord(t)
+
+	if got, err := Login(); err != nil || got != state {
+		t.Fatalf("Login with only CODEAF_HOME = %q err = %v, want the quarantine %q", got, err, state)
+	}
+	if got := OwnLogin(login); got != login {
+		t.Fatalf("OwnLogin with nothing recorded = %q, want the home it was asked about, %q", got, login)
+	}
+
+	restore := KeepLogin()
+	if got, err := Login(); err != nil || got != login {
+		t.Fatalf("Login under the app = %q err = %v, want the real login home %q", got, err, login)
+	}
+	if got, err := StateLogin(); err != nil || got != state {
+		t.Fatalf("StateLogin under the app = %q err = %v, want the app's folder %q", got, err, state)
+	}
+	if got := Dir(); got != state {
+		t.Fatalf("Dir under the app = %q, want the app's folder %q", got, state)
+	}
+	if got := OwnLogin(login); got != state {
+		t.Fatalf("OwnLogin of the real login home under the app = %q, want the app's folder %q", got, state)
+	}
+	if other := t.TempDir(); OwnLogin(other) != other {
+		t.Fatalf("OwnLogin of a home that is not the login home moved to %q", OwnLogin(other))
+	}
+	// A child process starts from this environment, so it answers the same way.
+	passedOn := false
+	for _, entry := range os.Environ() {
+		if entry == LoginEnvVar+"="+login {
+			passedOn = true
+		}
+	}
+	if !passedOn {
+		t.Fatalf("the real login home is not in the environment a child inherits")
+	}
+
+	restore()
+	if got, err := Login(); err != nil || got != state {
+		t.Fatalf("Login after the restore = %q err = %v, want the quarantine %q", got, err, state)
+	}
+	if value, set := os.LookupEnv(LoginEnvVar); set {
+		t.Fatalf("the restore left %s = %q behind", LoginEnvVar, value)
+	}
+}
+
+// H11 again, for a record that was already there: the restore puts back what
+// it found, not nothing.
+func TestH11KeepLoginRestoresARecordItFound(t *testing.T) {
+	t.Setenv(LoginEnvVar, "/earlier/login")
+	t.Setenv("HOME", t.TempDir())
+	restore := KeepLogin()
+	restore()
+	if got := os.Getenv(LoginEnvVar); got != "/earlier/login" {
+		t.Fatalf("after the restore %s = %q, want the record that was there", LoginEnvVar, got)
+	}
+}
+
+// H12: a test binary never reads the home of whoever ran it, through this door
+// either. The home KeepLogin records is the quarantine when nothing pinned a
+// HOME, and a record the process was merely handed is not obeyed.
+func TestH12AppHomeNeverRecordsTheHomeOfWhoeverRanTheTest(t *testing.T) {
+	originalHome := os.Getenv("HOME")
+	if originalHome == "" {
+		t.Skip("no HOME was set for this process, so there is no inherited home to quarantine")
+	}
+	state := filepath.Join(t.TempDir(), "app-state")
+	t.Setenv(EnvVar, state)
+	clearLoginRecord(t)
+
+	t.Setenv("HOME", originalHome)
+	restore := KeepLogin()
+	defer restore()
+	if got, err := Login(); err != nil || got != quarantine {
+		t.Fatalf("Login after an app home with nothing pinned = %q err = %v, want the quarantine %q", got, err, quarantine)
+	}
+
+	// A record this process was started with is the person's, not the test's.
+	handed := t.TempDir()
+	t.Setenv(LoginEnvVar, handed)
+	previous := inheritedLogin
+	inheritedLogin = handed
+	t.Cleanup(func() { inheritedLogin = previous })
+	if got, err := Login(); err != nil || got == handed {
+		t.Fatalf("Login obeyed a record the process was handed: %q err = %v", got, err)
+	}
+	if got := OwnLogin(handed); got != handed {
+		t.Fatalf("OwnLogin moved a home for a record the process was handed: %q", got)
+	}
+}

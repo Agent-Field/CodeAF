@@ -1,12 +1,15 @@
 package remote
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -154,4 +157,42 @@ func TestSkillFoldersCrossTheHostConnection(t *testing.T) {
 		}
 	}
 	t.Fatalf("host skill missing from %v", found)
+}
+
+// A host started by `codeaf app --home <dir>` keeps codeaf's own skills in that
+// folder and still reads the other programs' from the person's real login home,
+// and it never reads the command line's .codeaf/skills there. The host process
+// learns both from its environment.
+func TestSkillFoldersOfAnAppHostFollowTheLoginHome(t *testing.T) {
+	workspace, login, state := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv(home.EnvVar, state)
+	t.Setenv(home.LoginEnvVar, login)
+	write := func(dir, name string) {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "---\nname: " + name + "\ndescription: A skill on the host\n---\nUse this skill.\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(login, ".claude", "skills", "from-claude"), "from-claude")
+	write(filepath.Join(login, ".codeaf", "skills", "cli-only"), "cli-only")
+	write(filepath.Join(state, ".codeaf", "skills", "app-canvas"), "app-canvas")
+	raw, err := serveSkillFolders(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found []skills.Skill
+	if err := json.Unmarshal(raw, &found); err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, skill := range found {
+		names[skill.Name] = true
+	}
+	if !names["from-claude"] || !names["app-canvas"] || names["cli-only"] {
+		t.Fatalf("the app host's folders = %v, want from-claude and app-canvas and not cli-only", names)
+	}
 }

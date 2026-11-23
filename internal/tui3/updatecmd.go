@@ -149,6 +149,12 @@ func (a *app) runUpdateCommand(argument string) tea.Cmd {
 		a.note("this window cannot update codeaf here · install a release with: " + a.updateCurlLine())
 		return nil
 	}
+	if a.updateAuto != nil && a.updateAuto.BundleRefusal != nil {
+		if refusal := strings.TrimSpace(a.updateAuto.BundleRefusal()); refusal != "" {
+			a.note(refusal)
+			return nil
+		}
+	}
 	if codeupdate.Kind(a.updateRunning) == "other" {
 		a.note("this codeaf was built from source · rebuild with make build, or install a release: " + codeupdate.CurlCommand)
 		return nil

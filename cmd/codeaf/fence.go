@@ -49,11 +49,29 @@ func unattendedFence(workspace, profileDir string, receipts ...string) (*executo
 		Root:       workspace,
 		Home:       person,
 		CodeafHome: home.Dir(),
-		StateDir:   state,
-		Allow:      executor.ParseFenceAllow(person, words...),
-		Receipts:   receipts,
-		Canvases:   []string{deskCanvasRoot(os.Getenv, person, runtime.GOOS)},
+		// A home the person keeps apart from the command line's, the desktop
+		// app's --home, must not reach the command line's secrets either.
+		OtherCodeafHomes: otherCodeafHomes(person),
+		StateDir:         state,
+		Allow:            executor.ParseFenceAllow(person, words...),
+		Receipts:         receipts,
+		Canvases:         []string{deskCanvasRoot(os.Getenv, person, runtime.GOOS)},
 	})
+}
+
+// otherCodeafHomes is the person's own default codeaf folder when this process
+// keeps its state in a different one, and nothing otherwise. Under the desktop
+// app's --home the fence hides the app's secret files and, with this, the
+// command line's: they are the person's, not the app's.
+func otherCodeafHomes(person string) []string {
+	if person == "" {
+		return nil
+	}
+	own, current := home.DefaultUnder(person), home.Dir()
+	if home.Contains(own, current) && home.Contains(current, own) {
+		return nil
+	}
+	return []string{own}
 }
 
 // deskCanvasRoot is the desktop app's canvas folder as its `canvas` command
