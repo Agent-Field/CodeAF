@@ -430,7 +430,11 @@ provider is checked the way `/connect` checks it: its model list, a one-token ca
 it has none, and for a provider with a coding plan each way of paying in turn, plan
 first. What the check found besides the key — the region, the plan the key opened, the
 address — is kept in the profile where the terminal reads it; the key is not. A provider
-that lists no models offers the model `/connect` would move a conversation onto.
+that has no model list offers the model `/connect` would move a conversation onto; one
+that answers with an empty list is turned away, at the check and again when the
+connection is saved. Another custom endpoint is added as its own connection, with its
+own saved address and id, rather than replacing the first (see "Add another custom
+endpoint or replace a connection").
 
 The ChatGPT sign-in is the one credential the app leaves in the profile, exactly where
 the terminal keeps it, because its tokens change on every refresh; the app keeps no key
