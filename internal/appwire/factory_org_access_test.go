@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -93,5 +95,57 @@ func TestOrgAccessIsAnnouncedOnlyByAnEngineThatServesIt(t *testing.T) {
 	}
 	if h := withFactoryOrgAccessFeature(Hello{}, &orgAccessEngine{}); !slices.Contains(h.Features, FeatureOrgAccess) {
 		t.Fatalf("announced %v", h.Features)
+	}
+}
+
+func TestContractM1OrgTranscriptForwardsOneCheckedGet(t *testing.T) {
+	const method = "factory.org_transcript"
+	const conn = `"connection":"c1"`
+	for _, want := range []struct{ params, path string }{
+		{`"kind":"chat","id":"ch_1"`, "/v1/resources/chat/ch_1/transcript"},
+		{`"kind":"session","id":"afi:ws_1:mia","since":3`, "/v1/resources/session/afi:ws_1:mia/transcript?since=3"},
+	} {
+		e := &orgAccessEngine{}
+		if _, err := methods[method].call(e, json.RawMessage(`{`+conn+`,`+want.params+`}`)); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.got) != 1 || !reflect.DeepEqual(e.got[0], OrgRequest{Method: http.MethodGet, Path: want.path}) {
+			t.Fatalf("requests: %+v", e.got)
+		}
+	}
+	for _, bad := range []string{
+		`"kind":"chat/../policy","id":"ch_1"`,
+		`"kind":"chat","id":"../policy"`,
+		`"kind":"chat","id":"ch_1?since=9"`,
+		`"kind":"chat","id":"ch_1","since":-1`,
+	} {
+		e := &orgAccessEngine{}
+		_, err := methods[method].call(e, json.RawMessage(`{`+conn+`,`+bad+`}`))
+		if wireCode(t, err) != CodeBadParams || len(e.got) != 0 {
+			t.Fatalf("%s: %v, requests %+v", bad, err, e.got)
+		}
+	}
+}
+
+func TestContractM2ProtocolNamesMovesTranscriptsAndLapses(t *testing.T) {
+	methods, _ := documented(t)
+	if !methods["factory.org_transcript"] {
+		t.Fatal("the protocol method table lacks factory.org_transcript")
+	}
+	raw, err := os.ReadFile(protocolDoc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, words := range []string{
+		"Only the chat's owner can move it",
+		"`agent_usable`",
+		"`agent_words`",
+		"GET /v1/resources/{kind}/{id}/transcript",
+		"A chat move or a lapse of a grant on a registered resource",
+		"resource.changed {kind, id}",
+	} {
+		if !strings.Contains(string(raw), words) {
+			t.Errorf("missing protocol words %q", words)
+		}
 	}
 }

@@ -228,7 +228,8 @@ type Handler struct {
 	drivers driverHands
 	// agentDesk holds each organization workstream's server agent and its
 	// conversation (workstream_agent.go).
-	agentDesk agentDesk
+	agentDesk    agentDesk
+	grantSweeper grantSweeper
 	// ordersTimer wakes for the soonest standing order due in any
 	// organization workstream (workstream_orders.go).
 	ordersMu     sync.Mutex
@@ -425,7 +426,10 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.orgSetupRoutes()
 	h.chatRoutes()
 	h.accessRoutes()
+	h.reconcileChatFolders()
 	h.backfillChats()
+	h.backfillSessions()
+	h.startGrantSweep()
 	h.mySpaceRoutes()
 	h.orgAgentRoutes()
 	h.orgLibraryRoutes()
@@ -469,6 +473,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeGrantSweep()
 		h.closeOrders()
 		h.closeAgents()
 		h.closeDocs()

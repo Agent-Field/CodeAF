@@ -182,8 +182,13 @@ func (w TaskWrite) Put(t factory.WorkstreamTask, rev int) error {
 	if err != nil {
 		return err
 	}
-	_, err = w.tx.Exec(`INSERT INTO tasks (ws, id, rev, doc) VALUES (?, ?, ?, ?)
-		ON CONFLICT (ws, id) DO UPDATE SET rev = excluded.rev, doc = excluded.doc`, t.WS, t.ID, t.Rev, string(doc))
+	if _, err := w.tx.Exec(`INSERT INTO tasks (ws, id, rev, doc) VALUES (?, ?, ?, ?)
+		ON CONFLICT (ws, id) DO UPDATE SET rev = excluded.rev, doc = excluded.doc`, t.WS, t.ID, t.Rev, string(doc)); err != nil {
+		return err
+	}
+	// A transcript authorization must follow a task that changes hands.
+	_, err = w.tx.Exec(`UPDATE resources SET owner_kind=?, owner_id=? WHERE kind=? AND id=?
+		AND (owner_kind<>? OR owner_id<>?)`, t.Owner.Kind, t.Owner.ID, SessionKind, TaskSessionID(t.WS, t.ID), t.Owner.Kind, t.Owner.ID)
 	return err
 }
 
@@ -195,7 +200,7 @@ func (w TaskWrite) Delete(ws, id string) error {
 			return err
 		}
 	}
-	return nil
+	return deleteResource(w.tx, SessionKind, TaskSessionID(ws, id))
 }
 
 // Move carries task id, and its whole thread, from one workstream to another.
@@ -206,8 +211,10 @@ func (w TaskWrite) Move(from, to, id string) error {
 	if _, err := w.tx.Exec(`UPDATE task_events SET ws = ? WHERE ws = ? AND task = ?`, to, from, id); err != nil {
 		return err
 	}
-	_, err := w.tx.Exec(`UPDATE task_reads SET ws = ? WHERE ws = ? AND task = ?`, to, from, id)
-	return err
+	if _, err := w.tx.Exec(`UPDATE task_reads SET ws = ? WHERE ws = ? AND task = ?`, to, from, id); err != nil {
+		return err
+	}
+	return deleteResource(w.tx, SessionKind, TaskSessionID(from, id))
 }
 
 // Append adds events to the threads they name, in order.
@@ -409,8 +416,10 @@ func (w TaskWrite) Hide(ws, id string, d TaskDeletion) error {
 	if err != nil {
 		return err
 	}
-	_, err = w.tx.Exec(`INSERT INTO task_deletions(ws,id,doc) VALUES(?,?,?)`, ws, id, string(doc))
-	return err
+	if _, err := w.tx.Exec(`INSERT INTO task_deletions(ws,id,doc) VALUES(?,?,?)`, ws, id, string(doc)); err != nil {
+		return err
+	}
+	return deleteResource(w.tx, SessionKind, TaskSessionID(ws, id))
 }
 
 // Reveal withdraws a receipt before its task is written back with a fresh revision.

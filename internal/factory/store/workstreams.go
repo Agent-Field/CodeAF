@@ -318,16 +318,21 @@ func (st *Store) wsTx(write func(tx *sql.Tx) error) error {
 		return err
 	}
 	return st.underLock(filepath.Join(st.root, workstreamsLock), func() error {
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		defer func() { _ = tx.Rollback() }()
-		if err := write(tx); err != nil {
-			return err
-		}
-		return tx.Commit()
+		return workstreamTx(db, write)
 	})
+}
+
+// workstreamTx commits one update while its caller holds the writer lock.
+func workstreamTx(db *sql.DB, write func(tx *sql.Tx) error) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := write(tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // EditWorkstreams changes any number of workstreams in one save, under a

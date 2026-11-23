@@ -37,7 +37,7 @@ func TestAccessConstructors(t *testing.T) {
 			for _, parent := range stack {
 				switch parent := parent.(type) {
 				case *ast.FuncDecl:
-					if name == "item_access.go" && slices.Contains([]string{"itemViewer", "viewerOf", "access"}, parent.Name.Name) {
+					if name == "item_access.go" && slices.Contains([]string{"itemViewer", "viewerOf", "accessAt"}, parent.Name.Name) {
 						return true
 					}
 				case *ast.ReturnStmt:

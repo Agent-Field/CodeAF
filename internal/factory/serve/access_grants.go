@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // listAccessGrants lists the live tuples on a resource for anyone who may view
@@ -79,10 +80,9 @@ func (h *Handler) grantSubject(subject acl.Subject) (acl.Subject, error) {
 	return subject, nil
 }
 
-// requestedGrant reads and checks a grant request against what the caller may
-// give. It is shared by add and preview, so a preview refuses exactly what an
-// add would, and nothing is written by either of them here.
-func (h *Handler) requestedGrant(w http.ResponseWriter, r *http.Request, v Viewer, res accessResource, before acl.Item) (acl.Grant, bool) {
+// requestedGrant checks add and preview against the same rights without
+// writing anything. The expiry words preserve preview's existing response.
+func (h *Handler) requestedGrant(w http.ResponseWriter, r *http.Request, v Viewer, res accessResource, before acl.Item, expiryWords string) (acl.Grant, bool) {
 	var body api.GrantNew
 	if !h.decode(w, r, &body, false) {
 		return acl.Grant{}, false
@@ -93,7 +93,7 @@ func (h *Handler) requestedGrant(w http.ResponseWriter, r *http.Request, v Viewe
 	}
 	now := v.acc.time()
 	if body.ExpiresAt != nil && !now.Before(*body.ExpiresAt) {
-		h.fail(w, http.StatusUnprocessableEntity, "the expiration must be in the future")
+		h.fail(w, http.StatusUnprocessableEntity, expiryWords)
 		return acl.Grant{}, false
 	}
 	if v.Handle == "" {
@@ -121,11 +121,15 @@ func (h *Handler) addAccessGrant(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := v.acc.tuplesFor(res.item)
 	before := v.acc.policyItem(res.item, raw)
-	g, ok := h.requestedGrant(w, r, v, res, before)
+	g, ok := h.requestedGrant(w, r, v, res, before, store.ErrGrantExpiry.Error())
 	if !ok {
 		return
 	}
-	g, err := h.config.Store.AddGrantAtPolicy(g, v.acc.rules().Rev)
+	var parent *Ref
+	if res.item.registered {
+		parent = &res.item.Parent
+	}
+	g, err := h.config.Store.AddGrantAtPolicy(g, v.acc.rules().Rev, h.clock, parent)
 	if h.accessFailed(w, err) {
 		return
 	}
@@ -133,6 +137,9 @@ func (h *Handler) addAccessGrant(w http.ResponseWriter, r *http.Request) {
 	raw.Grants = append(slices.Clone(raw.Grants), g)
 	after := v.acc.policyItem(res.item, raw)
 	h.grantChanged(r, res, v, before, after, "shared")
+	if g.ExpiresAt != nil {
+		h.scheduleGrantSweep()
+	}
 	h.write(w, http.StatusCreated, g)
 }
 
@@ -175,8 +182,12 @@ func (h *Handler) removeAccessGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clearPhase(w)
+	rearm := raw.Grants[index].ExpiresAt != nil
 	raw.Grants = slices.Delete(slices.Clone(raw.Grants), index, index+1)
 	h.grantChanged(r, res, v, before, v.acc.policyItem(res.item, raw), "removed access")
+	if rearm {
+		h.scheduleGrantSweep()
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -201,7 +212,7 @@ func (h *Handler) previewAccessGrant(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := v.acc.tuplesFor(res.item)
 	before := v.acc.policyItem(res.item, raw)
-	grant, ok := h.requestedGrant(w, r, v, res, before)
+	grant, ok := h.requestedGrant(w, r, v, res, before, "the expiration must be in the future")
 	if !ok {
 		return
 	}

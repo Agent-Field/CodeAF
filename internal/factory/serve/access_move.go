@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // moveAccessResource moves an item into another space: POST
@@ -22,10 +23,8 @@ import (
 // person who can only see the destination does not have. A destination the
 // actor cannot see, another person's space included, is 404, never 403.
 //
-// NOT GENERIC YET: only a canvas moves. A chat's conversation is kept in its
-// workstream's folder under the person who owns it, so moving one is a move of
-// files, which this route does not do; a page or file keeps its own route,
-// POST /v1/workstreams/{id}/files/move, with the Undo window it carries.
+// NOT GENERIC YET: A page or file keeps the workstream file move route
+// because that route offers Undo. Spaces, workstreams and sessions stay put.
 func (h *Handler) moveAccessResource(w http.ResponseWriter, r *http.Request) {
 	res, v, ok := h.findAccessResource(w, r)
 	if !ok {
@@ -42,7 +41,10 @@ func (h *Handler) moveAccessResource(w http.ResponseWriter, r *http.Request) {
 	}
 	switch res.item.Kind {
 	case ItemCanvas:
-	case "chat", "session":
+	case chatKind:
+		h.moveAccessChat(w, r, res.ref.ID, to)
+		return
+	case store.SessionKind:
 		h.fail(w, http.StatusConflict, "a "+res.item.Kind+" cannot be moved yet; start a new one where you want it")
 		return
 	default:

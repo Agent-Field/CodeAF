@@ -163,6 +163,8 @@ const agentEntriesKept = 1000
 // workstream's agent.
 const agentDirName = "workstream-agents"
 
+const workstreamArchivedWords = "This workstream is archived."
+
 // errAgentBusy is the refusal a second message gets while one is answered.
 var errAgentBusy = errors.New("busy")
 
@@ -172,6 +174,21 @@ type wsAgent struct {
 	seq     int
 	state   api.AgentState
 	cancel  context.CancelFunc
+	done    <-chan struct{}
+}
+
+// runEnded checks the run's final signal because idle is set before the
+// idle event is published.
+func (a *wsAgent) runEnded() bool {
+	if a.done == nil {
+		return true
+	}
+	select {
+	case <-a.done:
+		return true
+	default:
+		return false
+	}
 }
 
 // agentSeat is one person's conversation with one workstream's agent. AFI'S
@@ -265,7 +282,7 @@ func (h *Handler) agentOfLocked(s agentSeat) *wsAgent {
 	}
 	if !a.loaded {
 		a.loaded = true
-		path := filepath.Join(h.agentDir(s), "entries.jsonl")
+		path := filepath.Join(h.agentDir(s), agentEntriesFile)
 		if _, err := os.Stat(path); s.chat == "" && errors.Is(err, os.ErrNotExist) {
 			h.seedFromShared(s, path)
 		}
@@ -279,7 +296,7 @@ func (h *Handler) agentOfLocked(s agentSeat) *wsAgent {
 // Nobody else's turn is copied, and the agent's memory of the shared
 // conversation is not carried over, so it starts this person's afresh.
 func (h *Handler) seedFromShared(s agentSeat, path string) {
-	old, _ := readAgentEntries(filepath.Join(h.sharedAgentDir(s.ws), "entries.jsonl"))
+	old, _ := readAgentEntries(filepath.Join(h.sharedAgentDir(s.ws), agentEntriesFile))
 	mine := map[string]bool{}
 	for _, e := range old {
 		if e.Kind == api.AgentEntryPerson && e.Turn != "" && factory.NormalizeHandle(e.By) == s.person {
@@ -348,13 +365,18 @@ func (h *Handler) addAgentEntry(s agentSeat, e api.AgentEntry) api.AgentEntry {
 	if raw, err := json.Marshal(e); err == nil {
 		dir := h.agentDir(s)
 		if os.MkdirAll(dir, 0o700) == nil {
-			if f, err := os.OpenFile(filepath.Join(dir, "entries.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+			if f, err := os.OpenFile(filepath.Join(dir, agentEntriesFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
 				_, _ = f.Write(append(raw, '\n'))
 				_ = f.Close()
 			}
 		}
 	}
 	h.agentDesk.mu.Unlock()
+	if s.chat == "" && e.Seq == 1 && safeWorkstreamFolder(s.ws) {
+		if ws, found, err := h.config.Store.Workstream(s.ws); err == nil && found {
+			h.keepAfiSession(ws, s.person)
+		}
+	}
 	h.publishAgent(s, api.AgentEvent{Entry: &e})
 	return e
 }
@@ -407,7 +429,7 @@ func (h *Handler) agentCannot(ws factory.OrgWorkstream, v wsViewer, chat string)
 	serverAlways := chat != "" || ws.Space
 	switch {
 	case ws.ArchivedAt != nil:
-		return false, "This workstream is archived."
+		return false, workstreamArchivedWords
 	case !serverAlways && h.agentRunner() != factory.AgentRunnerServer:
 		return false, "This organization runs its workstreams' agents on the laptop of whoever drives them."
 	case h.orgModelKey() == "":
@@ -432,17 +454,16 @@ func (h *Handler) agentWire(ws factory.OrgWorkstream, v wsViewer, person, chat s
 	out := api.WorkstreamAgent{ID: ws.ID, Chat: chat, AgentState: api.AgentState{State: api.AgentIdle}, Entries: []api.AgentEntry{}, Private: true}
 	if person != "" {
 		h.agentDesk.mu.Lock()
-		a := h.agentOfLocked(agentSeat{ws.ID, person, chat})
-		out.AgentState, out.Seq = a.state, a.seq
-		from := len(a.entries)
-		for from > 0 && a.entries[from-1].Seq > since {
-			from--
+		seat := agentSeat{ws.ID, person, chat}
+		if h.chatExists(seat) {
+			a := h.agentOfLocked(seat)
+			out.AgentState, out.Seq = a.state, a.seq
+			out.Entries = append(out.Entries, agentEntriesSince(a.entries, since)...)
 		}
-		if len(a.entries)-from > api.AgentEntriesMost {
-			from = len(a.entries) - api.AgentEntriesMost
-		}
-		out.Entries = append(out.Entries, a.entries[from:]...)
 		h.agentDesk.mu.Unlock()
+		if chat == "" {
+			h.keepAfiSession(ws, person)
+		}
 	}
 	out.CanTalk, out.Cannot = h.agentCannot(ws, v, chat)
 	if person == "" {
@@ -458,14 +479,10 @@ func (h *Handler) getWorkstreamAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	since := 0
-	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 {
-			h.fail(w, http.StatusBadRequest, "since is the last seq you have")
-			return
-		}
-		since = n
+	since, err := agentSince(r.URL.Query().Get("since"))
+	if err != nil {
+		h.fail(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	chat, ok := h.chatOf(w, ws, h.orgActor(r), r.URL.Query().Get("chat"))
 	if !ok {
@@ -513,6 +530,10 @@ func (h *Handler) postAgentMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := h.startAgentTurn(ws, v, asker, chat, text, strings.TrimSpace(body.TZ), body.Cards)
+	if errors.Is(err, errChatNotHere) {
+		h.fail(w, http.StatusNotFound, errChatNotHere.Error())
+		return
+	}
 	var gone chatAgentGone
 	if errors.As(err, &gone) {
 		h.fail(w, http.StatusConflict, gone.Error())
@@ -539,12 +560,17 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 	}
 	turn := "turn_" + tid
 	seat := agentSeat{ws.ID, asker, chat}
-	persona, err := h.chatPersona(ws, seat)
-	if err != nil {
-		return err
-	}
 	d := &h.agentDesk
 	d.mu.Lock()
+	if !h.chatExists(seat) {
+		d.mu.Unlock()
+		return errChatNotHere
+	}
+	persona, err := h.chatPersona(ws, seat)
+	if err != nil {
+		d.mu.Unlock()
+		return err
+	}
 	if d.ctx == nil {
 		d.ctx, d.stop = context.WithCancel(context.Background())
 	}
@@ -553,12 +579,13 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 		return errors.New("this factory is closing")
 	}
 	a := h.agentOfLocked(seat)
-	if a.state.State != api.AgentIdle {
+	if a.state.State != api.AgentIdle || chat != "" && !a.runEnded() {
 		d.mu.Unlock()
 		return errAgentBusy
 	}
 	ctx, cancel := context.WithCancel(d.ctx)
-	a.cancel = cancel
+	done := make(chan struct{})
+	a.cancel, a.done = cancel, done
 	a.state = api.AgentState{State: api.AgentWorking, Turn: turn, For: asker, Since: now.Format(time.RFC3339Nano)}
 	state := a.state
 	d.wg.Add(1)
@@ -585,6 +612,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 		}}
 	guard.Go("factory workstream agent", func() {
 		defer d.wg.Done()
+		defer close(done)
 		defer cancel()
 		h.runAgentTurn(ctx, run)
 	})
@@ -661,6 +689,11 @@ func (h *Handler) stopWorkstreamAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	seat := agentSeat{ws.ID, who, chat}
 	h.agentDesk.mu.Lock()
+	if !h.chatExists(seat) {
+		h.agentDesk.mu.Unlock()
+		h.fail(w, http.StatusNotFound, errChatNotHere.Error())
+		return
+	}
 	a := h.agentOfLocked(seat)
 	var state *api.AgentState
 	if a.state.State == api.AgentWorking && a.cancel != nil {

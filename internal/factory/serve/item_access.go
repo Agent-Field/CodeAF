@@ -121,7 +121,7 @@ func (h *Handler) viewerOf(handle string) Viewer {
 // policy as it stands now and a reader for stored grants that remembers what it
 // read, so one request sees one answer. A nil *Access is the default policy and
 // no stored grants, which only the tests' literals use; the one production
-// constructor is [Handler.access] (access_constructor_test.go says so).
+// constructor is [Handler.accessAt] (access_constructor_test.go says so).
 type Access struct {
 	policy   acl.Policy
 	grants   func(kind, id string) []acl.Grant
@@ -131,7 +131,11 @@ type Access struct {
 
 // access reads the policy and opens a grant reader for one request.
 func (h *Handler) access() *Access {
-	now := h.clock()
+	return h.accessAt(h.clock())
+}
+
+// accessAt fixes the check time so the same rules can read an expiry audience.
+func (h *Handler) accessAt(now time.Time) *Access {
 	policy := acl.DefaultPolicy()
 	if h.config.Store != nil {
 		var err error
@@ -176,6 +180,13 @@ func (h *Handler) access() *Access {
 		}
 	}
 	return &Access{policy: policy, now: func() time.Time { return now }, grants: read, prefetch: prefetch}
+}
+
+// at reuses one policy and grant snapshot when comparing two moments.
+func (acc *Access) at(now time.Time) *Access {
+	fixed := *acc
+	fixed.now = func() time.Time { return now }
+	return &fixed
 }
 
 // canonicalGrantRef maps the space kind onto workstream, because a space is a
@@ -252,6 +263,9 @@ func accessSubject(kind, id string) acl.Subject {
 // tuplesFor reads the document's relationships and the stored grants in one place.
 func (acc *Access) tuplesFor(it Item) acl.Item {
 	owner := accessSubject(it.Owner.Kind, it.Owner.ID)
+	if it.parentPrivate && taskSession(it) {
+		owner = accessSubject(it.parentOwner.Kind, it.parentOwner.ID)
+	}
 	out := acl.Item{OwnerKind: owner.Kind, OwnerID: owner.ID, Private: it.Private || it.Visibility == acl.Private}
 	if !it.registered {
 		out.Visibility = it.Visibility

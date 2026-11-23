@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -38,6 +37,11 @@ CREATE TABLE IF NOT EXISTS grants (
 );
 CREATE INDEX IF NOT EXISTS grants_resource ON grants (resource_kind, resource_id);
 CREATE INDEX IF NOT EXISTS grants_subject ON grants (subject_kind, subject_id);
+CREATE INDEX IF NOT EXISTS grants_expiry ON grants (expires_at) WHERE expires_at IS NOT NULL;
+CREATE TABLE IF NOT EXISTS grant_sweep (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	covered_ms INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS resources (
 	kind TEXT NOT NULL,
 	id TEXT NOT NULL,
@@ -51,6 +55,11 @@ CREATE TABLE IF NOT EXISTS resources (
 	label TEXT NOT NULL,
 	visibility TEXT NOT NULL,
 	created_at TEXT NOT NULL,
+	PRIMARY KEY (kind, id)
+);
+CREATE TABLE IF NOT EXISTS resource_move_cleanup (
+	kind TEXT NOT NULL,
+	id TEXT NOT NULL,
 	PRIMARY KEY (kind, id)
 );
 CREATE TABLE IF NOT EXISTS org_policy (
@@ -69,18 +78,18 @@ const grantColumns = `id, subject_kind, subject_id, resource_kind, resource_id, 
 // AddGrant stores a grant and returns it with its new id. It checks nothing
 // about who may give it: the serve layer decides that with acl.MayGrant.
 func (st *Store) AddGrant(g acl.Grant) (acl.Grant, error) {
-	return st.addGrant(g, nil)
+	return st.addGrant(g, nil, nil, nil)
 }
 
 // AddGrantAtPolicy rejects a grant authorized against a policy that has since changed.
-func (st *Store) AddGrantAtPolicy(g acl.Grant, rev int) (acl.Grant, error) {
+func (st *Store) AddGrantAtPolicy(g acl.Grant, rev int, now func() time.Time, parent *acl.Resource) (acl.Grant, error) {
 	if g.Resource.Kind != "canvas" {
-		return st.addGrant(g, &rev)
+		return st.addGrant(g, &rev, now, parent)
 	}
 	var added acl.Grant
 	err := st.underLock(filepath.Join(st.root, canvasesLock), func() error {
 		var err error
-		added, err = st.addGrant(g, &rev)
+		added, err = st.addGrant(g, &rev, now, parent)
 		return err
 	})
 	return added, err
@@ -89,14 +98,23 @@ func (st *Store) AddGrantAtPolicy(g acl.Grant, rev int) (acl.Grant, error) {
 // addGrant inserts the grant inside one transaction, first re-checking the
 // policy revision and that the target still accepts grants when a revision is
 // given, so a grant authorized against an older policy is never written.
-func (st *Store) addGrant(g acl.Grant, rev *int) (acl.Grant, error) {
+func (st *Store) addGrant(g acl.Grant, rev *int, now func() time.Time, parent *acl.Resource) (acl.Grant, error) {
 	err := st.wsTx(func(tx *sql.Tx) error {
 		if rev != nil {
 			if err := checkPolicyRev(tx, *rev); err != nil {
 				return err
 			}
-			if err := st.checkGrantTarget(tx, g.Resource); err != nil {
+			if err := st.checkGrantTarget(tx, g.Resource, parent); err != nil {
 				return err
+			}
+			if g.ExpiresAt != nil {
+				last, err := grantSweepWatermark(tx)
+				if err != nil {
+					return err
+				}
+				if !now().Before(*g.ExpiresAt) || !time.UnixMilli(last).Before(*g.ExpiresAt) {
+					return ErrGrantExpiry
+				}
 			}
 		}
 		return st.insertGrant(tx, &g)
@@ -110,11 +128,14 @@ func (st *Store) addGrant(g acl.Grant, rev *int) (acl.Grant, error) {
 // ErrGrantTargetChanged tells the caller to check the resource again after a concurrent change.
 var ErrGrantTargetChanged = errors.New("the item changed while you were sharing it; read it again")
 
+// ErrGrantExpiry refuses a timestamp the server has already reached.
+var ErrGrantExpiry = errors.New("an expiry must be later than now")
+
 // checkGrantTarget re-reads the target inside the grant's transaction. A
 // canvas or workstream that turned private since the caller checked must not
 // receive a grant, because a private item's grants would grant nothing and
 // would surprise whoever later makes it shared.
-func (st *Store) checkGrantTarget(tx *sql.Tx, ref acl.Resource) error {
+func (st *Store) checkGrantTarget(tx *sql.Tx, ref acl.Resource, parent *acl.Resource) error {
 	workstream := ref.ID
 	switch ref.Kind {
 	case "canvas":
@@ -131,9 +152,9 @@ func (st *Store) checkGrantTarget(tx *sql.Tx, ref acl.Resource) error {
 		}
 	case "workstream":
 	default:
-		var kept int
-		err := tx.QueryRow(`SELECT 1 FROM resources WHERE kind = ? AND id = ?`, ref.Kind, ref.ID).Scan(&kept)
-		if errors.Is(err, sql.ErrNoRows) {
+		var current acl.Resource
+		err := tx.QueryRow(`SELECT parent_kind, parent_id FROM resources WHERE kind = ? AND id = ?`, ref.Kind, ref.ID).Scan(&current.Kind, &current.ID)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && parent != nil && current != *parent {
 			return ErrGrantTargetChanged
 		}
 		return err
@@ -352,18 +373,7 @@ func (st *Store) putResource(r Resource, replace bool, grant *acl.Grant, rev *in
 				return err
 			}
 		}
-		q := `INSERT INTO resources (` + resourceColumns + `) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-		if replace {
-			q += ` ON CONFLICT (kind, id) DO UPDATE SET
-				parent_kind=excluded.parent_kind, parent_id=excluded.parent_id, owner_kind=excluded.owner_kind,
-				owner_id=excluded.owner_id, created_by_kind=excluded.created_by_kind, created_by_id=excluded.created_by_id,
-				sponsor=excluded.sponsor, label=excluded.label, visibility=excluded.visibility, created_at=excluded.created_at`
-		} else if rev == nil {
-			q += ` ON CONFLICT (kind, id) DO NOTHING`
-		}
-		_, err := tx.Exec(q, r.Kind, r.ID, r.Parent.Kind, r.Parent.ID, r.Owner.Kind, r.Owner.ID, r.CreatedBy.Kind,
-			r.CreatedBy.ID, r.CreatedBy.Sponsor, r.Label, r.Visibility, accessTime(r.CreatedAt))
-		if err != nil {
+		if err := writeResource(tx, r, replace, rev == nil); err != nil {
 			return err
 		}
 		if grant != nil {
@@ -378,6 +388,22 @@ func (st *Store) putResource(r Resource, replace bool, grant *acl.Grant, rev *in
 		}
 		return nil
 	})
+}
+
+// writeResource keeps backfill and creation on the same registry schema.
+func writeResource(tx *sql.Tx, r Resource, replace, keepFirst bool) error {
+	q := `INSERT INTO resources (` + resourceColumns + `) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	if replace {
+		q += ` ON CONFLICT (kind, id) DO UPDATE SET
+			parent_kind=excluded.parent_kind, parent_id=excluded.parent_id, owner_kind=excluded.owner_kind,
+			owner_id=excluded.owner_id, created_by_kind=excluded.created_by_kind, created_by_id=excluded.created_by_id,
+			sponsor=excluded.sponsor, label=excluded.label, visibility=excluded.visibility, created_at=excluded.created_at`
+	} else if keepFirst {
+		q += ` ON CONFLICT (kind, id) DO NOTHING`
+	}
+	_, err := tx.Exec(q, r.Kind, r.ID, r.Parent.Kind, r.Parent.ID, r.Owner.Kind, r.Owner.ID, r.CreatedBy.Kind,
+		r.CreatedBy.ID, r.CreatedBy.Sponsor, r.Label, r.Visibility, accessTime(r.CreatedAt))
+	return err
 }
 
 // scanResource reads one registry row.
@@ -433,38 +459,29 @@ func (st *Store) Resources(kind string) ([]Resource, error) {
 	return out, rows.Err()
 }
 
-// MoveResource is the storage operation reserved for subsequent containment changes.
-func (st *Store) MoveResource(kind, id, toParentKind, toParentID string, owner acl.Subject, visibility string) error {
-	return st.wsTx(func(tx *sql.Tx) error {
-		result, err := tx.Exec(`UPDATE resources SET parent_kind = ?, parent_id = ?, owner_kind = ?, owner_id = ?,
-			visibility = ? WHERE kind = ? AND id = ?`, toParentKind, toParentID, owner.Kind, owner.ID, visibility, kind, id)
-		if err != nil {
-			return err
-		}
-		n, err := result.RowsAffected()
-		if err == nil && n == 0 {
-			return fmt.Errorf("resource %q is not kept", id)
-		}
-		return err
-	})
-}
-
 // DropGrantsOn deletes every stored grant on one resource and returns the rows
 // it deleted. A move into a private space uses it, because a private item's
 // grants grant nothing and must not be left to reappear if it is shared again.
 func (st *Store) DropGrantsOn(kind, id string) ([]acl.Grant, error) {
 	var dropped []acl.Grant
 	err := st.wsTx(func(tx *sql.Tx) error {
-		rows, err := tx.Query(`SELECT `+grantColumns+` FROM grants WHERE resource_kind = ? AND resource_id = ? ORDER BY id`, kind, id)
-		if err != nil {
-			return err
-		}
-		if dropped, err = scanGrants(rows); err != nil {
-			return err
-		}
-		_, err = tx.Exec(`DELETE FROM grants WHERE resource_kind = ? AND resource_id = ?`, kind, id)
+		var err error
+		dropped, err = dropGrantsOn(tx, kind, id)
 		return err
 	})
+	return dropped, err
+}
+
+func dropGrantsOn(tx *sql.Tx, kind, id string) ([]acl.Grant, error) {
+	rows, err := tx.Query(`SELECT `+grantColumns+` FROM grants WHERE resource_kind = ? AND resource_id = ? ORDER BY id`, kind, id)
+	if err != nil {
+		return nil, err
+	}
+	dropped, err := scanGrants(rows)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.Exec(`DELETE FROM grants WHERE resource_kind = ? AND resource_id = ?`, kind, id)
 	return dropped, err
 }
 
@@ -483,6 +500,11 @@ func (st *Store) DeleteResource(kind, id string) error {
 func deleteResource(tx *sql.Tx, kind, id string) error {
 	if _, err := tx.Exec(`DELETE FROM grants WHERE resource_kind = ? AND resource_id = ?`, kind, id); err != nil {
 		return err
+	}
+	if kind == "chat" {
+		if err := clearResourceMove(tx, acl.Resource{Kind: kind, ID: id}); err != nil {
+			return err
+		}
 	}
 	_, err := tx.Exec(`DELETE FROM resources WHERE kind = ? AND id = ?`, kind, id)
 	return err

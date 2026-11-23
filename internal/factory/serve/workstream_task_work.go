@@ -90,7 +90,7 @@ func (h *Handler) taskWorkOfLocked(key taskRunKey) *taskWork {
 // taskWorkFile keeps every line of key's conversation, beside the run's own
 // folder (taskRunDir), which holds the agent's memory of it.
 func (h *Handler) taskWorkFile(key taskRunKey) string {
-	return filepath.Join(h.taskRunDir(key.ws, key.task), "entries.jsonl")
+	return filepath.Join(h.taskRunDir(key.ws, key.task), agentEntriesFile)
 }
 
 // taskWorkSpentFile keeps what key's runs have spent, in dollars.
@@ -121,6 +121,9 @@ func (h *Handler) addTaskWorkEntry(key taskRunKey, e api.AgentEntry) api.AgentEn
 		}
 	}
 	h.agentDesk.mu.Unlock()
+	if e.Seq == 1 && existsOnDisk(h.taskWorkFile(key)) {
+		h.keepTaskSession(key)
+	}
 	h.publishTaskWork(key, api.TaskWorkEvent{Entry: &e})
 	return e
 }
@@ -330,14 +333,7 @@ func (h *Handler) taskWorkWire(ws factory.OrgWorkstream, v wsViewer, t factory.W
 	w := h.taskWorkOfLocked(key)
 	out.AgentState, out.Seq, out.USD = w.state, w.seq, w.usd
 	starter := firstNonEmpty(w.state.For, lastStarterLocked(w))
-	from := len(w.entries)
-	for from > 0 && w.entries[from-1].Seq > since {
-		from--
-	}
-	if len(w.entries)-from > api.AgentEntriesMost {
-		from = len(w.entries) - api.AgentEntriesMost
-	}
-	out.Entries = append(out.Entries, w.entries[from:]...)
+	out.Entries = append(out.Entries, agentEntriesSince(w.entries, since)...)
 	going := w.steers != nil
 	h.agentDesk.mu.Unlock()
 	out.Steerer = taskSteerer(ws, v, t, starter)
@@ -354,14 +350,10 @@ func (h *Handler) getTaskWork(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	since := 0
-	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 {
-			h.fail(w, http.StatusBadRequest, "since is the last seq you have")
-			return
-		}
-		since = n
+	since, err := agentSince(r.URL.Query().Get("since"))
+	if err != nil {
+		h.fail(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	h.write(w, http.StatusOK, h.taskWorkWire(ws, v, t, since))
 }

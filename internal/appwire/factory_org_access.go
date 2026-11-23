@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -25,6 +26,7 @@ import (
 //	factory.org_grant_add       OrgGrantParams          -> the grant             POST   /v1/resources/{kind}/{id}/grants
 //	factory.org_grant_preview   OrgGrantParams          -> {gains, loses, ...}   POST   /v1/resources/{kind}/{id}/grants/preview
 //	factory.org_grant_remove    OrgGrantRemoveParams    -> {}                    DELETE /v1/resources/{kind}/{id}/grants/{grant}
+//	factory.org_transcript      OrgTranscriptParams     -> the transcript        GET    /v1/resources/{kind}/{id}/transcript
 //	factory.org_move            OrgMoveParams           -> {resource, dropped}   POST   /v1/resources/{kind}/{id}/move
 //
 // THE APP NEVER CHOOSES A PATH. Each method is one request whose path is built
@@ -57,6 +59,12 @@ type OrgResourceParams struct {
 	OrgConn
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
+}
+
+// OrgTranscriptParams names a conversation and the last line the reader has.
+type OrgTranscriptParams struct {
+	OrgResourceParams
+	Since int `json:"since,omitempty"`
 }
 
 // OrgGrantSubject is who a grant reaches: a person (by handle), a team (by id),
@@ -177,6 +185,20 @@ func init() {
 			return OrgRequest{}, err
 		}
 		return OrgRequest{Method: http.MethodDelete, Path: path + "/grants/" + url.PathEscape(grant)}, nil
+	})
+	methods["factory.org_transcript"] = orgMethod[OrgTranscriptParams, json.RawMessage]("factory.org_transcript", func(p OrgTranscriptParams) (OrgRequest, error) {
+		path, err := orgResourcePath(p.OrgResourceParams)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		if p.Since < 0 {
+			return OrgRequest{}, Errorf(CodeBadParams, "since is the last seq you have")
+		}
+		path += "/transcript"
+		if p.Since > 0 {
+			path += "?since=" + strconv.Itoa(p.Since)
+		}
+		return OrgRequest{Method: http.MethodGet, Path: path}, nil
 	})
 	methods["factory.org_move"] = orgMethod[OrgMoveParams, json.RawMessage]("factory.org_move", func(p OrgMoveParams) (OrgRequest, error) {
 		path, err := orgResourcePath(p.OrgResourceParams)

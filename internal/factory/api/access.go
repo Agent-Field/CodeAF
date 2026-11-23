@@ -76,6 +76,16 @@ type ResourceMove struct {
 // ResourceMoved answers a move with the item as it now stands and the item's
 // own grants that were dropped because the destination is private.
 type ResourceMoved struct {
-	Resource OrgResource  `json:"resource"`
-	Dropped  []GrantTuple `json:"dropped"`
+	Resource    OrgResource  `json:"resource"`
+	Dropped     []GrantTuple `json:"dropped"`
+	AgentUsable *bool        `json:"agent_usable,omitempty"`
+	AgentWords  string       `json:"agent_words,omitempty"`
+}
+
+// SessionTranscript carries only the public read fields of a conversation.
+type SessionTranscript struct {
+	ResourceRef
+	State   string       `json:"state"`
+	Seq     int          `json:"seq"`
+	Entries []AgentEntry `json:"entries"`
 }

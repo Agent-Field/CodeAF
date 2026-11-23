@@ -2,6 +2,7 @@ package serve
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -104,21 +105,33 @@ func writeFileAtomic(path string, data []byte) error {
 	return os.Rename(tmp.Name(), path)
 }
 
+var errChatNotHere = errors.New("that chat is not one of yours here")
+
+// chatExists confirms a named chat's metadata while the caller holds the
+// desk lock if it is about to use the folder.
+func (h *Handler) chatExists(seat agentSeat) bool {
+	if seat.chat == "" {
+		return true
+	}
+	_, ok := readChatMeta(h.agentDir(seat))
+	return ok
+}
+
 // chatOf checks the chat a request names: "" is Afi's conversation; anything
 // else must be one of person's own chats in ws. A chat that is not theirs is
 // answered as gone, so an id is never a way to learn about someone else's.
-// NOT GENERIC YET: shared chat transcript access.
+// NOT GENERIC YET: Sharing a transcript does not share the chat controls.
 func (h *Handler) chatOf(w http.ResponseWriter, ws factory.OrgWorkstream, person, raw string) (string, bool) {
 	chat := strings.TrimSpace(raw)
 	if chat == "" {
 		return "", true
 	}
 	if person == "" || !chatIDPattern.MatchString(chat) {
-		h.fail(w, http.StatusNotFound, "that chat is not one of yours here")
+		h.fail(w, http.StatusNotFound, errChatNotHere.Error())
 		return "", false
 	}
-	if _, ok := readChatMeta(h.chatDir(ws.ID, person, chat)); !ok {
-		h.fail(w, http.StatusNotFound, "that chat is not one of yours here")
+	if !h.chatExists(agentSeat{ws.ID, person, chat}) {
+		h.fail(w, http.StatusNotFound, errChatNotHere.Error())
 		return "", false
 	}
 	return chat, true
@@ -265,7 +278,7 @@ func (h *Handler) createAgentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ws.ArchivedAt != nil {
-		h.fail(w, http.StatusConflict, "This workstream is archived.")
+		h.fail(w, http.StatusConflict, workstreamArchivedWords)
 		return
 	}
 	var body api.AgentChatNew

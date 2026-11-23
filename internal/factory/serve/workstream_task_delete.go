@@ -149,6 +149,10 @@ func (h *Handler) restoreWorkstreamTask(w http.ResponseWriter, r *http.Request) 
 	if h.taskRefused(w, err) {
 		return
 	}
+	key := taskRunKey{ws.ID, restored.ID}
+	if existsOnDisk(h.taskRunDir(key.ws, key.task)) {
+		h.keepTaskSession(key)
+	}
 	h.publishTasks(ws, h.orgActor(r), append(changed, restored)...)
 	h.write(w, 200, restored)
 }

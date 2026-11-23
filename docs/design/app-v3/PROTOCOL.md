@@ -541,7 +541,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_grant_add` | `in.OrgGrantParams` | the grant |
 | `factory.org_grant_preview` | `in.OrgGrantParams` | `{gains, loses, audience_before, audience_after}` |
 | `factory.org_grant_remove` | `in.OrgGrantRemoveParams` | `{}` |
-| `factory.org_move` | `in.OrgMoveParams` | `{resource, dropped}` |
+| `factory.org_move` | `in.OrgMoveParams` | `{resource, dropped, agent_usable?, agent_words?}` |
+| `factory.org_transcript` | `in.OrgTranscriptParams` | `{kind, id, state, seq, entries}` |
 | `factory.org_agents` | `in.OrgConn` | `{agents}` |
 | `factory.org_agent_new` | `in.OrgAgentNewParams` | the agent |
 | `factory.org_agent_set` | `in.OrgAgentSetParams` | the agent |
@@ -1136,11 +1137,16 @@ cut to what the policy lets the agent do. A grant to an agent is refused with wo
 policy's. `factory.org_grant_preview` takes the same params and answers `{gains, loses,
 audience_before, audience_after}` without writing anything. `factory.org_grant_remove {kind, id,
 grant}` `DELETE .../grants/{grant}` removes a stored grant; a share on a workstream or canvas keeps
-its own methods and answers `conflict` naming them. `factory.org_move {kind, id, to}` `POST
-.../move` moves a canvas into another workstream or into the caller's own space; it needs
-`manage` on the canvas and `edit` on the destination, drops the canvas's own grants when the
-destination is private (they come back in `dropped`), and answers `{resource, dropped}`. Any
-other kind is `conflict` with words. A destination the caller may not see is `not_found`.
+its own methods and answers `conflict` naming them.
+
+| Request or event | Server behavior |
+| --- | --- |
+| `factory.org_move {kind, id, to}` → `POST /v1/resources/{kind}/{id}/move` | Moves a canvas or a chat. It needs `manage` on the item and `edit` on the destination. An unseen destination is `not_found`. Spaces, workstreams and sessions stay where they are and return `conflict`. |
+| Canvas move | Answers `{resource, dropped}`. The canvas's own grants appear in `dropped` when the destination is private. |
+| Chat move | Only the chat's owner can move it. A chat that is answering or an archived destination returns `conflict`. The chat retains its owner and moves its conversation folder. Moving into My space drops its own grants and leaves it only in the owner's chat list. A shared workstream's chat list still shows its title, owner, state and last activity. |
+| Chat move answer | Adds `agent_usable` to `{resource, dropped}` and includes `agent_words` when the named agent is unavailable in the destination. The conversation stays readable and future spending goes to the destination. |
+| `factory.org_transcript {kind, id, since?}` → `GET /v1/resources/{kind}/{id}/transcript` | Reads a registered chat or session through the current view permission. Answers `{kind, id, state, seq, entries}`. With `since`, entries begin after that sequence number. The transcript offers read access only. A missing or inaccessible resource returns `not_found`. |
+| `resource.changed {kind, id}` | A chat move or a lapse of a grant on a registered resource reaches the combined old and new audience. Canvas and workstream grant lapses emit `canvas.changed` and `workstream.changed`. |
 
 An engine whose hello carries `org_agents` keeps an organization's agents: a name and
 instructions one person made in their space. `factory.org_agents` `GET /v1/agents`

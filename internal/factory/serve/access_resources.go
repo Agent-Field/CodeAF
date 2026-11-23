@@ -41,6 +41,7 @@ func (h *Handler) accessRoutes() {
 	h.route("/v1/resources", map[string]http.HandlerFunc{http.MethodGet: h.listAccessResources, http.MethodPost: h.registerAccessResource})
 	h.read("/v1/resources/{kind}", h.listAccessResources)
 	h.read("/v1/resources/{kind}/{id}", h.getAccessResource)
+	h.read("/v1/resources/{kind}/{id}/transcript", h.accessTranscript)
 	h.route("/v1/resources/{kind}/{id}/grants", map[string]http.HandlerFunc{http.MethodGet: h.listAccessGrants, http.MethodPost: h.addAccessGrant})
 	h.route("/v1/resources/{kind}/{id}/grants/preview", map[string]http.HandlerFunc{http.MethodPost: h.previewAccessGrant})
 	h.route("/v1/resources/{kind}/{id}/grants/{grant}", map[string]http.HandlerFunc{http.MethodDelete: h.removeAccessGrant})
@@ -102,6 +103,10 @@ func (h *Handler) resourceItem(row store.Resource, parent factory.OrgWorkstream)
 		it.Shares, it.parentOwner = parent.Shares, parent.Owner
 	}
 	it.parentPrivate = parent.Private
+	if parent.Private && taskSession(it) {
+		// NOT GENERIC YET: A task conversation follows a private workstream's audience.
+		it.Private, it.parentOwner = true, parent.Owner
+	}
 	return it
 }
 
@@ -240,7 +245,8 @@ func accessResourceWire(res accessResource, v Viewer) api.OrgResource {
 	} else if p.Audience(now, data).Org {
 		visibility = acl.Org
 	}
-	out := api.OrgResource{ResourceRef: res.ref, Label: res.label, Owner: acl.Subject{Kind: data.OwnerKind, ID: data.OwnerID},
+	owner := accessSubject(it.Owner.Kind, it.Owner.ID)
+	out := api.OrgResource{ResourceRef: res.ref, Label: res.label, Owner: owner,
 		Visibility: visibility, MyRole: p.RoleOf(v.caller(), data, now), MyVerbs: p.Verbs(v.caller(), data, now).List(),
 	}
 	if res.createdBy != nil && res.createdBy.ID != "" {
@@ -319,7 +325,7 @@ func (h *Handler) registerAccessResource(w http.ResponseWriter, r *http.Request)
 	if !h.decode(w, r, &body, false) {
 		return
 	}
-	// NOT GENERIC YET: Afi and task conversations are still unregistered sessions.
+	// NOT GENERIC YET: Afi panes and task conversations register through their own routes.
 	if body.Kind != "chat" {
 		h.fail(w, http.StatusUnprocessableEntity, "only chats can be registered here")
 		return
@@ -341,7 +347,7 @@ func (h *Handler) registerAccessResource(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if parent.ArchivedAt != nil {
-		h.fail(w, http.StatusConflict, "This workstream is archived.")
+		h.fail(w, http.StatusConflict, workstreamArchivedWords)
 		return
 	}
 	title := strings.Join(strings.Fields(body.Label), " ")
@@ -375,6 +381,8 @@ func (h *Handler) accessFailed(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.As(err, &invalid):
 		h.fail(w, http.StatusUnprocessableEntity, invalid.Error())
+	case errors.Is(err, store.ErrGrantExpiry):
+		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 	case errors.As(err, &forbidden):
 		h.fail(w, http.StatusForbidden, forbidden.Error())
 	case errors.Is(err, store.ErrGrantTargetChanged):
