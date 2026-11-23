@@ -4317,6 +4317,23 @@ func (a *Agent) rootContext() context.Context {
 	return procexec.With(context.Background(), a.config.seat())
 }
 
+// seatedRun is ctx carrying this session's seat when it carries none of its own.
+//
+// A RUN BELONGS TO THE SESSION EVEN WHEN ITS DOOR DOES NOT SAY SO. A run keeps
+// the context it was started under, and a person's own door — a typed
+// `/senior-dev <brief>`, the app's start action, the engine wire — hands one that
+// no turn ever seated. Every call beneath the run must still run where the
+// session says: a program's launch asks [procexec.For] for its seat, and from a
+// seatless context it was refused with [procexec.ErrNoSeat] before the program
+// started. A context a turn or [Agent.rootContext] already seated keeps the
+// seat it has.
+func (a *Agent) seatedRun(ctx context.Context) context.Context {
+	if procexec.Seated(ctx) {
+		return ctx
+	}
+	return procexec.With(ctx, a.config.seatFor(ctx))
+}
+
 // rootContext is the graph's own: its owner's, and the host's only for a graph
 // that has no owner (a standing item's throwaway).
 func (g *TaskGraph) rootContext() context.Context {

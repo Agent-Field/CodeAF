@@ -228,6 +228,15 @@ func With(ctx context.Context, seat Seat) context.Context {
 	return context.WithValue(ctx, seatKey{}, seat)
 }
 
+// Seated reports whether ctx carries a seat of its own. It answers false for a
+// context [For] would answer with the refusing seat or a test binary's fallback,
+// because neither is a session's: a door that starts session work from a context
+// nobody seated asks this before it seats it.
+func Seated(ctx context.Context) bool {
+	_, ok := ctx.Value(seatKey{}).(Seat)
+	return ok
+}
+
 // ErrNoSeat is what a tool call answers when its context carries no session.
 // Work that belongs to no session says so with [Host]; a tool call that lost
 // its session is a bug, and running it unjailed on the host would hide it.
