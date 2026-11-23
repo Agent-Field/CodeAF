@@ -305,6 +305,9 @@ func TestATaskMayNotReplaceItsGroundsGitMetadata(t *testing.T) {
 		"rm -rf .[g]it",
 		"rm -r .git",
 		"rm -fr ./.git",
+		// A glob that names a dot reaches `.git`; one that does not, does not.
+		"rm -rf .*",
+		"rm -rf .[a-z]*",
 		"rm -rf .git/",
 		"cd " + ground + " && rm -rf .git",
 		// Taking the history apart a piece at a time is the same loss.
@@ -466,6 +469,12 @@ func TestATaskStillWorksInAGroundWhoseMetadataIsProtected(t *testing.T) {
 		// install a hook.
 		"rm -f .git/index.lock",
 		"chmod -R u+w .git",
+		// THE SHELL'S `*` LEAVES DOTFILES ALONE, so clearing or moving what a
+		// folder holds does not reach its `.git`, and dev allows it.
+		"rm -rf *",
+		"rm -f ./*",
+		"mv * old/",
+		"cd sub && rm -rf ../*",
 		"touch .git/index.lock",
 		"mkdir -p .git/refs/heads",
 		"chown -R user .git",

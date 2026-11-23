@@ -531,6 +531,22 @@ func expandedOperand(cwd, operand string) []string {
 	if err != nil || len(matches) == 0 {
 		return []string{target}
 	}
+	// A SHELL'S `*` DOES NOT SELECT DOTFILES: only a pattern whose last element
+	// itself starts with a dot reaches `.git`, so `rm -rf *` and `mv * old/`
+	// leave the metadata where it is, as they do in the shell. Go's own Glob
+	// matches dot names too, which would refuse ordinary cleanup.
+	if !strings.HasPrefix(filepath.Base(strings.TrimRight(target, string(filepath.Separator))), ".") {
+		visible := matches[:0:0]
+		for _, match := range matches {
+			if !strings.HasPrefix(filepath.Base(match), ".") {
+				visible = append(visible, match)
+			}
+		}
+		if len(visible) == 0 {
+			return []string{target}
+		}
+		return visible
+	}
 	return matches
 }
 
@@ -690,17 +706,26 @@ func protectedGroundMetadata(metadata, target string, followFinal bool) bool {
 		if path == "" {
 			continue
 		}
-		for _, base := range metadataSpellings(metadata) {
-			relative, err := filepath.Rel(base, path)
-			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-				continue
-			}
-			relative = filepath.ToSlash(relative)
-			if relative == "." || relative == "HEAD" || relative == "config" || relative == "packed-refs" ||
-				withinMetadataTree(relative, "objects") || withinMetadataTree(relative, "refs") ||
-				withinMetadataTree(relative, "worktrees") || withinMetadataTree(relative, "modules") {
-				return true
-			}
+		if protectedUnderAnySpelling(metadata, path) {
+			return true
+		}
+	}
+	return false
+}
+
+// protectedUnderAnySpelling is protectedGroundMetadata's comparison of one
+// concrete path against each name the metadata answers to.
+func protectedUnderAnySpelling(metadata, path string) bool {
+	for _, base := range metadataSpellings(metadata) {
+		relative, err := filepath.Rel(base, path)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		relative = filepath.ToSlash(relative)
+		if relative == "." || relative == "HEAD" || relative == "config" || relative == "packed-refs" ||
+			withinMetadataTree(relative, "objects") || withinMetadataTree(relative, "refs") ||
+			withinMetadataTree(relative, "worktrees") || withinMetadataTree(relative, "modules") {
+			return true
 		}
 	}
 	return false
