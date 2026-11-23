@@ -419,8 +419,11 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 
 	// OpenRouter only reports cache reads, cache writes, and native cost when
 	// the request opts into usage accounting. Without it the single largest
-	// lever on a long run's bill is invisible, so it is never optional here.
-	if scrubbed.Usage == nil {
+	// lever on a long run's bill is invisible. Direct services use the
+	// streaming opt-in below and may reject the router field.
+	if c.directUsageEndpoint(knobs) {
+		scrubbed.Usage = nil
+	} else if scrubbed.Usage == nil {
 		scrubbed.Usage = &ai.RequestUsage{Include: true}
 	}
 

@@ -1865,8 +1865,8 @@ leaves for the Model Pool after a task lands (*Model Pool* above).
 Connected services ask for streaming token counts with `stream_options.include_usage`.
 If a service explicitly refuses that option with HTTP 400 or 422, codeaf retries
 once without it and omits it on later calls to that endpoint. An unrelated error
-does not turn usage reporting off. The default router uses its existing usage
-request without the extra option.
+does not turn usage reporting off. Only the default router receives the
+`usage.include` opt-in.
 The usage-option repair can follow or precede an independent reasoning repair;
 each distinct repair is used once in that chain.
 
