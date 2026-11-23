@@ -1,13 +1,16 @@
 package tui3
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -509,4 +512,291 @@ func homeAttentionRows(a *app) []*homeCell {
 		}
 	}
 	return out
+}
+
+func liveHomeRig(t *testing.T, online ...string) (*app, *fakeTaker) {
+	t.Helper()
+	a, _ := devicesRig(online...)
+	t.Cleanup(a.doorLine.close)
+	a.width, a.height = 200, 70
+	taker := a.taker.(*fakeTaker)
+	drain(t, a, a.openHome())
+	a.rebuildMachines()
+	return a, taker
+}
+
+func wireFakeOpenLive(t *testing.T, a *app, fail error) (calls *[]chatlist.Row, agents *[]*fakeAgent) {
+	t.Helper()
+	var seen []chatlist.Row
+	var built []*fakeAgent
+	root := t.TempDir()
+	a.openLive = func(_ context.Context, row chatlist.Row) (Conversation, error) {
+		seen = append(seen, row)
+		if fail != nil {
+			return Conversation{}, fail
+		}
+		agent := &fakeAgent{model: "m"}
+		built = append(built, agent)
+		return Conversation{
+			Agent:       agent,
+			SessionFile: filepath.Join(root, row.Cell, "session.jsonl"),
+			Live: &LiveSeam{
+				Host:   row.Device,
+				Device: row.DeviceID,
+				Cell:   row.Cell,
+				Row:    row,
+				Read:   func() LiveRead { return LiveRead{Kind: LiveOn} },
+			},
+			Link: &LinkSeam{},
+		}, nil
+	}
+	return &seen, &built
+}
+
+// V1 (contract 1): pressing Enter on a held row of an online paired computer
+// opens a live view of that chat through OpenLive without calling the taker or
+// changing the hold, and closes Home into the live conversation.
+func TestEnterOnAHeldRowOfAnOnlineDeviceOpensItLiveAndLeavesTheHold(t *testing.T) {
+	a, taker := liveHomeRig(t, "dev_tower")
+	calls, _ := wireFakeOpenLive(t, a, nil)
+
+	standOn(t, a, "c1")
+
+	if len(*calls) != 1 || (*calls)[0].Cell != "c1" || (*calls)[0].DeviceID != "dev_tower" {
+		t.Fatalf("OpenLive calls = %+v, want one call for c1 on dev_tower", *calls)
+	}
+	if len(taker.cells) != 0 {
+		t.Fatalf("taker was called during a live open: %v", taker.cells)
+	}
+	if a.liveFront() == nil || a.liveFront().Host != "tower" || a.liveFront().Cell != "c1" {
+		t.Fatalf("front conversation live seam = %+v, want live view of tower c1", a.liveFront())
+	}
+	if a.at(pageHome) {
+		t.Fatal("Home stayed open after a successful live open")
+	}
+	if a.homeTaking != "" {
+		t.Fatalf("homeTaking = %q, want empty", a.homeTaking)
+	}
+	if a.machineRead.rows[0].Status != chatlist.Running || a.machineRead.rows[0].DeviceID != "dev_tower" {
+		t.Fatalf("live open altered the held row: %+v", a.machineRead.rows[0])
+	}
+
+	// Phone sheet's open door on a machine row also takes the live road.
+	phoneApp, phoneTaker := liveHomeRig(t, "dev_tower")
+	phoneCalls, _ := wireFakeOpenLive(t, phoneApp, nil)
+	phoneApp.width, phoneApp.height = 44, 24
+	phoneApp.rebuildMachines()
+	for i, line := range phoneApp.home.lines {
+		if line.remote != nil && line.remote.Cell == "c1" {
+			phoneApp.home.cursor = i
+			break
+		}
+	}
+	phoneApp.openHomeSheet()
+	drain(t, phoneApp, phoneApp.homeSheetOpen())
+	if len(*phoneCalls) != 1 || len(phoneTaker.cells) != 0 || phoneApp.liveFront() == nil || phoneApp.at(pageHome) {
+		t.Fatalf("phone sheet open did not open live: calls=%d takes=%v live=%+v home=%v", len(*phoneCalls), phoneTaker.cells, phoneApp.liveFront(), phoneApp.at(pageHome))
+	}
+}
+
+// V1 (contract 2): when OpenLive returns an error, Home shows the error's text
+// on its foot and raises the Move card for that row as fallback.
+func TestEnterOnAHeldRowFallsBackToTheMoveCardWhenTheLiveOpenFails(t *testing.T) {
+	a, taker := liveHomeRig(t, "dev_tower")
+	wantErr := "tower is not running this chat right now."
+	calls, _ := wireFakeOpenLive(t, a, errors.New(wantErr))
+
+	standOn(t, a, "c1")
+
+	if len(*calls) != 1 {
+		t.Fatalf("OpenLive called %d times, want 1", len(*calls))
+	}
+	if len(taker.cells) != 0 {
+		t.Fatalf("fallback to the Move card already ran taker: %v", taker.cells)
+	}
+	if !a.at(pageHome) {
+		t.Fatal("Home closed when OpenLive failed")
+	}
+	if a.home.msg != wantErr {
+		t.Fatalf("Home foot message = %q, want %q", a.home.msg, wantErr)
+	}
+	ask, ok := a.homeAsking()
+	if !ok || ask.question.Kind != homeContinueKind || ask.question.Head != moveAsk || ask.question.Subject.Name != "Port" {
+		t.Fatalf("Move card was not raised on OpenLive failure: ok=%v question=%+v", ok, ask.question)
+	}
+}
+
+// V27 (contract 2): a door that has nothing to open live and nothing to say,
+// such as a computer that is off with no copy kept, answers ErrNoLiveView, and
+// Enter asks the Move card with nothing on Home's foot, as it did before remote
+// control.
+func TestEnterOnAHeldRowWhoseDoorHasNothingToOpenAsksTheMoveCardInSilence(t *testing.T) {
+	a, taker := liveHomeRig(t, "dev_tower")
+	calls, _ := wireFakeOpenLive(t, a, ErrNoLiveView)
+
+	standOn(t, a, "c1")
+
+	if len(*calls) != 1 {
+		t.Fatalf("OpenLive called %d times, want 1", len(*calls))
+	}
+	if len(taker.cells) != 0 {
+		t.Fatalf("the quiet fallback already ran the taker: %v", taker.cells)
+	}
+	if a.home.msg != "" && a.home.msg != conversationOpeningWord {
+		t.Fatalf("Home's foot says %q after a door with nothing to say", a.home.msg)
+	}
+	ask, ok := a.homeAsking()
+	if !ok || ask.question.Kind != homeContinueKind || ask.question.Head != moveAsk {
+		t.Fatalf("Move card was not raised: ok=%v question=%+v", ok, ask.question)
+	}
+}
+
+// V14 (contract 2 and contract 9): when OpenLive is nil (remote control off),
+// pressing Enter on a held row raises the Move card exactly as before.
+func TestWithoutTheLiveSeamEnterOnAHeldRowAsksTheMoveCardAsBefore(t *testing.T) {
+	a, taker := liveHomeRig(t, "dev_tower")
+	if a.openLive != nil {
+		t.Fatal("expected default a.openLive to be nil")
+	}
+
+	standOn(t, a, "c1")
+
+	if len(taker.cells) != 0 {
+		t.Fatalf("Enter raised a take before confirmation: %v", taker.cells)
+	}
+	if !a.at(pageHome) || a.liveFront() != nil {
+		t.Fatalf("unexpected state: atHome=%v liveFront=%+v", a.at(pageHome), a.liveFront())
+	}
+	ask, ok := a.homeAsking()
+	if !ok || ask.question.Kind != homeContinueKind || ask.question.Head != moveAsk || ask.question.Subject.Name != "Port" || ask.pick != continueYesAt {
+		t.Fatalf("Move card not raised as before: ok=%v pick=%d question=%+v", ok, ask.pick, ask.question)
+	}
+}
+
+// V8 (contract 3): with OpenLive wired, the Move chords (alt+m bringWork and
+// device picker, alt+c resume offer, and a local Home row that turns out held
+// elsewhere) still raise the Move card and never call OpenLive.
+func TestTheMoveChordsStillOfferTheMoveCardWhenLiveIsAvailable(t *testing.T) {
+	// 1. alt+m with one online device (bringWork).
+	a, _ := liveHomeRig(t, "dev_tower")
+	calls, _ := wireFakeOpenLive(t, a, nil)
+	if cmd := a.bringWork(); cmd != nil {
+		t.Fatalf("bringWork started work: %v", cmd)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("bringWork called OpenLive %d times, want 0", len(*calls))
+	}
+	ask, ok := a.homeAsking()
+	if !ok || ask.question.Head != moveAsk || ask.question.Subject.Name != "Port" {
+		t.Fatalf("bringWork did not raise the Move card: ok=%v question=%+v", ok, ask.question)
+	}
+
+	// 2. alt+m with several online devices (devicePickShown).
+	multi, _ := liveHomeRig(t, "dev_tower", "dev_desk")
+	multiCalls, _ := wireFakeOpenLive(t, multi, nil)
+	multi.bringWork()
+	pickAsk, ok := multi.homeAsking()
+	if !ok || pickAsk.question.Head != devicePickAsk {
+		t.Fatalf("several online devices did not raise picker: ok=%v question=%+v", ok, pickAsk.question)
+	}
+	pickAsk.local(session.Answer{Key: "1", Picked: []string{"1"}})
+	if len(*multiCalls) != 0 {
+		t.Fatalf("device picker called OpenLive %d times, want 0", len(*multiCalls))
+	}
+	if ask, ok = multi.homeAsking(); !ok || ask.question.Head != moveAsk || ask.question.Subject.Name != "Port" {
+		t.Fatalf("device picker did not raise the Move card: ok=%v question=%+v", ok, ask.question)
+	}
+
+	// 3. alt+c from the resume card (offerContinue).
+	resumeApp, _ := liveHomeRig(t, "dev_tower")
+	resumeCalls, _ := wireFakeOpenLive(t, resumeApp, nil)
+	resumeApp.considerResume()
+	if resumeApp.leftOff.row == nil {
+		t.Fatal("expected resume offer for offline desk's chat")
+	}
+	cmd, took := resumeApp.resumeKeyHandler(resumeKey)
+	if !took || cmd != nil {
+		t.Fatalf("resumeKeyHandler(alt+c) took=%v cmd=%v", took, cmd)
+	}
+	if len(*resumeCalls) != 0 {
+		t.Fatalf("alt+c called OpenLive %d times, want 0", len(*resumeCalls))
+	}
+	if ask, ok = resumeApp.homeAsking(); !ok || ask.question.Head != moveAsk || ask.question.Subject.Name != "Docs" {
+		t.Fatalf("alt+c did not raise the Move card: ok=%v question=%+v", ok, ask.question)
+	}
+
+	// 4. A local Home row that turns out held elsewhere on open (homeLocalOpenReady).
+	localApp, _ := liveHomeRig(t, "dev_tower")
+	localCalls, _ := wireFakeOpenLive(t, localApp, nil)
+	heldRow := localApp.machineRead.rows[0]
+	localLine := homeLine{
+		kind: homeSession,
+		row:  session.SessionRow{ID: heldRow.Cell, Transcript: filepath.Join(t.TempDir(), heldRow.Cell, "session.jsonl")},
+	}
+	drain(t, localApp, localApp.homeLocalOpenReady(homeLocalOpenMsg{
+		line:       localLine,
+		fromFile:   localApp.file,
+		generation: localApp.continueGeneration,
+		reading:    homeMachinesMsg{rows: []chatlist.Row{heldRow}},
+	}))
+	if len(*localCalls) != 0 {
+		t.Fatalf("homeLocalOpenReady called OpenLive %d times, want 0", len(*localCalls))
+	}
+	if ask, ok = localApp.homeAsking(); !ok || ask.question.Head != moveAsk || ask.question.Subject.Name != "Port" {
+		t.Fatalf("homeLocalOpenReady did not raise the Move card: ok=%v question=%+v", ok, ask.question)
+	}
+}
+
+// V1/V10 (contract 1 and contract 2): Enter on a row whose computer is not in
+// the roster, is this computer itself, or when this computer is marked removed
+// does not call OpenLive and takes the existing non-live road.
+func TestEnterIsNotLiveForAnOfflineOrRemovedOrUnknownComputer(t *testing.T) {
+	t.Run("unknown computer not in roster", func(t *testing.T) {
+		a, _ := liveHomeRig(t, "dev_tower")
+		calls, _ := wireFakeOpenLive(t, a, nil)
+		a.machineRead.rows = []chatlist.Row{
+			{Cell: "c-unknown", Title: "Unknown box", Device: "stranger", DeviceID: "dev_stranger", Status: chatlist.Running},
+		}
+		a.rebuildMachines()
+
+		standOn(t, a, "c-unknown")
+
+		if len(*calls) != 0 {
+			t.Fatalf("OpenLive called %d times for a computer not in the roster", len(*calls))
+		}
+		ask, ok := a.homeAsking()
+		if !ok || ask.question.Head != moveAsk || ask.question.Subject.Name != "Unknown box" {
+			t.Fatalf("unknown computer did not raise the Move card: ok=%v question=%+v", ok, ask.question)
+		}
+	})
+
+	t.Run("this computer in roster", func(t *testing.T) {
+		a, _ := liveHomeRig(t, "dev_tower")
+		calls, _ := wireFakeOpenLive(t, a, nil)
+		selfRow := chatlist.Row{Cell: "c-self", Title: "Own chat", Device: "This Mac", DeviceID: "dev_me", Status: chatlist.Running}
+		drain(t, a, a.homeMachineEnter(homeLine{kind: homeMachineRow, remote: &selfRow}))
+
+		if len(*calls) != 0 {
+			t.Fatalf("OpenLive called %d times for this computer itself", len(*calls))
+		}
+		ask, ok := a.homeAsking()
+		if !ok || ask.question.Head != moveAsk || ask.question.Subject.Name != "Own chat" {
+			t.Fatalf("self row did not fall back to the Move card: ok=%v question=%+v", ok, ask.question)
+		}
+	})
+
+	t.Run("computer marked removed", func(t *testing.T) {
+		a, _ := liveHomeRig(t, "dev_tower")
+		calls, _ := wireFakeOpenLive(t, a, nil)
+		a.machineRead.computerRemoved = true
+
+		standOn(t, a, "c1")
+
+		if len(*calls) != 0 {
+			t.Fatalf("OpenLive called %d times when computerRemoved was true", len(*calls))
+		}
+		if !strings.Contains(a.home.msg, chatlist.RemovedChat) {
+			t.Fatalf("removed computer foot = %q, want %q", a.home.msg, chatlist.RemovedChat)
+		}
+	})
 }

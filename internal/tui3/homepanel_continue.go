@@ -179,8 +179,27 @@ var remoteOffers = map[chatlist.OfferKind]func(*app, chatlist.Row, chatlist.Offe
 	chatlist.Merge:        (*app).offerBranch,
 }
 
-// homeMachineEnter is enter on a chat from another machine.
+// homeMachineEnter is enter on a chat from another machine: it opens an
+// eligible held chat as a live view first, and falls back to the Move card when
+// live viewing is unavailable or fails.
 func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
+	if a.hosted() || line.remote == nil {
+		return nil
+	}
+	if a.machineRead.computerRemoved {
+		a.home.say(chatlist.RemovedChat, "")
+		return nil
+	}
+	row := *line.remote
+	if a.liveEligible(row) {
+		return a.homeOpenLiveLater(line, row)
+	}
+	return a.homeMachineMove(line)
+}
+
+// homeMachineMove is the continuation door for a chat on another machine when
+// moving the chat here was asked for directly or live viewing is not used.
+func (a *app) homeMachineMove(line homeLine) tea.Cmd {
 	if a.hosted() || line.remote == nil {
 		return nil
 	}
@@ -257,6 +276,7 @@ func (a *app) finishHomeTake(restoreDraft bool) {
 	a.homeTaking, a.homeTakeDraft, a.homeTakenSaid, a.homeMoveSaid = "", nil, nil, ""
 	a.homeTakeAutomatic, a.homeTakeOriginAutomatic, a.homeTakeAbandoned = false, false, false
 	a.homeTakeResult = nil
+	a.liveMoveFrom = ""
 }
 
 // cancelHomeTake withdraws the choice. An automatic acquisition still settles
@@ -351,7 +371,7 @@ func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 // takeover sentence as the reason. The cursor starts on option `at`.
 func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 	row = a.presentRow(row)
-	card := a.continueCardFor(row, at == continueStayAt)
+	card := a.continueCardFor(row, at == continueStayAt || a.liveMoveFrom != "")
 	return questionShown{
 		continuation: card,
 		question: session.Question{
@@ -373,6 +393,7 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 		pick: at,
 		local: func(answer session.Answer) tea.Cmd {
 			if answer.FirstKey() != "1" {
+				a.liveMoveFrom = ""
 				if card.returnFile != "" && a.file == card.returnFile {
 					a.closeHome()
 				}
@@ -568,6 +589,13 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	a.homeTaking = msg.row.Cell
 	a.homeTakeAutomatic, a.homeTakeOriginAutomatic, a.homeTakeAbandoned = msg.automatic, msg.automatic, false
 	a.homeTakeRow = msg.row
+	if live := a.liveFront(); live != nil && a.liveMatchesRow(live, msg.row) {
+		if a.liveMoveFrom == "" {
+			a.liveMoveFrom = a.liveMoveIdentity(live, msg.row)
+		}
+	} else {
+		a.liveMoveFrom = ""
+	}
 	a.homeMoveSaid = a.initialMoveLine()
 	a.home.say(a.homeMoveSaid, "")
 	baseCtx := a.ctx
@@ -577,7 +605,7 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 	ctx, cancel := context.WithCancel(baseCtx)
 	a.homeTakeCancel = cancel
 	taker := a.taker
-	if a.file != "" && filepath.Base(session.DirOf(a.file)) == msg.row.Cell {
+	if a.file != "" && (filepath.Base(session.DirOf(a.file)) == msg.row.Cell || a.liveMoveFrom != "") {
 		msg.fromFile = a.file
 		// The displaced session may retire during the move, so its unsent words travel with the answer.
 		composer := a.mainComposer()
@@ -714,6 +742,7 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 		a.homeTakeCancel()
 		a.homeTakeCancel = nil
 	}
+	fromLive := a.liveMoveFrom != ""
 	if msg.err != nil {
 		a.finishHomeTake(false)
 	}
@@ -732,6 +761,23 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 		if _, ok := a.taker.(workspaceRootTaker); ok && len(missing.Roots) > 0 {
 			return a.chooseTakeRoots(msg, missing.Roots)
 		}
+	}
+	if msg.err != nil && fromLive {
+		a.liveMoveFrom = ""
+		if errors.Is(msg.err, directory.ErrUnreachable) || (msg.row.AutoOpen && errors.Is(msg.err, context.DeadlineExceeded)) {
+			a.machineRead.down = true
+		}
+		failure := a.failedTake(msg)
+		a.restoreTakeDraft(msg)
+		a.dropHomeAsk()
+		a.home.armed = ""
+		a.home.say("", "")
+		if a.at(pageHome) {
+			a.closeHome()
+		}
+		a.note(failure)
+		a.touch()
+		return nil
 	}
 	var failure string
 	if msg.err != nil {
@@ -970,6 +1016,10 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		a.conversationRequest++
 	}
 	a.homeTakeDraft = &msg
+	var liveAgent Agent
+	if a.liveFront() != nil {
+		liveAgent = a.agent
+	}
 	a.homeTakenSaid = func() tea.Cmd {
 		if !msg.automatic {
 			a.foldHomeBoxIntoDraft(&msg)
@@ -982,9 +1032,21 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 				if held.watch != nil {
 					held.watch.stop()
 				}
+				if held.conv.Live != nil && held.conv.Agent != nil {
+					if held.conv.Agent == liveAgent {
+						liveAgent = nil
+					}
+					leaveAgent(held.conv.Agent)
+				}
 				delete(a.behind, key)
-				a.forget(key)
+				if key != a.convKey(a.file) {
+					a.forget(key)
+				}
 			}
+		}
+		if liveAgent != nil && liveAgent != a.agent && !msg.taken.AlreadyHere {
+			leaveAgent(liveAgent)
+			liveAgent = nil
 		}
 		a.finishHomeTake(false)
 		a.note(joinSaid(moved, kept))
@@ -1033,7 +1095,7 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		return nil
 	}
 	var cmd tea.Cmd
-	if !msg.taken.AlreadyHere && msg.taken.Transcript != "" && a.holding(line.row.Transcript) {
+	if !msg.taken.AlreadyHere && (msg.taken.Transcript != "" || a.liveFront() != nil || a.liveMoveFrom != "") && a.holding(line.row.Transcript) {
 		// The transcript was replaced by the handoff. Reattach through the
 		// real door instead of bringing the superseded in-memory session back.
 		cmd = a.homeOpenLater(line, false)
@@ -1175,6 +1237,14 @@ func (a *app) takenLine(msg homeTakenMsg) (homeLine, bool) {
 		return line, true
 	}
 	if t.Transcript == "" {
+		world, _ := a.readWorldKnown()
+		for _, project := range world.Projects {
+			for _, row := range project.Sessions {
+				if homeSessionID(row) == msg.row.Cell {
+					return homeLine{kind: homeSession, project: project.Name, dir: project.Dir, row: row}, true
+				}
+			}
+		}
 		return homeLine{}, false
 	}
 	return homeLine{kind: homeSession, row: session.SessionRow{ID: msg.row.Cell, Transcript: t.Transcript, ProjectDir: t.Resume.Now}}, true

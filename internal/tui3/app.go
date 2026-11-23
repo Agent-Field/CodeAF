@@ -2167,6 +2167,10 @@ type app struct {
 	// chat another of this person's computers runs (live.go). Nil is every other
 	// conversation, and with it every live-view behaviour is absent.
 	liveView *LiveSeam
+	// liveMoveFrom records the file or cell of the live view a Move was started
+	// from so the progress line, composer bar, and completion handlers know to
+	// return to or retire that live view.
+	liveMoveFrom string
 	// liveTurnTouchAt is when the live link was last told a person or a turn was
 	// active, so a streaming turn reports at most once a second.
 	liveTurnTouchAt time.Time
@@ -4130,6 +4134,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd, took := a.hopKey(msg); took {
 				return a, tea.Batch(flushed, cmd)
 			}
+		}
+		if cmd, took := a.liveMoveKeyPress(msg); took {
+			return a, tea.Batch(flushed, cmd)
 		}
 		// THE TRAFFIC'S KEYS READ NEXT (teamrailpointer.go): esc while its card
 		// is over the body, and the two chords that show it and go to the

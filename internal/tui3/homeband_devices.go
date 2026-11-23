@@ -199,7 +199,7 @@ func (a *app) bringWork() tea.Cmd {
 		a.home.say(deviceNothing, "")
 		return nil
 	case 1:
-		return a.homeMachineEnter(machineEntry(picks[0]))
+		return a.homeMachineMove(machineEntry(picks[0]))
 	}
 	a.raiseMachineAsk(picks[0], a.devicePickShown(picks))
 	return nil
@@ -229,7 +229,7 @@ func (a *app) devicePickShown(picks []chatlist.Row) questionShown {
 		local: func(answer session.Answer) tea.Cmd {
 			for i, row := range picks {
 				if answer.FirstKey() == string(rune('1'+i)) {
-					return a.homeMachineEnter(machineEntry(row))
+					return a.homeMachineMove(machineEntry(row))
 				}
 			}
 			return nil

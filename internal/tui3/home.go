@@ -2540,7 +2540,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		if a.cancelTakeover() {
 			return nil
 		}
-		if a.cancelHomeTake() {
+		if a.liveMoveFrom == "" && a.cancelHomeTake() {
 			return nil
 		}
 		// THE @ LIST IS INNER TO THE BOX, and so it goes first. It is drawn
