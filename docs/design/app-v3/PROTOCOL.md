@@ -533,6 +533,13 @@ keeps the value in a private file the agent's commands read (the model's own
 | `factory.org_myspace` | `in.OrgConn` | `{workstream, limit_usd, spent_usd, at_limit?}` |
 | `factory.org_myspace_totals` | `in.OrgConn` | `{month, limit_usd, people}` |
 | `factory.org_myspace_limit_set` | `in.OrgMySpaceLimitParams` | `{month, limit_usd, people}` |
+| `factory.org_policy` | `in.OrgConn` | the policy |
+| `factory.org_policy_set` | `in.OrgPolicySetParams` | the saved policy |
+| `factory.org_grants` | `in.OrgResourceParams` | `{resource, grants}` |
+| `factory.org_grant_add` | `in.OrgGrantParams` | the grant |
+| `factory.org_grant_preview` | `in.OrgGrantParams` | `{gains, loses, audience_before, audience_after}` |
+| `factory.org_grant_remove` | `in.OrgGrantRemoveParams` | `{}` |
+| `factory.org_move` | `in.OrgMoveParams` | `{resource, dropped}` |
 | `factory.org_agents` | `in.OrgConn` | `{agents}` |
 | `factory.org_agent_new` | `in.OrgAgentNewParams` | the agent |
 | `factory.org_agent_set` | `in.OrgAgentSetParams` | the agent |
@@ -1101,6 +1108,37 @@ first message's first line). `factory.org_workstream_agent`, `_send` and `_stop`
 chat, and every turn in a space, runs on the server whatever `agent_runner` says. Since
 `org_myspace`, the operator is no longer told a private workstream or canvas exists:
 the `name_only` row is gone.
+
+An engine whose hello carries `org_access` serves an organization's access policy and the
+grants on its things. `factory.org_policy` `GET /v1/org/policy` answers the policy to any
+member: `{rev, roles: [{name, verbs}], owner_role, org_role, defaults: {<kind>: {visibility}},
+sharing: {who}, operator: {role, sees_private, may_govern}, agents: {may_create, may_share,
+may_grant, default_scope, scopes?}}`, and the default policy when none was ever saved, which
+is how the server behaved before policies existed. A role is a named bundle of verbs from a
+closed list (`view`, `comment`, `edit`, `run`, `steer`, `answer`, `share`, `manage`), every
+role holds `view`, and the four names `view`, `comment`, `edit` and `full` are kept. Only
+the operator saves one: `factory.org_policy_set {policy}` `PUT /v1/org/policy` takes the
+document as the last read answered it, `rev` included, and answers the saved one (a stale `rev` is
+`conflict` with the reason `stale`; a document the rules refuse is refused with the server's words). A change to who may
+see anything reaches everyone it concerns as that thing's own change event, to the people who
+could see it before and the people who can now, and as `org.policy_changed {rev, by?}` to
+every member, who then read the policy again. `factory.org_grants {kind, id}` `GET
+/v1/resources/{kind}/{id}/grants` lists, for anyone who may view the resource, the owner, each
+share on its workstream or canvas (`source: "share"`) and each stored grant (`source: "grant"`,
+or `"policy"` when the organization's policy wrote it): `{resource, grants: [{id, subject:
+{kind, id}, role, granted_by?, created_at, expires_at?, note?, source, live}]}`; a resource the
+caller may not view is `not_found`. `factory.org_grant_add {kind, id, subject, role,
+expires_at?, note?}` `POST .../grants` needs the share verb, and the role may hold only verbs the
+caller holds on the thing: a person's own verbs, or for a server-run agent its person's verbs
+cut to what the policy lets the agent do. A grant to an agent is refused with words: an agent's reach is the
+policy's. `factory.org_grant_preview` takes the same params and answers `{gains, loses,
+audience_before, audience_after}` without writing anything. `factory.org_grant_remove {kind, id,
+grant}` `DELETE .../grants/{grant}` removes a stored grant; a share on a workstream or canvas keeps
+its own methods and answers `conflict` naming them. `factory.org_move {kind, id, to}` `POST
+.../move` moves a canvas into another workstream or into the caller's own space; it needs
+`manage` on the canvas and `edit` on the destination, drops the canvas's own grants when the
+destination is private (they come back in `dropped`), and answers `{resource, dropped}`. Any
+other kind is `conflict` with words. A destination the caller may not see is `not_found`.
 
 An engine whose hello carries `org_agents` keeps an organization's agents: a name and
 instructions one person made in their space. `factory.org_agents` `GET /v1/agents`
