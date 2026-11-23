@@ -3442,6 +3442,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"use my codex plan", "models-and-cost"},
 		// #1383 and #1391: what a Codex model holds, and who answered it.
 		{"what context window does a codex model have", "models-and-cost"},
+		// DeepSeek's own API reads its own thinking field, and the page that
+		// says which word each rung sends is the one a person asking must reach.
+		{"does max thinking work on deepseek direct", "models-and-cost"},
 		{"which server answered my codex request in the call lines", "sessions-and-rewind"},
 		{"connect from the terminal without opening the chat", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},

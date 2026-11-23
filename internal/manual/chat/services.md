@@ -81,19 +81,38 @@ the variable.
 `--at`, connecting a provider is absent because the profile behind the conversation is
 not the local profile the panel could write.
 
-## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen or MiniMax directly
+## Use my own DeepSeek key — connecting DeepSeek, GLM, Kimi, Qwen, MiniMax or OpenCode Go directly
 
-Open `/connect` and choose the vendor in the `models` group. DeepSeek and MiniMax open
-`your key` directly. Z.ai, Moonshot and Alibaba Qwen first open `your region` as a
-choice with `International` under the cursor and `China` below it; a region is never
-typed. Up and down, or `ctrl+p` and `ctrl+n`, move the cursor. A letter jumps to a
-region whose name starts with it, enter takes the row under the cursor and opens
-`your key`, and esc returns to the provider row with nothing saved. The same choice
-opens when reconnecting one of these providers from its Providers row in `/settings`.
-Z.ai is the direct provider for GLM and Moonshot is the direct provider for Kimi.
-MiniMax, Ollama and **Custom OpenAI-compatible API** are single-door providers. MiniMax makes no plan
-claim because its plan and metered traffic currently have no wire-level difference
-codeaf can use to prove which balance answered.
+Open `/connect` and choose the vendor in the `models` group. DeepSeek, MiniMax and
+OpenCode Go open `your key` directly. Z.ai, Moonshot and Alibaba Qwen first open
+`your region` as a choice with `International` under the cursor and `China` below it;
+a region is never typed. Up and down, or `ctrl+p` and `ctrl+n`, move the cursor. A
+letter jumps to a region whose name starts with it, enter takes the row under the
+cursor and opens `your key`, and esc returns to the provider row with nothing saved.
+The same choice opens when reconnecting one of these providers from its Providers row
+in `/settings`. Z.ai is the direct provider for GLM, Moonshot is the direct provider
+for Kimi and OpenCode Go is the subscription for the models OpenCode tests. MiniMax,
+Ollama and **Custom OpenAI-compatible API** are single-door providers. MiniMax makes
+no plan claim because its plan and metered traffic currently have no wire-level
+difference codeaf can use to prove which balance answered.
+
+## OpenCode Go — connecting the subscription, its key and its models
+
+OpenCode Go is a monthly subscription from OpenCode for open coding models. Open
+`/connect`, choose **OpenCode Go** in the `providers` group, paste the API key from
+`opencode.ai/auth` and press Enter. The key variable is `OPENCODE_API_KEY`, and a key
+that starts with `oc_sk_` is accepted without another question. No region is asked.
+
+The plan has one billing road and no pay-as-you-go overflow. codeaf saves that road as
+a plan, lists the models the subscription serves and moves the conversation onto
+`glm-5.3` when the plan lists it. A successful line says `opencode-go is connected`
+with the number of models the plan listed, and models read `opencode-go/glm-5.3`. Every
+request carries a stable session identity because the service requires one before it
+reads the key.
+
+From a shell, `codeaf connect opencode-go` asks for the same key. The monthly limits
+are OpenCode's own, and a spent window stays a pause rather than a billable overflow
+road.
 
 A provider name cannot be confused with the author part of a model already on the default
 provider. When `deepseek` is already an author there, codeaf connects the direct provider
@@ -111,9 +130,9 @@ and its models read `deepseek-direct/<model id>`.
 
 ## Connect a provider — what is asked for, and what codeaf checks before it saves anything
 
-Open `/connect` and choose a row in `providers`. DeepSeek asks for `your key`. Z.ai,
-Moonshot and Alibaba Qwen ask `your region` with one row per region: `International`
-is first and starts under the cursor, then `China`. Up and down, or `ctrl+p` and
+Open `/connect` and choose a row in `providers`. DeepSeek and OpenCode Go ask for
+`your key`. Z.ai, Moonshot and Alibaba Qwen ask `your region` with one row per region:
+`International` is first and starts under the cursor, then `China`. Up and down, or `ctrl+p` and
 `ctrl+n`, move the cursor; a letter jumps to a region whose name starts with it;
 enter takes the row under the cursor and then opens `your key`; esc backs out with
 nothing saved. The region is a choice and cannot be typed. Ollama asks for nothing.

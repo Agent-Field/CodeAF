@@ -1005,6 +1005,11 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		BillingDoor: service.Door.Name,
 		Billing:     billingFactOf(service),
 		Effort:      effort,
+		// The dialect travels from the service row rather than being inferred
+		// from the address, so a router that happens to serve DeepSeek's
+		// models keeps the unified object and only the vendor's own API gets
+		// the field it reads.
+		ReasoningDialect: service.Source.Reasoning,
 	}
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		configured.APIKey = codexauth.Sentinel

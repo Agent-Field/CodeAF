@@ -2204,16 +2204,16 @@ func (s *Settings) build() []Setting {
 		// stopping to ask you. The dollars are above; the actions are here.
 		Setting{
 			Key: KeyToolApprovalMode, Category: CategorySafety, Kind: SettingChoice,
-			Label: "ask before running", Choices: ToolApprovalModes,
-			Hint: "what happens when the model asks to run a tool: prompt asks you, allow runs it, " +
-				"deny refuses it. Dangerous shell commands are asked about whichever way this is set. " +
+			Label: "tool approvals", Choices: ToolApprovalModes,
+			Hint: "what happens when the model asks to run a tool: ask by default asks you, allow by default runs it, " +
+				"block by default refuses it. Dangerous shell commands are asked about whichever way this is set. " +
 				"A change reaches this conversation straight away, unless the panel says it lands on the next session.",
 			read:  func() string { return ToolApprovalModeAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyToolApprovalMode, raw, ToolApprovalModes) },
 		},
 		Setting{
 			Key: KeyToolApprovals, Category: CategorySafety, Kind: SettingText,
-			Label: "tool approvals", EmptyLabel: "none",
+			Label: "tool exceptions", EmptyLabel: "none",
 			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
 				"What you write here changes only the tools you name. Reading files and " +
 				"codeaf's own notes are allowed unless you name them, and everything else " +

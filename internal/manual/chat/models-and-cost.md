@@ -1723,6 +1723,33 @@ answer: it cannot think harder than its own ceiling.
 These rungs are not the same notation as a thinking level written onto a pin
 (`moonshotai/kimi-k3:high`), which still takes only `low`, `medium` and `high`.
 
+DeepSeek's own API is the one exception to this shape: see *Thinking levels on DeepSeek's
+own API*.
+
+## Thinking levels on DeepSeek's own API — `codeaf connect deepseek` and its `reasoning_effort` field
+
+When DeepSeek is connected directly (`codeaf connect deepseek`, the service at
+`https://api.deepseek.com/v1`), a thinking level travels as DeepSeek's own top-level
+`reasoning_effort` field, not as OpenRouter's `reasoning` object. DeepSeek's API ignores
+that object, and its model list names the three words it does read: `low`, `high` and
+`max`, with `high` its default.
+
+| Rung | What DeepSeek's own API is sent |
+|---|---|
+| `auto` | nothing — DeepSeek thinks at its default |
+| `low` | `"reasoning_effort":"low"` |
+| `medium` | `"reasoning_effort":"high"` — there is no word between low and high |
+| `high` | `"reasoning_effort":"high"` |
+| `xhigh` | `"reasoning_effort":"max"` |
+| `max` | `"reasoning_effort":"max"` |
+
+No thinking budget is sent there and the `reasoning` object never rides beside the word.
+Asking a model that cannot stop thinking to stop sends `"reasoning_effort":"low"`, the
+lowest word it takes. A `deepseek/...` model reached through OpenRouter is unchanged: it
+gets the `reasoning` object, word or budget, and OpenRouter translates it. Before
+2026-11-22 the direct service was sent that object too, so every level ran at DeepSeek's
+default and `max` was unreachable.
+
 ## The model went quiet, or stopped answering halfway through — the request is cut when nothing comes back, and how long it waits first
 
 A request that has been accepted and then produces nothing is cut and sent again. Two
@@ -3308,8 +3335,8 @@ General · Models · Memory · Tasks · AI teams · Permissions · Spending · C
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
-tabs beside it: **Permissions** is what codeaf may do without asking you first (ask before
-running, tool exceptions, shell command rules, guardian, approval countdown, task
+tabs beside it: **Permissions** is what codeaf may do without asking you first (tool
+approvals, tool exceptions, shell command rules, guardian, approval countdown, task
 countdown, who settles work that needs a look), and **Tasks** is how work you can walk
 away from is run (starting a task, check task work, task repair rounds, tasks at once,
 busy machine, memory floor, task model).

@@ -125,10 +125,25 @@ func TestUnqualifiedIdsStayOnTheDefaultService(t *testing.T) {
 	}
 }
 
+// THE GO SUBSCRIPTION'S KEYS DO NOT START WITH sk-. The shared OpenAI-shaped
+// rule refused every real key before the connect check made a request.
+func TestTheOpenCodeGoKeyRuleAcceptsItsOwnPrefix(t *testing.T) {
+	for _, key := range []string{"oc_sk_opencode-0123456789abcdef", " oc_sk_x "} {
+		if !LooksLikeOpenCodeKey(key) {
+			t.Errorf("LooksLikeOpenCodeKey(%q) refused a Go key", key)
+		}
+	}
+	for _, key := range []string{"", "oc_sk_", "sk-opencode-0123456789", "oc_sk_key with space"} {
+		if LooksLikeOpenCodeKey(key) {
+			t.Errorf("LooksLikeOpenCodeKey(%q) accepted a wrong shape", key)
+		}
+	}
+}
+
 func TestVendoredRowsCarryTheCodexServiceInItsDecidedPlace(t *testing.T) {
 	// C12: Codex is a model service whose models are qualified on every surface.
 	rows := Vendored()
-	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "aiand", "codex", "ollama", "custom"}
+	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "aiand", "codex", "ollama", "custom", "claude-code", "opencode-go"}
 	// The established order stays fixed, but an appended provider is welcome.
 	if len(rows) < len(want) {
 		t.Fatalf("vendored rows = %d, want at least %d", len(rows), len(want))
@@ -137,7 +152,7 @@ func TestVendoredRowsCarryTheCodexServiceInItsDecidedPlace(t *testing.T) {
 		if rows[i].ID != want[i] {
 			t.Errorf("row %d = %q, want %q", i, rows[i].ID, want[i])
 		}
-		if rows[i].ID != "codex" && rows[i].Probe.Timeout != ProbeTimeout {
+		if rows[i].ID != "codex" && rows[i].ID != "claude-code" && rows[i].Probe.Timeout != ProbeTimeout {
 			t.Errorf("row %s probe timeout = %s, want %s", rows[i].ID, rows[i].Probe.Timeout, ProbeTimeout)
 		}
 	}
@@ -210,10 +225,19 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		{"codex", ListingNone, "", "gpt-5.5"},
 		{"ollama", ListingModels, "", ""},
 		{"custom", ListingModels, "", ""},
+		// OBSERVED 2026-11-03 against opencode.ai/inference/go/v1: /models
+		// answers 200 with the key and 401 without one, and chat completions
+		// share that root. The preferred id is the plan's own flagship GLM.
+		{"opencode-go", ListingModels, "glm-5.3", "glm-5.3"},
 	}
-	rows := Vendored()
+	// Rows are read by identity, not position: claude-code sits between
+	// custom and opencode-go and makes no listing claim this table covers.
+	byID := map[string]Source{}
+	for _, row := range Vendored() {
+		byID[row.ID] = row
+	}
 	for index, expected := range want {
-		row := rows[index]
+		row := byID[expected.id]
 		if row.ID != expected.id || row.Listing != expected.listing || row.ProbeModel != expected.probeModel || row.Preferred != expected.preferred {
 			t.Errorf("row %d = id %q listing %v probe %q preferred %q, want %q %v %q %q",
 				index, row.ID, row.Listing, row.ProbeModel, row.Preferred,
