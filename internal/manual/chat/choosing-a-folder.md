@@ -609,6 +609,9 @@ same refusal every write outside its folder gets, naming the `.git` and the word
 `is outside your copy`, and carries on with its work. Ordinary git work in the folder, such
 as `git commit` or `git checkout`, is untouched, and so is reading `.git`. permissions has
 the exact wording; how-tasks-run has the full list.
+On a disk that ignores case, as Mac disks do by default, `.GIT` and `.Git` refer
+to the same entry as `.git`, and `.git/head` refers to `.git/HEAD`. The same
+protection applies to those spellings.
 
 ## Where did my changes go — the folder still looks unchanged
 
