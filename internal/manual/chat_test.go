@@ -3733,6 +3733,25 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
 		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
 		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
+		// Remote control (internal/manual/chat/remote-control.md): working in a chat
+		// another of the person's computers is running, without moving it.
+		{"how do I see my chat from my other computer", "remote-control"},
+		{"can I drive a chat on my desktop from my laptop without moving it", "remote-control"},
+		{"open a chat that is running on another computer live", "remote-control"},
+		{"why can't I type in a chat that is running on my other computer", "remote-control"},
+		{"what does watch only mean", "remote-control"},
+		{"who has the keyboard when two computers have the same chat open", "remote-control"},
+		{"my desktop went offline while I was looking at its chat", "remote-control"},
+		{"does remote control work when relay storage is off", "remote-control"},
+		{"how do I stop my laptop from controlling my desktop's chats", "remote-control"},
+		{"can the relay read what I type on my other computer", "remote-control"},
+		{"why was I disconnected after ten minutes", "remote-control"},
+		{"it says daily limit and watch only", "remote-control"},
+		{"how do I turn remote control on", "remote-control"},
+		{"what is the difference between remote control and move here", "remote-control"},
+		{"can my laptop answer a question that is waiting on my desktop", "remote-control"},
+		{"remote control says restart codeaf on the other computer", "remote-control"},
+		{"is remote control the same as codeaf serve and --at", "remote-control"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
