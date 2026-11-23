@@ -39,6 +39,19 @@ func poolTestCatalog() []catalog.Model {
 	}
 }
 
+// poolUsageHome joins the judge's ledger before its disposable home is removed.
+// Flushing rows is not a join: the writer still performs final journal work.
+func poolUsageHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	ledger := session.UsageLedgerPath()
+	t.Cleanup(func() {
+		if !session.StopUsageWriter(ledger) {
+			t.Error("pool usage writer did not stop before home cleanup")
+		}
+	})
+}
+
 // poolTestAsk is the fake ask: it records the model it was asked for, bills
 // the call exactly as the real ask bills one — the provider's own receipt, a
 // fifth of a cent — and answers the one JSON object a seat's answer is.
@@ -89,7 +102,7 @@ func poolTildeCatalog() []catalog.Model {
 // once, the judge's questions asked of no model the crew held, and the calls
 // billed to the judge's seat.
 func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -155,7 +168,7 @@ func TestPoolJudgeHookScoresALandedTaskIntoItsOwnSheetAndAnswersTheNewCells(t *t
 // schema all read. The judge picked must also stay outside the seats' own
 // vendor, which the marker otherwise hides.
 func TestPoolJudgeHookSpellsASeatByItsBareModelID(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -220,7 +233,7 @@ func TestPoolJudgeHookSpellsASeatByItsBareModelID(t *testing.T) {
 // the pool's records from it, so the seats it carries are written already
 // spelled bare — the pool's copy of the id, not the client's routing spelling.
 func TestWritePendingLandingSpellsThePoolSeatsBare(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 
 	profileDir := t.TempDir()
 	landing := poolTestLanding()
@@ -247,7 +260,7 @@ func TestWritePendingLandingSpellsThePoolSeatsBare(t *testing.T) {
 // mode whose submit address was emptied sends nothing, and a read-only mode
 // records locally only.
 func TestPoolJudgeHookAppendsOutboxRowsOnlyWhenTheModeSends(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 
 	profileDir := t.TempDir()
 	outboxFile := filepath.Join(config.ProfilePath(profileDir, "pool"), "outbox.jsonl")
@@ -299,7 +312,7 @@ func TestPoolJudgeHookAppendsOutboxRowsOnlyWhenTheModeSends(t *testing.T) {
 // forbids reading builds no hook at all, so a landing costs no call and
 // writes nothing.
 func TestPoolJudgeHookDoesNothingUnderModeOff(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "off")
 
 	profileDir := t.TempDir()
@@ -321,7 +334,7 @@ func TestPoolJudgeHookDoesNothingUnderModeOff(t *testing.T) {
 // model's published price over the tokens when none did — with zero meaning
 // nobody published one, which reads as "nobody said" and never as free.
 func TestPoolJudgeAskBillsTheJudgeSeatFromTheModelsPrice(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 
 	// The receipt wins, whatever the price says.
 	receipt := 0.0007
@@ -357,7 +370,7 @@ func TestPoolJudgeAskBillsTheJudgeSeatFromTheModelsPrice(t *testing.T) {
 // question before answering — and the share is read off the deadlines, not
 // waited out: judgeTimeout is a constant nobody wants a test to sit through.
 func TestPoolJudgeHookGivesEachSeatsQuestionItsOwnShareOfTheLandingTime(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -439,7 +452,7 @@ func TestPoolJudgeHookGivesEachSeatsQuestionItsOwnShareOfTheLandingTime(t *testi
 // answers once its context gives out; the ninety seconds themselves are not
 // waited out here.
 func TestPoolJudgeHookStillScoresTheSecondSeatWhenTheFirstSeatsShareRunsOut(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -501,7 +514,7 @@ func decodeJudgeLast(t *testing.T, profileDir string) judgeLast {
 // The hook names the judge that answered and the seats it scored in the small
 // record beside the sheet, so a judge failure reads without --debug.
 func TestPoolJudgeHookRecordsTheJudgeThatScoredTheLanding(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -539,7 +552,7 @@ func TestPoolJudgeHookRecordsTheJudgeThatScoredTheLanding(t *testing.T) {
 // When every candidate fails, the record says which were asked and the last
 // error's one line — the reading a person needs when no score landed.
 func TestPoolJudgeHookRecordsTheCandidatesAndReasonWhenEveryJudgeFails(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -568,7 +581,7 @@ func TestPoolJudgeHookRecordsTheCandidatesAndReasonWhenEveryJudgeFails(t *testin
 // A landing the hook declines before asking — nothing outside the crew to
 // pick — is written too, with the decline itself as the reason.
 func TestPoolJudgeHookRecordsTheDeclineWhenThereIsNoCandidate(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -662,7 +675,7 @@ func decodeOutboxRows(t *testing.T, data []byte) []record.Row {
 // refusal — is replaced by the next candidate, and the scores that land are
 // recorded under the judge that actually answered, not the first one asked.
 func TestPoolJudgeHookMovesToTheNextCandidateWhenTheCheapestAnswersNothing(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -739,7 +752,7 @@ func TestPoolJudgeHookMovesToTheNextCandidateWhenTheCheapestAnswersNothing(t *te
 // end: when no candidate returns a single score, the landing is left unrecorded
 // and the hook returns without a panic.
 func TestPoolJudgeHookWritesNothingWhenEveryCandidateAnswersNothing(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -810,7 +823,7 @@ func pendingOutboxRows(t *testing.T, profileDir string) int {
 // it judged, what its budget left, and — the pending file claimed whole — that
 // the file is gone and the record is none the less there.
 func TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -859,7 +872,7 @@ func TestPoolJudgeSweepJudgesThePendingRowsAndLeavesARecordOfItself(t *testing.T
 // and the record says judged one, left one, cut — the reading that keeps a cut
 // sweep from looking like a whole one.
 func TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -914,7 +927,7 @@ func TestPoolJudgeSweepCutByItsBudgetLeavesTheRestAndSaysSo(t *testing.T) {
 // A pool whose mode forbids reading runs no sweep and leaves no record: the
 // rows simply wait, and status says none yet until one runs.
 func TestPoolJudgeSweepLeavesNoRecordWhenThePoolCannotRead(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "off")
 
 	profileDir := t.TempDir()

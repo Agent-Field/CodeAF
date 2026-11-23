@@ -672,8 +672,9 @@ func recordCompare(record installRecord, release Release) (supersedes, certain b
 }
 
 // InstallRefusal names why this target may not be replaced in place — a package
-// manager owns it, or its directory is not writable — or "" when an ordinary
-// install may proceed. The curl line is the road the refusal offers instead.
+// manager owns it, it is part of an application bundle, or its directory is not
+// writable — or "" when an ordinary install may proceed. The curl line is the
+// road the refusal offers instead.
 //
 // THE TARGET IS CANONICALIZED FIRST, exactly as [Install] canonicalizes it: a
 // launcher that hands in a symlink (or a folder reached through one) must answer
@@ -684,8 +685,50 @@ func InstallRefusal(target, curl string) string {
 	if manager := PackageManaged(target); manager != "" {
 		return "this codeaf is managed by " + manager + " · update it there, or install a release with: " + curl
 	}
+	// A BUNDLED ENGINE IS THE APP'S TO UPDATE, WRITABLE OR NOT. A signed bundle
+	// on a Mac sits in /Applications, which the person who installed it can
+	// usually write, so the folder test below would let an explicit
+	// `codeaf update` — one an agent ran from the app's shell, where `codeaf`
+	// is the bundled engine — replace a file inside the bundle and break its
+	// signature. The check is on the path and not on CODEAF_NO_UPDATE_CHECK,
+	// which anybody may set and which leaves an explicit update working.
+	if refusal := bundleRefusal(target, curl); refusal != "" {
+		return refusal
+	}
 	if dir := filepath.Dir(target); dir != "" && !dirWritable(dir) {
 		return "this codeaf is in a folder this account cannot write · reinstall it as that owner, or with: " + curl
+	}
+	return ""
+}
+
+// BundleRefusal is the refusal [InstallRefusal] gives a target inside a macOS
+// application bundle, or "" for any other target. The terminal update and the
+// chat's /update ask it before they turn a source build away, because the engine
+// a desktop app carries is always built from a bare commit: answered the other
+// way round, the bundle's refusal could never be reached from the app, and the
+// person would be told to rebuild with make build instead of updating the app.
+func BundleRefusal(target, curl string) string {
+	return bundleRefusal(canonicalTarget(target), curl)
+}
+
+func bundleRefusal(target, curl string) string {
+	if bundle := AppBundle(target); bundle != "" {
+		return "this codeaf is part of " + bundle + " · that app updates it, so update the app, or install a separate codeaf with: " + curl
+	}
+	return ""
+}
+
+// AppBundle names the macOS application bundle a path sits inside — `WorkAF.app`
+// for `/Applications/WorkAF.app/Contents/MacOS/codeaf` — or "" when it is in no
+// bundle. A folder is a bundle only when its name ends in `.app` and it holds a
+// `Contents` folder, which is what makes a path in it one an application owns.
+func AppBundle(target string) string {
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(strings.TrimSpace(target))), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		name := parts[i]
+		if len(name) > len(".app") && strings.EqualFold(name[len(name)-len(".app"):], ".app") && parts[i+1] == "Contents" {
+			return name
+		}
 	}
 	return ""
 }

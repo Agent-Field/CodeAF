@@ -743,7 +743,10 @@ type connectCard struct {
 	name    string
 	// link is where the sign-in happens, drawn as text under the waiting line so
 	// a person on the far end of an ssh connection can still get there.
-	link    string
+	link string
+	// code is the one-time code a device sign-in is approved with on link,
+	// drawn on its own row; empty for every sign-in that needs none.
+	code    string
 	account string
 	// result is a browser-connected model service's exact outcome sentence.
 	// Empty keeps the connected-account grammar below.
@@ -805,13 +808,21 @@ func (a *app) connectLinkable(i int) bool {
 // link is written down whether or not that worked — see opener.go for why the
 // second one is not a fallback.
 func (a *app) connectAuth(ev session.Event) {
-	a.openConnectFlow(ev.Service, a.serviceName(ev.Service, ev.ServiceName), ev.AuthURL)
+	a.openConnectFlowCode(ev.Service, a.serviceName(ev.Service, ev.ServiceName), ev.AuthURL, ev.AuthCode)
 }
 
 // openConnectFlow is the half both doors share: the session's own
 // EventConnectAuth, and a row pressed in the /connect panel. It opens the
 // browser and puts the waiting block on screen.
 func (a *app) openConnectFlow(service, name, link string) {
+	a.openConnectFlowCode(service, name, link, "")
+}
+
+// openConnectFlowCode is [app.openConnectFlow] for a sign-in approved with a
+// one-time code typed on the page (GitHub's device flow). The code is on the
+// card from the first frame, beside the link, because the page is useless
+// without it.
+func (a *app) openConnectFlowCode(service, name, link, code string) {
 	a.rememberService(service, name)
 	if a.hosted() {
 		// A FLOW MINTED ON ANOTHER MACHINE IS NOT OPENED ON THIS ONE. Both doors
@@ -830,7 +841,7 @@ func (a *app) openConnectFlow(service, name, link string) {
 	a.closeLive()
 	a.entries = append(a.entries, entry{
 		kind: entryConnect, turn: a.turn,
-		conn: &connectCard{service: service, name: name, link: link, state: connectWaiting},
+		conn: &connectCard{service: service, name: name, link: link, code: strings.TrimSpace(code), state: connectWaiting},
 	})
 	a.follow()
 	a.touch()
@@ -1039,6 +1050,9 @@ func (a *app) connectRows(e *entry, width int) []string {
 			waiting = "checking your " + card.name + " key…"
 		}
 		out := []string{a.pal.dim(fit(mark+" "+waiting, width))}
+		if card.code != "" {
+			out = append(out, a.pal.dim(fit("  enter the code "+card.code, width)))
+		}
 		if card.link == "" {
 			return out
 		}

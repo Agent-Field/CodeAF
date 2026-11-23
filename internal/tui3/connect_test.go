@@ -903,3 +903,21 @@ func TestTheSignInRowsAreInThePanel(t *testing.T) {
 func streamOf(a *app, ev session.Event) tea.Msg {
 	return streamEventMsg{gen: a.gen, ev: ev}
 }
+
+// A DEVICE SIGN-IN'S CODE IS ON THE CARD FROM THE FIRST FRAME (GitHub's): the
+// page it links to is useless without it, and a sign-in that needs none draws
+// no code row.
+func TestADeviceSignInShowsItsCodeOnTheWaitingCard(t *testing.T) {
+	_, a, _ := panelApp(t, twoServices)
+	a.width = 100
+	a.openConnectFlowCode("github", "GitHub", "https://github.com/login/device", "ABCD-1234")
+	if screen := strings.Join(plainRows(a), "\n"); !strings.Contains(screen, "enter the code ABCD-1234") {
+		t.Fatalf("the code is not on the card:\n%s", screen)
+	}
+	_, plain, _ := panelApp(t, twoServices)
+	plain.width = 100
+	plain.openConnectFlow("google", "Google", testAuthLink)
+	if screen := strings.Join(plainRows(plain), "\n"); strings.Contains(screen, "enter the code") {
+		t.Fatalf("a sign-in with no code drew a code row:\n%s", screen)
+	}
+}

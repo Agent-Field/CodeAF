@@ -1077,6 +1077,11 @@ var OperatorEnvPins = []string{
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
 	"CODEAF_HOME",
+	// CODEAF_LOGIN_HOME is the person's real login home, recorded by
+	// `codeaf app --home` beside the CODEAF_HOME it sets, so the folders other
+	// programs keep there are still read (internal/home). The app writes it and
+	// its child processes inherit it; nobody sets it as a preference.
+	"CODEAF_LOGIN_HOME",
 	// The harness supplies the admitted working-root identity to each execution.
 	// This runtime association is not an editable placement preference.
 	"CODEAF_WORKSPACE_URI",
@@ -1264,6 +1269,9 @@ var OperatorEnvPins = []string{
 	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
 	// tests. It is test plumbing, never a preference.
 	"CODEAF_GITHUB_LOGIN_URL",
+	// CODEAF_GITHUB_MCP_URL points GitHub's hosted tool server at a stand-in
+	// for tests (internal/connect's github.go). It is test plumbing too.
+	"CODEAF_GITHUB_MCP_URL",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",

@@ -48,7 +48,7 @@ func SkillPlugin(dir string) string {
 	if err != nil {
 		return ""
 	}
-	found, err := skills.Discover(skills.Options{ProjectDir: dir, HomeDir: login, OmitSize: true})
+	found, err := skills.Discover(skills.Options{ProjectDir: dir, HomeDir: login, OwnHomeDir: home.OwnLogin(login), OmitSize: true})
 	if err != nil {
 		return ""
 	}

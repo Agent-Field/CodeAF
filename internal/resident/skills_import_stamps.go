@@ -47,7 +47,7 @@ func (m *importMemory) unchanged(key importKey) bool {
 }
 
 func importStamps(key importKey) ([]importStamp, bool) {
-	paths := skills.InputPaths(skills.Options{ProjectDir: key.project, HomeDir: key.home})
+	paths := skills.InputPaths(discoveryOptions(key.project, key.home, true))
 	var stamps []importStamp
 	seen := map[string]bool{}
 	valid := true

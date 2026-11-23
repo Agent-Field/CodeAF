@@ -694,3 +694,85 @@ func waitForFile(t *testing.T, path string, within time.Duration) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// TestAppBundleNamesTheBundleAPathSitsIn pins which paths an application owns:
+// a folder named like a bundle that holds Contents, at any depth, and nothing
+// that merely looks like one.
+func TestAppBundleNamesTheBundleAPathSitsIn(t *testing.T) {
+	for _, row := range []struct{ path, want string }{
+		{"/Applications/WorkAF.app/Contents/MacOS/codeaf", "WorkAF.app"},
+		{"/Applications/WorkAF.app/Contents/Resources/bin/codeaf", "WorkAF.app"},
+		{"/Users/p/Applications/Work AF.APP/Contents/MacOS/codeaf", "Work AF.APP"},
+		{"/Users/p/.local/bin/codeaf", ""},
+		{"/Applications/WorkAF.app/codeaf", ""},
+		{"/Applications/.app/Contents/MacOS/codeaf", ""},
+		{"/Applications/WorkAF.app.d/Contents/MacOS/codeaf", ""},
+		{"/Applications/notanapp/Contents/MacOS/codeaf", ""},
+		{"", ""},
+	} {
+		if got := AppBundle(row.path); got != row.want {
+			t.Errorf("AppBundle(%q) = %q, want %q", row.path, got, row.want)
+		}
+	}
+}
+
+// TestInstallRefusalLeavesABundledEngineToItsApp proves an explicit update does
+// not replace a file inside a signed application bundle even when its folder is
+// writable, which is the case on a Mac whose person installed the app, and that
+// the same engine outside a bundle is still ordinary.
+func TestInstallRefusalLeavesABundledEngineToItsApp(t *testing.T) {
+	root := t.TempDir()
+	bundled := filepath.Join(root, "WorkAF.app", "Contents", "MacOS", "codeaf")
+	ordinary := filepath.Join(root, "bin", "codeaf")
+	for _, path := range []string{bundled, ordinary} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("build"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !dirWritable(filepath.Dir(bundled)) {
+		t.Skip("the bundle's folder is not writable here, so the folder check would refuse it anyway")
+	}
+	refusal := InstallRefusal(bundled, "curl -fsSL https://example.invalid/codeaf | bash")
+	if !strings.Contains(refusal, "WorkAF.app") || !strings.Contains(refusal, "update the app") {
+		t.Fatalf("a bundled engine in a writable folder = %q, want the app's refusal", refusal)
+	}
+	if got := InstallRefusal(ordinary, "curl"); got != "" {
+		t.Fatalf("an engine outside a bundle = %q, want an ordinary install", got)
+	}
+	// A symlink that leads into a bundle is answered for the file it names.
+	if runtime.GOOS != "windows" {
+		alias := filepath.Join(root, "alias")
+		if err := os.Symlink(bundled, alias); err != nil {
+			t.Fatal(err)
+		}
+		if got := InstallRefusal(alias, "curl"); !strings.Contains(got, "WorkAF.app") {
+			t.Fatalf("a link into a bundle = %q, want the app's refusal", got)
+		}
+	}
+}
+
+// TestBundleRefusalIsInstallRefusalsAnswerForABundleOnly proves the refusal the
+// update commands ask before the source-build answer is exactly the bundle's
+// installer refusal, and says nothing about any other target.
+func TestBundleRefusalIsInstallRefusalsAnswerForABundleOnly(t *testing.T) {
+	root := t.TempDir()
+	bundled := filepath.Join(root, "WorkAF.app", "Contents", "MacOS", "codeaf")
+	if err := os.MkdirAll(filepath.Dir(bundled), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bundled, []byte("build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const curl = "curl -fsSL https://example.invalid/codeaf | bash"
+	if got, want := BundleRefusal(bundled, curl), InstallRefusal(bundled, curl); got == "" || got != want {
+		t.Fatalf("BundleRefusal = %q, InstallRefusal = %q; want the same bundle refusal", got, want)
+	}
+	for _, other := range []string{filepath.Join(root, "bin", "codeaf"), "/opt/homebrew/bin/codeaf", ""} {
+		if got := BundleRefusal(other, curl); got != "" {
+			t.Fatalf("BundleRefusal(%q) = %q, want none", other, got)
+		}
+	}
+}

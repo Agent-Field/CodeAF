@@ -624,8 +624,9 @@ func (r *Reconciler) importForeignSkills() {
 		return
 	}
 	// The home directory is the one door internal/home owns: CODEAF_HOME
-	// moves it wholesale, and a test binary that named no home of its own is
-	// handed the quarantine rather than the home of whoever ran it, so the
+	// moves it wholesale, except under the desktop app's --home, which keeps
+	// the person's real home; and a test binary that named no home of its own
+	// is handed the quarantine rather than the home of whoever ran it, so the
 	// scan never imports a real person's skills into a throwaway store.
 	homeDir, err := home.Login()
 	if err != nil {
@@ -704,8 +705,16 @@ func runImportPass(st *store.Store, projectDir, homeDir string, digest func(stri
 	})
 }
 
+// discoveryOptions is the one place a pass's two directories become a scan: the
+// login home is where the other harnesses' folders are read, and codeaf's own
+// folder is read where the state root says (internal/home's OwnLogin), which
+// is the login home itself for every process but the desktop app's.
+func discoveryOptions(projectDir, homeDir string, omitSize bool) skills.Options {
+	return skills.Options{ProjectDir: projectDir, HomeDir: homeDir, OwnHomeDir: home.OwnLogin(homeDir), OmitSize: omitSize}
+}
+
 func scanAndPublishImport(st *store.Store, projectDir, homeDir string, digest func(string) (string, error), omitSize bool) bool {
-	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir, OmitSize: omitSize})
+	discovered, err := skills.Discover(discoveryOptions(projectDir, homeDir, omitSize))
 	if err != nil {
 		return false
 	}

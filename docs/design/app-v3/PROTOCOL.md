@@ -15,7 +15,10 @@ Logs go to stderr.
 The first output is `hello` with sequence 1, contract, version, process id,
 home and features. Clients check `hello.features` before using optional
 capabilities; an unavailable method answers `unknown_method`. End of input
-or `shutdown` closes the engine. `codeaf app --home <dir>` chooses its state root.
+or `shutdown` closes the engine. `codeaf app --home <dir>` chooses its state root. It moves codeaf's own state and
+its own `.codeaf/skills`, and not the person's login home, so other programs'
+skills are still read from that home; the engine records it in
+`CODEAF_LOGIN_HOME` for the processes it starts.
 
 An `uncertain` mutation may already have happened. Read its receipt or current
 state before taking further action; never blindly repeat an uncertain write.
@@ -2896,13 +2899,17 @@ The optional `plugins` hello feature enables these methods. They use
 | `plugins.connect_browser` | `in.PluginBrowserParams` | `PluginBrowserResult` |
 | `plugins.cancel` | `in.PluginID` | `Empty` |
 | `plugins.connect_key` | `in.PluginKeyParams` | `PluginKeyResult` |
+| `plugins.connect_local` | `in.PluginID` | `PluginKeyResult` |
 | `plugins.set_capability` | `in.PluginCapabilityParams` | `Empty` |
 | `plugins.disconnect` | `in.PluginDisconnectParams` | `Empty` |
 
 `plugins.list` returns `{plugins, providers, featured, featured_words}`.
 Each plugin has `id, name, kind, category, blurb, connected, key_checkable`, and optionally
 `account, key_env, expired, connected_at, key_saved_at, ask: {label, answers?},
-key_hint: {words, url?}`.
+key_hint: {words, url?}, also_key, local_login: {account, source}`.
+`also_key: true` marks a `browser` plugin that ALSO accepts `plugins.connect_key`.
+`local_login` is present when a login already on this computer can be adopted
+with `plugins.connect_local`; `source` is `gh`.
 Kind is `browser`, `key` or `server`. Category uses the catalog's spelling.
 `key_checkable` is true only for key connectors with a catalog probe.
 Blurb shortens the existing catalog words. Counts come from the returned
@@ -2948,7 +2955,10 @@ Connected servers' `tools` come from the existing MCP listing, as
 its `covers` text.
 
 `plugins.connect_browser {id, answer?}` answers
-`{state: "waiting", link}`. The desk opens `link` in the browser.
+`{state: "waiting", link, code?}`. The desk opens `link` in the browser.
+`code` is a device sign-in's one-time code (GitHub's): the sheet shows it
+with a copy control and an open-the-page button, and does not open `link`
+before the code is on screen.
 Completion emits `plugins.changed`; `error` carries a safe sign-in failure.
 `plugins.cancel {id}` abandons an unfinished attempt. Closing the engine
 also cancels pending attempts.
@@ -2961,8 +2971,42 @@ It returns `{checked: bool, account?}` on success, or
 catalog probe returns false and is first tested on real use.
 A shape failure reaches no vendor, a refusal retains at most 120 characters,
 and a missing answer saves nothing. Key values never appear in replies.
+`plugins.connect_local {id}` adopts the login named by `local_login` and
+answers in `connect_key`'s shape: `{checked: true, account}`, or
+`{checked: false, error, words}`.
 `plugins.disconnect {id, account?}` uses the existing disconnect path.
 The optional account must match the stored account.
+
+### GitHub
+
+The `plugins_github` hello feature says this engine lists `github` and serves
+`plugins.connect_local`; an engine without it does not list GitHub at all.
+GitHub is featured first, category `developer`. Its `kind` is `browser` with
+`also_key: true` when the build names the GitHub OAuth app (device flow,
+scope `repo`), and `key` when it does not. `key_hint.url` is
+`https://github.com/settings/tokens/new?scopes=repo&description=codeaf`.
+`local_login` appears when `gh auth status` reports a login GitHub accepts;
+codeaf reads gh's token only after `plugins.connect_local`.
+
+`plugins.connect_browser {id: "github"}` answers
+`{state: "waiting", link: "https://github.com/login/device", code}`. The
+engine polls GitHub at its pace; approval emits `plugins.changed {id}`, and an
+expired or declined code emits `plugins.changed {id, error}` with a sentence
+("The code expired before it was approved. Start again for a new code." or
+"GitHub sign-in was declined, so nothing was connected."). `plugins.cancel`
+stops polling. `plugins.connect_key` checks a pasted token with `GET /user`;
+a refused token is `refused`, an unanswered check `no_answer`.
+
+THERE IS ONE GITHUB TOKEN. Every way in keeps it where the Factory keeps its
+GitHub connection (the profile's `github_token` or the yes to gh, and in app
+mode the app's keychain through `credentials.changed`), so connecting in Factory
+setup shows GitHub connected here, a setup connect also emits
+`plugins.changed {id: "github"}`, and `plugins.disconnect {id: "github"}`
+disconnects the Factory too. `plugins.describe` reads capabilities from
+GitHub's hosted tool server (`https://api.githubcopilot.com/mcp/`, with the
+token as a bearer): reads default to yes, acts to ask. `accounts` is the
+GitHub login, and `notes` says the Factory uses this connection while this
+app serves or joins the local Factory.
 
 `settings.set` accepts `when_plan_paused: {[provider]: policy}`, where policy
 is `wait` or `use pay-as-you-go`. It changes the existing persisted source
@@ -3020,3 +3064,47 @@ Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes th
 `knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
 
 Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.
+
+## Provider connection add, replace and final save
+
+`providers.list` remains the engine's provider catalog, with `kind`, optional-key,
+address, regions and browser sign-in metadata. Compatible local runtimes (LM
+Studio, vLLM, llama.cpp) use `custom` with their configured OpenAI-compatible base
+URL; Ollama has its own catalog row. `localhost` means the engine's machine.
+Connecting never installs a runtime or downloads a model.
+
+`keys.check` and `keys.set` accept optional `mode: "add" | "replace"`.
+Omitting it preserves legacy behavior. `add` requires `provider: "custom"` and
+an address, and allocates a separate custom connection. `replace` names an
+existing custom provider ID. A passing check returns `connection.id`, the
+persisted provider and credential identity, alongside its address/region/plan.
+Pass that connection unchanged with the same mode, provider, address and key to
+`keys.set`. An intervening add that occupies the checked ID refuses the stale
+save rather than overwriting it. Recheck before trying a new add.
+
+An interactive save (connection, mode, region or address supplied) proves the
+current usable model list before writing the profile or adopting credentials.
+A reachable listing without usable model IDs answers `keys.check` with
+`ok: false, status: "empty"`; save returns an error and leaves credentials and
+connections unchanged. Bare `keys.set {provider,key}` remains offline launch
+handover. OpenRouter check also returns a connection ID, so its interactive save
+can be distinguished from launch handover. Live catalog model IDs are retained
+exactly, and connecting never changes the default model.
+
+The desktop keeps secrets securely under `connection.id` only after engine save
+succeeds. Profile storage failure returns an error before credential adoption;
+retrying the unchanged connection after repairing storage does not create a
+second row. If engine save succeeds but desktop secure storage fails, retry only
+secure storage with the held key, rather than sending another add. Ignore
+cancelled or superseded UI results. Browser sign-in methods are unchanged.
+
+The hello's `engine.features` includes **`providers.instances`** only when the
+engine implements the explicit instance contract. Clients must gate add-another
+custom and compatible local preset actions on that exact capability: older
+engines may silently ignore the new mode field. `ProviderConnector` alone does
+not advertise this capability.
+
+For custom instances, every model returned by `keys.check` and `models.list`
+sets `provider` to the persisted provider ID (`connection.id` / `providers.list`
+`id`). Model IDs keep their qualified routing prefix and display names remain
+human-readable; a routing prefix is not a connection ID.

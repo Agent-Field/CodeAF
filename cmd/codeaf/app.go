@@ -105,10 +105,8 @@ const appQuitReceiptWait = 3 * time.Second
 
 func runApp(args []string) error {
 	localGUI := consumeAppLocalGUI()
-	flags := commandFlags("app")
-	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
-	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
-	schema := flags.Bool("schema", false, "print the wire's JSON Schema, generated from its Go types, and exit")
+	names := newAppFlags()
+	flags, homeFlag, turnLong, schema := names.set, names.home, names.turnLong, names.schema
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
@@ -123,15 +121,11 @@ func runApp(args []string) error {
 		_, err = os.Stdout.Write(out)
 		return err
 	}
-	if dir := strings.TrimSpace(*homeFlag); dir != "" {
-		abs, err := filepath.Abs(dir)
-		if err != nil {
-			return err
-		}
-		if err := os.Setenv(home.EnvVar, abs); err != nil {
-			return err
-		}
+	restoreHome, homeErr := useAppHome(*homeFlag)
+	if homeErr != nil {
+		return homeErr
 	}
+	defer restoreHome()
 	if err := holdAppHome(); err != nil {
 		return err
 	}
@@ -770,6 +764,7 @@ type appBackend struct {
 	keyHealth        keyHealthCache
 	monitorKeyHealth bool
 	keys             *config.AppCredentials
+	providerSave     sync.Mutex
 	keyClient        *http.Client
 	keyAddress       func(provider string) string
 	vendored         func() []modelsource.Source
@@ -4503,6 +4498,7 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 	_, sources := proc.currentAccount()
 	rows := tui3.PickerModels(proc.ProfileDir, sources, proc.Shelf.pickerModels, proc.Shelf.modelsForService)
 	names := map[string]string{}
+	customIDs := map[string]string{}
 	for _, service := range sources.All() {
 		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
 		if group == "" {
@@ -4513,6 +4509,9 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			name = strings.TrimSpace(service.Source.Written)
 		}
 		names[group] = name
+		if modelsource.IsCustomID(service.Source.ID) {
+			customIDs[group] = service.Source.ID
+		}
 	}
 	chosen := appDefaultModel()
 	models := make([]appwire.Model, 0, len(rows)+1)
@@ -4568,6 +4567,14 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			provider = strings.ToLower(service.Source.Written)
 		}
 		models = append(models, appwire.Model{ID: chosen, Name: chosen, Provider: provider, ProviderName: names[provider], Default: true})
+	}
+	// The picker groups by the routing name, but the app joins models to
+	// providers by persisted identity. Keep qualified model IDs untouched: their
+	// prefixes still select the same server when a conversation sends a turn.
+	for i := range models {
+		if id := customIDs[models[i].Provider]; id != "" {
+			models[i].Provider = id
+		}
 	}
 	return models, nil
 }
