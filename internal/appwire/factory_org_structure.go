@@ -67,6 +67,11 @@ type OrgWorkstreamRules struct {
 	// keeps what it has; an empty list clears it.
 	Exceptions []OrgAskException `json:"exceptions,omitempty"`
 	NotNow     []OrgAskNotNow    `json:"not_now,omitempty"`
+	// Said are the rules in plain words, as people wrote them. Absent (nil),
+	// the server keeps what it has; an empty list clears them, so it is a
+	// pointer: omitempty would drop an empty slice and the last rule taken
+	// out would stay.
+	Said *[]string `json:"said,omitempty"`
 }
 
 // OrgAskException is one kind of question Afi decides without asking in a
@@ -106,6 +111,8 @@ type OrgMember struct {
 	Members []string `json:"members,omitempty"`
 	Steward bool     `json:"steward,omitempty"`
 	AddedAt string   `json:"added_at,omitempty"`
+	// AddedBy is the handle of whoever added them, when the server kept it.
+	AddedBy string `json:"added_by,omitempty"`
 	// Invited marks someone invited who has not joined yet.
 	Invited bool `json:"invited,omitempty"`
 }
