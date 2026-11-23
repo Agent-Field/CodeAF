@@ -134,7 +134,7 @@ func WriteCreditsReadingAt(profileDir, key string, reading credits.Reading, obse
 // headless work seat. Explicit model rows are resolved above this function.
 //
 // The built-in model is kept only while a connected service can send it; a
-// profile that connected only ChatGPT, Claude Code or a local server opens on
+// profile that connected only a plan sign-in or a local server opens on
 // that provider's own model instead ([ReachableDefaultAt]).
 func ChatDefaultAt(profileDir string) string {
 	builtIn := DefaultModel

@@ -194,7 +194,7 @@ func stripLevel(model string) string {
 }
 
 // serviceModelsAt is what one connected service is known to offer, without
-// reaching the network: Claude Code's three vendored models, ChatGPT's
+// reaching the network: the coding-agent plan's three vendored models, ChatGPT's
 // remembered account list (or its built-in rows), the catalog a listing service
 // last returned, and a plan door's documented ids. A service that can say
 // nothing but its preferred model offers that one.
