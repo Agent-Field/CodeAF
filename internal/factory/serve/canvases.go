@@ -12,15 +12,18 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/canvasrpc"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // ── AN ORGANIZATION'S CANVASES ─────────────────────────────────────────────
@@ -122,16 +125,26 @@ func (h *Handler) CanvasesServed() bool {
 // workstream that is gone, or cannot be read, leaves the canvas its own
 // record, whose owner was the workstream's when it was made.
 func (h *Handler) canvasItem(c factory.OrgCanvas) Item {
+	var ws factory.OrgWorkstream
+	if c.Workstream != "" && h.config.Store != nil {
+		ws, _, _ = h.config.Store.Workstream(c.Workstream)
+	}
+	return canvasItemIn(c, ws)
+}
+
+func canvasItemIn(c factory.OrgCanvas, ws factory.OrgWorkstream) Item {
 	it := Item{Kind: ItemCanvas, ID: c.ID, Owner: c.Owner, Shares: c.Shares, Private: c.Private}
-	if c.Workstream == "" || h.config.Store == nil {
+	if ws.ID == "" {
 		return it
 	}
-	ws, ok, err := h.config.Store.Workstream(c.Workstream)
-	if err != nil || !ok {
-		return it
+	it.Parent = workstreamResource(ws).ref
+	it.Private = ws.Private || c.PolicyPrivate && c.Private
+	it.Shares = append(slices.Clone(ws.Shares), c.Shares...)
+	if c.AgentCreated {
+		it.parentOwner = ws.Owner
+	} else {
+		it.Owner = ws.Owner
 	}
-	it.Owner, it.Private = ws.Owner, ws.Private
-	it.Shares = append(append([]factory.Share{}, ws.Shares...), c.Shares...)
 	return it
 }
 
@@ -408,13 +421,27 @@ func (h *Handler) createCanvas(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	if !h.mayCreateResource(w, v) {
+		return
+	}
 	if v.Handle == "" {
 		h.fail(w, http.StatusForbidden, "sign in to make a canvas")
 		return
 	}
-	var body api.CanvasNew
-	if !h.readCanvasBody(w, r, 64<<10, &body) {
+	var input struct {
+		api.CanvasNew
+		Private json.RawMessage `json:"private"`
+	}
+	if !h.readCanvasBody(w, r, 64<<10, &input) {
 		return
+	}
+	body := input.CanvasNew
+	if !h.readCreatePrivacy(w, input.Private, &body.Private, http.StatusBadRequest) {
+		return
+	}
+	visibility := acl.Owner
+	if input.Private == nil {
+		visibility = v.acc.rules().Visibility(ItemCanvas)
 	}
 	if err := plainWords("title", body.Title, 1, workstreamNameMost); h.workstreamRefused(w, err) {
 		return
@@ -430,11 +457,16 @@ func (h *Handler) createCanvas(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		c = factory.OrgCanvas{Owner: ws.Owner, Workstream: ws.ID, CreatedBy: v.Handle, CreatedAt: h.now().UTC(), UpdatedBy: v.Handle}
+		c.Private, c.PolicyPrivate = visibility == acl.Private, visibility == acl.Private
 	} else {
 		var ok bool
-		if c, ok = h.newCanvasRecord(w, v, body.Owner, body.Shares, body.Private); !ok {
+		if c, ok = h.newCanvasRecord(w, v, body.Owner, body.Shares, body.Private || visibility == acl.Private); !ok {
 			return
 		}
+	}
+	if v.Agent != nil {
+		c.Owner = factory.WorkstreamOwner{Kind: "person", ID: v.Handle}
+		c.AgentCreated = true
 	}
 	var created struct {
 		ID string `json:"id"`
@@ -443,7 +475,7 @@ func (h *Handler) createCanvas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.ID = created.ID
-	h.saveNewCanvas(w, r, c, v, http.StatusCreated)
+	h.saveNewCanvas(w, r, c, v, http.StatusCreated, visibility, strings.TrimSpace(body.Title))
 }
 
 // canvasWorkstream is the organization workstream id names when v may put a
@@ -493,15 +525,37 @@ func (h *Handler) newCanvasRecord(w http.ResponseWriter, v Viewer, owner *api.Wo
 	return factory.OrgCanvas{Owner: o, Shares: clean, Private: private, CreatedBy: v.Handle, CreatedAt: h.now().UTC(), UpdatedBy: v.Handle}, true
 }
 
-func (h *Handler) saveNewCanvas(w http.ResponseWriter, r *http.Request, c factory.OrgCanvas, v Viewer, status int) {
-	_, err := h.config.Store.EditCanvases(func(all factory.OrgCanvases) (bool, error) {
-		all[c.ID] = c
-		return true, nil
-	})
-	if h.failed(w, err) {
+func (h *Handler) saveNewCanvas(w http.ResponseWriter, r *http.Request, c factory.OrgCanvas, v Viewer, status int, visibility, label string) {
+	st, p := h.config.Store, v.acc.rules()
+	var err error
+	if visibility == acl.Org || c.AgentCreated {
+		row := store.Resource{Resource: Ref{Kind: ItemCanvas, ID: c.ID}, Parent: h.canvasItem(c).Parent,
+			Owner: accessSubject(c.Owner.Kind, c.Owner.ID), CreatedBy: accessPrincipal(v), Label: label,
+			Visibility: visibility, CreatedAt: c.CreatedAt}
+		if c.Private {
+			row.Visibility = acl.Private
+		}
+		var grant *acl.Grant
+		if visibility == acl.Org {
+			grant = orgDefaultGrant(p, row.Resource, row.CreatedAt)
+		}
+		err = st.RegisterCanvas(c, row, grant, p.Rev)
+	} else {
+		_, err = st.EditCanvases(func(all factory.OrgCanvases) (bool, error) {
+			all[c.ID] = c
+			return true, nil
+		})
+	}
+	if h.accessFailed(w, err) {
+		if _, exists, lookupErr := st.Canvas(c.ID); lookupErr == nil && !exists && canvasIDShape.MatchString(c.ID) {
+			_ = os.RemoveAll(filepath.Join(h.config.Canvas.Root, c.ID))
+		}
 		return
 	}
 	h.publishCanvas(r.Context(), api.EventCanvasChanged, nil, c, v.Handle)
+	if visibility == acl.Org {
+		v.acc = h.access()
+	}
 	h.writeCanvas(w, r, status, c, v)
 }
 
@@ -511,14 +565,21 @@ func (h *Handler) patchCanvas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verb := factory.RoleEdit
-	if body.Trashed != nil || body.Workstream != nil {
-		verb = factory.RoleFull
+	if body.Workstream != nil {
+		verb = acl.VerbShare
+	}
+	if body.Trashed != nil {
+		verb = acl.VerbManage
 	}
 	c, v, ok := h.findCanvas(w, r, verb)
 	if !ok {
 		return
 	}
 	if body.Workstream != nil && strings.TrimSpace(*body.Workstream) != c.Workstream {
+		if !can(v, h.canvasItem(c), acl.VerbShare) {
+			h.refuse(w, http.StatusForbidden, canvasRefusal(acl.VerbShare), "role", "", nil, "")
+			return
+		}
 		if c, ok = h.moveCanvasWorkstream(w, r, c, v, strings.TrimSpace(*body.Workstream)); !ok {
 			return
 		}
@@ -587,7 +648,7 @@ func (h *Handler) moveCanvasWorkstream(w http.ResponseWriter, r *http.Request, c
 }
 
 func (h *Handler) deleteCanvas(w http.ResponseWriter, r *http.Request) {
-	c, v, ok := h.findCanvas(w, r, factory.RoleFull)
+	c, v, ok := h.findCanvas(w, r, acl.VerbManage)
 	if !ok {
 		return
 	}
@@ -603,7 +664,7 @@ func (h *Handler) deleteCanvas(w http.ResponseWriter, r *http.Request) {
 	// being removed; a folder that cannot be removed is only disk.
 	_ = os.RemoveAll(filepath.Join(h.config.Canvas.Root, c.ID))
 	h.dropCanvasDocs(c.ID, nodes, nil)
-	h.publishCanvas(r.Context(), api.EventCanvasRemoved, &c, c, v.Handle)
+	h.publishCanvasAudience(r.Context(), api.EventCanvasRemoved, c.ID, v.Handle, v.acc.audienceOf(h.canvasItem(c)))
 	h.publishCanvasFiles(c, v.Handle, true)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -613,11 +674,16 @@ func (h *Handler) setCanvasShares(w http.ResponseWriter, r *http.Request) {
 	if !h.readCanvasBody(w, r, 64<<10, &body) {
 		return
 	}
-	c, v, ok := h.findCanvas(w, r, factory.RoleFull)
+	c, v, ok := h.findCanvas(w, r, acl.VerbShare)
 	if !ok {
 		return
 	}
-	before := c
+	it := h.canvasItem(c)
+	if v.acc.rules().Sharing.Who == acl.OwnerOnly && !v.owns(it) && !v.Solo {
+		h.fail(w, http.StatusForbidden, "only the owner can share this canvas")
+		return
+	}
+	before := v.acc.audienceOf(it)
 	owner := c.Owner
 	if body.Owner != nil {
 		var err error
@@ -645,10 +711,12 @@ func (h *Handler) setCanvasShares(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c = saved[c.ID]
-	h.publishCanvas(r.Context(), api.EventCanvasChanged, &before, c, v.Handle)
+	audience := acl.Union(before, h.audienceOf(h.canvasItem(c)))
+	h.publishCanvasAudience(r.Context(), api.EventCanvasChanged, c.ID, v.Handle, audience)
+	v.acc = h.access()
 	if !can(v, h.canvasItem(c), factory.RoleView) {
 		// They gave it away and kept nothing: it is gone for them.
-		h.publishCanvas(r.Context(), api.EventCanvasRemoved, &before, before, v.Handle)
+		h.publishCanvasAudience(r.Context(), api.EventCanvasRemoved, c.ID, v.Handle, before)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -1007,7 +1075,7 @@ func (h *Handler) importCanvas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.ID = created.ID
-	h.saveNewCanvas(w, r, c, v, http.StatusCreated)
+	h.saveNewCanvas(w, r, c, v, http.StatusCreated, acl.Owner, "")
 }
 
 // ── events ──
@@ -1022,21 +1090,25 @@ type canvasLive struct {
 // given, joins its audience, so someone a change took the canvas from still
 // hears to drop it.
 func (h *Handler) publishCanvas(ctx context.Context, kind string, before *factory.OrgCanvas, after factory.OrgCanvas, by string) {
-	var seq int64
-	if kind != api.EventCanvasRemoved {
-		var s struct {
-			Seq int64 `json:"seq"`
-		}
-		if h.config.Canvas.Call(ctx, after.ID, map[string]any{"cmd": "summary"}, &s) == nil {
-			seq = s.Seq
-		}
-	}
-	h.canvasFrames.forget(after.ID)
 	items := []Item{h.canvasItem(after)}
 	if before != nil {
 		items = append(items, h.canvasItem(*before))
 	}
-	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: after.ID, Seq: seq, By: by}, itemAudience: audienceOf(items...)}
+	h.publishCanvasAudience(ctx, kind, after.ID, by, h.audienceOf(items...))
+}
+
+func (h *Handler) publishCanvasAudience(ctx context.Context, kind, id, by string, audience itemAudience) {
+	var seq int64
+	if kind != api.EventCanvasRemoved && h.config.Canvas != nil {
+		var s struct {
+			Seq int64 `json:"seq"`
+		}
+		if h.config.Canvas.Call(ctx, id, map[string]any{"cmd": "summary"}, &s) == nil {
+			seq = s.Seq
+		}
+	}
+	h.canvasFrames.forget(id)
+	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: id, Seq: seq, By: by}, itemAudience: audience}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
 }
 
@@ -1048,7 +1120,7 @@ func (h *Handler) publishCanvasSeq(kind string, c factory.OrgCanvas, by string, 
 		return
 	}
 	h.canvasFrames.forget(c.ID)
-	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: c.ID, Seq: seq, By: by}, itemAudience: audienceOf(h.canvasItem(c))}
+	e := canvasLive{CanvasEvent: api.CanvasEvent{Kind: kind, ID: c.ID, Seq: seq, By: by}, itemAudience: h.audienceOf(h.canvasItem(c))}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
 }
 

@@ -54,6 +54,7 @@ type agentCallKey struct{}
 // operator standing (their rights), and who it is stamped as on a thread.
 type agentCall struct {
 	handle   string
+	agent    string
 	operator bool
 	by       factory.TaskEventBy
 }
@@ -86,7 +87,7 @@ func (d *agentDoor) call(ctx context.Context, handler http.HandlerFunc, method, 
 			return nil, err
 		}
 	}
-	ctx = context.WithValue(ctx, agentCallKey{}, agentCall{handle: factory.NormalizeHandle(d.asker), operator: d.operator, by: afiBy})
+	ctx = context.WithValue(ctx, agentCallKey{}, agentCall{handle: factory.NormalizeHandle(d.asker), operator: d.isCurrentOperator(), agent: d.agentID(), by: afiBy})
 	r := httptest.NewRequestWithContext(ctx, method, path, bytes.NewReader(raw))
 	r.Header.Set("Content-Type", "application/json")
 	if ifMatch >= 0 {
@@ -312,10 +313,7 @@ func (d *agentDoor) ownerOf(ctx context.Context, word string) (*factory.TaskOwne
 	if handle == factory.NormalizeHandle(d.asker) {
 		return nil, nil
 	}
-	v := Viewer{Handle: handle, Teams: map[string]bool{}}
-	for _, team := range d.h.Membership().TeamsOf(handle) {
-		v.Teams[team] = true
-	}
+	v := d.h.viewerOf(handle)
 	if handle == "" || !v.canWrite(ws) {
 		return nil, fmt.Errorf("%q is not someone in this workstream: owner is \"me\" or the id of a person in it (a task's owner.id from ws_tasks)", word)
 	}

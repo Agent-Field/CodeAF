@@ -32,6 +32,7 @@ const (
 	orgObjectWorkstream = "workstream:"
 	orgObjectPolicy     = "policy:"
 	orgObjectFactory    = "factory"
+	orgObjectResource   = "resource:"
 )
 
 // recordOrg appends one organization change made by the caller. It is a
@@ -54,7 +55,7 @@ func (h *Handler) recordOrg(r *http.Request, kind, verb, object, detail string) 
 // marked as acting as operator. A workstream or a go-ahead is changed through
 // a person's own rights on it, whoever they are.
 var operatorOnly = map[string]bool{record.TeamChanged: true, record.RulesChanged: true,
-	record.RoutesChanged: true, record.SpendingChanged: true, record.SettingsChanged: true}
+	record.RoutesChanged: true, record.SpendingChanged: true, record.SettingsChanged: true, record.OrgPolicyChanged: true}
 
 // orgActor is the handle the caller is, or "" when there is none. The
 // operator's host token is the claimed operator's login.
@@ -95,6 +96,22 @@ func (h *Handler) orgRecordVisible(r *http.Request, events []record.Event) []rec
 	seen := map[string]bool{}
 	out := events[:0:0]
 	for _, e := range events {
+		if ref, isResource := strings.CutPrefix(e.Object, orgObjectResource); isResource {
+			ok, cached := seen[e.Object]
+			if !cached && h.config.Store != nil {
+				kind, id, _ := strings.Cut(ref, "/")
+				res, found, err := h.lookupAccessResource(kind, id)
+				if err == nil && found {
+					v, err := h.itemViewer(r)
+					ok = err == nil && can(v, res.item, factory.RoleView)
+				}
+				seen[e.Object] = ok
+			}
+			if ok {
+				out = append(out, e)
+			}
+			continue
+		}
 		id := orgRecordWorkstream(e)
 		if id == "" {
 			out = append(out, e)

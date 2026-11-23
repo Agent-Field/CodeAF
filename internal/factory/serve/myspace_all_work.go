@@ -37,7 +37,7 @@ func (d *agentDoor) AllWork(ctx context.Context) (string, error) {
 			return "", err
 		}
 		ws := all[id]
-		door := &agentDoor{h: d.h, id: id, asker: d.asker, operator: d.operator}
+		door := &agentDoor{h: d.h, id: id, asker: d.asker, agent: d.agentID(), operator: d.operator}
 		tasks, err := door.tasks(ctx)
 		if err != nil {
 			return "", err

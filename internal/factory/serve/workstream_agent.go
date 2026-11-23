@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -569,6 +570,9 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 	}
 	h.publishAgent(seat, api.AgentEvent{AgentState: &state})
 	door := &agentDoor{h: h, id: ws.ID, asker: asker, operator: v.Operator, cards: cards && chat == "" && !ws.Space, space: ws.Space, allWork: ws.Space && chat == ""}
+	if persona != nil {
+		door.agent = persona.ID
+	}
 	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space, Agent: persona,
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		Step: func(kind, text, tool string, failed bool) {
@@ -704,6 +708,7 @@ type agentDoor struct {
 	h        *Handler
 	id       string
 	asker    string
+	agent    string
 	operator bool
 	// wrote is set for a task's run alone: the files the run made or rewrote,
 	// so a run that ends having written its work is not called a failure
@@ -779,13 +784,26 @@ func (w *taskWrites) list() []string {
 // viewer is the asker as the access core sees them now: their teams are read
 // again on every call, so a membership taken away mid-answer counts.
 func (d *agentDoor) viewer() wsViewer {
-	v := Viewer{Handle: factory.NormalizeHandle(d.asker), Operator: d.operator, Teams: map[string]bool{}}
-	if v.Handle != "" {
-		for _, team := range d.h.Membership().TeamsOf(v.Handle) {
-			v.Teams[team] = true
-		}
-	}
+	v := d.h.viewerOf(d.asker)
+	v.Solo = d.h.mode() == api.FactorySolo
+	v.Operator = v.Solo || d.isCurrentOperator()
+	v.Agent = &acl.Agent{ID: d.agentID(), Sponsor: v.Handle}
 	return v
+}
+
+func (d *agentDoor) isCurrentOperator() bool {
+	if d.h.mode() == api.FactorySolo {
+		return d.operator
+	}
+	handle := factory.NormalizeHandle(d.asker)
+	return handle != "" && handle == factory.NormalizeHandle(d.h.operatorLogin(nil))
+}
+
+func (d *agentDoor) agentID() string {
+	if d.agent != "" {
+		return d.agent
+	}
+	return "afi"
 }
 
 func (d *agentDoor) Workstream(context.Context) (factory.OrgWorkstream, error) {

@@ -160,10 +160,7 @@ func (h *Handler) cardPerson(ws factory.OrgWorkstream, me, word string) (string,
 	if handle == me {
 		return "", nil
 	}
-	v := Viewer{Handle: handle, Teams: map[string]bool{}}
-	for _, team := range h.Membership().TeamsOf(handle) {
-		v.Teams[team] = true
-	}
+	v := h.viewerOf(handle)
 	if handle == "" || !v.canWrite(ws) {
 		return "", fmt.Errorf("%q is not someone in this workstream: name a person's id from ws_tasks, or leave it empty for the person you are talking to", word)
 	}

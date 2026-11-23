@@ -724,7 +724,7 @@ func (h *Handler) patchWorkstreamFile(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) publishFileChange(ws factory.OrgWorkstream, f factory.WorkstreamFile, by string, contents bool) {
 	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{
 		Kind: api.EventWorkstreamChanged, ID: ws.ID, Part: api.PartFiles, PartID: f.ID, By: by, Rev: f.Rev,
-	}, itemAudience: audienceOf(workstreamItem(ws))}
+	}, itemAudience: h.audienceOf(workstreamItem(ws))}
 	if contents {
 		e.Flagged = f.UsedBy
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -91,10 +92,7 @@ type wsViewer = Viewer
 
 func (h *Handler) wsViewer(r *http.Request) (wsViewer, error) { return h.itemViewer(r) }
 
-// canSee and canWrite are the core's view and edit on a workstream. canGovern
-// (change its owner or shares) is full, or the operator on one that is not
-// private: the operator keeps the organization's workstreams owned and shared
-// rightly without being their writer, and never governs what they cannot read.
+// canSee and canWrite apply the item permissions to a workstream.
 func (v Viewer) canSee(w factory.OrgWorkstream) bool {
 	return can(v, workstreamItem(w), factory.RoleView)
 }
@@ -102,7 +100,17 @@ func (v Viewer) canWrite(w factory.OrgWorkstream) bool {
 	return can(v, workstreamItem(w), factory.RoleEdit)
 }
 func (v Viewer) canGovern(w factory.OrgWorkstream) bool {
-	return can(v, workstreamItem(w), factory.RoleFull) || (v.Operator && !w.Private) || (v.stewards(w) && can(v, workstreamItem(w), factory.RoleView))
+	it := workstreamItem(w)
+	p := v.acc.rules()
+	// NOT GENERIC YET: operator governance of workstream ownership.
+	if v.Operator && v.Agent == nil && p.Operator.MayGovern && !it.Private {
+		return true
+	}
+	if can(v, it, acl.VerbShare) && (p.Sharing.Who != acl.OwnerOnly || v.owns(it) || v.Solo) {
+		return true
+	}
+	// NOT GENERIC YET: stewards.
+	return v.Agent == nil && v.stewards(w) && can(v, it, acl.VerbView)
 }
 
 // orgWorkstreamAccess is whether id names an organization workstream and
@@ -341,12 +349,19 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.config.Store != nil) {
 		return
 	}
-	var body api.WorkstreamNew
-	if !h.decode(w, r, &body, false) {
+	var input struct {
+		api.WorkstreamNew
+		Private json.RawMessage `json:"private"`
+	}
+	if !h.decode(w, r, &input, false) {
 		return
 	}
 	v, err := h.wsViewer(r)
 	if h.failed(w, err) {
+		return
+	}
+	body := input.WorkstreamNew
+	if !h.readCreatePrivacy(w, input.Private, &body.Private, http.StatusUnprocessableEntity) {
 		return
 	}
 	owner := api.WorkstreamOwner{Kind: api.OwnerPerson, ID: v.Handle}
@@ -357,6 +372,11 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	if body.Parent != "" && (body.Owner != nil || body.Private) {
 		h.fail(w, http.StatusUnprocessableEntity, factory.ErrChildPeople.Error())
 		return
+	}
+	visibility := acl.Owner
+	if body.Parent == "" && input.Private == nil {
+		visibility = v.acc.rules().Visibility(ItemWorkstream)
+		body.Private = visibility == acl.Private
 	}
 	rules, err := cleanNewRules(body.Rules, h.clock())
 	if err != nil {
@@ -392,7 +412,7 @@ func (h *Handler) createWorkstream(w http.ResponseWriter, r *http.Request) {
 	if len(ws.Pages) == 0 {
 		ws.Pages = []factory.WorkstreamPage{defaultOverviewPage()}
 	}
-	h.saveNewWorkstream(w, r, ws, v, nil)
+	h.saveNewWorkstream(w, r, ws, v, nil, visibility)
 }
 
 // defaultOverviewPage is the page a workstream made with none starts with.
@@ -447,11 +467,11 @@ func (h *Handler) importWorkstream(w http.ResponseWriter, r *http.Request) {
 	if ws.Stage == "" {
 		ws.Stage = api.WorkstreamShaping
 	}
-	h.saveNewWorkstream(w, r, ws, v, &body)
+	h.saveNewWorkstream(w, r, ws, v, &body, acl.Owner)
 }
 
 // saveNewWorkstream checks ws, gives it an id and keeps it, answering 201.
-func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws factory.OrgWorkstream, v wsViewer, pkg *api.WorkstreamPackage) {
+func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws factory.OrgWorkstream, v wsViewer, pkg *api.WorkstreamPackage, visibility string) {
 	imported := pkg != nil
 	if err := cleanWorkstream(&ws, v.Handle, ws.CreatedAt); err != nil {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
@@ -464,7 +484,11 @@ func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws f
 	ws.ID = workstreamIDPrefix + id
 	var again *factory.OrgWorkstream
 	befores := map[string]factory.OrgWorkstream{}
-	saved, err := h.config.Store.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
+	var grant *acl.Grant
+	if visibility == acl.Org {
+		grant = orgDefaultGrant(v.acc.rules(), Ref{Kind: ItemWorkstream, ID: ws.ID}, ws.CreatedAt)
+	}
+	saved, err := h.config.Store.EditWorkstreamsWithGrant(func(all factory.OrgWorkstreams) ([]string, error) {
 		changed := []string{ws.ID}
 		if imported {
 			for _, cur := range all {
@@ -492,7 +516,12 @@ func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws f
 		}
 		all[ws.ID] = ws
 		return changed, nil
-	})
+	}, grant, v.acc.rules().Rev)
+	var stale *store.ErrPolicyStale
+	if errors.As(err, &stale) {
+		h.accessFailed(w, err)
+		return
+	}
 	if h.workstreamRefused(w, err) {
 		return
 	}
@@ -515,6 +544,9 @@ func (h *Handler) saveNewWorkstream(w http.ResponseWriter, r *http.Request, ws f
 	h.syncStartWithoutAsking(ws.ID)
 	for id, before := range befores {
 		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[id])
+	}
+	if grant != nil {
+		v.acc = h.access()
 	}
 	h.writeWorkstream(w, http.StatusCreated, saved[ws.ID], v)
 }
@@ -662,11 +694,11 @@ func (h *Handler) deleteWorkstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	purge := r.URL.Query().Get("purge") == "1"
-	if purge && !v.Operator {
+	if purge && (!v.Operator || v.Agent != nil) {
 		h.fail(w, http.StatusForbidden, "only the operator can remove a workstream for good")
 		return
 	}
-	if !purge && !can(v, workstreamItem(ws), factory.RoleFull) {
+	if !can(v, workstreamItem(ws), acl.VerbManage) && !(purge && v.acc.rules().Operator.MayGovern && !ws.Private) {
 		h.fail(w, http.StatusForbidden, errWorkstreamNoFull.Error())
 		return
 	}
@@ -698,7 +730,7 @@ func (h *Handler) deleteWorkstream(w http.ResponseWriter, r *http.Request) {
 			verb = "deleted workstream"
 		}
 		h.recordWorkstream(r, ws.ID, verb, "")
-		h.publishWorkstreams(api.EventWorkstreamRemoved, h.orgActor(r), &before, before)
+		h.publishWorkstreamAudience(api.EventWorkstreamRemoved, h.orgActor(r), ws.ID, v.acc.audienceOf(workstreamItem(before)))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -869,7 +901,9 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 	}
 	for id, before := range befores {
 		h.recordWorkstream(r, id, "changed sharing", sharesWords(saved[id]))
-		h.publishWorkstreams(api.EventWorkstreamChanged, h.orgActor(r), &before, saved[id])
+		after := saved[id]
+		audience := acl.Union(v.acc.audienceOf(workstreamItem(before)), h.audienceOf(workstreamItem(after)))
+		h.publishWorkstreamAudience(api.EventWorkstreamChanged, h.orgActor(r), id, audience)
 		h.publishChildren(r, saved, id)
 		h.peopleChanged(r, before, saved[id], saved)
 	}
@@ -1335,7 +1369,11 @@ func (h *Handler) publishWorkstreams(kind, by string, before *factory.OrgWorkstr
 	if before != nil {
 		items = append(items, workstreamItem(*before))
 	}
-	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{Kind: kind, ID: after.ID, By: factory.NormalizeHandle(by)}, itemAudience: audienceOf(items...)}
+	h.publishWorkstreamAudience(kind, by, after.ID, h.audienceOf(items...))
+}
+
+func (h *Handler) publishWorkstreamAudience(kind, by, id string, audience itemAudience) {
+	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{Kind: kind, ID: id, By: factory.NormalizeHandle(by)}, itemAudience: audience}
 	_ = live.Append(h.eventRoot(), live.New(kind, 0, e))
 }
 

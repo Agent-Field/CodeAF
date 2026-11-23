@@ -54,10 +54,7 @@ func (h *Handler) checkDoer(ws factory.OrgWorkstream, d factory.TaskDoneBy) (fac
 	switch d.Kind {
 	case factory.TaskByPerson:
 		handle := factory.NormalizeHandle(d.ID)
-		v := Viewer{Handle: handle, Teams: map[string]bool{}}
-		for _, team := range h.Membership().TeamsOf(handle) {
-			v.Teams[team] = true
-		}
+		v := h.viewerOf(handle)
 		if handle == "" || !v.canWrite(ws) {
 			return d, factory.TaskInvalid(fmt.Sprintf("%s is not someone in this workstream", firstNonEmpty(d.Name, d.ID)))
 		}

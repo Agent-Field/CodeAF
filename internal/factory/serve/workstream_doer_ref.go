@@ -81,10 +81,7 @@ func (d *agentDoor) doerOfWord(ctx context.Context, word string, owner *factory.
 		return factory.TaskDoneBy{Kind: factory.TaskByAgent, AgentID: a.ID, Name: a.Name, Crew: a.Crew}, nil
 	}
 	handle := factory.NormalizeHandle(ref.ID)
-	v := Viewer{Handle: handle, Teams: map[string]bool{}}
-	for _, team := range d.h.Membership().TeamsOf(handle) {
-		v.Teams[team] = true
-	}
+	v := d.h.viewerOf(handle)
 	if handle == "" || !v.canWrite(ws) {
 		return factory.TaskDoneBy{}, fmt.Errorf("%q is not someone in this workstream: done_by person:<id> names a person in it (an owner.id from ws_tasks)", ref.ID)
 	}

@@ -1038,7 +1038,7 @@ func (h *Handler) newJobWorkstream(w http.ResponseWriter, r *http.Request, body 
 	id := strings.TrimSpace(body.Workstream)
 	if h.mode() == api.FactorySolo {
 		// A solo factory keeps no organization workstreams to make a job in.
-		return factory.OrgWorkstream{}, wsViewer{}, true
+		return factory.OrgWorkstream{}, h.viewerOf(""), true
 	}
 	if id == "" {
 		if h.repoOnlyThroughOrg(r, body.Repo) {
@@ -1049,7 +1049,7 @@ func (h *Handler) newJobWorkstream(w http.ResponseWriter, r *http.Request, body 
 			h.fail(w, http.StatusForbidden, refusal)
 			return factory.OrgWorkstream{}, wsViewer{}, false
 		}
-		return factory.OrgWorkstream{}, wsViewer{}, true
+		return factory.OrgWorkstream{}, h.viewerOf(""), true
 	}
 	if !h.requireVerb(w, h.config.Store != nil) {
 		return factory.OrgWorkstream{}, wsViewer{}, false

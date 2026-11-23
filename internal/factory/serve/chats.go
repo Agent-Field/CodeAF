@@ -2,6 +2,7 @@ package serve
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,7 +14,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // ── A PERSON'S OWN CHATS, KEPT AND RUN BY THE ORGANIZATION'S SERVER ────────
@@ -104,6 +107,7 @@ func writeFileAtomic(path string, data []byte) error {
 // chatOf checks the chat a request names: "" is Afi's conversation; anything
 // else must be one of person's own chats in ws. A chat that is not theirs is
 // answered as gone, so an id is never a way to learn about someone else's.
+// NOT GENERIC YET: shared chat transcript access.
 func (h *Handler) chatOf(w http.ResponseWriter, ws factory.OrgWorkstream, person, raw string) (string, bool) {
 	chat := strings.TrimSpace(raw)
 	if chat == "" {
@@ -244,7 +248,7 @@ func (h *Handler) othersChats(ws factory.OrgWorkstream, me string) []api.OtherCh
 // workstream's agent may keep chats with it.
 func (h *Handler) createAgentChat(w http.ResponseWriter, r *http.Request) {
 	ws, v, ok := h.findWorkstream(w, r)
-	if !ok {
+	if !ok || !h.mayCreateResource(w, v) {
 		return
 	}
 	if !v.canWrite(ws) {
@@ -277,11 +281,6 @@ func (h *Handler) createAgentChat(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusConflict, "you keep 500 chats here already; delete one first")
 		return
 	}
-	now := h.clock().UTC()
-	id, err := cell.NewID(now)
-	if h.failed(w, err) {
-		return
-	}
 	var ref *api.AgentRef
 	if id := strings.TrimSpace(body.Agent); id != "" {
 		a, ok := h.chatAgent(ws, person, id)
@@ -291,16 +290,121 @@ func (h *Handler) createAgentChat(w http.ResponseWriter, r *http.Request) {
 		}
 		ref = &api.AgentRef{ID: a.ID, Name: a.Name}
 	}
-	chat := "ch_" + id
-	at := now.Format(time.RFC3339Nano)
-	meta := chatMeta{Title: title, CreatedAt: at, UpdatedAt: at}
-	if ref != nil {
-		meta.Agent = ref.ID
-	}
-	if h.failed(w, writeChatMeta(h.chatDir(ws.ID, person, chat), meta)) {
+	row, err := h.keepNewChat(v, ws, person, title, strings.TrimSpace(body.Agent))
+	if h.accessFailed(w, err) {
 		return
 	}
-	h.write(w, http.StatusCreated, api.AgentChat{ID: chat, Title: title, State: api.AgentIdle, CreatedAt: at, UpdatedAt: at, Agent: ref})
+	if row.Visibility != acl.Private {
+		res := h.registeredResource(row, ws)
+		h.publishAccessEvent(res.ref, v.Handle, h.audienceOf(res.item))
+	}
+	at := row.CreatedAt.Format(time.RFC3339Nano)
+	h.write(w, http.StatusCreated, api.AgentChat{ID: row.ID, Title: title, State: api.AgentIdle, CreatedAt: at, UpdatedAt: at, Agent: ref})
+}
+
+func (h *Handler) keepNewChat(v Viewer, ws factory.OrgWorkstream, person, title, agent string) (store.Resource, error) {
+	now := h.clock().UTC()
+	id, err := cell.NewID(now)
+	if err != nil {
+		return store.Resource{}, err
+	}
+	chat := "ch_" + id
+	policy := v.acc.rules()
+	row := store.Resource{Resource: Ref{Kind: "chat", ID: chat}, Parent: workstreamResource(ws).ref,
+		Owner: acl.Subject{Kind: "person", ID: person}, CreatedBy: accessPrincipal(v), Label: title,
+		Visibility: policy.Visibility("chat"), CreatedAt: now}
+	row.CreatedBy.ID = firstNonEmpty(row.CreatedBy.ID, person)
+	var grant *acl.Grant
+	if row.Visibility == acl.Org {
+		grant = orgDefaultGrant(policy, row.Resource, now)
+	}
+	at := now.Format(time.RFC3339Nano)
+	dir := h.chatDir(ws.ID, person, chat)
+	wrote := false
+	err = h.config.Store.RegisterResource(row, grant, policy.Rev, func() error {
+		wrote = true
+		return writeChatMeta(dir, chatMeta{Title: title, Agent: agent, CreatedAt: at, UpdatedAt: at})
+	})
+	if err != nil && wrote {
+		_ = os.RemoveAll(dir)
+	}
+	return row, err
+}
+
+// backfillChats registers older chats privately and leaves existing registrations intact.
+func (h *Handler) backfillChats() {
+	if h.config.Store == nil {
+		return
+	}
+	if err := h.backfillChatResources(); err != nil {
+		slog.Error("could not register older chats", "error", err)
+	}
+}
+
+func (h *Handler) backfillChatResources() error {
+	workstreams, err := h.config.Store.Workstreams()
+	if err != nil {
+		return err
+	}
+	rows, err := h.config.Store.Resources("chat")
+	if err != nil {
+		return err
+	}
+	kept := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		kept[row.ID] = true
+	}
+	for _, ws := range workstreams {
+		if !strings.HasPrefix(ws.ID, workstreamIDPrefix) || filepath.Base(ws.ID) != ws.ID {
+			continue
+		}
+		people, err := os.ReadDir(filepath.Join(h.config.Store.Root(), agentDirName, ws.ID, "people"))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		for _, person := range people {
+			handle := factory.NormalizeHandle(person.Name())
+			if !person.IsDir() || !personHandle.MatchString(handle) {
+				continue
+			}
+			if err := h.backfillPersonChats(ws, person.Name(), handle, kept); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (h *Handler) backfillPersonChats(ws factory.OrgWorkstream, folder, handle string, kept map[string]bool) error {
+	dir := h.chatsDir(ws.ID, folder)
+	chats, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, chat := range chats {
+		id := chat.Name()
+		if !chat.IsDir() || !chatIDPattern.MatchString(id) || kept[id] {
+			continue
+		}
+		meta, ok := readChatMeta(filepath.Join(dir, id))
+		if !ok {
+			continue
+		}
+		at, _ := time.Parse(time.RFC3339Nano, meta.CreatedAt)
+		if err := h.config.Store.BackfillResource(store.Resource{Resource: Ref{Kind: "chat", ID: id},
+			Parent: workstreamResource(ws).ref, Owner: acl.Subject{Kind: "person", ID: handle},
+			CreatedBy: acl.Principal{Kind: "person", ID: handle}, Label: meta.Title, CreatedAt: at, Visibility: acl.Private}); err != nil {
+			return err
+		}
+		kept[id] = true
+	}
+	return nil
 }
 
 // chatAgentGone refuses a message to a chat whose agent is deleted, or no

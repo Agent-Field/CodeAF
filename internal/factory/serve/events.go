@@ -156,6 +156,8 @@ func (h *Handler) liveForViewer(r *http.Request, e live.Event) (live.Event, bool
 		return h.agentForViewer(r, e)
 	case api.EventTaskWork:
 		return h.taskWorkForViewer(r, e)
+	case eventOrgPolicyChanged, eventResourceChanged:
+		return h.accessEventForViewer(r, e)
 	case api.EventCanvasChanged, api.EventCanvasRemoved:
 		return h.canvasEventForViewer(r, e)
 	case "activity":

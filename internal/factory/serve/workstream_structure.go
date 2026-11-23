@@ -473,7 +473,7 @@ func (h *Handler) publishChildren(r *http.Request, saved factory.OrgWorkstreams,
 func (h *Handler) publishWorkstreamRules(ws factory.OrgWorkstream, by string) {
 	e := workstreamLive{
 		WorkstreamEvent: api.WorkstreamEvent{Kind: api.EventWorkstreamChanged, ID: ws.ID, By: factory.NormalizeHandle(by), Rev: ws.Rev, Parts: []string{"rules"}},
-		itemAudience:    audienceOf(workstreamItem(ws)),
+		itemAudience:    h.audienceOf(workstreamItem(ws)),
 	}
 	_ = live.Append(h.eventRoot(), live.New(api.EventWorkstreamChanged, 0, e))
 }

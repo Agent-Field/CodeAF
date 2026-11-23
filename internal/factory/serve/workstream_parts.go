@@ -147,7 +147,7 @@ func (h *Handler) ifMatch(w http.ResponseWriter, r *http.Request) (int, bool) {
 func (h *Handler) publishWorkstreamPart(ws factory.OrgWorkstream, part, partID, by string, rev int, deleted bool) {
 	e := workstreamLive{WorkstreamEvent: api.WorkstreamEvent{
 		Kind: api.EventWorkstreamChanged, ID: ws.ID, Part: part, PartID: partID, By: by, Rev: rev, Deleted: deleted,
-	}, itemAudience: audienceOf(workstreamItem(ws))}
+	}, itemAudience: h.audienceOf(workstreamItem(ws))}
 	_ = live.Append(h.eventRoot(), live.New(api.EventWorkstreamChanged, 0, e))
 }
 

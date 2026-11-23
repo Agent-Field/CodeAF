@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
@@ -99,7 +100,8 @@ func (h *Handler) profileless(r *http.Request) bool {
 // mayWorkstream is whether the caller holds verb on workstream id, for the
 // job doors. A workstream the server no longer keeps puts nothing in the way.
 func (h *Handler) mayWorkstream(r *http.Request, id, verb string) (bool, error) {
-	if id == "" || h.mode() == api.FactorySolo || r.Context().Value(workerKey{}) != nil {
+	call, _ := agentCallOf(r)
+	if id == "" || (h.mode() == api.FactorySolo && call.agent == "") || r.Context().Value(workerKey{}) != nil {
 		return true, nil
 	}
 	if h.profileless(r) {
@@ -154,13 +156,20 @@ func (h *Handler) jobVisible(r *http.Request, it factory.Item) bool {
 // mayChangeJob writes the refusal and answers false when the caller may not
 // use verb on the job; the rules are this file's header.
 func (h *Handler) mayChangeJob(w http.ResponseWriter, r *http.Request, it factory.Item, verb string) bool {
-	if jobPersonalVerbs[verb] || h.mode() == api.FactorySolo || r.Context().Value(workerKey{}) != nil {
-		return true
-	}
-	if h.isOperator(r) {
+	if jobPersonalVerbs[verb] || r.Context().Value(workerKey{}) != nil {
 		return true
 	}
 	person := it.Person()
+	// AN AGENT HOLDS WHAT ITS SPONSOR HOLDS, NARROWED BY ITS SCOPE: the door's
+	// own checks below are the sponsor's (the request carries the person), and
+	// the scope the policy gives the agent is held against the verb the door needs.
+	if call, ok := agentCallOf(r); ok && call.agent != "" && !h.agentMay(call.agent, jobVerbNeed(verb)) {
+		h.notJobEditor(w, it, person)
+		return false
+	}
+	if h.mode() == api.FactorySolo || h.isOperator(r) {
+		return true
+	}
 	if jobDeskVerbs[verb] && person != "" {
 		return true
 	}
@@ -181,7 +190,7 @@ func (h *Handler) mayChangeJob(w http.ResponseWriter, r *http.Request, it factor
 		h.notJobPerson(w, it, person)
 		return false
 	}
-	ok, err := h.mayWorkstream(r, ws, "edit")
+	ok, err := h.mayWorkstream(r, ws, jobVerbNeed(verb))
 	if h.failed(w, err) {
 		return false
 	}
@@ -190,6 +199,28 @@ func (h *Handler) mayChangeJob(w http.ResponseWriter, r *http.Request, it factor
 	}
 	h.notJobEditor(w, it, person)
 	return false
+}
+
+// agentMay is whether the policy's scope for agent holds verb. It is the
+// agent's half of "what the sponsor holds right now, narrowed by the agent's
+// scope"; the sponsor's half is the check each door makes for the person.
+func (h *Handler) agentMay(agent, verb string) bool {
+	return h.access().rules().AgentAllows(agent, verb)
+}
+
+// NOT GENERIC YET: job-door verbs.
+func jobVerbNeed(verb string) string {
+	switch verb {
+	case "run", "start", "start_now", "stop", "pause", "retry", "rerun", "resume", ResumeAutoVerb,
+		"publish", "publish_anyway", "retry_publish", "open_pr", "pr-ready", "steps/{sid}/stop", "steps/{sid}/rerun":
+		return acl.VerbRun
+	case "steer", "reply", "priority", "reassign", "assignee", "change_assignee", "unassign":
+		return acl.VerbSteer
+	case "answer", "spend_answer", "reject_plan", "approve":
+		return acl.VerbAnswer
+	default:
+		return acl.VerbEdit
+	}
 }
 
 // notJobEditor is the 403 for a job in a workstream the caller cannot edit.

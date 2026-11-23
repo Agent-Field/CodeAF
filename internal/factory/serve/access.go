@@ -370,7 +370,7 @@ func (h *Handler) refuseToken(w http.ResponseWriter, token string) {
 	}{h.factory, words, reason, invited, created, requestID()})
 }
 
-func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) accessPage(w http.ResponseWriter, r *http.Request) {
 	// The one-time query must not travel to dashboard resources as a referrer.
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
