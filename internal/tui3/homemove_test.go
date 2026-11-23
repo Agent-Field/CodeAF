@@ -34,7 +34,7 @@ func TestMoveSaid(t *testing.T) {
 		p    MoveProgress
 		want string
 	}{
-		{MoveProgress{Step: "preparing"}, continuing},
+		{MoveProgress{Step: "preparing"}, movingHere},
 		{MoveProgress{Step: "copying", Done: 412 << 20, Total: 1433 << 20}, "copying to this computer: 412 of 1,433 MB…"},
 		{MoveProgress{Step: "copying", Done: 3 << 20}, "copying to this computer: 3 MB so far…"},
 		{MoveProgress{Step: "copying", Done: 900 << 10, Total: 1000 << 10}, "copying to this computer: 900 of 1,000 KB…"},

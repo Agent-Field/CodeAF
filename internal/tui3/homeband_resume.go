@@ -189,7 +189,7 @@ func (a *app) resumeKeyHandler(key string) (tea.Cmd, bool) {
 		a.touch()
 		if a.homeTaking != "" && !a.homeTakeAutomatic {
 			a.raiseMachineAsk(*row, a.continueBusyShown(*row))
-			a.home.say(continueAlreadyRunning, "")
+			a.home.say(moveAlreadyRunning, "")
 			return nil, true
 		}
 		if a.homeTakeAutomatic && row.Cell == a.homeTaking && (!a.homeTakeAbandoned || a.homeTakeResult == nil) {
@@ -237,7 +237,7 @@ func (a *app) continueIfSafe(row chatlist.Row, safe continuationSafety) tea.Cmd 
 	choice := a.nextContinueAskID()
 	a.continueChecking = &continuationChecked{row: row, generation: choice}
 	if a.homeTakeAutomatic && a.homeTaking != "" {
-		a.home.say(fmt.Sprintf("continuing %s next; %s is still on its way here", row.Title, a.homeTakeRow.Title), "")
+		a.home.say(fmt.Sprintf("moving %s next; %s is still on its way here", row.Title, a.homeTakeRow.Title), "")
 	} else {
 		a.homeMoveSaid = a.initialMoveLine()
 		a.home.say(a.homeMoveSaid, "")

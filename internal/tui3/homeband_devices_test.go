@@ -99,10 +99,10 @@ func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
 	if ask.pick != continueYesAt {
 		t.Fatalf("Move here left the cursor on %d, not on `move here`", ask.pick)
 	}
-	if got := chatlist.VerbFor(a.machineRead.rows[0]); got != "Move here" {
+	if got := chatlist.VerbFrom(a.machineRead.rows[0]); !strings.HasPrefix(got, "Move here") {
 		t.Fatalf("a running chat offers %q", got)
 	}
-	if got := chatlist.VerbFor(a.machineRead.rows[1]); got != "Move here" {
+	if got := chatlist.VerbFrom(a.machineRead.rows[1]); !strings.HasPrefix(got, "Move here") {
 		t.Fatalf("a chat that went off offers %q", got)
 	}
 }

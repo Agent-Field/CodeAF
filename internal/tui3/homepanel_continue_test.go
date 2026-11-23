@@ -86,7 +86,7 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	text := homeText(a)
 	for _, want := range []string{
 		"last saved turn 3h ago; up to 3 turns may still be on host-a",
-		chatlist.OfferContinue,
+		chatlist.OfferMove,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the takeover screen does not say %q:\n%s", want, text)
@@ -213,7 +213,7 @@ func TestTakeoverScreenLostRace(t *testing.T) {
 		t.Fatalf("R25 visible refusal changed:\n%s", text)
 	}
 	q, card := a.homeAsking()
-	if !card || q.question.Options[0].Label != continueRetry || q.question.Options[1].Label != continueStay {
+	if !card || q.question.Options[0].Label != moveRetry || q.question.Options[1].Label != moveStay {
 		t.Fatalf("the refusal did not stay on its retry card:\n%s", text)
 	}
 	found := false
@@ -240,7 +240,7 @@ func TestTakeoverScreenRefusedWhenUnreachable(t *testing.T) {
 	if len(taker.cells) != 0 || !strings.Contains(text, chatlist.Unreachable) {
 		t.Fatalf("the offer was not disabled with its reason:\n%s", text)
 	}
-	if strings.Contains(text, continueAsk) {
+	if strings.Contains(text, moveAsk) {
 		t.Fatalf("a takeover was offered with the directory out of reach:\n%s", text)
 	}
 }
@@ -248,7 +248,7 @@ func TestTakeoverScreenRefusedWhenUnreachable(t *testing.T) {
 func TestTakeoverScreenAbsentWithoutATaker(t *testing.T) {
 	a := continueHome(t, nil, continueRows, 200)
 	standOn(t, a, "c-off")
-	if strings.Contains(homeText(a), continueAsk) {
+	if strings.Contains(homeText(a), moveAsk) {
 		t.Fatalf("an offer with nothing behind it was drawn:\n%s", homeText(a))
 	}
 }

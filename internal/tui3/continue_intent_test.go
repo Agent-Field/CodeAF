@@ -100,7 +100,7 @@ func TestAPersonsPickIsTheChatThatOpens(t *testing.T) {
 			// Confirm the captured row, even if a later listing has a different ownership.
 			standOn(t, a, rows[1].Cell)
 			confirm(t, a)
-			if a.home.msg != "continuing chosen chat next; automatic chat is still on its way here" {
+			if a.home.msg != "moving chosen chat next; automatic chat is still on its way here" {
 				t.Fatalf("waiting choice: %q", a.home.msg)
 			}
 			select {
@@ -141,7 +141,7 @@ func TestPickingTheArrivingChatJoinsItsMove(t *testing.T) {
 	cmd := beginAutomatic(t, a)
 	a.offerContinue(rows[0], chatlist.OfferFor(rows[0]))
 	confirm(t, a)
-	if strings.Contains(a.home.msg, continueAlreadyRunning) {
+	if strings.Contains(a.home.msg, moveAlreadyRunning) {
 		t.Fatal(a.home.msg)
 	}
 	close(f.proceed)
@@ -157,7 +157,7 @@ func TestAnExplicitMoveKeepsTheBusyAnswer(t *testing.T) {
 	standOn(t, a, rows[1].Cell)
 	confirm(t, a)
 	q, ok := a.homeAsking()
-	if !ok || q.question.Reason != continueAlreadyRunning || a.home.msg != continueAlreadyRunning {
+	if !ok || q.question.Reason != moveAlreadyRunning || a.home.msg != moveAlreadyRunning {
 		t.Fatalf("explicit move lost its busy card: %s", homeText(a))
 	}
 	close(f.proceed)
@@ -206,7 +206,7 @@ func TestAResumeChordKeepsItsChoiceBehindAnAutomaticMove(t *testing.T) {
 	cmd := beginAutomatic(t, a)
 	a.leftOff.row = &rows[1]
 	drive(t, a, key(resumeKey))
-	if a.home.msg != "continuing chosen chat next; automatic chat is still on its way here" {
+	if a.home.msg != "moving chosen chat next; automatic chat is still on its way here" {
 		t.Fatal(a.home.msg)
 	}
 	close(f.proceed)

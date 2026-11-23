@@ -546,7 +546,7 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		// that request's error reads as an unreachable relay.
 		return fmt.Sprintf("stopped: nothing came through for 2 minutes; the chat is still on %s", nonemptyDevice(msg.row.Device))
 	case errors.Is(msg.err, directory.ErrUnreachable), msg.row.AutoOpen && errors.Is(msg.err, context.DeadlineExceeded):
-		return continueUnreachable
+		return moveUnreachable
 	case errors.Is(msg.err, directory.ErrConditionalTake):
 		return directory.ErrConditionalTake.Error()
 	case errors.Is(msg.err, directory.ErrRevoked):
@@ -556,18 +556,18 @@ func (a *app) continueFailure(msg homeTakenMsg) string {
 		var busy *cellstore.StoreBusyError
 		if errors.As(msg.err, &busy) {
 			if who := busy.Holder.Describe(); who != "" {
-				return continueFails + " because the engine store is busy (held by " + who + ")"
+				return moveFails + " because the engine store is busy (held by " + who + ")"
 			}
 		}
-		return continueStoreBusy
+		return moveStoreBusy
 	case strings.Contains(msg.err.Error(), "rewind cancelled"), strings.Contains(msg.err.Error(), "changed during rewind"):
-		return continueFails + " because the folder changed during the move; your words are still in the box"
+		return moveFails + " because the folder changed during the move; your words are still in the box"
 	case errors.As(msg.err, new(*continueCheckError)):
 		log.Printf("continue chat %s: could not check this computer's copy: %v", msg.row.Cell, msg.err)
-		return continueCheckFails
+		return moveCheckFails
 	default:
 		log.Printf("continue chat %s: %v", msg.row.Cell, msg.err)
-		return continueFails + " because the chat could not be put in this folder; your words are still in the box. Try move here again."
+		return moveFails + " because the chat could not be put in this folder; your words are still in the box. Try move here again."
 	}
 }
 

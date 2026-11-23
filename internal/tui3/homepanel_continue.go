@@ -98,26 +98,26 @@ type BranchActions struct {
 // The words of the two cards. The sentences that are contract copy come from
 // [chatlist]; these are the questions around them.
 const (
-	continueAsk            = "Move this chat here?"
-	continueStay           = "leave it there"
-	continueRetry          = "retry"
-	continueAlreadyRunning = "a chat is already moving here; wait for it to open"
-	lostRaceWord           = chatlist.LostRace
-	continuing             = "moving here…"
-	continueFails          = "could not move this chat here"
-	continueStoreBusy      = continueFails + " because the engine store is busy"
-	// continueUnreachable names what did not happen, not only why, because
+	moveAsk            = "Move this chat here?"
+	moveStay           = "leave it there"
+	moveRetry          = "retry"
+	moveAlreadyRunning = "a chat is already moving here; wait for it to open"
+	lostRaceWord       = chatlist.LostRace
+	movingHere         = "moving here…"
+	moveFails          = "could not move this chat here"
+	moveStoreBusy      = moveFails + " because the engine store is busy"
+	// moveUnreachable names what did not happen, not only why, because
 	// the box still holds words the person meant to send in the moved chat.
-	continueUnreachable = continueFails + " because " + chatlist.Unreachable + "; your words are still in the box"
-	branchAsk           = "What should happen to these turns?"
-	branchLeave         = "leave them"
-	branchFails         = "could not change those turns"
+	moveUnreachable = moveFails + " because " + chatlist.Unreachable + "; your words are still in the box"
+	branchAsk       = "What should happen to these turns?"
+	branchLeave     = "leave them"
+	branchFails     = "could not change those turns"
 
-	// continueCheckFails is the failure of the look at this computer's copy that
+	// moveCheckFails is the failure of the look at this computer's copy that
 	// comes BEFORE a move. It says what was being done, because nothing had been
 	// put in any folder yet, and a sentence about a folder sends the person to
 	// look for a problem that is not there.
-	continueCheckFails = "could not check this computer's copy before moving; your words are still in the box"
+	moveCheckFails = "could not check this computer's copy before moving; your words are still in the box"
 )
 
 // homeContinueKind and homeBranchKind are the lanes the two questions travel
@@ -208,7 +208,7 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 	}
 	if a.homeTaking != "" && !a.homeTakeAutomatic && (offer.Kind == chatlist.Open || offer.Kind == chatlist.ContinueHere) && a.taker != nil {
 		a.raiseMachineAsk(row, a.continueBusyShown(row))
-		a.home.say(continueAlreadyRunning, "")
+		a.home.say(moveAlreadyRunning, "")
 		return nil
 	}
 	if a.idleOpenEnabled() && row.AutoOpen {
@@ -340,7 +340,7 @@ func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 	}
 	if a.homeTaking != "" && !a.homeTakeAutomatic {
 		a.raiseMachineAsk(row, a.continueBusyShown(row))
-		a.home.say(continueAlreadyRunning, "")
+		a.home.say(moveAlreadyRunning, "")
 		return nil
 	}
 	a.raiseMachineAsk(row, a.continueShown(row, at))
@@ -360,12 +360,12 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			Ask:     session.AskConfirmation,
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
-			Head:    continueAsk,
+			Head:    moveAsk,
 			Reason:  continueReason(row),
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: []session.AnswerOption{
-				{Key: "1", Label: chatlist.OfferContinue},
-				{Key: "2", Label: continueStay, Safe: true},
+				{Key: "1", Label: chatlist.OfferMove},
+				{Key: "2", Label: moveStay, Safe: true},
 			},
 			Stakes: session.StakesReversible,
 			Asked:  a.now(),
@@ -380,7 +380,7 @@ func (a *app) continueShown(row chatlist.Row, at int) questionShown {
 			}
 			if a.homeTaking != "" && !a.homeTakeAutomatic {
 				a.raiseMachineAsk(row, a.continueBusyShown(row))
-				a.home.say(continueAlreadyRunning, "")
+				a.home.say(moveAlreadyRunning, "")
 				return nil
 			}
 			return a.takeRemote(row)
@@ -410,12 +410,12 @@ func (a *app) continueBusyShown(row chatlist.Row) questionShown {
 			Ask:     session.AskConfirmation,
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
-			Head:    continueAsk,
-			Reason:  continueAlreadyRunning,
+			Head:    moveAsk,
+			Reason:  moveAlreadyRunning,
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: []session.AnswerOption{
-				{Key: "1", Label: chatlist.OfferContinue},
-				{Key: "2", Label: continueStay, Safe: true},
+				{Key: "1", Label: chatlist.OfferMove},
+				{Key: "2", Label: moveStay, Safe: true},
 			},
 			Stakes: session.StakesReversible,
 			Asked:  a.now(),
@@ -430,7 +430,7 @@ func (a *app) continueBusyShown(row chatlist.Row) questionShown {
 			}
 			if a.homeTaking != "" && !a.homeTakeAutomatic {
 				a.raiseMachineAsk(row, a.continueBusyShown(row))
-				a.home.say(continueAlreadyRunning, "")
+				a.home.say(moveAlreadyRunning, "")
 				return nil
 			}
 			return a.takeRemote(row)
@@ -457,12 +457,12 @@ func (a *app) continueRetryShown(msg homeTakenMsg, failure string) questionShown
 			Ask:     session.AskConfirmation,
 			Form:    session.FormCard,
 			Asker:   session.Asker{Kind: session.AskerSurface},
-			Head:    continueAsk,
+			Head:    moveAsk,
 			Reason:  failure,
 			Subject: session.SubjectRef{Name: row.Title},
 			Options: []session.AnswerOption{
-				{Key: "1", Label: continueRetry},
-				{Key: "2", Label: continueStay, Safe: true},
+				{Key: "1", Label: moveRetry},
+				{Key: "2", Label: moveStay, Safe: true},
 			},
 			Stakes: session.StakesReversible,
 			Asked:  a.now(),
@@ -477,7 +477,7 @@ func (a *app) continueRetryShown(msg homeTakenMsg, failure string) questionShown
 			}
 			if a.homeTaking != "" && !a.homeTakeAutomatic {
 				a.raiseMachineAsk(row, a.continueBusyShown(row))
-				a.home.say(continueAlreadyRunning, "")
+				a.home.say(moveAlreadyRunning, "")
 				return nil
 			}
 			a.machineRead.down = false
@@ -550,16 +550,16 @@ func (a *app) takeRemoteState(msg homeTakenMsg) tea.Cmd {
 		}
 		a.abandonAutomaticTake()
 		a.homeTakePending = &msg
-		a.home.say(fmt.Sprintf("continuing %s next; %s is still on its way here", msg.row.Title, a.homeTakeRow.Title), "")
+		a.home.say(fmt.Sprintf("moving %s next; %s is still on its way here", msg.row.Title, a.homeTakeRow.Title), "")
 		return nil
 	}
 	if a.homeTaking != "" {
 		a.restoreTakeDraft(msg)
 		if a.at(pageHome) {
 			a.raiseMachineAsk(msg.row, a.continueBusyShown(msg.row))
-			a.home.say(continueAlreadyRunning, "")
+			a.home.say(moveAlreadyRunning, "")
 		} else {
-			a.note(continueAlreadyRunning)
+			a.note(moveAlreadyRunning)
 		}
 		return nil
 	}
@@ -814,7 +814,7 @@ func (a *app) lostRace(msg homeTakenMsg) tea.Cmd {
 		opened = a.openHome()
 	}
 	msg.send = nil
-	a.showTakeFailure(msg, continueFails)
+	a.showTakeFailure(msg, moveFails)
 	src, seq := a.machines, a.homeTakeSeq
 	file := ""
 	if line, ok := a.homeLineOf(msg.row.Cell); ok {
@@ -865,7 +865,7 @@ func (a *app) continueConflictRead(msg continueConflictMsg) tea.Cmd {
 		}
 	}
 	failed := msg.take
-	failure := continueFails
+	failure := moveFails
 	if msg.err == nil {
 		for _, row := range msg.rows {
 			if row.Cell != failed.row.Cell {
@@ -1383,13 +1383,13 @@ func (a *app) runBranchVerb(v branchVerb, row chatlist.Row) tea.Cmd {
 	if v.label == "open separately" {
 		if a.homeTaking != "" {
 			a.raiseMachineAsk(row, a.continueBusyShown(row))
-			a.home.say(continueAlreadyRunning, "")
+			a.home.say(moveAlreadyRunning, "")
 			return nil
 		}
 		a.homeTakeSeq++
 		seq := a.homeTakeSeq
 		a.homeTaking = row.Cell
-		a.home.say(continuing, "")
+		a.home.say(movingHere, "")
 		baseCtx := a.ctx
 		if baseCtx == nil {
 			baseCtx = context.Background()

@@ -16,7 +16,7 @@ package tui3
 // ONE CHORD OFFERS THE WORK. It picks the newest chat an online device holds
 // and raises the takeover card home already has ([app.homeMachineEnter]): the
 // verb is Move here, whether that device is running the chat or let it go
-// ([chatlist.VerbFor]). With several devices in reach the chord
+// ([chatlist.MoveHere]). With several devices in reach the chord
 // asks which first.
 
 import (

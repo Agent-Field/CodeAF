@@ -90,7 +90,7 @@ func TestIdleOpen_R8_OwnLiveRowAfterBlipSendsNoCard(t *testing.T) {
 			if agent.checks != 1 || len(agent.sent) != 1 || agent.sent[0] != "send after the blip" || rows[0].Fence != wantFence || a.at(pageHome) || a.agent != agent {
 				t.Fatalf("own live send: checks=%d sent=%v rows=%+v home=%v notes=%v", agent.checks, agent.sent, rows, a.at(pageHome), noteTexts(a))
 			}
-			if strings.Contains(homeText(a), continueAsk) || strings.Contains(strings.Join(noteTexts(a), "\n"), "last held here") {
+			if strings.Contains(homeText(a), moveAsk) || strings.Contains(strings.Join(noteTexts(a), "\n"), "last held here") {
 				t.Fatal("own live row raised a continuation card")
 			}
 		})
@@ -109,7 +109,7 @@ func TestIdleOpen_R8_OtherHolderStillGetsCard(t *testing.T) {
 			})
 			a.input.setText("keep this draft")
 			drive(t, a, key("enter"))
-			if agent.checks != 0 || len(agent.sent) != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) || a.input.String() != "keep this draft" {
+			if agent.checks != 0 || len(agent.sent) != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), moveAsk) || a.input.String() != "keep this draft" {
 				t.Fatalf("changed holder skipped its card: checks=%d sent=%v home=%s draft=%q", agent.checks, agent.sent, homeText(a), a.input.String())
 			}
 		})

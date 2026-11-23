@@ -48,8 +48,8 @@ func TestL4FixSyncOutageWords(t *testing.T) {
 	if strings.Count(notes, "this chat keeps working here") != 1 || strings.Contains(notes, "other machines") {
 		t.Fatal(notes)
 	}
-	if !strings.Contains(continueUnreachable, "because the relay is not answering; your words are still in the box") {
-		t.Fatal(continueUnreachable)
+	if !strings.Contains(moveUnreachable, "because the relay is not answering; your words are still in the box") {
+		t.Fatal(moveUnreachable)
 	}
 }
 

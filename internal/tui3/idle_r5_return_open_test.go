@@ -76,7 +76,7 @@ func TestIdleOpen_R5_RestartedHomeTakesFreeChatOnFirstOpen(t *testing.T) {
 						drive(t, a, key("enter"))
 						if expires != 0 {
 							raw, err := os.ReadFile(file)
-							if err != nil || string(raw) != string(original) || taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), continueAsk) {
+							if err != nil || string(raw) != string(original) || taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), moveAsk) {
 								t.Fatalf("lapsed working hold bypassed consent: free=%d takes=%v err=%v", taker.opens, taker.cells, err)
 							}
 							return
@@ -92,7 +92,7 @@ func TestIdleOpen_R5_RestartedHomeTakesFreeChatOnFirstOpen(t *testing.T) {
 						if !rows[0].Mine || rows[0].Status != chatlist.Here || rows[0].Fence != 4 {
 							t.Fatalf("no new ownership fence: %+v", rows)
 						}
-						if a.file != file || strings.Contains(homeText(a), continueAsk) {
+						if a.file != file || strings.Contains(homeText(a), moveAsk) {
 							t.Fatalf("first open did not arrive directly: file=%q", a.file)
 						}
 						return
@@ -151,7 +151,7 @@ func TestIdleOpen_R5_LocalRowKeepsLiveConsentAndUnpairedOpening(t *testing.T) {
 			}
 			switch mode {
 			case "live":
-				if taker.opens != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) {
+				if taker.opens != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), moveAsk) {
 					t.Fatal("live hold did not retain consent")
 				}
 			case "unpaired":

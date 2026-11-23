@@ -106,7 +106,7 @@ func TestReleasedChatOnAnotherMachineOffersContinue(t *testing.T) {
 		{Cell: "c-idle", Title: "Notes on the migration", Device: "host-a", Status: chatlist.Idle, DurableAgo: 26 * 3600e9},
 	}, 200)
 	standOn(t, a, "c-idle")
-	if text := homeText(a); !strings.Contains(text, chatlist.OfferContinue) {
+	if text := homeText(a); !strings.Contains(text, chatlist.OfferMove) {
 		t.Fatalf("a released chat does not offer to continue:\n%s", text)
 	}
 	confirm(t, a)

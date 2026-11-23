@@ -75,13 +75,15 @@ func StorageOffChanged() (string, bool) {
 // from here so a respelling happens once.
 const (
 	// Available describes a free lease while work admission acquires a new fence.
-	Available     = "This chat is available to move here."
-	OfferContinue = "move here"
-	// MoveHere is the verb the devices row offers for a chat on another device.
-	// ContinueVerb, for one the device let go of, used to read differently; one
-	// verb now names the one act, and both names keep that one spelling.
+	Available = "This chat is available to move here."
+	// OfferMove is the yes answer on the takeover card, the same words in the
+	// card's own lower case.
+	OfferMove = "move here"
+	// MoveHere is THE verb for carrying a chat from another computer to this one,
+	// wherever a person meets it: the devices row, the Home card's buttons, the
+	// resume offer. A chat another computer is running and one it let go of used to
+	// be offered two different verbs; one act has one word now.
 	MoveHere        = "Move here"
-	ContinueVerb    = "Move here"
 	LostRace        = "another device moved this chat first"
 	PickedUpAgain   = "%s picked this chat up again"
 	NoIdentity      = "this machine has no identity yet: codeaf identity import"

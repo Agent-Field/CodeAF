@@ -137,7 +137,7 @@ func TestIdleOpen_R5b_LocalOpenUsesDisplayWhenItAnswers(t *testing.T) {
 					t.Fatalf("free row did not open directly: opens=%d file=%q", taker.opens, a.file)
 				}
 			case "held elsewhere":
-				if taker.opens != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) {
+				if taker.opens != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), moveAsk) {
 					t.Fatal("live hold did not keep the existing choice")
 				}
 			default:

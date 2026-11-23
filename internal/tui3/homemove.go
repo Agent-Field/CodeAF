@@ -56,7 +56,7 @@ func moveSaid(p MoveProgress) string {
 	case p.Step == "opening":
 		return "opening it here…"
 	case p.Done <= 0:
-		return continuing
+		return movingHere
 	case p.Total > 0:
 		return fmt.Sprintf("copying to this computer: %s…", movedBytes(p.Done, p.Total))
 	}
@@ -198,7 +198,7 @@ func (a *app) followMove(msg homeMoveTickMsg) tea.Cmd {
 		return nil
 	}
 	if a.homeTaking != "" {
-		if p, ok := reporter.MoveProgress(a.homeTaking); ok && a.at(pageHome) && (a.home.msg == "" || a.home.msg == a.homeMoveLine() || a.home.msg == continuing || a.home.msg == "opening conversation…") {
+		if p, ok := reporter.MoveProgress(a.homeTaking); ok && a.at(pageHome) && (a.home.msg == "" || a.home.msg == a.homeMoveLine() || a.home.msg == movingHere || a.home.msg == "opening conversation…") {
 			a.homeMoveSaid = moveSaid(p)
 			a.home.say(a.homeMoveSaid, "")
 			a.touch()
@@ -224,7 +224,7 @@ func (a *app) initialMoveLine() string {
 			return "opening conversation…"
 		}
 	}
-	return continuing
+	return movingHere
 }
 
 // homeMoveLine is the line home shows for the running continue.

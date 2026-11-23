@@ -31,11 +31,10 @@ func TestL4B2DevicesListSelfFirstSkipRevokedAndMarkPresence(t *testing.T) {
 	}
 }
 
-func TestVerbsFollowTheChatsStatus(t *testing.T) {
-	if VerbFor(Row{Status: Running}) != MoveHere || VerbFor(Row{Status: Off}) != ContinueVerb {
-		t.Fatal("wrong verb")
-	}
-	if got := VerbFrom(Row{Status: Running, Device: "tower"}); got != "Move here from tower" {
-		t.Fatal(got)
+func TestOneVerbOffersTheMoveWhateverTheChatsStatus(t *testing.T) {
+	for _, status := range []Status{Running, Off} {
+		if got := VerbFrom(Row{Status: status, Device: "tower"}); got != "Move here from tower" {
+			t.Fatalf("a chat with status %v offered %q", status, got)
+		}
 	}
 }

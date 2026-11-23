@@ -80,8 +80,8 @@ func TestEnterOnTheDoorTakesTheListedChat(t *testing.T) {
 	taker := &fakeTaker{}
 	a, _ := heldLab(t, &flipping{status: chatlist.Running}, taker)
 	standOn(t, a, heldCell)
-	if !strings.Contains(homeText(a), chatlist.OfferContinue) {
-		t.Fatalf("the card does not say %q:\n%s", chatlist.OfferContinue, homeText(a))
+	if !strings.Contains(homeText(a), chatlist.OfferMove) {
+		t.Fatalf("the card does not say %q:\n%s", chatlist.OfferMove, homeText(a))
 	}
 	confirm(t, a)
 	if fmt.Sprint(taker.cells) != "["+heldCell+"]" {
@@ -124,7 +124,7 @@ func TestTypingIntoAStaleWindowShowsTheDoorAndSendsNothing(t *testing.T) {
 	if len(agent.sent) != 0 {
 		t.Fatalf("a stale window sent %v", agent.sent)
 	}
-	if !a.at(pageHome) || !strings.Contains(homeText(a), chatlist.OfferContinue) {
+	if !a.at(pageHome) || !strings.Contains(homeText(a), chatlist.OfferMove) {
 		t.Fatalf("no door was shown:\n%s", homeText(a))
 	}
 	if got := a.input.String(); got != "hello" {

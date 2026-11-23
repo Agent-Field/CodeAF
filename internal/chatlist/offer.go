@@ -20,8 +20,8 @@ type Offer struct {
 // another device is continued like one that went off: the person who opens it
 // decides it moves, and the takeover screen says where it runs now.
 var offers = map[Status]func(Row) Offer{
-	Off:     func(Row) Offer { return Offer{ContinueHere, OfferContinue} },
-	Running: func(Row) Offer { return Offer{ContinueHere, OfferContinue} },
+	Off:     func(Row) Offer { return Offer{ContinueHere, OfferMove} },
+	Running: func(Row) Offer { return Offer{ContinueHere, OfferMove} },
 	Branch:  func(r Row) Offer { return Offer{Merge, StatusLine(r)} },
 }
 
