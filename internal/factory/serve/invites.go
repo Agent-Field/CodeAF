@@ -245,6 +245,10 @@ func (h *Handler) shareWithInvitee(row tokens.Token, by string) error {
 			ws.Shares = append(slices.Clone(ws.Shares), factory.Share{Kind: factory.ShareToPerson, ID: ref, Role: factory.RoleEdit})
 			ws.PeopleAdded = maps1(ws.PeopleAdded)
 			ws.PeopleAdded[factory.ShareToPerson+":"+ref] = now.Format(time.RFC3339)
+			if who := factory.NormalizeHandle(by); who != "" {
+				ws.PeopleAddedBy = maps1(ws.PeopleAddedBy)
+				ws.PeopleAddedBy[factory.ShareToPerson+":"+ref] = who
+			}
 			ws.UpdatedAt = now
 			all[id] = ws
 			changed = append(changed, id)
@@ -505,6 +509,13 @@ func (h *Handler) rebindPerson(r *http.Request, from, to, by string, keep bool) 
 				delete(ws.PeopleAdded, factory.ShareToPerson+":"+from)
 				if keep {
 					ws.PeopleAdded[factory.ShareToPerson+":"+to] = added
+				}
+			}
+			if addedBy, ok := ws.PeopleAddedBy[factory.ShareToPerson+":"+from]; ok {
+				ws.PeopleAddedBy = maps1(ws.PeopleAddedBy)
+				delete(ws.PeopleAddedBy, factory.ShareToPerson+":"+from)
+				if keep {
+					ws.PeopleAddedBy[factory.ShareToPerson+":"+to] = addedBy
 				}
 			}
 			ws.UpdatedAt = now

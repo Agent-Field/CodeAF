@@ -79,6 +79,10 @@ type OrgWorkstream struct {
 	// "team:<id>") was added, for the line "Added Nov 2"; one added before it
 	// was kept has none, and says nothing.
 	PeopleAdded map[string]string `json:"people_added,omitempty"`
+	// PeopleAddedBy is who added each of them (a handle), by the same keys,
+	// so the person added can be told "Ann added you"; absent before it was
+	// kept, and for the people a workstream started with.
+	PeopleAddedBy map[string]string `json:"people_added_by,omitempty"`
 }
 
 // OrgWorkstreams are every organization workstream, by id.

@@ -33,7 +33,7 @@ func TestAChildHasItsParentsPeopleAndACopyOfItsRules(t *testing.T) {
 	var shared api.WorkstreamShared
 	o.do(t, "santosh", "PUT", path+"/shares", -1, api.WorkstreamSharesPut{Shares: &team}, 200, &shared)
 	people := shared.Workstream.People
-	if len(people) != 2 || people[0].ID != "santosh" || !people[0].Steward || people[1].Kind != "team" || people[1].Name != "Platform" || !slices.Equal(people[1].Members, []string{"abir", "santosh"}) || people[1].AddedAt == "" {
+	if len(people) != 2 || people[0].ID != "santosh" || !people[0].Steward || people[1].Kind != "team" || people[1].Name != "Platform" || !slices.Equal(people[1].Members, []string{"abir", "santosh"}) || people[1].AddedAt == "" || people[1].AddedBy != "santosh" || people[0].AddedBy != "" {
 		t.Fatalf("people = %+v", people)
 	}
 

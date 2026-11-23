@@ -206,6 +206,13 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 	if p := strings.TrimSpace(ws.Purpose); p != "" {
 		out.WriteString("\n\nThe workstream " + ws.Name + " is for: " + p)
 	}
+	// The workstream's rules in words, as its people wrote them, bind every task.
+	if said := ws.RulesOrDefault().Said; len(said) > 0 {
+		out.WriteString("\n\nRules here (keep to them):")
+		for _, l := range said {
+			out.WriteString("\n- " + l)
+		}
+	}
 	current := nameDecisions(factory.CurrentDecisions(ws.Decisions), h.personNames())
 	// THE PACKET SAYS THE DECISIONS EVEN WHEN THERE ARE NONE. The rules tell
 	// an agent to read the decisions before it writes anything shared, and a
