@@ -42,7 +42,7 @@ func TestStorageOptInDevicesRequestAndStatus(t *testing.T) {
 	r.press("enter")
 	r.until("storage request opener", func() bool { return opened != "" })
 	parsed, err := url.Parse(opened)
-	if err != nil || !strings.HasPrefix(opened, syncsetup.StorageRequestURL+"?") || parsed.Query().Get("title") != "sync storage access: "+code || parsed.Query().Get("body") != "Please turn on sync storage for my account.\n\nRequest code: "+code {
+	if err != nil || !strings.HasPrefix(opened, syncsetup.StorageRequestURL+"?") || parsed.Query().Get("title") != "relay storage access: "+code || parsed.Query().Get("body") != "Please turn on relay storage for my account.\n\nRequest code: "+code {
 		t.Fatalf("request link: %s %v", opened, err)
 	}
 	details := plain(frame(a))

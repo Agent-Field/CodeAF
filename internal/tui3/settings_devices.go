@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -30,9 +31,6 @@ const (
 	// Connections and Privacy.
 	tabDevices   = "Devices"
 	storageLabel = "relay storage"
-	// storageOldLabel is what the row was called until 2026-11-23. It is searched
-	// and never drawn, so a person who remembers the old name still finds the row.
-	storageOldLabel = "sync storage"
 	// devicesAddKey is the key legend clause for the row that starts pairing
 	// another computer.
 	devicesAddKey = "enter add"
@@ -274,7 +272,7 @@ func (s *sheet) appendDevicesSearch(terms []fuzzy.Term) int {
 		}
 	}
 	if s.storageCode != "" {
-		if score, ok, at, size := s.matchHits([]string{storageLabel, "request access", tabDevices, storageOldLabel}, terms); ok {
+		if score, ok, at, size := s.matchHits([]string{storageLabel, "request access", tabDevices, config.LegacySyncStorage}, terms); ok {
 			best = max(best, score)
 			matched = append(matched, devHit{item: sheetItem{dev: &deviceSheetRow{storage: true}, hitAt: at, hitLen: size}, score: score})
 		}
