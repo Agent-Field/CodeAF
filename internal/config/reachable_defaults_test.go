@@ -25,15 +25,7 @@ func (f defaultsFixture) set() modelsource.Set {
 }
 
 func (f defaultsFixture) pick(slot DefaultSlot, builtIn, chosenTalk string) string {
-	sources := f.set()
-	connected := connectedServices(sources)
-	if len(connected) == 0 {
-		return builtIn
-	}
-	if builtIn != "" && sendable(sources, builtIn) {
-		return builtIn
-	}
-	return reachableDefault(sources, connected, slot, chosenTalk, func(service modelsource.Connected) []catalog.Model {
+	return chooseDefault(f.set(), slot, builtIn, chosenTalk, func(service modelsource.Connected) []catalog.Model {
 		return f.models[strings.ToLower(service.Source.ID)]
 	})
 }
@@ -263,5 +255,129 @@ func TestChatGPTCrewRoutesServeTheAccountsListedModels(t *testing.T) {
 		if id == vendoredSource(t, "codex").Preferred {
 			t.Fatalf("serves the preferred %q the account did not list", id)
 		}
+	}
+}
+
+func ids(names ...string) []catalog.Model {
+	rows := make([]catalog.Model, 0, len(names))
+	for _, name := range names {
+		rows = append(rows, catalog.Model{ID: name})
+	}
+	return rows
+}
+
+// TestEveryShippedProviderGetsReachableDefaultsOfItsOwn connects each shipped
+// provider alone, with the models it lists (or, for one that publishes no list,
+// the models it names), and checks the conversation, fallback and light seats.
+func TestEveryShippedProviderGetsReachableDefaultsOfItsOwn(t *testing.T) {
+	t.Setenv("ZHIPU_API_KEY", "")
+	zai := vendoredSource(t, "z-ai")
+	var codingPlan modelsource.Door
+	for _, door := range zai.Doors {
+		if door.ID == "coding-plan" {
+			codingPlan = door
+		}
+	}
+	custom := modelsource.Source{ID: modelsource.CustomID + "-lab", Written: "lab", Name: "lab", Listing: modelsource.ListingModels}
+	cases := []struct {
+		name                  string
+		service               modelsource.Connected
+		models                []catalog.Model
+		talk, fallback, light string
+	}{
+		{
+			name:    "DeepSeek",
+			service: modelsource.Connected{Source: vendoredSource(t, "deepseek"), Key: "sk-ds"},
+			models:  ids("deepseek-v4-flash", "deepseek-v4-pro"),
+			talk:    "deepseek/deepseek-v4-pro", fallback: "deepseek/deepseek-v4-flash", light: "deepseek/deepseek-v4-flash",
+		},
+		{
+			name:    "Z.ai coding plan",
+			service: modelsource.Connected{Source: zai, Key: "zai", Door: codingPlan},
+			models:  namedModels(modelsource.Connected{Source: zai, Door: codingPlan}),
+			talk:    "z-ai/" + zai.Preferred, light: "z-ai/glm-5.3-flash",
+		},
+		{
+			name:    "Moonshot",
+			service: modelsource.Connected{Source: vendoredSource(t, "moonshot"), Key: "sk-moon"},
+			models:  namedModels(modelsource.Connected{Source: vendoredSource(t, "moonshot")}),
+			talk:    "moonshot/" + vendoredSource(t, "moonshot").Preferred, fallback: "", light: "moonshot/" + vendoredSource(t, "moonshot").Preferred,
+		},
+		{
+			name:    "MiniMax",
+			service: modelsource.Connected{Source: vendoredSource(t, "minimax"), Key: "sk-mm"},
+			models:  namedModels(modelsource.Connected{Source: vendoredSource(t, "minimax")}),
+			talk:    "minimax/" + vendoredSource(t, "minimax").Preferred, fallback: "", light: "minimax/" + vendoredSource(t, "minimax").Preferred,
+		},
+		{
+			name:    "Qwen",
+			service: modelsource.Connected{Source: vendoredSource(t, "qwen"), Key: "sk-qw"},
+			models:  namedModels(modelsource.Connected{Source: vendoredSource(t, "qwen")}),
+			talk:    "qwen/qwen3.7-plus", fallback: "qwen/qwen3.8-flash", light: "qwen/qwen3.8-flash",
+		},
+		{
+			name:    "ai&",
+			service: modelsource.Connected{Source: vendoredSource(t, "aiand"), Key: "sk-aiand"},
+			models:  ids("zai-org/glm-5.3-flash", "deepseek-ai/deepseek-v4-flash", "zai-org/glm-5.3", "moonshotai/kimi-k3"),
+			talk:    "aiand/zai-org/glm-5.3-flash", fallback: "aiand/zai-org/glm-5.3", light: "aiand/zai-org/glm-5.3-flash",
+		},
+		{
+			name:    "OpenCode Go",
+			service: modelsource.Connected{Source: vendoredSource(t, "opencode-go"), Key: "sk-oc"},
+			models:  ids("kimi-k3", vendoredSource(t, "opencode-go").Preferred, "qwen3.8-flash"),
+			talk:    "opencode-go/" + vendoredSource(t, "opencode-go").Preferred, light: "opencode-go/qwen3.8-flash",
+		},
+		{
+			name:    "Claude Code",
+			service: modelsource.Connected{Source: vendoredSource(t, claudemodel.ID), Key: claudemodel.Sentinel},
+			models:  claudemodel.Models(),
+			talk:    claudemodel.ID + "/sonnet", fallback: claudemodel.ID + "/opus", light: claudemodel.ID + "/haiku",
+		},
+		{
+			name:    "a custom endpoint",
+			service: modelsource.Connected{Source: custom, Key: "sk-lab", Address: "https://lab.example/v1"},
+			models:  ids("lab-model-8b", "lab-model-70b"),
+			talk:    "lab/lab-model-70b", fallback: "lab/lab-model-8b", light: "lab/lab-model-8b",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			id := strings.ToLower(c.service.Source.ID)
+			f := defaultsFixture{services: []modelsource.Connected{c.service}, models: map[string][]catalog.Model{id: c.models}}
+			talk := f.pick(SlotTalk, DefaultModel, "")
+			if talk != c.talk {
+				t.Fatalf("talk = %q, want %q", talk, c.talk)
+			}
+			if c.fallback != "" || c.name == "Moonshot" || c.name == "MiniMax" {
+				if got := f.pick(SlotFallback, DefaultFallbackModel, talk); got != c.fallback {
+					t.Fatalf("fallback = %q, want %q", got, c.fallback)
+				}
+			}
+			if got := f.pick(SlotLight, DefaultLowModel, talk); got != c.light {
+				t.Fatalf("light = %q, want %q", got, c.light)
+			}
+			if got := f.pick(SlotLight, DefaultReflexModel, talk); got != c.light {
+				t.Fatalf("reflex = %q, want %q", got, c.light)
+			}
+		})
+	}
+}
+
+// A BUILT-IN ID THAT ROUTES TO A CONNECTED ACCOUNT BY ITS PREFIX IS KEPT ONLY
+// WHEN THAT ACCOUNT LISTS IT: `deepseek/deepseek-v4.1-flash` routes to a direct
+// DeepSeek connection, whose own list need not carry that id.
+func TestABuiltInIDThatRoutesByPrefixIsKeptOnlyWhenListed(t *testing.T) {
+	deepseek := modelsource.Connected{Source: vendoredSource(t, "deepseek"), Key: "sk-ds"}
+	without := defaultsFixture{services: []modelsource.Connected{deepseek}, models: map[string][]catalog.Model{"deepseek": ids("deepseek-v4-pro", "deepseek-v4-flash")}}
+	if got := without.pick(SlotFallback, DefaultFallbackModel, ""); got == DefaultFallbackModel {
+		t.Fatalf("fallback kept the unlisted built-in %q", got)
+	}
+	with := defaultsFixture{services: []modelsource.Connected{deepseek}, models: map[string][]catalog.Model{"deepseek": ids("deepseek-v4-pro", "deepseek-v4.1-flash")}}
+	if got := with.pick(SlotFallback, DefaultFallbackModel, ""); got != DefaultFallbackModel {
+		t.Fatalf("fallback = %q, want the listed built-in %q", got, DefaultFallbackModel)
+	}
+	unknown := defaultsFixture{services: []modelsource.Connected{deepseek}, models: map[string][]catalog.Model{}}
+	if got := unknown.pick(SlotFallback, DefaultFallbackModel, ""); got != DefaultFallbackModel {
+		t.Fatalf("with no known list, fallback = %q, want the built-in on routing alone", got)
 	}
 }

@@ -45,18 +45,24 @@ const (
 // the model setup will connect, and the first-run screens keep working. It is
 // "" only when services are connected and none of them offers a model.
 func ReachableDefaultAt(profileDir string, slot DefaultSlot, builtIn string) string {
-	builtIn = strings.TrimSpace(builtIn)
 	sources := ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL)
+	return chooseDefault(sources, slot, builtIn, ChatModelAt(profileDir), func(service modelsource.Connected) []catalog.Model {
+		return serviceModelsAt(profileDir, service)
+	})
+}
+
+// chooseDefault is [ReachableDefaultAt] over a set of services and a reader of
+// each one's models, so it can be checked without a profile on disk.
+func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTalk string, modelsOf func(modelsource.Connected) []catalog.Model) string {
+	builtIn = strings.TrimSpace(builtIn)
 	connected := connectedServices(sources)
 	if len(connected) == 0 {
 		return builtIn
 	}
-	if builtIn != "" && sendable(sources, builtIn) {
+	if builtIn != "" && offered(sources, builtIn, modelsOf) {
 		return builtIn
 	}
-	return reachableDefault(sources, connected, slot, ChatModelAt(profileDir), func(service modelsource.Connected) []catalog.Model {
-		return serviceModelsAt(profileDir, service)
-	})
+	return reachableDefault(sources, connected, slot, chosenTalk, modelsOf)
 }
 
 // reachableDefault is the file-free half of [ReachableDefaultAt]: it chooses
@@ -72,7 +78,7 @@ func ReachableDefaultAt(profileDir string, slot DefaultSlot, builtIn string) str
 // not answer in ChatGPT and route through a local model.
 func reachableDefault(sources modelsource.Set, connected []modelsource.Connected, slot DefaultSlot, chosenTalk string, modelsOf func(modelsource.Connected) []catalog.Model) string {
 	talk, talkService := "", ""
-	if chosenTalk = strings.TrimSpace(chosenTalk); chosenTalk != "" && sendable(sources, chosenTalk) {
+	if chosenTalk = strings.TrimSpace(chosenTalk); chosenTalk != "" && offered(sources, chosenTalk, modelsOf) {
 		service, _ := sources.For(stripLevel(chosenTalk))
 		talk, talkService = chosenTalk, service.Source.ID
 	} else {
@@ -159,10 +165,30 @@ func connectedServices(sources modelsource.Set) []modelsource.Connected {
 	return out
 }
 
-// sendable reports whether model routes to a connected service.
-func sendable(sources modelsource.Set, model string) bool {
-	service, _ := sources.For(stripLevel(model))
-	return service.HasCredentials()
+// offered reports whether model routes to a connected service that can serve
+// it. ROUTING ALONE IS NOT ENOUGH: a built-in `deepseek/…` id routes to a
+// connected DeepSeek account by its prefix, and that account's own list need
+// not carry the id. So a service whose models are known must list the model;
+// one that can say nothing about its models, and the OpenRouter row, whose
+// catalog may still be cold, are trusted on routing alone.
+func offered(sources modelsource.Set, model string, modelsOf func(modelsource.Connected) []catalog.Model) bool {
+	service, bare := sources.For(stripLevel(model))
+	if !service.HasCredentials() {
+		return false
+	}
+	if strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
+		return true
+	}
+	models := modelsOf(service)
+	if len(models) == 0 {
+		return true
+	}
+	for _, listed := range models {
+		if strings.EqualFold(strings.TrimSpace(listed.ID), bare) {
+			return true
+		}
+	}
+	return false
 }
 
 func preferService(services []modelsource.Connected, id string) []modelsource.Connected {
@@ -215,6 +241,13 @@ func serviceModelsAt(profileDir string, service modelsource.Connected) []catalog
 	if rows := catalog.Recall(CatalogOptionsFor(service, profileDir)).ModelsNow(); len(rows) > 0 {
 		return rows
 	}
+	return namedModels(service)
+}
+
+// namedModels is what a service says it serves without a listing: a plan
+// door's documented ids, else its preferred model and the model its connection
+// check is sent to.
+func namedModels(service modelsource.Connected) []catalog.Model {
 	if len(service.Door.Models) > 0 {
 		rows := make([]catalog.Model, 0, len(service.Door.Models))
 		for _, id := range service.Door.Models {
@@ -222,10 +255,17 @@ func serviceModelsAt(profileDir string, service modelsource.Connected) []catalog
 		}
 		return rows
 	}
-	if preferred := strings.TrimSpace(service.Source.Preferred); preferred != "" {
-		return []catalog.Model{{ID: preferred}}
+	// A SERVICE THAT PUBLISHES NO LIST STILL NAMES TWO MODELS IT SERVES: the
+	// preferred one and the one its connection check is sent to, which is a
+	// small model on purpose (Qwen's `qwen3.8-flash` beside `qwen3.7-plus`).
+	// Offering both gives the helper seats a light model instead of the flagship.
+	var rows []catalog.Model
+	for _, id := range []string{service.Source.Preferred, service.Source.ProbeModel} {
+		if id = strings.TrimSpace(id); id != "" && (len(rows) == 0 || !strings.EqualFold(rows[0].ID, id)) {
+			rows = append(rows, catalog.Model{ID: id})
+		}
 	}
-	return nil
+	return rows
 }
 
 // codexCatalogRow keeps a ChatGPT listing row's window and its thinking levels,
@@ -282,9 +322,19 @@ func pickTalk(service modelsource.Connected, models []catalog.Model) catalog.Mod
 	return ranked[len(ranked)-1]
 }
 
-// pickLight is the lightest model offered.
+// pickLight is the lightest model offered. Among models that read as equally
+// light it is the one the provider lists first, because providers list their
+// current model before older versions and bulkier variants: the coding plan's
+// `haiku` before `claude-haiku-4-5`, Z.ai's `glm-5.3-flash` before its
+// 1M-context `glm-5.3-flash[1m]`.
 func pickLight(models []catalog.Model) catalog.Model {
-	return rankByStrength(models)[0]
+	lightest := strengthKey(rankByStrength(models)[0])
+	for _, model := range models {
+		if strengthKey(model) == lightest {
+			return model
+		}
+	}
+	return models[0]
 }
 
 // pickFallback is the strongest model on service other than main, qualified,

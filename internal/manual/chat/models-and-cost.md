@@ -148,13 +148,16 @@ choose a default for another machine.
 codeaf's built-in defaults are OpenRouter models: the conversation model, the
 `fallback models` row, the **reflex** and **small work** rows behind titles,
 routing and memory, and the **knowledge** model. Each one is used only while a
-connected provider can send it. Without an OpenRouter key, every default you
-have not chosen comes from the providers you did connect instead:
+connected provider can send it, and lists it when that provider publishes a model
+list. Without an OpenRouter key, every default you have not chosen comes from the
+providers you did connect instead:
 
 - the conversation opens on the provider's preferred model, else its strongest;
 - the fallback is a different strong model, on the same provider when it offers
   one, else on another connected provider; with only one model, there is none;
-- reflex, small work and knowledge use the provider's lightest model.
+- reflex, small work and knowledge use the provider's lightest model. A provider
+  that publishes no model list offers its preferred model and the model its
+  connection check uses (Qwen's `qwen3.8-flash`), so these seats can still be light.
 
 Strength is read from the provider's published intelligence score or price,
 then from the model's name (mini, flash or haiku against pro, opus or max), its
