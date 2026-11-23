@@ -157,7 +157,7 @@ var settingUI = map[string]settingMeta{
 	},
 	// ── Session ─────────────────────────────────────────────────────────────
 	config.KeyToolApprovalMode: {
-		tab: tabSafety, label: "ask before running", widget: widgetCycle,
+		tab: tabSafety, label: "tool approvals", widget: widgetCycle,
 		about: "what happens when the model asks to run a tool. Dangerous shell " +
 			"commands are asked about whichever way this is set.",
 	},
