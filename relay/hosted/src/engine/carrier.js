@@ -12,6 +12,12 @@ const LABEL = new TextEncoder().encode('aforge relay registration v1'); // legac
 // The tuning of internal/relay/relay.go, kept in lockstep under the same names.
 export const MAX_PAYLOAD = 1 << 17; // relay.MaxPayload
 export const MAX_STREAMS = 16; // relay.MaxStreams
+export const LIVE_STREAMS = 14; // relay.LiveStreams: how many streams a live dial may leave attached, whoever holds the rest
+export const HEADER_DOOR = 'codeaf-door'; // relay.HeaderDoor
+export const DOOR_LIVE = 'live'; // relay.DoorLive
+export const DOOR_MOVE = 'move'; // relay.DoorMove
+export const BREAKER_BYTES_PER_SECOND = 4 << 20; // relay.BreakerRate
+export const BREAKER_WINDOW_MS = 5000; // relay.BreakerWindow
 export const HANDSHAKE_MS = 20000; // relay.HandshakeWithin
 export const PROBE_MS = 5000; // relay.ProbeWithin
 export const DIALS_PER_MINUTE = 30; // relay.DialsPerMinute (and MACHINE_DIAL_LIMIT in wrangler.toml)
@@ -19,13 +25,39 @@ export const REGISTRATIONS_PER_MINUTE = 10; // relay.RegistrationsPerMinute (and
 
 export const TOO_MANY_DIALS = 'too many connections from here — wait a minute';
 export const TOO_MANY_REGISTRATIONS = 'too many registrations from here — wait a minute';
+/** TOO_MANY_LIVE is a live dial turned away while the last streams are kept for moving a chat. */
+export const TOO_MANY_LIVE = `that machine already has ${LIVE_STREAMS} live connections open; the last ${MAX_STREAMS - LIVE_STREAMS} are kept for moving a chat`;
+/** The sentence a closed stream's socket carries when the breaker cut it, with close code 1008. */
+export const BREAKER_REASON = 'sending faster than a live view does';
+
+/** The rate limits count in fixed windows of this many seconds, which is also the longest a refused caller can be told to wait. */
+export const RATE_PERIOD_SECONDS = 60;
+
+/**
+ * doorOf reads a dial's class from its header. ONLY THE TWO KNOWN CLASSES ARE CLASSES: anything else, an absent header
+ * included, is no class, so an older client and a class a later build adds are held to the full MAX_STREAMS exactly as every
+ * dial was before the header existed.
+ */
+export const doorOf = (request) => {
+  const said = request.headers.get(HEADER_DOOR);
+  return said === DOOR_LIVE || said === DOOR_MOVE ? said : '';
+};
+
+/** secondsToNextMinute is how long until the fixed per-minute window `now` (milliseconds) is in rolls over, never less than one. */
+export const secondsToNextMinute = (now) => Math.max(1, Math.ceil((60000 - (now % 60000)) / 1000));
 
 /** The two doors, beneath the deployment's base path. */
 export const ENGINE_PATH = '/v1/engine';
 export const DIAL_PREFIX = '/v1/dial/';
 
-/** plain is a refusal in the relay's own sentence, which the Go client passes on as it is. */
-export const plain = (status, sentence) => new Response(sentence, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+/**
+ * plain is a refusal in the relay's own sentence, which the Go client passes on as it is. A rate limit's refusal also says
+ * when to come back, in `retry-after`, so a client waits for the window and not for a guess.
+ */
+export const plain = (status, sentence, headers = {}) => new Response(sentence, {
+  status,
+  headers: { 'content-type': 'text/plain; charset=utf-8', ...headers },
+});
 const FRAME_HEADER = 13;
 
 export const OP = { open: 1, data: 2, close: 3, ping: 4, pong: 5 };

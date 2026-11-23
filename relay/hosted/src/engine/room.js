@@ -10,13 +10,20 @@
 // survive hibernation. A quiet machine therefore costs nothing: its liveness is proved by WebSocket pings from the
 // machine, which the platform answers without waking the object. The one timer is a registration's bounded wait for
 // an older socket's pong under the same key, while the object is awake anyway.
+//
+// A DIAL MAY CLAIM A CLASS (carrier.js, doorOf). A live dial stops at LIVE_STREAMS of the machine's streams and the rest are
+// kept for a move; a dial with no class is held to MAX_STREAMS exactly as it always was. A live stream also has a breaker
+// that ends it, with close code 1008, if it sends far faster than a correct host ever lets a live view. THE BREAKER IS
+// COMPUTED WHEN A MESSAGE ARRIVES: there is no timer and no alarm in this object, because either would keep an idle live
+// view awake, and an idle live view is meant to cost nothing.
 import { nameFor } from './names.js';
 import { ipOf } from '../wire.js';
 import {
-  DIALS_PER_MINUTE, ENGINE_PATH, HANDSHAKE_MS, HEADER_KEY, HEADER_NAME, MAX_PAYLOAD, MAX_STREAMS, OP, PROBE_MS,
-  PROTOCOL, REGISTRATIONS_PER_MINUTE, TOO_MANY_DIALS, TOO_MANY_REGISTRATIONS,
-  challenge, frame, plain as refuse, readFrame, verdict,
+  BREAKER_REASON, DIALS_PER_MINUTE, DOOR_LIVE, ENGINE_PATH, HANDSHAKE_MS, HEADER_KEY, HEADER_NAME, LIVE_STREAMS, MAX_PAYLOAD,
+  MAX_STREAMS, OP, PROBE_MS, PROTOCOL, REGISTRATIONS_PER_MINUTE, TOO_MANY_DIALS, TOO_MANY_LIVE, TOO_MANY_REGISTRATIONS,
+  challenge, doorOf, frame, plain as refuse, readFrame, secondsToNextMinute, verdict,
 } from './carrier.js';
+import { Breaker } from './breaker.js';
 
 const ENGINE = 'engine';
 const DIAL = 'dial';
@@ -45,15 +52,17 @@ export class MachineRoom {
     this.claiming = false;
     /** buckets are this minute's counts per caller network and door, kept as a second line behind door.js. */
     this.buckets = new Map();
+    /** breakers are the live streams' rate counts, one per stream and direction; waking from hibernation forgets them, which only forgives. */
+    this.breakers = new Map();
   }
 
   async fetch(request) {
     this.#sweepPending();
     const register = new URL(request.url).pathname === ENGINE_PATH;
     if (!this.#allow(ipOf(request, this.env), register ? 'register' : 'dial', register ? REGISTRATIONS_PER_MINUTE : DIALS_PER_MINUTE)) {
-      return refuse(429, register ? TOO_MANY_REGISTRATIONS : TOO_MANY_DIALS);
+      return refuse(429, register ? TOO_MANY_REGISTRATIONS : TOO_MANY_DIALS, { 'retry-after': String(secondsToNextMinute(this.clock())) });
     }
-    return register ? this.#register(request) : this.#dial();
+    return register ? this.#register(request) : this.#dial(doorOf(request));
   }
 
   /** allow spends one of a caller's per-minute allowance at this machine's door. */
@@ -117,11 +126,16 @@ export class MachineRoom {
     return new Response(null, { status: 101, webSocket: client, headers: { 'sec-websocket-protocol': PROTOCOL } });
   }
 
-  /** dial matches a surface to the machine and opens a stream on its carrier. */
-  async #dial() {
+  /**
+   * dial matches a surface to the machine and opens a stream on its carrier. A live dial is held to LIVE_STREAMS against the
+   * machine's TOTAL, so live dials can never take the last streams, which are kept for a move; every other dial, and every dial
+   * from a build that predates the class, is held to MAX_STREAMS.
+   */
+  async #dial(door) {
     const engine = this.#engine();
     if (!engine) return refuse(404, 'no machine is connected under that name');
     const active = this.ctx.getWebSockets(DIAL).filter((ws) => ws.deserializeAttachment()?.role === 'surface');
+    if (door === DOOR_LIVE && active.length >= LIVE_STREAMS) return refuse(429, TOO_MANY_LIVE);
     if (active.length >= MAX_STREAMS) {
       return refuse(429, `that machine already has ${MAX_STREAMS} connections open, which is as many as the relay carries at once`);
     }
@@ -137,7 +151,9 @@ export class MachineRoom {
     }
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server, [DIAL, 's:' + id]);
-    server.serializeAttachment({ role: 'surface', id });
+    // THE CLASS RIDES THE SOCKET'S OWN ATTACHMENT, which survives hibernation, and only for a live stream: the breaker needs
+    // it after a wake-up and nothing else does. No other socket's attachment changes, and no storage is touched.
+    server.serializeAttachment(door === DOOR_LIVE ? { role: 'surface', id, door } : { role: 'surface', id });
     return new Response(null, { status: 101, webSocket: client, headers: { 'sec-websocket-protocol': PROTOCOL } });
   }
 
@@ -150,15 +166,17 @@ export class MachineRoom {
     const seen = ws.deserializeAttachment();
     if (!seen || seen.role === 'ended') return;
     const bytes = bytesOf(message);
-    if (seen.role === 'surface') return this.#fromSurface(seen.id, bytes);
+    if (seen.role === 'surface') return this.#fromSurface(seen, bytes);
     if (seen.role === 'pending') return this.#proof(ws, seen, bytes);
     if (seen.role === 'engine') return this.#fromMachine(ws, bytes);
   }
 
   /** fromSurface carries a surface's bytes to the machine, cut into carrier-sized frames. */
-  #fromSurface(id, bytes) {
+  #fromSurface(seen, bytes) {
+    const { id } = seen;
     const engine = this.#engine();
     if (!engine) return this.#closeStream(id, 1011, 'the machine left');
+    if (this.#overRate(seen, 'up', bytes.length)) return this.#cut(id, engine);
     try {
       for (let at = 0; at < bytes.length; at += MAX_PAYLOAD) {
         engine.send(frame(OP.data, id, bytes.subarray(at, at + MAX_PAYLOAD)));
@@ -181,9 +199,11 @@ export class MachineRoom {
       }
       return;
     }
-    const surface = this.ctx.getWebSockets('s:' + got.stream).find((s) => s.deserializeAttachment()?.role === 'surface');
+    let seen = null;
+    const surface = this.ctx.getWebSockets('s:' + got.stream).find((s) => (seen = s.deserializeAttachment())?.role === 'surface');
     if (!surface) return;
     if (got.op === OP.data) {
+      if (this.#overRate(seen, 'down', got.payload.length)) return this.#cut(got.stream, ws);
       try {
         surface.send(got.payload);
       } catch {
@@ -291,12 +311,34 @@ export class MachineRoom {
     } catch {}
   }
 
+  /**
+   * overRate counts `bytes` against a live stream's breaker for one direction and says whether the stream is now over its
+   * rate. A stream that did not claim the live class has none, so a move's large answers and every older client's traffic
+   * are never counted. Each direction has its own breaker, so a heavy flow one way cannot hide in a quiet flow the other.
+   */
+  #overRate(seen, direction, bytes) {
+    if (seen?.door !== DOOR_LIVE) return false;
+    const key = `${seen.id}:${direction}`;
+    let breaker = this.breakers.get(key);
+    if (!breaker) this.breakers.set(key, (breaker = new Breaker()));
+    return breaker.charge(bytes, this.clock());
+  }
+
+  /** cut ends a stream the breaker tripped: the surface is closed with 1008 and the machine is told, as for any close. */
+  #cut(id, engine) {
+    this.#closeStream(id, 1008, BREAKER_REASON);
+    try {
+      engine.send(frame(OP.close, id));
+    } catch {}
+  }
+
   /** gone tells the other end of whatever the socket that ended was carrying, once. */
   #gone(ws) {
     const seen = ws.deserializeAttachment();
     if (!seen || seen.role === 'ended') return;
     ws.serializeAttachment({ ...seen, role: 'ended' });
     if (seen.role === 'surface') {
+      this.#forgetBreakers(seen.id);
       try {
         this.#engine()?.send(frame(OP.close, seen.id));
       } catch {}
@@ -315,7 +357,14 @@ export class MachineRoom {
     } catch {}
   }
 
+  /** forgetBreakers drops a stream's counts when it ends, so a long-lived object holds only the streams that are open. */
+  #forgetBreakers(id) {
+    this.breakers.delete(`${id}:up`);
+    this.breakers.delete(`${id}:down`);
+  }
+
   #closeStream(id, code, reason) {
+    this.#forgetBreakers(id);
     for (const surface of this.ctx.getWebSockets('s:' + id)) {
       surface.serializeAttachment({ role: 'ended', id });
       try {

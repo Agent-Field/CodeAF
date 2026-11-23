@@ -1,11 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { nameFor, validName } from '../src/engine/names.js';
+import { readFileSync } from 'node:fs';
 import {
-  DIALS_PER_MINUTE, ENGINE_PATH, HEADER_KEY, HEADER_NAME, MAX_PAYLOAD, MAX_STREAMS, OP, PROTOCOL,
-  REGISTRATIONS_PER_MINUTE, TOO_MANY_DIALS, TOO_MANY_REGISTRATIONS,
-  frame, readFrame, registrationProof, verdict,
+  BREAKER_BYTES_PER_SECOND, BREAKER_REASON, BREAKER_WINDOW_MS, DIALS_PER_MINUTE, DOOR_LIVE, DOOR_MOVE, ENGINE_PATH, HEADER_DOOR,
+  HEADER_KEY, HEADER_NAME, LIVE_STREAMS, MAX_PAYLOAD, MAX_STREAMS, OP, PROTOCOL,
+  REGISTRATIONS_PER_MINUTE, TOO_MANY_DIALS, TOO_MANY_LIVE, TOO_MANY_REGISTRATIONS,
+  doorOf, frame, readFrame, registrationProof, secondsToNextMinute, verdict,
 } from '../src/engine/carrier.js';
+import { Breaker } from '../src/engine/breaker.js';
 import { serveMachineDoor } from '../src/engine/door.js';
 import { MachineRoom } from '../src/engine/room.js';
 
@@ -61,6 +64,9 @@ function makeRoom(options = {}) {
   const sockets = [];
   const kv = new Map();
   const clock = { now: 1_000_000 };
+  /** Every storage write and every alarm the object asks for, so a test can say none happened beyond the stream counter. */
+  const puts = [];
+  const alarms = [];
 
   function makeSocket(peerRef) {
     const ws = {
@@ -112,7 +118,11 @@ function makeRoom(options = {}) {
   };
 
   const ctx = {
-    storage: { kv: { get: (k) => kv.get(k), put: (k, v) => kv.set(k, v) } },
+    storage: {
+      kv: { get: (k) => kv.get(k), put: (k, v) => (puts.push(k), kv.set(k, v)) },
+      setAlarm: (at) => alarms.push(['set', at]),
+      deleteAlarm: () => alarms.push(['delete']),
+    },
     acceptWebSocket(ws, tags = []) {
       ws.accepted = true;
       ws.tags = [...tags];
@@ -163,18 +173,19 @@ function makeRoom(options = {}) {
     return { res, client: res.webSocket, server, verdict: last };
   }
 
-  async function dial(name, ip = '198.51.100.2') {
+  async function dial(name, ip = '198.51.100.2', headers = {}) {
     const req = new Request('https://relay.example/v1/dial/' + name, {
       headers: {
         upgrade: 'websocket',
         'sec-websocket-protocol': PROTOCOL,
         'cf-connecting-ip': ip,
+        ...headers,
       },
     });
     return room.fetch(req);
   }
 
-  return { room, ctx, sockets, clock, register, dial, restore };
+  return { room, ctx, sockets, clock, register, dial, restore, puts, alarms };
 }
 
 async function withRoom(options, fn) {
@@ -492,4 +503,339 @@ test('MachineRoom cleans up throwing sends, closing surfaces, dropped challenger
     assert.equal(pending.closed?.[0], 1008);
     assert.equal(pending.deserializeAttachment()?.role, 'ended');
   });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The dial class (contract V21). A live dial stops at LIVE_STREAMS of a machine's streams, a move keeps the last
+// MAX_STREAMS - LIVE_STREAMS, and a dial that claims no class behaves exactly as it did before the header existed.
+// ---------------------------------------------------------------------------------------------------------------
+
+const asClass = (door) => (door === undefined ? {} : { [HEADER_DOOR]: door });
+const ipN = (n) => `198.51.100.${n}`;
+
+// dialN opens `count` dials of one class from distinct networks, so only the stream ceiling can refuse them.
+async function dialN(h, name, count, door, from = 10) {
+  const opened = [];
+  for (let i = 0; i < count; i += 1) {
+    const res = await h.dial(name, ipN(from + i), asClass(door));
+    assert.equal(res.status, 101, `dial ${i + 1} of class ${JSON.stringify(door)} should have been accepted`);
+    opened.push(res.webSocket.server);
+  }
+  return opened;
+}
+
+test('V21 live dials stop at fourteen and a move still gets the last two', async () => {
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    await h.register(owner);
+    await dialN(h, owner.name, LIVE_STREAMS, DOOR_LIVE);
+    const fifteenthLive = await h.dial(owner.name, ipN(100), asClass(DOOR_LIVE));
+    assert.equal(fifteenthLive.status, 429, 'the 15th live dial is refused');
+    assert.equal(await fifteenthLive.text(), TOO_MANY_LIVE);
+
+    assert.equal((await h.dial(owner.name, ipN(101), asClass(DOOR_MOVE))).status, 101, 'a move dial is accepted at 14 streams');
+    assert.equal((await h.dial(owner.name, ipN(102), asClass(DOOR_MOVE))).status, 101, 'a second move dial is accepted at 15 streams');
+    const seventeenth = await h.dial(owner.name, ipN(103), asClass(DOOR_MOVE));
+    assert.equal(seventeenth.status, 429, 'nothing is accepted past the sixteen the machine carries');
+    assert.equal((await h.dial(owner.name, ipN(104))).status, 429, 'an unclassified dial is refused at sixteen too');
+  });
+});
+
+test('V21 a dial with no class, or a class nobody knows, behaves as every dial did before: sixteen, first come', async () => {
+  const [owner] = await collidingKeys();
+  for (const door of [undefined, '', 'bogus', 'LIVE', 'live,move']) {
+    await withRoom({}, async (h) => {
+      await h.register(owner);
+      await dialN(h, owner.name, MAX_STREAMS, door);
+      const refused = await h.dial(owner.name, ipN(100), asClass(door));
+      assert.equal(refused.status, 429, `class ${JSON.stringify(door)}: the 17th dial is refused`);
+      assert.match(await refused.text(), new RegExp(`already has ${MAX_STREAMS} connections open`));
+    });
+  }
+});
+
+test('V21 the reservation is measured against the total, so unclassified streams cannot crowd a move out of its two', async () => {
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    await h.register(owner);
+    await dialN(h, owner.name, LIVE_STREAMS); // fourteen older clients
+    assert.equal((await h.dial(owner.name, ipN(100), asClass(DOOR_LIVE))).status, 429, 'a live dial is refused at a total of 14');
+    assert.equal((await h.dial(owner.name, ipN(101), asClass(DOOR_MOVE))).status, 101, 'a move is not');
+    assert.equal((await h.dial(owner.name, ipN(102))).status, 101, 'an unclassified dial is not, either');
+    assert.equal((await h.dial(owner.name, ipN(103), asClass(DOOR_MOVE))).status, 429, 'the machine is full at 16');
+  });
+});
+
+test('V21 a live stream that ends gives its slot back to the next live dial', async () => {
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    await h.register(owner);
+    const live = await dialN(h, owner.name, LIVE_STREAMS, DOOR_LIVE);
+    assert.equal((await h.dial(owner.name, ipN(100), asClass(DOOR_LIVE))).status, 429);
+    await h.room.webSocketClose(live[3], 1000);
+    assert.equal((await h.dial(owner.name, ipN(101), asClass(DOOR_LIVE))).status, 101);
+  });
+});
+
+test('the class is read only from the exact header values, and other dials carry no class on their socket', async () => {
+  const request = (value) => new Request('https://relay.example/v1/dial/x', { headers: value === undefined ? {} : { [HEADER_DOOR]: value } });
+  assert.equal(doorOf(request(DOOR_LIVE)), DOOR_LIVE);
+  assert.equal(doorOf(request(DOOR_MOVE)), DOOR_MOVE);
+  for (const odd of [undefined, '', 'Live', 'LIVE', 'door', 'live;move', 'live,move']) assert.equal(doorOf(request(odd)), '', JSON.stringify(odd));
+
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    await h.register(owner);
+    const [unclassified] = await dialN(h, owner.name, 1, undefined, 10);
+    const [move] = await dialN(h, owner.name, 1, DOOR_MOVE, 20);
+    const [live] = await dialN(h, owner.name, 1, DOOR_LIVE, 30);
+    assert.deepEqual(Object.keys(unclassified.deserializeAttachment()).sort(), ['id', 'role']);
+    assert.deepEqual(Object.keys(move.deserializeAttachment()).sort(), ['id', 'role']);
+    assert.equal(live.deserializeAttachment().door, DOOR_LIVE);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The abuse breaker. It cuts a live stream that sustains more than BREAKER_BYTES_PER_SECOND across BREAKER_WINDOW_MS,
+// and it is computed from the arrival of the message itself: no timer, no alarm.
+// ---------------------------------------------------------------------------------------------------------------
+
+const MiB = 1 << 20;
+const payload = (n) => new Uint8Array(n);
+const toMachine = (h, machine, id, n) => h.room.webSocketMessage(machine.server, frame(OP.data, id, payload(n)));
+const closesFor = (machine, id) => machine.server.sent.filter((m) => m instanceof Uint8Array && m.length === 13 && m[0] === OP.close && readFrame(m)?.stream === String(id));
+
+test('the breaker is a leaky bucket: a burst over the window, or a flow over the rate, trips it, and a flow under the rate never does', () => {
+  const capacity = (BREAKER_BYTES_PER_SECOND * BREAKER_WINDOW_MS) / 1000;
+  const burst = new Breaker();
+  assert.equal(burst.charge(capacity, 0), false, 'exactly the window of allowance is not over');
+  assert.equal(burst.charge(1, 0), true, 'one byte more is');
+
+  const over = new Breaker();
+  let at = 0;
+  let tripped = null;
+  // 8 MiB every second is twice the rate: it must trip, and not before the allowance has been spent.
+  for (let second = 1; second <= 20 && tripped === null; second += 1) {
+    at = second * 1000;
+    if (over.charge(8 * MiB, at)) tripped = second;
+  }
+  assert.ok(tripped !== null && tripped >= 5 && tripped <= 6, `twice the rate tripped at second ${tripped}, want 5 or 6`);
+
+  const under = new Breaker();
+  for (let second = 1; second <= 3600; second += 1) {
+    assert.equal(under.charge(3 * MiB, second * 1000), false, `3 MiB a second is under the rate (second ${second})`);
+  }
+
+  const rests = new Breaker();
+  assert.equal(rests.charge(capacity, 0), false);
+  assert.equal(rests.charge(capacity, BREAKER_WINDOW_MS), false, 'a stream that rested for the window starts again from empty');
+  assert.equal(new Breaker().charge(capacity + 1, 0), true);
+});
+
+test('the breaker holds the Go side to the same rate and window', () => {
+  assert.equal(BREAKER_BYTES_PER_SECOND, 4 * MiB);
+  assert.equal(BREAKER_WINDOW_MS, 5000);
+});
+
+test('a live stream sending far faster than a correct host is cut with 1008 and the machine is told; a correct pace never is', async () => {
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    const machine = await h.register(owner);
+    const [paced, abusive] = await dialN(h, owner.name, 2, DOOR_LIVE);
+    const [pacedId, abusiveId] = [paced, abusive].map((s) => s.deserializeAttachment().id);
+
+    // One MiB a second for a minute: the pace a correct host holds. Nothing is cut.
+    for (let second = 0; second < 60; second += 1) {
+      h.clock.now += 1000;
+      await h.room.webSocketMessage(paced, payload(MiB));
+      machine.server.sent.length = 0; // the harness keeps every frame it is sent; this test does not need them
+    }
+    assert.equal(paced.closed, null, 'a stream at the correct pace is left alone');
+
+    // 8 MiB every second is twice the rate. It is cut, with 1008, inside the window and after its allowance is spent.
+    let cutAt = null;
+    for (let second = 1; second <= 20 && cutAt === null; second += 1) {
+      h.clock.now += 1000;
+      await h.room.webSocketMessage(abusive, payload(8 * MiB));
+      if (abusive.closed) cutAt = second;
+    }
+    assert.ok(cutAt >= 5 && cutAt <= 6, `cut at second ${cutAt}`);
+    assert.deepEqual(abusive.closed, [1008, BREAKER_REASON]);
+    assert.equal(abusive.deserializeAttachment().role, 'ended');
+    assert.equal(closesFor(machine, abusiveId).length, 1, 'the machine is told the stream is over');
+    assert.equal(closesFor(machine, pacedId).length, 0);
+    assert.equal(h.room.breakers.size, 1, 'the cut stream left no counts behind; only the paced stream has its one');
+
+    // The cut stream's own close arriving afterwards is not a second cut and sends nothing more.
+    await h.room.webSocketClose(abusive, 1006);
+    assert.equal(closesFor(machine, abusiveId).length, 1);
+  });
+});
+
+test('the machine sending a live stream too fast is cut the same way, and the surface is told 1008', async () => {
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    const machine = await h.register(owner);
+    const [live] = await dialN(h, owner.name, 1, DOOR_LIVE);
+    const id = live.deserializeAttachment().id;
+    let cutAt = null;
+    for (let second = 1; second <= 20 && cutAt === null; second += 1) {
+      h.clock.now += 1000;
+      // The carrier's own frame is at most MAX_PAYLOAD, so 8 MiB a second is many frames a second.
+      for (let sent = 0; sent < 8 * MiB; sent += MAX_PAYLOAD) await toMachine(h, machine, id, MAX_PAYLOAD);
+      if (live.closed) cutAt = second;
+    }
+    assert.ok(cutAt >= 5 && cutAt <= 6, `cut at second ${cutAt}`);
+    assert.equal(live.closed[0], 1008);
+    assert.equal(closesFor(machine, id).length, 1, 'the machine hears the stream closed');
+  });
+});
+
+test('streams that did not claim the live class are never counted: a move may carry its large answers', async () => {
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    const machine = await h.register(owner);
+    const [move] = await dialN(h, owner.name, 1, DOOR_MOVE, 10);
+    const [old] = await dialN(h, owner.name, 1, undefined, 20);
+    for (const stream of [move, old]) {
+      const id = stream.deserializeAttachment().id;
+      for (let i = 0; i < 64; i += 1) {
+        await toMachine(h, machine, id, MAX_PAYLOAD); // 8 MiB at once, in no time at all
+        await h.room.webSocketMessage(stream, payload(MAX_PAYLOAD));
+      }
+      assert.equal(stream.closed, null);
+    }
+    assert.equal(h.room.breakers.size, 0, 'nothing was counted for a stream with no live class');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// A live session costs the object nothing it did not cost before (contract V5 and V15, the Worker's half): no new stored
+// object, no timer and no alarm, so an idle live view lets the object hibernate.
+// ---------------------------------------------------------------------------------------------------------------
+
+test('V5 V15 a whole live session stores only the stream counter, and schedules no timer and no alarm', async () => {
+  const [owner] = await collidingKeys();
+  const real = { setTimeout: globalThis.setTimeout, setInterval: globalThis.setInterval };
+  const fromRoom = [];
+  const spy = (kind) => (...args) => {
+    // Only a timer the room's own code asked for counts: the test runner has timers of its own.
+    if (new Error().stack.includes('/src/engine/')) fromRoom.push(kind);
+    return real[kind](...args);
+  };
+  await withRoom({}, async (h) => {
+    const machine = await h.register(owner);
+    globalThis.setTimeout = spy('setTimeout');
+    globalThis.setInterval = spy('setInterval');
+    try {
+      const putsBefore = h.puts.length;
+      const [viewer] = await dialN(h, owner.name, 1, DOOR_LIVE);
+      const id = viewer.deserializeAttachment().id;
+      for (let i = 0; i < 100; i += 1) {
+        h.clock.now += 40;
+        await h.room.webSocketMessage(viewer, payload(512));
+        await toMachine(h, machine, id, 512);
+      }
+      await h.room.webSocketClose(viewer, 1000);
+      assert.deepEqual(h.puts.slice(putsBefore), ['next'], 'the one write is the stream-id counter, once per accepted dial');
+    } finally {
+      globalThis.setTimeout = real.setTimeout;
+      globalThis.setInterval = real.setInterval;
+    }
+    assert.deepEqual(fromRoom, [], 'the object scheduled no timer while a live stream was dialled, carried and closed');
+    assert.deepEqual(h.alarms, [], 'the object asked for no alarm');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Retry-After on both rate limits' refusals, so a client waits for its window and not for a guess.
+// ---------------------------------------------------------------------------------------------------------------
+
+test('the room tells a refused caller how long is left in its minute', async () => {
+  const [owner] = await collidingKeys();
+  await withRoom({}, async (h) => {
+    await h.register(owner);
+    // The clock starts 40 s into a minute, so 20 s of it are left.
+    assert.equal(secondsToNextMinute(h.clock.now), 20);
+    for (let i = 0; i < DIALS_PER_MINUTE; i += 1) await h.dial(owner.name, '198.51.100.7');
+    const refused = await h.dial(owner.name, '198.51.100.7');
+    assert.equal(refused.status, 429);
+    assert.equal(await refused.text(), TOO_MANY_DIALS);
+    assert.equal(refused.headers.get('retry-after'), '20');
+
+    h.clock.now += 19_500;
+    const later = await h.dial(owner.name, '198.51.100.7');
+    assert.equal(later.status, 429);
+    assert.equal(later.headers.get('retry-after'), '1', 'never less than a second, so a client is not told to retry at once');
+
+    h.clock.now += 1000;
+    const rolled = await h.dial(owner.name, '198.51.100.7');
+    assert.notEqual(await rolled.text(), TOO_MANY_DIALS, 'the minute rolled over, and the caller is not refused for its rate');
+    assert.equal(rolled.headers.get('retry-after'), null);
+
+    for (let i = 0; i < REGISTRATIONS_PER_MINUTE; i += 1) await h.room.fetch(new Request('https://relay.example' + ENGINE_PATH, {
+      headers: { upgrade: 'websocket', 'sec-websocket-protocol': PROTOCOL, 'cf-connecting-ip': '198.51.100.8', [HEADER_NAME]: 'amber-anchor-10' },
+    }));
+    const refusedRegistration = await h.room.fetch(new Request('https://relay.example' + ENGINE_PATH, {
+      headers: { upgrade: 'websocket', 'sec-websocket-protocol': PROTOCOL, 'cf-connecting-ip': '198.51.100.8', [HEADER_NAME]: 'amber-anchor-10' },
+    }));
+    assert.equal(refusedRegistration.status, 429);
+    assert.equal(await refusedRegistration.text(), TOO_MANY_REGISTRATIONS);
+    assert.match(refusedRegistration.headers.get('retry-after'), /^\d+$/);
+  });
+});
+
+test('the front door tells a refused caller when to come back, on both its paths', async () => {
+  const reached = [];
+  const machine = { idFromName: (n) => n, get: (id) => ({ async fetch() { reached.push(id); return new Response('no machine is connected under that name', { status: 404 }); } }) };
+  const ws = { upgrade: 'websocket', 'sec-websocket-protocol': PROTOCOL };
+
+  // The Cloudflare binding does not say where in its window a caller is, so a refusal it gives is told the whole period.
+  const refusing = { async limit() { return { success: false }; } };
+  const bound = await serveMachineDoor(
+    new Request('https://relay.example/v1/dial/acorn-alder-10', { headers: { ...ws, 'cf-connecting-ip': '198.51.100.1' } }),
+    { MACHINE: machine, MACHINE_DIAL_LIMIT: refusing, MACHINE_REGISTER_LIMIT: refusing },
+  );
+  assert.equal(bound.status, 429);
+  assert.equal(bound.headers.get('retry-after'), '60');
+  const boundRegistration = await serveMachineDoor(
+    new Request('https://relay.example' + ENGINE_PATH, { headers: { ...ws, 'cf-connecting-ip': '198.51.100.1', [HEADER_NAME]: 'acorn-alder-10' } }),
+    { MACHINE: machine, MACHINE_DIAL_LIMIT: refusing, MACHINE_REGISTER_LIMIT: refusing },
+  );
+  assert.equal(boundRegistration.status, 429);
+  assert.equal(boundRegistration.headers.get('retry-after'), '60');
+
+  // With no binding the Worker counts in memory, knows its minute, and says exactly how much of it is left.
+  const ip = '203.0.113.' + (Date.now() % 200);
+  let last;
+  for (let i = 0; i <= DIALS_PER_MINUTE; i += 1) {
+    last = await serveMachineDoor(new Request('https://relay.example/v1/dial/acorn-alder-10', { headers: { ...ws, 'cf-connecting-ip': ip } }), { MACHINE: machine });
+  }
+  assert.equal(last.status, 429);
+  const wait = Number(last.headers.get('retry-after'));
+  assert.ok(Number.isInteger(wait) && wait >= 1 && wait <= 60, `retry-after ${wait}`);
+  assert.equal(reached.length, DIALS_PER_MINUTE, 'the refused dial woke no object');
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// One source of truth: the Worker's numbers are the Go relay's, under the same names (internal/relay/relay.go).
+// ---------------------------------------------------------------------------------------------------------------
+
+test('the numbers the Worker enforces are the Go relay\'s: live streams, the class names and the breaker', () => {
+  const go = readFileSync(new URL('../../../internal/relay/relay.go', import.meta.url), 'utf8');
+  const number = (name) => {
+    const found = go.match(new RegExp(`^\\s*(?:const\\s+)?${name}\\s*=\\s*(.+?)\\s*(?://.*)?$`, 'm'));
+    assert.ok(found, `relay.go has no ${name}`);
+    return found[1];
+  };
+  assert.equal(Number(number('MaxStreams')), MAX_STREAMS);
+  assert.equal(Number(number('LiveStreams')), LIVE_STREAMS);
+  assert.equal(number('DoorLive'), JSON.stringify(DOOR_LIVE));
+  assert.equal(number('DoorMove'), JSON.stringify(DOOR_MOVE));
+  assert.equal(number('HeaderDoor').toLowerCase(), JSON.stringify(HEADER_DOOR));
+  assert.equal(number('BreakerRate'), '4 << 20');
+  assert.equal(number('BreakerWindow'), '5 * time.Second');
+  assert.equal(BREAKER_BYTES_PER_SECOND, 4 << 20);
+  assert.equal(BREAKER_WINDOW_MS, 5 * 1000);
+  assert.equal(MAX_STREAMS - LIVE_STREAMS, 2, 'two streams are kept for a move');
 });
