@@ -55,7 +55,12 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		return StepControlRefusal("only the current running step can stop")
 	}
 	failedClaim := it.Failure != nil && it.Failure.Step == name && it.Failure.Next == factory.FailureStopped
-	if rerun && s.Phases[index].State == factory.PhasePending && !failedClaim {
+	// A ROUND WHOSE RESULTS THE SERVICE REFUSED DID RUN, even when the refused
+	// report was the one that said it had begun and the step still reads
+	// pending here. Refusing its rerun as "not run yet" left the job with a
+	// runner holding results nobody would take and no door that moved it.
+	unsaved := it.State == factory.StateNeedsYou && it.QKind == "results_not_saved" && index == s.Cur
+	if rerun && s.Phases[index].State == factory.PhasePending && !failedClaim && !unsaved {
 		return StepControlRefusal("step has not run yet")
 	}
 	if rerun && it.Cap > 0 && factory.JobLifetimeSpent(*it) >= it.Cap {
@@ -70,8 +75,9 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		previous := s.Phases[index]
 		for i := index; i < len(s.Phases); i++ {
 			p := s.Phases[i]
+			// An extra task that waits after the step keeps its instructions (task.go).
 			s.Phases[i] = factory.Phase{Name: p.Name, Kind: p.Kind, Note: p.Note, State: factory.PhasePending,
-				RoundCosts: p.RoundCosts, Result: p.Result}
+				RoundCosts: p.RoundCosts, Result: p.Result, Task: p.Task}
 			if len(p.RoundCosts) > 0 {
 				s.Phases[i].Round = p.Round + 1
 			}
@@ -106,7 +112,7 @@ func stepControl(it *factory.Item, name string, rerun bool, words, model string,
 		}
 		it.State = factory.StateQueued
 		it.Failure = nil
-		it.Proof, it.Policy = nil, nil
+		it.ResetChecks()
 		it.PublishError = ""
 		it.PublishStatus = nil
 		if it.FollowUp != nil {

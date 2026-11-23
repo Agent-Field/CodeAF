@@ -19,14 +19,19 @@ import (
 // offVerbs are the job doors that make the factory work on a job: start or
 // run it, run a step again, carry it on from a pause, publish it, merge it,
 // send it back, run its checks again, open it on GitHub, or comment on its
-// issue. postJob refuses
-// each of them, before anything is read or written, for a job whose
+// issue. A decision of the main agent that runs a step again, tries
+// publishing again or resumes the pipeline (manager_decide.go) is refused the
+// same way. postJob refuses each of them, before anything is read or written, for a job whose
 // repository is off. A door that only reads, stops, drops or changes who a job
 // is for stays open: a person may still tidy a job that nothing works on.
 var offVerbs = map[string]bool{
-	"run": true, "start_now": true, "run_again": true, "run-as-new": true, "steps/{sid}/rerun": true, "resume": true,
+	"run": true, "start_now": true, "run_again": true, "run-as-new": true, "steps/{sid}/rerun": true, "resume": true, ResumeAutoVerb: true,
 	"publish_anyway": true, "approve": true, "retry_publish": true, "merge": true, "request_changes": true, "recheck": true,
 	"sync": true, "issue_comment": true, "pr-ready": true,
+	// Public acts on the job's pull request, and the yes that sends them.
+	api.ActVerb: true, api.ActsApproveVerb: true,
+	// A task sends a delegate to work on the job (task.go).
+	"task": true,
 }
 
 // repoSwitch is the switch the store keeps. A factory with no store of its

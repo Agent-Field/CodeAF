@@ -113,6 +113,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 	floorReadSeconds := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "floorReadWait", "Second"))
 	floorActSeconds := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "floorActWait", "Second"))
 	floorShippedDays := strconv.Itoa(sourceNumber(t, "../session/tools_floor.go", "floorShippedDaysMost"))
+	floorTellMinutes := strconv.Itoa(sourceDurationNumber(t, "../session/tools_floor.go", "FloorTellWait", "Minute"))
 	seats, notSeats := counted(len(crewroute.Seats))
 	decay, notDecay := counted(sourceNumber(t, "../router/crew.go", "redoDecayAfter"))
 	steps, notSteps := counted(sourceNumber(t, "../router/crew.go", "redoOffsetCeiling"))
@@ -212,6 +213,19 @@ func quotedFacts(t *testing.T) []quotedFact {
 		quotes: []quotedIn{
 			{"factory", "and a start, a priority or a selection %s seconds"},
 			{"factory", `seconds" (or %s) and the turn goes on`},
+		},
+	}, {
+		fact: "how long a factory_floor press waits on the factory", owner: "session.floorActWait",
+		value: floorActSeconds,
+		quotes: []quotedIn{
+			{"factory", "or a selection %s seconds (a press too)"},
+		},
+	}, {
+		fact: "how long words the Factory manager passes to a job's main agent wait for its turn", owner: "session.FloorTellWait",
+		value: floorTellMinutes,
+		quotes: []quotedIn{
+			{"factory", "The turn is charged to the job's budget and is stopped after %s minutes"},
+			{"factory", "wait for its whole turn, which is stopped after %s minutes"},
 		},
 	}, {
 		fact: "how many days back factory_floor shipped reads at most", owner: "session.floorShippedDaysMost",

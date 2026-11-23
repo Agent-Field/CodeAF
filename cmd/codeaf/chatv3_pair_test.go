@@ -11,6 +11,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/teams"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,10 +22,50 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/teams/teamstest"
 )
+
+// The chat refuses a computer that is paired with others before the code is
+// used, as the terminal does, even after replacing was confirmed: replacing
+// would set aside chats that sync elsewhere. The computer showing the code is
+// never asked about it.
+func TestChatPairDoorRefusesAPairedComputerFirst(t *testing.T) {
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv("CODEAF_PROFILE_DIR", rig.homeB)
+	t.Setenv("CODEAF_SYNC_URL", rig.url)
+	id, err := identity.Ensure(rig.homeB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := t.TempDir()
+	if _, err := identity.Adopt(peer, id, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := devname.Set(peer, "box-c"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ownDeviceRecord(context.Background(), peer, pair.Mailbox{URL: rig.url}); err != nil {
+		t.Fatal(err)
+	}
+	shown := rig.show(t)
+	code := shown.code(t)
+	ui := joinScreen{newTerminal(strings.NewReader(""), io.Discard)}
+	for _, join := range []func(context.Context, string, pair.JoinUI) (pair.Joined, error){chatPairDoor{}.Join, chatPairDoor{}.JoinReplacing} {
+		if _, err := join(t.Context(), code, ui); err == nil || err.Error() != "this computer is already paired with box-c — codeaf devices lists them" {
+			t.Fatalf("a paired computer was told %v", err)
+		}
+	}
+	if strings.Contains(shown.out.String(), "wants your chats") {
+		t.Fatalf("the computer showing the code was asked:\n%s", shown.out.String())
+	}
+	if held, err := identity.Load(rig.homeB); err != nil || held.ID() != id.ID() {
+		t.Fatalf("the refused computer's identity changed (%v)", err)
+	}
+}
 
 // A used computer is told how to confirm replacement without changing its chats.
 func TestChatPairRefusalExplainsReplacement(t *testing.T) {
@@ -249,5 +293,38 @@ func TestTerminalTeamsOnlyReplacePrintsAsideReceiptWithoutInput(t *testing.T) {
 	got := teamstest.JSON(t, kept)
 	if !bytes.Equal(got, before) {
 		t.Fatal("receipt's file did not preserve teams", string(got), err)
+	}
+}
+
+// A REPLACING /pair THAT CANNOT READ THIS COMPUTER'S SET STOPS, as the terminal
+// does: nothing after the approval would refuse a computer paired elsewhere. A
+// plain join goes on to the code, whose exchange still refuses what it must.
+func TestChatPairReplacingStopsWhenTheSetCannotBeRead(t *testing.T) {
+	rig := newPairRig(t)
+	upstream, err := url.Parse(rig.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay := httputil.NewSingleHostReverseProxy(upstream)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/dir") {
+			http.Error(w, "the directory is down", http.StatusServiceUnavailable)
+			return
+		}
+		relay.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("CODEAF_HOME", rig.homeB)
+	t.Setenv("CODEAF_PROFILE_DIR", rig.homeB)
+	t.Setenv("CODEAF_SYNC_URL", srv.URL)
+	if _, err := identity.Ensure(rig.homeB); err != nil {
+		t.Fatal(err)
+	}
+	ui := joinScreen{newTerminal(strings.NewReader(""), io.Discard)}
+	if _, err := (chatPairDoor{}).JoinReplacing(t.Context(), "42-715-302", ui); err == nil || errors.Is(err, pair.ErrNothingWaiting) {
+		t.Fatalf("replacing went on although this computer's set could not be read: %v", err)
+	}
+	if _, err := (chatPairDoor{}).Join(t.Context(), "42-715-302", ui); !errors.Is(err, pair.ErrNothingWaiting) {
+		t.Fatalf("a plain join was told %v, want to reach the code", err)
 	}
 }

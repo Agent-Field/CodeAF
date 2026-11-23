@@ -64,8 +64,8 @@ func appTakeWords(words string) string {
 
 // Tests stand in for the copy that acquires the chat and for opening it here.
 var (
-	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
-		return chatMover(s, onMove).TakeSeen(ctx, id, seen)
+	appTakeSeen = func(ctx context.Context, s *syncsetup.Sync, id string, seen *directory.LeaseExpectation, onMove func(syncsetup.MoveProgress), say func(cell.Cell, string)) (syncsetup.Continued, error) {
+		return chatMover(s, onMove, say).TakeSeen(ctx, id, seen)
 	}
 	appTakeOpen = func(b *appBackend, id string) (appwire.Agent, error) {
 		return b.openAgent(id, false)
@@ -131,10 +131,23 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 		return appwire.Agent{}, appwire.Errorf(appwire.CodeEngine, appSyncOff)
 	}
 	// Check even the already-here fast path against what the person saw.
-	view, err := s.Dir.Cell(ctx, p.Cell)
-	if err != nil {
-		// Unwrapped, so the row says why (sync unreachable, cancelled).
-		return appwire.Agent{}, err
+	var view directory.CellView
+	haveView := false
+	if available {
+		if cached, ok := b.chats.viewFor(p.Cell); ok && cached.Cell.Lease.Expires == 0 && !cached.Cell.Archived && cached.Cell.ParentCell == "" {
+			view, haveView = cached, true
+		}
+	}
+	if !haveView {
+		view, err = s.Dir.Cell(ctx, p.Cell)
+		if err != nil {
+			// Unwrapped, so the row says why (sync unreachable, cancelled).
+			return appwire.Agent{}, err
+		}
+	}
+	s.SupplyCellView(p.Cell, view)
+	if holder := b.chats.holderName(p.Cell); holder != "" {
+		s.SupplyDeviceName(view.Cell.Lease.Device, holder)
 	}
 	seen := &directory.LeaseExpectation{Device: p.Seen.Device, Fence: p.Seen.Fence, Head: p.Seen.Head}
 	if available && view.Cell.Lease.Expires != 0 {
@@ -178,11 +191,16 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 		}
 	}
 	report, stopReport := b.moveReporter(p.Cell, move)
+	// WHAT THE MOVE DOES BEHIND THE OPEN FAILS HERE, NOT BEFORE IT. On dev a
+	// failed vault pull or index rebuild refused the take and the person read
+	// the refusal; behind the open there is no refusal to carry it, so each
+	// sentence goes to the chat it is about, the way a drive's notices do.
+	say := func(c cell.Cell, line string) { b.syncFact(c, appSyncFact{line: line}) }
 	var got syncsetup.Continued
 	if available {
-		got, err = chatMover(s, report).OpenAvailable(ctx, p.Cell, seen)
+		got, err = chatMover(s, report, say).OpenAvailable(ctx, p.Cell, seen)
 	} else {
-		got, err = appTakeSeen(ctx, s, p.Cell, seen, report)
+		got, err = appTakeSeen(ctx, s, p.Cell, seen, report, say)
 	}
 	stopReport()
 	if err != nil {
@@ -210,7 +228,7 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 	if existing != nil {
 		b.locked(func() { id = existing.view.ID })
 	}
-	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
+	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Origin: meta.Origin, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
 	a := b.agent(id)
 	b.installTaken(a, transcript, meta, !got.AlreadyHere, available || moved)
 	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
@@ -237,16 +255,38 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 	agent.Location = location
 	b.chats.endMove(p.Cell, move, nil)
 	taking = false
-	// Acquisition may have been observed before installation and admission.
-	// Reconcile the local id even when no later directory version will arrive.
-	err = b.settleTake(ctx, s, p.Cell)
-	if err != nil {
-		// The take has completed. Inventory recovery belongs to its follower,
-		// whose reading that shows the chat here clears the row's taking.
-		b.startChatInventory()
+	if syncsetup.MoveFilesFirst() {
+		// Acquisition may have been observed before installation and admission.
+		// Reconcile the local id even when no later directory version will arrive.
+		if settleErr := b.settleTake(ctx, s, p.Cell); settleErr != nil {
+			// The take has completed. Inventory recovery belongs to its follower,
+			// whose reading that shows the chat here clears the row's taking.
+			b.startChatInventory()
+		}
+		// A newer cached version skips the reading's own taking.
+		b.publishTaking()
+		return agent, nil
 	}
-	// A newer cached version skips the reading's own taking.
+	b.chats.countTake(p.Cell, -1)
 	b.publishTaking()
+	settleCtx := context.WithoutCancel(ctx)
+	guard.Go("app/take-settle", func() {
+		select {
+		case <-b.left:
+			return
+		default:
+		}
+		settleErr := func() error {
+			b.chats.op.Lock()
+			defer b.chats.op.Unlock()
+			_, err := b.readChats(settleCtx, s, b.chats.feed, true)
+			return err
+		}()
+		if settleErr != nil {
+			b.startChatInventory()
+		}
+		b.publishTaking()
+	})
 	return agent, nil
 }
 
@@ -293,6 +333,7 @@ func (b *appBackend) installTaken(a *appAgent, transcript string, meta session.M
 	b.locked(func() {
 		a.transcript, a.windowMoved = transcript, false
 		if installed {
+			a.view.Workspace, a.view.WorkspaceOrigin = meta.Workspace, meta.Origin
 			// Installation replaced the saved conversation. A resting local
 			// agent may still remember the model from before another computer
 			// continued it; only the newly installed model belongs to this take.

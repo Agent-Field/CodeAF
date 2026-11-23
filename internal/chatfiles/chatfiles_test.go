@@ -164,3 +164,29 @@ func TestTaskJournalsAreNotCarriedASecondTime(t *testing.T) {
 		t.Error("task journals were copied into the carried files")
 	}
 }
+
+func TestQAProcessRecordsTravelWithTheirLogs(t *testing.T) {
+	a := chat(t)
+	files := map[string]string{
+		"processes/head.json": `{"epoch":"saved","high":1}`,
+		"processes/1.json":    `{"id":1,"state":"done"}`,
+		"processes.json":      `[{"id":1}]`,
+		"logs/jobs/1.log":     "completed output\n",
+	}
+	for rel, body := range files {
+		put(t, a, rel, []byte(body), time.Minute)
+	}
+	if err := (Carry{}).Compose(a); err != nil {
+		t.Fatal(err)
+	}
+	b := move(t, a)
+	if _, err := (Carry{}).Restore(b); err != nil {
+		t.Fatal(err)
+	}
+	for rel, body := range files {
+		raw, err := os.ReadFile(filepath.Join(b.Root, filepath.FromSlash(rel)))
+		if err != nil || string(raw) != body {
+			t.Fatalf("carried %s = %q, %v", rel, raw, err)
+		}
+	}
+}

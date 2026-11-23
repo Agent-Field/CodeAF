@@ -696,6 +696,14 @@ var settingUI = map[string]settingMeta{
 		about: "an answer that is slow to start is asked of the next-best host as well, " +
 			"and you read whichever replies first. One extra call, under a tenth of spend.",
 	},
+	// HOW LONG A QUIET MODEL IS WAITED ON. It is the last row of the Models tab
+	// (the registry places it there, so no row above it moves), and the sentence
+	// under it is the registry's own (internal/config's responsePatienceSetting),
+	// which interpolates the local multiple from the one constant, so this panel
+	// cannot say a figure the transport does not use.
+	config.KeyResponsePatience: {
+		tab: tabProviders, label: "patience", widget: widgetText,
+	},
 	// AND THE OTHER HALF OF THE SAME QUESTION: the three rows above are about
 	// WHERE a request goes, this is about how much rides in front of it. It is
 	// on this tab and not under Session because the answer is a fact about the
@@ -1024,6 +1032,7 @@ type sheet struct {
 	storageState     string
 	storageSampled   bool
 	storageRequest   bool
+	storageReceipt   string
 	approvals        Approvals
 	dev              *deviceCard
 	now              func() time.Time

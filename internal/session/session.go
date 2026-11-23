@@ -2567,8 +2567,9 @@ type Config struct {
 	RepairStage bool
 
 	// Floor is the foreman's door onto the whole floor (tools_floor.go): the
-	// floor's read and its marks. NIL IS NO DOOR: `factory_floor` is off the
-	// belt. It is set only on the foreman's own conversation (cmd/codeaf's
+	// floor's read and its marks, and, when the door is also a [FloorActor]
+	// or a [FloorHand], what the foreman does on the person's word. NIL IS NO
+	// DOOR: `factory_floor` is off the belt. It is set only on the foreman's own conversation (cmd/codeaf's
 	// foremanFloorDoor), on a launch that has a Factory door.
 	Floor FloorDoor
 
@@ -2981,6 +2982,11 @@ type Agent struct {
 	// [Agent.system].
 	systemAt  time.Time
 	systemOwn bool
+	// filesArriving says this agent has seen its chat's workspace files still
+	// arriving in the background, so the first request after the arrival
+	// completes re-renders the page that reads the project's own instructions
+	// from them ([Agent.followArrivedFiles]). Under mu with [Agent.system].
+	filesArriving bool
 	// tools is the belt and definitions is its wire form, built once at
 	// construction. Built-ins grow under armMu (connect.go), before the replaceable
 	// client-tool tail. Team verbs leave when their role ends (team.go).
@@ -3708,6 +3714,13 @@ type Agent struct {
 	// loop recovery and task control are instructions for the next step, not
 	// periodic telemetry.
 	ambient []userMessage
+	// heldNotes is step guidance owed to the NEXT turn, queued while no turn
+	// was running ([Agent.enqueueNextTurnNote]): a question the person
+	// dismissed or talked past while the session sat idle. It is not a queue
+	// anything is waiting on, so unlike steering and ambient it does not keep
+	// the session from being handed off idle ([Agent.idleForHandoff]); the turn
+	// that opens next moves it onto steering, and its first step reads it.
+	heldNotes []userMessage
 	// settling is the acknowledgements this conversation's record has earned and
 	// not yet sent: news whose sender is owed an answer once the record holds it
 	// rather than when the queue took it ([durableDelivery]). They are held here
@@ -3839,6 +3852,11 @@ type Agent struct {
 	// ([runnerNote]), which reads its stream to the end and acts on what it
 	// says. A bounded stop never abandons one ([Agent.InterruptWithin]).
 	runnerTurn bool
+	// personWords is the person's latest own words in the running turn, and ""
+	// when nothing in it came from them: a runner's note, factory work, a wake.
+	// A manager's action that only the person may ask for reads it
+	// ([Agent.turnPersonWords]), so the model cannot take one on its own.
+	personWords string
 	// turnSpend is what the RUNNING turn has cost so far, moved by [Agent.bank]
 	// on the same call that moves the session's meter and reset when a turn
 	// opens. It is the "last known spend" an abandoned turn is journaled with:

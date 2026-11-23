@@ -32,6 +32,10 @@ type StepRecovery struct {
 	Reason    string    `json:"reason"`
 }
 
+// RecoveryTakenOver is why a job its person took over is not retried by
+// itself. It keeps the lead [PlanStepRecovery] reads a lifted pause by.
+const RecoveryTakenOver = "Automatic retry paused because you took over this job. Resume the pipeline when ready."
+
 // TransientStepFailure admits only known connection failures. Authentication,
 // permissions, unknown tool errors, human stops and publication need their own
 // recovery doors, rather than an optimistic replay of an uncertain side effect.
@@ -41,11 +45,24 @@ func TransientStepFailure(f *Failure) bool {
 
 // RecoveryBlockReason is checked again under the desk and item locks before
 // starting another attempt, and by lease admission before a worker can take it.
+//
+// MANUAL DOES NOT PAUSE THE RETRY OF AN INTERRUPTED STEP (the owner's
+// authority table of 2026-11-17: running a step again is never the person's,
+// in Manual or in Auto). Manual keeps the plan and everything public for the
+// person, and a retry replays neither. It used to pause here, so a Manual job
+// whose connection dropped waited on its person for a Try again. A take-over
+// still pauses it: the person has the checkout.
 func RecoveryBlockReason(it Item) string {
 	switch {
 	case StoppedByPerson(it):
 		return PersonStopReason
-	case !Automatic(it):
+	case it.Manual:
+		return RecoveryTakenOver
+	case RecoveryPaused(it):
+		return DecisionPauseDetail(it)
+	case it.Autonomy != AutonomyAuto && it.Autonomy != AutonomyManual:
+		// A record saved before modes gains nothing automatic it never had
+		// ([Automatic]); the app shows it as Manual, and so do these words.
 		return "Automatic retry paused because the job is in Manual. Try again when ready."
 	case it.Publishing:
 		return "Publication may have started. Check its outcome before retrying publication."

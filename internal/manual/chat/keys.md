@@ -52,12 +52,10 @@ already explains that the chat stays on this computer until you pair it again.
 ## The line the terminal prints after you quit, when another device took the chat over
 
 If codeaf learns while closing that another device took the chat, the restored
-terminal says `<device> continued this chat; this window now only shows it`
+terminal says `<device> continued this chat. This copy is read-only and may be behind`
 once. It keeps this notice even when the full-screen chat has already closed.
 
 ## Quitting while the sync service is slow — waiting for a final save
-
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 A removed computer quits quietly; it no longer says it is saving to your other devices.
 
@@ -2560,8 +2558,8 @@ cross into the neighbouring column; that ended on 2026-09-17.) **`→` opens the
 verbs** on a strip drawn **directly under that row**, pushing the rest of the list down by
 its own height, and while that strip is drawn its letters are the verbs and the box is
 asleep — a question's own answer keys and words; `x delete`, `c copy name`,
-`n new in project` and `o open folder` on a conversation; `s stop it` on work this window
-is running. An `automations` row has no verbs on home; its verbs are on `/automations`.
+`n new in project` and `o open folder` on a conversation, and `k kept turns` on one with
+kept copies; `s stop it` on work this window is running. An `automations` row has no verbs on home; its verbs are on `/automations`.
 `esc` or `←` closes it, `enter` still opens the row, and walking off the row closes it too.
 A row with no verbs draws no strip: on an `ask here` row `→` hands the errand's pane the
 keyboard instead, and on a panel's fold line (`N more`) `enter` opens the panel and shows

@@ -441,8 +441,8 @@ On memory they are `e fix the wording`, `f forget it`, the moves (`y hold it eve
 `p hold it in this project`, `m hold it on this machine`), `a ask me about it`, and
 `u put it back` on a line that was let go. On home the
 verbs are the row's own — a question's first two answers on its own answer keys;
-`x delete`, `c copy name`, `n new in project` and `o open folder` on a conversation;
-`s stop it` on a task this window runs. Home's `automations` panel has no verbs: `enter` on
+`x delete`, `c copy name`, `n new in project` and `o open folder` on a conversation, and
+`k kept turns` on one with kept copies; `s stop it` on a task this window runs. Home's `automations` panel has no verbs: `enter` on
 it opens the automations place, where they are. A project's row is not a stop, so it has
 none: a click on it picks the folder for the next message. On home, `→` opens the selected
 row's options at every width; the arrows stay in the list and never cross to another

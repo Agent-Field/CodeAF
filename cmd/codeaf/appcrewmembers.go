@@ -764,8 +764,12 @@ func (b *appBackend) dropProposal(id, option string) {
 		b.inboxResolved(appInboxID(ask.Agent, ask.ID), appwire.Entry{})
 		return
 	}
+	text := appKeptOneAgent + " · you · " + at.Format("15:04")
+	if option == appwire.ResolvedDismissed {
+		text = appDismissedReceipt(at)
+	}
 	b.emit.Emit(appwire.EventEntryAdded, appwire.EntryAdded{Entry: appwire.Entry{
-		ID: "r" + ask.ID, Agent: ask.Agent, Kind: appwire.EntryReceipt, At: at, Text: appKeptOneAgent + " · you · " + at.Format("15:04"),
+		ID: "r" + ask.ID, Agent: ask.Agent, Kind: appwire.EntryReceipt, At: at, Text: text,
 	}})
 }
 

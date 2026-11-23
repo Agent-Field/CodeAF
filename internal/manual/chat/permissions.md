@@ -1348,3 +1348,13 @@ hold leaves the question waiting and sends nothing.
 A question can close or its conversation can fail during those five seconds.
 The eventual send still checks it again; the app protocol does not publish a
 separate deferred-send failure event.
+
+## Desktop Inbox — dismissing a permission question is not denying it
+
+Dismiss puts a permission question away without answering it. The call does not
+run, and the model is told `not run: the person put this permission question away
+without answering it`, that nothing was decided, and that it may ask again. That is
+different from `3 deny`, which hands it `denied by the person: <rule>`. A dismissal
+leaves no line in the conversation's decision record, and no turn in which a
+permission was denied, dismissed or left unanswered is read for memory, so neither
+becomes a remembered rule in this or another conversation.

@@ -173,7 +173,9 @@ func TestM5OpenResumesApprovedPairMerge(t *testing.T) {
 	if !errors.Is(err, stopped) {
 		t.Fatalf("M5 interruption: %v", err)
 	}
-	mustNil(t, <-done)
+	if offerErr := <-done; !errors.Is(offerErr, pair.ErrNotConfirmed) {
+		t.Fatalf("interrupted install reported confirmation: %v", offerErr)
+	}
 	s := openSync(t, home)
 	if identity.Solo(home) || s.Identity.ID() != h.a.Identity.ID() || Resolve(home).URL != h.url {
 		t.Fatal("M5 startup did not finish the approved switch")

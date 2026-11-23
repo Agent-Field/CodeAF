@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,5 +210,181 @@ func TestAppOrderRunIsAnAskEverywhere(t *testing.T) {
 	})
 	if asks := backend.orderAsksOf(agent); len(asks) != 0 {
 		t.Fatalf("an answered run still asks: %+v", asks)
+	}
+	// The answered run leaves the Inbox's Waiting and its count, not only the ask list.
+	waiting, counts, err := backend.ListInbox(appwire.InboxWaiting, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range waiting {
+		if item.Ask.ID == id {
+			t.Fatalf("the answered run is still waiting in the Inbox: %+v", item)
+		}
+	}
+	if counts.Waiting != 0 {
+		t.Fatalf("the Inbox still counts %d waiting after the run was answered", counts.Waiting)
+	}
+}
+
+// A RUN THAT STOPPED WAITING ELSEWHERE (paused, stopped, skipped from another
+// door) leaves the Inbox as no longer needed.
+func TestAppOrderRunClosedElsewhereLeavesTheInbox(t *testing.T) {
+	backend, rec, store := ordersBackend(t)
+	transcript := filepath.Join(t.TempDir(), "places", "proj", "abcd1234", "transcript.jsonl")
+	a, err := store.Create(automation.Automation{
+		Title: "weekly update", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+		Action: automation.Action{Do: "draft the weekly update"}, Workspace: t.TempDir(),
+		Status: automation.StatusProposed, Trust: automation.TrustAsksFirst,
+		Origin: automation.Origin{Transcript: transcript},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Ratify(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.QueueAsking(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, id := appAgentID(transcript), "order:"+strconv.FormatInt(run.ID, 10)
+	open := map[int64]appwire.Ask{}
+	backend.sayOrderAsks(store, open)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		opened, ok := data.(appwire.AskOpened)
+		return ok && opened.Ask.ID == id
+	})
+	if _, counts, _ := backend.ListInbox(appwire.InboxWaiting, ""); counts.Waiting != 1 {
+		t.Fatalf("the asking run is not counted in the Inbox: %+v", counts)
+	}
+	// The run stops waiting with no answer here: the store no longer lists it.
+	backend.sayOrderAsksFrom(store, open, nil)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		resolved, ok := data.(appwire.InboxResolvedEvent)
+		return ok && resolved.ID == appInboxID(agent, id) && resolved.By == appwire.ResolvedNoLongerNeeded
+	})
+	if _, counts, _ := backend.ListInbox(appwire.InboxWaiting, ""); counts.Waiting != 0 {
+		t.Fatalf("a run that stopped waiting is still counted: %+v", counts)
+	}
+}
+
+// A RUN ANSWERED FROM ANOTHER SURFACE READS AS ANSWERED, not as no longer
+// needed: Go and Skip given at the terminal close the Inbox item with the
+// answer, in the words any question answered elsewhere leaves.
+func TestAppOrderRunAnsweredElsewhereReadsAsAnswered(t *testing.T) {
+	for reply, option := range map[automation.Reply]string{automation.ReplyGo: appwire.VerdictGo, automation.ReplySkip: appwire.VerdictSkip} {
+		t.Run(option, func(t *testing.T) {
+			backend, rec, store := ordersBackend(t)
+			transcript := filepath.Join(t.TempDir(), "places", "proj", "abcd1234", "transcript.jsonl")
+			a, err := store.Create(automation.Automation{
+				Title: "weekly update", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+				Action: automation.Action{Do: "draft the weekly update"}, Workspace: t.TempDir(),
+				Status: automation.StatusProposed, Trust: automation.TrustAsksFirst,
+				Origin: automation.Origin{Transcript: transcript},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Ratify(a.ID); err != nil {
+				t.Fatal(err)
+			}
+			run, err := store.QueueAsking(a.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			agent, id := appAgentID(transcript), "order:"+strconv.FormatInt(run.ID, 10)
+			open := map[int64]appwire.Ask{}
+			backend.sayOrderAsks(store, open)
+			rec.waitFor(t, time.Second, func(event string, data any) bool {
+				opened, ok := data.(appwire.AskOpened)
+				return ok && opened.Ask.ID == id
+			})
+			// Answered from another surface, straight in the store.
+			if _, err := store.Answer(run.ID, reply); err != nil {
+				t.Fatal(err)
+			}
+			backend.sayOrderAsks(store, open)
+			rec.waitFor(t, time.Second, func(event string, data any) bool {
+				closed, ok := data.(appwire.AskClosed)
+				return ok && closed.ID == id && closed.By == appwire.ClosedByElsewhere && closed.Option == option
+			})
+			i := rec.waitFor(t, time.Second, func(event string, data any) bool {
+				resolved, ok := data.(appwire.InboxResolvedEvent)
+				return ok && resolved.ID == appInboxID(agent, id)
+			})
+			rec.mu.Lock()
+			resolved := rec.data[i].(appwire.InboxResolvedEvent)
+			rec.mu.Unlock()
+			if resolved.By != appwire.ClosedByElsewhere || !strings.HasPrefix(resolved.Receipt, "Answered · you · ") {
+				t.Fatalf("a run answered %s elsewhere resolved as %+v", option, resolved)
+			}
+			done, _, _ := backend.ListInbox(appwire.InboxDone, "")
+			if len(done) != 1 || done[0].Answered == nil || done[0].Answered.Option != option {
+				t.Fatalf("done reads %+v", done)
+			}
+		})
+	}
+}
+
+// A RUN ANSWERED HERE LEAVES THE INBOX WITH ITS RECEIPT, and the mark that says
+// so is the app's from before the answer: a second press refused before the
+// next poll keeps it, and an answer refused outright leaves no mark behind.
+func TestAppOrderRunAnsweredHereLeavesWithItsReceipt(t *testing.T) {
+	backend, rec, store := ordersBackend(t)
+	transcript := filepath.Join(t.TempDir(), "places", "proj", "abcd1234", "transcript.jsonl")
+	a, err := store.Create(automation.Automation{
+		Title: "weekly update", Schedule: automation.Schedule{Every: "1h", Zone: "UTC"},
+		Action: automation.Action{Do: "draft the weekly update"}, Workspace: t.TempDir(),
+		Status: automation.StatusProposed, Trust: automation.TrustAsksFirst,
+		Origin: automation.Origin{Transcript: transcript},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Ratify(a.ID); err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.QueueAsking(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, id := appAgentID(transcript), appOrderAskID(run.ID)
+	open := map[int64]appwire.Ask{}
+	backend.sayOrderAsks(store, open)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		opened, ok := data.(appwire.AskOpened)
+		return ok && opened.Ask.ID == id
+	})
+	if handled, err := backend.answerOrderAsk(id, appwire.VerdictSkip); !handled || err != nil {
+		t.Fatalf("answer = %v, %v", handled, err)
+	}
+	// A second press before the poll is refused, and the first press's mark stays.
+	if _, err := backend.answerOrderAsk(id, appwire.VerdictSkip); err == nil {
+		t.Fatal("a run already answered was answered again")
+	}
+	backend.sayOrderAsks(store, open)
+	rec.waitFor(t, time.Second, func(event string, data any) bool {
+		closed, ok := data.(appwire.AskClosed)
+		return ok && closed.ID == id && closed.By == appwire.ClosedByApp && closed.Option == appwire.VerdictSkip
+	})
+	i := rec.waitFor(t, time.Second, func(event string, data any) bool {
+		resolved, ok := data.(appwire.InboxResolvedEvent)
+		return ok && resolved.ID == appInboxID(agent, id)
+	})
+	rec.mu.Lock()
+	resolved := rec.data[i].(appwire.InboxResolvedEvent)
+	rec.mu.Unlock()
+	if resolved.By != appwire.ClosedByApp || !strings.HasPrefix(resolved.Receipt, "Answered · you · ") {
+		t.Fatalf("a run answered here resolved as %+v", resolved)
+	}
+	if _, left := appOrderAnswered.Load(run.ID); left {
+		t.Fatal("the closed run's mark was left in the map")
+	}
+	// Refused outright, with no answer before it: no mark is left behind.
+	if _, err := backend.answerOrderAsk(id, appwire.VerdictGo); err == nil {
+		t.Fatal("a run no longer asking took an answer")
+	}
+	if _, left := appOrderAnswered.Load(run.ID); left {
+		t.Fatal("a refused answer left its mark in the map")
 	}
 }

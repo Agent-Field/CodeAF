@@ -59,10 +59,21 @@ func newPairDoor(in io.Reader, out io.Writer) pairDoor {
 		ownRecord: func(ctx context.Context, route pair.Mailbox) error { return ownDeviceRecord(ctx, home.Dir(), route) }}
 }
 
-const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code"
+const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-token> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code"
 
 // approveUsage is what `codeaf pair approve` with nothing after it is told.
-const approveUsage = "usage: codeaf pair approve <link-or-code> \u2014 the link or code the new device shows"
+const approveUsage = "usage: codeaf pair approve <link-or-token> \u2014 the link or token the new device shows; for a numeric pairing code use codeaf pair <code>"
+
+// Numeric alternatives belong on this command's page, keeping the front page
+// within its shared screen-height budget while explaining both pairing doors.
+const pairNumericHelp = `
+numeric codes:
+  codeaf pair <code> [--replace]
+      join using a code such as ` + pair.ExampleChatCode + ` from the other computer
+  codeaf pair --code
+      show a code on the computer with your chats
+      codeaf pair approve --code also shows a code
+`
 
 // ownDeviceRecord writes dir's own directory record at the relay a pairing
 // just went through — the same upsert every chat start makes
@@ -98,10 +109,30 @@ func ownDeviceRevoked(ctx context.Context, dir string, route pair.Mailbox) bool 
 	return errors.Is(err, directory.ErrRevoked) || err == nil && listing.Devices[dev.ID()].Revoked
 }
 
+// notePaired tells the home that a pairing through route just finished, so the
+// computer it paired with is known before any roster is read: the first launch
+// afterwards says what is true of a computer that has another, not of one on its
+// own (syncsetup.NotePaired). It never fails a pairing that succeeded.
+func notePaired(dir string, route pair.Mailbox) { _ = syncsetup.NotePaired(dir, route.URL) }
+
+// ownHome is the home this door pairs: the one its joining seam names, and this
+// process's own when no seam was set.
+func (d pairDoor) ownHome() string {
+	if d.joining == nil {
+		return home.Dir()
+	}
+	return d.joining(false).Home
+}
+
 // recordOwnDeviceOrSay is what a finished pairing does about its record: the
 // pairing itself succeeded, so a record that did not land is one line on the
 // screen and a clean exit — the next chat start writes the record anyway.
+// It is also where every terminal road of a finished pairing says that another
+// computer is now paired, including the approving one, whose own record was
+// written ahead of the grant ([pairDoor.withApprovalRecord]) and so is not
+// written here.
 func (d pairDoor) recordOwnDeviceOrSay(ctx context.Context, route pair.Mailbox) {
+	notePaired(d.ownHome(), route)
 	if d.ownRecord == nil {
 		return
 	}
@@ -207,11 +238,16 @@ func (d pairDoor) dispatch(ctx context.Context, args []string, relay string, rep
 	switch {
 	case code && len(args) == 0 && !replace:
 		return d.show(ctx, relay)
+	case code && len(args) == 1 && args[0] == "approve" && !replace:
+		return d.show(ctx, relay)
 	case len(args) == 0 && !code:
 		return d.askToJoin(ctx, relay, replace)
 	case len(args) == 1 && args[0] == "approve":
 		return wrongCall(approveUsage)
 	case len(args) == 2 && args[0] == "approve" && !code && !replace:
+		if _, err := pair.ReadJoinCode(args[1]); err == nil {
+			return wrongCall("that is a numeric pairing code; use: codeaf pair " + args[1])
+		}
 		return d.withApprovalRecord().approve(ctx, relay, args[1])
 	case len(args) == 1 && !code && pair.IsLinkText(args[0]):
 		return d.withApprovalRecord().approve(ctx, relay, args[0])
@@ -233,7 +269,8 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 		return err
 	}
 	if d.ownRecord != nil {
-		if err := d.ownRecord(ctx, route); err != nil {
+		record := func(ctx context.Context) error { return d.ownRecord(ctx, route) }
+		if grant, err = recordWithGrant(ctx, d.joining(false).Home, grant, record); err != nil {
 			return err
 		}
 	}
@@ -254,6 +291,17 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	if _, err := pair.ReadJoinCode(typed); err != nil {
 		return err
 	}
+	// A computer whose chats sync elsewhere is refused before it is asked to
+	// replace anything.
+	joining := d.joining(replace)
+	standing, err := joinStanding(ctx, joining.Home, d.standingRoute(joining.Home, relay))
+	if err != nil {
+		return err
+	}
+	if err := standing.refusal(); err != nil {
+		return err
+	}
+	joining.Alone = standing.alone()
 	if !d.confirmReplacement(ctx, replace) {
 		return nil
 	}
@@ -261,10 +309,6 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	if err != nil {
 		return err
 	}
-	if err := d.pairingStatus(ctx, route, replace); err != nil {
-		return err
-	}
-	joining := d.joining(replace)
 	if d.name != "" {
 		joining.Label = d.name
 	}
@@ -281,10 +325,10 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 		}
 	}
 	if !joined.Already {
+		d.recordOwnDeviceOrSay(ctx, route)
 		if f, err := pullFleet(joining.Home, route)(ctx); err == nil {
 			joined.With = f.With
 		}
-		d.recordOwnDeviceOrSay(ctx, route)
 	}
 	d.term.say(joinedSentence(joined))
 	return nil
@@ -295,7 +339,12 @@ func joinedSentence(joined pair.Joined) string { return joined.Sentence() }
 
 // endedByPerson turns the end a person chose with ctrl+c into a clean exit that
 // says nothing was paired, and leaves every other failure as the sentence it already is.
+// A ctrl+c after the answer went out is not that end: the other device may hold
+// the chats, so its not-confirmed sentence stands.
 func (d pairDoor) endedByPerson(ctx context.Context, err error) error {
+	if errors.Is(err, pair.ErrNotConfirmed) {
+		return err
+	}
 	if errors.Is(ctx.Err(), context.Canceled) {
 		// The terminal echoes ^C on the prompt's own line, so start a fresh one.
 		fmt.Fprintln(d.term.out)

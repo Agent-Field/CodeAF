@@ -92,7 +92,17 @@ const ConsentWaiting = "waiting"
 type consentAnswer struct {
 	allow bool
 	scope ConsentScope
+	// dismissed is a question put away with no answer: the call did not run,
+	// and nothing was decided about it or about any later call.
+	dismissed bool
 }
+
+// consentDismissed is what a call reads when the person put its permission
+// question away from the Inbox without answering it. It says three things on
+// purpose: the call did not run, the person did not refuse it (so it is no rule
+// about this tool or this project), and it may ask again. A model that read
+// "denied" here would carry the refusal on as a standing restriction.
+const consentDismissed = "not run: the person put this permission question away without answering it. They did not refuse the call and decided nothing, and this says nothing about later calls. Carry on without it, or ask again if you still need it."
 
 // ResolveConsent answers one EventConsentRequest. An id nobody is waiting on —
 // a question whose turn was interrupted, a double click — is ignored rather
@@ -118,6 +128,13 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope ConsentScope
 		scope = ConsentOnce
 	}
 	a.deliverConsent(id, consentAnswer{allow: allow, scope: scope})
+}
+
+// dismissConsent closes one permission question the person put away without
+// answering it. The waiting call gets [consentDismissed], and the turn it ran
+// in is marked refused like any other call that did not run for want of a yes.
+func (a *Agent) dismissConsent(id uint64) {
+	a.deliverConsent(id, consentAnswer{scope: ConsentOnce, dismissed: true})
 }
 
 // deliverConsent hands one answer to whoever is waiting for it, and drops it if
@@ -304,15 +321,29 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return approvalRefusal("needs approval but no resolver is attached: "+decision.Rule, decision), false
 	}
 
-	allowed, err := a.ask(ctx, hub, call, decision)
+	answer, err := a.askAnswer(ctx, hub, call, decision)
 	if err != nil {
 		// A WAIT THAT ENDED IS NOT A NO. ctx.Done — a timeout, an interrupt,
 		// the agent closing — means nobody answered. Saying "denied by the
 		// person" here is how a late Esc and a ten-second clock used to
 		// write a refusal nobody gave (F41, R2).
+		a.markRefused()
 		return refusal(notApprovedWording(err)), false
 	}
-	if !allowed {
+	return a.consentVerdict(answer, decision)
+}
+
+// consentVerdict is what a call reads about the answer its permission question
+// got. A yes runs it. A no is "denied by the person", a question put away is
+// [consentDismissed], and either one marks the turn refused
+// ([Agent.markRefused]).
+func (a *Agent) consentVerdict(answer consentAnswer, decision approval.Decision) (toolResult, bool) {
+	switch {
+	case answer.dismissed:
+		a.markRefused()
+		return refusal(consentDismissed), false
+	case !answer.allow:
+		a.markRefused()
 		return refusal("denied by the person: " + decision.Rule), false
 	}
 	return toolResult{}, true

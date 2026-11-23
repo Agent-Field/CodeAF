@@ -56,8 +56,12 @@ func deviceBindingFor(relay string, id identity.Identity, dev identity.Dev) devi
 
 var deviceObservers = struct {
 	sync.Mutex
-	all map[*DeviceObserver]struct{}
-}{all: map[*DeviceObserver]struct{}{}}
+	all       map[*DeviceObserver]struct{}
+	snapshots map[deviceBinding]DeviceSnapshot
+}{
+	all:       map[*DeviceObserver]struct{}{},
+	snapshots: map[deviceBinding]DeviceSnapshot{},
+}
 
 func ObserveDevices(home string) *DeviceObserver {
 	o := &DeviceObserver{home: home, changes: make(chan struct{}, 1)}
@@ -67,6 +71,11 @@ func ObserveDevices(home string) *DeviceObserver {
 		}
 	}
 	deviceObservers.Lock()
+	if snap, ok := deviceObservers.snapshots[o.binding]; ok {
+		snap.Devices, snap.Online = maps.Clone(snap.Devices), maps.Clone(snap.Online)
+		snap.presenceAt = maps.Clone(snap.presenceAt)
+		o.state = snap
+	}
 	deviceObservers.all[o] = struct{}{}
 	deviceObservers.Unlock()
 	return o
@@ -101,6 +110,19 @@ func (o *DeviceObserver) Close() {
 func rememberDevices(home string, binding deviceBinding, edit func(*DeviceSnapshot)) {
 	deviceObservers.Lock()
 	defer deviceObservers.Unlock()
+	if binding != (deviceBinding{}) {
+		cur := deviceObservers.snapshots[binding]
+		cur.Devices, cur.Online = maps.Clone(cur.Devices), maps.Clone(cur.Online)
+		cur.presenceAt = maps.Clone(cur.presenceAt)
+		if cur.Devices == nil {
+			cur.Devices = map[string]directory.Device{}
+		}
+		if cur.presenceAt == nil {
+			cur.presenceAt = map[string]int64{}
+		}
+		edit(&cur)
+		deviceObservers.snapshots[binding] = cur
+	}
 	for o := range deviceObservers.all {
 		if o.home != home || o.binding != binding {
 			continue
@@ -135,6 +157,30 @@ type deviceDirectory struct {
 	watchMu        sync.Mutex
 	watchEpoch     uint64
 	presenceExpiry *time.Timer
+	// withholdNames says that no chat title or folder may leave this computer
+	// now ([Sync.recordsWithholdNames]); nil answers false.
+	withholdNames func() bool
+}
+
+// Create and Publish are the only two requests that carry a chat's sealed
+// title and folder, and every record this computer writes leaves through one of
+// them, whoever built it. WHILE BLIND PASS-THROUGH IS THE ROAD THEY SEND NEITHER:
+// the hosted relay holds no name of a chat until the account is approved to
+// store one, and a record some caller built with a name in it, as the kept-edits
+// branch of a take once did, must not be able to break that. An empty title or
+// folder on a publish means "keep the current one", which here is none.
+func (d *deviceDirectory) Create(ctx context.Context, id string, in directory.CellInit) (directory.CellView, error) {
+	if d.withholdNames != nil && d.withholdNames() {
+		in.Title, in.Folder = "", ""
+	}
+	return d.HTTP.Create(ctx, id, in)
+}
+
+func (d *deviceDirectory) Publish(ctx context.Context, id string, p directory.Publish) (directory.CellView, error) {
+	if d.withholdNames != nil && d.withholdNames() {
+		p.Title, p.Folder = "", ""
+	}
+	return d.HTTP.Publish(ctx, id, p)
 }
 
 func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {

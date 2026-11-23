@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
 // A message written here to a chat another computer holds travels in this
@@ -120,15 +121,29 @@ func (s *Sync) MailAt(ctx context.Context) (Mail, error) {
 	return MailOf(l, s.Device.ID(), directory.MetadataKey(s.Identity.CellKey())), nil
 }
 
-// Notes reports whether the relay carries messages between computers.
-func (s *Sync) Notes() bool {
+// Notes reports whether a message to a chat another computer holds is on
+// offer: the relay keeps a device record's outbox AND the account may store
+// one. A message waits in the sender's record on the relay until the holder
+// takes it, which is storing sealed text, and while hosted sync storage is off
+// nothing is kept there, so the verb is ABSENT rather than present and refused
+// every time: the app does not offer it. Self-hosted relays and approved
+// accounts keep it.
+func (s *Sync) Notes() bool { return s.relayKeepsNotes() && s.StorageAllowed() }
+
+// relayKeepsNotes is the relay's own answer, apart from the account's storage.
+// Emptying an outbox and listing what a holder took ask only this, so a message
+// left while storage was approved can still be taken off the relay after
+// storage is switched off.
+func (s *Sync) relayKeepsNotes() bool {
 	n, ok := s.Dir.(interface{ Notes() bool })
 	return ok && n.Notes()
 }
 
 // SendNote leaves text for whichever computer holds cell and answers the
 // message's id. It never waits for that computer: the message is on its way
-// once the relay has this device's record.
+// once the relay has this device's record. While sync storage is off it sends
+// nothing and answers [syncwords.ErrNotesWaitForStorage], before anything is
+// sealed or any request is made.
 func (s *Sync) SendNote(ctx context.Context, cell, text string) (string, error) {
 	text = strings.TrimSpace(text)
 	switch {
@@ -136,6 +151,8 @@ func (s *Sync) SendNote(ctx context.Context, cell, text string) (string, error) 
 		return "", ErrNoteEmpty
 	case len(text) > directory.MaxNoteBytes || !utf8.ValidString(text):
 		return "", ErrNoteLong
+	case !s.StorageAllowed():
+		return "", syncwords.ErrNotesWaitForStorage
 	}
 	sealed, err := directory.SealNote(directory.MetadataKey(s.Identity.CellKey()), text)
 	if err != nil {
@@ -209,7 +226,7 @@ func (s *Sync) ownRecord(ctx context.Context, change func(*directory.Device, dir
 	if err != nil {
 		return err
 	}
-	if !s.Notes() {
+	if !s.relayKeepsNotes() {
 		return ErrNotesUnsupported
 	}
 	own, ok := l.Devices[s.Device.ID()]

@@ -338,6 +338,7 @@ func (b *appBackend) servedModel() func(model, provider string) (string, bool) {
 // last read and asks again on its own — rather than sending a configuration
 // that is not the profile's; the settings themselves are said either way.
 func (b *appBackend) settingsChanged(settings appwire.Settings, taskModels bool) {
+	b.chats.wakePublication()
 	changed := appwire.SettingsChanged{Settings: settings}
 	if taskModels {
 		if got, err := b.TaskModels(); err == nil {

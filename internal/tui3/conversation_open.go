@@ -59,6 +59,23 @@ func (a *app) conversationPreviewFrame(width, height int) (string, int, int) {
 // cancels through the existing door, preserving both unsent sentences.
 func (a *app) openingDraftKey(msg tea.KeyPressMsg) bool {
 	if a.conversationPreview == nil {
+		if a.at(pageHome) && (a.homeTaking != "" || a.homeTakenSaid != nil) {
+			if msg.Key().Text == "" {
+				switch msg.String() {
+				case "backspace", "delete", "left", "right", "home", "end",
+					"ctrl+a", "ctrl+e", "ctrl+u", "super+backspace", "ctrl+k",
+					"alt+backspace", "ctrl+backspace", "ctrl+w", "ctrl+b", "ctrl+f",
+					"ctrl+z", "ctrl+shift+z",
+					"super+left", "super+right", "meta+left", "meta+right",
+					"shift+left", "shift+right", "super+a", "meta+a",
+					"shift+enter", "alt+enter", "ctrl+enter", "ctrl+j":
+				default:
+					return false
+				}
+			}
+			_ = a.homeKey(msg)
+			return true
+		}
 		return false
 	}
 	view := a.conversationPreview.view
@@ -339,8 +356,17 @@ func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
 		agent, err := resume(file)
 		return Conversation{Agent: agent, Workspace: where, SessionFile: file}, err
 	}
-	say := func(text string) { a.home.say(text, "") }
+	say := func(text string) {
+		if text == conversationOpeningWord && (a.homeTaking != "" || a.homeTakenSaid != nil) && strings.HasPrefix(a.homeMoveSaid, "opening conversation…") {
+			a.home.say(a.homeMoveSaid, "")
+			return
+		}
+		a.home.say(text, "")
+	}
 	return a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
+		if a.homeTakeDraft != nil && !a.homeTakeDraft.automatic {
+			a.foldHomeBoxIntoDraft(a.homeTakeDraft)
+		}
 		opened := a.takeBeside(conv)
 		a.closeHome()
 		// AND THE CALLER'S OWN LANDING WORK ([app.homeTakenSaid]) — the

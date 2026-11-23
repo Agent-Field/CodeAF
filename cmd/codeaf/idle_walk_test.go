@@ -167,3 +167,244 @@ func TestIdleOpen_C6_D2_AppExistingViewerPullsNewestHead(t *testing.T) {
 		t.Fatalf("D2 receiver hold=%+v, %v", view, err)
 	}
 }
+
+// Contract R3 (agents.open path): the app's OpenAgent / agents.open door uses
+// the early-open split and head-only fetch, returning the newest transcript
+// immediately while workspace files materialize in the background.
+func TestR3AppAgentsOpenOpensEarlyBeforeWorkspaceCompletes(t *testing.T) {
+	f := newIdleAppContract(t)
+	_ = f.released(t)
+	peer := appDeviceSync(t, f.peerHome)
+	receiverEngine := cellstore.EngineFor("")
+	receiverEngine.DataRoot = filepath.Join(peer.Home, "v3", "stores")
+	receiver := peer.Continuer(receiverEngine, syncsetup.TakeOptions{
+		RootFor: func(id string) string { return takeRootForAt(peer.Home, id) },
+	})
+	got, err := receiver.OpenAvailable(t.Context(), f.agent.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Wait != nil {
+		if err := got.Wait(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sourceAgent := f.b.agent(f.agent.ID)
+	appSyncWait(t, "source viewer", func() bool {
+		viewer := false
+		f.b.locked(func() { view := sourceAgent.view; viewer = view.Location != nil && !view.Location.Here })
+		return viewer
+	})
+	root := got.Taken.Cell.Root
+	meta, err := session.LoadMeta(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := meta.Workspace
+	if meta.Owned {
+		work = session.Place{Dir: root, Owned: true}.Work()
+	}
+	if err := os.WriteFile(filepath.Join(work, "r3-bg-file.txt"), []byte("workspace payload from peer\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := os.OpenFile(session.Place{Dir: root}.Transcript(), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := fmt.Fprintln(journal, `{"type":"message","role":"assistant","content":"R3 agents.open newest reply"}`)
+	closeErr := journal.Close()
+	if writeErr != nil || closeErr != nil {
+		t.Fatalf("journal: %v, %v", writeErr, closeErr)
+	}
+	engine := cellstore.EngineFor(work)
+	engine.DataRoot = receiverEngine.DataRoot
+	drive, err := peer.Drive(t.Context(), engine, got.Taken.Cell, syncsetup.DriveOptions{DeviceName: "laptop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirID := got.Taken.Driving.Remote
+	if dirID == "" {
+		dirID = got.Taken.Driving.Cell.ID
+	}
+	writer, err := peer.Dir.Cell(t.Context(), dirID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerFence := writer.Cell.Lease.Fence
+	sealed, sealErr := drive.Store(engine).Seal(t.Context(), got.Taken.Cell, cellstore.TurnInfo{})
+	closeErr = drive.Close(context.Background())
+	if sealErr != nil || closeErr != nil {
+		t.Fatalf("publish: %v, %v", sealErr, closeErr)
+	}
+	appSyncWait(t, "free newest row", func() bool {
+		rows, err := f.b.ListChats()
+		if err != nil {
+			return false
+		}
+		for _, r := range rows.Chats {
+			if r.Cell == f.agent.ID {
+				return r.CanOpen && !r.Here && r.Seen.Fence == writerFence
+			}
+		}
+		return false
+	})
+	opened, err := f.b.OpenAgent(f.agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened.Location == nil || !opened.Location.Here {
+		t.Fatalf("R3 agents.open did not open here: %+v", opened)
+	}
+	raw, err := os.ReadFile(appTranscriptOf(f.b, f.agent.ID))
+	if err != nil || !strings.Contains(string(raw), "R3 agents.open newest reply") {
+		t.Fatalf("R3 agents.open missing newest transcript: %q, %v", raw, err)
+	}
+	view, err := f.own.Dir.Cell(t.Context(), f.agent.ID)
+	if err != nil || view.Cell.Lease.Device != f.own.Device.ID() || view.Cell.Head != sealed.Turn.ID {
+		t.Fatalf("R3 agents.open hold=%+v, %v", view, err)
+	}
+}
+
+// Contract F1 (agents.open path): OpenAgent reuses the listed view when fresh,
+// and falls back cleanly when the cached view was stale (a newer turn was
+// published at that fence before OpenAgent ran).
+func TestF1AppAgentsOpenFreshAndStaleView(t *testing.T) {
+	f := newIdleAppContract(t)
+	_ = f.released(t)
+	peer := appDeviceSync(t, f.peerHome)
+	receiverEngine := cellstore.EngineFor("")
+	receiverEngine.DataRoot = filepath.Join(peer.Home, "v3", "stores")
+	receiver := peer.Continuer(receiverEngine, syncsetup.TakeOptions{
+		RootFor: func(id string) string { return takeRootForAt(peer.Home, id) },
+	})
+	got, err := receiver.OpenAvailable(t.Context(), f.agent.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Wait != nil {
+		if err := got.Wait(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sourceAgent := f.b.agent(f.agent.ID)
+	appSyncWait(t, "source viewer", func() bool {
+		viewer := false
+		f.b.locked(func() { view := sourceAgent.view; viewer = view.Location != nil && !view.Location.Here })
+		return viewer
+	})
+	root := got.Taken.Cell.Root
+	meta, err := session.LoadMeta(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work := meta.Workspace
+	if meta.Owned {
+		work = session.Place{Dir: root, Owned: true}.Work()
+	}
+	journal, err := os.OpenFile(session.Place{Dir: root}.Transcript(), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := fmt.Fprintln(journal, `{"type":"message","role":"assistant","content":"F1 agents.open turn H1"}`)
+	closeErr := journal.Close()
+	if writeErr != nil || closeErr != nil {
+		t.Fatalf("journal H1: %v, %v", writeErr, closeErr)
+	}
+	engine := cellstore.EngineFor(work)
+	engine.DataRoot = receiverEngine.DataRoot
+	drive, err := peer.Drive(t.Context(), engine, got.Taken.Cell, syncsetup.DriveOptions{DeviceName: "laptop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirID := got.Taken.Driving.Remote
+	if dirID == "" {
+		dirID = got.Taken.Driving.Cell.ID
+	}
+	writer, err := peer.Dir.Cell(t.Context(), dirID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerFence := writer.Cell.Lease.Fence
+	if _, err := drive.Store(engine).Seal(t.Context(), got.Taken.Cell, cellstore.TurnInfo{}); err != nil {
+		t.Fatalf("seal H1: %v", err)
+	}
+	if err := drive.Close(context.Background()); err != nil {
+		t.Fatalf("close H1: %v", err)
+	}
+
+	// ListChats on f.b caches the view at H1 (with fence writerFence, Expires==0).
+	appSyncWait(t, "free H1 row", func() bool {
+		rows, err := f.b.ListChats()
+		if err != nil {
+			return false
+		}
+		for _, r := range rows.Chats {
+			if r.Cell == f.agent.ID {
+				return r.CanOpen && !r.Here && r.Seen.Fence == writerFence
+			}
+		}
+		return false
+	})
+
+	// Advance the relay head to H2 under the same fence before f.b calls OpenAgent,
+	// so f.b's cached view in b.chats is stale (H1 != H2).
+	journal, err = os.OpenFile(session.Place{Dir: root}.Transcript(), os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr = fmt.Fprintln(journal, `{"type":"message","role":"assistant","content":"F1 agents.open newest turn H2 after stale listing"}`)
+	closeErr = journal.Close()
+	if writeErr != nil || closeErr != nil {
+		t.Fatalf("journal H2: %v, %v", writeErr, closeErr)
+	}
+	// Re-acquire on peer, seal H2, and release; update b.chats cached view to
+	// match the new fence with the old H1 head to simulate a stale-head view at the current fence.
+	drive2, err := peer.Drive(t.Context(), engine, got.Taken.Cell, syncsetup.DriveOptions{DeviceName: "laptop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealedH2, sealErr := drive2.Store(engine).Seal(t.Context(), got.Taken.Cell, cellstore.TurnInfo{})
+	closeErr = drive2.Close(context.Background())
+	if sealErr != nil || closeErr != nil {
+		t.Fatalf("publish H2: %v, %v", sealErr, closeErr)
+	}
+	curView, err := peer.Dir.Cell(t.Context(), dirID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appSyncWait(t, "free H2 row", func() bool {
+		rows, err := f.b.ListChats()
+		if err != nil {
+			return false
+		}
+		for _, r := range rows.Chats {
+			if r.Cell == f.agent.ID {
+				return r.CanOpen && !r.Here && r.Seen.Fence == curView.Cell.Lease.Fence
+			}
+		}
+		return false
+	})
+	// Force the cached view on f.b to have the stale H1 head at the current fence.
+	f.b.chats.mu.Lock()
+	if staleView, ok := f.b.chats.views[f.agent.ID]; ok {
+		staleView.Cell.Head = got.Taken.Driving.Head
+		f.b.chats.views[f.agent.ID] = staleView
+	}
+	f.b.chats.mu.Unlock()
+
+	opened, err := f.b.OpenAgent(f.agent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened.Location == nil || !opened.Location.Here {
+		t.Fatalf("F1 agents.open did not open here: %+v", opened)
+	}
+	raw, err := os.ReadFile(appTranscriptOf(f.b, f.agent.ID))
+	if err != nil || !strings.Contains(string(raw), "F1 agents.open newest turn H2 after stale listing") {
+		t.Fatalf("F1 agents.open missing newest H2 transcript: %q, %v", raw, err)
+	}
+	afterView, err := f.own.Dir.Cell(t.Context(), f.agent.ID)
+	if err != nil || afterView.Cell.Lease.Device != f.own.Device.ID() || afterView.Cell.Head != sealedH2.Turn.ID {
+		t.Fatalf("F1 agents.open hold=%+v, %v", afterView, err)
+	}
+}

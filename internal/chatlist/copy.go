@@ -4,10 +4,72 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
+
+// RelayStorageOffLive is the refusal for closed storage on a computer whose
+// chats move by blind pass-through (internal/syncsetup/livetransfer.go): what is
+// true there is that chats are not stuck, and that what still needs the relay's
+// storage waits.
+const RelayStorageOffLive = "chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)"
+
+// LiveCarriesChats answers whether blind pass-through is carrying this computer's
+// chats now. The program that owns the home sets it at startup; nothing that
+// leaves it unset (a test of the sentences, a library user) is told anything
+// but the ordinary refusal.
+var LiveCarriesChats func() bool
+
+// StorageOffSentence is what a refusal for storage that is closed says. ONE
+// PLACE DECIDES IT, because the same refusal reaches the person from the start
+// page, from a chat's notices and from the app, and a computer whose chats move
+// live must not tell them on one surface that they stay put. It also remembers
+// the words it gave, so a surface that said them can be told when they stop
+// being true ([StorageOffChanged]).
+func StorageOffSentence() string {
+	line := storageOffWords()
+	storageOffSaid.Lock()
+	storageOffSaid.line = line
+	storageOffSaid.Unlock()
+	return line
+}
+
+// storageOffWords is the sentence that is true on this computer now.
+func storageOffWords() string {
+	if carries := LiveCarriesChats; carries != nil && carries() {
+		return RelayStorageOffLive
+	}
+	return RelayStorageOff
+}
+
+// storageOffSaid is the sentence [StorageOffSentence] gave last, "" until one
+// was given.
+var storageOffSaid struct {
+	sync.Mutex
+	line string
+}
+
+// StorageOffChanged answers the sentence that now replaces the storage-off one
+// that was said, and true, when the words that are true on this computer are no
+// longer the ones it was given: another computer was paired after the old
+// sentence was shown, or the last one was removed after the new one was. It
+// answers false when none was said (nothing on screen needs replacing) or when
+// what was said is still true, and it answers each replacement once.
+func StorageOffChanged() (string, bool) {
+	storageOffSaid.Lock()
+	defer storageOffSaid.Unlock()
+	if storageOffSaid.line == "" {
+		return "", false
+	}
+	now := storageOffWords()
+	if now == storageOffSaid.line {
+		return "", false
+	}
+	storageOffSaid.line = now
+	return now, true
+}
 
 // The frozen sentences. Every surface takes its words
 // from here so a respelling happens once.
@@ -57,7 +119,7 @@ const (
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	keptTurns      = "kept %s from %s as a separate chat"
-	supersededLine = "%s continued this chat; this window now only shows it"
+	supersededLine = "%s continued this chat. This copy is read-only and may be behind"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
 	setupAsk       = "Set this machine up like %s had it?"
@@ -218,6 +280,26 @@ func TakeoverLine(r Row) string {
 	return line
 }
 
+// CopyLine is the sentence under the card raised for one copy folded onto a
+// chat's row: what [BranchLine] says of the copy, then, when every turn of it is
+// already in the chat, that discarding loses nothing, so the note on the row has
+// something to point at, and, when the chat has several copies, which of them
+// this is. nth counts from 1.
+func CopyLine(c BranchCopy, nth, of int, merge, separate bool) string {
+	line := BranchLine(c.Row("", ""), merge, separate)
+	if c.Redundant {
+		line += "; " + copyRedundantClause
+	}
+	if of > 1 {
+		line += fmt.Sprintf(" (copy %d of %d)", nth, of)
+	}
+	return line
+}
+
+// copyRedundantClause is said of a copy whose every turn is already in its
+// chat, in the note on the row and on the card for that copy alike.
+const copyRedundantClause = "already in this chat, so discarding loses nothing"
+
 // CopiesLine summarizes branch copies collapsed into a main chat row: how many
 // copies exist, what a copy is, and whether discarding loses anything. Empty
 // when there are no copies (the emptiness law).
@@ -228,7 +310,7 @@ func CopiesLine(copies []BranchCopy) string {
 	count := copiesWord(len(copies))
 	allRedundant, extraTurns := copiesLoss(copies)
 	if allRedundant {
-		return fmt.Sprintf("%s (unsent turns set aside; already in this chat, so discarding loses nothing)", count)
+		return fmt.Sprintf("%s (unsent turns set aside; %s)", count, copyRedundantClause)
 	}
 	if extraTurns > 0 {
 		return fmt.Sprintf("%s (unsent turns set aside; discarding archives %s not in this chat)", count, turns(extraTurns))

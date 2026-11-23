@@ -47,9 +47,20 @@ type twoHomes struct {
 	link   string // the project path A's session record names; a link to A's folder, removed while B has the chat
 }
 
+// newTwoHomes is two computers in the world before live transfer: the storage-off
+// tests built on it pin what a chat does on a hosted relay when nothing may be
+// stored, and C8 says exactly that behaviour is what CODEAF_PASSTHROUGH=off
+// restores. A test of the new road builds its scene with newLiveRig instead.
 func newTwoHomes(t *testing.T, wrap ...func(http.Handler) http.Handler) *twoHomes {
 	t.Helper()
-	r := newDriveRig(t, wrap...)
+	t.Setenv(LiveTransferVar, "off")
+	return twoHomesOver(t, newDriveRig(t, wrap...))
+}
+
+// twoHomesOver is the rig's second half, for a test that must reach into the
+// drive rig first (to put a byte tap in front of its relay, say).
+func twoHomesOver(t *testing.T, r *driveRig) *twoHomes {
+	t.Helper()
 	h := &twoHomes{driveRig: r, rootsB: t.TempDir(), wall: &noticeLog{}}
 	h.block = &blocker{Store: r.a.Store}
 	r.a.Store = h.block
@@ -179,6 +190,13 @@ func (h *twoHomes) openOn(s *Sync, eng cellstore.Engine, c cell.Cell, work, devi
 // openObserved is openOn with an observer on the seat, the way the door gives a
 // chat the machine that keeps the record of what it ran.
 func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer) *openChat {
+	return h.openSeated(s, eng, c, work, device, obs)
+}
+
+// openSeated is openObserved with options on the seat: the chat surface opens
+// its seat with a pipeline and a warm capture, which a test of what a running
+// chat captures between tool calls has to do as well.
+func (h *twoHomes) openSeated(s *Sync, eng cellstore.Engine, c cell.Cell, work, device string, obs executor.Observer, opts ...cellstore.SeatOption) *openChat {
 	h.t.Helper()
 	eng.Workspace = work
 	title := func() string { m, _ := session.LoadMeta(c.Root); return m.Title }
@@ -188,7 +206,7 @@ func (h *twoHomes) openObserved(s *Sync, eng cellstore.Engine, c cell.Cell, work
 	}
 	h.t.Cleanup(func() { _ = drive.Close(context.Background()) })
 	seat, err := cellstore.SeatOver(executor.HostBound, c, work, obs, nil,
-		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) })
+		func(cellstore.Engine) cellstore.Store { return drive.Store(eng) }, opts...)
 	if err != nil {
 		h.t.Fatal(err)
 	}

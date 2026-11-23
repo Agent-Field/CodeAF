@@ -747,6 +747,7 @@ func stageBrief(job Job) string {
 	}
 	para(stageAsk(job))
 	para(stageRole(job))
+	para(taskBrief(job))
 	for _, p := range itemContext(job) {
 		para(p...)
 	}

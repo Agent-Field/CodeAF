@@ -396,6 +396,13 @@ runner gives it no second turn on the same words. Say `start` and the manager st
 with `factory_start`; it starts the job only when you ask. It never clones the repository
 itself: the runner clones it when the job starts.
 
+The manager can also send a delegate into the checkout for work no step covers
+(`factory_task`) and propose public acts on the pull request, such as a push or a reply to a
+review comment (`factory_act`). In Manual a public act waits for your yes; in Auto the
+manager carries it out; it never merges on its own. Outside Auto, `factory_start` goes past
+an approve step only on a turn where you said so. See "what a job's manager may do by
+itself" in the factory page.
+
 ## step cost across rounds, resumed work and the job total
 
 A step's cost includes every priced round once. Resuming an interrupted round
@@ -485,18 +492,24 @@ service records each approved publication; a worker cannot manufacture consent.
 Neither explicit Auto nor Manual grants automatic merging, even when a recipe permits it. **Merge remains
 your decision.** Optional per-step skips remain available; neither mode resets retry limits.
 
-## Manual asks before every step
+## Manual asks before a post step — it no longer asks before every step
 
-Manual asks before each step's first round, and before publication or repair pushes:
-**Write is next · continue, or send back the step before?** Approve runs the step. Request
-changes sends the finished step before it back with your words, and the ask comes again
-when that finishes. Start answers for the first step and an approve step answers for the
-step after it, so neither asks twice. Retries and send-backs of a step that already ran do
-not ask. Switching to Manual applies from the next step not yet run; switching to Auto passes
-an ask that is standing. Older jobs with no saved mode keep only their approve steps.
+Manual used to ask before each step's first round. It no longer does: the steps run on, and
+Manual asks where something goes public. That is the plan's approve step, publication and
+repair pushes, public acts on the pull request, and a post step: **Post is next · continue,
+or send back the step before?** Approve runs it. Request changes sends the finished step
+before it back with your words, and the ask comes again when that finishes. An approve step
+answers for a post step right after it, so the two never ask twice. A retry or a send-back
+of a post step that already ran does not ask. Switching to Auto passes an ask that is
+standing. Older jobs with no saved mode keep only their approve steps.
 
-In Needs you the ask is its own kind, `approve_step` (gate `step`), never a plan: it reads
-"RunVetAndTest is next · waiting for you to go on", naming the step by its label.
+A job saved while the old ask was standing still takes its answer. In Needs you the ask is
+its own kind, `approve_step` (gate `step`), never a plan: it reads "Post is next · waiting
+for you to go on", naming the step by its label.
+
+An interrupted step (a dropped connection, a runner that went away) is retried by itself in
+Manual as in Auto. Taking the job over pauses that retry: **Automatic retry paused because
+you took over this job. Resume the pipeline when ready.**
 
 ## switching to Auto never skips an approve step — the last approve step waits for the proof approval
 
@@ -539,6 +552,13 @@ blindly replayed: their recorded outcomes and commit authority must be reconcile
 The conversation shows the engine's concrete Auto exception immediately, including
 the needed budget, proof or repository approval. It does not promise publication
 while those checks are blocking it.
+
+A failing proof claim or repository policy finding is not an exception in Auto: Auto
+sends it back to be fixed first. Before the pull request exists, a prove step runs with
+the findings as its request; once it is open, Follow PR repairs it, verifies and updates
+the PR. You see the merge offer once the findings are clean. After three repairs (Follow
+PR's own limit on an open PR), or when the budget runs out, the job waits on you with
+the finding ("Repository policy needs attention: …").
 
 Critical unanswered decisions, fixed repository approval gates, missing access,
 failed publication and budget/attempt exhaustion still stop for a concrete next
@@ -1183,14 +1203,11 @@ When the refusal concerns local checkout changes, Try again first rereads the
 checkout without calling a model. An unchanged checkout remains refused without
 spending; restoring the clean published checkout permits a fresh assessment.
 
-## a step's question — the manager answered for you, override it, Manual sends every question to you, only a person can answer
+## a step's question — the manager answered for you, override it, Manual and Auto alike, only a person can answer
 
 When a step asks a question, the job's manager is given it first and answers from the issue, the pipeline and the steps. Its answer goes back to the step at once, and the job keeps a record of it: the question, the step that asked and `Manager answered for you` with the answer. The record is in the job's questions beside your own answers (`with: manager`), and the job's Brief can say the manager decided it. The manager's answer is never counted as one of your requests. To override it, send the step that asked a message with your answer while it runs; once the step has ended, your message reaches the next step.
 
-The manager is skipped, and the question comes straight to you in Needs you, in two cases:
-
-- the job is in **Manual**: every step question comes to you, with `Manual: every step question comes to you`;
-- the step marked the question as one only a person can answer (the `ask` tool's `judgement` kind), in every mode, with `the step said only a person can answer this`.
+This is the same in Manual and in Auto: Manual no longer sends every question to you. The manager is skipped, and the question comes straight to you in Needs you, in one case: the step marked the question as one only a person can answer (the `ask` tool's `judgement` kind), with `the step said only a person can answer this`.
 
 A question the manager sends on comes to you the same way, with the manager's reason. The step waits until you answer.
 

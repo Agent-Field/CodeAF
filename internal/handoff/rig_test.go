@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -206,11 +207,20 @@ func tree(t *testing.T, root string) map[string]string {
 }
 
 // trace records the order of the steps a takeover makes.
-type trace struct{ steps []string }
+type trace struct {
+	mu    sync.Mutex
+	steps []string
+}
 
-func (t *trace) add(s string) { t.steps = append(t.steps, s) }
+func (t *trace) add(s string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.steps = append(t.steps, s)
+}
 
 func (t *trace) has(s string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for _, x := range t.steps {
 		if x == s {
 			return true

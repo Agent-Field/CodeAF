@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path"
@@ -16,43 +19,77 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
+// LocalWorkFast performs the cheap in-process portion of LocalWork without
+// spawning a furrow subprocess (F2). When known is true, dirty is the final
+// answer; when known is false (for example, stat-index.json is missing or
+// stale), the full check must run before the workspace is swapped in.
+func (e Engine) LocalWorkFast(ctx context.Context, c cell.Cell) (dirty bool, known bool, err error) {
+	_, recovery, err := OpenWAL(e.WALPath(c))
+	if err != nil {
+		return false, true, err
+	}
+	// Completed WAL calls remain local work even when their capture fails.
+	if err := Captured(ctx, c); err != nil && len(recovery.Completed) == 0 {
+		return false, true, err
+	}
+	if len(recovery.Completed) > 0 {
+		log.Printf("continuation needs a choice: %d completed calls have not been saved", len(recovery.Completed))
+		return true, true, nil
+	}
+	base, err := sharedBoundary(c)
+	if err != nil {
+		return false, true, err
+	}
+	if base == "" {
+		return true, true, nil
+	}
+	head, err := Head(c)
+	if err != nil || head == nil {
+		return head == nil, true, err
+	}
+	if work, err := transcriptWork(c, head.Receipt.Transcript.End, sizeOf(rel(c, cell.TranscriptPath))); err != nil || work {
+		return work, true, err
+	}
+	if head.Turn.ID != base {
+		work, err := unsharedCalls(c, base)
+		if err != nil || work {
+			return work, true, err
+		}
+		return false, false, nil
+	}
+	if e.checkMaterializedStat(c, base) {
+		return false, true, nil
+	}
+	return false, false, nil
+}
+
 // LocalWork says whether continuing a remote chat needs a local-work choice.
 // Startup can seal unchanged files with fresh bookkeeping, which is a local
 // save but not something a person needs to keep as a branch. Compare
 // against the shared boundary as well as the current head, so an editor's work
 // captured by that startup save is never mistaken for mere bookkeeping.
 func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
-	_, recovery, err := OpenWAL(e.WALPath(c))
-	if err != nil {
-		return false, err
-	}
-	// Completed WAL calls remain local work even when their capture fails.
-	if err := Captured(ctx, c); err != nil && len(recovery.Completed) == 0 {
-		return false, err
-	}
-	if len(recovery.Completed) > 0 {
-		log.Printf("continuation needs a choice: %d completed calls have not been saved", len(recovery.Completed))
-		return true, nil
+	dirty, known, err := e.LocalWorkFast(ctx, c)
+	if err != nil || known {
+		return dirty, err
 	}
 	base, err := sharedBoundary(c)
 	if err != nil {
 		return false, err
 	}
-	if base == "" {
-		return true, nil
-	}
 	head, err := Head(c)
 	if err != nil || head == nil {
 		return head == nil, err
 	}
-	if work, err := transcriptWork(c, head.Receipt.Transcript.End, sizeOf(rel(c, cell.TranscriptPath))); err != nil || work {
-		return work, err
-	}
-	if head.Turn.ID != base {
-		work, err := unsharedCalls(c, base)
-		if err != nil || work {
-			return work, err
-		}
+	if e.FolderGone(c) {
+		// A FOLDER THAT IS NOT THERE HOLDS NO LOCAL FILES, SO ONLY THE
+		// CONVERSATION CAN BE WORK. The screen and the plan below both read the
+		// folder, and the engine answers a missing one with an error, which a
+		// launch used to show as a chat that "could not be put in this folder"
+		// on every start until the person made the folder again by hand.
+		log.Printf("continuation: the chat's folder %s is gone, so there are no local files to keep; checking only the conversation", e.tree(c))
+		same, err := e.sameTranscriptPrefix(ctx, c, base)
+		return !same, err
 	}
 	if err := e.screenCapture(ctx, c); err != nil {
 		return false, err
@@ -68,13 +105,30 @@ func (e Engine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 		return work, err
 	}
 	same, err := e.sameTranscriptPrefix(ctx, c, base)
+	if err == nil && same && head.Turn.ID == base {
+		e.recordMaterializedStat(c, base)
+	}
 	return !same, err
+}
+
+// FolderGone says the folder the chat's files live in is not on this computer:
+// the path does not exist, or it is a link whose target does not. ONLY
+// "DOES NOT EXIST" COUNTS. A path that exists but is not a folder, or one this
+// computer may not look at, is a refusal the check still reports, because
+// reading it as "nothing to keep" could throw away edits that are there.
+func (e Engine) FolderGone(c cell.Cell) bool {
+	w := e.workspace(c)
+	if w == "" {
+		return false
+	}
+	_, err := os.Stat(w)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // workInPlan asks Git about semantic index entries only when the engine found
 // nothing beyond its directory and index. Other changed paths stay a choice.
 func (e Engine) workInPlan(ctx context.Context, c cell.Cell, base string, raw []byte) (bool, error) {
-	work, indexOnly, err := localPlanWork(raw)
+	work, indexOnly, _, err := localPlanChanges(raw)
 	if err != nil || !indexOnly {
 		return work, err
 	}
@@ -180,15 +234,19 @@ func auxiliaryRole(role string) bool {
 // localPlanWork ignores only reproducible capture bookkeeping. Conversation
 // truth, unknown state and all workspace files still count as local work.
 func localPlanWork(raw []byte) (bool, bool, error) {
+	work, indexOnly, _, err := localPlanChanges(raw)
+	return work, indexOnly, err
+}
+
+func localPlanChanges(raw []byte) (work bool, indexOnly bool, transcriptChanged bool, err error) {
 	var plan struct {
 		Changes []struct {
 			Path string `json:"path"`
 		} `json:"changes"`
 	}
 	if err := json.Unmarshal(raw, &plan); err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
-	indexOnly := false
 	for _, change := range plan.Changes {
 		name := path.Clean(change.Path)
 		if name == cell.StateDir || strings.HasPrefix(name, ReceiptsDir+"/") || name == ReceiptsDir || strings.HasPrefix(name, cell.EnvPath+"/") || name == cell.EnvPath {
@@ -199,6 +257,7 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 			continue
 		case cell.TranscriptPath:
 			// The shared prefix is checked before a changed journal is discarded.
+			transcriptChanged = true
 			continue
 		case cell.StateDir + "/memories.jsonl":
 			continue
@@ -208,9 +267,9 @@ func localPlanWork(raw []byte) (bool, bool, error) {
 			continue
 		}
 		log.Printf("continuation needs a choice for changed path: %s", name)
-		return true, false, nil
+		return true, false, transcriptChanged, nil
 	}
-	return indexOnly, indexOnly, nil
+	return indexOnly, indexOnly, transcriptChanged, nil
 }
 
 // sameTranscriptPrefix reads the shared journal into private scratch. Only an
@@ -247,4 +306,229 @@ func (e Engine) sameTranscriptPrefix(ctx context.Context, c cell.Cell, base stri
 		return false, err
 	}
 	return bytes.Equal(saved, current), nil
+}
+
+type statEntry struct {
+	Size    int64  `json:"s"`
+	ModNano int64  `json:"m"`
+	Mode    uint32 `json:"p"`
+}
+
+type statIndex struct {
+	Snapshot       string               `json:"snapshot"`
+	Tree           string               `json:"tree"`
+	TranscriptEnd  int64                `json:"transcript_end"`
+	TranscriptMod  int64                `json:"transcript_mod"`
+	TranscriptHash string               `json:"transcript_hash,omitempty"`
+	Entries        map[string]statEntry `json:"entries"`
+}
+
+func transcriptPrefixHash(path string, end int64) (string, bool) {
+	if end < 0 {
+		return "", false
+	}
+	if end == 0 {
+		sum := sha256.Sum256(nil)
+		return hex.EncodeToString(sum[:]), true
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.CopyN(h, f, end)
+	if err != nil || n != end {
+		return "", false
+	}
+	return hex.EncodeToString(h.Sum(nil)), true
+}
+
+// StatIndexPath returns the path to c's materialized stat index file.
+func (e Engine) StatIndexPath(c cell.Cell) string {
+	return e.statIndexPath(c)
+}
+
+func (e Engine) statIndexPath(c cell.Cell) string {
+	return filepath.Join(e.LocalDir(c), "stat-index.json")
+}
+
+func skipStatRel(relSlash string, d fs.DirEntry) (skip bool, skipDir bool) {
+	if relSlash == "." {
+		return true, false
+	}
+	if relSlash == cell.StateDir || strings.HasPrefix(relSlash, cell.StateDir+"/") {
+		return true, d.IsDir()
+	}
+	if relSlash == ".furrow" || strings.HasPrefix(relSlash, ".furrow/") {
+		return true, d.IsDir()
+	}
+	if relSlash == ".git" {
+		return true, false
+	}
+	if strings.HasPrefix(relSlash, ".git/") && relSlash != ".git/index" {
+		return true, d.IsDir()
+	}
+	return false, false
+}
+
+// RecordMaterializedStat snapshots the stat metadata (size, mode, mtime) of c's
+// materialized tree so a subsequent LocalWork check can verify cleanliness by
+// stat without full file hashing on the critical path (R4).
+func (e Engine) RecordMaterializedStat(c cell.Cell, snapshot string) {
+	e.recordMaterializedStat(c, snapshot)
+}
+
+func (e Engine) recordMaterializedStat(c cell.Cell, snapshot string) {
+	if snapshot == "" {
+		return
+	}
+	tree := canonicalTree(e.tree(c))
+	if tree == "" {
+		return
+	}
+	entries := map[string]statEntry{}
+	walkErr := filepath.WalkDir(tree, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		r, rErr := filepath.Rel(tree, p)
+		if rErr != nil {
+			return rErr
+		}
+		relSlash := filepath.ToSlash(r)
+		if skip, skipDir := skipStatRel(relSlash, d); skip {
+			if skipDir {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, iErr := d.Info()
+		if iErr != nil {
+			return iErr
+		}
+		entries[relSlash] = statEntry{
+			Size:    info.Size(),
+			ModNano: info.ModTime().UnixNano(),
+			Mode:    uint32(info.Mode()),
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return
+	}
+	tPath := rel(c, cell.TranscriptPath)
+	var tEnd, tMod int64
+	var tHash string
+	if tInfo, err := os.Stat(tPath); err == nil {
+		tEnd = tInfo.Size()
+		tMod = tInfo.ModTime().UnixNano()
+		if head, hErr := Head(c); hErr == nil && head != nil && head.Turn.ID == snapshot && head.Receipt.Transcript.End > 0 && head.Receipt.Transcript.End <= tEnd {
+			tEnd = head.Receipt.Transcript.End
+		}
+		tHash, _ = transcriptPrefixHash(tPath, tEnd)
+	}
+	idx := statIndex{
+		Snapshot:       snapshot,
+		Tree:           tree,
+		TranscriptEnd:  tEnd,
+		TranscriptMod:  tMod,
+		TranscriptHash: tHash,
+		Entries:        entries,
+	}
+	raw, err := json.Marshal(idx)
+	if err != nil {
+		return
+	}
+	_ = writeFile(e.statIndexPath(c), raw)
+}
+
+func (e Engine) rebindMaterializedStat(to cell.Cell) {
+	p := e.statIndexPath(to)
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	var idx statIndex
+	if json.Unmarshal(raw, &idx) != nil {
+		return
+	}
+	idx.Tree = canonicalTree(e.tree(to))
+	if tInfo, err := os.Stat(rel(to, cell.TranscriptPath)); err == nil && tInfo.Size() == idx.TranscriptEnd {
+		idx.TranscriptMod = tInfo.ModTime().UnixNano()
+	}
+	if out, err := json.Marshal(idx); err == nil {
+		_ = writeFile(p, out)
+	}
+}
+
+func (e Engine) checkMaterializedStat(c cell.Cell, base string) bool {
+	if e.Run != nil {
+		return false
+	}
+	raw, err := os.ReadFile(e.statIndexPath(c))
+	if err != nil {
+		return false
+	}
+	var idx statIndex
+	if json.Unmarshal(raw, &idx) != nil {
+		return false
+	}
+	tree := canonicalTree(e.tree(c))
+	if idx.Snapshot != base || idx.Tree != tree {
+		return false
+	}
+	tPath := rel(c, cell.TranscriptPath)
+	tInfo, err := os.Stat(tPath)
+	if err != nil {
+		if idx.TranscriptEnd != 0 || !os.IsNotExist(err) {
+			return false
+		}
+	} else if tInfo.Size() == idx.TranscriptEnd && tInfo.ModTime().UnixNano() == idx.TranscriptMod {
+	} else if tInfo.Size() >= idx.TranscriptEnd && idx.TranscriptHash != "" {
+		if gotHash, ok := transcriptPrefixHash(tPath, idx.TranscriptEnd); !ok || gotHash != idx.TranscriptHash {
+			return false
+		}
+	} else {
+		return false
+	}
+	seen := 0
+	mismatch := false
+	err = filepath.WalkDir(tree, func(p string, d fs.DirEntry, wErr error) error {
+		if wErr != nil {
+			mismatch = true
+			return wErr
+		}
+		r, rErr := filepath.Rel(tree, p)
+		if rErr != nil {
+			mismatch = true
+			return rErr
+		}
+		relSlash := filepath.ToSlash(r)
+		if skip, skipDir := skipStatRel(relSlash, d); skip {
+			if skipDir {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, iErr := d.Info()
+		if iErr != nil {
+			mismatch = true
+			return iErr
+		}
+		exp, ok := idx.Entries[relSlash]
+		if !ok || info.Size() != exp.Size || info.ModTime().UnixNano() != exp.ModNano || uint32(info.Mode()) != exp.Mode {
+			mismatch = true
+			return fs.SkipAll
+		}
+		seen++
+		return nil
+	})
+	return err == nil && !mismatch && seen == len(idx.Entries)
 }

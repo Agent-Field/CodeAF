@@ -200,7 +200,7 @@ func (c *Client) dispatchPlan(ctx context.Context, request *ai.Request, knobs ca
 	model := c.modelFor(request)
 	plan, held := callPlanFrom(ctx)
 	if !held {
-		plan = lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow())
+		plan = c.stretchPlan(lanes.PlanFor(lanes.Choice{}, lanes.Pace{}, RoleFrom(ctx), dispatchNow()))
 	}
 	plan.Model = model
 	// THE SET IS THE REQUEST'S OWN AND NOT THE CHOICE'S. A rescue's demand and a
@@ -229,7 +229,7 @@ func (c *Client) dispatchPlan(ctx context.Context, request *ai.Request, knobs ca
 		plan.Moves = control.NewMoveLog()
 	}
 	if plan.Deadline.IsZero() {
-		plan.Deadline = dispatchNow().Add(RoleFrom(ctx).GiveUp())
+		plan.Deadline = dispatchNow().Add(lanes.Stretch(RoleFrom(ctx).GiveUp(), c.patience()))
 	}
 	return plan
 }
@@ -803,7 +803,7 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// Error bodies can stall too. They are read below before a retry, so
 		// they need the same idle bound as successful streaming bodies.
 		if stream {
-			response.Body = newIdleWatchdog(response.Body, streamIdleTimeout, cancelAttempt)
+			response.Body = newIdleWatchdog(response.Body, lanes.Stretch(streamIdleTimeout, c.patience()), cancelAttempt)
 		}
 		// The provider's comeback instruction is read before the slot goes back,
 		// because it is what tells the limiter how wide this 429's window is:
@@ -1485,13 +1485,22 @@ func backoffFor(attempt int, providerWait time.Duration) time.Duration {
 // answer with no inside can be — by the adaptive budget and, on a lane we have
 // measured, by that lane's wall.
 func (c *Client) clientFor(model string, stream bool, maxTokens int) http.Client {
+	factor := c.patience()
 	if stream && !c.unstreamable.Load() {
 		client := *c.stream
 		client.Timeout = 0
+		// AND A STREAM'S HEADER DEADLINE IS IN THE CLIENT'S PATIENCE, which is a
+		// property of the transport and so means a transport: the hosted bound is
+		// the original one, and a stretched bound is its clone (localpatience.go).
+		// Only the default streaming transport is swapped. A client built with its
+		// own HTTP client — a sign-in's, a test's — keeps the transport it brought.
+		if factor > 1 && client.Transport == http.RoundTripper(streamTransport()) {
+			client.Transport = streamTransportFor(factor)
+		}
 		return client
 	}
 	client := *c.http
-	client.Timeout = adaptiveCompletionTimeout(maxTokens, c.config.Timeout)
+	client.Timeout = lanes.Stretch(adaptiveCompletionTimeout(maxTokens, c.config.Timeout), factor)
 	if wall, measured := c.completionWall(model); measured && wall < client.Timeout {
 		client.Timeout = wall
 	}

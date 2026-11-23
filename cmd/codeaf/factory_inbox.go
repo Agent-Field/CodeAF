@@ -66,6 +66,13 @@ func (s *shapeTurns) Inbox(ctx context.Context, it factory.Item, q factory.Asked
 
 // inboxDoor is `factory_answer` (and `factory_run`, refused) on an inbox
 // turn: it keeps the manager's first reply and refuses a second.
+//
+// IT PRESSES NOTHING, ON PURPOSE. It is not a [session.ManagerPresser], so a
+// conversation opened for the turn has no `factory_act` or `factory_task` on
+// its belt, and in a window that already carries them they and every other
+// press refuse in words (internal/session's managerTurnOnly). A public act, a
+// task and a decision on a stop are for an ordinary turn, where the manager's
+// own door holds them to the job's mode.
 type inboxDoor struct {
 	stage string
 

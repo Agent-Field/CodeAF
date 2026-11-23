@@ -286,6 +286,9 @@ func (b *appBackend) inboxResolved(id string, receipt appwire.Entry) {
 		if by == "" {
 			by = appwire.ClosedByElsewhere
 		}
+		if closed.Option == appwire.ResolvedDismissed {
+			by = appwire.ResolvedDismissed
+		}
 		at := closed.At
 		if at.IsZero() {
 			at = b.now()
@@ -302,6 +305,8 @@ func (b *appBackend) inboxResolved(id string, receipt appwire.Entry) {
 	}
 	by := closed.By
 	switch {
+	case closed.Option == appwire.ResolvedDismissed:
+		by = appwire.ResolvedDismissed
 	case strings.HasPrefix(receipt.Text, "No longer needed"):
 		by = appwire.ResolvedNoLongerNeeded
 	case by == "":

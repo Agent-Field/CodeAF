@@ -96,7 +96,12 @@ func (h *Handler) fresh(w http.ResponseWriter, r *http.Request, it factory.Item,
 		}
 		versionStale = err != nil
 	}
-	stale := (exp.State != "" && exp.State != job.State) ||
+	// A PRESS THAT READ THE JOB AS IT WAS SHOWN IS NOT STALE. A stop its main
+	// agent holds is shown to a reader as a job at work
+	// ([Handler.presentHold]), so that state is taken beside the stored one.
+	shown := job
+	h.presentHold(&shown)
+	stale := (exp.State != "" && exp.State != job.State && exp.State != shown.State) ||
 		(exp.Step != "" && exp.Step != step) ||
 		versionStale
 	if !stale {

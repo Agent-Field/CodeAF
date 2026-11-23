@@ -31,7 +31,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -631,8 +630,8 @@ Housekeeping — changes state on disk or on the network
       discard everything codeaf worked out from the journal and replay it
   codeaf pair [--via url] [--name name]
       add this device to yours: shows a link to approve from one you use
-  codeaf pair approve <link-or-code> | <code> [--replace] | --code
-      approve a device; or use or show a code such as ` + pair.ExampleChatCode + ` for your chats
+  codeaf pair approve <link-or-token>
+      approve a device's link or terminal token after comparing its check number
   codeaf devbox up | down <name> · status [<name>]  [--yes] [--dir D]
       an always-on computer of yours on your own Railway account
   codeaf serve [--workspace path] [--via url] [--take-tasks]
@@ -748,7 +747,7 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_DAILY_BUDGET  ` + usageDollars(config.DefaultDailyBudgetUSD) + `  the day's spending limit in dollars (0 = unlimited)
   CODEAF_PLAN_CONSENT  ` + usageDollars(config.DefaultPlanConsentUSD) + `  a plan estimated above this quotes its price
                        and waits for your word (0 = never asks)
-  CODEAF_IMAGE_MODEL   image-generation model (catalog-resolved by default)
+` + config.ResponsePatienceHelp() + `  CODEAF_IMAGE_MODEL   image-generation model (catalog-resolved by default)
   CODEAF_SPEECH_MODEL  speech-synthesis model (catalog-resolved by default)
   CODEAF_MUSIC_MODEL   music-generation model (catalog-resolved by default)
   CODEAF_VIDEO_MODEL   video-generation model (catalog-resolved by default)
@@ -765,6 +764,14 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
                        1 spends past the day's limit without stopping a
                        headless run to ask
   CODEAF_SYNC_URL      sync service for your chats; off disables syncing
+  CODEAF_MOVE_FILES_FIRST=1
+                       wait for all workspace files before opening a moved chat
+  CODEAF_PASSTHROUGH
+                       off (also 0, false, no) turns blind pass-through off:
+                       while hosted sync storage is off, a chat then stays on
+                       the computer that has it instead of passing straight
+                       through the sync service to a paired computer that is
+                       also running codeaf (default on)
   CODEAF_RELAY         sync service override for pairing and remote connections
   CODEAF_HOME          the whole state root — journal, workspace, CAS, craft,
                        profiles, catalog, skills (default ~/.codeaf). Move it

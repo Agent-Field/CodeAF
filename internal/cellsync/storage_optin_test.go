@@ -3,6 +3,7 @@ package cellsync
 import (
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,6 +23,38 @@ func TestStorageOptInRefusalHaltsAndSpeaksOnce(t *testing.T) {
 	b.recovered(true)
 	if !b.news(r) {
 		t.Fatal("new episode lost")
+	}
+}
+
+// The refusal for closed storage says what is true on the computer it is said
+// on: a computer whose chats move live is not told its chats stay put.
+func TestStorageOffRefusalSpeaksForTheComputerItIsSaidOn(t *testing.T) {
+	r, ok := RefusalOf(wireauth.ErrStorageOff)
+	if !ok {
+		t.Fatal("no refusal for closed storage")
+	}
+	t.Cleanup(func() { chatlist.LiveCarriesChats = nil })
+	for _, c := range []struct {
+		name  string
+		carry func() bool
+		want  string
+	}{
+		{"nothing says anything about blind pass-through", nil, chatlist.RelayStorageOff},
+		{"blind pass-through is not carrying chats", func() bool { return false }, chatlist.RelayStorageOff},
+		{"blind pass-through is carrying chats", func() bool { return true }, chatlist.RelayStorageOffLive},
+	} {
+		chatlist.LiveCarriesChats = c.carry
+		if got := r.Say(wireauth.ErrStorageOff); got != c.want {
+			t.Fatalf("%s: the refusal says %q; want %q", c.name, got, c.want)
+		}
+	}
+	for _, word := range []string{"blind pass-through", "keys", "memories", "teams", "preferences", "Settings under Devices"} {
+		if !strings.Contains(chatlist.RelayStorageOffLive, word) {
+			t.Fatalf("the live sentence does not mention %q: %s", word, chatlist.RelayStorageOffLive)
+		}
+	}
+	if strings.Contains(chatlist.RelayStorageOffLive, "stay on this computer") {
+		t.Fatal("the live sentence says chats stay on this computer")
 	}
 }
 

@@ -582,28 +582,26 @@ func TestCleanBackgroundExitsWaitForTheNextTurnsContext(t *testing.T) {
 		},
 	}}
 	answerTheReadingsOffTheQueue(completer)
-	agent, _ := newTestAgent(t, completer, nil)
+	file := filepath.Join(t.TempDir(), "session.jsonl")
+	agent, _ := newTestAgent(t, completer, func(cfg *Config) { cfg.SessionFile = file })
+	endings := []string{"job 1 exited 0: first build done", "job 2 exited 0: second build done"}
 	for _, command := range []string{"echo first build done", "echo second build done"} {
 		startJob(t, agent, command)
 	}
-	waitFor(t, "both quiet endings", func() bool { return len(ambientQueue(agent)) == 2 })
+	waitFor(t, "idle handoff with both quiet endings saved", func() bool {
+		journal, err := os.ReadFile(file)
+		return err == nil && strings.Contains(string(journal), endings[0]) && strings.Contains(string(journal), endings[1]) && agent.idleForHandoff()
+	})
 	if count := conversationRequests(completer); count != 0 {
 		t.Fatalf("clean exits started %d requests, want none", count)
 	}
-	agent.mu.Lock()
-	for _, note := range agent.ambient {
-		if note.wake || note.ending || !note.batch || note.batchKey != "" {
-			t.Errorf("quiet ending has wrong routing: %+v", note)
-		}
-	}
-	agent.mu.Unlock()
 	events, err := agent.Submit(context.Background(), "what happened?")
 	if err != nil {
 		t.Fatal(err)
 	}
 	collect(t, events)
 	text := userTextIn(<-asked)
-	for _, ending := range []string{"job 1 exited 0: first build done", "job 2 exited 0: second build done"} {
+	for _, ending := range endings {
 		if strings.Count(text, ending) != 1 {
 			t.Errorf("next turn did not receive %q exactly once:\n%s", ending, text)
 		}

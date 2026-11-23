@@ -115,6 +115,11 @@ type askOpen struct {
 	// kept because a settled reversible decision can still be CHANGED, and the
 	// correction says what it was changed from.
 	settled *Answer
+	// dismissed says the person dismissed it from the Inbox
+	// ([askedOfThePerson.dismissLocked]). It is set before the wait is closed,
+	// so a call parked on it reads the dismissal and not a sentence it was
+	// talked past for.
+	dismissed bool
 }
 
 // parkLocked registers one ask and answers the channel its lane waits on, which
@@ -311,12 +316,23 @@ func (asked *askedOfThePerson) askedBackLocked(id uint64, answer Answer) bool {
 // put a shape on the wire that every surface would then have to know not to
 // draw. A closed channel is the ending with no value in it, which is exactly
 // what happened.
-func (asked *askedOfThePerson) talkedPastLocked() []uint64 {
+//
+// keepSettled leaves an ANSWERED question kept for a revision
+// ([askSettledKept]) where it is: the person's new message talks past what is
+// still asked, not past what they already decided, so `change` on that
+// receipt still works after they type something else. A steer keeps them too:
+// an answered question parks nothing, so the boundary a steer needs is open
+// without it, and the same words typed into the running turn either way leave
+// the receipt changeable.
+func (asked *askedOfThePerson) talkedPastLocked(keepSettled bool) []uint64 {
 	if len(asked.parked) == 0 {
 		return nil
 	}
 	retired := make([]uint64, 0, len(asked.parked))
-	for id := range asked.parked {
+	for id, have := range asked.parked {
+		if keepSettled && have != nil && have.settled != nil {
+			continue
+		}
 		// Claimed rather than closed off the range variable, so this road obeys
 		// the same primitive the other two do and nothing here can reach a
 		// channel it does not own.
@@ -336,6 +352,32 @@ func (asked *askedOfThePerson) talkedPastLocked() []uint64 {
 		retired = append(retired, id)
 	}
 	return retired
+}
+
+// dismissLocked ends ONE question because the person dismissed it without
+// answering. It is the talked-past ending for a single id: the entry is
+// claimed, marked dismissed and its wait closed, so the call parked on it comes
+// back with nothing decided. It answers the entry and whether a call was
+// parked on it, and false for a question this book no longer holds open —
+// gone, or already answered.
+func (asked *askedOfThePerson) dismissLocked(id uint64) (open *askOpen, called, ok bool) {
+	if have := asked.parked[id]; have == nil || have.settled != nil {
+		return nil, false, false
+	}
+	open, parked := asked.claimLocked(id)
+	if !parked {
+		return nil, false, false
+	}
+	open.dismissed = true
+	if open.clock != nil {
+		open.clock.Stop()
+	}
+	if open.wait != nil {
+		close(open.wait)
+		open.wait = nil
+		called = true
+	}
+	return open, called, true
 }
 
 // retireLocked is the LET-GO applied to every question the turn that raised it

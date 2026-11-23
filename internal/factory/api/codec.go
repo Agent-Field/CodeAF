@@ -112,10 +112,13 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
 	"JobContext.Markdown":         "attachment text is private to worker admission; ordinary job and queue reads carry only title and source",
+	"Item.Stall":                  "service-owned: the watchdog's record of a stalled wait and its manager turns; readers see the wait it becomes (wait.who you, action decide)",
+	"Item.Handoff":                "service-owned: the main agent's hold on the stop the job is on and its count of rounds given; readers see the wait it makes (wait.who main_agent, then you) and the offers by main_agent",
 	"Item.PausedRecoveryQuestion": "the service owns the paused decision identity; readers see the paused presentation",
 	"Item.LastRecoveryResume":     "the service's private acknowledgment for a repeated chat retry",
 	"Item.Passing":                "service-owned: who is passing the waiting approve step, set by the approval door just before its answer and moved onto the step's phase (Step.passed carries the result)",
 	"Item.PassJudge":              "service-owned: the manager's judgement of a manager-when approval, read only by the service that decides Auto (its reason reaches the job as needs_you's words)",
+	"Item.Overrides":              "service-owned: the failing checks a person told Auto to carry on past, read only by the service that decides Auto (autonomy_why clears); each one reaches readers as a line of the job's activity and a resumed record event",
 	"Item.GitHubIssueID":          "service-owned permanent GitHub identity; workers send RunReport deltas through run.ApplyReport, never replacement Items",
 	"Item.SourceClosed":           "service-owned automatic close provenance; RunReport has no such field; starting work clears it through TouchIssue",
 	"Item.PersonTouched":          "service-owned reconciliation exclusion; RunReport cannot replace it; store.RecordIssueTouch preserves ownership",
@@ -135,6 +138,7 @@ var Lost = map[string]string{
 	"Phase.Left":                   "crosses in whole milliseconds",
 	"Item.ChatSpent":               "crosses as the job's cost while it has no run; a start carries it into the run's spend before any worker pulls the job",
 	"Item.ChatModels":              "the service's own split of ChatSpent; a reader gets it summed by model from GET /v1/spend/models, and a start carries it onto the run before any worker pulls the job",
+	"Stream.AutoRepairs":           "service-owned: how many times Auto sent the run's failing findings back before publication, read only by the service that decides Auto; each one reaches readers as a line of the job's activity and a prove step in steps[]",
 	"Stream.Models":                "the service's own split of the run's spend; a reader gets it summed by model from GET /v1/spend/models, and a worker reports each call beside its report through ModelSpendHeader",
 	"CheckRun.AppID":               "server-side readiness matching only; every poll reads it from GitHub again before a required check is matched",
 	"PullRequest.ReadinessContext": "server-side review material up to 384 KiB; a queued final review carries it to the worker as the follow-up's details",
@@ -153,6 +157,20 @@ var Lost = map[string]string{
 	"Item.RepoSetBy":      "who gave the job its repository is the service's own routing input, read where the intake runs; the repository itself crosses as repo",
 	"Item.OverLimit":      "known gap: crosses as over_limit only while the job is queued, which is the only time it means anything; a round trip of any other state loses it",
 	"Item.NeedsAt":        "each store's own clock of when the job's wait on a person began, kept at its writes (factory.NoteWait); it crosses as needs_you.since for a wait with no clock of its own",
+}
+
+// cloneActs is a copy of a job's public acts, each with its own reviewers
+// list, so a job and the item it came from never share one.
+func cloneActs(in []factory.PublicAct) []factory.PublicAct {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]factory.PublicAct, len(in))
+	for i, a := range in {
+		a.Reviewers = append([]string(nil), a.Reviewers...)
+		out[i] = a
+	}
+	return out
 }
 
 // cloneBlocked is a copy of a job's block, so a job and the item it came from
@@ -174,7 +192,8 @@ func FromItem(it factory.Item) Job {
 		Group: it.Group, Milestone: it.Milestone, Context: mapList(it.Context, fromJobContext),
 		FromJob: it.FromJob, SplitFrom: it.SplitFrom, SourceIssue: it.SourceIssue, RunOn: it.RunOn, AgentField: it.AgentField, AgentFieldSteps: it.AgentFieldSteps,
 		WaitsOn: append([]int(nil), it.WaitsOn...), PolicyRun: it.PolicyRun, Blocked: cloneBlocked(it.Blocked),
-		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Manual: it.Manual, Effort: it.Effort,
+		Recovery: it.Recovery, Autonomy: it.Autonomy, AutonomyWhy: factory.AutonomyBlockReason(it), FollowUp: it.FollowUp, Wait: it.Wait, Offers: append([]factory.Offer(nil), it.Offers...), Manual: it.Manual, Effort: it.Effort,
+		Acts:      cloneActs(it.Acts),
 		SetupHeld: it.SetupHeld, Held: heldInQueue(it), OverLimit: it.OverLimit && it.State == factory.StateQueued,
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
@@ -209,6 +228,10 @@ func FromItem(it factory.Item) Job {
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
 	j.Merge = jobMerge(it)
+	if !it.MergeOfferedAt.IsZero() {
+		at := it.MergeOfferedAt.UTC()
+		j.MergeOfferedAt = &at
+	}
 	if factory.PausedDecision(it) {
 		j.State = StateNeedsYou
 	}
@@ -267,10 +290,14 @@ func needsYou(it factory.Item) *NeedsYou {
 	if who := factory.WaitingApprover(it); who != "" && factory.JobPersonOnly(kind) {
 		ny.WhoCanAnswer, ny.Approver = factory.WhoApprover, who
 	}
-	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts || kind == factory.NeedsRunnerOffline {
+	// A STEP'S OPEN QUESTION RIDES ON NEEDS_YOU even where a pull request's
+	// conflict or changes requested outranks it for the kind
+	// ([factory.QuestionKind]): the desk's card answers it from here.
+	asked := factory.QuestionKind(it)
+	if asked == factory.NeedsQuestion || asked == factory.NeedsOutOfAttempts || asked == factory.NeedsRunnerOffline {
 		ny.Question = needsQuestion(it)
 	}
-	switch kind {
+	switch asked {
 	case factory.NeedsApprovePlan:
 		ny.BackTo, _ = factory.PlanSendsBack(it)
 	case factory.NeedsApproveStep:
@@ -613,7 +640,8 @@ func ToItem(j Job) factory.Item {
 		Group: j.Group, Milestone: j.Milestone, Context: mapList(j.Context, toJobContext),
 		FromJob: j.FromJob, SplitFrom: j.SplitFrom, SourceIssue: j.SourceIssue, RunOn: j.RunOn, AgentField: j.AgentField, AgentFieldSteps: j.AgentFieldSteps,
 		WaitsOn: append([]int(nil), j.WaitsOn...), PolicyRun: j.PolicyRun, PolicyGroup: d.PolicyGroup, Blocked: cloneBlocked(j.Blocked),
-		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Manual: j.Manual, Effort: j.Effort,
+		Recovery: j.Recovery, Autonomy: j.Autonomy, FollowUp: j.FollowUp, Wait: j.Wait, Offers: append([]factory.Offer(nil), j.Offers...), Manual: j.Manual, Effort: j.Effort,
+		Acts:      cloneActs(j.Acts),
 		SetupHeld: j.SetupHeld, StopAfterStep: j.StopAfterStep,
 		Owners: append([]string(nil), j.Owners...),
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL, Model: j.Model, AutomaticModels: j.AutomaticModels, FactoryModel: j.FactoryModel,
@@ -636,6 +664,9 @@ func ToItem(j Job) factory.Item {
 	}
 	it.PullRequest = toPR(j.PR)
 	it.MergePolicy, it.Merging = unmerge(j.Merge)
+	if j.MergeOfferedAt != nil {
+		it.MergeOfferedAt = j.MergeOfferedAt.UTC()
+	}
 	if j.Draft != nil {
 		it.Draft = *j.Draft
 	}
@@ -759,9 +790,10 @@ func fromPR(pr *factory.PullRequest) *PR {
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
-			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
+			return PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL, Association: r.Association, Untrusted: r.Untrusted}
 		}),
-		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, BaseBranch: pr.BaseBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		Title: pr.Title, Body: pr.Body,
 	}
 	if !pr.MergedAt.IsZero() {
 		at := pr.MergedAt
@@ -789,9 +821,10 @@ func toPR(pr *PR) *factory.PullRequest {
 		ReadinessKey: pr.ReadinessKey, Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
-			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL}
+			return factory.PRReview{By: r.By, State: r.State, At: r.At, Body: r.Body, URL: r.URL, Association: r.Association, Untrusted: r.Untrusted}
 		}),
-		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		HeadSHA: pr.HeadSHA, HeadBranch: pr.HeadBranch, BaseBranch: pr.BaseBranch, Mergeable: pr.Mergeable, ChecksRead: pr.ChecksRead, ReviewsRead: pr.ReviewsRead,
+		Title: pr.Title, Body: pr.Body,
 	}
 	if pr.MergedAt != nil {
 		out.MergedAt = *pr.MergedAt
@@ -1209,7 +1242,7 @@ func steps(it factory.Item) []Step {
 	j := 0
 	for i, st := range stages {
 		for j < len(phases) && phases[j].Name != st.Name && factory.StageIndex(stages[i:], phases[j].Name) < 0 {
-			out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
+			out = append(out, runStep(Step{StepDef: phaseDef(phases[j])}, phases[j]))
 			j++
 		}
 		s := Step{StepDef: fromStage(st), State: StepPending, InPipeline: true}
@@ -1223,7 +1256,7 @@ func steps(it factory.Item) []Step {
 		out = append(out, s)
 	}
 	for ; j < len(phases); j++ {
-		out = append(out, runStep(Step{StepDef: StepDef{Name: phases[j].Name, Kind: string(phases[j].Kind)}}, phases[j]))
+		out = append(out, runStep(Step{StepDef: phaseDef(phases[j])}, phases[j]))
 	}
 	out = withAgentFieldSteps(it, out)
 	// A persisted decision owns the current step even if an older worker
@@ -1237,6 +1270,18 @@ func steps(it factory.Item) []Step {
 		}
 	}
 	return out
+}
+
+// phaseDef is the definition of a step the run holds and the pipeline does
+// not. AN EXTRA TASK CARRIES ITS INSTRUCTIONS AS THE STEP'S ASK AND WHO ASKED
+// AS ITS BY (factory's task.go), in the fields every step already has, so a
+// reader shows it like any step and [toPhase] reads the task back.
+func phaseDef(p factory.Phase) StepDef {
+	def := StepDef{Name: p.Name, Kind: string(p.Kind)}
+	if t := p.Task; t != nil {
+		def.Ask, def.By = t.Words, t.By
+	}
+	return def
 }
 
 func runStep(s Step, p factory.Phase) Step {
@@ -1373,6 +1418,11 @@ func toPhase(s Step) factory.Phase {
 	}
 	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), SkipReason: s.SkipReason, Note: s.Note,
 		Round: s.Round, RoundLimit: s.RoundLimit, Verification: s.Verification, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
+	// A step of the run that is no step of the pipeline and has an ask is an
+	// extra task ([phaseDef]). A call of an AgentField run is never one.
+	if !s.InPipeline && strings.TrimSpace(s.Ask) != "" && kind != string(factory.StageAgentField) && s.Target == "" {
+		p.Task = &factory.TaskAsk{Words: s.Ask, By: s.By}
+	}
 	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
 	// reader's job, and a pull from an older factory, carry only the step's
 	// result line, which is read as it always was (no done, no notes, no claims).

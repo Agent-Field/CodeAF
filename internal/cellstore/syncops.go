@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -175,6 +176,9 @@ type SyncEngine struct {
 	// MaterializeWith screens the folder before the engine's automatic undo
 	// snapshot; nil keeps the bare transport seam used by independent clients.
 	MaterializeWith func(context.Context, cell.Cell, Op) ([]byte, error)
+	// MaterializeWorkspaceWith materializes the workspace tree while keeping
+	// already-installed .cell/ files in place.
+	MaterializeWorkspaceWith func(context.Context, cell.Cell, Op) ([]byte, error)
 }
 
 // LocalWork reports work beyond the shared boundary. Standalone sync engines
@@ -184,6 +188,19 @@ func (e SyncEngine) LocalWork(ctx context.Context, c cell.Cell) (bool, error) {
 		return true, nil
 	}
 	return e.Work(ctx, c)
+}
+
+// OpenKeys returns the cell and dedup keys for open-state frame hints.
+func (e SyncEngine) OpenKeys() ([]byte, []byte) {
+	return e.Keys.CellKey, e.Keys.Dedup
+}
+
+// OpenCache returns the directory where open-state objects for c are cached.
+func (e SyncEngine) OpenCache(c cell.Cell) string {
+	if e.Inbox != nil {
+		return e.Inbox(c) + ".open"
+	}
+	return e.outbox(c) + ".open"
 }
 
 // Export implements the sync seam.
@@ -314,6 +331,26 @@ func (e SyncEngine) Materialize(ctx context.Context, c cell.Cell, head string) e
 	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))
 }
 
+// MaterializeWorkspace restores head's workspace tree without overwriting the
+// cell's already-installed .cell/ files (C1, C2).
+func (e SyncEngine) MaterializeWorkspace(ctx context.Context, c cell.Cell, head string) error {
+	if e.MaterializeWorkspaceWith == nil {
+		return e.Materialize(ctx, c, head)
+	}
+	earlier := heldBefore(c, e.holdDir(c))
+	raw, err := e.MaterializeWorkspaceWith(ctx, c, materializeOp{Head: head})
+	if err != nil {
+		return fmt.Errorf("sync materialize of cell %s: %w", c.ID, err)
+	}
+	var out struct {
+		Held []heldName `json:"held"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("sync materialize of cell %s: unreadable answer: %w", c.ID, err)
+	}
+	return noteHeld(c, e.holdDir(c), mergeHeld(earlier, out.Held))
+}
+
 // holdDir is where the cell's policy file lives: the composed .cell/ directory
 // when there is one, else the cell's own folder (the rule of Engine.policyDir).
 func (e SyncEngine) holdDir(c cell.Cell) string {
@@ -372,6 +409,9 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 		Work:      e.LocalWork,
 		Transport: e.transport(),
 		BeforeExport: func(ctx context.Context, c cell.Cell) error {
+			if err := cell.WaitWorkspace(ctx, c.Root, e.workspace(c)); err != nil {
+				return err
+			}
 			if err := Await(ctx, c); err != nil {
 				return err
 			}
@@ -393,7 +433,86 @@ func (e Engine) Sync(keys SyncKeys, ledger string) SyncEngine {
 			// Join a one-shot process before returning; Follow binds the final root.
 			materializer := e
 			materializer.Transport = materializeTransport(e.transport())
-			return materializer.do(ctx, c, e.cellDir(c), op)
+			raw, err := materializer.do(ctx, c, e.cellDir(c), op)
+			if err == nil {
+				if mop, ok := op.(materializeOp); ok {
+					e.recordMaterializedStat(c, mop.Head)
+				}
+			}
+			return raw, err
+		},
+		MaterializeWorkspaceWith: func(ctx context.Context, c cell.Cell, op Op) ([]byte, error) {
+			if err := e.screenCapture(ctx, c); err != nil {
+				return nil, err
+			}
+			scratch, err := e.scratchDir(c)
+			if err != nil {
+				return nil, err
+			}
+			defer os.RemoveAll(scratch)
+			materializer := e
+			materializer.Transport = materializeTransport(e.transport())
+			if e.cellDir(c) != "" {
+				policyDst := filepath.Join(stateDir(c), ".furrowpolicy")
+				if _, statErr := os.Lstat(policyDst); statErr == nil {
+					_ = copyFile(policyDst, filepath.Join(scratch, ".furrowpolicy"))
+				}
+				raw, err := materializer.do(ctx, c, scratch, op)
+				if err != nil {
+					return nil, err
+				}
+				if err := syncState(filepath.Join(scratch, "env"), filepath.Join(stateDir(c), "env")); err != nil && !os.IsNotExist(err) {
+					return nil, err
+				}
+				policySrc := filepath.Join(scratch, ".furrowpolicy")
+				if _, statErr := os.Lstat(policySrc); statErr == nil {
+					if err := copyFile(policySrc, policyDst); err != nil {
+						return nil, err
+					}
+				}
+				if err := mergeMissingState(scratch, stateDir(c), e.carriedStale(c)); err != nil {
+					return nil, err
+				}
+				// Once the head's records have replaced the carried-over older
+				// ones, the note has done its work: a later restore must not
+				// mistake a file written since for the older copy.
+				_ = removeIfPresent(e.carriedPath(c))
+				if mop, ok := op.(materializeOp); ok {
+					e.recordMaterializedStat(c, mop.Head)
+				}
+				return raw, nil
+			}
+			// When the cell's own folder is the tree (e.g. a home-folder chat),
+			// preserve the live .cell/ state across materialize.
+			if err := mergeMissingState(stateDir(c), scratch, nil); err != nil {
+				return nil, err
+			}
+			raw, err := materializer.do(ctx, c, "", op)
+			if err != nil {
+				return nil, err
+			}
+			want, err := stateFiles(scratch)
+			if err != nil {
+				return nil, err
+			}
+			for _, name := range want {
+				if err := copyFile(filepath.Join(scratch, name), filepath.Join(stateDir(c), name)); err != nil {
+					return nil, err
+				}
+			}
+			for name := range chainNames {
+				src := filepath.Join(scratch, name)
+				dst := filepath.Join(stateDir(c), name)
+				if info, statErr := os.Lstat(src); statErr == nil && !info.IsDir() {
+					if err := copyFile(src, dst); err != nil {
+						return nil, err
+					}
+				}
+			}
+			if mop, ok := op.(materializeOp); ok {
+				e.recordMaterializedStat(c, mop.Head)
+			}
+			return raw, nil
 		},
 	}
 }

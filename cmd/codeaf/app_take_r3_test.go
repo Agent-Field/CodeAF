@@ -82,7 +82,7 @@ func TestIdleRelease_R3_AppTakeSameHolderNewFenceSaysPickedUpAgain(t *testing.T)
 			originalTake, originalOpen := appTakeSeen, appTakeOpen
 			t.Cleanup(func() { appTakeSeen, appTakeOpen = originalTake, originalOpen })
 			takeCalls, opened := 0, false
-			appTakeSeen = func(context.Context, *syncsetup.Sync, string, *directory.LeaseExpectation, func(syncsetup.MoveProgress)) (syncsetup.Continued, error) {
+			appTakeSeen = func(context.Context, *syncsetup.Sync, string, *directory.LeaseExpectation, func(syncsetup.MoveProgress), func(cell.Cell, string)) (syncsetup.Continued, error) {
 				takeCalls++
 				if err := advance(); err != nil {
 					return syncsetup.Continued{}, err

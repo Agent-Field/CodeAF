@@ -26,11 +26,18 @@ const FeatureFactoryJobSteps = "factory.job_steps"
 // effort, factory, worker, runner).
 const FeatureFactoryJobRunsOn = "factory.job_runs_on"
 
+// FeatureFactoryJobMergeOffered is announced when a job carries
+// merge_offered_at (RFC 3339): when its manager last offered the person the
+// merge of its open pull request again (factory_answer action offer_merge),
+// so the job page brings its Merge card up anew. Absent when never re-offered.
+const FeatureFactoryJobMergeOffered = "factory.job_merge_offered"
+
 func withFactoryJobFactsFeatures(hello Hello, e Engine) Hello {
 	if _, ok := e.(Factory); ok {
 		hello = withFeature(hello, FeatureFactoryJobSource)
 		hello = withFeature(hello, FeatureFactoryJobSteps)
 		hello = withFeature(hello, FeatureFactoryJobRunsOn)
+		hello = withFeature(hello, FeatureFactoryJobMergeOffered)
 	}
 	return hello
 }
