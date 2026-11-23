@@ -564,7 +564,7 @@ while it was closed.
 
 ## Team sharing and Traffic on another computer
 
-Hosted relay storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: teams, shared team settings and Traffic wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
+Hosted relay storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: teams, shared team settings and Traffic wait. Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only

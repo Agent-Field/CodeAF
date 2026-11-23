@@ -198,7 +198,7 @@ Home lists chats from your other devices. By default (`idle handoff` is off by d
 
 A chat with a live hold on another device says `held on <device>` when it is open there with nothing running in it right now, and `working on <device>` while that device is in the middle of a turn; it changes back as soon as the turn ends. A relay too old to carry that word shows `held on <device>` either way, so a hold alone does not establish that work is running there. When a computer stops answering without letting go (for example its lid closed), its row says `<device> offline`; offline alone does not make a live hold free.
 
-Opening a chat with a live hold still asks before moving it: the devices row offers **Move here** whether the chat is running there or went off, and Enter on Home's row opens the `Move this chat here?` card showing how fresh the copy is and how many turns may still be there (`esc` leaves it there). Watching never takes a live hold.
+Opening a chat with a live hold still asks before moving it: the devices row offers **Move here** whether the chat is running there or went off, and Enter on Home's row opens the `Move this chat here?` card showing how fresh the copy is and how many turns may still be there (`esc` leaves it there). With remote control on and that computer online, Enter on a chat it is running opens the chat live instead, and the card is `alt+m` on Home (the page *Remote control* has the rest). Watching never takes a live hold.
 
 ## Continue on this machine — Continue where you left off, alt+c and alt+x
 
@@ -373,7 +373,7 @@ Once this window learns that another computer holds the chat, Enter opens
 as the live update or the `<device> moved this chat; this window now only
 shows it` notice arrives; it does not wait for the next background ownership
 check. Enter cannot start a reply, publish a turn or create a separate chat
-from this displaced window. Open the latest chat from Home to bring it back before sending (choose `move here` by default; with `idle handoff` on, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `move here`).
+from this displaced window. With remote control on, a window whose chat another computer moved opens a live view of the computer that has it now, marked `on <device> · live`, instead of staying a read-only copy (the page *Remote control*). Open the latest chat from Home to bring it back before sending (choose `move here` by default; with `idle handoff` on, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `move here`).
 
 A chat this computer still holds sends on one Enter without an extra request
 to the relay. A chat that has never been shared does too.
@@ -682,7 +682,7 @@ A current window understands the earlier outage and removed-computer notices too
 
 ## Why can't I continue new turns from my offline computer — relay storage is off, and blind pass-through needs both computers on
 
-Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats do not wait: with blind pass-through a chat and its files move between your paired computers while both are running codeaf, so a chat on a computer that is off cannot be taken until codeaf runs there again (*Move here says the computer that has this chat is not on*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request. Existing saved content remains readable; turning storage off deletes nothing.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats do not wait: with blind pass-through a chat and its files move between your paired computers while both are running codeaf, so a chat on a computer that is off cannot be taken until codeaf runs there again (*Move here says the computer that has this chat is not on*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request. Existing saved content remains readable; turning storage off deletes nothing.
 
 While blind pass-through carries your chats, the notice about closed storage says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for relay storage (request access in Settings under Devices)`. When blind pass-through is off or unavailable (`CODEAF_PASSTHROUGH=off`, or no other paired computer), chats stay on their computer and the refusal is `relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. Once approval is read in the background, waiting chats start within a minute without restarting.
 

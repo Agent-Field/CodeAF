@@ -15,6 +15,8 @@ You learn one thing: **a code shown on a screen you own, typed on the other comp
 
 **One code never gives both.** A code for your chats does not give a shell on any machine. A code for a machine does not give your chats.
 
+Pairing your chats adds a third thing, once remote control is on: your paired computers can open live the chats the others are running, and type into them if you allow it. It is neither of the two grants above. It starts no chat and runs nothing on a machine you did not already run a chat on, and `codeaf serve` and `--at` are unchanged. The page *Remote control* compares the three.
+
 Both codes are good for 10 minutes and take 1 attempt. For both, the two screens show the same three words, and a person answers `y / n` on the machine being opened. The page *Pairing your chats with a second computer* has the chats door.
 
 ## Reaching a machine behind a router or a firewall
@@ -587,4 +589,4 @@ has not supplied a chosen name, the window uses the requested name.
 
 ## Does live --at access need relay storage approval?
 
-Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request. Live access works on the other computer while it stays on; storage approval is needed to copy saved chats so they can open elsewhere when it is off.
+Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request. Live access works on the other computer while it stays on; storage approval is needed to copy saved chats so they can open elsewhere when it is off.
