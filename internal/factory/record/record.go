@@ -114,13 +114,15 @@ const (
 	// "factory" for the factory-wide rules, routes, spending and settings.
 	// The verb is chosen by the writer from [OrgVerbs]; the actor is always
 	// the signed-in person the server resolved, never a field a client sent.
-	TeamChanged       = "team_changed"
-	WorkstreamChanged = "workstream_changed"
-	PolicyChanged     = "policy_changed"
-	RulesChanged      = "rules_changed"
-	RoutesChanged     = "routes_changed"
-	SpendingChanged   = "spending_changed"
-	SettingsChanged   = "settings_changed"
+	TeamChanged           = "team_changed"
+	WorkstreamChanged     = "workstream_changed"
+	PolicyChanged         = "policy_changed"
+	RulesChanged          = "rules_changed"
+	RoutesChanged         = "routes_changed"
+	SpendingChanged       = "spending_changed"
+	SettingsChanged       = "settings_changed"
+	OrgPolicyChanged      = "org_policy_changed"
+	ResourceAccessChanged = "resource_access_changed"
 	// AgentChanged is an agent's place on the organization's list (factory
 	// org_agent.go). Its Object is "agent:<id>" and it never names the agent:
 	// every member reads the record.
@@ -132,7 +134,7 @@ const (
 
 // orgKinds are the organization change kinds; none of them names a job.
 var orgKinds = map[string]bool{TeamChanged: true, WorkstreamChanged: true, PolicyChanged: true,
-	RulesChanged: true, RoutesChanged: true, SpendingChanged: true, SettingsChanged: true, AgentChanged: true, LibraryChanged: true}
+	RulesChanged: true, RoutesChanged: true, SpendingChanged: true, SettingsChanged: true, AgentChanged: true, LibraryChanged: true, OrgPolicyChanged: true, ResourceAccessChanged: true}
 
 // OrgVerbs are the words an organization change may read as, by kind. They
 // are what a person reads in an activity list, so each is plain words.
@@ -144,13 +146,15 @@ var OrgVerbs = map[string][]string{
 		"renamed page", "moved page", "added job", "removed job", "added wake", "changed wake",
 		"added suggestion", "changed suggestion", "set budget", "posted spend",
 		"added agent", "removed agent"},
-	PolicyChanged:   {"changed go-aheads"},
-	RulesChanged:    {"changed rules"},
-	RoutesChanged:   {"changed routing"},
-	SpendingChanged: {"changed spending defaults", "set space limit"},
-	SettingsChanged: {"changed settings", "set model key", "removed model key"},
-	AgentChanged:    {"asked for org agent", "approved org agent", "declined org agent", "added org agent", "removed org agent"},
-	LibraryChanged:  {"added library page", "changed library page", "removed library page"},
+	PolicyChanged:         {"changed go-aheads"},
+	RulesChanged:          {"changed rules"},
+	RoutesChanged:         {"changed routing"},
+	SpendingChanged:       {"changed spending defaults", "set space limit"},
+	SettingsChanged:       {"changed settings", "set model key", "removed model key"},
+	OrgPolicyChanged:      {"org policy changed"},
+	ResourceAccessChanged: {"shared", "removed access", "moved"},
+	AgentChanged:          {"asked for org agent", "approved org agent", "declined org agent", "added org agent", "removed org agent"},
+	LibraryChanged:        {"added library page", "changed library page", "removed library page"},
 }
 
 // IsOrgKind is whether kind is one of the organization's own changes.
@@ -246,6 +250,10 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 		}
 		if err := f.Close(); err != nil {
 			return err
+		}
+		// The policy route publishes one batch after the policy is saved.
+		if event.Kind == OrgPolicyChanged {
+			return nil
 		}
 		// Accepted decisions reach open pages even when they do not rewrite a job.
 		kind := ""
