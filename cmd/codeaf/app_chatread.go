@@ -25,7 +25,7 @@ import (
 // for a real project) before it shows a line; most people only wanted to see
 // where the conversation had got to.
 //
-// So this door asks syncsetup.ReadChat for a page — the transcript's own objects
+// So this door asks syncsetup.ReadChatPage for a page — the transcript's own objects
 // and the few content-defined chunks under that page, fetched into the store a
 // later take of the chat uses, so "Continue here" after reading pays only for
 // the rest — and shapes it with the very code agents.entries uses for a chat on
@@ -72,7 +72,7 @@ func (b *appBackend) ReadChat(p appwire.ChatReadParams) (appwire.ChatReadResult,
 		entries, _ := appRemoteEntries(p.Cell, segment, time.Time{})
 		return len(entries)
 	}
-	page, err := s.ReadChat(ctx, cellstore.EngineFor(""), c, p.Before, p.Limit, count)
+	page, err := s.ReadChatPage(ctx, cellstore.EngineFor(""), c, p.Before, p.Limit, count)
 	switch {
 	case errors.Is(err, syncsetup.ErrNoChat):
 		return appwire.ChatReadResult{}, appwire.Errorf(appwire.CodeNotFound, "that chat is not available")

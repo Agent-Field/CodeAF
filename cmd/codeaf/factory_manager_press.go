@@ -240,30 +240,6 @@ func pressOfferMerge(ctx context.Context, press *localJobPress, it factory.Item)
 	return fmt.Sprintf("The Merge card for pull request #%d is shown to the person again on the job page, as it stands now. Nothing is merged: the merge stays their press on that card, with its Undo window.", it.PullRequest.Number), nil
 }
 
-// pressAutoResume tells a job's Auto to carry on past the failing checks it
-// paused on, as the person, with the words they sent (factory's override.go).
-// The factory checks the caller may approve the job and records who overrode
-// which finding on the job's history.
-func pressAutoResume(ctx context.Context, press *localJobPress, it factory.Item, words string) (string, error) {
-	if !factory.OffersAutoResume(it) {
-		return "", errors.New("Nothing changed: Auto is not paused on a failing check")
-	}
-	if press == nil {
-		return "", errNoPress
-	}
-	found := factory.OverrideSummary(factory.FailingFindings(it))
-	if err := (*press)(ctx, it.ID, serve.ResumeAutoVerb, struct {
-		Words string `json:"words,omitempty"`
-	}{words}); err != nil {
-		var wire *appwire.Error
-		if errors.As(err, &wire) && wire.Code == appwire.CodeUncertain {
-			return "", err
-		}
-		return "", fmt.Errorf("Nothing changed: %w", err)
-	}
-	return "Auto resumed, as the person: it carries on past " + found + ", and the job's history records the override. A new failing check pauses it again. This confirms the override, not the publication; read factory_status for the outcome.", nil
-}
-
 // pressPRDecision checks the decision against the job as saved and presses it.
 // reread reads the job again after a press that changes what the page offers.
 func pressPRDecision(ctx context.Context, press *localJobPress, it factory.Item, action string, reread func() (factory.Item, error)) (string, error) {

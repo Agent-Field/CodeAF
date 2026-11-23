@@ -213,13 +213,6 @@ func keepGoingWords(t factory.WorkstreamTask, ask factory.TaskAsk, who, text str
 	return firstWords(who, "The task's owner") + said + " Carry on from where you stopped and finish the task.\n\n" + taskWords(t)
 }
 
-func firstWords(s, otherwise string) string {
-	if strings.TrimSpace(s) == "" {
-		return otherwise
-	}
-	return s
-}
-
 // retryLine is the thread line while a run waits for its one more try.
 func retryLine() string {
 	return fmt.Sprintf("Afi hit a model error and tries again in %d seconds", int(taskRetryAfter/time.Second))

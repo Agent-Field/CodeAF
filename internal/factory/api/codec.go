@@ -1430,7 +1430,7 @@ func toPhase(s Step) factory.Phase {
 	// A step of the run that is no step of the pipeline and has an ask is an
 	// extra task ([phaseDef]). A call of an AgentField run is never one.
 	if !s.InPipeline && strings.TrimSpace(s.Ask) != "" && kind != string(factory.StageAgentField) && s.Target == "" {
-		p.Task = &factory.TaskAsk{Words: s.Ask, By: s.By}
+		p.Task = &factory.JobTaskRequest{Words: s.Ask, By: s.By}
 	}
 	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
 	// reader's job, and a pull from an older factory, carry only the step's

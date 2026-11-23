@@ -23,7 +23,7 @@ type ReadPage struct {
 	Fetched int64
 }
 
-// ReadChat reads one page of chat c's transcript as another computer last
+// ReadChatPage reads one page of chat c's transcript as another computer last
 // sealed it, without taking the chat.
 //
 // IT IS BUILT FROM THE SAME PARTS AS A TAKE, ON PURPOSE. The engine is the one
@@ -41,7 +41,7 @@ type ReadPage struct {
 // before is "" for the newest page (read at the head the relay names now) or a
 // cursor a previous page answered, which pages back through the head that
 // paging began at. count is how many entries a segment shows a person.
-func (s *Sync) ReadChat(ctx context.Context, eng cellstore.Engine, c cell.Cell, before string, limit int, count func([]byte) int) (ReadPage, error) {
+func (s *Sync) ReadChatPage(ctx context.Context, eng cellstore.Engine, c cell.Cell, before string, limit int, count func([]byte) int) (ReadPage, error) {
 	var head string
 	var sealed int64
 	if before != "" {

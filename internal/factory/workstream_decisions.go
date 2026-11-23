@@ -303,10 +303,12 @@ func RequestDecision(t WorkstreamTask, text string, who PersonRef, id string, no
 // repeats it six times is noise, and a check that reads six copies asks the
 // maker six times.
 func sameDecision(text, maker string, d WorkstreamDecision) bool {
-	return NormalizeHandle(maker) == NormalizeHandle(d.By) && decisionWords(text) == decisionWords(d.Text)
+	return NormalizeHandle(maker) == NormalizeHandle(d.By) && normalizedDecisionWords(text) == normalizedDecisionWords(d.Text)
 }
 
-func decisionWords(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
+func normalizedDecisionWords(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+}
 
 // KeepNewDecisions are the decisions of fresh that list does not already keep:
 // an answered Ask or a request whose words its maker has already settled, and
@@ -438,15 +440,6 @@ func RuleDecisions(before, after WorkstreamRules, who PersonRef, names func(orde
 		out = append(out, newDecision(newID(), l, who, &DecisionFrom{Kind: DecisionFromRule}, now))
 	}
 	return out
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, x := range s {
-		if strings.TrimSpace(x) != "" {
-			return strings.TrimSpace(x)
-		}
-	}
-	return ""
 }
 
 // WithdrawDecision withdraws decision id from list, by its maker alone. It

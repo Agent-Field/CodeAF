@@ -4,8 +4,6 @@ import "time"
 
 const (
 	FeatureChatsTake = "chats.take"
-	// FeatureChatsRead says agents.entries follows saved remote heads without taking the chat.
-	FeatureChatsRead = "chats.read"
 	// FeatureChatReadSource identifies engines that tag remote and fallback pages.
 	FeatureChatReadSource = "chats.read_source"
 	// FeatureChatsMove says chat rows carry move and move_ended, and
@@ -22,11 +20,15 @@ const (
 	// computer puts in the chat's queue, so it runs when the turn there ends.
 	// It is absent while the account's hosted sync storage is off ([ChatsSendOffer]).
 	FeatureChatsSend = "chats.send"
-	// FeatureChatsRead says chats.read exists: the transcript of a chat another
-	// computer holds, read page by page from what that computer last sealed,
-	// without taking the chat and without downloading its project folder. It is
-	// absent unless a relay is configured AND the engine codeaf seals with can
-	// read one path of a snapshot (a capability that cannot work is absent).
+	// FeatureChatsRead names two engine abilities that share one hello word,
+	// because both arrived on their own branches under it: agents.entries
+	// follows saved remote heads without taking the chat, and chats.read
+	// exists, the transcript of a chat another computer holds, read page by
+	// page from what that computer last sealed, without taking the chat and
+	// without downloading its project folder. The word is advertised when
+	// either ability is present. The chats.read half is absent unless a relay
+	// is configured AND the engine codeaf seals with can read one path of a
+	// snapshot (a capability that cannot work is absent).
 	FeatureChatsRead = "chats.read"
 	// FeatureChatsCrew says chat rows carry crew, crew_name, crew_manager and
 	// crew_kind: the crew a chat belongs to on the computer that holds it, so a
