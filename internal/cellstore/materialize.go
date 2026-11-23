@@ -128,6 +128,7 @@ var stageStatePaths = []string{
 	cell.StateDir + "/artifacts.jsonl",
 	cell.StateDir + "/artifacts",
 	cell.StateDir + "/tasks",
+	cell.StateDir + "/processes/head.json",
 	OwnFolderPath,
 	taskcopy.WorkspaceCarrierPath + "/manifest.json",
 }

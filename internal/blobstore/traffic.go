@@ -28,6 +28,11 @@ func WithTraffic(ctx context.Context, w TrafficWatch) context.Context {
 	return context.WithValue(ctx, trafficKey{}, w)
 }
 
+// TrafficFrom is the watch ctx carries, for a store that is not the HTTP client
+// but moves its bytes over a wire too (a computer's files door), so a move shows
+// the same progress and is stopped by the same idle limit whichever road it takes.
+func TrafficFrom(ctx context.Context) TrafficWatch { return trafficOf(ctx) }
+
 func trafficOf(ctx context.Context) TrafficWatch {
 	w, _ := ctx.Value(trafficKey{}).(TrafficWatch)
 	return w

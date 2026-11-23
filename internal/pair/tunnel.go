@@ -70,26 +70,46 @@ const taskTunnelPrologue = "codeaf task door v1 connect"
 // ConnectWithKey opens an identity task tunnel with an explicit static key.
 // The responder's key must already be pinned by the caller.
 func ConnectWithKey(conn io.ReadWriteCloser, peer []byte, key *ecdh.PrivateKey) (*Tunnel, error) {
+	return ConnectWithKeyPrologue(conn, peer, key, taskTunnelPrologue)
+}
+
+// ConnectWithKeyPrologue is ConnectWithKey for a door of another kind. The
+// prologue is mixed into the handshake, so a connection made for one kind of
+// door can never complete against a door of a different kind, even when a
+// caller hands both the same static key. It must not be empty.
+func ConnectWithKeyPrologue(conn io.ReadWriteCloser, peer []byte, key *ecdh.PrivateKey, prologue string) (*Tunnel, error) {
 	if key == nil {
-		return nil, errors.New("pair: a task tunnel needs a static key")
+		return nil, errors.New("pair: an identity tunnel needs a static key")
 	}
-	return connectTaskTunnel(conn, peer, Device{private: key}.noiseKey(), "", taskTunnelPrologue)
+	if prologue == "" {
+		return nil, errors.New("pair: an identity tunnel needs a prologue")
+	}
+	return connectTaskTunnel(conn, peer, Device{private: key}.noiseKey(), "", prologue)
 }
 
 // AcceptWithKey answers an identity task tunnel. Device authorization follows
 // inside the tunnel, where certificates can be bound to ChannelBinding.
 func AcceptWithKey(conn io.ReadWriteCloser, key *ecdh.PrivateKey) (*Tunnel, error) {
+	return AcceptWithKeyPrologue(conn, key, taskTunnelPrologue)
+}
+
+// AcceptWithKeyPrologue is AcceptWithKey for a door of another kind; see
+// [ConnectWithKeyPrologue].
+func AcceptWithKeyPrologue(conn io.ReadWriteCloser, key *ecdh.PrivateKey, prologue string) (*Tunnel, error) {
 	if key == nil {
-		return nil, errors.New("pair: a task tunnel needs a static key")
+		return nil, errors.New("pair: an identity tunnel needs a static key")
+	}
+	if prologue == "" {
+		return nil, errors.New("pair: an identity tunnel needs a prologue")
 	}
 	var intent [1]byte
 	if _, err := io.ReadFull(conn, intent[:]); err != nil {
 		return nil, err
 	}
 	if intent[0] != intentConnect {
-		return nil, errors.New("this door takes task connections")
+		return nil, errors.New("this door takes identity connections")
 	}
-	tunnel, _, err := acceptTaskTunnel(conn, Device{private: key}.noiseKey(), func([]byte, string) error { return nil }, taskTunnelPrologue)
+	tunnel, _, err := acceptTaskTunnel(conn, Device{private: key}.noiseKey(), func([]byte, string) error { return nil }, prologue)
 	return tunnel, err
 }
 

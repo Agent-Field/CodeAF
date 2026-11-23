@@ -966,7 +966,7 @@ type openFileSpec struct {
 	mode    os.FileMode
 }
 
-func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, stageInbox, mainInbox string) (bool, error) {
+func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, stageInbox string, transcriptOnly bool) (bool, error) {
 	cellKey, dedup, openCache, ok := parseKeys(f.Engine, c)
 	if !ok {
 		return false, nil
@@ -978,7 +978,7 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 	rawByRID := map[string]blobstore.Object{}
 	metaByOID := map[[32]byte]metaObj{}
 	loadObjectsFromDir(stageInbox, cellKey, rawByRID, metaByOID)
-	if openCache != "" {
+	if !transcriptOnly && openCache != "" {
 		loadObjectsFromDir(openCache, cellKey, rawByRID, metaByOID)
 	}
 
@@ -1047,6 +1047,33 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 			return false, err
 		}
 	}
+	if transcriptOnly {
+		name := filepath.Base(cell.TranscriptPath)
+		e, missing, found := findDirEntryInPages(cellDirOID, name, metaByOID)
+		if !found && len(missing) != 0 {
+			if err := fetchMissingMeta(missing); err != nil {
+				return false, err
+			}
+			e, missing, found = findDirEntryInPages(cellDirOID, name, metaByOID)
+		}
+		if !found {
+			// A newly saved chat can have no transcript yet.
+			return len(missing) == 0, nil
+		}
+		blobOID, ok := e.Target.id32()
+		if e.Kind != "File" || !ok {
+			return false, nil
+		}
+		if err := fetchMissingMeta([][32]byte{blobOID}); err != nil {
+			return false, err
+		}
+		m := metaByOID[blobOID]
+		var b furrowBlob
+		if m.kind != 2 || json.Unmarshal(m.body, &b) != nil {
+			return false, nil
+		}
+		return f.stageTranscriptFile(ctx, filepath.Join(c.Root, cell.TranscriptPath), dedup, b)
+	}
 	cellEntries, missingCellPages, ok := decodeDirEntries(cellDirOID, metaByOID)
 	if !ok && len(missingCellPages) > 0 {
 		if err := fetchMissingMeta(missingCellPages); err != nil {
@@ -1066,8 +1093,8 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 	// whether it is the head's file.
 	seededWarm := fileExistsHint(filepath.Join(c.Root, filepath.FromSlash(cell.MetaPath)))
 	var subDirOIDs [][32]byte
-	var envDirOID, carrierDirOID, receiptsDirOID [32]byte
-	var hasEnvDir, hasCarrierDir, hasReceiptsDir bool
+	var envDirOID, carrierDirOID, receiptsDirOID, processesDirOID [32]byte
+	var hasEnvDir, hasCarrierDir, hasReceiptsDir, hasProcessesDir bool
 	var files []openFileSpec
 
 	for _, e := range cellEntries {
@@ -1085,6 +1112,9 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 			})
 		case "Directory":
 			switch name {
+			case "processes":
+				processesDirOID, hasProcessesDir = oid, true
+				subDirOIDs = append(subDirOIDs, oid)
 			case "env":
 				envDirOID, hasEnvDir = oid, true
 				subDirOIDs = append(subDirOIDs, oid)
@@ -1120,6 +1150,28 @@ func (f *Fetcher) stageOpenFromInbox(ctx context.Context, c cell.Cell, head, sta
 							mode:    fileModeOf(se.Mode),
 						})
 					}
+				}
+			}
+		}
+	}
+
+	// Bring the saved head before a reader can mint an empty one. The job
+	// records follow with the files, so opening does not fetch every old log.
+	if hasProcessesDir {
+		entries, missing, ok := decodeDirEntries(processesDirOID, metaByOID)
+		if !ok && len(missing) > 0 {
+			if err := fetchMissingMeta(missing); err != nil {
+				return false, err
+			}
+			entries, _, ok = decodeDirEntries(processesDirOID, metaByOID)
+		}
+		if !ok {
+			return false, nil
+		}
+		for _, e := range entries {
+			if e.Kind == "File" && string(e.Name) == "head.json" {
+				if oid, ok := e.Target.id32(); ok {
+					files = append(files, openFileSpec{relPath: filepath.Join(cell.StateDir, "processes", string(e.Name)), blobOID: oid, mode: fileModeOf(e.Mode)})
 				}
 			}
 		}

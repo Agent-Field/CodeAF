@@ -4414,6 +4414,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case storageRequestOpenedMsg:
+		a.storageRequestOpened(msg)
+		return a, nil
+
 	case copiedMsg:
 		// A deliverable taken out of the session that made it (deliverables.go),
 		// coming back from the disk the way an export does.

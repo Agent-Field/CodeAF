@@ -46,7 +46,7 @@ func TestStorageOptInDevicesRequestAndStatus(t *testing.T) {
 		t.Fatalf("request link: %s %v", opened, err)
 	}
 	details := plain(frame(a))
-	if !strings.Contains(details, code) || !strings.Contains(strings.Join(strings.Fields(details), ""), syncsetup.StorageRequestLink(code)) {
+	if !strings.Contains(details, code) || !strings.Contains(details, "Open request on GitHub") || !strings.Contains(frame(a), syncsetup.StorageRequestLink(code)) {
 		t.Fatalf("no-browser instructions: %s", details)
 	}
 	a.syncSpace = blobstore.Counts{Storage: "off"}
@@ -61,12 +61,34 @@ func TestStorageOptInDevicesRequestAndStatus(t *testing.T) {
 	}
 	door.state = "on"
 	a.sheet.storageCode, a.sheet.storageState = a.relayStorageAccount()
+	if strings.Contains(plain(frame(a)), "request code") {
+		t.Fatal("approved storage still shows the request panel")
+	}
 	if strings.Contains(a.sheet.devicesKeysLine(), "request access") {
 		t.Fatal("enabled storage still asks for access")
 	}
 	a.syncSpace = blobstore.Counts{Storage: "on"}
 	if strings.Contains(a.statusText(), "sync storage") {
 		t.Fatal("enabled status has off line")
+	}
+}
+
+func TestQAStorageRequestDoesNotShowFallbackWhenBrowserOpens(t *testing.T) {
+	door := &storageApprovals{fakeApprovals: devicesFake(), code: "id_" + strings.Repeat("c", 32), state: "off"}
+	a, _ := openSettingsDevices(t, door, time.Now())
+	old := processOpener
+	processOpener = func(string) error { return nil }
+	t.Cleanup(func() { processOpener = old })
+	cmd := a.requestRelayStorage()
+	if cmd == nil {
+		t.Fatal("no browser request")
+	}
+	a.Update(cmd())
+	if a.sheet.storageRequest || strings.Contains(plain(frame(a)), "request code") {
+		t.Fatal("a successful browser open showed the no-browser fallback")
+	}
+	if !strings.Contains(strings.Join(strings.Fields(plain(frame(a))), " "), "GitHub may ask you to sign in") {
+		t.Fatal("the browser receipt did not explain GitHub sign-in")
 	}
 }
 
@@ -109,8 +131,9 @@ func TestStorageOptInSearchRequestShowsFallbackFrame(t *testing.T) {
 		}
 	}
 	r.press("enter")
+	r.until("no-browser fallback", func() bool { return a.sheet.storageRequest })
 	shown := plain(frame(a))
-	if a.sheet.searching() || !a.sheet.onDevices() || !strings.Contains(shown, code) || !strings.Contains(strings.Join(strings.Fields(shown), ""), syncsetup.StorageRequestLink(code)) {
+	if a.sheet.searching() || !a.sheet.onDevices() || !strings.Contains(shown, code) || !strings.Contains(frame(a), syncsetup.StorageRequestLink(code)) {
 		t.Fatalf("search fallback frame: %s", shown)
 	}
 }
@@ -133,8 +156,9 @@ func TestStorageOptInRequestFallbackNarrowPendingDevicesFrame(t *testing.T) {
 	// A device-list failure must not hide the locally available request.
 	a.sheet.dev.readErr = errors.New("device list unavailable")
 	r.press("enter")
+	r.until("narrow no-browser fallback", func() bool { return a.sheet.storageRequest })
 	shown := strings.Join(strings.Fields(plain(frame(a))), "")
-	if !strings.Contains(shown, code) || !strings.Contains(shown, syncsetup.StorageRequestLink(code)) {
+	if !strings.Contains(shown, code) || !strings.Contains(frame(a), syncsetup.StorageRequestLink(code)) {
 		t.Fatalf("narrow request frame: %s", plain(frame(a)))
 	}
 }

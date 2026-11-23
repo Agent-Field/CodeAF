@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/Agent-Field/codeaf/internal/blobstore"
 	"github.com/Agent-Field/codeaf/internal/clusterctl"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/relay"
@@ -58,6 +59,12 @@ func NetworkFailure(err error) bool {
 	if errors.As(err, &upload) && upload.SyncFailure() {
 		return true
 	}
+	return TransportFailure(err)
+}
+
+// TransportFailure reports a failed network exchange even through a saving
+// error, without treating every pending upload as a connectivity problem.
+func TransportFailure(err error) bool {
 	var local *net.OpError
 	if errors.As(err, &local) && strings.HasPrefix(local.Net, "unix") {
 		return false
@@ -65,7 +72,7 @@ func NetworkFailure(err error) bool {
 	var request *url.Error
 	var operation *net.OpError
 	var dns *net.DNSError
-	return errors.As(err, &request) || errors.As(err, &operation) || errors.As(err, &dns) || errors.Is(err, directory.ErrUnreachable) || errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, clusterctl.ErrUnavailable) || errors.Is(err, relay.ErrUnreachable) || errors.Is(err, relay.ErrStruggling)
+	return errors.As(err, &request) || errors.As(err, &operation) || errors.As(err, &dns) || errors.Is(err, blobstore.ErrUnreachable) || errors.Is(err, directory.ErrUnreachable) || errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, clusterctl.ErrUnavailable) || errors.Is(err, relay.ErrUnreachable) || errors.Is(err, relay.ErrStruggling)
 }
 
 // RequestNotSent requires a failed dial, before an HTTP request could be sent.

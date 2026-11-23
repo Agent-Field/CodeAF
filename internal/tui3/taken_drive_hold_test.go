@@ -53,7 +53,7 @@ func TestTakenChatFollowsItsLocalDriveLease(t *testing.T) {
 			drain(t, a, a.askMachines())
 			notice := false
 			for _, entry := range a.entries {
-				if entry.kind == entryNote && strings.Contains(plain(entry.text), "this window now only shows it") {
+				if entry.kind == entryNote && strings.Contains(plain(entry.text), chatlist.Superseded("other device")) {
 					notice = true
 				}
 			}

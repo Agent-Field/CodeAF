@@ -224,7 +224,7 @@ func (o *appPairOperation) ask(ctx context.Context, kind, title, detail string, 
 		return ""
 	}
 }
-func (o *appPairOperation) finish(state, line string, err error, restart bool) {
+func (o *appPairOperation) finish(state, line string, failure *appwire.PairError, restart bool) {
 	o.backend.pair.mu.Lock()
 	defer o.backend.pair.mu.Unlock()
 	if o.finished {
@@ -241,8 +241,9 @@ func (o *appPairOperation) finish(state, line string, err error, restart bool) {
 	if line != "" {
 		o.view.Lines = append(o.view.Lines, strings.Split(line, "\n")...)
 	}
-	if err != nil {
-		o.view.Error = &appwire.PairError{Code: appwire.CodeEngine, Message: err.Error()}
+	if failure != nil {
+		e := *failure
+		o.view.Error = &e
 	}
 	o.view.Restart = restart
 	o.backend.pair.restart = restart
@@ -250,26 +251,42 @@ func (o *appPairOperation) finish(state, line string, err error, restart bool) {
 }
 func (o *appPairOperation) run(p appwire.PairStartParams) {
 	err, restart := o.perform(p)
+	if err != nil && p.Mode == "offer_code" && !identity.Solo(o.backend.relayHome()) {
+		// The identity left after a yes even though the pairing did not finish
+		// here (not confirmed, a lost answer, a cancel while it was being
+		// read), so this computer syncs from now on, and says so.
+		o.announceSync()
+	}
 	switch {
 	case err == nil:
-		o.backend.devices.wakePublication()
-		o.backend.chats.wakePublication()
 		if !restart {
 			guard.Go("app/paired-chats", func() { _, _ = o.backend.ListChats() })
 		}
 		// These events precede done: a desktop may immediately restart on done.
-		o.backend.publishDevices()
-		sync, _ := o.backend.SyncStatus()
-		o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
+		o.announceSync()
 		o.finish("done", "", nil, restart)
+	case errors.Is(err, pair.ErrNotConfirmed):
+		// A cancel after the answer went out lands here too: the other
+		// computer may hold the chats, so this is never "Nothing was paired".
+		o.finish("failed", "", appPairError(err), false)
 	case o.ctx.Err() != nil || errors.Is(err, context.Canceled):
 		o.finish("cancelled", appPairCancelled, nil, false)
 	case errors.Is(err, pair.ErrRefused):
 		o.finish("cancelled", appPairDeclined, nil, false)
 	default:
 		// The failure sentence is the error alone; repeating it as a line showed it twice.
-		o.finish("failed", "", errors.New(appPairFailure(err)), false)
+		o.finish("failed", "", appPairError(err), false)
 	}
+}
+
+// announceSync wakes this computer's device and chat publication and tells the
+// app its devices and sync now, because the pairing changed whether it syncs.
+func (o *appPairOperation) announceSync() {
+	o.backend.devices.wakePublication()
+	o.backend.chats.wakePublication()
+	o.backend.publishDevices()
+	sync, _ := o.backend.SyncStatus()
+	o.backend.emit.Emit(appwire.EventSyncChanged, appwire.SyncChanged{Sync: sync})
 }
 func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 	dir := o.backend.relayHome()
@@ -294,6 +311,11 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 			_, _ = devname.Set(dir, p.Name)
 		}
 		_ = ownDeviceRecord(o.ctx, dir, route)
+		notePaired(dir, route)
+		// JoinByLink already samples through its fleet read after installing.
+		if p.Mode != "request_link" {
+			samplePairedStorage(o.ctx, dir, route)
+		}
 	}
 	switch p.Mode {
 	case "offer_code":
@@ -309,8 +331,20 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		o.line(appPairPaired(name))
 		return nil, false
 	case "use_code":
+		// A typo is refused before the directory is asked anything.
+		if _, err := pair.ReadJoinCode(p.Code); err != nil {
+			return err, false
+		}
 		joining := pairJoiningAt(dir)(false)
-		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
+		// What this computer already holds is refused before the other one is
+		// asked to approve, as the terminal does. A directory that cannot be read
+		// leaves refusals to after the approval, where the other computer still
+		// never says it paired one that refused.
+		standing, _ := joinStanding(o.ctx, dir, func() (pair.Mailbox, error) { return route, nil })
+		if err := standing.refusal(); err != nil {
+			return err, false
+		}
+		joining.Revoked, joining.Alone = standing.revoked, standing.alone()
 		if p.Name != "" {
 			joining.Label = p.Name
 		}
@@ -325,7 +359,11 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		return nil, !joined.Already
 	case "request_link":
 		joining := linkJoining(dir)(route, false)
-		joining.Revoked = ownDeviceRevoked(o.ctx, dir, route)
+		standing, _ := joinStanding(o.ctx, dir, func() (pair.Mailbox, error) { return route, nil })
+		if err := standing.refusal(); err != nil {
+			return err, false
+		}
+		joining.Revoked = standing.revoked
 		if p.Name != "" {
 			joining.Label = p.Name
 		}

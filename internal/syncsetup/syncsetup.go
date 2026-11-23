@@ -109,6 +109,8 @@ type Sync struct {
 	ProfileDir string
 	Ledger     string        // cellstore.LedgerName of Relay and the identity
 	Interval   time.Duration // flush interval
+
+	stateCredentialRefresh uint64 // guarded by stateMu across vault rounds
 }
 
 // Open builds the clients for the relay Resolve names. It answers ok = false
@@ -225,7 +227,7 @@ func buildAt(home, base string, id identity.Identity, dev identity.Dev, interval
 		Ledger:     cellstore.LedgerName(base, id.ID()),
 		Interval:   interval,
 	}
-	s.Dir = &deviceDirectory{HTTP: directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout})), home: home, binding: deviceBindingFor(base, id, dev)}
+	s.Dir = &deviceDirectory{HTTP: directory.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{Timeout: requestTimeout})), home: home, binding: deviceBindingFor(base, id, dev), withholdNames: s.recordsWithholdNames}
 	s.Store = GateStore(blobstore.NewHTTP(base, sign, s.ClusterHTTP(&http.Client{})), home, base, id.ID())
 	return s
 }

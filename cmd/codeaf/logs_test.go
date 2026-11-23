@@ -38,6 +38,10 @@ import (
 // they stopped at a live provider instead (testenv_test.go carries the whole
 // case).
 func TestMain(m *testing.M) {
+	// Loopback fixtures stand in for hosted providers, including their retry policy.
+	if _, pinned := os.LookupEnv(config.EnvResponsePatience); !pinned {
+		os.Setenv(config.EnvResponsePatience, "1")
+	}
 	// THE RUNNER BASE IS ONE FIXED FOLDER PER USER, SHARED BY EVERY TEST PROCESS
 	// AND NEVER THE LIVE ONE. It is short, so Unix sockets fit under macOS's long
 	// TMPDIR, and it is never /tmp/codeaf-runners-<uid>, so no test reaches a

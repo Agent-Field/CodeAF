@@ -270,6 +270,9 @@ type sheet struct {
 	// `answered` when [wire] points this sheet somewhere else, for the same
 	// reason: what one router carried is not evidence about another.
 	carries prefAnswer
+	// multiProvider records which models have named distinct providers in a
+	// fresh answer from this base, because cached rows may come from elsewhere.
+	multiProvider map[string]bool
 	// now is the clock the probe ages its answer on. Nil is the wall clock,
 	// which is what every wiring outside a test gets; a test that has to watch
 	// [sheetTTL] pass sets it, because five minutes of real waiting is not a
@@ -349,6 +352,7 @@ func (s *sheet) wire(base, key string, fetch Fetcher, known bool) {
 	// be exactly the mistake this whole file is here to stop.
 	if base != s.base {
 		s.answered, s.askedAt, s.carries = answerUnasked, time.Time{}, prefUnasked
+		clear(s.multiProvider)
 	}
 	s.base, s.key, s.fetch = base, strings.TrimSpace(key), fetch
 	if known {
@@ -497,6 +501,19 @@ func SheetServes(base string) bool {
 	own.mu.RLock()
 	defer own.mu.RUnlock()
 	return own.base == base && own.answered == answerServes
+}
+
+// SheetHasMultipleProviders reports whether the base named several providers
+// for this model, which is the evidence a local gateway needs to justify a rescue.
+func SheetHasMultipleProviders(base, model string) bool {
+	own, ok := Default().Sheet().(*sheet)
+	if !ok {
+		return false
+	}
+	base, model = trimBase(base), LedgerModel(model)
+	own.mu.RLock()
+	defer own.mu.RUnlock()
+	return base != "" && own.base == base && own.multiProvider[model]
 }
 
 // PrefsCarriedHere is [PrefsCarried] about whichever base the live sheet is
@@ -948,6 +965,16 @@ func (s *sheet) Refresh(ctx context.Context, model string) error {
 		return errSheetMoved
 	}
 	s.rows[model], s.at[model], s.looked[model] = rows, at, true
+	delete(s.multiProvider, model)
+	for _, row := range rows[1:] {
+		if !strings.EqualFold(rows[0].ID.Lane, row.ID.Lane) {
+			if s.multiProvider == nil {
+				s.multiProvider = make(map[string]bool)
+			}
+			s.multiProvider[model] = true
+			break
+		}
+	}
 	for id, tag := range tags {
 		s.tags[id] = tag
 	}

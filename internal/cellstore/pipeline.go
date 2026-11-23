@@ -74,7 +74,7 @@ func Unsaved(c cell.Cell) int {
 func (r *Recorder) scheduleAtPause(ctx context.Context) bool {
 	r.asyncMu.Lock()
 	defer r.asyncMu.Unlock()
-	if r.stepOpen {
+	if ctx.Err() != nil || r.stepOpen {
 		return false
 	}
 	r.scheduleLocked(ctx)
@@ -266,6 +266,9 @@ func (r *Recorder) capture(ctx context.Context) {
 		r.releaseHeld()
 		return
 	}
+	// A transcript-only capture can fail too. Keep it reachable through
+	// Captured so the idle owner can try again without admitting a new tool.
+	r.hold()
 	run, cancel := context.WithTimeout(context.WithoutCancel(ctx), SealWithin)
 	defer cancel()
 	r.seal(run)

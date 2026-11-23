@@ -35,20 +35,21 @@ const appSyncOff = "Sync is off on this computer."
 // appDevices owns the paired engine's device publication and shares its
 // directory follower with chat inventory. Opening Settings adds no follower.
 type appDevices struct {
-	home     string
-	watch    *syncsetup.DeviceObserver
-	op       sync.Mutex
-	done     chan struct{}
-	emitMu   sync.Mutex
-	lastWire string
-	cancel   context.CancelFunc
-	wake     chan struct{}
-	owned    chan struct{}
+	home         string
+	watch        *syncsetup.DeviceObserver
+	op           sync.Mutex
+	done         chan struct{}
+	emitMu       sync.Mutex
+	lastWire     string
+	cancel       context.CancelFunc
+	wake         chan struct{}
+	owned        chan struct{}
+	stateChanged func()
 }
 
 func (b *appBackend) listenDevices() *appDevices {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &appDevices{home: home.Dir(), done: make(chan struct{}), cancel: cancel, wake: make(chan struct{}, 1), owned: make(chan struct{})}
+	d := &appDevices{home: home.Dir(), done: make(chan struct{}), cancel: cancel, wake: make(chan struct{}, 1), owned: make(chan struct{}), stateChanged: b.chats.wakePublication}
 	d.watch = syncsetup.ObserveDevices(d.home)
 	publishChange := func() {
 		d.op.Lock()
@@ -134,7 +135,7 @@ func (d *appDevices) snapshotState() (appwire.Devices, bool, error) {
 	case !cell.Available():
 		view.Mode, view.Line = appwire.DevicesUnavailable, cell.UnavailableReason()
 	case errors.Is(known.Refused, dirwatch.ErrRevoked):
-		view.Mode, view.Line = appwire.DevicesUnavailable, chatlist.Removed
+		view.Mode, view.Line = appwire.DevicesUnavailable, appRemoved
 	case errors.Is(known.Refused, dirwatch.ErrRotated):
 		view.Mode, view.Line = appwire.DevicesUnavailable, chatlist.Replaced
 	case !syncsetup.MayTalk(d.home):
@@ -293,7 +294,7 @@ func deviceError(err error) error {
 	case errors.Is(err, directory.ErrUnreachable):
 		return appwire.Errorf(appwire.CodeUnreachable, "%s", chatlist.Unreachable)
 	case errors.Is(err, directory.ErrRevoked):
-		return appwire.Errorf(appwire.CodeEngine, "%s", chatlist.Removed)
+		return appwire.Errorf(appwire.CodeEngine, "%s", appRemoved)
 	case errors.Is(err, directory.ErrRotated):
 		return appwire.Errorf(appwire.CodeEngine, "%s", chatlist.Replaced)
 	case errors.Is(err, wireauth.ErrSkew):

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -202,6 +203,42 @@ func same(t *testing.T, before, after map[string][]byte) {
 		if _, ok := before[name]; !ok {
 			t.Errorf("%s appeared", filepath.Base(name))
 		}
+	}
+}
+
+// ── a joining device that refuses ──────────────────────────────────────────
+
+// refuseWithin is the offering device's deadline in a test whose joining device
+// refuses the grant. Such a device never says it kept the grant, so the offering
+// one waits for the word until its deadline, which here is short enough that a
+// test does not sit out the whole of ackWithin.
+const refuseWithin = 4 * time.Second
+
+// pairRefused runs one pairing whose joining device is expected to refuse the
+// grant it is sent, and answers how each device ended.
+func pairRefused(t *testing.T, r *chatRig, grant Grant, j Joining) (offerEnd, error) {
+	t.Helper()
+	a := newScreen()
+	offer := startOffer(t, r, bounded(t, refuseWithin), grant, a)
+	code := a.nextCode(t)
+	_, err := Join(bounded(t, 20*time.Second), r.route, j, code.Shown(), newScreen())
+	return offer.wait(t), err
+}
+
+// wantNotConfirmed is the offering device ending a pairing whose joining device
+// never said it kept the grant: no success, the joining device named as where
+// to look, and no sentence that says nothing was shared, because the grant had
+// already gone out.
+func wantNotConfirmed(t *testing.T, a offerEnd, label string) {
+	t.Helper()
+	if a.err == nil {
+		t.Fatalf("A said it paired %q", a.label)
+	}
+	if got, ok := UnconfirmedBy(a.err); !errors.Is(a.err, ErrNotConfirmed) || !ok || got != label {
+		t.Fatalf("A ended with %v, want not confirmed by %s", a.err, label)
+	}
+	if strings.Contains(a.err.Error(), "nothing") {
+		t.Fatalf("A said %q after the grant had gone out", a.err)
 	}
 }
 
