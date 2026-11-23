@@ -209,15 +209,20 @@ func TestProviderChooserShowsEverySupportedProviderInOneFlatList(t *testing.T) {
 	}
 	for _, size := range []struct{ width, height int }{{120, 40}, {80, 24}, {40, 18}, {40, 12}, {40, 10}} {
 		a.width, a.height = size.width, size.height
+		visible := min(len(rows), size.height)
 		for _, selected := range []int{0, len(rows) - 1} {
 			a.setup.providerAt = selected
 			a.touch()
 			screen := setupScreen(a)
-			if len(a.setup.providerHits) != len(rows) || strings.Contains(screen, "More providers") || strings.Contains(screen, "Skip for now") || pageCounter.MatchString(screen) {
+			if len(a.setup.providerHits) != visible || strings.Contains(screen, "More providers") || strings.Contains(screen, "Skip for now") || pageCounter.MatchString(screen) {
 				t.Fatalf("flat list at %dx%d: %s", size.width, size.height, screen)
 			}
-			for at, row := range rows {
-				if a.setup.providerHits[at].at != at || !strings.Contains(screen, row.name) {
+			first := 0
+			if selected == len(rows)-1 {
+				first = len(rows) - visible
+			}
+			for at, row := range rows[first : first+visible] {
+				if a.setup.providerHits[at].at != first+at || !strings.Contains(screen, row.name) {
 					t.Fatalf("%q missing at %dx%d: %s", row.id, size.width, size.height, screen)
 				}
 			}

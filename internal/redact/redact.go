@@ -190,6 +190,16 @@ var shapes = []shape{
 		lead: 3,
 	},
 	{
+		// The Go plan's keys: `oc_sk_` and then the key. The `sk-` row above reads
+		// a hyphen after `sk`, and this prefix has an underscore and a word
+		// character before it, so it needs its own row. A saved key is also
+		// registered by value, but a launch that reads one without registering
+		// it is covered here.
+		name: "token",
+		re:   regexp.MustCompile(`\boc_sk_[A-Za-z0-9_-]{16,}`),
+		lead: 6,
+	},
+	{
 		// AWS access key ids: `AKIA` for a long-lived one, `ASIA` for the
 		// temporary one an assumed role hands out. Sixteen uppercase is the
 		// documented length and the pattern takes MORE than sixteen where the
