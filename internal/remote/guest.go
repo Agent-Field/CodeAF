@@ -93,10 +93,3 @@ func GuestRefusal(host, method string, drive bool) string {
 	}
 	return chatlist.LiveNotAllowedHere(host)
 }
-
-// guestAnswerMay checks whether a remote viewer with drive permission may
-// settle the approval or question carried by call. The per-question and
-// once-only checks plug in here.
-func guestAnswerMay(call Frame) error {
-	return nil
-}

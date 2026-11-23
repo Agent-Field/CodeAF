@@ -2407,9 +2407,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if !GuestMay(call.Method, s.remote.Drive) {
 			return nil, errors.New(GuestRefusal(HostName(), call.Method, s.remote.Drive))
 		}
-		if err := guestAnswerMay(call); err != nil {
-			return nil, err
-		}
 	} else if s.watching && !watcherMay(call.Method) {
 		return nil, fmt.Errorf("%s (%s)", watchingWord, call.Method)
 	}
@@ -2666,7 +2663,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if !ok {
 			return nil, errors.New("engine: this session cannot answer questions from here")
 		}
-		return nil, door.ResolveQuestion(args.Answer)
+		args.Answer.Remote = s.remote != nil
+		if err := door.ResolveQuestion(args.Answer); err != nil {
+			if errors.Is(err, session.ErrRemoteIrreversible) {
+				return nil, errors.New(chatlist.LiveNeedsItsOwnOK(HostName()))
+			}
+			if errors.Is(err, session.ErrRemoteWidening) {
+				return nil, errors.New(chatlist.LiveNotAllowedHere(HostName()))
+			}
+			return nil, err
+		}
+		return nil, nil
 	case MethodQuestionHold:
 		args, err := arg[QuestionHoldArgs](call)
 		if err != nil {
@@ -3406,6 +3413,28 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		args, err := arg[ConsentArgs](call)
 		if err != nil {
 			return nil, err
+		}
+		if s.remote != nil {
+			// A GUEST NEVER TAKES THE PLAIN ROAD. An engine that cannot say whether an
+			// ask is one only this computer may settle is an engine a guest may not
+			// answer for, so a missing door refuses rather than falling through to
+			// [session.Agent.ResolveConsent], which settles whatever it is handed.
+			door, ok := agent.(interface {
+				ResolveConsentFrom(uint64, bool, bool) error
+			})
+			if !ok {
+				return nil, errors.New("engine: this session cannot answer questions from here")
+			}
+			if err := door.ResolveConsentFrom(args.ID, args.Allow, true); err != nil {
+				if errors.Is(err, session.ErrRemoteIrreversible) {
+					return nil, errors.New(chatlist.LiveNeedsItsOwnOK(HostName()))
+				}
+				if errors.Is(err, session.ErrRemoteWidening) {
+					return nil, errors.New(chatlist.LiveNotAllowedHere(HostName()))
+				}
+				return nil, err
+			}
+			return nil, nil
 		}
 		agent.ResolveConsent(args.ID, args.Allow)
 		return nil, nil
