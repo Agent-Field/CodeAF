@@ -4910,8 +4910,8 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 	const add, cont, naming = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"
 	for _, probe := range []struct{ asked, page, says string }{
 		{"why can't I type in this chat", cont, "Your words stay in the box"},
-		{"my message did not send and home opened with a question", cont, "Continue this chat here?"},
-		{"continue on this machine", cont, "Continue tower's latest chat here?"},
+		{"my message did not send and home opened with a question", cont, "Move this chat here?"},
+		{"continue on this machine", cont, "Move tower's latest chat here?"},
 		{"what does running on tower mean", cont, "Move here"},
 		{"what does moved from tower in 3.2s mean", cont, "Everything as you left it."},
 		{"what is the card that says set this machine up", cont, "set up"},
@@ -4995,7 +4995,7 @@ func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
 		{"is the task history carried to the other computer", "continuing-a-chat-on-another-computer", "rebuilt from the chat's own record"},
 		{"does /remember work on my other computer", "what-i-remember", "within one sync round"},
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
-		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
+		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device moved this chat first`"},
 		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
 		{"which relay does a dev build or staging build use", "relay-hosted-or-your-own", "https://caf-fabric-dev.instrument-santosh.workers.dev"},
 		{"do dev and stable builds sync with each other", "relay-hosted-or-your-own", "Channels do not sync with each other"},

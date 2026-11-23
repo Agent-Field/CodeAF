@@ -32,6 +32,6 @@ answers take 1–4096 bytes.
 Joined holders forward tools when supported; older holders refuse attachment.
 Reconnect restores sets only to the same conversation. A holder switching to
 another chat drops the tools and ends their calls. A chat held on another
-computer stores sets until "Continue here" or take. Each connection owns its
+computer stores sets until "Move here" or take. Each connection owns its
 tools and calls. Link loss ends calls when observed or at their wait limit;
 later answers are refused.

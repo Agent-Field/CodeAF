@@ -7,7 +7,7 @@ import (
 
 func TestIdleOpen_C6_C7_IndexedAnswersDistinguishFreeAndHeld(t *testing.T) {
 	for _, probe := range []struct{ question, phrase string }{
-		{"a row on home and the verb it offers", "There is no Continue-here card"},
+		{"a row on home and the verb it offers", "There is no Move-here card"},
 		{"I reopened an old local chat after the other computer let go", "latest saved history here automatically"},
 		{"Continue a chat here that another machine left", "released chat opens directly"},
 		{"Why a chat says held on build-box or build-box offline", "released chat opens here directly"},

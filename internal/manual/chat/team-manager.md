@@ -564,7 +564,7 @@ while it was closed.
 
 ## Team sharing and Traffic on another computer
 
-Hosted sync storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: teams, shared team settings and Traffic wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage approval is required for team sharing; storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: teams, shared team settings and Traffic wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
 The traffic itself is kept in the profile of the machine the conversations run on, in
 `teams/<id>/traffic.jsonl`, one line per message, only ever added to. It holds only
@@ -578,7 +578,7 @@ Once both computers share teams, Traffic also shows recent history from the othe
 computer, kept beside it in `teams/<id>/elsewhere.jsonl`. That history
 cannot deliver a message, start, stop, answer or wake a chat here. A message to a
 member or manager known to be on another computer is refused before writing;
-continue that chat here from Home first, then send again. A room post or send to
+move that chat here from Home first, then send again. A room post or send to
 several members reaches local recipients and names those not reached. If all
 recipients are elsewhere, nothing is written. An unavailable relay does not
 block local delivery. Decisions and escalations also check their recipients
@@ -625,7 +625,7 @@ Review manager choices in Teams.
 
 ## Shared team spending caps and continued members
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
+On the hosted relay this needs sync storage approval (Settings → Devices → sync storage).
 
 Teams and their settings share automatically between paired computers by default;
 an unpaired computer is unaffected. A shared team's spending cap counts spending

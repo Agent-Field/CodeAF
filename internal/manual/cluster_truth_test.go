@@ -79,7 +79,7 @@ func TestR30CoordinationQuotesMatchProductStrings(t *testing.T) {
 	for page, body := range flatChatPages(t) {
 		for _, match := range quotes.FindAllStringSubmatch(body, -1) {
 			text := match[1]
-			for _, prefix := range []string{"this cluster", "this computer must join", "this computer is still joining", "this codeaf build", "the leadership request", "codeaf: directory upgrade", "this work may be incomplete", "another device continued this chat first"} {
+			for _, prefix := range []string{"this cluster", "this computer must join", "this computer is still joining", "this codeaf build", "the leadership request", "codeaf: directory upgrade", "this work may be incomplete", "another device moved this chat first"} {
 				if strings.HasPrefix(text, prefix) {
 					if _, ok := seen[text]; !ok {
 						t.Errorf("%s quotes a sentence absent from the product: %q", page, text)

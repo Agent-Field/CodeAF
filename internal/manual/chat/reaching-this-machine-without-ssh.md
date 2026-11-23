@@ -112,14 +112,14 @@ If the relay turns registrations away — it allows 10 registrations a minute fr
 address — `codeaf serve` backs off the same way and says once:
 
 ```
-the sync service is turning registrations away right now — waiting before trying again
+the relay is turning registrations away right now — waiting before trying again
 ```
 
-A relay that answers but cannot connect machines, such as an older sync service, stops
+A relay that answers but cannot connect machines, such as an older relay, stops
 it with:
 
 ```
-the sync service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it
+the relay at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it
 ```
 
 A relay that cannot be reached when it starts stops it with the sentence in *When --at
@@ -127,7 +127,7 @@ will not open*. With sync turned off (`CODEAF_SYNC_URL=off`) and no `CODEAF_RELA
 is no relay at all:
 
 ```
-no sync service is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your sync service
+no relay is set up on this machine, so there is nowhere to be reachable from — set CODEAF_RELAY to your relay
 ```
 
 Ctrl+c ends it, and the machine gives its name back on the way out:
@@ -413,25 +413,25 @@ There are five different reasons, and each says which one it is, in one sentence
 **No relay is set up on this machine** (sync is off and `CODEAF_RELAY` is empty):
 
 ```
-no sync service is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a sync service, or reach that machine with --host over ssh
+no relay is set up on this machine, so --at has nowhere to look for otter-lamp-42 — set CODEAF_RELAY to a relay, or reach that machine with --host over ssh
 ```
 
 **The relay is set up and not answering:**
 
 ```
-nothing is answering at https://service.example.com — if that is your own sync service, start it there with codeaf relay
+nothing is answering at https://service.example.com — if that is your own relay, start it there with codeaf relay
 ```
 
 **The relay answers but cannot connect machines:**
 
 ```
-the sync service at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it, or reach that machine with --host over ssh
+the relay at https://service.example.com syncs chats but does not connect machines — run your own with `codeaf relay` and set CODEAF_RELAY to it, or reach that machine with --host over ssh
 ```
 
 **The relay is fine and that machine is not connected to it:**
 
 ```
-otter-lamp-42 is not connected to the sync service right now — run `codeaf serve` on that machine
+otter-lamp-42 is not connected to the relay right now — run `codeaf serve` on that machine
 ```
 
 **This device has never been let in:**
@@ -443,10 +443,10 @@ this device is not paired with otter-lamp-42 — run `codeaf serve` on that mach
 Two more you may meet. A machine that does not answer the handshake at all:
 `otter-lamp-42 did not answer this device's handshake, so nothing was sent — if that machine was rebuilt it has a new key and this device has to pair with it again`.
 And a relay that is turning connections away:
-`the sync service is turning connections away right now — try again in a minute` — it allows
+`the relay is turning connections away right now — try again in a minute` — it allows
 30 connections a minute from one address. If a proxy or wrong path at the relay address
 refuses the upgrade, it names the full address it tried:
-`the sync service at https://service.example.com/wrong-prefix refused this connection (404) — check the address it was given`.
+`the relay at https://service.example.com/wrong-prefix refused this connection (404) — check the address it was given`.
 
 ## The pairing code was right but approval failed — paired then device stopped, writing access on the serving computer
 
@@ -587,4 +587,4 @@ has not supplied a chosen name, the window uses the requested name.
 
 ## Does live --at access need sync storage approval?
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request. Live access works on the other computer while it stays on; storage approval is needed to copy saved chats so they can open elsewhere when it is off.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted relay with `--store` needs no request. Live access works on the other computer while it stays on; storage approval is needed to copy saved chats so they can open elsewhere when it is off.

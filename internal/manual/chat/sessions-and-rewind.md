@@ -1082,7 +1082,7 @@ Ordinary project chats with a usable saving connection keep their history.
 
 Closing a chat with `/quit` or its close action can leave your other chats open. After a successful local save with sync storage off, codeaf says `saved here; sync storage is off for this account, so it stays on this computer`. On desktop quit the engine log keeps that receipt.
 
-When local saving succeeds but another upload is still pending, the sentence is `saved here; it reaches your other devices when the sync service at <address> answers`. It names the service used by the chat you closed.
+When local saving succeeds but another upload is still pending, the sentence is `saved here; it reaches your other devices when the relay at <address> answers`. It names the service used by the chat you closed.
 
 If saving here fails, closing one chat still says `this chat could not be saved; its unsaved turns stay on this computer for the next start`. An unanswered save remains finishing in the background until its result arrives. Storage being off alone does not mean the local save failed.
 
