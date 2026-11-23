@@ -247,6 +247,9 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 	widest := map[string]string{
 		// `grep` says a longer sentence about itself where ripgrep is absent.
 		"grep": bare.WidestGrepDescription(agent.resultCaps()),
+		// `find` too: where fd is installed it says one sentence, and where it
+		// is not, another (bare's findfallback.go).
+		"find": bare.WidestFindDescription(agent.resultCaps()),
 		// `load_capability` NAMES THE GROUPS THIS BUILD HAS, and a group whose
 		// every member was gated off is not named at all — `edit_video` is built
 		// only where ffmpeg is on PATH, so a machine that can edit video pays for
@@ -270,6 +273,25 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 		// spelling grew — which is the same defeat, one level up. `widest` is
 		// widest by construction and this takes it at its word.
 		definitions[index].Function.Description = longest
+	}
+	// AND THE LOADER'S SCHEMA NAMES THE SAME GROUPS ITS SENTENCE DOES. The enum
+	// lists only the groups this machine built, so `media` was in it on a
+	// machine with ffmpeg and absent on a runner without it: the description
+	// was weighed at the widest machine and the schema at whichever one ran.
+	schemaSwapped := false
+	for index := range definitions {
+		if definitions[index].Function.Name != "load_capability" {
+			continue
+		}
+		var widestSchema map[string]any
+		if err := json.Unmarshal([]byte(loadCapabilitySchema(widestLoadOrder(agent.config))), &widestSchema); err != nil {
+			t.Fatalf("the widest load_capability schema does not parse: %v", err)
+		}
+		definitions[index].Function.Parameters = widestSchema
+		schemaSwapped = true
+	}
+	if !schemaSwapped {
+		t.Fatal("load_capability is not on the belt, so its schema's machine-variance left this number unnoticed")
 	}
 	// AND THE SWAP CANNOT SILENTLY STOP APPLYING. A tool that leaves the belt, or
 	// is renamed, would take its machine-variance off this number without anybody
@@ -295,20 +317,39 @@ func widestBelt(t *testing.T, agent *Agent) []ai.ToolDefinition {
 // over-counted here; that is the safe direction for a budget and it is the same
 // answer everywhere, which is the whole point.
 func widestLoadCapability(config Config) string {
+	order, members := widestLoadGroups(config)
+	return loadCapabilityDescription(func(group string) []string { return members[group] }, order)
+}
+
+// widestLoadOrder is the groups [widestLoadCapability] names, in its order: the
+// enum the loader's schema carries at the widest machine.
+func widestLoadOrder(config Config) []string {
+	order, _ := widestLoadGroups(config)
+	return order
+}
+
+// widestLoadGroups is the one reading both share, so the schema and the
+// sentence can never name two different sets of groups. It reads THIS SHAPE'S
+// shelf ([Config.capabilityShelf]) and not the shipped table alone: a lean belt
+// shelves four groups more (tasks, watching, memory, documents), and the live
+// loader names them, so leaving them out would weigh the lean enum lighter than
+// the belt it describes.
+func widestLoadGroups(config Config) ([]string, map[string][]string) {
 	prearmed := map[string]bool{}
 	for _, group := range config.prearmedGroups() {
 		prearmed[group] = true
 	}
-	order := make([]string, 0, len(capabilityGroups))
-	members := make(map[string][]string, len(capabilityGroups))
-	for _, group := range capabilityGroups {
+	shelf := config.capabilityShelf()
+	order := make([]string, 0, len(shelf))
+	members := make(map[string][]string, len(shelf))
+	for _, group := range shelf {
 		if prearmed[group.name] {
 			continue
 		}
 		order = append(order, group.name)
 		members[group.name] = group.members
 	}
-	return loadCapabilityDescription(func(group string) []string { return members[group] }, order)
+	return order, members
 }
 
 // fixedShapedAgent is the shipping conversation with the declared widest

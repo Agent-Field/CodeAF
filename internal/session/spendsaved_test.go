@@ -217,7 +217,27 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 	meta := stampedMeta(t, agent, dir)
 	mu.Lock()
 	defer mu.Unlock()
-	if captures.Load() != 2 || meta.SpentUSD != .375 || meta.Tokens != 17 || len(figures) != 2 || figures[0] != .25 || figures[1] != .375 {
-		t.Fatalf("concurrent stamps saved %+v and said %v, want .25 then .375", meta, figures)
+	// THE LATE BILL STAMPS ITSELF ([Agent.bank]) AND THIS TEST STAMPS TOO, so
+	// the newer figure is owed twice while the older stamp is held. The writer
+	// coalesces what is owed before it starts and performs once more for what
+	// is owed while it runs, so which of the two happens is the scheduler's
+	// choice: one write of .375 or two. Both keep the latest meter, which is the
+	// law; demanding exactly two failed about one run in twenty.
+	newer := figures[min(1, len(figures)):]
+	latest := len(newer) > 0
+	for _, figure := range newer {
+		latest = latest && figure == .375
+	}
+	if meta.SpentUSD != .375 || meta.Tokens != 17 || len(figures) < 2 || len(figures) > 3 || figures[0] != .25 || !latest ||
+		int(captures.Load()) != len(figures) {
+		t.Fatalf("concurrent stamps saved %+v and said %v after %d captures, want .25 then .375 once or twice", meta, figures, captures.Load())
+	}
+	// The two reads above checked the first two captures. A third (the writer
+	// performing once more for what was owed while it ran) is queued in the
+	// buffer, and it must be the latest meter taken inside the stamp lock too.
+	for len(captured) > 0 {
+		if extra := <-captured; extra.spent != .375 || !extra.locked {
+			t.Fatalf("extra capture = %+v; want .375 with the stamp lock held", extra)
+		}
 	}
 }
