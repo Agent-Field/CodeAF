@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/sqlitefile"
 
 	_ "modernc.org/sqlite"
@@ -161,8 +162,10 @@ func (st *Store) wsDB(create bool) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(workstreamsSchema + workstreamTasksSchema + workstreamTaskRunsSchema + workstreamPageCommentsSchema + workstreamOrdersSchema); err != nil {
+	// Authorization inside a workstream edit can read the committed grants.
+	// Writes still serialize under the workstreams lock.
+	db.SetMaxOpenConns(2)
+	if _, err := db.Exec(workstreamsSchema + workstreamTasksSchema + workstreamTaskRunsSchema + workstreamPageCommentsSchema + workstreamOrdersSchema + accessSchema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
 	}
@@ -337,7 +340,7 @@ func (st *Store) wsTx(write func(tx *sql.Tx) error) error {
 // linked ones land whole or not at all. A workstream edit deletes is removed
 // with every page version, part and spend kept for it.
 func (st *Store) EditWorkstreams(edit func(all factory.OrgWorkstreams) (changed []string, err error)) (factory.OrgWorkstreams, error) {
-	return st.editWorkstreams(true, edit)
+	return st.editWorkstreams(true, edit, nil, 0)
 }
 
 // MirrorWorkstreams is EditWorkstreams WITHOUT counting any rev up. It is for
@@ -346,23 +349,36 @@ func (st *Store) EditWorkstreams(edit func(all factory.OrgWorkstreams) (changed 
 // the rev for it would refuse every other writer every thirty seconds while
 // anyone types.
 func (st *Store) MirrorWorkstreams(edit func(all factory.OrgWorkstreams) (changed []string, err error)) (factory.OrgWorkstreams, error) {
-	return st.editWorkstreams(false, edit)
+	return st.editWorkstreams(false, edit, nil, 0)
 }
 
-func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams) ([]string, error)) (factory.OrgWorkstreams, error) {
+// EditWorkstreamsWithGrant keeps a new workstream and its initial audience together.
+func (st *Store) EditWorkstreamsWithGrant(edit func(factory.OrgWorkstreams) ([]string, error), grant *acl.Grant, rev int) (factory.OrgWorkstreams, error) {
+	return st.editWorkstreams(true, edit, grant, rev)
+}
+
+func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams) ([]string, error), grant *acl.Grant, policyRev int) (factory.OrgWorkstreams, error) {
 	var out factory.OrgWorkstreams
 	err := st.wsTx(func(tx *sql.Tx) error {
 		all, err := readWorkstreams(tx)
 		if err != nil {
 			return err
 		}
-		before := make(map[string]int, len(all))
+		before := make(map[string]factory.OrgWorkstream, len(all))
 		for id, w := range all {
-			before[id] = w.Rev
+			before[id] = w
 		}
 		changed, err := edit(all)
 		if err != nil {
 			return err
+		}
+		if grant != nil {
+			if err := checkPolicyRev(tx, policyRev); err != nil {
+				return err
+			}
+			if err := st.insertGrant(tx, grant); err != nil {
+				return err
+			}
 		}
 		// A WORKSTREAM INSIDE ANOTHER ALWAYS HAS ITS PEOPLE, so the same save
 		// that changed a parent's people writes them on its children.
@@ -370,7 +386,15 @@ func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams
 		out = all
 		for _, id := range changed {
 			w, ok := all[id]
+			if !ok || (w.Private && !before[id].Private && before[id].Rev != 0) {
+				if err := deleteResource(tx, "workstream", id); err != nil {
+					return err
+				}
+			}
 			if !ok {
+				if err := deleteChildResources(tx, id); err != nil {
+					return err
+				}
 				for _, q := range []string{
 					`DELETE FROM workstreams WHERE id = ?`, `DELETE FROM page_versions WHERE ws = ?`,
 					`DELETE FROM parts WHERE ws = ?`, `DELETE FROM spend WHERE ws = ?`,
@@ -384,10 +408,10 @@ func (st *Store) editWorkstreams(bump bool, edit func(all factory.OrgWorkstreams
 				continue
 			}
 			w.ID = id
-			if bump || before[id] == 0 {
-				w.Rev = before[id] + 1
+			if bump || before[id].Rev == 0 {
+				w.Rev = before[id].Rev + 1
 			} else {
-				w.Rev = before[id]
+				w.Rev = before[id].Rev
 			}
 			all[id] = normalizeWorkstream(w)
 			if err := putWorkstream(tx, all[id]); err != nil {

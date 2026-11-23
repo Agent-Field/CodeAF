@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 )
 
 // CanvasesFile keeps who owns and who may see each organization canvas
@@ -59,11 +60,50 @@ func (st *Store) Canvas(id string) (factory.OrgCanvas, bool, error) {
 // lock and answers them as saved. An error from edit writes nothing; edit
 // answering false changed nothing and writes nothing.
 func (st *Store) EditCanvases(edit func(all factory.OrgCanvases) (bool, error)) (factory.OrgCanvases, error) {
+	return st.editCanvases(edit, st.saveCanvases)
+}
+
+func (st *Store) saveCanvases(all factory.OrgCanvases) error {
+	raw, err := json.Marshal(all)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(st.root, CanvasesFile), append(raw, '\n'))
+}
+
+// RegisterCanvas keeps the canvas index and its registration under the same locks.
+func (st *Store) RegisterCanvas(c factory.OrgCanvas, row Resource, grant *acl.Grant, rev int) error {
+	_, err := st.editCanvases(func(all factory.OrgCanvases) (bool, error) {
+		all[c.ID] = c
+		return true, nil
+	}, func(all factory.OrgCanvases) error {
+		written := false
+		err := st.RegisterResource(row, grant, rev, func() error {
+			if err := st.saveCanvases(all); err != nil {
+				return err
+			}
+			written = true
+			return nil
+		})
+		if err != nil && written {
+			delete(all, c.ID)
+			return errors.Join(err, st.saveCanvases(all))
+		}
+		return err
+	})
+	return err
+}
+
+func (st *Store) editCanvases(edit func(factory.OrgCanvases) (bool, error), save func(factory.OrgCanvases) error) (factory.OrgCanvases, error) {
 	var out factory.OrgCanvases
 	err := st.underLock(filepath.Join(st.root, canvasesLock), func() error {
 		all, err := st.Canvases()
 		if err != nil {
 			return err
+		}
+		before := make(map[string]bool, len(all))
+		for id, canvas := range all {
+			before[id] = canvas.Private
 		}
 		changed, err := edit(all)
 		if err != nil {
@@ -73,11 +113,15 @@ func (st *Store) EditCanvases(edit func(all factory.OrgCanvases) (bool, error)) 
 		if !changed {
 			return nil
 		}
-		raw, err := json.Marshal(all)
-		if err != nil {
-			return err
+		for id, private := range before {
+			canvas, kept := all[id]
+			if !kept || canvas.Private && !private {
+				if err := st.DeleteResource("canvas", id); err != nil {
+					return err
+				}
+			}
 		}
-		return writeAtomic(filepath.Join(st.root, CanvasesFile), append(raw, '\n'))
+		return save(all)
 	})
 	return out, err
 }
