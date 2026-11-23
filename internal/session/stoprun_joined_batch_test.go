@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 )
@@ -219,4 +220,31 @@ func TestJoinedStopRefusedByTheStoreForAnEndedTaskIsAnswered(t *testing.T) {
 			t.Fatalf("a still-open task was answered as ended: %q", line)
 		}
 	})
+}
+
+// A JOINED TASK ITS OWN STOP ENDED BEFORE THE RUN'S STOP IS NOT CREDITED TO THE
+// RUN'S STOP. Both write the same default words, so the words alone cannot tell
+// which stop ended the task; the run's stop ends everything it ends at one
+// instant, and a task that ended earlier says only that it was already stopped.
+func TestJoinedTaskStoppedBeforeTheRunsStopIsNotCreditedToIt(t *testing.T) {
+	store, err := OpenRunPlan(t.TempDir(), "task C", "the run's own brief")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.AddMany([]plandb.TaskSpec{{ID: "72", Title: "task D", Description: "its own words"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Cancel("72", stopBecause(taskStoppedWord, "")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if err := store.StopRoot(stopBecause(taskStoppedWord, "")); err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{store: store, root: store.RootID(), row: 71, title: "task C", joined: []uint64{72}}
+	line := joinedEndedAnswer(run, taskStopName(72, "task D"), store.Task("72"))
+	if want := "task 72 (task D) was already stopped; there is nothing to stop"; line != want {
+		t.Fatalf("a joined task stopped before its run's stop answered %q, want %q", line, want)
+	}
 }

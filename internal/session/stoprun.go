@@ -279,7 +279,11 @@ func joinedStopLostTheRace(run *beltRun, key, name string, cancelErr error) (str
 // still open was stopped on its own, and says only that.
 func joinedEndedAnswer(run *beltRun, name string, task *plandb.Task) string {
 	if task.Status == plandb.StatusCancelled && planStopReason(task.Error) {
-		if root := run.store.Task(run.root); root != nil && root.Status == plandb.StatusCancelled && root.Error == task.Error {
+		// The run's stop writes every task it ends, root included, in one
+		// transaction at one instant, so a task cancelled earlier under the same
+		// words (its own stop, before the run's) ended at another instant and is
+		// not credited to the run's stop.
+		if root := run.store.Task(run.root); root != nil && root.Status == plandb.StatusCancelled && root.Error == task.Error && task.CompletedAt.Equal(root.CompletedAt) {
 			return name + " was already stopped with " + taskStopName(run.row, run.title) + ", whose run it shared"
 		}
 		return name + " was already stopped; there is nothing to stop"
