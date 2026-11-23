@@ -196,7 +196,10 @@ func TestASeparateGitFolderInAnotherCaseIsNotProtectedOnACaseSensitiveVolume(t *
 	ground := groundWithCaseMetadata(t)
 	other := filepath.Join(ground, ".GIT")
 	if err := os.Mkdir(other, 0o755); err != nil {
-		t.Skipf("cannot create a separate .GIT: %v", err)
+		if !os.IsExist(err) {
+			t.Fatal(err)
+		}
+		t.Skip("this disk ignores case, so .GIT cannot be a separate folder")
 	}
 	if realVolumeFoldsCase(t, ground) {
 		t.Skip("the two git spellings have the same identity")
@@ -290,4 +293,39 @@ func TestFoldsCaseProbesTheMetadataAndFallsBackToTheGround(t *testing.T) {
 	if !metadataFoldsCase(emptyMetadata) {
 		t.Error("empty metadata did not use the folding ground directory")
 	}
+}
+
+// Two names of one file say nothing about case. A repository whose HEAD also
+// answers to a hard link called `head` sits on a disk that tells the cases apart,
+// so `.git/REFS` there is a different, absent entry and stays unprotected.
+func TestAHardLinkedHeadDoesNotMakeACaseSensitiveDiskLookCaseInsensitive(t *testing.T) {
+	ground := groundWithCaseMetadata(t)
+	if realVolumeFoldsCase(t, ground) {
+		t.Skip("this disk ignores case")
+	}
+	if err := os.Link(filepath.Join(ground, ".git", "HEAD"), filepath.Join(ground, ".git", "head")); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	assertCaseMetadataAllowed(t, ground, []string{"rm -rf .git/REFS", "rmdir .git/REFS", "rm .git/head"})
+	assertCaseMetadataRefusals(t, ground, []string{"rm .git/HEAD", "rm -rf .git/refs"})
+}
+
+// A linked worktree's `.git` is a file, and a file can have other names. Removing
+// or moving one of those leaves the pointer where it is, so only a spelling of
+// `.git` itself is the metadata entry.
+func TestAHardLinkToAWorktreePointerIsNotTheGroundsMetadataEntry(t *testing.T) {
+	ground := groundWithMetadata(t)
+	pointer := filepath.Join(ground, ".git")
+	if err := os.RemoveAll(pointer); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pointer, []byte("gitdir: /elsewhere/.git/worktrees/w\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(pointer, filepath.Join(ground, "pointer-link")); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	useCaseInsensitiveLstat(t)
+	assertCaseMetadataAllowed(t, ground, []string{"unlink pointer-link", "rm pointer-link", "mv pointer-link moved-link"})
+	assertCaseMetadataRefusals(t, ground, []string{"rm .git", "rm .GIT", "mv .Git x", "echo x > .GIT"})
 }

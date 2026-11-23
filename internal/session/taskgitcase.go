@@ -43,9 +43,7 @@ func belowGroundMetadata(metadata, path string) (below []string, ok bool) {
 		return nil, false
 	}
 	for current := path; ; current = filepath.Dir(current) {
-		if info, err := fsLstat(current); err == nil && slices.ContainsFunc(identities, func(id os.FileInfo) bool {
-			return os.SameFile(info, id)
-		}) {
+		if info, err := fsLstat(current); err == nil && namesMetadataEntry(metadata, identities, current, info) {
 			slices.Reverse(below)
 			return below, true
 		}
@@ -54,6 +52,20 @@ func belowGroundMetadata(metadata, path string) (below []string, ok bool) {
 		}
 		below = append(below, filepath.Base(current))
 	}
+}
+
+// namesMetadataEntry says whether info, found at current, is the ground's `.git`.
+// A directory cannot be hard linked, so sharing its identity proves current is
+// another spelling of the same directory. A regular file (a linked worktree's
+// pointer) can have other names that are not `.git`, and removing one of those
+// leaves the pointer in place, so a file only counts under a spelling of `.git`.
+func namesMetadataEntry(metadata string, identities []os.FileInfo, current string, info os.FileInfo) bool {
+	for _, identity := range identities {
+		if os.SameFile(identity, info) && (identity.IsDir() || strings.EqualFold(filepath.Base(current), filepath.Base(metadata))) {
+			return true
+		}
+	}
+	return false
 }
 
 func protectedEntryBelow(metadata string, below []string) bool {
@@ -85,7 +97,8 @@ func holdsMetadataIdentity(metadata, target string) bool {
 		return false
 	}
 	for current := resolveParentSymlinks(metadata); ; current = filepath.Dir(current) {
-		if ancestor, err := fsLstat(current); err == nil && os.SameFile(info, ancestor) {
+		if ancestor, err := fsLstat(current); err == nil && os.SameFile(info, ancestor) &&
+			(ancestor.IsDir() || strings.EqualFold(filepath.Base(target), filepath.Base(metadata))) {
 			return true
 		}
 		if filepath.Dir(current) == current {
@@ -94,15 +107,25 @@ func holdsMetadataIdentity(metadata, target string) bool {
 	}
 }
 
-// metadataFoldsCase falls back to the ground when no known entry is available inside .git.
+// metadataFoldsCase reads the disk's answer from a directory first, because a
+// directory cannot be hard linked and so two spellings that share its identity
+// are one entry. Two names of one regular file prove nothing about case, so
+// HEAD and config are the last resort.
 func metadataFoldsCase(metadata string) bool {
-	for _, name := range [...]string{"HEAD", "config", "objects", "refs"} {
+	for _, name := range [...]string{"objects", "refs"} {
 		if folds, known := foldsCase(metadata, name); known {
 			return folds
 		}
 	}
-	folds, _ := foldsCase(filepath.Dir(metadata), filepath.Base(metadata))
-	return folds
+	if folds, known := foldsCase(filepath.Dir(metadata), filepath.Base(metadata)); known {
+		return folds
+	}
+	for _, name := range [...]string{"HEAD", "config"} {
+		if folds, known := foldsCase(metadata, name); known {
+			return folds
+		}
+	}
+	return false
 }
 
 func foldsCase(dir, name string) (folds, known bool) {
