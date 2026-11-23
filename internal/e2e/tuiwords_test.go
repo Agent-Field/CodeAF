@@ -553,6 +553,14 @@ var tuiWords = map[string]tuiWord{
 		why:    "the first option on that question, which the ENGINE writes and home only relays",
 	},
 
+	// ── a chat another computer runs, carried here ────────────────────────────
+	"moveAsk": {
+		screen: "Move this chat here?",
+		why: "the question Home's card asks before a chat another computer holds is carried to this " +
+			"one. Seven tmux scenarios used to wait for it as a raw string; the verb is Move here " +
+			"everywhere a person meets it, and this is the one place the suite spells the card's head",
+	},
+
 	// ── a landing that is the person's call (#268, the implementation) ───
 	"settleAskWord": {
 		screen: "nobody could check it",
