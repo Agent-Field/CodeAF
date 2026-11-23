@@ -122,6 +122,18 @@ const (
 	// reservation costs an older client nothing.
 	LiveStreams = 14
 
+	// BreakerRate and BreakerWindow are the ceiling on how fast one LIVE stream
+	// may send, in either direction (BREAKER_BYTES_PER_SECOND and
+	// BREAKER_WINDOW_MS in relay/hosted/src/engine/carrier.js): more than
+	// BreakerRate sustained across BreakerWindow ends the stream. It is four
+	// times the pace a correct host holds a live view to, so it never meets a
+	// correct host, and it is an ABUSE control and nothing finer: the relay
+	// cannot read what it carries, so it cannot batch or slow it, and cutting is
+	// all it can do. It is counted when a message arrives and never from a
+	// timer, which is what keeps an idle live view free on the hosted relay.
+	BreakerRate   = 4 << 20
+	BreakerWindow = 5 * time.Second
+
 	// PingEvery is how often the relay pokes an idle carrier, and IdleAfter is
 	// how long it will wait for any byte before it decides the machine is gone.
 	// A NAT that has forgotten a mapping is silent rather than closed, so a

@@ -359,11 +359,22 @@ func (c *carrier) send(op byte, stream uint64, payload []byte) error {
 
 // open mints a stream on this carrier and tells the far end about it. Only the
 // relay side calls it; a machine never dials a surface.
-func (c *carrier) open() (*muxStream, error) {
+//
+// THE CLASS IS HELD AGAINST THE TOTAL. A live dial is refused once the machine
+// has [LiveStreams] streams attached, whoever holds them, so live dials can
+// never push the total past it and the last MaxStreams-LiveStreams slots are
+// always free for a move. Every other dial, which is every dial from a build
+// that predates the class, is held to [MaxStreams] exactly as it always was:
+// the reservation takes nothing from an older client.
+func (c *carrier) open(class string) (*muxStream, error) {
 	c.mu.Lock()
 	if c.gone {
 		c.mu.Unlock()
 		return nil, errCarrierGone
+	}
+	if class == DoorLive && len(c.streams) >= LiveStreams {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("that machine already has %d live connections open; the last %d are kept for moving a chat", LiveStreams, MaxStreams-LiveStreams)
 	}
 	if len(c.streams) >= MaxStreams {
 		c.mu.Unlock()
