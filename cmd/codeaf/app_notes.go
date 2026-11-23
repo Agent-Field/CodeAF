@@ -34,7 +34,7 @@ var appNoteWords = map[error]string{
 	syncsetup.ErrNoOwnRecord:      "This computer isn't listed by sync yet. Try again in a moment.",
 	// The verb is not offered while storage is off, so this answers only a
 	// client that sent anyway or one connected before storage was switched off.
-	syncwords.ErrNotesWaitForStorage: "Sync storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.",
+	syncwords.ErrNotesWaitForStorage: "Relay storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.",
 }
 
 // appNoteUnreachable is a message this computer could not leave because its

@@ -226,7 +226,7 @@ func TestSettingsSamplesOnlyVisibleStorage(t *testing.T) {
 		t.Fatalf("state=%s reads=%d", a.sheet.storageState, door.reads.Load())
 	}
 	a.sheet.tab = 0
-	a.sheet.query.insert("sync storage")
+	a.sheet.query.insert("relay storage")
 	_, cmd = (placeSettings{}).tick(a, time.Now())
 	if cmd == nil {
 		t.Fatal("Settings search did not refresh")

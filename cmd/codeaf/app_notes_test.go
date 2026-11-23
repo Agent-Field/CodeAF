@@ -49,7 +49,7 @@ func TestAMessageSentToAChatElsewhereIsWaitingThenDeliveredOnItsRow(t *testing.T
 	}
 	_, rec, w := appDeviceBackend(t, deskDir)
 	if !slices.Contains(w.hello, appwire.FeatureChatsSend) {
-		t.Fatal("hello does not offer chats.send where sync storage is not closed")
+		t.Fatal("hello does not offer chats.send where relay storage is not closed")
 	}
 	if _, err := w.call("chats.send", appwire.ChatSendParams{Cell: c.ID, Text: " "}); err == nil {
 		t.Fatal("an empty message was sent")
@@ -199,10 +199,10 @@ func TestAMessageToAChatElsewhereIsNotOfferedAndLeavesNothingWhileSyncStorageIsO
 
 	backend, _, w := appDeviceBackend(t, deskDir)
 	if slices.Contains(w.hello, appwire.FeatureChatsSend) {
-		t.Fatal("hello offers chats.send while sync storage is off")
+		t.Fatal("hello offers chats.send while relay storage is off")
 	}
 	_, refused := w.call("chats.send", appwire.ChatSendParams{Cell: c.ID, Text: "PLAINTEXT-NOTE-MARKER-77d2 while storage is off"})
-	if refused == nil || refused.Message != appNoteWords[syncwords.ErrNotesWaitForStorage] || !strings.Contains(strings.ToLower(refused.Message), "sync storage") {
+	if refused == nil || refused.Message != appNoteWords[syncwords.ErrNotesWaitForStorage] || !strings.Contains(strings.ToLower(refused.Message), "relay storage") {
 		t.Fatalf("a send while storage is off = %+v; want %q", refused, appNoteWords[syncwords.ErrNotesWaitForStorage])
 	}
 	l, err := tower.Dir.List(t.Context())
@@ -228,7 +228,7 @@ func TestAMessageToAChatElsewhereIsNotOfferedAndLeavesNothingWhileSyncStorageIsO
 	}
 	_, _, again := appDeviceBackend(t, deskDir)
 	if !slices.Contains(again.hello, appwire.FeatureChatsSend) {
-		t.Fatal("hello does not offer chats.send once sync storage is approved")
+		t.Fatal("hello does not offer chats.send once relay storage is approved")
 	}
 	sent := machineCall[appwire.ChatSendResult](t, again, "chats.send", appwire.ChatSendParams{Cell: c.ID, Text: "now that storage is on"})
 	if sent.Note.State != appwire.ChatNoteWaiting {

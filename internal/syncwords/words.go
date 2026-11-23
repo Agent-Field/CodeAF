@@ -102,10 +102,10 @@ func IsOutage(text string) bool {
 const SavedHerePending = "saved here; it reaches your other devices when the relay at %s answers"
 
 // SavedStorageOff is shared by app quit and the close of an individual chat.
-const SavedStorageOff = "saved here; sync storage is off for this account, so it stays on this computer"
+const SavedStorageOff = "saved here; relay storage is off for this account, so it stays on this computer"
 
 // ErrContinueStorageOff preserves local turns when the recorded history is missing here.
-var ErrContinueStorageOff = errors.New("cannot move this chat here while sync storage is off because this computer is missing saved turns; your local turns stay here")
+var ErrContinueStorageOff = errors.New("cannot move this chat here while relay storage is off because this computer is missing saved turns; your local turns stay here")
 
 // ErrHolderOffline is a take that cannot finish because the computer that has
 // the chat is not running codeaf, so nothing can send its bytes. The chat is
@@ -139,7 +139,7 @@ func HolderOffline(name string) string {
 // the computer that shared it by blind pass-through and this computer has that
 // mode switched off: the record is in the list, but the only road to its frames
 // is shut here.
-var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and blind pass-through is switched off here; switch it back on (CODEAF_PASSTHROUGH) or turn on sync storage to move it here")
+var ErrLiveTransferOff = errors.New("this chat is only on the computer that shares it, and blind pass-through is switched off here; switch it back on (CODEAF_PASSTHROUGH) or turn on relay storage to move it here")
 
 // SecretFilesLate is said when a chat has moved here but the files kept out of
 // its saved history (.env and the like) did not come with it, because the
@@ -156,4 +156,4 @@ func SecretFilesLate(name string) string {
 // have to sit on the sync service until that computer took it, and the service
 // keeps nothing of the kind until storage is approved, so the message is not
 // sent: the chat has to be brought here to be written to.
-var ErrNotesWaitForStorage = errors.New("a message to a chat on another computer waits for sync storage, which is off for this account; move the chat here to write to it")
+var ErrNotesWaitForStorage = errors.New("a message to a chat on another computer waits for relay storage, which is off for this account; move the chat here to write to it")

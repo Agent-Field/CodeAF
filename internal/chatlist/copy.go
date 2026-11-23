@@ -14,7 +14,7 @@ import (
 // chats move by blind pass-through (internal/syncsetup/livetransfer.go): what is
 // true there is that chats are not stuck, and that what still needs the relay's
 // storage waits.
-const RelayStorageOffLive = "chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)"
+const RelayStorageOffLive = "chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for relay storage (request access in Settings under Devices)"
 
 // LiveCarriesChats answers whether blind pass-through is carrying this computer's
 // chats now. The program that owns the home sets it at startup; nothing that
@@ -85,7 +85,7 @@ const (
 	LostRace        = "another device moved this chat first"
 	PickedUpAgain   = "%s picked this chat up again"
 	NoIdentity      = "this machine has no identity yet: codeaf identity import"
-	RelayStorageOff = "sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
+	RelayStorageOff = "relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
 	SyncOff         = "sync is off: set CODEAF_SYNC_URL to your relay's address"
 	Unreachable     = "the relay is not answering"
 	// TakeBackUnreachable explains why a released writer keeps a send unsent.
