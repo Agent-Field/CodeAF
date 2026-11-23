@@ -46,6 +46,10 @@ type UpdateCoordinator struct {
 	Disable func() error
 	// Refusal names why this executable cannot be replaced in place, or "".
 	Refusal func() string
+	// BundleRefusal is Refusal's answer for an executable inside a macOS
+	// application bundle, or "". /update asks it before it turns a source build
+	// away, because the engine a desktop app carries is always one.
+	BundleRefusal func() string
 	// Automatic is the BUILD's half of the automatic road
 	// ([codeupdate.AutomaticFor]): whether this file may move to this release
 	// without anybody asking. Only a stable codeaf moving to a newer stable
