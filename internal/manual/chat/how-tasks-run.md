@@ -94,7 +94,10 @@ here" is you saying so: the task works in that folder itself, with nothing isola
 its ground, in no repository, is turned back before anything is spent: `this task names a
 folder it does not stand in: <path>`. **A path is a written name**, so a bare separator in
 a sentence — "renders / no regression", "and / or", a lone `~/` — is prose and is refused
-over nothing. A `ground` naming something that is not on this machine is `this task names
+over nothing, and so is an HTTP route: `GET /top` or `POST /links` in a contract names what
+the work delivers, not a folder the task would stand in, and no first component along it is
+a directory on this machine, so the work is admitted. A `ground` naming something that is
+not on this machine is `this task names
 a folder that is not there: <path>`. And a brief that names a
 path inside a *different* repository **re-grounds** the task onto that one — the brief knew
 something the evidence did not — though nothing ever overrides a path you named yourself.
