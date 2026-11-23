@@ -448,6 +448,140 @@ func TestJinaFetchIsCappedByTheRenderer(t *testing.T) {
 	}
 }
 
+// TestJinaFetchAsksForAFreshCopy: the reader keeps a 3600s page cache and
+// serves it by default, so every fetch must ask it not to, key or no key.
+func TestJinaFetchAsksForAFreshCopy(t *testing.T) {
+	const page = "# Go 1.25\n\nThe release notes, as markdown."
+	var (
+		gotNoCache string
+		gotAuth    string
+	)
+	server := serve(t, &jinaBaseURL, func(w http.ResponseWriter, r *http.Request) {
+		gotNoCache = r.Header.Get("X-No-Cache")
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, page)
+	})
+	jinaBaseURL = server.URL + "/"
+
+	fetcher := jina{}.Bind(Options{})
+	if _, err := fetcher.Fetch(context.Background(), "https://go.dev/doc/go1.25"); err != nil {
+		t.Fatalf("Fetch error = %v", err)
+	}
+	if gotNoCache != "true" {
+		t.Errorf("X-No-Cache = %q, want the no-cache ask", gotNoCache)
+	}
+	if gotAuth != "" {
+		t.Errorf("Authorization = %q, want none without a key", gotAuth)
+	}
+
+	// A key only raises the rate ceiling, but it must ride the same ask.
+	if _, err := (jina{}).Bind(Options{JinaKey: "jina-key"}).Fetch(context.Background(), "https://go.dev"); err != nil {
+		t.Fatalf("keyed Fetch error = %v", err)
+	}
+	if gotNoCache != "true" {
+		t.Errorf("keyed X-No-Cache = %q, want the no-cache ask", gotNoCache)
+	}
+	if gotAuth != "Bearer jina-key" {
+		t.Errorf("Authorization = %q, want Bearer jina-key", gotAuth)
+	}
+}
+
+// TestJinaFetchFallsBackWhenTheReaderServedItsCache: when the reader marks
+// its answer a HIT it is serving someone ELSE's snapshot, so the fetch must
+// discard it and GET the target directly, reducing the page to text.
+// The handler tells the two routes apart by path: the target is the server's
+// own /page, while the reader route prefixes it with the reader base URL.
+func TestJinaFetchFallsBackWhenTheReaderServedItsCache(t *testing.T) {
+	const page = `<html><head><title>Example Domain</title></head><body><h1>Example Domain</h1><p>This domain is for use in illustrative examples in documents.</p><footer>Ignore &amp; forget me</footer></body></html>`
+	server := serve(t, &jinaBaseURL, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/http") {
+			// The reader route: a cached snapshot of the page.
+			w.Header().Set("X-Cache", "HIT")
+			fmt.Fprint(w, "# stale cached snapshot, not the page")
+			return
+		}
+		if r.URL.Path != "/page" {
+			t.Errorf("unexpected route %q", r.URL.Path)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, page)
+	})
+	jinaBaseURL = server.URL + "/"
+
+	target := server.URL + "/page"
+	text, err := jina{}.Bind(Options{}).Fetch(context.Background(), target)
+	if err != nil {
+		t.Fatalf("Fetch error = %v", err)
+	}
+	if strings.Contains(text, "stale cached snapshot") {
+		t.Errorf("Fetch = %q, returned the reader's snapshot instead of the page", text)
+	}
+	if !strings.Contains(text, "Example Domain") || !strings.Contains(text, "illustrative examples") {
+		t.Errorf("Fetch = %q, want the direct page's own text", text)
+	}
+	if strings.Contains(text, "<h1>") || strings.Contains(text, "&amp;") {
+		t.Errorf("Fetch = %q, want the markup stripped and entities decoded", text)
+	}
+}
+
+// TestJinaFetchNamesTheFallbackWhenTheDirectFetchFails: a HIT must never be
+// returned, so when the direct fetch itself fails the error has to name that
+// fallback rather than hand the snapshot over silently.
+func TestJinaFetchNamesTheFallbackWhenTheDirectFetchFails(t *testing.T) {
+	server := serve(t, &jinaBaseURL, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/http") {
+			w.Header().Set("X-Cache", "HIT")
+			fmt.Fprint(w, "# stale cached snapshot")
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "boom")
+	})
+	jinaBaseURL = server.URL + "/"
+
+	target := server.URL + "/page"
+	_, err := jina{}.Bind(Options{}).Fetch(context.Background(), target)
+	if err == nil {
+		t.Fatal("Fetch of a HIT whose direct fetch 500s returned no error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "cached snapshot rejected") || !strings.Contains(msg, "direct fetch of "+target) {
+		t.Errorf("Fetch error = %q, want the rejected snapshot and its direct fallback named", msg)
+	}
+	if strings.Contains(msg, "stale cached snapshot") {
+		t.Errorf("Fetch error = %q, leaked the snapshot body", msg)
+	}
+}
+
+// TestJinaFetchEmptyDirectPageIsAnError: an empty direct response means the
+// fallback found nothing to read, and the error must say so — never fall back
+// to the snapshot it just rejected.
+func TestJinaFetchEmptyDirectPageIsAnError(t *testing.T) {
+	server := serve(t, &jinaBaseURL, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/http") {
+			w.Header().Set("X-Cache", "HIT")
+			fmt.Fprint(w, "# stale cached snapshot")
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+	})
+	jinaBaseURL = server.URL + "/"
+
+	target := server.URL + "/page"
+	_, err := jina{}.Bind(Options{}).Fetch(context.Background(), target)
+	if err == nil {
+		t.Fatal("Fetch of a HIT whose direct body is empty returned no error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "cached snapshot rejected") || !strings.Contains(msg, "direct fetch of "+target) {
+		t.Errorf("Fetch error = %q, want the rejected snapshot and its direct fallback named", msg)
+	}
+	if strings.Contains(msg, "stale cached snapshot") {
+		t.Errorf("Fetch error = %q, leaked the snapshot body", msg)
+	}
+}
+
 // --- resolution -----------------------------------------------------------
 
 func TestResolveAuto(t *testing.T) {
