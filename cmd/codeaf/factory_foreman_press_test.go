@@ -592,7 +592,7 @@ func TestTheFactoryManagersBriefSaysWhatItMayDoForThePerson(t *testing.T) {
 		"ask needs_you for the jobs that wait on the person",
 		"press that one action for them with press; it is refused unless their own message in this turn asked for it and the job accepts it now",
 		"Before you approve what a job would post or change, show the person exactly what it is",
-		"pass them on with tell and relay what it answers",
+		"pass them on with tell and report what it answers",
 		"outside Auto the job's main agent cannot push, approve, mark ready or merge on it: never promise that it will",
 		"Never stop or drop a job, and never press, ship, merge or post on your own judgment",
 	} {
