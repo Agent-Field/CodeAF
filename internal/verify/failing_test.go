@@ -149,3 +149,69 @@ func TestAPathIsNotQualifiedByItsDots(t *testing.T) {
 		}
 	}
 }
+
+// Playwright's list, line and dot reporters name red checks in a closing `N
+// failed` section and nowhere else in a form that is stable between runs. The
+// fixtures are real output of @playwright/test 1.64.1 against a four-check
+// spec, with the absolute workspace path replaced by /work/app.
+func TestTheChecksPlaywrightReportedAsFailedAreTheOnesReadBackOutOfIt(t *testing.T) {
+	inTwoBrowsers := []string{
+		"[chromium] › tests/e2e/login.spec.ts › login › rejects a wrong password",
+		"[chromium] › tests/e2e/login.spec.ts › shows the footer",
+		"[firefox] › tests/e2e/login.spec.ts › login › rejects a wrong password",
+		"[firefox] › tests/e2e/login.spec.ts › shows the footer",
+	}
+	for _, sample := range []struct {
+		fixture string
+		want    []string
+	}{{
+		// The list reporter with two projects: one test in two browsers is
+		// two checks, so the project stays in the name.
+		fixture: "playwright-list-projects.txt",
+		want:    inTwoBrowsers,
+	}, {
+		// The same suite after a line was added above every check. Playwright
+		// prints each check at a new line and column, and a name that kept them
+		// would read two unchanged red checks as two new failures.
+		fixture: "playwright-list-projects-moved.txt",
+		want:    inTwoBrowsers,
+	}, {
+		// The line reporter with no projects configured prints no brackets.
+		fixture: "playwright-line.txt",
+		want: []string{
+			"tests/e2e/login.spec.ts › login › rejects a wrong password",
+			"tests/e2e/login.spec.ts › shows the footer",
+		},
+	}, {
+		// A check that failed and then passed on retry gets a numbered failure
+		// banner like the red ones, and the summary lists it under `1 flaky`.
+		// It passed, so it is not read as failing.
+		fixture: "playwright-list-flaky.txt",
+		want: []string{
+			"[chromium] › tests/e2e/login.spec.ts › login › rejects a wrong password",
+			"[chromium] › tests/e2e/login.spec.ts › shows the footer",
+		},
+	}} {
+		got := FailingTests(fixture(t, sample.fixture))
+		if !reflect.DeepEqual(got, sample.want) {
+			t.Errorf("%s: read %q, want %q", sample.fixture, got, sample.want)
+		}
+	}
+}
+
+// Only playwright's own location grammar loses its numbers: a spec file inside
+// a ` › ` chain. rspec names a red example by file and line, and that line is
+// the example's identity to rspec.
+func TestOnlyPlaywrightsMovingLocationIsStrippedFromAName(t *testing.T) {
+	// The leading `./` is trimmed by normalizeTestName as it always was; the
+	// line number is what this asserts.
+	if got := FailingTests("rspec ./spec/api_spec.rb:12 # Api returns headers\n"); !reflect.DeepEqual(got, []string{"/spec/api_spec.rb:12"}) {
+		t.Errorf("an rspec location was rewritten: %q", got)
+	}
+	// mocha also numbers its failures `1) ...`, but prints no `N failed`
+	// section in this shape, so nothing of it is read as a playwright check.
+	mocha := "  2 passing (5ms)\n  1 failing\n\n  1) Array\n       #indexOf()\n         returns -1:\n     AssertionError\n"
+	if got := FailingTests(mocha); len(got) != 0 {
+		t.Errorf("mocha's numbered failure list was read as playwright checks: %q", got)
+	}
+}
