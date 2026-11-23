@@ -62,16 +62,26 @@ type Driving struct {
 	// which a person reads as one they forgot rather than as a machine they
 	// walked away from. It is the case [homeHeldShort] already has a word for.
 	Here bool
+	// ReadOnly is the sentence explaining why this computer may watch the chat
+	// but not type into it; empty means typing is permitted.
+	ReadOnly string
+	// Holder is the name of the other computer that currently holds the keyboard,
+	// and empty when this computer holds it.
+	Holder string
 }
 
 // watching reports that this window is attached to a conversation another window
-// is typing into.
+// is typing into, or that a live view's composer-position bar is standing.
 //
 // IT IS ASKED ON THE DRAW PATH, twice a frame, so it must answer from what is
 // already held and never from the wire — the same law [LinkSeam.Note] states,
 // and the client obeys it for the same reason: the answer is a field a frame
 // already delivered, under the mutex that guards it.
 func (a *app) watching() bool {
+	if a.liveFront() != nil {
+		_, bar := a.liveBar()
+		return bar
+	}
 	if a.link.Driving == nil {
 		return false
 	}
@@ -117,6 +127,9 @@ func (a *app) watchBar(width int) []string {
 	if width < 1 {
 		return []string{""}
 	}
+	if word, ok := a.liveBar(); ok {
+		return []string{a.pal.dim(fit(word, width))}
+	}
 	left := a.watchWord()
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(watchKeysWord)
 	if gap < 1 {
@@ -150,7 +163,7 @@ func (a *app) watchKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case "enter", "ctrl+enter":
 		a.watchSpaces = 0
-		return a.takeKeyboard(), true
+		return a.liveBarEnter(), true
 	case "alt+enter", "ctrl+j":
 		// A newline into a box nobody can see is nothing at all.
 		a.watchSpaces = 0
@@ -330,6 +343,18 @@ type drivingMsg struct {
 //
 // A SEAM THAT IS NOT WIRED ARMS NOTHING, which is every local session.
 func (a *app) watchDriving() tea.Cmd {
+	if a.armingLive {
+		live := a.liveFront()
+		if live == nil || live.Changed == nil {
+			return nil
+		}
+		changed := live.Changed
+		gen := a.convGen
+		return func() tea.Msg {
+			<-changed()
+			return liveChangedMsg{gen: gen}
+		}
+	}
 	changed := a.link.DrivingChanged
 	if changed == nil {
 		return nil

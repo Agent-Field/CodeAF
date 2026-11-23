@@ -519,14 +519,14 @@ func (a *app) seamPieces(width int) seamPieces {
 	// AND A PINNED LANE RIDES THE ID AS `@lane` ([app.modelWord]), which is the
 	// one place the pin is written on the chrome: the status row and the phone
 	// deck take the same word from the same function.
-	pieces := seamPieces{host: a.host, model: a.modelWord(), exchange: a.modelCycleSuffix(),
+	pieces := seamPieces{host: a.seamHost(), model: a.modelWord(), exchange: a.modelCycleSuffix(),
 		project: a.seamProjectWord()}
 	// AND IN A MANAGED TEAM THE SLOT SAYS WHERE THE WORDS GO, once there are
 	// words: the empty box says it as its placeholder (teamrailpointer.go's
 	// [app.trafficHint]), and the first keystroke took the placeholder away with
 	// the one fact a person typing to a team needs. `to ◆ manager`, or
 	// `to @web` with a member in front.
-	if !a.input.empty() {
+	if !a.input.empty() && a.liveFront() == nil {
 		pieces.name = a.trafficHint()
 	}
 	if pieces.model != "" {

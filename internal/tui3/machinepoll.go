@@ -110,7 +110,7 @@ func (a *app) pollMachines(now time.Time) tea.Cmd {
 // takes its chat, even while home is closed. A window without a sync source
 // or without a conversation has no directory work to do.
 func (a *app) watchesConversation() bool {
-	return a.machines != nil && a.file != "" && !a.hosted()
+	return a.machines != nil && a.file != "" && !a.hosted() && a.liveFront() == nil
 }
 
 // hurryMachines asks now, for a person who has just arrived.

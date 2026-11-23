@@ -305,6 +305,12 @@ type Conversation struct {
 	// no link — and every door whose conversations share one connection.
 	Link *LinkSeam
 
+	// Live is what the door says about a conversation running on another of this
+	// person's computers and viewed inside this local window ([LiveSeam]). Nil
+	// means the conversation is not a live view, and every live-view behaviour is
+	// absent.
+	Live *LiveSeam
+
 	// Seal is what THIS conversation's seat says about its seals ([SealSeam]).
 	// It is per conversation because a window can switch between them: the
 	// segment and the sentences are the shown session's own. The zero value is
@@ -463,6 +469,10 @@ type Options struct {
 	// that cannot, and the offer is then absent rather than failing
 	// (homepanel_continue.go).
 	Takeover Taker
+	// OpenLive opens a chat held on another of this person's computers as a live
+	// view inside this local window. Nil means remote control is off and the
+	// surface behaves as it does without live views.
+	OpenLive func(ctx context.Context, row chatlist.Row) (Conversation, error)
 	// Pairing shares this computer's chats with another, and receives another's
 	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
 	// sentence while the first-run screen leaves its code field out.

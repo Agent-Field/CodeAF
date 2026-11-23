@@ -33,7 +33,7 @@ import (
 
 // heldElsewhere is the row of the chat on screen when another machine holds it.
 func (a *app) heldElsewhere() (chatlist.Row, bool) {
-	if a.file == "" || a.hosted() {
+	if a.file == "" || a.hosted() || a.liveFront() != nil {
 		return chatlist.Row{}, false
 	}
 	cell := filepath.Base(session.DirOf(a.file))
@@ -121,6 +121,12 @@ func (a *app) needsOwnershipRead() bool {
 }
 
 func (a *app) checkBeforeSendWith(resume func() tea.Cmd) tea.Cmd {
+	if a.liveFront() != nil {
+		if resume != nil {
+			return resume()
+		}
+		return nil
+	}
 	src, file, draft, agent := a.machines, a.file, a.input.String(), a.agent
 	// A read that only ran out of time does not show the connection is down,
 	// so the next Enter asks again rather than replaying the cached failure.

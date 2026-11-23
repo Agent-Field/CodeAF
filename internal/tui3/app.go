@@ -2163,6 +2163,20 @@ type app struct {
 	// is every local session — no segment, no notice, no waiting room — which is
 	// the same absence the seam above draws when automations are off.
 	link LinkSeam
+	// liveView is the seam of the conversation in front when it is a live view of a
+	// chat another of this person's computers runs (live.go). Nil is every other
+	// conversation, and with it every live-view behaviour is absent.
+	liveView *LiveSeam
+	// liveTurnTouchAt is when the live link was last told a person or a turn was
+	// active, so a streaming turn reports at most once a second.
+	liveTurnTouchAt time.Time
+	// armingLive makes [app.watchDriving] wait on the live seam's change channel
+	// instead of the link's, so the harness classifies both waits as one kind.
+	armingLive bool
+	// inRoute and liveTouchedInRoute let one routed message touch the live link
+	// once however many places on its path report the same action.
+	inRoute            bool
+	liveTouchedInRoute bool
 	// seal is what the door can tell this surface about the sealing of the
 	// conversation's calls (sealseam.go). Its zero value draws nothing.
 	seal           SealSeam
@@ -2356,6 +2370,7 @@ type app struct {
 	// (homepanel_machines.go).
 	machines       chatlist.Source
 	taker          Taker
+	openLive       func(context.Context, chatlist.Row) (Conversation, error)
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
@@ -3122,6 +3137,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		waitForRelease:      opts.WaitForRelease,
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
+		openLive:            opts.OpenLive,
 		pairing:             opts.Pairing,
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
@@ -3662,7 +3678,7 @@ func (a *app) Init() tea.Cmd {
 	// the loop for the reason every other reading on this list is: the walk opens
 	// every project's index, and the paint path may never pay for one.
 	standing := []tea.Cmd{a.takeModelCommands(), a.resumeAtLaunch, a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
-		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(), a.armLive(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
 		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
 		// its own (automationwatch.go): this window learns of a run whichever
@@ -3870,6 +3886,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // switch ever sees them and hands on everything else untouched and in the order
 // it arrived (coalesce.go).
 func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
+	a.inRoute = true
+	a.liveTouchedInRoute = false
+	defer func() {
+		a.inRoute = false
+		a.liveTouchedInRoute = false
+	}()
 	// THE LINK'S ONE-SHOT NEWS IS DRAINED HERE AND NOWHERE ELSE (hostlink.go).
 	// The seam forgets the sentence as it hands it over, so a second caller
 	// would not show it twice — it would swallow it. This is the one place the
@@ -4057,6 +4079,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		a.sawAPerson()
+		a.touchLive()
 		a.stirred()
 		// AND THE HAND IS STAMPED HERE, because this is the only line every
 		// keypress passes through, and what the question block needs to know
@@ -4470,6 +4493,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.clearPlaceRowHover()
+		a.touchLive()
 		a.stirred()
 		a.placePointer.suspended = true
 		// THE CONTEXT CHOOSER OWNS THE WHEEL WHILE IT IS UP, and it owns it over
@@ -6080,6 +6104,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// wait re-arms itself.
 		return a, a.drivingMoved(msg)
 
+	case liveChangedMsg:
+		return a, a.liveMoved(msg)
+
 	case heldMsg:
 		// The far machine's waiting room, answered. Each question is redrawn
 		// through the door its live twin comes through, and a kind this build
@@ -6184,6 +6211,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 // the next tick is scheduled. It is the ONLY place a streamed delta becomes
 // visible, which is what caps the repaint rate.
 func (a *app) paint() tea.Cmd {
+	a.touchLiveTurn()
 	// ONE FRAME IS A WHOLE STRIDE OF THE ANIMATION, which is the whole of what a
 	// slower link costs the picture: three slots pass in one frame over a
 	// connection, so the spinner arrives where it would have been anyway and it
@@ -6529,6 +6557,7 @@ func (a *app) takeStream(ch <-chan session.Event) tea.Cmd {
 	// The turn is open and the first request is out with nothing back from it.
 	a.awaited = time.Now()
 	a.startClock()
+	a.touchLiveTurn()
 	return tea.Batch(waitEvent(ch, a.gen), a.wake())
 }
 
@@ -6673,6 +6702,7 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 	if a.state == stateWorking {
 		a.startClock()
 	}
+	a.touchLiveTurn()
 	// THE COLLAPSE RULE (thinking.go): the first thing a turn says that is not
 	// reasoning ends the reasoning block. EventThinking is exempt because it is
 	// the marker that OPENED the run — collapsing on it would close the block
@@ -7623,6 +7653,7 @@ func (a *app) submittingShown(text, shown string, plain []segment, start func() 
 	// The turn is open and the first request is out with nothing back from it.
 	a.awaited = time.Now()
 	a.startClock()
+	a.touchLive()
 	a.follow()
 	a.touch()
 	ctx, agent := a.ctx, a.agent
@@ -8970,6 +9001,8 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	if conv.Link != nil {
 		a.link = *conv.Link
 	}
+	a.liveView = conv.Live
+	a.liveTurnTouchAt = time.Time{}
 }
 
 // freshAndEmpty is the conversation nobody has used yet: nothing on screen, no

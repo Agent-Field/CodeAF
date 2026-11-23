@@ -340,6 +340,7 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	a.touchLive()
 	// The removal question consumes its answer whole, including cancellation chords.
 	if c := a.openDevicesCard(); c != nil && c.removing != nil {
 		cmd, _ := c.key(a, msg.String())
@@ -1510,7 +1511,7 @@ func (a *app) enterCheckedLine(ownershipRead bool) tea.Cmd {
 	// window that is not holding the keyboard. The draft is untouched: not
 	// cleared, not sent, exactly where it was.
 	if a.watching() {
-		return a.takeKeyboard()
+		return a.liveBarEnter()
 	}
 	if a.openSelectedPaste() {
 		return nil
