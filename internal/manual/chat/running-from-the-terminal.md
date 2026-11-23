@@ -701,8 +701,6 @@ by default on Linux and macOS on every build. Native Windows is supported too; a
 
 ## codeaf pair — show a code, or use one, from the terminal
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 **`codeaf pair approve <link>`** compares the four-digit check number and asks `y / n`: only `y` or `yes` approves, and `d`, Esc, Enter or anything else decline. Code pairing keeps its `y / n` question.
 
 **`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `CODEAF_SYNC_URL=<url>` or `--via <url>` keeps the invitation on that service's own pairing page and includes `--via` in the token command; it never prints the hosted page link for a self-hosted invitation. `--via <url>` names the sync address to go through, and a solo computer with submitted chats refuses ordinary pairing and explains `--replace`. Terminal pairing prints “Paired with <name>. Run codeaf to open your chats.” Start codeaf again to share existing chats, saved keys, memory and preferences in the background; reopen after an interruption to resume. A computer with local work refuses and changes nothing. Explicit `--replace` confirms replacement: local chats stay here but stop syncing, shared memories and settings clear, and local provider keys stay here. The page *Pairing your chats with a second computer* has the whole story.
@@ -811,8 +809,6 @@ key the first time the identity is made on that machine.
 
 ## List your chats on every machine — codeaf cell list --all, and what its lines mean
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
 each: id, title, device, where it runs (`working on <device>`, `held on <device>`, `<device> offline`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
@@ -833,7 +829,7 @@ Only a terminal that sets `CODEAF_SYNC_URL` itself is asking for a different rel
 
 ## Sync your chats between machines — what is CODEAF_SYNC_URL, and CODEAF_SYNC_INTERVAL_MS
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 Moving chats and pairing are available by default on Linux, macOS and native Windows on every build with a compatible engine. Pair both computers first.
 
@@ -856,8 +852,6 @@ to the relay until pairing; that identity alone does not connect your other comp
 
 ## How often chat turns sync — CODEAF_SYNC_INTERVAL_MS
 
-On the hosted sync service this needs sync storage approval (Settings → Devices → sync storage).
-
 After pairing, codeaf sends sealed chat turns to the relay configured by `CODEAF_SYNC_URL`.
 
 **`CODEAF_SYNC_INTERVAL_MS`** is how often unsaved turns are sent to the relay, in
@@ -876,9 +870,9 @@ You do not have to wait for expiry while a hold is still live: press enter on a 
 machine and choose **Move here** / **Continue here**, and it is taken at once (see "Continue a chat here that another
 machine left" in home).
 
-When another machine does, this window says `<device> continued this chat; this window now only shows it`,
+When another machine does, this window says `<device> continued this chat. This copy is read-only and may be behind`,
 with the name of the machine that took over (or the first digits of its id when it has no name). From then on
-this window only shows the conversation: a tool call the model tries here answers with that same line and does
+this window now only shows it: a tool call the model tries here answers with that same line and does
 not run, so the two machines never both change the chat. Nothing on the other machine is overwritten.
 
 Turns you saved here that had not reached the relay yet are not lost. They are kept as a separate chat
@@ -954,9 +948,10 @@ machine, the next line gives the tunnel to run before opening that address here:
 ssh -L 1455:localhost:1455 <that machine>
 ```
 
-If that sign-in chose port 1457 instead, the printed command uses 1457. DeepSeek and
-MiniMax take a key through the same checked connection as `/connect`; Ollama takes none.
-Z.ai, Moonshot and Qwen take a key and also need `--region intl` or `--region cn`. A key
+If that sign-in chose port 1457 instead, the printed command uses 1457. DeepSeek,
+MiniMax and OpenCode Go take a key through the same checked connection as `/connect`;
+Ollama takes none. Z.ai, Moonshot and Qwen take a key and also need `--region intl` or
+`--region cn`. A key
 is read from stdin when it is piped, or asked for without echo on a terminal. A new custom
 provider is created only in the chat: an unknown custom name says it is not a provider this
 profile knows. Once the chat has created one, `codeaf connect <its name>` can reconnect
@@ -1870,8 +1865,8 @@ leaves for the Model Pool after a task lands (*Model Pool* above).
 Connected services ask for streaming token counts with `stream_options.include_usage`.
 If a service explicitly refuses that option with HTTP 400 or 422, codeaf retries
 once without it and omits it on later calls to that endpoint. An unrelated error
-does not turn usage reporting off. The default router uses its existing usage
-request without the extra option.
+does not turn usage reporting off. Only the default router receives the
+`usage.include` opt-in.
 The usage-option repair can follow or precede an independent reasoning repair;
 each distinct repair is used once in that chain.
 

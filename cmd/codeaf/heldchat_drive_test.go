@@ -632,7 +632,7 @@ func TestAParkedChatDriveWaitsForItsJournalDecision(t *testing.T) {
 		claimAgain(t, book, d)(false)
 		claimAgain(t, book, d)(true)
 		d.mu.Lock()
-		closed := d.closed
+		closed := d.closed.Load()
 		d.mu.Unlock()
 		if got := calls.Load(); got != 1 || closed || book.renewalsOf("chat") != d {
 			t.Fatalf("claim on begun drive: starts = %d, closed = %v, kept = %v; want 1, false, true", got, closed, book.renewalsOf("chat") == d)

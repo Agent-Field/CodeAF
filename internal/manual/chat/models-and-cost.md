@@ -1723,16 +1723,49 @@ answer: it cannot think harder than its own ceiling.
 These rungs are not the same notation as a thinking level written onto a pin
 (`moonshotai/kimi-k3:high`), which still takes only `low`, `medium` and `high`.
 
+DeepSeek's own API is the one exception to this shape: see *Thinking levels on DeepSeek's
+own API*.
+
+## Thinking levels on DeepSeek's own API — `codeaf connect deepseek` and its `reasoning_effort` field
+
+When DeepSeek is connected directly (`codeaf connect deepseek`, the service at
+`https://api.deepseek.com/v1`), a thinking level travels as DeepSeek's own top-level
+`reasoning_effort` field, not as OpenRouter's `reasoning` object. DeepSeek's API ignores
+that object, and its model list names the three words it does read: `low`, `high` and
+`max`, with `high` its default.
+
+| Rung | What DeepSeek's own API is sent |
+|---|---|
+| `auto` | nothing — DeepSeek thinks at its default |
+| `low` | `"reasoning_effort":"low"` |
+| `medium` | `"reasoning_effort":"high"` — there is no word between low and high |
+| `high` | `"reasoning_effort":"high"` |
+| `xhigh` | `"reasoning_effort":"max"` |
+| `max` | `"reasoning_effort":"max"` |
+
+No thinking budget is sent there and the `reasoning` object never rides beside the word.
+Asking a model that cannot stop thinking to stop sends `"reasoning_effort":"low"`, the
+lowest word it takes. A `deepseek/...` model reached through OpenRouter is unchanged: it
+gets the `reasoning` object, word or budget, and OpenRouter translates it. Before
+2026-11-22 the direct service was sent that object too, so every level ran at DeepSeek's
+default and `max` was unreachable.
+
 ## The model went quiet, or stopped answering halfway through — the request is cut when nothing comes back, and how long it waits first
 
 A request that has been accepted and then produces nothing is cut and sent again. Two
 clocks decide, and only the **model writing** moves either of them — a token of answer, a
 token of thinking, a piece of a tool call.
 
-| The clock | How long | What it catches |
+| The clock | Hosted wait with default settings | What it catches |
 | --- | --- | --- |
-| first word | **1m30s** | accepted the request and never started |
+| first word with keepalives | **1m30s** | accepted the request and never started |
 | a gap mid-reply | **45s** on an endpoint codeaf has not timed, less on one it has | started writing and stopped |
+
+On a conversation turn, the no-answer-byte limit after headers without
+keepalives is 10 seconds for a hosted endpoint. A local endpoint gets ten
+times the hosted waits with `response.patience: auto` (the default). A number
+in `response.patience` uses the same multiplier and rescue policy for every
+endpoint. Set `1` to get the old behaviour exactly.
 
 There is a third clock for the opposite problem — a reply that keeps writing and never
 finishes. It is not a fixed number, so it has its own section below: *A reply that never
@@ -1750,14 +1783,15 @@ endpoint would take to write about three and a half thousand tokens: roughly **1
 on one sustaining 250 tokens a second, **42** on one sustaining 83. A minute of silence from
 an endpoint that has been writing two hundred and fifty words a second is not patience, it
 is a dead stream, and waiting it out costs the same minute on every retry. It never goes
-the other way: a slow endpoint gets the full 45 seconds and no more is ever granted.
+the other way: a slow endpoint gets the full 45 seconds with hosted `auto` before
+any extension for keepalives.
 
 **Keepalives buy patience, never progress.** Some endpoints assemble a whole answer — most
 often one large tool call — on their own side and deliver it in one piece, sending
 keepalive comments the entire time. That quiet is not a dead connection, so while
 keepalives are still arriving the wait is extended, up to a hard cap of **2m30s** of total
-quiet. Past the cap the request is cut whatever the endpoint is saying, because an
-endpoint that speaks forever and answers never has failed too — the error then honestly
+quiet with hosted `auto`. Past the cap the request is cut whatever the endpoint is
+saying, because an endpoint that speaks forever and answers never has failed too — the error then honestly
 names the longer wait, `went quiet for 2m30s`. An endpoint that delivers its answers this
 way is also remembered as a slow one and sorted behind the endpoints that stream, so it
 stops being the first pick for the next request.
@@ -1817,6 +1851,11 @@ When there is only one machine behind a request, a quiet reply is handled differ
 That means your own base url or a local server with no router in front of it, a single
 connected service, or a model pinned by hand to one lane. Another endpoint and a pause
 cannot help there, and giving up would only hand you the retry to do by hand.
+
+With `response.patience: auto`, a local endpoint gets ten times the hosted
+wait before a request is cut. codeaf waits for a request to a single-host
+local endpoint to end before asking the same server again. A numeric setting
+uses the same rescue policy for hosted and local endpoints.
 
 So in a conversation you are watching, with no fallback model left to move to, **codeaf
 keeps asking that machine until it answers or you stop it**. It waits before every ask:
@@ -1887,7 +1926,9 @@ arriving, and the session log recorded nothing at all while it did.
 
 So every request also carries a **wall**. **A long reply that is still writing at its
 endpoint's normal speed is not cut at the wall** — only a reply that has stopped keeping
-up, or one that reaches 20 minutes.
+up, or one that reaches the upper limit. The figures below are for a hosted endpoint with
+default settings. With `response.patience: auto`, a local endpoint gets ten times as long.
+A number in `response.patience` sets the multiplier for every endpoint.
 
 **The wall is not a fixed number.** It is worked out from what that endpoint has actually
 done for you: **five times the longest reply it has finished** in this session, never less
@@ -1957,7 +1998,9 @@ Once that endpoint has finished a reply for you, the measured wall applies to th
 too, and whichever of the two is shorter is the one that cuts. A model codeaf has not heard
 back from yet keeps the room-sized deadline, because a first reply from a model that thinks
 at length may need all of it. **That wall is never extended**: a reply that arrives in one
-piece has no speed to check until it is over.
+piece has no speed to check until it is over. For a server that ignores streaming, the
+hosted wait once it has answered once is 2 minutes 30 seconds. A local endpoint gets ten
+times as long by default.
 
 **A cut reply is thrown away whole**, like every other cut: none of the text reaches the
 conversation, and the retry starts the reply from the beginning.
@@ -2044,8 +2087,9 @@ the model would not take the request · asking again · 2 of 4
 **There is no count of tries.** The `2 of 4` is which machine behind your model is being
 asked, out of how many codeaf knows of — so it counts down real places left to go, and it
 draws no number at all when nobody has named a set. What bounds the whole thing is the
-give-up above, one deadline in your own time: 90 seconds on a turn you are sitting in front
-of, four and a half minutes for a task's own call. A machine that named a comeback is
+give-up above, one deadline in your own time. With hosted defaults, it is 90 seconds on a
+turn you are sitting in front of and four and a half minutes for a task's own call. A local
+endpoint gets ten times as long by default. A machine that named a comeback is
 waited for exactly that long; a fault nobody named a wait for is asked again behind a wait
 that doubles.
 
@@ -3227,8 +3271,9 @@ There is no separate compaction model or summarization setting. The smaller reta
 explicit reduction distinguish this command from routine automatic cleanup.
 
 `/compact` ends with a summary written by the conversation's own model whenever at least
-about 1,000 tokens of older conversation are left to summarize; its cost counts toward the
-session's spending like any other call.
+about 1,000 tokens of older conversation are left to summarize. Its cost counts toward the
+session's spending like any other call. Each summary request gets two minutes multiplied by
+the conversation endpoint's `response.patience`, so a local model gets 20 minutes under `auto`.
 
 ## Turning automatic compaction off
 
@@ -3290,8 +3335,8 @@ General · Models · Memory · Tasks · AI teams · Permissions · Spending · C
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
-tabs beside it: **Permissions** is what codeaf may do without asking you first (ask before
-running, tool exceptions, shell command rules, guardian, approval countdown, task
+tabs beside it: **Permissions** is what codeaf may do without asking you first (tool
+approvals, tool exceptions, shell command rules, guardian, approval countdown, task
 countdown, who settles work that needs a look), and **Tasks** is how work you can walk
 away from is run (starting a task, check task work, task repair rounds, tasks at once,
 busy machine, memory floor, task model).
@@ -4685,7 +4730,7 @@ a chain ends after ten requests rather than waiting forever.
 
 ## Do my crew settings follow me to my other computer?
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Shared settings wait for hosted sync storage approval (Settings → Devices → sync storage). A self-hosted sync service with `--store` needs no request.
 
 After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
 per-task cap and free-route choice follow synced preferences within a few seconds,

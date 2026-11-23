@@ -4,8 +4,11 @@ package identity
 // one, so nothing about it is the sync service's business: a marker beside the
 // identity says so, and everything that talks to the service reads it. The
 // marker ends the moment the identity is shared or taken ([EndSolo]): this
-// computer took another's identity, showed a code to let one in, or approved
-// one. Reading pairing instructions does not share an identity.
+// computer took another's identity, or a person here approved another device
+// and the identity was sent to it, whether that device typed this computer's
+// code or asked by link. Showing a code shares nothing, so a code taken back,
+// run out, declined or used up by a wrong code leaves the marker, and neither
+// does reading pairing instructions.
 //
 // An identity that has no marker is not solo: it is every identity that was
 // made before the marker existed, and it keeps syncing as it did.

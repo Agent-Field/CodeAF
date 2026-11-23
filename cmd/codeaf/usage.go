@@ -200,6 +200,9 @@ func writeCommandUsage(w io.Writer, flags *flag.FlagSet) {
 		shape = "  codeaf " + flags.Name()
 	}
 	fmt.Fprintln(w, shape)
+	if flags.Name() == "pair" {
+		fmt.Fprint(w, pairNumericHelp)
+	}
 	if rows := flagRows(flags); rows != "" {
 		fmt.Fprint(w, rows)
 	}

@@ -129,6 +129,24 @@ history and unfinished drafts are separate Privacy choices.
 Older homes with no saved choice also default on. An explicit saved off choice
 stays off. Invalid saved values read off. Nothing saved is deleted.
 
+## What does the patience setting do in Models
+
+The **patience** row (`response.patience`) in **Models** multiplies model
+response time limits, including the time a turn gives a model before moving on.
+The default is `auto` (1x for hosted endpoints, 10x for local endpoints).
+Enter a number from 1 to 100, such as `10`, `10x` or `2.5`, to use that multiplier
+for every endpoint and use the same rescue policy for all endpoints. Set `1`
+to get the old behaviour exactly. See [slow local model timeout and patience](services.md#my-local-model-keeps-timing-out--ollama-gives-up-after-2-minutes-how-do-i-make-codeaf-wait-longer-slow-local-model-timeout-and-patience)
+for the wait limits and which endpoints count as local.
+
+A change saved in `/settings` reaches the next model request from an engine
+using that profile. With `--host`, the **Models** tab saves to this computer's
+profile. `CODEAF_RESPONSE_PATIENCE` overrides the row.
+A bad value in `config.json` falls back to `auto`. The settings row refuses
+`fast` with `response.patience: want auto or a number from 1 to 100 (10 or 10x), got "fast"`.
+Starting with `CODEAF_RESPONSE_PATIENCE=fast` stops codeaf with
+`CODEAF_RESPONSE_PATIENCE: want auto or a number from 1 to 100 (10 or 10x), got "fast"`.
+
 ## Permissions, task timers and automatic work
 
 **Permissions** controls tool approvals and exceptions. Dangerous-command
@@ -231,7 +249,7 @@ the spending authority.
 
 ## Devices — sync storage, off or on, and request access
 
-Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: new chats, files, saved keys, preferences, shared memories, teams and task copies wait. Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
+Hosted sync storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence and live `--at` still work. After pairing, press enter on **Settings → Devices → sync storage** to ask for approval. A self-hosted sync service with `--store` needs no request.
 
 A paired account whose service reports storage permission has a **sync storage** row showing **on** or **off**. While **off**, press Enter (`enter request access`) to open a pre-filled GitHub issue. The panel also shows the public request code and link if no browser opens. The code is your identity id (`id_` and 32 hex digits), safe to post and granting nothing by itself. Choosing this row in Settings search clears the search and opens Devices. While **off**, Enter also requests access. While **on**, it opens Devices without offering or making a request. The row is absent with sync off, before pairing, or when the service answers without storage permission. A window already open when you pair checks for the answer within about a minute; an open Settings page then updates its row automatically. The first `/status` after pairing shows the cached dim line `sync storage  off` while storage is off.
 

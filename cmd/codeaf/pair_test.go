@@ -126,10 +126,8 @@ func (r *pairRig) door(home string, in io.Reader, out io.Writer) pairDoor {
 	d.mailbox = func(string) (pair.Mailbox, error) {
 		return pair.Mailbox{Box: pairbox.NewHTTP(r.url, &http.Client{Timeout: time.Minute}), URL: r.url, Host: "relay.test"}, nil
 	}
-	d.grant = func(route pair.Mailbox) (pair.Grant, error) {
-		id, err := identity.Ensure(home)
-		return pair.Grant{Identity: id, SyncURL: route.URL}, err
-	}
+	// The production grant, so a test sees solo end where a person's yes ends it.
+	d.grant = func(route pair.Mailbox) (pair.Grant, error) { return pairGrantAt(home, route) }
 	d.joining = func(replace bool) pair.Joining {
 		return pair.Joining{Home: home, Label: "laptop", Replace: replace,
 			SaveSyncURL: func(url string) error { return syncsetup.SaveRelayURL(home, url) }}
@@ -153,14 +151,17 @@ type showing struct {
 	stop  context.CancelFunc
 }
 
-func (r *pairRig) show(t *testing.T) *showing {
+func (r *pairRig) show(t *testing.T, args ...string) *showing {
 	t.Helper()
 	in, typed := io.Pipe()
 	s := &showing{out: &pairScreenText{}, typed: typed, done: make(chan error, 1)}
 	ctx, stop := context.WithCancel(context.Background())
 	s.stop = stop
 	t.Cleanup(func() { stop(); _ = typed.Close() })
-	go func() { s.done <- r.door(r.homeA, in, s.out).run(ctx, []string{"--code"}) }()
+	if len(args) == 0 {
+		args = []string{"--code"}
+	}
+	go func() { s.done <- r.door(r.homeA, in, s.out).run(ctx, args) }()
 	return s
 }
 

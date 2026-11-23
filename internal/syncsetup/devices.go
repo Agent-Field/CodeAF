@@ -157,6 +157,30 @@ type deviceDirectory struct {
 	watchMu        sync.Mutex
 	watchEpoch     uint64
 	presenceExpiry *time.Timer
+	// withholdNames says that no chat title or folder may leave this computer
+	// now ([Sync.recordsWithholdNames]); nil answers false.
+	withholdNames func() bool
+}
+
+// Create and Publish are the only two requests that carry a chat's sealed
+// title and folder, and every record this computer writes leaves through one of
+// them, whoever built it. WHILE BLIND PASS-THROUGH IS THE ROAD THEY SEND NEITHER:
+// the hosted relay holds no name of a chat until the account is approved to
+// store one, and a record some caller built with a name in it, as the kept-edits
+// branch of a take once did, must not be able to break that. An empty title or
+// folder on a publish means "keep the current one", which here is none.
+func (d *deviceDirectory) Create(ctx context.Context, id string, in directory.CellInit) (directory.CellView, error) {
+	if d.withholdNames != nil && d.withholdNames() {
+		in.Title, in.Folder = "", ""
+	}
+	return d.HTTP.Create(ctx, id, in)
+}
+
+func (d *deviceDirectory) Publish(ctx context.Context, id string, p directory.Publish) (directory.CellView, error) {
+	if d.withholdNames != nil && d.withholdNames() {
+		p.Title, p.Folder = "", ""
+	}
+	return d.HTTP.Publish(ctx, id, p)
 }
 
 func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {

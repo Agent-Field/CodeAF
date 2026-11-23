@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,11 +15,57 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/modelsource/sourcestub"
 	"github.com/Agent-Field/codeaf/internal/redact"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
+
+func TestQAAppRecordsProviderEditsOnlyAfterSecureStoreHandBack(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(home.EnvVar, dir)
+	t.Setenv(syncsetup.URLVar, "off")
+	b, _, _ := appProviderTest(t)
+	const provider = "aiand"
+	const key = "FAKE-local-key"
+	file := filepath.Join(dir, "provider-key-edits.json")
+	if err := b.SetKey(provider, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatal("initial key hand-back was treated as a user edit")
+	}
+	b.CredentialsReady()
+	if err := b.SetKey(provider, key); err != nil {
+		t.Fatal(err)
+	}
+	read := func() map[string]struct{ Digest string } {
+		t.Helper()
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), key) {
+			t.Fatal("the edit record contained the provider key")
+		}
+		var edits map[string]struct{ Digest string }
+		if err := json.Unmarshal(raw, &edits); err != nil {
+			t.Fatal(err)
+		}
+		return edits
+	}
+	if len(read()["source:aiand"].Digest) != 64 {
+		t.Fatal("successful key save did not record a durable edit")
+	}
+	if err := b.RemoveKey(provider); err != nil {
+		t.Fatal(err)
+	}
+	if removed, ok := read()["source:aiand"]; !ok || removed.Digest != "" {
+		t.Fatal("successful disconnect did not record an explicit removal")
+	}
+}
 
 // appProviderTest is a backend on a fresh profile with the app's keys
 // installed, so nothing a test does can reach a real key or a real profile.

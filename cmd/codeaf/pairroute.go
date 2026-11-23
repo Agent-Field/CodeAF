@@ -6,6 +6,8 @@ package main
 // take them from here, so the two doors cannot disagree about where a code goes.
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -72,25 +74,39 @@ func pairMailboxAt(dir, relayFlag string) (pair.Mailbox, error) {
 }
 
 // pairGrant is what this computer hands to the device it pairs: the identity it
-// has, made on first use, and the relay the pairing went through, so the other
-// device syncs through the same one. The hosted default is left out: the other
-// device reaches it by default, and a saved copy would pin it to an address the
-// hosted relay may one day leave.
+// has, made solo on first use, and the relay the pairing went through, so the
+// other device syncs through the same one. The hosted default is left out: the
+// other device reaches it by default, and a saved copy would pin it to an
+// address the hosted relay may one day leave.
 // It also names the identities this one replaced by rotation, so a computer
 // still on one of them may follow instead of being refused.
+//
+// MAKING THE GRANT SHARES NOTHING. Showing a code leaves this computer solo;
+// the grant ends solo in BeforeSend, once a person has approved and just before
+// the identity leaves. A code taken back, run out, declined or used up by a
+// wrong code leaves it as quiet as it was.
 func pairGrant(route pair.Mailbox) (pair.Grant, error) {
 	return pairGrantAt(home.Dir(), route)
 }
 
 func pairGrantAt(dir string, route pair.Mailbox) (pair.Grant, error) {
-	id, err := identity.Ensure(dir)
+	id, err := identity.EnsureSolo(dir)
 	if err != nil {
 		return pair.Grant{}, err
 	}
-	if err := identity.EndSolo(dir); err != nil { // offering the identity is starting a fleet
-		return pair.Grant{}, err
-	}
-	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir)}, nil
+	return pair.Grant{Identity: id, SyncURL: syncsetup.Named(route.URL), Replaces: identity.Predecessors(dir),
+		BeforeSend: func() error {
+			// Sending the identity, not showing a code, starts a fleet.
+			// Keep the chosen route on this computer too, so reopening it
+			// without the launch variable cannot strand its newly paired peer.
+			if err := syncsetup.SaveRelayURL(dir, syncsetup.Named(route.URL)); err != nil {
+				return fmt.Errorf("could not keep the pairing relay address, so nothing was sent: %w", err)
+			}
+			if err := identity.EndSolo(dir); err != nil {
+				return fmt.Errorf("could not record that this computer now shares its chats, so nothing was sent: %w", err)
+			}
+			return nil
+		}}, nil
 }
 
 // pairJoining is this computer as the device that types the code.
@@ -122,4 +138,35 @@ func pairingRelay(dir string) syncsetup.Relay {
 		}
 	}
 	return selected
+}
+
+// recordWithinBeforeSend bounds the device record a solo computer writes just
+// before its identity leaves; the other computer is waiting for the answer.
+const recordWithinBeforeSend = 10 * time.Second
+
+// recordWithGrant puts this computer's own device record where the other
+// computer will look for it once it has joined, so it can name this one.
+//
+// A COMPUTER THAT ALREADY SYNCS WRITES IT BEFORE THE CODE IS SHOWN, as it always
+// has, and a refusal stops the code. A SOLO ONE WRITES NOTHING TO THE DIRECTORY
+// UNTIL A PERSON SAYS YES: the record goes out in the grant's BeforeSend, after
+// solo ends and before the identity leaves, and as best effort, because the
+// door writes it again once the pairing has finished.
+func recordWithGrant(ctx context.Context, home string, grant pair.Grant, record func(context.Context) error) (pair.Grant, error) {
+	if !identity.Solo(home) {
+		return grant, record(ctx)
+	}
+	before := grant.BeforeSend
+	grant.BeforeSend = func() error {
+		if before != nil {
+			if err := before(); err != nil {
+				return err
+			}
+		}
+		recordCtx, stop := context.WithTimeout(ctx, recordWithinBeforeSend)
+		defer stop()
+		_ = record(recordCtx)
+		return nil
+	}
+	return grant, nil
 }

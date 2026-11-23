@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -76,9 +77,18 @@ func TestStorageNoticeReachesEngineWindow(t *testing.T) {
 			}
 			var take func() string
 			if mode == "no-host" {
-				defer agent.Close()
 				if got := storageOffLocalNoticeCount(t, agent, cfg); got != 1 {
+					_ = agent.Close()
 					t.Fatalf("local window received notice %d times", got)
+				}
+				if err := agent.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := agent.FinishSaving(); err != nil {
+					t.Fatal(err)
+				}
+				if lines := agent.TakeSavingNotices(); len(lines) != 1 || lines[0] != quitStorageOffWord {
+					t.Fatalf("the terminal's storage-off quit receipt = %q", lines)
 				}
 				return
 			} else {
@@ -172,6 +182,7 @@ func (a *storageOffNoticeAgent) TakeSealNotice() string { return a.watch.Take() 
 
 // B4 gives each seat sharing a drive one notice over its own real window connection.
 func TestSharedDriveNoticesEachWindow(t *testing.T) {
+	cellstoretest.EngineDir(t)
 	cfg, c := spokenDoorChatWithPairing(t, true)
 	service := relayserve.New(relayserve.Config{Store: t.TempDir()})
 	defer service.Close()
@@ -189,11 +200,24 @@ func TestSharedDriveNoticesEachWindow(t *testing.T) {
 	cfg = v3Seated(cfg)
 	d := syncDrives.renewalsOf(c.ID)
 	startupFinished(d)
-	_, _, second := v3SeatWith(cfg.Place, nil, syncDrives)
+	// The loopbacks have fake agents. No session closes their real seats,
+	// so join each seat's warm capture before the test home is removed.
+	closeSeat := func(seat executor.Seat, watch *cellstore.SealWatch) {
+		watch.Retire()
+		ctx, cancel := context.WithTimeout(t.Context(), cellstore.SealWithin)
+		defer cancel()
+		if err := executor.Drain(ctx, seat); err != nil {
+			t.Errorf("settling shared-drive seat: %v", err)
+		}
+	}
+	first := cfg.Seals.(*cellstore.SealWatch)
+	defer closeSeat(cfg.Seat, first)
+	secondSeat, _, second := v3SeatWith(cfg.Place, nil, syncDrives)
+	defer closeSeat(secondSeat, second)
 	if syncDrives.renewalsOf(c.ID) != d {
 		t.Fatal("seats did not share a drive")
 	}
-	for _, watch := range []*cellstore.SealWatch{cfg.Seals.(*cellstore.SealWatch), second} {
+	for _, watch := range []*cellstore.SealWatch{first, second} {
 		loop, err := remote.Loopback(remote.Hello{}, remote.Options{Boot: func(remote.Hello) (*remote.Engine, error) {
 			return &remote.Engine{Agent: &storageOffNoticeAgent{watch: watch}}, nil
 		}})
@@ -230,7 +254,8 @@ func TestSharedDriveNoticesEachWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	startupFinished(d)
-	_, _, approved := v3SeatWith(cfg.Place, nil, syncDrives)
+	approvedSeat, _, approved := v3SeatWith(cfg.Place, nil, syncDrives)
+	defer closeSeat(approvedSeat, approved)
 	for line := approved.Take(); line != ""; line = approved.Take() {
 		if line == chatlist.RelayStorageOff {
 			t.Fatal("approved seat replayed an obsolete refusal")

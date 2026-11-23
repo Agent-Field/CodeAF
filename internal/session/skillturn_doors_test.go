@@ -61,7 +61,7 @@ func TestPersonWordsRequiresTheMessagesOwnSkillsMark(t *testing.T) {
 	}
 }
 
-func skillDoorAgent(t *testing.T, journal string, replies ...step) (*Agent, *scriptedCompleter) {
+func skillDoorAgent(t *testing.T, journal string, window int, replies ...step) (*Agent, *scriptedCompleter) {
 	t.Helper()
 	brain := openTestBrain(t)
 	activeSkill(t, brain, "tool:lint", "checks the lint rules for this repo", "/shelf/lint")
@@ -69,6 +69,7 @@ func skillDoorAgent(t *testing.T, journal string, replies ...step) (*Agent, *scr
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Memory = brain
 		config.SessionFile = journal
+		config.ContextWindow = window
 	})
 	return agent, completer
 }
@@ -127,7 +128,7 @@ func skillDoorDisplayed(t *testing.T, entries []DisplayEntry) {
 // one block on the model's copy and only the typed words in the journal and store.
 func TestRewindDraftKeepsThePersonsWordsWhenSkillsRide(t *testing.T) {
 	journal := filepath.Join(t.TempDir(), "session.jsonl")
-	agent, completer := skillDoorAgent(t, journal, skillDoorReply, skillDoorReply)
+	agent, completer := skillDoorAgent(t, journal, 0, skillDoorReply, skillDoorReply)
 	skillDoorSubmit(t, agent, skillDoorWords)
 	first := skillDoorRequest(t, completer, skillDoorWords)
 	if strings.Count(first, skillDoorLead) != 1 {
@@ -196,9 +197,7 @@ func TestCompactedConversationKeepsThePersonsWordsWhenSkillsRide(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			journal := filepath.Join(t.TempDir(), "session.jsonl")
-			agent, _ := skillDoorAgent(t, journal)
-			agent.config.ContextWindow = 2000
-			agent.contextWindow.Store(2000)
+			agent, _ := skillDoorAgent(t, journal, 2000)
 			user := userText(skillDoorWords)
 			if steered {
 				user.crossed = &SteerMark{Consumed: true, Landing: "stopped the reply here"}
@@ -246,7 +245,7 @@ func TestCompactedConversationKeepsThePersonsWordsWhenSkillsRide(t *testing.T) {
 			if strings.Contains(string(data), skillDoorLead) {
 				t.Error("compaction journaled the model's skills block")
 			}
-			restored, _ := skillDoorAgent(t, journal)
+			restored, _ := skillDoorAgent(t, journal, 0)
 			skillDoorDisplayed(t, restored.Transcript())
 			if steered {
 				for _, entry := range restored.Transcript() {
@@ -262,7 +261,7 @@ func TestCompactedConversationKeepsThePersonsWordsWhenSkillsRide(t *testing.T) {
 // Why quotes only the person's opening words while the model's copy keeps the
 // skills block that informed the turn.
 func TestWhyQuotesThePersonsWordsWhenSkillsRide(t *testing.T) {
-	agent, completer := skillDoorAgent(t, "", skillDoorReply)
+	agent, completer := skillDoorAgent(t, "", 0, skillDoorReply)
 	skillDoorSubmit(t, agent, skillDoorWords)
 	if got := agent.Why(); !strings.HasPrefix(got, "> "+skillDoorWords+"\n\n") || strings.Contains(got, skillDoorLead) {
 		t.Errorf("Why quotes more than the person's words: %q", got)
@@ -276,7 +275,7 @@ func TestWhyQuotesThePersonsWordsWhenSkillsRide(t *testing.T) {
 // context. The main model still receives its own copy with the block intact.
 func TestTitleReadsThePersonsWordsWhenSkillsRide(t *testing.T) {
 	journal := filepath.Join(t.TempDir(), "session.jsonl")
-	agent, completer := skillDoorAgent(t, journal, skillDoorReply)
+	agent, completer := skillDoorAgent(t, journal, 0, skillDoorReply)
 	asks := make(chan string, 1)
 	completer.aside = func(messages []ai.Message) (*ai.Response, bool) {
 		if !isTitleCall(messages) {

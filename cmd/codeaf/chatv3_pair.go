@@ -34,7 +34,8 @@ func (chatPairDoor) Offer(ctx context.Context, ui pair.OfferUI) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if err := ownDeviceRecord(ctx, home.Dir(), route); err != nil {
+	record := func(ctx context.Context) error { return ownDeviceRecord(ctx, home.Dir(), route) }
+	if grant, err = recordWithGrant(ctx, home.Dir(), grant, record); err != nil {
 		return "", explainSyncUnreachable(err, route.URL)
 	}
 	label, err := pair.Offer(ctx, route, grant, chatOfferUI{OfferUI: ui, service: route.Shown})
@@ -50,8 +51,13 @@ func (chatPairDoor) Join(ctx context.Context, typed string, ui pair.JoinUI) (pai
 	if err != nil {
 		return pair.Joined{}, err
 	}
-	joined, err := pair.Join(ctx, route, pairJoining(false), typed, ui)
-	if err == nil {
+	joining, err := chatJoining(ctx, route, typed, false)
+	if err != nil {
+		return pair.Joined{}, err
+	}
+	joined, err := pair.Join(ctx, route, joining, typed, ui)
+	if err == nil && !joined.Already {
+		_ = ownDeviceRecord(ctx, home.Dir(), route)
 		if f, e := pullFleet(home.Dir(), route)(ctx); e == nil {
 			joined.With = f.With
 		}
@@ -68,13 +74,53 @@ func (chatPairDoor) JoinReplacing(ctx context.Context, typed string, ui pair.Joi
 	if err != nil {
 		return pair.Joined{}, err
 	}
-	joined, err := pair.Join(ctx, route, pairJoining(true), typed, ui)
+	joining, err := chatJoining(ctx, route, typed, true)
+	if err != nil {
+		return pair.Joined{}, err
+	}
+	joined, err := pair.Join(ctx, route, joining, typed, ui)
 	if err == nil {
 		waitStorage := startPairedStorage(ctx, home.Dir(), route)
 		err = ownDeviceRecord(ctx, home.Dir(), route)
 		waitStorage()
 	}
 	return joined, explainSyncUnreachable(err, route.URL)
+}
+
+// chatJoining is this computer as the chat's joining side, after the check the
+// terminal makes before a code is used: a computer whose chats already sync
+// with others is refused, even when replacing was confirmed, and one whose
+// identity no other device holds refuses its own chats before the other
+// computer is asked. A typo is refused first and costs no request. A plain join
+// whose directory cannot be read leaves the refusals to after the approval; a
+// replacing one stops, as the terminal does, because nothing after the
+// approval would refuse it.
+func chatJoining(ctx context.Context, route pair.Mailbox, typed string, replace bool) (pair.Joining, error) {
+	j := pairJoining(replace)
+	if _, err := pair.ReadJoinCode(typed); err != nil {
+		return j, err
+	}
+	standing, err := joinStanding(ctx, j.Home, func() (pair.Mailbox, error) { return route, nil })
+	if err != nil && replace {
+		return j, explainSyncUnreachable(err, route.URL)
+	}
+	if err := standing.refusal(); err != nil {
+		return j, err
+	}
+	j.Alone = standing.alone()
+	return j, nil
+}
+
+// BeforeJoin refuses, before the panel asks anything, a code that cannot be
+// one or a computer that is paired with others: replacing would set aside chats
+// that sync elsewhere, so such a computer is never asked to confirm it.
+func (chatPairDoor) BeforeJoin(ctx context.Context, typed string, replace bool) error {
+	route, err := pairMailbox("")
+	if err != nil {
+		return err
+	}
+	_, err = chatJoining(ctx, route, typed, replace)
+	return err
 }
 
 // HasOwnChats reports whether this home holds an identity of its own — the

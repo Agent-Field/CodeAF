@@ -1,0 +1,11 @@
+harness,solved,tasks,reward_rate,valid_grades,invalid,mean_f2p,mean_p2p,openrouter_spend_usd,cost_per_task_usd,mean_agent_seconds,model
+senior-dev,62,113,0.5487,113,0,0.8864,0.9942,24.73,0.2188,3258,openrouter/deepseek/deepseek-v4-flash-0731
+mini-swe-agent,56,113,0.4956,113,0,0.8817,0.9966,43.09,0.3813,2651,openrouter/deepseek/deepseek-v4-flash-0731
+codex,51,113,0.4513,112,1,0.8681,0.9876,42.23,0.3737,2746,deepseek/deepseek-v4-flash-0731
+pi,42,113,0.3717,112,1,0.7163,0.8909,39.61,0.3505,3101,openrouter/deepseek/deepseek-v4-flash-0731
+omp,31,113,0.2743,111,2,0.7191,0.8526,55.98,0.4954,2920,openrouter/deepseek/deepseek-v4-flash-0731
+opencode,30,113,0.2655,112,1,0.7113,0.8679,56.96,0.5041,2871,openrouter/deepseek/deepseek-v4-flash-0731
+kilo,30,113,0.2655,113,0,0.6903,0.9051,54.65,0.4836,3215,openrouter/deepseek/deepseek-v4-flash-0731
+deepseek-harness,16,113,0.1416,113,0,0.5339,0.9145,169.47,1.4997,5613,openrouter/deepseek/deepseek-v4-flash-0731
+claude-code,16,113,0.1416,113,0,0.3972,0.916,21.72,0.1922,1909,deepseek/deepseek-v4-flash-0731
+muse-code,3,113,0.0265,113,0,0.0514,0.9901,13.54,0.1198,952,deepseek/deepseek-v4-flash-0731

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -79,6 +80,26 @@ func lockStore(dir string) (*os.File, error) {
 		return nil, err
 	}
 	return file, nil
+}
+
+// IsStartupStore recognizes the exact empty image a supervisor writes before
+// any service or consent has been recorded. Pairing may leave this file alone.
+func IsStartupStore(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 1024 {
+		return false, err
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var image storeImage
+	if json.Unmarshal(raw, &image) != nil || image.check() != nil ||
+		image.Seq != 0 || len(image.Services) != 0 || len(image.Consent) != 0 {
+		return false, nil
+	}
+	canonical, err := json.Marshal(image)
+	return bytes.Equal(bytes.TrimSpace(raw), canonical), err
 }
 
 // readStore reads the file back, bounded, and refuses one it could not have

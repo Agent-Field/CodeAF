@@ -1,5 +1,8 @@
 # Benchmarks
 
+This folder holds the rigs. Published results, with their method and data, are in
+[docs/benchmarks](../docs/benchmarks/); the DeepSWE rig is [bench/deepswe](deepswe/).
+
 Build the binary with `make build`. The issue benchmark requires Git, Python 3,
 GitHub CLI authentication, and `timeout` (`gtimeout` on macOS).
 

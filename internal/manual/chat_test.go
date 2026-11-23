@@ -287,6 +287,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't it make pictures any more", "services"},
 		{"how do I remove a key", "services"},
 		{"can I use ollama", "services"},
+		{"my local model keeps timing out", "services"},
+		{"ollama gives up after 2 minutes", "services"},
+		{"how do I make codeaf wait longer for a slow model", "services"},
+		{"what does the patience setting do", "settings"},
 		{"does z-ai use my coding plan first", "services"},
 		{"why is my service called z-ai-direct", "services"},
 		{"do I need an openrouter key if I connected z.ai", "services"},
@@ -3438,6 +3442,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"use my codex plan", "models-and-cost"},
 		// #1383 and #1391: what a Codex model holds, and who answered it.
 		{"what context window does a codex model have", "models-and-cost"},
+		// DeepSeek's own API reads its own thinking field, and the page that
+		// says which word each rung sends is the one a person asking must reach.
+		{"does max thinking work on deepseek direct", "models-and-cost"},
 		{"which server answered my codex request in the call lines", "sessions-and-rewind"},
 		{"connect from the terminal without opening the chat", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},
@@ -3693,6 +3700,39 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},
+		// BLIND PASS-THROUGH: with hosted sync storage off a chat still moves between
+		// paired computers while both are running codeaf. The words are the wish
+		// (move it without storage), the worry (does the other one have to be on),
+		// the refusal sentence they will read, and the one row that looks wrong.
+		{"can I move a chat without sync storage", "continuing-a-chat-on-another-computer"},
+		{"does my other computer need to be on to continue a chat", "continuing-a-chat-on-another-computer"},
+		{"how do I turn off blind pass-through", "continuing-a-chat-on-another-computer"},
+		{"why does a chat show as untitled on my other computer", "continuing-a-chat-on-another-computer"},
+		{"continue here says another computer is not on right now", "continuing-a-chat-on-another-computer"},
+		{"what is blind pass-through mode", "continuing-a-chat-on-another-computer"},
+		{"CODEAF_PASSTHROUGH", "continuing-a-chat-on-another-computer"},
+		{"can a third computer take a chat from my second one while the first is off", "continuing-a-chat-on-another-computer"},
+		{"what still waits for sync storage approval when blind pass-through is on", "continuing-a-chat-on-another-computer"},
+		{"does the sync service store my chat when I move it without sync storage", "relay-what-it-stores-and-sees"},
+		{"does the relay keep my chats if I don't have sync storage", "relay-what-it-stores-and-sees"},
+		{"what does the sync storage is off notice in a chat say when blind pass-through is on", "starting-codeaf"},
+		{"does the blind pass-through switch still apply on a computer that already shared a chat", "continuing-a-chat-on-another-computer"},
+		{"why can't I move a chat when my other computer is off", "continuing-a-chat-on-another-computer"},
+		{"move a chat to my other computer without sync storage approval", "continuing-a-chat-on-another-computer"},
+		// THE CHAT'S SECRET FILES MOVE WITH IT BY BLIND PASS-THROUGH. The wish (do
+		// they come), the worry (is a secret leaving my computer), and the symptom a
+		// person sees first: git on the second computer lists the .env files as
+		// deleted. The page that answers all three is the continuing-a-chat guide.
+		{"do my .env files move to my other computer", "continuing-a-chat-on-another-computer"},
+		{"will my secrets come with the chat without sync storage", "continuing-a-chat-on-another-computer"},
+		{"why does git show my env files deleted after I moved a chat", "continuing-a-chat-on-another-computer"},
+		{"are my .env files sent through the sync service when sync storage is off", "continuing-a-chat-on-another-computer"},
+		// What the sync service is told about a chat in pass-through, and the one
+		// verb that waits for storage because it would leave message text there.
+		{"what does the sync service record about my chat in blind pass-through", "relay-what-it-stores-and-sees"},
+		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
+		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
+		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -4879,7 +4919,7 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"how do I add another computer", add, "On the new device, install and run: codeaf pair"},
 		{"how do I add another machine", add, "alt+d how"},
 		{"can I paste the link here on home", add, "paste it anywhere on home"},
-		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-code>"},
+		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-token>"},
 		{"what is the check number on the new device", add, "Check number 4821. Approve only if"},
 		{"what does codeaf pair --code do", add, "codeaf pair --code"},
 		{"how do I remove a computer", add, "r remove"},

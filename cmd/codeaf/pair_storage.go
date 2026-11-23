@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const pairedStorageWithin = 1500 * time.Millisecond
@@ -31,7 +33,8 @@ func startPairedStorage(ctx context.Context, dir string, route pair.Mailbox) fun
 }
 
 // samplePairedStorage makes a completed pairing visible to other local windows.
-// An absent field or failed request must preserve the previous saved answer.
+// Temporary startup refusals get two bounded retries. A successful legacy
+// answer is saved too; failed readings preserve the previous saved answer.
 func samplePairedStorage(ctx context.Context, dir string, route pair.Mailbox) {
 	id, err := identity.Load(dir)
 	if err != nil {
@@ -44,8 +47,23 @@ func samplePairedStorage(ctx context.Context, dir string, route pair.Mailbox) {
 	ctx, cancel := context.WithTimeout(ctx, pairedStorageWithin)
 	defer cancel()
 	store := blobstore.NewHTTP(route.URL, reqsign.SignFor(homeSigner{id, dev}, time.Now), &http.Client{})
-	counts, err := store.Stats(ctx)
-	if err == nil && ctx.Err() == nil && counts.Storage != "" {
-		_ = syncsetup.SaveStorage(dir, route.URL, id.ID(), counts.Storage)
+	for attempt := 0; attempt < 3; attempt++ {
+		counts, err := store.Stats(ctx)
+		if err == nil {
+			if ctx.Err() == nil {
+				_ = syncsetup.SaveStorage(dir, route.URL, id.ID(), counts.Storage)
+			}
+			return
+		}
+		if ctx.Err() != nil || errors.Is(err, wireauth.ErrRevoked) || errors.Is(err, wireauth.ErrGone) || attempt == 2 {
+			return
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
 }

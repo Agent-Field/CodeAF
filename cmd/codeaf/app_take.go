@@ -228,7 +228,7 @@ func (b *appBackend) takeAgent(p appwire.TakeParams, available bool) (agent appw
 	if existing != nil {
 		b.locked(func() { id = existing.view.ID })
 	}
-	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
+	b.remember(session.SessionRow{ID: id, Dir: root, Transcript: transcript, Workspace: meta.Workspace, Origin: meta.Origin, Title: meta.Title, Created: meta.Created, Model: meta.Model, ModelIdentity: meta.ModelIdentity})
 	a := b.agent(id)
 	b.installTaken(a, transcript, meta, !got.AlreadyHere, available || moved)
 	location := &appwire.Location{Here: true, Cell: p.Cell, Seen: &appwire.Seen{Device: s.Device.ID(), Fence: got.Taken.Driving.Fence, Head: got.Taken.Driving.Head}, Holder: &appwire.LocationHolder{ID: s.Device.ID(), Name: got.Device}}
@@ -333,6 +333,7 @@ func (b *appBackend) installTaken(a *appAgent, transcript string, meta session.M
 	b.locked(func() {
 		a.transcript, a.windowMoved = transcript, false
 		if installed {
+			a.view.Workspace, a.view.WorkspaceOrigin = meta.Workspace, meta.Origin
 			// Installation replaced the saved conversation. A resting local
 			// agent may still remember the model from before another computer
 			// continued it; only the newly installed model belongs to this take.

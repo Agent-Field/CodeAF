@@ -365,12 +365,16 @@ func (s *sheet) devicesDetails(frameWidth, bodyWidth int) []string {
 	ruleRoom := max(1, frameWidth-placeNoteRuleFrame)
 	wrapRoom := max(1, bodyWidth-4)
 	var lines []string
-	if s.storageRequest && s.storageCode != "" {
+	if s.storageReceipt != "" && s.storageState == "off" {
+		lines = append(lines, wrap(s.storageReceipt, wrapRoom)...)
+	}
+	if s.storageRequest && s.storageCode != "" && s.storageState == "off" {
 		lines = append(lines, wrap("request code  "+s.storageCode, wrapRoom)...)
 		target := syncsetup.StorageRequestLink(s.storageCode)
-		for _, line := range wrap(target, wrapRoom) {
+		for _, line := range wrap("Open request on GitHub", wrapRoom) {
 			lines = append(lines, linkify(line, target))
 		}
+		lines = append(lines, wrap("GitHub may ask you to sign in before showing the pre-filled request.", wrapRoom)...)
 	}
 	if s.dev == nil {
 		return lines
@@ -439,10 +443,25 @@ func (a *app) requestRelayStorage() tea.Cmd {
 	if a.sheet.storageCode == "" || a.sheet.storageState != "off" {
 		return nil
 	}
-	a.sheet.storageRequest = true
+	a.sheet.storageRequest = false
+	a.sheet.storageReceipt = ""
+	code := a.sheet.storageCode
 	link := syncsetup.StorageRequestLink(a.sheet.storageCode)
 	open := processOpener
-	return func() tea.Msg { _ = open(link); return storageRequestOpenedMsg{} }
+	return func() tea.Msg { return storageRequestOpenedMsg{code: code, err: open(link)} }
 }
 
-type storageRequestOpenedMsg struct{}
+type storageRequestOpenedMsg struct {
+	code string
+	err  error
+}
+
+func (a *app) storageRequestOpened(msg storageRequestOpenedMsg) {
+	if a.sheet.storageState != "off" || a.sheet.storageCode != msg.code {
+		return
+	}
+	a.sheet.storageRequest = msg.err != nil
+	if msg.err == nil {
+		a.sheet.storageReceipt = "Request opened in your browser. GitHub may ask you to sign in before showing the pre-filled request."
+	}
+}
