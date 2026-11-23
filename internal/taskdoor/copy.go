@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/taskcopy"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
 )
 
 const copyCarrier = cell.StateDir + "/task-copy"
@@ -74,6 +75,21 @@ func (d CopyDeps) measure(m CopyMeasure) {
 	}
 }
 
+// storing refuses a transfer while the account's storage permission is closed,
+// with the refusal an upload gives. A task copy lives on the relay only because a
+// send put it there, so a closed store has nothing to send and nothing to wait
+// for; refusing first spares the origin its work (a seal of the whole copy) and
+// spares the relay the questions it would answer only to refuse the upload that
+// follows. The answer comes from local state alone. A store that hides the
+// permission behind a wrapper is not refused here and takes the old road: the
+// upload itself refuses, and the store's existence check asks nothing.
+func (d CopyDeps) storing() error {
+	if s, ok := d.Store.(interface{ Storing() bool }); ok && !s.Storing() {
+		return wireauth.ErrStorageOff
+	}
+	return nil
+}
+
 func (d CopyDeps) lock(ctx context.Context, name string) (func(), error) {
 	if d.Root == "" || d.Store == nil || d.Service == "" {
 		return nil, errors.New("task copies need private storage and a relay blob store")
@@ -111,6 +127,9 @@ func (d CopyDeps) lock(ctx context.Context, name string) (func(), error) {
 func SendCopy(ctx context.Context, d CopyDeps, copyDir string) (Input, error) {
 	path, err := allowedCopy(copyDir)
 	if err != nil {
+		return Input{}, err
+	}
+	if err := d.storing(); err != nil {
 		return Input{}, err
 	}
 	sum := sha256.Sum256([]byte(path))
@@ -230,6 +249,9 @@ func prepareCopy(ctx context.Context, d CopyDeps, in Head, dest, fingerprint str
 	}
 	if raw, err := hex.DecodeString(in.Head); err != nil || len(raw) != sha256.Size {
 		return nil, errors.New("the task copy's head is not readable")
+	}
+	if err := d.storing(); err != nil {
+		return nil, err
 	}
 	unlock, err := d.lock(ctx, c.ID)
 	if err != nil {
@@ -371,6 +393,9 @@ func SendResult(ctx context.Context, d CopyDeps, workDir string, in Input) (Resu
 	}
 	c, err := d.cell(in.Cell)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := d.storing(); err != nil {
 		return Result{}, err
 	}
 	return sendCopy(ctx, d, path, c, in.Head)

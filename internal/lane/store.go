@@ -447,13 +447,13 @@ func spellable(held storeState) storeState {
 }
 
 // NOTHING HERE WRITES INTO WHAT IT WAS GIVEN. The state handed to a compaction
-// is a shallow copy of the ledger's own ([ledger.snapshot]), so its maps and
-// slices are the LIVE ones — deleting an entry here would reach into a
-// hierarchy another goroutine is folding observations into, which is a data
-// race and a belief silently removed from a running process. So a value that
-// cannot be written is dropped by building a new container, and the ordinary
-// case — nothing wrong, which is every compaction — allocates nothing and hands
-// back exactly what it was given.
+// is the ledger's snapshot ([ledger.snapshot]), a copy that owns its maps, so
+// deleting an entry from it would no longer reach a running process; it is still
+// never done, because a function that edits its argument is one a later caller
+// hands live state to without noticing, and the result would be a belief silently
+// removed. So a value that cannot be written is dropped by building a new
+// container, and the ordinary case — nothing wrong, which is every compaction —
+// allocates nothing and hands back exactly what it was given.
 
 // keepFinite is one slice with the values that can be written, and the same
 // slice untouched when they all can.

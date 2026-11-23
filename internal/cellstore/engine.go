@@ -157,7 +157,14 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := e.compose(c, raw, rid, info); err != nil {
 		return Sealed{}, fmt.Errorf("seal: compose: %w", err)
 	}
-	snapshot, err := e.plannedSnapshot(ctx, c, rid, info.Changed, info.Calls)
+	// THE FOLDER'S FILES ARE STAMPED ONCE, BEFORE ANYTHING IS READ. The same walk
+	// widens what the turn's tool calls promised changed (an edit made in place
+	// outside them moves no folder's time) and becomes the stat index this seal
+	// leaves, so no file edited after the seal can be vouched for (stampscan.go).
+	tree := canonicalTree(e.tree(c))
+	stamps, stamped := stampTree(tree)
+	hinted := e.widenByStamps(c, head, tree, stamps, stamped, info.Changed)
+	snapshot, err := e.plannedSnapshot(ctx, c, rid, hinted, info.Calls)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -175,7 +182,11 @@ func (e Engine) Seal(ctx context.Context, c cell.Cell, info TurnInfo) (Sealed, e
 	if err := appendTurn(c, turn); err != nil {
 		return Sealed{}, fmt.Errorf("seal: record turn: %w", err)
 	}
-	e.recordMaterializedStat(c, snapshot.Snapshot)
+	if stamped {
+		e.recordSealedStamps(c, snapshot.Snapshot, tree, stamps)
+	} else {
+		e.recordMaterializedStat(c, snapshot.Snapshot)
+	}
 	return Sealed{Turn: turn, Receipt: receipt}, nil
 }
 

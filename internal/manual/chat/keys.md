@@ -40,7 +40,11 @@ The path names the transcript on the computer running the chat, including over
 `--host`. When the location is unknown, it says
 `codeaf could not save this chat; unsaved turns stay on this computer and return on the next start if this computer still holds the chat.`
 The command exits with a failure status. One sentence stays visible after
-the full-screen chat closes, including when error output goes to a log. On the
+the full-screen chat closes, including when error output goes to a log.
+The cause is written to `chat.log` as `quit: final save failure (transcript <path>): <error>`, once, so a
+sentence that surprises you can be traced.
+A window that only shows a chat another computer holds has no turns of its own to
+save, so quitting it says nothing of the kind, even if an earlier save attempt on this window failed. On the
 next start, retained turns are published if this computer still holds the chat.
 If another computer has continued it, choose continue here from Home (or, with `idle handoff` on, open it from Home once no computer holds it) to see its newest history;
 local accounting alone does not create a separate chat.
