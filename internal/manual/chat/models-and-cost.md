@@ -143,6 +143,26 @@ that is no longer listed; existing requests finish on the model they started wit
 Remote sessions keep the engine's opening model; this laptop's catalog does not
 choose a default for another machine.
 
+## Default models without OpenRouter — ChatGPT only, Claude Code only, Ollama only
+
+codeaf's built-in defaults are OpenRouter models: the conversation model, the
+`fallback models` row, the **reflex** and **small work** rows behind titles,
+routing and memory, and the **knowledge** model. Each one is used only while a
+connected provider can send it. Without an OpenRouter key, every default you
+have not chosen comes from the providers you did connect instead:
+
+- the conversation opens on the provider's preferred model, else its strongest;
+- the fallback is a different strong model, on the same provider when it offers
+  one, else on another connected provider; with only one model, there is none;
+- reflex, small work and knowledge use the provider's lightest model.
+
+Strength is read from the provider's published intelligence score or price,
+then from the model's name (mini, flash or haiku against pro, opus or max), its
+size (8b, 70b) and how many thinking levels it takes. With several providers,
+the defaults follow the provider of the conversation model you chose. A model you
+chose yourself is never replaced. With nothing connected at all, the built-in
+OpenRouter models stay named until setup connects a provider.
+
 ## Sign in with ChatGPT and use my Codex plan — models, context window, price, limits and expiry
 
 Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way

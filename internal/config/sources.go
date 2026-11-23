@@ -492,7 +492,10 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 	for _, model := range models {
 		if id := strings.TrimSpace(model.ID); id != "" {
 			outcome.ModelIDs = append(outcome.ModelIDs, id)
-			remembered = append(remembered, catalog.Model{ID: id, ContextLength: model.ContextLength, PriceUnknown: true})
+			// The thinking levels are kept too: they are the one strength signal
+			// the account's listing gives, and the default seats rank by them
+			// ([ReachableDefaultAt]).
+			remembered = append(remembered, codexCatalogRow(codexauth.Model{ID: id, ContextLength: model.ContextLength, ReasoningLevels: model.ReasoningLevels}))
 		}
 	}
 	outcome.Models = len(outcome.ModelIDs)

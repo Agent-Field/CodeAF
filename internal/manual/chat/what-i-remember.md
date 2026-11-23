@@ -482,7 +482,8 @@ model call; prompt tokens still follow your provider's cache pricing.
 The one model call is the pass after each turn you finish: it reads the exchange
 once, keeps the conversation's own running summary of where the work stands, and
 — when noticing is on — may keep one line. It runs on the **reflex** row in
-`/settings` → Models (`google/gemini-2.5-flash` by default; nothing set means the
+`/settings` → Models (`google/gemini-2.5-flash` by default while OpenRouter is
+connected, otherwise your connected providers' lightest model; nothing set means the
 conversation's own model), sends no token ceiling or reasoning switch, and is
 charged to the session total, so `/cost` includes it. An answer it cannot read
 costs one repair. An empty or unavailable helper is skipped for that chat;
@@ -678,7 +679,8 @@ Memories use the local store on each computer. After pairing, an older conversat
 The desktop's Library reads the same opt-in, profile-wide knowledge vault as
 Memory → Knowledge in the terminal. Saved memory remains separate. Starting a
 Library build enables knowledge capture. The default knowledge model is
-DeepSeek v4.1 Flash (`deepseek/deepseek-v4.1-flash`); a model chosen in
+DeepSeek v4.1 Flash (`deepseek/deepseek-v4.1-flash`) while OpenRouter is connected,
+and otherwise the lightest model your connected providers offer; a model chosen in
 Settings is kept across builds and is shared with the terminal. Library does not
 change the model of an ordinary chat.
 

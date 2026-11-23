@@ -21,8 +21,10 @@ var freeHelperModels = map[string]string{
 func freeTierModelAt(profileDir, tier string) string {
 	if useFreeDefaultsAt(profileDir) {
 		if model := freeHelperModels[tier]; model != "" {
-			return model
+			return ReachableDefaultAt(profileDir, SlotLight, model)
 		}
 	}
-	return builtinTierModel(tier)
+	// A helper tier ships pointed at an OpenRouter model; a profile that cannot
+	// reach OpenRouter gets the lightest model its own providers offer.
+	return ReachableDefaultAt(profileDir, SlotLight, builtinTierModel(tier))
 }

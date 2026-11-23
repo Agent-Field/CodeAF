@@ -14,5 +14,5 @@ func KnowledgeModelAt(profileDir string) string {
 			return value
 		}
 	}
-	return DefaultKnowledgeModel
+	return ReachableDefaultAt(profileDir, SlotLight, DefaultKnowledgeModel)
 }

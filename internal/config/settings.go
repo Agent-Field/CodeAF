@@ -4285,11 +4285,14 @@ func RetiredPinNote(raw string) string {
 const DefaultFallbackModel = "deepseek/deepseek-v4.1-flash"
 
 // ModelFallbacksAt resolves an explicit chain, or the shared default when blank.
+// The shared default is kept only while a connected service can send it; a
+// profile without OpenRouter falls back to another model its own providers
+// offer, or to none when they offer only the conversation's model.
 func ModelFallbacksAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok && strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "nearest in the catalog" {
 		return strings.TrimSpace(value)
 	}
-	return DefaultFallbackModel
+	return ReachableDefaultAt(profileDir, SlotFallback, DefaultFallbackModel)
 }
 
 // ParseModelFallbacks reads the row into an ordered list of model slugs.
