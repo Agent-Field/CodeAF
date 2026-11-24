@@ -21,8 +21,10 @@
 #   * The smoke-test switches (RUNNER_SELFTEST, SMOKE_FIXTURE_REPO, the model stub and git stub) are not in it.
 #   * It is never published. This script has no `railway templates publish` call and never will; the draft opens in the
 #     dashboard's template editor, where the person who owns it decides.
-#   * Hosted chats (the sessionhost service) are not in it: they need Linux capabilities Railway services do not take. See
-#     README.md "Hosted chats".
+#   * Hosted chats (the sessionhost service) are NOT in it yet. They do run on Railway (a by-hand install with the sessionhost
+#     service passes `codeaf sessionhost probe` with mode uid+fence; README.md "Railway" has its variables), but this script has
+#     not been extended to add the service and the codeaf variables that name it, and nothing here could be run against the
+#     images before they exist.
 #
 # NOT YET RUN AGAINST RAILWAY: the images did not exist on Docker Hub when this was written. The calls are the Railway CLI's
 # documented ones (`railway add --image`, `railway volume add`, `railway environment edit --service-config`, `railway
