@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -91,7 +92,7 @@ func resolveBudgetLimit(limit int64) int64 {
 		return limit
 	}
 	if limit == 0 {
-		if raw := strings.TrimSpace(os.Getenv(budgetEnvDailyMB)); raw != "" {
+		if raw := strings.TrimSpace(env.Get(budgetEnvDailyMB)); raw != "" {
 			if mb, err := strconv.ParseInt(raw, 10, 64); err == nil && mb > 0 {
 				return mb << 20
 			}
