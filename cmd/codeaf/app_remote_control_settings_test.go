@@ -188,9 +188,12 @@ func TestAppRemoteControlSwitchOnOffMovesTheDoorAsTheContractSays(t *testing.T) 
 	if !found {
 		t.Fatal("the next chat opened after turning the switch on has no door")
 	}
-	other := *r
-	other.file = file2
-	viewer, err := other.viewer(socket)
+	// The rig joins the chat it was built for, so point it at this one for the
+	// join and back again. It holds an atomic counter, so it is never copied.
+	opened := r.file
+	r.file = file2
+	viewer, err := r.viewer(socket)
+	r.file = opened
 	if err != nil {
 		t.Fatalf("another computer could not open the chat opened after the switch: %v", err)
 	}
@@ -218,7 +221,7 @@ func TestAppRemoteControlSwitchOnOffMovesTheDoorAsTheContractSays(t *testing.T) 
 	if engine2.Closed() {
 		t.Fatal("turning the switch off closed the desktop's own chat")
 	}
-	if told := other.say(second, "still here"); len(told) == 0 {
+	if told := r.say(second, "still here"); len(told) == 0 {
 		t.Fatal("the desktop's own chat stopped answering when the switch went off")
 	}
 }
