@@ -48,8 +48,10 @@ letter or digit. That is the limit for a handle you type, or the manager gives w
 proposed crew, stays within 12 characters so it remains one short word; one numbered
 for a clash stays within 12 too.
 
-A computer still running an older codeaf accepts only 2 to 12, so a longer handle on a team
-it also loads is replaced there by a guess from the title's words.
+A computer, or another app on the same profile, still running an older codeaf accepts only 2
+to 12. When it loads a team with a longer handle it writes a guess from the title's words in
+its place, and that change syncs back: the typed handle is lost everywhere, and the guess may
+be chosen again by the title model. Update every computer that shares the team first.
 
 ## Making a manager
 

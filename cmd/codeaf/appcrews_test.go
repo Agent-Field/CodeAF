@@ -319,7 +319,7 @@ func TestAppProposalIsReadFromTheAgentsAnswer(t *testing.T) {
 	}
 	// A model's handle stays within HandleWordMax here too, cut at its last hyphen.
 	// Two that shorten to the same word are numbered, so the proposal can still be accepted.
-	long, ok := appParseProposal(`{"name": "qa", "helpers": [{"handle": "review-and-testing", "brief": "review it"}, {"handle": "review-and-docs", "brief": "document it"}]}`)
+	long, ok := appParseProposal(`{"name": "qa", "helpers": [{"handle": "review-and-testing", "brief": "review it"}, {"handle": "review-and-docs", "brief": "document it"}, {"handle": "review-and-docs", "brief": "a repeat"}]}`)
 	if !ok || len(long.Helpers) != 2 || long.Helpers[0].Handle != "review-and" || long.Helpers[1].Handle != "review-and2" {
 		t.Fatalf("long proposed handles = %+v, %v; want review-and and review-and2", long, ok)
 	}

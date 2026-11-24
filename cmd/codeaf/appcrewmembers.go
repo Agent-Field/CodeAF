@@ -698,6 +698,9 @@ func appParseProposal(answer string) (appwire.Proposal, bool) {
 	names := &appProposalStream{handles: map[string]string{}}
 	for _, h := range p.Helpers {
 		raw := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h.Handle), "@"))
+		if _, repeated := names.handles[raw]; repeated {
+			continue // a handle proposed twice keeps its first helper
+		}
 		h.Brief = strings.TrimSpace(h.Brief)
 		h.Handle = names.handle(raw)
 		if teamstore.ValidHandle(h.Handle) == nil && h.Brief != "" {
