@@ -506,6 +506,12 @@ func (st *serverTunnel) onOffer(sig Signal, payload []byte) {
 	case st.road != RoadRelay:
 		refuse(RefuseOff)
 		return
+	// THE PERMIT IS READ AGAIN, because an edit that took watching away may not
+	// have reached this tunnel yet (the watcher runs on a timer), and a direct
+	// attempt is real work the host would do for a device it no longer lets in.
+	case !st.readPermit().Watch:
+		refuse(RefuseOff)
+		return
 	case st.cfg.Direct == nil:
 		refuse(RefuseRelayOnly)
 		return

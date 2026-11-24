@@ -310,6 +310,30 @@ func TestAnOfferIsRefusedWhenTheRoadIsRelayOnlyAndNothingIsAllocated(t *testing.
 	})
 }
 
+// V34: an offer is refused, with nothing allocated, when the host has already
+// taken watching away from the peer, even before the permit watcher has told the
+// tunnel to close.
+func TestAnOfferFromAPeerWhoseWatchWasTakenAwayIsRefusedBeforeAnythingIsAllocated(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	host := &fakeDirectHost{}
+	var watching atomic.Bool
+	watching.Store(true)
+	permit := func(string) pair.Permit { return pair.Permit{Watch: watching.Load(), Drive: true} }
+	rig := startTunnel(t, ctx, watchPeer("dev-edited"), ServeConfig{Host: "h", Direct: host, Permit: permit})
+	if !rig.ack.Direct {
+		t.Fatal("the host did not advertise the direct road to a peer that may watch")
+	}
+	watching.Store(false)
+	rig.send(t, Signal{T: SignalOffer, ID: "too-late", SDP: "v=0"})
+	if got := expectSignal(t, rig.inbox); got.T != SignalRefuse || got.Reason != RefuseOff {
+		t.Fatalf("the answer was %+v, want refuse off", got)
+	}
+	if host.offers() != 0 {
+		t.Fatal("the host half was asked to answer a peer that may no longer watch")
+	}
+}
+
 // V30 (router half): an offer reaches the host half with the AUTHENTICATED peer
 // and the payload untouched, later candidates of the same attempt reach its
 // session in order, a candidate for another attempt is dropped, the host's own
