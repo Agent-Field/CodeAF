@@ -81,6 +81,14 @@ type Location struct {
 	// agent.changed; a client that does not know the feature never receives an
 	// agent that carries it. Absent for every chat that is held here or only read.
 	Live *LocationLive `json:"live,omitempty"`
+	// Keyboard says who holds the keyboard of a chat that is held and run on
+	// THIS computer when another window than the one drawing it does: another
+	// of the person's computers that took it, or another window here. It is the
+	// same three words a live view's driver says, and it rides on the existing
+	// agent.changed with remote control on and nowhere else. Absent says the
+	// window drawing the chat holds it, which is every chat with nobody else in
+	// it. chats.live_keyboard {agent, take:true} takes it back for this window.
+	Keyboard *LiveDriver `json:"keyboard,omitempty"`
 }
 
 // The states of a live view, as the app reads them. An unknown state is read as

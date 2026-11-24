@@ -662,7 +662,10 @@ func (b *appBackend) LiveKeyboard(p appwire.ChatLiveKeyboardParams) (appwire.Cha
 	var r *appLiveRemote
 	b.locked(func() { r = a.liveRemote })
 	if r == nil {
-		return appwire.ChatLiveKeyboardResult{}, appwire.Errorf(appwire.CodeConflict, "this chat is not open live")
+		// NOT A VIEW OF ANOTHER COMPUTER'S CHAT: it may still be a chat THIS
+		// desktop holds for others, whose keyboard the desktop's own window can
+		// take back (app_held_keyboard.go).
+		return b.heldKeyboardCall(a, p)
 	}
 	if _, _, err := b.ensure(a); err != nil {
 		return appwire.ChatLiveKeyboardResult{}, err

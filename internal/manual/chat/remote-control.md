@@ -6,6 +6,12 @@ Remote control lets this computer open a chat that another of your computers is 
 
 Three things have to be true. The two computers are paired. Both are running codeaf, because the other computer has to be there to answer. And remote control is on, on both; it is off until you turn it on (see *Remote control is off*). A chat that no computer is running right now cannot be opened live. Remote control never starts a chat on another computer. For a chat that is not running anywhere, `enter` does what it always did, and moving it here is the only way to carry on.
 
+## A new chat on my other computer's Home — when it appears, while its first message is still running, working on <name>
+
+With remote control on, a chat shows on your other computers' Home as soon as its first turn **starts**, marked `working on <name>`, and `enter` opens it live. Without remote control it appears when that first turn ends, as it always did. A chat nobody has typed in appears nowhere, so an opened and abandoned chat leaves no untitled row. Only the row travels this early: which computer runs it and that it is working, with no words of the turn; when the turn ends the row gets its title and its latest state like any chat.
+
+If the computer running it stops during that first turn, the row stays as `untitled` until the chat is opened again there. Opening it from another computer asks first, and what it holds is the empty start of the chat, because the words of that first message live on the computer that was running it.
+
 ## Open it live or move it here — Move here versus remote control, which one does enter do
 
 Live leaves the chat, its files and its tools on the computer that runs it, and you work from here. **Move here** brings the chat to this computer, so it runs here from then on.
@@ -135,7 +141,7 @@ The desktop app can open a chat another computer is running too. On such a chat 
 
 ## Remote control is off — how to turn it on, remote control says restart codeaf on the other computer
 
-Remote control is off until you turn it on, on both computers: open `/settings` → `Devices` and turn `remote control` on, or start codeaf with `CODEAF_REMOTE_CONTROL=1`. With it off, everything works as before: `enter` on another computer's chat asks to move it, and no computer can open yours live.
+Remote control is off until you turn it on, on both computers: open `/settings` → `Devices` and turn `remote control` on, or start codeaf with `CODEAF_REMOTE_CONTROL=1`. In the desktop app it is the **Remote control** switch in Settings → Devices (*Turn remote control on or off in the desktop app*). With it off, everything works as before: `enter` on another computer's chat asks to move it, and no computer can open yours live.
 
 Both computers need a codeaf that includes it. If the other one still runs an older codeaf in the background, the view says `Restart codeaf on tower to share this chat.`: close codeaf there and open it again.
 

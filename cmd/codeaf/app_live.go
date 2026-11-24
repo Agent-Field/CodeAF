@@ -283,6 +283,23 @@ func (b *appBackend) deskViewed(a *appAgent) bool {
 // one call to [livedoor.Listener.CloseChat]. (Before it did, this file wrapped
 // the transport to read every connection's hello on its way past.)
 
+// endAllViewers closes every connection another computer holds to any chat this
+// desktop is running. It is what turning remote control off does for the people
+// already looking, beside the door's own refusal of anyone new.
+func (h *appDeskHost) endAllViewers() {
+	var conns []*deskConn
+	h.locked(func() {
+		for _, set := range h.viewing {
+			for c := range set {
+				conns = append(conns, c)
+			}
+		}
+	})
+	for _, c := range conns {
+		_ = c.Close()
+	}
+}
+
 // endViewers closes every connection another computer holds to the chat on key.
 func (h *appDeskHost) endViewers(key string) {
 	var l *livedoor.Listener

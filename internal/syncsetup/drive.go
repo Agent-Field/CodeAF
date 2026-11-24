@@ -47,6 +47,12 @@ type DriveOptions struct {
 	OnRenewalChange func()
 	// Sleep replaces real time between background attempts; tests inject a fake.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// EarlyRecord says whether the START of a chat's first spoken turn may
+	// create its directory record, instead of waiting for the first sealed turn.
+	// It is read at the moment the turn starts, and nil means no. It exists for
+	// remote control: another computer can only open a chat it can list, and a
+	// chat whose first turn is long was on no other computer's list for all of it.
+	EarlyRecord func() bool
 }
 
 // Drive is the drive side of one chat: it publishes each sealed turn, holds
@@ -59,6 +65,10 @@ type Drive struct {
 	idleRequested atomic.Bool
 	idlePrepared  atomic.Bool
 	working       atomic.Bool
+	// earlyNoted is set once the startup head has been handed to the batcher
+	// for an early record, so the turns after the first do not read the journal
+	// again to decide the same thing.
+	earlyNoted    atomic.Bool
 	workMu        sync.Mutex // Admission and voluntary release cannot cross each other.
 	activity      atomic.Uint64
 	released      atomic.Bool
@@ -851,8 +861,47 @@ func (d *Drive) Gate() error {
 func (d *Drive) Working(on bool) {
 	d.working.Store(on)
 	if d.batcher != nil {
+		// The flag is stored first so the publish that creates an early record is
+		// told the chat is working, and the row is never born idle.
 		d.batcher.Working(on)
+		if on {
+			d.recordEarly()
+		}
 	}
+}
+
+// recordEarly creates the directory record of a chat at the START of its first
+// spoken turn, behind [DriveOptions.EarlyRecord]. The record has always come
+// from the first SEALED turn, and the person's first message is journaled
+// before any turn seals, so a chat whose first turn runs for minutes was on no
+// other computer's list while it ran. The head handed over is the one this
+// window sealed at startup: a record needs some head to stand on, and that is
+// the least a head can be. Nothing about the turn travels, the title and folder
+// are whatever a publish sends today under the same storage rules, and when
+// the turn seals the head moves on exactly as it does for every chat.
+//
+// IT IS A NO-OP unless every one of these holds: the option is on now, the
+// chat has no record yet, and the journal holds a spoken message, which is the
+// same test [Drive.note] makes against a sealed head and what keeps a chat
+// nobody spoke in off every other computer. A chat that already has a record
+// needs nothing, because it is already listed and its working flag rides the
+// beat.
+func (d *Drive) recordEarly() {
+	if d.opt.EarlyRecord == nil || d.earlyNoted.Load() || d.batcher.Fence() != 0 || d.sync.isRemoved() {
+		return
+	}
+	if !d.opt.EarlyRecord() {
+		return
+	}
+	if spoken, _ := session.ConversationIn(session.Place{Dir: d.cell.Root}.Transcript(), -1); !spoken {
+		return
+	}
+	head, err := cellstore.Head(d.cell)
+	if err != nil || head == nil {
+		return
+	}
+	d.earlyNoted.Store(true)
+	d.batcher.Note(head.Turn)
 }
 
 func (d *Drive) Idle() {

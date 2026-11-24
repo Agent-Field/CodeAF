@@ -2042,6 +2042,26 @@ flight finish and are billed. Terminal Build saves an explicit on.
 `cost_note` is the shared `config.MemoryCostNote` disclosure, including the example
 of one small DeepSeek V4.1 Flash job at 39% ($0.0124 of $0.0315).
 
+An engine whose hello carries `settings.remote_control` includes
+`remote_control: bool` in Settings (`settings.get`, `settings.set`, and
+`settings.changed`), always, off as `false`, and `remote_control_pinned_by:
+string` only when an environment variable fixes the value, which makes the
+switch read only. It is the row the terminal's Settings > Devices tab writes, in
+the engine's own profile. `settings.set` takes optional `remote_control: bool`;
+any non-boolean, including null, is `bad_params`, and so is the field sent to an
+engine without the feature (`settings has no field remote_control`), so a window
+draws the switch only when the word is in the hello. A write the environment
+pins is refused whole, before any other field of the patch lands, as
+`bad_params` with `Remote control is set by CODEAF_REMOTE_CONTROL`. ON applies
+to chats opened afterwards: the holder door starts with the next chat the
+desktop opens, and chats already open stay as they were. `chats.live` and
+`devices.permit` are announced in the hello, which is read once when the engine
+starts, so they appear only after the engine restarts; a window that finds the
+switch and `devices.permit` disagreeing says so and offers the restart. OFF
+applies at once: the door stops handing chats out and every view another
+computer has of a chat this desktop holds is ended (that computer reads it as the
+chat closing); the desktop's own chats go on and keep what was said.
+
 An engine whose hello carries the feature `settings.models.auxiliary` adds a
 fourth role to the task models: `roles.auxiliary` in `settings.models.get` (and
 in `settings.changed`'s `task_models`) is `{pin, warning, eligible_count}` like
@@ -2518,6 +2538,19 @@ finished sentence for why typing is off, shown verbatim. Every change to any of
 these arrives as one `agent.changed` carrying the whole agent; there is no new
 event and no field on `turn.delta` or `turn.thinking`. A live agent is left out
 of `agents.list`.
+
+`location.keyboard` is `{yours?, machine?, here?}`, the same three words as a
+live view's `driver`, on a chat THIS computer holds and runs when another window
+than the one drawing it has the keyboard: another of the person's computers that
+took it, or another window here. It rides on the existing `agent.changed` of
+that agent and nowhere else, with Remote control on (`chats.live` in `hello`);
+absent says the window drawing the chat holds the keyboard, which is every chat
+nobody else has joined, and with Remote control off no agent ever carries it. A
+window that sees it draws who is typing and offers one button, which is
+`chats.live_keyboard {agent, take:true}` on the held agent itself (not a live
+one): it asks the engine for the keyboard and answers `{driver}` as it does for
+a live view. A held agent whose chat is not open to other computers answers
+`conflict` as before.
 
 `devices.permit {id, watch?, drive?}` edits ONLY this computer's own book of what
 a paired computer may do in chats here (`devices.permit` in `hello`, absent while

@@ -365,6 +365,11 @@ type appConn struct {
 	// Gone is closed when the connection is released, for what watches it and
 	// must stop with it; nil where nothing does.
 	Gone <-chan struct{}
+	// Held says this desktop keeps the chat behind its holder door
+	// ([appDeskHost]), so another computer may be in it and the keyboard may be
+	// theirs. It is false with remote control off, which is the chat as it
+	// always was.
+	Held bool
 }
 
 type appOpener func(appOpenAsk) (*appConn, error)
@@ -480,7 +485,12 @@ func appOpenAssembled(hello remote.Hello, boot func(remote.Hello) (*remote.Engin
 	if c := booted.Load(); c != nil {
 		watchAgentClosed(*c, stop, release)
 	}
-	return appConnOf(loop.Client, release, true), nil
+	conn := appConnOf(loop.Client, release, true)
+	if held != nil {
+		// WHAT WATCHES THE KEYBOARD STOPS WITH THE CHAT ([appBackend.watchHeldDriver]).
+		conn.Held, conn.Gone = true, stop
+	}
+	return conn, nil
 }
 
 // appJoinExisting joins only a conversation an engine already holds.
@@ -874,6 +884,10 @@ type appAgent struct {
 	// liveRemote is set once the agent has been opened as a live view of a chat
 	// another computer holds (app_live_open.go); nil for every other agent.
 	liveRemote *appLiveRemote
+	// heldKeyboard is who holds the keyboard of this chat when it is held here
+	// and another window than the desktop's own has it (app_held_keyboard.go);
+	// nil says the desktop's window holds it. Guarded by the backend's lock.
+	heldKeyboard *appwire.LiveDriver
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
 	// What it has said to the person (appunread.go): repliedAt its last
@@ -2156,6 +2170,9 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 	b.flushSync(a)
 	b.locked(func() { view = a.view })
 	b.openingNotices(a, conn)
+	if conn.Held {
+		b.watchHeldDriver(a, conn)
+	}
 	lane, stop := conn.Conv.WatchTaskUpdates()
 	live.stopTasks = stop
 	id := view.ID
