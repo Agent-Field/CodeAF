@@ -1,6 +1,9 @@
 package remote
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // TestTwoRemoteViewersOneHoldsTheKeyboardAndTheOtherIsToldWho verifies V6 (W2,
 // W11): remote viewers arrive passively without displacing the current driver
@@ -209,4 +212,159 @@ func TestARemoteViewerCannotSpoofItsGrantOrItsLabel(t *testing.T) {
 	if told.Machine != "la[2Jptop" {
 		t.Fatalf("watch-only viewer was told the driver is %q, want sanitised Remote.Label %q", told.Machine, "la[2Jptop")
 	}
+}
+
+// ── the keyboard across a road swap (phase 2, D13, W15) ─────────────────────
+
+// remoteArrival is a viewer's hello as the door writes it: Back is ALWAYS true
+// on a remote connection, the stamp names the authenticated device, and the
+// surface's own client id is the only part the viewer chooses.
+func remoteArrival(sess *Session, device, label, clientID string) Hello {
+	return Hello{
+		Version:  Version,
+		Surface:  "ignored",
+		Session:  sess.engine.SessionFile,
+		Join:     true,
+		Back:     true,
+		ClientID: clientID,
+		Remote:   &RemoteViewer{Device: device, Label: label, Watch: true, Drive: true, Road: "relay"},
+	}
+}
+
+// TestARoadSwapKeepsTheKeyboardWithTheSameDeviceAndNeverGivesItToAnother pins
+// W15 and D13: a remote viewer that holds the keyboard and comes back through a
+// different link (a road swap closes the old link first, a silent path leaves it
+// attached) still holds it, and that is true only for the SAME authenticated
+// device and window. A first arrival still has to ask for the keyboard.
+func TestARoadSwapKeepsTheKeyboardWithTheSameDeviceAndNeverGivesItToAnother(t *testing.T) {
+	// holder sets up the room: the host's own window, then a remote viewer that
+	// has taken the keyboard by asking for it.
+	holder := func(t *testing.T) (*Session, *link, *link) {
+		t.Helper()
+		sess := heldSession(&fakeAgent{})
+		desk := dialSession(t, sess)
+		desk.hello(Hello{Version: Version, Surface: "macbook"})
+		laptop := dialSession(t, sess)
+		laptop.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-1"))
+		laptop.ok(1, MethodTake, nil)
+		driverSaying(desk, "laptop")
+		return sess, desk, laptop
+	}
+	waitDetached := func(t *testing.T, sess *Session, left int) {
+		t.Helper()
+		waitFor(t, "the host to see the link end", func() bool { return sess.Attached() == left })
+	}
+
+	t.Run("the old link ended first", func(t *testing.T) {
+		sess, desk, laptop := holder(t)
+		_ = laptop.end()
+		waitDetached(t, sess, 1)
+		// The detach handed the keyboard to the host's own window, as it always did.
+		if told := driverOf(desk); !told.Yours {
+			t.Fatalf("the host's window was not handed the keyboard when the link ended: %+v", told)
+		}
+		back := dialSession(t, sess)
+		welcome := decode[Welcome](t, back.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-1")).Payload)
+		if !welcome.Driver.Yours {
+			t.Fatalf("the same device and window came back without the keyboard: %+v", welcome.Driver)
+		}
+		if told := driverSaying(desk, "laptop"); told.Yours {
+			t.Fatalf("the host's window still believes it types: %+v", told)
+		}
+		back.ok(1, MethodSubmit, SubmitArgs{Text: "after the swap"})
+	})
+
+	t.Run("the new link arrives before the old one has detached", func(t *testing.T) {
+		sess, desk, laptop := holder(t)
+		back := dialSession(t, sess)
+		welcome := decode[Welcome](t, back.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-1")).Payload)
+		if !welcome.Driver.Yours {
+			t.Fatalf("the replacing link did not take the keyboard from its own stale one: %+v", welcome.Driver)
+		}
+		// The stale link ending later must not hand the keyboard to anyone.
+		_ = laptop.end()
+		waitDetached(t, sess, 2)
+		for _, frame := range drain(desk) {
+			if frame.Kind == "driver" && decode[Driver](t, frame.Payload).Machine != "laptop" {
+				t.Fatalf("the stale link's late end moved the keyboard: %+v", frame)
+			}
+		}
+		back.ok(1, MethodSubmit, SubmitArgs{Text: "still the viewer's"})
+	})
+
+	t.Run("another device never gets it, whatever id it claims", func(t *testing.T) {
+		sess, desk, laptop := holder(t)
+		_ = laptop.end()
+		waitDetached(t, sess, 1)
+		_ = driverOf(desk)
+		other := dialSession(t, sess)
+		welcome := decode[Welcome](t, other.hello(remoteArrival(sess, "dev-phone", "phone", "window-1")).Payload)
+		if welcome.Driver.Yours {
+			t.Fatalf("another device took the keyboard by repeating a client id: %+v", welcome.Driver)
+		}
+	})
+
+	t.Run("the same device in another window never gets it", func(t *testing.T) {
+		sess, desk, laptop := holder(t)
+		_ = laptop.end()
+		waitDetached(t, sess, 1)
+		_ = driverOf(desk)
+		second := dialSession(t, sess)
+		welcome := decode[Welcome](t, second.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-2")).Payload)
+		if welcome.Driver.Yours {
+			t.Fatalf("a second window of the same device took the keyboard: %+v", welcome.Driver)
+		}
+	})
+
+	t.Run("a viewer that arrives for the first time still has to ask", func(t *testing.T) {
+		sess := heldSession(&fakeAgent{})
+		desk := dialSession(t, sess)
+		desk.hello(Hello{Version: Version, Surface: "macbook"})
+		first := dialSession(t, sess)
+		welcome := decode[Welcome](t, first.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-1")).Payload)
+		if welcome.Driver.Yours {
+			t.Fatalf("a first arrival took the keyboard: %+v", welcome.Driver)
+		}
+	})
+
+	t.Run("a viewer that left on purpose does not get it back", func(t *testing.T) {
+		sess, desk, laptop := holder(t)
+		laptop.ok(2, MethodDetach, nil)
+		_ = laptop.end()
+		waitDetached(t, sess, 1)
+		_ = driverOf(desk)
+		back := dialSession(t, sess)
+		welcome := decode[Welcome](t, back.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-1")).Payload)
+		if welcome.Driver.Yours {
+			t.Fatalf("a viewer that closed the view took the keyboard back: %+v", welcome.Driver)
+		}
+	})
+
+	t.Run("a keyboard somebody used in the meantime stays with them", func(t *testing.T) {
+		sess, desk, laptop := holder(t)
+		_ = laptop.end()
+		waitDetached(t, sess, 1)
+		_ = driverOf(desk)
+		desk.ok(1, MethodSubmit, SubmitArgs{Text: "typed on the host while the link was down"})
+		back := dialSession(t, sess)
+		welcome := decode[Welcome](t, back.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-1")).Payload)
+		if welcome.Driver.Yours {
+			t.Fatalf("a returning viewer took the keyboard back from a window that had used it: %+v", welcome.Driver)
+		}
+	})
+
+	t.Run("a keyboard kept too long is let go", func(t *testing.T) {
+		sess, desk, laptop := holder(t)
+		_ = laptop.end()
+		waitDetached(t, sess, 1)
+		_ = driverOf(desk)
+		sess.mu.Lock()
+		sess.kept.at = time.Now().Add(-2 * keyboardKeepFor)
+		sess.mu.Unlock()
+		back := dialSession(t, sess)
+		welcome := decode[Welcome](t, back.hello(remoteArrival(sess, "dev-laptop", "laptop", "window-1")).Payload)
+		if welcome.Driver.Yours {
+			t.Fatalf("a viewer back after the keeping window took the keyboard: %+v", welcome.Driver)
+		}
+	})
 }

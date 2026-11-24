@@ -137,6 +137,10 @@ type Client struct {
 	// which is the whole of what [Client.LinkNote] reports and the reason a call
 	// made in that gap is refused rather than written onto a dead pipe.
 	reconnecting bool
+	// noteAt is the first moment [Client.LinkNote] may say `reconnecting` for the
+	// redial in progress. Zero says it at once; a planned road swap sets it a
+	// moment ahead so that a swap which takes milliseconds says nothing.
+	noteAt time.Time
 	// notice is one sentence the surface should show once — the two facts a
 	// redial can discover that a person must not be left to guess at. See
 	// [Client.TakeNotice].
@@ -743,7 +747,7 @@ func (c *Client) Ping() (time.Duration, error) {
 func (c *Client) LinkNote() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.dead != nil || !c.reconnecting {
+	if c.dead != nil || !c.reconnecting || time.Now().Before(c.noteAt) {
 		return ""
 	}
 	return c.roamingNote()

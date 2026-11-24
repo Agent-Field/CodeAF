@@ -68,7 +68,19 @@ const (
 	// treated as a turn that ended while nobody was watching. See
 	// [Client.watchTail] for the whole of why it exists.
 	resumeTail = 3 * time.Second
+
+	// defaultPlannedNoteAfter is how long a PLANNED redial may take before the screen
+	// says `reconnecting`. A swap between two roads the viewer itself chose is
+	// over in milliseconds on a network that works, and a sentence about a link
+	// that was never lost would be the screen inventing a fault; an attempt that
+	// outlasts this is no longer a swap, and the same sentence an unplanned drop
+	// says is the true one. It is the default of [plannedNoteAfter].
+	defaultPlannedNoteAfter = 750 * time.Millisecond
 )
+
+// plannedNoteAfter is a variable so that a test can ask the question without
+// sleeping for most of a second.
+var plannedNoteAfter = defaultPlannedNoteAfter
 
 // firstBackoff is the floor of the pause before the first retry and
 // slowestBackoff the ceiling the base wait doubles up to. The first retry
@@ -118,6 +130,16 @@ type Roaming struct {
 	// evicted events older than its first retained sequence number. Nil ignores
 	// the frame and continues reading the retained events.
 	OnGap func(Gap)
+	// SpreadReturns says this road is dialled through a relay, which can drop
+	// every viewer in the same instant, so the first retry waits one second plus
+	// a random spread of up to five and each later wait is scaled by a random
+	// 0.75 to 1.25 (V22, W10). IT IS OPT-IN BECAUSE A FIX KEEPS DEFAULTS: an ssh
+	// `--host` pipe, a local socket and an engine on a pipe are reached by one
+	// person's own dial, nobody returns with them, and spreading their first
+	// retry over six seconds would have made every one of those slower to come
+	// back for a reason that is not theirs. Left false, a road keeps the schedule
+	// it always had, a fixed first pause and then the doubling.
+	SpreadReturns bool
 }
 
 func (r *Roaming) window() time.Duration {
@@ -197,6 +219,23 @@ func plural(n int, word string) string {
 
 // ── the loop ────────────────────────────────────────────────────────────────
 
+// plannedRedial is what an error says when the link under a reader ended
+// because the road that carries it was CHANGED ON PURPOSE (livedoor's
+// `road-change`), not because anything failed. It is an interface so that this
+// package, which cannot import livedoor, can still tell the two apart.
+//
+// A planned redial has nothing to wait for: the far end is up, the new road is
+// already open, and the pause an unplanned drop takes exists to let a relay that
+// restarted breathe.
+type plannedRedial interface{ PlannedRedial() bool }
+
+// isPlannedRedial reports whether the cause of a lost link asked for the
+// immediate redial.
+func isPlannedRedial(cause error) bool {
+	var planned plannedRedial
+	return errors.As(cause, &planned) && planned.PlannedRedial()
+}
+
 // lost is what the reader does when the link under it stops, and it answers
 // whether reading may carry on. True means a live pipe is in place and the
 // stream state has been reconciled with what the engine says; false means this
@@ -219,8 +258,20 @@ func (c *Client) lost(cause error) bool {
 	// has not stopped because this laptop's wifi did. That difference is the
 	// whole reason the surface can be redialled under a person without the
 	// conversation noticing.
+	planned := isPlannedRedial(cause)
 	c.mu.Lock()
 	c.reconnecting = true
+	// THE NOTE IS LATE AND THE REFUSAL IS NOT. Calls are refused for the whole
+	// gap, because between the new pipe being handed over and its welcome being
+	// read a call written onto it would arrive before the hello; that part is
+	// protocol and cannot wait. What a planned redial delays is only the SENTENCE
+	// ([Client.LinkNote]), so a road swap that takes a few milliseconds shows the
+	// person nothing at all.
+	if planned {
+		c.noteAt = time.Now().Add(plannedNoteAfter)
+	} else {
+		c.noteAt = time.Time{}
+	}
 	var waiting []chan result
 	if roam.ResendUnanswered {
 		for id, answer := range c.calls {
@@ -243,9 +294,10 @@ func (c *Client) lost(cause error) bool {
 		answer <- result{err: refusal}
 	}
 
-	welcome, err := c.redial(roam)
+	welcome, err := c.redial(roam, planned)
 	c.mu.Lock()
 	c.reconnecting = false
+	c.noteAt = time.Time{}
 	c.mu.Unlock()
 	if err != nil {
 		// A refusal the far end MADE is worth repeating; a redial that simply
@@ -383,7 +435,13 @@ func (c *Client) retakeLanes(left string, welcome Welcome) {
 	}
 }
 
-func redialPause(first bool, wait time.Duration) time.Duration {
+// redialPause is how long to wait before an attempt. A road that does not
+// spread its returns ([Roaming.SpreadReturns]) keeps the schedule it always had:
+// the base wait, which the loop doubles up to [slowestBackoff].
+func redialPause(first bool, wait time.Duration, spread bool) time.Duration {
+	if !spread {
+		return wait
+	}
 	if first {
 		if wait != defaultFirstBackoff {
 			return wait
@@ -400,8 +458,9 @@ func redialPause(first bool, wait time.Duration) time.Duration {
 }
 
 // redial is the backoff loop: a pause, an attempt, a longer pause, until the
-// engine answers or the window runs out.
-func (c *Client) redial(roam *Roaming) (Welcome, error) {
+// engine answers or the window runs out. A PLANNED redial makes its first
+// attempt with no pause at all; the attempts after it keep the schedule.
+func (c *Client) redial(roam *Roaming, planned bool) (Welcome, error) {
 	deadline := time.Now().Add(roam.window())
 	wait := firstBackoff
 	first := true
@@ -412,11 +471,13 @@ func (c *Client) redial(roam *Roaming) (Welcome, error) {
 		if time.Now().After(deadline) {
 			return Welcome{}, errors.New("the redialling ran out of time")
 		}
-		pause := redialPause(first, wait)
-		first = false
-		if !redialSleep(c.stop, pause) {
-			return Welcome{}, errors.New("this connection is closed")
+		if !(first && planned) {
+			pause := redialPause(first, wait, roam.SpreadReturns)
+			if !redialSleep(c.stop, pause) {
+				return Welcome{}, errors.New("this connection is closed")
+			}
 		}
+		first = false
 
 		conn, err := roam.Dial()
 		if err == nil {

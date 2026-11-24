@@ -740,6 +740,9 @@ func TestTheLiveRoamingTurnsOnResendUnansweredTheLineBoundAndTheGapHandler(t *te
 	if asked.MaxLine != livedoor.MaxLine {
 		t.Errorf("the viewer reads lines of at most %d bytes, want the live door's own %d", asked.MaxLine, livedoor.MaxLine)
 	}
+	if !asked.SpreadReturns {
+		t.Errorf("a live view is dialled through a relay, so its returns must be spread (V22): SpreadReturns is off")
+	}
 	if asked.Window != 30*time.Minute {
 		t.Errorf("the live view keeps trying for %v after a drop, want 30 minutes for a laptop that comes back from sleep", asked.Window)
 	}

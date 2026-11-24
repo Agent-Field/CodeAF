@@ -413,7 +413,7 @@ func (b *appBackend) dialLive(a *appAgent, r *appLiveRemote) (*appConn, error) {
 		return nil, appLiveRefusal(err, r.hostName)
 	}
 	hello := remote.Hello{Surface: devname.Name(b.relayHome()), Join: true}
-	client, err := appLiveRoam(r.hostName, hello, remote.Roaming{Dial: h.link.Opener(r.cell), MaxLine: livedoor.MaxLine, ResendUnanswered: true})
+	client, err := appLiveRoam(r.hostName, hello, remote.Roaming{Dial: h.link.Opener(r.cell), MaxLine: livedoor.MaxLine, ResendUnanswered: true, SpreadReturns: true})
 	if err != nil {
 		b.liveHostDone(h)
 		return nil, appLiveRefusal(err, r.hostName)

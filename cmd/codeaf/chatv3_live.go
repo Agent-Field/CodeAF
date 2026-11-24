@@ -270,8 +270,10 @@ func liveDriving(base func() tui3.Driving, road liveRoad) func() tui3.Driving {
 // again, so it is far longer than the minute a one-off remote door keeps.
 const liveRoamWindow = 30 * time.Minute
 
-// liveRoaming is the policy a live view redials by, and THE THREE SWITCHES IN IT
-// ARE LAWS, not tuning. ResendUnanswered is what keeps a message typed just
+// liveRoaming is the policy a live view redials by, and THE FOUR SWITCHES IN IT
+// ARE LAWS, not tuning. SpreadReturns is the fourth: a live view is dialled
+// through a relay that can drop every viewer in one instant, so its first retry
+// is spread over six seconds (V22), which no ssh or local road is. ResendUnanswered is what keeps a message typed just
 // before the link dropped from being lost: the client resends it once, with the
 // id it carries, and the host answers a repeat without running it twice. MaxLine
 // bounds one inbound line to what the live door itself allows, so a hostile
@@ -284,6 +286,7 @@ func liveRoaming(dial remote.Dialer, host string) remote.Roaming {
 		Window:           liveRoamWindow,
 		MaxLine:          livedoor.MaxLine,
 		ResendUnanswered: true,
+		SpreadReturns:    true,
 		OnGap:            liveGapNote(host),
 	}
 }

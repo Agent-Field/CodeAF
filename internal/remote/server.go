@@ -557,6 +557,11 @@ type Session struct {
 	// are driver.go's, and that file is the whole of the rule.
 	driver   *server
 	arrivals uint64
+	// kept is the keyboard a remote viewer held when its link ended, held for
+	// that same viewer for [keyboardKeepFor] (driver.go's keptKeyboard). It is
+	// what lets a road swap, which closes the old link BEFORE the new one
+	// arrives, hand the keyboard back to the viewer that had it.
+	kept *keptKeyboard
 	// factsRev counts the fact sets this session has stated. It is minted under
 	// mu beside the reading it labels, which is what makes it an ORDER and not
 	// a timestamp: two facts can move in the same instant and the two pushes
@@ -1253,9 +1258,17 @@ func (sess *Session) attach(s *server, hello Hello) error {
 	// surface and cannot distinguish the returning window from another one.
 	// Replacing the driver pointer makes the old pipe a non-driver immediately;
 	// its later detach therefore cannot take the keyboard away again. A remote
-	// viewer never takes the keyboard on arrival; it takes only via MethodTake.
-	sameReturningWindow := hello.Back && s.clientID != "" && sess.driver != nil && sess.driver.clientID == s.clientID
-	if !s.watching && s.remote == nil && (!hello.Back || sess.driver == nil || sameReturningWindow) {
+	// viewer never takes the keyboard on arrival; it takes only via MethodTake,
+	// EXCEPT THAT A REMOTE VIEWER WHICH IS THE ONE THAT HOLDS IT, OR HELD IT A
+	// MOMENT AGO, keeps it (driver.go's [Session.remoteKeepsKeyboardLocked]).
+	// A redial, and a swap of the road under a view, are the same viewer coming
+	// back, and a viewer that lost the keyboard on every one of them could never
+	// type through a road change.
+	sameReturningWindow := hello.Back && s.clientID != "" && sess.driver != nil && sess.driver.remote == nil && s.remote == nil && sess.driver.clientID == s.clientID
+	switch {
+	case !s.watching && s.remote == nil && (!hello.Back || sess.driver == nil || sameReturningWindow):
+		sess.takeLocked(s)
+	case !s.watching && s.remote != nil && sess.remoteKeepsKeyboardLocked(s):
 		sess.takeLocked(s)
 	}
 	welcome.Driver = sess.driverForLocked(s)
@@ -1306,6 +1319,7 @@ func (sess *Session) detach(s *server, deliberate bool) {
 	// (driver.go's handOnLocked).
 	moved := false
 	if sess.driver == s {
+		sess.keepKeyboardLocked(s, deliberate)
 		sess.handOnLocked()
 		moved = true
 	}
