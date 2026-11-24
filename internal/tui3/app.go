@@ -319,6 +319,12 @@ type entry struct {
 	// `@deepseek` gone from the model word and `▸ worked 1.6s · ctrl+e` where
 	// the explanation should have been (session's EventRowNews).
 	told bool
+	// local says this note is a sentence this window wrote about itself through
+	// [app.note] — a refusal, a failed move, a hand-over — which is in nobody's
+	// record but this screen. A live view's snapshot refresh ([app.refreshHostedReplay])
+	// rebuilds every other entry from the host's transcript and puts these back,
+	// because a sentence the person has read must not vanish because a road swapped.
+	local bool
 	// summarized says an [entryCompact] pass replaced some of the conversation
 	// with a summary ([session.Event.Summarized]). Only such a pass stands
 	// outside the turn's fold (workfold.go); a free one folds with the work.
@@ -7540,6 +7546,7 @@ func (a *app) noteWritten(text string, block bool, facts []string) {
 	if n := len(a.entries); n > 0 && a.entries[n-1].kind == entryNote {
 		a.entries[n-1].told = true
 		a.entries[n-1].stale = true
+		a.entries[n-1].local = true
 	}
 	if a.echoHome && a.at(pageHome) {
 		a.home.say(firstLine(text), "")
