@@ -82,7 +82,7 @@ func hostedSpendRows(t *testing.T, rg *hostedRig, ws string) []store.Spend {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	rows, err := db.Query("SELECT at, by, usd, chat, key FROM spend WHERE ws = ? ORDER BY rowid", ws)
+	rows, err := db.Query("SELECT at, by, usd, chat, key, asker FROM spend WHERE ws = ? ORDER BY rowid", ws)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func hostedSpendRows(t *testing.T, rg *hostedRig, ws string) []store.Spend {
 	var spends []store.Spend
 	for rows.Next() {
 		var spend store.Spend
-		if err := rows.Scan(&spend.At, &spend.By, &spend.USD, &spend.Chat, &spend.Key); err != nil {
+		if err := rows.Scan(&spend.At, &spend.By, &spend.USD, &spend.Chat, &spend.Key, &spend.Asker); err != nil {
 			t.Fatal(err)
 		}
 		spends = append(spends, spend)

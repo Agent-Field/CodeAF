@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 )
@@ -97,6 +98,30 @@ type hostedState struct {
 	// the first window's push did. Attaches are a person's deliberate act, so
 	// holding one lock across one bounded call is cheaper than a lock per chat.
 	attach sync.Mutex
+	// Registry mutations exclude backfill so an earlier host reply cannot restore a deleted chat.
+	registry sync.RWMutex
+	// The model door and wire may record or read the current asker concurrently.
+	askerMu sync.RWMutex
+	askers  map[string]string
+}
+
+func (hs *hostedState) noteAsker(id, person string) {
+	hs.askerMu.Lock()
+	defer hs.askerMu.Unlock()
+	if person == "" {
+		delete(hs.askers, id)
+		return
+	}
+	if hs.askers == nil {
+		hs.askers = make(map[string]string)
+	}
+	hs.askers[id] = person
+}
+
+func (hs *hostedState) askerOf(id string) string {
+	hs.askerMu.RLock()
+	defer hs.askerMu.RUnlock()
+	return hs.askers[id]
 }
 
 const (
@@ -293,13 +318,17 @@ func (hs *hostedState) credentialBody(token string) []byte {
 func (h *Handler) hostedPerson(w http.ResponseWriter, r *http.Request) (string, bool) {
 	handle, err := h.callerHandle(r)
 	handle = factory.NormalizeHandle(handle)
+	return handle, h.hostedSignedIn(w, handle, err)
+}
+
+func (h *Handler) hostedSignedIn(w http.ResponseWriter, handle string, err error) bool {
 	if err != nil || handle == "" || len(handle) > 128 ||
 		strings.IndexFunc(handle, func(c rune) bool { return c < 0x21 || c > 0x7e }) >= 0 {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
 		h.fail(w, http.StatusUnauthorized, hostedSignIn)
-		return "", false
+		return false
 	}
-	return handle, true
+	return true
 }
 
 // hostedChatID is the chat named in the path, or the answer to a name that
@@ -369,19 +398,27 @@ func (h *Handler) hostedFailed(w http.ResponseWriter, status int, err error) boo
 }
 
 func (h *Handler) hostedList(w http.ResponseWriter, r *http.Request) {
-	person, ok := h.hostedPerson(w, r)
+	v, ok := h.hostedViewer(w, r)
 	if !ok {
 		return
 	}
-	status, header, body, err := h.config.Hosted.state.call(r.Context(), http.MethodGet, "/v1/sessions", person, nil)
-	if h.hostedFailed(w, status, err) {
+	own, others, ok := h.hostedOwnList(w, r, v)
+	if !ok {
 		return
 	}
-	hostedRelay(w, status, header, body)
+	shared, ok := h.hostedSharedList(w, r, v, others)
+	if !ok {
+		return
+	}
+	h.write(w, http.StatusOK, struct {
+		hostedSessionsList
+		Shared  []hostedSharedRow `json:"shared"`
+		Hosting acl.Hosting       `json:"hosting"`
+	}{own, shared, acl.Hosting{LocalSessions: v.acc.rules().Hosting.LocalSessionsFor(true)}})
 }
 
 func (h *Handler) hostedGet(w http.ResponseWriter, r *http.Request) {
-	person, ok := h.hostedPerson(w, r)
+	v, ok := h.hostedViewer(w, r)
 	if !ok {
 		return
 	}
@@ -389,8 +426,35 @@ func (h *Handler) hostedGet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	status, header, body, err := h.config.Hosted.state.call(r.Context(), http.MethodGet, "/v1/sessions/"+id, person, nil)
+	hs := h.config.Hosted.state
+	owner := v.Handle
+	var chat hostedChatLookup
+	if h.config.Store != nil {
+		chat, ok = h.resolveHostedChat(w, r, id, v)
+		if !ok {
+			return
+		}
+		if !can(v, chat.item, acl.VerbView) {
+			hostedNoSuchChatWrite(w)
+			return
+		}
+		owner = chat.owner
+		if chat.legacyBody != nil {
+			hostedRelay(w, http.StatusOK, chat.legacyHeader, chat.legacyBody)
+			return
+		}
+	}
+	status, header, body, err := hs.call(r.Context(), http.MethodGet, "/v1/sessions/"+id, owner, nil)
 	if h.hostedFailed(w, status, err) {
+		return
+	}
+	if owner != v.Handle && status == http.StatusOK {
+		row := hostedMetadata(v, chat.item)
+		if json.Unmarshal(body, &row.hostedStatusFields) != nil || row.ID != id {
+			h.fail(w, http.StatusBadGateway, hostedUnreachable)
+			return
+		}
+		h.write(w, http.StatusOK, row)
 		return
 	}
 	hostedRelay(w, status, header, body)
@@ -399,10 +463,12 @@ func (h *Handler) hostedGet(w http.ResponseWriter, r *http.Request) {
 // hostedCreate starts a chat. The id is this server's to choose, so a caller
 // can never name a chat into existence or onto someone else's folder.
 func (h *Handler) hostedCreate(w http.ResponseWriter, r *http.Request) {
-	person, ok := h.hostedPerson(w, r)
+	v, ok := h.hostedViewer(w, r)
 	if !ok {
 		return
 	}
+	st := h.config.Store
+	person := v.Handle
 	hs := h.config.Hosted.state
 	var raw [12]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -416,20 +482,38 @@ func (h *Handler) hostedCreate(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusInternalServerError, hostedNotStarted)
 		return
 	}
+	var row store.Resource
+	if st != nil {
+		hs.registry.Lock()
+		defer hs.registry.Unlock()
+		row, err = h.registerHostedChat(v, id)
+		if err != nil {
+			hs.bearers.revokeToken(id, token)
+			h.accessFailed(w, err)
+			return
+		}
+	}
 	fields := hs.credentialFields(token)
 	fields["id"] = id
 	body, _ := json.Marshal(fields)
 	status, header, data, err := hs.call(r.Context(), http.MethodPost, "/v1/sessions", person, body)
 	// A bearer for a chat that was not made is ended at once; there is
 	// nothing for it to belong to.
-	if h.hostedFailed(w, status, err) {
+	if err != nil || status/100 != 2 {
 		hs.bearers.revokeToken(id, token)
+		if st != nil {
+			if err := st.DeleteResource(row.Kind, row.ID); err != nil {
+				log.Printf("hosted chats: a failed registration could not be removed: %v", err)
+			}
+		}
+		if !h.hostedFailed(w, status, err) {
+			hostedRelay(w, status, header, data)
+		}
 		return
 	}
-	if status/100 != 2 {
-		hs.bearers.revokeToken(id, token)
-		hostedRelay(w, status, header, data)
-		return
+	if st != nil {
+		item := h.resourceItem(row, factory.OrgWorkstream{})
+		h.publishAccessEvent(row.Resource, person, h.audienceOf(item))
 	}
 	hostedRelay(w, status, header, hostedWithID(data, id))
 }
@@ -465,7 +549,7 @@ func (h *Handler) hostedDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) hostedEnd(w http.ResponseWriter, r *http.Request, method, suffix string) {
-	person, ok := h.hostedPerson(w, r)
+	v, ok := h.hostedViewer(w, r)
 	if !ok {
 		return
 	}
@@ -474,27 +558,72 @@ func (h *Handler) hostedEnd(w http.ResponseWriter, r *http.Request, method, suff
 		return
 	}
 	hs := h.config.Hosted.state
-	status, header, body, err := hs.call(r.Context(), method, "/v1/sessions/"+id+suffix, person, nil)
-	hs.bearers.revokeFor(id, person)
-	hs.models.forget(id, person)
+	owner := v.Handle
+	var before itemAudience
+	st := h.config.Store
+	if st != nil {
+		hs.registry.Lock()
+		defer hs.registry.Unlock()
+		chat, ok := h.lookupHostedChat(w, r, id, v)
+		if !ok {
+			return
+		}
+		if !can(v, chat.item, acl.VerbView) {
+			hostedNoSuchChatWrite(w)
+			return
+		}
+		if !can(hostedWithoutOperator(v), chat.item, acl.VerbManage) {
+			h.fail(w, http.StatusForbidden, hostedOwnerManage)
+			return
+		}
+		owner = chat.owner
+		before = v.acc.audienceOf(chat.item)
+	}
+	status, header, body, err := hs.call(r.Context(), method, "/v1/sessions/"+id+suffix, owner, nil)
+	hs.bearers.revokeFor(id, owner)
+	hs.models.forget(id, owner)
 	if h.hostedFailed(w, status, err) {
 		return
+	}
+	if st != nil && (status/100 == 2 || method == http.MethodDelete && status == http.StatusNotFound) {
+		if method == http.MethodDelete {
+			if h.failed(w, st.DeleteResource(store.SessionKind, id)) {
+				return
+			}
+			hs.noteAsker(id, "")
+		}
+		h.publishAccessEvent(Ref{Kind: store.SessionKind, ID: id}, v.Handle, before)
 	}
 	hostedRelay(w, status, header, body)
 }
 
-// hostedWire joins a window to a chat. It makes sure the chat's host holds the
-// live model bearer BEFORE the connection opens, then hands the connection
-// over: from there it only copies bytes and reads no frame, so what the window
-// and the chat say to each other is theirs alone.
+// hostedWire checks who may attach to a chat. The owner proxy pushes the live
+// model bearer before opening the connection and copies bytes without reading frames.
 func (h *Handler) hostedWire(w http.ResponseWriter, r *http.Request) {
-	person, ok := h.hostedPerson(w, r)
+	v, ok := h.hostedViewer(w, r)
 	if !ok {
 		return
 	}
 	id, ok := hostedChatID(w, r)
 	if !ok {
 		return
+	}
+	person := v.Handle
+	if h.config.Store != nil {
+		chat, ok := h.resolveHostedChat(w, r, id, v)
+		if !ok {
+			return
+		}
+		switch hostedWireClassFor(v, chat.item, chat.owner) {
+		case hostedWireOwner:
+			person = chat.owner
+		case hostedWireGuest:
+			h.hostedGuestWire(w, r, chat.item, chat.owner, hostedWithoutOperator(v))
+			return
+		default:
+			hostedNoSuchChatWrite(w)
+			return
+		}
 	}
 	hs := h.config.Hosted.state
 	if !h.hostedPush(w, r, hs, id, person) {
@@ -567,8 +696,12 @@ func (h *Handler) hostedPush(w http.ResponseWriter, r *http.Request, hs *hostedS
 		ModelBearer string `json:"model_bearer"`
 	}
 	_ = json.Unmarshal(data, &row)
-	// The chat is theirs, so what their sign-in carries for git is kept for it.
-	h.keepSignInGitHub(r, person)
+	// Only the owner's request can supply a sign-in credential for this chat.
+	if hs.keys != nil {
+		if requester, err := h.callerHandle(r); err == nil && factory.NormalizeHandle(requester) == person {
+			h.keepSignInGitHub(r, person)
+		}
+	}
 	token, minted, err := hs.bearers.ensureCurrent(id, person, h.clock(), row.ModelBearer)
 	if err != nil {
 		log.Printf("hosted chats: a chat could not be given model access: %v", err)

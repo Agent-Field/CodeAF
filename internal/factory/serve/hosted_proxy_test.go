@@ -128,7 +128,10 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var mine []map[string]string
 		for id, owner := range f.owners {
 			if owner == person {
-				mine = append(mine, map[string]string{"id": id, "state": "suspended", "model_bearer": fingerprintOf(f.tokens[id])})
+				mine = append(mine, map[string]string{
+					"id": id, "state": "suspended", "created": "2026-11-24T00:00:00Z", "last_active": "2026-11-24T00:01:00Z",
+					"model_bearer": fingerprintOf(f.tokens[id]), "warning": "A warning for the chat's owner.",
+				})
 			}
 		}
 		f.mu.Unlock()
