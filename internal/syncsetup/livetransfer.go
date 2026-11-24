@@ -35,9 +35,13 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 )
 
@@ -280,36 +284,65 @@ var filesDoors = struct {
 }{runs: map[string]*doorRun{}}
 
 type doorRun struct {
-	stop context.CancelFunc
-	done chan struct{}
+	stop          context.CancelFunc
+	done          chan struct{}
+	remoteControl bool
 }
 
 // ensureFilesDoor starts this home's files door in this process if it is not
 // running. Which process of the home actually registers is decided by the lock
 // inside the door, so every codeaf process may call this.
 func (s *Sync) ensureFilesDoor() {
-	if !s.liveCarries() {
+	if !s.liveCarries() && !s.remoteControlWanted() {
 		return
 	}
+	wantRC := config.RemoteControlOn()
 	filesDoors.Lock()
-	defer filesDoors.Unlock()
-	if _, ok := filesDoors.runs[s.Home]; ok {
-		return
+	if existing, ok := filesDoors.runs[s.Home]; ok {
+		if existing.remoteControl == wantRC {
+			filesDoors.Unlock()
+			return
+		}
+		delete(filesDoors.runs, s.Home)
+		filesDoors.Unlock()
+		existing.stop()
+		<-existing.done
+		filesDoors.Lock()
+		if current, ok := filesDoors.runs[s.Home]; ok && current.remoteControl == wantRC {
+			filesDoors.Unlock()
+			return
+		}
 	}
+	defer filesDoors.Unlock()
 	cfg, err := s.filesDoorConfig()
 	if err != nil {
 		log.Printf("blind pass-through: opening the live store: %v", err)
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &doorRun{stop: cancel, done: make(chan struct{})}
+	run := &doorRun{stop: cancel, done: make(chan struct{}), remoteControl: cfg.Live != nil}
 	filesDoors.runs[s.Home] = run
-	go func() {
-		defer close(run.done)
+	homeDir := s.Home
+	var watchWG sync.WaitGroup
+	if cfg.Live != nil {
+		watchWG.Add(1)
+		guard.Go("syncsetup.permitsWatch", func() {
+			defer watchWG.Done()
+			pair.Permits().Watch(ctx, livePermitWatchEvery, func() {
+				livedoor.DefaultRegistry(homeDir).PermitsChanged("")
+			})
+		})
+	}
+	guard.Go("syncsetup.filesdoor", func() {
+		defer func() {
+			cancel()
+			watchWG.Wait()
+			close(run.done)
+		}()
 		if err := filesdoor.Serve(ctx, cfg); err != nil && ctx.Err() == nil {
 			log.Printf("blind pass-through: files door: %v", err)
 		}
-	}()
+	})
 }
 
 // filesDoorConfig is everything one process needs to serve this home's files
@@ -323,7 +356,7 @@ func (s *Sync) filesDoorConfig() (filesdoor.ServeConfig, error) {
 	if liveDoorStore != nil {
 		store = liveDoorStore(s.Home, store)
 	}
-	return filesdoor.ServeConfig{
+	cfg := filesdoor.ServeConfig{
 		Service:   s.Relay,
 		Identity:  s.Identity,
 		Device:    s.Device,
@@ -337,7 +370,9 @@ func (s *Sync) filesDoorConfig() (filesdoor.ServeConfig, error) {
 		// from the live store.
 		Secrets:     s.serveSecrets,
 		SecretsPage: liveSecretsPage,
-	}, nil
+	}
+	s.attachRemoteControl(&cfg)
+	return cfg, nil
 }
 
 // stopFilesDoor ends this process's door for one home and waits for it to let
@@ -362,9 +397,17 @@ func (s *Sync) activeDevices(ctx context.Context) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.RememberDevices(l.Devices)
 	active := make(map[string]bool, len(l.Devices))
+	var revoked []string
 	for id, d := range l.Devices {
 		active[id] = !d.Revoked
+		if d.Revoked {
+			revoked = append(revoked, id)
+		}
+	}
+	if len(revoked) > 0 {
+		livedoor.DefaultRegistry(s.Home).Revoke(revoked...)
 	}
 	return active, nil
 }
