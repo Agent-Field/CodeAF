@@ -109,7 +109,7 @@ func (d *approvalsDoor) Pending(ctx context.Context, typed string) (tui3.Pending
 	as, err := who.Look(ctx, ref)
 	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
 		// An approval whose reply was lost: the device is in, so this computer is shared.
-		if err := identity.EndSolo(d.dir); err != nil {
+		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 			return tui3.PendingDevice{}, err
 		}
 		notePaired(d.dir, route)
@@ -152,7 +152,7 @@ func (d *approvalsDoor) Approve(ctx context.Context, p tui3.PendingDevice) error
 				return err
 			}
 		}
-		if err := identity.EndSolo(d.dir); err != nil {
+		if err := pair.EndSoloAt(d.dir, d.book()); err != nil {
 			return err
 		}
 		if route, err := d.mailbox(""); err == nil {

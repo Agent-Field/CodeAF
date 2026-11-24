@@ -102,7 +102,7 @@ func pairGrantAt(dir string, route pair.Mailbox) (pair.Grant, error) {
 			if err := syncsetup.SaveRelayURL(dir, syncsetup.Named(route.URL)); err != nil {
 				return fmt.Errorf("could not keep the pairing relay address, so nothing was sent: %w", err)
 			}
-			if err := identity.EndSolo(dir); err != nil {
+			if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
 				return fmt.Errorf("could not record that this computer now shares its chats, so nothing was sent: %w", err)
 			}
 			return nil

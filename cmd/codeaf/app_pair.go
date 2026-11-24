@@ -396,7 +396,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 		asking, err := who.Look(o.ctx, ref)
 		if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
 			// An approval whose reply was lost: the device is in, so this computer is shared.
-			if err := identity.EndSolo(dir); err != nil {
+			if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
 				return err, false
 			}
 			record()
@@ -423,7 +423,7 @@ func (o *appPairOperation) perform(p appwire.PairStartParams) (error, bool) {
 				return err, false
 			}
 		}
-		if err := identity.EndSolo(dir); err != nil {
+		if err := pair.EndSoloAt(dir, pair.Permits()); err != nil {
 			return err, false
 		}
 		record()

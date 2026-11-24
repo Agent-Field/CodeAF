@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
 func boolPtr(v bool) *bool { return &v }
@@ -466,6 +468,59 @@ func TestJoiningStampsAnEmptyLegacySnapshotSoLaterDevicesAreNew(t *testing.T) {
 		}
 		if got, class := Permits().For(idID, "dev_later"); !got.Watch || !got.Drive || class != ClassNew {
 			t.Fatalf("For(\"dev_later\") after link join = (%+v, %v), want Watch=true Drive=true ClassNew", got, class)
+		}
+	})
+}
+
+// V25, the offering side: the computer that was alone and now shares its chats
+// records that everyone it meets next is a new pairing, so the first computer a
+// person ever pairs types out of the box. A computer that already had a fleet
+// keeps its older pairings older.
+func TestTheComputerThatOffersAPairingRecordsThatTheNextOnesAreNew(t *testing.T) {
+	t.Run("a computer that was alone", func(t *testing.T) {
+		dir := t.TempDir()
+		id, err := identity.EnsureSolo(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		book := PermitsAt(filepath.Join(dir, "permits.json"))
+		if err := EndSoloAt(dir, book); err != nil {
+			t.Fatal(err)
+		}
+		if identity.Solo(dir) {
+			t.Fatal("the computer still says it is alone after it shared its chats")
+		}
+		// The first full read of a roster that now holds the other computer must
+		// not take it for an older pairing.
+		if err := book.SnapshotLegacy(id.ID(), []string{"dev_host", "dev_laptop"}); err != nil {
+			t.Fatal(err)
+		}
+		if got, class := book.For(id.ID(), "dev_laptop"); !got.Watch || !got.Drive || class != ClassNew {
+			t.Fatalf("the first computer paired is (%+v, %v), want Watch=true Drive=true ClassNew", got, class)
+		}
+		if book.NeedsAsk(id.ID()) {
+			t.Fatal("the computer asks whether its first pairing may type, which it never was told to refuse")
+		}
+	})
+
+	t.Run("a computer that already had other computers", func(t *testing.T) {
+		dir := t.TempDir()
+		id, err := identity.Ensure(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if identity.Solo(dir) {
+			t.Fatal("the fixture's identity is solo, so it does not stand for a fleet")
+		}
+		book := PermitsAt(filepath.Join(dir, "permits.json"))
+		if err := EndSoloAt(dir, book); err != nil {
+			t.Fatal(err)
+		}
+		if err := book.SnapshotLegacy(id.ID(), []string{"dev_host", "dev_old"}); err != nil {
+			t.Fatal(err)
+		}
+		if got, class := book.For(id.ID(), "dev_old"); got.Drive || class != ClassLegacy {
+			t.Fatalf("an older pairing is (%+v, %v) after another computer was offered a pairing, want watch only and legacy", got, class)
 		}
 	})
 }

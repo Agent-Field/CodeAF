@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
+	"github.com/Agent-Field/codeaf/internal/identity"
 )
 
 // Permit records whether one paired computer may watch and type into chats
@@ -355,4 +356,31 @@ func stampJoin(identity string) {
 		return
 	}
 	_ = Permits().SnapshotLegacy(identity, nil)
+}
+
+// EndSoloAt is [identity.EndSolo] for the computer that OFFERS a pairing, and the
+// other half of what [stampJoin] does for the one that joins. A computer that was
+// alone has no older pairing: every computer it meets from this moment is a new one,
+// so it writes the empty legacy snapshot now, before the first of them is on its
+// roster. WITHOUT THIS THE FIRST PAIRING OF EVERY PERSON WAS AN OLDER ONE: the
+// computer read its roster for the first time after the other had joined, took the
+// other for something that was already there, and left it watching and unable to
+// type until the person said otherwise.
+//
+// A computer that was not alone is left as it was, because the computers already on
+// its roster ARE older pairings and its first roster read names them. A failure to
+// write the snapshot is not a failure to pair: the computer then stays on the safe
+// side, watch only.
+func EndSoloAt(dir string, book *PermitBook) error {
+	alone := identity.Solo(dir)
+	if err := identity.EndSolo(dir); err != nil {
+		return err
+	}
+	if !alone || book == nil {
+		return nil
+	}
+	if id, err := identity.Load(dir); err == nil && id.ID() != "" {
+		_ = book.SnapshotLegacy(id.ID(), nil)
+	}
+	return nil
 }
