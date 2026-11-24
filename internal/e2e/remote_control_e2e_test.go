@@ -666,7 +666,9 @@ func rcDirectRoadComesUp(t *testing.T) {
 	}
 	// V37: the turn did not travel the relay. Read after the reply is on both
 	// screens, so a frame that was going to cross it has.
-	if carried := rc.audit.liveBytes() - before; carried > rcDirectRelayAtMost {
+	carried := rc.audit.liveBytes() - before
+	t.Logf("the relay's live tunnel carried %d bytes of a turn typed on a direct view (limit %d)", carried, rcDirectRelayAtMost)
+	if carried > rcDirectRelayAtMost {
 		t.Errorf("the relay's live tunnel carried %d bytes of a turn typed on a direct view, want at most %d", carried, rcDirectRelayAtMost)
 	}
 	if got := rc.roadNow(viewer); got != "direct" {
@@ -705,7 +707,9 @@ func rcRelayOnlyStaysOnTheRelay(t *testing.T) {
 	if n := rc.model.count(rcLaptopAsk); n != 1 {
 		t.Errorf("the model was asked the typed line %d times, want once", n)
 	}
-	if carried := rc.audit.liveBytes() - before; carried < rcRelayCarriesAtLeast {
+	carried := rc.audit.liveBytes() - before
+	t.Logf("the relay's live tunnel carried %d bytes of a turn typed on a view held to the relay (floor %d)", carried, rcRelayCarriesAtLeast)
+	if carried < rcRelayCarriesAtLeast {
 		t.Errorf("the relay's live tunnel carried %d bytes of a turn typed on a view held to the relay, want at least %d: the audit is not seeing the tunnel", carried, rcRelayCarriesAtLeast)
 	}
 	if got := rc.roadNow(viewer); got != "relay" {
