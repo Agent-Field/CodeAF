@@ -39,6 +39,10 @@ var errTaskBusy = errors.New("this task is already being worked on")
 // runner, or no model key from the operator.
 var errTaskNoRunner = errors.New("this organization's server cannot run Afi: it has no model key")
 
+// NoRunnerAnsweredLine is the thread's line when an answer to Afi's question
+// lands on a server that cannot run Afi: the answer is kept, the task waits.
+const NoRunnerAnsweredLine = "Answer kept · Afi carries on once this organization has a model key"
+
 // taskRunKey names one task's run.
 type taskRunKey struct{ ws, task string }
 

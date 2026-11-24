@@ -708,6 +708,16 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if limit {
 		change.Decisions = nil
 	}
+	// AN ANSWER NEVER MARKS RUNNING WHAT NOTHING CAN RUN (test findings
+	// 2026-11-23 P0 #2). A server with no model key keeps the answer and
+	// leaves Afi's task Up next, saying why, instead of Running with no run
+	// behind it until the lease noticed minutes later.
+	if _, job := factory.IsJobTask(t.ID); !job && !wake && !limit && change.Task.DoneBy.Kind == factory.TaskByAfi &&
+		change.Task.State == factory.TaskRunning && !h.serverAgentServed() {
+		change.Task.State = factory.TaskUpNext
+		change.Events = append(change.Events, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: t.ID, At: change.Task.UpdatedAt,
+			By: by, Kind: factory.TaskEventState, Text: NoRunnerAnsweredLine})
+	}
 	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
 	}

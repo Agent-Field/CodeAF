@@ -73,7 +73,13 @@ func TestOnlyTheOwnerAnswersAnAskOverTheWireAndEveryoneMeansTheFirstAnswer(t *te
 	o.do(t, "santosh", "POST", path+"/tasks/"+every.ID+"/answer", -1, api.TaskAnswer{Option: "publish"}, 409, nil)
 	var events api.WorkstreamTaskEvents
 	o.do(t, "santosh", "GET", path+"/tasks/"+every.ID+"/events", -1, nil, 200, &events)
-	if n := len(events.Events); n == 0 || events.Events[n-1].Kind != factory.TaskEventAnswered || events.Events[n-1].By.ID != "abir" {
+	var answer api.WorkstreamTaskEvent
+	for _, e := range events.Events {
+		if e.Kind == factory.TaskEventAnswered {
+			answer = e
+		}
+	}
+	if answer.Kind != factory.TaskEventAnswered || answer.By.ID != "abir" {
 		t.Fatalf("the thread does not record who answered: %+v", events.Events)
 	}
 }

@@ -49,7 +49,14 @@ func TestAStandingOrdersRunIsATaskTheOwnerAnswers(t *testing.T) {
 
 	var events api.WorkstreamTaskEvents
 	o.do(t, "santosh", "GET", path+"/tasks/"+made.ID+"/events", -1, nil, 200, &events)
-	last := events.Events[len(events.Events)-1]
+	// The answer is the thread's last answered line; a server with no model
+	// key adds why the task waits after it.
+	var last api.WorkstreamTaskEvent
+	for _, e := range events.Events {
+		if e.Kind == factory.TaskEventAnswered {
+			last = e
+		}
+	}
 	if last.Kind != factory.TaskEventAnswered || last.Option != "go" || last.By.Name == "" {
 		t.Fatalf("the answer santosh reads = %+v", last)
 	}
