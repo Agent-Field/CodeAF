@@ -10,6 +10,10 @@ directions and asking for a new crew proposal also refuse the move.
 The same check protects remote submissions and queued follow-ups; a follow-up
 accepted before the move is refused before its turn can start. Existing action
 receipts remain readable and replaying one does not start its work again.
+With remote control on and the other computer online, the desktop does not leave
+you on that read-only copy: the same chat opens as a live view of the computer
+that continued it, where you can read the running reply and type. The read-only
+copy is what remains when remote control is off or that computer is off.
 Your unsent draft and staged attachments stay yours. Messages already queued
 stay in the queue; editing, reordering or removing them does not start a turn.
 The app pins `Continued on <computer>` above the transcript with
@@ -21,7 +25,9 @@ sync storage or live transfer, without moving the chat or restoring remote files
 If the latest history is unavailable, you can still read the local copy. Remote
 history and previews read saved transcripts up to 24 MiB. For a larger transcript,
 use Continue here to move the chat and read its full history. Unsealed
-words and in-progress tokens are not streamed between computers.
+words and in-progress tokens are not streamed between computers, except in a
+live view (*Open a chat running on another computer live in the desktop*),
+which shows the reply as the other computer writes it.
 The desktop can still send that computer a message for the chat while it is
 open or working there; it waits in the chat's queue on that computer. See
 "Send a message to a chat working on another computer".
@@ -176,6 +182,16 @@ Continue here requires the holder and ownership fence shown when you chose it.
 A changed fence, holder or saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
 
+## Open a chat running on another computer live in the desktop — Open on <name>, watch it, type into it, take the keyboard
+
+With **remote control** on (Settings → General, off by default) the desktop can open a chat another of your computers is running as a live view. A chat row that is running on a computer that is online offers `Open on <name>`; choosing it opens the chat like any other: its history, the reply as it streams, questions waiting for you, steer, queue and stop all work, and you type in the ordinary box (`Message <name>`). The words go straight to the running chat on that computer. Nothing is left on the sync service, so this needs no sync storage, and it is not the waiting message of *Send a message to a chat working on another computer*, which is only for a computer that is off. The chat stays on that computer; `Move here` brings it here.
+
+The chat's strip says where it stands: `live`, `reconnecting`, `offline` with when it was last seen, `idle`, or `watching`. A view with no one typing for ten minutes disconnects itself so the sync service can rest; sending anything, or opening the chat again, reconnects. Watching means that computer lets this one read but not type (`<name> lets this computer watch, not type. Change that in /devices there.`), or its daily allowance of live traffic is used up (`watch only until 00:00 UTC (daily limit)`). Only one computer types at a time: `typing from <name> now` says who has the keyboard, and taking it is the button beside it. A computer taken off your list is told so (`this computer was removed from your devices`).
+
+The model, approval posture and spending limit of a live view are set on the computer running the chat, not from here, and the desktop's own tools are not given to that chat.
+
+What a computer lets another one do is set on that computer, in Settings → Devices → each other computer: watch its chats, and type into them. Off for typing unless you turned it on there. Chats a terminal holds can be opened live from the desktop. A chat this desktop itself is running is not offered to other computers yet: from another computer it still says where it is held.
+
 ## Send a message to a chat working on another computer — queued there, runs after the turn
 
 While another computer still holds a chat (working, or open while `idle handoff` is off, before idle release, or on an older build), the desktop composer
@@ -205,7 +221,7 @@ once if that computer saved again first.
 
 ## Why can't I message a chat on another computer — the composer is read-only while sync storage is off
 
-While the account's hosted sync storage is off, the desktop does not offer `Message <name>` for a chat another computer holds, and `chats.send` is not in `hello`. A waiting message is sealed text kept in this computer's record on the sync service until the holder takes it, and the service keeps nothing of the kind until storage is approved. A send that arrives anyway is refused with `Sync storage is off for this account, so a message can't wait for another computer. Bring the chat here to write to it.` and leaves nothing on the service.
+While the account's hosted sync storage is off, the desktop does not offer a *waiting* `Message <name>` for a chat another computer holds, and `chats.send` is not in `hello`. A chat that computer is running and that you opened live is different: with remote control on and the computer online, you type into it directly and storage is not involved (*Open a chat running on another computer live*). The rest of this section is about a computer that is off, or a chat opened without remote control. A waiting message is sealed text kept in this computer's record on the sync service until the holder takes it, and the service keeps nothing of the kind until storage is approved. A send that arrives anyway is refused with `Sync storage is off for this account, so a message can't wait for another computer. Bring the chat here to write to it.` and leaves nothing on the service.
 
 Choose Continue here to write to the chat: blind pass-through moves it while both computers run codeaf. Approving sync storage brings the message box back on the next connection, and a self-hosted sync service always had it. Messages already waiting when storage was switched off can still be taken off the service.
 
