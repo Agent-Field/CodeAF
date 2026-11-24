@@ -81,6 +81,11 @@ const (
 	// derived from the same cell key.
 	FilesTunnelPrologue = "codeaf files door v1 connect"
 
+	// LiveTunnelPrologue is mixed into the handshake of a live-view connection
+	// on the files-door registration, so a stream made for live viewing and a
+	// stream made for moving files can never complete against each other.
+	LiveTunnelPrologue = "codeaf live door v1 connect"
+
 	doorKeySalt = "codeaf files door v1"
 )
 
@@ -98,6 +103,9 @@ var (
 	silentAfter = 2 * time.Minute
 	// dialWithin bounds one dial attempt: relay, handshake and hello together.
 	dialWithin = 10 * time.Second
+	// liveRecheck is how often an open live tunnel asks the roster whether its
+	// device is still allowed.
+	liveRecheck = DefaultRosterFor
 )
 
 // DoorKey derives a device's files-door key from the person's cell key. Nothing

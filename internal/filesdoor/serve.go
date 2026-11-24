@@ -69,6 +69,13 @@ type ServeConfig struct {
 	SecretsPage int
 	// ChatTitle reads the name of one local conversation for a paired peer.
 	ChatTitle func(id string) string
+	// Live serves an authenticated live-view tunnel for device until ctx ends
+	// or the tunnel closes. When nil, live-intent connections are refused
+	// before Noise completes.
+	Live func(ctx context.Context, tun io.ReadWriteCloser, device string) error
+	// Revoked subscribes to device-removal notifications for the life of one
+	// registration and calls gone with any device ids that were removed.
+	Revoked func(ctx context.Context, gone func(devices []string)) (stop func())
 	// Ready, when set, is called after every successful registration, before
 	// the door starts answering. It must not block.
 	Ready func()
@@ -124,7 +131,12 @@ func Serve(ctx context.Context, cfg ServeConfig) error {
 	}
 	defer release(lock)
 
-	d := &door{cfg: cfg, key: key, roster: &rosterCache{fetch: cfg.Roster, now: time.Now, ttl: ttl}}
+	d := &door{
+		cfg:         cfg,
+		key:         key,
+		liveCancels: make(map[string][]liveCancel),
+	}
+	d.roster = &rosterCache{fetch: cfg.Roster, now: time.Now, ttl: ttl, onGone: d.evict}
 	(&registrar{
 		service:  cfg.Service,
 		key:      key,
@@ -133,7 +145,7 @@ func Serve(ctx context.Context, cfg ServeConfig) error {
 		ready:    cfg.Ready,
 		say:      cfg.Say,
 		now:      time.Now,
-		wait:     sleep,
+		wait:     jitteredSleep,
 	}).run(ctx)
 	return nil
 }
@@ -179,6 +191,10 @@ func sleep(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func jitteredSleep(ctx context.Context, d time.Duration) error {
+	return sleep(ctx, relay.Jitter(d))
 }
 
 // registrar keeps the door registered under its name. It deliberately never
@@ -243,17 +259,92 @@ type door struct {
 	cfg    ServeConfig
 	key    *ecdh.PrivateKey
 	roster *rosterCache
+
+	liveMu      sync.Mutex
+	liveCount   int
+	liveNextID  uint64
+	liveCancels map[string][]liveCancel
+}
+
+type liveCancel struct {
+	id     uint64
+	cancel context.CancelFunc
+}
+
+func (d *door) admitLive() bool {
+	d.liveMu.Lock()
+	defer d.liveMu.Unlock()
+	if d.liveCount >= relay.LiveStreams {
+		return false
+	}
+	d.liveCount++
+	return true
+}
+
+func (d *door) releaseLive() {
+	d.liveMu.Lock()
+	d.liveCount--
+	d.liveMu.Unlock()
+}
+
+func (d *door) trackLive(device string, cancel context.CancelFunc) func() {
+	d.liveMu.Lock()
+	d.liveNextID++
+	id := d.liveNextID
+	if d.liveCancels == nil {
+		d.liveCancels = make(map[string][]liveCancel)
+	}
+	d.liveCancels[device] = append(d.liveCancels[device], liveCancel{id: id, cancel: cancel})
+	d.liveMu.Unlock()
+	return func() {
+		d.liveMu.Lock()
+		entries := d.liveCancels[device]
+		for i, entry := range entries {
+			if entry.id == id {
+				entries = append(entries[:i], entries[i+1:]...)
+				break
+			}
+		}
+		if len(entries) == 0 {
+			delete(d.liveCancels, device)
+		} else {
+			d.liveCancels[device] = entries
+		}
+		d.liveMu.Unlock()
+	}
+}
+
+func (d *door) evict(devices []string) {
+	var cancels []context.CancelFunc
+	d.liveMu.Lock()
+	for _, dev := range devices {
+		for _, entry := range d.liveCancels[dev] {
+			cancels = append(cancels, entry.cancel)
+		}
+		delete(d.liveCancels, dev)
+	}
+	d.liveMu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
 }
 
 // hold owns accepted streams until the registration ends, and waits for every
 // connection to finish before it returns, so nothing touches the store once
 // Serve has returned.
 func (d *door) hold(ctx context.Context, registration *relay.Registration) {
-	stop := context.AfterFunc(ctx, func() { _ = registration.Close() })
+	holdCtx, cancelHold := context.WithCancel(ctx)
+	stop := context.AfterFunc(holdCtx, func() { _ = registration.Close() })
 	defer stop()
 	var connections sync.WaitGroup
 	defer connections.Wait()
+	defer cancelHold()
 	defer registration.Close()
+	if d.cfg.Revoked != nil {
+		if stopRevoked := d.cfg.Revoked(holdCtx, d.evict); stopRevoked != nil {
+			defer stopRevoked()
+		}
+	}
 	for {
 		stream, err := registration.Accept()
 		if err != nil {
@@ -262,25 +353,63 @@ func (d *door) hold(ctx context.Context, registration *relay.Registration) {
 		connections.Add(1)
 		go func() {
 			defer connections.Done()
-			d.answer(ctx, stream)
+			d.answer(ctx, holdCtx, stream)
 		}()
 	}
 }
 
-// answer runs one connection: tunnel, hello, then requests one at a time.
-func (d *door) answer(ctx context.Context, stream io.ReadWriteCloser) {
+// answer runs one connection: tunnel, hello, then either the live handler or
+// file-transfer requests one at a time.
+//
+// TWO CONTEXTS, BECAUSE THE TWO KINDS OF CONNECTION END DIFFERENTLY. A files
+// connection ends with ctx, as it always has: when a registration drops, one
+// that is mid-transfer is left to finish. A live link may stay open for hours
+// and nothing finishes it, so it ends with registrationEnded, or the
+// registrar could never register again while one was open.
+func (d *door) answer(ctx, registrationEnded context.Context, stream io.ReadWriteCloser) {
 	defer stream.Close()
 	defer context.AfterFunc(ctx, func() { _ = stream.Close() })()
 	guard := newWatch(handshakeWithin, func() { _ = stream.Close() })
 	defer guard.stop()
 
-	tunnel, err := pair.AcceptWithKeyPrologue(stream, d.key, FilesTunnelPrologue)
+	prologues := map[byte]string{pair.IntentFiles: FilesTunnelPrologue}
+	if d.cfg.Live != nil {
+		prologues[pair.IntentLive] = LiveTunnelPrologue
+	}
+	admittedLive := false
+	defer func() {
+		if admittedLive {
+			d.releaseLive()
+		}
+	}()
+	tunnel, intent, err := pair.AcceptWithKeyPrologues(stream, d.key, func(intent byte) bool {
+		if intent != pair.IntentLive {
+			return true
+		}
+		if d.cfg.Live == nil || !d.admitLive() {
+			return false
+		}
+		admittedLive = true
+		return true
+	}, prologues)
 	if err != nil {
 		return
 	}
 	in, out := kickReader{tunnel, guard}, kickWriter{tunnel, guard}
 	device, err := d.acceptHello(ctx, in, out, tunnel)
 	if err != nil {
+		return
+	}
+	if intent == pair.IntentLive {
+		// A live view may sit quiet for minutes while the person reads, so the
+		// files door's request watchdog must stop once the hello has finished.
+		guard.stop()
+		d.answerLive(registrationEnded, tunnel, device)
+		if admittedLive {
+			admittedLive = false
+			d.releaseLive()
+		}
+		_ = tunnel.Close()
 		return
 	}
 	// From here the same timer is the idle bound, moved forward by every byte.
@@ -316,6 +445,60 @@ func (d *door) answer(ctx context.Context, stream io.ReadWriteCloser) {
 			return
 		}
 	}
+}
+
+// answerLive runs a live-view connection under a revocable context and a
+// periodic roster re-check. A roster error younger than the roster cache's TTL
+// is masked by the cached answer and keeps the link; a failure once the TTL has
+// expired returns an error from allows and closes the tunnel so a removed
+// device's view is never extended past the TTL.
+func (d *door) answerLive(ctx context.Context, tunnel *pair.Tunnel, device string) {
+	linkCtx, cancelLink := context.WithCancel(ctx)
+	defer cancelLink()
+	// A CANCELLED LINK CLOSES ITS TUNNEL whatever the handler does with its
+	// context: a removed device's view must end, not wait for the handler to
+	// notice.
+	defer context.AfterFunc(linkCtx, func() { _ = tunnel.Close() })()
+	untrack := d.trackLive(device, cancelLink)
+	defer untrack()
+
+	recheck := liveRecheck
+	if recheck == DefaultRosterFor && d.roster.ttl < recheck {
+		recheck = d.roster.ttl
+	}
+	if recheck <= 0 {
+		recheck = DefaultRosterFor
+	}
+	recheckDone := make(chan struct{})
+	defer func() {
+		cancelLink()
+		<-recheckDone
+	}()
+	go func() {
+		defer close(recheckDone)
+		ticker := time.NewTicker(recheck)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-linkCtx.Done():
+				return
+			case <-ticker.C:
+				allowed, err := d.roster.allows(linkCtx, device)
+				if err != nil {
+					_ = tunnel.Close()
+					cancelLink()
+					return
+				}
+				if !allowed {
+					d.evict([]string{device})
+					cancelLink()
+					return
+				}
+			}
+		}
+	}()
+
+	_ = d.cfg.Live(linkCtx, tunnel, device)
 }
 
 // reply is one response before it is written.
