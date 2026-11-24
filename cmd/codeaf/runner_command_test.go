@@ -269,7 +269,16 @@ func TestRunnerJoinRunsTheWorkerByDefaultAndNotWhenAttachOnly(t *testing.T) {
 // runner registers as that person, shows on the factory's runner list, and
 // leaves when it is stopped. No model is asked and no job is run.
 func TestRunnerJoinRegistersTheMachineAsThePersonsRunnerAndStopsWithItsContext(t *testing.T) {
-	lab := newRunnerLab(t, "Priya", time.Now().Add(time.Hour))
+	// THE LINK OUTLIVES THE LAB'S CLOCK. That clock runs six seconds ahead on
+	// every read, and a running runner reads it on every request: a team
+	// factory that does not trust its own computer (loopback_trust off, the
+	// default) asks the runner's session on every attach, and that session
+	// lives only as long as the uncounted link it was minted from. With an
+	// hour on the link, a burst of attaches carried the clock past it before
+	// the first poll below, the person's session ended ("factory session has
+	// ended; sign in again"), and the runner list refused for the rest of the
+	// twenty seconds. A year cannot be reached by any number of reads here.
+	lab := newRunnerLab(t, "Priya", time.Now().Add(365*24*time.Hour))
 	got, err := joinFactory(context.Background(), lab.link, "", "ci-box", "", io.Discard)
 	if err != nil {
 		t.Fatal(err)
