@@ -1056,6 +1056,17 @@ var OperatorEnvPins = []string{
 	// it back as a preference.
 	"CODEAF_FENCED",
 	"CODEAF_FACTORY_NO_WORKER",
+	// How an organization's server mails its invitations (cmd/codeaf's
+	// factory_command.go): the mail server's address, which can carry its
+	// password, and the sender. Server plumbing, never a profile preference;
+	// without them an invite is a link to copy.
+	"CODEAF_SMTP_URL",
+	"CODEAF_SMTP_FROM",
+	// The id this computer's factory registers under on an AgentField control
+	// plane (internal/factory/agentfield), so two computers on one control
+	// plane each keep their own node. Launch plumbing: the node's name, not a
+	// preference the sheet edits.
+	"CODEAF_FACTORY_NODE_ID",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
