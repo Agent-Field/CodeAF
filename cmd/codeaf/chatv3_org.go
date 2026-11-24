@@ -45,16 +45,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/coder/websocket"
 
+	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -75,9 +76,7 @@ const orgCallWithin = 15 * time.Second
 // NetConn resets the limit to unlimited when it is made, so it is set after.
 const orgReadLimit = 4 << 20
 
-// orgSessionID is the shape of a hosted chat's name. A name the server sends
-// back that is not this shape is never put in a path.
-var orgSessionID = regexp.MustCompile(`^hs_[0-9a-f]{24}$`)
+const orgSessionsPath = "/v1/hosted/sessions"
 
 // orgLaunch is one `--org` launch as the flag parser saw it. It has the shape
 // of [atLaunch], because it is the same launch down a different pipe, plus the
@@ -188,18 +187,24 @@ func newOrgDoor(target string, say func(string)) (*orgDoor, error) {
 	if strings.HasPrefix(base, "http://") && !factoryLoopback(base) {
 		return nil, fmt.Errorf("use https:// for %s: a sign-in must not cross a network in the clear", orgHostName(base))
 	}
-	d := &orgDoor{base: base, host: orgHostName(base), say: say}
-	d.http = &http.Client{
-		Timeout:       orgCallWithin,
-		Transport:     &http.Transport{Proxy: nil},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
 	token, ok := orgToken(base)
+	d := orgDoorWith(base, token, say)
 	if !ok {
 		return nil, d.signInSentence()
 	}
-	d.token = token
 	return d, nil
+}
+
+// orgDoorWith takes an already checked origin and a sign-in held by the caller.
+func orgDoorWith(base, token string, say func(string)) *orgDoor {
+	return &orgDoor{
+		base: base, host: orgHostName(base), token: token, say: say,
+		http: &http.Client{
+			Timeout:       orgCallWithin,
+			Transport:     &http.Transport{Proxy: nil},
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	}
 }
 
 // signInSentence is what a person is told when the server has no sign-in of
@@ -265,19 +270,33 @@ func (d *orgDoor) refusal(status int, body []byte) error {
 	var said struct {
 		Error string `json:"error"`
 	}
+	var words string
+	var serverSaid bool
 	if json.Unmarshal(body, &said) == nil {
-		if sentence := d.clean(said.Error); sentence != "" {
-			return errors.New(sentence)
+		serverSaid = strings.TrimSpace(said.Error) != ""
+		words = d.clean(said.Error)
+	}
+	if words == "" {
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			words = d.signInSentence().Error()
+		} else {
+			words = fmt.Sprintf("%s could not answer (status %d).", d.host, status)
 		}
 	}
-	if status == http.StatusUnauthorized || status == http.StatusForbidden {
-		return d.signInSentence()
-	}
-	return fmt.Errorf("%s could not answer (status %d).", d.host, status)
+	return &orgDoorError{status: status, words: words, serverSaid: serverSaid}
 }
 
+// orgDoorError keeps the HTTP outcome for callers that also need a wire code.
+type orgDoorError struct {
+	status     int
+	words      string
+	serverSaid bool
+}
+
+func (e *orgDoorError) Error() string { return e.words }
+
 func (d *orgDoor) unreachable() error {
-	return fmt.Errorf("%s is unreachable.", d.host)
+	return &orgDoorError{words: fmt.Sprintf("%s is unreachable.", d.host)}
 }
 
 // call makes one request to the server and decodes a success into out.
@@ -347,7 +366,7 @@ func latestOrgSession(rows []orgSession) (orgSession, bool) {
 	var best orgSession
 	found := false
 	for _, row := range rows {
-		if !orgSessionID.MatchString(row.ID) {
+		if !appwire.ValidHostedSessionID(row.ID) {
 			continue
 		}
 		switch {
@@ -365,7 +384,7 @@ func latestOrgSession(rows []orgSession) (orgSession, bool) {
 // the server attaches is shown once, here, before the surface exists.
 func (d *orgDoor) pick(ctx context.Context, want string) (string, error) {
 	if want = strings.TrimSpace(want); want != "" {
-		if !orgSessionID.MatchString(want) {
+		if !appwire.ValidHostedSessionID(want) {
 			return "", fmt.Errorf("%q is not the name of a chat on %s; the names look like hs_ followed by 24 letters and digits", want, d.host)
 		}
 		return want, nil
@@ -373,7 +392,7 @@ func (d *orgDoor) pick(ctx context.Context, want string) (string, error) {
 	var listed struct {
 		Sessions []orgSession `json:"sessions"`
 	}
-	if err := d.call(ctx, http.MethodGet, "/v1/hosted/sessions", &listed); err != nil {
+	if err := d.call(ctx, http.MethodGet, orgSessionsPath, &listed); err != nil {
 		return "", err
 	}
 	if row, ok := latestOrgSession(listed.Sessions); ok {
@@ -381,10 +400,10 @@ func (d *orgDoor) pick(ctx context.Context, want string) (string, error) {
 		return row.ID, nil
 	}
 	var made orgSession
-	if err := d.call(ctx, http.MethodPost, "/v1/hosted/sessions", &made); err != nil {
+	if err := d.call(ctx, http.MethodPost, orgSessionsPath, &made); err != nil {
 		return "", err
 	}
-	if !orgSessionID.MatchString(made.ID) {
+	if !appwire.ValidHostedSessionID(made.ID) {
 		return "", fmt.Errorf("%s sent back something this program cannot use.", d.host)
 	}
 	d.warn(made.Warning)
@@ -403,8 +422,8 @@ func (d *orgDoor) warn(sentence string) {
 // THE BEARER IS A HEADER ON THE UPGRADE REQUEST AND NOWHERE ELSE. The handshake
 // is bounded by [orgCallWithin], but the connection itself outlives it: it ends
 // when its owner closes it, so it is made on a context of its own.
-func (d *orgDoor) open(ctx context.Context, id string) (io.ReadWriteCloser, error) {
-	if !orgSessionID.MatchString(id) {
+func (d *orgDoor) open(ctx context.Context, id string) (net.Conn, error) {
+	if !appwire.ValidHostedSessionID(id) {
 		return nil, fmt.Errorf("%q is not the name of a chat on %s", id, d.host)
 	}
 	address, err := url.Parse(d.base)
@@ -416,7 +435,7 @@ func (d *orgDoor) open(ctx context.Context, id string) (io.ReadWriteCloser, erro
 	} else {
 		address.Scheme = "ws"
 	}
-	address.Path = "/v1/hosted/sessions/" + id + "/wire"
+	address.Path = orgSessionsPath + "/" + id + "/wire"
 	header := http.Header{}
 	d.authorize(header)
 	handshake, cancel := context.WithTimeout(ctx, orgCallWithin)
