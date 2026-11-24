@@ -3584,7 +3584,9 @@ else and is advertised on its own terms: that `agents.entries` on a remote row
 follows a saved remote head without taking the chat. An engine may say either,
 both or neither, so a client checks `chats.read.paged` before calling the
 `chats.read` method and `chats.read` before relying on `agents.entries` for a
-chat held elsewhere.
+chat held elsewhere. The `chats.read` method and the older `chats.read` hello word
+are different things that share a name: the method reads a page, and the word only
+says `agents.entries` follows a saved remote head.
 
 `chats.crew` in `hello` says every `chats.list` row and `chat.changed` row
 carries the crew its chat belongs to on its holder, additively: `crew` (the
