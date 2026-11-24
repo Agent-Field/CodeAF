@@ -1114,9 +1114,17 @@ def hosted_p1_host():
     if mine:
         Path('/tmp/smoke-p1-access').write_text(mine[0])
         os.chmod('/tmp/smoke-p1-access', 0o600)
-    brokers = glob.glob('/chats/people/*/hs_*/home/.config/codeaf-hosted/broker')
-    check('P1-6 the file git\'s helper reads is closed to everyone but the chat', brokers and all((os.stat(b).st_mode & 0o777) == 0o600 for b in brokers),
-          [oct(os.stat(b).st_mode & 0o777) for b in brokers])
+    # The machine's own root cannot look inside a chat's folder, so each file's mode is read AS the chat's own user.
+    def broker_mode(folder):
+        return lambda: os.stat(os.path.join(folder, 'home', '.config', 'codeaf-hosted', 'broker')).st_mode & 0o777
+    modes = []
+    for folder in people:
+        info = os.stat(folder)
+        mode = as_user(info.st_uid, info.st_gid, broker_mode(folder))
+        if mode is not None:
+            modes.append(mode)
+    check('P1-6 the file git\'s helper reads is closed to everyone but the chat', len(modes) >= 2 and all(mode == 0o600 for mode in modes),
+          [oct(mode) for mode in modes])
 
 
 def model_door(token, verb='GET', path='/v1/model/models'):
