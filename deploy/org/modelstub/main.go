@@ -1,6 +1,7 @@
 // modelstub is a keyless, schema-driven stand-in for an OpenRouter-compatible
 // model endpoint, so a SWE-AF run can be driven end to end with no key and no
-// spend. Every reply is free (cost 0).
+// spend by default. An operator can set STUB_COST_USD and STUB_REQUIRE_KEY
+// to exercise measured spend and authentication.
 //
 // Protocol it speaks (the dialect internal/provider writes):
 //
@@ -33,15 +34,22 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
 
-var delay = 4 * time.Second
+var (
+	delay      = 4 * time.Second
+	costUSD    float64
+	requireKey string
+)
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:18890", "listen address")
@@ -51,18 +59,30 @@ func main() {
 			delay = d
 		}
 	}
+	if cost, err := strconv.ParseFloat(os.Getenv("STUB_COST_USD"), 64); err == nil && cost > 0 && !math.IsInf(cost, 0) {
+		costUSD = cost
+	}
+	requireKey = os.Getenv("STUB_REQUIRE_KEY")
+	log.Printf("modelstub on %s delay=%s", *addr, delay)
+	log.Fatal((&http.Server{Addr: *addr, Handler: routes(), ReadHeaderTimeout: 10 * time.Second}).ListenAndServe())
+}
+
+func routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/chat/completions", completions)
 	mux.HandleFunc("/api/v1/models", models)
+	mux.HandleFunc("/_calls", serveCalls)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("unhandled %s %s", r.Method, r.URL.Path)
 		http.NotFound(w, r)
 	})
-	log.Printf("modelstub on %s delay=%s", *addr, delay)
-	log.Fatal((&http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}).ListenAndServe())
+	return mux
 }
 
 func models(w http.ResponseWriter, r *http.Request) {
+	if _, ok := checkStubKey(w, r, ""); !ok {
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write([]byte(`{"data":[{"id":"stub/scripted","canonical_slug":"stub/scripted","name":"Scripted stub","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0","completion":"0","request":"0","input_cache_read":"0"},"supported_parameters":["tools","tool_choice","max_tokens"]}]}`))
 }
@@ -90,6 +110,71 @@ func (m message) text() string {
 
 var turn atomic.Int64
 
+const callLimit = 500
+
+type stubCall struct {
+	At     time.Time `json:"at"`
+	Key    string    `json:"key"`
+	Model  string    `json:"model"`
+	USD    float64   `json:"usd"`
+	Status int       `json:"status"`
+}
+
+var calls struct {
+	sync.Mutex
+	rows []stubCall
+}
+
+func rememberCall(call stubCall) {
+	calls.Lock()
+	defer calls.Unlock()
+	call.At = time.Now().UTC()
+	if len(calls.rows) == callLimit {
+		copy(calls.rows, calls.rows[1:])
+		calls.rows = calls.rows[:callLimit-1]
+	}
+	calls.rows = append(calls.rows, call)
+}
+
+func checkStubKey(w http.ResponseWriter, r *http.Request, model string) (stubCall, bool) {
+	auth := r.Header.Get("Authorization")
+	key, bearer := strings.CutPrefix(auth, "Bearer ")
+	if !bearer {
+		key = ""
+	}
+	call := stubCall{Key: key, Model: model}
+	if requireKey == "" || auth == "Bearer "+requireKey {
+		return call, true
+	}
+	call.Status = http.StatusUnauthorized
+	rememberCall(call)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(call.Status)
+	_, _ = w.Write([]byte(`{"error":{"message":"invalid key","code":401}}`))
+	return call, false
+}
+
+func serveCalls(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		calls.Lock()
+		rows := append([]stubCall{}, calls.rows...)
+		calls.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(struct {
+			Calls []stubCall `json:"calls"`
+		}{Calls: rows})
+	case http.MethodDelete:
+		calls.Lock()
+		calls.rows = nil
+		calls.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", "GET, DELETE")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 var (
 	reOut    = regexp.MustCompile(`create this file: (\S+)`)
 	reSchema = regexp.MustCompile(`Read the JSON Schema at: (\S+)`)
@@ -97,12 +182,22 @@ var (
 
 func completions(w http.ResponseWriter, r *http.Request) {
 	var body struct {
+		Model    string    `json:"model"`
 		Messages []message `json:"messages"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	err := json.NewDecoder(r.Body).Decode(&body)
+	call, ok := checkStubKey(w, r, body.Model)
+	if !ok {
+		return
+	}
+	if err != nil {
+		call.Status = http.StatusBadRequest
+		rememberCall(call)
 		http.Error(w, err.Error(), 400)
 		return
 	}
+	call.USD, call.Status = costUSD, http.StatusOK
+	rememberCall(call)
 	n := turn.Add(1)
 	// A person's `bash: <command>` message is answered by running that command
 	// through the session's own bash tool and quoting what came back, so a
@@ -311,6 +406,10 @@ func stream(w http.ResponseWriter, callID, tool, args, text string) {
 		send(chunk(id, fmt.Sprintf(`{"tool_calls":[{"index":0,"id":%q,"type":"function","function":{"name":%q,"arguments":%q}}]}`, callID, tool, args), ""))
 		reason = "tool_calls"
 	}
-	send(fmt.Sprintf(`{"id":%q,"object":"chat.completion.chunk","created":%d,"model":"stub/scripted","provider":"stub","choices":[{"index":0,"delta":{},"finish_reason":%q}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"cost":0}}`, id, time.Now().Unix(), reason))
+	in, out := 1, 1
+	if costUSD != 0 {
+		in, out = 11, 7
+	}
+	send(fmt.Sprintf(`{"id":%q,"object":"chat.completion.chunk","created":%d,"model":"stub/scripted","provider":"stub","choices":[{"index":0,"delta":{},"finish_reason":%q}],"usage":{"prompt_tokens":%d,"completion_tokens":%d,"total_tokens":%d,"cost":%g}}`, id, time.Now().Unix(), reason, in, out, in+out, costUSD))
 	send("[DONE]")
 }
