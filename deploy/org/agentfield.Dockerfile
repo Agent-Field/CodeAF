@@ -8,9 +8,10 @@
 # execution insert with "no such module: fts5". Do not swap in a binary built
 # another way.
 #
-# The base image is distroless, so it has no shell and no curl for a health
-# check. This file adds one statically linked (musl) busybox binary for that and changes nothing
-# else; it still runs as the base image's non-root user.
+# The base image is distroless, so it has no shell and no curl for a health check, and it starts as
+# an unprivileged user that cannot write a root-owned platform volume. This file adds one statically
+# linked (musl) busybox binary and an entrypoint that hands the data folder to that user and then drops
+# to it: the control plane itself never runs as root.
 #
 # Build context is this folder:   docker build -f agentfield.Dockerfile -t agentfield-org .
 # To move to a newer control plane change the tag and the digest together.
@@ -21,5 +22,8 @@ FROM busybox:1.37.0-musl AS busybox
 
 FROM ${AGENTFIELD_IMAGE}
 COPY --from=busybox /bin/busybox /usr/local/bin/busybox
+COPY --chmod=0755 scripts/agentfield-entrypoint.sh /usr/local/bin/agentfield-entrypoint.sh
+USER 0:0
+ENTRYPOINT ["/usr/local/bin/agentfield-entrypoint.sh"]
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
     CMD ["/usr/local/bin/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health"]
