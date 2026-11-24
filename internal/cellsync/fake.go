@@ -34,11 +34,42 @@ var objectMagic = []byte("AGEO\x01")
 const (
 	kindBlob byte = 'b'
 	kindSnap byte = 's'
+	// kindFile and kindChunk are a file sealed in pieces (FakeEngine.ChunkSize):
+	// an index naming its chunks, as the real engine's Blob does, and the
+	// chunks. They exist so a test can prove a read fetched a file's index and
+	// the chunks under one page, and nothing else.
+	kindFile  byte = 'f'
+	kindChunk byte = 'k'
 )
 
 var childrenOf = map[byte]func(payload []byte) ([]string, error){
-	kindBlob: func([]byte) ([]string, error) { return nil, nil },
-	kindSnap: snapshotChildren,
+	kindBlob:  func([]byte) ([]string, error) { return nil, nil },
+	kindChunk: func([]byte) ([]string, error) { return nil, nil },
+	kindSnap:  snapshotChildren,
+	kindFile:  fileChildren,
+}
+
+// fileIndex is a chunked file: its chunks in order and their lengths.
+type fileIndex struct {
+	Chunks []fileChunk `json:"chunks"`
+	Len    int64       `json:"len"`
+}
+
+type fileChunk struct {
+	RID string `json:"rid"`
+	Len int64  `json:"len"`
+}
+
+func fileChildren(payload []byte) ([]string, error) {
+	var idx fileIndex
+	if err := json.Unmarshal(payload, &idx); err != nil {
+		return nil, err
+	}
+	out := make([]string, len(idx.Chunks))
+	for i, ch := range idx.Chunks {
+		out[i] = ch.RID
+	}
+	return out, nil
 }
 
 // snapshot is the fake's tree and snapshot in one: the files of a turn and the
@@ -127,6 +158,13 @@ type FakeEngine struct {
 	Dir string
 	// MaxObjects closes a frame after this many objects; 0 puts them all in one.
 	MaxObjects int
+	// ChunkSize, when positive, seals every file as an index and chunks of this
+	// many bytes at fixed offsets. Like the real engine's content-defined cuts,
+	// appending to a file leaves every full chunk before the end unchanged.
+	ChunkSize int
+	// Materialized counts Materialize calls, so a test can prove a read never
+	// restored anything.
+	Materialized int
 
 	mu    sync.Mutex
 	cells map[string]*fakeCell
@@ -168,15 +206,58 @@ func (f *FakeEngine) Seal(c cell.Cell, files map[string]string) string {
 	fc := f.cell(c)
 	snap := snapshot{Parent: fc.last, Files: map[string]string{}}
 	for path, content := range files {
-		rid, raw := pack(kindBlob, []byte(content))
-		fc.objects[rid] = raw
-		snap.Files[path] = rid
+		snap.Files[path] = f.packFile(fc, []byte(content))
 	}
 	payload, _ := json.Marshal(snap) // a struct of strings cannot fail to encode
 	head, raw := pack(kindSnap, payload)
 	fc.objects[head] = raw
 	fc.last = head
 	return head
+}
+
+// packFile stores content as one blob, or as an index and chunks when the
+// engine chunks, and answers the rid the snapshot names.
+func (f *FakeEngine) packFile(fc *fakeCell, content []byte) string {
+	if f.ChunkSize <= 0 {
+		rid, raw := pack(kindBlob, content)
+		fc.objects[rid] = raw
+		return rid
+	}
+	idx := fileIndex{Len: int64(len(content)), Chunks: []fileChunk{}}
+	for at := 0; at < len(content); at += f.ChunkSize {
+		piece := content[at:min(at+f.ChunkSize, len(content))]
+		rid, raw := pack(kindChunk, piece)
+		fc.objects[rid] = raw
+		idx.Chunks = append(idx.Chunks, fileChunk{RID: rid, Len: int64(len(piece))})
+	}
+	payload, _ := json.Marshal(idx)
+	rid, raw := pack(kindFile, payload)
+	fc.objects[rid] = raw
+	return rid
+}
+
+// content is the bytes of a file object, blob or chunked.
+func (fc *fakeCell) content(rid string) ([]byte, error) {
+	kind, payload, err := unpack(fc.objects[rid])
+	if err != nil {
+		return nil, err
+	}
+	if kind != kindFile {
+		return payload, nil
+	}
+	var idx fileIndex
+	if err := json.Unmarshal(payload, &idx); err != nil {
+		return nil, err
+	}
+	var out []byte
+	for _, ch := range idx.Chunks {
+		_, piece, err := unpack(fc.objects[ch.RID])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, piece...)
+	}
+	return out, nil
 }
 
 // Export implements Engine.
@@ -480,6 +561,7 @@ func readVerified(inbox, rid string, wanted map[string]bool) ([]byte, error) {
 func (f *FakeEngine) Materialize(_ context.Context, c cell.Cell, head string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.Materialized++
 	fc := f.cell(c)
 	if missing, err := fc.want(head); err != nil || len(missing) > 0 {
 		return fmt.Errorf("fake engine: head %s is incomplete (missing %v, err %v)", head, missing, err)
@@ -539,7 +621,7 @@ func (f *FakeEngine) StageState(_ context.Context, c cell.Cell, head string) err
 // snapshot does not hold is removed.
 func (fc *fakeCell) writeFiles(root string, snap snapshot) error {
 	for path, rid := range snap.Files {
-		_, content, err := unpack(fc.objects[rid])
+		content, err := fc.content(rid)
 		if err != nil {
 			return err
 		}

@@ -299,6 +299,9 @@ func (h *Handler) listAccessResources(w http.ResponseWriter, r *http.Request) {
 // sponsor when an agent acted, else the person.
 func accessPrincipal(v Viewer) acl.Principal {
 	if v.Agent != nil {
+		if id, bot := strings.CutPrefix(v.Agent.ID, botAgentPrefix); bot {
+			return acl.Principal{Kind: "bot", ID: id, Sponsor: v.Agent.Sponsor}
+		}
 		return acl.Principal{Kind: "agent", ID: v.Agent.ID, Sponsor: v.Agent.Sponsor}
 	}
 	return acl.Principal{Kind: "person", ID: v.Handle}

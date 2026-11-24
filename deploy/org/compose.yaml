@@ -67,6 +67,8 @@ services:
       CODEAF_HOSTED_MODEL_UPSTREAM: ${CODEAF_HOSTED_MODEL_UPSTREAM:-}
       CODEAF_HOSTED_MODEL_KEY: ${CODEAF_HOSTED_MODEL_KEY:-}
       CODEAF_HOSTED_SESSION_CAP_USD: ${CODEAF_HOSTED_SESSION_CAP_USD:-}
+      # How often an open guest window's right to a shared chat is checked again (a Go duration, 1s to 1m, default 5s).
+      CODEAF_HOSTED_HEARTBEAT: ${CODEAF_HOSTED_HEARTBEAT:-}
       # The key that keeps people's own provider keys and GitHub access sealed on disk (./setup.sh makes it). This service
       # alone holds it: never the chats' machine, never a node. Losing it makes what people stored unreadable, and the server
       # then refuses to start rather than carry on without it.

@@ -31,6 +31,10 @@ type fakeChatHost struct {
 	// bearer fingerprint instead of the truth: a host that restarts between the
 	// org's read of the row and the wire.
 	rowBearer map[string]string
+	// A wire test can replace the echo with a recording engine after the host's usual admission.
+	wire func(*websocket.Conn, *http.Request)
+	// A wire refusal makes the host answer the wire with this status and its own sentence instead of upgrading.
+	wireRefusal int
 }
 
 type hostSeen struct {
@@ -128,7 +132,10 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var mine []map[string]string
 		for id, owner := range f.owners {
 			if owner == person {
-				mine = append(mine, map[string]string{"id": id, "state": "suspended", "model_bearer": fingerprintOf(f.tokens[id])})
+				mine = append(mine, map[string]string{
+					"id": id, "state": "suspended", "created": "2026-11-24T00:00:00Z", "last_active": "2026-11-24T00:01:00Z",
+					"model_bearer": fingerprintOf(f.tokens[id]), "warning": "A warning for the chat's owner.",
+				})
 			}
 		}
 		f.mu.Unlock()
@@ -177,7 +184,15 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 2 && parts[1] == "wire" && r.Method == http.MethodGet:
 		f.mu.Lock()
 		held := f.tokens[id]
+		wire := f.wire
+		refusal := f.wireRefusal
 		f.mu.Unlock()
+		if refusal != 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(refusal)
+			_, _ = io.WriteString(w, `{"error":"You already have 2 chats running; stop one first."}`+"\n")
+			return
+		}
 		if held == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
@@ -188,7 +203,12 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
+		defer c.CloseNow()
 		c.SetReadLimit(4 << 20)
+		if wire != nil {
+			wire(c, r)
+			return
+		}
 		for {
 			kind, data, err := c.Read(r.Context())
 			if err != nil {
@@ -753,13 +773,24 @@ func TestC9_PlainWords(t *testing.T) {
 		{"path out of the upstream", "", "GET", "/v1/model/../../x", bearerOf(token), 404},
 		{"malformed id", "santosh", "GET", "/v1/hosted/sessions/hs_nope", nil, 404},
 	})
-	// A caller the server lets in without a verified person (this machine).
+	// A caller the server lets in without a verified person (this machine). The server no longer trusts its own computer by default
+	// (loopback_trust), so the test turns that on to keep checking the hosted sentence, and then checks the refusal without it.
+	trust := true
+	rg.h.config.LoopbackTrust = &trust
 	own := httptest.NewRequest("GET", "/v1/hosted/sessions", nil)
 	own.RemoteAddr = "127.0.0.1:9"
 	w := httptest.NewRecorder()
 	rg.h.ServeHTTP(w, own)
 	if w.Code != 401 || !strings.HasSuffix(errorOf(t, w.Body.Bytes()), ".") {
 		t.Fatalf("no verified person = %d %s", w.Code, w.Body)
+	}
+	trust = false
+	untrusted := httptest.NewRequest("GET", "/v1/hosted/sessions", nil)
+	untrusted.RemoteAddr = "127.0.0.1:9"
+	w = httptest.NewRecorder()
+	rg.h.ServeHTTP(w, untrusted)
+	if w.Code != 401 {
+		t.Fatalf("this machine without loopback trust = %d %s; want 401", w.Code, w.Body)
 	}
 	big := httptest.NewRequest("POST", "/v1/model/chat/completions", strings.NewReader("{}"))
 	big.RemoteAddr, big.ContentLength = "192.0.2.1:1", 17<<20

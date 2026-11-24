@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/calllog"
@@ -124,5 +125,36 @@ func TestP1_HostedSettingsReadFromTheEnvironment(t *testing.T) {
 				t.Errorf("%s: the sentence repeats the value: %v", name, err)
 			}
 		}
+	}
+}
+
+// P2-5
+// The factory reads a hosted heartbeat from one second through one minute and refuses unusable values at start.
+func TestP2_HostedHeartbeatSetting(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+	}{
+		{"", 5 * time.Second}, {"  1500ms ", 1500 * time.Millisecond},
+		{"1s", time.Second}, {"1m", time.Minute},
+		{"zero", 0}, {"999ms", 0}, {"1m1ns", 0}, {"-5s", 0}, {"0", 0},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			hosted := &serve.HostedConfig{}
+			err := hostedFactorySettings(hosted, nil, func(name string) string {
+				if name == "CODEAF_HOSTED_HEARTBEAT" {
+					return tc.value
+				}
+				return ""
+			})
+			if tc.want == 0 {
+				if err == nil || !strings.Contains(err.Error(), "CODEAF_HOSTED_HEARTBEAT") {
+					t.Fatalf("unusable heartbeat did not stop startup with the setting's name: %v", err)
+				}
+			} else if err != nil || hosted.Heartbeat != tc.want {
+				t.Fatalf("heartbeat = %v, %v, want %v", hosted.Heartbeat, err, tc.want)
+			}
+		})
 	}
 }

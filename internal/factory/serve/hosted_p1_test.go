@@ -437,6 +437,11 @@ func TestP1_5_NoServerKeyMeansOwnKeysAreRefusedWithASentence(t *testing.T) {
 func TestP1_5_KeyRoutesNeedASignIn(t *testing.T) {
 	rg := newHostedRig(t)
 	rg.withServerKey(t, rigServerKey)
+	// Since the organization server stopped trusting its own computer by default (loopback_trust), a request from this machine with no
+	// credential is refused before it reaches the key routes. The test turns that trust on so it still checks what it is about: a caller the
+	// server lets in without a verified person gets the sign-in sentence. The refusal without the trust is pinned just below.
+	trust := true
+	rg.h.config.LoopbackTrust = &trust
 	as := func(remote, auth, method, path string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(`{"key":"sk-test-santosh-0001-aaaa"}`))
 		r.RemoteAddr = remote
@@ -458,6 +463,10 @@ func TestP1_5_KeyRoutesNeedASignIn(t *testing.T) {
 				t.Fatalf("%s %s as %s = %d %s; want 401 and the sign-in sentence", step.method, step.path, name, w.Code, w.Body)
 			}
 		}
+	}
+	trust = false
+	if w := as("127.0.0.1:9", "", "GET", "/v1/hosted/keys"); w.Code != 401 {
+		t.Fatalf("this machine without loopback trust = %d %s; want 401", w.Code, w.Body)
 	}
 	if _, err := os.Stat(rg.file("person-keys.json")); !os.IsNotExist(err) {
 		t.Fatalf("a refused request stored something: %v", err)

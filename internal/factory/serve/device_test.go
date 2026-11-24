@@ -353,6 +353,7 @@ func TestDeviceCookieSignInOwnerLoopbackAndAllowlist(t *testing.T) {
 	if me := readIdentity(t, h, "floor-secret", nil); me.Handle != "factory-owner" {
 		t.Fatalf("host = %+v", me)
 	}
+	h.config.LoopbackTrust = boolPtr(true)
 	r := httptest.NewRequest("GET", "/v1/me", nil)
 	r.RemoteAddr = "127.0.0.1:1234"
 	local := httptest.NewRecorder()
@@ -549,7 +550,7 @@ func TestLoopbackStopWithNoGitHubNeverBorrowsTheAssignee(t *testing.T) {
 
 func TestCancelledDeviceCodeCannotPollOrCrossCallers(t *testing.T) {
 	g := &fakeGitHub{t: t, login: "priya"}
-	h := New(factory.Seam{}, Config{GitHubClientID: "client", GitHubHTTPClient: g.client(), AccessToken: "host-token"})
+	h := New(factory.Seam{}, Config{GitHubClientID: "client", GitHubHTTPClient: g.client(), AccessToken: "host-token", LoopbackTrust: boolPtr(true)})
 	defer h.Close()
 	request := func(method, path, token, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))

@@ -53,6 +53,7 @@ type modelRegistry struct {
 type hostedModel struct {
 	server   *modelapi.Server
 	person   string
+	capUSD   float64
 	inFlight int
 	idle     *time.Timer
 	closing  chan struct{}
@@ -83,6 +84,14 @@ func (h *Handler) serveHostedCompletion(w http.ResponseWriter, r *http.Request, 
 	capUSD := cfg.SessionCapUSD
 	if !(capUSD > 0) {
 		capUSD = defaultHostedSessionCap
+	}
+	policy, err := h.config.Store.OrgPolicy()
+	if err != nil {
+		writeHostedModelError(w, http.StatusServiceUnavailable, hostedLimitCheck)
+		return
+	}
+	if override := policy.Hosting.MaxSessionCostUSD; override > 0 {
+		capUSD = override
 	}
 	entry, refusal := cfg.state.models.get(r.Context(), h, bearer, row, space, capUSD)
 	if entry == nil {
@@ -125,6 +134,18 @@ func (m *modelRegistry) get(ctx context.Context, h *Handler, bearer string, row 
 				return nil, hostedModelRefusal{}
 			}
 		}
+		if entry != nil && entry.capUSD != capUSD && !m.closed {
+			// The model server's reservations use its starting ceiling. Settle the
+			// old server before opening one under the new cap so its charges count.
+			if entry.inFlight != 0 {
+				m.mu.Unlock()
+				return nil, hostedModelRefusal{http.StatusTooManyRequests, hostedModelBusy}
+			}
+			m.startClosing(entry)
+			m.mu.Unlock()
+			m.finishClosing(row.session, entry)
+			continue
+		}
 		entry, refusal := m.admit(h, bearer, row, space, capUSD, entry)
 		m.mu.Unlock()
 		return entry, refusal
@@ -161,6 +182,7 @@ func (m *modelRegistry) admit(h *Handler, bearer string, row bearerRow, space fa
 		if m.entries == nil {
 			m.entries = make(map[string]*hostedModel)
 		}
+		entry.capUSD = capUSD
 		m.entries[row.session] = entry
 	}
 	if entry.inFlight >= hostedModelInFlight {
@@ -389,6 +411,10 @@ func (h *Handler) postHostedSpend(space factory.OrgWorkstream, row bearerRow, ow
 		chat += ":own"
 	}
 	spend := store.Spend{At: now.Format(time.RFC3339Nano), By: row.person, USD: usd, Chat: chat, Key: key}
+	// A charge approximates who prompted it by recording whoever last put words into the chat through this server.
+	if asker := h.config.Hosted.state.askerOf(row.session); asker != row.person {
+		spend.Asker = asker
+	}
 	if _, err := h.config.Store.AddSpend(space.ID, spend); err != nil {
 		log.Print("hosted model: could not post a charge")
 		return

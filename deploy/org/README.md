@@ -167,8 +167,10 @@ because it has to become a different Linux user for every chat. It is built from
   own home, so closing the client in the middle of a turn loses nothing and the next attach shows the result. A
   socket path has a hard length ceiling, so `CODEAF_SESSIONHOST_DATA` (default `/chats`) must be short: the
   sessionhost refuses to start with a folder that leaves no room, and says how many characters it may have.
-- **Only the owner can attach.** The organization server names the signed-in person to the sessionhost;
-  another person's chat answers "There is no such chat.", word for word as an unknown one does.
+- **Only the owner drives, and a chat is private until it is shared.** The organization server names the signed-in
+  person to the sessionhost, which knows only owners, so every call it makes for a chat is made as the chat's owner;
+  whether someone else may reach the chat at all is decided by the organization's access core first (below, "Sharing,
+  guests and bots (P2)"). A chat nobody has shared answers "There is no such chat.", word for word as an unknown one does.
 
 The five capabilities the container is given (`cap_drop: [ALL]`, then `cap_add`), and why:
 
@@ -215,6 +217,75 @@ organization's. Each of those is a next step, not a hidden property.
 - **Git.** `CODEAF_HOSTED_GIT_HOSTS` (default `https://github.com`) are the hosts a chat's git reaches through the
   server. One audit line per operation goes to `hosted-audit.jsonl` (`GET /v1/hosted/audit` shows a person their own).
 
+### Sharing, guests and bots (P2)
+
+A hosted chat is a `session` resource of the organization's access core, registered when it is made: the owner is
+the person who made it (for a bot, the person who made the bot, with `created_by` the bot), and it is **private
+unless the policy's default for `session` says otherwise**. The list, the chat's own routes and the event stream
+all ask the same core, so another person's list and live updates never carry it, and the operator has no more
+right to a private chat than anyone else (the policy's `operator.sees_private` is false by default).
+
+- **The list.** `GET /v1/hosted/sessions` answers `sessions` (the caller's own chats, the rows P1 gave, so the
+  client's `--org` pick is unchanged), `shared` (chats of other people the caller may open: `id`, `owner`, `role`,
+  `access`, `state`, `created`, `last_active`, and nothing about the model access or warnings; the operator's rows,
+  only for a chat the policy keeps from being private, hold the same without `role` and have `access: operator`) and
+  `hosting` (`local_sessions`, below).
+- **Sharing** is the generic route: `POST /v1/resources/session/<chat>/grants` with a person, a team or the
+  organization and a role, and `DELETE .../grants/<grant>`. Share, revoke and a change of the policy publish
+  `resource.changed` events to the audience as it stood before and as it stands after.
+- **A guest's wire.** An owner (by handle, holding `run`) is attached by the same byte-for-byte proxy as in P1.
+  Anyone else who may view the chat gets a wire the organization's server terminates itself: it reads each call the
+  guest's window sends, checks its method against a table in `internal/factory/serve/hosted_guest_methods.go` and
+  forwards only what the guest's verbs allow, re-encoded so that what is forwarded is exactly what was checked.
+  `view` watches and reads; `steer` adds `Steer` and `Interrupt`; `answer` adds `ResolveQuestion`; `run` adds the calls
+  that put words into the conversation or run a command the chat's own way (`Submit`, `SubmitBash`, `SubmitImage`,
+  `SubmitFiles`, `FollowUp`, `UnqueueFollowUp`, `ReplaceQuestion`, `Typing`, `Take`); **every other method is the
+  owner's alone**, whatever role the guest holds. Whether a non-owner may send prompts at all is therefore a policy
+  edit, not code: the default `edit` and `full` roles hold `run`, `view` and `comment` do not, and taking `run` out of
+  a role (`PUT /v1/org/policy`) refuses the next prompt of everyone who held it only through that role, within a
+  heartbeat. The organization-wide default role is `view` (the policy's `org_role`); the generic share route has no default
+  role, the caller names it. **A person given `run` acts with the owner's GitHub identity, files and spending limits**: the
+  chat runs in the owner's folder, as the owner's user, with the owner's model access, git access and caps.
+  The table is an allow-list: a method added to the wire later is owner-only until someone chooses otherwise, and a
+  test fails until it is classified. A refused call is answered in place with one of four sentences (`This chat is
+  shared with you. Only its owner can do that.`; `You can watch this chat, but you were not given permission to send
+  messages in it. Ask its owner.`; `... to steer it. Ask its owner.`; `... to answer its questions. Ask its owner.`)
+  and never reaches the chat. The guest's hello is rewritten so it cannot launch, resume or take over anything and
+  does not take the keyboard from the owner on arrival.
+  A guest opening a chat that is not running starts it for its owner; when the owner's limit on running chats or the
+  machine's says no (a 429 from the chats' machine), the guest reads `This chat is not running, and there is no room
+  to start it right now. Try again later.` (never the owner's own sentence, and no number).
+- **Access taken away.** Every `CODEAF_HOSTED_HEARTBEAT` (default `5s`, `1s` to `1m`) the server re-reads the
+  guest's sign-in, the grants and the policy; when the right is gone it writes `Your access to this chat was
+  removed.` and closes the wire. A role changed in between takes effect on the next call. For a bot the same check
+  also re-reads that the token is live and that its creator is still on the team.
+- **Money.** A guest's attach reaches the chats' machine as the owner and the model access it holds is the owner's, so
+  every call is the owner's: the owner's own key if stored, the organization's otherwise, against the owner's chat cap
+  and monthly limit. The spend row also records who last steered or answered through this server in a new `asker`
+  column (`ALTER TABLE spend ADD COLUMN`, added on first start, harmless on an existing database). It is
+  approximate by design: a model call is credited to whoever last put words into the chat through this server, and
+  the owner's own attach puts it back to the owner. Each message a guest sends writes one `kind: "prompt"` line in
+  the owner's `GET /v1/hosted/audit` (who, never what), and every `git` line carries `asker` when it was not the owner.
+- **Bots.** A bot token may use `/v1/hosted/sessions` (and not `/v1/hosted/keys` or `/v1/hosted/git`, which answer
+  `a bot cannot use this yet`): it makes, lists, opens, stops and deletes exactly what its creator may, narrowed by
+  its scope, decided again at every request. A bot's chat is owned by the person who made the bot, and `created_by`
+  records the bot, as for any other thing a bot makes.
+- **The hosting policy.** `PUT /v1/org/policy` takes `"hosting": {"local_sessions": "allow|warn|refuse",
+  "max_session_cost_usd": 0}`. Empty `local_sessions` means `refuse` for an organization that has chats' machine and
+  `allow` for one that does not; the list reports the value that applies, with `words` to show for `refuse` (that
+  chats do not start on this computer and that the personal account is the way to work here) and for `warn`. An
+  organization is its own account in the app, separate from the person's personal one: inside it every chat is
+  hosted and there is no local escape; switching to the personal account is the escape. A positive `max_session_cost_usd` replaces
+  `CODEAF_HOSTED_SESSION_CAP_USD` for every chat. Nothing in the client acts on `local_sessions` yet: this release
+  reports and stores it.
+
+Known limit of this version: a guest's `Steer` or prompt is refused by the chat itself, in the chat's own words about
+the keyboard, while the owner's window holds the keyboard, because the guest's window does not take it on arrival; it
+goes through when the owner has no window open, or after the guest sends `Take` (allowed with `run`, and the owner's
+window is told). `Interrupt` and `ResolveQuestion` are not affected. A tool-use approval stays the owner's, so a
+command that needs one waits for the owner. The proper fix for both is a guest class inside the engine itself, which
+is a change to the wire's own protocol and not made here.
+
 ### Turning it on
 
 1. `./setup.sh` writes `CODEAF_HOSTED_SECRET` (64 hex characters, never printed) into `.env`; an `.env` from
@@ -247,7 +318,16 @@ is exact to the cent, the monthly and per-chat limits refuse in plain words, a p
 and sits sealed on disk, clone and push work through the organization with one audit line each and no key or GitHub
 access in any chat folder, process environment or argument list, a chat's access still works after the organization
 server restarts and ends the moment the chat is stopped, and the first attach after a restart of the chats' machine
-needs no retry. It prints PASS or FAIL per check. A live check against a real provider is the one step it does not do.
+needs no retry. P2 adds a third person and a bot: a chat is invisible to others in the list, at every door and on the
+event stream until it is shared; a guest with `view` watches the owner's turn live and every message, steer and
+command it tries is refused in the exact sentence and never reaches the chat; with `edit` (which holds `run`) its
+message reaches the chat, runs as the owner and is recorded against it, it may interrupt a running turn, and the
+owner's approvals and settings stay refused; taking `run` out of the role by a policy edit refuses its next message;
+taking the access away ends its open window within the heartbeat;
+the operator sees only metadata of a chat the policy keeps from being private and never its wire; a bot sees
+exactly what its creator sees, starts chats that are its creator's alone, and loses a shared chat the moment its
+creator does; the hosting policy is reported, changed only by the operator and refused when it is not one of the
+three words. It prints PASS or FAIL per check. A live check against a real provider is the one step it does not do.
 
 On Railway the sessionhost is a service of its own from the same Dockerfile; its variables are in the table under "Railway", and
 `codeaf sessionhost probe`, run in that service, says whether the fence works there. Railway gives root eleven capabilities, the

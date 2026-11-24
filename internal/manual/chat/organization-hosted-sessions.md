@@ -30,14 +30,64 @@ The chat does not see your computer's files, your keys or your other chats. It s
 
 The organization's operator keeps the machine and its disk. See *what can the operator of the server see* for what that means for you.
 
-## can other people on the server see my hosted chats — only you, and anyone else gets `There is no such chat.`
+## can other people on the server see my hosted chats — private by default, shared only when you share it, and anyone else gets `There is no such chat.`
 
-Each chat belongs to the person who made it. Another person cannot open it, list it, stop it or delete it, and cannot tell it exists: asking for someone else's chat gets the same answer as asking for one that was never made, `There is no such chat.`
+A hosted chat is private to the person who made it, unless the organization's policy makes chats of this kind start otherwise (the policy's default for `session`). A private chat is left out of every other person's list and out of the organization's live updates: nobody else is told it exists, who owns it or what state it is in, and that includes the operator. Someone else who asks for it, to open it, list it, stop it or delete it, gets the same answer as for a chat that was never made, `There is no such chat.`
 
-A chat also cannot see another chat. Every chat runs as a separate user of the machine, in a folder only that user can read or write, so a command in one chat cannot read another chat's files, send it a signal or read its environment. Files a command leaves in `/tmp` or `/dev/shm`, which every chat on the machine shares, are closed to other chats unless you open them yourself, and a command cannot connect to another chat's local sockets. For the same reason two separate commands of one chat do not reach each other's abstract sockets (a socket whose name starts with `@`); sockets that are files, such as the ones tools keep in a folder, are not affected. That holds between two chats of the same person too. One thing a command can still see is that other chats exist: the folders above a chat are readable so the chat can save its history, which lists their names (a hashed name for each person and a random identifier for each chat) and nothing inside them.
+You can share a chat with a person, a team or the whole organization the way you share anything else (`POST /v1/resources/session/<chat>/grants` with who and a role; see *Sharing*). Once you do, it shows up in that person's `shared` list. Taking the access away takes it off their list again, and cuts them off if they are watching it at that moment: see *what can someone I shared my hosted chat with do*.
+
+A chat made by a bot belongs to the person who made the bot, is private like any other, and is shown to nobody else until that person shares it.
 
 What the operator of the machine could do is a separate matter: see *what can the operator of the server see*.
 
+## can one hosted chat read another chat's files or processes — every chat runs as its own user of the machine
+
+Every chat runs as a separate user of the machine, in a folder only that user can read or write, so a command in one chat cannot read another chat's files, send it a signal or read its environment. Files a command leaves in `/tmp` or `/dev/shm`, which every chat on the machine shares, are closed to other chats unless you open them yourself, and a command cannot connect to another chat's local sockets. For the same reason two separate commands of one chat do not reach each other's abstract sockets (a socket whose name starts with `@`); sockets that are files, such as the ones tools keep in a folder, are not affected. That holds between two chats of the same person too. One thing a command can still see is that other chats exist: the folders above a chat are readable so the chat can save its history, which lists their names (a hashed name for each person and a random identifier for each chat) and nothing inside them.
+
+A chat shared with someone else is still this one chat: it runs in its owner's folder as its owner's user, so what a guest does through it cannot reach the guest's own files, and nothing in it is the guest's.
+
+## what can someone I shared my hosted chat with do — watching, interrupting, answering, sending messages, and what only the owner can do
+
+A chat shared with you opens with `codeaf chat --org <server> --session hs_...`, and your own chats stay what a bare `--org` opens. What you can do depends on the permissions of the role you were given:
+
+- **view** (every role has it): watch the chat live and read what has been said and what is running. Anything that would send, change or run something is refused. Sharing means choosing a role, and the access the policy gives everyone in the organization when it makes chats visible is at view.
+- **steer**: also interrupt a running turn and change where it is going.
+- **answer**: also answer a question the chat is waiting on.
+- **run** (the `edit` and `full` roles have it): also send messages, files and images, and run a command the chat's own way, as the chat's owner would.
+
+Everything else stays with the owner whatever role a person holds: approving a command, changing a setting, opening the chat's files, stopping the chat. A command that needs approval waits for the owner.
+
+## what happens when I give someone run access to my hosted chat — they act with my GitHub identity, files and spending limits
+
+**A person you let send messages acts with your GitHub identity, your files and your spending limits.** The chat is yours: its commands run in your folder on the server, as your user, with your model access, and its git goes through your GitHub access, whoever typed the message. What it costs is yours too (see *who pays*), against your chat limit and month. The server notes who asked on each message, on each charge and on each use of your GitHub access, so you can read it afterwards. If you would rather nobody else sends messages, share at view or steer, or ask the operator to take `run` out of the roles in the organization's policy: nothing else needs to change.
+
+## why was I refused in a shared hosted chat — the sentences, the keyboard and a removed share
+
+You read `This chat is shared with you. Only its owner can do that.` for what only the owner can do. Sending without the permission reads `You can watch this chat, but you were not given permission to send messages in it. Ask its owner.`, steering without it `You can watch this chat, but you were not given permission to steer it. Ask its owner.`, and answering without it `You can watch this chat, but you were not given permission to answer its questions. Ask its owner.`
+
+Only one window types at a time. While the owner has the chat open with the keyboard, a message or a redirect from someone else is refused by the chat with its own sentence about the keyboard; taking the keyboard (a person who may send can) moves it to their window and tells the owner's, interrupting and answering are not affected, and a message goes through once the owner has closed their window.
+
+When the owner takes your access away, or the policy changes so you no longer have it, your window is ended within a few seconds (five unless the operator set another heartbeat) and reads `Your access to this chat was removed.`
+
+Opening a chat that is not running starts it for its owner, which can be refused while its owner or the machine is running as many chats as are allowed. Then you read `This chat is not running, and there is no room to start it right now. Try again later.`
+
+## who pays when someone else is in my hosted chat — it runs as the owner, with the owner's access and limits
+
+A shared chat always runs in the owner's folder on the machine, with the owner's model access and the owner's spending limits: what a guest's messages cost is counted to the owner, in the owner's My space, against the owner's chat limit and month. The server notes who last put words into the chat next to each charge, so the owner can see it was a guest, but that is approximate: a model call is credited to whoever last sent a message, redirected a turn or answered through the server, and the owner opening their own window puts it back to the owner. The owner's activity list (`GET /v1/hosted/audit`) holds one line for each message a guest sent, with who sent it (never what it said), and each line for the owner's GitHub access carries who was asking at the time.
+
+## can the operator open my hosted chat — only metadata, and only if the policy makes the chat visible
+
+The operator holds no right on a private chat: it is refused with `There is no such chat.` and is not told the chat exists. When the policy makes new chats not private, the operator's list shows the chat's identifier, owner, state and times and nothing else, and the operator still cannot open it, read its history or see its folder. Whoever runs the machine itself is another matter: see *what can the operator of the server see*.
+
+## bots and hosted chats — what a bot may do with a chat, and what it may not
+
+A bot (see *Bots*) can start, list, open, stop and delete hosted chats, and it holds exactly what the person who made it holds on each chat right now, narrowed by its scope. If that person loses access to someone else's chat, the bot loses it on its very next request, and an open window of the bot's is ended within a heartbeat. A chat the bot starts is owned by that person and recorded as made by the bot. A bot cannot touch a person's stored keys (`/v1/hosted/keys`): that answers `a bot cannot use this yet`. A bot that holds the `run` verb on its creator's own chat can type into it, as its creator would; a bot whose scope leaves `run` out is treated like a guest. On someone else's chat a bot gets what its creator's role gives, and no more.
+
+## may I still start a chat on my own computer after joining an organization — the hosting policy
+
+An organization is its own account, separate from your personal one: you switch between them, and what you make in the organization's account belongs to the organization. When the organization runs hosted chats, every chat in its account is a hosted chat, and a chat does not start on your computer from inside it. There is no setting on your side to override that; the way to work on your own computer is to switch to your personal account, which does not see the organization's chats or files.
+
+The organization's policy has a `hosting` section for this. `local_sessions` is `allow`, `warn` or `refuse`; left empty it means `refuse` when the organization runs hosted chats and `allow` when it does not, so an organization with no machine for chats behaves as before. `GET /v1/hosted/sessions` reports the value that applies as `hosting.local_sessions`, with the words to show for it: for `refuse` `This organization runs your chats on its own server, so they do not start on this computer. To work here instead, switch to your personal account, which does not see the organization's chats or files.` and for `warn` `This organization keeps your chats on its own server. A chat started on this computer is not part of the organization's account.` Only the operator changes the policy, with `PUT /v1/org/policy`. `max_session_cost_usd` is what one hosted chat may spend before it is paused; zero keeps `CODEAF_HOSTED_SESSION_CAP_USD` (five dollars unless set). This version reports the setting and enforces the cost limit; `codeaf` on a computer does not yet act on `local_sessions`.
 ## what can the operator of the server see — honest limits of a hosted chat
 
 Whoever runs the machine, and whoever is its administrator on the hosting platform, can read everything on its disk. A hosted chat is not private from them. The disk is not encrypted by the server software itself.

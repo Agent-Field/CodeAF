@@ -132,7 +132,9 @@ func newV2Jobs(t *testing.T) *v2Jobs {
 		GitHub: func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: f.person}, nil },
 		Launch: doors.Launch, Stop: doors.Stop, Hold: doors.Hold, Answer: doors.Answer, SignOff: doors.SignOff,
 	}
-	f.cfg = serve.Config{Mode: api.FactoryTeam, Address: config.Address, Version: config.Version, Store: f.st, Record: f.rec, Now: clock, LeaseOptions: lease.Options{Now: clock, Record: f.rec},
+	// A team-mode handler whose tests act as the host's person on this computer: the
+	// loopback setting is on explicitly, because a team's default is off.
+	f.cfg = serve.Config{Mode: api.FactoryTeam, LoopbackTrust: boolPtr(true), Address: config.Address, Version: config.Version, Store: f.st, Record: f.rec, Now: clock, LeaseOptions: lease.Options{Now: clock, Record: f.rec},
 		Pipeline: func(context.Context, string, string) (pipeline.File, error) {
 			p := pipeline.Defaults()
 			p.DefaultBudget = 4

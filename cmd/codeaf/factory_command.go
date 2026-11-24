@@ -305,13 +305,14 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			return nil, err
 		}
 		if hosted != nil {
-			if err := hostedP1Settings(hosted, st, env.Get); err != nil {
+			if err := hostedFactorySettings(hosted, st, env.Get); err != nil {
 				return nil, err
 			}
 		}
 	}
 	handlerConfig := serve.Config{
-		GitHubToken: jobWrites.Token,
+		GitHubToken:   jobWrites.Token,
+		LoopbackTrust: host.LoopbackTrust,
 
 		ProfileDir:     home.Dir(),
 		ChangeAssignee: jobWrites.Assign,
@@ -398,6 +399,19 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		return nil, err
 	}
 	return s, nil
+}
+
+// The hosted settings are checked before the organization server starts accepting connections.
+func hostedFactorySettings(hosted *serve.HostedConfig, st *store.Store, get func(string) string) error {
+	hosted.Heartbeat = serve.DefaultHostedHeartbeat
+	if raw := strings.TrimSpace(get("CODEAF_HOSTED_HEARTBEAT")); raw != "" {
+		interval, err := time.ParseDuration(raw)
+		if err != nil || interval < time.Second || interval > time.Minute {
+			return errors.New("CODEAF_HOSTED_HEARTBEAT must be a duration from 1s to 1m, such as 5s")
+		}
+		hosted.Heartbeat = interval
+	}
+	return hostedP1Settings(hosted, st, get)
 }
 
 // serveTLS serves HTTPS on the public listener, and answers the plain-HTTP

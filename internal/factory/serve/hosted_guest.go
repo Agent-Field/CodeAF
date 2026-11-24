@@ -1,0 +1,413 @@
+package serve
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/coder/websocket"
+)
+
+// DefaultHostedHeartbeat keeps a guest wire's access up to date when no interval is set.
+const DefaultHostedHeartbeat = 5 * time.Second
+
+const (
+	hostedGuestClientLineCap = 256 << 10
+	hostedGuestHostLineCap   = 64 << 20
+	// The hosted chat client accepts WebSocket messages up to 4 MiB.
+	hostedGuestWriteChunk = 4 << 20
+	hostedGuestRemoved    = "Your access to this chat was removed."
+	hostedGuestLongLine   = "A message to this chat was too large."
+	hostedGuestBadHello   = "This chat could not read the first message."
+	hostedGuestBadCall    = "This chat could not read a request."
+	// A guest opening a chat that is not running starts it for its owner, and either the owner's own limit or the machine's can say no.
+	// The sentence is the guest's, never the owner's ("You already have ... chats running"), and names no number or person.
+	hostedGuestNoRoom = "This chat is not running, and there is no room to start it right now. Try again later."
+)
+
+var errHostedGuestLineCap = errors.New(hostedGuestLongLine)
+
+type hostedGuest struct {
+	ctx          context.Context
+	cancel       context.CancelFunc
+	heartbeat    time.Duration
+	client, host net.Conn
+	verbs        atomic.Value
+	writeMu      sync.Mutex
+}
+
+// addGuest and closeHostedGuests use one lock so shutdown also reaches a wire still opening.
+func (hs *hostedState) addGuest(p *hostedGuest) bool {
+	hs.guestMu.Lock()
+	defer hs.guestMu.Unlock()
+	if hs.guestsClosed {
+		return false
+	}
+	if hs.guests == nil {
+		hs.guests = make(map[*hostedGuest]struct{})
+	}
+	hs.guests[p] = struct{}{}
+	hs.guestWG.Add(1)
+	return true
+}
+
+func (hs *hostedState) dropGuest(p *hostedGuest) {
+	hs.guestMu.Lock()
+	defer hs.guestMu.Unlock()
+	delete(hs.guests, p)
+	hs.guestWG.Done()
+}
+
+func (h *Handler) closeHostedGuests() {
+	cfg := h.config.Hosted
+	if cfg == nil || cfg.state == nil {
+		return
+	}
+	hs := cfg.state
+	hs.guestMu.Lock()
+	hs.guestsClosed = true
+	for guest := range hs.guests {
+		guest.cancel()
+	}
+	hs.guestMu.Unlock()
+	hs.guestWG.Wait()
+}
+
+func (h *Handler) hostedGuestWire(w http.ResponseWriter, r *http.Request, item Item, owner string, v Viewer) {
+	hs := h.config.Hosted.state
+	heartbeat := h.config.Hosted.Heartbeat
+	if heartbeat <= 0 {
+		heartbeat = DefaultHostedHeartbeat
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	p := &hostedGuest{ctx: ctx, cancel: cancel, heartbeat: heartbeat}
+	if !hs.addGuest(p) {
+		h.fail(w, http.StatusServiceUnavailable, hostedUnreachable)
+		return
+	}
+	defer hs.dropGuest(p)
+	r = r.WithContext(ctx)
+	if !h.hostedPush(w, r, hs, item.ID, owner) {
+		return
+	}
+
+	client, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+		CompressionMode:    websocket.CompressionDisabled,
+	})
+	if err != nil {
+		return
+	}
+	clientConn, closeClient := hostedGuestConn(ctx, client)
+	defer closeClient()
+	p.client = clientConn
+	p.verbs.Store(hostedGuestVerbs(v, item))
+	var pumps sync.WaitGroup
+	defer func() {
+		cancel()
+		pumps.Wait()
+	}()
+	pumps.Go(func() {
+		p.checkHeartbeat(func() acl.VerbSet {
+			return h.refreshHostedGuest(r, item.ID, owner, v.Handle)
+		})
+	})
+
+	host, status := hs.dialGuestHost(ctx, item.ID, owner)
+	if host == nil {
+		switch status {
+		case http.StatusNotFound:
+			p.fatal(hostedGuestRemoved)
+			return
+		case http.StatusConflict:
+			hs.bearers.revokeFor(item.ID, owner)
+		case http.StatusTooManyRequests:
+			p.fatal(hostedGuestNoRoom)
+			return
+		}
+		p.fatal(hostedUnreachable)
+		return
+	}
+	hostConn, closeHost := hostedGuestConn(ctx, host)
+	defer closeHost()
+	p.host = hostConn
+	pumps.Go(func() {
+		defer cancel()
+		p.fromHost()
+	})
+	p.fromClient(func(method, class string) {
+		h.noteHostedGuestCall(item.ID, owner, v.Handle, method, class)
+	})
+	cancel()
+}
+
+func (hs *hostedState) dialGuestHost(ctx context.Context, id, owner string) (*websocket.Conn, int) {
+	// The dial deadline bounds only the handshake, because a live wire may last for hours.
+	ctx, cancel := context.WithTimeout(ctx, hostedCallTimeout)
+	defer cancel()
+	httpClient := &http.Client{Transport: hs.transport, CheckRedirect: hs.calls.CheckRedirect}
+	host, response, err := websocket.Dial(ctx, hs.base.String()+"/v1/sessions/"+id+"/wire", &websocket.DialOptions{
+		HTTPClient:      httpClient,
+		HTTPHeader:      http.Header{"Authorization": {"Bearer " + hs.secret}, "X-Codeaf-Person": {owner}},
+		CompressionMode: websocket.CompressionDisabled,
+	})
+	if err != nil && response != nil {
+		return nil, response.StatusCode
+	}
+	return host, 0
+}
+
+func hostedGuestConn(ctx context.Context, conn *websocket.Conn) (net.Conn, func()) {
+	tunnel := websocket.NetConn(ctx, conn, websocket.MessageBinary)
+	// NetConn clears the message cap. The line cap is independent because a message may carry many lines.
+	conn.SetReadLimit(hostedGuestHostLineCap + 1)
+	// Close even when neither a read nor a write is in progress on this leg.
+	stop := context.AfterFunc(ctx, func() { _ = conn.CloseNow() })
+	return tunnel, func() {
+		stop()
+		_ = conn.CloseNow()
+	}
+}
+
+func (p *hostedGuest) fromHost() {
+	reader := bufio.NewReader(p.host)
+	for {
+		line, err := readHostedGuestLine(reader, hostedGuestHostLineCap)
+		if err != nil || p.writeClient(line) != nil {
+			return
+		}
+	}
+}
+
+func (p *hostedGuest) fromClient(forwarding func(method, class string)) {
+	reader := bufio.NewReader(p.client)
+	var hello bool
+	for {
+		line, err := readHostedGuestLine(reader, hostedGuestClientLineCap)
+		if errors.Is(err, errHostedGuestLineCap) {
+			p.fatal(hostedGuestLongLine)
+		}
+		if err != nil {
+			return
+		}
+		verbs := p.verbs.Load().(acl.VerbSet)
+		if !verbs.Has(acl.VerbView) {
+			// The heartbeat owns the final line when it takes access away.
+			<-p.ctx.Done()
+			return
+		}
+		var frame remote.Frame
+		err = json.Unmarshal(line, &frame)
+		if !hello {
+			if err != nil || frame.Kind != "hello" || !rewriteHostedGuestHello(&frame) {
+				p.fatal(hostedGuestBadHello)
+				return
+			}
+			hello = true
+		} else {
+			if err != nil || frame.Kind != "call" || strings.TrimSpace(frame.Method) == "" {
+				p.fatal(hostedGuestBadCall)
+				return
+			}
+			class := hostedGuestMethods[frame.Method]
+			if words := hostedGuestRefusal(class, verbs); words != "" {
+				// A result always has an ID, including when the caller used zero.
+				result := struct {
+					Kind  string `json:"kind"`
+					ID    uint64 `json:"id"`
+					Error string `json:"error"`
+				}{"result", frame.ID, words}
+				raw, _ := json.Marshal(result)
+				if p.writeClient(append(raw, '\n')) != nil {
+					return
+				}
+				continue
+			}
+			forwarding(frame.Method, class)
+		}
+		// Re-encoding makes the engine receive exactly the frame whose method was checked.
+		raw, err := json.Marshal(frame)
+		if err != nil {
+			return
+		}
+		if _, err := p.host.Write(append(raw, '\n')); err != nil {
+			return
+		}
+	}
+}
+
+func hostedGuestRefusal(class string, verbs acl.VerbSet) string {
+	switch class {
+	case acl.VerbView:
+		return ""
+	case acl.VerbRun:
+		if !verbs.Has(class) {
+			return hostedGuestNeedsRun
+		}
+	case acl.VerbSteer:
+		if !verbs.Has(class) {
+			return hostedGuestNeedsSteer
+		}
+	case acl.VerbAnswer:
+		if !verbs.Has(class) {
+			return hostedGuestNeedsAnswer
+		}
+	default:
+		return hostedGuestOwnerOnly
+	}
+	return ""
+}
+
+func rewriteHostedGuestHello(frame *remote.Frame) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(frame.Payload, &fields) != nil || fields == nil {
+		return false
+	}
+	var window struct {
+		ClientID string `json:"clientID"`
+	}
+	if json.Unmarshal(frame.Payload, &window) != nil {
+		return false
+	}
+	// The engine accepts case variants of its JSON fields, so discard those too.
+	replaced := []string{"launch", "model", "level", "workspace", "session", "new", "join", "holdInterruptedWork", "window", "back", "clientID"}
+	for field := range fields {
+		for _, name := range replaced {
+			if strings.EqualFold(field, name) {
+				delete(fields, field)
+				break
+			}
+		}
+	}
+	// The allow-list protects this wire. Setting watch would hide transcripts and most other reads.
+	fields["back"] = json.RawMessage("true")
+	fields["clientID"], _ = json.Marshal("guest:" + window.ClientID)
+	frame.Payload, _ = json.Marshal(fields)
+	return true
+}
+
+// readHostedGuestLine bounds the accumulated bytes even when the peer never sends a newline.
+func readHostedGuestLine(reader *bufio.Reader, limit int) ([]byte, error) {
+	var line []byte
+	for {
+		chunk, err := reader.ReadSlice('\n')
+		if len(chunk) > limit-len(line) {
+			return nil, errHostedGuestLineCap
+		}
+		if err == nil {
+			if line == nil {
+				return chunk, nil
+			}
+			return append(line, chunk...), nil
+		}
+		if err != bufio.ErrBufferFull {
+			return nil, err
+		}
+		if len(chunk) == limit-len(line) {
+			// A line at the limit still needs room for its newline.
+			return nil, errHostedGuestLineCap
+		}
+		line = append(line, chunk...)
+	}
+}
+
+func (p *hostedGuest) writeClient(line []byte) error {
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
+	if err := p.ctx.Err(); err != nil {
+		return err
+	}
+	// A large engine line can use several messages while keeping the write lock for the entire line.
+	for len(line) != 0 {
+		chunk := min(len(line), hostedGuestWriteChunk)
+		if _, err := p.client.Write(line[:chunk]); err != nil {
+			return err
+		}
+		line = line[chunk:]
+	}
+	return nil
+}
+
+func (p *hostedGuest) fatal(words string) {
+	// One complete line goes before the close. A peer that stops reading cannot keep the wire alive.
+	_ = p.client.SetWriteDeadline(time.Now().Add(p.heartbeat))
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
+	defer p.client.SetWriteDeadline(time.Time{})
+	if p.ctx.Err() == nil {
+		_ = json.NewEncoder(p.client).Encode(remote.Frame{Kind: "fatal", Error: words})
+		p.cancel()
+	}
+}
+
+func hostedGuestVerbs(v Viewer, item Item) acl.VerbSet {
+	v = hostedWithoutOperator(v)
+	return v.acc.rules().Verbs(v.caller(), v.acc.item(item), v.acc.time())
+}
+
+func (p *hostedGuest) checkHeartbeat(refresh func() acl.VerbSet) {
+	ticker := time.NewTicker(p.heartbeat)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-ticker.C:
+			verbs := refresh()
+			p.verbs.Store(verbs)
+			if !verbs.Has(acl.VerbView) {
+				p.fatal(hostedGuestRemoved)
+				return
+			}
+		}
+	}
+}
+
+func (h *Handler) refreshHostedGuest(r *http.Request, id, owner, asker string) acl.VerbSet {
+	r = authRequest(r)
+	if !h.allowed(r) {
+		return nil
+	}
+	v, err := h.itemViewer(r)
+	if err != nil || v.Handle != asker || !h.teamAllows(v.Handle) || r.Context().Value(authErrorKey{}).(*authErrorState).err != nil {
+		return nil
+	}
+	st := h.config.Store
+	if call, _ := agentCallOf(r); call.bot != "" {
+		bot, _, state, err := st.FindBotToken(sessionHash(bearer(r)), h.now())
+		if err != nil || state != store.BotTokenLive || bot.ID != call.bot || bot.Creator != v.Handle {
+			return nil
+		}
+		// The stored scope and the policy bundle can both change while the bot is attached.
+		v.Agent.Only = botScopeVerbs(v.acc.rules(), bot.Scope)
+	}
+	row, found, err := st.Resource(store.SessionKind, id)
+	if err != nil || !found || row.Owner.ID != owner || !hostedRegistration(row) {
+		return nil
+	}
+	return hostedGuestVerbs(v, h.resourceItem(row, factory.OrgWorkstream{}))
+}
+
+func (h *Handler) noteHostedGuestCall(id, owner, asker, method, class string) {
+	// Attribution is approximate because the next model call can follow any accepted words.
+	if class == acl.VerbRun || method == remote.MethodSteer || method == remote.MethodQuestionResolve {
+		h.config.Hosted.state.noteAsker(id, asker)
+	}
+	// The chat checks the keyboard for prompts and steer. A guest with run can use Take to drive.
+	switch method {
+	case remote.MethodSubmit, remote.MethodSubmitBash, remote.MethodSubmitImage, remote.MethodSubmitFiles, remote.MethodFollowUp, remote.MethodSteer:
+		h.recordHostedAudit(hostedAuditEntry{Person: owner, Chat: id, Kind: "prompt", Asker: asker})
+	}
+}

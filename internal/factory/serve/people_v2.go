@@ -9,8 +9,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
+
+const teamHandleRefusal = "this GitHub handle is not on the factory team"
 
 // mode follows the actual serving door unless the host explicitly selects a mode.
 func (h *Handler) mode() string {
@@ -188,7 +191,7 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if h.failed(w, h.revokePerson(r, handle)) {
+	if h.failed(w, h.revokePerson(handle, true)) {
 		return
 	}
 	// A removed password person's password signs nobody in any more.
@@ -227,8 +230,13 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, detail))
 }
 
-// revokePerson ends sign-ins and runner credentials before ownership is made available again.
-func (h *Handler) revokePerson(r *http.Request, handle string) error {
+// revokePerson ends sign-ins and runner credentials. Leaving the
+// organization also ends the person's bot credentials.
+func (h *Handler) revokePerson(handle string, leaving bool) error {
+	if leaving {
+		h.botCreateMu.Lock()
+		defer h.botCreateMu.Unlock()
+	}
 	h.sessions.mu.Lock()
 	for key, s := range h.sessions.ids {
 		if profileHandle(s) == handle {
@@ -240,6 +248,11 @@ func (h *Handler) revokePerson(r *http.Request, handle string) error {
 	h.sessions.mu.Unlock()
 	if err != nil {
 		return err
+	}
+	if leaving && h.config.Store != nil {
+		if err := h.config.Store.DisableBotsOf(handle, store.ErrBotDisabled.Error(), h.now()); err != nil {
+			return err
+		}
 	}
 	if h.workers != nil {
 		h.workers.mu.Lock()
