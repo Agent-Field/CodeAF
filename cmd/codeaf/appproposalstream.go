@@ -166,7 +166,7 @@ func (s *appProposalStream) line(line string) string {
 }
 
 func appProposalShortHandle(handle string) string {
-	if len(handle) <= teamstore.HandleMax {
+	if len(handle) <= teamstore.HandleWordMax {
 		return handle
 	}
 	for i, r := range handle {
@@ -174,7 +174,7 @@ func appProposalShortHandle(handle string) string {
 			return handle
 		}
 	}
-	short := handle[:teamstore.HandleMax]
+	short := handle[:teamstore.HandleWordMax]
 	if at := strings.LastIndex(short, "-"); at >= teamstore.HandleMin {
 		return short[:at]
 	}
@@ -203,7 +203,7 @@ func (s *appProposalStream) handle(original string) string {
 		}
 		suffix := strconv.Itoa(n)
 		head := base
-		if limit := teamstore.HandleMax - len(suffix); len(head) > limit {
+		if limit := teamstore.HandleWordMax - len(suffix); len(head) > limit {
 			head = head[:limit]
 		}
 		candidate = strings.TrimRight(head, "-") + suffix

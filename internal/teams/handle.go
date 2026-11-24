@@ -43,10 +43,14 @@ func (m Member) HandleDerived() bool {
 	return m.HandleBy == "" || m.HandleBy == HandleByWords
 }
 
-// Handle lengths, in characters.
+// Handle lengths, in characters. A person or the manager may type a handle up
+// to HandleMax; a handle the engine picks itself (the word list, the title
+// model's choice, a model's crew proposal) stays within HandleWordMax, so the
+// handles nobody typed remain one short word.
 const (
-	HandleMin = 2
-	HandleMax = 12
+	HandleMin     = 2
+	HandleMax     = 24
+	HandleWordMax = 12
 )
 
 // Reserved addresses are words the Traffic log uses for someone who is not a
@@ -157,7 +161,7 @@ const handleWordMin = 3
 // branches for qa binary" is about the binary). A generic last word ("bug",
 // "support") gives way to the one before it. A short qualifier right in front
 // of the head rides with it when both fit (@qa-binary, @api-docs). The result
-// is lowercased and cut to HandleMax. A title with no usable word gives "chat";
+// is lowercased and cut to HandleWordMax. A title with no usable word gives "chat";
 // an empty title gives "".
 func DeriveHandle(title string) string {
 	if strings.TrimSpace(title) == "" {
@@ -189,11 +193,11 @@ func DeriveHandle(title string) string {
 	base := words[head]
 	if head > 0 {
 		prev := words[head-1]
-		if len(prev) >= HandleMin && len(prev) <= handleWordMin && usable(prev) && len(prev)+1+len(base) <= HandleMax {
+		if len(prev) >= HandleMin && len(prev) <= handleWordMin && usable(prev) && len(prev)+1+len(base) <= HandleWordMax {
 			base = prev + "-" + base
 		}
 	}
-	base = cutHandle(base, HandleMax)
+	base = cutHandle(base, HandleWordMax)
 	if handleShape(base) != nil {
 		return "chat"
 	}
@@ -209,14 +213,15 @@ func cutHandle(h string, n int) string {
 }
 
 // uniqueHandle is base, or base with the lowest number from 2 that no member
-// of t other than key uses, cut so the whole stays within HandleMax.
+// of t other than key uses, cut so the whole stays within HandleWordMax: only
+// handles the engine picks are numbered.
 func uniqueHandle(t Team, key, base string) string {
 	if handleProblem(t, key, base) == nil {
 		return base
 	}
 	for n := 2; ; n++ {
 		suffix := strconv.Itoa(n)
-		h := cutHandle(base, HandleMax-len(suffix)) + suffix
+		h := cutHandle(base, HandleWordMax-len(suffix)) + suffix
 		if handleProblem(t, key, h) == nil {
 			return h
 		}
@@ -296,7 +301,7 @@ func (f *File) ChooseHandle(id, key string, choices []string, title string) (old
 	}
 	var usable []string
 	for _, c := range choices {
-		if ValidHandle(c) == nil && !strings.Contains(c, "-") {
+		if ValidHandle(c) == nil && len(c) <= HandleWordMax && !strings.Contains(c, "-") {
 			usable = append(usable, c)
 		}
 	}
@@ -324,7 +329,7 @@ func pickHandle(t Team, key string, choices []string, title string) string {
 			if q == c || len(q) < handleWordMin || stopWords[q] || fillerWords[q] || strings.Trim(q, "0123456789") == "" {
 				continue
 			}
-			if h := q + "-" + c; len(h) <= HandleMax && handleProblem(t, key, h) == nil {
+			if h := q + "-" + c; len(h) <= HandleWordMax && handleProblem(t, key, h) == nil {
 				return h
 			}
 		}

@@ -151,7 +151,7 @@ func (b *appBackend) memberAdd(t teamstore.Team, agent string, ask appwire.Membe
 func (b *appBackend) memberStart(t teamstore.Team, ask appwire.MemberAsk) (string, error) {
 	handle, brief := strings.TrimSpace(ask.Handle), strings.TrimSpace(ask.Brief)
 	if err := teamstore.ValidHandle(handle); err != nil {
-		return "", appwire.Errorf(appwire.CodeBadParams, "a handle is 2 to 12 lowercase letters or digits")
+		return "", appwire.Errorf(appwire.CodeBadParams, "a handle is %d to %d lowercase letters, digits or hyphens", teamstore.HandleMin, teamstore.HandleMax)
 	}
 	if _, taken := t.ByHandle(handle); taken {
 		return "", appwire.Errorf(appwire.CodeBadParams, "@%s is already in %s", handle, t.Name)
@@ -462,7 +462,7 @@ var appProposalAsk = fmt.Sprintf("Propose a crew for the work in this conversati
 	`{"t":"team","id":"stream-id","name":"team name","lead":"lead-handle"}`+" (only for an org with 2+ teams).\n"+
 	`{"t":"member","handle":"role-word","role":"short role name","brief":"whole assignment","team":"stream-id","reports_to":"manager"}`+"\n"+
 	"Write members top-down, breadth first. reports_to is manager or an earlier team lead's handle; omit team for a single crew. "+
-	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleMax, teamstore.HandleMax)
+	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleWordMax, teamstore.HandleWordMax)
 
 // appNoProposal is the quiet line a conversation carries when what came back
 // could not be read as a proposal, and appNoAnswer leads the line when nothing
