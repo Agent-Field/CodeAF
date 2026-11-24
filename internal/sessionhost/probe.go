@@ -2,6 +2,10 @@ package sessionhost
 
 // Report is the operator-facing feasibility report, with a compact projection
 // served by the health endpoint.
+// abstractScopeABI is the first Landlock version that can scope abstract Unix
+// sockets (Linux 6.12); internal/executor refuses a required fence below it too.
+const abstractScopeABI = 6
+
 type Report struct {
 	OK          bool           `json:"ok"`
 	Mode        string         `json:"mode"`
@@ -47,6 +51,12 @@ func (r Report) decide() Report {
 		r.OK, r.Mode, r.Reason = true, modeUID, ""
 	case r.FenceMode == "none":
 		r.Reason = "command restrictions are unavailable"
+	case r.Landlock.ABI < abstractScopeABI:
+		// Abstract Unix sockets belong to no user, so only the fence can keep one
+		// chat from connecting to another's, and only a kernel from Linux 6.12 can
+		// make the fence do that. An operator who accepts the gap says so with
+		// CODEAF_SESSIONHOST_REQUIRE=uid, which is checked above.
+		r.Reason = "command restrictions cannot keep one chat's local sockets from another's on this kernel"
 	default:
 		r.OK, r.Mode, r.Reason = true, modeFenced, ""
 	}

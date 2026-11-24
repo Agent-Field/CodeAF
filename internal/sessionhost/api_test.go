@@ -381,3 +381,22 @@ func TestC9_PlainWords(t *testing.T) {
 		}
 	}
 }
+
+// C2: abstract Unix sockets belong to no user, so a fenced chat is only kept apart from
+// the others where the kernel can scope them (Landlock ABI 6, Linux 6.12). Below that the
+// machine refuses to start chats unless the operator chose process-only isolation.
+func TestC2_FencedModeNeedsAKernelThatScopesAbstractSockets(t *testing.T) {
+	report := func(abi int, require string) Report {
+		return Report{Require: require, UIDSwitch: SwitchReport{OK: true}, Landlock: LandlockReport{Available: abi > 0, ABI: abi}}
+	}
+	if got := report(5, modeFenced).decide(); got.OK || got.Mode != modeRefused ||
+		got.Reason != "command restrictions cannot keep one chat's local sockets from another's on this kernel" {
+		t.Fatalf("an old kernel passed or was unexplained: %+v", got)
+	}
+	if got := report(6, modeFenced).decide(); !got.OK || got.Mode != modeFenced {
+		t.Fatalf("a kernel that can scope was refused: %+v", got)
+	}
+	if got := report(5, modeUID).decide(); !got.OK || got.Mode != modeUID {
+		t.Fatalf("the operator's explicit process-only choice was refused: %+v", got)
+	}
+}

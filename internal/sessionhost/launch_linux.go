@@ -79,6 +79,11 @@ func launch(args []string) error {
 		return errors.New("Could not block new process privileges.")
 	}
 	_ = os.WriteFile("/proc/self/oom_score_adj", []byte("500"), 0)
+	// A chat's files are its own. /dev/shm and /tmp are shared by every chat on
+	// the machine and a file made there with the usual 022 is readable by all of
+	// them, so what a chat's processes create is closed to everyone else unless
+	// the chat itself opens it up.
+	unix.Umask(0o077)
 
 	// Linux requires CAP_SETPCAP to drop a bounding bit. The identity
 	// switch clears that capability, so the exec thread must drop the
