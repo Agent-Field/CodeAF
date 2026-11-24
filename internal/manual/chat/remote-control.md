@@ -100,7 +100,7 @@ The view stays readable, and `enter` reconnects. Nothing is lost.
 
 The computer running the chat also keeps a daily allowance of live traffic. When it is used up, every live view stays open and readable but turns watch only, and says `watch only until 00:00 UTC (daily limit)`. Typing works again after midnight UTC. The count survives a restart.
 
-## Why did my live view close — not running this chat, does not share, closed this chat, too many computers
+## Why did my live view end — nobody is running it, watch is off, it ended there, too many computers
 
 The view says why in these words:
 
