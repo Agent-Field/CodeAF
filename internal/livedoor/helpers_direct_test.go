@@ -839,13 +839,13 @@ func (r *directRig) advanceFine(d time.Duration) {
 	}
 }
 
-// reopenAfterDropErr opens chat on a Link whose relay tunnel has just gone, the
+// askAgainAfterDropErr opens chat on a Link whose relay tunnel has just gone, the
 // way a roaming client does: an open that is refused because the dying tunnel
 // had not been let go of yet is simply asked again, and one that is refused with a
 // SPOKEN reason is the answer. The Link may dial at once or wait for its redial
 // timer, and both are phase 1's to decide; this moves the clock to the redial
 // timer only while an open is still waiting for it.
-func (r *directRig) reopenAfterDropErr(chat string) (io.ReadWriteCloser, error) {
+func (r *directRig) askAgainAfterDropErr(chat string) (io.ReadWriteCloser, error) {
 	r.t.Helper()
 	var last error
 	deadline := time.Now().Add(5 * time.Second)
@@ -914,9 +914,9 @@ func (r *directRig) reopenOnce(chat string) (io.ReadWriteCloser, error) {
 	}
 }
 
-func (r *directRig) reopenAfterDrop(chat string) io.ReadWriteCloser {
+func (r *directRig) askAgainAfterDrop(chat string) io.ReadWriteCloser {
 	r.t.Helper()
-	ch, err := r.reopenAfterDropErr(chat)
+	ch, err := r.askAgainAfterDropErr(chat)
 	if err != nil {
 		r.t.Fatalf("reopening %s failed: %v", chat, err)
 	}

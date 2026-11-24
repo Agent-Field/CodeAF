@@ -357,7 +357,7 @@ func TestDirectRetriesBackOffFiveFifteenSixtyThreeHundredSixHundredAndResetAfter
 
 		rig.tunnel(RoadRelay, 1).kill()
 		within(t, "the Link to notice its relay tunnel is gone", func() bool { return rig.link.State().Kind != Live })
-		if road := rig.speak(rig.reopenAfterDrop("chat-b")); road != RoadRelay {
+		if road := rig.speak(rig.askAgainAfterDrop("chat-b")); road != RoadRelay {
 			t.Fatalf("the reopened chat was carried on %q, want the relay", road)
 		}
 		// How many dials it takes to get a new tunnel (the Link's own redial and a
@@ -794,7 +794,7 @@ func TestAStaleAttemptCannotCommitAfterIdleOrANewRelayTunnel(t *testing.T) {
 		rig, release := staleRig(t)
 		rig.tunnel(RoadRelay, 1).kill()
 		within(t, "the Link to notice its relay tunnel is gone", func() bool { return rig.link.State().Kind != Live })
-		ch := rig.reopenAfterDrop("chat-b")
+		ch := rig.askAgainAfterDrop("chat-b")
 		if road := rig.speak(ch); road != RoadRelay {
 			t.Fatalf("the reopened chat was carried on %q, want the relay", road)
 		}
@@ -955,7 +955,7 @@ func spokenEnd(t *testing.T, onDirect bool, reason string) (*directRig, spokenOu
 	out.ended = rig.endedList()
 	st := rig.link.State()
 	out.kind, out.reason, out.watch, out.drive = st.Kind, st.Reason, st.Permit.Watch, st.Permit.Drive
-	reopened, rerr := rig.reopenAfterDropErr("chat-a")
+	reopened, rerr := rig.askAgainAfterDropErr("chat-a")
 	out.reopenOK = rerr == nil
 	out.reopenReason, _ = ReasonOf(rerr)
 	if reopened != nil {
