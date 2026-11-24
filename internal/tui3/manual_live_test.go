@@ -34,6 +34,7 @@ func TestEverySentenceOfALiveViewTheTerminalSpellsIsOnTheRemoteControlPage(t *te
 		permitAskOptionType,
 		permitAskOptionKeep,
 		permitAskOptionPick,
+		chatlist.LiveRoad("direct"),
 		chatlist.LiveRoad("relay"),
 	}
 	for _, sentence := range sentences {

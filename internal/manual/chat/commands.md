@@ -876,6 +876,11 @@ is where it is read. Every ordinary launch has a crew — auto is an answer, not
 so the line is always there; the one session that shows none is a **remote** one opened
 with `--host`, where the crew belongs to the other machine.
 
+In a chat opened live from another of your computers (*Remote control*), `/status` adds a
+`road` line that says how the view travels: `live · direct` between the two computers, or
+`live · relay` through the server in between. It follows the road the view is on right now, with no
+notice when it changes, and an offline copy and an ordinary chat draw none.
+
 `/status` differs from the on-screen status sheet in two deliberate ways:
 
 - The session **file** is added. A path is a thing you copy into another program.

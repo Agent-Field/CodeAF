@@ -2,7 +2,7 @@
 
 ## See my chat from my other computer — open it live, drive my desktop from my laptop, remote control, work in a chat without moving it
 
-Remote control lets this computer open a chat that another of your computers is running, and work in it without moving it. The chat opens **live**. On Home, press `enter` on a row that says `working on tower` or `held on tower`. The chat opens marked `on tower · live`, its box says `Message tower`, and what you see is what tower is doing as it happens. Typing, steering and stopping act on tower, in tower's folder, with tower's files and tools. Nothing moves, and tower's own window keeps working. `/status` adds a row that says how it travels, such as `live · relay`.
+Remote control lets this computer open a chat that another of your computers is running, and work in it without moving it. The chat opens **live**. On Home, press `enter` on a row that says `working on tower` or `held on tower`. The chat opens marked `on tower · live`, its box says `Message tower`, and what you see is what tower is doing as it happens. Typing, steering and stopping act on tower, in tower's folder, with tower's files and tools. Nothing moves, and tower's own window keeps working. `/status` adds a row that says how it travels, `live · direct` or `live · relay`.
 
 Three things have to be true. The two computers are paired. Both are running codeaf, because the other computer has to be there to answer. And remote control is on, on both; it is off until you turn it on (see *Remote control is off*). A chat that no computer is running right now cannot be opened live. Remote control never starts a chat on another computer. For a chat that is not running anywhere, `enter` does what it always did, and moving it here is the only way to carry on.
 
@@ -44,6 +44,22 @@ tower can watch your chats here but cannot type yet.
 
 `1` lets them type and `2` keeps them watching. `3` keeps them watching and opens `/devices`, where each computer has its own `w` and `t`. Either answer ends the question for good. `esc` leaves it unanswered, and it comes back the next time Home opens. A computer paired earlier could already move any of your chats, so letting it watch adds no new reach; typing is the new power, which is why it starts off.
 
+## Direct or relay — does my remote view go through the relay, can my two computers connect directly, how do I see if remote control is direct, why does status say live direct
+
+A live view starts through the server in between, so the chat appears at once. About half a second later the two computers try to connect straight to each other. If that works, the view moves to the direct road and `/status` has a `road` row that says `live · direct`. If it does not, the view stays where it was and says `live · relay`. Both are normal, and neither prints a banner. Two computers on one network connect directly.
+
+Moving between the roads loses nothing. Words you typed are sent once, a turn that is running keeps going, and the keyboard stays with the computer that had it. A direct connection that stops working goes back to the relay within 5 seconds when the relay is reachable, again with no notice.
+
+Traffic on the direct road does not count toward the daily allowance on *Disconnected after ten minutes idle*, and that allowance never stops a view that is already direct. A view you leave idle for 10 minutes lets go of both roads.
+
+## Only use the relay — make remote control stay off the direct road, turn off direct connections, what is STUN and does codeaf contact Google, does remote control work on a network that blocks UDP
+
+A computer behind a network that blocks UDP, and a phone on mobile data, usually cannot connect directly, so their views stay on the server in between, and remote control works the same there. Nothing needs setting.
+
+While two of your computers connect directly, each learns the other's network address, and a public STUN server (Cloudflare's, then Google's) is asked for this computer's public address. Nothing about your chats goes to a STUN server, and what the server in between carries is still only encrypted bytes. Set `CODEAF_REMOTE_ROAD=relay` to keep every view on the relay and contact no STUN server; it works on either computer.
+
+`CODEAF_REMOTE_STUN` replaces the two servers with your own, as a comma list of `host:port`, and `off` asks none, which still connects two computers on one network. Turning remote control off turns all of this off.
+
 ## Who has the keyboard — two computers on one chat, take the keyboard, typing from another computer
 
 Only one computer types into a live chat at a time. The other one shows:
@@ -68,7 +84,7 @@ It is read-only. If you press `enter` on words you typed it sends nothing: `not 
 
 ## Does remote control need relay storage — works with relay storage off, can the relay read what I type
 
-No. Remote control works with relay storage off, while both computers are running codeaf. The relay passes encrypted bytes between them that it cannot read, and it keeps no copy of your chat text. What it can see while you work is how much encrypted traffic there is, when, and which of your computers are connected; the word *relay* here is the server, as everywhere else in codeaf.
+No. Remote control works with relay storage off, while both computers are running codeaf. The relay passes encrypted bytes between them that it cannot read, or, when the two can reach each other, they connect directly and none of it passes through the server in between. It keeps no copy of your chat text. What it can see while you work is how much encrypted traffic there is, when, and which of your computers are connected; the word *relay* here is the server, as everywhere else in codeaf.
 
 What does need relay storage is a message for a computer that is **offline**: the desktop app can leave a waiting message for it, and the terminal cannot send anything to an offline computer at all. When the other computer is online, live typing needs no storage.
 

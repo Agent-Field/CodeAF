@@ -3755,6 +3755,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can my laptop answer a question that is waiting on my desktop", "remote-control"},
 		{"remote control says restart codeaf on the other computer", "remote-control"},
 		{"is remote control the same as codeaf serve and --at", "remote-control"},
+		// The direct road (the same page): two computers on one network connect
+		// without the relay, what /status says, and the switches that govern it.
+		{"does my remote view go through the relay", "remote-control"},
+		{"can my two computers connect directly", "remote-control"},
+		{"how do I see if remote control is direct", "remote-control"},
+		{"make remote control only use the relay", "remote-control"},
+		{"what is STUN and does codeaf contact Google", "remote-control"},
+		{"why does status say live direct", "remote-control"},
+		{"does remote control work on a network that blocks UDP", "remote-control"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

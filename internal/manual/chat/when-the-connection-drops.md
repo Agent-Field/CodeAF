@@ -55,6 +55,10 @@ are on the machine you are sitting at, so they are never at risk. And the conver
 journaled on the far machine as it happens — the far machine is the only thing that writes
 that file — so nothing that reached it is lost either way.
 
+## My live view of a chat on another computer lost its connection — the direct road stopped, no notice
+
+A chat opened live from another of your computers (*Remote control*) can travel straight between the two computers. When that direct connection stops working, the view goes back to the relay within 5 seconds when the relay is reachable, and `/status` changes from `live · direct` to `live · relay`. Nothing is printed on the screen. The words you typed are kept and sent once, a reply that is still running keeps arriving, and whoever had the keyboard keeps it. If the relay cannot be reached either, the view says `tower went offline`, keeps what it last showed and your words, and picks up where it stopped when the connection returns.
+
 ## The reply stopped halfway through
 
 If the model connection ends before the model reports a finish reason or sends its `[DONE]`

@@ -15,7 +15,7 @@ You learn one thing: **a code shown on a screen you own, typed on the other comp
 
 **One code never gives both.** A code for your chats does not give a shell on any machine. A code for a machine does not give your chats.
 
-Pairing your chats adds a third thing, once remote control is on: your paired computers can open live the chats the others are running, and type into them if you allow it. It is neither of the two grants above. It starts no chat and runs nothing on a machine you did not already run a chat on, and `codeaf serve` and `--at` are unchanged. The page *Remote control* compares the three.
+Pairing your chats adds a third thing, once remote control is on: your paired computers can open live the chats the others are running, and type into them if you allow it. It is neither of the two grants above. It starts no chat and runs nothing on a machine you did not already run a chat on, and `codeaf serve` and `--at` are unchanged. When the two computers can reach each other, a live view travels straight between them instead of through the server in between. The page *Remote control* compares the three.
 
 Both codes are good for 10 minutes and take 1 attempt. For both, the two screens show the same three words, and a person answers `y / n` on the machine being opened. The page *Pairing your chats with a second computer* has the chats door.
 

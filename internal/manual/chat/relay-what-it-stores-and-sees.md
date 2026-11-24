@@ -14,11 +14,11 @@ Turning relay storage off stops new uploads and leaves earlier frames readable. 
 
 ## How relay storage permission is discovered — custom addresses, startup and status
 
-The relay's answer decides, whatever its hostname. When it reports storage permission, terminal Settings shows the relay storage row and `/status` shows the dim line `relay storage  off` while off. A relay that answers without storage permission, including the self-hosted Go relay and older hosted Workers, keeps storage on and has no terminal row or line. The desktop still shows its effective storage permission.
+The server's answer decides, whatever its hostname. When it reports storage permission, terminal Settings shows the relay storage row and `/status` shows the dim line `relay storage  off` while off. A relay that answers without storage permission, including the self-hosted Go relay and older hosted Workers, keeps storage on and has no terminal row or line. The desktop still shows its effective storage permission.
 
 Before any answer, the three hosted addresses on *Hosted relay or your own relay* start closed; other addresses start open. A paired process probes an unanswered custom address once at startup. A successful answer is remembered for this account and relay, including when the field is absent. Sync off and unpaired homes make no requests.
 
-Eligible serving processes check after their first home-state round; chat windows check at launch and after `/status` in chat, and every ten minutes while a relay that reports storage is off (or a hosted address is still unknown). Storage on or an answer without the field stops requests. Once approval is read, waiting chats and uploads start within a minute without a restart. Opening a chat never waits for a relay reading. A revoked or removed device stops approval polling.
+Eligible serving processes check after their first home-state round; chat windows check at launch and after `/status` in chat, and every ten minutes while a relay that reports storage is off (or a hosted address is still unknown). Storage on or an answer without the field stops requests. Once approval is read, waiting chats and uploads start within a minute without a restart. Opening a chat never waits for that reading. A revoked or removed device stops approval polling.
 
 Repeated `/status` requests for the same home, identity and relay share a 30-second refresh window. The first request on a new binding is never held behind a previous account's refresh.
 
@@ -40,7 +40,7 @@ While blind pass-through is the road, the directory record for a chat holds only
 
 **The title and the folder name are never sent**, not even sealed: not when a chat starts, not when it is saved, not for the separate chat a take keeps when you had edits that were never saved, and not by the background pass over older chats, which sends nothing at all while storage is off. The names stay in the chat on your computers; taking the chat is how a name reaches the other one.
 
-Once relay storage is approved the record carries the sealed title and folder name again, as it always has. A self-hosted relay always did. Message text is never part of this record: see *Why can't I send a message to a chat on another computer*.
+Once relay storage is approved the record carries the sealed title and folder name again, as it always has. A self-hosted one always did. Message text is never part of this record: see *Why can't I send a message to a chat on another computer*.
 
 ## Why can't I send a message to a chat on another computer — messages wait for relay storage
 
@@ -76,6 +76,12 @@ There is no email or password sign-in on the relay. Your identity is an id that 
 The hosted relay has request logs and traces disabled. Rate counters retain network information for their fixed windows. A relay you run yourself logs only the first 8 characters of the identity id, the kind of request, the status and two byte counts. It never logs a body. An operator of a relay you do not run can do more than that; you cannot check it.
 
 The relay can also delete what it holds, or refuse to serve it. Keep a copy you care about on a computer of your own.
+
+## What does the relay see while a view is direct — setup messages, then nothing, does a STUN server see my chats
+
+A live view from another of your computers (*Remote control*) can move onto a direct connection between the two. Finding each other takes a few small messages sealed with your key that pass through the relay. Once the view has moved, none of its traffic goes there: typing, replies and files go straight between the two computers, so they are not in the byte counts or the daily allowance that the server keeps.
+
+A STUN server is a separate thing (by default Cloudflare's, then Google's). It is asked for this computer's public address and learns only that an app at that address asked; it never sees a chat, a name or a key. `CODEAF_REMOTE_ROAD=relay` asks none and never offers a direct connection. `CODEAF_REMOTE_STUN=off` asks none and still lets two computers on one network connect directly.
 
 ## Does the relay see my code, my prompts or my files
 

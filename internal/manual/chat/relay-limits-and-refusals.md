@@ -4,6 +4,10 @@
 
 An older service cannot promise that taking a chat displaces only the computer you saw holding it, so this build never sends that take to it. The sentence is `taking an open chat from another computer waits for a relay update; all else works, so close it there and move it here`. Writing, saving, pairing, listing, viewing and opening or continuing a chat no computer holds (closed, released after about 2 idle seconds when `idle handoff` / `CODEAF_IDLE_HANDOFF=1` is turned on — off by default — or lapsed) keep working. Close the chat on that computer (or let it go idle with `idle handoff` on), then move or open it here; update your own `codeaf relay` to this build. With remote control on and that computer running the chat, you can also open it live from Home and work in it without taking it (the page *Remote control*).
 
+## Does a direct view count against the daily allowance — live traffic, daily limit, watch only until midnight
+
+The daily allowance of live traffic that *Remote control* describes counts the bytes the server carries for a live view, and nothing else. A view that has moved onto a direct connection between the two computers adds nothing to it, and the allowance neither cuts that view off nor turns it watch only. A view that has not moved to a direct connection turns watch only until 00:00 UTC when the allowance is used up, as that page says.
+
 ## Is there a storage limit on the relay — how much can I sync
 
 Hosted uploads need relay storage approval (Settings → Devices → relay storage); these limits apply with storage on.
