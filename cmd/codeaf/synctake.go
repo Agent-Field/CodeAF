@@ -62,6 +62,7 @@ func wireSync(o *tui3.Options) {
 	if o.Takeover == nil {
 		o.Takeover = take
 	}
+	wireLive(o, s.Home)
 	if o.Branches.Open == nil {
 		o.Branches.Open = take.OpenBranch
 	}
