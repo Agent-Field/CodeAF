@@ -70,6 +70,12 @@ func (e *ChannelError) Reason() string {
 	return e.Why
 }
 
+// PlannedRedial reports whether the channel ended on purpose for an immediate
+// viewer road switch so remote.Roam skips its initial redial pause.
+func (e *ChannelError) PlannedRedial() bool {
+	return e != nil && e.Why == ReasonRoadChange
+}
+
 func (e *ChannelError) Unwrap() error {
 	return e.Err
 }

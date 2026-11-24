@@ -3,6 +3,7 @@ package livedoor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"sync"
@@ -32,6 +33,17 @@ type LinkConfig struct {
 	Active   func() bool
 	OnState  func(State)
 	HostName string
+
+	// Direct, when non-nil, lets this link try the direct road after its relay
+	// view is open. A nil Direct means the link never tries it and behaves
+	// exactly as it did before the direct road existed.
+	Direct *DirectConfig
+
+	// OnSignal is called with each signalling payload the host sends on the
+	// RELAY tunnel (channel 0). The caller feeds it to the direct
+	// implementation it built Direct from. It runs on the mux reader goroutine,
+	// so it must not block.
+	OnSignal func([]byte)
 }
 
 type trackedChannel struct {
@@ -75,6 +87,13 @@ func (lc *linkChannel) Read(p []byte) (int, error) {
 		if r := lc.tc.reason(); r != "" && errors.Is(err, ErrLinkClosed) {
 			return n, &ChannelError{Op: "close", Why: r, Err: io.EOF}
 		}
+		// A channel the link itself closed to change roads ends with a plain
+		// io.EOF, which a caller cannot tell from a host that hung up. The
+		// viewer-local road-change reason is what tells remote.Roam to redial at
+		// once, so every way such a channel can end reports it.
+		if lc.tc.reason() == ReasonRoadChange && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe)) {
+			return n, &ChannelError{Op: "close", Why: ReasonRoadChange, Err: io.EOF}
+		}
 	}
 	return n, err
 }
@@ -84,6 +103,9 @@ func (lc *linkChannel) Write(p []byte) (int, error) {
 	if err != nil {
 		if r := lc.tc.reason(); r != "" && errors.Is(err, ErrLinkClosed) {
 			return n, &ChannelError{Op: "close", Why: r, Err: io.ErrClosedPipe}
+		}
+		if lc.tc.reason() == ReasonRoadChange && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe)) {
+			return n, &ChannelError{Op: "close", Why: ReasonRoadChange, Err: io.ErrClosedPipe}
 		}
 	}
 	return n, err
@@ -128,6 +150,40 @@ type Link struct {
 	lastReason      string
 	closed          bool
 
+	// The road overlay. state above is always the RELAY state, and every relay
+	// handler keeps writing it. shown is what State() reports: it equals state
+	// while the relay carries, and it is the direct link's posture while the
+	// direct road carries. carrying is RoadRelay (or empty, which means the
+	// same) or RoadDirect.
+	shown      State
+	carrying   string
+	hostDirect bool
+
+	// roadGen counts every change of the road (a swap, a fallback, an idle
+	// detach) and attemptTok every start or abandonment of an attempt, so an
+	// open or an attempt that raced a change can tell, under mu, that it is
+	// stale. directMux and directSince describe the direct tunnel that carries.
+	roadGen     uint64
+	attemptTok  uint64
+	direct      *Link
+	directMux   *Mux
+	directSince time.Time
+	dchannels   map[*directChannel]struct{}
+
+	// noAutoRedial is set by the outer link on the nested direct link: the
+	// outer ladder owns every direct redial, so the nested link never schedules
+	// one of its own.
+	noAutoRedial bool
+
+	// The attempt ladder and the standby probe (link_direct.go).
+	dfails    int
+	dtimer    Timer
+	drun      *directRun
+	ptimer    Timer
+	sbProbed  bool
+	sbProbeAt time.Time
+	sbWait    chan struct{}
+
 	loopOnce sync.Once
 	wakeCh   chan struct{}
 	stopCh   chan struct{}
@@ -142,15 +198,19 @@ func NewLink(cfg LinkConfig) *Link {
 		clk = RealClock()
 	}
 	lim := cfg.Limits.withDefaults()
+	start := State{Kind: Connecting, Since: clk.Now()}
 	return &Link{
-		cfg:      cfg,
-		clock:    clk,
-		limits:   lim,
-		state:    State{Kind: Connecting, Since: clk.Now()},
-		channels: make(map[uint32]*trackedChannel),
-		baseWait: reconnectBase,
-		wakeCh:   make(chan struct{}, 1),
-		stopCh:   make(chan struct{}),
+		cfg:       cfg,
+		clock:     clk,
+		limits:    lim,
+		state:     start,
+		shown:     start,
+		carrying:  RoadRelay,
+		channels:  make(map[uint32]*trackedChannel),
+		dchannels: make(map[*directChannel]struct{}),
+		baseWait:  reconnectBase,
+		wakeCh:    make(chan struct{}, 1),
+		stopCh:    make(chan struct{}),
 	}
 }
 
@@ -176,29 +236,59 @@ func (l *Link) State() State {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.state
+	return l.shown
+}
+
+// Road returns the road that carries the view right now, "relay" or "direct".
+// It is State().Road, so it says "relay" until the direct road has taken over.
+func (l *Link) Road() string {
+	return l.State().Road
+}
+
+// SendSignal sends one signalling payload as an OpSignal frame on the current
+// relay tunnel. It is how the direct-road implementation talks to the host
+// before a direct path exists, and it fails when the link has no relay tunnel
+// to send on.
+func (l *Link) SendSignal(p []byte) error {
+	l.mu.Lock()
+	mux := l.mux
+	l.mu.Unlock()
+	if mux == nil {
+		return fmt.Errorf("%w: no relay tunnel to signal on", ErrLinkClosed)
+	}
+	return mux.SendSignal(p)
 }
 
 // Close permanently shuts down the link, stops any pending liveness or redial
 // timers, and closes the active tunnel if one is open.
 func (l *Link) Close() {
-	var mux *Mux
-	l.mu.Lock()
-	if !l.closed {
+	var (
+		mux    *Mux
+		nested *Link
+	)
+	func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if l.closed {
+			return
+		}
 		l.closed = true
 		l.stopLivenessTimerLocked()
 		l.stopRedialTimerLocked()
 		mux = l.mux
 		l.mux = nil
 		l.channels = make(map[uint32]*trackedChannel)
-	}
-	l.mu.Unlock()
+		nested = l.dropDirectLocked()
+	}()
 
 	l.stopOnce.Do(func() {
 		close(l.stopCh)
 	})
 	if mux != nil {
 		_ = mux.Close()
+	}
+	if nested != nil {
+		nested.Close()
 	}
 }
 
@@ -224,7 +314,7 @@ func (l *Link) Touch() {
 		sentProbe    bool
 		beforeWrites int64
 	)
-	if mux != nil && !wasActive {
+	if mux != nil && !wasActive && l.carrying != RoadDirect {
 		if now.Sub(l.lastHeard) >= l.limits.PingEvery {
 			l.pingSeq++
 			seq := l.pingSeq
@@ -236,7 +326,7 @@ func (l *Link) Touch() {
 			sentProbe = true
 		}
 	}
-	if mux != nil {
+	if mux != nil || l.carrying == RoadDirect {
 		l.resetLivenessTimerLocked(now)
 	}
 	l.mu.Unlock()
@@ -274,9 +364,21 @@ func (l *Link) Opener(chat string) func() (io.ReadWriteCloser, error) {
 	}
 }
 
-// OpenerContext returns a context-aware channel opener for chat that connects
-// the underlying host tunnel on first use or after detach and opens a new mux
-// channel for chat.
+// openTries is how many times one OpenerContext call retries a channel that
+// opened on a road the link then left: the open is repeated on the road that
+// carries now, so a swap that commits while a channel is opening can never
+// leave that channel behind on the road that was given up.
+const openTries = 3
+
+// errRoadMoved reports a channel that opened on a road the link left before the
+// channel could be registered. It is internal: OpenerContext retries on it.
+var errRoadMoved = errors.New("livedoor: the road changed while a channel was opening")
+
+// OpenerContext returns a context-aware channel opener for chat. While the
+// direct road carries the view it opens the channel there; otherwise, or when
+// the direct tunnel dies under the open, it connects the relay tunnel on first
+// use or after detach and opens a new mux channel for chat on that. The opener
+// is safe to call from many goroutines at once, one per open chat.
 func (l *Link) OpenerContext(chat string) func(context.Context) (io.ReadWriteCloser, error) {
 	return func(ctx context.Context) (io.ReadWriteCloser, error) {
 		if ctx == nil {
@@ -284,56 +386,110 @@ func (l *Link) OpenerContext(chat string) func(context.Context) (io.ReadWriteClo
 		}
 		l.startLoop()
 
-		mux, err := l.ensureConnected(ctx)
-		if err != nil {
-			return nil, l.wrapReasonError(err)
-		}
-
-		ch, err := mux.Open(ctx, chat)
-		if err != nil {
-			var ref *RefusedError
-			if errors.As(err, &ref) && ref != nil {
-				l.noteOpenRefusal(ref.Reason)
-				return nil, &ReasonError{
-					Reason: ref.Reason,
-					Host:   l.cfg.HostName,
-					Err:    err,
+		var lastErr error
+		for try := 0; try < openTries; try++ {
+			if rwc, handled, err := l.openDirect(ctx, chat); handled {
+				if !errors.Is(err, errRoadMoved) {
+					return rwc, err
 				}
+				lastErr = err
+				continue
 			}
-			select {
-			case <-mux.Done():
-				l.handleTunnelDone(mux)
-			default:
+			rwc, err := l.openRelay(ctx, chat)
+			if !errors.Is(err, errRoadMoved) {
+				return rwc, err
 			}
-			return nil, l.wrapReasonError(err)
+			lastErr = err
 		}
+		return nil, l.wrapReasonError(lastErr)
+	}
+}
 
-		tc := &trackedChannel{
-			ch:   ch,
-			chat: chat,
-		}
+// openRelay is the phase 1 opener: connect the relay tunnel if it is not up,
+// open the channel on it, and register the channel with the link.
+func (l *Link) openRelay(ctx context.Context, chat string) (io.ReadWriteCloser, error) {
+	// A standby that was probed and has not answered is never opened on: the
+	// open would wait on a tunnel that is already gone.
+	l.settleStandby(ctx)
+
+	mux, err := l.ensureConnected(ctx)
+	if err != nil {
+		return nil, l.wrapReasonError(err)
+	}
+
+	var (
+		gen   uint64
+		moved bool
+	)
+	func() {
 		l.mu.Lock()
+		defer l.mu.Unlock()
+		gen = l.roadGen
+		moved = l.carrying == RoadDirect
+	}()
+	if moved {
+		return nil, errRoadMoved
+	}
+
+	ch, err := mux.Open(ctx, chat)
+	if err != nil {
+		var ref *RefusedError
+		if errors.As(err, &ref) && ref != nil {
+			l.noteOpenRefusal(ref.Reason)
+			return nil, &ReasonError{
+				Reason: ref.Reason,
+				Host:   l.cfg.HostName,
+				Err:    err,
+			}
+		}
+		select {
+		case <-mux.Done():
+			l.handleTunnelDone(mux)
+		default:
+		}
+		return nil, l.wrapReasonError(err)
+	}
+
+	tc := &trackedChannel{
+		ch:   ch,
+		chat: chat,
+	}
+	stale := false
+	func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if l.roadGen != gen || (l.carrying == RoadDirect && l.mux == mux) {
+			// A swap committed after this channel was opened and so could not
+			// have seen it. It is not registered; it is closed below, outside
+			// the lock, and the open is repeated on the road that carries now.
+			stale = true
+			return
+		}
 		if l.mux == mux && !l.closed {
 			now := l.clock.Now()
-			if len(l.channels) == 0 && now.After(l.idleSince) {
+			if l.channelCountLocked() == 0 && now.After(l.idleSince) {
 				l.idleSince = now
 			}
 			l.channels[ch.ID()] = tc
 			l.resetLivenessTimerLocked(now)
 		}
-		l.mu.Unlock()
-		l.wake()
-
-		guard.Go("livedoor.link.channel", func() {
-			select {
-			case <-ch.Done():
-				l.handleChannelDone(mux, tc)
-			case <-l.stopCh:
-			}
-		})
-
-		return &linkChannel{Channel: ch, tc: tc}, nil
+	}()
+	if stale {
+		_ = ch.Close()
+		return nil, errRoadMoved
 	}
+	l.wake()
+
+	guard.Go("livedoor.link.channel", func() {
+		select {
+		case <-ch.Done():
+			l.handleChannelDone(mux, tc)
+		case <-l.stopCh:
+		}
+	})
+
+	l.maybeScheduleDirectAttempt()
+	return &linkChannel{Channel: ch, tc: tc}, nil
 }
 
 func (l *Link) startLoop() {
@@ -410,6 +566,7 @@ func (l *Link) noteOpenRefusal(reason string) {
 	if notify != nil && l.cfg.OnState != nil {
 		l.cfg.OnState(*notify)
 	}
+	l.settleRevocation()
 }
 
 func (l *Link) ensureConnected(ctx context.Context) (*Mux, error) {
@@ -486,6 +643,7 @@ func (l *Link) dialAndHandshake(ctx context.Context) (*Mux, error) {
 		OnPong:         func(uint32) { l.recordHeard() },
 		OnFrameRead:    func(int) { l.recordHeard() },
 		OnFrameWritten: func(int) { l.framesWritten.Add(1) },
+		OnSignal:       l.cfg.OnSignal,
 	})
 
 	helloWait := l.limits.DeadAfter
@@ -550,6 +708,7 @@ func (l *Link) dialAndHandshake(ctx context.Context) (*Mux, error) {
 		if notify != nil && l.cfg.OnState != nil {
 			l.cfg.OnState(*notify)
 		}
+		l.settleRevocation()
 		return nil, &ReasonError{Reason: ReasonNotAllowed, Host: l.cfg.HostName}
 	}
 
@@ -563,6 +722,7 @@ func (l *Link) dialAndHandshake(ctx context.Context) (*Mux, error) {
 	l.mux = mux
 	l.permit = permit
 	l.road = road
+	l.relayEstablishedLocked(ack.Direct)
 	l.lastHeard = now
 	l.lastPingSent = now
 	l.probeSentAt = time.Time{}
@@ -622,6 +782,7 @@ func (l *Link) handleDialFailure(err error) {
 		if notify != nil && l.cfg.OnState != nil {
 			l.cfg.OnState(*notify)
 		}
+		l.settleRevocation()
 		return
 	}
 
@@ -658,6 +819,7 @@ func (l *Link) recordHeard() {
 	if !l.probeDeadline.IsZero() && !now.Before(l.probeSentAt) {
 		l.probeDeadline = time.Time{}
 	}
+	l.standbyAnsweredLocked(now)
 	if l.mux != nil && l.cfg.Active != nil && l.cfg.Active() {
 		l.lastActive = now
 		if now.After(l.idleSince) {
@@ -688,16 +850,40 @@ func (l *Link) isActiveLocked(now time.Time) bool {
 	return cfgActive || touchActive
 }
 
+// sameShown reports whether two states are the same to a person: the four
+// fields OnState fires on. Since is deliberately left out, so a state that is
+// written again keeps the time it began.
+func sameShown(a, b State) bool {
+	return a.Kind == b.Kind && a.Reason == b.Reason && a.Permit == b.Permit && a.Road == b.Road
+}
+
+// setStateLocked records a RELAY state and returns the one a caller must be
+// told about, or nil. While the relay carries it is exactly the phase 1 rule:
+// the state is stored and shown, and a change of Kind, Reason, Permit or Road is
+// reported. While the direct road carries, a relay event is stored silently,
+// because a person is looking at the direct road and a relay state (a spent
+// budget, a tunnel that ended) is not about it.
 func (l *Link) setStateLocked(next State) *State {
-	if l.state.Kind == next.Kind &&
-		l.state.Reason == next.Reason &&
-		l.state.Permit == next.Permit &&
-		l.state.Road == next.Road {
+	if l.carrying == RoadDirect {
+		if !sameShown(l.state, next) {
+			l.state = next
+		}
+		return nil
+	}
+	if sameShown(l.shown, next) {
 		return nil
 	}
 	l.state = next
+	l.shown = next
 	cp := next
 	return &cp
+}
+
+// channelCountLocked counts the channels that keep the link attached: the
+// relay's and the direct road's. Idle is decided over both, because a person
+// looking at a view on the direct road is as present as one on the relay.
+func (l *Link) channelCountLocked() int {
+	return len(l.channels) + len(l.dchannels)
 }
 
 func (l *Link) stopLivenessTimerLocked() {
@@ -730,7 +916,15 @@ func (l *Link) setLivenessTimerAtLocked(now, target time.Time) {
 }
 
 func (l *Link) resetLivenessTimerLocked(now time.Time) {
-	if l.closed || l.revoked || l.mux == nil {
+	if l.closed || l.revoked {
+		l.stopLivenessTimerLocked()
+		return
+	}
+	if l.carrying == RoadDirect {
+		l.resetDirectIdleTimerLocked(now)
+		return
+	}
+	if l.mux == nil {
 		l.stopLivenessTimerLocked()
 		return
 	}
@@ -763,7 +957,7 @@ func (l *Link) resetLivenessTimerLocked(now time.Time) {
 	// While NOT active, never schedule a repeating ping tick. If no channels
 	// are open, schedule zero timers; otherwise arm only the single one-shot
 	// IdleDetach timer.
-	if len(l.channels) == 0 {
+	if l.channelCountLocked() == 0 {
 		l.stopLivenessTimerLocked()
 		return
 	}
@@ -775,7 +969,10 @@ func (l *Link) resetLivenessTimerLocked(now time.Time) {
 }
 
 func (l *Link) scheduleRedialLocked(now time.Time) {
-	if l.closed || l.revoked || l.redialTimer != nil {
+	// A nested direct link never redials by itself (the outer ladder owns every
+	// direct redial), and the relay is never redialled while the direct road
+	// carries: it is dialled on demand when the direct road falls back.
+	if l.closed || l.revoked || l.redialTimer != nil || l.noAutoRedial || l.carrying == RoadDirect {
 		return
 	}
 	var wait time.Duration
@@ -815,6 +1012,13 @@ func (l *Link) handleLivenessTick() {
 	mux := l.mux
 	l.livenessTimer = nil
 	l.livenessAt = time.Time{}
+	if l.carrying == RoadDirect && !l.closed && !l.revoked {
+		// The direct road carries: the relay is silent and only idleness is
+		// decided here.
+		l.mu.Unlock()
+		l.handleDirectIdleTick(now)
+		return
+	}
 	if l.closed || l.revoked || mux == nil {
 		l.mu.Unlock()
 		return
@@ -834,6 +1038,7 @@ func (l *Link) handleLivenessTick() {
 			// Active host liveness deadline exceeded: close the tunnel, mark the
 			// host WentOffline, and schedule a jittered redial.
 			l.mux = nil
+			l.relayLostLocked()
 			l.channels = make(map[uint32]*trackedChannel)
 			l.retryCount = 0
 			l.baseWait = reconnectBase
@@ -866,7 +1071,7 @@ func (l *Link) handleLivenessTick() {
 	}
 
 	// Not active: check whether IdleDetach has elapsed.
-	if len(l.channels) == 0 {
+	if l.channelCountLocked() == 0 {
 		l.mu.Unlock()
 		return
 	}
@@ -883,6 +1088,8 @@ func (l *Link) detachIdleLocked(now time.Time, mux *Mux) {
 	l.mux = nil
 	l.stopLivenessTimerLocked()
 	l.stopRedialTimerLocked()
+	l.relayLostLocked()
+	l.bumpRoadGenLocked()
 
 	ended := make([]*trackedChannel, 0, len(l.channels))
 	for _, tc := range l.channels {
@@ -927,6 +1134,76 @@ func (l *Link) detachIdleLocked(now time.Time, mux *Mux) {
 	}
 }
 
+// applyChannelReasonLocked is what a SPOKEN channel end changes in the link,
+// for a relay channel and a direct one alike: the revoked, budget and
+// permit-changed postures and the immediate-redial flags. It returns the state
+// the caller must announce, or nil. current says whether the channel belonged to
+// the tunnel that is current now (the relay mux for a relay channel, the nested
+// direct mux for a direct one), because a channel of an old tunnel must not move
+// the state of its replacement.
+func (l *Link) applyChannelReasonLocked(reason string, now time.Time, current, onDirect bool) *State {
+	road := l.road
+	show := l.setStateLocked
+	shownKind := l.state.Kind
+	if onDirect {
+		road = RoadDirect
+		show = l.directShownLocked
+		shownKind = l.shown.Kind
+	}
+
+	switch reason {
+	case ReasonRemoved:
+		return l.markRevokedLocked(ReasonRemoved, now)
+	case ReasonBudget:
+		l.budgetExhausted = true
+		l.permit.Drive = false
+		l.lastReason = ReasonBudget
+		if current && !l.revoked {
+			return show(State{
+				Kind:   StateBudget,
+				Reason: ReasonBudget,
+				Since:  now,
+				Permit: l.permit,
+				Road:   road,
+			})
+		}
+	case ReasonPermitChanged:
+		l.lastReason = ReasonPermitChanged
+		l.immediateRedial = true
+		l.permit.Drive = false
+		if current && !l.revoked && (shownKind == Live || shownKind == WatchOnly) {
+			return show(State{
+				Kind:   WatchOnly,
+				Reason: ReasonPermitChanged,
+				Since:  now,
+				Permit: l.permit,
+				Road:   road,
+			})
+		}
+	case ReasonLagging:
+		l.immediateRedial = true
+	}
+	return nil
+}
+
+// markRevokedLocked records that the host removed this viewer, stops every
+// timer that would try again, and returns the Revoked state to announce. While
+// the direct road carries the state is stored silently (it is a relay write);
+// settleRevocation then takes the road down and announces it.
+func (l *Link) markRevokedLocked(reason string, now time.Time) *State {
+	l.revoked = true
+	l.lastReason = reason
+	l.stopLivenessTimerLocked()
+	l.stopRedialTimerLocked()
+	return l.setStateLocked(State{
+		Kind:   Revoked,
+		Reason: reason,
+		Since:  now,
+		Permit: pair.Permit{},
+		Road:   l.road,
+	})
+}
+
 func (l *Link) handleChannelDone(mux *Mux, tc *trackedChannel) {
 	reason := tc.reason()
 	now := l.clock.Now()
@@ -941,48 +1218,7 @@ func (l *Link) handleChannelDone(mux *Mux, tc *trackedChannel) {
 	}
 	onEnd = l.onChannelEnd
 
-	switch reason {
-	case ReasonRemoved:
-		l.revoked = true
-		l.lastReason = ReasonRemoved
-		l.stopLivenessTimerLocked()
-		l.stopRedialTimerLocked()
-		notify = l.setStateLocked(State{
-			Kind:   Revoked,
-			Reason: ReasonRemoved,
-			Since:  now,
-			Permit: pair.Permit{},
-			Road:   l.road,
-		})
-	case ReasonBudget:
-		l.budgetExhausted = true
-		l.permit.Drive = false
-		l.lastReason = ReasonBudget
-		if l.mux == mux && !l.revoked {
-			notify = l.setStateLocked(State{
-				Kind:   StateBudget,
-				Reason: ReasonBudget,
-				Since:  now,
-				Permit: l.permit,
-				Road:   l.road,
-			})
-		}
-	case ReasonPermitChanged:
-		l.lastReason = ReasonPermitChanged
-		l.immediateRedial = true
-		l.permit.Drive = false
-		if l.mux == mux && !l.revoked && (l.state.Kind == Live || l.state.Kind == WatchOnly) {
-			notify = l.setStateLocked(State{
-				Kind:   WatchOnly,
-				Reason: ReasonPermitChanged,
-				Since:  now,
-				Permit: l.permit,
-				Road:   l.road,
-			})
-		}
-	case ReasonLagging:
-		l.immediateRedial = true
-	}
+	notify = l.applyChannelReasonLocked(reason, now, l.mux == mux, false)
 
 	if l.mux == mux && !l.closed && !l.revoked {
 		l.resetLivenessTimerLocked(now)
@@ -990,7 +1226,9 @@ func (l *Link) handleChannelDone(mux *Mux, tc *trackedChannel) {
 	l.mu.Unlock()
 	l.wake()
 
-	if reason != "" && onEnd != nil {
+	// A road-change is the link's own doing and is never spoken, so it is never
+	// reported as the end of a channel.
+	if reason != "" && reason != ReasonRoadChange && onEnd != nil {
 		tc.endOnce.Do(func() {
 			onEnd(tc.chat, reason)
 		})
@@ -998,6 +1236,7 @@ func (l *Link) handleChannelDone(mux *Mux, tc *trackedChannel) {
 	if notify != nil && l.cfg.OnState != nil {
 		l.cfg.OnState(*notify)
 	}
+	l.settleRevocation()
 }
 
 func (l *Link) handleTunnelDone(mux *Mux) {
@@ -1015,6 +1254,20 @@ func (l *Link) handleTunnelDone(mux *Mux) {
 	}
 	l.mux = nil
 	l.stopLivenessTimerLocked()
+	if l.carrying == RoadDirect {
+		// The relay tunnel ended while it was only the silent standby of the
+		// direct road. Nothing a person sees depends on it, so it is dropped
+		// without a state change, a redial timer or a notification: it is dialled
+		// again on demand when the direct road falls back.
+		l.sbProbeAt = time.Time{}
+		l.releaseStandbyWaitLocked()
+		l.hostDirect = false
+		l.resetLivenessTimerLocked(now)
+		l.mu.Unlock()
+		l.wake()
+		return
+	}
+	l.relayLostLocked()
 	onEnd = l.onChannelEnd
 
 	for _, tc := range l.channels {
@@ -1072,7 +1325,7 @@ func (l *Link) handleTunnelDone(mux *Mux) {
 	if onEnd != nil {
 		for _, tc := range ended {
 			tc := tc
-			if r := tc.reason(); r != "" {
+			if r := tc.reason(); r != "" && r != ReasonRoadChange {
 				tc.endOnce.Do(func() {
 					onEnd(tc.chat, r)
 				})
@@ -1082,6 +1335,7 @@ func (l *Link) handleTunnelDone(mux *Mux) {
 	if notify != nil && l.cfg.OnState != nil {
 		l.cfg.OnState(*notify)
 	}
+	l.settleRevocation()
 }
 
 func (l *Link) handleRedialTick() {
@@ -1105,16 +1359,26 @@ func (l *Link) loop() {
 			return
 		}
 		var (
-			livenessC <-chan time.Time
-			redialC   <-chan time.Time
-			muxDoneC  <-chan struct{}
-			curMux    = l.mux
+			livenessC  <-chan time.Time
+			redialC    <-chan time.Time
+			attemptC   <-chan time.Time
+			probeC     <-chan time.Time
+			muxDoneC   <-chan struct{}
+			curMux     = l.mux
+			curAttempt = l.dtimer
+			curProbe   = l.ptimer
 		)
 		if l.livenessTimer != nil {
 			livenessC = l.livenessTimer.C()
 		}
 		if l.redialTimer != nil {
 			redialC = l.redialTimer.C()
+		}
+		if l.dtimer != nil {
+			attemptC = l.dtimer.C()
+		}
+		if l.ptimer != nil {
+			probeC = l.ptimer.C()
 		}
 		if curMux != nil {
 			muxDoneC = curMux.Done()
@@ -1131,6 +1395,10 @@ func (l *Link) loop() {
 			l.handleLivenessTick()
 		case <-redialC:
 			l.handleRedialTick()
+		case <-attemptC:
+			l.handleAttemptTick(curAttempt)
+		case <-probeC:
+			l.handleDirectProbeTick(curProbe)
 		}
 	}
 }
