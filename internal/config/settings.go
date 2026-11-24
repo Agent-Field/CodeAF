@@ -4,7 +4,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1456,6 +1458,14 @@ var OperatorEnvPins = []string{
 	// measuring a relay. It is a safety rail's size, not a preference, so it
 	// stays in the environment.
 	"CODEAF_REMOTE_DAILY_MB",
+	// CODEAF_REMOTE_ROAD=relay keeps every remote view on the relay on the
+	// computer that sets it, and CODEAF_REMOTE_STUN replaces the public STUN
+	// servers a direct connection asks for this computer's address (a comma
+	// list, or "off" for none) (internal/directroad). Both are an operator's
+	// off switch and address book while the direct road is new, and the person
+	// has one switch, Remote control, so neither is a row.
+	"CODEAF_REMOTE_ROAD",
+	"CODEAF_REMOTE_STUN",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -3387,6 +3397,81 @@ func RemoteControlAt(profileDir string) bool {
 		return value
 	}
 	return DefaultRemoteControl
+}
+
+// The two STUN servers a direct connection asks for this computer's public
+// address by default. Cloudflare comes first because the same company already
+// carries the hosted relay, and Google comes second so one dead server cannot
+// silently turn off direct connections across two networks. A STUN server is
+// told only that an app on some public address asked for its mapping.
+const (
+	DefaultRemoteSTUNPrimary   = "stun:stun.cloudflare.com:3478"
+	DefaultRemoteSTUNSecondary = "stun:stun.l.google.com:19302"
+
+	// remoteSTUNPort is the port a STUN entry without one means.
+	remoteSTUNPort = "3478"
+)
+
+// RemoteRoadRelayOnly reports whether CODEAF_REMOTE_ROAD=relay keeps every
+// remote view on the relay on this computer: it offers no direct connection,
+// refuses any offer, and contacts no STUN server. Unset, or any other value,
+// leaves the road automatic. It is operator plumbing and not a Settings row,
+// because a person who wants less than direct has the Remote control switch.
+func RemoteRoadRelayOnly() bool {
+	return strings.EqualFold(strings.TrimSpace(env.Get("CODEAF_REMOTE_ROAD")), "relay")
+}
+
+// RemoteSTUN is the list of STUN server URLs a direct connection may ask, in
+// the order to prefer them, each spelled stun:host:port. CODEAF_REMOTE_STUN
+// replaces the defaults with a comma-separated list of host:port or stun: URLs,
+// and the single word "off" means none, so only addresses on a shared network
+// are offered. An entry that is not a usable STUN address is dropped, and a
+// value with no usable entry at all is read as unset, so a typo cannot turn off
+// direct connections across networks without saying "off".
+//
+// NO TURN SERVER IS EVER ACCEPTED HERE: a turn: or turns: entry is dropped. A
+// relayed media server would carry the bytes of a person's chats through a third
+// company, and the relay this program already has is the only road that does.
+func RemoteSTUN() []string {
+	raw := strings.TrimSpace(env.Get("CODEAF_REMOTE_STUN"))
+	if strings.EqualFold(raw, "off") {
+		return []string{}
+	}
+	var servers []string
+	for _, entry := range strings.Split(raw, ",") {
+		if url, ok := remoteSTUNEntry(entry); ok && !slices.Contains(servers, url) {
+			servers = append(servers, url)
+		}
+	}
+	if len(servers) == 0 {
+		return []string{DefaultRemoteSTUNPrimary, DefaultRemoteSTUNSecondary}
+	}
+	return servers
+}
+
+// remoteSTUNEntry normalises one entry of CODEAF_REMOTE_STUN to stun:host:port.
+func remoteSTUNEntry(entry string) (string, bool) {
+	entry = strings.TrimSpace(entry)
+	if entry == "" || strings.ContainsAny(entry, " \t/?#@") {
+		return "", false
+	}
+	if scheme, rest, found := strings.Cut(entry, ":"); found && strings.EqualFold(scheme, "stun") {
+		entry = rest
+	} else if found && (strings.EqualFold(scheme, "turn") || strings.EqualFold(scheme, "turns") || strings.EqualFold(scheme, "stuns")) {
+		return "", false
+	}
+	host, port, err := net.SplitHostPort(entry)
+	if err != nil {
+		// A bare host, or a bare IPv6 address, means the default port.
+		host, port = strings.Trim(entry, "[]"), remoteSTUNPort
+	}
+	if host == "" || port == "" {
+		return "", false
+	}
+	if number, err := strconv.Atoi(port); err != nil || number < 1 || number > 65535 {
+		return "", false
+	}
+	return "stun:" + net.JoinHostPort(host, port), true
 }
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed
