@@ -197,8 +197,21 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	// store after the run (app/state_dir.go).
 	stateDir := fs.String("state-dir", "", "session store path (see manual for defaults)")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
+		goal := strings.Join(args, " ")
+		// A brief of "-" is read from stdin, as `codeaf do -` reads it: a brief
+		// in argv shows in every process listing, where a `pkill -f` built from
+		// a file the brief names matches the run itself.
+		if len(args) == 1 && args[0] == "-" {
+			piped, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return fmt.Errorf("read the brief from stdin: %w", err)
+			}
+			if goal = strings.TrimSpace(string(piped)); goal == "" {
+				return fmt.Errorf("the brief piped to stdin is empty")
+			}
+		}
 		run(ctx, host, app.Options{
-			Goal:        strings.Join(args, " "),
+			Goal:        goal,
 			High:        *high,
 			Low:         *low,
 			Frontier:    *frontier,

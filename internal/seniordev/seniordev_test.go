@@ -700,3 +700,40 @@ func TestAStoppedRunEndsWithItsOneTerminalAndTheTruth(t *testing.T) {
 		t.Fatalf("%d model requests, want none after the stop", n)
 	}
 }
+
+// A BRIEF OF "-" IS READ FROM WHAT IS PIPED IN. A brief on the command line is
+// in every process listing, so a `pkill -f` built from a file the brief names
+// matches the run itself. Piping it keeps it out of argv, as `codeaf do -`
+// already does.
+func TestABriefOfADashIsReadFromStdin(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.WriteString("Add the piped feature.\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = writer.Close()
+	saved := os.Stdin
+	os.Stdin = reader
+	t.Cleanup(func() { os.Stdin = saved; _ = reader.Close() })
+
+	if err := runBody(t, context.Background(), host,
+		"--high", "openrouter/fixture/vendor-model", "--", "-"); err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+	spec, err := os.ReadFile(filepath.Join(workspace, ".senior-dev", "spec.md"))
+	if err != nil {
+		t.Fatalf("no spec.md: %v", err)
+	}
+	if !strings.Contains(string(spec), "Add the piped feature.") {
+		t.Fatalf("spec.md = %q, want the piped brief", spec)
+	}
+}
