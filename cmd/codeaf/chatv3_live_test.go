@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -703,4 +704,47 @@ func TestMovingAChatHereForgetsItsLastSeenCopy(t *testing.T) {
 	if _, err := os.Stat(hostDir); !os.IsNotExist(err) {
 		t.Fatalf("forgetViewed left host folder %s on disk (err=%v)", hostDir, err)
 	}
+}
+
+// V13 of the phase 2 contract, a phase 1 completion: a message typed just before
+// the link dropped is sent again once, and not lost. The client does that only
+// when its policy says ResendUnanswered, and nothing but this door sets the
+// policy of a live view, so the test reads what the door asks the client to do.
+func TestTheLiveRoamingTurnsOnResendUnansweredTheLineBoundAndTheGapHandler(t *testing.T) {
+	road := newFakeLiveRoad()
+	dialer := remote.Dialer(func() (io.ReadWriteCloser, error) { return nil, errors.New("no host in this test") })
+	road.dialFn = func(string) remote.Dialer { return dialer }
+	var asked remote.Roaming
+	stop := errors.New("stop here: the policy is all this test reads")
+	door := &liveDoor{
+		home:  t.TempDir(),
+		roads: func(device, name string) (liveRoad, string, bool) { return road, "desktop", true },
+		roam: func(host string, hello remote.Hello, roaming remote.Roaming) (*remote.Client, error) {
+			asked = roaming
+			if hello.Window {
+				t.Errorf("the viewer sent a windowed hello, which the host's router would have to rewrite")
+			}
+			return nil, stop
+		},
+	}
+	_, err := door.Open(t.Context(), chatlist.Row{Cell: "cell-1", DeviceID: "dev_desktop", Device: "desktop", Status: chatlist.Running})
+	if !errors.Is(err, stop) {
+		t.Fatalf("Open = %v, want the error the test's dial returned", err)
+	}
+	if asked.Dial == nil {
+		t.Errorf("the live view asks to redial by no dialler at all")
+	}
+	if !asked.ResendUnanswered {
+		t.Errorf("a message typed just before the link drops is not resent after the redial: ResendUnanswered is off")
+	}
+	if asked.MaxLine != livedoor.MaxLine {
+		t.Errorf("the viewer reads lines of at most %d bytes, want the live door's own %d", asked.MaxLine, livedoor.MaxLine)
+	}
+	if asked.Window != 30*time.Minute {
+		t.Errorf("the live view keeps trying for %v after a drop, want 30 minutes for a laptop that comes back from sleep", asked.Window)
+	}
+	if asked.OnGap == nil {
+		t.Fatalf("a replay that lost events goes unnoticed: OnGap is nil")
+	}
+	asked.OnGap(remote.Gap{Stream: 3, Have: 10, First: 40})
 }

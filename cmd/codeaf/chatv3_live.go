@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -63,6 +66,9 @@ type liveDoor struct {
 	roads func(device, name string) (liveRoad, string, bool)
 	clock viewcache.Clock
 	dial  func(road liveRoad, row chatlist.Row) (tui3.Agent, remote.Welcome, error)
+	// roam dials a host the way remote.Roam does, and nil is remote.Roam. A test
+	// reads the policy the door asks for through it without a host to dial.
+	roam func(host string, hello remote.Hello, roaming remote.Roaming) (*remote.Client, error)
 }
 
 func (d *liveDoor) lookupRoad(device, name string) (liveRoad, string, bool) {
@@ -129,7 +135,11 @@ func (d *liveDoor) Open(ctx context.Context, row chatlist.Row) (tui3.Conversatio
 		// THE HOST ROUTER REWRITES THE HELLO to bind the holder's transcript and
 		// workspace, so the viewer sends only an unwindowed hello and lets Roam
 		// carry resume cursors across redials.
-		client, err := remote.Roam(host, remote.Hello{Window: false}, remote.Roaming{Dial: dialer})
+		roam := d.roam
+		if roam == nil {
+			roam = remote.Roam
+		}
+		client, err := roam(host, remote.Hello{Window: false}, liveRoaming(dialer, host))
 		if err != nil {
 			if isNotRunningError(err) {
 				return d.openOffline(host, row)
@@ -252,6 +262,40 @@ func liveDriving(base func() tui3.Driving, road liveRoad) func() tui3.Driving {
 			}
 		}
 		return driving
+	}
+}
+
+// liveRoamWindow is how long a live view keeps trying to reach its host after
+// the link drops: a laptop that comes back from sleep should find its view
+// again, so it is far longer than the minute a one-off remote door keeps.
+const liveRoamWindow = 30 * time.Minute
+
+// liveRoaming is the policy a live view redials by, and THE THREE SWITCHES IN IT
+// ARE LAWS, not tuning. ResendUnanswered is what keeps a message typed just
+// before the link dropped from being lost: the client resends it once, with the
+// id it carries, and the host answers a repeat without running it twice. MaxLine
+// bounds one inbound line to what the live door itself allows, so a hostile
+// peer cannot make the viewer buffer without end. OnGap says when the host's
+// replay no longer held every event the viewer missed. Leaving any of them out
+// turns the failure it guards into a silent one.
+func liveRoaming(dial remote.Dialer, host string) remote.Roaming {
+	return remote.Roaming{
+		Dial:             dial,
+		Window:           liveRoamWindow,
+		MaxLine:          livedoor.MaxLine,
+		ResendUnanswered: true,
+		OnGap:            liveGapNote(host),
+	}
+}
+
+// liveGapNote records that the host's replay ring had already dropped events
+// the viewer had not seen. The client moves its cursor past them and goes on
+// with the retained events on its own, and the words that were dropped are in the
+// host's transcript, which scrolling up reads, so the one thing left to do here
+// is to leave a line that says it happened.
+func liveGapNote(host string) func(remote.Gap) {
+	return func(gap remote.Gap) {
+		log.Printf("live view of %s: its replay no longer held events %d to %d of stream %d; the transcript has them", host, gap.Have+1, gap.First-1, gap.Stream)
 	}
 }
 
