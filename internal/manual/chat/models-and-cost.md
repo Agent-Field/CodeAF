@@ -151,7 +151,9 @@ send it, and lists it when that provider publishes a model list. Without an
 OpenRouter key, every default you have not chosen comes from the providers you
 did connect instead:
 
-- the conversation opens on the provider's preferred model, else its strongest;
+- the conversation opens on the provider's preferred model; when the account does not
+  list it, on the first model the account lists, and on a provider that names none
+  (Ollama, a custom endpoint), on its strongest;
 - the fallback is a different strong model, on the same provider when it offers
   one, else on another connected provider; with only one model, the fallback is
   that model, so a failed reply stays on it rather than moving to a provider you
@@ -178,14 +180,9 @@ Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in
 the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. The
 service reads the model list belonging to that account, and a new connection moves this
 conversation to `codex/gpt-5.5` when the account lists it, otherwise to the first model the
-account lists. Every model from it is qualified as `codex/<slug>`, and a crew seat on the
-plan may use any model the account lists.
-
-While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
-the conversation stays on its previous model and `enter` on Codex tries again.
-The Codex row in `/settings` uses the same cancellation: the first `esc` cancels
-the pending sign-in while keeping Settings open; later `esc` presses use the
-page's ordinary back-out behavior.
+account lists. Every model from it is qualified as `codex/<slug>`. Without an OpenRouter
+key a crew seat on the plan may use any model the account lists; with one, crew seats on
+the plan use `codex/gpt-5.5`.
 
 A Codex model's context window is the one that account's model list gives it — `272k` on
 every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
@@ -200,7 +197,17 @@ conversation file's `call` lines name `Codex` as the endpoint that served each r
 A Codex call has no dollar price codeaf can know. The spend page therefore shows no
 invented `$0.00` or unknown-price label; when the backend reports usage, it still counts
 the prompt, completion, cached-prompt and reasoning tokens. The plan is paid for outside
-codeaf. When its allowance is exhausted, the turn says exactly:
+codeaf.
+
+## Codex sign-in — cancel while waiting, plan usage limit reached, sign-in expired
+
+While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
+the conversation stays on its previous model and `enter` on Codex tries again.
+The Codex row in `/settings` uses the same cancellation: the first `esc` cancels
+the pending sign-in while keeping Settings open; later `esc` presses use the
+page's ordinary back-out behavior.
+
+When the ChatGPT plan's allowance is exhausted, the turn says exactly:
 
 ```
 codex reached your chatgpt plan's usage limit · it resets on its own
@@ -1565,8 +1572,8 @@ down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
 another. That includes codeaf's default: with no `fallback models` row written, an
-ordinary run defaults to DeepSeek V4.1 Flash (with OpenRouter connected; otherwise another
-model your providers offer), and this flag withholds that too.
+ordinary run defaults to DeepSeek V4.1 Flash (with OpenRouter or nothing connected;
+otherwise a model your providers offer), and this flag withholds that too.
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
 decides whether a long answer is moved to a task, and the writer of the brief that task opens
@@ -1888,7 +1895,7 @@ the model · asking again · 2 of 3`, or `the model went quiet mid-reply · aski
 2 of 3`.
 
 **If all three attempts come back with nothing, codeaf finishes the reply on another
-model** — the next one in your `fallback models` row, or codeaf's default when you have written no row: DeepSeek V4.1 Flash with OpenRouter connected, otherwise another model your providers offer. It is said out loud before it happens, naming
+model** — the next one in your `fallback models` row, or codeaf's default when you have written no row: DeepSeek V4.1 Flash with OpenRouter or nothing connected, otherwise a model your providers offer. It is said out loud before it happens, naming
 where the rest of the answer is coming from:
 
 ```
@@ -2159,7 +2166,7 @@ while it is replying* above, and *I changed the model but my task is still on th
 Yes. **A model that will not take your request at all is given up on the same way a model
 that goes quiet is: codeaf finishes the reply on the next model in your `fallback models`
 row**, or on codeaf's default when you have written no row: DeepSeek V4.1 Flash with
-OpenRouter connected, otherwise another model your providers offer.
+OpenRouter or nothing connected, otherwise a model your providers offer.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
 your model, a `502`, a torn connection, a deadline — is asked again, with a dim line each

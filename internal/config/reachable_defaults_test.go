@@ -386,7 +386,7 @@ func TestAnOpenRouterKeyKeepsEveryBuiltInEvenBesideDeepSeekDirect(t *testing.T) 
 	}
 }
 
-func TestTheTalkDefaultIsNeverEmptyWhenNoModelsAreKnown(t *testing.T) {
+func TestADefaultIsNeverEmptyWhenNoModelsAreKnown(t *testing.T) {
 	f := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "ollama")}}, models: map[string][]catalog.Model{}}
 	for slot, builtIn := range map[DefaultSlot]string{SlotTalk: DefaultModel, SlotFallback: DefaultFallbackModel} {
 		if got := f.pick(slot, builtIn, ""); got != builtIn {
@@ -593,7 +593,7 @@ func TestARememberedListIsReadAgainWhenItChanges(t *testing.T) {
 	}
 }
 
-func TestProviderFollowingRowsAreChangedOnlyWhenWritten(t *testing.T) {
+func TestOnlyTheFallbackRowFollowsTheProviders(t *testing.T) {
 	dir := t.TempDir()
 	if !FollowsProviders(KeyModelFallbacks) {
 		t.Fatal("the fallback models row does not follow the providers")
@@ -613,6 +613,36 @@ func TestProviderFollowingRowsAreChangedOnlyWhenWritten(t *testing.T) {
 		if FollowsProviders(key) {
 			t.Fatalf("%s follows the providers", key)
 		}
+	}
+}
+
+// CODEAF_MODEL names the conversation model when nothing is saved, so the
+// default fallback follows its provider, as the conversation itself does.
+func TestTheDefaultFallbackFollowsTheModelVariable(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("DEEPSEEK_API_KEY", "")
+	dir := t.TempDir()
+	listed := true
+	if err := WriteSources(dir, []PersistedSource{
+		{ID: "deepseek", Written: "deepseek", Key: "sk-ds-1234567890", Listed: &listed},
+		{ID: "ollama", Written: "ollama", Listed: &listed},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	set := ResolveSources(dir, "", DefaultBaseURL)
+	for id, rows := range map[string][]catalog.Model{"ollama": ids("qwen3:8b", "llama3.2:3b"), "deepseek": ids("deepseek-v4-pro", "deepseek-v4-flash")} {
+		service, _ := set.ByID(id)
+		if err := catalog.Remember(CatalogOptionsFor(service, dir), rows); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := DefaultFallbackAt(dir); got != "deepseek/deepseek-v4-flash" {
+		t.Fatalf("with nothing chosen, fallback = %q, want the hosted provider's", got)
+	}
+	t.Setenv(ModelEnv, "ollama/qwen3:8b")
+	if got := DefaultFallbackAt(dir); got != "ollama/llama3.2:3b" {
+		t.Fatalf("with %s=ollama/qwen3:8b, fallback = %q, want Ollama's other model", ModelEnv, got)
 	}
 }
 

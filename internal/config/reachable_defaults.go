@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
@@ -78,7 +79,17 @@ func ReachableDefaultAt(profileDir string, slot DefaultSlot, builtIn string) str
 		read[id] = rows
 		return rows
 	}
-	return chooseDefault(sources, slot, builtIn, ChatModelAt(profileDir), modelsOf)
+	return chooseDefault(sources, slot, builtIn, talkModelAt(profileDir), modelsOf)
+}
+
+// talkModelAt is the conversation model a person chose, the saved row and then
+// CODEAF_MODEL, the same order a conversation's launch reads. The bottom rung
+// is left out: that rung is what [ReachableDefaultAt] itself chooses.
+func talkModelAt(profileDir string) string {
+	if saved := ChatModelAt(profileDir); saved != "" {
+		return saved
+	}
+	return strings.TrimSpace(env.Get(ModelEnv))
 }
 
 // chooseDefault is [ReachableDefaultAt] over a set of services and a reader of
@@ -469,10 +480,9 @@ func usableModels(models []catalog.Model) []catalog.Model {
 
 // listKey names one list by its backing array and length. The lists the
 // defaults rank are shared and never modified ([recallCached],
-// [serviceModelsAt]), so an
-// unchanged provider list is filtered and ranked once rather than on every
-// call; holding the key keeps that array alive, so the address is not reused
-// while the entry stands.
+// [serviceModelsAt]), so an unchanged provider list is filtered and ranked once
+// rather than on every call; holding the key keeps that array alive, so the
+// address is not reused while the entry stands.
 type listKey struct {
 	first *catalog.Model
 	n     int
