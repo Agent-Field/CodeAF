@@ -849,3 +849,31 @@ It caps retained paths and visited entries at `2*N+100`, and Go allocations at
 bytes; afterward it allocated 2,505,888 bytes. The 5,000+5,000 proof allocated
 21,807,368 bytes. Bounds tests require refusal for paths, entries, reply size
 and content bytes. Final metadata revalidation remains mandatory.
+
+## Live door limits
+
+Remote control live sessions (`internal/livedoor/limits.go` owns these
+constants and duration variables) are bounded by the table below. A change to
+any of them changes this section in the same commit.
+
+| Constant | Value | What it bounds |
+| --- | --- | --- |
+| `livedoor.MaxLine` | 256 KiB | A single EventWire JSON line so one oversized event cannot pin memory at the host or viewer above the tunnel. |
+| `livedoor.ChunkBytes` | 16 KiB | A single multiplexer frame payload so concurrent channels interleave fairly on one tunnel and fit well inside a Noise plaintext record. |
+| `livedoor.ChannelWindow` | 256 KiB | Unacknowledged data bytes in flight on one multiplexed channel so one unread chat cannot stall other chats on the same link. |
+| `livedoor.LinkWindow` | 1 MiB | Total unacknowledged data bytes in flight across the entire tunnel so a blind relay cannot buffer unbounded data for a slow viewer. |
+| `livedoor.QueueMax` | 4 MiB | The per-channel outbound queue at the host before a lagging viewer is reset back to Resume. |
+| `livedoor.RingBytes` | 1 MiB | The holder's replay ring so a reset-then-Resume cycle either catches up within fixed memory or signals an explicit gap. |
+| `livedoor.Rate` | 1 MiB/s | Outbound data payload bytes per second in each direction so a chatty session stays below the relay abuse breaker. |
+| `livedoor.RateBurst` | 1 MiB | The token-bucket burst allowance paired with `Rate` so an initial welcome tail or burst of deltas up to one megabyte leaves without delay. |
+| `livedoor.DailyBudget` | 256 MiB | The per-day carrier byte allowance before live sessions degrade to watch-only until midnight. |
+| `livedoor.MaxLive` | 14 | Concurrent live-intent relay streams on the host so two of the sixteen relay stream slots stay reserved for Move. |
+| `livedoor.MaxTunnelsPerDevice` | 2 | Simultaneous live tunnels from the same viewer device so a reconnecting link may briefly overlap its dying predecessor. |
+| `livedoor.MaxChannelsPerLink` | 32 | Concurrent open channels on a single multiplexed tunnel so one viewer cannot allocate unbounded channel state. |
+| `livedoor.FirstLineMax` | 64 KiB | The initial handshake line read on a local holder socket before the full session line limit applies. |
+| `livedoor.PingEvery` | 3 s | The interval between multiplexer pings while a viewed chat is active. |
+| `livedoor.DeadAfter` | 6 s | The silence window after a ping before an unanswered link is declared dead. |
+| `livedoor.ActiveWindow` | 30 s | How long after a user action a viewed link remains in active ping mode before going quiet to keep the relay hibernated. |
+| `livedoor.IdleDetach` | 10 min | How long an inactive viewer with no running turn stays attached before closing channels with reason `idle` so the relay costs nothing at rest. |
+| `livedoor.WriteDeadline` | 2 s | How long the holder waits on a remote guest socket write before dropping that guest so a local surface never stalls. |
+
