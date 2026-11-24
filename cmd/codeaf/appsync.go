@@ -194,6 +194,18 @@ func (b *appBackend) located(a *appAgent, location *appwire.Location) {
 			kept.Live = old.Live
 			location = &kept
 		}
+		// A CHAT HELD HERE KEEPS WHAT THE ENGINE LAST SAID OF ITS KEYBOARD: the
+		// chat list says where the chat is held, never who is typing in it, so
+		// an update from the list lays the fact back over its own word.
+		if kb := a.heldKeyboard; kb != nil {
+			if location == nil {
+				location = &appwire.Location{Here: true, Keyboard: kb}
+			} else if location.Here {
+				kept := *location
+				kept.Keyboard = kb
+				location = &kept
+			}
+		}
 		if reflect.DeepEqual(old, location) {
 			return
 		}

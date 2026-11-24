@@ -2539,6 +2539,19 @@ these arrives as one `agent.changed` carrying the whole agent; there is no new
 event and no field on `turn.delta` or `turn.thinking`. A live agent is left out
 of `agents.list`.
 
+`location.keyboard` is `{yours?, machine?, here?}`, the same three words as a
+live view's `driver`, on a chat THIS computer holds and runs when another window
+than the one drawing it has the keyboard: another of the person's computers that
+took it, or another window here. It rides on the existing `agent.changed` of
+that agent and nowhere else, with Remote control on (`chats.live` in `hello`);
+absent says the window drawing the chat holds the keyboard, which is every chat
+nobody else has joined, and with Remote control off no agent ever carries it. A
+window that sees it draws who is typing and offers one button, which is
+`chats.live_keyboard {agent, take:true}` on the held agent itself (not a live
+one): it asks the engine for the keyboard and answers `{driver}` as it does for
+a live view. A held agent whose chat is not open to other computers answers
+`conflict` as before.
+
 `devices.permit {id, watch?, drive?}` edits ONLY this computer's own book of what
 a paired computer may do in chats here (`devices.permit` in `hello`, absent while
 Remote control is off); a switch left out keeps what it was. Each device row

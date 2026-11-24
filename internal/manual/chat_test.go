@@ -3759,6 +3759,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I turn on remote control in the desktop app", "desktop-sync"},
 		{"the Remote control switch in the desktop settings says restart", "desktop-sync"},
 		{"Remote control is set by CODEAF_REMOTE_CONTROL and the switch is greyed out", "desktop-sync"},
+		// The keyboard of a chat the desktop runs (desktop-sync.md): who is typing, and Type here.
+		{"my desktop chat says Typing from another computer now and I can't type", "desktop-sync"},
+		{"how do I take the keyboard back in the desktop app from my other computer", "desktop-sync"},
+		{"what does the Type here button do in the desktop", "desktop-sync"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

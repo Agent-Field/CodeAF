@@ -206,7 +206,11 @@ With **Remote control** on (the **Remote control** switch in Settings → Device
 
 A chat is offered while this desktop has it open. One a window has left idle is let go after its usual idle time, **unless another computer is watching it**, which keeps it open until they leave. Closing the chat here or quitting the desktop ends their view: they see `<this computer> closed this chat.`, and the chat reads from the saved copy from then on. A chat opened while remote control was off is not offered; turn it on, and chats opened afterwards are.
 
-If another computer takes the keyboard, the desktop's own box is refused with the sentence that says who has it, and the chat keeps running either way. A running factory stage is not offered. With remote control off, or when the desktop cannot open the door another computer would knock on (the state folder's path is too long for a socket, or its folder is read-only), nothing here applies and the chat says where it is held, as before.
+A running factory stage is not offered. With remote control off, or when the desktop cannot open the door another computer would knock on (the state folder's path is too long for a socket, or its folder is read-only), nothing here applies and the chat says where it is held, as before.
+
+## Who is typing in a chat this desktop is running — Typing from another computer, Type here, take the keyboard back
+
+With remote control on, another of your computers (or a second window on this one) can take the keyboard of a chat this desktop is running, and only one window types at a time. The desktop's own box is then read only and the chat says `Typing from <that computer> now.` (`another window` when it is a second window here) with a **Type here** button that takes the keyboard back. A message sent while the keyboard is theirs is refused with the sentence that says who has it. The keyboard comes back to the desktop when they let go or leave, and the chat keeps running either way. With remote control off nobody else is in the chat, so nothing is shown and **Type here** never appears.
 
 ## Send a message to a chat working on another computer — queued there, runs after the turn
 
