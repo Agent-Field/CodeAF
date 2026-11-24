@@ -22,7 +22,6 @@
 **/.ssh
 **/.aws
 **/.codeaf
-**/.aforge
 **/.git
 **/__pycache__
 **/*.pyc

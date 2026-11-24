@@ -38,8 +38,6 @@
 **/.gnupg
 **/.docker
 **/.codeaf
-**/.aforge
-**/.aforge-v3
 **/.claude
 **/.git
 **/__pycache__
