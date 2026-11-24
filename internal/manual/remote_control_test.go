@@ -40,7 +40,7 @@ func TestEverySentenceOfALiveViewIsOnTheRemoteControlPage(t *testing.T) {
 	// The close reasons are a closed set; the page lists the ones a person meets.
 	for _, reason := range []string{
 		"not-running", "not-allowed", "holder-gone", "holder-old", "removed",
-		"permit-changed", "lagging", "frame-too-large", "budget", "idle", "host-closing", "too-many",
+		"permit-changed", "lagging", "frame-too-large", "budget", "idle", "host-closing", "too-many", "remote-control-off",
 	} {
 		said = append(said, chatlist.LiveSaid(reason, host))
 	}
@@ -52,7 +52,7 @@ func TestEverySentenceOfALiveViewIsOnTheRemoteControlPage(t *testing.T) {
 }
 
 // V13: three questions are pinned to the SECTION that answers them, not only to the
-// page, because the page holds a dozen sections and these three are the ones a
+// page, because the page holds a dozen sections and these are the ones a
 // person asks with a sentence on the screen in front of them.
 func TestTheQuestionsAboutAWordOnALiveViewReachTheSectionThatExplainsIt(t *testing.T) {
 	for _, tc := range []struct {
@@ -63,6 +63,7 @@ func TestTheQuestionsAboutAWordOnALiveViewReachTheSectionThatExplainsIt(t *testi
 		{"what does watch only mean", "watch only", "lets this computer watch, not type"},
 		{"it says tower went offline", "went offline", "last seen"},
 		{"how do I turn remote control on", "Remote control is off", "CODEAF_REMOTE_CONTROL=1"},
+		{"it says tower turned remote control off", "Why did my live view end", "tower turned remote control off."},
 	} {
 		found := false
 		for _, section := range Chat().Search(tc.question, DefaultResults) {

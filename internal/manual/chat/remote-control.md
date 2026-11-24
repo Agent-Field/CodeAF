@@ -124,7 +124,7 @@ The view stays readable, and `enter` reconnects. Nothing is lost.
 
 The computer running the chat also keeps a daily allowance of live traffic. When it is used up, every live view stays open and readable but turns watch only, and says `watch only until 00:00 UTC (daily limit)`. Typing works again after midnight UTC. The count survives a restart.
 
-## Why did my live view end — nobody is running it, watch is off, it ended there, too many computers
+## Why did my live view end — nobody is running it, watch is off, it ended there, remote control was turned off, too many computers
 
 The view says why in these words:
 
@@ -132,6 +132,7 @@ The view says why in these words:
 - `tower does not share its chats with this computer. Change that in /devices there.` Watch is off for this computer.
 - `tower closed this chat.` The chat ended there or was moved.
 - `tower changed what this computer may do in its chats.` Reopen the chat to see the new setting.
+- `tower turned remote control off.` Remote control was switched off on tower, which ends every live view of its chats. The view stays ended and does not redial. When it is back on, open the chat from Home again.
 - `this computer was removed from your devices` The computer must pair again.
 - `Restart codeaf on tower to share this chat.` Tower runs an older codeaf; close it there and open it again.
 - `tower is closing codeaf.`, `Catching up with tower.`, `One message was too large to show live.`
@@ -144,6 +145,8 @@ The desktop app can open a chat another computer is running too. On such a chat 
 ## Remote control is off — how to turn it on, remote control says restart codeaf on the other computer
 
 Remote control is off until you turn it on, on both computers: open `/settings` → `Devices` and turn `remote control` on, or start codeaf with `CODEAF_REMOTE_CONTROL=1`. In the desktop app it is the **Remote control** switch in Settings → Devices (*Turn remote control on or off in the desktop app*). With it off, everything works as before: `enter` on another computer's chat asks to move it, and no computer can open yours live. Turning it off while codeaf is running does the same at once for any computer that tries to open a chat of yours, and ends the live views other computers already have open within about half a minute. The chats here keep running and keep everything that was typed.
+
+On the computer that was watching, the view ends with `tower turned remote control off.` and nothing else: it does not say `tower went offline`, it does not start `reconnecting to tower`, and it does not try again by itself, because tower is running and said no. When remote control is back on there, open the chat from Home again.
 
 Both computers need a codeaf that includes it. If the other one still runs an older codeaf in the background, the view says `Restart codeaf on tower to share this chat.`: close codeaf there and open it again.
 

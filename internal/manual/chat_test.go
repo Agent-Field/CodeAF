@@ -3968,6 +3968,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does watch only mean", "remote-control"},
 		{"who has the keyboard when two computers have the same chat open", "remote-control"},
 		{"my desktop went offline while I was looking at its chat", "remote-control"},
+		{"my live view says my desktop turned remote control off", "remote-control"},
 		{"does remote control work when relay storage is off", "remote-control"},
 		{"how do I stop my laptop from controlling my desktop's chats", "remote-control"},
 		{"can the relay read what I type on my other computer", "remote-control"},
