@@ -79,7 +79,7 @@ With `idle handoff` on, a chat explicitly released by its holder opens directly 
 
 Sending new work in the window that released its idle hold takes the unchanged saved chat back in place, with no prompt, before recording your words or calling a model. If another computer took it, the window gets the held-elsewhere refusal. A hold that merely lapsed (not released by its window) admits nothing until you reopen or continue it. Only one computer can win a simultaneous open and send. A released window needs a successful ownership check before it can accept work; an outage leaves that work unsent. Unpaired, sync-off, single-device and default (`idle handoff` off) homes keep their hold while open.
 
-## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, my message did not send and home opened with a question
+## Continue on another computer — continuing a chat on another computer, why can't I type in this chat, I cannot type in this chat, my message did not send and home opened with a question
 
 While hosted relay storage is off, a chat still moves by blind pass-through between your paired computers when both are running codeaf; see *Blind pass-through*.
 

@@ -26,6 +26,9 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 			strings.Join([]string{devicesMoveKey, devicesNameKey, devicesGoneKey, devicesCloseKey}, " · "), fmt.Sprintf(devicesRemoveAsk, "desk"), fmt.Sprintf(devicesRevoked, "desk"), "seen 3h ago", "offline", approveWorking, approveDeclining, approveSlow, approveUnsure, ErrAlreadyPaired.Error(),
 			deviceBring, deviceNothing, devicePickAsk, devicePickLeav,
 			chatlist.Device{Name: "desk"}.Mark(false, tokens.Plain.Glyph(tokens.GQueued)), chatlist.RemovedChat,
+			devicesWatchKey, devicesTypeKey, devicesAccessBoth, devicesAccessWatch, devicesAccessNone, devicesTypeAskFor("desk"),
+			devicesWatchOnFor("desk"), devicesWatchOffFor("desk"), devicesTypeOnFor("desk"), devicesTypeOffFor("desk"), devicesPermitNoSetter,
+			strings.Join([]string{devicesMoveKey, devicesNameKey, devicesGoneKey, devicesWatchKey, devicesTypeKey, devicesCloseKey}, " · "),
 		},
 		"naming-a-device": {devicesNameKeys, devicesNameAsk + "atlas▏", devicesNameOwn},
 		"continuing-a-chat-on-another-computer": {

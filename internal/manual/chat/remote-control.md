@@ -2,7 +2,7 @@
 
 ## See my chat from my other computer — open it live, drive my desktop from my laptop, remote control, work in a chat without moving it
 
-Remote control lets this computer open a chat that another of your computers is running, and work in it without moving it. The chat opens **live**. On Home, press `enter` on a row that says `working on tower` or `held on tower`. The chat opens marked `on tower · live`, its box says `Message tower`, and what you see is what tower is doing as it happens. Typing, steering and stopping act on tower, in tower's folder, with tower's files and tools. Nothing moves, and tower's own window keeps working.
+Remote control lets this computer open a chat that another of your computers is running, and work in it without moving it. The chat opens **live**. On Home, press `enter` on a row that says `working on tower` or `held on tower`. The chat opens marked `on tower · live`, its box says `Message tower`, and what you see is what tower is doing as it happens. Typing, steering and stopping act on tower, in tower's folder, with tower's files and tools. Nothing moves, and tower's own window keeps working. `/status` adds a row that says how it travels, such as `live · relay`.
 
 Three things have to be true. The two computers are paired. Both are running codeaf, because the other computer has to be there to answer. And remote control is on, on both; it is off until you turn it on (see *Remote control is off*). A chat that no computer is running right now cannot be opened live. Remote control never starts a chat on another computer. For a chat that is not running anywhere, `enter` does what it always did, and moving it here is the only way to carry on.
 
@@ -14,7 +14,7 @@ With remote control on and the other computer online, `enter` on a chat that com
 
 To move a live chat, press `alt+m` inside it. It asks `Move this chat here?`; answer `1`, and the view says `Moving here…` while the chat arrives, then the chat runs on this computer. The other computer's window of that chat becomes a live view of this one. If the move fails, the chat stays where it was, you are back in the live view, and nothing you typed is lost. The older names for moving a chat are answered on the page *Continuing a chat that one of your machines holds*.
 
-## Why can't I type — what does watch only mean, the box says watch not type
+## Watch only — what does watch only mean, the box says watch not type
 
 Each of your computers can be allowed to **watch** a chat that another computer runs, or to watch and **type** into it. A computer that may only watch sees everything live, and its box is replaced by:
 
@@ -22,9 +22,27 @@ Each of your computers can be allowed to **watch** a chat that another computer 
 tower lets this computer watch, not type. Change that in /devices there.
 ```
 
-Typing sends nothing and the words you typed stay. The switch is on the computer that runs the chat, not on the one that watches: open `/devices` there, move to the row of the watching computer and press `w` (watch) or `t` (type), or type `codeaf devices permit "laptop" --drive on`. Turning type on asks once: `y` turns it on, any other key keeps it off.
+Typing sends nothing and the words you typed stay. The switch is on the computer that runs the chat, not on the one that watches. On that computer open `/devices` (or `/settings` → `Devices`) and move to the other computer's row. It says what that computer may do: `watch and type`, `watch only` or `not shared`. The key line gains `w watch` and `t type`.
 
-A computer paired before remote control existed starts watch only, and Home asks once whether your other computers may type into chats here. A computer paired afterward starts with watch and type both on, and the pairing screen says so. A computer paired earlier could already move any of your chats, so letting it watch adds no new reach; typing is the new power, which is why it starts off.
+`w` turns watching on or off. Turning it off says `tower can no longer watch chats on this computer.`, closes its open views and turns typing off too, because a computer that cannot watch cannot type. Turning it on says `tower can watch chats on this computer.` `t` turns typing on or off. Turning it off says `tower can watch, not type.` Turning it on asks first:
+
+```
+let tower type into chats on this computer? y turns it on, any other key keeps it off
+```
+
+`y` turns it on and says `tower can type into chats on this computer.` Any other key, `esc` included, keeps it off. From a script, `codeaf devices permit "laptop" --drive on`.
+
+## Home asks whether my other computers may type — older paired computers, let them type, keep them watching
+
+A computer paired before remote control existed starts watch only, and a computer paired afterward starts with watch and type both on; the pairing screen says so. When you have computers paired earlier, Home asks once:
+
+```
+Let your other computers type into chats here?
+tower can watch your chats here but cannot type yet.
+1 let them type    2 keep them watching    3 choose in /devices
+```
+
+`1` lets them type and `2` keeps them watching. `3` keeps them watching and opens `/devices`, where each computer has its own `w` and `t`. Either answer ends the question for good. `esc` leaves it unanswered, and it comes back the next time Home opens. A computer paired earlier could already move any of your chats, so letting it watch adds no new reach; typing is the new power, which is why it starts off.
 
 ## Who has the keyboard — two computers on one chat, take the keyboard, typing from another computer
 
@@ -56,7 +74,7 @@ What does need relay storage is a message for a computer that is **offline**: th
 
 ## Turn remote control off for a computer — allow watch only, remove a computer, stop my laptop controlling my desktop
 
-Each computer has its own two switches, kept on the computer that runs the chats and nowhere else. On that computer open `/devices` (or `/settings` → `Devices`), move to the other computer's row and press `w` for watch or `t` for type. From a script, `codeaf devices permit "laptop" --watch off` or `--drive off`.
+Each computer has its own two switches, kept on the computer that runs the chats and nowhere else. On that computer open `/devices` (or `/settings` → `Devices`), move to the other computer's row and press `w` for watch or `t` for type; the row says `watch and type`, `watch only` or `not shared`. From a script, `codeaf devices permit "laptop" --watch off` or `--drive off`.
 
 Turning **watch** off, or removing the computer, closes its open views at once. Turning **type** off leaves it watching. Removing a computer closes that device only: a computer you lost still holds your keys, so the remedy for a lost computer is `codeaf identity rotate`, as the page *Lock out a lost computer* says. Remote control is a power you give a paired computer. Turn type off for a computer you only want to look at your chats.
 
