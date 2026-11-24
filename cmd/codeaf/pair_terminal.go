@@ -139,6 +139,7 @@ func (s offerScreen) Show(_ *pair.Code, lines string) { s.stopProgress(); fmt.Fp
 func (s offerScreen) Burned() { s.say(pair.BurnLine) }
 
 func (s offerScreen) Ask(ctx context.Context, label, words string) bool {
+	s.say(pair.PairedControlLine(label))
 	return s.confirm(ctx, pair.AskChatsLine(label, words))
 }
 

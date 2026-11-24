@@ -149,6 +149,27 @@ func TestPairWithNoDoorSaysOneSentence(t *testing.T) {
 	}
 }
 
+func TestPairCardSaysThePairedDeviceCanControlChats(t *testing.T) {
+	door := &fakePairing{offer: func(ctx context.Context, ui pair.OfferUI) (string, error) {
+		showsCode(t, ui)
+		if !ui.Ask(ctx, "laptop", "amber cedar moon") {
+			return "", pair.ErrRefused
+		}
+		return "laptop", nil
+	}}
+	a := pairApp(t, door, 120)
+	r := newPairRig(t, a)
+	r.slash("/pair")
+	r.until("the question", func() bool { return a.pair.ask != nil })
+	asked := plain(frame(a))
+	want := pair.PairedControlLine("laptop")
+	if !strings.Contains(asked, want) {
+		t.Fatalf("pair card lacks %q:\n%s", want, asked)
+	}
+	r.press("n")
+	r.until("done", func() bool { return a.pair.done })
+}
+
 func TestPairShareShowsTheCodeThenAsksThenPairs(t *testing.T) {
 	release := make(chan struct{})
 	answered := make(chan bool, 1)
@@ -175,7 +196,7 @@ func TestPairShareShowsTheCodeThenAsksThenPairs(t *testing.T) {
 	close(release)
 	r.until("the question", func() bool { return a.pair.ask != nil })
 	asked := plain(frame(a))
-	for _, want := range []string{pair.AskChatsLine("laptop", "amber cedar moon")} {
+	for _, want := range []string{pair.PairedControlLine("laptop"), pair.AskChatsLine("laptop", "amber cedar moon")} {
 		if !strings.Contains(asked, want) {
 			t.Fatalf("the panel lacks %q:\n%s", want, asked)
 		}
@@ -192,7 +213,7 @@ func TestPairShareShowsTheCodeThenAsksThenPairs(t *testing.T) {
 	if yes := <-answered; !yes {
 		t.Fatal("y was heard as no")
 	}
-	if got := plain(frame(a)); !strings.Contains(got, pair.PairedChatsLine("laptop")) {
+	if got := plain(frame(a)); !strings.Contains(strings.Join(strings.Fields(got), " "), pair.PairedChatsLine("laptop")) {
 		t.Fatalf("no result line:\n%s", got)
 	}
 }

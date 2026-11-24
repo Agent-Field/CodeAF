@@ -95,7 +95,6 @@ const (
 	// approveAnswerTimeout covers an answer's steps: the device record, the
 	// relay's decision, and the lookup when that reply is lost.
 	approveAnswerTimeout = 20 * time.Second
-	joinedFleetWord      = "%s is now paired. Your chats can continue there."
 )
 
 // ErrAnswerNotArrived is an answer the door looked for after a timeout and
@@ -287,6 +286,7 @@ func (c *approveCard) rows(width int, now time.Time, pal palette) []string {
 	out = append(out, pal.accent(fit("  "+pal.glyph(info.icon)+" "+r.Name+" · "+info.word, width)))
 	out = append(out, pal.dim(fit("  "+requestAge(r, now), width)))
 	out = append(out, dressed(wrap(fmt.Sprintf(approveCheckWord, r.Check), max(width, 4)), pal.ink)...)
+	out = append(out, dressed(wrap(pair.PairedControlLine(r.Name), max(width, 4)), pal.ink)...)
 	line := c.line
 	if line == "" && !r.ExpiresAt.After(now) {
 		line = approveGone
@@ -413,7 +413,7 @@ func (a *app) cardKey(msg tea.KeyPressMsg) tea.Cmd {
 // second time.
 func (a *app) toastJoined(name, device string) {
 	a.approve.markApproved(device)
-	a.toast(fmt.Sprintf(joinedFleetWord, name))
+	a.toast(pair.ApprovedLine(name))
 }
 
 // toast says a sentence where it is seen at once: in the transcript, and on
@@ -459,7 +459,7 @@ func (a *app) announceJoined() {
 		}
 		a.approve.seq = j.Seq
 		if !a.approve.told(j.Device) {
-			a.toast(fmt.Sprintf(joinedFleetWord, a.approvals.DeviceName(j.Name)))
+			a.toast(pair.ApprovedLine(a.approvals.DeviceName(j.Name)))
 		}
 	}
 }

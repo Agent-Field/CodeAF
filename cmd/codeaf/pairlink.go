@@ -208,6 +208,7 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return err
 	}
 	d.term.say(pair.WantsToJoinLine(asking.Name, asking.Platform))
+	d.term.say(pair.PairedControlLine(asking.Name))
 	if !d.term.approveLink(ctx, pair.CheckQuestion(asking.Check)) {
 		return d.decline(ctx, who, asking)
 	}
