@@ -44,7 +44,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -405,20 +404,15 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 	viewer := rc.startViewer(0)
 	rc.openLive(viewer)
 
-	// V9, first: the host's door stops answering in the middle of the move. A chat
-	// nobody is working in can be taken without asking its computer anything, so the
-	// move is tried on a chat with a turn running: the host holds it and has to let
-	// it go. The card is answered while the host is stopped, so the move cannot
-	// finish.
-	host.lit(rcSlowAsk)
-	host.keys("Enter")
-	host.waitFor(30*time.Second, rcPartial)
-	viewer.waitFor(rcOpenWithin, rcPartial)
-	rc.abortIfFailed()
+	// V9, first: the relay refuses to hand the chat over, so the move cannot finish.
+	// (A move is the relay's decision, not the host's: a frozen host does not stop
+	// one, which is why the failure is injected where the move is decided.) The card
+	// is answered while the relay refuses, and the viewer must end up back in the
+	// live view of the host with nothing lost.
+	rc.audit.refuseAcquire.Store(true)
 	viewer.keys("M-m")
 	viewer.waitFor(rcOpenWithin, say(t, "moveAsk"))
 	rc.abortIfFailed()
-	resume := rc.pauseHost()
 	viewer.keys("1", "Enter")
 	// The move starts before it fails, so the viewer is first given a moment to
 	// say it is on its way; only then is "back in the live view" a change.
@@ -428,27 +422,13 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 		return !strings.Contains(s, say(t, "movingHere")) && !strings.Contains(s, say(t, "moveAsk")) &&
 			(strings.Contains(s, say(t, "liveMessageHint")+rcHostName) || strings.Contains(s, say(t, "liveWentOffline")))
 	}) {
-		t.Fatalf("a move that could not reach the host did not put the viewer back in the live view:\n%s", viewer.capture())
+		t.Fatalf("a move the relay refused did not put the viewer back in the live view:\n%s", viewer.capture())
 	}
 	if strings.Contains(viewer.capture(), "Moved from") {
-		t.Errorf("a move the host never answered claims the chat arrived:\n%s", viewer.capture())
+		t.Errorf("a move the relay refused claims the chat arrived:\n%s", viewer.capture())
 	}
-	resume()
-	if !waitUntil(60*time.Second, func() bool {
-		s := viewer.capture()
-		return strings.Contains(s, say(t, "liveLegend")) && !strings.Contains(s, say(t, "liveWentOffline"))
-	}) {
-		t.Fatalf("the live view did not come back once the host answered again:\n%s", viewer.capture())
-	}
-
-	// The held turn ends, so the chat is one nobody is working in again.
-	rc.model.open()
-	if !waitUntil(rcReplyWithin, func() bool {
-		s := host.capture()
-		return strings.Contains(s, "idle") && rcLinesWith(s, rcHostReply) >= 2
-	}) {
-		t.Fatalf("the held turn never ended on the host:\n%s", host.capture())
-	}
+	rc.audit.refuseAcquire.Store(false)
+	rc.abortIfFailed()
 
 	// V8: the same move with the host answering. The sentence is short-lived, so
 	// the screen is read quickly from the answer on, and the arrival is what the
@@ -950,54 +930,6 @@ func (rc *rcRig) hostCLI(args ...string) string {
 	return string(out)
 }
 
-// pauseHost stops every process of the host's home without ending any of them,
-// which is how a computer that stops answering in the middle of a move looks from
-// the other side. It is the window and the engine both, because the door a move
-// goes through is the window's and the door a live view goes through is the
-// engine's, and stopping one alone leaves the other answering. The answer resumes
-// them, and a cleanup does too, so a failed scenario never leaves a frozen process
-// for the teardown to wait on.
-func (rc *rcRig) pauseHost() func() {
-	rc.t.Helper()
-	pids := processesOfHome(rc.host.home)
-	if len(pids) == 0 {
-		rc.t.Fatalf("the host has no process of its own to stop")
-	}
-	for _, pid := range pids {
-		_ = syscall.Kill(pid, syscall.SIGSTOP)
-	}
-	var once sync.Once
-	resume := func() {
-		once.Do(func() {
-			for _, pid := range pids {
-				_ = syscall.Kill(pid, syscall.SIGCONT)
-			}
-		})
-	}
-	rc.t.Cleanup(resume)
-	return resume
-}
-
-// processesOfHome is every process that runs with this home as its CODEAF_HOME,
-// read from the process table by the environment each was started with and never
-// by a pattern in a command line.
-func processesOfHome(home string) []int {
-	want := "CODEAF_HOME=" + home + "\x00"
-	entries, _ := os.ReadDir("/proc")
-	var pids []int
-	for _, e := range entries {
-		pid, err := strconv.Atoi(e.Name())
-		if err != nil || pid == os.Getpid() {
-			continue
-		}
-		env, err := os.ReadFile(filepath.Join("/proc", e.Name(), "environ"))
-		if err == nil && strings.Contains(string(env), want) {
-			pids = append(pids, pid)
-		}
-	}
-	return pids
-}
-
 // assertLiveDial holds the relay to the one thing every scenario that opens a
 // view must show it: at least one dial that said it was a live one.
 func (rc *rcRig) assertLiveDial() {
@@ -1176,6 +1108,9 @@ type rcAudit struct {
 	calls       []rcCall
 	armed       atomic.Bool
 	storeWrites atomic.Int32
+	// refuseAcquire makes the relay answer every request to take a chat's lease
+	// with a server error, which is how a move that cannot finish is made.
+	refuseAcquire atomic.Bool
 }
 
 // startAuditedRelay starts the product's own relay and a proxy in front of it.
@@ -1201,6 +1136,13 @@ func startAuditedRelay(t *testing.T, root string) (string, *rcAudit) {
 		if r.Method == http.MethodGet && r.URL.Path == "/v1/store/stats" {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"storage":"off","puts":0,"gets":0,"has":0,"bytes_in":0,"bytes_out":0}`))
+			return
+		}
+		if r.Method == http.MethodPost && audit.refuseAcquire.Load() &&
+			strings.HasPrefix(r.URL.Path, "/v1/dir/cells/") && strings.HasSuffix(r.URL.Path, "/acquire") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"unavailable"}`))
 			return
 		}
 		// An upload is the only request that stores something: a Has or a Locate
