@@ -14,7 +14,7 @@ claude.md	0
 client-tools.md	0
 closing-a-chat.md	0
 collections.md	0
-commands.md	7
+commands.md	8
 compacting-over-and-over.md	0
 continuing-a-chat-on-another-computer.md	78
 conversations-and-teams.md	22
@@ -55,7 +55,7 @@ reading-a-task-page.md	0
 relay-hosted-or-your-own.md	69
 relay-limits-and-refusals.md	56
 relay-what-it-stores-and-sees.md	69
-remote-control.md	9
+remote-control.md	16
 review.md	0
 running-commands-on-windows.md	0
 running-from-the-terminal.md	38
@@ -86,6 +86,6 @@ use-skill.md	0
 use-this-on-another-computer.md	93
 what-i-can-do.md	0
 what-i-remember.md	6
-when-the-connection-drops.md	0
+when-the-connection-drops.md	4
 worker-harness.md	2
 working-indicator.md	0

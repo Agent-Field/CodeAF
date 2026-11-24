@@ -54,7 +54,7 @@ tower can watch your chats here but cannot type yet.
 
 A live view starts through the server in between, so the chat appears at once. About half a second later the two computers try to connect straight to each other. If that works, the view moves to the direct road and `/status` has a `road` row that says `live · direct`. If it does not, the view stays where it was and says `live · relay`. Both are normal, and neither prints a banner. Two computers on one network connect directly.
 
-Moving between the roads loses nothing. Words you typed are sent once, a turn that is running keeps going, and the keyboard stays with the computer that had it. A direct connection that stops working goes back to the relay within 5 seconds when the relay is reachable, again with no notice.
+Moving between the roads loses nothing. Words you typed are sent once, a turn that is running keeps going, and the keyboard stays with the computer that had it. A direct connection that stops working hands the view back to the server in between within 5 seconds when the relay is reachable, again with no notice.
 
 Traffic on the direct road does not count toward the daily allowance on *Disconnected after ten minutes idle*, and that allowance never stops a view that is already direct. A view you leave idle for 10 minutes lets go of both roads.
 
