@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -52,6 +53,7 @@ var botRoutes = []struct {
 	{path: "/v1/workstreams", under: true},
 	{path: "/v1/canvases", under: true},
 	{path: "/v1/resources", under: true},
+	{path: "/v1/hosted/sessions", under: true},
 	{path: "/v1/myspace", readOnly: true},
 	{path: "/v1/org/policy", readOnly: true},
 	{path: "/v1/members", readOnly: true},
@@ -136,8 +138,7 @@ func (h *Handler) withBot(w http.ResponseWriter, r *http.Request, secret string)
 		if h.failed(w, err) {
 			return r, false
 		}
-		role, _ := policy.Role(bot.Scope)
-		only = append([]string{}, role.Verbs...)
+		only = botScopeVerbs(policy, bot.Scope)
 	}
 	lastUsed := time.Time{}
 	if token.LastUsedAt != nil {
@@ -152,6 +153,15 @@ func (h *Handler) withBot(w http.ResponseWriter, r *http.Request, secret string)
 	call := agentCall{handle: bot.Creator, agent: agent, bot: bot.ID, only: only,
 		by: factory.TaskEventBy{Kind: factory.TaskByAgent, ID: agent, Name: bot.Name}}
 	return r.WithContext(context.WithValue(r.Context(), agentCallKey{}, call)), true
+}
+
+// A named scope with no matching role must still restrict the bot's verbs.
+func botScopeVerbs(policy acl.Policy, scope string) []string {
+	if scope == "" {
+		return nil
+	}
+	role, _ := policy.Role(scope)
+	return append([]string{}, role.Verbs...)
 }
 
 func (h *Handler) refuseBot(w http.ResponseWriter, state store.BotTokenState) {
