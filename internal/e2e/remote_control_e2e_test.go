@@ -73,6 +73,10 @@ const (
 const (
 	rcHostReply   = "host reply"
 	rcLaptopReply = "laptop reply"
+	// rcPrimeReply answers the first turn of a chat that goes on to hold a slow
+	// one. It is not rcHostReply, because the scenarios that hold a turn look for
+	// that word to tell whether the held turn has ended.
+	rcPrimeReply = "host primed"
 	// rcPartial is what a held turn has already said when a viewer attaches.
 	rcPartial = "host partial"
 	// rcMark is in every prompt the scenarios type, and it is how the model tells
@@ -85,6 +89,7 @@ const (
 const (
 	rcSlowAsk   = "rc-host slow question"
 	rcHostAsk   = "rc-host quick question"
+	rcPrimeAsk  = "rc-host prime question"
 	rcLaptopAsk = "rc-laptop typed on the viewer"
 )
 
@@ -150,6 +155,7 @@ func rcRequire(t *testing.T) {
 func rcOpensLiveAndShowsTheRunningTurn(t *testing.T) {
 	rc := newRCRig(t, rcOptions{viewers: 1})
 	host := rc.startHost()
+	rc.primeHost(host)
 	host.lit(rcSlowAsk)
 	host.keys("Enter")
 	host.waitFor(30*time.Second, rcPartial)
@@ -299,6 +305,7 @@ func rcWatchOnlyCannotType(t *testing.T) {
 func rcHostGoesAwayAndComesBack(t *testing.T) {
 	rc := newRCRig(t, rcOptions{viewers: 1})
 	host := rc.startHost()
+	rc.primeHost(host)
 	host.lit(rcSlowAsk)
 	host.keys("Enter")
 	host.waitFor(30*time.Second, rcPartial)
@@ -784,6 +791,16 @@ func (rc *rcRig) hostAsk(w *rig, words, reply string) {
 	rc.abortIfFailed()
 }
 
+// primeHost has the host's window finish one quick turn before the scenario
+// holds a slow one. A chat is on the other computers' Home only once its first
+// turn has been written down, so a chat whose very first turn is still running
+// is not there to open yet: the scenarios that hold a turn at the model hold the
+// second turn of a chat, which is also the commoner thing for a person to watch.
+func (rc *rcRig) primeHost(w *rig) {
+	rc.t.Helper()
+	rc.hostAsk(w, rcPrimeAsk, rcPrimeReply)
+}
+
 // goHome opens Home from wherever the window is, with the chord that does it in
 // every state of a conversation, a live view included.
 func (rc *rcRig) goHome(r *rig) {
@@ -1067,8 +1084,11 @@ func (m *rcModel) complete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply := rcHostReply
-	if strings.Contains(ask, "laptop") {
+	switch {
+	case strings.Contains(ask, "laptop"):
 		reply = rcLaptopReply
+	case strings.Contains(ask, "prime"):
+		reply = rcPrimeReply
 	}
 	send(fmt.Sprintf(`{"content":%q}`, reply), "")
 	send(`{}`, "stop")
