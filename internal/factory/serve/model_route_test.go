@@ -410,7 +410,8 @@ func TestP1_1_UpstreamSeesOnlyTheOrgKeyAndTheChatSeesNone(t *testing.T) {
 	}
 	reject.Store(true)
 	refused := callHostedModel(rg, ownChat, testHostedBody)
-	if refused.Code != 401 || !strings.Contains(refused.Body.String(), "invalid key") ||
+	// Item 0: a key the provider refuses is a plain sentence worded as the person's own, never the provider's words.
+	if refused.Code != 401 || !strings.Contains(refused.Body.String(), hostedOwnKeyRefused) || strings.Contains(refused.Body.String(), "invalid key") ||
 		strings.Contains(refused.Body.String(), testHostedOwnKey) || strings.Contains(fmt.Sprint(refused.Header()), testHostedOwnKey) {
 		t.Fatalf("upstream refusal = %d %v %s", refused.Code, refused.Header(), refused.Body)
 	}
