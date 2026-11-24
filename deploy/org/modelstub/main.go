@@ -8,14 +8,21 @@
 //	POST /api/v1/chat/completions  SSE stream
 //
 // What it does with a turn:
+//
 //   - A prompt that carries the SDK harness's "CRITICAL OUTPUT REQUIREMENTS"
 //     block (a file to Write, with the JSON Schema inline or in a file) gets one
 //     `write` tool call whose content is the SMALLEST valid document for that
 //     schema (schema-driven: first enum value, one array element, "x" strings),
 //     then a closing text turn once the tool answered.
+//
 //   - Anything else (a steer note, a title, a compaction) gets a short text
 //     answer that quotes the person's last words, so a steer note is visible in
 //     the run's transcript.
+//
+//   - A user message that starts with `bash:` gets ONE `bash` tool call carrying
+//     the rest as its command, then, once the tool answered, the text
+//     "STUB ran: " followed by the tool's output (scripted.go). That is how the
+//     hosted-session smoke test makes a session run a shell command.
 //
 // STUB_DELAY (default 4s) is held before each answer so a run lasts long enough
 // to be watched and steered by hand.
@@ -97,6 +104,13 @@ func completions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := turn.Add(1)
+	// A person's `bash: <command>` message is answered by running that command
+	// through the session's own bash tool and quoting what came back, so a
+	// hosted session can be driven end to end, keylessly, with real shell output
+	// (scripted.go). It is checked first and it never waits: it is a script.
+	if handled := scriptedBash(w, body.Messages, n); handled {
+		return
+	}
 	// The original prompt is the first user message carrying the output block.
 	promptAt := -1
 	for i, m := range body.Messages {
