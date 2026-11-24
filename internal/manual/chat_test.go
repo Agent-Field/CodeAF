@@ -3763,6 +3763,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"my desktop chat says Typing from another computer now and I can't type", "desktop-sync"},
 		{"how do I take the keyboard back in the desktop app from my other computer", "desktop-sync"},
 		{"what does the Type here button do in the desktop", "desktop-sync"},
+		// A new chat on another computer's Home (remote-control.md): when the row first appears.
+		{"my new chat does not show on my other computer while its first message is still running", "remote-control"},
+		{"when does a chat appear on my other computer's Home with remote control on", "remote-control"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
