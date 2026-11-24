@@ -14,5 +14,6 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p "$dir"
     [ "$(stat -c %u "$dir")" = "$ORG_UID" ] || chown -R "$ORG_UID:$ORG_UID" "$dir" 2>/dev/null || true
   done
+  echo "drop-root: ${ORG_DIRS:-no folders} belong to uid $ORG_UID; running $(basename "$0") as uid $ORG_UID" >&2
   exec setpriv --reuid="$ORG_UID" --regid="$ORG_UID" --clear-groups env HOME="$ORG_HOME" "$0" "$@"
 fi

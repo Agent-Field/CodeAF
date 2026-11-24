@@ -10,6 +10,7 @@ dir="${AGENTFIELD_HOME:-/data}"
 if [ "$($bb id -u)" = "0" ]; then
   $bb mkdir -p "$dir"
   [ "$($bb stat -c %u "$dir")" = "65532" ] || $bb chown -R 65532:65532 "$dir"
+  echo "agentfield: $dir belongs to 65532; running the control plane as uid 65532" >&2
   exec $bb setuidgid 65532:65532 /usr/local/bin/agentfield-server "$@"
 fi
 exec /usr/local/bin/agentfield-server "$@"

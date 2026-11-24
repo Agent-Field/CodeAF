@@ -25,5 +25,6 @@ COPY --from=busybox /bin/busybox /usr/local/bin/busybox
 COPY --chmod=0755 scripts/agentfield-entrypoint.sh /usr/local/bin/agentfield-entrypoint.sh
 USER 0:0
 ENTRYPOINT ["/usr/local/bin/agentfield-entrypoint.sh"]
+CMD ["server", "--open=false"]
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
     CMD ["/usr/local/bin/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health"]
