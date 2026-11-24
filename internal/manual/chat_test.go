@@ -45,6 +45,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"queue a message for my other computer while its turn is working", "desktop-sync"},
 		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},
 		{"message to my other computer didn't send, can't reach relay", "desktop-sync"},
+		{"can my laptop watch or type into a chat that is running on my desktop", "desktop-sync"},
+		{"does someone watching my chat from another computer stop it being closed when it goes idle", "desktop-sync"},
+		{"I closed a chat on this desktop and my other computer says it closed", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.
 		{"are factory steps sandboxed", "unattended-run-limits"},
 		{"why did brew install fail in a factory step", "unattended-run-limits"},

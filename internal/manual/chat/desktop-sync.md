@@ -10,6 +10,10 @@ directions and asking for a new crew proposal also refuse the move.
 The same check protects remote submissions and queued follow-ups; a follow-up
 accepted before the move is refused before its turn can start. Existing action
 receipts remain readable and replaying one does not start its work again.
+With remote control on and the other computer online, the desktop does not leave
+you on that read-only copy: the same chat opens as a live view of the computer
+that continued it, where you can read the running reply and type. The read-only
+copy is what remains when remote control is off or that computer is off.
 Your unsent draft and staged attachments stay yours. Messages already queued
 stay in the queue; editing, reordering or removing them does not start a turn.
 The app pins `Continued on <computer>` above the transcript with
@@ -21,7 +25,9 @@ relay storage or live transfer, without moving the chat or restoring remote file
 If the latest history is unavailable, you can still read the local copy. Remote
 history and previews read saved transcripts up to 24 MiB. For a larger transcript,
 use Move here to move the chat and read its full history. Unsealed
-words and in-progress tokens are not streamed between computers.
+words and in-progress tokens are not streamed between computers, except in a
+live view (*Open a chat running on another computer live in the desktop*),
+which shows the reply as the other computer writes it.
 The desktop can still send that computer a message for the chat while it is
 open or working there; it waits in the chat's queue on that computer. See
 "Send a message to a chat working on another computer".
@@ -176,6 +182,24 @@ Move here requires the holder and ownership fence shown when you chose it.
 A changed fence, holder or saved turn needs a fresh choice.
 Completed turns are shared while the chat stays open, including after a move.
 
+## Open a chat running on another computer live in the desktop — Open on <name>, watch it, type into it, take the keyboard
+
+With **remote control** on (Settings → Devices, off by default) the desktop can open a chat another of your computers is running as a live view. A chat row that is running on a computer that is online offers `Open on <name>`; choosing it opens the chat like any other: its history, the reply as it streams, questions waiting for you, steer, queue and stop all work, and you type in the ordinary box (`Message <name>`). The words go straight to the running chat on that computer. Nothing is left on the relay, so this needs no relay storage, and it is not the waiting message of *Send a message to a chat working on another computer*, which is only for a computer that is off. The chat stays on that computer; `Move here` brings it here.
+
+The chat's strip says where it stands: `live`, `reconnecting`, `offline` with when it was last seen, `idle`, or `watching`. A view with no one typing for ten minutes disconnects itself so the relay can rest; sending anything, or opening the chat again, reconnects. Watching means that computer lets this one read but not type (`<name> lets this computer watch, not type. Change that in /devices there.`), or its daily allowance of live traffic is used up (`watch only until 00:00 UTC (daily limit)`). Only one computer types at a time: `typing from <name> now` says who has the keyboard, and taking it is the button beside it. A computer taken off your list is told so (`this computer was removed from your devices`).
+
+The model, approval posture and spending limit of a live view are set on the computer running the chat, not from here, and the desktop's own tools are not given to that chat.
+
+What a computer lets another one do is set on that computer, in Settings → Devices → each other computer: watch its chats, and type into them. A computer paired before remote control existed can watch but not type until you allow it; one paired since can do both, and you can turn either off. Chats a terminal holds can be opened live from the desktop, and a chat this desktop is running can be opened live from your other computers (*Offer a chat running on this desktop to another computer*).
+
+## Offer a chat running on this desktop to another computer — remote control, who may open it, how long, when it ends
+
+With **remote control** on (Settings → Devices, off by default), a chat this desktop is running can be opened live from your other computers, the way the desktop opens theirs: they see the history and the reply as it streams, and write in it only if this computer lets them. That is set the same way as the other direction, in Settings → Devices → that computer: whether it may watch your chats here, and whether it may write in them (a computer paired before remote control existed starts with watching only). The desktop's own window stays in the chat the whole time and keeps the chat's words; another computer is one more window on the same conversation, not a copy.
+
+A chat is offered while this desktop has it open. One a window has left idle is let go after its usual idle time, **unless another computer is watching it**, which keeps it open until they leave. Closing the chat here or quitting the desktop ends their view: they see `<this computer> closed this chat.`, and the chat reads from the saved copy from then on. A chat opened while remote control was off is not offered; turn it on, and chats opened afterwards are.
+
+If another computer takes the keyboard, the desktop's own box is refused with the sentence that says who has it, and the chat keeps running either way. A running factory stage is not offered. With remote control off, or when the desktop cannot open the door another computer would knock on (the state folder's path is too long for a socket, or its folder is read-only), nothing here applies and the chat says where it is held, as before.
+
 ## Send a message to a chat working on another computer — queued there, runs after the turn
 
 While another computer still holds a chat (working, or open while `idle handoff` is off, before idle release, or on an older build), the desktop composer
@@ -204,7 +228,7 @@ once if that computer saved again first.
 
 ## Why can't I message a chat on another computer — the composer is read-only while relay storage is off
 
-While the account's hosted relay storage is off, the desktop does not offer `Message <name>` for a chat another computer holds, and `chats.send` is not in `hello`. A waiting message is sealed text kept in this computer's record on the relay until the holder takes it, and the service keeps nothing of the kind until storage is approved. A send that arrives anyway is refused with `Relay storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.` and leaves nothing on the service.
+While the account's hosted relay storage is off, the desktop does not offer a *waiting* `Message <name>` for a chat another computer holds, and `chats.send` is not in `hello`. A chat that computer is running and that you opened live is different: with remote control on and the computer online, you type into it directly and storage is not involved (*Open a chat running on another computer live*). The rest of this section is about a computer that is off, or a chat opened without remote control. A waiting message is sealed text kept in this computer's record on the relay until the holder takes it, and the service keeps nothing of the kind until storage is approved. A send that arrives anyway is refused with `Relay storage is off for this account, so a message can't wait for another computer. Move the chat here to write to it.` and leaves nothing on the service.
 
 Choose Move here to write to the chat: blind pass-through moves it while both computers run codeaf. Approving relay storage brings the message box back on the next connection, and a self-hosted relay always had it. Messages already waiting when storage was switched off can still be taken off the service.
 

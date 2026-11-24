@@ -141,8 +141,8 @@ func (b *appBackend) SetApprovalPosture(id, posture string) (appwire.Agent, erro
 		live, transcript = a.live, a.transcript
 		live.lastUse = b.now()
 	})
-	if live.conn.Lent {
-		return appwire.Agent{}, errLentStage("approval posture")
+	if live.conn.Lent || live.conn.Remote {
+		return appwire.Agent{}, appFenceError(live.conn, "approval posture")
 	}
 	door, ok := live.conn.Conv.(appPostureDoor)
 	if !ok {

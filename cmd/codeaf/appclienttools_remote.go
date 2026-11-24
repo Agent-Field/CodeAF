@@ -24,7 +24,7 @@ func (b *appBackend) clientToolRemoteAgent(a *appAgent) *remote.Agent {
 		if a.view.Location != nil && !a.view.Location.Here {
 			return
 		}
-		if a.live != nil && !a.live.conn.Assembled && !a.live.conn.Lent {
+		if a.live != nil && !a.live.conn.Assembled && !a.live.conn.Lent && !a.live.conn.Remote {
 			agent, _ = a.live.conn.Conv.(*remote.Agent)
 		}
 	})
@@ -138,7 +138,9 @@ func (b *appBackend) callRemoteClientTool(ctx context.Context, door *appClientTo
 }
 
 func (b *appBackend) holdClientTools(a *appAgent, live *appLive) {
-	if live.conn.Assembled || live.conn.Lent {
+	// A live view of another computer's chat never gives that computer's chat
+	// this computer's client tools: the holder would run them for the guest.
+	if live.conn.Assembled || live.conn.Lent || live.conn.Remote {
 		return
 	}
 	agent, ok := live.conn.Conv.(*remote.Agent)
