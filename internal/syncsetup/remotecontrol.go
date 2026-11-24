@@ -147,7 +147,16 @@ func (s *Sync) attachRemoteControl(cfg *filesdoor.ServeConfig) {
 		Presence: s.livePresence,
 	})
 	registry := livedoor.DefaultRegistry(s.Home)
+	// THE SWITCH IS READ AGAIN FOR EVERY PERMIT, never remembered from when this
+	// door started. Remote control turned off while codeaf keeps running must
+	// stop handing chats out at once, as the desktop's door does (its lookup
+	// asks the setting on every question): a permit with no watch is already
+	// what the router answers with a refusal before any chat byte, for a new
+	// tunnel, for a new channel on an open one and for a direct offer.
 	readPermit := func(device string) pair.Permit {
+		if !config.RemoteControlOn() {
+			return pair.Permit{}
+		}
 		p, _ := pair.Permits().For(identityID, device)
 		return p
 	}
@@ -156,6 +165,9 @@ func (s *Sync) attachRemoteControl(cfg *filesdoor.ServeConfig) {
 	// nil for every tunnel that must not offer one.
 	serve := func(ctx context.Context, tun io.ReadWriteCloser, device, road string, direct livedoor.DirectHost) error {
 		permit, class := pair.Permits().For(identityID, device)
+		if !config.RemoteControlOn() {
+			permit = pair.Permit{}
+		}
 		peer := livedoor.Peer{
 			Device: device,
 			Label:  s.peerLabel(device),

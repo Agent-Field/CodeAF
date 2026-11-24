@@ -141,7 +141,7 @@ The desktop app can open a chat another computer is running too. On such a chat 
 
 ## Remote control is off — how to turn it on, remote control says restart codeaf on the other computer
 
-Remote control is off until you turn it on, on both computers: open `/settings` → `Devices` and turn `remote control` on, or start codeaf with `CODEAF_REMOTE_CONTROL=1`. In the desktop app it is the **Remote control** switch in Settings → Devices (*Turn remote control on or off in the desktop app*). With it off, everything works as before: `enter` on another computer's chat asks to move it, and no computer can open yours live.
+Remote control is off until you turn it on, on both computers: open `/settings` → `Devices` and turn `remote control` on, or start codeaf with `CODEAF_REMOTE_CONTROL=1`. In the desktop app it is the **Remote control** switch in Settings → Devices (*Turn remote control on or off in the desktop app*). With it off, everything works as before: `enter` on another computer's chat asks to move it, and no computer can open yours live. Turning it off while codeaf is running does the same at once for any computer that tries to open a chat of yours, and ends the live views other computers already have open within about half a minute. The chats here keep running and keep everything that was typed.
 
 Both computers need a codeaf that includes it. If the other one still runs an older codeaf in the background, the view says `Restart codeaf on tower to share this chat.`: close codeaf there and open it again.
 

@@ -291,12 +291,25 @@ type doorRun struct {
 
 // ensureFilesDoor starts this home's files door in this process if it is not
 // running. Which process of the home actually registers is decided by the lock
-// inside the door, so every codeaf process may call this.
+// inside the door, so every codeaf process may call this. It is also what ends
+// the remote-control part of a door: the person turning remote control off is
+// seen at the next call, which the watch loop of [StartLiveTransfer] makes at
+// least every [liveWatchEvery] in every process that opens chats, with or
+// without live transfer.
 func (s *Sync) ensureFilesDoor() {
+	wantRC := config.RemoteControlOn()
 	if !s.liveCarries() && !s.remoteControlWanted() {
+		// THE DOOR HAS NO REASON TO RUN, and the one case that needs ending is a
+		// run that is serving remote control the person has just turned off:
+		// without this, the early return left it up, and every view already open
+		// on it stayed connected until the process quit. A run that was never
+		// serving remote control, and a computer that has no other computer yet,
+		// are left exactly as they were.
+		if !wantRC {
+			s.endRemoteControlRun()
+		}
 		return
 	}
-	wantRC := config.RemoteControlOn()
 	filesDoors.Lock()
 	if existing, ok := filesDoors.runs[s.Home]; ok {
 		if existing.remoteControl == wantRC {
@@ -305,6 +318,11 @@ func (s *Sync) ensureFilesDoor() {
 		}
 		delete(filesDoors.runs, s.Home)
 		filesDoors.Unlock()
+		if existing.remoteControl && !wantRC {
+			// The door goes on for live transfer, so the views end with a reason
+			// they can say, and the run restarts below without the live handlers.
+			s.endRemoteControlViews()
+		}
 		existing.stop()
 		<-existing.done
 		filesDoors.Lock()
@@ -346,6 +364,33 @@ func (s *Sync) ensureFilesDoor() {
 			log.Printf("blind pass-through: files door: %v", err)
 		}
 	})
+}
+
+// endRemoteControlViews closes every live view open on this home's door. It
+// leans on the door's own permit read, which answers "no watching" while remote
+// control is off, so each open tunnel closes the way it does for a permit that
+// took watching away, and the viewer's link then finds a refusal and not a door
+// that is merely quiet. It holds no lock of ours.
+func (s *Sync) endRemoteControlViews() {
+	livedoor.DefaultRegistry(s.Home).PermitsChanged("")
+}
+
+// endRemoteControlRun ends this home's door when it is running to serve remote
+// control and nothing else needs it any more, and waits for it to let go of its
+// lock, which is what a restart onto a door without the live handlers does too.
+// A door that never served remote control is left alone.
+func (s *Sync) endRemoteControlRun() {
+	filesDoors.Lock()
+	run, ok := filesDoors.runs[s.Home]
+	if !ok || !run.remoteControl {
+		filesDoors.Unlock()
+		return
+	}
+	delete(filesDoors.runs, s.Home)
+	filesDoors.Unlock()
+	s.endRemoteControlViews()
+	run.stop()
+	<-run.done
 }
 
 // filesDoorConfig is everything one process needs to serve this home's files
