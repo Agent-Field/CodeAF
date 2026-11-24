@@ -100,6 +100,19 @@ func TestAnAnsweredAskPutsAfiBackToWork(t *testing.T) {
 	if again.Task == nil || again.Task.ID != notes.ID || !strings.Contains(again.Text, "Which group first?") || !strings.Contains(again.Text, "Internal team") {
 		t.Fatalf("Afi went on without the answer: %+v", again)
 	}
+	// The run the answer started opens with who answered, never a second
+	// "Started by" (live test 2026-11-23 #44).
+	var work api.TaskWork
+	o.do(t, "santosh", "GET", path+"/tasks/"+notes.ID+"/work", -1, nil, 200, &work)
+	var opens []string
+	for _, e := range work.Entries {
+		if e.Kind == api.AgentEntryNote && e.By != "" {
+			opens = append(opens, e.Text)
+		}
+	}
+	if len(opens) != 2 || opens[0] != "Started by santosh" || opens[1] != "santosh answered; Afi carries on" {
+		t.Fatalf("the runs open with %q", opens)
+	}
 
 	// The answer arrives while the run that asked is still ending.
 	post := o.task(t, "santosh", path, api.TaskCreate{Title: "Write the post", DoneBy: afi})

@@ -185,7 +185,7 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		// the desk's lock and publishes, and launchLocked holds that lock (a
 		// queued run starts from inside it). Steers wait in its inbox until
 		// the run reads them.
-		run.Steers = h.openTaskWork(key, turn, starter)
+		run.Steers = h.openTaskWork(key, turn, starter, r.answered)
 		var next *taskResume
 		var failed error
 		defer func() {

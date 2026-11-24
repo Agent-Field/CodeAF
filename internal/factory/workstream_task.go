@@ -252,6 +252,21 @@ type TaskAskOption struct {
 	// notes go on the website"). Absent, the decision reads as the question
 	// and the answer chosen.
 	Decides string `json:"decides,omitempty"`
+	// Words is whether choosing this answer means the person gives
+	// something in their own words (dates, a price list, a text to paste).
+	// Such an answer is never one click: the app asks for the words, and an
+	// Ask holding one is never quick (live test 2026-11-23 #37).
+	Words bool `json:"words,omitempty"`
+}
+
+// NeedsWords is whether any of ask's answers needs the person's own words.
+func NeedsWords(ask TaskAsk) bool {
+	for _, o := range ask.Options {
+		if o.Words {
+			return true
+		}
+	}
+	return false
 }
 
 // TaskAsk is a question a task waits on. The task's own Ask (Task.Ask) is
@@ -2438,7 +2453,7 @@ func CantDoAsk(doer, why, id string) TaskAsk {
 		ID: CantDoAskID + id, Title: "Can you give " + firstNonEmpty(doer, "the agent") + " what it needs?",
 		Detail: cutWords(strings.TrimSpace(why), 1000),
 		Options: []TaskAskOption{
-			{ID: CantDoPaste, Label: "Paste what it needs", Recommended: true},
+			{ID: CantDoPaste, Label: "Paste what it needs", Recommended: true, Words: true},
 			{ID: CantDoPerson, Label: "Do it myself"},
 			{ID: CantDoDrop, Label: "Drop it"},
 		},
