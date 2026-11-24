@@ -86,6 +86,21 @@ const (
 	// stream made for moving files can never complete against each other.
 	LiveTunnelPrologue = "codeaf live door v1 connect"
 
+	// DirectTunnelPrologue is mixed into the handshake of a live view that
+	// travels over a peer-to-peer data channel. It is deliberately not the live
+	// prologue: the same static door key serves every road, so this string is
+	// what makes a stream made for the relay unable to complete against the
+	// direct road, and one made for the direct road unable to complete against
+	// the relay's live door or the files door.
+	DirectTunnelPrologue = "codeaf live door v1 direct"
+
+	// MaxDirect is how many direct streams one door admits at once, counted
+	// before Noise so a flood costs a counter. A direct stream holds no relay
+	// stream, so the number is its own rather than a share of the relay's live
+	// streams; livedoor.MaxDirect is the same number for the router's side, and
+	// a syncsetup test pins that the two agree.
+	MaxDirect = 14
+
 	doorKeySalt = "codeaf files door v1"
 )
 
