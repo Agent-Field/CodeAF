@@ -67,17 +67,23 @@ func newPermitAsker(door *approvalsDoor) tui3.PermitAsker {
 
 // AskOnce says whether Home should ask now and about which computers.
 func (p *permitAsker) AskOnce() ([]string, bool) {
-	p.mu.Lock()
-	names, ask := slices.Clone(p.names), p.ask
-	due := !p.answered && !p.refreshing && (p.checkedAt.IsZero() || p.now().Sub(p.checkedAt) >= permitAskEvery)
-	if due {
-		p.refreshing = true
-	}
-	p.mu.Unlock()
+	names, ask, due := p.snapshot()
 	if due {
 		p.spawn("chatv3/permit-ask", p.refresh)
 	}
 	return names, ask
+}
+
+// snapshot is what the asker holds now, and whether a fresh reading is due, in
+// which case it also marks one as under way so that only one is started.
+func (p *permitAsker) snapshot() (names []string, ask, due bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	due = !p.answered && !p.refreshing && (p.checkedAt.IsZero() || p.now().Sub(p.checkedAt) >= permitAskEvery)
+	if due {
+		p.refreshing = true
+	}
+	return slices.Clone(p.names), p.ask, due
 }
 
 // refresh reads the book and the roster once and keeps what they say.
@@ -131,21 +137,33 @@ func (p *permitAsker) read(ctx context.Context) (names, ids []string, ask bool, 
 // that was not kept is a decision not made, and the safe state, watching only,
 // is what stands until then.
 func (p *permitAsker) Answer(allow bool) error {
-	p.mu.Lock()
-	who, ids := p.identity, slices.Clone(p.ids)
-	p.answered, p.ask, p.names, p.ids = true, false, nil, nil
-	p.mu.Unlock()
+	who, ids := p.settle()
 	if who == "" {
 		return nil
 	}
 	p.spawn("chatv3/permit-answer", func() {
 		if err := p.book().Asked(who, allow, ids); err != nil {
-			p.mu.Lock()
-			p.answered, p.checkedAt = false, time.Time{}
-			p.mu.Unlock()
+			p.reopen()
 		}
 	})
 	return nil
+}
+
+// settle ends the question in memory and answers who was asked and about which
+// computers.
+func (p *permitAsker) settle() (who string, ids []string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	who, ids = p.identity, slices.Clone(p.ids)
+	p.answered, p.ask, p.names, p.ids = true, false, nil, nil
+	return who, ids
+}
+
+// reopen brings the question back, because the decision was not written down.
+func (p *permitAsker) reopen() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.answered, p.checkedAt = false, time.Time{}
 }
 
 var _ tui3.PermitAsker = (*permitAsker)(nil)

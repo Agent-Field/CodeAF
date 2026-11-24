@@ -80,34 +80,51 @@ func (r *syncRoad) bind(link *livedoor.Link) {
 		st = link.State()
 		touch = link.Touch
 	}
+	r.attach(link, touch, st)
+}
+
+// attach holds a link and the state it started in. The lock is released by a defer
+// so a panic absorbed further up cannot leave the draw path waiting on it.
+func (r *syncRoad) attach(link *livedoor.Link, touch func(), st livedoor.State) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.link = link
 	r.touch = touch
 	r.state = st
 	if st.Kind == livedoor.Live || st.Kind == livedoor.WatchOnly {
 		r.permit = st.Permit
 	}
-	r.mu.Unlock()
 }
 
 func (r *syncRoad) onState(st livedoor.State) {
-	r.mu.Lock()
-	r.state = st
-	if st.Kind == livedoor.Live || st.Kind == livedoor.WatchOnly {
-		r.permit = st.Permit
-	}
-	prev := r.changed
-	r.changed = make(chan struct{})
-	r.mu.Unlock()
-	if prev != nil {
+	if prev := r.record(st); prev != nil {
 		close(prev)
 	}
 }
 
-func (r *syncRoad) Read() tui3.LiveRead {
+// record holds the newest state and answers the channel that was closed over by it,
+// which the caller closes outside the lock.
+func (r *syncRoad) record(st livedoor.State) (prev chan struct{}) {
 	r.mu.Lock()
-	st := r.state
-	r.mu.Unlock()
+	defer r.mu.Unlock()
+	r.state = st
+	if st.Kind == livedoor.Live || st.Kind == livedoor.WatchOnly {
+		r.permit = st.Permit
+	}
+	prev = r.changed
+	r.changed = make(chan struct{})
+	return prev
+}
+
+// current is the state held now.
+func (r *syncRoad) current() livedoor.State {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.state
+}
+
+func (r *syncRoad) Read() tui3.LiveRead {
+	st := r.current()
 	switch st.Kind {
 	case livedoor.Live, livedoor.WatchOnly:
 		return tui3.LiveRead{Kind: tui3.LiveOn}
@@ -132,14 +149,19 @@ func (r *syncRoad) Changed() <-chan struct{} {
 	return r.changed
 }
 
-func (r *syncRoad) Touch() {
+// toucher says whether the link is idle and what touches it.
+func (r *syncRoad) toucher() (idle bool, touch func()) {
 	r.mu.Lock()
-	idle := r.state.Kind == livedoor.Idle
-	touch := r.touch
+	defer r.mu.Unlock()
+	touch = r.touch
 	if touch == nil && r.link != nil {
 		touch = r.link.Touch
 	}
-	r.mu.Unlock()
+	return r.state.Kind == livedoor.Idle, touch
+}
+
+func (r *syncRoad) Touch() {
+	idle, touch := r.toucher()
 	if idle || touch == nil {
 		return
 	}
@@ -164,11 +186,15 @@ func (r *syncRoad) Road() string {
 	return r.state.Road
 }
 
-func (r *syncRoad) Permit() (drive bool, readOnly string) {
+// allowed is what the other computer last said this one may do, and its name.
+func (r *syncRoad) allowed() (pair.Permit, string) {
 	r.mu.Lock()
-	p := r.permit
-	host := r.host
-	r.mu.Unlock()
+	defer r.mu.Unlock()
+	return r.permit, r.host
+}
+
+func (r *syncRoad) Permit() (drive bool, readOnly string) {
+	p, host := r.allowed()
 	if p == (pair.Permit{}) {
 		return false, ""
 	}
