@@ -317,6 +317,11 @@ func TestAppProposalIsReadFromTheAgentsAnswer(t *testing.T) {
 	if !ok || p.Name != "release" || len(p.Helpers) != 1 || p.Helpers[0].Handle != "web" || p.Helpers[0].Role != "frontend" {
 		t.Fatalf("the proposal = %+v, %v", p, ok)
 	}
+	// A model's handle stays within HandleWordMax here too, cut at its last hyphen.
+	long, ok := appParseProposal(`{"name": "qa", "helpers": [{"handle": "review-and-testing", "brief": "review it"}]}`)
+	if !ok || len(long.Helpers) != 1 || long.Helpers[0].Handle != "review-and" {
+		t.Fatalf("a long proposed handle = %+v, %v; want review-and", long, ok)
+	}
 	if _, ok := appParseProposal("I would rather do it alone."); ok {
 		t.Fatal("words with no proposal were read as one")
 	}

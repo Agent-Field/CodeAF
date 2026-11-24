@@ -151,7 +151,8 @@ func (b *appBackend) memberAdd(t teamstore.Team, agent string, ask appwire.Membe
 func (b *appBackend) memberStart(t teamstore.Team, ask appwire.MemberAsk) (string, error) {
 	handle, brief := strings.TrimSpace(ask.Handle), strings.TrimSpace(ask.Brief)
 	if err := teamstore.ValidHandle(handle); err != nil {
-		return "", appwire.Errorf(appwire.CodeBadParams, "a handle is %d to %d lowercase letters, digits or hyphens", teamstore.HandleMin, teamstore.HandleMax)
+		// The store's own reason: the length, the characters, or a reserved word.
+		return "", appwire.Errorf(appwire.CodeBadParams, "%v", err)
 	}
 	if _, taken := t.ByHandle(handle); taken {
 		return "", appwire.Errorf(appwire.CodeBadParams, "@%s is already in %s", handle, t.Name)
@@ -695,6 +696,9 @@ func appParseProposal(answer string) (appwire.Proposal, bool) {
 	for _, h := range p.Helpers {
 		h.Handle = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h.Handle), "@"))
 		h.Brief = strings.TrimSpace(h.Brief)
+		// A model's handle is engine-picked: it stays within HandleWordMax,
+		// shortened the way the streamed proposal shortens it.
+		h.Handle = appProposalShortHandle(h.Handle)
 		if teamstore.ValidHandle(h.Handle) == nil && h.Brief != "" {
 			helpers = append(helpers, h)
 		}

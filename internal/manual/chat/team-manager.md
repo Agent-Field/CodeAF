@@ -13,7 +13,7 @@ files each has touched, and the last few lines of the team's traffic. It never c
 whole conversations. A member of a team with a manager is told the same way which team it is
 in, its handle, and that it reports with `team_post`.
 
-Every member has a **handle**: one lowercase word that says what the conversation is about,
+Every member has a **handle**: a short lowercase word that says what the conversation is about,
 like `@security` for `project branch code complexity & security review`, `@milestones`
 for `codeaf repo issue tags & milestones` or `@gravity` for `quantum gravity research updates`.
 The moment a member has a title it gets a quick guess from the title's words, so it can be
@@ -25,14 +25,6 @@ of its title in front, like `@api-security`. A handle a person or the manager ga
 one `team_start` names a new member by, is never replaced, and a handle the model chose is not
 chosen again, so a line in the traffic keeps meaning the member it meant. Messages in a team
 are addressed by handle.
-
-## How long can a crew member's handle be — handle length, name limit, characters
-
-A handle is 2 to 24 characters: lowercase letters, digits and hyphens, starting with a
-letter or digit. That is the limit for a handle you type, or the manager gives with
-`team_start`. A handle codeaf picks itself, from the title's words, the title model or a
-proposed crew, stays within 12 characters so it remains one short word; one numbered
-for a clash stays within 12 too.
 
 Handles made before this were guesses, and each is chosen again the same way on its
 conversation's next turn. Every change is written to the team's traffic as
@@ -47,6 +39,17 @@ places, written as a team (`team harbor`, `the harbor team` or `"harbor"`), is a
 press opens the **teams page** with that team selected. The hint says `Open harbor on the
 teams page · click`. Over `--host`, against an engine with no teams doors, the press opens the
 team-agnostic conversations view instead, and the hint says so.
+
+## How long can a crew member's handle be — handle length, name limit, characters
+
+A handle is 2 to 24 characters: lowercase letters, digits and hyphens, starting with a
+letter or digit. That is the limit for a handle you type, or the manager gives with
+`team_start`. A handle codeaf picks itself, from the title's words, the title model or a
+proposed crew, stays within 12 characters so it remains one short word; one numbered
+for a clash stays within 12 too.
+
+A computer still running an older codeaf accepts only 2 to 12, so a longer handle on a team
+it also loads is replaced there by a guess from the title's words.
 
 ## Making a manager
 

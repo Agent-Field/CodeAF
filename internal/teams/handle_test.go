@@ -96,13 +96,13 @@ func TestSetHandleValidates(t *testing.T) {
 	f := &File{Teams: []Team{{ID: "t1", Members: []Member{{Key: "a", Word: "alpha"}, {Key: "b", Word: "beta"}}}}}
 	tidy(f.Teams)
 	for h, why := range map[string]string{
-		"beta":          "another member's handle",
-		"b":             "too short",
+		"beta":                      "another member's handle",
+		"b":                         "too short",
 		"twentyfivecharacterslong1": "too long",
-		"Alpha":         "upper case",
-		"al pha":        "a space",
-		"-alpha":        "a leading hyphen",
-		"everyone":      "a reserved address",
+		"Alpha":                     "upper case",
+		"al pha":                    "a space",
+		"-alpha":                    "a leading hyphen",
+		"everyone":                  "a reserved address",
 	} {
 		if err := f.SetHandle("t1", "a", h); err == nil {
 			t.Errorf("%q (%s) was accepted", h, why)

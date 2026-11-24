@@ -372,3 +372,45 @@ func TestAppCreateFirstWordsStateNone(t *testing.T) {
 		t.Fatalf("the first words stated %q, want none", got)
 	}
 }
+
+// A HANDLE THE PERSON TYPES MAY RUN TO teamstore.HandleMax; a refused one says
+// the store's own reason.
+func TestAppMemberStartTakesALongTypedHandle(t *testing.T) {
+	conv := &fakeConversation{script: []session.Event{{Kind: session.EventTextDelta, Text: "ok"}}}
+	files := t.TempDir()
+	backend := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: ask.Transcript, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { backend.Close() })
+	backend.state = &appState{path: filepath.Join(t.TempDir(), appStateName)}
+	backend.profileDir = t.TempDir()
+	where := t.TempDir()
+	crew := teamstore.NewID()
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: crew, Name: "harbor", Made: time.Now()})
+		lead := filepath.Join(files, "lead.jsonl")
+		if err := f.AddMember(crew, teamstore.Member{Key: lead, File: lead, Where: where, Word: "lead", Handle: "lead"}); err != nil {
+			return err
+		}
+		return f.SetManager(crew, lead)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Member("start", appwire.MemberAsk{Crew: crew, Handle: "review-and-testing", Brief: "review the code and write tests"}); err != nil {
+		t.Fatalf("an 18-character typed handle was refused: %v", err)
+	}
+	f, err := teamstore.Load(backend.profileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	team, _ := f.Team(crew)
+	if _, ok := team.ByHandle("review-and-testing"); !ok {
+		t.Fatalf("the crew has no @review-and-testing: %+v", team.Members)
+	}
+	for handle, why := range map[string]string{"abcdefghijklmnopqrstuvwxy": "2 to 24 characters", "everyone": "reserved"} {
+		_, err := backend.Member("start", appwire.MemberAsk{Crew: crew, Handle: handle, Brief: "anything"})
+		if err == nil || !strings.Contains(err.Error(), why) {
+			t.Errorf("%q: err = %v, want it to say %q", handle, err, why)
+		}
+	}
+}
