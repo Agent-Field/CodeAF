@@ -177,6 +177,12 @@ type repoSightOf struct {
 // doors that ask more of a repository reached through the organization alone
 // (a new job on one is made in a workstream the caller can edit).
 func (h *Handler) repoSight(r *http.Request, keys []string) (repoSightOf, bool) {
+	if call, _ := agentCallOf(r); call.bot != "" {
+		// Workstream tasks can include jobs. A bot can see the organization's
+		// repositories there without using any person's GitHub credential.
+		org := h.orgRepos(r, call.handle)
+		return repoSightOf{allow: org, viaOrg: org}, true
+	}
 	var session accessSession
 	var ok bool
 	trial, isTrial := r.Context().Value(trialSessionKey{}).(*accessSession)

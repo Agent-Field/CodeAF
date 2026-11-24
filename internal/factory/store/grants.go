@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS org_policy (
 	updated_at TEXT NOT NULL,
 	updated_by TEXT NOT NULL
 );
-`
+` + botsSchema
 
 // grantColumns is the column list every grant read and write uses.
 const grantColumns = `id, subject_kind, subject_id, resource_kind, resource_id, role,

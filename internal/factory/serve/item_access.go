@@ -96,8 +96,12 @@ func (h *Handler) itemViewer(r *http.Request) (Viewer, error) {
 	v.Operator = v.Solo || h.isOperator(r)
 	v.Member = v.Solo || v.Member && !h.profileless(r)
 	if call, ok := agentCallOf(r); ok && call.agent != "" {
-		v.Agent = &acl.Agent{ID: call.agent, Sponsor: v.Handle}
-		v.Operator = v.Solo || v.Handle != "" && v.Handle == factory.NormalizeHandle(h.operatorLogin(r))
+		v.Agent = &acl.Agent{ID: call.agent, Sponsor: v.Handle, Only: call.only}
+		if call.bot == "" {
+			v.Operator = v.Solo || v.Handle != "" && v.Handle == factory.NormalizeHandle(h.operatorLogin(r))
+		} else {
+			v.Operator = false
+		}
 	}
 	return v, nil
 }

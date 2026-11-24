@@ -69,6 +69,8 @@ type Caller struct {
 // Agent names a server-run agent and the person who sponsors it.
 type Agent struct {
 	ID, Sponsor string
+	// Only is a further limit. An empty non-nil slice grants no verbs.
+	Only []string
 }
 
 // Share is a legacy share, as it sits on a workstream or canvas document: a
@@ -206,7 +208,7 @@ func (p Policy) verbs(c Caller, held map[string]bool) VerbSet {
 	if c.Agent != nil {
 		scope := p.scope(c)
 		for verb := range verbs {
-			if !slices.Contains(scope.Verbs, verb) {
+			if !slices.Contains(scope.Verbs, verb) || (c.Agent.Only != nil && !slices.Contains(c.Agent.Only, verb)) {
 				delete(verbs, verb)
 			}
 		}

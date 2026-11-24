@@ -46,9 +46,13 @@ func (h *Handler) recordOrg(r *http.Request, kind, verb, object, detail string) 
 	if who == "" {
 		return
 	}
+	operator := operatorOnly[kind]
+	if strings.HasPrefix(object, botAgentPrefix) {
+		operator = h.isOperator(r)
+	}
 	_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: kind, Verb: verb, Object: object,
 		Handle: who, Detail: strings.TrimSpace(detail),
-		Actor: record.Actor{Kind: "person", Name: "@" + who, Operator: operatorOnly[kind]}})
+		Actor: record.Actor{Kind: "person", Name: "@" + who, Operator: operator}})
 }
 
 // operatorOnly are the kinds only the operator may make, so their actor is
@@ -96,6 +100,12 @@ func (h *Handler) orgRecordVisible(r *http.Request, events []record.Event) []rec
 	seen := map[string]bool{}
 	out := events[:0:0]
 	for _, e := range events {
+		if strings.HasPrefix(e.Object, botAgentPrefix) {
+			if h.isOperator(r) || h.orgActor(r) == e.Handle && !h.profileless(r) {
+				out = append(out, e)
+			}
+			continue
+		}
 		if ref, isResource := strings.CutPrefix(e.Object, orgObjectResource); isResource {
 			ok, cached := seen[e.Object]
 			if !cached && h.config.Store != nil {

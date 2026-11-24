@@ -468,6 +468,10 @@ func (h *Handler) createCanvas(w http.ResponseWriter, r *http.Request) {
 		c.Owner = factory.WorkstreamOwner{Kind: "person", ID: v.Handle}
 		c.AgentCreated = true
 	}
+	if isBotCall(r) && (!can(v, h.canvasItem(c), factory.RoleEdit) || len(c.Shares) > 0) {
+		h.fail(w, http.StatusForbidden, "a bot needs edit permission to make a canvas and can only share it after creation")
+		return
+	}
 	var created struct {
 		ID string `json:"id"`
 	}

@@ -2,6 +2,7 @@ package serve
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -53,7 +54,7 @@ func (h *Handler) startReleased(tw store.TaskWrite, ws factory.OrgWorkstream, fi
 	at := finished.UpdatedAt
 	for _, rel := range released {
 		line := "Ready to start: " + finished.Title + " is done"
-		if rel.DoneBy.Kind == factory.TaskByAfi && factory.StartsBySelf(rel, all, h.ownerStarts(rel)) {
+		if !strings.HasPrefix(by.ID, botAgentPrefix) && rel.DoneBy.Kind == factory.TaskByAfi && factory.StartsBySelf(rel, all, h.ownerStarts(rel)) {
 			running := rel
 			running.State, running.StateReason, running.StoppedBy = factory.TaskRunning, "", nil
 			running.Rev++

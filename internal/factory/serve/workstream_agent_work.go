@@ -55,6 +55,8 @@ type agentCallKey struct{}
 type agentCall struct {
 	handle   string
 	agent    string
+	bot      string
+	only     []string
 	operator bool
 	by       factory.TaskEventBy
 }
@@ -62,6 +64,12 @@ type agentCall struct {
 func agentCallOf(r *http.Request) (agentCall, bool) {
 	call, ok := r.Context().Value(agentCallKey{}).(agentCall)
 	return call, ok
+}
+
+// afiCallOf keeps exceptions made for the server's own agent off the bot door.
+func afiCallOf(r *http.Request) (agentCall, bool) {
+	call, ok := agentCallOf(r)
+	return call, ok && call.bot == ""
 }
 
 // afiBy is how the server's agent signs a thread.
