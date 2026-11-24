@@ -409,12 +409,21 @@ the data channel) that lets two of a person's computers talk to each other
 without the relay. It is built with CGO off, so it adds no C toolchain and no
 shared library, and it is linked by `cmd/codeaf` alone: `internal/syncsetup`
 states what it needs through a seam the program fills, so no other package pays
-for it. The cap moves by 4,700,000 bytes, from 79,191,048 to 83,891,048. THAT
-NUMBER IS PROVISIONAL: it is an estimate from the dependency's own size, set so
-the gate does not fail the branch, and the one that is checked in when the wave
-lands is the measured delta on the merged branch with the same Go version,
-target, flags and embedded engine artifact. The rule above applies: compare like
-with like, and keep the headroom the base had.
+for it. The cap moves by 9,484,272 bytes, from 79,191,048 to 88,675,320: the
+measured difference between two darwin/amd64 builds of `cmd/codeaf` with Go
+1.26.5, `-trimpath -ldflags="-s -w"` and the same embedded artifacts, one of
+`dev` at ca8e437b7 and one of the merged remote-control branch, so the headroom
+the base had is kept. About 2.1 MB of that is pion's own code by symbol size and
+about 0.2 MB is `internal/livedoor` and `internal/directroad`; the rest is what
+roughly 6,700 more functions cost the whole binary in type data, line tables and
+strings, because the program already links reflective method lookup and the
+linker cannot drop exported methods. The design's estimate of 4.5 MB counted the
+dependency alone and was wrong by half. The cheaper road, if this number ever
+needs to fall, is to build the direct road from pion's ICE, DTLS, SCTP and data
+channel packages without `pion/webrtc`, which drops the media packages (RTP,
+RTCP, SRTP, SDP, interceptors and the TURN client) that nothing here uses; the
+direct road is offered through a capability in the hello, so a later build can
+change how it is made without breaking an older one.
 
 When remote control is off, or `CODEAF_REMOTE_ROAD=relay` is set, nothing from
 this stack runs: no peer connection is built and no STUN request is made. The
