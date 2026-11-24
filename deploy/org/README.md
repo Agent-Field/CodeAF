@@ -225,9 +225,12 @@ organization's. Each of those is a next step, not a hidden property.
    `./setup.sh` also writes `CODEAF_SERVER_KEY`, which seals people's own keys: keep a copy.
    `CODEAF_HOSTED_MODEL_URL` is the address chats use to reach the organization server's model door
    (`http://codeaf:8787/v1/model` by default).
-3. `docker compose up -d`. The image must hold a codeaf that has `codeaf sessionhost`; until a release does, build
-   from a local binary: `cp ../../bin/codeaf codeaf-local` then `CODEAF_BINARY_FROM=local docker compose build codeaf sessionhost`.
-   (`codeaf-local` is ignored by git; `CODEAF_BINARY_FROM` defaults to `fetch`, the pinned release.)
+3. `docker compose up -d`. The image must hold a codeaf that has `codeaf sessionhost`, and the pinned release (what a plain
+   `--build` fetches) does not until one ships it. Use the published image (`--env-file images.env`, see "Published images"), or
+   build the codeaf image from this repository's source (the `docker build` under "Published images", run from the repository root,
+   which tags `codeaf-org/codeaf:local`) and start with `docker compose up -d --no-build`. `codeaf`, `runner` and `sessionhost` all
+   run that one image. Do not build from a binary of your own machine: the image should be this commit's source, which is what `codeaf version`
+   inside it reports.
 
 The sessionhost sits on a network of its own, shared only with `codeaf`, so a chat's commands cannot reach
 AgentField, the nodes, the runner or the model stub. On a platform with no such network (Railway), the port limit above
@@ -246,13 +249,10 @@ access in any chat folder, process environment or argument list, a chat's access
 server restarts and ends the moment the chat is stopped, and the first attach after a restart of the chats' machine
 needs no retry. It prints PASS or FAIL per check. A live check against a real provider is the one step it does not do.
 
-On Railway the sessionhost is a sixth service from the same image: `CODEAF_ROLE=sessionhost`, a volume at
-`/chats`, no public domain, `CODEAF_SESSIONHOST_SECRET=${{codeaf.CODEAF_HOSTED_SECRET}}`, and on `codeaf`
-`CODEAF_HOSTED_URL=http://${{sessionhost.RAILWAY_PRIVATE_DOMAIN}}:8790` and
-`CODEAF_HOSTED_MODEL_URL=http://${{codeaf.RAILWAY_PRIVATE_DOMAIN}}:8787/v1/model`. Railway runs services as root with
-a fixed capability set; the sessionhost takes five from it, and `codeaf sessionhost probe` run in that service
-says whether the fence works there (it has Landlock but not the namespace fence, so the mode there is the
-user switch plus Landlock).
+On Railway the sessionhost is a service of its own from the same Dockerfile; its variables are in the table under "Railway", and
+`codeaf sessionhost probe`, run in that service, says whether the fence works there. Railway gives root eleven capabilities, the
+sessionhost takes five of them, and the kernel has Landlock but not the namespace fence, so the mode there is the user switch plus
+Landlock (`"mode": "uid+fence"`, `"fence_mode": "landlock"`).
 
 ## State, backups and upgrades
 
@@ -360,31 +360,65 @@ tag and digest together.
 
 ## Railway
 
-The same Dockerfiles run on Railway as one project: five services, a volume on each, private networking
-between them, and a public domain on `codeaf` only. Nothing needs Compose there; each service builds its own
-Dockerfile from this folder. (A Railway template needs images, not a repository: `railway/make-template.sh` makes a draft one
-from the published images above, and the table below is the same configuration by hand. The POC that proved the Dockerfile route
-ran the keyless smoke test on itself.)
+The same Dockerfiles run on Railway as one project: seven services, a volume on each but the model stub, private networking
+between them, and a public domain on `codeaf` only. Nothing needs Compose there; each service builds from this repository, on
+Railway's builders. (A Railway template needs images, not a repository: `railway/make-template.sh` makes a draft one from the
+published images above, without the sessionhost yet. The table below is the configuration by hand. It was followed from an empty
+project, with the keyless stub, and every service came up healthy: see "Check it" below.)
 
-Create an empty project, then one service per row. For the four built services choose **GitHub repo**, set
-**Root Directory** to `deploy/org`, and set the variable `RAILWAY_DOCKERFILE_PATH` (or the service's
-**Dockerfile Path**) to the Dockerfile in the row. Add a volume at the mount path in the row. Reference variables
-(`${{agentfield.RAILWAY_PRIVATE_DOMAIN}}`) are Railway's way of naming another service; keep them as written.
+Create an empty project in the workspace that should own it, then one service per row. For each one choose **GitHub repo**
+(`Agent-Field/codeaf`, a public repository; the branch you want, or one pinned commit), set the **Root Directory** and the
+**Dockerfile Path** (or the variable `RAILWAY_DOCKERFILE_PATH`) in the row, and add a volume at the mount path in the row, with a
+size you choose (Railway's default is large, 50 GB on the plan this was tried on: 1 GB is plenty for `codeaf`, `agentfield` and
+`sessionhost`, 512 MB for `runner` and `pr-af`). Reference variables (`${{agentfield.RAILWAY_PRIVATE_DOMAIN}}`) are Railway's way of naming another service;
+keep them as written, and create every service before you set a variable that names another.
 
-| Service | Dockerfile | Volume | Variables |
-| --- | --- | --- | --- |
-| `agentfield` | `agentfield.Dockerfile` | `/data` | `AGENTFIELD_API_KEY=${{secret(64, "abcdef0123456789")}}`, `AGENTFIELD_HOME=/data`, `AGENTFIELD_CONFIG_FILE=/dev/null`, `AGENTFIELD_PORT=8080`, `PORT=8080`, `AGENTFIELD_STORAGE_MODE=local`, `AGENTFIELD_STORAGE_LOCAL_DATABASE_PATH=/data/agentfield.db`, `AGENTFIELD_STORAGE_LOCAL_KV_STORE_PATH=/data/agentfield.bolt`, `AGENTFIELD_RUN_OWNER_REQUIRE_PROOF=true`, `AGENTFIELD_TELEMETRY_ENABLED=false`. Health check path `/api/v1/health`. |
-| `codeaf` | `codeaf.Dockerfile` | `/data` | `CODEAF_ROLE=server`, `PORT=8787`, `CODEAF_ORG_NAME=...`, `CODEAF_PUBLIC_DOMAIN=${{RAILWAY_PUBLIC_DOMAIN}}`, `CODEAF_TRUSTED_PROXIES=100.64.0.0/10`. Generate a public domain for this service only, target port 8787. |
-| `runner` | `codeaf.Dockerfile` | `/data` | `CODEAF_ROLE=runner`, `AGENTFIELD_URL=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `ORG_MODEL=...`, `OPENROUTER_API_KEY=...`. |
-| `swe-af` | `swe-af.Dockerfile` | `/workspaces` | `NODE_ID=swe-planner`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `SWE_HITL_NATIVE=1`, `SWE_FENCE=off`, `SWE_PRO_ENGINE=0`, `SWE_DEFAULT_MODEL=openrouter/...`, `OPENROUTER_API_KEY=...`. |
-| `pr-af` | `pr-af.Dockerfile` | `/workspaces` | `NODE_ID=pr-af`, `PORT=8007`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `AGENT_CALLBACK_URL=http://${{RAILWAY_PRIVATE_DOMAIN}}:8007`, `PR_AF_MODEL=...`, `OPENROUTER_API_KEY=...`. |
-| `modelstub` (keyless only) | `modelstub.Dockerfile` | none | `STUB_DELAY=2s`; then on `runner`, `swe-af` and `pr-af` set `CODEAF_BASE_URL=http://${{modelstub.RAILWAY_PRIVATE_DOMAIN}}:8890/api/v1`, `OPENROUTER_API_KEY=stub-key`, and the model variables to `stub/scripted` (SWE-AF: `openrouter/stub/scripted`); on `swe-af` also `SMOKE_FIXTURE_REPO=/workspaces/smoke-fixture`. |
+| Service | Root Directory | Dockerfile Path | Volume | Variables |
+| --- | --- | --- | --- | --- |
+| `agentfield` | `/deploy/org` | `agentfield.Dockerfile` | `/data` | `AGENTFIELD_API_KEY=${{secret(64, "abcdef0123456789")}}`, `AGENTFIELD_HOME=/data`, `AGENTFIELD_CONFIG_FILE=/dev/null`, `AGENTFIELD_PORT=8080`, `PORT=8080`, `AGENTFIELD_STORAGE_MODE=local`, `AGENTFIELD_STORAGE_LOCAL_DATABASE_PATH=/data/agentfield.db`, `AGENTFIELD_STORAGE_LOCAL_KV_STORE_PATH=/data/agentfield.bolt`, `AGENTFIELD_RUN_OWNER_REQUIRE_PROOF=true`, `AGENTFIELD_TELEMETRY_ENABLED=false`. Health check path `/api/v1/health`. |
+| `codeaf` | `/` (the repository root) | `deploy/org/codeaf.Dockerfile` | `/data` | `CODEAF_BINARY_FROM=source`, `ORG_DIR=deploy/org`, `CODEAF_ROLE=server`, `PORT=8787`, `CODEAF_ORG_NAME=...`, `CODEAF_PUBLIC_DOMAIN=${{RAILWAY_PUBLIC_DOMAIN}}`, `CODEAF_TRUSTED_PROXIES=100.64.0.0/10`, `CODEAF_SERVER_KEY=${{secret(64, "abcdef0123456789")}}`. Hosted chats: `CODEAF_HOSTED_SECRET=${{secret(64, "abcdef0123456789")}}`, `CODEAF_HOSTED_URL=http://${{sessionhost.RAILWAY_PRIVATE_DOMAIN}}:8790`, `CODEAF_HOSTED_MODEL_URL=http://${{RAILWAY_PRIVATE_DOMAIN}}:8787/v1/model`. Models: `OPENROUTER_API_KEY=...` (the model door uses it unless you set `CODEAF_HOSTED_MODEL_UPSTREAM` and `CODEAF_HOSTED_MODEL_KEY`). Generate a public domain for this service only, target port 8787, **before its first deploy**. |
+| `runner` | `/` | `deploy/org/codeaf.Dockerfile` | `/data` | `CODEAF_BINARY_FROM=source`, `ORG_DIR=deploy/org`, `CODEAF_ROLE=runner`, `AGENTFIELD_URL=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `ORG_MODEL=...`, `OPENROUTER_API_KEY=...`. |
+| `sessionhost` | `/` | `deploy/org/codeaf.Dockerfile` | `/chats` | `CODEAF_BINARY_FROM=source`, `ORG_DIR=deploy/org`, `CODEAF_ROLE=sessionhost`, `CODEAF_SESSIONHOST_SECRET=${{codeaf.CODEAF_HOSTED_SECRET}}`, `CODEAF_SESSIONHOST_DATA=/chats`, `CODEAF_SESSIONHOST_MODEL=...` (the model chats use), and the limits you want (`CODEAF_SESSIONHOST_MAX_RUNNING`, `CODEAF_SESSIONHOST_MAX_PER_PERSON`). No public domain. Give it resource limits (1 vCPU and 1 GB is plenty for a few chats). |
+| `swe-af` | `/deploy/org` | `swe-af.Dockerfile` | `/workspaces` | `NODE_ID=swe-planner`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `SWE_HITL_NATIVE=1`, `SWE_FENCE=off`, `SWE_PRO_ENGINE=0`, `SWE_DEFAULT_MODEL=openrouter/...`, `OPENROUTER_API_KEY=...`. |
+| `pr-af` | `/deploy/org` | `pr-af.Dockerfile` | `/workspaces` | `NODE_ID=pr-af`, `PORT=8007`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `AGENT_CALLBACK_URL=http://${{RAILWAY_PRIVATE_DOMAIN}}:8007`, `PR_AF_MODEL=...`, `OPENROUTER_API_KEY=...`. |
+| `modelstub` (keyless only) | `/deploy/org` | `modelstub.Dockerfile` | none | `STUB_DELAY=2s`; then on `runner`, `swe-af`, `pr-af` and `codeaf` set `CODEAF_BASE_URL=http://${{modelstub.RAILWAY_PRIVATE_DOMAIN}}:8890/api/v1` and `OPENROUTER_API_KEY=stub-key`, on `runner`, `pr-af` and `sessionhost` the model variables to `stub/scripted` (`ORG_MODEL`, `PR_AF_MODEL`, `CODEAF_SESSIONHOST_MODEL`; SWE-AF: `SWE_DEFAULT_MODEL=openrouter/stub/scripted`), on `codeaf` also `CODEAF_HOSTED_MODEL_UPSTREAM=http://${{modelstub.RAILWAY_PRIVATE_DOMAIN}}:8890/api/v1` and `CODEAF_HOSTED_MODEL_KEY=stub-key`. For the self-test below, `swe-af` also takes `SMOKE_FIXTURE_REPO=/workspaces/smoke-fixture`. |
+
+What a first install needs that the table does not show:
+
+- **Why `codeaf`, `runner` and `sessionhost` build from the repository root.** They are one image, and the pinned release a plain
+  build fetches has no `codeaf sessionhost`, so the image is built from this repository's source (`CODEAF_BINARY_FROM=source`, and
+  `ORG_DIR` says where `deploy/org` is inside that context). Railway hands every service variable to the build as a build argument,
+  which is how those two reach it; they stay in the running service's environment too, where nothing reads them. Never use
+  `CODEAF_BINARY_FROM=local`: it expects a binary beside the Dockerfile that a repository build does not have. Each of the three
+  compiles codeaf (about four minutes each); the other four take about a minute. `codeaf version` in the running service names the
+  commit Railway built (the Dockerfile reads Railway's `RAILWAY_GIT_COMMIT_SHA`; a `SOURCE_COMMIT` variable is not needed).
+- **The public domain first.** The server reads `CODEAF_PUBLIC_DOMAIN` only when it starts, and a link is accepted only with exactly the
+  address the server gave itself. So generate the domain before `codeaf` first deploys; if you generate it later, restart `codeaf`
+  (changing a variable does) and use the operator link its new start prints, not an older one.
+- **Secrets are Railway's.** `${{secret(64, "abcdef0123456789")}}` works in a plain project (not only in a template): each is a fresh
+  random value that lives in the service's variables, never in a file.
+- **Pin what you deploy.** A service connected to a branch with a commit pinned does not follow later pushes; connect it again with
+  the new commit to move it. `railway redeploy` re-runs the old build, so it does not pick up a new commit or a changed Dockerfile
+  path. Changing a variable does redeploy the service with the new value.
+- **Looking inside.** There is no `docker exec`. `railway ssh` (it needs an SSH key registered on your Railway account; pass it with
+  `-i` if the default key has a passphrase) runs a command in a service, with stdin from `</dev/null` or the command hangs.
 
 Two things differ from Compose. Railway's edge is an HTTPS proxy in front of `codeaf`, so
 `CODEAF_TRUSTED_PROXIES=100.64.0.0/10` (the edge's range) is required: without it every password sign-in is
-refused as plain HTTP. And there is no `docker exec`, so set `RUNNER_SELFTEST=1` on `runner` to have it run the
-smoke test's control and job sections on itself at start (PASS or FAIL lines in its log; `RUNNER_SELFTEST=after`
-runs the after-a-restart section instead). The operator link is in the `codeaf` deploy log.
+refused as plain HTTP. And Railway's private network has no policies of its own: any service can connect to any
+other, so a chat's commands are kept off the other services by the sessionhost's port limit (see "Hosted chats"), and each service must keep its own sign-in.
+Set `RUNNER_SELFTEST=1` on `runner` to have it run the smoke test's control and job sections on itself at start (PASS or FAIL lines
+in its log; it needs the stub and `SMOKE_FIXTURE_REPO` above, and makes no person, so it does not claim the organization);
+`RUNNER_SELFTEST=after` runs the after-a-restart section instead. Remove both variables when you are done. The sections that need a person
+signed in (`org`, `hosted`) are not run this way: they need the organization claimed first. The operator link is in the `codeaf` deploy log.
+
+**Check it.** From a terminal with the project linked:
+
+```sh
+railway ssh -s runner -- 'curl -s -o /dev/null -w "%{http_code}\n" $AGENTFIELD_URL/api/v1/nodes' </dev/null   # 401: the control plane wants its key
+railway ssh -s sessionhost -- codeaf sessionhost probe </dev/null                                            # "ok": true, "mode": "uid+fence"
+curl -s -o /dev/null -w '%{http_code}\n' https://<the codeaf domain>/access                                  # 200: the sign-in page, over HTTPS
+```
 
 ## Known limits
 
