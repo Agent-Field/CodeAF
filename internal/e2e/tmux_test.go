@@ -710,7 +710,7 @@ func (r *rig) dump() {
 		// clock.log is the automations clock's own account of what it could
 		// not do (internal/automation's LogName), which is the first thing a
 		// failed clock scenario needs read.
-		case "transcript.jsonl", "log", "clock.log", "usage.jsonl", "calls.jsonl":
+		case "transcript.jsonl", "log", "clock.log", "chat.log", "usage.jsonl", "calls.jsonl":
 			if raw, err := os.ReadFile(path); err == nil && len(raw) > 0 {
 				fmt.Fprintf(&b, "%s\n", clip(string(raw), 4000))
 			}
