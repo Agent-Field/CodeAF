@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -41,6 +42,7 @@ func TestAViewerThatStopsReadingIsResetAndOtherViewersAndMoveAreNotStalled(t *te
 		aHolderClosed  atomic.Bool
 		aWriteAttempts atomic.Int32
 		bWriteAttempts atomic.Int32
+		bRead          atomic.Int32
 		holderMu       sync.Mutex
 		holderSideA    net.Conn
 		holderSideB    net.Conn
@@ -191,6 +193,16 @@ func TestAViewerThatStopsReadingIsResetAndOtherViewersAndMoveAreNotStalled(t *te
 		}()
 		aAlive := true
 		for seq := 1; seq <= totalLines; seq++ {
+			// Pace the producer against B's consumer so a loaded scheduler cannot
+			// starve B's reader goroutine past the 32 KiB outbound queue while A
+			// never reads and still overflows its 48 KiB window-plus-queue cap.
+			paceDeadline := time.Now().Add(3 * time.Second)
+			for int32(seq)-bRead.Load() > 4 {
+				if ctx.Err() != nil || time.Now().After(paceDeadline) {
+					return
+				}
+				runtime.Gosched()
+			}
 			evPayload, _ := json.Marshal(remote.WireEvent(session.Event{
 				Kind: session.EventTextDelta,
 				Text: payloadText,
@@ -235,6 +247,7 @@ func TestAViewerThatStopsReadingIsResetAndOtherViewersAndMoveAreNotStalled(t *te
 		if err := json.Unmarshal(bytes.TrimRight(line, "\r\n"), &f); err != nil || f.Seq != uint64(seq) {
 			t.Fatalf("B event %d = %+v (err=%v), want Seq=%d", seq, f, err, seq)
 		}
+		bRead.Store(int32(seq))
 	}
 
 	<-vChA.Done()

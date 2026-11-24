@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -107,23 +106,6 @@ func startStubHostResolver(t *testing.T) Resolver {
 			Workspace: "/work/p",
 		}, nil
 	})
-}
-
-// eventually waits, in real time bounded at three seconds and without sleeping,
-// for cond to become true. THE LINK'S STATE CHANGES UNDER ITS OWN LOCK BUT ITS
-// TUNNEL CLOSE AND ITS CHANNEL-END CALLBACKS RUN ON GOROUTINES, so a test that
-// advances the fake clock may read them a scheduler tick before they happen,
-// and the race detector makes that tick long. Whether the thing happens is the
-// contract; that it has happened by the instant of the next line is not.
-func eventually(t *testing.T, what string, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
-		}
-		runtime.Gosched()
-	}
 }
 
 // nextPendingTimerWait returns the duration from fc.Now() until the earliest
@@ -239,6 +221,9 @@ func TestAnActiveViewerSaysTheHostIsGoneWithinTheDeadline(t *testing.T) {
 
 	for sec := 1; sec <= 8; sec++ {
 		fc.Advance(time.Second)
+		eventually(t, "liveness timer to be armed", func() bool {
+			return fc.BlockedTimers() >= 1
+		})
 		link.Touch()
 		if got := link.State().Kind; got != Live {
 			t.Fatalf("at +%ds State().Kind = %v, want %v", sec, got, Live)
@@ -257,15 +242,13 @@ func TestAnActiveViewerSaysTheHostIsGoneWithinTheDeadline(t *testing.T) {
 	// Past +9 s (PingEvery 3s + DeadAfter 6s), State is WentOffline, the tunnel
 	// has been closed, and a pending redial timer exists on the fake clock.
 	fc.Advance(200 * time.Millisecond)
-	if got := link.State().Kind; got != WentOffline {
-		t.Fatalf("past +9s State().Kind = %v, want %v", got, WentOffline)
-	}
-	if !firstConn.closed.Load() {
-		t.Fatal("past +9s the tunnel was not closed")
-	}
-	if got := fc.BlockedTimers(); got < 1 {
-		t.Fatalf("past +9s BlockedTimers() = %d, want >= 1 pending redial timer", got)
-	}
+	eventually(t, "past +9s State().Kind to become WentOffline", func() bool {
+		return link.State().Kind == WentOffline
+	})
+	eventually(t, "past +9s the tunnel to be closed", firstConn.closed.Load)
+	eventually(t, "past +9s a pending redial timer to be scheduled", func() bool {
+		return fc.BlockedTimers() >= 1
+	})
 }
 
 // TestAnIdleViewerSendsNothingAndLearnsFromTheCloseOrThePresenceSignal verifies
@@ -328,9 +311,9 @@ func TestAnIdleViewerSendsNothingAndLearnsFromTheCloseOrThePresenceSignal(t *tes
 		t.Fatalf("OpenerContext(chat-temp) failed: %v", err)
 	}
 	_ = ch0.Close()
-	for i := 0; i < 64; i++ {
-		runtime.Gosched()
-	}
+	eventually(t, "idle timer teardown and channel close flush", func() bool {
+		return fc.BlockedTimers() == 0 && curCounted.writes.Load() >= 2
+	})
 	curCounted.ResetCounts()
 	if got := fc.BlockedTimers(); got != 0 {
 		t.Fatalf("BlockedTimers() while idle with no channels = %d, want 0", got)
@@ -348,10 +331,10 @@ func TestAnIdleViewerSendsNothingAndLearnsFromTheCloseOrThePresenceSignal(t *tes
 	}
 	defer ch1.Close()
 
-	// Wait briefly for any in-flight open frames to settle, then zero the counter.
-	for i := 0; i < 32; i++ {
-		runtime.Gosched()
-	}
+	// Wait for the open frame to flush and the single idle detach timer to arm, then zero the counter.
+	eventually(t, "open frame flush and idle detach timer arm", func() bool {
+		return fc.BlockedTimers() == 1 && curCounted.writes.Load() >= 1
+	})
 	curCounted.ResetCounts()
 
 	fc.Advance(IdleDetach - time.Second)
@@ -364,6 +347,9 @@ func TestAnIdleViewerSendsNothingAndLearnsFromTheCloseOrThePresenceSignal(t *tes
 
 	// 3. A Touch() after a quiet spell sends exactly one PING.
 	link.Touch()
+	eventually(t, "probe PING write after Touch()", func() bool {
+		return curCounted.writes.Load() >= 1
+	})
 	if writes := curCounted.writes.Load(); writes != 1 {
 		t.Fatalf("writes after Touch() following quiet spell = %d, want 1", writes)
 	}
@@ -374,22 +360,23 @@ func TestAnIdleViewerSendsNothingAndLearnsFromTheCloseOrThePresenceSignal(t *tes
 
 	// Wait for the host's PONG to arrive and advance past ActiveWindow (30s) so
 	// the link returns to an idle posture before testing an immediate host close.
-	for i := 0; i < 64; i++ {
-		runtime.Gosched()
-	}
+	eventually(t, "host PONG to be recorded by the viewer link", func() bool {
+		link.mu.Lock()
+		defer link.mu.Unlock()
+		return link.probeDeadline.IsZero() && link.lastHeard.Equal(fc.Now())
+	})
 	fc.Advance(ActiveWindow + time.Second)
+	eventually(t, "active window expiry to re-arm single idle detach timer", func() bool {
+		return fc.BlockedTimers() == 1
+	})
 	curCounted.ResetCounts()
 
 	// 4. When the host closes the tunnel while the viewer is idle, State becomes
 	// WentOffline immediately with no 3s wait.
 	_ = curHostEnd.Close()
-	closeDeadline := time.Now().Add(time.Second)
-	for link.State().Kind != WentOffline {
-		if time.Now().After(closeDeadline) {
-			t.Fatalf("State().Kind after host closed tunnel = %v, want %v", link.State().Kind, WentOffline)
-		}
-		runtime.Gosched()
-	}
+	eventually(t, "State().Kind to become WentOffline after host closed tunnel", func() bool {
+		return link.State().Kind == WentOffline
+	})
 	if got := curCounted.written.Load(); got != 0 {
 		t.Fatalf("bytes written when host closed idle tunnel = %d, want 0", got)
 	}
@@ -465,9 +452,9 @@ func TestAViewerIdleForTenMinutesDetachesWithOneCloseAndKeepsItsView(t *testing.
 		t.Fatalf("dialCount for two chats on one Link = %d, want 1", got)
 	}
 
-	for i := 0; i < 32; i++ {
-		runtime.Gosched()
-	}
+	eventually(t, "open frames to flush and idle detach timer to arm", func() bool {
+		return fc.BlockedTimers() == 1 && firstCount.writes.Load() >= 2
+	})
 	firstCount.ResetCounts()
 
 	// Boundary 9m59s: still Live, tunnel open, zero bytes written.
@@ -485,9 +472,9 @@ func TestAViewerIdleForTenMinutesDetachesWithOneCloseAndKeepsItsView(t *testing.
 	// Boundary 10m01s: State Idle, tunnel closed, zero bytes written at detach,
 	// and every channel ended with reason "idle".
 	fc.Advance(2 * time.Second)
-	if got := link.State().Kind; got != Idle {
-		t.Fatalf("at 10m01s State().Kind = %v, want %v", got, Idle)
-	}
+	eventually(t, "at 10m01s State().Kind to become Idle", func() bool {
+		return link.State().Kind == Idle
+	})
 	if got := link.State().Reason; got != ReasonIdle {
 		t.Fatalf("at 10m01s State().Reason = %q, want %q", got, ReasonIdle)
 	}
@@ -593,27 +580,28 @@ func TestARunningTurnKeepsTheLinkActive(t *testing.T) {
 	}
 	defer ch.Close()
 
-	for i := 0; i < 32; i++ {
-		runtime.Gosched()
-	}
+	eventually(t, "open frame to flush and active liveness timer to arm", func() bool {
+		return fc.BlockedTimers() == 1 && counted.writes.Load() >= 1
+	})
 	counted.ResetCounts()
 	hostPings.Store(0)
 
 	steps := int((30 * time.Minute) / PingEvery)
 	for i := 1; i <= steps; i++ {
 		fc.Advance(PingEvery)
-		// Wait for the ping-pong round trip over net.Pipe to complete at this
-		// virtual timestamp before advancing the fake clock again.
-		deadline := time.Now().Add(time.Second)
-		for counted.writes.Load() < int64(i) || hostPings.Load() < int64(i) {
-			if time.Now().After(deadline) {
-				t.Fatalf("timed out waiting for ping #%d round trip (writes=%d hostPings=%d)", i, counted.writes.Load(), hostPings.Load())
+		wantHeard := fc.Now()
+		// Wait for the ping-pong round trip over net.Pipe and the next liveness
+		// timer registration to complete at this virtual timestamp before
+		// advancing the fake clock again.
+		eventually(t, fmt.Sprintf("ping #%d round trip", i), func() bool {
+			if counted.writes.Load() < int64(i) || hostPings.Load() < int64(i) || fc.BlockedTimers() < 1 {
+				return false
 			}
-			runtime.Gosched()
-		}
-		for j := 0; j < 16; j++ {
-			runtime.Gosched()
-		}
+			link.mu.Lock()
+			heard := link.lastHeard
+			link.mu.Unlock()
+			return heard.Equal(wantHeard)
+		})
 		if got := link.State().Kind; got != Live {
 			t.Fatalf("at step %d (%v) State().Kind = %v, want %v", i, time.Duration(i)*PingEvery, got, Live)
 		}
@@ -694,13 +682,9 @@ func TestTheFirstRetryAfterADropWaitsAJitteredSecondAndThenDoubles(t *testing.T)
 	_ = hostConn.Close()
 
 	// Wait for the closed pipe to be observed and State to transition to Reconnecting.
-	dropDeadline := time.Now().Add(time.Second)
-	for link.State().Kind != Reconnecting {
-		if time.Now().After(dropDeadline) {
-			t.Fatalf("State().Kind after active tunnel drop = %v, want %v", link.State().Kind, Reconnecting)
-		}
-		runtime.Gosched()
-	}
+	eventually(t, "State().Kind to become Reconnecting after active tunnel drop", func() bool {
+		return link.State().Kind == Reconnecting
+	})
 	wait1 := nextPendingTimerWait(t, fc)
 	if wait1 < time.Second || wait1 >= 6*time.Second {
 		t.Fatalf("first retry wait = %v, want in [1s, 6s)", wait1)
@@ -713,9 +697,9 @@ func TestTheFirstRetryAfterADropWaitsAJitteredSecondAndThenDoubles(t *testing.T)
 	}
 	// Advance past wait1: first retry fires (dialCount -> 2) and schedules wait2.
 	fc.Advance(2 * time.Millisecond)
-	if got := dialCount.Load(); got != 2 {
-		t.Fatalf("dialCount at first retry = %d, want 2", got)
-	}
+	eventually(t, "dialCount to reach 2 at first retry", func() bool {
+		return dialCount.Load() == 2
+	})
 
 	expectedDoubled := []time.Duration{
 		2 * time.Second,
@@ -741,18 +725,14 @@ func TestTheFirstRetryAfterADropWaitsAJitteredSecondAndThenDoubles(t *testing.T)
 			t.Fatalf("retry #%d fired early at %v", i+2, wait-time.Millisecond)
 		}
 		fc.Advance(2 * time.Millisecond)
-		if got := dialCount.Load(); got != before+1 {
-			t.Fatalf("retry #%d did not fire at %v: dialCount = %d, want %d", i+2, wait, got, before+1)
-		}
+		eventually(t, fmt.Sprintf("retry #%d to fire at %v", i+2, wait), func() bool {
+			return dialCount.Load() == before+1
+		})
 	}
 
-	liveDeadline := time.Now().Add(time.Second)
-	for link.State().Kind != Live {
-		if time.Now().After(liveDeadline) {
-			t.Fatalf("State().Kind after successful retry = %v, want %v", link.State().Kind, Live)
-		}
-		runtime.Gosched()
-	}
+	eventually(t, "State().Kind to become Live after successful retry", func() bool {
+		return link.State().Kind == Live
+	})
 }
 
 // TestALaggingChannelReopensAtOnceWithNoWaitAndTheTunnelStays verifies contract
@@ -902,9 +882,9 @@ func TestRemovedStopsTheRetriesForGood(t *testing.T) {
 		t.Fatalf("ReasonOf(ch.Read) after Revoke = (%q, %v), want (%q, true)", r, ok, ReasonRemoved)
 	}
 
-	for i := 0; i < 64 && link.State().Kind != Revoked; i++ {
-		runtime.Gosched()
-	}
+	eventually(t, "State() to become Revoked with no blocked timers after Revoke", func() bool {
+		return link.State().Kind == Revoked && fc.BlockedTimers() == 0
+	})
 	st := link.State()
 	if st.Kind != Revoked || st.Reason != ReasonRemoved {
 		t.Fatalf("State() after Revoke = %+v, want Kind=%v Reason=%q", st, Revoked, ReasonRemoved)

@@ -283,13 +283,20 @@ func TestAChannelThatIsNotReadStopsTheSenderAtItsWindowAndOtherChannelsStillFlow
 // idle for a virtual 10 minutes (OnFrameWritten never fires).
 func TestACreditIsReturnedWhenTheQueueDrainsAndNeverFromATimer(t *testing.T) {
 	fc := NewFakeClock(time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC))
+	// FRAMES ARE COUNTED AT THE TRANSPORT, BEFORE THEY ARE DELIVERED. The mux's
+	// OnFrameWritten runs after a write returns, and over a synchronous pipe the
+	// receiver can have read the frame, returned the credit and woken this test
+	// before that callback runs, so a count taken from it can still be rising
+	// when the idle measurement starts. A count made before delivery cannot.
 	var framesWritten atomic.Int64
-
-	cfg := MuxConfig{
-		Clock:          fc,
-		OnFrameWritten: func(int) { framesWritten.Add(1) },
-	}
-	v, h := newMuxPair(t, cfg, cfg)
+	c1, c2 := net.Pipe()
+	cfg := MuxConfig{Clock: fc}
+	v := NewMux(&countBeforeRWC{ReadWriteCloser: c1, n: &framesWritten}, Viewer, cfg)
+	h := NewMux(&countBeforeRWC{ReadWriteCloser: c2, n: &framesWritten}, Host, cfg)
+	t.Cleanup(func() {
+		_ = v.Close()
+		_ = h.Close()
+	})
 	vCh, hCh := openAcceptedPair(t, v, h, "data-driven-credit")
 
 	// Transfer 2 * ChannelWindow (512 KiB <= RateBurst 1 MiB) without ever
@@ -310,10 +317,10 @@ func TestACreditIsReturnedWhenTheQueueDrainsAndNeverFromATimer(t *testing.T) {
 		t.Fatalf("ReadFull across two windows failed: %v", err)
 	}
 
-	// Wait for the trailing credit frame from the last Read to flush before
-	// measuring the 10-minute idle period.
+	// Wait for the trailing channel and link credit frames from the last Read to
+	// flush before measuring the 10-minute idle period.
 	v.mu.Lock()
-	for vCh.sendCredit < ChannelWindow {
+	for vCh.sendCredit < ChannelWindow || v.linkSendCredit < LinkWindow {
 		v.cond.Wait()
 	}
 	v.mu.Unlock()
@@ -321,7 +328,7 @@ func TestACreditIsReturnedWhenTheQueueDrainsAndNeverFromATimer(t *testing.T) {
 	framesWritten.Store(0)
 	fc.Advance(10 * time.Minute)
 	if got := framesWritten.Load(); got != 0 {
-		t.Fatalf("OnFrameWritten fired %d times during 10 virtual minutes of idle, want 0", got)
+		t.Fatalf("%d frames were written during 10 virtual minutes of idle, want 0", got)
 	}
 }
 
@@ -477,6 +484,9 @@ func TestPingIsAnsweredWithMatchingPongAndAnIdleMuxWritesNothingOverAnHour(t *te
 	if got := <-pongs; got != 0xCAFEBABE {
 		t.Fatalf("OnPong got seq %#x, want 0xCAFEBABE", got)
 	}
+	eventually(t, "both ping and pong frame write callbacks to complete", func() bool {
+		return written.Load() == 2
+	})
 
 	written.Store(0)
 	fc.Advance(time.Hour)
