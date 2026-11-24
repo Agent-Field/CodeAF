@@ -45,6 +45,11 @@ type liveDrive struct {
 	turnStop       context.CancelFunc
 	parked         bool // Startup awaits a journal owner.
 	storageWaiting bool
+	// storageChecked is when a touched chat last read local truth to see
+	// whether the storage it waits for has opened, and storageOpen is that
+	// read (nil is [storageOpenAt]); see [liveDrive.storageReopened].
+	storageChecked time.Time
+	storageOpen    func(home string) bool
 	waiting        bool // local setup or a retryable failure still permits another attempt
 	ready          chan struct{}
 	attempted      bool
@@ -105,6 +110,7 @@ func (l *liveDrive) afterFunc(d time.Duration, fn func()) func() bool {
 // The identity is one file read and the relay is asked only once it exists, so a
 // chat that never pairs costs nothing per call.
 func (l *liveDrive) try() {
+	l.storageReopened()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.parked || l.closed.Load() || l.storageWaiting || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
@@ -125,6 +131,54 @@ func (l *liveDrive) try() {
 	l.retryAt = time.Time{}
 	l.ready = make(chan struct{})
 	l.launch(l.ready)
+}
+
+// storageRecheckEvery is the most often a touched chat that waits for storage
+// looks at local files to see whether it has opened. Two seconds is below what
+// a person notices after pairing and far above what a chat's touches cost.
+const storageRecheckEvery = 2 * time.Second
+
+// storageOpenAt answers from local files alone, with no request, the question
+// the drive's own startup asks: may this computer's chats be shared now, through
+// the account's storage or live. It is [syncsetup.Sync.ChatStorageOff] turned
+// round, for a caller that has only the home.
+func storageOpenAt(home string) bool {
+	return syncsetup.StorageForHome(home) == "on" || syncsetup.LiveTransferForHome(home)
+}
+
+// storageReopened wakes a chat that waits for closed storage as soon as it is
+// touched after the storage has opened. THE WAIT HAS ONE OTHER WAKE-UP: a
+// timer shared by the whole process that looks once a minute (syncsetup.
+// StoragePollEvery), plus a call from this process's own pairing. A computer
+// paired by ANOTHER process (a terminal, a second window's engine) therefore
+// left a chat that was already open unshared for up to a minute. The chat is
+// touched at every message, tool gate and save, so asking then costs nothing
+// while nothing waits and at most one small local read every two seconds while
+// something does, and adds no timer. A chat held back for any other reason (the
+// relay refusing, no other computer yet) never reaches this read, and a chat
+// whose storage is still closed stays exactly as it was.
+func (l *liveDrive) storageReopened() {
+	l.mu.Lock()
+	if !l.storageWaiting || l.closed.Load() {
+		l.mu.Unlock()
+		return
+	}
+	now := l.nowTime()
+	if !l.storageChecked.IsZero() && now.Sub(l.storageChecked) < storageRecheckEvery {
+		l.mu.Unlock()
+		return
+	}
+	l.storageChecked = now
+	open := l.storageOpen
+	l.mu.Unlock()
+	if open == nil {
+		open = storageOpenAt
+	}
+	// The read and the wake happen outside the lock: waking clears the wait and
+	// may start the drive, which takes it again.
+	if open(home.Dir()) {
+		l.storageOpened()
+	}
 }
 
 // begin spends the reserved startup exactly once after the journal opens.
