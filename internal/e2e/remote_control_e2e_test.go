@@ -158,6 +158,7 @@ func TestRemoteControlE2E(t *testing.T) {
 		{"offline_copy_when_nobody_holds_it", rcOfflineCopyWhenNobodyHoldsIt},
 		{"move_here_from_the_live_view", rcMoveHereFromTheLiveView},
 		{"removing_a_device_closes_its_view", rcRemovingADeviceClosesItsView},
+		{"removing_a_device_closes_its_direct_view", rcRemovingADeviceClosesItsDirectView},
 		{"pairing_default_is_drive_on", rcPairingDefaultIsDriveOn},
 		{"old_flags_still_work", rcOldFlagsStillWork},
 		{"direct-road-comes-up", rcDirectRoadComesUp},
@@ -530,11 +531,30 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 // on the host closes that computer's open view within the bound, and Home there
 // stops listing the host's chats.
 func rcRemovingADeviceClosesItsView(t *testing.T) {
-	rc := newRCRig(t, rcOptions{viewers: 1})
+	rcRemoveTheViewerWhileItWatches(t, rcOptions{viewers: 1}, "")
+}
+
+// rcRemovingADeviceClosesItsDirectView is V10 for a view on the direct road: the
+// two computers talk to each other and the relay's tunnel is a silent standby, so
+// the removal has to be heard and obeyed on the road that is carrying the view,
+// not only on the one that was idle.
+func rcRemovingADeviceClosesItsDirectView(t *testing.T) {
+	rcRequireDirectRoad(t)
+	rcRemoveTheViewerWhileItWatches(t, rcOptions{viewers: 1}, "direct")
+}
+
+// rcRemoveTheViewerWhileItWatches is the body of both: the viewer opens the host's
+// chat (and, when a road is named, waits for the view to say it is on it), the host
+// removes the viewer, and the view closes and Home stops listing the host's chats.
+func rcRemoveTheViewerWhileItWatches(t *testing.T, opts rcOptions, road string) {
+	rc := newRCRig(t, opts)
 	host := rc.startHost()
 	rc.hostAsk(host, rcHostAsk, rcHostReply)
 	viewer := rc.startViewer(0)
 	rc.openLive(viewer)
+	if road != "" {
+		rc.waitForRoad(viewer, road, rcDirectWithin)
+	}
 
 	rc.hostCLI("devices", "revoke", rcViewerName)
 	if !waitUntil(rcPermitWithin, func() bool { return !strings.Contains(viewer.capture(), say(t, "liveLegend")) }) {
