@@ -65,6 +65,9 @@ COPY ${ORG_DIR}/codeaf-local /out/codeaf
 # stamped into `codeaf version`, and the image's revision label names the same commit.
 FROM ${GO_IMAGE} AS source
 ARG SOURCE_COMMIT=unknown
+# Railway names the commit it builds RAILWAY_GIT_COMMIT_SHA and hands it to a Dockerfile build that declares it,
+# so a service built there needs no SOURCE_COMMIT variable (one set to a Railway reference came through empty).
+ARG RAILWAY_GIT_COMMIT_SHA=
 ENV CGO_ENABLED=0 GOFLAGS=-buildvcs=false
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -72,7 +75,8 @@ COPY third_party/raft/ ./third_party/raft/
 RUN go mod download
 COPY . .
 # BUILD_REV and BUILD_DIRTY are given because there is no .git here to ask; make then never runs git.
-RUN make build BUILD_REV="$(printf '%.10s' "${SOURCE_COMMIT}")" BUILD_DIRTY=false \
+RUN rev="${RAILWAY_GIT_COMMIT_SHA:-${SOURCE_COMMIT:-unknown}}" \
+    && make build BUILD_REV="$(printf '%.10s' "$rev")" BUILD_DIRTY=false \
     && mkdir -p /out && cp bin/codeaf /out/codeaf && /out/codeaf version
 
 # What the build context holds, for the check that no secret can enter it: build this target with
