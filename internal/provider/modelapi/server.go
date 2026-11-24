@@ -223,6 +223,9 @@ func Open(config Config) (*Server, error) {
 	return s, nil
 }
 
+// Handler serves the same authenticated routes for an in-process caller.
+func (s *Server) Handler() http.Handler { return s.server.Handler }
+
 // API is the address and the token a program is started with
 // (delegate.ChildEnv). After [Server.Close] the token is empty: a closed API
 // has nothing to hand out.
