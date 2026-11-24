@@ -575,6 +575,34 @@ def hosted():
     status, out, _ = chat(owner, 'bash: cat %s/secretB 2>&1; echo "READ $?"; cat secretA' % member_work, session=second_id)
     check('C2 the same person\'s other chat cannot read a chat either', field(out, 'READ') not in (None, '0') and 'mine' not in out, short(out, 160))
 
+    # C2 beyond files: what every chat on the machine shares and no chat owns. Abstract Unix sockets have no owner and no
+    # file mode at all, and /dev/shm and /tmp are one folder for everybody, so the fence and the umask are what keep
+    # chats apart there. The first chat leaves each of them behind; the member's chat reaches for them.
+    abstract_server = ('import socket\ns = socket.socket(socket.AF_UNIX)\ns.bind("\\0gap")\ns.listen(5)\n'
+                       'while True:\n c, _ = s.accept()\n c.sendall(b"ABSTRACT-OPEN")\n c.close()')
+    engine_connect = ('import socket, hashlib, os, sys\nw = sys.argv[1]\n'
+                      'p = os.path.join(os.path.dirname(w), "home", "v3", "hosts", hashlib.sha256(w.encode()).digest()[:8].hex(), "host.sock")\n'
+                      's = socket.socket(socket.AF_UNIX)\ntry:\n s.connect(p)\n print("%s connected")\nexcept OSError as e:\n print("%s refused", e.errno)')
+    leave = ("echo a-secret > /dev/shm/gap-a; echo a-secret > /tmp/gap-a; "
+             "setsid python3 -c '" + abstract_server + "' </dev/null >/dev/null 2>&1 & sleep 1; "
+             'python3 -c \'' + (engine_connect % ('OWNENGINE', 'OWNENGINE')) + '\' "$PWD"')
+    status, out, err = chat(owner, 'bash: ' + leave, session=first_id)
+    trace('the first chat leaving things behind', 'OWNENGINE ', status, out, err)
+    own_engine = field(out, 'OWNENGINE') or ''
+    reach = ('cat /dev/shm/gap-a 2>&1; echo "SHM $?"; cat /tmp/gap-a 2>&1; echo "TMP $?"; '
+             "python3 -c 'import socket\ns = socket.socket(socket.AF_UNIX)\ns.settimeout(3)\ntry:\n s.connect(\"\\0gap\")\n print(\"ABS connected\", s.recv(20))\n"
+             "except OSError as e:\n print(\"ABS refused\", e.errno)'; "
+             "python3 -c 'import socket\na = socket.socket(socket.AF_UNIX)\na.bind(\"\\0gap-own\")\na.listen(1)\nb = socket.socket(socket.AF_UNIX)\nb.connect(\"\\0gap-own\")\nprint(\"PAIR ok\")'; "
+             "python3 -c '" + (engine_connect % ('ENGINE', 'ENGINE')) + "' " + work)
+    status, out, err = chat(member, 'bash: ' + reach, session=member_id)
+    trace('the member reaching for what the machine shares', 'SHM ', status, out, err)
+    check('C2 the first chat could reach its own engine (so the next check means something)', own_engine.startswith('connected'), own_engine)
+    check('C2 a file another chat left in /dev/shm cannot be read (the usual umask is closed to others)', field(out, 'SHM') not in (None, '0') and 'a-secret' not in out, field(out, 'SHM'))
+    check('C2 a file another chat left in /tmp cannot be read', field(out, 'TMP') not in (None, '0'), field(out, 'TMP'))
+    check('C2 another chat\'s abstract Unix socket cannot be connected to', (field(out, 'ABS') or '').startswith('refused'), field(out, 'ABS'))
+    check('C2 a command can still use an abstract socket of its own (so that check means something)', field(out, 'PAIR') == 'ok', field(out, 'PAIR'))
+    check('C2 another chat\'s engine cannot be connected to', (field(out, 'ENGINE') or '').startswith('refused'), field(out, 'ENGINE'))
+
     # C3 and C3b: what a chat's shell can find, and where it can go.
     net = ('p() { timeout 4 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null && echo "NET $1:$2 open" || echo "NET $1:$2 closed"; }; '
            'h() { exec 3<>/dev/tcp/$1/$2; printf "$3 $4 HTTP/1.0\\r\\nHost: x\\r\\n\\r\\n" >&3; head -n1 <&3; }; '
@@ -732,6 +760,40 @@ def hosted_host():
     check('C3 the chat\'s shell has none of the organization\'s secrets or model keys in its environment',
           bool(shells) and not [r for r in shells if r['bad'] or 'OPENAI_API_KEY' in r['names']],
           [(r['command'], r['bad'], r['names']) for r in shells][:2])
+    # What the kernel answers another chat's user about a chat's process, asked by a plain script running as that user
+    # (so the engine's own wording check on commands is not what refuses). The chat's own user is the control.
+    import ctypes
+    target = state['owner_first']['pid']
+
+    def about_process(pid):
+        def work():
+            libc = ctypes.CDLL(None, use_errno=True)
+            answers = {}
+            for name, path, size in (('environ', 'environ', 1), ('mem', 'mem', 0)):
+                try:
+                    with open('/proc/%s/%s' % (pid, path), 'rb') as handle:
+                        if size:
+                            handle.read(size)
+                    answers[name] = 0
+                except OSError as error:
+                    answers[name] = error.errno
+            answers['ptrace'] = 0 if libc.ptrace(16, int(pid), 0, 0) == 0 else ctypes.get_errno()
+            if answers['ptrace'] == 0:
+                libc.ptrace(17, int(pid), 0, 0)
+            return answers
+        return work
+
+    first_dir = os.path.dirname(state['owner_first']['work'])
+    member_dir = os.path.dirname(state['member']['work'])
+    own = as_user(os.stat(first_dir).st_uid, os.stat(first_dir).st_gid, about_process(target)) if os.path.exists('/proc/' + target) else None
+    other = as_user(os.stat(member_dir).st_uid, os.stat(member_dir).st_gid, about_process(target)) if os.path.exists('/proc/' + target) else None
+    # Only environ has a meaningful control: reading memory or attaching with ptrace is refused to the same user too where the
+    # kernel's Yama setting is restrictive, so for those two the answer is Yama's and the user rule's together (a different
+    # user needs CAP_SYS_PTRACE, which no chat has).
+    check('C2 the first chat\'s own user can read its own process\'s environment (so the next checks mean something)', bool(own) and own.get('environ') == 0, own)
+    for name in ('environ', 'mem', 'ptrace'):
+        check(f'C2 another chat\'s user is refused by the kernel: its process\'s {name}', bool(other) and other.get(name) in (1, 13), (other or {}).get(name))
+
     chat_dir = os.path.dirname(state['owner_first']['work'])
     planted = os.path.join(state['owner_first']['work'], 'planted')
     check('C2 nothing another chat tried to write reached this chat\'s folder', read_as_chat_user(chat_dir, planted) is None, planted)

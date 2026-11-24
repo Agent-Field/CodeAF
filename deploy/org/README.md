@@ -127,7 +127,11 @@ because it has to become a different Linux user for every chat. It is built from
   apply one, the chat's commands are refused, never run open; if it cannot switch users it starts no chats
   and says so (`codeaf sessionhost probe` prints what it measured; `ok: false` is a refusal).
   `CODEAF_SESSIONHOST_REQUIRE=uid` (default `uid+fence`) lets an operator whose kernel has no fence run on the
-  user switch alone; it says so once at start and in every chat's `warning`, and it is not a default.
+  user switch alone; it says so once at start and in every chat's `warning`, and it is not a default. The fence
+  also scopes abstract Unix sockets (they belong to no user, so nothing else keeps one chat from connecting to
+  another's), which needs Landlock ABI 6 (Linux 6.12 or newer): on an older kernel the probe says so and the
+  machine starts no chats unless the operator chose `REQUIRE=uid`. Chats also start with `umask 077`, because
+  `/tmp` and `/dev/shm` are shared by every chat on the machine; a chat can still open its own files up.
 - **No keys.** The sessionhost holds no organization secret except the one it shares with the organization
   server, no AgentField key, no GitHub token and no model key. A chat reaches a model only through the
   organization server's `/v1/model/` door with a bearer the server minted for that chat (twelve hours, ended on
