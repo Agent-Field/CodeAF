@@ -28,8 +28,10 @@ const (
 	// leaked one is recognisable in a paste and refused by any scanner.
 	mintedBearerPrefix = "cmt_"
 	// mintedBearerTTL is how long one bearer lives. A chat that outlasts it is
-	// given a fresh one at its next attach.
-	mintedBearerTTL = 12 * time.Hour
+	// given a fresh one at its next attach. It is seven days because the saved
+	// table lets a bearer outlive a restart, and a chat a person leaves for a
+	// weekend should still be answering on Monday.
+	mintedBearerTTL = 7 * 24 * time.Hour
 	// modelRequestCap bounds the body one model call may carry, so a chat
 	// cannot make this server buffer or relay an unbounded upload.
 	modelRequestCap = 16 << 20
@@ -56,12 +58,28 @@ type bearerRow struct {
 	revoked bool
 }
 
-// bearerTable holds every live model bearer, in memory only. A restart of the
-// server ends them all, which is safe: the next attach mints a new one.
+// persistedRow is the part of a bearerRow that is saved: whose chat it is, whose
+// person, and when it ends. It is keyed by the token's hash in the saved table
+// and carries no token.
+type persistedRow struct {
+	Session string
+	Person  string
+	Expires time.Time
+}
+
+// bearerTable holds every live model bearer. It is saved through persist when
+// one is set, so a restart of this server does not end the bearers the running
+// chats already hold; with no persist (a server with no store) it is memory
+// only, and a restart ends them all, which is safe: the next attach mints a
+// new one.
 type bearerTable struct {
 	mu      sync.Mutex
 	rows    map[string]*bearerRow // sha256 hex of the token
 	current map[string]string     // chat id to the hash of its newest token
+	// persist saves the live rows, replacing the saved table. It is called
+	// under mu after every mint and every revoke, with hashes only and never a
+	// token. Nil means memory only.
+	persist func(map[string]persistedRow) error
 }
 
 // bearerHash is the key a token is kept under.
@@ -70,25 +88,97 @@ func bearerHash(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// bearerFingerprint is the short form of a token's hash that a chat's host
+// reports for the token it holds and this server compares against its own: the
+// first sixteen hex characters. It identifies a token without being one.
+func bearerFingerprint(hash string) string {
+	if len(hash) > 16 {
+		return hash[:16]
+	}
+	return hash
+}
+
+// snapshotLocked is every row that should be saved: live ones only. With a
+// non-zero now it also leaves out rows that have run out, so an expired row is
+// not saved again. A zero now is for a revoke, which has no clock and leaves
+// expiry to the next mint and to the load.
+func (t *bearerTable) snapshotLocked(now time.Time) map[string]persistedRow {
+	out := make(map[string]persistedRow, len(t.rows))
+	for hash, row := range t.rows {
+		if row.revoked || (!now.IsZero() && !now.Before(row.expires)) {
+			continue
+		}
+		out[hash] = persistedRow{Session: row.session, Person: row.person, Expires: row.expires}
+	}
+	return out
+}
+
+// saveLocked saves after a revoke. It cannot fail the revoke, which has
+// already happened in memory and is what stops the bearer from working, so a
+// failure is logged for the operator. Every save writes the whole table, so
+// the next mint or revoke puts the saved file right.
+func (t *bearerTable) saveLocked() {
+	if t.persist == nil {
+		return
+	}
+	if err := t.persist(t.snapshotLocked(time.Time{})); err != nil {
+		log.Printf("hosted chats: the saved model access could not be updated, so a restart could bring back an ended one until the next save: %v", err)
+	}
+}
+
+// load fills the table from the saved rows when the server starts. Expired rows
+// are dropped, and a chat keeps only the row that ends last, because a chat
+// never holds two bearers and a second row is one that should have been ended.
+// It answers how many saved rows it did not keep, so the caller can save the
+// table without them.
+func (t *bearerTable) load(saved map[string]persistedRow, now time.Time) (dropped int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.rows, t.current = map[string]*bearerRow{}, map[string]string{}
+	for hash, row := range saved {
+		if len(hash) != 64 || row.Session == "" || row.Person == "" || !now.Before(row.Expires) {
+			dropped++
+			continue
+		}
+		if best, ok := t.current[row.Session]; ok {
+			kept := t.rows[best]
+			dropped++
+			if !row.Expires.After(kept.expires) && !(row.Expires.Equal(kept.expires) && hash < best) {
+				continue
+			}
+			delete(t.rows, best)
+		}
+		t.rows[hash] = &bearerRow{session: row.Session, person: row.Person, expires: row.Expires}
+		t.current[row.Session] = hash
+	}
+	return dropped
+}
+
+// save writes the table as it stands, for the start-up that dropped rows.
+func (t *bearerTable) save(now time.Time) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.persist == nil {
+		return nil
+	}
+	return t.persist(t.snapshotLocked(now))
+}
+
 // mint issues a bearer for one chat and ends the chat's previous one first,
 // so a chat never holds two. Expired and revoked rows are dropped here, which
 // is the only housekeeping the table needs: a dropped row answers "unknown",
-// and unknown, expired and revoked are refused identically.
-func (t *bearerTable) mint(session, person string, now time.Time) string {
+// and unknown, expired and revoked are refused identically. It fails, and
+// changes nothing, when the new table cannot be saved: a bearer that would not
+// survive a restart is worse than a chat that is told to try again.
+func (t *bearerTable) mint(session, person string, now time.Time) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.mintLocked(session, person, now)
 }
 
-func (t *bearerTable) mintLocked(session, person string, now time.Time) string {
+func (t *bearerTable) mintLocked(session, person string, now time.Time) (string, error) {
 	if t.rows == nil {
 		t.rows, t.current = map[string]*bearerRow{}, map[string]string{}
-	}
-	t.revokeLocked(session)
-	for hash, row := range t.rows {
-		if row.revoked || !now.Before(row.expires) {
-			delete(t.rows, hash)
-		}
 	}
 	var raw [32]byte
 	// crypto/rand does not return an error on a supported platform; it stops
@@ -96,9 +186,38 @@ func (t *bearerTable) mintLocked(session, person string, now time.Time) string {
 	_, _ = rand.Read(raw[:])
 	token := mintedBearerPrefix + base64.RawURLEncoding.EncodeToString(raw[:])
 	hash := bearerHash(token)
+	oldHash, hadOld := t.current[session]
+	var old *bearerRow
+	wasRevoked := false
+	if hadOld {
+		if old = t.rows[oldHash]; old != nil {
+			wasRevoked = old.revoked
+		}
+	}
+	t.revokeLocked(session)
 	t.rows[hash] = &bearerRow{session: session, person: person, expires: now.Add(mintedBearerTTL)}
 	t.current[session] = hash
-	return token
+	if t.persist != nil {
+		if err := t.persist(t.snapshotLocked(now)); err != nil {
+			// Put it all back as it was: the previous bearer stands, and no
+			// trace of the new one is left in memory.
+			delete(t.rows, hash)
+			delete(t.current, session)
+			if hadOld {
+				t.current[session] = oldHash
+				if old != nil {
+					old.revoked = wasRevoked
+				}
+			}
+			return "", err
+		}
+	}
+	for hash, row := range t.rows {
+		if row.revoked || !now.Before(row.expires) {
+			delete(t.rows, hash)
+		}
+	}
+	return token, nil
 }
 
 // ensure answers whether the chat has a live bearer. It mints one only when
@@ -107,15 +226,36 @@ func (t *bearerTable) mintLocked(session, person string, now time.Time) string {
 // another person: nothing is minted then, because minting would end the
 // owner's bearer, and a person who is not the owner must never be able to cost
 // the owner their model access by naming their chat.
-func (t *bearerTable) ensure(session, person string, now time.Time) (token string, minted, mine bool) {
+func (t *bearerTable) ensure(session, person string, now time.Time) (token string, minted, mine bool, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if hash, ok := t.current[session]; ok {
 		if row := t.rows[hash]; row != nil && !row.revoked && now.Before(row.expires) {
-			return "", false, row.person == person
+			return "", false, row.person == person, nil
 		}
 	}
-	return t.mintLocked(session, person, now), true, true
+	token, err = t.mintLocked(session, person, now)
+	return token, err == nil, true, err
+}
+
+// ensureCurrent is ensure for a chat whose host says which bearer it holds: it
+// compares the host's fingerprint with the live bearer's and mints (ending the
+// old one) unless they are equal, so a host that restarted and forgot, or an
+// organization table that was lost, is put right before the chat is used and
+// not after it fails. A live bearer that belongs to someone else is left alone,
+// as in ensure.
+func (t *bearerTable) ensureCurrent(session, person string, now time.Time, hostFingerprint string) (token string, minted bool, err error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if hash, ok := t.current[session]; ok {
+		if row := t.rows[hash]; row != nil && !row.revoked && now.Before(row.expires) {
+			if row.person != person || (hostFingerprint != "" && hostFingerprint == bearerFingerprint(hash)) {
+				return "", false, nil
+			}
+		}
+	}
+	token, err = t.mintLocked(session, person, now)
+	return token, err == nil, err
 }
 
 // lookup fails closed: an unknown, expired or revoked token gets no row.
@@ -132,13 +272,19 @@ func (t *bearerTable) lookup(token string, now time.Time) (bearerRow, bool) {
 	return *row, true
 }
 
-func (t *bearerTable) revokeLocked(session string) {
-	if hash, ok := t.current[session]; ok {
-		if row := t.rows[hash]; row != nil {
-			row.revoked = true
-		}
-		delete(t.current, session)
+// revokeLocked ends a chat's current bearer in memory, and says whether it had
+// one. Saving is the caller's, so that mint can save the ending and the new
+// bearer in one write.
+func (t *bearerTable) revokeLocked(session string) bool {
+	hash, ok := t.current[session]
+	if !ok {
+		return false
 	}
+	if row := t.rows[hash]; row != nil {
+		row.revoked = true
+	}
+	delete(t.current, session)
+	return true
 }
 
 // revokeFor ends a chat's bearer on behalf of a person. A bearer that belongs
@@ -153,7 +299,9 @@ func (t *bearerTable) revokeFor(session, person string) {
 			return
 		}
 	}
-	t.revokeLocked(session)
+	if t.revokeLocked(session) {
+		t.saveLocked()
+	}
 }
 
 // revokeToken ends one specific token, but only while it is still the chat's
@@ -163,7 +311,9 @@ func (t *bearerTable) revokeToken(session, token string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if hash, ok := t.current[session]; ok && hash == bearerHash(token) {
-		t.revokeLocked(session)
+		if t.revokeLocked(session) {
+			t.saveLocked()
+		}
 	}
 }
 

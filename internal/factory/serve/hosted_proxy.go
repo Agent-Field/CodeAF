@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // This file lets a signed-in person run a whole chat on the organization's own
@@ -42,6 +43,15 @@ type HostedConfig struct {
 	// ModelUpstreamKey is the upstream's own key, empty for a keyless stub.
 	ModelUpstreamKey string
 
+	// ServerKey is the raw text of CODEAF_SERVER_KEY: 64 hexadecimal
+	// characters, or the base64 of 32 bytes. It seals the keys people store on
+	// this server (credentials.go). Empty means this server keeps none, and
+	// every chat runs on the organization's key.
+	ServerKey string
+	// GitHosts are the origins a chat's git reaches through this server, for
+	// example https://github.com. Empty means github.com alone.
+	GitHosts []string
+
 	// state is made by hostedRoutes, on the handler's own copy of this
 	// struct, so two handlers built from one Config never share bearers.
 	state *hostedState
@@ -57,6 +67,17 @@ type hostedState struct {
 	transport      *http.Transport
 	modelTransport *http.Transport
 	bearers        bearerTable
+	// gitURL is the address a chat reaches git on, and gitHosts the origins it
+	// may name there. gitURL is empty when the model address does not end in
+	// /v1/model, which leaves git out of a chat entirely.
+	gitURL   string
+	gitHosts []string
+	// keys is the sealed store of people's own keys, nil when this server has
+	// no store. keysErr says why it cannot be used (no server key, a wrong one,
+	// a file it cannot read): a person's key that EXISTS but cannot be opened
+	// is refused, never replaced by the organization's.
+	keys    *personKeys
+	keysErr error
 	// attach serializes the first attach of a chat with the push of its
 	// credentials. Without it a second window attaching at the same moment
 	// would see a live bearer, skip the push and reach the chat's host before
@@ -149,13 +170,19 @@ func (h *Handler) hostedRoutes() {
 	// to that one address and to nothing in between.
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
-	own := *checked
+	// Everything the operator set is kept, not only the five settings the parse
+	// checks, so a setting that has no check of its own is not dropped here.
+	own := *hc
+	own.URL, own.Secret, own.ModelURL = checked.URL, checked.Secret, checked.ModelURL
+	own.ModelUpstream, own.ModelUpstreamKey = checked.ModelUpstream, checked.ModelUpstreamKey
 	own.state = &hostedState{
 		base: base, upstream: upstream, secret: checked.Secret, modelURL: checked.ModelURL, upstreamKey: checked.ModelUpstreamKey,
 		transport: transport,
 		calls: &http.Client{Timeout: hostedCallTimeout, Transport: transport,
 			// A redirect would carry the shared secret to wherever it points.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		gitURL:   hostedGitURL(checked.ModelURL),
+		gitHosts: hostedGitOrigins(&own),
 	}
 	// The model proxy is different on purpose: the upstream may be a vendor on
 	// the internet, so it honours the environment's proxy settings, and it has
@@ -163,10 +190,83 @@ func (h *Handler) hostedRoutes() {
 	// its first byte.
 	own.state.modelTransport = http.DefaultTransport.(*http.Transport).Clone()
 	h.config.Hosted = &own
+	h.hostedLoadBearers(own.state)
+	h.hostedOpenKeys(own.state, own.ServerKey)
 	h.route("/v1/hosted/sessions", map[string]http.HandlerFunc{http.MethodGet: h.hostedList, http.MethodPost: h.hostedCreate})
 	h.route("/v1/hosted/sessions/{id}", map[string]http.HandlerFunc{http.MethodGet: h.hostedGet, http.MethodDelete: h.hostedDelete})
 	h.route("/v1/hosted/sessions/{id}/stop", map[string]http.HandlerFunc{http.MethodPost: h.hostedStop})
 	h.read("/v1/hosted/sessions/{id}/wire", h.hostedWire)
+	h.route("/v1/hosted/keys", map[string]http.HandlerFunc{http.MethodGet: h.hostedKeyList})
+	h.route("/v1/hosted/keys/{provider}", map[string]http.HandlerFunc{http.MethodPut: h.hostedKeyPut, http.MethodDelete: h.hostedKeyDelete})
+	h.hostedGitRoutes()
+}
+
+// hostedLoadBearers brings back the model access the chats already hold, from
+// the store, and makes every later mint and revoke save the table. With no
+// store the table stays in memory. A saved file that cannot be read starts the
+// table empty and says so for the operator: an empty table only means each chat
+// is given a new bearer at its next attach, which fails safe.
+func (h *Handler) hostedLoadBearers(hs *hostedState) {
+	st := h.config.Store
+	if st == nil {
+		return
+	}
+	save := func(rows map[string]persistedRow) error {
+		out := make(map[string]store.HostedBearer, len(rows))
+		for hash, row := range rows {
+			out[hash] = store.HostedBearer{Session: row.Session, Person: row.Person, Expires: row.Expires}
+		}
+		return st.SaveHostedBearers(out)
+	}
+	saved, err := st.HostedBearers()
+	if err != nil {
+		log.Printf("hosted chats: %v; starting with no saved model access", err)
+		saved = nil
+	}
+	rows := make(map[string]persistedRow, len(saved))
+	for hash, row := range saved {
+		rows[hash] = persistedRow{Session: row.Session, Person: row.Person, Expires: row.Expires}
+	}
+	now := h.clock()
+	dropped := hs.bearers.load(rows, now)
+	hs.bearers.persist = save
+	// Rows that ran out while the server was off are removed from the file now
+	// and not left for the next mint to find.
+	if dropped > 0 || err != nil {
+		if err := hs.bearers.save(now); err != nil {
+			log.Printf("hosted chats: the saved model access could not be cleaned: %v", err)
+		}
+	}
+}
+
+// hostedGitURL is where a chat reaches git: the model address with its
+// /v1/model replaced by /v1/hosted/git. A model address that does not end that
+// way (an operator who put the model somewhere else) leaves git off.
+func hostedGitURL(modelURL string) string {
+	base, ok := strings.CutSuffix(modelURL, "/v1/model")
+	if !ok {
+		return ""
+	}
+	return base + "/v1/hosted/git"
+}
+
+// credentialFields is what a chat's host is told about its model access (and
+// git, when this server offers it): the model address, the chat's bearer and,
+// when git is on, the git address and the origins it may reach. None of it is
+// the person's own secret.
+func (hs *hostedState) credentialFields(token string) map[string]any {
+	fields := map[string]any{"model_url": hs.modelURL, "model_token": token}
+	if hs.gitURL != "" {
+		fields["git_url"] = hs.gitURL
+		fields["git_hosts"] = hs.gitHosts
+	}
+	return fields
+}
+
+// credentialBody is the body of a push of credentials to a chat's host.
+func (hs *hostedState) credentialBody(token string) []byte {
+	body, _ := json.Marshal(hs.credentialFields(token))
+	return body
 }
 
 // hostedPerson is the verified person behind a request, or a 401 written. The
@@ -294,8 +394,15 @@ func (h *Handler) hostedCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := "hs_" + hex.EncodeToString(raw[:])
-	token := hs.bearers.mint(id, person, h.clock())
-	body, _ := json.Marshal(map[string]string{"id": id, "model_url": hs.modelURL, "model_token": token})
+	token, err := hs.bearers.mint(id, person, h.clock())
+	if err != nil {
+		log.Printf("hosted chats: a chat could not be started: %v", err)
+		h.fail(w, http.StatusInternalServerError, hostedNotStarted)
+		return
+	}
+	fields := hs.credentialFields(token)
+	fields["id"] = id
+	body, _ := json.Marshal(fields)
 	status, header, data, err := hs.call(r.Context(), http.MethodPost, "/v1/sessions", person, body)
 	// A bearer for a chat that was not made is ended at once; there is
 	// nothing for it to belong to.
@@ -359,7 +466,7 @@ func (h *Handler) hostedEnd(w http.ResponseWriter, r *http.Request, method, suff
 	hostedRelay(w, status, header, body)
 }
 
-// hostedWire joins a window to a chat. It makes sure the chat's host holds a
+// hostedWire joins a window to a chat. It makes sure the chat's host holds the
 // live model bearer BEFORE the connection opens, then hands the connection
 // over: from there it only copies bytes and reads no frame, so what the window
 // and the chat say to each other is theirs alone.
@@ -417,22 +524,47 @@ func (h *Handler) hostedWire(w http.ResponseWriter, r *http.Request) {
 	}).ServeHTTP(w, r)
 }
 
-// hostedPush gives the chat's host a model bearer when this is the first
-// attach of a chat that has none live: after a stop, after the twelve hours, or
-// after this server restarted. It does nothing when a live one is already
-// there, so an ordinary re-attach costs the chats' host no extra call. It
-// answers false when it wrote the reply itself.
+// hostedPush makes sure the chat's host holds the model bearer this server
+// believes in BEFORE a wire opens. It asks the host which bearer it holds (the
+// host answers with a short fingerprint, never the bearer) and compares that
+// with this server's own live bearer for the chat. Equal means nothing is
+// pushed, so an ordinary re-attach costs one small read. Anything else, a host
+// that restarted and forgot, a stop, the seven days running out, or this
+// server's own table having been lost, mints a new bearer (which ends the old
+// one) and pushes it first, so the chat's first use after any of those works
+// and no person sees "no model access yet". The row is read as the person, so a
+// chat that is not theirs is answered exactly as the host answers it, as one
+// that does not exist. It answers false when it wrote the reply itself.
 func (h *Handler) hostedPush(w http.ResponseWriter, r *http.Request, hs *hostedState, id, person string) bool {
 	hs.attach.Lock()
 	defer hs.attach.Unlock()
-	token, minted, _ := hs.bearers.ensure(id, person, h.clock())
+	status, header, data, err := hs.call(r.Context(), http.MethodGet, "/v1/sessions/"+id, person, nil)
+	if h.hostedFailed(w, status, err) {
+		return false
+	}
+	if status != http.StatusOK {
+		hostedRelay(w, status, header, data)
+		return false
+	}
+	var row struct {
+		ModelBearer string `json:"model_bearer"`
+	}
+	_ = json.Unmarshal(data, &row)
+	// The chat is theirs, so what their sign-in carries for git is kept for it.
+	h.keepSignInGitHub(r, person)
+	token, minted, err := hs.bearers.ensureCurrent(id, person, h.clock(), row.ModelBearer)
+	if err != nil {
+		log.Printf("hosted chats: a chat could not be given model access: %v", err)
+		h.fail(w, http.StatusInternalServerError, hostedNotStarted)
+		return false
+	}
 	if !minted {
-		// Either a live bearer already stands, or it belongs to someone else
-		// and the chats' host is about to answer for that on its own.
+		// Either the host already holds the live bearer, or a live bearer
+		// belongs to someone else and the chats' host is about to answer for
+		// that on its own.
 		return true
 	}
-	body, _ := json.Marshal(map[string]string{"model_url": hs.modelURL, "model_token": token})
-	status, header, data, err := hs.call(r.Context(), http.MethodPut, "/v1/sessions/"+id+"/credentials", person, body)
+	status, header, data, err = hs.call(r.Context(), http.MethodPut, "/v1/sessions/"+id+"/credentials", person, hs.credentialBody(token))
 	if h.hostedFailed(w, status, err) {
 		hs.bearers.revokeToken(id, token)
 		return false

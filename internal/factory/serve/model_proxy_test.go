@@ -37,7 +37,7 @@ func forbiddenToUpstream() []string {
 
 // A CHAT'S MODEL ACCESS LIVES AND DIES WITH THE CHAT: a minted bearer works,
 // carrying the right path and query to the upstream and none of the caller's
-// identity; ending the chat (stop or delete) ends the bearer; twelve hours end
+// identity; ending the chat (stop or delete) ends the bearer; seven days end
 // it too; and a bearer nobody issued, or a person's own sign-in, is refused
 // with one sentence that says nothing else.
 func TestC3_ModelBearerLifecycle(t *testing.T) {
@@ -145,12 +145,12 @@ func TestC3_ModelBearerLifecycle(t *testing.T) {
 	}
 	refused("a deleted chat's bearer", rg.bearerCall("GET", "/v1/model/models", doomedToken, nil))
 
-	// Twelve hours end a bearer, to the second.
+	// Seven days end a bearer, to the second (twelve hours until P1 saved them).
 	aging := rg.create(t, "santosh")
 	agingToken := rg.host.tokenOf(aging)
-	rg.now = rg.now.Add(12*time.Hour - time.Second)
+	rg.now = rg.now.Add(7*24*time.Hour - time.Second)
 	if w := rg.bearerCall("GET", "/v1/model/models", agingToken, nil); w.Code != 200 {
-		t.Fatalf("just inside twelve hours = %d %s", w.Code, w.Body)
+		t.Fatalf("just inside seven days = %d %s", w.Code, w.Body)
 	}
 	rg.now = rg.now.Add(2 * time.Second)
 	refused("an expired bearer", rg.bearerCall("GET", "/v1/model/models", agingToken, nil))

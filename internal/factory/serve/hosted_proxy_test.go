@@ -27,6 +27,10 @@ type fakeChatHost struct {
 	tokens map[string]string // chat id to the model token it holds, "" when none
 	seen   []hostSeen
 	pushes []hostPush
+	// rowBearer, when set for a chat, is what its row reports as the model
+	// bearer fingerprint instead of the truth: a host that restarts between the
+	// org's read of the row and the wire.
+	rowBearer map[string]string
 }
 
 type hostSeen struct {
@@ -71,6 +75,25 @@ func (f *fakeChatHost) tokenOf(id string) string {
 	return f.tokens[id]
 }
 
+// fingerprintOf is what a chat's row says about the model token the host holds:
+// the first sixteen hex characters of its sha256, or "" when it holds none.
+func fingerprintOf(token string) string {
+	if token == "" {
+		return ""
+	}
+	return bearerFingerprint(bearerHash(token))
+}
+
+// lieAboutBearer makes a chat's row report fingerprint whatever the host holds.
+func (f *fakeChatHost) lieAboutBearer(id, fingerprint string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rowBearer == nil {
+		f.rowBearer = map[string]string{}
+	}
+	f.rowBearer[id] = fingerprint
+}
+
 func (f *fakeChatHost) pushList() []hostPush {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -105,7 +128,7 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var mine []map[string]string
 		for id, owner := range f.owners {
 			if owner == person {
-				mine = append(mine, map[string]string{"id": id, "state": "suspended"})
+				mine = append(mine, map[string]string{"id": id, "state": "suspended", "model_bearer": fingerprintOf(f.tokens[id])})
 			}
 		}
 		f.mu.Unlock()
@@ -126,8 +149,14 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodGet:
+		f.mu.Lock()
+		fingerprint := fingerprintOf(f.tokens[id])
+		if lie, ok := f.rowBearer[id]; ok {
+			fingerprint = lie
+		}
+		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"`+id+`","state":"suspended"}`+"\n")
+		_, _ = io.WriteString(w, `{"id":"`+id+`","state":"suspended","model_bearer":"`+fingerprint+`"}`+"\n")
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		f.mu.Lock()
 		delete(f.owners, id)
@@ -174,10 +203,14 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// jsonField is one string field of a JSON object; fields that are not strings
+// (the list of git hosts a push now carries) are ignored.
 func jsonField(raw []byte, name string) string {
-	var row map[string]string
+	var row map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &row)
-	return row[name]
+	var value string
+	_ = json.Unmarshal(row[name], &value)
+	return value
 }
 
 // fakeUpstream stands in for the model endpoint behind /v1/model.
@@ -611,19 +644,35 @@ func TestC1_WireProxyCarriesFramesBothWays(t *testing.T) {
 	if len(got) != 2 || got[1].token == got[0].token || got[1].url != rigModelURL {
 		t.Fatalf("after a stop the host was given %+v", got)
 	}
-	// A host that forgot its credentials (it restarted) answers a wire with a
-	// refusal; the next attach must push again instead of finding a live bearer.
+	// A host that forgot its credentials (it restarted) says so in its row, so
+	// the next attach pushes again BEFORE the wire opens and the window never
+	// meets a refusal (P1-7).
+	rg.host.adopt(id, "santosh")
+	healed := attach()
+	roundTrip(healed)
+	healed.Close(websocket.StatusNormalClosure, "")
+	if got := rg.host.pushList(); len(got) != 3 {
+		t.Fatalf("after the host forgot, the next attach pushed %d times in all: %+v", len(got), got)
+	}
+	// And a host that forgets between the org's read of its row and the wire
+	// (the row still reported the org's bearer) answers the wire with a
+	// refusal; that ends the bearer, so the attach after it pushes again
+	// instead of finding a live bearer and skipping.
+	rg.host.lieAboutBearer(id, fingerprintOf(rg.host.tokenOf(id)))
 	rg.host.adopt(id, "santosh")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if _, resp, err := websocket.Dial(ctx, wireURL(srv, id), &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": {"Bearer " + rg.tokens["santosh"]}}}); err == nil || resp == nil || resp.StatusCode != 409 {
 		t.Fatalf("a host with no credentials let the wire open: %v %v", resp, err)
 	}
-	healed := attach()
-	roundTrip(healed)
-	healed.Close(websocket.StatusNormalClosure, "")
-	if got := rg.host.pushList(); len(got) != 3 {
-		t.Fatalf("after the host forgot, the next attach pushed %d times in all: %+v", len(got), got)
+	rg.host.mu.Lock()
+	delete(rg.host.rowBearer, id)
+	rg.host.mu.Unlock()
+	again := attach()
+	roundTrip(again)
+	again.Close(websocket.StatusNormalClosure, "")
+	if got := rg.host.pushList(); len(got) != 4 {
+		t.Fatalf("after the host forgot between the row and the wire, the next attach pushed %d times in all: %+v", len(got), got)
 	}
 }
 
