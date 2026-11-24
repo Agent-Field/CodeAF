@@ -299,6 +299,26 @@ func (c *Cache) ForgetChat(host, chat string) {
 	c.mu.Unlock()
 }
 
+// ForgetChatEverywhere removes the copy of one chat kept for every computer.
+// Moving a chat here uses it, because the window that moved it does not know
+// which computer the copy was last seen on, and a copy of a chat that now runs
+// on this computer is only a stale picture of it.
+func (c *Cache) ForgetChatEverywhere(chat string) {
+	hosts, err := os.ReadDir(c.root)
+	if err != nil {
+		return
+	}
+	for _, host := range hosts {
+		if !host.IsDir() {
+			continue
+		}
+		_ = os.Remove(filepath.Join(c.root, host.Name(), folder(chat, "chat")+".json"))
+		c.mu.Lock()
+		delete(c.wrote, host.Name()+"/"+folder(chat, "chat"))
+		c.mu.Unlock()
+	}
+}
+
 type found struct {
 	path string
 	at   time.Time

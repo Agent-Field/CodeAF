@@ -260,6 +260,29 @@ func TestForgettingAComputerOrAChatRemovesOnlyThat(t *testing.T) {
 	}
 }
 
+// Moving a chat here does not know which computer its copy was last seen on,
+// so it takes that chat's copy from every computer and leaves the others alone.
+func TestForgettingAChatEverywhereKeepsEveryOtherChat(t *testing.T) {
+	c, _, _ := newCache(t)
+	for _, k := range [][2]string{{"dev_a", "1"}, {"dev_b", "1"}, {"dev_b", "2"}} {
+		if err := c.SaveNow(k[0], k[1], Snapshot{Entries: entries(1, "a")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.ForgetChatEverywhere("1")
+	for _, host := range []string{"dev_a", "dev_b"} {
+		if _, ok := c.Load(host, "1"); ok {
+			t.Fatalf("the copy of chat 1 kept for %s survived", host)
+		}
+	}
+	if _, ok := c.Load("dev_b", "2"); !ok {
+		t.Fatal("forgetting chat 1 everywhere removed chat 2")
+	}
+	// A cache with nothing in it forgets nothing and says nothing.
+	empty, _, _ := newCache(t)
+	empty.ForgetChatEverywhere("1")
+}
+
 // A name a computer chose can never name a place outside the cache.
 func TestNamesThatLookLikePathsStayInsideTheCache(t *testing.T) {
 	c, home, _ := newCache(t)
