@@ -118,7 +118,21 @@ func TestTheHostRefusesTheFifteenthLiveIntentBeforeNoise(t *testing.T) {
 		}
 		_ = viewers[0].Close()
 
-		replacement, err := DialLive(ctx, w.service, w.id, w.b, w.a.ID())
+		// THE RELAY GIVES THE SLOT BACK WHEN ITS SPLICE ENDS, NOT WHEN THE VIEWER
+		// CLOSES. The stream is counted until the relay's copy loop has seen both
+		// halves close, which is asynchronous to the Close above, so on a loaded
+		// machine a dial made at once can still find fourteen live streams. A real
+		// viewer's redial ladder rides over that; the test waits the same way, and
+		// only for that one refusal, so a slot that never comes back still fails.
+		var replacement io.ReadWriteCloser
+		admitted := time.Now().Add(5 * time.Second)
+		for {
+			replacement, err = DialLive(ctx, w.service, w.id, w.b, w.a.ID())
+			if err == nil || !errors.Is(err, relay.ErrTooMany) || time.Now().After(admitted) {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
 		if err != nil {
 			t.Fatalf("replacement live dial after one ended failed: %v", err)
 		}
