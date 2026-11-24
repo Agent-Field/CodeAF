@@ -82,6 +82,9 @@ type Roaming struct {
 	Dial Dialer
 	// Window is how long to keep trying, and zero is [RoamWindow].
 	Window time.Duration
+	// MaxLine bounds one inbound line on every link this client reads (see
+	// [WithMaxLine]). Zero keeps the unbounded reader local pipes and sockets use.
+	MaxLine int
 }
 
 func (r *Roaming) window() time.Duration {
@@ -107,7 +110,7 @@ func Roam(host string, hello Hello, roam Roaming) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := newClient(host, hello)
+	c := newClient(host, hello, WithMaxLine(roam.MaxLine))
 	c.roam = &roam
 	if _, err := c.attach(conn); err != nil {
 		_ = conn.Close()

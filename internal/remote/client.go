@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -105,8 +107,11 @@ type Client struct {
 	// it is read under mu and never cached by anything that outlives a frame.
 	conn io.ReadWriteCloser
 	// lines is the decoder over the read half, owned by the reader goroutine
-	// after the handshake and touched by nothing else.
-	lines *json.Decoder
+	// after the handshake and touched by nothing else. When maxLine is set,
+	// bounded replaces it with a line-capped buffered reader.
+	lines   *json.Decoder
+	bounded *bufio.Reader
+	maxLine int
 
 	// welcome is what the engine said at the door, and what the door in
 	// cmd/codeaf reads its Options out of.
@@ -270,6 +275,33 @@ type result struct {
 	answered bool
 }
 
+// ClientOption configures optional client reader behavior before attaching.
+type ClientOption func(*Client)
+
+// WithMaxLine caps each inbound newline-delimited frame line to max bytes.
+// Zero keeps the default unbounded decoder used for local pipes and sockets.
+func WithMaxLine(max int) ClientOption {
+	return func(c *Client) {
+		c.maxLine = max
+	}
+}
+
+// SetMaxLine sets the inbound frame line ceiling on c before or across dials.
+func (c *Client) SetMaxLine(max int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.maxLine = max
+	if c.conn != nil {
+		if max > 0 {
+			c.bounded = bufio.NewReaderSize(c.conn, max+1)
+			c.lines = nil
+		} else {
+			c.lines = json.NewDecoder(c.conn)
+			c.bounded = nil
+		}
+	}
+}
+
 // Dial performs the handshake on an already-open pipe pair and returns the live
 // client. It is separate from spawning ssh on purpose: the spawning belongs to
 // the door (cmd/codeaf, which owns processes and flags), and a test drives this
@@ -279,8 +311,8 @@ type result struct {
 // order the door runs things in: the handshake happens while the terminal is
 // still the person's, so ssh's own passphrase and host-key questions, and the
 // sentence below about a version mismatch, are plain text on a plain screen.
-func Dial(conn io.ReadWriteCloser, host string, hello Hello) (*Client, error) {
-	c := newClient(host, hello)
+func Dial(conn io.ReadWriteCloser, host string, hello Hello, opts ...ClientOption) (*Client, error) {
+	c := newClient(host, hello, opts...)
 	if _, err := c.attach(conn); err != nil {
 		return nil, err
 	}
@@ -290,7 +322,7 @@ func Dial(conn io.ReadWriteCloser, host string, hello Hello) (*Client, error) {
 
 // newClient is the empty client both doors build — [Dial] and [Roam] — before
 // anything has been said on a pipe.
-func newClient(host string, hello Hello) *Client {
+func newClient(host string, hello Hello, opts ...ClientOption) *Client {
 	hello.Version = Version
 	hello.LocalSavingReceipts = true
 	hello.SyncNoticeWords = true
@@ -306,7 +338,7 @@ func newClient(host string, hello Hello) *Client {
 		hello.ClientID = newClientID()
 	}
 	hello.Encodings = []string{frameEncodingGzip}
-	return &Client{
+	c := &Client{
 		clientTools: clientToolLink{owner: rand.Text()},
 
 		host:    strings.TrimSpace(host),
@@ -321,6 +353,12 @@ func newClient(host string, hello Hello) *Client {
 		following:  make(chan Following, followingRoom),
 		passes:     make(chan session.Event, passRoom),
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(c)
+		}
+	}
+	return c
 }
 
 // newClientID gives one surface a stable identity to carry through every
@@ -350,19 +388,22 @@ func (c *Client) attach(conn io.ReadWriteCloser) (Welcome, error) {
 	if err != nil {
 		return Welcome{}, err
 	}
-	lines := json.NewDecoder(conn)
 	c.mu.Lock()
-	c.conn, c.lines = conn, lines
+	c.conn = conn
+	if c.maxLine > 0 {
+		c.bounded = bufio.NewReaderSize(conn, c.maxLine+1)
+		c.lines = nil
+	} else {
+		c.lines = json.NewDecoder(conn)
+		c.bounded = nil
+	}
 	c.mu.Unlock()
 
 	if err := c.write(Frame{Kind: "hello", Payload: payload}); err != nil {
 		return Welcome{}, c.gone(err)
 	}
 	var frame Frame
-	if err := lines.Decode(&frame); err != nil {
-		return Welcome{}, c.gone(err)
-	}
-	if err := expandFrame(&frame); err != nil {
+	if err := c.readFrame(&frame); err != nil {
 		return Welcome{}, c.gone(err)
 	}
 	switch frame.Kind {
@@ -869,25 +910,97 @@ func (c *Client) write(frame Frame) error {
 	return flushFrame(conn)
 }
 
+// readFrame decodes and expands one inbound frame from the active link. When
+// maxLine is zero it uses the unbounded json.Decoder; when maxLine is positive
+// it reads a single newline-delimited line from the bounded bufio.Reader so an
+// oversized line never allocates past maxLine+1 bytes.
+func (c *Client) readFrame(frame *Frame) error {
+	c.mu.Lock()
+	lines := c.lines
+	bounded := c.bounded
+	maxLine := c.maxLine
+	c.mu.Unlock()
+
+	if maxLine <= 0 {
+		if err := lines.Decode(frame); err != nil {
+			return err
+		}
+		if err := expandFrame(frame); err != nil {
+			return buriedError{err}
+		}
+		return nil
+	}
+
+	raw, err := bounded.ReadSlice('\n')
+	if errors.Is(err, bufio.ErrBufferFull) {
+		return c.tooLargeError()
+	}
+	if err != nil {
+		if errors.Is(err, io.EOF) && len(raw) > 0 {
+			if len(raw) > maxLine {
+				return c.tooLargeError()
+			}
+		} else {
+			return err
+		}
+	}
+	raw = bytes.TrimSuffix(raw, []byte{'\n'})
+	raw = bytes.TrimSuffix(raw, []byte{'\r'})
+	if len(raw) > maxLine {
+		return c.tooLargeError()
+	}
+	if err := json.Unmarshal(raw, frame); err != nil {
+		return err
+	}
+	if err := expandFrameCap(frame, maxLine); err != nil {
+		if errors.Is(err, errExpandedFrameTooLarge) {
+			return c.tooLargeError()
+		}
+		return buriedError{err}
+	}
+	return nil
+}
+
+// buriedError marks a frame that arrived whole but could not be expanded. The
+// link is fine and the stream is not, so the client is buried with the cause
+// rather than treated as a dropped link that a roaming client would redial.
+type buriedError struct{ err error }
+
+func (e buriedError) Error() string { return e.err.Error() }
+func (e buriedError) Unwrap() error { return e.err }
+
+func (c *Client) tooLargeError() error {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
+	}
+	return spokenError{reason: fmt.Sprintf("%s sent a message too large to read", c.where())}
+}
+
 // read is the reader goroutine: the only thing that decodes frames, and the
 // only thing that writes to the routing maps.
 func (c *Client) read() {
 	for {
-		c.mu.Lock()
-		lines := c.lines
-		c.mu.Unlock()
 		var frame Frame
-		if err := lines.Decode(&frame); err != nil {
+		if err := c.readFrame(&frame); err != nil {
+			var spoken spokenError
+			if errors.As(err, &spoken) {
+				c.bury(err)
+				return
+			}
+			var buried buriedError
+			if errors.As(err, &buried) {
+				c.bury(buried.err)
+				return
+			}
 			// The link under this reader stopped. On a roaming client that is a
 			// pause and not an ending, so [Client.lost] is what decides which of
 			// the two this was, and it comes back true holding a live pipe.
 			if c.lost(err) {
 				continue
 			}
-			return
-		}
-		if err := expandFrame(&frame); err != nil {
-			c.bury(err)
 			return
 		}
 		switch frame.Kind {

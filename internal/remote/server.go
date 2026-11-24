@@ -62,6 +62,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/syncwords"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1889,10 +1890,17 @@ type server struct {
 	// is not a slow surface, it is a surface that can never parse this stream
 	// again, so every writer on this process goes through here.
 	write sync.Mutex
+	in    io.Reader
 	out   io.Writer
 	// dead records that the far end stopped listening. A write error is not
 	// worth reporting twice and there is nowhere left to report it to.
 	dead bool
+	// lagging records that a remote guest overran GuestWriteDeadline and was
+	// dropped so it could not stall the holder or other windows.
+	lagging atomic.Bool
+	// droppedOversize counts outbound non-result, non-event frames dropped
+	// because their uncompressed line exceeded DefaultMaxLine on a guest link.
+	droppedOversize atomic.Uint64
 	// encoding is selected from the hello before the welcome is sent. Empty is
 	// the old wire, which keeps a new engine compatible with an older surface.
 	encoding            string
@@ -1984,6 +1992,7 @@ type server struct {
 }
 
 func (s *server) serve(in io.Reader) (err error) {
+	s.in = in
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			// A panic in a handler must not end the process in silence: the
@@ -2077,6 +2086,12 @@ func (s *server) serve(in io.Reader) (err error) {
 			// ordinary hang-up path, because it is the ordinary hang-up.
 			return nil
 		}
+	}
+	// A GUEST THAT WAS DROPPED FOR LAGGING ENDS HERE LIKE ANY HANG-UP, not as the
+	// protocol breaking: closing its connection is what made the read fail. A
+	// local surface keeps reporting the read error it always did.
+	if s.remote != nil && s.hungUp() {
+		return nil
 	}
 	if err := scan.Err(); err != nil {
 		// A line too long or a read that failed is the protocol breaking, not a
@@ -4002,6 +4017,15 @@ func (s *server) sendLocked(frame Frame) error {
 		}
 	}
 
+	if s.remote != nil {
+		var keep bool
+		var err error
+		frame, keep, err = s.capGuestFrame(frame)
+		if err != nil || !keep {
+			return err
+		}
+	}
+
 	if frame.Kind != "welcome" {
 		if err := compressFrame(&frame, s.encoding); err != nil {
 			return err
@@ -4015,6 +4039,9 @@ func (s *server) sendLocked(frame Frame) error {
 	if s.dead {
 		return io.ErrClosedPipe
 	}
+	if s.remote != nil {
+		return s.writeGuestLocked(line)
+	}
 	if _, err := s.out.Write(line); err != nil {
 		s.dead = true
 		s.dropClientTools()
@@ -4025,6 +4052,139 @@ func (s *server) sendLocked(frame Frame) error {
 		s.dropClientTools()
 	}
 	return err
+}
+
+const (
+	guestOversizeResultError = "too large for remote control; use the paged read"
+	guestOversizeEventText   = "an update was too large to show here"
+)
+
+// capGuestFrame enforces DefaultMaxLine on the uncompressed frame a remote
+// viewer would decode. Oversized results become a refusal result on the same
+// call ID, oversized events become a notice event on the same stream and
+// sequence number so replay cursors stay contiguous, and any other frame kind
+// is dropped and counted.
+func (s *server) capGuestFrame(frame Frame) (Frame, bool, error) {
+	size, err := plainFrameLineLen(frame)
+	if err != nil {
+		return Frame{}, false, err
+	}
+	if size <= DefaultMaxLine {
+		return frame, true, nil
+	}
+	switch frame.Kind {
+	case "result":
+		return Frame{
+			Kind:  "result",
+			ID:    frame.ID,
+			Error: guestOversizeResultError,
+		}, true, nil
+	case "event":
+		notice := WireEvent(session.Event{
+			Kind: session.EventNotice,
+			Text: guestOversizeEventText,
+		})
+		return Frame{
+			Kind:    "event",
+			ID:      frame.ID,
+			Seq:     frame.Seq,
+			Payload: mustJSON(notice),
+		}, true, nil
+	default:
+		s.droppedOversize.Add(1)
+		return Frame{}, false, nil
+	}
+}
+
+type writeDeadliner interface {
+	SetWriteDeadline(time.Time) error
+}
+
+// writeGuestLocked writes one frame line to a remote viewer connection under
+// GuestWriteDeadline. When the underlying writer supports SetWriteDeadline it
+// uses that deadline directly; otherwise a watchdog timer closes the connection
+// if the write blocks past the deadline. On an overrun the guest connection is
+// marked lagging, leaves the session like a normal hang-up, and is closed so a
+// stalled viewer cannot block the holder.
+func (s *server) writeGuestLocked(line []byte) error {
+	deadline := GuestWriteDeadline
+	if deadliner, ok := s.out.(writeDeadliner); ok && deadline > 0 {
+		if err := deadliner.SetWriteDeadline(time.Now().Add(deadline)); err != nil {
+			s.failGuestWrite(err, isWriteTimeout(err))
+			return err
+		}
+		_, err := s.out.Write(line)
+		if err == nil {
+			err = flushFrame(s.out)
+		}
+		_ = deadliner.SetWriteDeadline(time.Time{})
+		if err != nil {
+			s.failGuestWrite(err, isWriteTimeout(err))
+			return err
+		}
+		return nil
+	}
+
+	var timedOut atomic.Bool
+	var timer *time.Timer
+	if deadline > 0 {
+		timer = time.AfterFunc(deadline, func() {
+			timedOut.Store(true)
+			s.closeConn()
+		})
+	}
+	_, err := s.out.Write(line)
+	if err == nil {
+		err = flushFrame(s.out)
+	}
+	if timer != nil {
+		timer.Stop()
+	}
+	overran := timedOut.Load() || isWriteTimeout(err)
+	if overran && err == nil {
+		err = os.ErrDeadlineExceeded
+	}
+	if err != nil {
+		if overran {
+			err = os.ErrDeadlineExceeded
+		}
+		s.failGuestWrite(err, overran)
+		return err
+	}
+	return nil
+}
+
+func (s *server) failGuestWrite(_ error, overran bool) {
+	s.dead = true
+	s.dropClientTools()
+	if overran {
+		s.lagging.Store(true)
+		// THE CONNECTION IS CLOSED AND NOTHING ELSE IS DONE HERE. This runs with the
+		// write lock held, and leaving the room waits on goroutines that are blocked
+		// on that same lock, so leaving from here could wait on itself. Closing the
+		// connection ends the reader, and serve's own exit leaves the room on the
+		// ordinary hang-up road, once the lock is free.
+		s.closeConn()
+	}
+}
+
+func (s *server) closeConn() {
+	if closer, ok := s.out.(io.Closer); ok {
+		_ = closer.Close()
+	}
+	if s.in != nil && any(s.in) != any(s.out) {
+		if closer, ok := s.in.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
+}
+
+func isWriteTimeout(err error) bool {
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var netErr interface{ Timeout() bool }
+	return errors.As(err, &netErr) && netErr.Timeout()
 }
 
 func (s *server) hungUp() bool {

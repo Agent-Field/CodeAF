@@ -398,6 +398,17 @@ import (
 // Like the other welcome capabilities, absence preserves the existing wire.
 const Version = 22
 
+// DefaultMaxLine is the largest serialised frame line, after decompression, that
+// a remote viewer connection may send or accept. Keeping every line within a
+// fixed ceiling prevents a single oversized tool output or update from pinning a
+// guest link or exhausting viewer memory.
+const DefaultMaxLine = 256 << 10
+
+// GuestWriteDeadline is the longest a remote viewer connection may take to
+// accept one outbound frame before the holder drops it as lagging. It is a
+// variable so tests can exercise a stalled viewer without waiting two seconds.
+var GuestWriteDeadline = 2 * time.Second
+
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
 // are pushes the surface never asks for, and a version-13 surface that does not
