@@ -80,7 +80,7 @@ func (h *copiedPingPong) surfaceTake(s *syncsetup.Sync, taker takeover, root, do
 	<-screen.ready
 	if door == "home" {
 		h.wait("Home continuation offer", func() bool {
-			return strings.Contains(screen.String(), "Continue "+from+"'s latest chat here?")
+			return strings.Contains(screen.String(), "Move "+from+"'s latest chat here?")
 		})
 		_, _ = io.WriteString(typed, "\x1bc")
 	} else {
