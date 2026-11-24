@@ -405,8 +405,16 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 	viewer := rc.startViewer(0)
 	rc.openLive(viewer)
 
-	// V9, first: the host's door stops answering in the middle of the move. The
-	// card is answered while the host is stopped, so the move cannot finish.
+	// V9, first: the host's door stops answering in the middle of the move. A chat
+	// nobody is working in can be taken without asking its computer anything, so the
+	// move is tried on a chat with a turn running: the host holds it and has to let
+	// it go. The card is answered while the host is stopped, so the move cannot
+	// finish.
+	host.lit(rcSlowAsk)
+	host.keys("Enter")
+	host.waitFor(30*time.Second, rcPartial)
+	viewer.waitFor(rcOpenWithin, rcPartial)
+	rc.abortIfFailed()
 	viewer.keys("M-m")
 	viewer.waitFor(rcOpenWithin, say(t, "moveAsk"))
 	rc.abortIfFailed()
@@ -431,6 +439,15 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 		return strings.Contains(s, say(t, "liveLegend")) && !strings.Contains(s, say(t, "liveWentOffline"))
 	}) {
 		t.Fatalf("the live view did not come back once the host answered again:\n%s", viewer.capture())
+	}
+
+	// The held turn ends, so the chat is one nobody is working in again.
+	rc.model.open()
+	if !waitUntil(rcReplyWithin, func() bool {
+		s := host.capture()
+		return strings.Contains(s, "idle") && rcLinesWith(s, rcHostReply) >= 2
+	}) {
+		t.Fatalf("the held turn never ended on the host:\n%s", host.capture())
 	}
 
 	// V8: the same move with the host answering. The sentence is short-lived, so
