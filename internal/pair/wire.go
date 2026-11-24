@@ -21,6 +21,15 @@ import (
 const (
 	intentPair    byte = 'P'
 	intentConnect byte = 'C'
+
+	// IntentFiles is the first byte a files-door or task-door connection writes,
+	// matching the original connect byte so older builds and newer builds speak
+	// the same wire without negotiation.
+	IntentFiles byte = intentConnect
+	// IntentLive is the first byte a live-view stream writes on the files-door
+	// registration so the host can separate live views from file transfers before
+	// starting Noise.
+	IntentLive byte = 'L'
 )
 
 // maxRecord is a Noise message's own ceiling, and therefore this framing's.
