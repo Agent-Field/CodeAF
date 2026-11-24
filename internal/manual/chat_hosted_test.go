@@ -27,6 +27,7 @@ func TestHostedChatQuestionsReachTheirPage(t *testing.T) {
 		{"This computer cannot keep commands inside this chat's folder so no command was run", []string{"no command was run"}},
 		{"how do I turn on hosted chats for my organization", []string{"CODEAF_HOSTED_URL", "codeaf sessionhost probe"}},
 		{"how do I stop or delete a chat that runs on the server", []string{"every process it started"}},
+		{"The organization's model access was refused by its provider, so this chat paused", []string{"Ask the organization's operator to check the model key", "Your own model key was refused by its provider"}},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

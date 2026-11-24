@@ -206,7 +206,12 @@ organization's. Each of those is a next step, not a hidden property.
   different server key, or people's keys and no server key, refuses to start with a sentence and touches nothing;
   with no server key at all, personal keys are refused with a 409 and chats use the organization's key. Never the
   other way round: a person's own key that cannot be opened pauses their chat; it is never replaced by the
-  organization's.
+  organization's. A key the provider rejects (a 401 or 403) is a plain refusal in the chat's transcript and is not
+  retried: the organization's key reads "The organization's model access was refused by its provider, so this chat
+  paused. Ask the organization's operator to check the model key.", a person's own key reads "Your own model key was
+  refused by its provider, so this chat paused. Replace it or remove it, then send your message again." The
+  server's log gets one line naming the cause (the setting `CODEAF_HOSTED_MODEL_KEY`, or the person), never the
+  key, and repeats at most every 30 minutes while the key stays refused.
 - **Git.** `CODEAF_HOSTED_GIT_HOSTS` (default `https://github.com`) are the hosts a chat's git reaches through the
   server. One audit line per operation goes to `hosted-audit.jsonl` (`GET /v1/hosted/audit` shows a person their own).
 
