@@ -42,7 +42,7 @@ services:
   codeaf:
     <<: *defaults
     image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
-    build: { context: ., dockerfile: codeaf.Dockerfile }
+    build: { context: ., dockerfile: codeaf.Dockerfile, args: { CODEAF_BINARY_FROM: "${CODEAF_BINARY_FROM:-fetch}" } }
     command: ["server"]
     environment:
       CODEAF_ORG_NAME: ${CODEAF_ORG_NAME:-codeaf organization}
@@ -56,7 +56,16 @@ services:
       CODEAF_SMTP_FROM: ${CODEAF_SMTP_FROM:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+      # Hosted chats (opt-in: all empty means the server is exactly what it was). See the sessionhost
+      # service below and README.md "Hosted chats". The secret is shared with the sessionhost and with nobody else.
+      CODEAF_HOSTED_URL: ${CODEAF_HOSTED_URL:-}
+      CODEAF_HOSTED_SECRET: ${CODEAF_HOSTED_SECRET:-}
+      CODEAF_HOSTED_MODEL_URL: ${CODEAF_HOSTED_MODEL_URL:-http://codeaf:8787/v1/model}
+      CODEAF_HOSTED_MODEL_UPSTREAM: ${CODEAF_HOSTED_MODEL_UPSTREAM:-}
+      CODEAF_HOSTED_MODEL_KEY: ${CODEAF_HOSTED_MODEL_KEY:-}
     volumes: [codeaf-data:/data]
+    # The default network reaches every service; `hosted` is the one the hosted chats' machine is on.
+    networks: [default, hosted]
     ports: ["${CODEAF_BIND:-127.0.0.1}:${CODEAF_PORT:-8787}:8787"]
     healthcheck:
       # Any HTTP answer means it is up (curl exits 0 on a 401 too); a refused connection is exit 7.
@@ -70,7 +79,7 @@ services:
   runner:
     <<: *defaults
     image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
-    build: { context: ., dockerfile: codeaf.Dockerfile }
+    build: { context: ., dockerfile: codeaf.Dockerfile, args: { CODEAF_BINARY_FROM: "${CODEAF_BINARY_FROM:-fetch}" } }
     command: ["runner"]
     depends_on:
       agentfield: { condition: service_healthy }
@@ -148,6 +157,39 @@ services:
       start_period: 30s
       retries: 5
 
+  # --- Hosted chats: the machine people's chats run on (opt-in: `--profile hosted`) -------------
+  # One chat = one Linux user of its own, in its own folder, with its commands fenced. This is the
+  # ONLY container that starts as root and stays root: it has to switch to each chat's user. It
+  # holds five capabilities and nothing else (setuid/setgid to become that user, chown for the one
+  # fresh folder it hands over, kill to end a chat, setpcap to empty a chat's capability set), no
+  # org secret, no GH_TOKEN, no model key, a volume of its own, and a network that reaches only
+  # the organization server. README.md "Hosted chats" says why and what Railway needs.
+  sessionhost:
+    <<: *defaults
+    profiles: ["hosted"]
+    image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
+    build: { context: ., dockerfile: codeaf.Dockerfile, args: { CODEAF_BINARY_FROM: "${CODEAF_BINARY_FROM:-fetch}" } }
+    command: ["sessionhost"]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, KILL, SETPCAP]
+    environment:
+      CODEAF_SESSIONHOST_SECRET: ${CODEAF_HOSTED_SECRET:-}
+      CODEAF_SESSIONHOST_DATA: /chats
+      CODEAF_SESSIONHOST_LISTEN: 0.0.0.0:8790
+      CODEAF_SESSIONHOST_MAX_RUNNING: ${CODEAF_SESSIONHOST_MAX_RUNNING:-20}
+      CODEAF_SESSIONHOST_MAX_PER_PERSON: ${CODEAF_SESSIONHOST_MAX_PER_PERSON:-3}
+      CODEAF_SESSIONHOST_IDLE: ${CODEAF_SESSIONHOST_IDLE:-30m}
+      CODEAF_SESSIONHOST_REQUIRE: ${CODEAF_SESSIONHOST_REQUIRE:-uid+fence}
+      CODEAF_SESSIONHOST_MODEL: ${CODEAF_SESSIONHOST_MODEL:-}
+    volumes: [sessions-data:/chats]
+    networks: [hosted]
+    healthcheck:
+      test: ["CMD-SHELL", "codeaf sessionhost health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
   # --- Keyless smoke test only: `docker compose --profile stub up` --------------------------------
   modelstub:
     <<: *defaults
@@ -163,3 +205,10 @@ volumes:
   runner-data:
   swe-af-workspaces:
   pr-af-workspaces:
+  sessions-data:
+
+networks:
+  # The organization server and the hosted chats' machine, and nobody else: a chat's commands can
+  # reach the organization server's model door (which wants a bearer) and the internet, not
+  # AgentField, the nodes, the runner or the model stub.
+  hosted:

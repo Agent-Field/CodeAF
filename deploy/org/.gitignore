@@ -1,0 +1,2 @@
+# A codeaf built on this machine and copied here for `CODEAF_BINARY_FROM=local` image builds (codeaf.Dockerfile).
+codeaf-local

@@ -102,6 +102,97 @@ printing `PASS` or `FAIL` for each:
 The stub's answers are minimal schema-valid text, so the "work" is not real. `docker compose up -d` afterwards
 puts your own keys back.
 
+## Hosted chats (optional)
+
+By default a person's chat runs on their own computer. With hosted chats on, a person can instead run a
+chat on a machine of the organization's: `codeaf chat --org https://your-organization` opens it from their
+terminal, the work goes on there, and it is still there when they close the terminal and come back. Nothing
+here changes while it is off: with `CODEAF_HOSTED_URL` empty the organization server answers exactly as it did.
+
+```
+person's terminal --wss--> organization server --(shared secret)--> sessionhost --> one chat
+ codeaf chat --org           signs the person in,                    one Linux user,
+                             names them to the sessionhost           one folder, fenced commands
+                             mints the chat's model access
+```
+
+The **sessionhost** (`sessionhost` in `compose.yaml`) is the one container that starts as root and stays root,
+because it has to become a different Linux user for every chat. It is built from the same image as the others
+(`CODEAF_ROLE=sessionhost` on a platform that cannot pass arguments). What it does for each chat:
+
+- **A user and a folder of its own.** The chat runs as its own Linux user (numbers from 200000 up) in
+  `/chats/people/<person>/<chat>/`, mode 0700, with `home`, `work` and `tmp` inside. Another chat's user
+  cannot read, write, list or signal it, and the organization server's own data is not on this machine's disk.
+- **A fence on every command**, switched on and not removable from inside the chat. If this machine cannot
+  apply one, the chat's commands are refused, never run open; if it cannot switch users it starts no chats
+  and says so (`codeaf sessionhost probe` prints what it measured; `ok: false` is a refusal).
+  `CODEAF_SESSIONHOST_REQUIRE=uid` (default `uid+fence`) lets an operator whose kernel has no fence run on the
+  user switch alone; it says so once at start and in every chat's `warning`, and it is not a default.
+- **No keys.** The sessionhost holds no organization secret except the one it shares with the organization
+  server, no AgentField key, no GitHub token and no model key. A chat reaches a model only through the
+  organization server's `/v1/model/` door with a bearer the server minted for that chat (twelve hours, ended on
+  stop or delete, held in the server's memory), and that door adds the organization's real key itself.
+- **Limits.** `CODEAF_SESSIONHOST_MAX_RUNNING` chats at once (default 20) and `CODEAF_SESSIONHOST_MAX_PER_PERSON`
+  per person (default 3). A chat counts while it has a process; a person over their limit can still make a
+  chat but cannot start a third and reads "You already have N chats running; stop one first."
+  A chat that is stopped or deleted leaves no process behind, including ones that detached themselves.
+- **A turn goes on without the client.** The chat's engine keeps its conversation behind a socket in the chat's
+  own home, so closing the client in the middle of a turn loses nothing and the next attach shows the result. A
+  socket path has a hard length ceiling, so `CODEAF_SESSIONHOST_DATA` (default `/chats`) must be short: the
+  sessionhost refuses to start with a folder that leaves no room, and says how many characters it may have.
+- **Only the owner can attach.** The organization server names the signed-in person to the sessionhost;
+  another person's chat answers "There is no such chat.", word for word as an unknown one does.
+
+The five capabilities the container is given (`cap_drop: [ALL]`, then `cap_add`), and why:
+
+| Capability | Why the sessionhost needs it |
+| --- | --- |
+| `SETUID`, `SETGID` | become the chat's user and group |
+| `CHOWN` | hand over one freshly made, empty folder to that user (never an existing one) |
+| `KILL` | end every process of a stopped chat's user |
+| `SETPCAP` | empty the chat's capability set before it starts (it cannot be done without this one) |
+
+The supervisor narrows itself to these five when it starts, whatever the platform gave root.
+
+What this does NOT do, plainly: whoever is root on the machine (the operator, or the platform) can read every
+chat, and the volume is not encrypted by this stack; a chat can reach the internet and, on a platform whose
+private network is open (Railway's), the other services' private addresses, so the secrets that matter there
+are the authentication of each service, not the network; the model access a chat holds is its own scoped
+bearer, and the chat's own shell can read the bearer of the chat's engine process; and a restart of the
+organization server (which holds the bearers in memory) ends model access until the chat's next attach. Each of
+those is a next step, not a hidden property.
+
+### Turning it on
+
+1. `./setup.sh` writes `CODEAF_HOSTED_SECRET` (64 hex characters, never printed) into `.env`; an `.env` from
+   before this feature gets one appended, once.
+2. In `.env`: `COMPOSE_PROFILES=hosted`, `CODEAF_HOSTED_URL=http://sessionhost:8790`, the organization's model
+   endpoint in `CODEAF_HOSTED_MODEL_UPSTREAM` (for OpenRouter `https://openrouter.ai/api/v1`) and its key in
+   `CODEAF_HOSTED_MODEL_KEY`, and the model chats use in `CODEAF_SESSIONHOST_MODEL`.
+   `CODEAF_HOSTED_MODEL_URL` is the address chats use to reach the organization server's model door
+   (`http://codeaf:8787/v1/model` by default).
+3. `docker compose up -d`. The image must hold a codeaf that has `codeaf sessionhost`; until a release does, build
+   from a local binary: `cp ../../bin/codeaf codeaf-local` then `CODEAF_BINARY_FROM=local docker compose build codeaf sessionhost`.
+   (`codeaf-local` is ignored by git; `CODEAF_BINARY_FROM` defaults to `fetch`, the pinned release.)
+
+The sessionhost sits on a network of its own, shared only with `codeaf`, so a chat's commands cannot reach
+AgentField, the nodes, the runner or the model stub. Its API (`/v1/sessions` ...) wants the shared secret and a
+person's name from the organization server, and answers anything else with an empty `401`.
+
+`SMOKE_HOSTED=1 ./smoke.sh` runs everything above against the scripted stub (so it spends nothing): two people
+run chats; the test checks that they cannot see each other's files, processes or environment, that no secret
+is in a chat's shell, folder or process list, that a chat cannot reach the other services, that only the owner
+can attach, that closing the client mid-turn loses nothing, that a stopped chat leaves no process, and that a
+restart of the sessionhost leaves the files in place. It prints PASS or FAIL per check.
+
+On Railway the sessionhost is a sixth service from the same image: `CODEAF_ROLE=sessionhost`, a volume at
+`/chats`, no public domain, `CODEAF_SESSIONHOST_SECRET=${{codeaf.CODEAF_HOSTED_SECRET}}`, and on `codeaf`
+`CODEAF_HOSTED_URL=http://${{sessionhost.RAILWAY_PRIVATE_DOMAIN}}:8790` and
+`CODEAF_HOSTED_MODEL_URL=http://${{codeaf.RAILWAY_PRIVATE_DOMAIN}}:8787/v1/model`. Railway runs services as root with
+a fixed capability set; the sessionhost takes five from it, and `codeaf sessionhost probe` run in that service
+says whether the fence works there (it has Landlock but not the namespace fence, so the mode there is the
+user switch plus Landlock).
+
 ## State, backups and upgrades
 
 State lives in five named volumes (`docker volume ls`, prefix `codeaf-org_`); `docker compose down` keeps them,

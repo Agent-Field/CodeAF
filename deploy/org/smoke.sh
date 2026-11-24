@@ -13,10 +13,28 @@
 #
 # COMPOSE='docker compose -p other' picks another project; SMOKE_ENV='--env-file x' adds an env file;
 # SMOKE_BUILD=--no-build uses the images that are already there (the default builds what changed).
+#
+# SMOKE_HOSTED_ONLY=1 runs only the hosted-chats part, on the three services it needs (codeaf, sessionhost,
+# modelstub): no AgentField, no nodes, no runner. It implies SMOKE_HOSTED=1.
+#
+# SMOKE_HOSTED=1 adds hosted chats (the `hosted` profile, .env.stub.hosted): two people run chats on the
+# sessionhost through `codeaf chat --org`, and the test checks that the chats are kept apart, hold no
+# secrets, cannot reach the other services, can only be attached by their owner, survive a closed
+# client, are cleaned up on a stop, and survive a restart of the sessionhost. It needs a codeaf with
+# `codeaf sessionhost` in it, so build the image from a local binary (README.md "Hosted chats"):
+#
+#     cp ../../bin/codeaf codeaf-local && SMOKE_HOSTED=1 CODEAF_BINARY_FROM=local ./smoke.sh
 set -eu
 cd "$(dirname "$0")"
 [ -f .env ] || ./setup.sh
-DC="${COMPOSE:-docker compose} --env-file .env --env-file .env.stub ${SMOKE_ENV:-} --profile stub"
+HOSTED="${SMOKE_HOSTED:-0}"
+SERVICES=
+FULL=1
+if [ "${SMOKE_HOSTED_ONLY:-0}" = 1 ]; then HOSTED=1; FULL=0; SERVICES="codeaf sessionhost modelstub"; fi
+HOSTED_FLAGS=
+[ "$HOSTED" = 1 ] && HOSTED_FLAGS="--env-file .env.stub.hosted --profile hosted"
+# shellcheck disable=SC2086
+DC="${COMPOSE:-docker compose} --env-file .env --env-file .env.stub $HOSTED_FLAGS ${SMOKE_ENV:-} --profile stub"
 SMOKE=/opt/org/smoke.py
 bad=0
 run() { # service exec-flags section [args]: run one section, remember a failure, go on
@@ -26,19 +44,47 @@ run() { # service exec-flags section [args]: run one section, remember a failure
 }
 
 echo '== bringing the stack up (the first time this builds the images: several minutes)'
-$DC up -d ${SMOKE_BUILD:---build} --wait --wait-timeout 600
+# shellcheck disable=SC2086
+$DC up -d ${SMOKE_BUILD:---build} --wait --wait-timeout 600 $SERVICES
 
 echo '== operator link'
 link=$(COMPOSE="$DC" ./operator-link.sh)   # a secret: it is passed on, never printed here
 
-run runner '' control
+[ "$FULL" = 1 ] && run runner '' control
 run codeaf '-e ORG_URL=http://127.0.0.1:8787' org --operator-link "$link"
-run runner '' job
+if [ "$HOSTED" = 1 ]; then
+  echo '== hosted chats'
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-prepare
+  # The test chats are let run commands with nobody at a keyboard (smoke.py says why); it is written on the
+  # chats' machine, as root, into each chat's own settings.
+  $DC exec -T codeaf cat /data/smoke-hosted-ids.json | $DC exec -T sessionhost python3 $SMOKE hosted-seed || bad=1
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted
+  # What only the machine itself can show: the state the client side just wrote goes in on stdin.
+  $DC exec -T codeaf cat /data/smoke-hosted.json | $DC exec -T sessionhost python3 $SMOKE hosted-host || bad=1
+  mode=$($DC logs sessionhost 2>&1 | grep -m1 'sessionhost: mode' || true)
+  if [ -n "$mode" ]; then echo "PASS  C4 the machine started in a mode that keeps chats apart   ${mode##*: }"; else echo 'FAIL  C4 the machine said no mode at start' >&2; bad=1; fi
+  # Fail closed: the same machine without the right to switch users must refuse, not run chats as root.
+  # shellcheck disable=SC2086
+  if out=$($DC run --rm -T --no-deps --entrypoint codeaf --cap-drop SETUID sessionhost sessionhost probe 2>&1); then
+    echo "FAIL  C4 a machine that cannot switch users still says it is ready   $out" >&2; bad=1
+  elif printf '%s' "$out" | grep -q '"ok": false'; then
+    echo 'PASS  C4 a machine that cannot switch users refuses to run chats'
+  else
+    echo "FAIL  C4 the refusal was not a clean one   $out" >&2; bad=1
+  fi
+fi
+[ "$FULL" = 1 ] && run runner '' job
 
 echo '== restarting every service'
-$DC restart
-$DC up -d --wait --wait-timeout 600
-run runner '' after
+# shellcheck disable=SC2086
+$DC restart $SERVICES
+# shellcheck disable=SC2086
+$DC up -d --wait --wait-timeout 600 $SERVICES
+[ "$FULL" = 1 ] && run runner '' after
 run codeaf '-e ORG_URL=http://127.0.0.1:8787' after-org
+if [ "$HOSTED" = 1 ]; then
+  $DC exec -T sessionhost python3 $SMOKE hosted-leftovers || bad=1
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-after
+fi
 
 if [ "$bad" = 0 ]; then echo 'SMOKE PASSED'; else echo 'SMOKE FAILED' >&2; exit 1; fi
