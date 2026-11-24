@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -321,5 +323,182 @@ func TestExecBinaryNamesItsKeptBranchAndVerdict(t *testing.T) {
 	}
 	if got := fields["kept_branch"]; got != "work-branch" {
 		t.Fatalf("kept_branch = %v, want work-branch\n%s", got, fields)
+	}
+}
+
+// Scratch is observable through both git's view of the work and the retained
+// recorder. A clean status must not be bought by turning recording off.
+func TestExecBinaryKeepsScratchOutsideWorkspace(t *testing.T) {
+	binary := buildCodeafStamped(t, "v0.0.0-smoke")
+	t.Run("no work and repeated runs", func(t *testing.T) {
+		server := fakeOpenRouter(t)
+		env, home := smokeEnv(t, server.URL)
+		workspace := gitWorkspaceOn(t, "scratch-test")
+		for run := 1; run <= 2; run++ {
+			stdout, stderr, code := runSmoke(t, binary, env, "Reply with ok.\n",
+				"exec", "--json", "--dir", workspace, "--max-turns", "3", "--token-budget", "20000", "--timeout", "120")
+			assertScratchEnvelope(t, stdout, stderr, code)
+			if status := gitT(t, workspace, "status", "--porcelain"); status != "" {
+				t.Fatalf("git status after exec = %q, want empty", status)
+			}
+			assertNoExecMachinery(t, workspace)
+			records, err := filepath.Glob(filepath.Join(home, "scratch", "exec-*", ".codeaf", "trace", "task-1.trace.log"))
+			if err != nil || len(records) != run {
+				t.Fatalf("retained recorders = %v (%v), want %d distinct runs", records, err, run)
+			}
+			for _, record := range records {
+				content, err := os.ReadFile(record)
+				if err != nil || len(content) == 0 {
+					t.Fatalf("recorder %s: %v, %d bytes", record, err, len(content))
+				}
+			}
+			found := false
+			for _, record := range records {
+				found = found || strings.Contains(stderr, "exec scratch kept at "+filepath.Dir(filepath.Dir(filepath.Dir(record))))
+			}
+			if !found {
+				t.Fatalf("stderr does not name retained scratch:\n%s", stderr)
+			}
+		}
+	})
+
+	t.Run("edit and spilled observation", func(t *testing.T) {
+		workspace := gitWorkspaceOn(t, "scratch-edit")
+		// Baseline input is committed so only the worker's edit dirties git.
+		large := strings.Repeat("scratch observation payload\n", 12000)
+		write(t, filepath.Join(workspace, "input.txt"), large)
+		gitT(t, workspace, "add", "input.txt")
+		gitT(t, workspace, "commit", "-qm", "fixture")
+		var readBack atomic.Bool
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if strings.Contains(r.URL.Path, "/models") {
+				fmt.Fprint(w, `{"data":[]}`)
+				return
+			}
+			var request struct {
+				Messages []struct {
+					Role    string `json:"role"`
+					ID      string `json:"tool_call_id"`
+					Content string `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Errorf("decode worker request: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			results := map[string]string{}
+			for _, message := range request.Messages {
+				if message.Role == "tool" {
+					results[message.ID] = message.Content
+				}
+			}
+			id, name := "change", "write"
+			args := map[string]any{"path": "seed.txt", "text": "changed\n"}
+			switch {
+			case results["readback"] != "":
+				readBack.Store(strings.Contains(results["readback"], "scratch observation payload"))
+				fmt.Fprint(w, `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}`)
+				return
+			case results["observe"] != "":
+				text := results["observe"]
+				_, pointer, ok := strings.Cut(text, "Whole output: ")
+				if !ok {
+					t.Errorf("observation has no spill pointer: %.300s", text)
+				}
+				pointer, _, _ = strings.Cut(pointer, " — ")
+				if !filepath.IsAbs(pointer) {
+					t.Errorf("spill pointer is not absolute: %q", pointer)
+				}
+				id, name, args = "readback", "sh", map[string]any{"cmd": "head -n 1 '" + pointer + "'"}
+			case results["change"] != "":
+				id, name, args = "observe", "sh", map[string]any{"cmd": "cat input.txt"}
+			}
+			arguments, _ := json.Marshal(args)
+			json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{
+				"finish_reason": "tool_calls", "message": map[string]any{"role": "assistant", "content": "", "tool_calls": []any{map[string]any{
+					"id": id, "type": "function", "function": map[string]any{"name": name, "arguments": string(arguments)},
+				}}},
+			}}})
+		}))
+		t.Cleanup(server.Close)
+		env, home := smokeEnv(t, server.URL)
+		stdout, stderr, code := runSmoke(t, binary, env, "Edit seed.txt and inspect input.txt.\n",
+			"exec", "--json", "--dir", workspace, "--max-turns", "8", "--token-budget", "100000", "--timeout", "120")
+		assertScratchEnvelope(t, stdout, stderr, code)
+		if !readBack.Load() {
+			t.Fatal("worker did not read back the spilled observation")
+		}
+		if data, err := os.ReadFile(filepath.Join(workspace, "seed.txt")); err != nil || string(data) != "changed\n" {
+			t.Fatalf("work product = %q, %v", data, err)
+		}
+		status, err := osexec.Command("git", "-C", workspace, "status", "--porcelain").Output()
+		if err != nil || string(status) != " M seed.txt\n" {
+			t.Fatalf("git status = %q, %v", status, err)
+		}
+		var envelope struct {
+			Files []string `json:"files"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &envelope); err != nil || len(envelope.Files) != 1 || envelope.Files[0] != "seed.txt" {
+			t.Fatalf("work-product files = %v (%v)", envelope.Files, err)
+		}
+		assertNoExecMachinery(t, workspace)
+		spills, _ := filepath.Glob(filepath.Join(home, "scratch", "exec-*", ".obs", "*"))
+		if len(spills) == 0 {
+			t.Fatal("no retained observation spill")
+		}
+		data, err := os.ReadFile(spills[0])
+		if err != nil || !strings.Contains(string(data), "scratch observation payload") {
+			t.Fatalf("spill unreadable: %v", err)
+		}
+		records, _ := filepath.Glob(filepath.Join(home, "scratch", "exec-*", ".codeaf", "trace", "task-1.trace.log"))
+		if len(records) != 1 {
+			t.Fatalf("recorders = %v", records)
+		}
+	})
+
+	t.Run("scratch setup failure", func(t *testing.T) {
+		var completions atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/models") {
+				fmt.Fprint(w, `{"data":[]}`)
+				return
+			}
+			completions.Add(1)
+			fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+		}))
+		t.Cleanup(server.Close)
+		env, home := smokeEnv(t, server.URL)
+		write(t, filepath.Join(home, "scratch"), "not a directory")
+		workspace := gitWorkspaceOn(t, "scratch-failure")
+		stdout, stderr, code := runSmoke(t, binary, env, "Reply with ok.\n", "exec", "--json", "--dir", workspace)
+		if code != 1 || stdout != "" || !strings.Contains(stderr, filepath.Join(home, "scratch")+" could not be created") {
+			t.Fatalf("startup failure exit %d, stdout %q, stderr %s", code, stdout, stderr)
+		}
+		if completions.Load() != 0 {
+			t.Fatal("worker called despite scratch setup failure")
+		}
+		assertNoExecMachinery(t, workspace)
+	})
+}
+
+func assertScratchEnvelope(t *testing.T, stdout, stderr string, code int) {
+	t.Helper()
+	var result struct {
+		OK   bool   `json:"ok"`
+		Stop string `json:"stop"`
+	}
+	if code != 0 || json.Unmarshal([]byte(stdout), &result) != nil || !result.OK || result.Stop != "done" {
+		t.Fatalf("exec exit %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+}
+
+func assertNoExecMachinery(t *testing.T, workspace string) {
+	t.Helper()
+	for _, name := range []string{".codeaf", ".obs"} {
+		if _, err := os.Stat(filepath.Join(workspace, name)); !os.IsNotExist(err) {
+			t.Fatalf("workspace machinery %s: %v, want absent", name, err)
+		}
 	}
 }

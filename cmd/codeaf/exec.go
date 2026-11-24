@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/exec"
+	"github.com/Agent-Field/codeaf/internal/home"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -158,6 +159,18 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Each invocation uses task-1, so sharing a scratch home would append
+	// unrelated runs to the same recorder. Keep machinery out of the work.
+	scratchParent := home.Join("scratch")
+	if err := os.MkdirAll(scratchParent, 0o700); err != nil {
+		return fmt.Errorf("create exec scratch parent: %w", err)
+	}
+	scratchRoot, err := os.MkdirTemp(scratchParent, "exec-")
+	if err != nil {
+		return fmt.Errorf("create exec scratch directory: %w", err)
+	}
+	space.WithScratch(scratchRoot)
+	fmt.Fprintln(os.Stderr, "exec scratch kept at", space.ScratchRoot())
 	// AN EXEC RUN'S COMMANDS ARE FENCED to its workspace (fence.go). The seat
 	// replaces the host seat the context was opened with.
 	fence, err := unattendedFence(space.Root(), settings.ProfileDir)

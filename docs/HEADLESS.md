@@ -428,7 +428,7 @@ harness passes anything with newlines in it.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--dir dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. `-w` is the shorthand and keeps working forever. |
+| `--dir dir` | `.` | The directory the worker works in, created if missing and edited in place. Harness scratch stays in the state root, not beside the work — see below. `-w` is the shorthand and keeps working forever. |
 | `--system text` | empty | The working method, passed as the task's contract. |
 | `--max-turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
 | `--token-budget N` | `220000` | Token budget for the whole run. Crossing it buys a bounded landing rather than a kill, so the effective ceiling is the budget, plus a fifth of it for the landing, plus the overshoot of the turn crossing the budget and of the final landing turn. Hitting it exits `3`. |
@@ -585,13 +585,24 @@ again.
   to one.
 - **No delivery gate and no replan.** Nothing judges the answer, and nothing
   notices the work was bigger than one worker.
-- **Scratch lands in `--dir`.** `exec` gives the worker no separate scratch
-  directory, so the harness's own machinery — `.codeaf/`, `.obs/` — is written
-  into the workspace beside the work product. Point `--dir` at a directory you
-  are willing to have written into, not at a repository you want left clean.
 
-`exec` still reads the state root for two things: the model catalog cache and,
-if you have one there, a persisted API key. `CODEAF_HOME` moves both.
+### Scratch, traces and observation spills
+
+Each invocation keeps its harness machinery in a private, unique
+`exec-*` directory under `$CODEAF_HOME/scratch` (`~/.codeaf/scratch` by default).
+The directory is retained after exit, and stderr announces its absolute address
+as `exec scratch kept at <path>`. Stdout remains only the answer or JSON.
+
+Turn traces (`.codeaf/trace`), oversized tool observations (`.obs`) and background
+job logs (`.codeaf/jobs`) live there, outside `--dir`. Repeated invocations do not
+append to the same recorder. Only worker work product belongs in the working
+directory or the JSON `files` list. Scratch setup failure stops the run before
+any worker call; it never falls back to writing machinery beside the work.
+
+For CI, set `CODEAF_HOME` to a state directory outside the checkout, such as the
+runner's temporary directory. This relocates scratch along with the model
+catalog, persisted credentials and other codeaf state; no separate scratch
+variable is needed.
 
 ---
 

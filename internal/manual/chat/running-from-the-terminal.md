@@ -1,5 +1,25 @@
 # Commands you type in a terminal
 
+## codeaf exec scratch, traces and observation spills — keep a repository clean — CODEAF_HOME in CI
+
+`codeaf exec` edits the directory named by `--dir` (the current directory by
+default) in place. Its own machinery stays in a private, unique `exec-*`
+directory under `$CODEAF_HOME/scratch`, or `~/.codeaf/scratch` by default.
+Traces are under `.codeaf/trace`, oversized tool observations under `.obs`,
+and background job logs under `.codeaf/jobs` inside that scratch directory,
+not beside your project files.
+
+The directory is retained after exit. Stderr prints `exec scratch kept at
+<path>` with its absolute address; stdout stays only the answer or JSON.
+Repeated invocations get separate recorders rather than appending to one file.
+The JSON `files` list contains work product, not these harness records.
+If scratch cannot be created, exec stops before calling the worker rather than
+falling back to the project directory.
+
+For CI, set `CODEAF_HOME` to a state directory outside the checkout, such as
+`CODEAF_HOME="$RUNNER_TEMP/codeaf"`. This moves all codeaf state, including
+scratch, not just the traces. `--dir` still names the project to edit.
+
 ## codeaf cluster status when the sync service cannot be reached
 
 If the service cannot be reached, `codeaf cluster status` exits with a failure
