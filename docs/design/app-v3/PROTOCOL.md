@@ -1154,6 +1154,18 @@ its own methods and answers `conflict` naming them.
 | `factory.org_transcript {kind, id, since?}` → `GET /v1/resources/{kind}/{id}/transcript` | Reads a registered chat or session through the current view permission. Answers `{kind, id, state, seq, entries}`. With `since`, entries begin after that sequence number. The transcript offers read access only. A missing or inaccessible resource returns `not_found`. |
 | `resource.changed {kind, id}` | A chat move or a lapse of a grant on a registered resource reaches the combined old and new audience. Canvas and workstream grant lapses emit `canvas.changed` and `workstream.changed`. |
 
+An engine whose hello carries `org_bots` can manage bot identities on an organization
+server. The server returns each secret in its minting answer once. Lists show token
+metadata and a short hint.
+
+| method | HTTP request | Server behavior |
+| --- | --- | --- |
+| `factory.org_bots` | `GET /v1/bots` | Lists the caller's bots and their token metadata. The operator sees all bots. |
+| `factory.org_bot_new {name, scope?}` | `POST /v1/bots` | Creates a bot and returns `{bot, token}`. The optional scope names a current organization role. |
+| `factory.org_bot_token_new {bot, label?, expires_at?}` | `POST /v1/bots/{bot}/tokens` | The bot's creator mints a token. The response includes `token_id` and `token`. |
+| `factory.org_bot_token_revoke {bot, token}` | `DELETE /v1/bots/{bot}/tokens/{token}` | The creator or operator revokes a token by ID. |
+| `factory.org_bot_remove {bot}` | `DELETE /v1/bots/{bot}` | The creator or operator removes a bot and ends its tokens. |
+
 An engine whose hello carries `org_agents` keeps an organization's agents: a name and
 instructions one person made in their space. `factory.org_agents` `GET /v1/agents`
 answers `{agents: [{id, name, instructions?, owner, owner_name?, roster?, team?, mine?,
