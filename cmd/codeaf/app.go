@@ -408,39 +408,52 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// task's clock is the app's, as is a suggested choice's.
 		Launch: launch,
 	}
+	return appOpenAssembled(hello, func(h remote.Hello) (*remote.Engine, error) {
+		// THE APP'S OWN OPENER FIRST, so a process half that failed for the
+		// want of a key before the window handed one over is opened again
+		// now; [assembleEngine] then finds it open. Without it a first
+		// message sent after the key arrived failed on the memo's old error.
+		if _, err := openAppEngineProcess(); err != nil {
+			return nil, err
+		}
+		eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
+		if err == nil {
+			// In-process chats are the desktop's hot path. Remote surfaces keep
+			// one frame per event until someone measures them.
+			eng.DeltaWindow = remote.DefaultDeltaWindow
+			err = enableAppConversationModels(eng.Agent, ask.Models)
+		}
+		if err == nil && ask.AutomaticModels != nil {
+			if door, ok := eng.Agent.(interface{ SetAutomaticModels(bool) error }); ok {
+				err = door.SetAutomaticModels(*ask.AutomaticModels)
+			} else {
+				err = fmt.Errorf("model selection policy is unsupported")
+			}
+		}
+		return eng, err
+	})
+}
+
+// appOpenAssembled opens the conversation boot builds as the app's own, over
+// one in-process attach, and returns the connection the app holds it by.
+//
+// WHEN REMOTE CONTROL IS ON the conversation is kept by a persistent session the
+// desktop's holder door can hand to another computer's viewer ([appDeskHost]);
+// when it is off, or the door could not start, it is the loopback it has always
+// been. Either way the connection's release ends the chat, and what the app sees
+// through it is the same.
+func appOpenAssembled(hello remote.Hello, boot func(remote.Hello) (*remote.Engine, error)) (*appConn, error) {
 	// The agent this boot built, kept so the app can tell when somebody else
-	// closes it (below). Boot runs once, before Loopback returns.
+	// closes it (below). Boot runs once, before the attach returns.
 	var booted atomic.Pointer[closedAgent]
-	loop, err := remote.Loopback(hello, remote.Options{
-		Boot: func(h remote.Hello) (*remote.Engine, error) {
-			// THE APP'S OWN OPENER FIRST, so a process half that failed for the
-			// want of a key before the window handed one over is opened again
-			// now; [assembleEngine] then finds it open. Without it a first
-			// message sent after the key arrived failed on the memo's old error.
-			if _, err := openAppEngineProcess(); err != nil {
-				return nil, err
+	loop, held, err := deskHost.open(hello, func(h remote.Hello) (*remote.Engine, error) {
+		eng, err := boot(h)
+		if err == nil && eng != nil {
+			if c, ok := eng.Agent.(closedAgent); ok {
+				booted.Store(&c)
 			}
-			eng, err := assembleEngine(h, workspace, transcript, workspace, ask.IntentSiblingNames)
-			if err == nil {
-				// In-process chats are the desktop's hot path. Remote surfaces keep
-				// one frame per event until someone measures them.
-				eng.DeltaWindow = remote.DefaultDeltaWindow
-				err = enableAppConversationModels(eng.Agent, ask.Models)
-			}
-			if err == nil && ask.AutomaticModels != nil {
-				if door, ok := eng.Agent.(interface{ SetAutomaticModels(bool) error }); ok {
-					err = door.SetAutomaticModels(*ask.AutomaticModels)
-				} else {
-					err = fmt.Errorf("model selection policy is unsupported")
-				}
-			}
-			if err == nil {
-				if c, ok := eng.Agent.(closedAgent); ok {
-					booted.Store(&c)
-				}
-			}
-			return eng, err
-		},
+		}
+		return eng, err
 	})
 	if err != nil {
 		return nil, err
@@ -457,7 +470,11 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 	release := func() {
 		once.Do(func() {
 			close(stop)
+			// OFF THE DOOR FIRST, so nobody joins a chat that is closing.
+			held.drop()
+			held.endViewers()
 			recordFinalSaveFailure(loop.Close())
+			held.close()
 		})
 	}
 	if c := booted.Load(); c != nil {
@@ -5008,6 +5025,9 @@ func (b *appBackend) Close() error {
 	}
 	wg.Wait()
 	lap("conversations")
+	// THE HOLDER DOOR GOES DOWN LAST OF THE CHATS' BUSINESS: every chat has
+	// been let go, so nothing is left for another computer to be handed.
+	deskHost.closeListener()
 	// An unfinished crew open owns its gate but has no held conversation to
 	// release. Optional file cleanup must not join that open; retain its files.
 	var settled []*appAgent
@@ -5133,6 +5153,17 @@ func (b *appBackend) sweepAgent(a *appAgent, now time.Time) {
 		live = a.live
 		keep = live == nil || a.viewOpen || live.running || a.readers > 0 || now.Sub(live.lastUse) < appAgentIdle
 	})
+	// A CHAT ANOTHER COMPUTER IS WATCHING THROUGH THIS DESKTOP IS KEPT, whatever
+	// the clock says: the viewer is somebody looking at it, the same as a view
+	// open here (app_live.go). The clock starts again when the viewer leaves.
+	if !keep && b.deskViewed(a) {
+		b.locked(func() {
+			if a.live == live {
+				live.lastUse = b.now()
+			}
+		})
+		return
+	}
 	// A member of an open crew stays held while it has work in flight or a
 	// reason the crew would open it again at once; one with nothing to do goes
 	// like any other, and the crew opens it when traffic comes (applazy.go).
