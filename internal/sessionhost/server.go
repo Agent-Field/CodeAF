@@ -116,7 +116,7 @@ func newSupervisor(cfg Config, report Report, deps supervisorDeps) (*supervisor,
 	if err := prepareData(data); err != nil {
 		return nil, errLayout
 	}
-	if err := supervisorDir(filepath.Join(data, "people"), 0o711); err != nil {
+	if err := ancestorDir(filepath.Join(data, "people")); err != nil {
 		return nil, errLayout
 	}
 	r, err := loadRegistry(cfg, deps.now())
@@ -141,7 +141,7 @@ func prepareData(data string) error {
 		path = filepath.Join(path, component)
 		info, err := os.Lstat(path)
 		if errors.Is(err, os.ErrNotExist) {
-			if err := supervisorDir(path, 0o711); err != nil {
+			if err := ancestorDir(path); err != nil {
 				return err
 			}
 			info, err = os.Lstat(path)
@@ -151,6 +151,14 @@ func prepareData(data string) error {
 		}
 		if path == data && (ownerUID(info) != os.Geteuid() || info.Mode().Perm()&0o022 != 0) {
 			return errLayout
+		}
+		if path == data && info.Mode().Perm()&0o055 != 0o055 {
+			// Every chat's user must be able to open the data folder for reading
+			// (ancestorMode says why). The first stage's 0711, and a stricter mode
+			// a fresh volume came with, are opened up and nothing else is changed.
+			if err := os.Chmod(path, info.Mode().Perm()|0o055); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -204,7 +212,7 @@ func (s *supervisor) quarantineFolders(known map[string]bool) error {
 	}
 	for _, entry := range parents {
 		parent := filepath.Join(people, entry.Name())
-		if err := checkSupervisorDir(parent, 0o711); err != nil {
+		if err := openAncestor(parent); err != nil {
 			return err
 		}
 		folders, err := os.ReadDir(parent)

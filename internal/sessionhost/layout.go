@@ -71,6 +71,54 @@ func setFreshMode(path string, mode os.FileMode) error {
 	return os.Chmod(path, mode)
 }
 
+// ancestorMode is the mode of every folder above a chat's own folder that the
+// supervisor makes (the data folder, people, and one per person). THEY MUST BE
+// OPEN FOR READING TO EVERY CHAT'S USER, NOT ONLY FOR PASSING THROUGH. The
+// engine's saved-history helper makes each new file durable by opening and
+// syncing every folder above it, all the way up; a folder that allowed only
+// passing through (0711, which these were) made that open fail with "Permission
+// denied", and the person's first command in every new chat said "calls are
+// not being sealed". What reading these folders shows another chat is their
+// names (a person's hashed name, a chat's random identifier) and nothing inside:
+// every chat's own folder stays closed (0700, its own user).
+const ancestorMode os.FileMode = 0o755
+
+// legacyAncestorMode is what the first stage of hosted chats made these
+// folders as. A folder with exactly that mode is opened up on start.
+const legacyAncestorMode os.FileMode = 0o711
+
+// ancestorDir makes path as an ancestor folder, or accepts one that is there.
+func ancestorDir(path string) error {
+	err := os.Mkdir(path, ancestorMode)
+	switch {
+	case err == nil:
+		return setFreshMode(path, ancestorMode)
+	case errors.Is(err, os.ErrExist):
+		return openAncestor(path)
+	}
+	return err
+}
+
+// openAncestor accepts an ancestor folder the supervisor owns, opening up one
+// the first stage made, and refuses anything else (another owner, another mode,
+// a link) as the rest of this file does. It never makes a folder.
+func openAncestor(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || ownerUID(info) != os.Geteuid() {
+		return errLayout
+	}
+	switch info.Mode().Perm() {
+	case ancestorMode:
+		return nil
+	case legacyAncestorMode:
+		return os.Chmod(path, ancestorMode)
+	}
+	return errLayout
+}
+
 func checkSupervisorDir(path string, mode os.FileMode) error {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -85,7 +133,7 @@ func checkSupervisorDir(path string, mode os.FileMode) error {
 func (l layout) stat() (os.FileInfo, error) {
 	parent := filepath.Dir(l.dir)
 	for _, path := range []string{filepath.Dir(parent), parent} {
-		if err := checkSupervisorDir(path, 0o711); err != nil {
+		if err := openAncestor(path); err != nil {
 			return nil, err
 		}
 	}
@@ -104,7 +152,7 @@ func (l layout) stat() (os.FileInfo, error) {
 func (l layout) makePrivateDir(uid int, chown func(string, int, int) error) (bool, error) {
 	parent := filepath.Dir(l.dir)
 	for _, path := range []string{filepath.Dir(parent), parent} {
-		if err := supervisorDir(path, 0o711); err != nil {
+		if err := ancestorDir(path); err != nil {
 			return false, err
 		}
 	}

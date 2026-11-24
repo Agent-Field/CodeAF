@@ -6,6 +6,6 @@
 set -eu
 data="${CODEAF_SESSIONHOST_DATA:-/chats}"
 mkdir -p "$data"
-chmod 0711 "$data"
+chmod 0755 "$data"
 echo "sessionhost: serving hosted chats from $data as uid $(id -u)" >&2
 exec codeaf sessionhost serve "$@"

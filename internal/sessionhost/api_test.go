@@ -350,7 +350,7 @@ func TestC2_LayoutModesAndTraversal(t *testing.T) {
 		t.Fatal(err)
 	}
 	for path, mode := range map[string]os.FileMode{
-		filepath.Join(cfg.Data, "people"): 0o711, filepath.Dir(l.dir): 0o711,
+		filepath.Join(cfg.Data, "people"): 0o755, filepath.Dir(l.dir): 0o755,
 		l.dir: 0o700, l.home(): 0o700, l.work(): 0o700, l.tmp(): 0o700,
 	} {
 		info, err := os.Lstat(path)
@@ -535,5 +535,68 @@ func TestP1_0b_RefusalsNameTheSettingExactly(t *testing.T) {
 		if !accepted.OK || accepted.Mode != modeUID {
 			t.Errorf("%s: the named setting did not start chats: %+v", name, accepted)
 		}
+	}
+}
+
+// TestP1_0_EveryFolderAboveAChatCanBeOpenedForReadingByItsUser is item 0: the
+// first command of every new hosted chat said "calls are not being sealed ...
+// Permission denied" because the saved-history helper syncs every folder above
+// a new file, and the folders above a chat allowed passing through but not
+// opening. Each folder from the data folder down to the chat's own must now be
+// readable by any chat's user, while a chat's own folder stays closed to all
+// but its user.
+func TestP1_0_EveryFolderAboveAChatCanBeOpenedForReadingByItsUser(t *testing.T) {
+	cfg := testConfig(t)
+	s, _, _ := testSupervisor(t, cfg, healthyReport())
+	createChat(t, s, "alice", chatA)
+	l, err := layoutFor(cfg.Data, "alice", chatA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{cfg.Data, filepath.Join(cfg.Data, "people"), filepath.Dir(l.dir)} {
+		info, err := os.Lstat(dir)
+		if err != nil || info.Mode().Perm()&0o055 != 0o055 {
+			t.Errorf("a chat's user could not open %s for reading: %v, %v", dir, info, err)
+		}
+		if info.Mode().Perm()&0o022 != 0 {
+			t.Errorf("%s can be changed by someone other than the supervisor: %v", dir, info.Mode())
+		}
+	}
+	if info, err := os.Lstat(l.dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("the chat's own folder is no longer closed to other chats: %v, %v", info, err)
+	}
+}
+
+// TestP1_0_FoldersTheFirstStageMadeAreOpenedUpOnStart: a machine that already
+// holds chats made with the first stage's 0711 folders must not need them
+// recreated for the first command of an existing chat to stop saying so.
+func TestP1_0_FoldersTheFirstStageMadeAreOpenedUpOnStart(t *testing.T) {
+	cfg := testConfig(t)
+	people := filepath.Join(cfg.Data, "people")
+	person := filepath.Join(people, personDir("alice"))
+	for _, dir := range []string{people, person} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(dir, 0o711); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(cfg.Data, 0o711); err != nil {
+		t.Fatal(err)
+	}
+	testSupervisor(t, cfg, healthyReport())
+	for _, dir := range []string{cfg.Data, people, person} {
+		info, err := os.Lstat(dir)
+		if err != nil || info.Mode().Perm() != 0o755 {
+			t.Errorf("%s was not opened up on start: %v, %v", dir, info, err)
+		}
+	}
+	// Anything else is still refused rather than guessed at.
+	if err := os.Chmod(person, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if err := openAncestor(person); err == nil {
+		t.Error("a folder the supervisor did not make this way was accepted")
 	}
 }
