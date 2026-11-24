@@ -471,6 +471,17 @@ func (a *app) blockDisplacedSend(text string) {
 	if a.file == "" || !strings.HasSuffix(text, displacedSendSuffix) {
 		return
 	}
+	// A LIVE VIEW HAS NO SEND HOLD OF ITS OWN TO BLOCK. It shows the host's chat
+	// and sends through the host, so its words need no ownership check, and the
+	// displaced sentence it carries ([app.takeLinkNotice]) is the host's, said
+	// about the host's chat. It matters in the moment after this window moved the
+	// chat here: the host's sentence (the chat was moved, and by this very
+	// computer) can still arrive while the live view is the front, and keyed by
+	// the chat's id it blocked the hold the move had just made. The words typed
+	// next were then refused with a Move card for a chat that was already here.
+	if a.liveFront() != nil {
+		return
+	}
 	if a.machineRead.sendHolds == nil {
 		a.machineRead.sendHolds = map[string]sendHold{}
 	}
