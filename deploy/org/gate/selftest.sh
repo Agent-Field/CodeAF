@@ -54,7 +54,10 @@ build_and_gate() {
   local got_exit=$?
   local ok=1
   [ "$got_exit" = "$want_exit" ] || ok=0
-  if [ "$want_check" != "-" ]; then grep -q "\[FAIL\] $want_check" "$dir/gate.log" || ok=0; fi
+  # EXPECT_CHECK may name several checks ("A1 A2"): every one of them must report.
+  if [ "$want_check" != "-" ]; then
+    for check in $want_check; do grep -q "\[FAIL\] $check" "$dir/gate.log" || ok=0; done
+  fi
   # A gate finding must never print the planted value.
   for secret in "$OPENROUTER_FAKE" "$GITHUB_FAKE"; do grep -qF "$secret" "$dir/gate.log" && ok=0; done
   if [ "$ok" = 1 ]; then
@@ -78,17 +81,18 @@ ENV OPENROUTER_API_KEY= GH_TOKEN_FILE=/run/secrets/gh CODEAF_SHA256=$(rand_hex 3
 LABEL org.opencontainers.image.revision=1111111111111111111111111111111111111111
 EOF
 
-# A file from the build context carrying a key (A1 trivy and A2 shapes), each kind.
+# A file from the build context carrying a key, each kind. Trivy (A1) must see the three kinds it has rules for (our OpenRouter
+# rule, its built-in GitHub-token and private-key rules), so a scanner that silently scans nothing cannot pass this test.
 new_case file-openrouter-key; printf '{"openrouter":"%s"}\n' "$OPENROUTER_FAKE" >"$WORK/file-openrouter-key/ctx/config.json"
-build_and_gate file-openrouter-key 1 A2 <<'EOF'
+build_and_gate file-openrouter-key 1 "A1 A2" <<'EOF'
 COPY ctx/config.json /opt/app/config.json
 EOF
 new_case file-github-token; printf 'token: %s\n' "$GITHUB_FAKE" >"$WORK/file-github-token/ctx/hosts.yml"
-build_and_gate file-github-token 1 A2 <<'EOF'
+build_and_gate file-github-token 1 "A1 A2" <<'EOF'
 COPY ctx/hosts.yml /home/app/.config/gh/hosts.yml
 EOF
 new_case file-private-key; printf '%s\n' "$PEM_FAKE" >"$WORK/file-private-key/ctx/deploy.pem"
-build_and_gate file-private-key 1 A2 <<'EOF'
+build_and_gate file-private-key 1 "A1 A2" <<'EOF'
 COPY ctx/deploy.pem /opt/app/deploy.pem
 EOF
 new_case file-registry-auth; printf '%s\n' "$AUTH_FAKE" >"$WORK/file-registry-auth/ctx/config.json"
