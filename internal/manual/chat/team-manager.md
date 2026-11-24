@@ -333,9 +333,10 @@ A deliberate message jump opens the activity and tool-call groups that contain t
 A member of a team that has a manager tells the manager, through the traffic, three things it
 would never write in a message:
 
-- `finished` when a turn ends, `stopped` when its manager or codeaf itself ended it or you
-  stopped a turn you had started yourself, `stopped by the person` when you stopped a turn the
-  team's traffic had started, and `failed: ` with the error's first line when a turn ends on one;
+- `finished` when a turn ends, `stopped by the person` when you stopped a turn that had been
+  handed its manager's work (a directive, or the brief it was started on), `stopped` for every
+  other stop (its manager's, codeaf ending it, or your stop of a turn that carried only your own
+  request), and `failed: ` with the error's first line when a turn ends on one;
 - when it starts waiting on you: the permission line for a permission prompt (`needs your ok
   to run bash`), or `asks: ` and the question for anything else;
 - `no longer waiting` when the last of those questions comes down.
@@ -344,6 +345,11 @@ Each is one line of traffic per change, never one per step. They are the session
 nothing you type is ever written to the traffic. `team_status` reads them too, so a member held
 on a permission prompt shows as `asking` rather than `running`, for as long as some process
 holds that conversation's transcript and the wait is under 30 minutes.
+
+When you stop a member's turn that had been handed the manager's work, its manager is woken
+and told the work is not done, that you chose to stop it, and not to hand it out again unless
+you ask. Stopping a turn that carried only what you typed to the member tells the manager
+nothing, and neither does codeaf quitting or a paused member's stray wake being ended.
 
 ## Why a member stays asking after it crashed
 
@@ -561,8 +567,8 @@ working, that is straight away. When it is idle, it depends on the kind of messa
   start (see **Pausing a crew member**).
 - A **note** wakes nobody. An idle member reads it when it next runs, for whatever reason.
 - A member's **reply to the manager** (`team_post` to the manager), and a member finishing
-  without a reply, failing, starting to wait on you, or having a turn the team started stopped
-  by you, start an idle manager's turn. A reply
+  without a reply, failing, starting to wait on you, or having a turn that carried the
+  manager's work stopped by you, start an idle manager's turn. A reply
   and the end of the same turn are one wake, even if the ending arrives after the manager
   already ran. Replies arriving within a few seconds are gathered into one turn.
 
@@ -576,10 +582,6 @@ four seconds to see it: `@web started a turn on it`, `@web is in a turn and read
 next step`, `@web is waiting on the person and reads it once they answer`, `@web did NOT
 start:` with the reason, or `@web has shown no sign of starting yet`. A manager reports work
 as under way only where the answer says a member started.
-
-When you stop a member's turn that the team's traffic had started, its manager is woken and
-told the work is not done, that you chose to stop it, and not to hand it out again unless you
-ask. Stopping a turn you started by typing to the member tells the manager nothing.
 
 ## could not wake ◆ — a wake that cannot be delivered is kept, not dropped
 
@@ -609,9 +611,11 @@ The ten wakes count ten replies when each member turn replies and then finishes.
 You can pause a member of a crew in the desktop app: **Pause** on its row in the Members tab
 or in the member's menu, and **Resume** to lift it. A pause stops the member's current turn
 and is kept on the team's own record, so the member's session, its manager and every window
-read the same answer. The manager itself cannot be paused; stop its turn instead.
+read the same answer. A crew's manager, and a member that manages a crew of its own, cannot
+be paused; stop its turn instead.
 
-While a member is paused, team traffic starts no turn for it, in any crew it belongs to:
+While a member is paused, team traffic starts no turn for it, in any crew it belongs to, and
+Resume from any of those crews lifts it:
 
 - A directive waits on the crew's log, unread. The traffic says
   `held @web: the person paused it; it starts on this when they resume it`, once per directive.

@@ -166,3 +166,62 @@ func TestSetPausedAndSetRole(t *testing.T) {
 		t.Fatalf("a member did not survive its own JSON: %+v, %v (%s)", back, err, raw)
 	}
 }
+
+// A manager woken by its member's stopped turn still reads that it was stopped:
+// the wake line is written under the member's name, about the manager.
+func TestDigestKeepsTheStoppedTurnAfterTheManagersWake(t *testing.T) {
+	team := Team{Name: "harbor", Manager: "m", Members: []Member{{Key: "m", Handle: "boss"}, {Key: "a", Handle: "web"}, {Key: "b", Handle: "api"}}}
+	at := time.Date(2026, 11, 23, 22, 2, 0, 0, time.UTC)
+	recent := []Entry{
+		{ID: "000000000001", At: at, Kind: KindDirective, From: FromManager, To: "web", Text: "Build it."},
+		{ID: "000000000002", At: at, Kind: KindEvent, From: FromManager, To: "web", Member: "a", State: StateRunning, Text: "woke @web"},
+		{ID: "000000000003", At: at, Kind: KindEvent, From: "web", To: ToManager, Member: "a", State: StateIdle, Text: StoppedByPerson},
+		{ID: "000000000004", At: at, Kind: KindEvent, From: "web", To: ToManager, Member: "m", State: StateRunning, Text: "woke ◆"},
+		{ID: "000000000005", At: at, Kind: KindDirective, From: FromManager, To: "api", Text: "Then this."},
+	}
+	states := map[string]MemberState{"a": {State: StateIdle}, "b": {State: StateFailed}}
+	got := Digest(team, states, recent, 0)
+	for _, want := range []string{
+		"- @web: idle, its last turn was " + StoppedByPerson,
+		// A member whose last turn failed is not in a turn either.
+		"- @api: failed, has not started on #5",
+	} {
+		if !strings.Contains(got, want+"\n") {
+			t.Errorf("the digest lacks the line\n%s\nin\n%s", want, got)
+		}
+	}
+}
+
+// A conversation that manages a team anywhere is not paused, a resume lifts a
+// pause in every team, and becoming a manager lifts it too.
+func TestPauseAcrossTeams(t *testing.T) {
+	file := &File{Teams: []Team{
+		{ID: "top", Name: "harbor", Manager: "m", Members: []Member{{Key: "m", Handle: "boss"}, {Key: "lead", Handle: "lead"}, {Key: "a", Handle: "dev"}}},
+		{ID: "sub", Name: "dock", Parent: "top", Manager: "lead", Members: []Member{{Key: "lead", Handle: "lead"}, {Key: "a", Handle: "dev"}}},
+	}}
+	if err := file.SetPaused("top", "lead", true); err == nil || !strings.Contains(err.Error(), "manages dock") {
+		t.Fatalf("pausing a sub-team's manager in the team above answered %v", err)
+	}
+	if err := file.SetPaused("top", "a", true); err != nil {
+		t.Fatal(err)
+	}
+	if name, paused := file.PausedAnywhere("a"); !paused || name != "harbor" {
+		t.Fatalf("paused anywhere: %q %v", name, paused)
+	}
+	if err := file.SetPaused("sub", "a", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, paused := file.PausedAnywhere("a"); paused {
+		t.Fatal("a resume from another team left the pause")
+	}
+	if err := file.SetPaused("top", "a", true); err != nil {
+		t.Fatal(err)
+	}
+	file.Teams = append(file.Teams, Team{ID: "new", Name: "pier", Members: []Member{{Key: "a", Handle: "dev"}}})
+	if err := file.SetManager("new", "a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, paused := file.PausedAnywhere("a"); paused {
+		t.Fatal("a conversation made a manager is still paused")
+	}
+}

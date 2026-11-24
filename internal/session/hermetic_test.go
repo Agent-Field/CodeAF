@@ -60,12 +60,6 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "session tests: %v\n", err)
 		return 1
 	}
-	// The guard watches wherever this machine actually keeps its state: the real
-	// home, or the CODEAF_HOME a developer had already pointed somewhere else.
-	// It asks [home.InheritedDir] rather than [home.Dir] because Dir hands a
-	// test binary a throwaway root of its own (internal/home/undertest.go), and
-	// a guard watching that would be watching the very directory it exists to
-	// keep the files out of.
 	// A DIRECTIVE'S ANSWER WAITS TO SEE ITS MEMBERS START (team_sendoutcome.go),
 	// four seconds as shipped. Most tests that send one have no member that
 	// could start and assert nothing about the outcome, so the package waits a
@@ -74,6 +68,12 @@ func runTests(m *testing.M) int {
 	teamWatchClockMu.Lock()
 	teamSendSettle, teamSendLook = 250*time.Millisecond, 5*time.Millisecond
 	teamWatchClockMu.Unlock()
+	// The guard watches wherever this machine actually keeps its state: the real
+	// home, or the CODEAF_HOME a developer had already pointed somewhere else.
+	// It asks [home.InheritedDir] rather than [home.Dir] because Dir hands a
+	// test binary a throwaway root of its own (internal/home/undertest.go), and
+	// a guard watching that would be watching the very directory it exists to
+	// keep the files out of.
 	real := home.InheritedDir()
 	before := journalTrees(real)
 	// AND THE CHECKOUT THIS BINARY IS RUNNING IN, for the same reason and at the

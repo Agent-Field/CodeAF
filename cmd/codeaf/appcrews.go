@@ -696,7 +696,12 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 	if usd, set := b.agentBudget(agent, b.now()); set {
 		view.CapUSD = &usd
 	}
+	// Paused wherever the person paused it: the pause holds the conversation in
+	// every crew, and Resume here lifts it.
 	view.Paused = m.Paused
+	if _, elsewhere := read.file.PausedAnywhere(m.Key); elsewhere && m.Key != t.Manager {
+		view.Paused = true
+	}
 	if extra := read.layer.Members[appMemberKey(t.ID, agent)]; extra != nil {
 		view.Role, view.Was = extra.Role, extra.Was
 		if role := read.layer.Roles[extra.Role]; role != nil {

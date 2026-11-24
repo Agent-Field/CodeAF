@@ -52,7 +52,7 @@ func pendingTeamEntry(profile string, role teamRole, entry teams.Entry) bool {
 	if role.manager && entry.Kind == teams.KindEvent && entry.State == teams.StateFinished && teamFinishedAfterReply(profile, role.id, entry) {
 		return false
 	}
-	if !role.manager && entry.Kind == teams.KindStart && entry.To == role.handle {
+	if !role.manager && entry.Kind == teams.KindStart && (entry.To == role.handle || (role.startID != "" && entry.ID == role.startID)) {
 		// A standby start is a role to read at the first turn, not work that
 		// needs the conversation open.
 		return !role.standby

@@ -258,6 +258,11 @@ type teamSeat struct {
 	// thread.go). Memory only: a conversation reopened answers nothing until
 	// the manager next speaks to it, which reads as a thread of its own.
 	answering map[string]string
+	// handed is, per team, when this conversation was first handed work by
+	// that team's manager (a directive, or the brief it was started on) since
+	// its last turn ended. A turn's ending takes it ([Agent.teamHandedTake]):
+	// it is what makes a stop of that turn the stop of handed-out work.
+	handed map[string]time.Time
 }
 
 // teamAnsweringLocked is the id this conversation's replies in team id answer
@@ -754,15 +759,16 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 			if teamWakes(role, entry) {
 				save = true
 			}
-			if role.standby && entry.Kind == teams.KindStart && entry.ID == role.startID {
-				// Its start line is being handed over: standby is over.
-				a.teamStandbyOver(profile, role)
-			}
 			if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) && !a.teamOwnStart(role, entry) {
 				continue
 			}
 			if line := a.teamEntryLineLocked(profile, role, entry); line != "" {
 				lines = append(lines, line)
+				if role.standby && entry.Kind == teams.KindStart && !role.manager {
+					// Its start line is handed over: standby is over.
+					a.teamStandbyOver(profile, role)
+				}
+				a.teamHandedLocked(role, entry)
 				// WHAT THE MANAGER LAST SAID TO IT IS WHAT IT ANSWERS, until the
 				// manager says something else: its next reply to the manager, and
 				// the events its turn raises, name it.
@@ -824,6 +830,13 @@ func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
 	tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
 	if err != nil {
 		return teamLogStart
+	}
+	// AND A MEMBER WITH DIRECTIVES HELD BY A PAUSE STARTS BEFORE THE OLDEST OF
+	// THEM. A paused member is left closed, so nothing of its own wrote down
+	// where it was; the sender's "held" line is the record that a directive is
+	// owed to it, and with no cursor saved none of them was ever delivered.
+	if held := teamHeldFirst(role, tail); held != "" {
+		return teamCursorBefore(held)
 	}
 	born := a.startedAt
 	if since := a.config.TeamListeningSince; !since.IsZero() && since.Before(born) {

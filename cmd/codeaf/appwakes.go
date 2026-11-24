@@ -25,6 +25,26 @@ import (
 // before a turn starts; a turn woken some other way while it holds is stopped
 // here at once. A turn the person's own words opened is not.
 
+// appPausedStop is what a turn ended because its member is paused is told.
+const appPausedStop = "this member is paused, so the turn stopped before it did anything; resume it to let it run"
+
+// appInterruptFor ends a conversation's turn through a named door, for a stop
+// that is the app's own doing and not the person's stop key. A conversation
+// that cannot name a door is stopped the plain way.
+func appInterruptFor(conv appConversation, door session.StopDoor, why string) {
+	if named, ok := conv.(interface {
+		InterruptNamed(session.StopDoor, string)
+	}); ok && why != "" {
+		named.InterruptNamed(door, why)
+		return
+	}
+	if doored, ok := conv.(interface{ InterruptFor(session.StopDoor) }); ok {
+		doored.InterruptFor(door)
+		return
+	}
+	conv.Interrupt()
+}
+
 // appWakeDoor is a conversation held in this process that hands over the
 // turns it starts itself.
 type appWakeDoor interface {
@@ -166,8 +186,10 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 		// turn starts (internal/session's team_pause.go), so what reaches here
 		// is another wake: a background process ending, a task landing. It ends
 		// before it does anything. A turn the person's own words opened, from
-		// any window, is theirs and runs.
-		live.conn.Conv.Interrupt()
+		// any window, is theirs and runs. The stop is the app's and says so:
+		// through the person's door it would be told to the member's manager
+		// as work the person had stopped.
+		appInterruptFor(live.conn.Conv, session.StopByWorkStopped, appPausedStop)
 	}
 	live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	live.box.Event(appwire.EventTurnStarted, appwire.TurnStarted{Agent: id, Turn: turn})

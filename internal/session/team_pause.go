@@ -34,6 +34,7 @@ package session
 
 import (
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -183,45 +184,99 @@ func (a *Agent) teamPausedSince(profile string, roles []teamRole) []teamRole {
 	return kept
 }
 
-// teamStoppedByPerson reports whether a stopped turn's ending is said as the
-// person's ([teams.StoppedByPerson]), which wakes the manager: the person
-// stopped work that team traffic had started, and nothing else tells the
+// teamHandedLocked notes that role's manager handed this conversation work:
+// a directive, or the brief a started member begins on. A standby member's
+// start line is its role, not work. The caller holds a.team.mu.
+func (a *Agent) teamHandedLocked(role teamRole, entry teams.Entry) {
+	if role.manager || entry.From != teams.FromManager {
+		return
+	}
+	if entry.Kind != teams.KindDirective && (entry.Kind != teams.KindStart || role.standby) {
+		return
+	}
+	if a.team.handed == nil {
+		a.team.handed = map[string]time.Time{}
+	}
+	if _, already := a.team.handed[role.id]; !already {
+		a.team.handed[role.id] = time.Now()
+	}
+}
+
+// teamHandedTake is the teams that handed this conversation work since its
+// last turn ended, with when, taken: the turn now ending is the one that had it.
+func (a *Agent) teamHandedTake() map[string]time.Time {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	handed := a.team.handed
+	a.team.handed = nil
+	return handed
+}
+
+// teamStoppedByPerson is the teams in which a stopped turn's ending is said as
+// the person's ([teams.StoppedByPerson]), which wakes that team's manager: the
+// person stopped work the manager had handed out, and nothing else tells the
 // manager it ended without a report.
 //
-// THREE THINGS MUST HOLD. The cancel came through the person's door. The turn
-// was not opened by the person's own message: a person who types into a member
-// and stops it has stopped their own request, which the manager never handed
-// out. And no manager's stop is on the log for this turn: an interface holding
-// the member performs the manager's `team_stop` through the same door as the
-// person's stop key (the app, the terminal, a remote window), usually before
-// the member's own session reads the line, so the door alone would call the
-// manager's stop the person's.
-func (a *Agent) teamStoppedByPerson(door StopDoor, origin turnOrigin) bool {
-	if door != StopByPerson || origin.turn != "" {
-		return false
-	}
+// THREE THINGS MUST HOLD, PER TEAM. The cancel came through the person's door;
+// the app's own stops (quitting, a paused member's stray wake) name another.
+// The turn was handed that manager's work, whoever opened it: a directive read
+// at a step of a turn the person had started is as undone by their stop as one
+// that woke the member, and a turn that carried only the person's own request
+// is theirs alone. And no manager's stop is on that team's log since the work
+// was handed over: an interface holding the member performs the manager's
+// `team_stop` through the same door as the person's stop key (the app, the
+// terminal, a remote window), usually before the member's own session reads
+// the line, so the door alone would call the manager's stop the person's.
+func (a *Agent) teamStoppedByPerson(door StopDoor, handed map[string]time.Time) map[string]bool {
 	profile := a.config.teamProfile()
-	if profile == "" {
-		return false
+	if door != StopByPerson || profile == "" || len(handed) == 0 {
+		return nil
 	}
-	a.mu.Lock()
-	turnAt := a.teamTurnAt
-	a.mu.Unlock()
+	var by map[string]bool
 	for _, role := range a.teamRoles() {
-		if !role.managed || role.manager || role.handle == "" {
+		since, was := handed[role.id]
+		if !was || !role.managed || role.manager || role.shared || role.handle == "" {
 			continue
 		}
 		tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
 		if err != nil {
 			continue
 		}
+		managers := false
 		for _, entry := range tail {
 			if entry.Kind == teams.KindStop && entry.From == teams.FromManager &&
 				(entry.Member == role.key || entry.Member == "" && entry.To == role.handle) &&
-				!entry.At.Before(turnAt) {
-				return false
+				!entry.At.Before(since) {
+				managers = true
 			}
 		}
+		if !managers {
+			if by == nil {
+				by = map[string]bool{}
+			}
+			by[role.id] = true
+		}
 	}
-	return true
+	return by
+}
+
+// teamHeldFirst is the oldest directive in tail that was held for role because
+// the person had paused it ([teamHeldPausedText]), "" when there is none.
+func teamHeldFirst(role teamRole, tail []teams.Entry) string {
+	if role.manager || role.handle == "" {
+		return ""
+	}
+	first := ""
+	for _, entry := range tail {
+		if entry.Kind != teams.KindEvent || entry.From != teams.FromSystem || entry.Member != role.key || entry.Answers == "" {
+			continue
+		}
+		if !strings.HasPrefix(entry.Text, teamHeldPrefix) || !strings.HasSuffix(entry.Text, teamPausedWhy) {
+			continue
+		}
+		if first == "" || entry.Answers < first {
+			first = entry.Answers
+		}
+	}
+	return first
 }

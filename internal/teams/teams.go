@@ -592,9 +592,15 @@ func (f *File) SetManager(id, key string) error {
 		f.Teams[idx].FormerManager = old
 	}
 	f.Teams[idx].Manager = key
-	// A manager is neither paused nor on standby: the person talks to it.
+	// A manager is neither paused nor on standby, here or as a member of
+	// another team: the person talks to it.
 	if j := f.Teams[idx].member(key); j >= 0 {
-		f.Teams[idx].Members[j].Paused, f.Teams[idx].Members[j].Standby = false, false
+		f.Teams[idx].Members[j].Standby = false
+	}
+	for ti := range f.Teams {
+		if k := f.Teams[ti].member(key); k >= 0 {
+			f.Teams[ti].Members[k].Paused = false
+		}
 	}
 	assignHandles(&f.Teams[idx])
 	if f.Teams[idx].Root {
@@ -664,7 +670,24 @@ func (f *File) SetPaused(id, key string, paused bool) error {
 	if paused && t.Manager == key {
 		return fmt.Errorf("the manager of %s is not paused; stop its turn instead", t.Name)
 	}
-	t.Members[j].Paused = paused
+	if paused {
+		// A conversation that manages a team anywhere is the person's to talk
+		// to, and its own team's replies wake it: a pause in the team above
+		// would hold some of its wakes and not others.
+		if managed := f.ManagedTeams(key); len(managed) > 0 {
+			return fmt.Errorf("%s manages %s and is not paused; stop its turn instead", address(t.Members[j]), managed[0].Name)
+		}
+		t.Members[j].Paused = true
+		return nil
+	}
+	// A RESUME LIFTS THE PAUSE WHEREVER IT WAS PRESSED. The pause holds the
+	// conversation in every team it is a member of ([File.PausedAnywhere]), so
+	// the team the person resumes it from need not be the one they paused it in.
+	for ti := range f.Teams {
+		if k := f.Teams[ti].member(key); k >= 0 {
+			f.Teams[ti].Members[k].Paused = false
+		}
+	}
 	return nil
 }
 

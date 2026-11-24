@@ -76,6 +76,10 @@ type teamEvent struct {
 	// and another has begun, so it reads this copy and nothing about the
 	// agent's current turn (turn_origin.go).
 	origin turnOrigin
+	// byPerson is the teams in which this ending is the person stopping work
+	// that team's manager had handed out ([Agent.teamStoppedByPerson]): there
+	// the text is [teams.StoppedByPerson] and the manager is woken.
+	byPerson map[string]bool
 }
 
 // eventfulRoles reports whether roles make this conversation one whose events
@@ -91,13 +95,19 @@ func eventfulRoles(roles []teamRole) bool {
 
 // teamEventOwed queues one event, and starts the writer when none is running.
 func (a *Agent) teamEventOwed(origin turnOrigin, state, text string) {
+	a.teamEventOwedFor(origin, state, text, nil)
+}
+
+// teamEventOwedFor is [Agent.teamEventOwed] for a stopped turn, with the teams
+// in which the stop is the person's stop of handed-out work.
+func (a *Agent) teamEventOwedFor(origin turnOrigin, state, text string, byPerson map[string]bool) {
 	if !a.team.events.member.Load() || a.config.teamProfile() == "" {
 		return
 	}
 	lane := &a.team.events
 	lane.mu.Lock()
 	defer lane.mu.Unlock()
-	lane.queue = append(lane.queue, teamEvent{state: state, text: cutRunesTeam(oneLineTeam(text), teamEventText), at: time.Now(), origin: origin})
+	lane.queue = append(lane.queue, teamEvent{state: state, text: cutRunesTeam(oneLineTeam(text), teamEventText), at: time.Now(), origin: origin, byPerson: byPerson})
 	if lane.done == nil {
 		done := make(chan struct{})
 		lane.done = done
@@ -136,6 +146,10 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if !role.managed || role.manager || role.handle == "" {
 			continue
 		}
+		text := event.text
+		if event.byPerson[role.id] {
+			text = teams.StoppedByPerson
+		}
 		// The event answers what the member was last told by its manager, so
 		// the rail folds it into that thread's reply (internal/teams' thread.go).
 		err := teams.AppendTraffic(profile, role.id, teams.Entry{
@@ -144,7 +158,7 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 			From:    role.handle,
 			To:      teams.ToManager,
 			Member:  role.key,
-			Text:    event.text,
+			Text:    text,
 			State:   event.state,
 			Answers: a.teamAnswering(role.id),
 			// The run is the one that was current when the event was QUEUED;
@@ -154,7 +168,7 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if err != nil || !role.wakes {
 			continue
 		}
-		if teamEventWakesManager(event.state, event.text) && !(role.root && event.state == teams.StateIdle) {
+		if teamEventWakesManager(event.state, text) && !(role.root && event.state == teams.StateIdle) {
 			// These wake the manager, so a manager nobody has open is opened
 			// (team_wakewatch.go).
 			a.rouseManager(profile, role, event.origin.provenance(role.key))
@@ -203,15 +217,13 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 	a.dropOwedResume()
 	origin := turnOriginFrom(ctx)
 	if err := hub.turnError(); err != nil {
+		a.teamHandedTake()
 		a.teamEventOwed(origin, teams.StateFailed, "failed: "+firstLineTeam(err.Error()))
 		return
 	}
+	handed := a.teamHandedTake()
 	if door, stopped := stopCause(ctx); stopped {
-		text := "stopped"
-		if a.teamStoppedByPerson(door, origin) {
-			text = teams.StoppedByPerson
-		}
-		a.teamEventOwed(origin, teams.StateIdle, text)
+		a.teamEventOwedFor(origin, teams.StateIdle, "stopped", a.teamStoppedByPerson(door, handed))
 		return
 	}
 	a.teamEventOwed(origin, teams.StateFinished, "finished")
@@ -381,7 +393,11 @@ const teamBriefText = teams.BriefTextMax
 // manager wrote; every other reader is told nothing, because the interface
 // performs a start and the manager already knows what it asked for.
 func teamBriefLine(role teamRole, entry teams.Entry) string {
-	if role.manager || role.handle == "" || entry.From != teams.FromManager || entry.To != role.handle {
+	// The start that made this membership is its own by identity, whatever
+	// the member has been renamed to since; one written before that was kept
+	// is its own by the handle it was addressed to.
+	own := entry.To == role.handle || (role.startID != "" && entry.ID == role.startID)
+	if role.manager || role.handle == "" || entry.From != teams.FromManager || !own {
 		return ""
 	}
 	text := strings.TrimSpace(entry.Text)

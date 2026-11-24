@@ -5002,7 +5002,8 @@ func (b *appBackend) Close() error {
 			// A conversation joined on a window's host is that window's, and
 			// is only detached from.
 			if live := b.liveOf(a); live != nil && live.conn.Assembled {
-				live.conn.Conv.Interrupt()
+				// The app is leaving; the person did not press stop.
+				appInterruptFor(live.conn.Conv, session.StopByClosing, "")
 			}
 			b.letGoTimed(a, os.Stderr)
 		})

@@ -138,6 +138,9 @@ func lastWord(m Member, recent []Entry) string {
 	for i := len(recent) - 1; i >= 0; i-- {
 		e := recent[i]
 		switch {
+		case e.From == m.Handle && e.Member != "" && e.Member != m.Key:
+			// A line under this member's name about somebody else: the wake
+			// its reply gave the manager ("woke ◆").
 		case e.From == m.Handle:
 			if e.Kind == KindEvent && e.State == StateIdle && e.Text == StoppedByPerson {
 				return "its last turn was " + StoppedByPerson
@@ -183,14 +186,15 @@ func memberLine(m Member, s MemberState, manager bool, last string) string {
 	if s.ReportsTo != "" && state == StateRunning {
 		state = "busy for " + s.ReportsTo
 	}
-	resting := state == StateIdle || state == "unknown"
+	resting := state != StateRunning && state != StateAsking && !strings.HasPrefix(state, "busy for ")
+	quiet := state == StateIdle || state == "unknown"
 	switch {
 	case manager:
-	case (m.Paused || s.Paused) && resting:
+	case (m.Paused || s.Paused) && quiet:
 		state = DigestPaused
 	case m.Paused || s.Paused:
 		state += ", " + DigestPaused
-	case m.Standby && resting:
+	case m.Standby && quiet:
 		state = DigestStandby
 	}
 	b.WriteString(": " + state)

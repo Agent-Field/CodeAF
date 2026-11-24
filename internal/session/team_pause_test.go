@@ -401,3 +401,194 @@ func TestTeamEventWakesManager(t *testing.T) {
 		}
 	}
 }
+
+// A DIRECTIVE READ INSIDE A TURN THE PERSON OPENED is handed-out work all the
+// same: stopping that turn leaves it undone, and the manager was told the
+// member would read it. The ending is the person's stop of that work.
+func TestTeamPersonStopOfATurnThatWasHandedADirective(t *testing.T) {
+	fastTeamWake(t)
+	// Auto-wake off, so the directive waits for the turn the person starts.
+	fixture := makeTeamFixture(t, true, false)
+	streaming := make(chan struct{})
+	web := teamAgent(t, fixture, fixture.web, &scriptedCompleter{steps: []step{thinkingStep(streaming)}}, nil)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header.", At: time.Now()})
+	events := mustSubmit(t, web, "what are you working on?")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start")
+	}
+	web.Interrupt()
+	collect(t, events)
+	web.settleTeamEvents()
+	if said := trafficEvents(t, fixture, teams.StoppedByPerson); len(said) != 1 {
+		t.Fatalf("a stopped turn that had been handed a directive was logged as %+v", trafficEvents(t, fixture, "stopped"))
+	}
+}
+
+// THE APP'S OWN STOPS ARE NOT THE PERSON'S. Quitting, and ending a paused
+// member's stray wake, cancel through another door; the manager is told
+// nothing about a choice the person did not make.
+func TestTeamMachineryStopIsNotThePersons(t *testing.T) {
+	for _, door := range []StopDoor{StopByClosing, StopByWorkStopped, StopByTakeover} {
+		t.Run(string(door), func(t *testing.T) {
+			fastTeamWake(t)
+			fixture := newWakingTeamFixture(t)
+			managerCalls := oneAnswer(1)
+			manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+			streaming := make(chan struct{})
+			web := teamAgent(t, fixture, fixture.web, &scriptedCompleter{steps: []step{thinkingStep(streaming)}}, nil)
+			sendDirective(t, manager, "web")
+			select {
+			case <-streaming:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the member did not start on the directive")
+			}
+			web.InterruptFor(door)
+			deadline := time.Now().Add(5 * time.Second)
+			for len(trafficEvents(t, fixture, "stopped")) == 0 && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			web.settleTeamEvents()
+			quietFor()
+			if said := trafficEvents(t, fixture, teams.StoppedByPerson); len(said) != 0 {
+				t.Fatalf("a stop through %q was logged as the person's: %+v", door, said)
+			}
+			if got := managerCalls.requests(); got != 0 {
+				t.Fatalf("the manager was woken %d times by a stop through %q", got, door)
+			}
+		})
+	}
+}
+
+// A STANDBY MEMBER RENAMED BEFORE ITS FIRST WORK still gets its role line: the
+// start that made the membership is its own by identity, not by the handle it
+// was addressed to.
+func TestTeamStandbyRoleLineSurvivesARename(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	start, err := teams.AppendTrafficID(fixture.profile, fixture.teamID, teams.Entry{
+		Kind: teams.KindStart, From: teams.FromManager, To: "web", Text: "Owns the web frontend and its tests.", At: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = teams.Update(fixture.profile, func(file *teams.File) error {
+		team := &file.Teams[0]
+		for i := range team.Members {
+			if team.Members[i].Handle == "web" {
+				team.Members[i].Standby = true
+				team.Members[i].Started, team.Members[i].StartEntry, team.Members[i].StartID = true, start, start
+			}
+		}
+		return file.SetHandle(fixture.teamID, convKeyOf(t, fixture.web), "front")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
+	webCalls := oneAnswer(1)
+	teamAgent(t, fixture, fixture.web, webCalls, nil)
+	sendDirective(t, manager, "front")
+	waitRequests(t, webCalls, 1)
+	asked := userTextIn(webCalls.request(0))
+	for _, want := range []string{teamStandbyBriefWord, "Owns the web frontend and its tests.", "Fix the header."} {
+		if !strings.Contains(asked, want) {
+			t.Fatalf("the renamed member's first turn lacks %q:\n%s", want, asked)
+		}
+	}
+}
+
+// A DIRECTIVE HELD FOR A PAUSED MEMBER NOTHING HAD OPEN outlives a restart: the
+// sender's "held" line is the record that it is owed.
+func TestTeamHeldDirectiveSurvivesForAMemberThatWasNeverOpen(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	setPaused(t, fixture, fixture.web, true)
+	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
+	sendDirective(t, manager, "web")
+	setPaused(t, fixture, fixture.web, false)
+	file, err := teams.Load(fixture.profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Opened long after: nothing but the held line says the directive is owed.
+	late := time.Now().Add(time.Hour)
+	if !TeamOpenPending(fixture.profile, fixture.web, file, teams.Defaults{Wake: true}, late) {
+		t.Fatal("the held directive does not ask for the resumed member to be opened")
+	}
+	webCalls := oneAnswer(1)
+	teamAgent(t, fixture, fixture.web, webCalls, func(config *Config) { config.TeamListeningSince = late })
+	waitRequests(t, webCalls, 1)
+	if asked := userTextIn(webCalls.request(0)); strings.Count(asked, "Fix the header.") != 1 {
+		t.Fatalf("the member opened after the resume was not handed the held directive once:\n%s", asked)
+	}
+}
+
+// THE PAUSE IS READ AGAIN BEFORE A WAKE HANDS ANYTHING OVER, whatever the look
+// that chose the wake had read: called with roles from before the pause, the
+// wake holds.
+func TestTeamWakeMemberReadsThePauseAfresh(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	webCalls := oneAnswer(1)
+	web := teamAgent(t, fixture, fixture.web, webCalls, func(config *Config) { config.teamWatchManual = true })
+	var stale []teamRole
+	for _, role := range web.teamRoles() {
+		if !role.manager {
+			stale = append(stale, role)
+		}
+	}
+	if len(stale) != 1 || stale[0].paused {
+		t.Fatalf("the member's roles before the pause are %+v", stale)
+	}
+	setPaused(t, fixture, fixture.web, true)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header.", At: time.Now()})
+	web.teamWakeMember(fixture.profile, stale, time.Now())
+	quietFor()
+	if got := webCalls.requests(); got != 0 {
+		t.Fatalf("a wake chosen before the pause started %d turns", got)
+	}
+	if woke := trafficEvents(t, fixture, "woke @web"); len(woke) != 0 {
+		t.Fatalf("the traffic says it woke: %+v", woke)
+	}
+	// And the directive is still there for the resume.
+	setPaused(t, fixture, fixture.web, false)
+	web.teamWatchTick(fixture.profile, time.Now())
+	waitRequests(t, webCalls, 1)
+	if asked := userTextIn(webCalls.request(0)); !strings.Contains(asked, "Fix the header.") {
+		t.Fatalf("the resumed member was not handed the directive:\n%s", asked)
+	}
+}
+
+// A PAUSE HOLDS THE CONVERSATION IN EVERY TEAM, a resume lifts it wherever it
+// is pressed, and a conversation that manages a team is not paused at all.
+func TestTeamPauseIsTheConversations(t *testing.T) {
+	fixture, sharedTeam, _ := linkedFixture(t)
+	key := convKeyOf(t, fixture.web)
+	roles := func() []teamRole {
+		file, err := teams.Load(fixture.profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rolesFor(file, []string{key}, teams.Defaults{Wake: true})
+	}
+	if got := len(roles()); got != 2 {
+		t.Fatalf("the fixture's web member is in %d teams, want two", got)
+	}
+	setPaused(t, fixture, fixture.web, true)
+	for _, role := range roles() {
+		if !role.manager && !role.paused {
+			t.Fatalf("paused in one team, the member is not held in %q", role.name)
+		}
+	}
+	// Resumed from the other team.
+	if err := teams.Update(fixture.profile, func(file *teams.File) error { return file.SetPaused(sharedTeam, key, false) }); err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range roles() {
+		if role.paused {
+			t.Fatalf("resumed from another team, the member is still held in %q", role.name)
+		}
+	}
+}

@@ -66,7 +66,8 @@ func (b *appBackend) Member(verb string, ask appwire.MemberAsk) (appwire.CrewMem
 				err = b.memberStop(t, m, agent, "paused")
 			}
 		case "resume":
-			if err = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, false) }); err == nil && m.Paused {
+			pausedSomewhere := m.Paused || b.crewPaused(agent)
+			if err = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, false) }); err == nil && pausedSomewhere {
 				// The resume is said on the crew's log beside the pause. What
 				// waited there starts the member's turn on its session's next look.
 				err = appEngineErrorOrNil(teamstore.AppendTraffic(b.crewProfile(), t.ID, teamstore.Entry{
