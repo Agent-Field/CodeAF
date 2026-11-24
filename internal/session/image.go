@@ -326,7 +326,18 @@ func (a *Agent) visionSeer() string {
 	// resolver — the looking slot, the pin, the catalog, the curated fallback —
 	// and it is already capability-checked when it answers.
 	if resolve := a.config.MediaModel; resolve != nil {
-		return strings.TrimSpace(resolve("vision"))
+		if seer := strings.TrimSpace(resolve("vision")); seer != "" {
+			return seer
+		}
+		// THE PERSON'S OWN MODEL IS THE LAST RUNG, AND THE ONLY ONE NOBODY
+		// HAD TO PICK (solo-sheets F17). The resolver no longer elects another
+		// vendor's eyes from the catalog; past the looking row and the pin,
+		// the model this conversation runs on looks when it can see, and when
+		// it cannot, nothing looks and view_image is off the belt.
+		if a.config.SupportsImages != nil && a.config.SupportsImages(a.model) {
+			return a.model
+		}
+		return ""
 	}
 	seer, err := readerFor(a.config, a.model).Resolve(roles.RoleVision, "")
 	if err != nil {

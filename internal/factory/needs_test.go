@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -104,5 +105,29 @@ func TestGitHubIssueAskText(t *testing.T) {
 	typed := Item{Kind: KindIssue, Origin: OriginTerminal, Num: 1540, Ask: &JobAsk{Text: "Written in the terminal."}}
 	if GitHubIssue(typed) || AskText(typed) != "Written in the terminal." {
 		t.Fatalf("typed ask %q github %v", AskText(typed), GitHubIssue(typed))
+	}
+}
+
+// The floor is one constant and its refusal is interpolated from it; NaN,
+// infinities, negatives and amounts under a dollar are all refused alike, and
+// an accepted amount is rounded to whole cents.
+func TestCheckJobBudgetTakesAnyAmountFromTheFloor(t *testing.T) {
+	if want := "A job's budget is at least $1."; ErrJobBudgetTooSmall.Error() != want {
+		t.Fatalf("refusal %q, want %q", ErrJobBudgetTooSmall, want)
+	}
+	for in, want := range map[float64]float64{MinJobBudget: MinJobBudget, 1.5: 1.5, 2: 2, 7: 7, 12.345: 12.35, 99.999: 100, 1000: 1000} {
+		if got, err := CheckJobBudget(in); err != nil || got != want {
+			t.Fatalf("CheckJobBudget(%v) = %v, %v; want %v", in, got, err, want)
+		}
+	}
+	for _, in := range []float64{0.99, 0, -1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := CheckJobBudget(in); err != ErrJobBudgetTooSmall {
+			t.Fatalf("CheckJobBudget(%v) = %v, want the floor refusal", in, err)
+		}
+	}
+	for _, step := range JobBudgetSteps() {
+		if _, err := CheckJobBudget(step); err != nil {
+			t.Fatalf("preset %v refused: %v", step, err)
+		}
 	}
 }

@@ -109,7 +109,7 @@ func (h *Handler) runnerList(r *http.Request, owner string) ([]api.Runner, error
 			if err != nil {
 				return nil, err
 			}
-			if !h.repoVisible(r, itemRepo(it)) {
+			if !h.repoVisible(r, itemRepo(it)) || !h.jobVisible(r, it) {
 				continue
 			}
 		}

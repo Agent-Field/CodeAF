@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 base="${BASE:-origin/dev}"
 case "$base" in '' | 0000000000000000000000000000000000000000) base=HEAD~1 ;; esac
 git rev-parse --verify "$base^{commit}" >/dev/null
-changed="$(git diff --name-only "$base" HEAD -- '*.go' go.mod go.sum)"
+changed="$(git diff --name-only "$base...HEAD" -- '*.go' go.mod go.sum)"
 if printf '%s\n' "$changed" | grep -qxE 'go\.(mod|sum)'; then
 	# go list excludes nested modules and returns concrete packages, so the same
 	# list can be partitioned without a second interpretation of ./....

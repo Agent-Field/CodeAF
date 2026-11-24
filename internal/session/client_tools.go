@@ -14,13 +14,17 @@ import (
 )
 
 // Client tool limits are shared by the wire validator and the conversation door.
+//
+// ClientToolInstructionsMax is 8 KiB so an app can combine shared instructions
+// with its own guidance without losing its tools when the declaration is refused.
+// Four sets at the cap still add at most 32 KiB to a turn's prompt.
 const (
 	ClientToolMaxSets           = 4
 	ClientToolMaxPerSet         = 32
 	ClientToolMaxPerAgent       = 64
 	ClientToolDescriptionMax    = 2048
 	ClientToolSchemaMax         = 16 << 10
-	ClientToolInstructionsMax   = 4096
+	ClientToolInstructionsMax   = 8192
 	ClientToolErrorMax          = 4096
 	ClientToolOutputMax         = 64 << 10
 	ClientToolDefaultDeadlineMS = 30000
@@ -52,13 +56,27 @@ type ClientToolSet struct {
 var clientToolSetPattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
 var clientToolNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
+// ClientToolSetSizeError names the limit a set is over and by how much, or ""
+// when it fits. THE REFUSAL SAYS THE SIZE IT SAW: an app whose set grew past a
+// limit learns which one and by how many from the error alone, rather than from
+// a live test that finds a conversation with none of its tools.
+func ClientToolSetSizeError(tools, instructionBytes int) string {
+	switch {
+	case tools > ClientToolMaxPerSet:
+		return fmt.Sprintf("a set allows at most %d tools; this one has %d", ClientToolMaxPerSet, tools)
+	case instructionBytes > ClientToolInstructionsMax:
+		return fmt.Sprintf("a set allows at most %d instruction bytes; this one has %d", ClientToolInstructionsMax, instructionBytes)
+	}
+	return ""
+}
+
 // ValidateClientToolSet checks declarations at a conversation's transport door.
 func ValidateClientToolSet(set ClientToolSet) error {
 	if !clientToolSetPattern.MatchString(set.ID) {
 		return fmt.Errorf("a valid set id is required")
 	}
-	if len(set.Tools) > ClientToolMaxPerSet || len(set.Instructions) > ClientToolInstructionsMax {
-		return fmt.Errorf("a set allows at most %d tools and %d instruction bytes", ClientToolMaxPerSet, ClientToolInstructionsMax)
+	if err := ClientToolSetSizeError(len(set.Tools), len(set.Instructions)); err != "" {
+		return fmt.Errorf("%s", err)
 	}
 	if set.DeadlineMS != 0 && (set.DeadlineMS < ClientToolMinDeadlineMS || set.DeadlineMS > ClientToolMaxDeadlineMS) {
 		return fmt.Errorf("deadline_ms must be 0 or %d–%d", ClientToolMinDeadlineMS, ClientToolMaxDeadlineMS)
@@ -245,14 +263,22 @@ func (a *Agent) clientTool(set ClientToolSet, spec ClientTool) bare.Tool {
 			if len(data) == 0 || data[0] != '{' || !json.Valid(data) || decodeToolArguments(data, &object) != nil || object == nil {
 				return rejectToolArguments(ctx, invalidArgumentsPrefix+"expected a JSON object"), true, nil
 			}
-			answer, err := a.config.ClientTools.CallClientTool(ctx, ClientToolCall{
-				Set: set.ID, Name: spec.Name, Args: args, TurnCall: callIDFrom(ctx), DeadlineMS: set.DeadlineMS,
-				SourceMessage: turnOriginFrom(ctx).answers,
-			})
-			if err != nil {
-				return err.Error(), true, nil
+			call := func(ctx context.Context, name string, args json.RawMessage) (string, bool, error) {
+				answer, err := a.config.ClientTools.CallClientTool(ctx, ClientToolCall{
+					Set: set.ID, Name: name, Args: args, TurnCall: callIDFrom(ctx), DeadlineMS: set.DeadlineMS,
+					SourceMessage: turnOriginFrom(ctx).answers,
+				})
+				if err != nil {
+					return err.Error(), true, nil
+				}
+				return answer.Text, answer.IsError, nil
 			}
-			return answer.Text, answer.IsError, nil
+			// A guard may stand around an app's tool: it calls the app through
+			// the same door ([Agent.clientToolGuard]).
+			if guard := a.clientToolGuard(set, spec.Name); guard != nil {
+				return guard(ctx, spec.Name, args, call)
+			}
+			return call(ctx, spec.Name, args)
 		},
 	}
 }
@@ -371,4 +397,14 @@ func (a *Agent) ClientToolBuiltinNames() []string {
 		}
 	}
 	return names
+}
+
+// clientSetServes is whether set registers the tool name.
+func clientSetServes(set ClientToolSet, name string) bool {
+	for _, t := range set.Tools {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
 }

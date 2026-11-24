@@ -482,9 +482,8 @@ model call; prompt tokens still follow your provider's cache pricing.
 The one model call is the pass after each turn you finish: it reads the exchange
 once, keeps the conversation's own running summary of where the work stands, and
 — when noticing is on — may keep one line. It runs on the **reflex** row in
-`/settings` → Models (`google/gemini-2.5-flash` by default while OpenRouter is
-connected, otherwise the lightest model of your conversation's provider; nothing set means the
-conversation's own model), sends no token ceiling or reasoning switch, and is
+`/settings` → Models (empty by default, which means the conversation's own
+model), sends no token ceiling or reasoning switch, and is
 charged to the session total, so `/cost` includes it. An answer it cannot read
 costs one repair. An empty or unavailable helper is skipped for that chat;
 recovery tries the configured **small work** model, then the current chat model,
@@ -678,10 +677,9 @@ Memories use the local store on each computer. After pairing, an older conversat
 
 The desktop's Library reads the same opt-in, profile-wide knowledge vault as
 Memory → Knowledge in the terminal. Saved memory remains separate. Starting a
-Library build enables knowledge capture. The default knowledge model is
-DeepSeek v4.1 Flash (`deepseek/deepseek-v4.1-flash`) while OpenRouter is connected,
-and otherwise the lightest model of your conversation's provider; a model chosen in
-Settings is kept across builds and is shared with the terminal. Library does not
+Library build enables knowledge capture. The Library is built with the model you
+chose to talk to; a knowledge model chosen in Settings overrides that, is kept
+across builds, and is shared with the terminal. Library does not
 change the model of an ordinary chat.
 
 Search reads the full-text index without a model call. Ask the Library uses the
@@ -699,10 +697,44 @@ Recall follows your choice across older notes that shared the claim. Changes
 keeps the replaced account’s source chat reachable.
 Deleting a guide suppresses it in later builds and does not delete its chats.
 
-Keep in Library admits a selected passage from a saved agent reply immediately;
-it still needs existing knowledge consent. Use in chat opens a draft with a
+Keep in Library admits a selected passage from a saved agent reply immediately,
+whether or not learning is on: it is your choice, so it never waits on learning.
+Use in chat opens a draft with a
 bounded excerpt and its Library address. The chat can also use
 `search_knowledge` and `read_knowledge` to consult the current guide.
+
+## Add a workstream file to the Library (keep a file, save a document to knowledge)
+
+In the desktop app, a document or text file in a workstream's Files has "Add to Library"
+in its right-click menu. It keeps the file's words in your
+Library, the same profile-wide vault the terminal's Knowledge reads, and they
+are written into its guides. A note shows for five seconds with Undo;
+nothing is kept if you press it.
+
+Add to Library never depends on **learn from chats and jobs**. With learning
+on, the Library's build writes the file in with everything else. With learning
+off, that one file is written in on its own, with your Library model and your
+key, and no chat is read. A file over 64000 characters
+is refused. Adding the same file again with the same words does nothing new;
+after you edit the file, adding it keeps the new words beside the old. A guide
+built from a file leads back to that file, not to a chat. Removing a file from
+Files does not take its words out of the Library; delete the guide for that.
+The other way round, a Files shortcut can open a Library page: Copy Link on
+the page, then New › Shortcut to a File Elsewhere… in Files, and paste it.
+
+## From your chats — what the Library learned by itself, and removing it
+
+The Library fills two ways. What you add on purpose — Add to Library on a
+workstream file, Keep in Library on a passage — goes in whatever learning says.
+What **learn from chats and jobs** adds by itself, reading your saved chats, is
+marked **From your chats**: on the guide's row in its collection, and on the
+guide itself, where **Remove from Library** takes it out (the chats it came
+from stay). Delete Page… in the guide's ⋯ menu does the same for any guide.
+
+Learning is opt-in, and it never reads a workstream's conversations — its Afi
+or its chats. Their work belongs in that workstream's Files, so a suggestion
+you dropped there never reaches the Library; only Add to Library takes a
+workstream's words there.
 
 ## Library disagreements in Inbox and Later
 

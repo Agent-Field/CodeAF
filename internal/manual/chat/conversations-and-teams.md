@@ -202,7 +202,8 @@ conversations. Nothing changes until Apply. Suggestions come from two sources:
   for other groupings or additions. Folders win disagreements. It has ten seconds;
   `thinking…` shows while it works, and its reported usage cost appears below when known.
 
-The terminal uses the conversation’s model when no naming role is set.
+When no naming role is set, the app uses the model you chose and the terminal uses the
+conversation’s model; organizing never refuses for want of a naming role.
 If the model is unavailable, the card shows `suggestions from folders only`. With no
 suggestions it says `Everything is organized` beside Close. Rows start selected.
 Arrows move; space or a press toggles; enter or Apply takes the selected suggestions.
@@ -463,7 +464,8 @@ Both computers need to be running codeaf and able to reach the relay. An
 unpaired computer or a computer with sharing off keeps its teams to itself.
 Turning it off on either computer stops sharing between them: that computer
 stops sending and receiving teams and Traffic. What was already exchanged stays,
-including teams and encrypted copies in the vault.
+including teams and encrypted copies in the vault. Unpaired computers are unaffected.
+The desktop shows another computer's crew grouped and read-only in its chats.
 
 Opening a remote member from terminal Teams raises `Continue this chat here?`
 on Home (`continue here` moves and opens it; `leave it there` changes nothing).

@@ -158,6 +158,11 @@ func runApp(args []string) error {
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
 	backend.startKeyHealth()
+	// A CREW MANAGER THAT MOVED OUT OF THE APP IS STILL WOKEN by its members'
+	// replies (appteamresume.go).
+	defer backend.armAppTeamResume()()
+	// And its manager can link what the crew made (appteamlink.go).
+	defer backend.armAppTeamLink()()
 	// A QUIT DOES NOT WAIT OUT A RECEIPT'S SCHEDULE (internal/provider's
 	// receipt_hurry.go): Close hurries them, and the process half's close waits
 	// at most [appQuitReceiptWait] for what is still owed.
@@ -236,8 +241,9 @@ func runApp(args []string) error {
 		defer keepAutomationsWindow("app")()
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
-	// And what the last quit stopped in the middle of a reply carries on.
-	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
+	// And what the last quit stopped in the middle of a reply waits for the
+	// person's Continue; it never carries on by itself (appinterrupted.go).
+	backend.interruptAfterQuit()
 	backend.startCloseWatch()
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
 	if backend.assembled.Load() {
@@ -321,6 +327,9 @@ type appOpenAsk struct {
 	// ClockS is how many seconds a proposed task waits before it starts on
 	// its own: the app's own setting, never the terminal's.
 	ClockS int
+	// HoldInterruptedWork opens a chat waiting for Continue without carrying
+	// on its recovered work ([session.Config.HoldInterruptedWork]).
+	HoldInterruptedWork bool
 }
 
 // appConn is an opened conversation and the one way to give it back.
@@ -394,6 +403,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// And only the person moves a running reply to a task, and a proposed
 		// task's clock is the app's, as is a suggested choice's.
 		Launch: launch,
+		// A chat waiting for Continue is opened to be looked at, never to
+		// carry on by itself (appinterrupted.go).
+		HoldInterruptedWork: ask.HoldInterruptedWork,
 	}
 	// The agent this boot built, kept so the app can tell when somebody else
 	// closes it (below). Boot runs once, before Loopback returns.
@@ -874,6 +886,9 @@ type appAgent struct {
 	// failedShown is what that turn's entry showed, when it carried
 	// attachments: a retry sends the same words and shows the same message.
 	failedShown *appSending
+	// failedRead says the footer sidecar was already asked, once in this
+	// process, for a failed turn an earlier run left behind ([appRecoverFailed]).
+	failedRead bool
 	// failedClient is the client id of a first message that failed before it
 	// was handed to its conversation (bootFailed), which a retry carries: that
 	// message never reached the accepted line, so its id is still unused.
@@ -1226,6 +1241,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 // process is holding: a held conversation's own facts are newer than the disk's.
 func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 	b.watchCloseClaim(row.Dir)
+	b.recoverFailed(row)
 	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
@@ -1959,6 +1975,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		return names
 	}
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
+	ask.HoldInterruptedWork = b.holdOpen(view.ID, transcript)
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
 		ask.AutomaticModels = boot.automatic
@@ -3152,6 +3169,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	endThought()
 	sayReply(appwire.EntryAnswer)
 	byPerson := false
+	// keptWords are the failed turn's words, written beside its error entry so
+	// Retry message outlives a restart ([appRecoverFailed]).
+	keptWords := ""
 	b.locked(func() {
 		byPerson = live.stopping
 		// A STOPPED TURN ENDS CLEANLY ON THE ENGINE'S SIDE — an interrupt is
@@ -3165,6 +3185,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
 			a.view.Retryable = text != ""
 		}
+		keptWords = a.failed
 	})
 	switch {
 	case !ok && kind == appwire.ErrorStopped:
@@ -3183,11 +3204,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	case !ok && kind == appwire.ErrorProvider:
 		footer := appFooter(appErrorEntryID(n), id, turn, appwire.FooterProviderFailed, failure, b.now())
 		footer.ErrorKind, footer.Status = kind, status
-		_ = b.keepAppEntry(a, footer, "")
+		_ = b.keepAppFailure(a, footer, keptWords)
 		entry(footer)
 	case !ok:
 		errEntry := appwire.Entry{ID: appErrorEntryID(n), Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status}
-		_ = b.keepAppEntry(a, errEntry, "")
+		_ = b.keepAppFailure(a, errEntry, keptWords)
 		entry(errEntry)
 	}
 	if ok {
@@ -3365,6 +3386,10 @@ func appTurnFailure(event session.Event) (kind string, status int, words string)
 	}
 	switch kind {
 	case session.TurnErrorProvider, session.TurnErrorBudget, session.TurnErrorStopped:
+	case session.TurnErrorOffline:
+		// OFFLINE SAYS ITS OWN SENTENCE, never the transport's ladder of
+		// retries and attempts: the work is paused, not broken.
+		return appwire.ErrorOffline, 0, session.TurnOfflineWords
 	default:
 		kind = appwire.ErrorOther
 	}

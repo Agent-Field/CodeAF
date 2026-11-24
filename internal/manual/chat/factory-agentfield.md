@@ -14,7 +14,9 @@ enough: the node dials the control plane's **link** and needs no address of
 its own, so a laptop behind NAT works. Optional: `base_url` (an address the
 control plane can reach this factory on, such as `http://10.0.0.5:8765`) and
 the control plane's `internal_token`, for a control plane that offers no
-link; a node id (default `codeaf-factory`); the address to listen on
+link; a node id (default `codeaf-factory`, or `CODEAF_FACTORY_NODE_ID` when
+that is set, so two computers on one control plane each keep their own
+node); the address to listen on
 (default: base_url's port); a trust ceiling (default `collaborator`).
 With no base_url the factory binds no port at all for AgentField.
 
@@ -99,6 +101,20 @@ control plane's internal token as `Authorization: Bearer`; anything else is
 refused 401. The old `<base_url>/n/<secret>` path is still answered for one
 release when an old secret is kept; a fresh connect registers a plain
 base_url.
+
+## AgentField wants proof the run is this factory's — "did not accept this factory's proof", a control plane that checks who owns a run
+
+A newer AgentField can check that whoever claims a run really is the node that owns it. The factory answers that by itself, over its link: it asks the link for a short-lived proof and sends it with the calls that start a run, read its transcript, acknowledge it, steer it or answer its question. You do nothing and nothing shows while it works.
+
+An AgentField that does not know about the proof never answers the request. The factory waits a few seconds, once for each connection, says in its log that this control plane gives no proof, and then every call goes out exactly as it always did. A factory with no link (an address only, or a link that is down) sends no proof.
+
+When an AgentField that does require the proof refuses it, the step stops with one of three sentences, and none of them blames the API key:
+
+- "AgentField needs this factory to show that the run is its own, which only the factory's link to AgentField can do, and that link is not up. Reconnect AgentField and try again": the link was down, or the control plane offers none.
+- "AgentField says this factory's proof that the run is its own had run out. The next try asks the link for a new one".
+- "AgentField did not accept this factory's proof that the run is its own. The next try asks the link for a new one".
+
+Before it shows either of the last two the factory has already tried once more with a fresh proof. "AgentField did not accept that API key" is kept for a key that really was refused.
 
 ## trigger from Linear / Sentry / Slack — what each event becomes
 

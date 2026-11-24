@@ -651,3 +651,25 @@ func TestTheHTTPLeaseListsInflight(t *testing.T) {
 		t.Fatalf("lease inflight %s", got)
 	}
 }
+
+// Two computers on one control plane must not both be codeaf-factory: the
+// second would take the first one's node over. CODEAF_FACTORY_NODE_ID names
+// this machine's default, and a connect that names its node still wins.
+func TestTheEnvironmentNamesThisMachinesDefaultNode(t *testing.T) {
+	t.Setenv(NodeIDEnv, "  CodeAF-Factory-Studio ")
+	s, err := Clean(Settings{URL: "http://cp:8080"})
+	if err != nil || s.NodeID != "codeaf-factory-studio" {
+		t.Fatalf("Clean with %s set = %q, %v", NodeIDEnv, s.NodeID, err)
+	}
+	if s, _ := Clean(Settings{URL: "http://cp:8080", NodeID: "named"}); s.NodeID != "named" {
+		t.Fatalf("a connect that names its node got %q", s.NodeID)
+	}
+	t.Setenv(NodeIDEnv, "not a word!")
+	if _, err := Clean(Settings{URL: "http://cp:8080"}); err == nil {
+		t.Fatal("a malformed node id from the environment was taken")
+	}
+	t.Setenv(NodeIDEnv, "")
+	if s, _ := Clean(Settings{URL: "http://cp:8080"}); s.NodeID != DefaultNodeID {
+		t.Fatalf("unset is %q, not %s", s.NodeID, DefaultNodeID)
+	}
+}

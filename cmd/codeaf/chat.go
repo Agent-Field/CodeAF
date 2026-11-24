@@ -35,6 +35,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider/pool"
 	"github.com/Agent-Field/codeaf/internal/resident"
 	"github.com/Agent-Field/codeaf/internal/revision"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"github.com/Agent-Field/codeaf/internal/rtk"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -4783,15 +4784,25 @@ func (l *leafLife) longest() time.Duration {
 	return l.longestSpan
 }
 
-// quorumVerify runs two independent validator calls against a cheap model in
-// parallel and returns the number of ACCEPT verdicts plus any reject reasons.
+// quorumVerify runs two independent validator calls in parallel and returns
+// the number of ACCEPT verdicts plus any reject reasons. They sit the checker's
+// seat ([roles.RoleAuditor]) and resolve through the one roles ladder — its
+// pin, the checker row, then the run's own model — rather than the model id
+// this function used to name for everybody (`deepseek/deepseek-v4-flash`).
 // Each validator sees the original ask and the deliverable, and must reply
 // ACCEPT or REJECT with a reason. A provider error is fail-open (ACCEPT) so a
 // transient failure does not block a gate that already passed; a verifier that
 // FALLS is not the same thing and says no, because it never saw an answer to
 // be lenient about.
 func quorumVerify(ctx context.Context, settings config.Config, clients *messageClientPool, nodeID, ask, deliverable string) (accepts int, rejects string) {
-	client, err := clients.ForModel("deepseek/deepseek-v4-flash")
+	// A profile whose rows cannot be read still has the run's own model: the
+	// ladder's floor answers with a nil source.
+	source, _ := v3RolesSource(mustWorkspace(), settings.ProfileDir)
+	model, err := roles.Resolve(roles.Source(source), roles.RoleAuditor, settings.Model)
+	if err != nil {
+		return 2, "" // fail-open: both accept
+	}
+	client, err := clients.ForModel(model)
 	if err != nil || client == nil {
 		return 2, "" // fail-open: both accept
 	}

@@ -23,9 +23,11 @@ import (
 // A default is only a default if it can answer. Every built-in model id in this
 // package is an OpenRouter id, and an id without a connected prefix is sent to
 // the OpenRouter row, which is always present, key or none. So a profile that
-// connected only ChatGPT, or only Ollama, opened its conversations, its titles,
-// its routing and its fallback on models nobody could reach, and every one of
-// them failed with "no API key". [ReachableDefaultAt] keeps the built-in model
+// connected only ChatGPT, or only Ollama, opened its conversations and its
+// fallback on models nobody could reach, and every one of them failed with "no
+// API key". Titles, routing and the Library follow the conversation model
+// (internal/roles' background.go), so a reachable conversation model reaches
+// them too. [ReachableDefaultAt] keeps the built-in model
 // whenever a connected service can send it, and otherwise picks the model a
 // connected service offers that fits the slot.
 type DefaultSlot string
@@ -38,10 +40,6 @@ const (
 	// model, strong enough to finish the work, on the same provider as the talk
 	// model where it can be.
 	SlotFallback DefaultSlot = "fallback"
-	// SlotLight is the cheap, fast seat: routing, titles, reply suggestions,
-	// memory extraction and knowledge compiles. The lightest model a connected
-	// provider offers.
-	SlotLight DefaultSlot = "light"
 )
 
 // ReachableDefaultAt is builtIn when OpenRouter is connected or a connected
@@ -112,8 +110,8 @@ func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTal
 // sameProvider reports whether builtIn is on the provider of the conversation
 // model (the saved one, else the one chosen for it), or there is none to
 // follow. A built-in another connected account happens to list is not taken
-// while the conversation runs elsewhere, so the helpers and the fallback stay
-// on the conversation's provider.
+// while the conversation runs elsewhere, so the fallback stays on the
+// conversation's provider.
 func sameProvider(sources modelsource.Set, builtIn, chosenTalk string, modelsOf func(modelsource.Connected) []catalog.Model) bool {
 	chosenTalk = strings.TrimSpace(chosenTalk)
 	if chosenTalk == "" || !offered(sources, chosenTalk, modelsOf) {
@@ -138,9 +136,9 @@ func openRouterConnected(sources modelsource.Set) bool {
 // is chosen here, from a hosted provider (a plan or a keyed service) before a
 // local server, because a model on this machine is the one most likely to be
 // too small or too slow for a conversation, and in the person's own order
-// within each group. The fallback, helper and knowledge seats are then taken
-// from that provider first, so a profile that connected ChatGPT and Ollama does
-// not answer in ChatGPT and route through a local model.
+// within each group. The fallback is then taken from that provider first, so a
+// profile that connected ChatGPT and Ollama does not answer in ChatGPT and fall
+// back to a local model.
 func reachableDefault(sources modelsource.Set, connected []modelsource.Connected, slot DefaultSlot, chosenTalk string, modelsOf func(modelsource.Connected) []catalog.Model) string {
 	talk, talkService := "", ""
 	if chosenTalk = strings.TrimSpace(chosenTalk); chosenTalk != "" && offered(sources, chosenTalk, modelsOf) {
@@ -161,12 +159,6 @@ func reachableDefault(sources modelsource.Set, connected []modelsource.Connected
 	switch slot {
 	case SlotTalk:
 		return talk
-	case SlotLight:
-		for _, service := range ordered {
-			if models := usableModels(modelsOf(service)); len(models) > 0 {
-				return service.Qualify(pickLight(models, service, talk).ID)
-			}
-		}
 	case SlotFallback:
 		for _, service := range ordered {
 			models := usableModels(modelsOf(service))
@@ -354,19 +346,18 @@ func recallCached(options catalog.Options) []catalog.Model {
 
 // NoteModelListChanged tells the settings readers that a connected provider's
 // model list was written, so a snapshot built from the defaults
-// ([ReachableDefaultAt]) is built again: a helper tier read while a listing was
+// ([ReachableDefaultAt]) is built again: a default read while a listing was
 // still arriving must not keep the model it settled on then.
 func NoteModelListChanged() { bumpSettingsGeneration() }
 
 // FollowsProviders reports whether a settings row's blank default depends on
 // the connected providers, so a surface comparing it against an untouched
 // profile's reading would mark it changed when nobody changed it.
+//
+// Only the fallback models row does: the knowledge, reflex and small-work rows
+// read empty until written and follow the model the person chose.
 func FollowsProviders(key string) bool {
-	switch key {
-	case KeyKnowledgeModel, KeyModelFallbacks, KeyTierReflexModel, KeyTierLowModel:
-		return true
-	}
-	return false
+	return key == KeyModelFallbacks
 }
 
 // WrittenAt reports whether the profile holds a value of its own for key,
@@ -397,7 +388,7 @@ func namedModels(service modelsource.Connected) []catalog.Model {
 	// A service that publishes no list still names two models it serves: the
 	// preferred one and the one its connection check is sent to, which is a
 	// small model on purpose (Qwen's `qwen3.8-flash` beside `qwen3.7-plus`).
-	// Offering both gives the helper seats a light model instead of the flagship.
+	// Offering both gives the fallback a second model to move to.
 	var rows []catalog.Model
 	for _, id := range []string{service.Source.Preferred, service.Source.ProbeModel} {
 		if id = strings.TrimSpace(id); id != "" && (len(rows) == 0 || !strings.EqualFold(rows[0].ID, id)) {
@@ -514,44 +505,6 @@ func pickTalk(service modelsource.Connected, models []catalog.Model) catalog.Mod
 	}
 	ranked := rankByStrength(models)
 	return ranked[len(ranked)-1]
-}
-
-// pickLight is the lightest model offered. Among models that read as equally
-// light it is the one the provider lists first, because providers list their
-// current model before older versions and bulkier variants: the coding plan's
-// `haiku` before `claude-haiku-4-5`, Z.ai's `glm-5.3-flash` before its
-// 1M-context `glm-5.3-flash[1m]`.
-//
-// When several models are equally light, the conversation model is passed over
-// if another of them is offered, so models that cannot be told apart (a list of
-// equally priced ids, Ollama tags such as `llama3:latest`) do not put the
-// helpers on the conversation's own model.
-func pickLight(models []catalog.Model, service modelsource.Connected, talk string) catalog.Model {
-	view := rankView(models)
-	lightest := [5]float64{}
-	for index := range models {
-		if models[index].ID == view.ranked[0].ID {
-			lightest = view.keys[index]
-			break
-		}
-	}
-	talk = strings.ToLower(stripLevel(talk))
-	first := -1
-	for index := range models {
-		if view.keys[index] != lightest {
-			continue
-		}
-		if first < 0 {
-			first = index
-		}
-		if strings.ToLower(service.Qualify(models[index].ID)) != talk {
-			return models[index]
-		}
-	}
-	if first >= 0 {
-		return models[first]
-	}
-	return models[0]
 }
 
 // pickFallback is the strongest model on service other than main, qualified,

@@ -321,6 +321,14 @@ func (c *Clock) pass(ctx context.Context, now time.Time) {
 	}
 	busy := c.busyAutomations()
 	for _, a := range due {
+		if a.OrgWorkstream() {
+			// Never here (Automation.OrgWorkstream): its slot passes with
+			// nothing queued, so nothing spends and nothing asks.
+			if err := c.skip(a, now); err != nil && !errors.Is(err, errChanged) {
+				c.log("could not move " + a.Title + " on: " + err.Error())
+			}
+			continue
+		}
 		if busy[a.ID] {
 			// ONE RUN AT A TIME PER AUTOMATION. A slot that comes while the
 			// last run is still going is passed over, not queued behind it: a
@@ -397,10 +405,10 @@ func (c *Clock) start(ctx context.Context, run Run) {
 		c.mu.Unlock()
 		return
 	}
-	if err != nil {
+	if over, line := endsUnstarted(a, err); over {
 		c.mu.Unlock()
-		run.Outcome, run.Line = OutcomeStopped, lineDeleted
-		if errors.Is(err, ErrNotFound) {
+		if line != "" {
+			run.Outcome, run.Line = OutcomeStopped, line
 			_ = c.Store.Start(run.ID)
 			c.finish(run)
 		}
@@ -443,6 +451,26 @@ func (c *Clock) start(ctx context.Context, run Run) {
 		defer c.landed(run.ID)
 		c.execute(runCtx, a, run)
 	}()
+}
+
+// endsUnstarted says whether a queued run ends without starting, and the line
+// it ends with; an empty line leaves it queued untouched, for a store that
+// could not be read this time.
+//
+//   - Its automation was deleted: it is over, saying so.
+//   - AN ORGANIZATION'S ORDER IS NEVER RUN HERE (Automation.OrgWorkstream),
+//     however its run was queued, "run it now" included. It ends before it
+//     asks, so nobody is asked to say go to something that cannot go.
+func endsUnstarted(a Automation, err error) (bool, string) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return true, lineDeleted
+	case err != nil:
+		return true, ""
+	case a.OrgWorkstream():
+		return true, LineOrgWorkstream
+	}
+	return false, ""
 }
 
 // landed takes a run out of hand.

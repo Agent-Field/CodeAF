@@ -37,7 +37,10 @@ func TestRepositoryIdentityContractAndViewerFiltering(t *testing.T) {
 			if err := st.SetCheckout(key, dir); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.SetRepos([]string{"acme/api", "acme/web"}); err != nil {
+			// Only acme/api is turned on: a repository that is on is the
+			// organization's and every member reads it (org_repos.go), so
+			// acme/web, which is not, is where a person's own token decides.
+			if err := st.SetRepos([]string{"acme/api"}); err != nil {
 				t.Fatal(err)
 			}
 			h, clock, g := visibilityFloor(t, map[string]map[string]bool{"priya": {"acme/api": true}, "nobody": {}})
@@ -50,7 +53,8 @@ func TestRepositoryIdentityContractAndViewerFiltering(t *testing.T) {
 				return []factory.CodeOwner{{Pattern: "*", Handles: []string{"priya"}}}, nil
 			}
 			owner := queueAs(t, h, "floor-secret", false)
-			if len(owner.Repos) != 2 || len(owner.Jobs) != 2 {
+			// acme/web is off, so its job is off the floor for everyone.
+			if len(owner.Repos) != 1 || len(owner.Jobs) != 1 {
 				t.Fatalf("duplicate repository: %+v", owner)
 			}
 			viewer := signViewer(t, h, g, clock, "priya")
@@ -69,9 +73,14 @@ func TestRepositoryIdentityContractAndViewerFiltering(t *testing.T) {
 			if w := identityRequest(h, "GET", "/v1/jobs/2", "", viewer, nil); w.Code != 404 {
 				t.Fatalf("hidden detail = %d %s", w.Code, w.Body)
 			}
+			// A person whose token reads nothing reads the organization's
+			// acme/api and its job, and never acme/web's.
 			nobody := signViewer(t, h, g, clock, "nobody")
-			if q := queueAs(t, h, nobody, false); len(q.Jobs) != 0 || len(q.Repos) != 0 || q.Reason != api.ReasonNoVisibleRepos {
-				t.Fatalf("hidden queue = %+v", q)
+			if q := queueAs(t, h, nobody, false); len(q.Jobs) != 1 || q.Jobs[0].ID != job.ID || len(q.Repos) != 1 || q.Repos[0].Name != "acme/api" || q.Reason != "" {
+				t.Fatalf("nobody's queue = %+v", q)
+			}
+			if w := identityRequest(h, "GET", "/v1/jobs/2", "", nobody, nil); w.Code != 404 {
+				t.Fatalf("nobody reads acme/web's job = %d %s", w.Code, w.Body)
 			}
 			raw, err := os.ReadFile(st.ItemPath(job.ID))
 			if err != nil {

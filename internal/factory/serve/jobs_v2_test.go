@@ -1149,6 +1149,31 @@ func TestJobBudgetCanBeLoweredButNotBelowRecordedSpend(t *testing.T) {
 	f.post(t, it, "raise_budget", `{"budget":5}`, 200)
 }
 
+// Owner decision 2026-11-17 §12: the budget door takes any amount from $1 up,
+// to the cent, not only the presets, and refuses less in plain words.
+func TestJobBudgetTakesAnyAmountFromOneDollar(t *testing.T) {
+	f := newV2Jobs(t)
+	it := f.create(t, factory.Item{State: factory.StateNew, Cap: 5})
+	for _, tc := range []struct {
+		body string
+		want float64
+	}{{`{"budget":1.5}`, 1.5}, {`{"budget":1}`, 1}, {`{"budget":7}`, 7}, {`{"budget":12.345}`, 12.35}, {`{"budget":45}`, 45}} {
+		f.post(t, it, "raise_budget", tc.body, 200)
+		if j := f.read(t, it); j.Budget != tc.want {
+			t.Fatalf("%s: budget %v, want %v", tc.body, j.Budget, tc.want)
+		}
+	}
+	for _, body := range []string{`{"budget":0.99}`, `{"budget":0}`, `{"budget":-3}`} {
+		w := f.post(t, it, "raise_budget", body, 422)
+		if !strings.Contains(w.Body.String(), "A job's budget is at least $1.") {
+			t.Fatalf("%s: refusal %s", body, w.Body)
+		}
+	}
+	if j := f.read(t, it); j.Budget != 45 {
+		t.Fatalf("a refused amount was saved: %v", j.Budget)
+	}
+}
+
 func TestV2BudgetChangePreservesManualDecisionAndNudgesObservation(t *testing.T) {
 	for _, mode := range []string{"auto", "auto asked", "manual", "manual asked", "takeover", "critical", "other ask", "manual-approval", "manual-question"} {
 		t.Run(mode, func(t *testing.T) {

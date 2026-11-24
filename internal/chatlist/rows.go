@@ -60,6 +60,9 @@ type Row struct {
 	Pending, OrphanTurns                  uint32
 	// Folder is the name of the folder the chat works in, "" when unknown.
 	Folder string
+	// Crew is the crew the holder said the chat belongs to (crew.go), zero
+	// when it said none or never said (an older holder or relay).
+	Crew Crew
 	// Size is the bytes a copy of the chat takes, from its record; 0 unknown.
 	Size uint64
 	// UploadSent of UploadTotal bytes is how far the holder's upload of its

@@ -61,6 +61,12 @@ type Client struct {
 	// factory only the runs it started (their trees, entries, acks, steers
 	// and cancels) and refuses another's.
 	Owner string
+	// Proofs is where the proof of this node's consent comes from (proof.go),
+	// sent as X-AgentField-Run-Owner-Proof on the calls the control plane
+	// checks it on: the run's start, its transcript read and ack, a steer and
+	// an approval answer. nil sends none, which is how a control plane that
+	// predates the proof is served.
+	Proofs ProofSource
 }
 
 // Reasoner is one entry of a registration's reasoner list, in the control
@@ -170,12 +176,24 @@ const (
 	RefusedMissing                // no such node, execution, trigger or route
 	RefusedRequest                // the control plane refused the request itself
 	RefusedEnded                  // the execution already ended
+	// RefusedProof: the control plane wants proof that this factory owns the
+	// run and refused what was sent, or nothing was. It is a 403 like a key
+	// the control plane does not know, and must not read as one: the key is fine.
+	RefusedProof
 )
 
-// refusalOf is THE ONE PLACE a control plane status becomes a refusal.
-func refusalOf(code int) Refusal {
+// refusalOf is THE ONE PLACE a control plane status becomes a refusal. The
+// control plane's own sentence is read too, because a 403 is either a key it
+// does not accept or a refusal of the run-owner proof (see proof.go), and those
+// are not the same thing to say to a person.
+func refusalOf(code int, message string) Refusal {
 	switch code {
-	case http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusForbidden:
+		if proofRefusalOf(message) != "" {
+			return RefusedProof
+		}
+		return RefusedKey
+	case http.StatusUnauthorized:
 		return RefusedKey
 	case http.StatusNotFound:
 		return RefusedMissing
@@ -194,6 +212,19 @@ type Error struct {
 	Refusal Refusal
 	Op      string
 	Message string
+	// Proof is which way a RefusedProof was refused: proofRequired,
+	// proofInvalid or proofExpired. Empty for every other refusal.
+	Proof string
+}
+
+// newError is the one way a failed answer becomes an Error, so the refusal and
+// the proof reason are always read from the same sentence.
+func newError(code int, op, message string) *Error {
+	e := &Error{Code: code, Refusal: refusalOf(code, message), Op: op, Message: message}
+	if e.Refusal == RefusedProof {
+		e.Proof = proofRefusalOf(message)
+	}
+	return e
 }
 
 func (e *Error) Error() string {
@@ -207,6 +238,10 @@ func (e *Error) Error() string {
 		lead = "AgentField refused the " + e.Op
 	case RefusedEnded:
 		lead = "AgentField says that execution already ended"
+	case RefusedProof:
+		// The control plane's own words are a code and a hint for the node; a
+		// person is told the same thing in plain ones, and the key is not blamed.
+		return proofRefusalWords(e.Proof)
 	default:
 		lead = fmt.Sprintf("AgentField answered %d to the %s", e.Code, e.Op)
 	}
@@ -290,6 +325,43 @@ func (c *Client) do(ctx context.Context, op, method, path string, q url.Values, 
 	return c.doHeaders(ctx, op, method, path, q, in, out, nil)
 }
 
+// doOwned is doHeaders for the five calls a control plane that has the run-owner
+// proof checks it on. WHEN THE NODE HAS A PROOF FOR owner IT GOES IN
+// X-AgentField-Run-Owner-Proof BESIDE THE OWNER, and when it has none the call is
+// exactly the one this client always made. A 403 that answered a call carrying a
+// proof means the proof was refused (a control plane that rotated its key, or
+// restarted with a new one), so it is forgotten and the call goes once more with
+// a fresh one; a refusal of that is the control plane's answer. A refused proof
+// creates nothing on the control plane, so asking again cannot do a thing twice.
+func (c *Client) doOwned(ctx context.Context, owner, op, method, path string, q url.Values, in, out any, headers map[string]string) error {
+	token := ""
+	if c.Proofs != nil && owner != "" {
+		token = c.Proofs.RunOwnerProof(ctx, owner)
+	}
+	err := c.doHeaders(ctx, op, method, path, q, in, out, withProof(headers, token))
+	var refused *Error
+	if token != "" && errors.As(err, &refused) && refused.Refusal == RefusedProof {
+		c.Proofs.RunOwnerProofRefused(token)
+		if fresh := c.Proofs.RunOwnerProof(ctx, owner); fresh != "" && fresh != token {
+			err = c.doHeaders(ctx, op, method, path, q, in, out, withProof(headers, fresh))
+		}
+	}
+	return err
+}
+
+// withProof is headers with the proof added when there is one.
+func withProof(headers map[string]string, token string) map[string]string {
+	if token == "" {
+		return headers
+	}
+	out := make(map[string]string, len(headers)+1)
+	for k, v := range headers {
+		out[k] = v
+	}
+	out[RunOwnerProofHeader] = token
+	return out
+}
+
 // doHeaders is do with extra request headers.
 func (c *Client) doHeaders(ctx context.Context, op, method, path string, q url.Values, in, out any, headers map[string]string) error {
 	if _, ok := ctx.Deadline(); !ok {
@@ -351,7 +423,7 @@ func (c *Client) doHeaders(ctx context.Context, op, method, path string, q url.V
 		return fmt.Errorf("AgentField's answer was cut off: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return &Error{Code: resp.StatusCode, Refusal: refusalOf(resp.StatusCode), Op: op, Message: answerMessage(raw)}
+		return newError(resp.StatusCode, op, answerMessage(raw))
 	}
 	if out == nil || len(bytes.TrimSpace(raw)) == 0 {
 		return nil
@@ -395,7 +467,7 @@ type Dispatched struct {
 func (c *Client) Dispatch(ctx context.Context, target string, input any, owner string) (Dispatched, error) {
 	var out Dispatched
 	body := map[string]any{"input": input}
-	err := c.doHeaders(ctx, "dispatch the run", http.MethodPost, "/api/v1/execute/async/"+url.PathEscape(target), nil, body, &out,
+	err := c.doOwned(ctx, owner, "dispatch the run", http.MethodPost, "/api/v1/execute/async/"+url.PathEscape(target), nil, body, &out,
 		map[string]string{"X-AgentField-Run-Owner": owner})
 	if out.RunID == "" {
 		out.RunID = out.WorkflowID
@@ -469,20 +541,20 @@ func (c *Client) Relay(ctx context.Context, execution string, after int64) ([]Re
 		Entries []RelayEntry `json:"entries"`
 	}
 	q := url.Values{"after": {fmt.Sprint(after)}, "limit": {"500"}}
-	err := c.do(ctx, "read the transcript", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution)+"/relay", q, nil, &out)
+	err := c.doOwned(ctx, c.Owner, "read the transcript", http.MethodGet, "/api/v1/executions/"+url.PathEscape(execution)+"/relay", q, nil, &out, nil)
 	return out.Entries, err
 }
 
 // RelayAck is POST /api/v1/executions/<id>/relay/ack: this factory keeps
 // every entry through seq now, and the control plane may drop them.
 func (c *Client) RelayAck(ctx context.Context, execution string, through int64) error {
-	return c.do(ctx, "ack the transcript", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/relay/ack", nil, map[string]int64{"through": through}, nil)
+	return c.doOwned(ctx, c.Owner, "ack the transcript", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/relay/ack", nil, map[string]int64{"through": through}, nil, nil)
 }
 
 // Steer is POST /api/v1/executions/<id>/steer: a person's note to a running
 // codeaf harness, delivered to its node. The refusal is the node's words.
 func (c *Client) Steer(ctx context.Context, execution, message string) error {
-	return c.do(ctx, "steer", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/steer", nil, map[string]string{"message": message}, nil)
+	return c.doOwned(ctx, c.Owner, "steer", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/steer", nil, map[string]string{"message": message}, nil, nil)
 }
 
 // CancelTree is POST /api/ui/v1/workflows/<run>/cancel-tree.
@@ -542,7 +614,7 @@ func (c *Client) ResolveApprovalBy(ctx context.Context, execution, decision, rea
 	if by = strings.TrimSpace(by); by != "" {
 		body["response"] = map[string]string{"answered_by": "@" + strings.TrimPrefix(by, "@")}
 	}
-	if err := c.do(ctx, "answer the approval", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-response", nil, body, &out); err != nil {
+	if err := c.doOwned(ctx, c.Owner, "answer the approval", http.MethodPost, "/api/v1/executions/"+url.PathEscape(execution)+"/approval-response", nil, body, &out, nil); err != nil {
 		return err
 	}
 	// FIRST ANSWER WINS on the control plane, and a later one is a 200 that

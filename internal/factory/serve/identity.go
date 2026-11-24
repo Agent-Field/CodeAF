@@ -15,6 +15,9 @@ import (
 // callerHandle resolves credentials before consulting the host's GitHub login.
 // A token with no signed-in profile is the factory owner.
 func (h *Handler) callerHandle(r *http.Request) (string, error) {
+	if call, ok := agentCallOf(r); ok {
+		return call.handle, nil
+	}
 	if r.Context().Value(workerKey{}) != nil {
 		return requestWorker(r).Handle, nil
 	}
@@ -30,9 +33,9 @@ func (h *Handler) meBody(profile api.Profile, id string) api.Me {
 	if profile.Scopes == nil {
 		profile.Scopes = []string{}
 	}
-	return api.Me{Factory: h.factory, CodeafVersion: h.factory.Version, Contract: api.Contract,
+	return api.Me{Factory: h.factoryNow(), CodeafVersion: h.factoryNow().Version, Contract: api.Contract,
 		Profile: profile, SessionID: id, Mode: h.mode(), Runners: []api.Runner{}, Machines: []api.Machine{}, TakesUnassigned: map[string]bool{},
-		Access: h.accessMode(), PollingEvery: h.pollingEvery(), ServedBy: h.servedBy()}
+		Access: h.accessMode(), PollingEvery: h.pollingEvery(), ServedBy: h.servedBy(), Teams: []string{}}
 }
 
 func (h *Handler) teamAllows(handle string) bool {

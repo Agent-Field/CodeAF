@@ -43,6 +43,7 @@ func (b *appBackend) tidyMarks(view *appwire.Agent, archived bool) {
 			at := at
 			view.ArchivedAt = &at
 		}
+		_, view.Interrupted = f.Interrupted[view.ID]
 	})
 	if archived && !held {
 		view.State = appwire.StateArchived

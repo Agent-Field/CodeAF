@@ -51,9 +51,12 @@ const helpersNoteBody = "If the work here has grown long, with parts that could 
 // /helpers: one a person is sitting in ([Config.Interactive], which the
 // surface sets and an automation's run clears), that is not a task's node or
 // worker, not home's short `ask here` exchange, and that can be in a team at
-// all ([Config.teamProfile]).
+// all ([Config.teamProfile]). A conversation an app holds (it has an app's
+// tool door) is not on that surface: the app's windows have no Teams menu,
+// and a workstream's Afi that offered one sent the person looking for a
+// control that does not exist (live2 E5 F4).
 func (c Config) mayOfferHelpers() bool {
-	return c.Interactive && !c.InTask && c.taskID == 0 && c.AutomationRun == nil && !c.Errand && c.teamProfile() != ""
+	return c.Interactive && !c.InTask && c.taskID == 0 && c.AutomationRun == nil && !c.Errand && c.ClientTools == nil && c.teamProfile() != ""
 }
 
 // landHelpersNoteLocked lands the note when this conversation has earned it

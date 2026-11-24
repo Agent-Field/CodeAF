@@ -215,6 +215,10 @@ type FactoryConnection struct {
 	// is set only on this machine's own factory while another live codeaf
 	// holds its election, so it cannot be served here yet.
 	Reason string `json:"reason,omitempty"`
+	// SignIn is how a person signs in to this factory, preferred first
+	// ("password", "github"), as its /v1/about says. Absent when it has not
+	// said, which a client reads as GitHub only.
+	SignIn []string `json:"sign_in,omitempty"`
 }
 
 // FactoryCapabilitiesParams is factory.capabilities' request. Factory is
@@ -238,8 +242,19 @@ type FactoryList struct {
 }
 
 // FactoryRef names one attached factory, by the id factory.list gave.
+// Connection is the same id under the organization methods' word
+// (factory_org.go); a read takes either, and factory wins when both are sent.
 type FactoryRef struct {
-	Factory string `json:"factory"`
+	Factory    string `json:"factory"`
+	Connection string `json:"connection,omitempty"`
+}
+
+// ref is the connection id the request names, by either word.
+func (r FactoryRef) ref() string {
+	if id := strings.TrimSpace(r.Factory); id != "" {
+		return id
+	}
+	return strings.TrimSpace(r.Connection)
 }
 
 // FactoryAttachParams attaches a factory. Token is an access token the person
@@ -325,6 +340,13 @@ type FactoryAccess struct {
 	Help      string            `json:"help,omitempty"`
 	SignInURL string            `json:"sign_in_url,omitempty"`
 	UserCode  string            `json:"user_code,omitempty"`
+	// Kind is "reset" for an operator's password reset link; absent for an
+	// invitation or an operator claim. Reason names the rule a refused
+	// sign-up or reset broke (username_taken, username_invalid,
+	// password_short, password_long, password_common,
+	// password_contains_username, name_invalid); Message says it in words.
+	Kind   string `json:"kind,omitempty" enum:"reset"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // FactoryAccessParams carries an access link and who is opening it.
@@ -390,24 +412,38 @@ type FactoryMe struct {
 	// older factory that says nothing reads as false.
 	GitHubSignInAvailable bool `json:"github_sign_in_available"`
 	InviteAvailable       bool `json:"invite_available"`
+	// Teams are the ids of the organization's teams this person is in, as
+	// the server's /v1/me says; [] from a server older than teams.
+	Teams []string `json:"teams"`
+	// SignInKind is how this person signed in: "password", "passkey" or
+	// "github"; absent for a key and from a server older than passwords. A
+	// "password" or "passkey" person has an account on the server and can set
+	// or change a password (factory.passkey_list's password says which).
+	SignInKind string `json:"sign_in_kind,omitempty" enum:"password,passkey,github"`
 }
 
 // NewFactoryMe narrows the factory's HTTP identity to the public view. Sign-in
-// is the factory's explicit github_signed_in attestation; a session id, handle,
-// name or operator flag never implies it, and an older server's omission is false.
+// is the factory's explicit attestation: github_signed_in for GitHub, or
+// sign_in_kind "password" or "passkey"; a session id, handle, name or operator flag never
+// implies it, and an older server's omission is false.
 func NewFactoryMe(me api.Me) FactoryMe {
+	person := me.GitHubSignedIn || me.SignInKind == "password" || me.SignInKind == "passkey"
 	out := FactoryMe{
 		Factory: me.Factory, CodeafVersion: me.CodeafVersion, Contract: me.Contract,
 		Profile: me.Profile, Mode: me.Mode, Operator: me.Operator, Access: me.Access,
 		GitHubSignedIn: me.GitHubSignedIn,
-		CanSignOut:     me.GitHubSignedIn && FactorySessionCanEnd(me.SessionID),
+		CanSignOut:     person && FactorySessionCanEnd(me.SessionID),
 
 		GitHubSignInAvailable: me.GitHubSignInAvailable,
-		InviteAvailable:       me.GitHubSignInAvailable && me.InviteAvailable,
+		// An invitation is redeemed with GitHub or with a password; an older
+		// server only said yes when it had GitHub.
+		InviteAvailable: me.InviteAvailable,
+		SignInKind:      me.SignInKind,
 	}
 	if out.Scopes == nil {
 		out.Scopes = []string{}
 	}
+	out.Teams = append([]string{}, me.Teams...)
 	return out
 }
 
@@ -500,7 +536,7 @@ func factoryRead[R any](name string, read func(Factory, context.Context, string)
 		if err != nil {
 			return nil, err
 		}
-		id, err := factoryID(p.Factory)
+		id, err := factoryID(p.ref())
 		if err != nil {
 			return nil, err
 		}

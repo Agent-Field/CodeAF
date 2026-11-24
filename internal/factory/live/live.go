@@ -35,6 +35,10 @@ type document struct {
 	Next            uint64  `json:"next"`
 	Events          []Event `json:"events"`
 	OutcomesThrough uint64  `json:"outcomes_through,omitempty"`
+	PolicyBatchEnd  uint64  `json:"policy_batch_end,omitempty"`
+	PolicyBatchSize int     `json:"policy_batch_size,omitempty"`
+	GrantBatchEnd   uint64  `json:"grant_batch_end,omitempty"`
+	GrantBatchSize  int     `json:"grant_batch_size,omitempty"`
 }
 
 // Append syncs and atomically replaces the bounded record under a shared flock.
@@ -47,6 +51,32 @@ func Append(root string, events ...Event) error {
 // before the job exists. A refused write restores the previous record. There is
 // no notification I/O after the snapshot becomes visible to a runner's next door.
 func Commit(root string, events []Event, write func() error) error {
+	return commit(root, events, write, ordinaryBatch)
+}
+
+// PolicyChangeLimit is the most individual audience changes sent with a policy update.
+const PolicyChangeLimit = 500
+
+// AppendPolicyChange keeps a policy update's related events together through the next replay window.
+func AppendPolicyChange(root string, events ...Event) error {
+	return commit(root, events, func() error { return nil }, policyBatch)
+}
+
+// AppendGrantLapses holds a sweep's full batch through the replay window
+// because a roomful of expiries can pass between two filesystem notices.
+func AppendGrantLapses(root string, events ...Event) error {
+	return commit(root, events, func() error { return nil }, grantBatch)
+}
+
+type batchKind uint8
+
+const (
+	ordinaryBatch batchKind = iota
+	policyBatch
+	grantBatch
+)
+
+func commit(root string, events []Event, write func() error, batch batchKind) error {
 	if root == "" || len(events) == 0 {
 		return write()
 	}
@@ -62,8 +92,26 @@ func Commit(root string, events []Event, write func() error) error {
 			e.ID = "live_" + strconv.FormatUint(d.Next, 10)
 			d.Events = append(d.Events, e)
 		}
-		if len(d.Events) > Limit {
-			d.Events = d.Events[len(d.Events)-Limit:]
+		if batch == policyBatch && len(notifications) > 1 {
+			d.PolicyBatchEnd = d.Next
+			d.PolicyBatchSize = min(len(notifications), PolicyChangeLimit+1)
+		}
+		if batch == grantBatch && len(notifications) > Limit {
+			d.GrantBatchEnd, d.GrantBatchSize = d.Next, len(notifications)
+		}
+		window := Limit
+		if d.PolicyBatchEnd <= d.Next && d.Next-d.PolicyBatchEnd < Limit {
+			window += min(max(d.PolicyBatchSize, 0), PolicyChangeLimit+1)
+		} else {
+			d.PolicyBatchEnd, d.PolicyBatchSize = 0, 0
+		}
+		if d.GrantBatchEnd <= d.Next && d.Next-d.GrantBatchEnd < Limit {
+			window += max(d.GrantBatchSize, 0)
+		} else {
+			d.GrantBatchEnd, d.GrantBatchSize = 0, 0
+		}
+		if len(d.Events) > window {
+			d.Events = d.Events[len(d.Events)-window:]
 		}
 		d.OutcomesThrough = d.Next
 		if err := outcomes.save(root); err != nil {

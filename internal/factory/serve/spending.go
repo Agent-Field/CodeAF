@@ -6,6 +6,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 // errSpendingMoved refuses a write whose reader's copy is no longer what the
@@ -68,6 +69,7 @@ func (h *Handler) spending(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	h.recordOrg(r, record.SpendingChanged, "changed spending defaults", orgObjectFactory, "")
 	h.write(w, 200, saved)
 }
 

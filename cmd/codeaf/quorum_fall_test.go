@@ -46,7 +46,10 @@ func TestAQuorumVerifierThatFallsSaysNoRatherThanHanging(t *testing.T) {
 	log.SetOutput(io.Discard)
 	defer log.SetOutput(os.Stderr)
 
-	clients := newMessageClientPool(config.Config{})
+	// The verifiers sit the checker's seat; with nothing pinned they answer on
+	// the run's own model.
+	settings := config.Config{ProfileDir: t.TempDir(), Model: "deepseek/deepseek-v4-flash"}
+	clients := newMessageClientPool(settings)
 	clients.Adopt("deepseek/deepseek-v4-flash", &fallingVerifierClient{})
 
 	type outcome struct {
@@ -55,7 +58,7 @@ func TestAQuorumVerifierThatFallsSaysNoRatherThanHanging(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		accepts, rejects := quorumVerify(context.Background(), config.Config{}, clients,
+		accepts, rejects := quorumVerify(context.Background(), settings, clients,
 			"job", "write the report", "here is the report")
 		done <- outcome{accepts, rejects}
 	}()

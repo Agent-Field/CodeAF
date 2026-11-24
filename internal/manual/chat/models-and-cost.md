@@ -145,32 +145,30 @@ choose a default for another machine.
 
 ## Default models without OpenRouter — ChatGPT only, Claude Code only, Ollama only
 
-codeaf's built-in defaults are OpenRouter models: the conversation model, the
-`fallback models` row, the **reflex** and **small work** rows behind titles,
-routing and memory, and the **knowledge** model. Each one is used only while a
-connected provider can send it, and lists it when that provider publishes a model
-list. Without an OpenRouter key, every default you have not chosen comes from the
-providers you did connect instead:
+codeaf's built-in defaults are OpenRouter models: the conversation model and
+the `fallback models` row. Each one is used only while a connected provider can
+send it, and lists it when that provider publishes a model list. Without an
+OpenRouter key, every default you have not chosen comes from the providers you
+did connect instead:
 
 - the conversation opens on the provider's preferred model, else its strongest;
 - the fallback is a different strong model, on the same provider when it offers
   one, else on another connected provider; with only one model, the fallback is
   that model, so a failed reply stays on it rather than moving to a provider you
-  did not connect;
-- reflex, small work and knowledge use the provider's lightest model. A provider
-  that publishes no model list offers its preferred model and the model its
-  connection check uses (Qwen's `qwen3.8-flash`), so these seats can still be light.
+  did not connect. A provider that publishes no model list offers its preferred
+  model and the model its connection check uses (Qwen's `qwen3.8-flash`), so the
+  fallback still has a second model.
+
+The **reflex**, **small work** and **knowledge** rows ship empty and follow the
+conversation model, so titles, routing, the memory pass and the Library run on
+whatever model the conversation opened on.
 
 Strength is read from the provider's published intelligence score or price,
 then from the model's name (mini, flash or haiku against pro, opus or max), its
 size (8b, 70b) and how many thinking levels it takes, each counted only when every
 model in the list has it. With several providers, every default follows the
 conversation model's provider: the one you chose, else a hosted provider before a
-local server. A model you
-chose yourself is never replaced. On a Claude Code plan the light seats run on its
-`haiku`, so titles, routing and the memory pass after each turn count against that
-plan's limits; with one local model they share it with the conversation, which
-makes each turn slower.
+local server. A model you chose yourself is never replaced.
 With an OpenRouter key, or with nothing connected at all, the built-in OpenRouter
 models stay exactly as they are.
 
@@ -654,8 +652,9 @@ whenever one serves the model.
 
 The crew is three seats because those are the calls a task spends most of its money on.
 codeaf also makes smaller calls on your behalf — naming a session, the safety gate, memory
-— and those ride two rows of their own in `/settings` → Models, **reflex** and
-**small work**, which ship pointed at near-free models and are not part of the crew.
+— and those follow **the model you chose**. Two rows in `/settings` → Models, **reflex**
+and **small work**, let you point them at a cheaper model; both ship empty, and neither is
+part of the crew.
 
 **`/model` is untouched.** It is the model you talk to, and nothing about the crew moves
 it.
@@ -1317,6 +1316,59 @@ sent the lowest level it offers instead of a switch-off it would refuse, so `off
 `low` on the wire and the row says `low` with no pin word beside it. That is the section
 *A model that cannot stop thinking*.
 
+## Which model names my chats, summarizes, and builds the Library — background work uses your model, so spending never shows one you did not pick
+
+Calls you did not type and no task asked for run in the background: the title a
+conversation gives itself, the reflex pass after every turn (the running summary and what to
+remember), task and job names, the step captions, the router that asks whether a message
+should have been a task and its second look (`routerconfirm`), suggested replies, the safety
+gate, the page AI, and the compiler that builds your Library. **Every one of them runs on the
+model you chose** — the one `/model` and the desktop's model setting name — and, on an
+organization's server, on the model the organization chose. codeaf ships no model of its own
+for any of them, so picking one model means paying for one model.
+Builds before 2026-11-16 ran some of them on models of their own (a gemini row for the
+reflex, an older deepseek for titles and the router); if Spending still shows those, the
+rows are from before, or from a small work, reflex or pin you wrote.
+
+You can still make them cheaper on purpose:
+
+- **small work** and **reflex** in `/settings` → Models (or Small jobs in the desktop's Task
+  Models) point those calls at a model you name. Both ship empty.
+- A role's own pin (`models.roles`, e.g. `title:vendor/model`) moves that one call.
+- **knowledge** (`knowledge.model`) moves the Library compiler.
+
+What does **not** move them: the crew's worker, checker and planner. Those rows belong to
+tasks; a background call never reads them, even when the crew's router has picked a model
+there. With one model turned on, every background call uses that one model.
+
+Spending lists each background call by its role (`title`, `reflex`, `router`,
+`routerconfirm`, `reply_suggestion`, `knowledge`), so you can see what each one cost.
+
+## When does the Library build? Memory calls that keep running after I stop chatting — they wait until a chat goes quiet, and whose spending they are
+
+The Library is built in the background from your saved chats. A chat that is still
+being written in is **not compiled yet**: its new lines are read, but the compiler waits
+until that chat has had **no new writes for two minutes**. While another chat is still
+being written in, a chat that has gone quiet waits for it too, for **up to ten minutes**,
+so the chats of one sitting are compiled together in one pass and the Library's learning
+steps are paid for once. When the last of them is compiled, the Library makes no more
+calls until a chat changes again: an engine left running with nothing new costs nothing.
+Pressing **Build** on the Library compiles everything at once, busy chats included,
+because that is you asking rather than background work deciding.
+
+Before this, the compiler ran about every two seconds while any chat was growing, so a
+conversation was compiled in many small slices while you were still in it, and each
+slice paid again for the Library's learning steps. One measured session of twelve chats
+made 175 Library calls in 42 passes and was still compiling minutes after the last
+request. Then it was one compile per chat, after each chat went quiet; now it is one
+compile per sitting. A scripted replay of that session's shape went from 46 Library calls
+to 12, and then to 2, with none in the idle hour after.
+
+Each Library call is charged to a conversation: a pass that compiles one chat's lines
+puts every one of its calls, the learning steps included, on that chat's line in the
+spending ledger. A pass that compiles several chats at once (a Build) belongs to none of
+them, and the ledger files it under the Library alone.
+
 ## Why reflex has its own model class
 
 `reflex` is the role called **after every finished turn**: one call that updates the
@@ -1394,10 +1446,8 @@ then **the model you are talking to**.
 The page AI's roles add two rungs after their own pin. Every `insight_` override
 (`insight_notes`, `insight_ask`, `insight_themes`, `insight_pipeline`, `insight_views`,
 `insight_factory_read`, `insight_factory_scout`) reads **the `insight` pin** next, so one pin on `insight` moves every page.
-Then comes **codeaf's default for `insight`**: `deepseek/deepseek-v4.1-flash` on
-OpenRouter, while OpenRouter is connected and your allowed models admit it. That default is
-never written into `models.roles`; it stops applying the moment either condition does, and
-any pin you write outranks it. Without it the page AI follows the small work row.
+Then the page AI follows the small work row, and, when that is empty, the model you chose.
+codeaf has no model of its own for it.
 
 Two things worth knowing:
 

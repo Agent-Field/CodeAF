@@ -67,7 +67,13 @@ func TestMeSaysWhetherGitHubSignInAndInvitationsAreAvailable(t *testing.T) {
 	}
 	f.h.config.TokensPath = tokensPath
 	f.h.config.GitHubClientID = ""
+	// Without GitHub an invitation is still redeemed with a password.
 	raw := f.request(t, "GET", "/v1/me", "operator-secret", nil, 200, nil)
+	if strings.Contains(raw, "github_sign_in_available") || !strings.Contains(raw, `"invite_available":true`) {
+		t.Fatalf("a password-only factory: %s", raw)
+	}
+	f.h.config.TokensPath = ""
+	raw = f.request(t, "GET", "/v1/me", "operator-secret", nil, 200, nil)
 	if strings.Contains(raw, "github_sign_in_available") || strings.Contains(raw, "invite_available") {
 		t.Fatalf("an unconfigured factory states availability: %s", raw)
 	}

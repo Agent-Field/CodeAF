@@ -37,7 +37,7 @@ func TestLowBalanceFreeRoutesRequireConsentOnTheRealBinary(t *testing.T) {
 				switch r.URL.Path {
 				case "/models":
 					var rows []map[string]any
-					for _, model := range []string{strings.TrimPrefix(config.DefaultModel, "~"), config.DefaultLowModel, config.DefaultReflexModel, config.FreeChatModel, "nvidia/nemotron-3.5-lightning:free", "thinkingmachines/inkling-small:free"} {
+					for _, model := range []string{strings.TrimPrefix(config.DefaultModel, "~"), "deepseek/deepseek-v4-flash-0731", "google/gemini-2.5-flash", config.FreeChatModel, "nvidia/nemotron-3.5-lightning:free", "thinkingmachines/inkling-small:free"} {
 						price := "0.000001"
 						if strings.HasSuffix(model, ":free") {
 							price = "0"

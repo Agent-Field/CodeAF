@@ -51,6 +51,10 @@ type Allowance struct {
 	Jobs   []int   `json:"jobs"`
 	CapUSD float64 `json:"cap_usd"`
 	EndsAt string  `json:"ends_at"`
+	// PerJobUSD, when above zero, is also the most any ONE job it starts may
+	// spend: a workstream's "start without asking, up to $5 a task" is one
+	// allowance over its jobs with this set (workstream_structure.go).
+	PerJobUSD float64 `json:"per_job_usd,omitempty"`
 }
 
 // Ends is the moment the allowance stops starting jobs.
@@ -113,6 +117,9 @@ func CheckAllowances(list []Allowance) error {
 		}
 		if math.IsNaN(a.CapUSD) || math.IsInf(a.CapUSD, 0) || a.CapUSD <= 0 || a.CapUSD > PolicyCapMostUSD {
 			return fmt.Errorf("allowance %s needs a cap more than $0 and at most $%d", a.ID, PolicyCapMostUSD)
+		}
+		if math.IsNaN(a.PerJobUSD) || math.IsInf(a.PerJobUSD, 0) || a.PerJobUSD < 0 || a.PerJobUSD > a.CapUSD {
+			return fmt.Errorf("allowance %s needs a per-job cap from $0 up to its cap", a.ID)
 		}
 		if _, err := time.Parse(time.RFC3339, a.EndsAt); err != nil {
 			return fmt.Errorf("allowance %s needs ends_at as an RFC 3339 time", a.ID)

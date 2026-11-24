@@ -1,0 +1,19 @@
+# The codeaf organization server for the teams demo (scripts/demo-org-server-deploy.sh).
+# It listens on loopback only; Caddy in front of it serves HTTPS on the public name.
+[Unit]
+Description=codeaf organization server (codeaf factory serve)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=codeaf
+Group=codeaf
+Environment=CODEAF_HOME=/var/lib/codeaf/home
+Environment=HOME=/var/lib/codeaf/user
+ExecStart=/usr/local/bin/codeaf factory serve --config /var/lib/codeaf/home/factory/config.yaml
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

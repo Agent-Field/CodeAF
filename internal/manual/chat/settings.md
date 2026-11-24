@@ -215,10 +215,9 @@ There is no practice limit any more: codeaf no longer practises on its own, and
 ## Knowledge model for background learning
 
 Settings → Models has a **knowledge** model choice (`knowledge.model`).
-It controls the model used to extract, organize and review project
-knowledge, separately from your conversation and task models. The default is
-`deepseek/deepseek-v4.1-flash` while OpenRouter is connected, and otherwise the
-lightest model of your conversation's provider. Clearing the choice restores that default.
+It controls the OpenRouter model used to extract, organize and review project
+knowledge. Left empty — the default — it follows the model you chose to talk
+to. Clearing the choice goes back to following it.
 
 A saved change applies to the next compilation without restarting your chats.
 A compilation already running finishes with its original model. The compiler

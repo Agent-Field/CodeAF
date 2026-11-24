@@ -70,6 +70,11 @@ type FenceOptions struct {
 	// codeaf's home (verification.ReceiptRoot). Each is made if missing and
 	// is writable; nothing else of codeaf's home is.
 	Receipts []string
+	// Canvases are the desktop app's canvas folders ($WORKAF_CANVAS_ROOT, or
+	// the app's default), writable when they exist and never made: the
+	// `canvas` command a run types writes its canvases there, and the app
+	// shows only what is there. A machine without the app has none.
+	Canvases []string
 }
 
 // FenceAllow is how far a person widened the fence. Paths are absolute and
@@ -284,6 +289,23 @@ func NewFence(opts FenceOptions) (*Fence, error) {
 		}
 		if err := os.MkdirAll(p, 0o700); err != nil {
 			return nil, err
+		}
+		if c, err := canonicalPath(p); err == nil {
+			f.Writable = append(f.Writable, c)
+		}
+	}
+	// THE APP'S CANVASES ARE A RUN'S TO DRAW. A crew member asked for a canvas
+	// types `canvas new`, which writes under the app's canvas folder; the
+	// fence refused it (it is under ~/Library on a Mac), so the canvas was
+	// drawn in the run's own folder where the app never shows it. Only a
+	// folder that exists is granted: the app makes it, and a fence that made
+	// one would leave an app's folder on a machine with no app.
+	for _, p := range opts.Canvases {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		if info, err := os.Stat(p); err != nil || !info.IsDir() {
+			continue
 		}
 		if c, err := canonicalPath(p); err == nil {
 			f.Writable = append(f.Writable, c)

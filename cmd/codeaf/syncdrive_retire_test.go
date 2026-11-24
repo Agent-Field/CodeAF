@@ -54,7 +54,19 @@ func TestC7R2ReopeningChatStopsPreviousDrive(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("previous drive did not begin maintenance")
 	}
-	_, err = s.Dir.Create(t.Context(), c.ID, directory.CellInit{Head: "sealed-head"})
+	// Another computer creates and holds the chat's record. A record made
+	// under THIS computer's name would not displace a drive that has not
+	// published yet: that is the background copier sharing a new chat beside
+	// its own first publish, which the drive keeps (#2654).
+	otherHome := t.TempDir()
+	if _, err = identity.Adopt(otherHome, s.Identity, false); err != nil {
+		t.Fatal(err)
+	}
+	other, ok, err := syncsetup.Open(otherHome)
+	if err != nil || !ok {
+		t.Fatalf("other computer: %v %v", ok, err)
+	}
+	_, err = other.Dir.Create(t.Context(), c.ID, directory.CellInit{Head: "sealed-head"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,10 +83,13 @@ func TestC7R2ReopeningChatStopsPreviousDrive(t *testing.T) {
 	if next == kept {
 		t.Fatal("reopened chat retained its displaced drive")
 	}
+	// Closing joins the maintenance loop, but its cancelled ticker's injected
+	// sleeper acknowledges cancellation on its own goroutine. Wait for that
+	// acknowledgement rather than assuming it ran before Close returned.
 	select {
 	case <-stopped:
-	default:
-		t.Error("reopened chat left the previous drive running")
+	case <-t.Context().Done():
+		t.Fatal("reopened chat left the previous drive running: ", t.Context().Err())
 	}
 	if next != nil {
 		_ = next.Gate()

@@ -1,0 +1,91 @@
+# Files — a workstream's shared drive
+
+## what Files is — documents, canvases, uploads, links and repos in folders
+
+Files is a workstream's shared drive: everything worth keeping, in folders, made by people or by agents. It replaces the separate Documents, Sources and Canvases tabs. A file is one of five kinds, plus folders and shortcuts:
+
+- **Document** — a document you write in together (the same editor, comments and suggestions documents always had);
+- **Canvas** — a canvas made inside the workstream, by a person from New › Canvas or by Afi or a chat with the `canvas` command: an agent's canvas is filed here by itself, under that chat's name, the first time it changes, so nobody has to attach it (there is no Attach existing);
+- **Upload** — a file from your computer (at most 25 MiB on an organization's server);
+- **Link** — a web address;
+- **Repo** — a connected repository, `owner/name`.
+
+Every file shows who made it (a person's current display name, Afi, or a chat's name), the task it came from, and when it last changed. Every workstream starts with a **Decisions** document. Agents read every file in the workstream, in the workstream it sits inside, and in the Library.
+
+Files is the workstream's own library. The app's **Library** is a separate shelf every workstream and agent reads, and nothing in Files reaches it by itself: only Add to Library, chosen by a person, puts a file there.
+
+## Changed lately — previews and All files
+
+At the top of Files, **Changed lately** shows the three most recently changed live files, as rows with one grey preview line read from documents and text uploads, who changed each one, and when. A non-text file or an unreadable file has no text preview. A preview opens the file.
+
+**All files** keeps the ordinary folders-first table below it, with Name, Kind, Changed by and When. A Library shortcut's Kind reads "Shortcut to the Library". When shows a time for today and a day otherwise. The count matches the Files tab: actual files, including folded and inherited files, without adding folders or the Decisions row. New and Upload remain available above the list. Search and stepping into a folder show that list rather than the recent shelf.
+
+## keep a decision — where is Keep, Afi said press keep, decisions are written down by themselves
+
+**There is no Keep, and nothing to press.** A workstream's decisions are written down by themselves: when the owner answers an Ask on a task, when a private request changes shared work, and when someone sets a rule in People and rules. Each appears in the **Decisions** document, the first row in Files, with who made it, where it came from and when.
+
+Afi and the chats never propose a decision for you to keep. To settle a choice, the agent puts an Ask on the task, and your answer becomes the decision. An older workstream may still hold decisions an agent proposed before this changed; they never show in Decisions and nothing can keep them. If one still matters, answer it as an Ask, or say it in a request, and it records itself.
+
+Only the person who made a decision can withdraw or replace it; the old one stays in the list, greyed.
+
+## where my old documents, sources and canvases went — nothing was lost
+
+The first time a workstream's Files is opened, everything it kept before is folded in, once, and nothing is copied or lost: each document becomes a document (a document that held other documents also becomes a folder holding them), each source becomes a link, a repo or an upload, and each canvas made inside the workstream becomes a canvas file. No Decisions document is made: a workstream's decisions are its Decisions list, kept automatically, not a file in Files.
+
+## New, search, sort, folders — making and finding files
+
+**New** offers Document, Canvas, Folder, Upload a File, Add a Link and Shortcut to a File Elsewhere. A new document or canvas is made in the open or selected folder and opens as a tab. A new folder appears with its name ready to type: Return keeps it, Escape removes it. Files can also be dropped onto the list from the computer; dropped on a folder, they go into it.
+
+The search box finds files by name and by what they say, in this workstream and in the parent's files it reads (those come after, read-only). What a file says is a document's words and an uploaded text file's words (a CSV, a Markdown or a plain text file); on an organization's server it is also a PDF's text. A picture, and on a Personal workstream a PDF, is found by its name only. A click on a column name (Name, Kind, Changed by, When) sorts by it. Folders nest without limit and fold open in place.
+
+## select, open, rename, move, delete — the right-click menu and keys
+
+One click selects a file and shows its facts in place of Afi's pane (kind, where, who made it, the task it came from, the tasks that use it, last change, open comments), with Open and Ask Afi about this; Space shows them too. A double click or Return opens it as a tab. Shift-click selects a run of rows, Command-click adds or removes one; with several selected, a bar offers Move to, Copy links and Delete — only what applies to every selected row.
+
+The right-click menu: Open, Open Beside, Rename (in place, in the row), Move To, Copy Link, Add Shortcut To…, Add to Library, Ask Afi About This (adds the file to what Afi is looking at), Delete. A folder has the same menu without Add to Library. Add to Library shows only on a document or a text file, whether or not learning from chats is on: a canvas, a picture or a link has no words to keep. Dragging files onto a folder moves them, with Undo for 5 seconds. Moving a file never breaks a task, shortcut or link that points to it.
+
+## delete a file, restore a deleted file — Delete asks first
+
+Delete asks first, because it cannot be undone: "Delete “Brief”?", saying the file (and anything inside a folder) will be gone for everyone in the workstream, with Cancel and Delete. There is no way to bring a deleted file back from the app, and Afi and chats never offer to. Several selected files are deleted the same way, with one question for all of them. History can undo a change to a Personal document or a canvas that still exists (below). Organization documents have no version-history interface in this release.
+
+## History — an earlier copy of a document or canvas, Restore, version history, undo a change
+
+Personal documents and canvases keep a History. On a Personal document it is History in the document's ⋯ menu; on a canvas it is the History button in the canvas's header. Organization documents have no History or Restore action in this release. History lists the earlier copies in plain words — what changed it, when, and who ("Updated · Nov 9 · by Lena"), with **current** on the copy the document holds now — never as a number or an id.
+
+In a Personal document, choosing an earlier copy shows its words in the document, read-only; **Compare with now** lays today's words under it. **Restore this version** brings it back: the restored words become the newest copy, and the words it replaced stay in History, so nothing is lost. Restoring needs the right to edit, and a document's unsaved typing saved first.
+
+Afi and a workstream's chats can read which earlier copies a document has (ws_file_read lists them, when and by whom). They name an earlier copy only when ws_file_read lists one, in the same plain words. They cannot restore one themselves. For a Personal document they can point you to History; organization documents have no restore action in this release. A deleted file has no History to bring back.
+
+## shortcuts and a parent's files — a file from another workstream or the Library, read-only
+
+A shortcut shows a file that lives in another workstream without copying it: there is still one file, changed in one place. You can only make a shortcut to a file in a workstream you can see. Make one with Add Shortcut To… on the file, or with New › Shortcut to a File Elsewhere… and the file's Copy Link pasted in.
+
+A shortcut can also point at a Library document: Copy Link on the document in the Library, then New › Shortcut to a File Elsewhere… and paste it. It shows as "From the Library", and opening it opens the document in the Library.
+
+A workstream inside another one shows its parent's files as one folder, "From <parent>", read-only there: open and copy their links, but rename, move and delete them in the parent.
+
+## add a file to the Library — keep a workstream file for every workstream
+
+Add to Library, in a file's right-click menu, keeps the file's words in your Library, where every workstream and agent can read them. A note shows for five seconds with Undo; nothing is kept if you press it. This is the only way something in a workstream reaches the Library.
+
+It works whether or not Settings › Memory › learn from chats and jobs is on: adding a file is your choice, so it never waits on learning. With learning off, only the file you added is written into the Library, nothing else. Learning never reads a workstream's Afi or its chats, so a suggestion you dropped there never reaches the Library.
+
+## can Afi change my document — suggestions, accept and reject, fix another chat's draft
+
+Afi and chats change a document by suggestion: the old words struck through, the new ones underlined, with Accept and Reject. Anyone in the workstream can accept or reject. An agent edits directly only a document an agent made (Afi, itself or another chat) that no person has edited yet, so one chat can correct another chat's wrong draft. Once a person edits a document, every agent changes it only by suggestion. When an agent is refused, it says who made the document and whether a person edited it. A comment never makes Afi act: to have Afi change the text, ask in Afi's pane, and the change arrives as a suggestion. Changing a file flags the running tasks that use it.
+
+## comment on a passage of a document — select words, Comment, reply, resolve
+
+Select words inside one paragraph, heading or code block of a document and press Comment to start a thread on them; the words are underlined while the thread is open. Anyone who can edit the workstream can comment, reply, Resolve and Reopen; anyone who can see it reads the threads. A reply to a resolved thread opens it again. A comment is said to people: it never changes the document and never makes Afi act. When the document is edited, the thread finds its words again: in the same block, or as the one place on the document that still says them. When the words are gone or now appear more than once, the thread stays in the Comments panel with "The words this was on have changed." and nothing is underlined. A document's facts count its open threads. This works the same in a Personal workstream and in an organization's, where the threads are kept on the organization's server. Limits: a comment is at most 16384 characters, the selected words at most 4000, and a document holds at most 2000 threads. A selection across blocks, or on a live block, cannot be commented.
+
+## New sheet Canvas follows the organization window
+
+Choosing Canvas in the New sheet follows the window you are in. In an organization window it makes a blank canvas on that organization's server and opens it there; it does not open a Personal draft on this laptop. Personal keeps its draft flow. To make a canvas inside a particular workstream, use that workstream's Files › New › Canvas.
+
+## Reading a document — title, Afi, Tasks can read this, actions
+
+A document shows its kind and change facts above its title. The title appears once, at 22 on 28; document text is 14 on 22. Below the title, facts say what Afi may change and whether tasks can read it. **Tasks can read this** changes that permission where you can edit. The document's actions are in the header’s ⋯ menu, and its tab carries the file's name. Comments on passages work as before. Afi's one box sits below the content, never over the last line.
+
+## Files count and Changed by names
+
+The Files tab and All files heading count the same actual files, including files inside folded folders and inherited files. Folders and the automatically kept Decisions row are navigation, not extra files. Opening a folder does not change the total. Changed by and a document's details use display names, such as Marco and Lena, rather than lower-case handles.

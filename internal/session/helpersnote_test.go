@@ -125,6 +125,7 @@ func TestOnlyAConversationAPersonSitsInMayOfferHelpers(t *testing.T) {
 		"ask here":       func(c *Config) { c.Errand = true },
 		"task node":      func(c *Config) { c.InTask = true },
 		"no transcript":  func(c *Config) { c.SessionFile = "" },
+		"app's":          func(c *Config) { c.ClientTools = &clientToolsFakeDoor{} },
 	} {
 		config := base
 		change(&config)

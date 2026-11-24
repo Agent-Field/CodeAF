@@ -183,7 +183,10 @@ type Agent struct {
 	Location      *Location              `json:"location,omitempty"`
 	ModelIdentity *session.ModelIdentity `json:"model_identity,omitempty"`
 	// Retryable means this backend retained the failed message for agents.retry.
-	Retryable    bool   `json:"retryable"`
+	Retryable bool `json:"retryable"`
+	// Interrupted means the app's quit or close stopped this chat mid-turn and
+	// it waits for agents.continue: nothing it was doing carries on by itself.
+	Interrupted  bool   `json:"interrupted,omitempty"`
 	FactoryOwned bool   `json:"factory_owned,omitempty"`
 	ID           string `json:"id"`
 	// DID is the agent's identity: what its commands carry as
@@ -688,6 +691,11 @@ const (
 	ErrorBudget   = "budget"
 	ErrorStopped  = "stopped"
 	ErrorOther    = "other"
+	// ErrorOffline is a turn that never reached the model's service because
+	// this computer could not connect. Its words were kept, so it is offered
+	// again, and a surface may send it again by itself once the network is
+	// back. It is additive: an app that does not know the word reads a failure.
+	ErrorOffline = "offline"
 	// ErrorUncertain is a turn whose words were handed to the conversation and
 	// no answer came back: they MAY HAVE BEEN SENT, so no retry is offered for
 	// them. It is additive: an app that does not know the word reads a failure.
@@ -738,7 +746,11 @@ type MemorySettings struct {
 }
 
 type Settings struct {
-	KnowledgeModel     string            `json:"knowledge_model,omitempty"`
+	// KnowledgeModel is the Library compiler's own row, and EMPTY WHEN IT
+	// FOLLOWS the person's chosen model (the default since 2026-11-16). It is
+	// always sent, empty included, so a client can tell "follows" from an engine
+	// that has no such row.
+	KnowledgeModel     string            `json:"knowledge_model"`
 	WhenPlanPaused     map[string]string `json:"when_plan_paused"`
 	Memory             MemorySettings    `json:"memory"`
 	DefaultModel       string            `json:"default_model"`

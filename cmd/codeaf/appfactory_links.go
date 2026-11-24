@@ -493,7 +493,8 @@ func humanLinkRow(l api.AccessLink) bool {
 
 func linkEntry(l api.AccessLink) appwire.FactoryLink {
 	out := appwire.FactoryLink{
-		ID: l.ID, Name: cleanLinkText(l.Name, appwire.LinkNameMax), Login: cleanLinkText(l.Login, 39),
+		Kind: map[bool]string{true: "reset"}[l.Kind == "reset"],
+		ID:   l.ID, Name: cleanLinkText(l.Name, appwire.LinkNameMax), Login: cleanLinkText(l.Login, 39),
 		CreatedAt: l.CreatedAt, CreatedBy: cleanLinkText(l.CreatedBy, 80),
 		MaxUses: l.MaxUses, Used: l.Used, Remaining: l.Remaining, Status: l.Status,
 		UsedBy: []string{}, Counted: l.Counted,
@@ -592,6 +593,8 @@ func (b *appBackend) FactoryLinkList(ctx context.Context, p appwire.FactoryLinkP
 // linkCreateBody is the request. A field the person did not choose is absent,
 // so the factory's own defaults (one person, seven days) apply.
 type linkCreateBody struct {
+	Kind      string     `json:"kind,omitempty"`
+	Person    string     `json:"person,omitempty"`
 	MaxUses   int        `json:"max_uses,omitempty"`
 	Login     string     `json:"login,omitempty"`
 	Name      string     `json:"name,omitempty"`
@@ -705,8 +708,10 @@ func (b *appBackend) FactoryLinkCreate(ctx context.Context, p appwire.FactoryLin
 	}
 	// THE FACTORY MUST HAVE SAID it can sign an invitee in. Silence from an
 	// older factory is not a yes, and a role or a mode is not evidence.
-	if !who.me.GitHubSignInAvailable || !who.me.InviteAvailable {
-		return appwire.FactoryLinkMade{}, appwire.Errorf(appwire.CodeConflict, "this factory has not said it can sign invited people in with GitHub")
+	// An invitation is redeemed with GitHub or a password; a reset link needs
+	// a server that keeps passwords, which is one that can say how.
+	if !who.me.InviteAvailable {
+		return appwire.FactoryLinkMade{}, appwire.Errorf(appwire.CodeConflict, "this factory has not said it can sign invited people in")
 	}
 	// No clipboard, no invitation: one that cannot be handed over is not made.
 	if !b.copier().Available() {
@@ -716,8 +721,11 @@ func (b *appBackend) FactoryLinkCreate(ctx context.Context, p appwire.FactoryLin
 		return appwire.FactoryLinkMade{}, appwire.Errorf(appwire.CodeConflict, "check the list of invitations before making another")
 	}
 	now := h.now()
-	body := linkCreateBody{Login: p.Login, Name: p.Name}
+	body := linkCreateBody{Login: p.Login, Name: p.Name, Kind: p.Kind, Person: p.Person}
 	until := now.Add(tokens.HumanLinkTTL)
+	if p.Kind == "reset" {
+		until = now.Add(tokens.ResetLinkTTL)
+	}
 	if p.MaxUses != nil {
 		body.MaxUses = *p.MaxUses
 	}
@@ -818,6 +826,15 @@ func madeMatches(e appwire.FactoryLink, asked linkCreateBody, now, until time.Ti
 		wantUses = 1
 	}
 	if e.MaxUses != wantUses || e.Used != 0 || e.Status != "open" {
+		return false
+	}
+	if asked.Kind == "reset" {
+		// A reset link is for the one person asked, for one use, for an hour.
+		return e.Kind == "reset" && e.Login == factory.NormalizeHandle(asked.Person) && e.ExpiresAt != nil &&
+			!e.CreatedAt.IsZero() && e.ExpiresAt.After(now) && !e.ExpiresAt.After(e.CreatedAt.Add(tokens.ResetLinkTTL)) &&
+			!e.ExpiresAt.After(until.Add(appFactoryLinkSlack))
+	}
+	if e.Kind != "" {
 		return false
 	}
 	if e.Login != factory.NormalizeHandle(asked.Login) {

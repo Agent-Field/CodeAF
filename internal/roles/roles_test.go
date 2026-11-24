@@ -43,7 +43,7 @@ func TestResolvePrecedence(t *testing.T) {
 	// the shaper, vision, the repair — is registered from the package that makes
 	// it, so a case about that tier registers one here through the same door.
 	restore(t)
-	Register(Role("audit"), TierHigh)
+	Register(RoleAuditor, TierHigh)
 	tests := []struct {
 		name     string
 		src      Source
@@ -83,7 +83,7 @@ func TestResolvePrecedence(t *testing.T) {
 				"tiers.low":  "low-model",
 				"tiers.high": "high-model",
 			}),
-			role:     Role("audit"),
+			role:     RoleAuditor,
 			fallback: "session-model",
 			want:     "high-model",
 		},
@@ -279,27 +279,27 @@ func TestResolveNoModelAnywhere(t *testing.T) {
 func TestRegisterAddsResolvableRole(t *testing.T) {
 	restore(t)
 
-	Register(Role("advisor"), TierHigh)
+	Register(Role("advisor"), TierLow)
 
 	tier, ok := TierOf(Role("advisor"))
-	if !ok || tier != TierHigh {
-		t.Fatalf("TierOf(advisor) = %q, %v, want high, true", tier, ok)
+	if !ok || tier != TierLow {
+		t.Fatalf("TierOf(advisor) = %q, %v, want low, true", tier, ok)
 	}
 
 	// A role registered from elsewhere inherits its tier's model with no
 	// settings of its own — the reason the registry is open.
-	got, err := Resolve(settings(map[string]string{"tiers.high": "high-model"}), Role("advisor"), "session-model")
+	got, err := Resolve(settings(map[string]string{"tiers.low": "low-model"}), Role("advisor"), "session-model")
 	if err != nil {
 		t.Fatalf("Resolve(advisor) error = %v", err)
 	}
-	if got != "high-model" {
-		t.Fatalf("Resolve(advisor) = %q, want high-model", got)
+	if got != "low-model" {
+		t.Fatalf("Resolve(advisor) = %q, want low-model", got)
 	}
 
 	// And it is pinnable like a built-in.
 	got, err = Resolve(settings(map[string]string{
 		"roles.advisor": "pinned-model",
-		"tiers.high":    "high-model",
+		"tiers.low":     "low-model",
 	}), Role("advisor"), "session-model")
 	if err != nil {
 		t.Fatalf("Resolve(pinned advisor) error = %v", err)
@@ -312,17 +312,17 @@ func TestRegisterAddsResolvableRole(t *testing.T) {
 func TestRegisterOverwrites(t *testing.T) {
 	restore(t)
 
-	Register(RoleTitle, TierHigh)
+	Register(RoleTitle, TierReflex)
 
 	got, err := Resolve(settings(map[string]string{
-		"tiers.low":  "low-model",
-		"tiers.high": "high-model",
+		"tiers.low":    "low-model",
+		"tiers.reflex": "reflex-model",
 	}), RoleTitle, "session-model")
 	if err != nil {
 		t.Fatalf("Resolve(title) error = %v", err)
 	}
-	if got != "high-model" {
-		t.Fatalf("Resolve(retuned title) = %q, want high-model", got)
+	if got != "reflex-model" {
+		t.Fatalf("Resolve(retuned title) = %q, want reflex-model", got)
 	}
 }
 

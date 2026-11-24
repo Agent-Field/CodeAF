@@ -252,6 +252,12 @@ func (in *Intake) startGoAhead(ctx context.Context, it factory.Item, c covering,
 		// THE JOB'S BUDGET IS WHAT IS LEFT OF THE CAP when that is less, so
 		// the factory's own budget stop holds the allowance's line.
 		cur.Cap = min(cur.Cap, left)
+		// AN ALLOWANCE WITH A PER-JOB CAP holds each job to it too: "start
+		// without asking, up to $5 a task" is $5 for every task, not $5
+		// shared.
+		if per := c.allowance.PerJobUSD; per > 0 {
+			cur.Cap = min(cur.Cap, per)
+		}
 		budget = cur.Cap
 		if cur.Person() == "" && owner != "" {
 			cur.Starter = owner

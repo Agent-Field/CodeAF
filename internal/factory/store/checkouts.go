@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // checkoutsDoc is <root>/checkouts.json: where this machine has each watched
@@ -58,7 +60,16 @@ func (st *Store) checkoutRecords() (map[string]string, error) {
 
 // CheckoutDir answers the folder for owner/name or an unambiguous local alias.
 // A full name never falls back to another owner's checkout of the same name.
+//
+// A FOLDER ON THIS COMPUTER IS ITS OWN CHECKOUT (factory.FolderOf): the path
+// answers itself while it still holds a repository, and nothing otherwise.
 func (st *Store) CheckoutDir(repo string) string {
+	if factory.IsFolderRepo(repo) {
+		if factory.FolderHoldsRepo(repo) {
+			return filepath.Clean(strings.TrimSpace(repo))
+		}
+		return ""
+	}
 	ids, err := st.repositoryIdentities()
 	if err != nil {
 		return ""

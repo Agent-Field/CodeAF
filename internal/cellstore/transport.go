@@ -84,6 +84,9 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 		argv = append(argv, "--timeline", t.Timeline)
 	}
 	environ := append(os.Environ(), dataDirEnv+"="+t.DataDir)
+	if s.Run == nil {
+		settleBeforeSpawn(ctx, socket, bin, t)
+	}
 	release, err := lockStoreOperation(ctx, t.DataDir)
 	if err != nil {
 		return nil, err
@@ -91,6 +94,39 @@ func (s Spawn) Do(ctx context.Context, t Target, op Op) ([]byte, error) {
 	defer release()
 	out, err := s.run(ctx, t.Tree, append(environ, opEnv(op)...), argv...)
 	return out, classifyStoreBusyError(t.DataDir, socket, err)
+}
+
+// settleBeforeSpawn asks the daemon that already holds the store to make it
+// durable before a one-shot engine process opens it.
+//
+// WHY THIS IS HERE. The daemon writes with deferred durability, so its newest
+// appends sit past the store's durable frontier and past the pack checkpoint
+// until its next group commit. A one-shot engine process that opens the store
+// then finds object rows beyond the checkpoint, judges the checkpoint unusable
+// and re-verifies the WHOLE pack from byte zero before it answers, every time.
+// With a chat in a 600 MB folder that was 0.65 s per process (a read of the
+// whole pack), and a take-back runs three of them to admit the incoming
+// snapshot before it asks for the lease: 2 s of a 9.8 s take-back on the
+// loopback rig (docs/design/app-v3/MOVE-TIMING.md). One sync through the daemon costs about
+// 10 ms and leaves the pack settled, so the process that follows opens it in
+// milliseconds.
+//
+// Only a daemon that is already answering is asked: a spawn must never start
+// one, and a store no daemon writes has no deferred tail to settle. The sync is
+// an optimisation, so its failure is not the spawn's: the spawn runs anyway and
+// pays the walk, exactly as it did before. It does not help after a one-shot
+// process that itself appends (the dirty check's dry-run rewind): the next
+// open still walks the pack once, which only the engine can stop doing.
+func settleBeforeSpawn(ctx context.Context, socket, bin string, t Target) {
+	if t.DataDir == "" || socket == "" {
+		return
+	}
+	conn, err := dial(ctx, socket)
+	if err != nil {
+		return
+	}
+	_ = conn.Close()
+	_ = syncEngine(ctx, Daemon{Socket: socket, Binary: bin}, Target{Tree: t.Tree, DataDir: t.DataDir})
 }
 
 // EnvOp is an Op that carries secrets. A spawn hands them to the engine

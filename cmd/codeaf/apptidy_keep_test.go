@@ -141,14 +141,15 @@ func TestReadingAClosedCrewMemberLeavesItClosed(t *testing.T) {
 }
 
 // Work a quit left owed is not carried on in an agent the person has closed
-// since: carrying it on would open it, and so take it out of Closed.
+// since, even by Continue: carrying it on would open it, and so take it out of
+// Closed.
 func TestAQuitsResumeLeavesAClosedAgentClosed(t *testing.T) {
 	b, _, paths, opens := lazyBackend(t, 1)
 	id := appAgentID(paths[0])
 	if err := b.MoveToClosed([]string{id}); err != nil {
 		t.Fatal(err)
 	}
-	b.resumeOne(id, true, nil)
+	b.resumeOneWith(id, true, nil, appwire.FooterResumedAfterQuit, appResumedWord, "continued")
 	if !b.tidied(id) || b.held(id) || opens.Load() != 0 {
 		t.Fatalf("after the resume: marked=%v held=%v opens=%d", b.tidied(id), b.held(id), opens.Load())
 	}
