@@ -177,6 +177,7 @@ func (b *appBackend) crews() *appCrewRun {
 	})
 	if start {
 		b.subscribeCrewTraffic(run)
+		b.movePausesToStore()
 		b.crewTick(run, true)
 		b.reopenProposals(run)
 		guard.Go("app/crews", func() { b.crewLoop(run) })
@@ -695,8 +696,9 @@ func (b *appBackend) memberView(read appCrewRead, t teamstore.Team, m teamstore.
 	if usd, set := b.agentBudget(agent, b.now()); set {
 		view.CapUSD = &usd
 	}
+	view.Paused = m.Paused
 	if extra := read.layer.Members[appMemberKey(t.ID, agent)]; extra != nil {
-		view.Role, view.Paused, view.Was = extra.Role, extra.Paused, extra.Was
+		view.Role, view.Was = extra.Role, extra.Was
 		if role := read.layer.Roles[extra.Role]; role != nil {
 			view.Role = role.ID
 		}
@@ -1020,6 +1022,9 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	// member's joining). The terminal's start writes none either.
 	member.Handle, member.JoinedAt, member.Started = handle, time.Time{}, true
 	member.ReportsTo = pending.ReportsTo
+	// What the start was made with: the role's name, and whether the member
+	// waits for a directive rather than beginning on this line.
+	member.Role, member.Standby = pending.RoleName, pending.Standby
 	// THE MEMBERSHIP KEEPS THE ID OF THE LINE THAT MADE IT, so its brief is
 	// that line by identity and survives a rename or a handle reused later.
 	// Only a manager's start of this crew is recorded; the terminal's start
@@ -1037,9 +1042,11 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 		b.crewNote(manager, "@"+handle+" opened but did not join "+t.Name+": "+err.Error())
 		return err
 	}
-	if pending.Role != "" || pending.ReportsTo != "" {
+	if pending != (appPendingStart{}) {
 		return b.crewLayer().write(func(f *appCrewLayerFile) error {
-			f.member(t.ID, agent.ID).Role = pending.Role
+			if pending.Role != "" {
+				f.member(t.ID, agent.ID).Role = pending.Role
+			}
 			delete(f.Pending, appPendingKey(t.ID, handle))
 			b.roleCopyLocked(f, pending.Role)
 			return nil

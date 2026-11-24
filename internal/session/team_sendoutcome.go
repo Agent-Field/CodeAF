@@ -1,0 +1,183 @@
+package session
+
+// ── A DIRECTIVE'S ANSWER SAYS WHAT HAPPENED TO IT ───────────────────────────
+//
+// `team_send` used to answer every directive with one sentence written before
+// anything was known: "a member that is idle starts a turn on it now". A
+// manager is a model, and a model reports what its tools tell it. The measured
+// case told the person "I've started the setup" about a member that never
+// began, twice, and then found an empty folder.
+//
+// SO THE ANSWER WAITS FOR THE EVIDENCE, BRIEFLY. A wake writes a line to the
+// team's traffic that answers the directive by its id (team_wakewatch.go), a
+// refused wake writes why, and a paused member is known from the teams file
+// before anything is asked. The send looks at the traffic for a few seconds
+// and says, per member, one of: started, in a turn already, did not start and
+// why, or no sign of a start yet. The last is said as plainly as the rest: a
+// manager told "no sign yet" checks before it reports.
+//
+// A REFUSAL IS NOT BELIEVED UNTIL THE WAIT IS OVER. Two processes may try to
+// open one member, and the one that cannot may say so a moment before the one
+// that can says it did; a start that arrives inside the wait is the answer.
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/teams"
+)
+
+// teamSendSettle is how long a directive's answer waits to see its members
+// start. A member some process holds starts within a second ([teamWatchEvery]);
+// one that has to be opened first took half a second where it was measured.
+// Four seconds covers both with room, and is short enough that a manager does
+// not read the wait as a stall. teamSendLook is how often the traffic is read
+// while waiting. Both are vars so a test does not sleep.
+var (
+	teamSendSettle = 4 * time.Second
+	teamSendLook   = 200 * time.Millisecond
+)
+
+// The traffic lines a wake writes, as the send reads them back. They are the
+// prefixes of the texts team_wakewatch.go and team_pause.go write.
+const (
+	teamWokePrefix      = "woke @"
+	teamCouldNotPrefix  = "could not wake "
+	teamHeldPrefix      = "held "
+	teamNotUnderWayRule = "Do not tell the person this work is under way."
+)
+
+// teamSendOutcome is the sentences that follow "Sent a directive to …": what
+// became of it for each member it was sent to on this computer. ready are the
+// members a wake was asked for and paused the ones the person paused.
+func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.Team, id string, ready, paused []teams.Member) string {
+	var started, busy, unseen []string
+	refused := map[string]string{}
+	var refusedOrder []string
+	waiting := map[string]teams.Member{}
+	now := time.Now()
+	for _, member := range ready {
+		if member.Handle == "" {
+			continue
+		}
+		if state, _, ok := a.team.journals.stateOf(member.File, now); ok &&
+			(state.State == teams.StateRunning || state.State == teams.StateAsking) {
+			busy = append(busy, "@"+member.Handle)
+			continue
+		}
+		waiting[member.Key] = member
+	}
+	deadline := now.Add(teamSendSettle)
+	for len(waiting) > 0 {
+		entries, err := teams.ReadTraffic(profile, team.ID, id, teamPageLimit)
+		if err == nil {
+			for _, entry := range entries {
+				member, ok := waiting[entry.Member]
+				if !ok || entry.Kind != teams.KindEvent {
+					continue
+				}
+				text := strings.TrimSpace(entry.Text)
+				switch {
+				case entry.State == teams.StateRunning && strings.HasPrefix(text, teamWokePrefix):
+					started = append(started, "@"+member.Handle)
+					delete(waiting, entry.Member)
+					delete(refused, member.Handle)
+				case entry.From == teams.FromSystem && (strings.HasPrefix(text, teamCouldNotPrefix) || strings.HasPrefix(text, teamHeldPrefix)):
+					if _, said := refused[member.Handle]; !said {
+						refusedOrder = append(refusedOrder, member.Handle)
+					}
+					_, why, _ := strings.Cut(text, ": ")
+					refused[member.Handle] = strings.TrimSpace(why)
+				}
+			}
+		}
+		if len(waiting) == 0 || !time.Now().Before(deadline) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			deadline = time.Time{}
+		case <-time.After(teamSendLook):
+		}
+	}
+	for _, member := range ready {
+		if _, still := waiting[member.Key]; still {
+			if _, said := refused[member.Handle]; !said {
+				unseen = append(unseen, "@"+member.Handle)
+			}
+		}
+	}
+	var said []string
+	if len(started) > 0 {
+		said = append(said, strings.Join(started, ", ")+" started a turn on it.")
+	}
+	if len(busy) > 0 {
+		said = append(said, strings.Join(busy, ", ")+" "+isAre(len(busy))+" in a turn and "+readsRead(len(busy))+" it at the next step.")
+	}
+	if len(started)+len(busy) > 0 {
+		said = append(said, "Replies and endings wake you when they arrive, so there is no need to wait or poll.")
+	}
+	for _, member := range paused {
+		said = append(said, fmt.Sprintf("@%s did NOT start: %s. Tell the person it is paused; only they can resume it.", member.Handle, teamPausedWhy))
+	}
+	for _, handle := range refusedOrder {
+		why, still := refused[handle]
+		if !still {
+			continue
+		}
+		if why == "" {
+			why = "its wake was refused"
+		}
+		said = append(said, fmt.Sprintf("@%s did NOT start: %s.", handle, strings.TrimSuffix(why, ".")))
+	}
+	if len(unseen) > 0 {
+		said = append(said, strings.Join(unseen, ", ")+" "+hasHave(len(unseen))+" shown no sign of starting yet; team_status says whether "+itThey(len(unseen))+" did.")
+	}
+	if len(paused)+len(refused)+len(unseen) > 0 {
+		said = append(said, teamNotUnderWayRule)
+	}
+	return strings.Join(said, " ")
+}
+
+// splitPaused divides a directive's local targets into the members the person
+// paused and the rest. The manager is never paused.
+func splitPaused(team teams.Team, targets []teams.Member) (ready, paused []teams.Member) {
+	for _, member := range targets {
+		if member.Paused && member.Key != team.Manager {
+			paused = append(paused, member)
+			continue
+		}
+		ready = append(ready, member)
+	}
+	return ready, paused
+}
+
+func isAre(n int) string {
+	if n == 1 {
+		return "is"
+	}
+	return "are"
+}
+
+func readsRead(n int) string {
+	if n == 1 {
+		return "reads"
+	}
+	return "read"
+}
+
+func hasHave(n int) string {
+	if n == 1 {
+		return "has"
+	}
+	return "have"
+}
+
+func itThey(n int) string {
+	if n == 1 {
+		return "it"
+	}
+	return "they"
+}

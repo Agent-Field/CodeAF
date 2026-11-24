@@ -75,6 +75,22 @@ type Member struct {
 	// Empty on every membership written before they were kept.
 	FactoryStage bool   `json:"factory_stage,omitempty"`
 	FactoryBrief string `json:"factory_brief,omitempty"`
+	// Paused says the person paused this member in this team ([File.SetPaused]).
+	// Team traffic starts no turn for a paused member: a directive waits on the
+	// log, undelivered, and starts the member's turn when the person resumes it.
+	// It lives here, and not in an interface's own file, so the session that
+	// would wake the member, the manager's view of its team and every interface
+	// read one answer.
+	Paused bool `json:"paused,omitempty"`
+	// Role is the short name of what this member is in the team for, "macOS
+	// developer", as the person or the proposal gave it. It is told to the
+	// member in its role note and shown to the manager beside the handle. Empty
+	// on a membership nobody gave one.
+	Role string `json:"role,omitempty"`
+	// Standby says this membership was made without work to start on: its start
+	// line is a standing description of the role, read at the member's first
+	// turn, and that line starts no turn. The first directive does.
+	Standby bool `json:"standby,omitempty"`
 	// Unknown membership fields survive whole-file updates from this build.
 	extra map[string]json.RawMessage
 }
@@ -624,6 +640,41 @@ func (f *File) SetHandle(id, key, h string) error {
 		return err
 	}
 	t.Members[j].Handle, t.Members[j].HandleBy = h, HandleByTyped
+	return nil
+}
+
+// SetPaused pauses or resumes the member with key in team id ([Member.Paused]).
+// The manager is not paused: the person talks to it directly.
+func (f *File) SetPaused(id, key string, paused bool) error {
+	i, err := f.at(id)
+	if err != nil {
+		return err
+	}
+	t := &f.Teams[i]
+	j := t.member(key)
+	if j < 0 {
+		return fmt.Errorf("%s is not in team %s", key, t.Name)
+	}
+	if paused && t.Manager == key {
+		return fmt.Errorf("the manager of %s is not paused; stop its turn instead", t.Name)
+	}
+	t.Members[j].Paused = paused
+	return nil
+}
+
+// SetRole names what the member with key in team id is there for
+// ([Member.Role]); "" clears it.
+func (f *File) SetRole(id, key, role string) error {
+	i, err := f.at(id)
+	if err != nil {
+		return err
+	}
+	t := &f.Teams[i]
+	j := t.member(key)
+	if j < 0 {
+		return fmt.Errorf("%s is not in team %s", key, t.Name)
+	}
+	t.Members[j].Role = oneLine(role)
 	return nil
 }
 

@@ -27,11 +27,17 @@ func fastTeamWake(t *testing.T) {
 	every, settle, retry, longest := teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax
 	teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax = 20*time.Millisecond, 300*time.Millisecond, 50*time.Millisecond, 200*time.Millisecond
 	teamWatchClockMu.Unlock()
+	// A send waits to see its members start; with the watch this fast a second
+	// and a half is many looks, and a test of a member that never starts does
+	// not sit out the shipped four seconds.
+	sendSettle, sendLook := teamSendSettle, teamSendLook
+	teamSendSettle, teamSendLook = 1500*time.Millisecond, 5*time.Millisecond
 	t.Cleanup(func() {
 		forgetRouses()
 		teamWatchClockMu.Lock()
 		teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax = every, settle, retry, longest
 		teamWatchClockMu.Unlock()
+		teamSendSettle, teamSendLook = sendSettle, sendLook
 	})
 }
 
@@ -644,9 +650,11 @@ func TestTeamWakeADirectiveOpensAMemberNobodyHolds(t *testing.T) {
 	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
 	parser := oneAnswer(1)
 	teamAgent(t, fixture, fixture.parser, parser, nil)
+	// The door here records the open and starts nothing, so the send has no
+	// start to report and says so, without claiming the work is under way.
 	said := sendDirective(t, manager, "web")
-	if !strings.Contains(said, "starts a turn on it now") || !strings.Contains(said, "wake you") {
-		t.Errorf("the send does not say what happens next: %s", said)
+	if !strings.Contains(said, "@web has shown no sign of starting yet") || !strings.Contains(said, teamNotUnderWayRule) {
+		t.Errorf("the send claims more than it saw: %s", said)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for len(recorder.seen()) == 0 && time.Now().Before(deadline) {
@@ -656,7 +664,9 @@ func TestTeamWakeADirectiveOpensAMemberNobodyHolds(t *testing.T) {
 	if len(opened) != 1 || !strings.HasPrefix(opened[0], fixture.web+"|") {
 		t.Fatalf("opened %v, want the web member's transcript once", opened)
 	}
-	sendDirective(t, manager, "parser")
+	if said := sendDirective(t, manager, "parser"); !strings.Contains(said, "@parser started a turn on it.") || !strings.Contains(said, "wake you") {
+		t.Errorf("the send does not report the start it saw: %s", said)
+	}
 	waitRequests(t, parser, 1)
 	if got := recorder.seen(); len(got) != 1 {
 		t.Fatalf("a member that is open was opened again: %v", got)

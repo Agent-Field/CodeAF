@@ -21,12 +21,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // appCrewLayerName is the layer's file, beside the app's state file.
@@ -64,6 +66,12 @@ type appPendingStart struct {
 	ReportsTo string `json:"reports_to,omitempty"`
 	Role      string `json:"role,omitempty"`
 	Model     string `json:"model,omitempty"`
+	// RoleName is the role's name as the proposal gave it, kept on the team's
+	// own record of the member (teamstore's Member.Role).
+	RoleName string `json:"role_name,omitempty"`
+	// Standby says the member joins without starting on its start line
+	// (teamstore's Member.Standby).
+	Standby bool `json:"standby,omitempty"`
 }
 
 // appCrewLayerFile is the whole layer.
@@ -213,15 +221,59 @@ func (b *appBackend) crewLayer() *appCrewLayer {
 	return b.layer
 }
 
-// crewPaused says the person paused this agent in some open crew.
+// crewPaused says the person paused this agent in some open crew
+// (teamstore's Member.Paused).
 func (b *appBackend) crewPaused(agent string) bool {
-	paused := false
+	f, err := teamstore.LoadTeamsOf(b.crewProfile(), agent, false)
+	if err != nil {
+		return false
+	}
+	for _, t := range f.Teams {
+		if t.Closed() {
+			continue
+		}
+		if m, ok := b.crewMemberOf(t, agent); ok && m.Paused && m.Key != t.Manager {
+			return true
+		}
+	}
+	return false
+}
+
+// movePausesToStore carries a pause an earlier build kept in this layer into
+// the team's own record, once, so a member paused before the update stays
+// paused where the engine reads it. A pause that cannot be carried (its crew
+// or member is gone) is dropped with the rest of that record.
+func (b *appBackend) movePausesToStore() {
+	var paused []string
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
 		for key, m := range f.Members {
-			if m != nil && m.Paused && filepath.Base(key) == agent {
-				paused = true
+			if m != nil && m.Paused {
+				paused = append(paused, key)
 			}
 		}
 	})
-	return paused
+	if len(paused) == 0 {
+		return
+	}
+	for _, key := range paused {
+		crew, agent, ok := strings.Cut(key, "/")
+		if !ok {
+			continue
+		}
+		t, _, err := b.crewTeam(crew)
+		if err != nil {
+			continue
+		}
+		if m, found := b.crewMemberOf(t, agent); found {
+			_ = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, true) })
+		}
+	}
+	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
+		for _, key := range paused {
+			if m := f.Members[key]; m != nil {
+				m.Paused = false
+			}
+		}
+		return nil
+	})
 }

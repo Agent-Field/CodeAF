@@ -110,6 +110,20 @@ func (a *Agent) awaitTeamStart(profile string, base int) {
 		}
 		var waking []teamRole
 		for _, role := range started {
+			if role.standby {
+				// ON STANDBY NOTHING STARTS. The start line is this member's
+				// role, read at its first turn, and the manager's first
+				// directive is what begins that turn (team_pause.go).
+				a.teamStandbySay(profile, role)
+				continue
+			}
+			if role.paused {
+				// The watch holds it and starts the turn on resume.
+				a.team.mu.Lock()
+				a.teamPauseHoldLocked(role, true)
+				a.team.mu.Unlock()
+				continue
+			}
 			if role.wakes {
 				waking = append(waking, role)
 				continue

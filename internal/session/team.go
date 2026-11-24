@@ -152,6 +152,15 @@ type teamRole struct {
 	derived  bool
 	joinedAt time.Time
 	startID  string
+	// paused says the person paused this membership ([teams.Member.Paused]):
+	// team traffic starts no turn here until they resume it (team_pause.go).
+	paused bool
+	// standby says this membership was made without work to start on
+	// ([teams.Member.Standby]): its start line is its role's description and
+	// starts no turn.
+	standby bool
+	// roleName is what this member is in the team for ([teams.Member.Role]).
+	roleName string
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -441,6 +450,9 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			derived:     member.HandleDerived(),
 			joinedAt:    member.JoinedAt,
 			startID:     member.StartID,
+			paused:      member.Paused && team.Manager != member.Key,
+			standby:     member.Standby,
+			roleName:    strings.TrimSpace(member.Role),
 		}
 		role.dissolvable = role.manager && file.Dissolvable(team.ID)
 		if hasHome {
@@ -1696,7 +1708,7 @@ func teamManagerDelivery(role teamRole) string {
 	if !role.wakes {
 		return "This team's auto-wake is off: what you send, and your members' replies, wait for each conversation's next turn, so an idle member does not start on a directive until it next runs."
 	}
-	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. Members' replies to you, and their finishing, failing or asking, come back to you and start your turn when you are idle, so do not wait or poll for them."
+	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. team_send's answer says whether each member started: one the person paused does not start until they resume it, and work is under way only where the answer says so. Members' replies to you, and their finishing, failing or asking, come back to you and start your turn when you are idle, so do not wait or poll for them."
 }
 
 // teamRoster names the manager's members by handle, with the start of each
@@ -1719,7 +1731,11 @@ func teamRoster(role teamRole, file *teams.File) string {
 		if member.Handle != "" {
 			who = "@" + member.Handle
 		}
-		if word := strings.TrimSpace(member.Word); word != "" {
+		// The role is what the manager chooses a member by, so it comes before
+		// the title, which is only the start of whatever the member was first told.
+		if roleName := strings.TrimSpace(member.Role); roleName != "" {
+			who += ", " + cutRunesTeam(roleName, teamRosterWord)
+		} else if word := strings.TrimSpace(member.Word); word != "" {
 			who += " (" + cutRunesTeam(word, teamRosterWord) + ")"
 		}
 		if member.Independent {
@@ -1767,6 +1783,9 @@ func teamMemberRole(role teamRole) string {
 	said := fmt.Sprintf("You are %s in the team %q, which has a manager. "+
 		"Lines from the manager arrive marked \"◆ from manager\" and from teammates \"from @handle\"; none of them is the person, whose own words outrank the manager's. "+
 		"Report progress, findings and blockers with team_post, to the manager, a teammate or the room. A conflict you cannot settle with another member or team goes up with team_raise.", you, role.name)
+	if role.roleName != "" {
+		said += fmt.Sprintf(" Your role in this team: %s.", cutRunesTeam(role.roleName, teamRosterWord))
+	}
 	if role.questionsUp {
 		said += " Your clarifying questions (ask) go to your manager first, and its answer comes back marked \"◆ answered\"; permission prompts still go to the person."
 	}

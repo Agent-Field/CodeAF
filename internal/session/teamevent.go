@@ -154,8 +154,7 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if err != nil || !role.wakes {
 			continue
 		}
-		switch event.state {
-		case teams.StateFinished, teams.StateFailed, teams.StateAsking:
+		if teamEventWakesManager(event.state, event.text) && !(role.root && event.state == teams.StateIdle) {
 			// These wake the manager, so a manager nobody has open is opened
 			// (team_wakewatch.go).
 			a.rouseManager(profile, role, event.origin.provenance(role.key))
@@ -207,8 +206,16 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 		a.teamEventOwed(origin, teams.StateFailed, "failed: "+firstLineTeam(err.Error()))
 		return
 	}
-	if ctx.Err() != nil {
-		a.teamEventOwed(origin, teams.StateIdle, "stopped")
+	if door, stopped := stopCause(ctx); stopped {
+		// THE PERSON'S STOP IS SAID AS THE PERSON'S. The manager performed its
+		// own stop and knows of it; a turn the person ended is work the manager
+		// handed out ending without a report, which nothing else tells it
+		// ([teams.StoppedByPerson] wakes it, team_wakewatch.go).
+		text := "stopped"
+		if door == StopByPerson {
+			text = teams.StoppedByPerson
+		}
+		a.teamEventOwed(origin, teams.StateIdle, text)
 		return
 	}
 	a.teamEventOwed(origin, teams.StateFinished, "finished")
@@ -385,12 +392,22 @@ func teamBriefLine(role teamRole, entry teams.Entry) string {
 	if text == "" {
 		return ""
 	}
-	return teamBriefWord + teamNumber(entry) + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
+	word := teamBriefWord
+	if role.standby {
+		word = teamStandbyBriefWord
+	}
+	return word + teamNumber(entry) + ": " + indentAfterFirst(cutRunesTeam(text, teamBriefText))
 }
 
 // teamBriefWord opens the brief's line, beside "◆ from manager" and
 // "◆ directive from manager".
 const teamBriefWord = "◆ brief from manager"
+
+// teamStandbyBriefWord opens the start line of a member made on standby
+// ([teams.Member.Standby]). The same text that is an assignment to a started
+// member is a description of the role to this one, and a member told it under
+// "brief" began the work nobody had asked for yet, so the line says which it is.
+const teamStandbyBriefWord = "◆ your standing role from manager (what you are here for, not work to begin; work arrives as a directive)"
 
 // teamBriefChangedLine is a member's brief replaced in place (teams' brief.go),
 // told to that member only: "◆ brief changed by the person #12: …". It is the

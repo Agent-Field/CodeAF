@@ -149,4 +149,5 @@ Waiting. Inbox Done records that answer once. The chat keeps one crew formation
 fact, including when a create request is retried. "Edit" leaves the proposal
 open in Inbox Waiting, including immediately after the answer returns. A proposal
 card reaches the app after its Inbox item is available. "Keep it one agent"
-closes it with its own receipt.
+closes it with its own receipt. The helpers of a crew made this way join on
+standby: none starts until the manager sends it a directive.

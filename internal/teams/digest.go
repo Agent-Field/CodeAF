@@ -13,6 +13,11 @@ import (
 // Traffic. It is plain text cut to a character budget, and it is built only
 // from what the caller hands in, so the same inputs always give the same text.
 
+// StoppedByPerson is the text of a member's turn-ending event when the person,
+// and not its manager, stopped the turn. The manager is woken on it: work it
+// handed out ended without a report, and only this line says so.
+const StoppedByPerson = "stopped by the person"
+
 // Member states a caller reports in [MemberState].
 const (
 	StateRunning  = "running"
@@ -47,6 +52,7 @@ const (
 	digestFiles    = 5   // the most files named per member
 	digestQuestion = 160 // characters of a waiting question
 	digestText     = 200 // characters of one Traffic line's text
+	digestRole     = 60  // characters of a member's role name
 )
 
 // Digest is the text block for team's manager. states is keyed by conversation
@@ -62,7 +68,7 @@ func Digest(team Team, states map[string]MemberState, recent []Entry, budget int
 	}
 	fmt.Fprintf(&head, "Team %q: %d members, %s.\n", team.Name, len(team.Members), manager)
 	for _, m := range team.Members {
-		head.WriteString(memberLine(m, states[m.Key], m.Key == team.Manager))
+		head.WriteString(memberLine(m, states[m.Key], m.Key == team.Manager, lastWord(m, recent)))
 		head.WriteByte('\n')
 	}
 	text := head.String()
@@ -106,11 +112,52 @@ func address(m Member) string {
 	return "[" + m.Key + "]"
 }
 
-func memberLine(m Member, s MemberState, manager bool) string {
+// Words the digest says about a member beyond its state. They are the
+// manager's only account of why handed-out work is not moving, so each names
+// who caused it and what ends it.
+const (
+	// DigestPaused is a member the person paused ([Member.Paused]).
+	DigestPaused = "paused by the person; a directive waits until they resume it"
+	// DigestStandby is a member made without work that has not run yet
+	// ([Member.Standby]).
+	DigestStandby = "on standby; no work handed out yet"
+)
+
+// lastWord is what the recent traffic says about how a member's last handed-out
+// work went, "" when it says nothing worth a manager's attention: a directive
+// the member has not started on, or a turn the person stopped. It reads only
+// the lines the digest was given, newest first, and stops at the member's own
+// newest line.
+func lastWord(m Member, recent []Entry) string {
+	if m.Handle == "" {
+		return ""
+	}
+	for i := len(recent) - 1; i >= 0; i-- {
+		e := recent[i]
+		switch {
+		case e.From == m.Handle:
+			if e.Kind == KindEvent && e.State == StateIdle && e.Text == StoppedByPerson {
+				return "its last turn was " + StoppedByPerson
+			}
+			return ""
+		case e.Kind == KindEvent && e.From == FromManager && e.Member == m.Key && e.State == StateRunning:
+			// The wake line: the member started on what it was sent.
+			return ""
+		case e.Kind == KindDirective && e.From == FromManager && e.Addressed(m.Handle):
+			return "has not started on " + ThreadNumber(e.ID)
+		}
+	}
+	return ""
+}
+
+func memberLine(m Member, s MemberState, manager bool, last string) string {
 	var b strings.Builder
 	b.WriteString("- " + address(m))
 	if manager {
 		b.WriteString(" (manager)")
+	}
+	if role := oneLine(m.Role); role != "" && !manager {
+		b.WriteString(", " + cutRunes(role, digestRole))
 	}
 	if title := oneLine(m.Word); title != "" {
 		fmt.Fprintf(&b, " %q", title)
@@ -122,7 +169,19 @@ func memberLine(m Member, s MemberState, manager bool) string {
 	if s.ReportsTo != "" && state == StateRunning {
 		state = "busy for " + s.ReportsTo
 	}
+	switch {
+	case manager:
+	case m.Paused && (state == StateIdle || state == "unknown"):
+		state = DigestPaused
+	case m.Paused:
+		state += ", " + DigestPaused
+	case m.Standby && s.SinceActive == 0 && (state == StateIdle || state == "unknown"):
+		state = DigestStandby
+	}
 	b.WriteString(": " + state)
+	if last != "" && !manager {
+		b.WriteString(", " + last)
+	}
 	if m.Independent {
 		b.WriteString(", independent; notes only")
 	} else if s.ReportsTo != "" {

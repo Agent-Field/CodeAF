@@ -91,7 +91,7 @@ var teamReadSchema = `{"type":"object","properties":{"handle":{"type":"string","
 	teamArgSchema + `},"required":["handle"],"additionalProperties":false}`
 
 const teamSendDescription = "Send a message to one member, to several (one message with every handle in to), or to everyone in the team. It arrives at the start of the member's next step, marked as from the manager, never as the person. " +
-	"kind note is information and waits for the member's next turn; kind directive is an instruction the member should follow unless the person said otherwise in its own conversation, and it starts an idle member's turn. " +
+	"kind note is information and waits for the member's next turn; kind directive is an instruction the member should follow unless the person said otherwise in its own conversation, and it starts an idle member's turn. The answer to a directive says, for each member, whether it started, is already in a turn, or did not start and why (the person paused it, the team is at its cap, it could not be opened); report work as under way only for a member the answer says started. " +
 	"A member busy in a long tool call reads it when that returns; use team_stop to end its turn first."
 
 const teamSendSchema = `{"type":"object","properties":{"to":{"type":"string","description":"A member's handle, several separated by spaces, or everyone."},` +
@@ -503,18 +503,27 @@ func (a *Agent) teamSendTool(ctx context.Context, args json.RawMessage) (said st
 	}
 	if kind == teams.KindDirective {
 		// A DIRECTIVE WAKES, and a member nobody has open is opened so it can
-		// (team_wakewatch.go). The answer says what will happen and no more:
-		// whether the wake ran is the Traffic's to say, where the person reads it.
-		a.teamRouse(a.config.teamProfile(), team, role.wakes, local, id, prov)
+		// (team_wakewatch.go); a member the person paused is left as it is and
+		// the directive is held for it (team_pause.go). The answer then says
+		// what became of the directive for each member (team_sendoutcome.go).
+		profile := a.config.teamProfile()
+		ready, paused := splitPaused(team, local)
+		for _, member := range paused {
+			a.teamSay(profile, team.ID, teams.Entry{
+				Kind: teams.KindEvent, From: teams.FromSystem, To: member.Handle, Member: member.Key,
+				State: teams.StateIdle, Text: teamHeldPausedText(member.Handle), Answers: id, Provenance: prov,
+			})
+		}
+		a.teamRouse(profile, team, role.wakes, ready, id, prov)
+		sent := fmt.Sprintf("Sent a directive to %s.", who)
 		if len(shared) > 0 {
-			return fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you: %s. Not sent to %s: they report to another team's manager; send them a note.",
-				len(entry.Recipients()), team.Name, who, strings.Join(shared, ", ")), false, nil
+			sent = fmt.Sprintf("Sent a directive to %d member(s) of %q who report to you: %s. Not sent to %s: they report to another team's manager; send them a note.",
+				len(entry.Recipients()), team.Name, who, strings.Join(shared, ", "))
 		}
 		if !role.wakes {
-			return fmt.Sprintf("Sent a directive to %s. This team's auto-wake is off, so a member that is idle reads it when its conversation next runs; a busy one at its next step.", who), false, nil
+			return sent + " This team's auto-wake is off, so a member that is idle reads it when its conversation next runs; a busy one at its next step.", false, nil
 		}
-		return fmt.Sprintf("Sent a directive to %s. A member that is idle starts a turn on it now, and a busy one reads it at its next step. "+
-			"Their replies and their finishing wake you when they arrive, so there is no need to wait or poll; the traffic shows each wake.", who), false, nil
+		return sent + " " + a.teamSendOutcome(ctx, profile, team, id, ready, paused), false, nil
 	}
 	return fmt.Sprintf("Sent a note to %s. It arrives at the start of their next step; a note wakes nobody, so a member that is idle reads it when its conversation next runs.", who), false, nil
 }

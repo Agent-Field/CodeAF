@@ -57,11 +57,23 @@ func (b *appBackend) Member(verb string, ask appwire.MemberAsk) (appwire.CrewMem
 		case "stop":
 			err = b.memberStop(t, m, agent, ask.Reason)
 		case "pause":
-			if err = b.memberStop(t, m, agent, "paused"); err == nil {
-				err = b.layerMember(crew, agent, func(x *appMemberExtra) { x.Paused = true })
+			// THE PAUSE IS THE TEAM'S RECORD (teamstore's Member.Paused), written
+			// before the running turn is stopped: the member's own session reads
+			// it and starts nothing on the crew's traffic until the person
+			// resumes it, the manager's view of its crew says "paused", and a
+			// directive sent meanwhile waits on the log.
+			if err = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, true) }); err == nil {
+				err = b.memberStop(t, m, agent, "paused")
 			}
 		case "resume":
-			err = b.layerMember(crew, agent, func(x *appMemberExtra) { x.Paused = false })
+			if err = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, false) }); err == nil && m.Paused {
+				// The resume is said on the crew's log beside the pause. What
+				// waited there starts the member's turn on its session's next look.
+				err = appEngineErrorOrNil(teamstore.AppendTraffic(b.crewProfile(), t.ID, teamstore.Entry{
+					Kind: teamstore.KindEvent, From: teamstore.FromYou, To: m.Handle, ToKey: m.Key, Member: m.Key,
+					State: teamstore.StateIdle, Text: appResumedText,
+				}))
+			}
 		case "remove":
 			if m.Key == t.Manager {
 				return appwire.CrewMember{}, appwire.Errorf(appwire.CodeBadParams, "the manager is not removed; make another member manager first")
@@ -89,6 +101,18 @@ func (b *appBackend) Member(verb string, ask appwire.MemberAsk) (appwire.CrewMem
 		return appwire.CrewMember{}, err
 	}
 	return b.memberNow(crew, agent)
+}
+
+// appResumedText is the crew log's word for the person lifting a pause, beside
+// the "paused" a pause writes.
+const appResumedText = "resumed"
+
+// appEngineErrorOrNil is [appEngineError] that leaves no error alone.
+func appEngineErrorOrNil(err error) error {
+	if err == nil {
+		return nil
+	}
+	return appEngineError(err)
 }
 
 // memberNow is a member as its crew shows it now.
@@ -322,6 +346,17 @@ func (b *appBackend) memberRole(crew, agent, role, instructions, model string) e
 	if err != nil {
 		return appEngineError(err)
 	}
+	// THE ROLE'S NAME IS THE TEAM'S RECORD TOO (teamstore's Member.Role), which
+	// is where the member's own session and its manager read it: the member is
+	// told its role in its team note, and the manager sees it beside the handle
+	// when it chooses whom to hand work to.
+	if t, _, err := b.crewTeam(crew); err == nil {
+		if m, ok := b.crewMemberOf(t, agent); ok && m.Role != given.Name {
+			if err := b.crewEdit(func(f *teamstore.File) error { return f.SetRole(crew, m.Key, given.Name) }); err != nil {
+				return err
+			}
+		}
+	}
 	return b.tellRole(agent, crew, given)
 }
 
@@ -461,8 +496,10 @@ var appProposalAsk = fmt.Sprintf("Propose a crew for the work in this conversati
 	`{"t":"shape","size":3,"teams":1,"why":"why this shape"}`+" (size counts helpers).\n"+
 	`{"t":"name","name":"the crew's name","goal":"one line"}`+"\n"+
 	`{"t":"team","id":"stream-id","name":"team name","lead":"lead-handle"}`+" (only for an org with 2+ teams).\n"+
-	`{"t":"member","handle":"role-word","role":"short role name","brief":"whole assignment","team":"stream-id","reports_to":"manager"}`+"\n"+
+	`{"t":"member","handle":"role-word","role":"short role name","brief":"what this helper is responsible for","team":"stream-id","reports_to":"manager"}`+"\n"+
 	"Write members top-down, breadth first. reports_to is manager or an earlier team lead's handle; omit team for a single crew. "+
+	"Write each brief as the helper's standing responsibility, not as a task under way: an accepted crew joins on standby, nobody starts on the brief, "+
+	"and you hand out the first work with team_send when the person asks for it. "+
 	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleWordMax, teamstore.HandleWordMax)
 
 // appNoProposal is the quiet line a conversation carries when what came back
@@ -905,9 +942,11 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 	}
 	err = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		for _, h := range p.Helpers {
-			if h.Role == "" && h.Model == "" && h.ReportsTo == "" {
-				continue
-			}
+			// EVERY HELPER OF AN ACCEPTED PROPOSAL IS MADE ON STANDBY: it joins
+			// with its role and starts nothing. The proposal was written for a
+			// crew to exist, and starting each helper on its line of the
+			// proposal began work the person had not asked for; the manager
+			// hands out the first work when they do.
 			role := ""
 			if h.Role != "" {
 				var found *appwire.Role
@@ -928,7 +967,7 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 			if f.Pending == nil {
 				f.Pending = map[string]appPendingStart{}
 			}
-			f.Pending[appPendingKey(id, h.Handle)] = appPendingStart{Role: role, Model: h.Model, ReportsTo: h.ReportsTo}
+			f.Pending[appPendingKey(id, h.Handle)] = appPendingStart{Role: role, RoleName: h.Role, Model: h.Model, ReportsTo: h.ReportsTo, Standby: true}
 		}
 		return nil
 	})
@@ -970,7 +1009,9 @@ func (b *appBackend) createFromProposal(ask appwire.CrewCreate) (appwire.Crew, e
 		if seated != "" {
 			if err := b.crewLayer().write(func(f *appCrewLayerFile) error {
 				pending := f.Pending[appPendingKey(id, helper.Handle)]
-				f.member(id, seated).Role = pending.Role
+				if pending.Role != "" {
+					f.member(id, seated).Role = pending.Role
+				}
 				b.roleCopyLocked(f, pending.Role)
 				delete(f.Pending, appPendingKey(id, helper.Handle))
 				return nil

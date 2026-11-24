@@ -19,6 +19,10 @@ func TeamOpenPending(profile, transcript string, file *teams.File, defaults team
 		if role.handle == "" && !role.manager {
 			continue
 		}
+		// A paused membership holds its traffic unopened (team_pause.go).
+		if role.paused && !role.manager {
+			continue
+		}
 		cursor, ok := probe.team.cursors[role.id]
 		if !ok {
 			cursor = probe.firstTeamCursor(profile, role)
@@ -49,7 +53,9 @@ func pendingTeamEntry(profile string, role teamRole, entry teams.Entry) bool {
 		return false
 	}
 	if !role.manager && entry.Kind == teams.KindStart && entry.To == role.handle {
-		return true
+		// A standby start is a role to read at the first turn, not work that
+		// needs the conversation open.
+		return !role.standby
 	}
 	return teamWakes(role, entry) || teamPacketWakes(profile, role, entry) || teamLine(role, entry) != ""
 }

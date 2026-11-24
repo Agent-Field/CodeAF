@@ -148,6 +148,10 @@ type teamWatch struct {
 	held   bool
 	// capSaid is the last cap hold the Traffic was told of.
 	capSaid string
+	// pausedHeld is the teams whose traffic asked for this member's turn while
+	// the person had it paused (team_pause.go). The lines stay undelivered on
+	// the log, and the turn they asked for starts when the pause is lifted.
+	pausedHeld map[string]bool
 }
 
 // personTurns counts turns the person started, for the loop breaker. It is
@@ -219,11 +223,17 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 			}
 			// Membership can arrive after the fresh-session watch expires.
 			// Its own start still owes this member its first turn.
-			if a.teamOwnStart(role, entry) || teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
+			if a.teamOwnStartWakes(role, entry) || teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
 				waking = append(waking, entry)
 			}
 		}
-		if len(waking) == 0 {
+		// A PAUSED MEMBER IS NOT WOKEN, and what would have woken it is not
+		// consumed: the hold is remembered, and the turn starts on the tick
+		// that finds the pause lifted (team_pause.go).
+		if a.teamPauseHoldLocked(role, len(waking) > 0) {
+			continue
+		}
+		if len(waking) == 0 && !a.teamPauseReleasedLocked(role) {
 			continue
 		}
 		if role.manager {
@@ -417,6 +427,20 @@ func (a *Agent) teamWatchReadLocked(profile string, role teamRole) []teams.Entry
 	return entries
 }
 
+// teamEventWakesManager reports whether a member's event starts its manager's
+// turn: finishing, failing, asking, and a turn the person stopped. The last is
+// the one ending that is not the manager's own doing and carries no report, so
+// without the wake a manager waited on work that was never going to arrive.
+func teamEventWakesManager(state, text string) bool {
+	switch state {
+	case teams.StateFinished, teams.StateFailed, teams.StateAsking:
+		return true
+	case teams.StateIdle:
+		return text == teams.StoppedByPerson
+	}
+	return false
+}
+
 // teamWakes reports whether an entry starts this conversation's turn when it
 // is idle: a directive from the manager to its handle or to everyone, for a
 // member; a member's post to the manager, or a member's finished, failed or
@@ -443,10 +467,12 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 		case teams.KindNote:
 			return entry.To == teams.ToManager && strings.TrimSpace(entry.Text) != ""
 		case teams.KindEvent:
-			switch entry.State {
-			case teams.StateFinished, teams.StateFailed, teams.StateAsking:
-				return true
+			// The global manager is not woken by a stop the person made in a
+			// conversation they were talking to directly.
+			if role.root && entry.State == teams.StateIdle {
+				return false
 			}
+			return teamEventWakesManager(entry.State, entry.Text)
 		}
 		return false
 	}
@@ -742,6 +768,10 @@ func teamEventLines(entries []teams.Entry) []string {
 			lines = append(lines, who+" "+text)
 		case teams.StateAsking:
 			lines = append(lines, who+" is waiting on the person: "+strings.TrimPrefix(text, "asks: "))
+		case teams.StateIdle:
+			if text == teams.StoppedByPerson {
+				lines = append(lines, who+"'s turn was "+teams.StoppedByPerson+" before it finished; it reported nothing, so what you handed it is not done")
+			}
 		}
 	}
 	return lines
