@@ -72,7 +72,18 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 		t.Fatalf("discovery must be private: %v, %v", info, err)
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
-	response, err := client.Get(address + "/v1/queue")
+	// A team factory (an access_token makes it one) no longer takes a request
+	// from its own computer on trust; a local client sends the token it finds in
+	// the discovery file, as every codeaf client does.
+	get := func(path string) (*http.Response, error) {
+		request, err := http.NewRequest(http.MethodGet, address+path, nil)
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Authorization", "Bearer "+discovery.Token)
+		return client.Do(request)
+	}
+	response, err := get("/v1/queue")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +92,7 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if err != nil || response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("command fixture")) {
 		t.Fatalf("queue: status=%d body=%s error=%v", response.StatusCode, body, err)
 	}
-	response, err = client.Get(address + "/v1/audit")
+	response, err = get("/v1/audit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +119,7 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if after := readFactoryTestFile(t, discoveryPath); !bytes.Equal(after, originalDiscovery) {
 		t.Fatal("second service replaced discovery")
 	}
-	response, err = client.Get(address + "/v1/events")
+	response, err = get("/v1/events")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -126,7 +126,7 @@ func TestFactoryAssigneesRunnerPublishesTeamAndSolo(t *testing.T) {
 				}
 				seam := factory.LocalSeam(g.st, time.Now(), factory.WithRunner(lease.NewDoors(desk)))
 				seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "assignee"}, nil }
-				h := serve.New(seam, serve.Config{Mode: mode, OperatorLogin: "server-owner", Store: g.st, Record: history, PullWait: time.Millisecond, Now: func() time.Time { return time.Unix(0, clock.Load()) }})
+				h := serve.New(seam, serve.Config{Mode: mode, LoopbackTrust: boolPtr(true), OperatorLogin: "server-owner", Store: g.st, Record: history, PullWait: time.Millisecond, Now: func() time.Time { return time.Unix(0, clock.Load()) }})
 				server := httptest.NewServer(h)
 				t.Cleanup(func() { server.Close(); h.Close() })
 				approve := func() *httptest.ResponseRecorder {
