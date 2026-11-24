@@ -276,12 +276,87 @@ or your environment. A service that is given a key as a mounted file can use `AG
 `OPENROUTER_API_KEY_FILE` or `GH_TOKEN_FILE` instead. Treat `.env` like a password file (`setup.sh` writes it
 mode 600); it is ignored by git and by the image build.
 
+## Published images
+
+Every image of this stack is built by `.github/workflows/org-images.yml` on each push to `dev` (and on a manual run), scanned
+for leaks, and, in a repository that has Docker Hub credentials, pushed. You can run the stack from them without building
+anything, and the Railway template (`railway/make-template.sh`) names them, because a Railway template cannot take a
+repository from an organization that has not installed Railway's GitHub App but can take public images.
+
+| Image (Docker Hub, namespace `agentfield`) | What it is | Compose service |
+| --- | --- | --- |
+| `agentfield/codeaf-org` | codeaf **built from source at the tagged commit** with `make build` (the organization server, the factory runner and the hosted chats' sessionhost; the first argument or `CODEAF_ROLE` picks the role) | `codeaf`, `runner`, `sessionhost` |
+| `agentfield/codeaf-org-agentfield` | the published AgentField control plane, pinned by digest (built with `-tags "embedded sqlite_fts5"`), plus a health check and a volume hand-off | `agentfield` |
+| `agentfield/codeaf-org-swe-af` | SWE-AF at the commit `swe-af.Dockerfile` pins | `swe-af` |
+| `agentfield/codeaf-org-pr-af` | PR-AF at the commit `pr-af.Dockerfile` pins | `pr-af` |
+| `agentfield/codeaf-org-modelstub`, `agentfield/codeaf-org-gitstub` | the keyless smoke test's scripted model and git host | `modelstub`, `gitstub` (profile `stub`) |
+
+The names all start with `codeaf-org` so none can be mistaken for `agentfield/control-plane`, which `codeaf-org-agentfield` is
+built on. Tags: `<12-character commit id>` is one exact build and never moves; `dev` moves with every push to `dev`;
+`branch-<name>` moves with every push to that branch (a `/` in the branch name becomes `-`). Each of those is a multi-platform image
+(`linux/amd64` and `linux/arm64`); the single-platform images it is made from stay as `<12-character commit id>-amd64` and `-arm64`.
+
+**Run from them.** `images.env` points the `*_ORG_IMAGE` variables at the published names; `.env` still holds your keys:
+
+```sh
+docker compose --env-file .env --env-file images.env pull
+docker compose --env-file .env --env-file images.env up -d --no-build
+ORG_TAG=<12-character commit id> docker compose --env-file .env --env-file images.env pull   # one exact build: how to run it for real
+```
+
+Without `images.env`, `docker compose up -d --build` still builds everything here, as before.
+
+**Your own registry.** Set `ORG_REGISTRY` (a Docker Hub namespace or a registry path such as `ghcr.io/my-org`) when you pull. To
+have the workflow publish there, give the repository the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` and, for a
+namespace other than `agentfield`, the variable `DOCKERHUB_NAMESPACE`. Without both secrets the workflow still builds and
+scans every image and pushes nothing. To build the codeaf image yourself from the repository root:
+
+```sh
+docker build -f deploy/org/codeaf.Dockerfile --build-arg ORG_DIR=deploy/org --build-arg CODEAF_BINARY_FROM=source \
+  --build-arg SOURCE_COMMIT=$(git rev-parse HEAD) --label org.opencontainers.image.revision=$(git rev-parse HEAD) -t codeaf-org/codeaf:local .
+```
+
+**Check which commit an image is.** The workflow labels every image with the commit it was built from, and `codeaf version`
+inside the codeaf image names it too:
+
+```sh
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' agentfield/codeaf-org:dev
+docker run --rm --entrypoint codeaf agentfield/codeaf-org:dev version
+```
+
+The label is the full commit id; compare it with `git rev-parse` on a checkout, or open `https://github.com/Agent-Field/codeaf/commit/<id>`.
+An image built any other way has the label only if its builder passed `--label` as above.
+
+**The leak gate.** The workflow runs `deploy/org/gate/image-gate.py` on each built image BEFORE any push, and a finding fails
+the job. The image it scanned is the image it pushes: nothing is rebuilt between the two. It reads the image's layers (including
+a layer a later layer deleted), its configuration and its build history, and never prints a value it finds: only the check,
+the layer, the path, the rule, and the first four characters and length of the match.
+
+| Check | What fails |
+| --- | --- |
+| A1 | a finding of trivy's secret scanner (pinned by digest; its built-in rules plus `gate/trivy-secret.yaml`, which adds OpenRouter and Anthropic keys) |
+| A2 | a key or token shape (OpenRouter, Anthropic, OpenAI, GitHub, AWS, Google, Slack, Stripe, JWT, a PEM private-key block, a registry `auth` blob) in the bytes of any file of any layer, binaries included. Skipped: package docs, man pages, locale and zoneinfo data, package databases, CA bundles, the Python and Perl standard libraries |
+| B1 | an `ENV` or label whose name says secret (key, token, secret, password, credential, auth) with a value that is not empty, a path, a number or a boolean, or any value shaped like a key |
+| B2 | the build history shows an `ARG` whose name says secret (valued or not: a secret is never a build argument), a `NAME=value` that B1 would refuse, or a key shape |
+| C1 | `railway.app`, `up.railway`, `railway.internal`, or credentials in a `localhost` URL anywhere, compiled programs included; any other `.internal` host name (except `metadata.google.internal` and Docker's own) and any `10.`, `192.168.` or `172.16`-`172.31.` address in the TEXT files our build added, outside the distribution's own trees (`/usr/lib`, `/usr/share`, `/bin`, `/usr/bin`, ...). Compiled programs come from public source, so an example address in an error message is not a leak; a range with a `/prefix` is not an address |
+| C2 | the image's revision label is not the commit that was built |
+
+`gate/selftest.sh` proves the gate fails what it should: it builds throwaway images with fake keys, a key in a deleted layer, a
+secret `ENV`, label and build argument, and private hosts planted in them, requires each to fail the check meant to catch it, and
+requires a clean image (with a network range, the metadata host and a documentation URL in it) to pass. `gate/context-check.sh`
+plants `.env` files, key files and a profile folder across a copy of the repository and requires that none enters the codeaf
+build context, which is deny-by-default (`codeaf.Dockerfile.dockerignore`; the other Dockerfiles share `.dockerignore`). Both run
+in CI before any image is built, beside `gate/pins-check.sh`, which fails a Dockerfile whose base image or syntax frontend has no
+digest. To move a pin, resolve the tag again (`docker buildx imagetools inspect <tag> --format '{{.Manifest.Digest}}'`) and change
+tag and digest together.
+
 ## Railway
 
 The same Dockerfiles run on Railway as one project: five services, a volume on each, private networking
 between them, and a public domain on `codeaf` only. Nothing needs Compose there; each service builds its own
-Dockerfile from this folder. (A one-click Railway template of this is the next step; until then it is built by hand,
-below, and the POC that proved it ran the keyless smoke test on itself.)
+Dockerfile from this folder. (A Railway template needs images, not a repository: `railway/make-template.sh` makes a draft one
+from the published images above, and the table below is the same configuration by hand. The POC that proved the Dockerfile route
+ran the keyless smoke test on itself.)
 
 Create an empty project, then one service per row. For the four built services choose **GitHub repo**, set
 **Root Directory** to `deploy/org`, and set the variable `RAILWAY_DOCKERFILE_PATH` (or the service's
