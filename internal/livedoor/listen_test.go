@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -164,6 +166,89 @@ func TestAListenerServesAChatItHoldsAndRefusesOneItDoesNotAndWritesItsRegistryFi
 	}
 	if err := ln.Close(); err != nil {
 		t.Fatalf("second Close() failed: %v", err)
+	}
+}
+
+// TestCloseChatEndsEveryViewerOfThatChatAndNoOtherAndHoldsUnderASymlinkedSpelling
+// verifies the phase-1 completion of lane C: when a holder lets one chat go,
+// every connection that opened THAT chat ends (a viewer reads it as the holder
+// having gone) and a connection to any other chat of the same holder is left
+// alone, whichever spelling of the path either side used.
+func TestCloseChatEndsEveryViewerOfThatChatAndNoOtherAndHoldsUnderASymlinkedSpelling(t *testing.T) {
+	homeDir := shortTempDir(t)
+	physical := filepath.Join(homeDir, "physical")
+	if err := os.MkdirAll(physical, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(homeDir, "linked")
+	if err := os.Symlink(physical, linked); err != nil {
+		t.Skipf("symlinks are not available here: %v", err)
+	}
+	chatA := filepath.Join(physical, "a.jsonl")
+	chatB := filepath.Join(physical, "b.jsonl")
+	held := func(file string) *remote.Session {
+		sess := remote.NewSession(&remote.Engine{Agent: &minimalWrappedAgent{title: file}, Workspace: "/work/p", SessionFile: file}, true)
+		t.Cleanup(func() { _ = sess.Close() })
+		return sess
+	}
+	sessions := map[string]*remote.Session{chatKey(chatA): held(chatA), chatKey(chatB): held(chatB)}
+
+	tr := UnixTransport()
+	ln, err := Listen(homeDir, func(transcript string) (*remote.Session, bool) {
+		sess, ok := sessions[chatKey(transcript)]
+		return sess, ok
+	}, tr)
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	sock := filepath.Join(homeDir, "v3", "live", strconv.Itoa(os.Getpid())+".sock")
+
+	view := func(file string) *remote.Client {
+		t.Helper()
+		conn, err := tr.Dial(context.Background(), sock)
+		if err != nil {
+			t.Fatalf("Dial: %v", err)
+		}
+		client, err := remote.Dial(conn, "laptop", remote.Hello{Workspace: "/work/p", Session: file, Join: true})
+		if err != nil {
+			_ = conn.Close()
+			t.Fatalf("remote.Dial %s: %v", file, err)
+		}
+		t.Cleanup(func() { _ = client.Close() })
+		return client
+	}
+	// Two viewers of chat A and one of chat B. The viewers name the chat the way
+	// the session runs it; it is the HOLDER'S call that is spelled through the
+	// symlink below, because a holder may know its chat by another spelling than
+	// the one a viewer's hello carried.
+	a1 := view(chatA)
+	a2 := view(chatA)
+	b := view(chatB)
+
+	if n := ln.CloseChat(filepath.Join(linked, "a.jsonl")); n != 2 {
+		t.Fatalf("CloseChat ended %d connections, want the 2 viewers of that chat", n)
+	}
+	for name, client := range map[string]*remote.Client{"first viewer of A": a1, "second viewer of A": a2} {
+		deadline := time.Now().Add(5 * time.Second)
+		for client.Err() == nil && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if client.Err() == nil {
+			t.Fatalf("%s was still connected after its chat was closed", name)
+		}
+	}
+	if err := b.Err(); err != nil {
+		t.Fatalf("a viewer of another chat was ended with the first: %v", err)
+	}
+	if _, err := b.Ping(); err != nil {
+		t.Fatalf("the other chat's viewer cannot call: %v", err)
+	}
+	if n := ln.CloseChat(filepath.Join(physical, "unknown.jsonl")); n != 0 {
+		t.Fatalf("CloseChat of a chat nobody opened ended %d connections", n)
+	}
+	if n := ln.CloseChat(""); n != 0 {
+		t.Fatalf("CloseChat of nothing ended %d connections", n)
 	}
 }
 

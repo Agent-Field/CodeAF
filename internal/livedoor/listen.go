@@ -35,9 +35,12 @@ type Listener struct {
 	jsonPath string
 	sockPath string
 
-	mu        sync.Mutex
-	closed    bool
-	conns     map[net.Conn]struct{}
+	mu     sync.Mutex
+	closed bool
+	// conns is every accepted connection, each with the chat its hello named
+	// ("" until that hello has been resolved), which is what lets CloseChat end
+	// one chat's viewers and no others.
+	conns     map[net.Conn]string
 	wg        sync.WaitGroup
 	closeOnce sync.Once
 }
@@ -92,7 +95,7 @@ func Listen(homeDir string, open func(transcript string) (*remote.Session, bool)
 		open:     open,
 		jsonPath: jsonPath,
 		sockPath: sockPath,
-		conns:    make(map[net.Conn]struct{}),
+		conns:    make(map[net.Conn]string),
 	}
 	l.wg.Add(1)
 	guard.Go("livedoor.listen.accept", l.acceptLoop)
@@ -140,7 +143,7 @@ func (l *Listener) acceptLoop() {
 			_ = conn.Close()
 			return
 		}
-		l.conns[conn] = struct{}{}
+		l.conns[conn] = ""
 		l.wg.Add(1)
 		l.mu.Unlock()
 
@@ -159,15 +162,83 @@ func (l *Listener) acceptLoop() {
 					}
 					target := strings.TrimSpace(hello.Session)
 					if target != "" && l.open != nil {
+						// THE CONNECTION IS FILED UNDER ITS CHAT BEFORE THE CHAT IS
+						// ASKED FOR, and unfiled again if the answer is no. The
+						// holder lets a chat go (drops it from what open answers)
+						// and only then calls CloseChat, so a hello that lands in
+						// between is either filed in time to be closed or refused.
+						l.file(conn, target)
 						if sess, ok := l.open(target); ok && sess != nil {
 							return sess, nil
 						}
+						l.file(conn, "")
 					}
 					return nil, errors.New("that conversation is not open here")
 				},
 			})
 		})
 	}
+}
+
+// file records which chat a connection opened, under the spelling CloseChat
+// compares by.
+func (l *Listener) file(conn net.Conn, chat string) {
+	key := ""
+	if chat != "" {
+		key = chatKey(chat)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.conns[conn]; ok {
+		l.conns[conn] = key
+	}
+}
+
+// CloseChat ends every viewer connection this listener has handed to chat, and
+// only those, and says how many it ended. IT IS WHAT A HOLDER CALLS WHEN IT LETS
+// A CHAT GO: a closed remote.Session tells its attached windows nothing and
+// leaves their pipes open, while the live door's router reads the end of the
+// holder's local connection as the holder having gone and ends the viewer's
+// channel with `holder-gone`, the word every viewer already says for it. Without
+// this a viewer of a chat the holder closed would sit on a view nobody feeds.
+//
+// The chat is compared by its physical path, so a symlinked spelling (the macOS
+// temporary folder is one) names the same chat the holder's own spelling does.
+func (l *Listener) CloseChat(chat string) int {
+	key := chatKey(chat)
+	if key == "" {
+		return 0
+	}
+	l.mu.Lock()
+	var doomed []net.Conn
+	for c, k := range l.conns {
+		if k == key {
+			doomed = append(doomed, c)
+		}
+	}
+	l.mu.Unlock()
+	for _, c := range doomed {
+		_ = c.Close()
+	}
+	return len(doomed)
+}
+
+// chatKey is the one spelling of a transcript path the listener compares by: the
+// cleaned path with every symlink resolved, falling back to the resolved folder
+// for a file that does not exist yet.
+func chatKey(transcript string) string {
+	transcript = strings.TrimSpace(transcript)
+	if transcript == "" {
+		return ""
+	}
+	path := filepath.Clean(transcript)
+	if physical, err := filepath.EvalSymlinks(path); err == nil {
+		return physical
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		return filepath.Join(dir, filepath.Base(path))
+	}
+	return path
 }
 
 func writeRegistryAtomic(dir, jsonPath string, entry registryEntry) error {

@@ -1,11 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"errors"
-	"net"
 	"path/filepath"
 	"sync"
 
@@ -56,9 +52,6 @@ type appDeskHost struct {
 	// chats the way it did, instead of retrying on every chat.
 	failed   bool
 	sessions map[string]*remote.Session
-	// viewing is the connections other computers hold to each chat, by the chat's
-	// key, so letting a chat go can end them ([appDeskHost.endViewers]).
-	viewing map[string]map[*deskConn]struct{}
 }
 
 // locked runs f under the door's lock, which is released from a defer even if f
@@ -77,7 +70,6 @@ func newAppDeskHost() *appDeskHost {
 	return &appDeskHost{
 		listen:   livedoor.Listen,
 		sessions: map[string]*remote.Session{},
-		viewing:  map[string]map[*deskConn]struct{}{},
 	}
 }
 
@@ -113,7 +105,7 @@ func (h *appDeskHost) ready() bool {
 	if h.failed {
 		return false
 	}
-	l, err := h.listen(home.Dir(), h.lookup, deskTransport{inner: livedoor.UnixTransport(), host: h})
+	l, err := h.listen(home.Dir(), h.lookup, livedoor.UnixTransport())
 	if err != nil {
 		h.failed = true
 		return false
@@ -133,9 +125,8 @@ func (h *appDeskHost) lookup(transcript string) (*remote.Session, bool) {
 	key := appDeskKey(transcript)
 	var sess *remote.Session
 	h.locked(func() { sess = h.sessions[key] })
-	// THE SESSION IS ASKED OUTSIDE THIS LOCK. Its own lock can be held by a
-	// path that closes a viewer's connection, and closing one takes this lock
-	// ([deskConn.Close]); asking while holding it would be the other order.
+	// THE SESSION IS ASKED OUTSIDE THIS LOCK, so that no order between the
+	// door's lock and the session's own is ever taken.
 	if sess == nil || sess.Ended() {
 		return nil, false
 	}
@@ -288,134 +279,15 @@ func (b *appBackend) deskViewed(a *appAgent) bool {
 // connection as "the holder is gone", ends the channel with that reason, and the
 // viewer's roaming client redials and finds the chat not running.
 //
-// SO THE DOOR KEEPS THE CONNECTIONS IT HAS HANDED TO EACH CHAT. The listener
-// accepts them without knowing which chat each is for until its hello has been
-// read, so the transport it is given wraps every accepted connection and reads
-// the hello as it goes past (it is the first frame the viewer sends, it is
-// passed on unchanged, and nothing else is looked at).
-
-// deskTransport is the unix transport with every accepted connection watched.
-type deskTransport struct {
-	inner livedoor.Transport
-	host  *appDeskHost
-}
-
-func (t deskTransport) Listen(addr string) (net.Listener, error) {
-	ln, err := t.inner.Listen(addr)
-	if err != nil {
-		return nil, err
-	}
-	return deskListener{Listener: ln, host: t.host}, nil
-}
-
-func (t deskTransport) Dial(ctx context.Context, addr string) (net.Conn, error) {
-	return t.inner.Dial(ctx, addr)
-}
-
-type deskListener struct {
-	net.Listener
-	host *appDeskHost
-}
-
-func (l deskListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	return &deskConn{Conn: conn, host: l.host}, nil
-}
-
-// deskConn is one viewer's connection to a chat of this desktop. Read is called
-// by one goroutine, the server's reader, so the hello scan needs no lock.
-type deskConn struct {
-	net.Conn
-	host    *appDeskHost
-	head    []byte
-	scanned bool
-	// key is the chat this connection was opened for, set once its hello has
-	// been read. It is written and read under the door's lock, because Close
-	// can come from another goroutine than the reader.
-	key string
-	// ended says Close has run, so a hello read after it files nothing.
-	ended bool
-}
-
-// appDeskHelloMost is how much of a connection's start is looked at for its
-// hello. A first frame longer than this is not a hello the live door wrote
-// (livedoor.MaxLine is the cap it holds a line to), and the connection is
-// simply not tracked.
-const appDeskHelloMost = 64 << 10
-
-func (c *deskConn) Read(p []byte) (int, error) {
-	n, err := c.Conn.Read(p)
-	if !c.scanned && n > 0 {
-		c.head = append(c.head, p[:n]...)
-		for !c.scanned {
-			end := bytes.IndexByte(c.head, '\n')
-			if end < 0 {
-				if len(c.head) > appDeskHelloMost {
-					c.scanned = true
-				}
-				break
-			}
-			line := c.head[:end]
-			c.head = c.head[end+1:]
-			var frame remote.Frame
-			if json.Unmarshal(line, &frame) == nil && frame.Kind == "hello" {
-				c.scanned = true
-				var hello remote.Hello
-				if json.Unmarshal(frame.Payload, &hello) == nil && hello.Session != "" {
-					c.host.watch(c, appDeskKey(hello.Session))
-				}
-			}
-		}
-		if c.scanned {
-			c.head = nil
-		}
-	}
-	return n, err
-}
-
-// Close takes the connection off the door's list as it closes.
-func (c *deskConn) Close() error {
-	c.host.unwatch(c)
-	return c.Conn.Close()
-}
-
-func (h *appDeskHost) watch(c *deskConn, key string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if c.ended {
-		return
-	}
-	c.key = key
-	if h.viewing[key] == nil {
-		h.viewing[key] = map[*deskConn]struct{}{}
-	}
-	h.viewing[key][c] = struct{}{}
-}
-
-func (h *appDeskHost) unwatch(c *deskConn) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	c.ended = true
-	if set := h.viewing[c.key]; set != nil {
-		delete(set, c)
-		if len(set) == 0 {
-			delete(h.viewing, c.key)
-		}
-	}
-}
+// THE LISTENER KNOWS WHICH CONNECTION OPENED WHICH CHAT, so letting a chat go is
+// one call to [livedoor.Listener.CloseChat]. (Before it did, this file wrapped
+// the transport to read every connection's hello on its way past.)
 
 // endViewers closes every connection another computer holds to the chat on key.
 func (h *appDeskHost) endViewers(key string) {
-	var conns []*deskConn
-	h.locked(func() {
-		for c := range h.viewing[key] {
-			conns = append(conns, c)
-		}
-	})
-	for _, c := range conns {
-		_ = c.Close()
+	var l *livedoor.Listener
+	h.locked(func() { l = h.listener })
+	if l != nil {
+		l.CloseChat(key)
 	}
 }
