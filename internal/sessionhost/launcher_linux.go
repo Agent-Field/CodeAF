@@ -5,10 +5,13 @@ package sessionhost
 import (
 	"context"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -56,9 +59,15 @@ func engineEnv(cfg Config, folders layout, creds credentials) []string {
 	)
 	if cfg.Require == modeFenced {
 		env = append(env, "CODEAF_FENCE_REQUIRE=1")
+		if cfg.LimitPorts {
+			env = append(env, "CODEAF_FENCE_CONNECT_PORTS="+portList(connectPorts(cfg, creds)))
+		}
 	}
 	if cfg.Model != "" {
 		env = append(env, "CODEAF_MODEL="+cfg.Model)
+	}
+	if creds.GitURL != "" {
+		env = append(env, "CODEAF_HOSTED_GIT_URL="+creds.GitURL, "CODEAF_HOSTED_GIT_HOSTS="+strings.Join(creds.GitHosts, ","))
 	}
 	return env
 }
@@ -147,4 +156,58 @@ func (r *stderrRing) text() string {
 		return string(r.data[:r.size])
 	}
 	return string(r.data[r.next:]) + string(r.data[:r.next])
+}
+
+// connectPorts is every port a chat's commands may connect to: the operator's
+// list and the port of each organization address the chat's credentials name
+// (its model door and its git address, which are one server, possibly on a
+// port of its own). Without those a chat could not clone or push through the
+// organization, so they are never the operator's to forget.
+func connectPorts(cfg Config, creds credentials) []int {
+	ports := append([]int(nil), cfg.ConnectPorts...)
+	for _, raw := range []string{creds.ModelURL, creds.GitURL} {
+		if port := urlPort(raw); port > 0 {
+			ports = append(ports, port)
+		}
+	}
+	sort.Ints(ports)
+	out := ports[:0]
+	for i, p := range ports {
+		if i == 0 || p != ports[i-1] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// urlPort is the TCP port an http or https address connects to, 0 when it is
+// neither or names no host.
+func urlPort(raw string) int {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return 0
+	}
+	if p := u.Port(); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > 65535 {
+			return 0
+		}
+		return n
+	}
+	switch u.Scheme {
+	case "http":
+		return 80
+	case "https":
+		return 443
+	}
+	return 0
+}
+
+// portList is ports as the comma list the engine reads.
+func portList(ports []int) string {
+	words := make([]string, len(ports))
+	for i, p := range ports {
+		words[i] = strconv.Itoa(p)
+	}
+	return strings.Join(words, ",")
 }

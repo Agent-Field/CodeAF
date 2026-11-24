@@ -5,6 +5,7 @@ package sessionhost
 import (
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,16 +63,46 @@ var refusalText = [...]string{
 
 const warningUID = "This server keeps your chat apart from other people's, but does not limit what its commands can reach."
 
+// Create and credential updates accept an optional git address and its
+// allowed origins. These values are held in memory with the model settings.
 type credentials struct {
-	ModelURL   string `json:"model_url"`
-	ModelToken string `json:"model_token"`
+	ModelURL   string   `json:"model_url"`
+	ModelToken string   `json:"model_token"`
+	GitURL     string   `json:"git_url,omitempty"`
+	GitHosts   []string `json:"git_hosts,omitempty"`
 }
 
 func (c credentials) valid() bool {
 	u, err := url.Parse(c.ModelURL)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") &&
-		u.Hostname() != "" && u.User == nil && c.ModelToken != "" &&
-		!strings.ContainsRune(c.ModelToken, 0)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") ||
+		u.Hostname() == "" || u.User != nil || c.ModelToken == "" || strings.ContainsRune(c.ModelToken, 0) {
+		return false
+	}
+	if c.GitURL != "" {
+		git, ok := credentialGitURL(c.GitURL)
+		if !ok || strings.HasSuffix(git.Path, "/") {
+			return false
+		}
+	}
+	if len(c.GitHosts) > 16 {
+		return false
+	}
+	for _, origin := range c.GitHosts {
+		if len(origin) > 200 || strings.Contains(origin, ",") {
+			return false
+		}
+		git, ok := credentialGitURL(origin)
+		if !ok || git.Path != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func credentialGitURL(raw string) (*url.URL, bool) {
+	u, err := url.Parse(raw)
+	return u, err == nil && (u.Scheme == "http" || u.Scheme == "https") &&
+		u.Hostname() != "" && u.User == nil && u.RawQuery == "" && !u.ForceQuery && !strings.Contains(raw, "#")
 }
 
 type createdChat struct {
@@ -84,6 +115,9 @@ type createdChat struct {
 type chatStatus struct {
 	createdChat
 	LastActive time.Time `json:"last_active"`
+	// The fingerprint lets the organization verify its issued credential
+	// is current without this host ever sending back the credential itself.
+	ModelBearer string `json:"model_bearer"`
 }
 
 func (s *supervisor) status(row sessionRow, live processTable) chatStatus {
@@ -91,9 +125,15 @@ func (s *supervisor) status(row sessionRow, live processTable) chatStatus {
 	if !row.Missing && len(live[row.UID]) > 0 {
 		state = "running"
 	}
+	fingerprint := ""
+	if token := s.creds[row.ID].ModelToken; token != "" {
+		sum := sha256.Sum256([]byte(token))
+		fingerprint = hex.EncodeToString(sum[:8])
+	}
 	return chatStatus{
 		createdChat: createdChat{ID: row.ID, State: state, Created: row.Created, Warning: s.warning()},
 		LastActive:  row.LastActive,
+		ModelBearer: fingerprint,
 	}
 }
 

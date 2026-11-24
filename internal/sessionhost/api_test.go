@@ -4,6 +4,8 @@ package sessionhost
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -245,6 +247,8 @@ func TestC3_EngineEnvironmentIsExactlyTheAllowList(t *testing.T) {
 		"CODEAF_TELEMETRY": "off", "DO_NOT_TRACK": "1", "CODEAF_NO_UPDATE_CHECK": "1",
 		"CODEAF_BASE_URL": creds.ModelURL, "OPENAI_API_KEY": creds.ModelToken, "CODEAF_ENGINE_IDLE": "30m0s",
 		"CODEAF_FENCE_REQUIRE": "1", "CODEAF_MODEL": "example-model",
+		// P1 item 0c adds exactly this one name: the ports a chat's commands may connect to.
+		"CODEAF_FENCE_CONNECT_PORTS": "22,80,443,9418",
 	}
 	env := launcher.environment(t)
 	got := make(map[string]string)
@@ -390,7 +394,7 @@ func TestC2_FencedModeNeedsAKernelThatScopesAbstractSockets(t *testing.T) {
 		return Report{Require: require, UIDSwitch: SwitchReport{OK: true}, Landlock: LandlockReport{Available: abi > 0, ABI: abi}}
 	}
 	if got := report(5, modeFenced).decide(); got.OK || got.Mode != modeRefused ||
-		got.Reason != "command restrictions cannot keep one chat's local sockets from another's on this kernel" {
+		!strings.Contains(got.Reason, "CODEAF_SESSIONHOST_REQUIRE=uid") || !strings.Contains(got.Reason, "Linux 6.12") {
 		t.Fatalf("an old kernel passed or was unexplained: %+v", got)
 	}
 	if got := report(6, modeFenced).decide(); !got.OK || got.Mode != modeFenced {
@@ -398,5 +402,138 @@ func TestC2_FencedModeNeedsAKernelThatScopesAbstractSockets(t *testing.T) {
 	}
 	if got := report(5, modeUID).decide(); !got.OK || got.Mode != modeUID {
 		t.Fatalf("the operator's explicit process-only choice was refused: %+v", got)
+	}
+}
+
+func TestP1_6_ModelBearerFingerprintOnRows(t *testing.T) {
+	s, _, _ := testSupervisor(t, testConfig(t), healthyReport())
+	create := createChat(t, s, "alice", chatA)
+	if strings.Contains(create.Body.String(), "model_bearer") {
+		t.Fatalf("create response changed: %s", create.Body)
+	}
+	check := func(token string) {
+		t.Helper()
+		sum := sha256.Sum256([]byte(token))
+		want := hex.EncodeToString(sum[:8])
+		if token == "" {
+			want = ""
+		}
+		checkRow := func(raw []byte) {
+			t.Helper()
+			var row map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &row); err != nil || string(row["model_bearer"]) != `"`+want+`"` {
+				t.Fatalf("model_bearer = %s, want %q: %v", row["model_bearer"], want, err)
+			}
+		}
+		w := request(s, "GET", "/v1/sessions/"+chatA, s.cfg.Secret, "alice", "")
+		if w.Code != 200 {
+			t.Fatalf("get: %d %s", w.Code, w.Body)
+		}
+		checkRow(w.Body.Bytes())
+		w = request(s, "GET", "/v1/sessions", s.cfg.Secret, "alice", "")
+		var list struct{ Sessions []json.RawMessage }
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &list) != nil || len(list.Sessions) != 1 {
+			t.Fatalf("list: %d %s", w.Code, w.Body)
+		}
+		checkRow(list.Sessions[0])
+	}
+	check("made-up-model-bearer")
+	putTestCredentials(t, s, "updated-model-token")
+	check("updated-model-token")
+	if w := request(s, "POST", "/v1/sessions/"+chatA+"/stop", s.cfg.Secret, "alice", ""); w.Code != 204 {
+		t.Fatalf("stop: %d %s", w.Code, w.Body)
+	}
+	check("")
+}
+
+func TestP1_6_GitSettingsReachTheEngineWithoutOtherChanges(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Model = "example-model"
+	// The connect-port list has its own test (item 0c); here it is off so this one
+	// proves the git settings add exactly their two names and change nothing else.
+	cfg.LimitPorts = false
+	launcher := newWireTestLauncher()
+	s := newTestSupervisor(t, cfg, healthyReport(), launcher, &fakeProcesses{live: make(processTable)})
+	const model = `"model_url":"http://model.test/v1","model_token":"made-up-model-bearer"`
+	const git = `"git_url":"https://org.test/v1/hosted/git","git_hosts":["https://github.com","http://git.test:8891"]`
+	w := request(s, "POST", "/v1/sessions", cfg.Secret, "alice", `{"id":"`+chatA+`",`+model+`,`+git+`}`)
+	if w.Code != 201 {
+		t.Fatalf("create: %d %s", w.Code, w.Body)
+	}
+	const updated = `"git_url":"http://org.test/v1/hosted/git","git_hosts":["http://updated.test:8891"]`
+	w = request(s, "PUT", "/v1/sessions/"+chatA+"/credentials", cfg.Secret, "alice", `{`+model+`,`+updated+`}`)
+	if w.Code != 204 {
+		t.Fatalf("credentials: %d %s", w.Code, w.Body)
+	}
+
+	folders, err := layoutFor(cfg.Data, "alice", chatA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1",
+		"HOME=" + folders.home(), "CODEAF_HOME=" + folders.home(), "TMPDIR=" + folders.tmp(),
+		"CODEAF_NO_UPDATE_CHECK=1", "CODEAF_BASE_URL=http://model.test/v1", "OPENAI_API_KEY=made-up-model-bearer",
+		"CODEAF_ENGINE_IDLE=30m0s", "CODEAF_FENCE_REQUIRE=1", "CODEAF_MODEL=example-model",
+	}
+	creds := credentials{ModelURL: "http://model.test/v1", ModelToken: "made-up-model-bearer"}
+	if got := engineEnv(cfg, folders, creds); !reflect.DeepEqual(got, original) {
+		t.Fatalf("default engine environment changed: %v", got)
+	}
+	conn := dialTestWire(t, s)
+	defer conn.CloseNow()
+	want := append(original, "CODEAF_HOSTED_GIT_URL=http://org.test/v1/hosted/git", "CODEAF_HOSTED_GIT_HOSTS=http://updated.test:8891")
+	if got := launcher.environment(t); !reflect.DeepEqual(got, want) {
+		t.Fatalf("engine environment = %v, want %v", got, want)
+	}
+}
+
+func TestP1_6_InvalidGitSettingsRefuseTheWholeCredentialsBody(t *testing.T) {
+	s, _, _ := testSupervisor(t, testConfig(t), healthyReport())
+	const model = `"model_url":"http://model.test/v1","model_token":"fake"`
+	for _, optional := range []string{
+		`"git_url":"git://org.test/v1/hosted/git"`,
+		`"git_url":"http:///v1/hosted/git"`,
+		`"git_url":"https://user@org.test/v1/hosted/git"`,
+		`"git_url":"https://org.test/v1/hosted/git/"`,
+		`"git_url":"https://org.test/v1/hosted/git?x=1"`,
+		`"git_hosts":["ftp://git.test"]`,
+		`"git_hosts":["http://:8891"]`,
+		`"git_hosts":["https://user@git.test"]`,
+		`"git_hosts":["https://git.test/path"]`,
+		`"git_hosts":["https://git.test?"]`,
+		`"git_hosts":["https://git.test#fragment"]`,
+		`"git_hosts":["https://git.test","https://` + strings.Repeat("x", 193) + `"]`,
+		`"git_hosts":[` + strings.Repeat(`"https://git.test",`, 16) + `"https://git.test"]`,
+	} {
+		w := request(s, "POST", "/v1/sessions", s.cfg.Secret, "alice", `{"id":"`+chatA+`",`+model+`,`+optional+`}`)
+		if w.Code != 400 {
+			t.Errorf("create with %s: %d %s", optional, w.Code, w.Body)
+		}
+	}
+	createChat(t, s, "alice", chatB)
+	w := request(s, "PUT", "/v1/sessions/"+chatB+"/credentials", s.cfg.Secret, "alice",
+		`{`+model+`,"git_hosts":["https://git.test/path"]}`)
+	if w.Code != 400 {
+		t.Fatalf("update with invalid Git origin: %d %s", w.Code, w.Body)
+	}
+}
+
+// P1-0b: on a kernel older than 6.12, and on one with no Landlock at all, the
+// default stays closed and the operator is told the exact setting that accepts
+// the gap; typing it starts chats in the process-only mode.
+func TestP1_0b_RefusalsNameTheSettingExactly(t *testing.T) {
+	for name, landlock := range map[string]LandlockReport{
+		"kernel 6.8 (ABI 4)": {Available: true, ABI: 4},
+		"no landlock":        {},
+	} {
+		refused := Report{Require: modeFenced, UIDSwitch: SwitchReport{OK: true}, Landlock: landlock}.decide()
+		if refused.OK || refused.Mode != modeRefused || !strings.Contains(refused.Reason, "CODEAF_SESSIONHOST_REQUIRE=uid") {
+			t.Errorf("%s: default did not refuse with the setting named: %+v", name, refused)
+		}
+		accepted := Report{Require: modeUID, UIDSwitch: SwitchReport{OK: true}, Landlock: landlock}.decide()
+		if !accepted.OK || accepted.Mode != modeUID {
+			t.Errorf("%s: the named setting did not start chats: %+v", name, accepted)
+		}
 	}
 }
