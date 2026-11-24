@@ -83,7 +83,7 @@ A device with no screen or no browser, such as a server, does the same: run `cod
 Paired with laptop-a. Run codeaf to open your chats.
 ```
 
-The approving device says `desk-b is now paired. Your chats can continue there.`
+The approving device says `desk-b is now paired. desk-b can also see and control your chats here. Change that in /devices.`
 
 ## What does codeaf pair --code do
 
@@ -139,6 +139,7 @@ A new device wants to pair.
   △ laptop · Linux
   asked just now · 9 min left
 Check number 4821. Approve only if the new device shows the same number.
+laptop can also see and control your chats here. Change that in /devices.
 a approve · d decline · esc later
 ```
 
@@ -153,10 +154,12 @@ While your answer is on its way the screen says `approving…` or `declining…`
 When you approve, your screen says:
 
 ```
-laptop is now paired. Your chats can continue there.
+laptop is now paired. laptop can also see and control your chats here. Change that in /devices.
 ```
 
-Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop is now paired. Your chats can continue there.` and a no says `Declined. Nothing was paired.` The terminal first says `laptop (Linux) wants to pair.` (the system is left out when it is not known). `codeaf pair approve` with nothing after it says `usage: codeaf pair approve <link-or-token> — the link or token the new device shows; for a numeric pairing code use codeaf pair <code>`.
+Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop is now paired. laptop can also see and control your chats here. Change that in /devices.` and a no says `Declined. Nothing was paired.` The terminal first says `laptop (Linux) wants to pair.` (the system is left out when it is not known). `codeaf pair approve` with nothing after it says `usage: codeaf pair approve <link-or-token> — the link or token the new device shows; for a numeric pairing code use codeaf pair <code>`.
+
+A computer paired from now on can also see and control your chats here, and one paired earlier can only watch until you allow it; both are changed in `/devices` or with `codeaf devices permit <name> [--watch on|off] [--drive on|off]`.
 
 ## What does the dot next to a computer mean — the devices row, online and offline
 

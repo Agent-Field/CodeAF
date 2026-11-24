@@ -112,6 +112,20 @@ func (a *Agent) ResolveConsent(id uint64, allow bool) {
 	a.ResolveConsentRemember(id, allow, ConsentOnce)
 }
 
+// ResolveConsentFrom answers one EventConsentRequest and refuses an answer from
+// another computer when the banked question was graded irreversible by the
+// approval floor. A local caller takes the same path as [Agent.ResolveConsent];
+// a permitted remote caller delivers for this call alone.
+func (a *Agent) ResolveConsentFrom(id uint64, allow bool, remote bool) error {
+	if remote {
+		if q, said := a.questionSaid(QuestionConsent, strconv.FormatUint(id, 10)); said && q.Stakes == StakesIrreversible {
+			return ErrRemoteIrreversible
+		}
+	}
+	a.ResolveConsent(id, allow)
+	return nil
+}
+
 // ResolveConsentRemember answers one request and says how long the answer
 // lasts. An unknown scope is read as ConsentOnce: the narrow reading is the
 // safe one, and a typo must not silently widen an approval.

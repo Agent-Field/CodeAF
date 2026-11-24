@@ -126,6 +126,7 @@ const (
 	KeyAttribution        = "attribution"
 	KeyAttributionModel   = "attribution.model"
 	KeyIdleHandoff        = "idle_handoff"
+	KeyRemoteControl      = "remote_control"
 	KeySplitPct           = "split_pct"
 
 	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
@@ -1447,6 +1448,14 @@ var OperatorEnvPins = []string{
 	// (internal/syncsetup). It is the owners' off switch while that road is
 	// new, not a preference, so it stays in the environment.
 	"CODEAF_PASSTHROUGH",
+	// CODEAF_REMOTE_CONTROL overrides the persisted remote_control row: it is a
+	// switch while the feature is new, and a row can set it too.
+	"CODEAF_REMOTE_CONTROL",
+	// CODEAF_REMOTE_DAILY_MB moves the live door's daily allowance of carrier
+	// bytes (internal/livedoor) off its built-in 256 MiB, for an operator
+	// measuring a relay. It is a safety rail's size, not a preference, so it
+	// stays in the environment.
+	"CODEAF_REMOTE_DAILY_MB",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -1479,6 +1488,9 @@ const (
 	// holds it and keeps remote chats waiting for Move here unless the
 	// person turns idle handoff on.
 	DefaultIdleHandoff = false
+
+	// DefaultRemoteControl keeps remote control off until the person turns it on.
+	DefaultRemoteControl = false
 
 	// The divider clamps so neither pane can be set into uselessness. The TUI
 	// reads these so the drag, the [ ] nudge, and the sheet agree.
@@ -2820,6 +2832,13 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(IdleHandoffAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyIdleHandoff, raw) },
 		},
+		Setting{
+			Key: KeyRemoteControl, Category: CategoryInterface, Kind: SettingBool,
+			Label: "Remote control", Env: "CODEAF_REMOTE_CONTROL",
+			Hint:  RemoteControlHint,
+			read:  func() string { return formatBool(RemoteControlAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyRemoteControl, raw) },
+		},
 		// The ssh carrier is local surface policy, so its overrides live beside
 		// the other interface choices. Keeping them in the registry matters more
 		// than their rarity: a network that drops idle TCP or rewrites DSCP is a
@@ -3344,6 +3363,30 @@ func IdleHandoffAt(profileDir string) bool {
 		return value
 	}
 	return DefaultIdleHandoff
+}
+
+// RemoteControlHint is the `remote_control` row's hint: what turning remote
+// control on allows another computer of the person's to do.
+const RemoteControlHint = "lets another computer of yours open this computer's running chats and, if you allow it, type into them. Off until you turn it on."
+
+// RemoteControlOn reports whether another computer of this person's may open
+// this computer's running chats and, when permitted, type into them.
+func RemoteControlOn() bool {
+	return RemoteControlAt(ProfileDir())
+}
+
+// RemoteControlAt resolves KeyRemoteControl for profileDir with precedence:
+// CODEAF_REMOTE_CONTROL (when a valid boolean) > persisted row > off.
+func RemoteControlAt(profileDir string) bool {
+	if raw := strings.TrimSpace(env.Get("CODEAF_REMOTE_CONTROL")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+	}
+	if value, ok := persistedBool(profileDir, KeyRemoteControl); ok {
+		return value
+	}
+	return DefaultRemoteControl
 }
 
 // HistoryEnabledAt resolves whether the v3 chat surface records what was typed

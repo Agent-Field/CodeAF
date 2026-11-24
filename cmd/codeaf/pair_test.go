@@ -275,6 +275,9 @@ func TestDevicesAfterACodePairingShowsBothComputers(t *testing.T) {
 	if asked := shown.out.waitFor(t, `"laptop" wants your chats\. Same three words on that screen: ([a-z ]+)\?  y / n `); asked == nil {
 		t.Fatal("the sharing screen never asked")
 	}
+	if !strings.Contains(shown.out.String(), pair.PairedControlLine("laptop")) {
+		t.Fatalf("offer screen lacks %q:\n%s", pair.PairedControlLine("laptop"), shown.out.String())
+	}
 	if _, err := io.WriteString(shown.typed, "y\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -395,5 +398,23 @@ func TestTerminalConfirmSilenceIsNo(t *testing.T) {
 func TestServeApproverIsAbsentWithoutATerminal(t *testing.T) {
 	if serveApprover(context.Background(), nil, io.Discard) != nil {
 		t.Fatal("a machine with no terminal was given someone to ask")
+	}
+}
+
+func TestAppPairQuestionsSayTheNewDeviceCanControlChats(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		label string
+		got   string
+	}{
+		{name: "code", label: "laptop", got: appPairWords("laptop", "amber cedar moon")},
+		{name: "link", label: "laptop (Linux)", got: appPairCheck("laptop (Linux)", "4821")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := pair.PairedControlLine(tc.label)
+			if !strings.Contains(tc.got, want) {
+				t.Fatalf("question %q lacks %q", tc.got, want)
+			}
+		})
 	}
 }

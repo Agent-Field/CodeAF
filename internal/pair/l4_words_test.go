@@ -42,7 +42,7 @@ func TestL4PairCompletionVoice(t *testing.T) {
 	if got := (Joined{With: "laptop-a"}).Sentence(); got != "Paired with laptop-a. Run codeaf to open your chats." {
 		t.Fatal(got)
 	}
-	if got := PairedChatsLine("desk-b"); got != "desk-b is now paired. Your chats can continue there." {
+	if got := PairedChatsLine("desk-b"); got != "desk-b is now paired. desk-b can also see and control your chats here. Change that in /devices." {
 		t.Fatal(got)
 	}
 	if got := WaitingChatsLine("a b c"); got != "Waiting for approval on your other device; it should show: a b c" {

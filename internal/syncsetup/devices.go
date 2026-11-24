@@ -217,6 +217,7 @@ func (d *deviceDirectory) List(ctx context.Context) (directory.Listing, error) {
 			s.Devices, s.Version, s.Complete = devices, max(s.Version, l.Version), true
 		})
 		rememberOthers(d.home, d.binding, l.Devices)
+		snapshotLegacyOnce(d.home, d.binding, l.Devices)
 	}
 	return l, err
 }
@@ -425,6 +426,9 @@ func (s *deviceStream) Next(ctx context.Context) (dirwatch.Frame, error) {
 			}
 		}
 	})
+	if err == nil && f.Event != nil && f.Event.T == dirwatch.EventRevoked && f.Event.Device != "" {
+		notifyRevoked(s.dir.home, f.Event.Device)
+	}
 	return f, err
 }
 

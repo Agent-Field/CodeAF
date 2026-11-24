@@ -188,7 +188,7 @@ func (s *server) take() Driver {
 	sess.mu.Lock()
 	// EXCEPT FOR A WATCHER, which is the one surface that asked not to be given
 	// this. It is told who does drive, and nothing moves ([Hello.Watch]).
-	if s.watching {
+	if s.watching || (s.remote != nil && !s.remote.Drive) {
 		mine := sess.driverForLocked(s)
 		sess.mu.Unlock()
 		return mine
@@ -223,7 +223,7 @@ func (s *server) mayDrive() error {
 	// held it and an empty seat is not an invitation ([Hello.Watch]). The sentence
 	// is its own: `press enter to take it back` would be advice about a key this
 	// surface deliberately does not have.
-	if s.watching {
+	if s.watching || (s.remote != nil && !s.remote.Drive) {
 		return errors.New(watchingWord)
 	}
 	if sess.driver == nil || sess.driver == s {
@@ -335,7 +335,7 @@ func notDrivingWord(driver Driver) string {
 // that does not know the frame is simply left attached and reading, which is
 // what every build before version 13 does and is not broken.
 func (sess *Session) tellMoved(arriving *server, hello Hello) {
-	if arriving == nil || arriving.watching || hello.Back {
+	if arriving == nil || arriving.watching || arriving.remote != nil || hello.Back {
 		return
 	}
 	sess.mu.Lock()

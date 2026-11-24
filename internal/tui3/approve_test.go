@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
+	"github.com/Agent-Field/codeaf/internal/pair"
 )
 
 // The approve screen and the device list (approve.go, devices.go). The door is
@@ -136,11 +137,23 @@ func TestApproveToastsAndClosesAndTheJoinedEventIsNotToldTwice(t *testing.T) {
 	if !strings.Contains(door.did(), "approve:k7m2q9xd") {
 		t.Fatalf("door: %s", door.did())
 	}
-	if notes := updateNotes(a); !strings.Contains(notes, "tower is now paired. Your chats can continue there.") {
+	if notes := updateNotes(a); !strings.Contains(notes, pair.ApprovedLine("tower")) {
 		t.Fatalf("no toast:\n%s", notes)
 	}
 	if !a.approve.told("dev_B") {
 		t.Fatal("the approved device was not remembered, so its joined event would say it again")
+	}
+}
+
+func TestApproveScreenSaysTheNewDeviceCanControlChats(t *testing.T) {
+	door := &fakeApprovals{pending: tower(time.Now())}
+	a, r := approveApp(t, door)
+	r.slash("/pair " + testLink)
+	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
+	shown := plain(frame(a))
+	want := pair.PairedControlLine("tower")
+	if !strings.Contains(shown, want) {
+		t.Fatalf("approve screen lacks %q:\n%s", want, shown)
 	}
 }
 
@@ -232,7 +245,7 @@ func TestJoinedEventFromAnotherDeviceIsToldOnce(t *testing.T) {
 	a.dirFeed = stillFeed{joined: []dirwatch.Joined{{Seq: 1, Device: "dev_D", Name: "sealed"}}}
 	a.announceJoined()
 	a.announceJoined()
-	if n := strings.Count(updateNotes(a), "n:sealed is now paired. Your chats can continue there."); n != 1 {
+	if n := strings.Count(updateNotes(a), pair.ApprovedLine("n:sealed")); n != 1 {
 		t.Fatalf("told %d times:\n%s", n, updateNotes(a))
 	}
 }

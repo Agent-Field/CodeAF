@@ -80,10 +80,13 @@ type Submission struct {
 	// entry ([PersonMark.ClientID]), so a door can recognise its message after
 	// the process that sent it is gone.
 	//
-	// IT IS CORRELATION, NEVER IDEMPOTENCY. The session does not look it up,
-	// refuse a repeat of it or skip a send because of it; two messages with one
-	// ClientID are two messages. Empty is "the door named none", and the model
-	// is sent nothing of it.
+	// IT IS CORRELATION HERE; THE REMOTE DOOR MAKES IT IDEMPOTENCY. The session
+	// itself does not look it up, refuse a repeat of it or skip a send because
+	// of it; two messages handed to this package with one ClientID are two
+	// messages. The remote door (internal/remote) does look it up for
+	// connections stamped with Hello.Remote, answering a repeat with the
+	// original stream rather than delivering the message a second time. Empty
+	// is "the door named none", and the model is sent nothing of it.
 	ClientID string
 	// From names who sent the message on the person's behalf, such as "afi",
 	// at most [MaxMessageFromBytes] bytes of one line. It is kept on the

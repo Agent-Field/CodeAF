@@ -107,7 +107,7 @@ Nothing is sent. The code is gone. If you were not at the screen, run `/pair` ag
 When you answer `y`, the computer that has your chats says:
 
 ```
-laptop is now paired. Your chats can continue there.
+laptop is now paired. laptop can also see and control your chats here. Change that in /devices.
 ```
 
 and the other computer says:

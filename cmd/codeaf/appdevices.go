@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/wireauth"
@@ -274,6 +275,8 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 		if err := s.Dir.Revoke(ctx, deviceID); err != nil {
 			return appwire.DeviceRemoveResult{}, deviceError(err)
 		}
+		livedoor.NotifyRemoved(home.Dir(), deviceID)
+		_ = pair.Permits().Forget(deviceID)
 		line = pair.ChatsRevokedLine(name)
 	}
 	// Success is retained even if a later user-requested refresh cannot reach

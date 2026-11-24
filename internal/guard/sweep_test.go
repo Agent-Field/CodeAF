@@ -19,6 +19,7 @@ var guardedPackages = []string{
 	"cmd/codeaf",
 	"internal/catalog",
 	"internal/exec",
+	"internal/livedoor",
 	"internal/plan",
 	"internal/provider",
 	"internal/resident",

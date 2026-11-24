@@ -376,6 +376,62 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 	}
 }
 
+func TestRemoteControlIsOffByDefaultAndTheEnvironmentOverridesTheRow(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CODEAF_HOME", dir)
+	t.Setenv("CODEAF_REMOTE_CONTROL", "")
+
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeyRemoteControl)
+	if !ok {
+		t.Fatalf("%s is not registered", KeyRemoteControl)
+	}
+	if RemoteControlAt(dir) || RemoteControlOn() || row.Value() != "off" {
+		t.Fatalf("default remote_control = %v / %v / %q, want off", RemoteControlAt(dir), RemoteControlOn(), row.Value())
+	}
+
+	pres := row.ChatPresentation()
+	if pres.Label != "remote control" {
+		t.Fatalf("presentation label = %q, want %q", pres.Label, "remote control")
+	}
+	for _, wantAlias := range []string{"other computer", "type from another computer", "drive"} {
+		if !slices.Contains(pres.Aliases, wantAlias) {
+			t.Fatalf("presentation aliases %v missing %q", pres.Aliases, wantAlias)
+		}
+	}
+
+	if err := row.Apply("on"); err != nil {
+		t.Fatalf("apply on: %v", err)
+	}
+	if !RemoteControlAt(dir) || !RemoteControlOn() || row.Value() != "on" {
+		t.Fatalf("row on remote_control = %v / %v / %q, want on", RemoteControlAt(dir), RemoteControlOn(), row.Value())
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "0")
+	if RemoteControlAt(dir) || RemoteControlOn() {
+		t.Fatalf("env 0 with row on should be off")
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "maybe")
+	if !RemoteControlAt(dir) || !RemoteControlOn() {
+		t.Fatalf("env maybe with row on should be ignored and keep row on")
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "")
+	if err := row.Apply("off"); err != nil {
+		t.Fatalf("apply off: %v", err)
+	}
+	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
+	if !RemoteControlAt(dir) || !RemoteControlOn() {
+		t.Fatalf("env 1 with row off should be on")
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "maybe")
+	if RemoteControlAt(dir) || RemoteControlOn() {
+		t.Fatalf("env maybe with row off should be ignored and keep row off")
+	}
+}
+
 // THE ATTRIBUTION ROW defaults on, turns signing off when requested, and obeys
 // the shell pin.
 func TestTheAttributionRowDefaultsOnAndTurnsSigningOff(t *testing.T) {

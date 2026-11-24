@@ -74,15 +74,63 @@ func sendHello(w io.Writer, tunnel *pair.Tunnel, dev identity.Dev) (int, error) 
 	return sendJSON(w, typeHello, helloFor(dev, tunnel))
 }
 
+// SayHello sends a device's certificate and channel-binding signature over
+// tunnel and verifies the host's answering hello.
+func SayHello(tunnel *pair.Tunnel, id identity.Identity, dev identity.Dev, host string) error {
+	if _, err := sendHello(tunnel, tunnel, dev); err != nil {
+		return err
+	}
+	typ, body, _, err := readMessage(tunnel, MaxRequestBytes)
+	if err != nil {
+		return err
+	}
+	return checkAnswer(id, tunnel, host, host, typ, body)
+}
+
 func refuse(w io.Writer, reason string) { _, _ = sendJSON(w, typeRefused, refusal{Reason: reason}) }
+
+// checkAnswer reads the door's first message. A refusal is the door's answer
+// and is final; an answer from some other computer, or one that is not a hello
+// at all, is a door that cannot be trusted with the request.
+func checkAnswer(id identity.Identity, tunnel *pair.Tunnel, targetID, person string, typ byte, body []byte) error {
+	switch typ {
+	case typeRefused:
+		var no refusal
+		if json.Unmarshal(body, &no) != nil || no.Reason == "" {
+			no.Reason = couldNotConfirm
+		}
+		return &RefusedError{Reason: no.Reason}
+	case typeHello:
+	default:
+		return protocolf("a first answer of type %d", typ)
+	}
+	var h hello
+	if err := json.Unmarshal(body, &h); err != nil {
+		return protocolf("a hello that is not readable")
+	}
+	switch {
+	case h.V != Version:
+		return &RefusedError{Reason: differentVersion}
+	case h.Cert.DeviceID() != targetID:
+		return &RefusedError{Reason: "could not confirm this is " + person}
+	}
+	if err := checkHello(id, tunnel, h); err != nil {
+		return &RefusedError{Reason: "could not confirm this is " + person}
+	}
+	return nil
+}
 
 // rosterCache refuses stale authority after its bounded lifetime. A refresh
 // that fails never extends the previous answer, even during an outage: a door
-// that cannot tell whether a device is still allowed stops answering it.
+// that cannot tell whether a device is still allowed stops answering it. A
+// failure younger than ttl never reaches fetch because the last answer is still
+// within its bounded lifetime, so an existing live link stays up until ttl
+// expires.
 type rosterCache struct {
-	fetch func(context.Context) (map[string]bool, error)
-	now   func() time.Time
-	ttl   time.Duration
+	fetch  func(context.Context) (map[string]bool, error)
+	now    func() time.Time
+	ttl    time.Duration
+	onGone func(removed []string)
 
 	mu      sync.Mutex
 	active  map[string]bool
@@ -91,20 +139,42 @@ type rosterCache struct {
 
 func (r *rosterCache) allows(ctx context.Context, device string) (bool, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	now := r.now()
+	var removed []string
 	if r.active == nil || now.Before(r.fetched) || now.Sub(r.fetched) >= r.ttl {
 		rows, err := r.fetch(ctx)
 		if err != nil {
+			r.mu.Unlock()
 			return false, err
 		}
+		prev := r.active
 		r.active = make(map[string]bool, len(rows))
 		for k, v := range rows {
 			r.active[k] = v
 		}
 		r.fetched = now
+		if r.onGone != nil && prev != nil {
+			for k, wasAllowed := range prev {
+				if wasAllowed && !r.active[k] {
+					removed = append(removed, k)
+				}
+			}
+		}
 	}
-	return r.active[device], nil
+	allowed := r.active[device]
+	onGone := r.onGone
+	r.mu.Unlock()
+	if len(removed) > 0 && onGone != nil {
+		onGone(removed)
+	}
+	return allowed, nil
+}
+
+// AcceptHello reads the peer's hello from tunnel, verifies its certificate,
+// channel binding and roster status, answers with this computer's hello, and
+// returns the authenticated device id.
+func AcceptHello(ctx context.Context, tunnel *pair.Tunnel, id identity.Identity, dev identity.Dev, allows func(context.Context, string) (bool, error)) (string, error) {
+	return acceptHello(ctx, tunnel, tunnel, tunnel, id, dev, allows)
 }
 
 // acceptHello reads the first message, which must be a hello from a device of
@@ -112,6 +182,10 @@ func (r *rosterCache) allows(ctx context.Context, device string) (bool, error) {
 // Anything else is refused with a sentence and ends the connection before a
 // single object is read or sent.
 func (d *door) acceptHello(ctx context.Context, in io.Reader, out io.Writer, tunnel *pair.Tunnel) (string, error) {
+	return acceptHello(ctx, in, out, tunnel, d.cfg.Identity, d.cfg.Device, d.roster.allows)
+}
+
+func acceptHello(ctx context.Context, in io.Reader, out io.Writer, tunnel *pair.Tunnel, id identity.Identity, dev identity.Dev, allows func(context.Context, string) (bool, error)) (string, error) {
 	typ, body, _, err := readMessage(in, MaxRequestBytes)
 	if err != nil {
 		return "", err
@@ -124,9 +198,9 @@ func (d *door) acceptHello(ctx context.Context, in io.Reader, out io.Writer, tun
 	case h.V != Version:
 		reason = differentVersion
 	default:
-		if err := checkHello(d.cfg.Identity, tunnel, h); err != nil {
+		if err := checkHello(id, tunnel, h); err != nil {
 			reason = err.Error()
-		} else if allowed, err := d.roster.allows(ctx, h.Cert.DeviceID()); err != nil {
+		} else if allowed, err := allows(ctx, h.Cert.DeviceID()); err != nil {
 			reason = couldNotCheck
 		} else if !allowed {
 			reason = RemovedLine
@@ -136,7 +210,7 @@ func (d *door) acceptHello(ctx context.Context, in io.Reader, out io.Writer, tun
 		refuse(out, reason)
 		return "", errors.New(reason)
 	}
-	if _, err := sendHello(out, tunnel, d.cfg.Device); err != nil {
+	if _, err := sendHello(out, tunnel, dev); err != nil {
 		return "", err
 	}
 	return h.Cert.DeviceID(), nil

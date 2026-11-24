@@ -276,6 +276,7 @@ func (p *pairPanel) rows(width int, now time.Time, pal palette) []string {
 		if p.ask.raw != "" {
 			say(p.ask.raw, pal.ink)
 		} else {
+			say(pair.PairedControlLine(p.ask.label), pal.ink)
 			say(pair.AskChatsLine(p.ask.label, p.ask.words), pal.ink)
 		}
 	}

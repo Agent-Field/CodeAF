@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/manual"
+	"github.com/Agent-Field/codeaf/internal/pair"
 )
 
 // THE SENTENCES OF THE DEVICE SCREENS ARE IN THEIR PAGES, WORD FOR WORD. A
@@ -22,7 +23,7 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 		"add-or-remove-a-computer": {
 			addMachineHeading, addMachinePitch, addMachineStepRun, addMachineStepPut, addMachineShow,
 			approveAsk, fmt.Sprintf(approveCheckWord, "4821"), approveKeys, approveGone,
-			fmt.Sprintf(approveDenied, "laptop"), fmt.Sprintf(joinedFleetWord, "laptop"),
+			fmt.Sprintf(approveDenied, "laptop"), pair.ApprovedLine("laptop"),
 			strings.Join([]string{devicesMoveKey, devicesNameKey, devicesGoneKey, devicesCloseKey}, " · "), fmt.Sprintf(devicesRemoveAsk, "desk"), fmt.Sprintf(devicesRevoked, "desk"), "seen 3h ago", "offline", approveWorking, approveDeclining, approveSlow, approveUnsure, ErrAlreadyPaired.Error(),
 			deviceBring, deviceNothing, devicePickAsk, devicePickLeav,
 			chatlist.Device{Name: "desk"}.Mark(false, tokens.Plain.Glyph(tokens.GQueued)), chatlist.RemovedChat,

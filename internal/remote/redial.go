@@ -35,10 +35,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 const (
@@ -55,19 +57,42 @@ const (
 	// opens it again. Roaming buys the person not having to type it.
 	RoamWindow = 5 * time.Minute
 
-	// firstBackoff is the pause before the first retry and slowestBackoff the
-	// ceiling it doubles up to. The first is short because most drops are a
-	// blip and the pipe is there a second later; the ceiling exists because
-	// every attempt spawns an ssh process on this machine and a hundred of them
-	// against a machine that is switched off is a person's laptop working for
-	// nothing.
-	firstBackoff   = 1 * time.Second
 	slowestBackoff = 15 * time.Second
+
+	defaultFirstBackoff = 1 * time.Second
+	firstRetrySpread    = 5 * time.Second
+	jitterLow           = 0.75
+	jitterSpan          = 0.5
 
 	// resumeTail is how long a resumed stream may stay silent before it is
 	// treated as a turn that ended while nobody was watching. See
 	// [Client.watchTail] for the whole of why it exists.
 	resumeTail = 3 * time.Second
+)
+
+// firstBackoff is the floor of the pause before the first retry and
+// slowestBackoff the ceiling the base wait doubles up to. The first retry
+// draws from [1 s, 6 s) via [relay.FirstRetry] and each doubled wait is
+// spread into [0.75, 1.25) via [relay.Jitter] so a dropped relay does not
+// see every surface return in the same second; the ceiling exists because
+// every attempt spawns an ssh process or a dial on this machine and a
+// hundred of them against a machine that is switched off is a person's
+// laptop working for nothing.
+var (
+	firstBackoff = defaultFirstBackoff
+	retryFirst   = relay.FirstRetry
+	retryJitter  = relay.Jitter
+	retryRand    func() float64
+	redialSleep  = func(stop <-chan struct{}, d time.Duration) bool {
+		timer := time.NewTimer(d)
+		select {
+		case <-stop:
+			timer.Stop()
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
 )
 
 // Dialer opens ONE fresh transport to the engine. It is the seam the redial
@@ -82,6 +107,17 @@ type Roaming struct {
 	Dial Dialer
 	// Window is how long to keep trying, and zero is [RoamWindow].
 	Window time.Duration
+	// MaxLine bounds one inbound line on every link this client reads (see
+	// [WithMaxLine]). Zero keeps the unbounded reader local pipes and sockets use.
+	MaxLine int
+	// ResendUnanswered resends in-flight Submit, FollowUp and Steer calls that
+	// carry a ClientID when a redial lands on a host advertising
+	// [Welcome.MessageRepeat], and mints an id for sends that left it empty.
+	ResendUnanswered bool
+	// OnGap is called when the engine reports that a resumed stream's ring
+	// evicted events older than its first retained sequence number. Nil ignores
+	// the frame and continues reading the retained events.
+	OnGap func(Gap)
 }
 
 func (r *Roaming) window() time.Duration {
@@ -107,7 +143,7 @@ func Roam(host string, hello Hello, roam Roaming) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := newClient(host, hello)
+	c := newClient(host, hello, WithMaxLine(roam.MaxLine))
 	c.roam = &roam
 	if _, err := c.attach(conn); err != nil {
 		_ = conn.Close()
@@ -185,8 +221,22 @@ func (c *Client) lost(cause error) bool {
 	// conversation noticing.
 	c.mu.Lock()
 	c.reconnecting = true
-	waiting := c.calls
-	c.calls = map[uint64]chan result{}
+	var waiting []chan result
+	if roam.ResendUnanswered {
+		for id, answer := range c.calls {
+			if _, ok := c.pendingSends[id]; ok {
+				continue
+			}
+			delete(c.calls, id)
+			waiting = append(waiting, answer)
+		}
+	} else {
+		for _, answer := range c.calls {
+			waiting = append(waiting, answer)
+		}
+		c.calls = map[uint64]chan result{}
+		c.pendingSends = map[uint64]Frame{}
+	}
 	c.mu.Unlock()
 	refusal := errors.New(c.roamingRefusal())
 	for _, answer := range waiting {
@@ -212,7 +262,45 @@ func (c *Client) lost(cause error) bool {
 	c.reconcile(left, welcome)
 	c.retakeLanes(left, welcome)
 	c.resendClientTools()
+	c.resendUnansweredSends(left, welcome, refusal)
 	return true
+}
+
+func (c *Client) resendUnansweredSends(left string, welcome Welcome, refusal error) {
+	c.mu.Lock()
+	if c.roam == nil || !c.roam.ResendUnanswered || !welcome.MessageRepeat || conversationSwitched(left, welcome.SessionFile) {
+		var failed []chan result
+		for id := range c.pendingSends {
+			if answer, ok := c.calls[id]; ok {
+				delete(c.calls, id)
+				failed = append(failed, answer)
+			}
+		}
+		c.pendingSends = map[uint64]Frame{}
+		c.mu.Unlock()
+		for _, answer := range failed {
+			answer <- result{err: refusal}
+		}
+		return
+	}
+	var frames []Frame
+	for id, frame := range c.pendingSends {
+		if _, ok := c.calls[id]; ok {
+			frames = append(frames, frame)
+		} else {
+			delete(c.pendingSends, id)
+		}
+	}
+	c.mu.Unlock()
+	if len(frames) == 0 {
+		return
+	}
+	sort.Slice(frames, func(i, j int) bool { return frames[i].ID < frames[j].ID })
+	guard.Go("remote/resend-unanswered", func() {
+		for _, frame := range frames {
+			_ = c.write(frame)
+		}
+	})
 }
 
 // conversationSwitched reports whether the engine came back with a DIFFERENT
@@ -295,11 +383,28 @@ func (c *Client) retakeLanes(left string, welcome Welcome) {
 	}
 }
 
+func redialPause(first bool, wait time.Duration) time.Duration {
+	if first {
+		if wait != defaultFirstBackoff {
+			return wait
+		}
+		if retryRand != nil {
+			return defaultFirstBackoff + time.Duration(retryRand()*float64(firstRetrySpread))
+		}
+		return retryFirst()
+	}
+	if retryRand != nil {
+		return time.Duration(float64(wait) * (jitterLow + retryRand()*jitterSpan))
+	}
+	return retryJitter(wait)
+}
+
 // redial is the backoff loop: a pause, an attempt, a longer pause, until the
 // engine answers or the window runs out.
 func (c *Client) redial(roam *Roaming) (Welcome, error) {
 	deadline := time.Now().Add(roam.window())
 	wait := firstBackoff
+	first := true
 	for {
 		if c.stopped() {
 			return Welcome{}, errors.New("this connection is closed")
@@ -307,12 +412,10 @@ func (c *Client) redial(roam *Roaming) (Welcome, error) {
 		if time.Now().After(deadline) {
 			return Welcome{}, errors.New("the redialling ran out of time")
 		}
-		timer := time.NewTimer(wait)
-		select {
-		case <-c.stop:
-			timer.Stop()
+		pause := redialPause(first, wait)
+		first = false
+		if !redialSleep(c.stop, pause) {
 			return Welcome{}, errors.New("this connection is closed")
-		case <-timer.C:
 		}
 
 		conn, err := roam.Dial()
