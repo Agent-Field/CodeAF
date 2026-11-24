@@ -370,3 +370,26 @@ func TestP2_5_HostedShutdownClosesGuestWires(t *testing.T) {
 	guestClosed(t, first, firstHost, 5*time.Second)
 	guestClosed(t, second, secondHost, 5*time.Second)
 }
+
+// P2-5
+// A guest opening a chat that is not running, when its owner or the machine is at the limit of running chats, is told in the
+// guest's own words and never reads the owner's sentence.
+func TestP2_5_GuestIsToldPlainlyWhenThereIsNoRoomToStartTheChat(t *testing.T) {
+	rg := newHostedRig(t)
+	chat := rg.create(t, "santosh")
+	hostedGrant(t, rg, "santosh", chat, "abir", "view")
+	recordGuestHostWires(rg)
+	rg.host.mu.Lock()
+	rg.host.wireRefusal = http.StatusTooManyRequests
+	rg.host.mu.Unlock()
+	srv := httptest.NewServer(rg.h)
+	defer srv.Close()
+	client := guestDial(t, srv, rg.tokens["abir"], chat)
+	frame := guestFrame(t, guestRead(t, client, 5*time.Second))
+	if frame.Kind != "fatal" || frame.Error != hostedGuestNoRoom {
+		t.Fatalf("the guest was told %+v; want the guest's own sentence", frame)
+	}
+	if strings.Contains(frame.Error, "You already have") || strings.ContainsAny(frame.Error, "0123456789") {
+		t.Fatalf("the guest read the owner's limit: %q", frame.Error)
+	}
+}

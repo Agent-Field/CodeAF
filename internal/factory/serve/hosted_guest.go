@@ -31,6 +31,9 @@ const (
 	hostedGuestLongLine   = "A message to this chat was too large."
 	hostedGuestBadHello   = "This chat could not read the first message."
 	hostedGuestBadCall    = "This chat could not read a request."
+	// A guest opening a chat that is not running starts it for its owner, and either the owner's own limit or the machine's can say no.
+	// The sentence is the guest's, never the owner's ("You already have ... chats running"), and names no number or person.
+	hostedGuestNoRoom = "This chat is not running, and there is no room to start it right now. Try again later."
 )
 
 var errHostedGuestLineCap = errors.New(hostedGuestLongLine)
@@ -130,6 +133,9 @@ func (h *Handler) hostedGuestWire(w http.ResponseWriter, r *http.Request, item I
 			return
 		case http.StatusConflict:
 			hs.bearers.revokeFor(item.ID, owner)
+		case http.StatusTooManyRequests:
+			p.fatal(hostedGuestNoRoom)
+			return
 		}
 		p.fatal(hostedUnreachable)
 		return

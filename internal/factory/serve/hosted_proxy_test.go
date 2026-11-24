@@ -33,6 +33,8 @@ type fakeChatHost struct {
 	rowBearer map[string]string
 	// A wire test can replace the echo with a recording engine after the host's usual admission.
 	wire func(*websocket.Conn, *http.Request)
+	// A wire refusal makes the host answer the wire with this status and its own sentence instead of upgrading.
+	wireRefusal int
 }
 
 type hostSeen struct {
@@ -183,7 +185,14 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		held := f.tokens[id]
 		wire := f.wire
+		refusal := f.wireRefusal
 		f.mu.Unlock()
+		if refusal != 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(refusal)
+			_, _ = io.WriteString(w, `{"error":"You already have 2 chats running; stop one first."}`+"\n")
+			return
+		}
 		if held == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)

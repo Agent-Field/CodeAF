@@ -69,6 +69,8 @@ Only one window types at a time. While the owner has the chat open with the keyb
 
 When the owner takes your access away, or the policy changes so you no longer have it, your window is ended within a few seconds (five unless the operator set another heartbeat) and reads `Your access to this chat was removed.`
 
+Opening a chat that is not running starts it for its owner, which can be refused while its owner or the machine is running as many chats as are allowed. Then you read `This chat is not running, and there is no room to start it right now. Try again later.`
+
 ## who pays when someone else is in my hosted chat — it runs as the owner, with the owner's access and limits
 
 A shared chat always runs in the owner's folder on the machine, with the owner's model access and the owner's spending limits: what a guest's messages cost is counted to the owner, in the owner's My space, against the owner's chat limit and month. The server notes who last put words into the chat next to each charge, so the owner can see it was a guest, but that is approximate: a model call is credited to whoever last sent a message, redirected a turn or answered through the server, and the owner opening their own window puts it back to the owner. The owner's activity list (`GET /v1/hosted/audit`) holds one line for each message a guest sent, with who sent it (never what it said), and each line for the owner's GitHub access carries who was asking at the time.

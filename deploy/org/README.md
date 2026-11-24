@@ -252,6 +252,9 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   messages in it. Ask its owner.`; `... to steer it. Ask its owner.`; `... to answer its questions. Ask its owner.`)
   and never reaches the chat. The guest's hello is rewritten so it cannot launch, resume or take over anything and
   does not take the keyboard from the owner on arrival.
+  A guest opening a chat that is not running starts it for its owner; when the owner's limit on running chats or the
+  machine's says no (a 429 from the chats' machine), the guest reads `This chat is not running, and there is no room
+  to start it right now. Try again later.` (never the owner's own sentence, and no number).
 - **Access taken away.** Every `CODEAF_HOSTED_HEARTBEAT` (default `5s`, `1s` to `1m`) the server re-reads the
   guest's sign-in, the grants and the policy; when the right is gone it writes `Your access to this chat was
   removed.` and closes the wire. A role changed in between takes effect on the next call. For a bot the same check
