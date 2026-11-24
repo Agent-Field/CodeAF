@@ -54,6 +54,12 @@ func (b *appBackend) titleChanged(a *appAgent, live *appLive, title string) {
 		if current := strings.TrimSpace(live.conn.Conv.Title()); current != "" {
 			title = current
 		}
+		if live.conn.hosted != nil {
+			title = live.conn.hosted.door.clean(title)
+			if title == "" {
+				return
+			}
+		}
 		if a.view.Title == title {
 			return
 		}
