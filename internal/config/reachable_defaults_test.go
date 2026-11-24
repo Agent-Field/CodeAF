@@ -103,7 +103,7 @@ func TestOllamaDefaultsUseTheLocalModels(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeDefaultsSpanItsThreeModels(t *testing.T) {
+func TestClaudeCodeDefaultsAreItsPreferredAndStrongestModels(t *testing.T) {
 	f := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, claudemodel.ID), Key: claudemodel.Sentinel}}, models: map[string][]catalog.Model{claudemodel.ID: claudemodel.Models()}}
 	talk := f.pick(SlotTalk, DefaultModel, "")
 	if want := claudemodel.ID + "/" + vendoredSource(t, claudemodel.ID).Preferred; talk != want {
@@ -388,9 +388,47 @@ func TestAnOpenRouterKeyKeepsEveryBuiltInEvenBesideDeepSeekDirect(t *testing.T) 
 
 func TestTheTalkDefaultIsNeverEmptyWhenNoModelsAreKnown(t *testing.T) {
 	f := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "ollama")}}, models: map[string][]catalog.Model{}}
-	for _, slot := range []DefaultSlot{SlotTalk, SlotFallback} {
-		if got := f.pick(slot, DefaultModel, ""); got != DefaultModel {
+	for slot, builtIn := range map[DefaultSlot]string{SlotTalk: DefaultModel, SlotFallback: DefaultFallbackModel} {
+		if got := f.pick(slot, builtIn, ""); got != builtIn {
 			t.Fatalf("%s with a cold local catalog = %q, want the built-in rather than nothing", slot, got)
+		}
+	}
+}
+
+// A default fallback is for when the conversation model fails, so a listed
+// built-in that is the conversation model itself gives way to another model.
+func TestTheDefaultFallbackIsNotTheConversationModel(t *testing.T) {
+	f := defaultsFixture{services: []modelsource.Connected{{Source: vendoredSource(t, "deepseek"), Key: "sk-ds"}}, models: map[string][]catalog.Model{"deepseek": ids("deepseek-v4-pro", "deepseek-v4.1-flash")}}
+	if got := f.pick(SlotFallback, DefaultFallbackModel, DefaultFallbackModel); got != "deepseek/deepseek-v4-pro" {
+		t.Fatalf("fallback while talking on %q = %q, want the other model", DefaultFallbackModel, got)
+	}
+}
+
+// The lists that do not come from a remembered listing are built once and
+// shared, so the filter and rank memos, keyed by a list's backing array, see
+// one list rather than a new one per lookup.
+func TestListsThatAreNotRememberedAreBuiltOnce(t *testing.T) {
+	dir := t.TempDir()
+	for _, service := range []modelsource.Connected{
+		{Source: vendoredSource(t, claudemodel.ID), Key: claudemodel.Sentinel},
+		{Source: vendoredSource(t, "codex"), Key: "codex-sentinel"},
+		{Source: vendoredSource(t, "qwen"), Key: "sk-qw"},
+	} {
+		first := serviceModelsAt(dir, service)
+		if len(first) == 0 {
+			t.Fatalf("%s offers no models", service.Source.ID)
+		}
+		_ = rankByStrength(usableModels(first))
+		ranks := listRanks.Load()
+		for i := 0; i < 10; i++ {
+			again := serviceModelsAt(dir, service)
+			if &again[0] != &first[0] {
+				t.Fatalf("%s built its list afresh", service.Source.ID)
+			}
+			_ = rankByStrength(usableModels(again))
+		}
+		if got := listRanks.Load() - ranks; got != 0 {
+			t.Fatalf("%s ranked its unchanged list %d more times, want 0", service.Source.ID, got)
 		}
 	}
 }

@@ -2636,7 +2636,7 @@ func (s *Settings) build() []Setting {
 				"it will take the request, it keeps going quiet mid-reply, or it is being " +
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
-				"for codeaf's default: DeepSeek V4.1 Flash with OpenRouter connected, " +
+				"for codeaf's default: DeepSeek V4.1 Flash with OpenRouter or nothing connected, " +
 				"otherwise a model your connected providers offer. The turn says which " +
 				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },

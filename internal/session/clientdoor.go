@@ -256,6 +256,17 @@ func (c Config) routingInForce() provider.RoutingStrategy {
 	return provider.RoutingNow()
 }
 
+// fallbacksNow is the fallback chain for a client built now:
+// [Config.ModelFallbacksNow] when the launch installed it, else the chain read
+// at launch. Every client a session builds reads it, the automation judge's
+// included, so a provider connected after launch reaches them all.
+func (c Config) fallbacksNow() []string {
+	if c.ModelFallbacksNow != nil {
+		return c.ModelFallbacksNow()
+	}
+	return c.ModelFallbacks
+}
+
 // newProviderClient is construction shared by New and a live cross-service
 // switch. The same routing and fallback seams must survive replacement; a
 // second, smaller constructor would silently change how the next turn runs.
@@ -266,10 +277,7 @@ func newProviderClient(config Config, model string) (*provider.Client, error) {
 	// installed, live, on every call ([Config.Routing] says why). A caller that
 	// really carries a row of its own still hands it down and still wins.
 	settings.Routing = provider.StaticRouting(config.Routing)
-	settings.Fallbacks = config.ModelFallbacks
-	if config.ModelFallbacksNow != nil {
-		settings.Fallbacks = config.ModelFallbacksNow()
-	}
+	settings.Fallbacks = config.fallbacksNow()
 	settings.NearestModels = config.NearestModels
 	client, err := provider.NewClient(settings)
 	if err != nil {

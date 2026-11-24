@@ -98,7 +98,10 @@ func chooseDefault(sources modelsource.Set, slot DefaultSlot, builtIn, chosenTal
 	if strings.TrimSpace(follow) == "" || !offered(sources, follow, modelsOf) {
 		follow = reachableDefault(sources, connected, SlotTalk, "", modelsOf)
 	}
-	if builtIn != "" && offered(sources, builtIn, modelsOf) && sameProvider(sources, builtIn, follow, modelsOf) {
+	// A fallback is for when the conversation model fails, so a built-in that
+	// is the conversation model itself is passed over for a different one.
+	sameAsTalk := slot == SlotFallback && strings.EqualFold(stripLevel(builtIn), stripLevel(strings.TrimSpace(follow)))
+	if builtIn != "" && !sameAsTalk && offered(sources, builtIn, modelsOf) && sameProvider(sources, builtIn, follow, modelsOf) {
 		return builtIn
 	}
 	if chosen := reachableDefault(sources, connected, slot, chosenTalk, modelsOf); chosen != "" {
@@ -284,21 +287,52 @@ func stripLevel(model string) string {
 func serviceModelsAt(profileDir string, service modelsource.Connected) []catalog.Model {
 	switch strings.ToLower(strings.TrimSpace(service.Source.ID)) {
 	case claudemodel.ID:
-		return claudemodel.Models()
+		return claudeRows()
 	case "codex":
 		if rows := recallCached(CatalogOptionsFor(service, profileDir)); len(rows) > 0 {
 			return rows
 		}
+		return codexBuiltInRows()
+	}
+	if rows := recallCached(CatalogOptionsFor(service, profileDir)); len(rows) > 0 {
+		return rows
+	}
+	return heldNamedModels(service)
+}
+
+// THE LISTS A LOOKUP RANKS ARE THE SAME SLICE EVERY TIME. The filter and rank
+// memos are keyed by a list's backing array ([listKey]), so a list built afresh
+// on each call would add an entry per lookup, rank again, and fill the memo
+// until it is dropped whole, taking a large remembered list's ranking with it.
+// The plan's vendored models, ChatGPT's built-in rows and a service's named
+// models are therefore built once and shared; none of them is ever modified.
+var (
+	claudeRows       = sync.OnceValue(claudemodel.Models)
+	codexBuiltInRows = sync.OnceValue(func() []catalog.Model {
 		rows := make([]catalog.Model, 0, len(codexauth.FallbackModels))
 		for _, model := range codexauth.FallbackModels {
 			rows = append(rows, codexCatalogRow(model))
 		}
 		return rows
-	}
-	if rows := recallCached(CatalogOptionsFor(service, profileDir)); len(rows) > 0 {
+	})
+	namedMu   sync.Mutex
+	namedHeld = map[string][]catalog.Model{}
+)
+
+// heldNamedModels is [namedModels], built once per service and door.
+func heldNamedModels(service modelsource.Connected) []catalog.Model {
+	key := strings.Join(append([]string{service.Source.ID, service.Door.ID, service.Source.Preferred, service.Source.ProbeModel}, service.Door.Models...), "\x00")
+	namedMu.Lock()
+	defer namedMu.Unlock()
+	if rows, ok := namedHeld[key]; ok {
 		return rows
 	}
-	return namedModels(service)
+	rows := namedModels(service)
+	if len(namedHeld) > maxListMemo {
+		namedHeld = map[string][]catalog.Model{}
+	}
+	namedHeld[key] = rows
+	return rows
 }
 
 // recalled is one remembered model list and the cache file's metadata when it
@@ -434,7 +468,8 @@ func usableModels(models []catalog.Model) []catalog.Model {
 }
 
 // listKey names one list by its backing array and length. The lists the
-// defaults rank are shared and never modified ([recallCached]), so an
+// defaults rank are shared and never modified ([recallCached],
+// [serviceModelsAt]), so an
 // unchanged provider list is filtered and ranked once rather than on every
 // call; holding the key keeps that array alive, so the address is not reused
 // while the entry stands.
