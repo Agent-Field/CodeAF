@@ -54,6 +54,33 @@ const (
 	// FirstLineMax bounds the initial handshake line read on a local holder socket
 	// before the full session line limit applies.
 	FirstLineMax = 64 << 10
+
+	// MaxDirect caps concurrent direct tunnels on one host. A direct tunnel
+	// holds no relay stream, so this number is its own and not a share of
+	// MaxLive; the files door's admission count (filesdoor.MaxDirect) is the
+	// same number and a syncsetup test pins that they agree.
+	MaxDirect = 14
+
+	// DirectRate is the pacing of a direct tunnel in bytes per second, in each
+	// direction, and its burst too. The 1 MiB/s Rate exists to keep the relay
+	// under its abuse breaker and its message bill; a direct path has neither,
+	// so this bucket exists for symmetry and never binds on a network.
+	DirectRate = 64 << 20
+
+	// SignalMax bounds one signalling payload. It is half of ChunkBytes so a
+	// signal always fits one frame with room to spare, and far more than a
+	// data-channel-only session description needs.
+	SignalMax = 8 << 10
+
+	// SignalRate is how many signalling frames a link may carry in a minute
+	// before it is closed as `too-many`. An attempt is an offer, an answer and
+	// a handful of candidates, so this allows several attempts a minute.
+	SignalRate = 64
+
+	// PendingOffers caps the direct attempts a host has in flight at once, over
+	// every viewer, so a flood of offers cannot make a host build peer
+	// connections without limit.
+	PendingOffers = 4
 )
 
 var (
@@ -76,7 +103,47 @@ var (
 	// WriteDeadline bounds how long the holder waits on a remote guest socket write
 	// before dropping that guest so a local surface never stalls.
 	WriteDeadline = 2 * time.Second
+
+	// DirectPingEvery and DirectDeadAfter are the liveness of a direct tunnel.
+	// The mux ping IS how a viewer learns a direct path has died, and it costs
+	// the relay nothing, so it runs every second and declares the road dead
+	// after DirectPingEvery+DirectDeadAfter of silence (three seconds).
+	DirectPingEvery = 1 * time.Second
+	DirectDeadAfter = 2 * time.Second
+
+	// DirectSettle is how long after a view's first channel opens that the
+	// viewer makes its first direct attempt, so the first paint never waits on
+	// the path finding.
+	DirectSettle = 500 * time.Millisecond
+
+	// DirectConnectWithin is the time one attempt gets to finish ICE, DTLS,
+	// SCTP, the handshake and the hello before it is abandoned.
+	DirectConnectWithin = 8 * time.Second
+
+	// DirectBackoff is how long a viewer waits after each failed attempt before
+	// the next, ending in a ten-minute wait that repeats; DirectStableAfter is
+	// how long a direct tunnel must stay up before the ladder starts over.
+	DirectBackoff = []time.Duration{5 * time.Second, 15 * time.Second, 60 * time.Second, 5 * time.Minute, 10 * time.Minute}
+
+	DirectStableAfter = 60 * time.Second
+
+	// OfferTTL is how long a host keeps an attempt that has not produced a
+	// stream before it lets the attempt go.
+	OfferTTL = 12 * time.Second
 )
+
+// DirectLimits are the limits a host serves a direct tunnel with: the road's
+// own pacing and liveness, and everything else (the line cap, the credit
+// windows, the write deadline) as for the relay, because those bound memory
+// above the tunnel and not the cost of the road.
+func DirectLimits() Limits {
+	l := DefaultLimits()
+	l.Rate = DirectRate
+	l.RateBurst = DirectRate
+	l.PingEvery = DirectPingEvery
+	l.DeadAfter = DirectDeadAfter
+	return l
+}
 
 // Limits carries the byte, count, and duration caps for a live door link so a
 // test or handshake payload can override individual values from the defaults.
@@ -124,6 +191,25 @@ func DefaultLimits() Limits {
 		IdleDetach:          IdleDetach,
 		WriteDeadline:       WriteDeadline,
 	}
+}
+
+// directDefaults fills the fields where a direct tunnel differs from a relay
+// one, wherever the caller left them unset, so a direct tunnel served with a
+// zero Limits is still paced and watched as the direct road is.
+func (l Limits) directDefaults() Limits {
+	if l.Rate <= 0 {
+		l.Rate = DirectRate
+	}
+	if l.RateBurst <= 0 {
+		l.RateBurst = DirectRate
+	}
+	if l.PingEvery <= 0 {
+		l.PingEvery = DirectPingEvery
+	}
+	if l.DeadAfter <= 0 {
+		l.DeadAfter = DirectDeadAfter
+	}
+	return l
 }
 
 // withDefaults fills any non-positive field in l from DefaultLimits so a test
