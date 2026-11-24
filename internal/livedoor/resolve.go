@@ -65,6 +65,14 @@ func SetDaemonDoors(d DaemonDoors) {
 	daemonDoorsMu.Unlock()
 }
 
+// DaemonDoorsInstalled says whether both doors are in place, so the program can
+// pin that its entry point wired them: without them a chat held by a daemon is
+// never found, and nothing else would say so.
+func DaemonDoorsInstalled() bool {
+	d := installedDaemonDoors()
+	return d.Inspect != nil && d.Dial != nil
+}
+
 func installedDaemonDoors() DaemonDoors {
 	daemonDoorsMu.RLock()
 	defer daemonDoorsMu.RUnlock()
