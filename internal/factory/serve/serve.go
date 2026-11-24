@@ -479,6 +479,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeHostedModels()
 		h.closeGrantSweep()
 		h.closeOrders()
 		h.closeAgents()
@@ -553,6 +554,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// unless hosted chats are turned on, which leaves every path as it was.
 	if h.modelPath(r) {
 		h.modelProxy(w, r)
+		return
+	}
+	if h.gitPath(r) {
+		h.hostedGit(w, r)
 		return
 	}
 	if markPreMutation(r) {

@@ -342,9 +342,9 @@ func modelRefuse(w http.ResponseWriter, status int, words string) {
 func (h *Handler) modelProxy(w http.ResponseWriter, r *http.Request) {
 	hs := h.config.Hosted.state
 	token := bearer(r)
-	if _, ok := hs.bearers.lookup(token, h.clock()); !ok {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="model"`)
-		modelRefuse(w, http.StatusUnauthorized, modelEnded)
+	row, ok := hs.bearers.lookup(token, h.clock())
+	if !ok {
+		h.modelAccessEnded(w)
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
@@ -365,6 +365,23 @@ func (h *Handler) modelProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, modelRequestCap)
+	// A chat can list models or complete a message. Account routes such as
+	// /key, /credits, /generation and /auth stay private to the organization.
+	switch {
+	case r.Method == http.MethodPost && "/"+rest == hostedCompletionPath:
+		if h.config.Hosted.CompleterFor != nil {
+			h.serveHostedCompletion(w, r, token, row)
+			return
+		}
+	case r.Method == http.MethodGet && (rest == "models" || strings.HasPrefix(rest, "models/") && len(rest) > len("models/")):
+	default:
+		modelRefuse(w, http.StatusNotFound, modelNoSuchPlace)
+		return
+	}
+	if hs.upstream == nil {
+		modelRefuse(w, http.StatusBadGateway, modelNotAnswer)
+		return
+	}
 	(&httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL.Path = "/" + rest

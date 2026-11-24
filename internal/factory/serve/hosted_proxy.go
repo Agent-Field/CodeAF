@@ -19,6 +19,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 )
 
 // This file lets a signed-in person run a whole chat on the organization's own
@@ -42,6 +43,14 @@ type HostedConfig struct {
 	ModelUpstream string
 	// ModelUpstreamKey is the upstream's own key, empty for a keyless stub.
 	ModelUpstreamKey string
+	// SessionCapUSD is what one chat may spend before its model calls are
+	// refused, in dollars; zero means the default of $5.00
+	// (CODEAF_HOSTED_SESSION_CAP_USD).
+	SessionCapUSD float64
+	// CompleterFor builds the funnel one call on a model goes out through, for
+	// an upstream address and a key. Nil keeps the pass-through of P0 for
+	// chat completions (the unmetered road a server without the model road has).
+	CompleterFor func(base, key string) func(model string) modelapi.Completer
 
 	// ServerKey is the raw text of CODEAF_SERVER_KEY: 64 hexadecimal
 	// characters, or the base64 of 32 bytes. It seals the keys people store on
@@ -78,6 +87,8 @@ type hostedState struct {
 	// is refused, never replaced by the organization's.
 	keys    *personKeys
 	keysErr error
+	// models is the registry of each chat's metered model server (model_route.go).
+	models modelRegistry
 	// attach serializes the first attach of a chat with the push of its
 	// credentials. Without it a second window attaching at the same moment
 	// would see a live bearer, skip the push and reach the chat's host before
@@ -110,7 +121,7 @@ var hostedIDForm = regexp.MustCompile(`^hs_[0-9a-f]{24}$`)
 // complete and well formed, because a half-set feature that starts anyway
 // would run chats with a secret nobody checked; the error says which part and
 // never repeats a value.
-func ParseHostedConfig(rawURL, secret, modelURL, upstream, upstreamKey string) (*HostedConfig, error) {
+func ParseHostedConfig(rawURL, secret, modelURL, upstream, upstreamKey string, defaultUpstream ...bool) (*HostedConfig, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return nil, nil
@@ -129,8 +140,11 @@ func ParseHostedConfig(rawURL, secret, modelURL, upstream, upstreamKey string) (
 	if cfg.ModelURL, _, err = hostedAddress("CODEAF_HOSTED_MODEL_URL", modelURL); err != nil {
 		return nil, err
 	}
-	if cfg.ModelUpstream, _, err = hostedAddress("CODEAF_HOSTED_MODEL_UPSTREAM", upstream); err != nil {
-		return nil, err
+	// The metered caller can supply its provider's default when no override is set.
+	if strings.TrimSpace(upstream) != "" || len(defaultUpstream) == 0 || !defaultUpstream[0] {
+		if cfg.ModelUpstream, _, err = hostedAddress("CODEAF_HOSTED_MODEL_UPSTREAM", upstream); err != nil {
+			return nil, err
+		}
 	}
 	return cfg, nil
 }
@@ -158,7 +172,7 @@ func (h *Handler) hostedRoutes() {
 	if hc == nil {
 		return
 	}
-	checked, err := ParseHostedConfig(hc.URL, hc.Secret, hc.ModelURL, hc.ModelUpstream, hc.ModelUpstreamKey)
+	checked, err := ParseHostedConfig(hc.URL, hc.Secret, hc.ModelURL, hc.ModelUpstream, hc.ModelUpstreamKey, hc.CompleterFor != nil)
 	if err != nil || checked == nil {
 		h.config.Hosted = nil
 		return
@@ -460,6 +474,7 @@ func (h *Handler) hostedEnd(w http.ResponseWriter, r *http.Request, method, suff
 	hs := h.config.Hosted.state
 	status, header, body, err := hs.call(r.Context(), method, "/v1/sessions/"+id+suffix, person, nil)
 	hs.bearers.revokeFor(id, person)
+	hs.models.forget(id, person)
 	if h.hostedFailed(w, status, err) {
 		return
 	}
