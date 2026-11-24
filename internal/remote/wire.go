@@ -2315,3 +2315,19 @@ type Page struct {
 	Total   int                    `json:"total,omitempty"`
 	More    bool                   `json:"more,omitempty"`
 }
+
+const (
+	// defaultTranscriptPageLimit is the entry count [MethodTranscriptPage] serves
+	// when the caller leaves [TranscriptPageArgs.Limit] unset, matching the two
+	// screens of scrollback the surface draws per helping.
+	defaultTranscriptPageLimit = 40
+	// maxTranscriptPageLimit caps the number of entries a single transcript page
+	// may return so one read never materialises an unbounded batch over a live link.
+	maxTranscriptPageLimit = 200
+	// maxTranscriptPageBytes caps the byte weight of a single transcript page so
+	// its result frame stays comfortably below [DefaultMaxLine].
+	maxTranscriptPageBytes = 192 << 10
+	// transcriptShortenedMarker is appended to the text of a single transcript
+	// entry that had to be shortened to fit [maxTranscriptPageBytes].
+	transcriptShortenedMarker = " … [shortened for remote control]"
+)

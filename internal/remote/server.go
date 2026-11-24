@@ -69,6 +69,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/executor"
@@ -3525,6 +3526,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodTranscript:
 		return json.Marshal(agent.Transcript())
 
+	case MethodTranscriptPage:
+		args, err := arg[TranscriptPageArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(transcriptPage(agent.Transcript(), args))
+
 	case MethodEarlier:
 		return json.Marshal(agent.EarlierHistory())
 
@@ -3893,6 +3901,136 @@ func arg[T any](call Frame) (T, error) {
 		return value, fmt.Errorf("engine: %s: %w", call.Method, err)
 	}
 	return value, nil
+}
+
+// transcriptPage cuts one entry- and byte-bounded window ending at args.Before
+// from the full transcript list. It trims from the older end first so a page
+// always ends at the requested index and the older entries arrive on the next
+// backward call; when a single entry exceeds maxBytes on its own, that entry is
+// returned alone with its text shortened and marked rather than dropped.
+func transcriptPage(all []session.DisplayEntry, args TranscriptPageArgs) Page {
+	total := len(all)
+	before := args.Before
+	if before <= 0 || before > total {
+		before = total
+	}
+	limit := args.Limit
+	if limit <= 0 {
+		limit = defaultTranscriptPageLimit
+	} else if limit > maxTranscriptPageLimit {
+		limit = maxTranscriptPageLimit
+	}
+	maxBytes := args.MaxBytes
+	if maxBytes <= 0 || maxBytes > maxTranscriptPageBytes {
+		maxBytes = maxTranscriptPageBytes
+	}
+	if total == 0 || before <= 0 {
+		return Page{Total: total}
+	}
+
+	from := max(0, before-limit)
+	base := before - 1
+	used := 0
+	for i := before - 1; i >= from; i-- {
+		raw, err := json.Marshal(all[i])
+		if err != nil {
+			break
+		}
+		if i == before-1 {
+			if len(raw) > maxBytes {
+				shortened := shortenDisplayEntry(all[i], maxBytes)
+				return Page{
+					Entries: []session.DisplayEntry{shortened},
+					Base:    i,
+					Total:   total,
+					More:    i > 0,
+				}
+			}
+			used = len(raw)
+			base = i
+			continue
+		}
+		if used+1+len(raw) > maxBytes {
+			break
+		}
+		used += 1 + len(raw)
+		base = i
+	}
+
+	entries := make([]session.DisplayEntry, before-base)
+	copy(entries, all[base:before])
+	return Page{
+		Entries: entries,
+		Base:    base,
+		Total:   total,
+		More:    base > 0,
+	}
+}
+
+// shortenDisplayEntry truncates the largest text field of entry and appends
+// transcriptShortenedMarker so a single oversized entry still crosses within
+// maxBytes without mutating the caller's transcript slice.
+func shortenDisplayEntry(entry session.DisplayEntry, maxBytes int) session.DisplayEntry {
+	field := &entry.Text
+	if len(entry.Output) > len(*field) {
+		field = &entry.Output
+	}
+	if len(entry.Args) > len(*field) {
+		field = &entry.Args
+	}
+	if len(entry.Hint) > len(*field) {
+		field = &entry.Hint
+	}
+	orig := *field
+	*field = transcriptShortenedMarker
+	shell, err := json.Marshal(entry)
+	if err != nil {
+		*field = truncateUTF8(orig, max(0, maxBytes-len(transcriptShortenedMarker))) + transcriptShortenedMarker
+		return entry
+	}
+	budget := maxBytes - len(shell)
+	if budget <= 0 {
+		return entry
+	}
+	prefix := truncateUTF8(orig, budget)
+	*field = prefix + transcriptShortenedMarker
+	for len(prefix) > 0 {
+		raw, err := json.Marshal(entry)
+		if err != nil || len(raw) <= maxBytes {
+			break
+		}
+		excess := len(raw) - maxBytes
+		if excess >= len(prefix) {
+			prefix = ""
+		} else {
+			prefix = truncateUTF8(prefix, len(prefix)-excess)
+		}
+		*field = prefix + transcriptShortenedMarker
+	}
+	return entry
+}
+
+// truncateUTF8 cuts s to at most maxBytes without splitting a multi-byte UTF-8
+// rune at the end, so JSON serialisation never expands a torn rune into a
+// replacement escape sequence.
+func truncateUTF8(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(s) <= maxBytes {
+		return s
+	}
+	s = s[:maxBytes]
+	for i := len(s) - 1; i >= 0 && len(s)-i <= utf8.UTFMax; i-- {
+		if !utf8.RuneStart(s[i]) {
+			continue
+		}
+		if r, width := utf8.DecodeRuneInString(s[i:]); r == utf8.RuneError && width == 1 {
+			return s[:i]
+		}
+		return s
+	}
+	return s
 }
 
 // stream turns a submitted turn into a stream id. The id is answered

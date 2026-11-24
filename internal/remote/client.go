@@ -2638,6 +2638,25 @@ func (a *Agent) Transcript() []session.DisplayEntry {
 	return a.entries(MethodTranscript, nil)
 }
 
+// TranscriptPage reads one bounded page of the conversation's transcript ending
+// before the absolute entry index before (zero for the tail). An older engine
+// without the door answers "no such method", which comes back unchanged so the
+// caller can fall back to the whole-transcript read.
+func (a *Agent) TranscriptPage(ctx context.Context, before, limit int) (Page, error) {
+	payload, err := a.c.call(ctx, MethodTranscriptPage, TranscriptPageArgs{
+		Before: before,
+		Limit:  limit,
+	})
+	if err != nil {
+		return Page{}, err
+	}
+	var page Page
+	if err := json.Unmarshal(payload, &page); err != nil {
+		return Page{}, err
+	}
+	return page, nil
+}
+
 // EarlierHistory is the conversation above the session's latest compaction and
 // where the pass's rewritten copy of it ends, which is what the surface scrolls
 // back into. Empty for a session that has never been compacted, and empty for a
