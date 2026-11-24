@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -736,5 +737,165 @@ func TestTheWindowIsSpelledTheWayASentenceWantsIt(t *testing.T) {
 		if got := roamSpan(row.span); got != row.want {
 			t.Errorf("%s reads %q, wanted %q", row.span, got, row.want)
 		}
+	}
+}
+
+// TestTheFirstRetryAfterADropWaitsAJitteredSecond verifies V22: the first retry
+// after a dropped link waits 1 s + U[0, 5 s) and each later doubled wait up to
+// the 15 s cap is scaled by U[0.75, 1.25), while a drop followed by an
+// immediate success still redials once.
+func TestTheFirstRetryAfterADropWaitsAJitteredSecond(t *testing.T) {
+	wasRand := retryRand
+	wasSleep := redialSleep
+	t.Cleanup(func() {
+		retryRand = wasRand
+		redialSleep = wasSleep
+	})
+
+	recordSchedule := func(t *testing.T, failuresBeforeSuccess int) ([]time.Duration, int) {
+		t.Helper()
+		var mu sync.Mutex
+		var waits []time.Duration
+		redialSleep = func(stop <-chan struct{}, d time.Duration) bool {
+			select {
+			case <-stop:
+				return false
+			default:
+				mu.Lock()
+				waits = append(waits, d)
+				mu.Unlock()
+				return true
+			}
+		}
+
+		dials := 0
+		var firstSurface io.ReadWriteCloser
+		dialer := func() (io.ReadWriteCloser, error) {
+			mu.Lock()
+			attempt := dials
+			dials++
+			mu.Unlock()
+			if attempt > 0 && attempt <= failuresBeforeSuccess {
+				return nil, errors.New("no route to host")
+			}
+			ours, theirs := net.Pipe()
+			engine := &scripted{
+				t:    t,
+				conn: theirs,
+				said: Welcome{Version: Version, SessionFile: "/j.jsonl", Persistent: true},
+			}
+			guard.Go("remote/test-redial-jitter", func() { engine.serve(nil) })
+			if attempt == 0 {
+				firstSurface = ours
+			}
+			return ours, nil
+		}
+
+		client, err := Roam("devbox", Hello{Workspace: "app"}, Roaming{Dial: dialer, Window: RoamWindow})
+		if err != nil {
+			t.Fatalf("roam: %v", err)
+		}
+		defer func() { _ = client.Close() }()
+
+		_ = firstSurface.Close()
+		wantDials := 2 + failuresBeforeSuccess
+		waitFor(t, "the redial schedule to finish", func() bool {
+			mu.Lock()
+			got := dials
+			mu.Unlock()
+			return got == wantDials && client.LinkNote() == ""
+		})
+		if err := client.Err(); err != nil {
+			t.Fatalf("client failed after redial: %v", err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]time.Duration(nil), waits...), dials
+	}
+
+	// Low extreme: U = 0 gives exactly 1 s on the first retry, then 0.75 of
+	// each doubled wait (2 s, 4 s, 8 s, and 15 s at the cap).
+	retryRand = func() float64 { return 0 }
+	lowWaits, _ := recordSchedule(t, 5)
+	wantLow := []time.Duration{
+		time.Second,
+		1500 * time.Millisecond,
+		3 * time.Second,
+		6 * time.Second,
+		11250 * time.Millisecond,
+		11250 * time.Millisecond,
+	}
+	if len(lowWaits) != len(wantLow) {
+		t.Fatalf("low-extreme schedule length = %d, want %d (%v)", len(lowWaits), len(wantLow), lowWaits)
+	}
+	for i, want := range wantLow {
+		if lowWaits[i] != want {
+			t.Fatalf("low-extreme wait %d = %v, want %v", i+1, lowWaits[i], want)
+		}
+	}
+
+	// High extreme: U just under 1 gives just under 6 s on the first retry,
+	// then just under 1.25 of each doubled wait.
+	retryRand = func() float64 { return 0.9999999 }
+	highWaits, _ := recordSchedule(t, 5)
+	highCeilings := []time.Duration{
+		6 * time.Second,
+		2500 * time.Millisecond,
+		5 * time.Second,
+		10 * time.Second,
+		18750 * time.Millisecond,
+		18750 * time.Millisecond,
+	}
+	if len(highWaits) != len(highCeilings) {
+		t.Fatalf("high-extreme schedule length = %d, want %d (%v)", len(highWaits), len(highCeilings), highWaits)
+	}
+	for i, ceiling := range highCeilings {
+		if highWaits[i] >= ceiling || highWaits[i] < ceiling-time.Millisecond {
+			t.Fatalf("high-extreme wait %d = %v, want just under %v", i+1, highWaits[i], ceiling)
+		}
+	}
+
+	// Default source: ten samples all fall in [1 s, 6 s) on the first retry and
+	// within [0.75, 1.25) of each doubled wait thereafter, and are not all equal.
+	retryRand = nil
+	bands := []struct {
+		low, high time.Duration
+	}{
+		{time.Second, 6 * time.Second},
+		{1500 * time.Millisecond, 2500 * time.Millisecond},
+		{3 * time.Second, 5 * time.Second},
+		{6 * time.Second, 10 * time.Second},
+		{11250 * time.Millisecond, 18750 * time.Millisecond},
+		{11250 * time.Millisecond, 18750 * time.Millisecond},
+	}
+	firstSeen := map[time.Duration]bool{}
+	secondSeen := map[time.Duration]bool{}
+	for sample := 0; sample < 10; sample++ {
+		waits, _ := recordSchedule(t, 5)
+		if len(waits) != len(bands) {
+			t.Fatalf("sample %d recorded %d waits, want %d", sample, len(waits), len(bands))
+		}
+		for i, band := range bands {
+			if waits[i] < band.low || waits[i] >= band.high {
+				t.Fatalf("sample %d wait %d = %v, outside [%v, %v)", sample, i+1, waits[i], band.low, band.high)
+			}
+		}
+		firstSeen[waits[0]] = true
+		secondSeen[waits[1]] = true
+	}
+	if len(firstSeen) < 2 {
+		t.Fatalf("ten default-source first waits were all identical: %v", firstSeen)
+	}
+	if len(secondSeen) < 2 {
+		t.Fatalf("ten default-source second waits were all identical: %v", secondSeen)
+	}
+
+	// A drop followed by an immediate success still redials once.
+	waits, dials := recordSchedule(t, 0)
+	if dials != 2 || len(waits) != 1 {
+		t.Fatalf("immediate recovery made %d dials with %d waits (%v), want 2 dials and 1 wait", dials, len(waits), waits)
+	}
+	if waits[0] < time.Second || waits[0] >= 6*time.Second {
+		t.Fatalf("immediate recovery wait = %v, outside [1s, 6s)", waits[0])
 	}
 }

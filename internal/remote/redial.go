@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
 const (
@@ -58,18 +59,41 @@ const (
 
 	slowestBackoff = 15 * time.Second
 
+	defaultFirstBackoff = 1 * time.Second
+	firstRetrySpread    = 5 * time.Second
+	jitterLow           = 0.75
+	jitterSpan          = 0.5
+
 	// resumeTail is how long a resumed stream may stay silent before it is
 	// treated as a turn that ended while nobody was watching. See
 	// [Client.watchTail] for the whole of why it exists.
 	resumeTail = 3 * time.Second
 )
 
-// firstBackoff is the pause before the first retry and slowestBackoff the
-// ceiling it doubles up to. The first is short because most drops are a blip
-// and the pipe is there a second later; the ceiling exists because every
-// attempt spawns an ssh process on this machine and a hundred of them against a
-// machine that is switched off is a person's laptop working for nothing.
-var firstBackoff = 1 * time.Second
+// firstBackoff is the floor of the pause before the first retry and
+// slowestBackoff the ceiling the base wait doubles up to. The first retry
+// draws from [1 s, 6 s) via [relay.FirstRetry] and each doubled wait is
+// spread into [0.75, 1.25) via [relay.Jitter] so a dropped relay does not
+// see every surface return in the same second; the ceiling exists because
+// every attempt spawns an ssh process or a dial on this machine and a
+// hundred of them against a machine that is switched off is a person's
+// laptop working for nothing.
+var (
+	firstBackoff = defaultFirstBackoff
+	retryFirst   = relay.FirstRetry
+	retryJitter  = relay.Jitter
+	retryRand    func() float64
+	redialSleep  = func(stop <-chan struct{}, d time.Duration) bool {
+		timer := time.NewTimer(d)
+		select {
+		case <-stop:
+			timer.Stop()
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
+)
 
 // Dialer opens ONE fresh transport to the engine. It is the seam the redial
 // loop turns on: the spawning of ssh belongs to the door (cmd/codeaf, which
@@ -359,11 +383,28 @@ func (c *Client) retakeLanes(left string, welcome Welcome) {
 	}
 }
 
+func redialPause(first bool, wait time.Duration) time.Duration {
+	if first {
+		if wait != defaultFirstBackoff {
+			return wait
+		}
+		if retryRand != nil {
+			return defaultFirstBackoff + time.Duration(retryRand()*float64(firstRetrySpread))
+		}
+		return retryFirst()
+	}
+	if retryRand != nil {
+		return time.Duration(float64(wait) * (jitterLow + retryRand()*jitterSpan))
+	}
+	return retryJitter(wait)
+}
+
 // redial is the backoff loop: a pause, an attempt, a longer pause, until the
 // engine answers or the window runs out.
 func (c *Client) redial(roam *Roaming) (Welcome, error) {
 	deadline := time.Now().Add(roam.window())
 	wait := firstBackoff
+	first := true
 	for {
 		if c.stopped() {
 			return Welcome{}, errors.New("this connection is closed")
@@ -371,12 +412,10 @@ func (c *Client) redial(roam *Roaming) (Welcome, error) {
 		if time.Now().After(deadline) {
 			return Welcome{}, errors.New("the redialling ran out of time")
 		}
-		timer := time.NewTimer(wait)
-		select {
-		case <-c.stop:
-			timer.Stop()
+		pause := redialPause(first, wait)
+		first = false
+		if !redialSleep(c.stop, pause) {
 			return Welcome{}, errors.New("this connection is closed")
-		case <-timer.C:
 		}
 
 		conn, err := roam.Dial()
