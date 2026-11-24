@@ -192,7 +192,13 @@ func applyLandlock(enabled bool, root string) error {
 // createRuleset makes a Landlock ruleset that handles the given file accesses and,
 // when scoped is not zero, the given scopes (kernels from Landlock ABI 6 on).
 func createRuleset(handled, scoped uint64) (int, error) {
-	attr := unix.LandlockRulesetAttr{Access_fs: handled, Scoped: scoped}
+	return createRulesetNet(handled, 0, scoped)
+}
+
+// createRulesetNet is [createRuleset] that also handles the given network
+// access (0 handles none, which is what a ruleset has always done).
+func createRulesetNet(handled, net, scoped uint64) (int, error) {
+	attr := unix.LandlockRulesetAttr{Access_fs: handled, Access_net: net, Scoped: scoped}
 	fd, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET,
 		uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
 	return int(fd), errnoErr(errno)
