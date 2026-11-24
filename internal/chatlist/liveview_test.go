@@ -10,7 +10,7 @@ import (
 // added on the wire without words fails this test instead of rendering blank.
 var liveReasons = []string{
 	"not-running", "not-allowed", "holder-gone", "holder-old", "removed", "permit-changed",
-	"lagging", "frame-too-large", "budget", "idle", "host-closing", "too-many",
+	"lagging", "frame-too-large", "budget", "idle", "host-closing", "too-many", "remote-control-off",
 }
 
 // V12/V25 vocabulary: a live view is part of the pairing journey, so none of its

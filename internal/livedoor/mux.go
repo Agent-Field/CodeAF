@@ -76,6 +76,17 @@ func (e *ChannelError) PlannedRedial() bool {
 	return e != nil && e.Why == ReasonRoadChange
 }
 
+// EndsView reports that the host ended this view on purpose and said why, so
+// that dialling it again cannot change anything: remote.Roam buries a client
+// whose link ended this way and says the host's sentence, where an ordinary
+// drop is redialled for the whole of its window. The set is closed and has one
+// member, because every other reason either has a redial that works (a quiet
+// spell, a lagging view, a changed permit) or already stops one (a removal,
+// which the link refuses on every dial).
+func (e *ChannelError) EndsView() bool {
+	return e != nil && e.Why == ReasonRemoteControlOff
+}
+
 func (e *ChannelError) Unwrap() error {
 	return e.Err
 }
@@ -99,6 +110,13 @@ type HelloAck struct {
 	// room for another direct tunnel. ADDITIVE: an older host never sets it and
 	// an older viewer ignores it, so nobody offers to a host that cannot answer.
 	Direct bool `json:"direct,omitempty"`
+	// Off says that Watch is false BECAUSE the person turned remote control off on
+	// the host, not because this computer's permit has no watching in it. It is
+	// what a refused dial can say, since a refusal that never opened a channel
+	// has no channel reset to carry [ReasonRemoteControlOff]. ADDITIVE for the
+	// same reason Direct is: an older host never sets it, and an older viewer
+	// ignores it and reads the Watch that is false as it always did.
+	Off bool `json:"off,omitempty"`
 }
 
 // MuxConfig configures a Mux over an io.ReadWriteCloser.

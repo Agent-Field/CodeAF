@@ -1085,6 +1085,7 @@ func TestEveryReasonConstantHasWordsInChatlist(t *testing.T) {
 		ReasonIdle,
 		ReasonHostClosing,
 		ReasonTooMany,
+		ReasonRemoteControlOff,
 	}
 
 	seen := make(map[string]string, len(reasons))

@@ -138,7 +138,7 @@ func appLiveRefusal(err error, host string) error {
 	}
 	code := appwire.CodeUnreachable
 	switch reason {
-	case livedoor.ReasonNotAllowed, livedoor.ReasonRemoved, livedoor.ReasonPermitChanged:
+	case livedoor.ReasonNotAllowed, livedoor.ReasonRemoved, livedoor.ReasonPermitChanged, livedoor.ReasonRemoteControlOff:
 		code = appwire.CodeConflict
 	}
 	return &appwire.Error{Code: code, Message: chatlist.LiveSaid(reason, host), Detail: appwire.LiveRefused{Kind: "live_refused", Reason: reason}}

@@ -44,6 +44,15 @@ const (
 	ReasonHostClosing   = "host-closing"
 	ReasonTooMany       = "too-many"
 
+	// ReasonRemoteControlOff is what a host says to every live view it closes
+	// because the person turned remote control off on it. It is ADDITIVE ON THE
+	// WIRE: reasons are opaque strings to the mux, so a build that does not know
+	// this one reads an ordinary channel end it has no sentence for, says a plain
+	// loss of connection and redials as it always did. A build that knows it ends
+	// the view for good, because the computer is up and answered, and redialling
+	// cannot change what it said.
+	ReasonRemoteControlOff = "remote-control-off"
+
 	// ReasonRoadChange is the reason a viewer's own link gives a channel it ends
 	// on purpose so the channel's chat can be redialled over the other road. IT
 	// IS VIEWER-LOCAL: it is never written on a wire frame and never spoken to a

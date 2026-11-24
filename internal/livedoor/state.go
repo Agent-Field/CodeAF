@@ -29,7 +29,9 @@ const (
 	// with no user action and no running turn so the relay can hibernate.
 	Idle
 	// Revoked reports that the host removed this viewer computer or denied watch
-	// permission, stopping automatic retries for good.
+	// permission, stopping automatic retries for good. A host that turned
+	// remote control off reads the same way with Reason [ReasonRemoteControlOff],
+	// except that it is dialled again when a person next opens a view on it.
 	Revoked
 	// WatchOnly reports that the tunnel is open with watch permission while
 	// drive permission is off.

@@ -364,6 +364,51 @@ func (l *Link) Opener(chat string) func() (io.ReadWriteCloser, error) {
 	}
 }
 
+// resumeAfterHostOff lifts the rest a host's "remote control is off" put this
+// link in, because an open is somebody asking again. The host ended every view
+// it had here and the link has not redialled since, which is the point; but a
+// computer turned back on must be reachable without restarting this one, so the
+// first open after it dials like any other. A link that was REMOVED stays
+// revoked: that is permanent, and this is not.
+func (l *Link) resumeAfterHostOff() {
+	l.mu.Lock()
+	if l.closed || !l.revoked || l.lastReason != ReasonRemoteControlOff {
+		l.mu.Unlock()
+		return
+	}
+	stale := l.mux
+	l.mu.Unlock()
+	if stale != nil {
+		// THE TUNNEL THE HOST ENDED THE VIEWS ON MAY NOT HAVE BEEN SEEN TO CLOSE YET:
+		// the host closes it right behind the reasons, and this open can land in the
+		// gap. It is closed here and settled while the link still rests, so its end
+		// is recorded as the host's (no timer, no "went offline") and the open below
+		// dials a tunnel of its own rather than a refusal on the one that is closing.
+		_ = stale.Close()
+		l.handleTunnelDone(stale)
+	}
+
+	now := l.clock.Now()
+	var notify *State
+	l.mu.Lock()
+	if l.closed || !l.revoked || l.lastReason != ReasonRemoteControlOff {
+		l.mu.Unlock()
+		return
+	}
+	l.revoked = false
+	notify = l.setStateLocked(State{
+		Kind:   Connecting,
+		Since:  now,
+		Permit: l.permit,
+		Road:   l.road,
+	})
+	l.mu.Unlock()
+	l.wake()
+	if notify != nil && l.cfg.OnState != nil {
+		l.cfg.OnState(*notify)
+	}
+}
+
 // openTries is how many times one OpenerContext call retries a channel that
 // opened on a road the link then left: the open is repeated on the road that
 // carries now, so a swap that commits while a channel is opening can never
@@ -385,6 +430,7 @@ func (l *Link) OpenerContext(chat string) func(context.Context) (io.ReadWriteClo
 			ctx = context.Background()
 		}
 		l.startLoop()
+		l.resumeAfterHostOff()
 
 		var lastErr error
 		for try := 0; try < openTries; try++ {
@@ -550,6 +596,8 @@ func (l *Link) noteOpenRefusal(reason string) {
 			Permit: pair.Permit{},
 			Road:   l.road,
 		})
+	case ReasonRemoteControlOff:
+		notify = l.markRevokedLocked(ReasonRemoteControlOff, now)
 	case ReasonBudget:
 		l.budgetExhausted = true
 		l.permit.Drive = false
@@ -688,17 +736,24 @@ func (l *Link) dialAndHandshake(ctx context.Context) (*Mux, error) {
 
 	if !ack.Watch {
 		_ = mux.Close()
+		// A host that is off says so, so the refusal is not read as this computer's
+		// permit being empty: that would send a person to /devices to fix a switch
+		// that is not there, and would never be lifted by the host turning back on.
+		refusal := ReasonNotAllowed
+		if ack.Off {
+			refusal = ReasonRemoteControlOff
+		}
 		var notify *State
 		l.mu.Lock()
 		l.revoked = true
-		l.lastReason = ReasonNotAllowed
+		l.lastReason = refusal
 		l.permit = permit
 		l.road = road
 		l.stopLivenessTimerLocked()
 		l.stopRedialTimerLocked()
 		notify = l.setStateLocked(State{
 			Kind:   Revoked,
-			Reason: ReasonNotAllowed,
+			Reason: refusal,
 			Since:  now,
 			Permit: permit,
 			Road:   road,
@@ -709,7 +764,7 @@ func (l *Link) dialAndHandshake(ctx context.Context) (*Mux, error) {
 			l.cfg.OnState(*notify)
 		}
 		l.settleRevocation()
-		return nil, &ReasonError{Reason: ReasonNotAllowed, Host: l.cfg.HostName}
+		return nil, &ReasonError{Reason: refusal, Host: l.cfg.HostName}
 	}
 
 	var notify *State
@@ -1154,6 +1209,12 @@ func (l *Link) applyChannelReasonLocked(reason string, now time.Time, current, o
 	switch reason {
 	case ReasonRemoved:
 		return l.markRevokedLocked(ReasonRemoved, now)
+	case ReasonRemoteControlOff:
+		// THE HOST IS UP AND SAID WHY: a view that was open on it ends, no timer
+		// redials it, and the state says so in the host's own words. It is the
+		// revoked posture on purpose, and it differs from a removal in one way
+		// only: the next view a person opens dials again ([Link.resumeAfterHostOff]).
+		return l.markRevokedLocked(ReasonRemoteControlOff, now)
 	case ReasonBudget:
 		l.budgetExhausted = true
 		l.permit.Drive = false
@@ -1276,6 +1337,9 @@ func (l *Link) handleTunnelDone(mux *Mux) {
 		case ReasonRemoved:
 			l.revoked = true
 			l.lastReason = ReasonRemoved
+		case ReasonRemoteControlOff:
+			l.revoked = true
+			l.lastReason = ReasonRemoteControlOff
 		case ReasonPermitChanged:
 			l.immediateRedial = true
 			l.lastReason = ReasonPermitChanged
