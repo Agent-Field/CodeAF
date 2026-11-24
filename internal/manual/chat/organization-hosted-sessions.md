@@ -34,7 +34,7 @@ The organization's operator keeps the machine and its disk. See *what can the op
 
 Each chat belongs to the person who made it. Another person cannot open it, list it, stop it or delete it, and cannot tell it exists: asking for someone else's chat gets the same answer as asking for one that was never made, `There is no such chat.`
 
-A chat also cannot see another chat. Every chat runs as a separate user of the machine, in a folder only that user can read or write, so a command in one chat cannot read another chat's files, send it a signal or read its environment. That holds between two chats of the same person too.
+A chat also cannot see another chat. Every chat runs as a separate user of the machine, in a folder only that user can read or write, so a command in one chat cannot read another chat's files, send it a signal or read its environment. Files a command leaves in `/tmp` or `/dev/shm`, which every chat on the machine shares, are closed to other chats unless you open them yourself, and a command cannot connect to another chat's local sockets. For the same reason two separate commands of one chat do not reach each other's abstract sockets (a socket whose name starts with `@`); sockets that are files, such as the ones tools keep in a folder, are not affected. That holds between two chats of the same person too.
 
 What the operator of the machine could do is a separate matter: see *what can the operator of the server see*.
 
@@ -72,7 +72,7 @@ Both are done through the organization's server by its owner, and only its owner
 
 ## the server says it cannot keep my chat apart — hosted chat refusals
 
-The machine that runs chats measures what it can do when it starts. A chat only runs where two things hold: each chat can run as a separate user of the machine, and the machine can confine a chat's commands to its own folder. If it cannot, it starts no chats and says: `This server cannot keep your chat apart from other people's, so it did not start one.` That is the operator's to fix.
+The machine that runs chats measures what it can do when it starts. A chat only runs where two things hold: each chat can run as a separate user of the machine, and the machine can confine a chat's commands to its own folder, including keeping its local sockets from other chats, which needs Linux 6.12 or newer. If it cannot, it starts no chats and says: `This server cannot keep your chat apart from other people's, so it did not start one.` That is the operator's to fix.
 
 If the machine cannot confine commands, a command in a chat is not run at all, and you read: `This computer cannot keep commands inside this chat's folder, so no command was run.` It never runs the command with fewer limits instead.
 
