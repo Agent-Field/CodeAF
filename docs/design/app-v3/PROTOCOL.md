@@ -1112,6 +1112,25 @@ chat, and every turn in a space, runs on the server whatever `agent_runner` says
 `org_myspace`, the operator is no longer told a private workstream or canvas exists:
 the `name_only` row is gone.
 
+A server with hosted chats on (`CODEAF_HOSTED_URL`, deploy/org/README.md) also posts what
+every hosted chat's model calls cost to the caller's space: one spend row per call, `chat`
+`hosted:<chat id>` (`hosted:<chat id>:own` when the call used the person's own key), so
+`spent_usd` and `at_limit` above count them and a person at `limit_usd` has their hosted
+chat refused with "You have reached your monthly limit of $L, so this chat is paused. The
+organization's operator can raise it in Settings." (HTTP 402 from the model door; a chat's
+own cap, `CODEAF_HOSTED_SESSION_CAP_USD`, default 5, refuses with "This chat has reached its
+spending limit of $C, so it is paused. Start a new chat to carry on."). These are HTTP
+routes of the organization server with no engine method yet, answered only to a signed-in
+person and only about them: `GET /v1/hosted/keys` answers `{keys: [{provider, last4, at,
+source}]}` (`provider` is `openrouter` or `github`, `source` is `own` or `sign-in`, never
+the key), `PUT /v1/hosted/keys/{provider}` with `{key}` answers 204 (409 "This server cannot
+keep personal keys safe yet, so it did not store yours. Its operator can set that up." when
+the server has no `CODEAF_SERVER_KEY`), `DELETE /v1/hosted/keys/{provider}` answers 204, and
+`GET /v1/hosted/audit` answers `{entries: [{at, person, chat, kind: "git", host, repo,
+service}]}`, the caller's own latest git operations. A chat reaches git through
+`/v1/hosted/git/<host>/<owner>/<repo>.git/...`, authenticated by the chat's own model access
+as the password; the server adds the person's GitHub access upstream.
+
 An engine whose hello carries `org_access` serves an organization's access policy and the
 grants on its things. `factory.org_policy` `GET /v1/org/policy` answers the policy to any
 member: `{rev, roles: [{name, verbs}], owner_role, org_role, defaults: {<kind>: {visibility}},

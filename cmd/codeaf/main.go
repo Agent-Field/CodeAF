@@ -46,6 +46,13 @@ import (
 var flushFinalSaves = cellstore.Flush
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "git-credential":
+			runHostedGitCredential(os.Args[2:], os.Stdin, os.Stdout)
+			return
+		}
+	}
 	// THE APP'S --HOME IS READ BEFORE ANYTHING READS THE STATE ROOT, which
 	// the adoption, the witness and the telemetry consent below all do.
 	useAppHomeEarly(os.Args[1:])
@@ -321,6 +328,10 @@ func run() error {
 		// command that draws nothing and reads no keys would only be a puzzle
 		// in a list of commands that do.
 		return runRemoteEngine(os.Args[2:])
+	case "sessionhost":
+		// The compose stack starts this machinery, so it is deliberately
+		// absent from the usage text.
+		return runSessionhost(os.Args[2:])
 	case "app":
 		// The desktop app's backend: JSON lines on this process's own pipes,
 		// every agent held in this one process (app.go). Like `engine` it is

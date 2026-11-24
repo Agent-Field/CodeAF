@@ -55,11 +55,45 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // (internal/remote's automations.go). A host with nobody attached holds no
 // window, so whether it stays up or leaves changes nothing the clock counts.
 // sessionIdle is a var rather than a const so a test can ask what the policy
-// DECIDES without waiting half an hour to find out. Nothing in the product
-// writes it.
+// DECIDES without waiting half an hour to find out. The product writes it in
+// exactly one place, [ApplyIdleOverride], once, at host start-up.
 var sessionIdle = 30 * time.Minute
 
-const hostIdle = 2 * time.Minute
+// hostIdle is how long a host with nothing left to hold waits before it
+// leaves. It is a var for [ApplyIdleOverride]'s reason, and like sessionIdle it
+// is written once, before the host starts its clock.
+var hostIdle = 2 * time.Minute
+
+// MinIdleOverride is the shortest idle window [ApplyIdleOverride] accepts. A
+// window shorter than this would retire a conversation between two keystrokes
+// of somebody typing slowly, which is a misconfiguration and never a policy.
+const MinIdleOverride = 5 * time.Second
+
+// minSweepSpan is the quickest the policy ever looks, so a short window does
+// not turn the sweep into a busy loop.
+const minSweepSpan = 500 * time.Millisecond
+
+// ApplyIdleOverride shrinks (or sets) the idle policy for a host whose
+// supervisor wants chats to be let go sooner than a person's own laptop would:
+// the window a quiet conversation is kept becomes d, the wait before an empty
+// host leaves becomes the smaller of its usual two minutes and d, and the
+// sweep looks at least four times per window, never faster than twice a
+// second and never slower than its usual half-minute. It answers whether it
+// applied anything: a d below [MinIdleOverride] is ignored, and a host that is
+// never given an override keeps every number as it was.
+//
+// IT MUST BE CALLED BEFORE [Run]: the three numbers are read by the host's
+// goroutines and are not guarded, because they are written once at start-up
+// and never again.
+func ApplyIdleOverride(d time.Duration) bool {
+	if d < MinIdleOverride {
+		return false
+	}
+	sessionIdle = d
+	hostIdle = min(2*time.Minute, d)
+	sweepEvery.Store(int64(min(30*time.Second, max(d/4, minSweepSpan))))
+	return true
+}
 
 // sweepEvery is how often the policy above looks: a product's half-minute, or a
 // test's override, since a test watching a host take its quiet moment should not

@@ -112,7 +112,7 @@ func withFenceNote(res ExecResult, req ExecRequest, onOutput func(Chunk)) ExecRe
 	if !FenceRefused(res.Stderr) && !FenceRefused(res.Stdout) {
 		return res
 	}
-	line := []byte("\n" + FenceLine + "\n")
+	line := []byte("\n" + req.Fence.noteLine() + "\n")
 	if req.Combined {
 		if !req.Stream {
 			res.Stdout = append(res.Stdout, line...)

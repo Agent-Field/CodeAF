@@ -1,0 +1,27 @@
+# The build context of every other Dockerfile in this folder (agentfield, swe-af, pr-af, modelstub, gitstub) is this
+# folder, DENIED BY DEFAULT: only what a Dockerfile COPYs is named. codeaf.Dockerfile has its own list beside it
+# (codeaf.Dockerfile.dockerignore), which BuildKit reads in place of this one for that file.
+*
+!scripts
+!modelstub
+!gitstub
+!codeaf-local
+
+# LAST, so that it wins inside the folders allowed above.
+**/.env
+**/.env.*
+**/*.env
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/id_rsa*
+**/id_ed25519*
+**/.netrc
+**/.npmrc
+**/.ssh
+**/.aws
+**/.codeaf
+**/.git
+**/__pycache__
+**/*.pyc

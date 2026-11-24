@@ -58,6 +58,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	factorystore "github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -139,6 +140,7 @@ func runRemoteEngine(args []string) error {
 	if *stop {
 		return runEngineStop(*workspace)
 	}
+	hostedPrepareGit()
 	if !*alone {
 		conn, err := attachEngineHost(*workspace)
 		if err == nil {
@@ -932,6 +934,12 @@ func placesWord(n int) string {
 // the machine is in exactly the state that was asked for — and this process was
 // started by another one that is about to dial the socket either way.
 func runEngineHost(workspaceFlag, sessionFlag string) error {
+	// THE SUPERVISOR'S IDLE WINDOW, applied once before this process holds
+	// anything, and only here: the host is the one process the idle policy
+	// belongs to, so no other command reads the variable.
+	if idle, ok := hostedEngineIdle(); ok {
+		enginehost.ApplyIdleOverride(idle)
+	}
 	stopStorage := syncsetup.StartStorageRefresh(context.Background(), home.Dir())
 	defer stopStorage()
 	// THE HOST OUTLIVES THE WINDOWS THAT STARTED ITS CHATS, so it is the process
@@ -1105,8 +1113,20 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 	// A HEADLESS HELLO IS --once THROUGH A HOST, and is fenced as --once is
 	// (fence.go). A later hello that is not headless cannot join it: the
 	// server refuses a mismatch (internal/remote's server.go).
-	if hello.Headless {
-		fence, err := unattendedFence(launch.Workspace, launch.Settings.ProfileDir)
+	//
+	// AND A HOSTED ENGINE FENCES EVERY HELLO, headless or not, and makes the
+	// fence a requirement ([hostedFence]): its supervisor says so in the
+	// environment, and a person at the far keyboard still answers consent cards
+	// (the AskConsent line above is untouched). With the variable unset this is
+	// the block it always was.
+	if fenced, required := engineFencePlan(hello.Headless, hostedFenceRequired()); fenced {
+		var fence *executor.Fence
+		var err error
+		if required {
+			fence, err = hostedFence(launch.Workspace, launch.Settings.ProfileDir)
+		} else {
+			fence, err = unattendedFence(launch.Workspace, launch.Settings.ProfileDir)
+		}
 		if err != nil {
 			return nil, err
 		}

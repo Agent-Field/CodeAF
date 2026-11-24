@@ -217,6 +217,10 @@ var funnelExemptTrees = map[string]string{
 	"bench":     "a measuring rig, not a send path",
 	"test":      "container stubs for the remote-access suite",
 	"harnesses": "harness fixtures, run by the harness and not by this build",
+	// The keyless smoke test of the self-hosted organization (deploy/org/smoke.sh) points every model
+	// call at this scripted server so that nothing is spent and no key is needed. It is a container
+	// stub, built into its own image from its own module, and the product never runs it.
+	"deploy/org/modelstub": "the scripted model of the self-hosted organization's keyless smoke test",
 }
 
 // funnelKnownSecondTransports are the files that DO name an endpoint outside

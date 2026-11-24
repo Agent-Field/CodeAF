@@ -3916,7 +3916,7 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 		// A COMMAND THE FENCE STOPPED SAYS SO, in the one sentence the model and
 		// the person both read, under the command's own error.
 		if isError && err == nil && a.config.fence() != nil {
-			text = procexec.WithFenceLine(text)
+			text = a.config.fence().WithNote(text)
 		}
 		return []byte(text), isError || err != nil
 	})

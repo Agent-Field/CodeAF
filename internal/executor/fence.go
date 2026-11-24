@@ -3,11 +3,13 @@ package executor
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -103,6 +105,60 @@ type Fence struct {
 	// fence is built, because it lists the folders on the way to each hidden
 	// path, and a command should not pay for that walk.
 	ReadGrants []string
+	// Require makes the fence a promise and not a courtesy: where this
+	// computer can apply none of it, a command is REFUSED with
+	// [ErrFenceRequired] instead of running as the person's own process. Only
+	// a door that has something beneath the fence worth protecting sets it (the
+	// hosted engine, engine_hosted.go in cmd/codeaf); every other door keeps
+	// the old behaviour on purpose, and the field is left out of the helper's
+	// spec when it is false so a spec is byte-identical to what it always was.
+	Require bool `json:"Require,omitempty"`
+	// ConnectPorts is the TCP ports a command of a REQUIRED fence may connect
+	// to, on Linux where Landlock (ABI 4, Linux 6.7) can say so: every other
+	// port is refused by the kernel. Landlock filters by port and not by
+	// address, so this keeps a chat's commands off the services an operator runs
+	// on other ports of the same private network (an agent's node API, a model
+	// stub); it does not make a service on an allowed port safe to reach. Empty
+	// means no limit, which is what every fence that is not a hosted chat's has
+	// always had, and the field is left out of the helper's spec when it is
+	// empty so a spec is byte-identical to what it always was. Only a required
+	// fence honours it: a laptop's own commands keep the whole network.
+	ConnectPorts []int `json:"ConnectPorts,omitempty"`
+}
+
+// MaxConnectPorts is the most ports one fence may name: a list longer than a
+// person could read is a mistake, and each port is a rule the kernel keeps.
+const MaxConnectPorts = 64
+
+// ParseConnectPorts reads a port list as an operator writes it: decimal TCP
+// ports separated by commas or spaces. It answers them sorted and without
+// repeats, an empty list for empty text, and an error that names the entry
+// at fault and never anything else. A list is refused whole rather than
+// trimmed: a typo that silently dropped a port would turn a working chat's
+// git into a refusal, and one that silently added one would widen the fence.
+func ParseConnectPorts(text string) ([]int, error) {
+	var ports []int
+	seen := map[int]bool{}
+	for _, word := range strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' }) {
+		n, err := strconv.Atoi(word)
+		if err != nil || n < 1 || n > 65535 || word != strconv.Itoa(n) {
+			return nil, errors.New(strconv.Quote(word) + " is not a TCP port from 1 to 65535")
+		}
+		if !seen[n] {
+			seen[n] = true
+			ports = append(ports, n)
+		}
+	}
+	if len(ports) > MaxConnectPorts {
+		return nil, errors.New("more than " + strconv.Itoa(MaxConnectPorts) + " ports")
+	}
+	sort.Ints(ports)
+	return ports, nil
+}
+
+// limitsPorts is whether this fence holds commands to a list of TCP ports.
+func (f *Fence) limitsPorts() bool {
+	return f != nil && f.Require && len(f.ConnectPorts) > 0
 }
 
 // FenceAllowWords is how a widening is spelled, in a project file, the
@@ -581,6 +637,33 @@ func goProxyThrough(home string) string {
 // stopped it. It says what happened and why, and where the widening lives.
 const FenceLine = "codeaf blocked this: a run with nobody at the keyboard may change files only in its checkout and its own temp and cache folders, and may not read keys and sign-ins or use docker; to allow more, add \"jail.allow\" to the repository's .codeaf/config.json."
 
+// FenceConnectLine is the one sentence added to a failed command of a chat
+// whose fence limits the ports it may connect to ([Fence.ConnectPorts]) when
+// its output reads as a refusal. It stands in for [FenceLine], whose advice
+// (a project's jail.allow) belongs to a person's own machine and is no help in
+// a chat: it says what a refused command can still do, and nothing about how
+// the limit is made.
+const FenceConnectLine = "codeaf blocked this: commands in this chat may change files only in the chat's own folder, and may reach other computers only on the ports the organization allows."
+
+// noteLine is the sentence a refusal under this fence is explained with.
+func (f *Fence) noteLine() string {
+	if f.limitsPorts() {
+		return FenceConnectLine
+	}
+	return FenceLine
+}
+
+// FenceRequiredLine is what a command is refused with when the fence is a
+// requirement ([Fence.Require]) and this computer can apply none of it. It is
+// written for the person reading a chat, so it names no mechanism: only what
+// did not happen and why.
+const FenceRequiredLine = "This computer cannot keep commands inside this chat's folder, so no command was run."
+
+// ErrFenceRequired is the error a required fence's command fails with when the
+// fence cannot be applied. Its text is [FenceRequiredLine], so every door that
+// prints an executor error to a person or a model says it in plain words.
+var ErrFenceRequired = errors.New(FenceRequiredLine)
+
 // FenceDegradedLine is said once when this system cannot apply the fence.
 const FenceDegradedLine = "This system cannot confine commands, so this run's commands have your full permissions."
 
@@ -602,14 +685,27 @@ func FenceRefused(output []byte) bool {
 
 // WithFenceLine is output with [FenceLine] added once when it reads as a
 // refusal, and output unchanged otherwise.
-func WithFenceLine(output string) string {
-	if !FenceRefused([]byte(output)) || strings.Contains(output, FenceLine) {
+func WithFenceLine(output string) string { return withNote(output, FenceLine) }
+
+// WithNote is [WithFenceLine] with the sentence THIS fence explains its
+// refusals with: a chat whose commands are limited to some ports is told what
+// it may reach, and not to edit a repository's jail.allow, which a chat cannot
+// do and which names a mechanism a person reading a chat never meets.
+func (f *Fence) WithNote(output string) string {
+	if f == nil {
+		return WithFenceLine(output)
+	}
+	return withNote(output, f.noteLine())
+}
+
+func withNote(output, line string) string {
+	if !FenceRefused([]byte(output)) || strings.Contains(output, FenceLine) || strings.Contains(output, FenceConnectLine) {
 		return output
 	}
 	if output != "" && !strings.HasSuffix(output, "\n") {
 		output += "\n"
 	}
-	return output + FenceLine
+	return output + line
 }
 
 // Allows reports whether the fence lets an in-process file tool read (write
@@ -662,19 +758,23 @@ func avoiding(grant string, avoid []string) map[string]bool {
 			delete(out, g)
 			for dir := g; dir != a; {
 				next := nextOnPath(dir, a)
-				entries, err := os.ReadDir(dir)
-				if err != nil {
-					break
-				}
-				for _, e := range entries {
-					p := filepath.Join(dir, e.Name())
-					if p == next {
-						continue
+				// A folder this user may pass through but not list (a hosted
+				// chat's machine keeps others' folders that way) cannot say what
+				// is beside the path, so none of it is granted, and the walk
+				// goes on below it. Stopping here instead dropped every grant
+				// beneath, and the chat's own files were then refused to its
+				// own commands.
+				if entries, err := os.ReadDir(dir); err == nil {
+					for _, e := range entries {
+						p := filepath.Join(dir, e.Name())
+						if p == next {
+							continue
+						}
+						if real, err := filepath.EvalSymlinks(p); err == nil && real != p && pathInAny(real, avoid) {
+							continue
+						}
+						out[p] = true
 					}
-					if real, err := filepath.EvalSymlinks(p); err == nil && real != p && pathInAny(real, avoid) {
-						continue
-					}
-					out[p] = true
 				}
 				dir = next
 			}

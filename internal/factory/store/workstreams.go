@@ -746,6 +746,18 @@ func (st *Store) AddSpend(ws string, s Spend) (float64, error) {
 	return total, err
 }
 
+// ChatSpend counts both ways of paying for the same hosted chat.
+func (st *Store) ChatSpend(ws, chat string) (float64, error) {
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return 0, err
+	}
+	var total float64
+	err = db.QueryRow(`SELECT coalesce(sum(usd), 0) FROM spend
+		WHERE ws = ? AND (chat = ? OR chat = ? || ':own')`, ws, chat, chat).Scan(&total)
+	return total, err
+}
+
 // WorkstreamSpend is what every workstream has spent, by id; one with none
 // posted is absent.
 func (st *Store) WorkstreamSpend() (map[string]float64, error) {

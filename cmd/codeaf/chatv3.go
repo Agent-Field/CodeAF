@@ -101,6 +101,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	reasoning := flags.String("reasoning", "", "reasoning override: auto (inherit), low, medium, high, xhigh or max; off is an alias for auto")
 	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
 	at := flags.String("at", "", "reach a machine that has no ssh, by the name `codeaf serve` prints there: otter-lamp-42, or otter-lamp-42:path/to/project")
+	org := flags.String("org", "", "run the session on your organization's server: its address, such as https://org.example.com")
 	// --no-host is the escape hatch off the local dial, and it means here
 	// exactly what it means on `codeaf engine`: open this conversation in this
 	// process and never look for a session host. It exists because a fallback
@@ -151,9 +152,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: codeaf resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--no-host] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
+			return fmt.Errorf(`usage: codeaf resume [--model slug] [--reasoning level] [--host host[:path]] [--at name[:path]] [--org https://host] [--no-host] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
 		}
-		return fmt.Errorf(`usage: codeaf chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--no-host] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
+		return fmt.Errorf(`usage: codeaf chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--at name[:path]] [--org https://host] [--no-host] [--once "text"] [--no-compact] [--yolo [--max-hours n] [--max-cost n]] [--one-model] [--debug]`)
 	}
 	// --one-model is about THIS machine's settings rows, and over --host the
 	// rows that answer are the far machine's (chatv3_host.go). A flag that
@@ -185,6 +186,23 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	if strings.TrimSpace(*host) != "" && strings.TrimSpace(*at) != "" {
 		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through the sync service: name one or the other, not both")
 	}
+	// --org IS THE FOURTH WAY TO NAME WHERE THE CONVERSATION IS, and it refuses
+	// what --at refuses (chatv3_org.go's check), beside the --at refusals above
+	// and before anything is resolved on this machine.
+	if strings.TrimSpace(*org) != "" {
+		if err := (orgLaunch{
+			target:    strings.TrimSpace(*org),
+			noCompact: *noCompact,
+			yolo:      *yolo,
+			budget:    chatBudget(*maxHours, *maxCost).Set(),
+			oneModel:  *oneModel,
+			noHost:    *noHost,
+			host:      *host,
+			at:        *at,
+		}).check(); err != nil {
+			return err
+		}
+	}
 
 	// A BUDGET IS A SENTENCE ABOUT AN UNATTENDED SESSION, so it is refused
 	// rather than ignored on a session somebody is sitting in front of. What it
@@ -197,7 +215,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// cannot travel at all and each door says so in its own words
 	// (chatv3_host.go's and chatv3_at.go's checks); two refusals for one flag
 	// would send somebody to add --yolo and straight into the second one.
-	if budget := chatBudget(*maxHours, *maxCost); budget.Set() && !*yolo && strings.TrimSpace(*host) == "" && strings.TrimSpace(*at) == "" {
+	if budget := chatBudget(*maxHours, *maxCost); budget.Set() && !*yolo && strings.TrimSpace(*host) == "" && strings.TrimSpace(*at) == "" && strings.TrimSpace(*org) == "" {
 		return fmt.Errorf("--max-hours and --max-cost bound a session that carries its own work on; say --yolo as well, or leave them off")
 	}
 	// A picker with nobody watching is not a picker. --once is the headless
@@ -274,7 +292,29 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		return finishChatRestart(err, restart, "")
 	}
 
-	// The fourth door, and the only one with no machine in it: this workspace's
+	// THE ORGANIZATION'S DOOR, and it forks beside --at for --at's reason: the
+	// conversation, its models, its keys and its folder are the far side's, and
+	// resolving this machine's would be answering a launch nobody asked for. It
+	// differs from --at only in what carries the frames (chatv3_org.go).
+	if address := strings.TrimSpace(*org); address != "" {
+		err := openChatV3Org(orgLaunch{
+			target:    address,
+			session:   strings.TrimSpace(*file),
+			model:     strings.TrimSpace(*model),
+			level:     level,
+			once:      strings.TrimSpace(*once),
+			pick:      pickSession,
+			noCompact: *noCompact,
+			yolo:      *yolo,
+			budget:    chatBudget(*maxHours, *maxCost).Set(),
+			oneModel:  *oneModel,
+			noHost:    *noHost,
+			restart:   restart,
+		})
+		return finishChatRestart(err, restart, "")
+	}
+
+	// The fifth door, and the only one with no machine in it: this workspace's
 	// own session host, on a unix socket. It is the ordinary road for an
 	// interactive launch — the work outlives this terminal and the next window
 	// here joins the same conversation — and [v3HostRoad] names the launches
