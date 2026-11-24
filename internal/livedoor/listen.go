@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
-	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -60,8 +59,8 @@ func Listen(homeDir string, open func(transcript string) (*remote.Session, bool)
 	sockPath := filepath.Join(dir, sockName)
 	jsonPath := filepath.Join(dir, strconv.Itoa(pid)+".json")
 
-	if !enginehost.SocketPathFits(sockPath) {
-		return nil, fmt.Errorf("livedoor: socket path %q is too long: %w", sockPath, enginehost.ErrSocketPathTooLong)
+	if err := checkUnixSocketPath(sockPath); err != nil {
+		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("livedoor: create live registry dir: %w", err)

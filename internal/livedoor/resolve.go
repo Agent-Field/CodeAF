@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -29,6 +29,47 @@ const (
 	// before touching presence or the filesystem.
 	maxChatNameLen = 128
 )
+
+var errNothingHolding = errors.New("engine host: nothing is holding this workspace")
+
+// Holder describes the engine host process holding one workspace's chats, as the
+// engine-host package reports it.
+type Holder struct {
+	Self     remote.HostSelf
+	Answered bool
+}
+
+// DaemonDoors is how a resolver reaches the engine host that holds a workspace
+// without this package importing the engine-host package, which imports the
+// sync package that the live door is started from. The program's own entry
+// point installs the real ones once at start; a resolver whose doors were never
+// installed finds no daemon and answers from the registry alone.
+type DaemonDoors struct {
+	// Inspect asks the host holding workspace who it is, as the engine-host
+	// package does (including filling in a pid an older host does not state).
+	Inspect func(workspace string) (Holder, error)
+	// Dial opens one connection to that host and never starts one.
+	Dial func(workspace string) (net.Conn, error)
+}
+
+var (
+	daemonDoorsMu sync.RWMutex
+	daemonDoors   DaemonDoors
+)
+
+// SetDaemonDoors installs the doors a resolver uses to reach an engine host. It
+// is meant to be called once, before any resolver runs.
+func SetDaemonDoors(d DaemonDoors) {
+	daemonDoorsMu.Lock()
+	daemonDoors = d
+	daemonDoorsMu.Unlock()
+}
+
+func installedDaemonDoors() DaemonDoors {
+	daemonDoorsMu.RLock()
+	defer daemonDoorsMu.RUnlock()
+	return daemonDoors
+}
 
 // Route describes the holder process that answered for a chat and carries the
 // transcript path and workspace needed to rewrite the viewer's initial hello.
@@ -51,7 +92,7 @@ type Resolver interface {
 type ResolverOptions struct {
 	Presence    func(exclude string) []session.SessionPresence
 	InUse       func(path string) bool
-	Inspect     func(workspace string) (enginehost.Holder, error)
+	Inspect     func(workspace string) (Holder, error)
 	DialDaemon  func(workspace string) (net.Conn, error)
 	RegistryDir string
 	Transport   Transport
@@ -67,7 +108,7 @@ type presenceFlight struct {
 type resolver struct {
 	presence    func(exclude string) []session.SessionPresence
 	inUse       func(path string) bool
-	inspect     func(workspace string) (enginehost.Holder, error)
+	inspect     func(workspace string) (Holder, error)
 	dialDaemon  func(workspace string) (net.Conn, error)
 	registryDir string
 	transport   Transport
@@ -95,10 +136,20 @@ func NewResolver(homeDir string, opt ResolverOptions) Resolver {
 		opt.InUse = session.InUse
 	}
 	if opt.Inspect == nil {
-		opt.Inspect = enginehost.Inspect
+		opt.Inspect = func(workspace string) (Holder, error) {
+			if inspect := installedDaemonDoors().Inspect; inspect != nil {
+				return inspect(workspace)
+			}
+			return Holder{}, errNothingHolding
+		}
 	}
 	if opt.DialDaemon == nil {
-		opt.DialDaemon = enginehost.Dial
+		opt.DialDaemon = func(workspace string) (net.Conn, error) {
+			if dial := installedDaemonDoors().Dial; dial != nil {
+				return dial(workspace)
+			}
+			return nil, errNothingHolding
+		}
 	}
 	if strings.TrimSpace(opt.RegistryDir) == "" {
 		opt.RegistryDir = filepath.Join(homeDir, "v3", "live")

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -154,7 +153,7 @@ func TestTheResolverFindsTheHolderOfAChatThroughTheDaemonAndTheRegistryAndNeverS
 				Dir:       chatDir("chat-registry"),
 			}},
 			inUse:         true,
-			inspectErr:    enginehost.ErrNothingHolding,
+			inspectErr:    errNothingHolding,
 			wantKind:      "registry",
 			wantPID:       regPID,
 			wantWorkspace: "/work/desk-proj",
@@ -215,7 +214,7 @@ func TestTheResolverFindsTheHolderOfAChatThroughTheDaemonAndTheRegistryAndNeverS
 				Dir:       chatDir("chat-dead"),
 			}},
 			inUse:        true,
-			inspectErr:   enginehost.ErrNothingHolding,
+			inspectErr:   errNothingHolding,
 			wantErr:      ErrNotRunning,
 			wantNoDaemon: true,
 		},
@@ -244,12 +243,12 @@ func TestTheResolverFindsTheHolderOfAChatThroughTheDaemonAndTheRegistryAndNeverS
 					}
 					return tc.inUse
 				},
-				Inspect: func(workspace string) (enginehost.Holder, error) {
+				Inspect: func(workspace string) (Holder, error) {
 					inspectCalls.Add(1)
 					if tc.inspectErr != nil {
-						return enginehost.Holder{}, tc.inspectErr
+						return Holder{}, tc.inspectErr
 					}
-					return enginehost.Holder{
+					return Holder{
 						Self:     remote.HostSelf{PID: tc.daemonPID, Workspace: workspace},
 						Answered: true,
 					}, nil
