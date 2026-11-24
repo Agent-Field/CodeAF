@@ -35,6 +35,12 @@ name: PR gate
 # every pull request into it was proven by one serial laptop-side `pr-ready`
 # lock, which queued forty lanes deep; listing it hands that proof to the
 # concurrent touched legs below, the same bar `dev` gets.
+#
+# `org/main` is the feature line of the hosted organisation work (2026-11-24):
+# the org server, hosted chats and the self-hosting stack collect there and
+# stay out of `dev` until after the WorkAF release. It is listed for the same
+# reason `santosh/work` is — a line work lands on that nothing gates is a line
+# nobody can say is green.
 on:
   pull_request:
     branches:
@@ -42,6 +48,7 @@ on:
       - app/v3
       - santos/dev2
       - santosh/work
+      - org/main
   # Also on the push, because a merge of two individually-green branches can
   # still be red, and the merge is exactly the moment nobody is watching.
   push:
@@ -49,6 +56,7 @@ on:
       - dev
       - santos/dev2
       - santosh/work
+      - org/main
   workflow_dispatch:
 
 permissions:
