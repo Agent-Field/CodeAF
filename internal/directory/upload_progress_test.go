@@ -106,3 +106,43 @@ func TestHTTPFolderOnlyWhereAdvertised(t *testing.T) {
 		t.Fatalf("a relay that advertises folders kept %+v, %v", got.Cell, err)
 	}
 }
+
+// A relay older than Codeaf-Chat-Crews never receives a crew; one that
+// advertises it keeps it.
+func TestHTTPCrewOnlyWhereAdvertised(t *testing.T) {
+	clock := directorytest.NewFakeClock()
+	next := directory.Handler(fakeAuth, newNamespaces(clock).open)
+	var supported atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if !supported.Load() && bytes.Contains(raw, []byte(`"crew"`)) {
+			t.Error("an older relay received a crew")
+			http.Error(w, `{"err":"bad_request"}`, http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		reply := httptest.NewRecorder()
+		next.ServeHTTP(reply, r)
+		for key, values := range reply.Header() {
+			if supported.Load() || !strings.EqualFold(key, directory.ChatCrewsHeader) {
+				w.Header()[key] = values
+			}
+		}
+		w.WriteHeader(reply.Code)
+		_, _ = w.Write(reply.Body.Bytes())
+	}))
+	defer srv.Close()
+	client := directory.NewHTTP(srv.URL, fakeSign("id_one", devA), srv.Client())
+	v, err := client.Create(t.Context(), cellX, directory.CellInit{Head: head1, Crew: "sealed"})
+	if err != nil || v.Cell.Crew != "" {
+		t.Fatalf("an older relay's create = %+v, %v", v.Cell, err)
+	}
+	supported.Store(true)
+	if _, err := client.Cell(t.Context(), cellX); err != nil { // a read learns the capability
+		t.Fatal(err)
+	}
+	got, err := client.Publish(t.Context(), cellX, directory.Publish{Fence: v.Cell.Lease.Fence, OldHead: head1, Head: head2, Crew: "sealed"})
+	if err != nil || got.Cell.Crew != "sealed" {
+		t.Fatalf("a relay that advertises crews kept %+v, %v", got.Cell, err)
+	}
+}

@@ -419,7 +419,7 @@ func (b *appBackend) agentFieldClient(id string) (*agentfield.Client, agentfield
 	if err != nil {
 		return nil, agentfield.Settings{}, err
 	}
-	client, settings, ok := host.agentFieldNode().Conn.Client()
+	client, settings, ok := host.agentFieldNode().Client()
 	if !ok {
 		return nil, agentfield.Settings{}, appwire.Errorf(appwire.CodeConflict, "this organization is not connected to AgentField; connect it first")
 	}

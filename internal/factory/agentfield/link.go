@@ -67,6 +67,10 @@ const (
 	tProgress  = "progress"
 	tLog       = "log"
 	tHeartbeat = "heartbeat"
+	// tDelegate asks the control plane for a proof of this node's consent
+	// (agentfield docs/app-link-contract.md). A control plane that predates
+	// it drops the frame without an answer, which delegateWait bounds.
+	tDelegate = "delegate"
 )
 
 // frameVersion is the envelope's version, and maxFrame the largest frame.
@@ -75,7 +79,7 @@ const (
 	maxFrame     = 1 << 20
 )
 
-var knownFrames = map[string]bool{tWelcome: true, tDeliver: true, tOK: true, tHello: true, tAck: true, tStatus: true, tProgress: true, tLog: true, tHeartbeat: true}
+var knownFrames = map[string]bool{tWelcome: true, tDeliver: true, tOK: true, tHello: true, tAck: true, tStatus: true, tProgress: true, tLog: true, tHeartbeat: true, tDelegate: true}
 
 // frame is the one envelope.
 type frame struct {
@@ -122,6 +126,12 @@ type welcomeBody struct {
 type okBody struct {
 	Code  int    `json:"code"`
 	Error string `json:"error,omitempty"`
+	// Token, ExpiresAt, ExpiresIn and Scopes answer a delegate frame: the
+	// proof of this node's consent and what it allows (proof.go).
+	Token     string   `json:"token,omitempty"`
+	ExpiresAt string   `json:"expires_at,omitempty"`
+	ExpiresIn int      `json:"expires_in,omitempty"`
+	Scopes    []string `json:"scopes,omitempty"`
 }
 
 // encodeFrame builds one frame with body (nil for none).
@@ -179,10 +189,19 @@ type linkSession struct {
 	waiting map[int64]chan okBody
 	closed  chan struct{}
 	once    sync.Once
+	// proof is this link's run-owner proof state (proof.go).
+	proof linkProof
 }
 
 // callTimeoutLink bounds one up-frame's wait for its ok.
 const callTimeoutLink = 15 * time.Second
+
+// errLinkDropped and errNoAnswer are the two ways an up-frame goes unanswered:
+// the link went away, or the control plane never said ok.
+var (
+	errLinkDropped = errors.New("the link dropped")
+	errNoAnswer    = errors.New("the control plane did not answer down the link in time")
+)
 
 func (ls *linkSession) write(ctx context.Context, raw []byte) error {
 	ls.wmu.Lock()
@@ -194,6 +213,11 @@ func (ls *linkSession) write(ctx context.Context, raw []byte) error {
 
 // call sends one up-frame and waits for the control plane's ok to it.
 func (ls *linkSession) call(ctx context.Context, f frame, body any) (okBody, error) {
+	return ls.callWithin(ctx, callTimeoutLink, f, body)
+}
+
+// callWithin is call with its own bound on the wait for the ok.
+func (ls *linkSession) callWithin(ctx context.Context, wait time.Duration, f frame, body any) (okBody, error) {
 	f.Seq = ls.seq.Add(1)
 	raw, err := encodeFrame(f, body)
 	if err != nil {
@@ -217,17 +241,17 @@ func (ls *linkSession) call(ctx context.Context, f frame, body any) (okBody, err
 	if err := ls.write(ctx, raw); err != nil {
 		return okBody{}, err
 	}
-	t := time.NewTimer(callTimeoutLink)
+	t := time.NewTimer(wait)
 	defer t.Stop()
 	select {
 	case ok := <-ch:
 		return ok, nil
 	case <-ls.closed:
-		return okBody{}, errors.New("the link dropped")
+		return okBody{}, errLinkDropped
 	case <-ctx.Done():
 		return okBody{}, ctx.Err()
 	case <-t.C:
-		return okBody{}, errors.New("the control plane did not answer down the link in time")
+		return okBody{}, errNoAnswer
 	}
 }
 
@@ -434,6 +458,11 @@ func (n *Node) runLink(ctx context.Context, r *running, target string) error {
 	// plane that restarted mid-run hears the job's completion on reconnect.
 	guard.Go("factory/agentfield link catch-up", func() { n.catchUp(ctx, r) })
 
+	// THE RUN-OWNER PROOF IS ASKED FOR NOW, not at the first call that wants
+	// it, so a control plane that predates it has already shown its silence
+	// by the time a run starts (proof.go).
+	guard.Go("factory/agentfield link proof", func() { _ = n.RunOwnerProof(ctx, r.settings.NodeID) })
+
 	pingDone := make(chan struct{})
 	defer close(pingDone)
 	guard.Go("factory/agentfield link ping", func() {
@@ -634,7 +663,7 @@ func (n *Node) report(ctx context.Context, c *Client, id string, u ExecutionUpda
 				}
 				return nil
 			}
-			return &Error{Code: ok.Code, Refusal: refusalOf(ok.Code), Op: "execution", Message: answerMessage([]byte(ok.Error))}
+			return newError(ok.Code, "execution", answerMessage([]byte(ok.Error)))
 		}
 	}
 	err := c.Report(ctx, id, u)

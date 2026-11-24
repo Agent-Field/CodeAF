@@ -52,7 +52,9 @@ func TestFactoryLimitedServeProcess(t *testing.T) {
 func TestFactoryServeAnswersWhileGitHubIsRateLimited(t *testing.T) {
 	root := t.TempDir()
 	config := filepath.Join(root, "factory", "config.yaml")
-	if err := writeFactoryPrivate(config, []byte("listen: 127.0.0.1:0\naccess_token: script-secret\ngithub_client_id: client\n")); err != nil {
+	// A watched repository, so the server's own poll meets the limit: the operator link no longer asks GitHub on a
+	// server that takes passwords (film D14), and it was this test's only GitHub read.
+	if err := writeFactoryPrivate(config, []byte("listen: 127.0.0.1:0\naccess_token: script-secret\ngithub_client_id: client\nrepos:\n  - acme/api\n")); err != nil {
 		t.Fatal(err)
 	}
 	executable, err := os.Executable()

@@ -63,6 +63,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -670,17 +671,39 @@ func removeOperand(operands []string, value string) []string {
 
 func destinationInstallsMetadata(metadata, cwd string, sources []string, destination string) bool {
 	dir := resolvePath(cwd, destination)
-	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
+	if !metadataDestinationIsDir(dir) {
 		return false
 	}
 	for _, source := range sources {
 		name := filepath.Base(filepath.Clean(strings.TrimRight(source, `/\\`)))
-		if name == ".git" && namesGroundMetadata(metadata, filepath.Join(dir, name), false, true) {
+		if !strings.EqualFold(name, ".git") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if name == ".git" {
+			if namesGroundMetadata(metadata, path, false, true) {
+				return true
+			}
+			continue
+		}
+		// A differently cased source must land on the metadata entry itself.
+		// A basename match under hooks or another writable directory is safe.
+		if below, found := belowGroundMetadata(metadata, path); found && len(below) == 0 {
 			return true
 		}
 	}
 	return false
+}
+
+func metadataDestinationIsDir(path string) bool {
+	info, err := fsLstat(path)
+	if err != nil {
+		return false
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		info, err = os.Stat(path)
+	}
+	return err == nil && info.IsDir()
 }
 
 func rsyncDeletes(rest []string) bool {
@@ -698,19 +721,27 @@ func rsyncDeletes(rest []string) bool {
 // `info/exclude`, and install hooks without being mistaken for replacing the
 // repository's identity or history (#2097 review).
 func protectedGroundMetadata(metadata, target string, followFinal bool) bool {
-	paths := [3]string{target, resolveParentSymlinks(target), ""}
-	if followFinal {
-		paths[2] = resolveSymlinks(target)
-	}
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
-		if protectedUnderAnySpelling(metadata, path) {
+	for _, path := range metadataTargetSpellings(target, followFinal) {
+		if protectedUnderAnySpelling(metadata, path) || protectedByMetadataIdentity(metadata, path) {
 			return true
 		}
 	}
 	return false
+}
+
+func metadataTargetSpellings(target string, followFinal bool) []string {
+	paths := make([]string, 0, 3)
+	for _, path := range [2]string{target, resolveParentSymlinks(target)} {
+		if path != "" && !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	if followFinal {
+		if path := resolveSymlinks(target); path != "" && !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 // protectedUnderAnySpelling is protectedGroundMetadata's comparison of one
@@ -722,10 +753,13 @@ func protectedUnderAnySpelling(metadata, path string) bool {
 			continue
 		}
 		relative = filepath.ToSlash(relative)
-		if relative == "." || relative == "HEAD" || relative == "config" || relative == "packed-refs" ||
-			withinMetadataTree(relative, "objects") || withinMetadataTree(relative, "refs") ||
-			withinMetadataTree(relative, "worktrees") || withinMetadataTree(relative, "modules") {
+		if relative == "." {
 			return true
+		}
+		for _, entry := range protectedMetadataEntries {
+			if relative == entry.name || (entry.tree && strings.HasPrefix(relative, entry.name+"/")) {
+				return true
+			}
 		}
 	}
 	return false
@@ -744,14 +778,6 @@ func metadataSpellings(metadata string) []string {
 	return []string{metadata}
 }
 
-// withinMetadataTree answers whether relative (always forward-slashed) is a
-// protected `.git` subtree: the directory `name` itself, removed whole, or
-// anything beneath it. Removing `.git/objects` takes every object with it just
-// as removing `.git/objects/pack` does, so the directory's own name counts.
-func withinMetadataTree(relative, name string) bool {
-	return relative == name || strings.HasPrefix(relative, name+"/")
-}
-
 // holdsGroundMetadata says deleting or moving target itself would also remove
 // metadata because target is `.git` or an ancestor of it. Descendants do not
 // answer true: removing `.git/index.lock` does not remove `.git`.
@@ -763,7 +789,7 @@ func holdsGroundMetadata(metadata, target string) bool {
 			}
 		}
 	}
-	return false
+	return holdsMetadataIdentity(metadata, target)
 }
 
 // namesGroundMetadata answers whether a path a command names is the ground's
@@ -776,18 +802,14 @@ func holdsGroundMetadata(metadata, target string) bool {
 // only the written path would be one more spelling the model learns to use.
 func namesGroundMetadata(metadata, target string, holding, followFinal bool) bool {
 	real := resolveSymlinks(metadata)
-	paths := [3]string{target, resolveParentSymlinks(target), ""}
-	if followFinal {
-		paths[2] = resolveSymlinks(target)
-	}
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
+	for _, path := range metadataTargetSpellings(target, followFinal) {
 		for _, dir := range [2]string{metadata, real} {
 			if withinDir(dir, path) || (holding && withinDir(path, dir)) {
 				return true
 			}
+		}
+		if _, found := belowGroundMetadata(metadata, path); found || (holding && holdsMetadataIdentity(metadata, path)) {
+			return true
 		}
 	}
 	return false
@@ -818,7 +840,7 @@ func groundMetadataDir(ground string) string {
 		return ""
 	}
 	metadata := filepath.Join(filepath.Clean(ground), ".git")
-	if _, err := os.Lstat(metadata); err != nil {
+	if _, err := fsLstat(metadata); err != nil {
 		return ""
 	}
 	return metadata

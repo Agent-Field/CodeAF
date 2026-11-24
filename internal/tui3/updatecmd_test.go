@@ -396,3 +396,34 @@ func TestV8UpdateNotesUseTheRightCurlLine(t *testing.T) {
 		t.Fatalf("source notes:\n%s", updateNotes(source))
 	}
 }
+
+// TestSourceBuildInsideAnAppBundleUpdateNamesTheApp proves /update tells the
+// engine a desktop app carries, which is always built from a bare commit, to
+// update the app, as `codeaf update` does, instead of to rebuild with make build.
+func TestSourceBuildInsideAnAppBundleUpdateNamesTheApp(t *testing.T) {
+	const refusal = "this codeaf is part of WorkAF.app · that app updates it, so update the app, or install a separate codeaf with: curl"
+	installed := 0
+	a := newApp(context.Background(), Options{
+		Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab",
+		UpdateRunning: "2097ee7", Restart: &codeupdate.Plan{},
+		UpdateAuto: &UpdateCoordinator{
+			Refusal:       func() string { return refusal },
+			BundleRefusal: func() string { return refusal },
+		},
+		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
+			t.Fatal("a bundled engine's /update resolved a release")
+			return codeupdate.Release{}, nil
+		},
+		InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
+			installed++
+			return codeupdate.InstallResult{}, nil
+		},
+	})
+	if command := a.slash("/update"); command != nil {
+		t.Fatal("a bundled engine's /update returned a command")
+	}
+	notes := updateNotes(a)
+	if !strings.Contains(notes, refusal) || strings.Contains(notes, "built from source") || installed != 0 {
+		t.Fatalf("notes = %q, installed = %d; want the app's refusal only", notes, installed)
+	}
+}

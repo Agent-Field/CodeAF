@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -48,10 +49,52 @@ func unattendedFence(workspace, profileDir string, receipts ...string) (*executo
 		Root:       workspace,
 		Home:       person,
 		CodeafHome: home.Dir(),
-		StateDir:   state,
-		Allow:      executor.ParseFenceAllow(person, words...),
-		Receipts:   receipts,
+		// A home the person keeps apart from the command line's, the desktop
+		// app's --home, must not reach the command line's secrets either.
+		OtherCodeafHomes: otherCodeafHomes(person),
+		StateDir:         state,
+		Allow:            executor.ParseFenceAllow(person, words...),
+		Receipts:         receipts,
+		Canvases:         []string{deskCanvasRoot(os.Getenv, person, runtime.GOOS)},
 	})
+}
+
+// otherCodeafHomes is the person's own default codeaf folder when this process
+// keeps its state in a different one, and nothing otherwise. Under the desktop
+// app's --home the fence hides the app's secret files and, with this, the
+// command line's: they are the person's, not the app's.
+func otherCodeafHomes(person string) []string {
+	if person == "" {
+		return nil
+	}
+	own, current := home.DefaultUnder(person), home.Dir()
+	if home.Contains(own, current) && home.Contains(current, own) {
+		return nil
+	}
+	return []string{own}
+}
+
+// deskCanvasRoot is the desktop app's canvas folder as its `canvas` command
+// finds it (codeaf-desk docs/canvas/CONTRACT.md section 1, and the app's own
+// crates/core tools_env.rs): $WORKAF_CANVAS_ROOT, else
+// ~/Library/Application Support/WorkAF/canvases on a Mac, else
+// $XDG_DATA_HOME/workaf/canvases (~/.local/share when that is unset or not
+// absolute). "" when there is no home to find it under.
+func deskCanvasRoot(getenv func(string) string, person, goos string) string {
+	if root := strings.TrimSpace(getenv("WORKAF_CANVAS_ROOT")); root != "" {
+		return root
+	}
+	if strings.TrimSpace(person) == "" {
+		return ""
+	}
+	if goos == "darwin" {
+		return filepath.Join(person, "Library", "Application Support", "WorkAF", "canvases")
+	}
+	data := strings.TrimSpace(getenv("XDG_DATA_HOME"))
+	if data == "" || !filepath.IsAbs(data) {
+		data = filepath.Join(person, ".local", "share")
+	}
+	return filepath.Join(data, "workaf", "canvases")
 }
 
 // fencedSeat is ctx carrying the fenced seat for a door that has no session

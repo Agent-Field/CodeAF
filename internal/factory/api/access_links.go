@@ -18,7 +18,10 @@ const (
 
 // AccessLink exposes its secret URL only when the operator creates it.
 type AccessLink struct {
-	Operator  bool      `json:"operator,omitempty"`
+	Operator bool `json:"operator,omitempty"`
+	// Kind is "reset" for a password reset link, whose Login is the person
+	// it resets; an invitation leaves it empty.
+	Kind      string    `json:"kind,omitempty"`
 	ID        string    `json:"id"`
 	URL       string    `json:"url,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -60,4 +63,8 @@ type CreateAccessLink struct {
 	Login     string    `json:"login,omitempty"`
 	Name      string    `json:"name,omitempty"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
+	// Kind is "reset" for an operator's one-time password reset link for
+	// Person, a password person; empty (or "invite") is an invitation.
+	Kind   string `json:"kind,omitempty" jsonschema:"enum=invite,enum=reset"`
+	Person string `json:"person,omitempty"`
 }

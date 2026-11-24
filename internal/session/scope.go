@@ -101,8 +101,19 @@ func (c Config) scopedElsewhereFact(page string) string {
 // The caller holds a.mu; the belt is rewritten under armMu, in the order an
 // anchoring conversation already takes them.
 func (a *Agent) followWorkScopeLocked(now time.Time) {
+	member := a.config.belongsToWorkstream()
+	joined := member != a.workstreamTold.Load()
+	if joined {
+		a.workstreamTold.Store(member)
+		if member {
+			a.withdrawTool("automation")
+		}
+	}
 	own := a.config.readsOwnWorkOnly()
 	if own == a.ownWorkTold.Load() {
+		if joined {
+			a.rerenderSystemLocked(now)
+		}
 		return
 	}
 	a.ownWorkTold.Store(own)

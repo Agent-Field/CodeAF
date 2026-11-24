@@ -63,7 +63,7 @@ func TestAppPluginsListKeyShapeAndProviderPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Plugins) != len(v3Connect(b.profileDir).Services()) || len(list.Featured) != 4 || list.FeaturedWords["slack"].What != "Channels, threads and DMs" {
+	if len(list.Plugins) != len(v3Connect(b.profileDir).Services()) || len(list.Featured) != 5 || list.Featured[0] != connect.GitHubID || list.FeaturedWords["slack"].What != "Channels, threads and DMs" {
 		t.Fatalf("list: %+v", list)
 	}
 	answer, err := b.ConnectPluginKey(appwire.PluginKeyParams{ID: "stripe", Key: "two keys"})
@@ -99,7 +99,9 @@ func TestAppPluginsListKeyCheckability(t *testing.T) {
 	}
 	keys, checkable := 0, 0
 	for _, plugin := range list.Plugins {
-		if plugin.Kind != "key" {
+		// GitHub is checked with GitHub itself, not a catalog probe, and its
+		// own test says so (TestAppPluginsGitHubIsTheFactorysGitHub).
+		if plugin.Kind != "key" || plugin.ID == connect.GitHubID {
 			continue
 		}
 		keys++
@@ -441,5 +443,38 @@ func TestAppPluginsAskIDsAreUniqueAcrossAgents(t *testing.T) {
 			done, ok := data.(appwire.PluginsNeededDone)
 			return ok && done.AskID == askIDs[i]
 		})
+	}
+}
+
+// TestAppPluginsGitHubIsTheFactorysGitHub pins the one-token law at the door
+// the app reaches: a token the factory kept shows GitHub connected on the
+// Connectors page, and disconnecting it there takes it from the factory too.
+func TestAppPluginsGitHubIsTheFactorysGitHub(t *testing.T) {
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	b := newFakeBackend(newAppRecorder(), nil)
+	defer b.Close()
+	b.profileDir = t.TempDir()
+	if v3Connect(b.profileDir).Connected(connect.GitHubID) {
+		t.Fatal("GitHub reads connected on an empty profile")
+	}
+	if err := config.WriteGitHubToken(b.profileDir, "factory-kept-token"); err != nil {
+		t.Fatal(err)
+	}
+	if !v3Connect(b.profileDir).Connected(connect.GitHubID) {
+		t.Fatal("a token the factory kept does not show GitHub connected")
+	}
+	answer, err := b.ConnectPluginKey(appwire.PluginKeyParams{ID: connect.GitHubID, Key: "two words"})
+	if err != nil || answer.Error != "shape" {
+		t.Fatalf("token shape: %+v %v", answer, err)
+	}
+	if config.GitHubTokenAt(b.profileDir) != "factory-kept-token" {
+		t.Fatal("a refused paste replaced the factory's token")
+	}
+	if err := b.DisconnectPlugin(appwire.PluginDisconnectParams{ID: connect.GitHubID}); err != nil {
+		t.Fatal(err)
+	}
+	if config.GitHubTokenAt(b.profileDir) != "" || v3Connect(b.profileDir).Connected(connect.GitHubID) {
+		t.Fatal("disconnecting GitHub left the factory's token")
 	}
 }

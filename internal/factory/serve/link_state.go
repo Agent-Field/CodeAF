@@ -9,8 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,7 +53,7 @@ func captureDevice(action http.HandlerFunc, r *http.Request, body any) *deviceRe
 func accessSecret(link, address string) (string, error) {
 	u, err := url.Parse(link)
 	if err != nil {
-		return "", errors.New("use a factory access link")
+		return "", errors.New("use an organization invite link")
 	}
 	origin := u.Query().Get("url")
 	if u.Scheme != "codeaf" || u.Host != "factory" || u.Path != "/join" || strings.TrimRight(origin, "/") != strings.TrimRight(address, "/") {
@@ -65,29 +67,55 @@ func accessSecret(link, address string) (string, error) {
 }
 func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	// The answer can carry a session credential; nothing may keep a copy.
+	noStore(w)
 	link := r.URL.Query().Get("link")
 	verb := ""
+	var body api.FactoryAccessRequest
 	if r.Method == "POST" {
-		var body api.FactoryAccessRequest
-		if !h.decode(w, r, &body, false) {
+		// Every verb's body fits in 8 KiB (a link is at most 4 KiB), and is
+		// read strictly, so a field this server does not know is refused
+		// rather than ignored.
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, passwordBodyMost))
+		if err != nil {
+			h.fail(w, http.StatusRequestEntityTooLarge, "the request is larger than 8 KiB")
+			return
+		}
+		if !h.strictJSON(w, data, &body) {
 			return
 		}
 		link, verb = body.Link, body.Verb
-		if verb != "sign_in" && verb != "cancel" && verb != "check" {
-			h.fail(w, 422, "choose sign_in, cancel or check")
+		switch verb {
+		case "sign_in", "cancel", "check":
+			if body.Username != "" || body.Password != "" || body.Name != "" {
+				h.fail(w, 422, "only sign_up and reset take a username or a password")
+				return
+			}
+		case "sign_up", "reset":
+			// A password travels only as JSON, only over https or from this
+			// machine.
+			if media, _, e := mime.ParseMediaType(r.Header.Get("Content-Type")); e != nil || media != "application/json" {
+				h.fail(w, http.StatusUnsupportedMediaType, "send this as application/json")
+				return
+			}
+			if !h.passwordTransport(w, r) {
+				return
+			}
+		default:
+			h.fail(w, 422, "choose sign_in, sign_up, reset, cancel or check")
 			return
 		}
 	}
 	// A CHECK READS AND POLLS, NEVER STARTS: GET (legacy, secret in the URL) and
 	// POST check are the same read, so neither can mint a cookie, start OAuth or reset a flow.
 	check := r.Method == http.MethodGet || verb == "check"
-	secret, err := accessSecret(link, h.factory.Address)
+	secret, err := accessSecret(link, h.factoryNow().Address)
 	if err != nil {
 		h.fail(w, 422, err.Error())
 		return
 	}
-	out := api.FactoryAccess{State: "no_access", Link: link, Factory: api.AccessFactory{Name: h.factory.Name, Host: h.factory.Address, Repos: []string{}}, Detail: "Link for one person"}
-	hash := sha256.Sum256([]byte(h.factory.Address))
+	out := api.FactoryAccess{State: "no_access", Link: link, Factory: api.AccessFactory{Name: h.factoryNow().Name, Host: h.factoryNow().Address, Repos: []string{}, SignIn: h.signInMethods()}, Detail: "Link for one person"}
+	hash := sha256.Sum256([]byte(h.factoryNow().Address))
 	out.Factory.ID = "factory_" + hex.EncodeToString(hash[:8])
 	claim, err := tokens.LoadOperator(h.config.TokensPath)
 	if h.failed(w, err) {
@@ -106,12 +134,29 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if tok == nil {
+		// An operator's password reset link is kept beside the accounts, not
+		// among the access rows: its secret must never pass as a bearer.
+		if accounts, e := h.loadAccounts(); e == nil && h.passwordsOn() {
+			if reset, ok := accounts.FindReset(secret); ok && (verb == "" || verb == "check" || verb == "reset") {
+				h.resetAccess(w, r, body, reset, out)
+				return
+			}
+		}
 		out.Message = "This access link is not valid."
 		h.write(w, 200, out)
 		return
 	}
+	if verb == "reset" {
+		h.fail(w, 422, "this is not a password reset link")
+		return
+	}
 	if tok.InvitedBy != "" {
 		out.Factory.Operator = tok.InvitedBy
+	}
+	// A link made for one GitHub login is used by signing in with GitHub as
+	// that person; it never offers a password or a passkey.
+	if tok.InvitedLogin != "" {
+		out.Factory.SignIn = slices.DeleteFunc(out.Factory.SignIn, func(m string) bool { return m == signInPassword || m == signInPasskey })
 	}
 	// Only a link that matched earns the host's face; the secret is the proof.
 	if known, ok := h.signedInPeople([]string{out.Factory.Operator})[factory.NormalizeHandle(out.Factory.Operator)]; ok {
@@ -145,6 +190,16 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 	if tok.Human() && out.State != "ready" {
 		ended := tok.EndedAt(now)
 		out.EndedAt = &ended
+	}
+	// Signing up is its own door: it never starts GitHub, reads no caller
+	// cookie, and a person already signed in may still make a new account.
+	if verb == "sign_up" {
+		if out.State != "ready" {
+			h.write(w, 200, out)
+			return
+		}
+		h.signUp(w, r, body, *tok, out)
+		return
 	}
 	caller := ""
 	if cookie, e := r.Cookie("factory_join"); e == nil {
@@ -289,6 +344,8 @@ func (h *Handler) factoryAccess(w http.ResponseWriter, r *http.Request) {
 					out.State = "used_up"
 				case linkNoRepoWords:
 					out.Message = linkNoRepoWords
+				case githubNameHeldWords:
+					out.Message = githubNameHeldWords
 				}
 			}
 			h.write(w, 200, out)
@@ -318,6 +375,11 @@ func (h *Handler) accessRepos(out *api.FactoryAccess, r *http.Request) {
 		hasRepos = hasRepos || len(watched) > 0
 	}
 	snap, reason, _ := h.forViewer(r, snap)
+	// A password person has no GitHub to see a repository with; that is a
+	// thing they cannot do, never a reason to turn them away.
+	if session, ok := h.credential(r); ok && session.profile != nil && session.profile.Kind == tokens.KindPassword {
+		reason = ""
+	}
 	if reason != "" && hasRepos {
 		out.State = "no_access"
 		out.AccessToken = ""

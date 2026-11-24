@@ -195,6 +195,7 @@ type request struct {
 // before it returns.
 func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine Engine) error {
 	hello.Contract = Contract
+	hello = withProviderInstancesFeature(hello, engine)
 	hello = withFeature(hello, FeatureAgentEffortRungs)
 	hello = withCollectionsFeature(hello, engine)
 	hello = withKnowledgeFeature(hello, engine)
@@ -216,6 +217,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withReplySuggestionFeature(hello, engine)
 	hello = withUnreadFeature(hello, engine)
 	hello = withAgentScopeFeature(hello, engine)
+	hello = withAgentWorkstreamFeature(hello, engine)
 	hello = withErrandFeature(hello, engine)
 	hello = withClientToolsFeature(hello, engine)
 	hello = withAsksDrawnFeature(hello, engine)
@@ -247,6 +249,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryJobRejectPlanFeature(hello, engine)
 	hello = withFactoryJobRejectFeature(hello, engine)
 	hello = withFactoryJobPRReadyFeature(hello, engine)
+	hello = withFactoryJobOpenPRFeature(hello, engine)
 	hello = withFactoryJobBriefSeenFeature(hello, engine)
 	hello = withFactoryPublishAnywayFeature(hello, engine)
 	hello = withFactoryAcceptStepFeature(hello, engine)
@@ -285,10 +288,13 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactorySetupGitHubFeature(hello, engine)
 	hello = withFactorySetupFolderCheckFeature(hello, engine)
 	hello = withOrdersMadeFeature(hello, engine)
+	hello = withWorkstreamOrdersFeature(hello, engine)
 	hello = withFactoryAdminFeature(hello, engine)
 	hello = withFactorySessionsFeature(hello, engine)
 	hello = withCredentialsFeature(hello, engine)
 	hello = withFactoryLinksFeature(hello, engine)
+	hello = withFactoryPasswordFeature(hello, engine)
+	hello = withFactoryPasskeyFeature(hello, engine)
 	hello = withFactoryReposManageFeature(hello, engine)
 	hello = withFactoryRunnerManageFeature(hello, engine)
 	hello = withFactoryRulesFeature(hello, engine)
@@ -297,6 +303,20 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, hello Hello, engine En
 	hello = withFactoryLibraryFeature(hello, engine)
 	hello = withFactorySpendingFeature(hello, engine)
 	hello = withFactoryGoAheadFeature(hello, engine)
+	hello = withFactoryOrgFeature(hello, engine)
+	hello = withFactoryOrgPresenceFeature(hello, engine)
+	hello = withFactoryOrgDocsFeature(hello, engine)
+	hello = withFactoryOrgPartsFeature(hello, engine)
+	hello = withFactoryOrgTasksFeature(hello, engine)
+	hello = withFactoryOrgOrdersFeature(hello, engine)
+	hello = withFactoryOrgInvitesFeature(hello, engine)
+	hello = withFactoryOrgPageCommentsFeature(hello, engine)
+	hello = withFactoryOrgCanvasFeature(hello, engine)
+	hello = withFactoryOrgFilesFeature(hello, engine)
+	hello = withFactoryOrgMySpaceFeature(hello, engine)
+	hello = withFactoryOrgAccessFeature(hello, engine)
+	hello = withFactoryOrgAgentsFeature(hello, engine)
+	hello = withFactoryOrgLibraryFeature(hello, engine)
 	hello = withFactoryPipelinePRFeature(hello, engine)
 	hello = withFactoryPipelinePRUpdateFeature(hello, engine)
 	hello = withFactoryPipelinePRsFeature(hello, engine)
@@ -603,6 +623,25 @@ var methods = map[string]method{
 			return nil, Errorf(CodeBadParams, "approval postures require a newer engine")
 		}
 		agent, err := door.SetApprovalPosture(p.ID, posture)
+		if err != nil {
+			return nil, err
+		}
+		return &agentResult{agent}, nil
+	}),
+	// agents.continue carries on, once, a chat the app's quit or close stopped
+	// mid-turn ([Agent.Interrupted]).
+	"agents.continue": typed(func(e Engine, p IDParams) (*agentResult, error) {
+		id, err := required("id", p.ID)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := e.(interface {
+			ContinueInterrupted(id string) (Agent, error)
+		})
+		if !ok {
+			return nil, Errorf(CodeBadParams, "continuing an interrupted chat requires a newer engine")
+		}
+		agent, err := door.ContinueInterrupted(id)
 		if err != nil {
 			return nil, err
 		}

@@ -28,7 +28,7 @@ func TestEveryFailureHasOneStableCodeAndNextStep(t *testing.T) {
 		}
 		seen[row.Code] = true
 	}
-	if !seen["machine_offline"] || len(seen) != 11 {
+	if !seen["machine_offline"] || !seen[CodeGitHubNotConnected] || !seen[CodeGitHubOtherAccount] || len(seen) != 13 {
 		t.Fatalf("codes = %v", seen)
 	}
 	for _, tt := range tests {

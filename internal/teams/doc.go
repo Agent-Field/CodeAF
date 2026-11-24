@@ -28,8 +28,9 @@
 //     rows that differ. A member's briefs are rows of their own that a load
 //     leaves out ([WithBriefs]).
 //   - A chain of parents never loops, and a parent always exists.
-//   - A handle is lowercase, 2 to 12 characters, unique within its team,
-//     derived from the member's title once and never changed automatically.
+//   - A handle is lowercase, 2 to 24 characters (2 to 12 when the engine
+//     derives it), unique within its team, derived from the member's title
+//     once and never changed automatically.
 //   - The manager is always a member. Removing it from the team clears it.
 //   - Every write is a read-modify-write under an exclusive file lock
 //     ([Update]) and one SQLite transaction, so two processes writing the same

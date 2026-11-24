@@ -37,28 +37,20 @@ func TestAppFactoryFollowPRAndPostPublishMoney(t *testing.T) {
 	}
 	// This local runner uses the captured PR snapshot. Keep the automatic
 	// worker off so it cannot also lease the same fixture job.
-	var connected atomic.Bool
 	var runner *factoryrun.Runner
 	hook := s.backend.local.seamHook
 	s.backend.local.seamHook = func(seam factory.Seam) factory.Seam {
 		seam = hook(seam)
-		seam.ConnectGitHub = func(context.Context, string) error { return nil }
-		seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
-			if !connected.Load() {
-				return factory.GitHubLink{}, nil
-			}
-			return factory.GitHubLink{Login: "owner"}, nil
-		}
 		seam.Launch = func(id int) error { return runner.Launch(id) }
 		return seam
 	}
-	st := s.start()
+	// Serve without starting the app worker; this fixture owns job launches.
+	if err := s.backend.startLocal(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st := s.backend.localStatus()
 	if st.Runner {
 		t.Fatal("fixture started an automatic worker")
-	}
-	connected.Store(true)
-	if err := s.backend.local.host.seam.ConnectGitHub(context.Background(), "fixture"); err != nil {
-		t.Fatal(err)
 	}
 	s.backend.briefs.stop()
 	s.backend.briefs = newBriefDebounce(time.Hour, s.backend.writeBriefLater)

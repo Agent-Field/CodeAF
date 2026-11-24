@@ -10,6 +10,7 @@ A command in such a run may:
 - write the repository's own git folder, so a worktree can commit, fetch and make branches;
 - write its own temp folder and its own cache folders (see "its own temp and cache folders");
 - for a factory step, write the folder beside its conversation where codeaf keeps the receipts of the checks it runs (`go test`, `npm test`, …), so those checks are measured wherever codeaf's own folder is; nothing else of codeaf's folder is writable;
+- write the desktop app's canvas folder, when that folder already exists on this computer, so a canvas a crew member or a run draws lands where the app shows it. It is `$WORKAF_CANVAS_ROOT` when that is set, else `~/Library/Application Support/WorkAF/canvases` on a Mac, else `$XDG_DATA_HOME/workaf/canvases` (`~/.local/share/workaf/canvases`). A run never creates the folder; on a computer without the app it stays outside the limits;
 - read the rest of the computer, so toolchains under `/usr`, `/opt/homebrew`, Xcode and the Go root work;
 - use the network.
 

@@ -511,6 +511,16 @@ A window that stops reading does not hold up another window closing the chat. A 
 
 Device presence can arrive before its list of chats. If you press `alt+m` early, home says `chats are still arriving from your other computer; this opens when they are ready`. It keeps your request and opens the ordinary confirmation once the chat arrives; it never takes the chat without that confirmation. A recent chat left on another computer is offered when home opens, including one that computer closed cleanly.
 
+## How long does moving a chat take — why a move is slow, moving back is quick
+
+What a move costs depends on what this computer already has.
+
+- **Moving a chat back** to a computer that held it before downloads only what the other computer changed. In a big folder, the rest of the move stays a second or two, plus the download.
+- **A chat this computer never held** copies its whole saved folder. It takes as long as sending that many bytes through your connection to the server.
+- **Taking a chat from a computer that is off** also restores this computer's own copy of the folder. On a large folder that adds a few seconds.
+
+Before a move restores files into your folder, codeaf checks the files there for secrets. A file this running codeaf has already checked, and that has not changed since, is not read again. A file that changed is read again. After codeaf restarts, its first move in a folder reads every file once. It remembers at most 100,000 files. Files beyond that are read again on every move.
+
 ## a new chat brings its full saved contents; a returning chat brings its changes
 
 a chat this computer has never held opens as soon as its conversation records and hold arrive, and brings its saved workspace contents in parallel in the background, even after other chats used this store. a returning chat downloads only what changed. tools that touch the workspace wait until all saved contents have arrived and been put in place (`CODEAF_MOVE_FILES_FIRST=1` waits for all files before opening instead). sharing saved file contents with other chats does not make a new chat count as one this computer already held.

@@ -22,7 +22,7 @@ import (
 // pending row, sweeps, and reads back a scored own sheet, a judged marker and a
 // consumed pending file — then sweeps again and asserts the judge is not re-asked.
 func TestPoolJudgeSweepJudgesAPendingRowOnceThenNeverAgain(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -66,7 +66,7 @@ func TestPoolJudgeSweepJudgesAPendingRowOnceThenNeverAgain(t *testing.T) {
 // TestPoolJudgeSweepWithNoKeyLeavesRowsWaiting: with no judge-capable key the
 // sweep judges nothing and leaves the pending rows in place for a later start.
 func TestPoolJudgeSweepWithNoKeyLeavesRowsWaiting(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -94,7 +94,7 @@ func TestPoolJudgeSweepWithNoKeyLeavesRowsWaiting(t *testing.T) {
 // claimed the file is skipped, not fatal, and the whole valid row before it is
 // still judged.
 func TestPoolJudgeSweepToleratesATornPendingLine(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 
@@ -149,7 +149,7 @@ func pendingIDs(t *testing.T, path string) map[uint64]bool {
 // next start. The fresh pending file must not then be renamed over it, which
 // replaced the leftover's unjudged rows with the new ones and lost them for good.
 func TestPoolJudgeSweepCutShortKeepsALeftoverClaimsRows(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	poolUsageHome(t)
 	t.Setenv("CODEAF_MODEL_POOL", "on")
 	t.Setenv("CODEAF_MODEL_POOL_SUBMIT_URL", "http://127.0.0.1:1/submit")
 

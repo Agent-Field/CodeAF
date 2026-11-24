@@ -199,6 +199,15 @@ honest rather than decorative:
 resident, standing watch, spend, standing work — and those rows are the
 grounding the head answers "who's keeping watch?" from.
 
+## Decision 8 — An order may belong to a workstream
+
+An order may carry a `workstream`: the workstream whose People and rules page
+switches it on (Keeps running) and whose task list its results land in, as a
+group named after the order. It is additive. An order with no workstream, which
+every order made before this is, runs exactly as before, and a scoped one runs
+on the same clock, ladder and limits; only where its results are filed changes.
+Before a person switches one on, the page shows what it will create.
+
 ## What this is not
 
 - Not a scheduler UI. No cron-syntax dialogs; cadence is stated in words

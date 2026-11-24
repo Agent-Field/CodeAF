@@ -57,6 +57,11 @@ func (b *appBackend) DescribePlugin(id string) (connect.PluginDescription, error
 	if err != nil {
 		return d, appEngineError(err)
 	}
+	if id == connect.GitHubID && b.localStatus().State == appwire.LocalRunning {
+		// The factory this app serves or joined reads GitHub through the same
+		// connection, so a disconnect sheet can say what stops working.
+		d.Notes = githubFactoryNote
+	}
 	return d, nil
 }
 func (b *appBackend) ConnectPluginBrowser(p appwire.PluginBrowserParams) (appwire.PluginBrowserResult, error) {
@@ -64,7 +69,13 @@ func (b *appBackend) ConnectPluginBrowser(p appwire.PluginBrowserParams) (appwir
 	if err != nil {
 		return appwire.PluginBrowserResult{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), appSignInWait)
+	wait := appSignInWait
+	if p.ID == connect.GitHubID {
+		// GitHub's device code lives fifteen minutes, longer than a browser
+		// sign-in is waited for; the flow ends itself at the code's expiry.
+		wait = appGitHubSignInWait
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	attempt := &appPluginAttempt{cancel: cancel}
 	var refused error
 	b.locked(func() {
@@ -129,8 +140,35 @@ func (b *appBackend) ConnectPluginBrowser(p appwire.PluginBrowserParams) (appwir
 		}
 		b.emit.Emit(appwire.EventPluginsChanged, changed)
 	})
-	// The surface opens this link, as it does for providers.sign_in_start.
-	return appwire.PluginBrowserResult{State: "waiting", Link: flow.URL()}, nil
+	// The surface opens this link, as it does for providers.sign_in_start. A
+	// device sign-in's code goes beside it, and the surface shows the code
+	// before it opens anything.
+	return appwire.PluginBrowserResult{State: "waiting", Link: flow.URL(), Code: flow.Code()}, nil
+}
+
+// appGitHubSignInWait outlasts GitHub's fifteen-minute device code.
+const appGitHubSignInWait = 16 * time.Minute
+
+// ConnectPluginLocal adopts the login already on this computer: for GitHub,
+// gh's own. Its answer is connect_key's shape, so one sheet reads both.
+func (b *appBackend) ConnectPluginLocal(p appwire.PluginID) (appwire.PluginKeyResult, error) {
+	m, err := b.pluginManager()
+	if err != nil {
+		return appwire.PluginKeyResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	status, err := m.ConnectLocal(ctx, p.ID)
+	if err != nil {
+		var failure *connect.KeyFailure
+		if errors.As(err, &failure) {
+			return appwire.PluginKeyResult{Error: failure.Kind, Words: failure.Words}, nil
+		}
+		return appwire.PluginKeyResult{}, appEngineError(err)
+	}
+	b.notePluginConnected(p.ID, status.Account)
+	b.emit.Emit(appwire.EventPluginsChanged, appwire.PluginsChanged{ID: p.ID})
+	return appwire.PluginKeyResult{Account: status.Account, Checked: status.Checked}, nil
 }
 func (b *appBackend) CancelPlugin(id string) error {
 	var attempt *appPluginAttempt

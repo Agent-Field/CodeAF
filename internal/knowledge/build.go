@@ -139,6 +139,7 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 		}
 		before := seen
 		v.passSeen = ""
+		v.passQuietAt = time.Time{}
 		err = v.runPass(ctx, history, key, &lastInventory)
 		seen = v.passSeen
 		quiet = err == nil && seen != "" && seen == before
@@ -171,6 +172,11 @@ func (v *Vault) Run(ctx context.Context, history History, key func() string) err
 			delay = min(buildQuietMax, max(buildEvery, delay*2))
 		} else {
 			delay = buildEvery
+		}
+		// A CHAT HELD BACK WHILE IT WAS BEING WRITTEN IN IS COMPILED THE MOMENT
+		// IT GOES QUIET, not up to a quiet backoff later (build_idle.go).
+		if !v.passQuietAt.IsZero() {
+			delay = min(delay, max(buildEvery, v.passQuietAt.Sub(buildNow())))
 		}
 		if err = waitBuildOrWake(ctx, delay, wake); err != nil {
 			return err
@@ -458,6 +464,21 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 	job["chats"] = len(journals)
 	job["imported"] = imported
 	job["error"] = ""
+	// THE CHATS STILL BEING WRITTEN IN WAIT (build_idle.go). Their sources are
+	// captured above; they are compiled on the pass after they go quiet, which
+	// [Vault.Run] wakes for, and a pass that compiles one conversation's
+	// sources is charged to that conversation.
+	waitingSessions, err := pendingSessions(db)
+	if err != nil {
+		return err
+	}
+	hot, quietAt := hotSessions(journals, flag(job["backfill"]), waitingSessions)
+	v.passQuietAt = quietAt
+	ctx = withHeldSessions(ctx, hot)
+	heldSQL, heldArgs := heldClause(ctx, "payload")
+	if ctx, err = chargeOnlySession(ctx, db); err != nil {
+		return err
+	}
 	for {
 		if err = ctx.Err(); err != nil {
 			return err
@@ -465,7 +486,7 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 		if !v.Enabled() {
 			return nil
 		}
-		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&pending); err != nil {
+		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0 AND "+heldSQL, heldArgs...).Scan(&pending); err != nil {
 			return err
 		}
 		if pending == 0 && !flag(job["backfill"]) {
@@ -494,7 +515,7 @@ func (v *Vault) runPass(ctx context.Context, history History, key func() string,
 			return err
 		}
 		var remaining int
-		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0").Scan(&remaining); err != nil {
+		if err = db.QueryRow("SELECT count(*) FROM events WHERE partition='profile' AND status IN ('pending','revisit') AND coalesce(json_extract(payload,'$.job'),0)=0 AND "+heldSQL, heldArgs...).Scan(&remaining); err != nil {
 			return err
 		}
 		if remaining == 0 {

@@ -60,7 +60,10 @@ type FactorySetupRequest struct {
 // FactoryAccess reports a link's validity separately from the caller's GitHub sign-in.
 type FactoryAccess struct {
 	// AccessToken is a completed native session grant; the app host consumes it before replying.
-	AccessToken string        `json:"access_token,omitempty"`
+	AccessToken string `json:"access_token,omitempty"`
+	// DeviceToken is a password sign-up's or reset's trusted-device secret
+	// (PasswordSignedIn.DeviceToken); the app host keeps it, never shows it.
+	DeviceToken string        `json:"device_token,omitempty"`
 	State       string        `json:"state" jsonschema:"enum=ready,enum=waiting,enum=joined,enum=expired,enum=revoked,enum=used_up,enum=no_access,enum=unreachable,enum=already_joined"`
 	Factory     AccessFactory `json:"factory"`
 	Link        string        `json:"link"`
@@ -77,6 +80,13 @@ type FactoryAccess struct {
 	Remaining int        `json:"remaining,omitempty"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	EndedAt   *time.Time `json:"ended_at,omitempty"`
+	// Kind is "reset" for an operator's password reset link; empty for an
+	// invitation or an operator claim. Reason names the rule a refused
+	// sign_up or reset broke (username_taken, username_invalid,
+	// password_short, password_long, password_common,
+	// password_contains_username, name_invalid); Message says it in words.
+	Kind   string `json:"kind,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 type AccessFactory struct {
 	ID       string `json:"id"`
@@ -88,13 +98,25 @@ type AccessFactory struct {
 	OperatorName      string   `json:"operator_name,omitempty"`
 	OperatorAvatarURL string   `json:"operator_avatar_url,omitempty"`
 	Repos             []string `json:"repos"`
+	// SignIn is how a person may sign in here, most preferred first:
+	// "password", "github". A server older than password accounts omits it,
+	// which a client reads as GitHub only.
+	SignIn []string `json:"sign_in,omitempty"`
 }
 type FactoryAccessRequest struct {
 	Link string `json:"link"`
 	// check only reads or polls; it never starts a sign-in. A factory advertises
 	// support with access_check_post:true in GET /v1/about; older ones take only
 	// sign_in and cancel and answer a check as GET with the link in the query.
-	Verb string `json:"verb" jsonschema:"enum=sign_in,enum=cancel,enum=check"`
+	Verb string `json:"verb" jsonschema:"enum=sign_in,enum=cancel,enum=check,enum=sign_up,enum=reset"`
+	// Username, Password and Name are sign_up's; Password alone is reset's.
+	// The password is never logged, kept or answered.
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	Name     string `json:"name,omitempty"`
+	// WantDevice asks sign_up and reset for a device token
+	// (PasswordSignIn.WantDevice).
+	WantDevice bool `json:"want_device,omitempty"`
 }
 
 // FactoryDay counts visible jobs once per calendar day; unknown waiting time is null.

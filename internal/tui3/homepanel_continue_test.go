@@ -420,6 +420,9 @@ func TestTakeoverScreenGolden(t *testing.T) {
 			"╭─ ? Move this chat here? ────────────╮",
 			"│ host-a offline; last saved turn 3h  │",
 			"│ ago; up to 3 turns may still be on  │",
+			// The sentence is whole: this golden once ended it at `still be on`,
+			// which was the card cutting its own words after two rows.
+			"│ host-a                              │",
 			"│                                     │",
 			"│ ▸ 1  move here                      │",
 			"│   2  leave it there    safe answer  │",

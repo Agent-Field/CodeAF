@@ -47,11 +47,16 @@ func TestStorageOptInCacheAndUploadDoors(t *testing.T) {
 	if _, err := c.PutFrame(t.Context(), nil); !errors.Is(err, wireauth.ErrStorageOff) || calls != 0 {
 		t.Fatalf("write while off: %v calls=%d", err, calls)
 	}
-	if _, err := c.Has(t.Context(), nil); err != nil || calls != 1 {
-		t.Fatalf("read while off: %v calls=%d", err, calls)
+	// The existence check is only ever the question before an upload, so while
+	// uploads are closed it asks nothing either (reads of stored frames stay open).
+	if _, err := c.Has(t.Context(), nil); !errors.Is(err, wireauth.ErrStorageOff) || calls != 0 {
+		t.Fatalf("existence check while off: %v calls=%d", err, calls)
 	}
 	if err := SaveStorage(home, ProductionRelayURL, id, "on"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := c.Has(t.Context(), nil); err != nil || calls != 1 {
+		t.Fatalf("existence check once approved: %v calls=%d", err, calls)
 	}
 	if _, err := c.PutFrame(t.Context(), nil); err != nil || calls != 2 {
 		t.Fatalf("approved write: %v calls=%d", err, calls)

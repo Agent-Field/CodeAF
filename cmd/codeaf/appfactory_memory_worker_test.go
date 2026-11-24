@@ -189,7 +189,12 @@ func memoryLateReceiptFactoryHeader(t *testing.T, end string, existing float64) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(proc.closeAll)
+	// This test opens a standalone chat process as well as the shared
+	// factory process. Both own profile writers and must finish here.
+	t.Cleanup(func() {
+		proc.closeAll()
+		closeEngineProcess()
+	})
 	t.Cleanup(func() { _ = s.backend.Close() })
 	t.Cleanup(func() { s.backend.closeLocalFactory() })
 	t.Cleanup(releaseReceipt)

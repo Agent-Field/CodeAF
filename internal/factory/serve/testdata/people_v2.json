@@ -24,7 +24,8 @@
       "handle": "owner",
       "login": "owner",
       "name": "",
-      "last_seen": "2026-10-11T12:00:00Z"
+      "last_seen": "2026-10-11T12:00:00Z",
+      "kind": "github"
     },
     {
       "factory": {

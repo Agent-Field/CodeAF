@@ -3,6 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -163,8 +164,9 @@ func TestFactoryActionsRefuseBadRequestsBeforeTheEngine(t *testing.T) {
 		{"factory.job_change_assignee", `{"factory":"f","job":1,"assignee":"bob/../x",` + guard + `}`},
 		{"factory.job_change_assignee", `{"factory":"f","job":1,"assignee":"-bob",` + guard + `}`},
 		{"factory.job_set_priority", `{"factory":"f","job":1,"priority":"asap",` + guard + `}`},
-		{"factory.job_set_budget", `{"factory":"f","job":1,"budget":7,` + guard + `}`},
+		{"factory.job_set_budget", `{"factory":"f","job":1,"budget":0.99,` + guard + `}`},
 		{"factory.job_set_budget", `{"factory":"f","job":1,"budget":0,` + guard + `}`},
+		{"factory.job_set_budget", `{"factory":"f","job":1,"budget":-5,` + guard + `}`},
 		{"factory.job_approve", `{"factory":"f","job":1,"commit":"HEAD~1",` + guard + `}`},
 		{"factory.job_approve", `{"factory":"f","job":1,"commit":"abc",` + guard + `}`},
 		{"factory.job_request_changes", `{"factory":"f","job":1,"words":"  ",` + guard + `}`},
@@ -352,5 +354,29 @@ func TestFactoryActionSchemaIsAccurate(t *testing.T) {
 	// FactoryCapabilities.writes is NOT claimed by this slice.
 	if _, ok := reflect.TypeFor[FactoryCapabilities]().FieldByName("Writes"); !ok {
 		t.Fatal("capabilities lost writes")
+	}
+}
+
+// Owner decision 2026-11-17 §12: a job's budget is any amount from
+// factory.MinJobBudget up, to the cent, as well as the presets. The amount
+// reaches the actor rounded to cents, and anything under the floor is refused
+// with the one sentence the factory uses too.
+func TestJobSetBudgetTakesAnyAmountFromTheFloor(t *testing.T) {
+	for _, tc := range []struct{ sent, want float64 }{{1, 1}, {1.5, 1.5}, {7, 7}, {12.345, 12.35}, {30, 30}, {250, 250}} {
+		eng := &actorEngine{}
+		raw := fmt.Sprintf(`{"factory":"f","job":1,"budget":%v,`+guard+`}`, tc.sent)
+		if _, err := methods["factory.job_set_budget"].call(eng, json.RawMessage(raw)); err != nil {
+			t.Fatalf("budget %v refused: %v", tc.sent, err)
+		}
+		if got := eng.got[0].(FactoryJobBudgetParams).Budget; got != tc.want {
+			t.Fatalf("budget %v reached the actor as %v, want %v", tc.sent, got, tc.want)
+		}
+	}
+	for _, sent := range []string{"0.99", "0", "-1"} {
+		eng := &actorEngine{}
+		_, err := methods["factory.job_set_budget"].call(eng, json.RawMessage(`{"factory":"f","job":1,"budget":`+sent+`,`+guard+`}`))
+		if wireCode(t, err) != CodeBadParams || !strings.Contains(err.Error(), "A job's budget is at least $1.") || len(eng.acts) != 0 {
+			t.Fatalf("budget %s: %v (acts %v)", sent, err, eng.acts)
+		}
 	}
 }

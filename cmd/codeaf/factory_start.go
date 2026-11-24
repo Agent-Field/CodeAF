@@ -40,7 +40,7 @@ const (
 	sayStartResumed   = "%s resumed"
 	sayStartContinued = "%s went past %s"
 	sayStartRunning   = "%s is already running"
-	sayStartQueued    = "%s is queued · waiting for an available execution slot. Change Jobs at once in Settings → Factory → Your computers."
+	sayStartQueued    = "%s is queued · waiting for an available execution slot. Change Jobs at once in Settings → Organizations → Your computers."
 	sayStartRuleHold  = "%s waits on the person · a rule asks first: %s. Only they can approve it, on the job"
 	sayStartApprover  = "%s waits on %s, whom the pipeline names to approve it. Only they can, on the job"
 )

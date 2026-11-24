@@ -835,6 +835,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 					}
 					_ = modelcatalog.Remember(config.CatalogOptionsFor(connected, dir), seed)
 					_ = WriteModelCacheFor(instance, connected.Address, models)
+					config.NoteModelListChanged()
 				} else if refresh != nil {
 					if refreshed, refreshErr := refresh(ctx, connected, models); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
@@ -847,6 +848,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 					options := config.CatalogOptionsFor(connected, dir)
 					_ = modelcatalog.Remember(options, seed)
 					catalog, refreshErr := modelcatalog.Refresh(ctx, options)
+					config.NoteModelListChanged()
 					if refreshed := surfaceModels(catalog.ModelsNow(), true); refreshErr == nil && len(refreshed) > 0 {
 						models = refreshed
 					}

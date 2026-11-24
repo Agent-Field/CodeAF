@@ -35,6 +35,10 @@ func (b *appBackend) recoveringAgents() map[string]bool {
 		for _, id := range f.ResumeAfterQuit {
 			recovering[id] = true
 		}
+		// A chat waiting for Continue is not the crews' to wake either.
+		for id := range f.Interrupted {
+			recovering[id] = true
+		}
 	})
 	return recovering
 }

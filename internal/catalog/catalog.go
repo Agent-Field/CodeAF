@@ -1636,6 +1636,12 @@ func normalizeBase(raw string) string {
 	return parsed.String()
 }
 
+// CacheFile is the file Recall reads for options, so a caller that keeps its own
+// memo of a recalled list can tell from the file's metadata when it changed.
+func CacheFile(options Options) string {
+	return cachePath(options.Dir, strings.TrimSpace(options.Source), normalizeBase(options.BaseURL))
+}
+
 func cachePath(dir, source, base string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {

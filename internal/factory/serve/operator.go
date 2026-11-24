@@ -36,13 +36,23 @@ func (h *Handler) MintOperatorLink(recovery bool) (tokens.Token, error) {
 	return tokens.RotateOperator(h.config.TokensPath, claim.Login, h.now(), recovery)
 }
 
-// InviteOperatorLink names the host's GitHub login on a minted row that has
-// none, which may wait on GitHub, and only then answers the link to print.
+// InviteOperatorLink answers the link to print for a minted row. On a server
+// that takes no passwords it first names the host's GitHub login on a row that
+// has none, which may wait on GitHub, so that secret is never shown unbound.
+//
+// A SERVER THAT TAKES PASSWORDS NEVER NAMES ITS OPERATOR LINK FOR A GITHUB
+// LOGIN. A named link takes no password (signUp, reasonGitHubLink), so a server
+// that merely held a GitHub token (GH_TOKEN, a grant in its home) could only be
+// claimed by that token's GitHub account, and a password operator never (film
+// D14). Like every invitation, the operator link makes a username and password
+// account by default, and GitHub stays a way in (2646-org-password): the secret
+// in the link is the proof, as it is on a server with no GitHub at all. A
+// recovery link still names the operator who already claimed (RotateOperator).
 func (h *Handler) InviteOperatorLink(ctx context.Context, row tokens.Token) (api.AccessLink, error) {
 	if row.ID == "" {
 		return api.AccessLink{}, nil
 	}
-	if row.InvitedLogin == "" && h.seam.GitHub != nil {
+	if row.InvitedLogin == "" && h.seam.GitHub != nil && !h.passwordsOn() {
 		link, err := h.seam.GitHub(ctx)
 		if err != nil {
 			return api.AccessLink{}, err

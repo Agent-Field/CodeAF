@@ -49,6 +49,11 @@ func TestEverySecretShapeIsTakenOut(t *testing.T) {
 			want: "[redacted token · sk-…]",
 		},
 		{
+			name: "an OpenCode key",
+			text: "OPENCODE_API_KEY=oc_sk_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789",
+			want: "OPENCODE_API_KEY=[redacted token · oc_sk_…]",
+		},
+		{
 			name: "an AWS access key id",
 			text: "aws_access_key_id = AKIAIOSFODNN7EXAMPLE",
 			want: "aws_access_key_id = [redacted token · AKIA…]",

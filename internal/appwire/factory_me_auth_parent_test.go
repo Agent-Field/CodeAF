@@ -33,3 +33,21 @@ func TestFactoryMeDistinguishesVerifiedIdentityFromRevocableSession(t *testing.T
 		}
 	}
 }
+
+// A password person may sign out, and is not said to have signed in with
+// GitHub.
+func TestAPasswordPersonCanSignOutWithoutAGitHubSignIn(t *testing.T) {
+	got := NewFactoryMe(api.Me{SessionID: "session_x", SignInKind: "password"})
+	if got.GitHubSignedIn || !got.CanSignOut || got.SignInKind != "password" {
+		t.Fatalf("password person = %+v", got)
+	}
+}
+
+// A passkey person may sign out too, and is not said to have signed in with
+// GitHub (X1 P4).
+func TestAPasskeyPersonCanSignOutWithoutAGitHubSignIn(t *testing.T) {
+	got := NewFactoryMe(api.Me{SessionID: "session_x", SignInKind: "passkey"})
+	if got.GitHubSignedIn || !got.CanSignOut || got.SignInKind != "passkey" {
+		t.Fatalf("passkey person = %+v", got)
+	}
+}

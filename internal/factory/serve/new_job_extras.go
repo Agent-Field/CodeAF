@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -56,8 +55,12 @@ func validateNewJobExtras(body *api.NewJob) error {
 		}
 		*value = strings.TrimSpace(*value)
 	}
-	if body.Budget != nil && !slices.Contains(factory.JobBudgetSteps(), *body.Budget) {
-		return fmt.Errorf("budget must be one of %v US dollars", factory.JobBudgetSteps())
+	if body.Budget != nil {
+		budget, err := factory.CheckJobBudget(*body.Budget)
+		if err != nil {
+			return err
+		}
+		*body.Budget = budget
 	}
 	return nil
 }

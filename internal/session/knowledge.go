@@ -99,7 +99,7 @@ func (a *Agent) initKnowledge() {
 	if strings.TrimSpace(a.config.transcriptPath()) == "" || a.config.InTask || a.config.taskID != 0 {
 		return
 	}
-	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, "")).WithCalls(a.knowledgeCallContext)
+	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, "")).WithCalls(a.knowledgeCallContext).WithChosenModel(a.Model)
 }
 
 // wakeKnowledge is called by the journal writer's hook. It never blocks or
@@ -206,7 +206,7 @@ func (a *Agent) rebindKnowledgeLocked(project string) {
 		old.cancel()
 		a.knowledgeRetired = append(a.knowledgeRetired, old)
 	}
-	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, "")).WithCalls(a.knowledgeCallContext)
+	a.knowledgeVault = knowledge.Open(config.ProfilePath(a.config.ProfileDir, "")).WithCalls(a.knowledgeCallContext).WithChosenModel(a.Model)
 	a.knowledgeJournal = nil
 	a.knowledgeMu.Unlock()
 	a.startKnowledge()
@@ -325,7 +325,14 @@ func (a *Agent) scanKnowledge(ctx context.Context, j *knowledgeJournal, path, se
 				return fmt.Errorf("knowledge: missing opt-in timestamp")
 			}
 		}
+		// A CONVERSATION IN A WORKSTREAM IS NEVER CAPTURED INTO THE LIBRARY
+		// (workstream_mark.go): its sources are read past, so the cursor still
+		// moves and nothing it said is filed on the app's shelf.
+		member := len(batch.Sources) > 0 && a.config.belongsToWorkstream()
 		for _, source := range batch.Sources {
+			if member {
+				break
+			}
 			if e = ctx.Err(); e != nil {
 				return e
 			}

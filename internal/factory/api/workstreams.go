@@ -1,0 +1,319 @@
+package api
+
+import "github.com/Agent-Field/codeaf/internal/factory"
+
+// ── AN ORGANIZATION'S WORKSTREAMS ON THE WIRE ──────────────────────────────
+//
+// An organization's workstreams live on its server, never in someone's app:
+// the desk reads and writes them through the routes below, and a Personal
+// workstream moving in is uploaded once (POST /v1/workstreams/import), after
+// which the server copy is the only copy.
+//
+//	GET    /v1/workstreams                    -> WorkstreamList, visible to me, newest first
+//	POST   /v1/workstreams                    WorkstreamNew -> Workstream
+//	GET    /v1/workstreams/{id}               -> Workstream
+//	PATCH  /v1/workstreams/{id}  If-Match:rev WorkstreamPatch -> Workstream, 412 on a stale rev
+//	DELETE /v1/workstreams/{id}               -> 204, soft; ?purge=1 operator only
+//	PUT    /v1/workstreams/{id}/owner         WorkstreamOwner -> Workstream
+//	PUT    /v1/workstreams/{id}/shares        WorkstreamSharesPut -> WorkstreamShared, 412 on a stale rev
+//	GET    /v1/workstreams/{id}/shares/preview?shares=team:a:edit,person:b:view (or ?teams=a,b) -> WorkstreamSharePreview
+//	POST   /v1/workstreams/import             WorkstreamPackage -> Workstream
+//	PUT    /v1/workstreams/{id}/driver        -> WorkstreamDriver, take or keep the hand; 409 names who holds it
+//	DELETE /v1/workstreams/{id}/driver        -> 204, let go (the holder, its owner or the operator)
+//
+// Its parts (pages one at a time, versions, plan, wakes, suggestions, jobs,
+// unarchive, spend) have their own routes: workstream_parts.go.
+//
+// Every change is published on the event stream as a [WorkstreamEvent].
+
+// The stages a workstream can be in.
+const (
+	WorkstreamShaping  = "shaping"
+	WorkstreamBuilding = "building"
+	WorkstreamOngoing  = "ongoing"
+	WorkstreamPlace    = "place"
+	WorkstreamDone     = "done"
+)
+
+// The kinds of owner a workstream has: exactly one person or one team.
+const (
+	OwnerPerson = "person"
+	OwnerTeam   = "team"
+)
+
+// The event kinds a workstream change publishes.
+const (
+	EventWorkstreamChanged = "workstream.changed"
+	EventWorkstreamRemoved = "workstream.removed"
+)
+
+// The shapes kept on the server are spelled once, in package factory.
+type (
+	WorkstreamOwner    = factory.WorkstreamOwner
+	WorkstreamPage     = factory.WorkstreamPage
+	WorkstreamDecision = factory.WorkstreamDecision
+	WorkstreamSource   = factory.WorkstreamSource
+	Share              = factory.Share
+	WorkstreamRules    = factory.WorkstreamRules
+	RulesOwner         = factory.RulesOwner
+	RulesPerson        = factory.RulesPerson
+	KeepsRunning       = factory.KeepsRunning
+	KeepCandidate      = factory.KeepCandidate
+)
+
+// WorkstreamSummary is one row of the list: enough to draw Home.
+//
+// Shares are who else reaches it and with which role; SharedWith is the team
+// ids among them, kept for clients that read only teams. Private is a
+// workstream only its owner reaches. MyRole is the caller's role on it: view,
+// comment, edit or full, and "" on the operator's NAME-ONLY row for someone
+// else's private workstream, which carries its id, name, owner, private and
+// updated_at and nothing else (its counts are zero and its content is 404).
+type WorkstreamSummary struct {
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Stage      string          `json:"stage" jsonschema:"enum=shaping,enum=building,enum=ongoing,enum=place,enum=done"`
+	Owner      WorkstreamOwner `json:"owner"`
+	SharedWith []string        `json:"shared_with"`
+	Shares     []Share         `json:"shares"`
+	Private    bool            `json:"private"`
+	// Space is true for a person's own space (MySpace): it is never one of
+	// the workstreams a list shows.
+	Space      bool   `json:"space,omitempty"`
+	MyRole     string `json:"my_role"`
+	NeedsYou   int    `json:"needs_you"`
+	Merged     int    `json:"merged"`
+	Total      int    `json:"total"`
+	UpdatedAt  string `json:"updated_at"`
+	ArchivedAt string `json:"archived_at,omitempty"`
+	Rev        int    `json:"rev"`
+	// Parent is the workstream it sits inside, absent at the top. Steward is
+	// who looks after it, and MySteward whether that is the caller: only
+	// the steward changes its people and rules (workstream_structure.go).
+	Parent    string       `json:"parent,omitempty"`
+	Steward   *RulesPerson `json:"steward,omitempty"`
+	MySteward bool         `json:"my_steward,omitempty"`
+}
+
+// Workstream is one workstream whole. GoAheads are the allowances of the
+// go-ahead policy kept for its id ([Policy]), [] when it has none.
+type Workstream struct {
+	WorkstreamSummary
+	Purpose   string               `json:"purpose"`
+	Pages     []WorkstreamPage     `json:"pages"`
+	Decisions []WorkstreamDecision `json:"decisions"`
+	Sources   []WorkstreamSource   `json:"sources"`
+	Links     []string             `json:"links"`
+	GoAheads  []PolicyAllowance    `json:"go_aheads"`
+	// Jobs are the factory jobs on this server that belong to it.
+	Jobs []int `json:"jobs"`
+	// BudgetUSD is what it may spend (absent: no budget); SpendUSD what has
+	// been posted against it.
+	BudgetUSD *float64 `json:"budget_usd,omitempty"`
+	SpendUSD  float64  `json:"spend_usd"`
+	CreatedBy string   `json:"created_by"`
+	// Driver is who is driving its agent now, absent when nobody is.
+	Driver *WorkstreamDriver `json:"driver,omitempty"`
+	// People are its owner and shares as one list of persons and teams, each
+	// with the role access reads; a child's are its parent's. Rules are how
+	// it runs, filled with the defaults when it never set any.
+	People []WorkstreamMember `json:"people"`
+	Rules  WorkstreamRules    `json:"rules"`
+	// RuleSuggestion is Afi's suggestion to loosen the ask rule, when more
+	// than ten Asks wait here and most share a kind; only the steward, who
+	// alone changes the rules, is shown it. Yes adds the exception through
+	// the rules; Not now adds the kind to rules.not_now.
+	RuleSuggestion *factory.RuleSuggestion `json:"rule_suggestion,omitempty"`
+}
+
+// The kinds a workstream member may be.
+const (
+	MemberPerson = "person"
+	MemberTeam   = "team"
+)
+
+// WorkstreamMember is one person or team in a workstream. Members are a
+// team's people as the organization keeps them now, so adding a team adds
+// everyone in it, now and later. Steward marks the person who looks after
+// it. AddedAt is when they were added, absent when that was never kept.
+type WorkstreamMember struct {
+	Kind    string   `json:"kind" jsonschema:"enum=person,enum=team"`
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Role    string   `json:"role" jsonschema:"enum=view,enum=comment,enum=edit,enum=full"`
+	Members []string `json:"members,omitempty"`
+	Steward bool     `json:"steward,omitempty"`
+	AddedAt string   `json:"added_at,omitempty"`
+	// Invited is a person who has been invited and has not joined: their id
+	// is "invite:<id>" and their name the one or the email they were invited
+	// with. Tasks can be given to them; a task they do waits until they join.
+	Invited bool `json:"invited,omitempty"`
+}
+
+// WorkstreamArchiveKeep is GET /v1/workstreams/{id}/archive/keep's answer:
+// what a child could leave in its parent when it is archived. The parent is
+// absent, and Keep empty, for a top-level workstream.
+type WorkstreamArchiveKeep struct {
+	Parent string          `json:"parent,omitempty"`
+	Keep   []KeepCandidate `json:"keep"`
+}
+
+// WorkstreamFolded is POST /v1/workstreams/{id}/fold's answer: the parent as
+// it is now, and the heading the child became in it.
+type WorkstreamFolded struct {
+	Parent  Workstream `json:"parent"`
+	Heading string     `json:"heading"`
+}
+
+// DriverHandSeconds is how long a workstream's driver hand lasts unless its
+// holder renews it: a desk renews it while its window is open, so a laptop
+// that closes or loses the network lets go on its own within this long.
+const DriverHandSeconds = 90
+
+// WorkstreamDriver is who holds a workstream's driver hand: the one person
+// whose laptop runs its agent while the organization runs agents on its
+// drivers' laptops. Since is when they took it and Until when it lapses unless
+// renewed (RFC 3339).
+type WorkstreamDriver struct {
+	Handle string `json:"handle"`
+	Since  string `json:"since"`
+	Until  string `json:"until"`
+	TTL    int    `json:"ttl_s"`
+}
+
+// WorkstreamDriverHeld is the 409 a take answers while someone else drives.
+type WorkstreamDriverHeld struct {
+	Error  string           `json:"error"`
+	Driver WorkstreamDriver `json:"driver"`
+}
+
+// WorkstreamList is GET /v1/workstreams's answer.
+type WorkstreamList struct {
+	Workstreams []WorkstreamSummary `json:"workstreams"`
+}
+
+// WorkstreamNew is POST /v1/workstreams's body. Owner defaults to the caller.
+// Private needs a person owner.
+type WorkstreamNew struct {
+	Name      string               `json:"name"`
+	Private   bool                 `json:"private,omitempty"`
+	Purpose   string               `json:"purpose,omitempty"`
+	Stage     string               `json:"stage,omitempty"`
+	Owner     *WorkstreamOwner     `json:"owner,omitempty"`
+	Pages     []WorkstreamPage     `json:"pages,omitempty"`
+	Decisions []WorkstreamDecision `json:"decisions,omitempty"`
+	Sources   []WorkstreamSource   `json:"sources,omitempty"`
+	Links     []string             `json:"links,omitempty"`
+	// Parent puts it inside a top-level workstream: it takes that one's
+	// people (Owner, Private and shares are then refused) and starts with a
+	// copy of its rules unless Rules is sent.
+	Parent string           `json:"parent,omitempty"`
+	Rules  *WorkstreamRules `json:"rules,omitempty"`
+}
+
+// WorkstreamPatch is PATCH /v1/workstreams/{id}'s body: any subset, and an
+// array that is sent REPLACES the one kept.
+type WorkstreamPatch struct {
+	FoldInto  string                `json:"fold_into,omitempty"`
+	Unfold    string                `json:"unfold,omitempty"`
+	Name      *string               `json:"name,omitempty"`
+	Purpose   *string               `json:"purpose,omitempty"`
+	Stage     *string               `json:"stage,omitempty"`
+	Pages     *[]WorkstreamPage     `json:"pages,omitempty"`
+	Decisions *[]WorkstreamDecision `json:"decisions,omitempty"`
+	Sources   *[]WorkstreamSource   `json:"sources,omitempty"`
+	Links     *[]string             `json:"links,omitempty"`
+	// BudgetUSD sets what it may spend; a negative number clears it.
+	BudgetUSD *float64 `json:"budget_usd,omitempty"`
+	// Rules replaces its rules whole, and Steward hands it on to another
+	// person in it; only its steward sends either. Parent moves it inside a
+	// top-level workstream, or "" to the top.
+	Rules   *WorkstreamRules `json:"rules,omitempty"`
+	Steward *string          `json:"steward,omitempty"`
+	Parent  *string          `json:"parent,omitempty"`
+}
+
+// WorkstreamSharesPut is PUT /v1/workstreams/{id}/shares's body, and it lands
+// in ONE save:
+//
+//   - Shares, when sent, is the whole list of people and teams it is shared
+//     with, each with a role. Teams is the older body: the whole list of teams,
+//     each as edit, person shares kept. Sending neither keeps the shares.
+//   - Owner, when sent, gives it to that person or team first.
+//   - Private, when sent, sets whether only its owner reaches it: true needs a
+//     person owner, and takes it from everyone it was shared with (a non-empty
+//     Shares beside it is refused). A non-empty share list on a private
+//     workstream makes it not private.
+//   - Rev, when sent, must be the rev the caller read, or 412.
+//   - IncludeLinked shares the workstreams it links to with the same people
+//     and teams too, added to and never taken from.
+type WorkstreamSharesPut struct {
+	Shares        *[]Share         `json:"shares,omitempty"`
+	Teams         []string         `json:"teams"`
+	Owner         *WorkstreamOwner `json:"owner,omitempty"`
+	Private       *bool            `json:"private,omitempty"`
+	Rev           *int             `json:"rev,omitempty"`
+	IncludeLinked bool             `json:"include_linked"`
+}
+
+// WorkstreamShared is its answer: the workstream as it is now, and the ids of
+// the linked workstreams that were shared beside it.
+type WorkstreamShared struct {
+	Workstream Workstream `json:"workstream"`
+	AlsoShared []string   `json:"also_shared"`
+}
+
+// WorkstreamSharePreview is what include_linked would add.
+type WorkstreamSharePreview struct {
+	Linked []WorkstreamSummary `json:"linked"`
+}
+
+// WorkstreamPackage is a Personal workstream moving in, once: a workstream
+// without the id, rev, owner and shares the server gives it. Its jobs stay
+// where they ran. Links may name other Personal workstreams by the ids they had
+// on the laptop: one the same person already moved in is linked by its new id.
+// CreatedBy is ignored: the copy is the caller's.
+type WorkstreamPackage struct {
+	To          string                        `json:"to,omitempty"`
+	Files       []WorkstreamImportFile        `json:"files,omitempty"`
+	Tasks       []factory.WorkstreamTask      `json:"tasks,omitempty"`
+	TaskEvents  []factory.WorkstreamTaskEvent `json:"task_events,omitempty"`
+	FromLocalID string                        `json:"from_local_id"`
+	Name        string                        `json:"name"`
+	Stage       string                        `json:"stage,omitempty"`
+	Purpose     string                        `json:"purpose,omitempty"`
+	Pages       []WorkstreamPage              `json:"pages,omitempty"`
+	Decisions   []WorkstreamDecision          `json:"decisions,omitempty"`
+	Sources     []WorkstreamSource            `json:"sources,omitempty"`
+	Links       []string                      `json:"links,omitempty"`
+	CreatedBy   string                        `json:"created_by,omitempty"`
+}
+
+// WorkstreamEvent is the payload a workstream change publishes. Part names
+// which part changed (Part* constants), PartID which one, By who changed it and
+// Rev the part's rev after; all four are absent on an older server's event.
+type WorkstreamEvent struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Part   string `json:"part,omitempty"`
+	PartID string `json:"part_id,omitempty"`
+	// By is the handle of the person who made the change, stamped by the
+	// server from the sign-in.
+	By  string `json:"by,omitempty"`
+	Rev int    `json:"rev,omitempty"`
+	// Deleted is true when the part named was removed (a page).
+	Deleted bool `json:"deleted,omitempty"`
+	// Flagged are the tasks a change to a file's contents flags: the ones
+	// whose agents read it (part "files" only).
+	Flagged []string `json:"flagged,omitempty"`
+	// Parts names what changed when it is one of a workstream's v5 parts:
+	// "tasks", "files" or "rules".
+	Parts []string `json:"parts,omitempty"`
+}
+
+// WorkstreamImportFile carries the file's identity and task links with its
+// upload bytes, rather than a path that only the originating computer reads.
+type WorkstreamImportFile struct {
+	File WorkstreamFile `json:"file"`
+	Data []byte         `json:"data,omitempty"`
+}

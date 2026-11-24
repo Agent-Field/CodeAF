@@ -229,6 +229,8 @@ jobs:
           github_stamp=""
           if [ -n "${CODEAF_GITHUB_CLIENT_ID:-}" ]; then
             github_stamp="-X $(go list -m)/internal/factory/github.clientID=${CODEAF_GITHUB_CLIENT_ID}"
+          else
+            echo "::warning::CODEAF_GITHUB_CLIENT_ID is unset: these builds offer no GitHub sign-in. Set the repository variable to the WorkAF app's public client ID."
           fi
           targets=(
             "darwin amd64"

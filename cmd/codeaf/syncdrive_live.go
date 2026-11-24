@@ -624,6 +624,17 @@ func (s lateStore) readyStore(ctx context.Context) (cellstore.Store, *syncsetup.
 	return s.engine, nil, nil
 }
 
+// Viewing says this window only shows the chat: its drive side saw another
+// computer take it, or, with no drive side to say so, the local gate did. The
+// recorder reads it at quit to tell a window with turns of its own to keep from
+// one that has none.
+func (s lateStore) Viewing() bool {
+	if used := s.live.started(); used != nil {
+		return used.Viewing()
+	}
+	return s.live.localGate != nil && s.live.localGate.superseded()
+}
+
 // Prepare warms only the store permitted to write this chat.
 func (s lateStore) Prepare(ctx context.Context, c cell.Cell) error {
 	store, _, err := s.readyStore(ctx)

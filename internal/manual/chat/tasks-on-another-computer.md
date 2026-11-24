@@ -215,6 +215,8 @@ requires updating both ends before retrying.
 
 Task copies wait for hosted relay storage approval (Settings → Devices → relay storage); chats can still move by blind pass-through, but a task copy is sent through that storage. A self-hosted relay with `--store` needs no request.
 
+While storage is off, sending or taking a task copy is refused on this computer before anything is sealed or asked of the server: it makes no request to the server's store at all, not even the question of whether an object is already there. The refusal is the same storage-off sentence as before.
+
 `the task copy changed while it was being sent; try again` keeps the copy here.
 Finish or pause the edits, then retry the task.
 `task copies need private storage and a relay blob store` means this chat's

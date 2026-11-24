@@ -18,6 +18,7 @@ var (
 	b64      = base64.RawURLEncoding
 	nameAAD  = []byte("codeaf:name:v1")
 	noteAAD  = []byte("codeaf:note:v1")
+	crewAAD  = []byte("codeaf:crew:v1")
 	metaInfo = []byte("codeaf:metadata-key:v1")
 
 	errSealedShort = errors.New("directory: sealed name too short")
@@ -44,6 +45,14 @@ func SealNote(key []byte, text string) (string, error) { return seal(key, text, 
 
 // OpenNote reverses SealNote.
 func OpenNote(key []byte, sealed string) (string, error) { return open(key, sealed, noteAAD) }
+
+// SealCrew seals the crew a chat belongs to on its holder (chatlist.Crew's
+// JSON) under the metadata key. Its own associated data keeps a sealed crew
+// from being read back as a title, and a title from being read as a crew.
+func SealCrew(key []byte, plain string) (string, error) { return seal(key, plain, crewAAD) }
+
+// OpenCrew reverses SealCrew.
+func OpenCrew(key []byte, sealed string) (string, error) { return open(key, sealed, crewAAD) }
 
 // SealName encrypts plain under key with a random nonce and returns
 // b64(nonce ‖ ciphertext). The directory never sees the name.

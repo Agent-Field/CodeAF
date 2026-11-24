@@ -103,14 +103,14 @@ func project(t *testing.T, info *ampsdk.ProviderInfo) *ampcatalog.ProviderInfo {
 // just the catalog's share of it.
 //
 // The snapshot changed where the keyed services' data comes from and nothing
-// else, so the browser-connected services — Google, Slack and the 28 tool servers,
+// else, so the browser-connected services — Google, Slack, GitHub and the 28 tool servers,
 // registered by their own files and mcp_catalog.go and never near the catalog — must
 // still be there, by name. This is the assertion that would catch a change to
 // init ordering or to Register that a catalog-only test would sail past.
 //
 // The numbers are the census taken at this wave's merge base and are meant to
-// be hard to change by accident: 99 keyed services from the catalog, 30
-// browser services, 129 in all.
+// be hard to change by accident: 99 keyed services from the catalog, 31
+// browser services, 130 in all. GitHub made it 31 on 2026-11-15 (github.go).
 func TestRegistryStillHoldsEveryService(t *testing.T) {
 	byAuth := map[string]int{}
 	browser := []string{}
@@ -128,7 +128,7 @@ func TestRegistryStillHoldsEveryService(t *testing.T) {
 	}
 	wantBrowser := []string{
 		"airtable", "atlassian", "buildkite", "calendly", "canva", "circleci",
-		"clickup", "cloudflare", "datadog", "gitlab", "google", "grafana", "heroku",
+		"clickup", "cloudflare", "datadog", "github", "gitlab", "google", "grafana", "heroku",
 		"huggingface", "klaviyo", "launchdarkly", "linear", "miro", "neon",
 		"netlify", "notion", "paypal", "posthog", "postman", "railway", "sanity",
 		"sentry", "slack", "supabase", "todoist",
@@ -136,7 +136,7 @@ func TestRegistryStillHoldsEveryService(t *testing.T) {
 	if !reflect.DeepEqual(browser, wantBrowser) {
 		t.Errorf("browser services registered: %v, want %v", browser, wantBrowser)
 	}
-	if got := len(Registered()); got != 129 {
-		t.Errorf("services registered: %d, want 129", got)
+	if got := len(Registered()); got != 130 {
+		t.Errorf("services registered: %d, want 130", got)
 	}
 }

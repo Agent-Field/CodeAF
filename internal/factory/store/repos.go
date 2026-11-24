@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -19,6 +20,11 @@ import (
 type reposDoc struct {
 	Schema int      `json:"schema"`
 	Repos  []string `json:"repos"`
+	// OnSince is when each repository on the list was last turned on, keyed
+	// by its lowercased `owner/name`. A repository on the list with no entry
+	// was turned on before this was kept, and holds nothing back
+	// ([Store.OnSince]).
+	OnSince map[string]time.Time `json:"on_since,omitempty"`
 }
 
 // ReposPath is <root>/repos.json.
@@ -30,6 +36,25 @@ func (st *Store) ReposPath() string { return filepath.Join(st.root, "repos.json"
 func (st *Store) Repos() ([]string, error) {
 	repos, _, err := st.readRepos()
 	return repos, err
+}
+
+// OnSince is when repo was last turned on, and false when the list does not
+// say: it is off, or it was turned on before the time was kept.
+//
+// TURNING A REPOSITORY ON NEVER STARTS WHAT WAS ALREADY OPEN ON IT. The poll
+// holds every issue opened before this time in Backlog until a person starts
+// it ([factory.Item.SetupHeld]), exactly as an organization's first import
+// does, so its start labels apply only to issues opened after it was turned
+// on. Turning on a repository with a backlog of labelled issues once queued
+// every one of them in the same minute, while the page said nothing runs
+// until someone starts it.
+func (st *Store) OnSince(repo string) (time.Time, bool) {
+	d, _, err := st.readReposDoc()
+	if err != nil {
+		return time.Time{}, false
+	}
+	at, ok := d.OnSince[strings.ToLower(strings.TrimSpace(repo))]
+	return at, ok && !at.IsZero()
 }
 
 // RepoSwitch is the watched list as the factory's power switch per
@@ -47,28 +72,37 @@ func (st *Store) RepoSwitch() (factory.RepoSwitch, error) {
 // readRepos is the one read of repos.json: the cleaned list, and whether the
 // file is there at all.
 func (st *Store) readRepos() ([]string, bool, error) {
+	d, kept, err := st.readReposDoc()
+	if err != nil || !kept {
+		return nil, false, err
+	}
+	return CleanRepos(d.Repos), true, nil
+}
+
+// readReposDoc is repos.json as written, and whether it is there at all.
+func (st *Store) readReposDoc() (reposDoc, bool, error) {
 	if st == nil {
-		return nil, false, nil
+		return reposDoc{}, false, nil
 	}
 	data, err := os.ReadFile(st.ReposPath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, false, nil
+			return reposDoc{}, false, nil
 		}
-		return nil, false, err
+		return reposDoc{}, false, err
 	}
 	var d reposDoc
 	if err := json.Unmarshal(data, &d); err != nil {
 		var bare []string
 		if json.Unmarshal(data, &bare) != nil {
-			return nil, false, fmt.Errorf("factory store: cannot read repos.json: %w", err)
+			return reposDoc{}, false, fmt.Errorf("factory store: cannot read repos.json: %w", err)
 		}
-		d.Repos = bare
+		d = reposDoc{Repos: bare}
 	}
 	if d.Schema > Schema {
-		return nil, false, fmt.Errorf("%w: repos.json", ErrNewer)
+		return reposDoc{}, false, fmt.Errorf("%w: repos.json", ErrNewer)
 	}
-	return CleanRepos(d.Repos), true, nil
+	return d, true, nil
 }
 
 // SetRepos writes the watched repositories, temp+rename under the file's own
@@ -86,11 +120,39 @@ func (st *Store) SetRepos(repos []string) error {
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(reposDoc{Schema: Schema, Repos: CleanRepos(repos)}, "", "  ")
-	if err != nil {
-		return err
-	}
 	return st.underLock(filepath.Join(st.root, "repos.lock"), func() error {
+		// Each repository keeps the time it was turned on ([Store.OnSince]);
+		// one newly on the list is stamped now. A list kept before times were
+		// kept stamps none of what it already watched, so nothing it already
+		// had is held back by an upgrade.
+		was, _, err := st.readReposDoc()
+		if err != nil {
+			return err
+		}
+		on := map[string]bool{}
+		for _, r := range CleanRepos(was.Repos) {
+			on[strings.ToLower(r)] = true
+		}
+		next := reposDoc{Schema: Schema, Repos: CleanRepos(repos)}
+		now := time.Now().UTC()
+		for _, r := range next.Repos {
+			key := strings.ToLower(r)
+			at, had := was.OnSince[key]
+			if on[key] && !had {
+				continue
+			}
+			if !on[key] {
+				at = now
+			}
+			if next.OnSince == nil {
+				next.OnSince = map[string]time.Time{}
+			}
+			next.OnSince[key] = at
+		}
+		data, err := json.MarshalIndent(next, "", "  ")
+		if err != nil {
+			return err
+		}
 		return writeAtomic(st.ReposPath(), append(data, '\n'))
 	})
 }

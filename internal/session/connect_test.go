@@ -370,16 +370,16 @@ func (h *fakeHub) rawCalls() []string {
 	return append([]string(nil), h.calls...)
 }
 
-func (h *fakeHub) BeginAuth(ctx context.Context, id, answer string) (string, func(context.Context) (connectStatus, error), error) {
+func (h *fakeHub) BeginAuth(ctx context.Context, id, answer string) (string, string, func(context.Context) (connectStatus, error), error) {
 	h.mu.Lock()
 	h.begins++
 	h.beginAnswer = answer
 	begin, wait, hold := h.beginErr, h.waitErr, h.waitFor
 	h.mu.Unlock()
 	if begin != nil {
-		return "", nil, begin
+		return "", "", nil, begin
 	}
-	return "https://example.test/say-yes", func(ctx context.Context) (connectStatus, error) {
+	return "https://example.test/say-yes", "", func(ctx context.Context) (connectStatus, error) {
 		if hold != nil {
 			select {
 			case <-hold:

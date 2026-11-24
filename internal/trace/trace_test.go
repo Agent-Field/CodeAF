@@ -342,6 +342,7 @@ func TestScrubTakesTheCredentialOutOfEveryShapeItKnows(t *testing.T) {
 		{"an underscored field", `{"api_key":"abcdef123456"}`, `{"credential":"[redacted]"}`},
 		{"a bearer in prose", `curl -H "auth: Bearer abcdef123456789"`, `curl -H "auth: Bearer [redacted]"`},
 		{"a key by its shape", `the key sk-or-v1-abcdef123456 leaked`, `the key [redacted] leaked`},
+		{"an OpenCode key by its shape", `the key oc_sk_abcdef123456 leaked`, `the key [redacted] leaked`},
 		{"the configured key itself", `token=hunter2-the-configured-key`, `token=[redacted]`},
 		{"an ordinary body", `{"messages":[{"role":"user","content":"hello"}]}`, `{"messages":[{"role":"user","content":"hello"}]}`},
 	} {

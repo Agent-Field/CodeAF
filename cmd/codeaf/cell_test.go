@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	cellstoretest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -21,7 +22,7 @@ import (
 func TestCellLogAndRewindThroughTheDoor(t *testing.T) {
 	celltest.RequireEngine(t)
 	celltest.Engine(t)
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", cellstoretest.EngineDir(t))
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +67,7 @@ func TestCellDoorRefusesShortCommands(t *testing.T) {
 func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
 	celltest.RequireEngine(t)
 	celltest.Engine(t)
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", cellstoretest.EngineDir(t))
 	c, err := cell.CreateIn(t.TempDir(), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +103,7 @@ func TestCellRewindRestoresTheWorkspaceTheSessionSealed(t *testing.T) {
 func TestCellResolveClosesACrashedCallAndFindsBucketedCells(t *testing.T) {
 	celltest.RequireEngine(t)
 	celltest.Engine(t)
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", cellstoretest.EngineDir(t))
 	bucket := filepath.Join(home.Join("v3", "projects"), "-work")
 	c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})
 	if err != nil {
@@ -139,7 +140,7 @@ func TestCellResolveClosesACrashedCallAndFindsBucketedCells(t *testing.T) {
 // A CALL THAT FINISHED AND WAS NEVER SEALED IS A GAP THE CHAIN CANNOT SHOW, so
 // the log says so, and stops saying so once a seal has taken the call.
 func TestCellLogMarksCallsThatWereNeverSealed(t *testing.T) {
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", cellstoretest.EngineDir(t))
 	c, err := cell.CreateIn(filepath.Join(home.Join("v3", "projects"), "-work"), cell.Options{Class: cell.Sandboxed})
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +176,7 @@ func TestCellLogMarksCallsThatWereNeverSealed(t *testing.T) {
 func TestEachSeatOwnsItsSealWatch(t *testing.T) {
 	celltest.RequireEngine(t)
 	celltest.Engine(t)
-	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_HOME", cellstoretest.EngineDir(t))
 	bucket := filepath.Join(home.Join("v3", "projects"), "-work")
 	seatOf := func() *cellstore.SealWatch {
 		c, err := cell.CreateIn(bucket, cell.Options{Class: cell.Sandboxed})

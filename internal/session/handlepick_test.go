@@ -228,6 +228,7 @@ func TestCleanHandleChoices(t *testing.T) {
 		"review session research":      "",
 		"x manager everyone":           "",
 		"api-docs":                     "apidocs",
+		"observabilities dashboards":   "dashboards",
 		"":                             "",
 	} {
 		if got := strings.Join(cleanHandleChoices(raw), " "); got != want {

@@ -69,7 +69,7 @@ func settingsExtra(settings *appwire.Settings, file appStateFile, profile string
 	if saved {
 		source = "saved"
 	}
-	settings.KnowledgeModel = config.KnowledgeModelAt(profile)
+	settings.KnowledgeModel = config.KnowledgeModelRowAt(profile)
 	on := config.RemoteControlAt(profile)
 	settings.RemoteControl = &on
 	if row, ok := config.NewSettings(config.SettingsOptions{ProfileDir: profile}).Row(config.KeyRemoteControl); ok {

@@ -52,6 +52,11 @@ func (h *Handler) accessLinks(w http.ResponseWriter, r *http.Request) {
 	out := api.AccessLinks{Factory: h.factory, Links: []api.AccessLink{}}
 	now := h.now()
 	for _, tok := range rows {
+		// An invite to a named person is listed in People (GET /v1/invites), with its team, its workstreams and Send
+		// again; listing it here too drew the same person twice, once as a bare link.
+		if tok.Invite != nil {
+			continue
+		}
 		// Ended links stay listed, greyed, for thirty days.
 		if tok.Human() && tok.Reason(now) != "" && now.Sub(tok.EndedAt(now)) > endedLinkListed {
 			continue
@@ -67,6 +72,23 @@ func (h *Handler) createAccessLink(w http.ResponseWriter, r *http.Request) {
 	}
 	var body api.CreateAccessLink
 	if !h.decode(w, r, &body, true) {
+		return
+	}
+	switch body.Kind {
+	case "", "invite":
+		if body.Person != "" {
+			h.fail(w, http.StatusUnprocessableEntity, "only a reset link names a person")
+			return
+		}
+	case "reset":
+		if body.Login != "" || body.Name != "" || body.MaxUses > 1 || !body.ExpiresAt.IsZero() {
+			h.fail(w, http.StatusUnprocessableEntity, "a reset link takes only the person; it admits one use for one hour")
+			return
+		}
+		h.createResetLink(w, r, body)
+		return
+	default:
+		h.fail(w, http.StatusUnprocessableEntity, `kind is "invite" or "reset"`)
 		return
 	}
 	body.Login = factory.NormalizeHandle(body.Login)
@@ -160,6 +182,9 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 	if !revoked.Counted() {
 		for _, member := range revoked.Members() {
 			if h.failed(w, h.revokePerson(r, member.Profile.Handle)) {
+				return
+			}
+			if h.failed(w, h.leaveEveryTeam(r, member.Profile.Handle)) {
 				return
 			}
 		}

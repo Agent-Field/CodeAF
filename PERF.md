@@ -472,6 +472,30 @@ five exports, 320 objects, 40 frames); the engine-tagged
 `TestARepeatedExportKeepsTheWaitingFramesRealEngine` requires the real furrow
 to leave every waiting frame file untouched on a repeat.
 
+## Moving a chat
+
+`TestMoveTimelineRig` (`cmd/codeaf/app_move_timeline_test.go`) drives two real
+`codeaf app` processes with the engine daemon, a loopback relay and the shipped
+5 s sync cadence over a folder of the field's shape, and fails a take that lands
+`here` later than its ceiling. It runs on request because it writes and moves
+the folder twice. Run it on a quiet box: under a load of 100 on twenty cores,
+every take ran four to six times slower.
+
+```sh
+CODEAF_MOVE_RIG_MB=600 go test -count=1 -v -timeout 30m -run '^TestMoveTimelineRig$' ./cmd/codeaf
+```
+
+| Constant | Value | Before the fix (600 MB) | After (600 MB) |
+| --- | --- | --- | --- |
+| `moveTakeBackCeiling` | 3 s | 9.8 s | 0.8–1.2 s |
+| `moveOfflineCeiling` | 6 s | 13.0 s | 2.6–3.6 s |
+| `moveColdFixed` + MB × `moveColdPerMB` | 4 s + 10 ms per MB (10 s at 600) | 4.8–4.9 s | 4.8–5.7 s |
+
+Two unit tests in `internal/cellstore` guard the two causes on every pull
+request: a spawned engine process settles the store through a running daemon
+first, and every engine a process derives shares one clean-file ledger.
+`docs/design/app-v3/MOVE-TIMING.md` has the per-phase timeline.
+
 ## Idle factory manager checks
 
 Every open job manager checks its saved job budget once when opened. Thereafter
@@ -513,6 +537,27 @@ the next admission. `TestAStepChatsStopCheckDecodesNothingWhileTheFloorChurns`:
 fifty checks while the registry is rewritten decode none (`factoryStopCheckDecodes`);
 one changed job costs one decode, and a job that takes the conversation is seen
 on the next look.
+
+## Default model lookups
+
+Without an OpenRouter key, `config.ReachableDefaultAt` picks each built-in
+default (the conversation model and the fallback) from the connected
+providers' remembered lists. It is asked on every paint of the
+settings sheet and under the model-client lock, so a provider's list is
+decoded again only when its cache file's size or modification time changes
+(`recallCached`), and each list is filtered (`usableModels`) and ranked
+(`rankByStrength`) once. Lists that are not remembered — the Claude Code plan's
+models, ChatGPT's built-in rows, a service's named models — are built once and
+shared, so they never add memo entries.
+`listReads` and `listRanks` count that work without a clock.
+`TestUnchangedProviderListsAreReadAndRankedOnce`: 200 lookups over a
+400-model DeepSeek list and an Ollama list decode and rank nothing again;
+`TestListsThatAreNotRememberedAreBuiltOnce`: the unremembered lists are the
+same slice on every lookup and are ranked once. With
+an OpenRouter key the lookup returns before any source is resolved. Measured
+on an M4: about 1,750 allocations and 2 ms per lookup over that list before,
+about 100 allocations and 30 µs after; an OpenRouter profile about 10
+allocations and 4 µs.
 
 ## Idle key vault reads
 

@@ -21,7 +21,7 @@ The app pins `Continued on <computer>` above the transcript with
 computer indicator. Move here replaces an inert composer; a composer that
 can send to the other computer names that destination. Hidden drafts stay kept.
 With a compatible engine, the open view follows newly saved messages through
-relay storage or live transfer, without moving the chat or restoring remote files.
+hosted storage or live transfer, without moving the chat or restoring remote files.
 If the latest history is unavailable, you can still read the local copy. Remote
 history and previews read saved transcripts up to 24 MiB. For a larger transcript,
 use Move here to move the chat and read its full history. Unsealed
@@ -211,6 +211,28 @@ A running factory stage is not offered. With remote control off, or when the des
 ## Who is typing in a chat this desktop is running — Typing from another computer, Type here, take the keyboard back
 
 With remote control on, another of your computers (or a second window on this one) can take the keyboard of a chat this desktop is running, and only one window types at a time. The desktop's own box is then read only and the chat says `Typing from <that computer> now.` (`another window` when it is a second window here) with a **Type here** button that takes the keyboard back. A message sent while the keyboard is theirs is refused with the sentence that says who has it. The keyboard comes back to the desktop when they let go or leave, and the chat keeps running either way. With remote control off nobody else is in the chat, so nothing is shown and **Type here** never appears.
+
+## A crew made on another computer in the desktop — grouped, read-only, message its manager
+
+A crew made on another paired computer shows in the desktop as one crew: its
+manager and members are grouped under the crew's name, not listed as loose
+chats. Factory crews from another computer group the same way. The grouping
+is what that computer said at each chat's last saved turn, so it stays while
+that computer is off; a rename or a member leaving there shows once that chat
+saves its next turn. A chat from a computer on an older codeaf, or through a
+relay that does not carry crews yet, shows as a loose chat.
+
+In this version a crew on another computer is read-only here:
+
+- You can read each member's chat and send a message to the crew's manager,
+  which is queued on that computer and runs after its turn.
+- The crew is not in this computer's crews list, cannot be edited, closed or
+  started here, and cannot be moved here as a crew. Move here still
+  moves one member's chat on its own, which leaves the crew on the other
+  computer.
+
+A crew made on this computer is grouped the same way, from this computer's own
+crews.
 
 ## Send a message to a chat working on another computer — queued there, runs after the turn
 

@@ -13,6 +13,22 @@ import (
 // clearPhase, can never claim a refusal wrote nothing, so a new mutating route
 // is uncertain-on-failure to its clients until it is added deliberately.
 func markPreMutation(r *http.Request) bool {
+	// Organization access changes commit in SQLite before their change events are sent.
+	if r.Method == http.MethodPut && r.URL.Path == "/v1/org/policy" {
+		return true
+	}
+	if r.Method == http.MethodPost && r.URL.Path == "/v1/resources" {
+		return true
+	}
+	if rest, ok := strings.CutPrefix(r.URL.Path, "/v1/resources/"); ok {
+		parts := strings.Split(rest, "/")
+		if len(parts) >= 3 && parts[0] != "" && parts[1] != "" && parts[2] == "grants" {
+			if r.Method == http.MethodPost && len(parts) == 3 ||
+				r.Method == http.MethodDelete && len(parts) == 4 && parts[3] != "" {
+				return true
+			}
+		}
+	}
 	// The factory's own copy of one repository's steps, saved or stopped:
 	// exactly /v1/repos/{owner}/{repo}/pipeline/factory-copy.
 	if r.Method == http.MethodPut || r.Method == http.MethodDelete {

@@ -32,6 +32,11 @@ func (h *Handler) memberList() []api.Member {
 		return by[handle]
 	}
 	for _, tok := range h.tokenRows() {
+		// An invite ended by Remove from <organization> (closeInvitesOf) no longer makes its joiner a member: the
+		// person removed is gone from People, while the row keeps counting its use so the link never reopens.
+		if tok.Invite != nil && tok.Revoked {
+			continue
+		}
 		for _, joiner := range tok.Members() {
 			if joiner.Profile.Handle == "" {
 				continue
@@ -100,7 +105,7 @@ func (h *Handler) memberList() []api.Member {
 		m := by[handle]
 		out = append(out, api.Member{
 			Handle: m.profile.Handle, Name: m.profile.Name, AvatarURL: m.profile.AvatarURL,
-			JoinedAt: m.joined, LastSeen: m.lastSeen, Sessions: m.sessions,
+			JoinedAt: m.joined, LastSeen: m.lastSeen, Sessions: m.sessions, Kind: personKind(m.profile),
 		})
 	}
 	return out

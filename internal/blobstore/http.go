@@ -112,9 +112,15 @@ func NewHTTP(base string, sign wireauth.Sign, hc *http.Client) *HTTP {
 	return &HTTP{base: base, sign: sign, hc: hc, deadline: Deadline}
 }
 
+// Storing says, from local state alone and without a request, whether this
+// client may put new objects into the relay's store. A caller whose work ends in
+// an upload asks it first, so a closed store refuses before the work and not
+// after it.
+func (c *HTTP) Storing() bool { return c.CanStore == nil || c.CanStore() }
+
 // PutFrame implements Store.
 func (c *HTTP) PutFrame(ctx context.Context, frame []byte) (FrameID, error) {
-	if c.CanStore != nil && !c.CanStore() {
+	if !c.Storing() {
 		return "", wireauth.ErrStorageOff
 	}
 	var out putAnswer
@@ -236,8 +242,18 @@ func (c *HTTP) Locate(ctx context.Context, rids []string) (map[string]Location, 
 	return out.At, nil
 }
 
-// Has implements Store.
+// Has implements Store. The question only ever comes before an upload: it lets
+// a publisher leave out what the relay already holds. While the store may not be
+// written there is no upload to save, so it asks nothing and answers as a put
+// would, which stops a background pass over many chats from sending every
+// object id it knows to a relay that will refuse the objects anyway. Every
+// caller treats the refusal as a missing answer or stops on it, as it already
+// does for a put. Reads (Get, GetMany, GetFrame, Locate) stay open because
+// frames stored before the account's storage closed remain readable.
 func (c *HTTP) Has(ctx context.Context, rids []string) ([]bool, error) {
+	if !c.Storing() {
+		return nil, wireauth.ErrStorageOff
+	}
 	if rids == nil {
 		rids = []string{}
 	}

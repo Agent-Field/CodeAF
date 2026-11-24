@@ -41,6 +41,11 @@ Under the project folder and under your home folder, in this order:
 Nothing deeper is walked: a `SKILL.md` two folders down from a skills folder is
 not read.
 
+In the desktop app, your home folder is still your own: the skills you keep for
+Claude Code, Codex and the other tools are read from where those tools put them.
+Only `.codeaf/skills` differs. The app reads its own, in the folder where it keeps
+its chats and settings, and never the one terminal codeaf uses.
+
 ## Why is my Claude Code plugin skill missing
 
 A plugin's skills are read only when Claude Code itself would load them: the

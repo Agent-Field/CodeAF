@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/blobstore"
@@ -278,7 +277,7 @@ func (b *driveBook) closeAll() {
 	for _, d := range drives {
 		defer func() { recordFinalSaveNotices(d.TakeSavingNotices()) }()
 		if err := d.closeSaved(ctx); err != nil {
-			log.Print("sync: closing a chat: ", err)
+			// The cause is written to the chat log where the failure is recorded.
 			recordFinalSaveFailure(session.SavingError(d.transcript, err))
 		}
 	}

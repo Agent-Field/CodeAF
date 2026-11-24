@@ -525,6 +525,7 @@ func TestADirectRouterConnectionServesItsCatalogVendorsUnderItsOwnIds(t *testing
 func TestOpenCodeGoReachesCatalogVendorsWithBareSends(t *testing.T) {
 	provider := CrewProvider{
 		ID: "opencode-go", Written: "opencode-go", Kind: crewroute.Plan,
+		Serves:  []string{"glm-5.3", "kimi-k3", "deepseek-v4-pro", "grok-4.7"},
 		vendors: crewVendors["opencode-go"],
 	}
 	for _, testCase := range []struct{ model, send string }{
@@ -541,6 +542,51 @@ func TestOpenCodeGoReachesCatalogVendorsWithBareSends(t *testing.T) {
 	if route, ok := provider.route("mistralai/mistral-large-4", crewroute.Model{ID: "mistralai/mistral-large-4"}, true); ok {
 		t.Errorf("OpenCode Go offered a vendor it does not serve: %+v", route)
 	}
+}
+
+func TestOpenCodeGoCrewRoutesUseOnlyTheRememberedModelIDs(t *testing.T) {
+	dir := crewProfile(t)
+	t.Setenv("OPENCODE_API_KEY", "")
+	if err := WriteSources(dir, []PersistedSource{{ID: "opencode-go", Written: "opencode-go", Key: "oc_sk_crewtest", Door: "go"}}); err != nil {
+		t.Fatal(err)
+	}
+	widenCrewCatalog(t,
+		catalog.Model{ID: "z-ai/glm-5.3", PromptPrice: 1e-6, Parameters: []string{"tools"}},
+		catalog.Model{ID: "openai/gpt-6-luna", PromptPrice: 1e-6, Parameters: []string{"tools"}},
+	)
+	checkRoutes := func(t *testing.T, wantModel, wantSend string) {
+		t.Helper()
+		found := false
+		for _, candidate := range CrewCandidatesAt(dir) {
+			for _, route := range candidate.Routes {
+				if route.Provider != "opencode-go" {
+					continue
+				}
+				if candidate.Model.ID != wantModel || route.Send != wantSend || route.Kind != crewroute.Plan {
+					t.Errorf("unexpected OpenCode Go route for %s: %+v", candidate.Model.ID, route)
+					continue
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing OpenCode Go plan route for %s as %s", wantModel, wantSend)
+		}
+	}
+	t.Run("no listing", func(t *testing.T) {
+		checkRoutes(t, "z-ai/glm-5.3", "opencode-go/glm-5.3")
+	})
+	t.Run("cached listing", func(t *testing.T) {
+		service, ok := ResolveSources(dir, "", DefaultBaseURL).ByID("opencode-go")
+		if !ok {
+			t.Fatal("OpenCode Go is not connected")
+		}
+		models := []catalog.Model{{ID: "gpt-6-luna"}, {ID: "glm-5.3-20261103"}}
+		if err := catalog.Remember(CatalogOptionsFor(service, dir), models); err != nil {
+			t.Fatal(err)
+		}
+		checkRoutes(t, "openai/gpt-6-luna", "opencode-go/gpt-6-luna")
+	})
 }
 
 // ONE KEY, TWO FAMILIES, TWO SEATS. This is the claim the row above cannot make
@@ -913,9 +959,9 @@ func TestAPinnedThinkingLevelIsSentWithThePin(t *testing.T) {
 	}
 }
 
-// `auto` IN THE REFLEX OR SMALL-WORK ROW WAS THIS BUILD'S OWN MODEL for that
-// row before crews were routed, and it still is: it is never sent to a
-// provider as a model id, and the migration takes the row away. A row a person
+// `auto` IN THE REFLEX OR SMALL-WORK ROW reads as an unwritten row — which
+// now follows the conversation, since neither row ships a model: it is never
+// sent to a provider as a model id, and the migration takes the row away. A row a person
 // cleared on purpose (empty) is theirs and stays.
 func TestAutoInAHelperRowReadsTheDefaultAndMigrates(t *testing.T) {
 	dir := crewProfile(t)
@@ -923,7 +969,7 @@ func TestAutoInAHelperRowReadsTheDefaultAndMigrates(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tier := range []string{ModelTierLow, ModelTierReflex} {
-		if got := TierModelAt(dir, tier); got == "" || strings.EqualFold(got, "auto") {
+		if got := TierModelAt(dir, tier); strings.EqualFold(got, "auto") {
 			t.Errorf("before migration the %s row reads %q", tier, got)
 		}
 	}

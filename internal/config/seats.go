@@ -277,12 +277,10 @@ func CheckEnvModel() string {
 // without a task in front of them are routed too, never handed a model this
 // build chose for everybody.
 //
-// THE OTHER TWO ROWS — reflex and small work — are not crew seats and read the
-// way they always have: a row somebody WROTE is theirs, a row they CLEARED
-// reads empty and follows the conversation ([TierModelAt] argues why UNSET
-// and CLEARED are different answers), and a key never held reads this build's
-// own near-free model — or, on an account known to be low, a free one
-// ([freeTierModelAt]).
+// THE OTHER TWO ROWS — reflex and small work — are not crew seats: a row
+// somebody WROTE is theirs, and a row never written or cleared is empty and
+// follows the model the person chose ([TierModelAt]). This build ships no
+// model for either.
 func TierSeatAt(profileDir, tier string) Seat {
 	if seat, ok := CrewTierSeat(tier); ok {
 		role := SeatRole(seat)
@@ -296,7 +294,7 @@ func TierSeatAt(profileDir, tier string) Seat {
 	if written, held := persistedString(profileDir, tierKeyFor(tier)); held && !strings.EqualFold(strings.TrimSpace(written), CrewAuto) {
 		return Seat{Role: role, Model: strings.TrimSpace(written), Source: SeatPinned}
 	}
-	return Seat{Role: role, Model: freeTierModelAt(profileDir, tier), Source: SeatDefault}
+	return Seat{Role: role, Source: SeatDefault}
 }
 
 // tierWords is a non-crew row's name on the settings sheet.

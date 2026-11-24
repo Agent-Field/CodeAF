@@ -55,6 +55,11 @@ type FenceOptions struct {
 	// CodeafHome is codeaf's own folder (CODEAF_HOME), whose secret files are
 	// hidden; "" hides none of them.
 	CodeafHome string
+	// OtherCodeafHomes are further codeaf folders on this machine whose secret
+	// files are hidden too: the person's own default folder when this run's
+	// state lives in another one, as the desktop app's does, so the command
+	// line's keys and sign-ins stay out of reach of the app's unattended runs.
+	OtherCodeafHomes []string
 	// StateDir is where the job's own temp and cache folders are made, one
 	// pair per checkout. It must not be inside a hidden folder.
 	StateDir string
@@ -65,6 +70,11 @@ type FenceOptions struct {
 	// codeaf's home (verification.ReceiptRoot). Each is made if missing and
 	// is writable; nothing else of codeaf's home is.
 	Receipts []string
+	// Canvases are the desktop app's canvas folders ($WORKAF_CANVAS_ROOT, or
+	// the app's default), writable when they exist and never made: the
+	// `canvas` command a run types writes its canvases there, and the app
+	// shows only what is there. A machine without the app has none.
+	Canvases []string
 }
 
 // FenceAllow is how far a person widened the fence. Paths are absolute and
@@ -284,6 +294,23 @@ func NewFence(opts FenceOptions) (*Fence, error) {
 			f.Writable = append(f.Writable, c)
 		}
 	}
+	// THE APP'S CANVASES ARE A RUN'S TO DRAW. A crew member asked for a canvas
+	// types `canvas new`, which writes under the app's canvas folder; the
+	// fence refused it (it is under ~/Library on a Mac), so the canvas was
+	// drawn in the run's own folder where the app never shows it. Only a
+	// folder that exists is granted: the app makes it, and a fence that made
+	// one would leave an app's folder on a machine with no app.
+	for _, p := range opts.Canvases {
+		if strings.TrimSpace(p) == "" {
+			continue
+		}
+		if info, err := os.Stat(p); err != nil || !info.IsDir() {
+			continue
+		}
+		if c, err := canonicalPath(p); err == nil {
+			f.Writable = append(f.Writable, c)
+		}
+	}
 	// CARGO KEEPS THE PERSON'S HOME, because codeaf's shell finds cargo itself
 	// through $CARGO_HOME/bin (internal/shell's cargo.go): pointing it into the
 	// job would lose a rustup install. Only its download caches are written;
@@ -306,11 +333,14 @@ func NewFence(opts FenceOptions) (*Fence, error) {
 			hidden = append(hidden, filepath.Join(home, rel))
 		}
 	}
-	if opts.CodeafHome != "" {
-		if entries, err := os.ReadDir(opts.CodeafHome); err == nil {
+	for _, dir := range append([]string{opts.CodeafHome}, opts.OtherCodeafHomes...) {
+		if dir == "" {
+			continue
+		}
+		if entries, err := os.ReadDir(dir); err == nil {
 			for _, e := range entries {
 				if codeafSecretFile.MatchString(e.Name()) {
-					hidden = append(hidden, filepath.Join(opts.CodeafHome, e.Name()))
+					hidden = append(hidden, filepath.Join(dir, e.Name()))
 				}
 			}
 		}
