@@ -32,6 +32,13 @@ import (
 // hostedFenceEnv turns the command fence on for every hello of this engine.
 const hostedFenceEnv = "CODEAF_FENCE_REQUIRE"
 
+// hostedConnectPortsEnv is the list of TCP ports this engine's commands may
+// connect to (executor.ParseConnectPorts words: "443,80,22,9418,8080"). The
+// supervisor writes it into every hosted engine's environment from the
+// operator's settings; an engine started without it (an older supervisor, or a
+// person's own machine) has no port limit, as it never had.
+const hostedConnectPortsEnv = "CODEAF_FENCE_CONNECT_PORTS"
+
 // hostedIdleEnv is the idle window of this engine's host, as a Go duration.
 const hostedIdleEnv = "CODEAF_ENGINE_IDLE"
 
@@ -41,6 +48,22 @@ const hostedIdleEnv = "CODEAF_ENGINE_IDLE"
 // engine that was never meant to carry one.
 func hostedFenceRequired() bool {
 	return strings.TrimSpace(env.Get(hostedFenceEnv)) == "1"
+}
+
+// hostedConnectPorts is the port list the supervisor gave this engine, and nil
+// when it gave none. A list that cannot be read is an ERROR and never "no
+// limit": an operator's typo must not turn the network fully open, so the
+// engine's commands are refused with it instead.
+func hostedConnectPorts() ([]int, error) {
+	raw := strings.TrimSpace(env.Get(hostedConnectPortsEnv))
+	if raw == "" {
+		return nil, nil
+	}
+	ports, err := executor.ParseConnectPorts(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not a list of TCP ports (%v), so this chat's commands were not run", hostedConnectPortsEnv, err)
+	}
+	return ports, nil
 }
 
 // hostedEngineIdle is the idle window the supervisor asked this engine's host
@@ -90,10 +113,14 @@ func hostedFence(workspace, profileDir string) (*executor.Fence, error) {
 	if err != nil {
 		return nil, err
 	}
+	ports, err := hostedConnectPorts()
+	if err != nil {
+		return nil, err
+	}
 	person, _ := os.UserHomeDir()
 	state := home.Join("jail")
 	pruneFenceState(state, fenceStateMaxAge)
-	return requiredFence(executor.FenceOptions{
+	fence, err := requiredFence(executor.FenceOptions{
 		Root:             workspace,
 		Home:             person,
 		CodeafHome:       home.Dir(),
@@ -102,6 +129,11 @@ func hostedFence(workspace, profileDir string) (*executor.Fence, error) {
 		Allow:            executor.ParseFenceAllow(person, words...),
 		Canvases:         []string{deskCanvasRoot(os.Getenv, person, runtime.GOOS)},
 	})
+	if err != nil {
+		return nil, err
+	}
+	fence.ConnectPorts = ports
+	return fence, nil
 }
 
 // requiredFence is [executor.NewFence] with the two things a hosted engine's

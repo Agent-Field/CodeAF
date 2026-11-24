@@ -90,3 +90,24 @@ func TestC7_HostedEngineIdleReadsOnlyAValidDuration(t *testing.T) {
 		}
 	}
 }
+
+// P1-0c: the port list the supervisor writes into a hosted engine's
+// environment reaches the fence, and one that cannot be read refuses the
+// engine's commands instead of opening the network.
+func TestP1_0c_HostedEngineReadsItsPortList(t *testing.T) {
+	t.Setenv(hostedConnectPortsEnv, "")
+	if ports, err := hostedConnectPorts(); ports != nil || err != nil {
+		t.Fatalf("an engine with no list: %v, %v; it must have no limit, as it never had", ports, err)
+	}
+	t.Setenv(hostedConnectPortsEnv, " 443,80, 8080 ")
+	ports, err := hostedConnectPorts()
+	if err != nil || len(ports) != 3 || ports[0] != 80 || ports[1] != 443 || ports[2] != 8080 {
+		t.Fatalf("a list: %v, %v", ports, err)
+	}
+	for _, bad := range []string{"https", "443,0", "70000"} {
+		t.Setenv(hostedConnectPortsEnv, bad)
+		if ports, err := hostedConnectPorts(); err == nil || ports != nil {
+			t.Errorf("%q was read as %v; it must refuse, never mean no limit", bad, ports)
+		}
+	}
+}

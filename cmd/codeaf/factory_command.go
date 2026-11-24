@@ -300,9 +300,14 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	var hosted *serve.HostedConfig
 	if servedBy == "factory" {
 		hosted, err = serve.ParseHostedConfig(env.Get("CODEAF_HOSTED_URL"), env.Get("CODEAF_HOSTED_SECRET"),
-			env.Get("CODEAF_HOSTED_MODEL_URL"), env.Get("CODEAF_HOSTED_MODEL_UPSTREAM"), env.Get("CODEAF_HOSTED_MODEL_KEY"))
+			env.Get("CODEAF_HOSTED_MODEL_URL"), env.Get("CODEAF_HOSTED_MODEL_UPSTREAM"), env.Get("CODEAF_HOSTED_MODEL_KEY"), true)
 		if err != nil {
 			return nil, err
+		}
+		if hosted != nil {
+			if err := hostedP1Settings(hosted, st, env.Get); err != nil {
+				return nil, err
+			}
 		}
 	}
 	handlerConfig := serve.Config{

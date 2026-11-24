@@ -140,6 +140,7 @@ func runRemoteEngine(args []string) error {
 	if *stop {
 		return runEngineStop(*workspace)
 	}
+	hostedPrepareGit()
 	if !*alone {
 		conn, err := attachEngineHost(*workspace)
 		if err == nil {

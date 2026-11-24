@@ -46,6 +46,13 @@ import (
 var flushFinalSaves = cellstore.Flush
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "git-credential":
+			runHostedGitCredential(os.Args[2:], os.Stdin, os.Stdout)
+			return
+		}
+	}
 	// THE APP'S --HOME IS READ BEFORE ANYTHING READS THE STATE ROOT, which
 	// the adoption, the witness and the telemetry consent below all do.
 	useAppHomeEarly(os.Args[1:])
