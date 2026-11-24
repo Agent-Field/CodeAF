@@ -373,7 +373,7 @@ Once this window learns that another computer holds the chat, Enter opens
 as the live update or the `<device> moved this chat; this window now only
 shows it` notice arrives; it does not wait for the next background ownership
 check. Enter cannot start a reply, publish a turn or create a separate chat
-from this displaced window. With remote control on, a window whose chat another computer moved opens a live view of the computer that has it now, marked `on <device> · live`, instead of staying a read-only copy (the page *Remote control*). Open the latest chat from Home to bring it back before sending (choose `move here` by default; with `idle handoff` on, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `move here`).
+from this displaced window. With remote control on, a window whose chat another computer moved opens a live view of the computer that has it now, marked `on <device> · live`, instead of staying a read-only copy (the page *Remote control*). The computer that took it may still be opening the chat when this window first asks, so the window asks again a few times over the next half minute, and the read-only sentence stays until one of those asks gets through. Open the latest chat from Home to bring it back before sending (choose `move here` by default; with `idle handoff` on, a released paired chat opens directly while a live hold or a lapsed hold on another computer still asks for `move here`).
 
 A chat this computer still holds sends on one Enter without an extra request
 to the relay. A chat that has never been shared does too.

@@ -407,7 +407,18 @@ func (a *app) liveMoveKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // on the loop for the conversation that was in front when this was asked and
 // for no other. A refusal says the Superseded note the window always said, so a
 // window that cannot follow is the window it was.
+//
+// THE FIRST TRY IS OFTEN EARLY, AND IT IS NOT THE LAST. The directory says the
+// chat moved the instant the new holder wins it, and that computer is still
+// opening the chat, so its live door is shut for a second or two. A window that
+// asked once and gave up stayed read-only for good, because the displacement is
+// news only once. [followRetry] asks again a few times, quietly: the sentence
+// above is said on the first refusal and never repeated.
 func (a *app) followHolderLive(row chatlist.Row) (tea.Cmd, bool) {
+	return a.followHolder(row, false)
+}
+
+func (a *app) followHolder(row chatlist.Row, retry bool) (tea.Cmd, bool) {
 	if !a.liveEligible(row) {
 		return nil, false
 	}
@@ -415,16 +426,27 @@ func (a *app) followHolderLive(row chatlist.Row) (tea.Cmd, bool) {
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
+	if !retry {
+		a.followSeq++
+		a.followRetry = &followRetry{seq: a.followSeq, file: a.file, cell: row.Cell, holder: followHolderKey(row)}
+	}
+	seq := a.followSeq
 	openLive, stale := a.openLive, a.file
 	return a.offLoop(func() func(bool) tea.Cmd {
 		conv, err := openLive(baseCtx, row)
 		return func(here bool) tea.Cmd {
 			if err != nil {
-				if here {
+				if here && !retry {
 					a.note(chatlist.Superseded(nonemptyDevice(row.Device)))
 					a.touch()
 				}
-				return nil
+				if !here || a.file != stale || a.liveFront() != nil {
+					return nil
+				}
+				return a.followLater(seq)
+			}
+			if st := a.followRetry; st != nil && st.seq == seq {
+				a.followRetry = nil
 			}
 			if !here || a.file != stale || a.liveFront() != nil {
 				if conv.Agent != nil {
@@ -435,6 +457,76 @@ func (a *app) followHolderLive(row chatlist.Row) (tea.Cmd, bool) {
 			return a.swapForLive(conv)
 		}
 	}), true
+}
+
+// followRetry is one displacement whose follow has been refused and is being
+// asked again. It names the conversation that was displaced and who took it, so
+// the retry does nothing once either has changed.
+type followRetry struct {
+	seq          uint64
+	file         string
+	cell, holder string
+	tried        int
+}
+
+// followRetryWaits are the pauses before each further try, with the last one
+// generous: five tries spread over half a minute, which is far longer than a
+// computer takes to open the chat it has just taken, and short enough that a
+// holder that cannot be reached is given up on while the person still remembers
+// what they did.
+var followRetryWaits = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 15 * time.Second}
+
+// followRetryMsg wakes the window for one more try at following a holder.
+type followRetryMsg struct{ seq uint64 }
+
+// followHolderKey is who took the chat, spelled by id when the directory gave
+// one and by name when it did not, the same way [app.liveEligible] looks the
+// holder up.
+func followHolderKey(row chatlist.Row) string {
+	if row.DeviceID != "" {
+		return "id:" + row.DeviceID
+	}
+	return "name:" + row.Device
+}
+
+// followLater schedules the next try of a displacement, and ends the retrying
+// when the tries are spent.
+func (a *app) followLater(seq uint64) tea.Cmd {
+	st := a.followRetry
+	if st == nil || st.seq != seq {
+		return nil
+	}
+	if st.tried >= len(followRetryWaits) {
+		a.followRetry = nil
+		return nil
+	}
+	wait := followRetryWaits[st.tried]
+	st.tried++
+	return surfaceTick(wait, func(time.Time) tea.Msg { return followRetryMsg{seq: seq} })
+}
+
+// followRetried is one more try. It asks only while the window is still on the
+// conversation that was displaced, with no live view in front, and the
+// directory still says the same computer holds it; anything else ends it.
+func (a *app) followRetried(msg followRetryMsg) tea.Cmd {
+	st := a.followRetry
+	if st == nil || st.seq != msg.seq {
+		return nil
+	}
+	if a.file != st.file || a.liveFront() != nil || a.hosted() {
+		a.followRetry = nil
+		return nil
+	}
+	row, held := a.heldElsewhere()
+	if !held || row.Cell != st.cell || followHolderKey(row) != st.holder {
+		a.followRetry = nil
+		return nil
+	}
+	cmd, tried := a.followHolder(row, true)
+	if !tried {
+		a.followRetry = nil
+	}
+	return cmd
 }
 
 // swapForLive puts a live view in the place of the conversation in front: the

@@ -2177,6 +2177,13 @@ type app struct {
 	// from so the progress line, composer bar, and completion handlers know to
 	// return to or retire that live view.
 	liveMoveFrom string
+	// followRetry is the follow of a new holder this window is still trying
+	// after its first try found no live door open (live.go). Nil when nothing
+	// is being retried, which is every window that was not just displaced.
+	followRetry *followRetry
+	// followSeq numbers the displacements, so a retry timer that outlived its
+	// displacement finds a newer number and does nothing.
+	followSeq uint64
 	// liveTurnTouchAt is when the live link was last told a person or a turn was
 	// active, so a streaming turn reports at most once a second.
 	liveTurnTouchAt time.Time
@@ -6121,6 +6128,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case liveChangedMsg:
 		return a, a.liveMoved(msg)
+
+	case followRetryMsg:
+		// One more try at following the computer that took this window's chat
+		// (live.go's followHolderLive).
+		return a, a.followRetried(msg)
 
 	case heldMsg:
 		// The far machine's waiting room, answered. Each question is redrawn
