@@ -22,6 +22,13 @@ package e2e
 // one was ever tried. Sync storage is off on every home, so what these scenarios
 // prove is the live road alone: nothing a viewer does here may need an upload.
 //
+// NO WINDOW OF THIS SUITE EVER ASKS A STUN SERVER. Every home runs with
+// CODEAF_REMOTE_STUN=off, so the direct road is offered with host candidates only:
+// two computers of one machine connect over the machine's own network address, and
+// a machine with no such address skips the scenarios that need the road and says
+// why. The road is automatic, so the phase 1 scenarios below run over whichever
+// road the view is on when they look, which is the promise a person is given.
+//
 // IT SKIPS RATHER THAN FAILS without tmux or bin/codeaf, like every scenario in
 // this package, and it is meant to be run ONE SUBTEST AT A TIME:
 //
@@ -32,10 +39,12 @@ package e2e
 // long the contract allows and add only the margin a real clock needs.
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -108,6 +117,26 @@ const (
 	// rcPermitWithin is how long a change to what a computer may do may take to
 	// reach a view that is already open.
 	rcPermitWithin = 12 * time.Second
+	// rcDirectWithin is how long a view that has painted may take to say it is on
+	// the direct road: the half second the first attempt waits so the paint never
+	// does, an ICE exchange between two processes of one machine, and the polls.
+	rcDirectWithin = 45 * time.Second
+	// rcRelayStaysWithin is how long a view that must stay on the relay is watched
+	// for the direct road coming up anyway. A direct attempt between two processes
+	// of this machine ends in a couple of seconds, so a road that was going to
+	// come up has long since.
+	rcRelayStaysWithin = 15 * time.Second
+)
+
+// The most and the least a typed turn may cost the relay's live tunnel, in bytes
+// of the viewer's own carrier. On a direct view the tunnel is a silent standby
+// and the turn travels the direct road, so what it costs there is what the
+// carrier says on its own (a keepalive at most); on a view held to the relay the
+// same turn is the whole of the traffic. They are measured, and are far enough
+// apart that neither is a close call.
+const (
+	rcDirectRelayAtMost   = 2048
+	rcRelayCarriesAtLeast = 1024
 )
 
 // ── the whole test ───────────────────────────────────────────────────────────
@@ -131,6 +160,8 @@ func TestRemoteControlE2E(t *testing.T) {
 		{"removing_a_device_closes_its_view", rcRemovingADeviceClosesItsView},
 		{"pairing_default_is_drive_on", rcPairingDefaultIsDriveOn},
 		{"old_flags_still_work", rcOldFlagsStillWork},
+		{"direct-road-comes-up", rcDirectRoadComesUp},
+		{"relay-only-stays-on-relay", rcRelayOnlyStaysOnTheRelay},
 	} {
 		t.Run(sub.name, sub.run)
 	}
@@ -145,6 +176,25 @@ func rcRequire(t *testing.T) {
 		t.Skip("no tmux on PATH: this suite drives the real binary in a real terminal")
 	}
 	binary(t)
+}
+
+// rcRequireDirectRoad skips a scenario that needs the direct road on a machine
+// that cannot make one: the road is offered with the machine's own network
+// addresses and never with the loopback one, so a machine with no other IPv4
+// address has nothing two homes could connect over.
+func rcRequireDirectRoad(t *testing.T) {
+	t.Helper()
+	rcRequire(t)
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Skipf("this machine's network addresses cannot be read (%v): the direct road has nothing to connect over", err)
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return
+		}
+	}
+	t.Skip("this machine has no non-loopback IPv4 address: the direct road is never offered over loopback, so two homes here have nothing to connect over")
 }
 
 // ── the scenarios ────────────────────────────────────────────────────────────
@@ -579,6 +629,91 @@ func rcOldFlagsStillWork(t *testing.T) {
 	}
 }
 
+// rcDirectRoadComesUp is V30, V31 and V37 through the shipped terminal: a view
+// opens on the relay, so its first paint never waits on anything else, then says
+// `live · direct` once the two computers have connected to each other; a line
+// typed after that is answered once on both screens, and the relay's live tunnel
+// carries none of it.
+func rcDirectRoadComesUp(t *testing.T) {
+	rcRequireDirectRoad(t)
+	rc := newRCRig(t, rcOptions{viewers: 1})
+	host := rc.startHost()
+	rc.hostAsk(host, rcHostAsk, rcHostReply)
+	viewer := rc.startViewer(0)
+	// V30: the view opened and painted the chat before anything said it was
+	// direct, which is what openLive waits for.
+	rc.openLive(viewer)
+	rc.waitForRoad(viewer, "direct", rcDirectWithin)
+	if screen := viewer.capture(); strings.Contains(screen, "reconnecting") || strings.Contains(screen, say(t, "liveWentOffline")) {
+		t.Errorf("the swap to the direct road showed a notice of its own:\n%s", screen)
+	}
+
+	// V31: a line typed on the direct road is answered once, on both screens, and
+	// is in the host's own transcript once.
+	rc.settleCarrier()
+	before := rc.audit.liveBytes()
+	rc.send(viewer, rcLaptopAsk)
+	viewer.waitFor(rcReplyWithin, rcLaptopReply)
+	host.waitFor(rcReplyWithin, rcLaptopReply)
+	rc.abortIfFailed()
+	for name, window := range map[string]*rig{"host": host, "viewer": viewer} {
+		if n := rcLinesWith(window.capture(), rcLaptopAsk); n != 1 {
+			t.Errorf("the %s shows the typed line on %d lines, want exactly one:\n%s", name, n, window.capture())
+		}
+	}
+	if n := rc.model.count(rcLaptopAsk); n != 1 {
+		t.Errorf("the model was asked the typed line %d times over the direct road, want once", n)
+	}
+	// V37: the turn did not travel the relay. Read after the reply is on both
+	// screens, so a frame that was going to cross it has.
+	if carried := rc.audit.liveBytes() - before; carried > rcDirectRelayAtMost {
+		t.Errorf("the relay's live tunnel carried %d bytes of a turn typed on a direct view, want at most %d", carried, rcDirectRelayAtMost)
+	}
+	if got := rc.roadNow(viewer); got != "direct" {
+		t.Errorf("after the turn the view says %q, want it still direct:\n%s", got, viewer.capture())
+	}
+	rc.assertLiveDial()
+}
+
+// rcRelayOnlyStaysOnTheRelay is V36 and V38 through the shipped terminal: with
+// CODEAF_REMOTE_ROAD=relay on the host, a view never leaves the relay however
+// long it is watched, and a line typed on it travels the relay's tunnel.
+func rcRelayOnlyStaysOnTheRelay(t *testing.T) {
+	rcRequireDirectRoad(t)
+	rc := newRCRig(t, rcOptions{viewers: 1, hostEnv: []string{"CODEAF_REMOTE_ROAD=relay"}})
+	host := rc.startHost()
+	rc.hostAsk(host, rcHostAsk, rcHostReply)
+	viewer := rc.startViewer(0)
+	rc.openLive(viewer)
+	// The same machine would connect in a couple of seconds, so a view that is
+	// still on the relay after several times that has been held there.
+	deadline := time.Now().Add(rcRelayStaysWithin)
+	for {
+		if got := rc.roadNow(viewer); got != "relay" {
+			t.Fatalf("a view of a host held to the relay says %q, want live · relay:\n%s", got, viewer.capture())
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+	}
+
+	before := rc.audit.liveBytes()
+	rc.send(viewer, rcLaptopAsk)
+	viewer.waitFor(rcReplyWithin, rcLaptopReply)
+	host.waitFor(rcReplyWithin, rcLaptopReply)
+	rc.abortIfFailed()
+	if n := rc.model.count(rcLaptopAsk); n != 1 {
+		t.Errorf("the model was asked the typed line %d times, want once", n)
+	}
+	if carried := rc.audit.liveBytes() - before; carried < rcRelayCarriesAtLeast {
+		t.Errorf("the relay's live tunnel carried %d bytes of a turn typed on a view held to the relay, want at least %d: the audit is not seeing the tunnel", carried, rcRelayCarriesAtLeast)
+	}
+	if got := rc.roadNow(viewer); got != "relay" {
+		t.Errorf("after the turn the view says %q, want live · relay:\n%s", got, viewer.capture())
+	}
+	rc.assertLiveDial()
+}
+
 // ── the rig ──────────────────────────────────────────────────────────────────
 
 // rcOptions says what a scenario's computers start as.
@@ -588,6 +723,9 @@ type rcOptions struct {
 	// unpaired leaves every home with no identity, for the scenario that pairs
 	// them through the product's own pairing and reads what that grants.
 	unpaired bool
+	// hostEnv is added to the environment of the host's windows alone, for the
+	// scenario that sets a switch on one computer and not the other.
+	hostEnv []string
 }
 
 // rcHome is one computer of the rig: its state root, the project it works in, and
@@ -609,6 +747,7 @@ type rcRig struct {
 	host     rcHome
 	viewers  []rcHome
 	windows  int
+	hostEnv  []string
 }
 
 // newRCRig builds a scenario's world and leaves every window to the scenario.
@@ -631,7 +770,7 @@ func newRCRig(t *testing.T, opt rcOptions) *rcRig {
 	t.Setenv("CODEAF_TELEMETRY", "off")
 	t.Setenv("DO_NOT_TRACK", "1")
 
-	rc := &rcRig{t: t, root: root, model: startRCModel(t)}
+	rc := &rcRig{t: t, root: root, model: startRCModel(t), hostEnv: opt.hostEnv}
 	rc.address, rc.audit = startAuditedRelay(t, root)
 	t.Setenv(syncsetup.URLVar, rc.address)
 
@@ -770,7 +909,10 @@ func (rc *rcRig) settlePairing() {
 func (rc *rcRig) env() []string {
 	return []string{config.APIKeyEnv + "=stub-key", "CODEAF_BASE_URL=" + rc.model.server.URL + "/api/v1", "CODEAF_PROFILE_DIR=",
 		syncsetup.URLVar + "=" + rc.address, "CODEAF_SYNC_INTERVAL_MS=100", "CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1",
-		"CODEAF_NO_UPDATE_CHECK=1", "CODEAF_NO_AUTOMATIONS=1", "CODEAF_REMOTE_CONTROL=1"}
+		"CODEAF_NO_UPDATE_CHECK=1", "CODEAF_NO_AUTOMATIONS=1", "CODEAF_REMOTE_CONTROL=1",
+		// No window of this suite asks a STUN server: the direct road is offered
+		// with this machine's own addresses and nothing else.
+		"CODEAF_REMOTE_STUN=off"}
 }
 
 // window opens one terminal on a computer. Names are numbered so a window that
@@ -778,7 +920,11 @@ func (rc *rcRig) env() []string {
 func (rc *rcRig) window(name string, h rcHome) *rig {
 	rc.t.Helper()
 	rc.windows++
-	return startWithEnv(rc.t, rc.env(), fmt.Sprintf("rc-%s-%d", name, rc.windows), h.home, h.work, 180, 55)
+	env := rc.env()
+	if h.home == rc.host.home {
+		env = append(env, rc.hostEnv...)
+	}
+	return startWithEnv(rc.t, env, fmt.Sprintf("rc-%s-%d", name, rc.windows), h.home, h.work, 180, 55)
 }
 
 func (rc *rcRig) startHost() *rig { return rc.window("host", rc.host) }
@@ -892,6 +1038,70 @@ func (rc *rcRig) openLive(v *rig) string {
 	screen := v.waitFor(rcOpenWithin, say(rc.t, "liveLegend"), rcHostName)
 	rc.abortIfFailed()
 	return screen
+}
+
+// rcRoadSaid is the road the newest `road` line of a screen names: "direct",
+// "relay", or "" when the screen has none. The two words are chatlist's own, read
+// through the table, so a respelling moves one row and not this function.
+func rcRoadSaid(t *testing.T, screen string) string {
+	t.Helper()
+	direct, relayWord := say(t, "liveRoadDirect"), say(t, "liveRoadRelay")
+	said := ""
+	for _, line := range strings.Split(screen, "\n") {
+		if !strings.Contains(line, "road") {
+			continue
+		}
+		switch {
+		case strings.Contains(line, direct):
+			said = "direct"
+		case strings.Contains(line, relayWord):
+			said = "relay"
+		}
+	}
+	return said
+}
+
+// roadNow asks /status, the one place a view says its road, and answers what the
+// newest `road` line says. The note is local to the window and answers at once,
+// so a second and a half is the margin a real terminal needs to draw it.
+func (rc *rcRig) roadNow(r *rig) string {
+	rc.t.Helper()
+	rc.takeKeyboard(r)
+	r.lit("/status")
+	r.keys("Enter")
+	time.Sleep(1500 * time.Millisecond)
+	return rcRoadSaid(rc.t, r.capture())
+}
+
+// waitForRoad asks /status once a second until the view says it is on the road,
+// and fails the scenario with the screen when it never does.
+func (rc *rcRig) waitForRoad(r *rig, want string, within time.Duration) {
+	rc.t.Helper()
+	deadline := time.Now().Add(within)
+	got := ""
+	for time.Now().Before(deadline) {
+		if got = rc.roadNow(r); got == want {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	rc.t.Fatalf("the view never said it was on the %s road within %s (last said %q). The screen was:\n%s", want, within, got, r.capture())
+}
+
+// settleCarrier waits for the relay's live tunnel to go quiet: the channels the
+// swap closed have ended and nothing is being written to it, so a count taken
+// now is the baseline of what a later turn costs it.
+func (rc *rcRig) settleCarrier() {
+	rc.t.Helper()
+	last, still := rc.audit.liveBytes(), 0
+	for still < 4 {
+		time.Sleep(500 * time.Millisecond)
+		if now := rc.audit.liveBytes(); now != last {
+			last, still = now, 0
+		} else {
+			still++
+		}
+	}
 }
 
 // takeKeyboard makes this window the one that types, the way the view says to:
@@ -1146,6 +1356,46 @@ type rcAudit struct {
 	// refuseAcquire makes the relay answer every request to take a chat's lease
 	// with a server error, which is how a move that cannot finish is made.
 	refuseAcquire atomic.Bool
+	// live is every byte, in both directions, that crossed the carrier of a dial
+	// that said it was a live one. It is how a scenario sees that a view on the
+	// direct road leaves the relay's tunnel silent.
+	live atomic.Int64
+}
+
+// liveBytes is the bytes the live dials' carriers have carried so far.
+func (a *rcAudit) liveBytes() int64 { return a.live.Load() }
+
+// rcCountedWriter counts what crosses a connection the proxy takes over. The
+// reverse proxy hijacks the response writer to carry an upgraded stream, so the
+// hijacked connection is the one place every byte of it passes.
+type rcCountedWriter struct {
+	http.ResponseWriter
+	total *atomic.Int64
+}
+
+func (w *rcCountedWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := http.NewResponseController(w.ResponseWriter).Hijack()
+	if err != nil {
+		return nil, nil, err
+	}
+	return &rcCountedConn{Conn: conn, total: w.total}, rw, nil
+}
+
+type rcCountedConn struct {
+	net.Conn
+	total *atomic.Int64
+}
+
+func (c *rcCountedConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	c.total.Add(int64(n))
+	return n, err
+}
+
+func (c *rcCountedConn) Write(p []byte) (int, error) {
+	n, err := c.Conn.Write(p)
+	c.total.Add(int64(n))
+	return n, err
 }
 
 // startAuditedRelay starts the product's own relay and a proxy in front of it.
@@ -1190,6 +1440,9 @@ func startAuditedRelay(t *testing.T, root string) (string, *rcAudit) {
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = w.Write([]byte(`{"error":"storage_off"}`))
 			return
+		}
+		if r.Header.Get(relay.HeaderDoor) == relay.DoorLive {
+			w = &rcCountedWriter{ResponseWriter: w, total: &audit.live}
 		}
 		proxy.ServeHTTP(w, r)
 	}))

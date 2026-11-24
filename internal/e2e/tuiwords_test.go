@@ -584,6 +584,18 @@ var tuiWords = map[string]tuiWord{
 		why: "the empty box of a live view names the computer the words go to (`Message desktop`), where an " +
 			"ordinary conversation says what to ask",
 	},
+	"liveRoadDirect": {
+		screen: "live · direct",
+		pkg:    "internal/chatlist",
+		why: "the `road` row of /status on a view whose two computers have connected to each other: " +
+			"the one place a person is told the view left the relay, and what the direct-road scenarios wait for",
+	},
+	"liveRoadRelay": {
+		screen: "live · relay",
+		pkg:    "internal/chatlist",
+		why: "the `road` row of /status on a view that travels the relay, the word phase 1 shipped; " +
+			"a view held to the relay (CODEAF_REMOTE_ROAD=relay) must keep saying it",
+	},
 	"liveWentOffline": {
 		screen: "went offline",
 		pkg:    "internal/chatlist",
