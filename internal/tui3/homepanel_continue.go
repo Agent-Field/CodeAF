@@ -194,6 +194,17 @@ func (a *app) homeMachineEnter(line homeLine) tea.Cmd {
 	if a.liveEligible(row) {
 		return a.homeOpenLiveLater(line, row)
 	}
+	// A CHAT LISTED BEFORE THE ROSTER ANSWERS IS NOT A CHAT TO MOVE. The listing
+	// and the roster are two reads begun together, and either can land first; a
+	// holder missing from a roster that has not answered yet is not a holder
+	// that is not there, and the Move card for a chat that opens live is the
+	// wrong card, one the person never asked for. So the Enter waits for a
+	// roster read begun after it and decides on that.
+	if a.rosterCanAdmit(row) {
+		if cmd, waiting := a.waitForRoster(line); waiting {
+			return cmd
+		}
+	}
 	return a.homeMachineMove(line)
 }
 
