@@ -44,6 +44,21 @@ func (b *appBackend) markQuit(agents []*appAgent) {
 	var stopped []appwire.Process
 	now := b.now()
 	for _, a := range agents {
+		// A PURE LIVE VIEW IS NOT THIS APP'S TO STOP OR RESUME. The chat runs on
+		// another paired computer and this window only watches or drives it, so
+		// quitting here stops nothing over there: writing its reply down for a
+		// carry-on, or its processes as "stopped by quit", would say something
+		// false, and the Interrupted mark that follows would name an agent id
+		// that does not exist after a restart (app_live_open.go). Today the
+		// Assembled check below would skip a view anyway, because dialLive
+		// builds its connection unassembled; that is a side effect of how the
+		// connection is made and not a statement about views, so the exclusion
+		// is made here on what the agent is.
+		pure := false
+		b.locked(func() { pure = a.liveOnly() })
+		if pure {
+			continue
+		}
 		live := b.liveOf(a)
 		if live == nil || !live.conn.Assembled {
 			continue
