@@ -95,6 +95,11 @@ type Hosting struct {
 	MaxSessionCostUSD float64 `json:"max_session_cost_usd,omitempty"`
 }
 
+const (
+	HostingRefuseWords = "This organization runs your chats on its own server, so they do not start on this computer. To work here instead, switch to your personal account, which does not see the organization's chats or files."
+	HostingWarnWords   = "This organization keeps your chats on its own server. A chat started on this computer is not part of the organization's account."
+)
+
 // LocalSessionsFor keeps the existing local-chat behavior when the organization has no preference.
 func (h Hosting) LocalSessionsFor(hasChatHost bool) string {
 	if h.LocalSessions != "" {
@@ -104,6 +109,18 @@ func (h Hosting) LocalSessionsFor(hasChatHost bool) string {
 		return "refuse"
 	}
 	return "allow"
+}
+
+// Words explains the effective local-chat policy where it affects the caller.
+func (h Hosting) Words(hasChatHost bool) string {
+	switch h.LocalSessionsFor(hasChatHost) {
+	case "refuse":
+		return HostingRefuseWords
+	case "warn":
+		return HostingWarnWords
+	default:
+		return ""
+	}
 }
 
 // Policy is the organization's access document: the roles, what each kind of
