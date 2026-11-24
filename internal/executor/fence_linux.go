@@ -51,8 +51,16 @@ const (
 	fenceNone fenceMode = ""
 )
 
+// fenceModeInTests stands in for a kernel that supports less (or more) of the
+// fence than the one the tests run on. Only test support installs it;
+// production always asks the kernel.
+var fenceModeInTests func() fenceMode
+
 // thisFenceMode is what this kernel supports.
 func thisFenceMode() fenceMode {
+	if fenceModeInTests != nil {
+		return fenceModeInTests()
+	}
 	c := Probe()
 	switch {
 	case c.UserNS && c.Landlock:
@@ -65,13 +73,18 @@ func thisFenceMode() fenceMode {
 
 // confineFence rewrites cmd to run under the helper. With neither user
 // namespaces nor Landlock the command runs as it is, which [FenceLimitLine]
-// says once.
+// says once, UNLESS THE FENCE IS REQUIRED: a required fence that cannot be
+// applied refuses the command, because running it open is exactly the thing
+// the requirement exists to prevent.
 func confineFence(cmd *exec.Cmd, f *Fence) error {
 	if cmd.Err != nil {
 		return cmd.Err
 	}
 	mode := thisFenceMode()
 	if mode == fenceNone {
+		if f.Require {
+			return ErrFenceRequired
+		}
 		return nil
 	}
 	spec, err := writeFenceSpec(f, mode)

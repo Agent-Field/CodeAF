@@ -3,6 +3,7 @@ package executor
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -103,6 +104,14 @@ type Fence struct {
 	// fence is built, because it lists the folders on the way to each hidden
 	// path, and a command should not pay for that walk.
 	ReadGrants []string
+	// Require makes the fence a promise and not a courtesy: where this
+	// computer can apply none of it, a command is REFUSED with
+	// [ErrFenceRequired] instead of running as the person's own process. Only
+	// a door that has something beneath the fence worth protecting sets it (the
+	// hosted engine, engine_hosted.go in cmd/codeaf); every other door keeps
+	// the old behaviour on purpose, and the field is left out of the helper's
+	// spec when it is false so a spec is byte-identical to what it always was.
+	Require bool `json:"Require,omitempty"`
 }
 
 // FenceAllowWords is how a widening is spelled, in a project file, the
@@ -580,6 +589,17 @@ func goProxyThrough(home string) string {
 // FenceLine is the one sentence added to a command's output when the fence
 // stopped it. It says what happened and why, and where the widening lives.
 const FenceLine = "codeaf blocked this: a run with nobody at the keyboard may change files only in its checkout and its own temp and cache folders, and may not read keys and sign-ins or use docker; to allow more, add \"jail.allow\" to the repository's .codeaf/config.json."
+
+// FenceRequiredLine is what a command is refused with when the fence is a
+// requirement ([Fence.Require]) and this computer can apply none of it. It is
+// written for the person reading a chat, so it names no mechanism: only what
+// did not happen and why.
+const FenceRequiredLine = "This computer cannot keep commands inside this chat's folder, so no command was run."
+
+// ErrFenceRequired is the error a required fence's command fails with when the
+// fence cannot be applied. Its text is [FenceRequiredLine], so every door that
+// prints an executor error to a person or a model says it in plain words.
+var ErrFenceRequired = errors.New(FenceRequiredLine)
 
 // FenceDegradedLine is said once when this system cannot apply the fence.
 const FenceDegradedLine = "This system cannot confine commands, so this run's commands have your full permissions."
