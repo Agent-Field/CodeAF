@@ -244,16 +244,26 @@ func (b *appBackend) openLiveAs(id string, row appwire.ChatRow) (appwire.Agent, 
 	return view, nil
 }
 
+// liveLocked runs f under liveMu, released from a defer even if f panics.
+func (b *appBackend) liveLocked(f func()) {
+	b.liveMu.Lock()
+	defer b.liveMu.Unlock()
+	f()
+}
+
 // liveHostOf answers the shared link to a host, making it on first use, and
 // counts the caller as a user of it; liveHostDone gives that back.
 func (b *appBackend) liveHostOf(hostID, hostName string) (*appLiveHost, error) {
-	b.liveMu.Lock()
-	if h := b.liveHosts[hostID]; h != nil {
-		h.users++
-		b.liveMu.Unlock()
-		return h, nil
+	var shared *appLiveHost
+	b.liveLocked(func() {
+		if h := b.liveHosts[hostID]; h != nil {
+			h.users++
+			shared = h
+		}
+	})
+	if shared != nil {
+		return shared, nil
 	}
-	b.liveMu.Unlock()
 	h := &appLiveHost{id: hostID, name: hostName}
 	link, err := appLiveNewLink(b, hostID, hostName, func() bool { return b.liveActive(hostID) }, func(st livedoor.State) { b.liveStateMoved(hostID, st) })
 	if err != nil {
@@ -261,32 +271,36 @@ func (b *appBackend) liveHostOf(hostID, hostName string) (*appLiveHost, error) {
 	}
 	h.link = link
 	link.OnChannelEnd(func(chat, reason string) { b.liveChannelEnded(hostID, chat, reason) })
-	b.liveMu.Lock()
-	if other := b.liveHosts[hostID]; other != nil {
-		other.users++
-		b.liveMu.Unlock()
+	var other *appLiveHost
+	b.liveLocked(func() {
+		if other = b.liveHosts[hostID]; other != nil {
+			other.users++
+			return
+		}
+		if b.liveHosts == nil {
+			b.liveHosts = map[string]*appLiveHost{}
+		}
+		h.users = 1
+		b.liveHosts[hostID] = h
+	})
+	if other != nil {
 		link.Close()
 		return other, nil
 	}
-	if b.liveHosts == nil {
-		b.liveHosts = map[string]*appLiveHost{}
-	}
-	h.users = 1
-	b.liveHosts[hostID] = h
-	b.liveMu.Unlock()
 	return h, nil
 }
 
 // liveHostDone gives one use of the link back, and closes the link when none is
 // left: nothing holds the relay's tunnel open for a view nobody uses.
 func (b *appBackend) liveHostDone(h *appLiveHost) {
-	b.liveMu.Lock()
-	h.users--
-	closing := h.users <= 0
-	if closing && b.liveHosts[h.id] == h {
-		delete(b.liveHosts, h.id)
-	}
-	b.liveMu.Unlock()
+	closing := false
+	b.liveLocked(func() {
+		h.users--
+		closing = h.users <= 0
+		if closing && b.liveHosts[h.id] == h {
+			delete(b.liveHosts, h.id)
+		}
+	})
 	if closing {
 		h.link.Close()
 	}
@@ -294,10 +308,11 @@ func (b *appBackend) liveHostDone(h *appLiveHost) {
 
 // closeLive closes every link when the app leaves.
 func (b *appBackend) closeLive() {
-	b.liveMu.Lock()
-	hosts := b.liveHosts
-	b.liveHosts = nil
-	b.liveMu.Unlock()
+	var hosts map[string]*appLiveHost
+	b.liveLocked(func() {
+		hosts = b.liveHosts
+		b.liveHosts = nil
+	})
 	for _, h := range hosts {
 		h.link.Close()
 	}
@@ -350,9 +365,8 @@ func (b *appBackend) NoteCall(method string, params json.RawMessage) {
 	if hostID == "" {
 		return
 	}
-	b.liveMu.Lock()
-	h := b.liveHosts[hostID]
-	b.liveMu.Unlock()
+	var h *appLiveHost
+	b.liveLocked(func() { h = b.liveHosts[hostID] })
 	if h != nil {
 		guard.Go("app/live-touch", h.link.Touch)
 	}
