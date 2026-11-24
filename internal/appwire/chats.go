@@ -1,6 +1,9 @@
 package appwire
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 const (
 	FeatureChatsTake = "chats.take"
@@ -196,6 +199,21 @@ type ChatLiveKeyboardResult struct {
 type ChatsLiveOpener interface {
 	OpenLive(ChatOpenLiveParams) (Agent, error)
 	LiveKeyboard(ChatLiveKeyboardParams) (ChatLiveKeyboardResult, error)
+}
+
+// CallNoter is an optional engine door that hears of each agents.* call as it
+// arrives, before it is run. It must not block: it only notes that the person
+// touched the agent the params name.
+type CallNoter interface {
+	NoteCall(method string, params json.RawMessage)
+}
+
+// LiveRefused is the detail of a refused chats.open_live: the closed reason a
+// live door gives (not-running, not-allowed, holder-old, removed, ...), beside
+// the sentence the person reads.
+type LiveRefused struct {
+	Kind   string `json:"kind" enum:"live_refused"`
+	Reason string `json:"reason"`
 }
 
 // ChatsLiveOffer is an engine's answer to whether live views are on now. A

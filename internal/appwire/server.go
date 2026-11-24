@@ -401,6 +401,12 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 		s.send(frame{id: id, err: Errorf(CodeBadParams, "params must be an object")})
 		return false
 	}
+	// An engine that keeps live views of other computers is told of every
+	// agents.* call as it arrives, so a view that is being used is not detached
+	// for being idle. Telling it never waits and never changes the answer.
+	if noter, ok := engine.(CallNoter); ok && strings.HasPrefix(req.Method, "agents.") {
+		noter.NoteCall(req.Method, params)
+	}
 	inflight.Add(1)
 	go func() {
 		defer inflight.Done()
