@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -38,7 +39,18 @@ ORG = os.environ.get('ORG_URL', 'http://codeaf:8787').rstrip('/')
 SOCKET = os.environ.get('RUNNER_SOCKET', '/data/engine.sock')
 FIXTURE_PATH = os.environ.get('SMOKE_FIXTURE_PATH', '/workspaces/smoke-fixture')  # on the swe-af container (compose.yaml, .env.stub)
 STATE = Path(os.environ.get('SMOKE_STATE', '/data/smoke-state.json'))
-PASSWORD = 'harbor maple quartz lantern 5521'
+
+
+def password():
+    """A fresh password for the people the smoke test makes, kept (mode 600) beside its state so the
+    check after a restart can sign in. Never a fixed string: the organization stays reachable afterwards."""
+    try:
+        saved = json.loads(STATE.read_text()).get('password')
+        if saved:
+            return saved
+    except (OSError, ValueError):
+        pass
+    return '-'.join(secrets.token_hex(6) for _ in range(4))
 
 failures = 0
 
@@ -145,9 +157,9 @@ def control():
 
 
 # ---------------------------------------------------------------------------------------------
-def join(link, username, name):
+def join(link, username, name, secret):
     return http('POST', ORG + '/v1/factory-access', None,
-                {'link': link, 'verb': 'sign_up', 'username': username, 'password': PASSWORD, 'name': name})
+                {'link': link, 'verb': 'sign_up', 'username': username, 'password': secret, 'name': name})
 
 
 def org(operator_link):
@@ -157,11 +169,12 @@ def org(operator_link):
         return
     # The link names the address the server prints (a laptop's loopback or the public name); this
     # script reaches the server on its network name instead, so only the link's secret part is used.
-    code, joined = join(operator_link, 'owner', 'Owner')
+    secret = password()
+    code, joined = join(operator_link, 'owner', 'Owner', secret)
     token = (joined or {}).get('access_token') if isinstance(joined, dict) else None
     check('the operator claims the organization with the printed link', code == 200 and bool(token) and joined.get('state') == 'joined',
           f'{code} state={joined.get("state") if isinstance(joined, dict) else joined}')
-    code2, again = join(operator_link, 'intruder', 'Intruder')
+    code2, again = join(operator_link, 'intruder', 'Intruder', secret)
     check('the operator link works once', code2 != 200 or not (again or {}).get('access_token'), f'{code2} state={again.get("state") if isinstance(again, dict) else again}')
     if not token:
         return
@@ -170,10 +183,10 @@ def org(operator_link):
     check('the operator makes an invite link', code in (200, 201) and bool(invite), f'{code}')
     if not invite:
         return
-    code, joined2 = join(invite, 'priya', 'Priya')
+    code, joined2 = join(invite, 'priya', 'Priya', secret)
     member = (joined2 or {}).get('access_token') if isinstance(joined2, dict) else None
     check('a second person joins with the invite link', code == 200 and bool(member) and joined2.get('state') == 'joined', f'{code}')
-    code3, reuse = join(invite, 'priya2', 'Priya Two')
+    code3, reuse = join(invite, 'priya2', 'Priya Two', secret)
     check('an invite link works once', code3 != 200 or not (reuse or {}).get('access_token'), f'{code3} state={reuse.get("state") if isinstance(reuse, dict) else reuse}')
     code, people = http('GET', ORG + '/v1/people', token)
     handles = sorted(p.get('handle') for p in (people or {}).get('people', [])) if isinstance(people, dict) else []
@@ -182,7 +195,8 @@ def org(operator_link):
     check('the member can read the organization policy', code == 200, f'{code}')
     code, _ = http('PUT', ORG + '/v1/org/policy', member, {})
     check('the member cannot change the organization policy', code in (401, 403), f'{code}')
-    STATE.write_text(json.dumps({'people': ['owner', 'priya']}))
+    STATE.write_text(json.dumps({'people': ['owner', 'priya'], 'password': secret}))
+    STATE.chmod(0o600)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -280,14 +294,14 @@ def after():
     print('--- after a restart')
     ids = wait_until(lambda: (lambda c, n: n if {'swe-planner', 'pr-af', 'codeaf-factory'} <= set(n) else None)(*node_ids()), 180)
     check('every node is registered again after the restart', bool(ids), ids)
-    code, body = af('GET', '/api/v1/executions?limit=5')
-    count = len(body.get('executions', [])) if isinstance(body, dict) else 0
+    code, body = af('GET', '/api/ui/v2/workflow-runs?limit=5')
+    count = len(body.get('runs', [])) if isinstance(body, dict) else 0
     check('AgentField still holds the earlier runs', code == 200 and count > 0, f'{code} runs={count}')
 
 
 def after_org():
     print('--- the organization after a restart')
-    code, signed = http('POST', ORG + '/v1/auth/password', None, {'username': 'owner', 'password': PASSWORD})
+    code, signed = http('POST', ORG + '/v1/auth/password', None, {'username': 'owner', 'password': password()})
     check('the organization still knows the operator (password sign-in)', code == 200 and bool((signed or {}).get('access_token')), f'{code}')
     token = (signed or {}).get('access_token') if isinstance(signed, dict) else None
     if token:
