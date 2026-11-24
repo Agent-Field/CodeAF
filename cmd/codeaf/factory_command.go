@@ -294,7 +294,8 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	public := secure.publicURL(listener.Addr().String())
 	jobWrites := factorygithub.JobWrites{Token: func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, home.Dir()); return t }}
 	handlerConfig := serve.Config{
-		GitHubToken: jobWrites.Token,
+		GitHubToken:   jobWrites.Token,
+		LoopbackTrust: host.LoopbackTrust,
 
 		ProfileDir:     home.Dir(),
 		ChangeAssignee: jobWrites.Assign,

@@ -92,7 +92,14 @@ func (h *Handler) allowed(r *http.Request) bool {
 
 // The app host token is the only person credential on its private listener.
 func (h *Handler) loopbackOwner(r *http.Request) bool {
-	return h.config.ServedBy != "app" && loopbackRequest(r)
+	return h.config.ServedBy != "app" && h.loopbackTrusted() && loopbackRequest(r)
+}
+
+func (h *Handler) loopbackTrusted() bool {
+	if h.config.LoopbackTrust != nil {
+		return *h.config.LoopbackTrust
+	}
+	return h.mode() == api.FactorySolo
 }
 
 // credential gives explicit credentials precedence over an open loopback peer.

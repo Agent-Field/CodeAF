@@ -212,3 +212,33 @@ func TestFactoryStepsPrintsEveryBuiltInPrompt(t *testing.T) {
 		t.Fatalf("built-ins differ: %s", out.String())
 	}
 }
+
+func TestContractC1FactoryConfigLoopbackTrust(t *testing.T) {
+	for _, value := range []string{"true", "false", "wrong"} {
+		t.Run(value, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := writeFactoryPrivate(path, []byte("loopback_trust: "+value+"\n")); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := factoryHostConfigAt(path, false)
+			if value == "wrong" {
+				if err == nil || !strings.Contains(err.Error(), "bool") {
+					t.Fatalf("expected a boolean config error, got %v", err)
+				}
+				return
+			}
+			want := value == "true"
+			if err != nil || cfg.LoopbackTrust == nil || *cfg.LoopbackTrust != want {
+				t.Fatalf("setting did not parse: %v, %v", cfg.LoopbackTrust, err)
+			}
+			rotated, err := factoryHostConfigAt(path, true)
+			if err != nil || rotated.AccessToken == cfg.AccessToken {
+				t.Fatalf("token did not rotate: %v", err)
+			}
+			saved, err := readFactoryHostConfig(path)
+			if err != nil || saved.LoopbackTrust == nil || *saved.LoopbackTrust != want {
+				t.Fatalf("rotation lost the setting: %v, %v", saved.LoopbackTrust, err)
+			}
+		})
+	}
+}

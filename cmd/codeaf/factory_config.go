@@ -18,6 +18,7 @@ import (
 
 type factoryHostConfig struct {
 	Mode           string   `yaml:"mode,omitempty"`
+	LoopbackTrust  *bool    `yaml:"loopback_trust,omitempty"`
 	OperatorLogin  string   `yaml:"operator_login,omitempty"`
 	Name           string   `yaml:"name,omitempty"`
 	Listen         string   `yaml:"listen"`
@@ -54,6 +55,9 @@ func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 	doc := map[string]any{"listen": cfg.Listen, "access_token": cfg.AccessToken}
 	if cfg.Mode != "" {
 		doc["mode"] = cfg.Mode
+	}
+	if cfg.LoopbackTrust != nil {
+		doc["loopback_trust"] = *cfg.LoopbackTrust
 	}
 	if cfg.OperatorLogin != "" {
 		doc["operator_login"] = cfg.OperatorLogin

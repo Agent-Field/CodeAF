@@ -138,6 +138,16 @@ func workerPath(path string) bool {
 		strings.HasPrefix(path, "/v1/runners/leases/") || strings.HasPrefix(path, "/v1/runners/recover/") || path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self"
 }
 
+// Local runner registration keeps its own door because a runner on this machine
+// can attach before its person signs in.
+func (h *Handler) localWorkerAttach(r *http.Request) bool {
+	if h.config.ServedBy == "app" || (r.URL.Path != "/v1/workers/attach" && r.URL.Path != "/v1/runners/attach") || bearer(r) != "" {
+		return false
+	}
+	_, cookieErr := r.Cookie(accessCookieName)
+	return cookieErr != nil && loopbackRequest(r)
+}
+
 func bearer(r *http.Request) string {
 	values := r.Header.Values("Authorization")
 	if len(values) != 1 {

@@ -84,6 +84,8 @@ type Config struct {
 
 	// Mode is solo or team; an unset mode follows the host access configuration.
 	Mode string
+	// LoopbackTrust is optional because solo hosts and team hosts have different defaults.
+	LoopbackTrust *bool
 	// DefaultModel answers the model a job's steps run on when it names none,
 	// for the queue's `model`. Nil when this factory does not know it: a
 	// runner elsewhere decides with its own settings.
@@ -561,7 +563,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) && !h.allowed(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) && !h.allowed(r) && !h.localWorkerAttach(r) {
 		if h.authFailed(w, r) {
 			return
 		}

@@ -72,7 +72,7 @@ func resolveClient(r *http.Request, trusted []netip.Prefix) client {
 		}
 	}
 	for _, name := range forwardingHeaders {
-		if r.Header.Get(name) != "" {
+		if len(r.Header.Values(name)) != 0 {
 			c.forwarded = true
 			break
 		}
