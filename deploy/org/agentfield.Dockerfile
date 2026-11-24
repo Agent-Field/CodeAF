@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.10
+# syntax=docker/dockerfile:1.10@sha256:865e5dd094beca432e8c0a1d5e1c465db5f998dca4e439981029b3b81fb39ed5
 #
 # The AgentField control plane, from the PUBLISHED image, pinned by tag and digest.
 #
@@ -18,7 +18,7 @@
 
 ARG AGENTFIELD_IMAGE=agentfield/control-plane:staging-0.1.147-rc.11@sha256:1c85c2f1cf53239b1a68b0fb3df772c6e77dd18292071bd98829259261be7d15
 
-FROM busybox:1.37.0-musl AS busybox
+FROM busybox:1.37.0-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478 AS busybox
 
 FROM ${AGENTFIELD_IMAGE}
 COPY --from=busybox /bin/busybox /usr/local/bin/busybox
