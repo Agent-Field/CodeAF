@@ -88,9 +88,11 @@ def write_engine_config(model):
 
 def selftest():
     """RUNNER_SELFTEST=1: where nobody can `docker exec` (a platform's service), the runner proves the
-    stack itself once it is up. It runs the smoke test's control and job sections against the scripted
-    stub and logs each PASS or FAIL line; it spends nothing and prints no secret."""
-    for section in ('control', 'job'):
+    stack itself once it is up. RUNNER_SELFTEST=1 runs the smoke test's control and job sections against
+    the scripted stub; RUNNER_SELFTEST=after runs its after-a-restart section instead. Each PASS or FAIL
+    line is logged; it spends nothing and prints no secret."""
+    sections = ('after',) if os.environ.get('RUNNER_SELFTEST', '').strip().lower() == 'after' else ('control', 'job')
+    for section in sections:
         proc = subprocess.run(['python3', '/opt/org/smoke.py', section], capture_output=True, text=True, timeout=1800, check=False)
         for line in (proc.stdout + proc.stderr).splitlines():
             log('selftest ' + line)
@@ -216,7 +218,7 @@ def main():
         threading.Thread(target=server.serve_forever, daemon=True).start()
         READY.write_text(json.dumps({'factory': factory_id}))
         log(f'runner ready: factory {factory_id} is connected to AgentField at {url}')
-        if os.environ.get('RUNNER_SELFTEST', '').strip().lower() in ('1', 'true', 'yes', 'on'):
+        if os.environ.get('RUNNER_SELFTEST', '').strip().lower() in ('1', 'true', 'yes', 'on', 'after'):
             threading.Thread(target=selftest, daemon=True).start()
         status = proc.wait()
         raise SystemExit(status or 1)
