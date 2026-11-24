@@ -693,13 +693,15 @@ func appParseProposal(answer string) (appwire.Proposal, bool) {
 	}
 	p.Name = strings.TrimSpace(p.Name)
 	var helpers []appwire.ProposalHelper
+	// A model's handle is engine-picked: it stays within HandleWordMax,
+	// shortened and numbered for clashes the way the streamed proposal does it.
+	names := &appProposalStream{handles: map[string]string{}}
 	for _, h := range p.Helpers {
-		h.Handle = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h.Handle), "@"))
+		raw := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h.Handle), "@"))
 		h.Brief = strings.TrimSpace(h.Brief)
-		// A model's handle is engine-picked: it stays within HandleWordMax,
-		// shortened the way the streamed proposal shortens it.
-		h.Handle = appProposalShortHandle(h.Handle)
+		h.Handle = names.handle(raw)
 		if teamstore.ValidHandle(h.Handle) == nil && h.Brief != "" {
+			names.handles[raw] = h.Handle
 			helpers = append(helpers, h)
 		}
 	}

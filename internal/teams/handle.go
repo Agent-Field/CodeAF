@@ -8,9 +8,10 @@ import (
 )
 
 // A handle is how a member is named inside its team, in the Traffic log and to
-// the team tools: ONE lowercase word that names what the conversation is about
+// the team tools: a short lowercase name for what the conversation is about
 // (@security, @milestones, @gravity), short enough to type and stable enough to
-// refer back to.
+// refer back to. The engine's own picks are one word of at most HandleWordMax
+// characters; a person or the manager may type up to HandleMax.
 //
 // IT IS CHOSEN TWICE, ONCE AT ONCE AND ONCE WELL. The word list here
 // ([DeriveHandle]) guesses one the moment the member has a title, so the member
