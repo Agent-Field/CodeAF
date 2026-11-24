@@ -1,0 +1,5 @@
+# The build context is this folder; secrets and local state never go into an image.
+.env
+.env.*
+!.env.example
+!.env.stub

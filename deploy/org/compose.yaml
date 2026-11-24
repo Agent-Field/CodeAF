@@ -1,0 +1,165 @@
+# A self-hosted codeaf organization: the organization server, the AgentField control
+# plane, and the reasoner nodes (SWE-AF, PR-AF) that the factory sends work to. People
+# join with their own desktop apps by invite link.
+#
+#     ./setup.sh                  # writes .env with fresh secrets (once)
+#     docker compose up -d        # builds what is not published, starts everything
+#     docker compose logs codeaf | grep 'operator access link'
+#
+# deploy/org/README.md has the rest: joining, the keyless smoke test, upgrading, backups.
+name: codeaf-org
+
+x-defaults: &defaults
+  restart: unless-stopped
+  init: false
+  stop_grace_period: 30s
+
+services:
+  # --- AgentField: the control plane every node and the factory dial ---------------------------
+  agentfield:
+    <<: *defaults
+    image: ${AGENTFIELD_ORG_IMAGE:-codeaf-org/agentfield:local}
+    build: { context: ., dockerfile: agentfield.Dockerfile }
+    command: ["server", "--open=false"]
+    environment:
+      AGENTFIELD_HOME: /data
+      # The control plane's own config file would win over AGENTFIELD_HOME, so none is read and
+      # the database and key-value store are placed explicitly.
+      AGENTFIELD_CONFIG_FILE: /dev/null
+      AGENTFIELD_PORT: "8080"
+      AGENTFIELD_STORAGE_MODE: local
+      AGENTFIELD_STORAGE_LOCAL_DATABASE_PATH: /data/agentfield.db
+      AGENTFIELD_STORAGE_LOCAL_KV_STORE_PATH: /data/agentfield.bolt
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      # Strict run-owner proofs: only the node that owns a run can act on it. The factory
+      # sends its proof over its node link; this stays on.
+      AGENTFIELD_RUN_OWNER_REQUIRE_PROOF: ${AGENTFIELD_RUN_OWNER_REQUIRE_PROOF:-true}
+      AGENTFIELD_TELEMETRY_ENABLED: "false"
+    volumes: [agentfield-data:/data]
+    ports: ["${AGENTFIELD_BIND:-127.0.0.1}:${AGENTFIELD_PORT:-8080}:8080"]
+
+  # --- The organization server: `codeaf factory serve`, team mode -------------------------------
+  codeaf:
+    <<: *defaults
+    image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
+    build: { context: ., dockerfile: codeaf.Dockerfile }
+    command: ["server"]
+    environment:
+      CODEAF_ORG_NAME: ${CODEAF_ORG_NAME:-codeaf organization}
+      # The public name people reach this server on, WITHOUT a scheme, when a proxy in front
+      # serves HTTPS on it. Leave empty on a laptop: links then name the listen address.
+      CODEAF_PUBLIC_DOMAIN: ${CODEAF_PUBLIC_DOMAIN:-}
+      CODEAF_GITHUB_CLIENT_ID: ${CODEAF_GITHUB_CLIENT_ID:-}
+      CODEAF_TRUSTED_PROXIES: ${CODEAF_TRUSTED_PROXIES:-}
+      CODEAF_FACTORY_TOKEN: ${CODEAF_FACTORY_TOKEN:-}
+      CODEAF_SMTP_URL: ${CODEAF_SMTP_URL:-}
+      CODEAF_SMTP_FROM: ${CODEAF_SMTP_FROM:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+    volumes: [codeaf-data:/data]
+    ports: ["${CODEAF_BIND:-127.0.0.1}:${CODEAF_PORT:-8787}:8787"]
+    healthcheck:
+      # Any HTTP answer means it is up (curl exits 0 on a 401 too); a refused connection is exit 7.
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8787/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+
+  # --- The factory runner: registers the factory on AgentField as the node codeaf-factory -------
+  runner:
+    <<: *defaults
+    image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
+    build: { context: ., dockerfile: codeaf.Dockerfile }
+    command: ["runner"]
+    depends_on:
+      agentfield: { condition: service_healthy }
+    environment:
+      AGENTFIELD_URL: http://agentfield:8080
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      ORG_MODEL: ${ORG_MODEL:-deepseek/deepseek-v4-flash-0731}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+      CODEAF_FACTORY_NODE_ID: ${CODEAF_FACTORY_NODE_ID:-codeaf-factory}
+    volumes:
+      - runner-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/ready.json"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  # --- Reasoner nodes ---------------------------------------------------------------------------
+  swe-af:
+    <<: *defaults
+    image: ${SWE_AF_ORG_IMAGE:-codeaf-org/swe-af:local}
+    build: { context: ., dockerfile: swe-af.Dockerfile }
+    depends_on:
+      agentfield: { condition: service_healthy }
+    environment:
+      NODE_ID: swe-planner
+      AGENTFIELD_SERVER: http://agentfield:8080
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      SWE_DEFAULT_MODEL: ${SWE_DEFAULT_MODEL:-openrouter/deepseek/deepseek-v4-flash-0731}
+      # Pause a build at its plan for a person (the human-in-the-loop question the factory shows).
+      SWE_HITL_NATIVE: "1"
+      SWE_FENCE: "off"
+      SWE_PRO_ENGINE: "0"
+      # Keyless smoke test only (.env.stub): a throwaway repository on this container's disk.
+      SMOKE_FIXTURE_REPO: ${SWE_SMOKE_FIXTURE_REPO:-}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+      AGENTFIELD_NODE_HOST: swe-af
+    volumes:
+      - swe-af-workspaces:/workspaces
+    healthcheck:
+      # No procps in the image: look for the process by name in /proc.
+      test: ["CMD-SHELL", "grep -qx swe-planner /proc/[0-9]*/comm 2>/dev/null"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  pr-af:
+    <<: *defaults
+    image: ${PR_AF_ORG_IMAGE:-codeaf-org/pr-af:local}
+    build: { context: ., dockerfile: pr-af.Dockerfile }
+    depends_on:
+      agentfield: { condition: service_healthy }
+    environment:
+      NODE_ID: pr-af
+      PORT: "8007"
+      AGENTFIELD_SERVER: http://agentfield:8080
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      # The address the control plane calls this node on, from inside this network.
+      AGENT_CALLBACK_URL: http://pr-af:8007
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      PR_AF_MODEL: ${PR_AF_MODEL:-deepseek/deepseek-v4-flash-0731}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+    volumes: [pr-af-workspaces:/workspaces]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8007/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  # --- Keyless smoke test only: `docker compose --profile stub up` --------------------------------
+  modelstub:
+    <<: *defaults
+    profiles: ["stub"]
+    image: ${MODELSTUB_ORG_IMAGE:-codeaf-org/modelstub:local}
+    build: { context: ., dockerfile: modelstub.Dockerfile }
+    environment:
+      STUB_DELAY: ${STUB_DELAY:-2s}
+
+volumes:
+  agentfield-data:
+  codeaf-data:
+  runner-data:
+  swe-af-workspaces:
+  pr-af-workspaces:
