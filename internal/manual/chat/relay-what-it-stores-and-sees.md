@@ -77,7 +77,7 @@ The hosted relay has request logs and traces disabled. Rate counters retain netw
 
 The relay can also delete what it holds, or refuse to serve it. Keep a copy you care about on a computer of your own.
 
-## What does the relay see while a view is direct — setup messages, then nothing, does a STUN server see my chats
+## What reaches the relay while a view is direct — setup messages, then nothing, does a STUN server learn anything about my chats
 
 A live view from another of your computers (*Remote control*) can move onto a direct connection between the two. Finding each other takes a few small messages sealed with your key that pass through the relay. Once the view has moved, none of its traffic goes there: typing, replies and files go straight between the two computers, so they are not in the byte counts or the daily allowance that the server keeps.
 
