@@ -18,6 +18,7 @@ import (
 var guardedPackages = []string{
 	"cmd/codeaf",
 	"internal/catalog",
+	"internal/directroad",
 	"internal/exec",
 	"internal/livedoor",
 	"internal/plan",
