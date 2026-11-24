@@ -376,7 +376,37 @@ const frameCap = 64 << 20
 // of the session file, everything that landed is in it, and the surface reads
 // it anyway. The ring exists for the one thing the journal cannot answer — a
 // turn that is still being written — and for nothing else.
-const ringEvents = 4096
+const (
+	ringEvents = 4096
+	// ringBytes caps the total payload bytes one running stream's replay ring
+	// retains beside ringEvents. The newest event is always kept even when it
+	// exceeds this bound on its own, so first and last remain exact.
+	ringBytes = 1 << 20
+
+	// messageRepeatCap bounds the per-Session table of recent remote sends
+	// keyed by (Remote.Device, SubmitArgs.ClientID).
+	messageRepeatCap = 256
+	// messageRepeatTailScan bounds how many entries at the tail of the
+	// persisted transcript are checked for a PersonMark.ClientID before a new
+	// remote send is delivered.
+	messageRepeatTailScan = 200
+)
+
+var (
+	ringEventLimit = ringEvents
+	ringByteLimit  = ringBytes
+)
+
+type messageRepeatKey struct {
+	device   string
+	clientID string
+}
+
+type messageRepeatEntry struct {
+	done    chan struct{}
+	payload json.RawMessage
+	ok      bool
+}
 
 // Serve runs one engine on one pipe until the pipe dies or the protocol does.
 // It returns nil for an ordinary hang-up and an error for everything the
@@ -552,6 +582,10 @@ type Session struct {
 	// unattended door takes can say which window it believed had gone. It is a
 	// label, never an identity, and empty when nobody was ever here.
 	lastWatch string
+
+	repeatMu    sync.Mutex
+	repeats     map[messageRepeatKey]*messageRepeatEntry
+	repeatOrder []messageRepeatKey
 }
 
 // watchGrace is how long a window goes on counting as somebody watching after
@@ -590,6 +624,7 @@ func NewSession(engine *Engine, persistent bool) *Session {
 		tasklanes:  map[*server]*taskFeed{},
 		lanes:      map[laneName]map[*server]*laneFeed{},
 		newsfeeds:  map[*server]*newsFeed{},
+		repeats:    map[messageRepeatKey]*messageRepeatEntry{},
 		empty:      time.Now(),
 	}
 	// The conversation watches its own turns from the moment it exists, so a
@@ -1069,14 +1104,30 @@ type ring struct {
 	// zero means "nothing of this stream has been seen" (wire.go's Frame.Seq).
 	first  uint64
 	last   uint64
+	bytes  int
 	events []json.RawMessage
 }
 
 func (r *ring) add(payload json.RawMessage) uint64 {
 	r.last++
 	r.events = append(r.events, payload)
-	if len(r.events) > ringEvents {
-		r.events = r.events[len(r.events)-ringEvents:]
+	r.bytes += len(payload)
+	maxEvents := ringEventLimit
+	if maxEvents < 1 {
+		maxEvents = 1
+	}
+	maxBytes := ringByteLimit
+	evicted := 0
+	for len(r.events)-evicted > 1 && (len(r.events)-evicted > maxEvents || (maxBytes > 0 && r.bytes > maxBytes)) {
+		r.bytes -= len(r.events[evicted])
+		r.events[evicted] = nil
+		evicted++
+	}
+	if evicted > 0 {
+		r.events = r.events[evicted:]
+		if cap(r.events) > 2*maxEvents && cap(r.events) >= 64 {
+			r.events = append([]json.RawMessage(nil), r.events...)
+		}
 		r.first = r.last - uint64(len(r.events)) + 1
 	}
 	return r.last
@@ -1436,6 +1487,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Launch:                     sess.engine.Launch,
 		Facts:                      sess.factsLocked(),
 		SteerRepeat:                steerRepeatKnown(sess.agent),
+		MessageRepeat:              s.remote != nil,
 		QueuedMarks:                queuedMarksKnown(sess.agent),
 		AppTaskReceipt:             appTaskReceiptKnown(sess.agent),
 		// Whether this engine can hold a folder at all, asked of the agent it has
@@ -1649,7 +1701,16 @@ func (sess *Session) replayLocked(cursors []StreamCursor) []Frame {
 
 	var frames []Frame
 	for _, id := range ids {
-		from, events := sess.rings[id].after(seen[id])
+		r := sess.rings[id]
+		seq := seen[id]
+		if seq+1 < r.first {
+			frames = append(frames, Frame{
+				Kind:    "gap",
+				ID:      id,
+				Payload: mustJSON(Gap{Stream: id, Have: seq, First: r.first}),
+			})
+		}
+		from, events := r.after(seq)
 		for offset, payload := range events {
 			frames = append(frames, Frame{
 				Kind:    "event",
@@ -2995,41 +3056,48 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MESSAGE WITH A MARK IS RECORDED WITH IT OR REFUSED WHOLE. Running
-		// only its words would silently lose what the person attached or read.
-		var events <-chan session.Event
-		door, marked := agent.(interface {
-			SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+		return s.deliverIdempotent(agent, args.ClientID, func() (json.RawMessage, error) {
+			// A MESSAGE WITH A MARK IS RECORDED WITH IT OR REFUSED WHOLE. Running
+			// only its words would silently lose what the person attached or read.
+			var events <-chan session.Event
+			door, marked := agent.(interface {
+				SubmitMessage(context.Context, session.Submission) (<-chan session.Event, error)
+			})
+			hasMark := args.marked()
+			if s.remote != nil && !marked {
+				withoutID := args
+				withoutID.ClientID = ""
+				hasMark = withoutID.marked()
+			}
+			if args.composed() || args.WantReceipt {
+				// PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT, and the
+				// receipt rides the answer that names the stream.
+				composer, ok := agent.(composedDoor)
+				if !ok {
+					return nil, errors.New("engine: this session cannot take pictures with a message; update the engine before sending it")
+				}
+				receipt, events, err := composer.SubmitComposed(context.Background(), args.submission())
+				if err != nil {
+					return nil, err
+				}
+				if _, err := s.stream(MethodSubmit, args.Text, events, nil); err != nil {
+					return nil, err
+				}
+				return json.Marshal(StreamRef{Stream: s.pending.id, Receipt: &receipt})
+			}
+			if hasMark && !marked {
+				return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
+			}
+			// A creation context alone is no mark a door must keep, but a door that
+			// can take it is handed it; one that cannot runs the words, and the team
+			// stays unknown there.
+			if hasMark || (marked && (args.Creation != nil || args.ClientID != "")) {
+				events, err = door.SubmitMessage(context.Background(), args.submission())
+			} else {
+				events, err = agent.Submit(context.Background(), args.Text)
+			}
+			return s.stream(MethodSubmit, args.Text, events, err)
 		})
-		hasMark := args.marked()
-		if args.composed() || args.WantReceipt {
-			// PICTURES ARE SENT WITH THE MESSAGE OR THE MESSAGE IS NOT SENT, and the
-			// receipt rides the answer that names the stream.
-			composer, ok := agent.(composedDoor)
-			if !ok {
-				return nil, errors.New("engine: this session cannot take pictures with a message; update the engine before sending it")
-			}
-			receipt, events, err := composer.SubmitComposed(context.Background(), args.submission())
-			if err != nil {
-				return nil, err
-			}
-			if _, err := s.stream(MethodSubmit, args.Text, events, nil); err != nil {
-				return nil, err
-			}
-			return json.Marshal(StreamRef{Stream: s.pending.id, Receipt: &receipt})
-		}
-		if hasMark && !marked {
-			return nil, errors.New("engine: this session cannot keep a message's description; update the engine before sending it")
-		}
-		// A creation context alone is no mark a door must keep, but a door that
-		// can take it is handed it; one that cannot runs the words, and the team
-		// stays unknown there.
-		if hasMark || (marked && args.Creation != nil) {
-			events, err = door.SubmitMessage(context.Background(), args.submission())
-		} else {
-			events, err = agent.Submit(context.Background(), args.Text)
-		}
-		return s.stream(MethodSubmit, args.Text, events, err)
 
 	case MethodQuestionReplace:
 		args, err := arg[QuestionArgs](call)
@@ -3049,28 +3117,36 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MARKED FOLLOW-UP IS QUEUED WITH ITS MARK OR REFUSED before anything
-		// is queued; its stream is registered for the take-back below exactly as
-		// a plain one's is.
-		var events <-chan session.Event
-		if args.composed() {
-			return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
-		}
-		door, ok := followUpMarksDoor(agent)
-		switch {
-		case args.marked() && !ok:
-			return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
-		case ok:
-			// A FOLLOW-UP BY THIS WIRE IS THE PERSON'S, marked or not, and the
-			// agent's mark door is its person door ([session.Agent.FollowUpMessage]):
-			// plain FollowUp is also an engine door and counts nobody. A creation
-			// context rides to it too; a door that cannot keep one queues the
-			// words and the team stays unknown.
-			events, err = door(args.submission())
-		default:
-			events, err = agent.FollowUp(args.Text)
-		}
-		return s.stream(MethodFollowUp, args.Text, events, err)
+		return s.deliverIdempotent(agent, args.ClientID, func() (json.RawMessage, error) {
+			// A MARKED FOLLOW-UP IS QUEUED WITH ITS MARK OR REFUSED before anything
+			// is queued; its stream is registered for the take-back below exactly as
+			// a plain one's is.
+			var events <-chan session.Event
+			if args.composed() {
+				return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
+			}
+			door, ok := followUpMarksDoor(agent)
+			hasMark := args.marked()
+			if s.remote != nil && !ok {
+				withoutID := args
+				withoutID.ClientID = ""
+				hasMark = withoutID.marked()
+			}
+			switch {
+			case hasMark && !ok:
+				return nil, errors.New("engine: this session cannot keep a follow-up's description; update the engine before sending it")
+			case ok:
+				// A FOLLOW-UP BY THIS WIRE IS THE PERSON'S, marked or not, and the
+				// agent's mark door is its person door ([session.Agent.FollowUpMessage]):
+				// plain FollowUp is also an engine door and counts nobody. A creation
+				// context rides to it too; a door that cannot keep one queues the
+				// words and the team stays unknown.
+				events, err = door(args.submission())
+			default:
+				events, err = agent.FollowUp(args.Text)
+			}
+			return s.stream(MethodFollowUp, args.Text, events, err)
+		})
 
 	case MethodUnqueueFollowUp:
 		args, err := arg[UnqueueArgs](call)
@@ -3105,28 +3181,36 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MARKED CORRECTION IS SPLICED WITH ITS MARK OR REFUSED before it
-		// reaches the turn.
-		var events <-chan session.Event
-		if args.composed() {
-			return nil, errors.New("engine: a correction carries no pictures; send them as a message")
-		}
-		door, ok := steerMarksDoor(agent)
-		switch {
-		case args.marked() && !ok:
-			return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
-		case args.marked():
-			events, err = door(args.submission())
-		case ok:
-			// A CORRECTION BY THIS WIRE IS THE PERSON'S, marked or not, and the
-			// agent's mark door is its person door ([session.Agent.SteerMessage]):
-			// plain Steer is also the engine's and runners' door and counts
-			// nobody. The words go alone, as they did by Steer.
-			events, err = door(session.Submission{Text: args.Text})
-		default:
-			events, err = agent.Steer(args.Text)
-		}
-		return s.stream(MethodSteer, args.Text, events, err)
+		return s.deliverIdempotent(agent, args.ClientID, func() (json.RawMessage, error) {
+			// A MARKED CORRECTION IS SPLICED WITH ITS MARK OR REFUSED before it
+			// reaches the turn.
+			var events <-chan session.Event
+			if args.composed() {
+				return nil, errors.New("engine: a correction carries no pictures; send them as a message")
+			}
+			door, ok := steerMarksDoor(agent)
+			hasMark := args.marked()
+			if s.remote != nil && !ok {
+				withoutID := args
+				withoutID.ClientID = ""
+				hasMark = withoutID.marked()
+			}
+			switch {
+			case hasMark && !ok:
+				return nil, errors.New("engine: this session cannot keep a correction's description; update the engine before sending it")
+			case args.marked() && ok:
+				events, err = door(args.submission())
+			case ok:
+				// A CORRECTION BY THIS WIRE IS THE PERSON'S, marked or not, and the
+				// agent's mark door is its person door ([session.Agent.SteerMessage]):
+				// plain Steer is also the engine's and runners' door and counts
+				// nobody. The words go alone, as they did by Steer.
+				events, err = door(session.Submission{Text: args.Text})
+			default:
+				events, err = agent.Steer(args.Text)
+			}
+			return s.stream(MethodSteer, args.Text, events, err)
+		})
 
 	case MethodSubmitImage:
 		args, err := arg[SubmitImageArgs](call)
@@ -4371,4 +4455,100 @@ func (sess *Session) takeCloseNotices() []string {
 	lines := sess.closeNotices
 	sess.closeNotices = nil
 	return lines
+}
+
+// deliverIdempotent ensures a remote viewer's send carrying a non-empty
+// ClientID is applied at most once per (Remote.Device, ClientID), answering
+// repeats from the per-Session table or the persisted transcript tail without
+// delivering a second message to the engine.
+func (s *server) deliverIdempotent(agent WrappedAgent, clientID string, deliver func() (json.RawMessage, error)) (json.RawMessage, error) {
+	if s.remote == nil || clientID == "" || s.session == nil {
+		return deliver()
+	}
+	sess := s.session
+	key := messageRepeatKey{device: s.remote.Device, clientID: clientID}
+	for {
+		sess.repeatMu.Lock()
+		if sess.repeats == nil {
+			sess.repeats = map[messageRepeatKey]*messageRepeatEntry{}
+		}
+		existing, found := sess.repeats[key]
+		if found {
+			sess.repeatMu.Unlock()
+			<-existing.done
+			if existing.ok {
+				return append(json.RawMessage(nil), existing.payload...), nil
+			}
+			continue
+		}
+		entry := &messageRepeatEntry{done: make(chan struct{})}
+		sess.repeats[key] = entry
+		sess.repeatMu.Unlock()
+
+		var (
+			out json.RawMessage
+			err error
+		)
+		if sess.transcriptHasClientID(agent, clientID) {
+			out, err = json.Marshal(StreamRef{})
+		} else {
+			out, err = deliver()
+		}
+
+		sess.repeatMu.Lock()
+		if err != nil {
+			if sess.repeats[key] == entry {
+				delete(sess.repeats, key)
+			}
+			close(entry.done)
+			sess.repeatMu.Unlock()
+			return nil, err
+		}
+		entry.payload = append(json.RawMessage(nil), out...)
+		entry.ok = true
+		sess.repeatOrder = append(sess.repeatOrder, key)
+		for len(sess.repeatOrder) > messageRepeatCap {
+			oldest := sess.repeatOrder[0]
+			sess.repeatOrder = sess.repeatOrder[1:]
+			delete(sess.repeats, oldest)
+		}
+		if cap(sess.repeatOrder) >= 2*messageRepeatCap {
+			sess.repeatOrder = append(make([]messageRepeatKey, 0, messageRepeatCap), sess.repeatOrder...)
+		}
+		close(entry.done)
+		sess.repeatMu.Unlock()
+		return out, nil
+	}
+}
+
+func (sess *Session) transcriptHasClientID(agent WrappedAgent, clientID string) bool {
+	if clientID == "" {
+		return false
+	}
+	if agent != nil {
+		entries := agent.Transcript()
+		if entriesHaveClientID(entries, clientID) {
+			return true
+		}
+		if len(entries) > 0 {
+			return false
+		}
+	}
+	if file := sess.File(); file != "" {
+		return entriesHaveClientID(session.ReadTranscript(file).Entries, clientID)
+	}
+	return false
+}
+
+func entriesHaveClientID(entries []session.DisplayEntry, clientID string) bool {
+	start := 0
+	if len(entries) > messageRepeatTailScan {
+		start = len(entries) - messageRepeatTailScan
+	}
+	for i := len(entries) - 1; i >= start; i-- {
+		if entries[i].Person != nil && entries[i].Person.ClientID == clientID {
+			return true
+		}
+	}
+	return false
 }

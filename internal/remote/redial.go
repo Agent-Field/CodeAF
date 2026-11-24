@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -55,13 +56,6 @@ const (
 	// opens it again. Roaming buys the person not having to type it.
 	RoamWindow = 5 * time.Minute
 
-	// firstBackoff is the pause before the first retry and slowestBackoff the
-	// ceiling it doubles up to. The first is short because most drops are a
-	// blip and the pipe is there a second later; the ceiling exists because
-	// every attempt spawns an ssh process on this machine and a hundred of them
-	// against a machine that is switched off is a person's laptop working for
-	// nothing.
-	firstBackoff   = 1 * time.Second
 	slowestBackoff = 15 * time.Second
 
 	// resumeTail is how long a resumed stream may stay silent before it is
@@ -69,6 +63,13 @@ const (
 	// [Client.watchTail] for the whole of why it exists.
 	resumeTail = 3 * time.Second
 )
+
+// firstBackoff is the pause before the first retry and slowestBackoff the
+// ceiling it doubles up to. The first is short because most drops are a blip
+// and the pipe is there a second later; the ceiling exists because every
+// attempt spawns an ssh process on this machine and a hundred of them against a
+// machine that is switched off is a person's laptop working for nothing.
+var firstBackoff = 1 * time.Second
 
 // Dialer opens ONE fresh transport to the engine. It is the seam the redial
 // loop turns on: the spawning of ssh belongs to the door (cmd/codeaf, which
@@ -85,6 +86,14 @@ type Roaming struct {
 	// MaxLine bounds one inbound line on every link this client reads (see
 	// [WithMaxLine]). Zero keeps the unbounded reader local pipes and sockets use.
 	MaxLine int
+	// ResendUnanswered resends in-flight Submit, FollowUp and Steer calls that
+	// carry a ClientID when a redial lands on a host advertising
+	// [Welcome.MessageRepeat], and mints an id for sends that left it empty.
+	ResendUnanswered bool
+	// OnGap is called when the engine reports that a resumed stream's ring
+	// evicted events older than its first retained sequence number. Nil ignores
+	// the frame and continues reading the retained events.
+	OnGap func(Gap)
 }
 
 func (r *Roaming) window() time.Duration {
@@ -188,8 +197,22 @@ func (c *Client) lost(cause error) bool {
 	// conversation noticing.
 	c.mu.Lock()
 	c.reconnecting = true
-	waiting := c.calls
-	c.calls = map[uint64]chan result{}
+	var waiting []chan result
+	if roam.ResendUnanswered {
+		for id, answer := range c.calls {
+			if _, ok := c.pendingSends[id]; ok {
+				continue
+			}
+			delete(c.calls, id)
+			waiting = append(waiting, answer)
+		}
+	} else {
+		for _, answer := range c.calls {
+			waiting = append(waiting, answer)
+		}
+		c.calls = map[uint64]chan result{}
+		c.pendingSends = map[uint64]Frame{}
+	}
 	c.mu.Unlock()
 	refusal := errors.New(c.roamingRefusal())
 	for _, answer := range waiting {
@@ -215,7 +238,45 @@ func (c *Client) lost(cause error) bool {
 	c.reconcile(left, welcome)
 	c.retakeLanes(left, welcome)
 	c.resendClientTools()
+	c.resendUnansweredSends(left, welcome, refusal)
 	return true
+}
+
+func (c *Client) resendUnansweredSends(left string, welcome Welcome, refusal error) {
+	c.mu.Lock()
+	if c.roam == nil || !c.roam.ResendUnanswered || !welcome.MessageRepeat || conversationSwitched(left, welcome.SessionFile) {
+		var failed []chan result
+		for id := range c.pendingSends {
+			if answer, ok := c.calls[id]; ok {
+				delete(c.calls, id)
+				failed = append(failed, answer)
+			}
+		}
+		c.pendingSends = map[uint64]Frame{}
+		c.mu.Unlock()
+		for _, answer := range failed {
+			answer <- result{err: refusal}
+		}
+		return
+	}
+	var frames []Frame
+	for id, frame := range c.pendingSends {
+		if _, ok := c.calls[id]; ok {
+			frames = append(frames, frame)
+		} else {
+			delete(c.pendingSends, id)
+		}
+	}
+	c.mu.Unlock()
+	if len(frames) == 0 {
+		return
+	}
+	sort.Slice(frames, func(i, j int) bool { return frames[i].ID < frames[j].ID })
+	guard.Go("remote/resend-unanswered", func() {
+		for _, frame := range frames {
+			_ = c.write(frame)
+		}
+	})
 }
 
 // conversationSwitched reports whether the engine came back with a DIFFERENT

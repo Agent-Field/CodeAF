@@ -430,7 +430,7 @@ var GuestWriteDeadline = 2 * time.Second
 // Frame is one line on the wire, either direction.
 type Frame struct {
 	// Kind says what this frame is: "hello", "welcome", "call", "result",
-	// "event", "closed", "facts", "task", "design", "question", "phase", "lane",
+	// "event", "gap", "closed", "facts", "task", "design", "question", "phase", "lane",
 	// "turn", "driver", "moved", "fatal", "sideAskDelta", "clientToolCall",
 	// "clientToolEnded". The two client-tool kinds answer nothing.
 	//
@@ -1134,6 +1134,16 @@ type StreamCursor struct {
 	Seq    uint64 `json:"seq"`
 }
 
+// Gap reports that a running stream's replay ring evicted events older than
+// First before a surface resuming from Have reattached. It rides a "gap" frame
+// ahead of the retained events so a surface that knows the kind can re-read the
+// transcript tail while an older reader ignores the unknown frame kind.
+type Gap struct {
+	Stream uint64 `json:"stream"`
+	Have   uint64 `json:"have"`
+	First  uint64 `json:"first"`
+}
+
 // Welcome is the server's answer ("welcome"): the facts a surface needs before
 // its first frame, which are the same facts newApp reads off a local agent.
 type Welcome struct {
@@ -1328,6 +1338,22 @@ type Welcome struct {
 	// asking twice, which is the degradation that costs a keystroke rather than
 	// the one that corrects a worker twice.
 	SteerRepeat bool `json:"steerRepeat,omitempty"`
+
+	// MessageRepeat says this holder RECOGNISES A REMOTE SEND IT HAS ALREADY
+	// TAKEN: a Submit, FollowUp or Steer arriving again under the same
+	// `(Remote.Device, SubmitArgs.ClientID)` answers the original [StreamRef]
+	// (or an empty [StreamRef] after a holder restart when the id is already in
+	// the persisted transcript tail) and delivers nothing to the engine.
+	//
+	// IT IS CARRIED FOR [Welcome.SteerRepeat]'S REASON: a roaming client holding
+	// an unanswered send after a dropped link must know, before it resends on
+	// the new pipe, whether repeating the call could deliver the person's words
+	// twice.
+	//
+	// ABSENCE IS false AND false IS THE SAFE READING: an older holder ignores
+	// the identity for deduplication, so the client fails the in-flight send
+	// rather than asking a second time.
+	MessageRepeat bool `json:"messageRepeat,omitempty"`
 	// QueuedMarks says this engine keeps a Submit's queued mark
 	// ([SubmitArgs.Queued]) on the message's line. ABSENCE IS AN ENGINE THAT
 	// WOULD DROP IT: the surface then sends the words without the mark and
@@ -1669,7 +1695,10 @@ type SubmitArgs struct {
 	Annotation *session.Annotation       `json:"annotation,omitempty"`
 	Queued     bool                      `json:"queued,omitempty"`
 	// ClientID is the door's opaque name for the message
-	// ([session.Submission.ClientID]); correlation only, never idempotency.
+	// ([session.Submission.ClientID]). On a remote viewer connection
+	// ([Hello.Remote]) the holder deduplicates sends by `(Remote.Device,
+	// ClientID)` so a resent message after a dropped link is never applied
+	// twice.
 	ClientID string `json:"clientId,omitempty"`
 	// From names who sent the message on the person's behalf
 	// ([session.Submission.From]).

@@ -180,6 +180,7 @@ type Client struct {
 	// their ids belong to this connection and never enter turn replay cursors.
 	sideAsks     map[uint64]func(string)
 	calls        map[uint64]chan result
+	pendingSends map[uint64]Frame
 	streams      map[uint64]*stream
 	observers    map[uint64]*stream
 	replayCursor session.ReplayCursor
@@ -341,12 +342,13 @@ func newClient(host string, hello Hello, opts ...ClientOption) *Client {
 	c := &Client{
 		clientTools: clientToolLink{owner: rand.Text()},
 
-		host:    strings.TrimSpace(host),
-		hello:   hello,
-		calls:   map[uint64]chan result{},
-		streams: map[uint64]*stream{},
-		done:    make(chan struct{}),
-		stop:    make(chan struct{}),
+		host:         strings.TrimSpace(host),
+		hello:        hello,
+		calls:        map[uint64]chan result{},
+		pendingSends: map[uint64]Frame{},
+		streams:      map[uint64]*stream{},
+		done:         make(chan struct{}),
+		stop:         make(chan struct{}),
 
 		driver:     Driver{Yours: true},
 		driverWake: make(chan struct{}),
@@ -1020,6 +1022,8 @@ func (c *Client) read() {
 			c.deliver(frame)
 		case "event":
 			c.stream(frame.ID).push(frame.Seq, frame.Payload)
+		case "gap":
+			c.gapFrame(frame)
 		case "closed":
 			c.stream(frame.ID).finish()
 		case "turn":
@@ -1113,6 +1117,7 @@ func (c *Client) deliver(frame Frame) {
 	c.mu.Lock()
 	waiting, ok := c.calls[frame.ID]
 	delete(c.calls, frame.ID)
+	delete(c.pendingSends, frame.ID)
 	c.mu.Unlock()
 	if !ok {
 		// A result for a call that has already given up (its deadline passed).
@@ -1203,6 +1208,7 @@ func (c *Client) bury(cause error) {
 	dead := c.dead
 	calls, streams := c.calls, c.streams
 	c.calls, c.streams = map[uint64]chan result{}, map[uint64]*stream{}
+	c.pendingSends = map[uint64]Frame{}
 	// AND THE TAKE-BACK'S RECEIPTS GO WITH THEM: a stream id from the
 	// connection that just died names nothing on the one that follows, and a
 	// stale receipt would match a queued message it was never handed
@@ -1356,11 +1362,19 @@ func (c *Client) callAnswered(ctx context.Context, method string, args any, dead
 		return nil, true, errors.New(c.roamingRefusal())
 	}
 	c.calls[id] = waiting
+	frame := Frame{Kind: "call", ID: id, Method: method, Payload: payload}
+	if hasRepeatClientID(method, payload) {
+		if c.pendingSends == nil {
+			c.pendingSends = map[uint64]Frame{}
+		}
+		c.pendingSends[id] = frame
+	}
 	c.mu.Unlock()
 
-	if err := c.write(Frame{Kind: "call", ID: id, Method: method, Payload: payload}); err != nil {
+	if err := c.write(frame); err != nil {
 		c.mu.Lock()
 		delete(c.calls, id)
+		delete(c.pendingSends, id)
 		roaming := c.roam != nil && !c.closing
 		c.mu.Unlock()
 		// A WRITE THAT FAILED IS NOT A CALL THAT DID NOT HAPPEN. The frame may
@@ -1383,20 +1397,26 @@ func (c *Client) callAnswered(ctx context.Context, method string, args any, dead
 	}
 	timer := time.NewTimer(deadline)
 	defer timer.Stop()
-	select {
-	case answer := <-waiting:
-		return answer.payload, answer.answered, answer.err
-	case <-ctx.Done():
-		// The caller walked away from a call that is still out there.
-		c.forget(id)
-		return nil, false, ctx.Err()
-	case <-timer.C:
-		// AND THE DEADLINE IS THE UNKNOWN ITSELF. The engine may be working on
-		// this call right now; what ran out is this end's patience. A live
-		// connection is not declared gone for that — [Client.late] is the
-		// honest sentence, and the rest of the room stays up.
-		c.forget(id)
-		return nil, false, c.late()
+	for {
+		select {
+		case answer := <-waiting:
+			return answer.payload, answer.answered, answer.err
+		case <-ctx.Done():
+			// The caller walked away from a call that is still out there.
+			c.forget(id)
+			return nil, false, ctx.Err()
+		case <-timer.C:
+			if c.isHeldForResend(id) {
+				timer.Reset(deadline)
+				continue
+			}
+			// AND THE DEADLINE IS THE UNKNOWN ITSELF. The engine may be working on
+			// this call right now; what ran out is this end's patience. A live
+			// connection is not declared gone for that — [Client.late] is the
+			// honest sentence, and the rest of the room stays up.
+			c.forget(id)
+			return nil, false, c.late()
+		}
 	}
 }
 
@@ -1437,7 +1457,67 @@ func (e lateError) Is(target error) bool { return target == ErrLate }
 func (c *Client) forget(id uint64) {
 	c.mu.Lock()
 	delete(c.calls, id)
+	delete(c.pendingSends, id)
 	c.mu.Unlock()
+}
+
+func (c *Client) isHeldForResend(id uint64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.pendingSends[id]
+	return c.reconnecting && ok
+}
+
+func (c *Client) resendUnanswered() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.roam != nil && c.roam.ResendUnanswered
+}
+
+func newSendClientID() string {
+	return "rc-" + newClientID()
+}
+
+func hasRepeatClientID(method string, payload json.RawMessage) bool {
+	switch method {
+	case MethodSubmit, MethodFollowUp, MethodSteer:
+	default:
+		return false
+	}
+	if len(payload) == 0 {
+		return false
+	}
+	var args struct {
+		ClientID string `json:"clientId"`
+	}
+	return json.Unmarshal(payload, &args) == nil && args.ClientID != ""
+}
+
+func (c *Client) gapFrame(frame Frame) {
+	var gap Gap
+	if err := json.Unmarshal(frame.Payload, &gap); err != nil {
+		return
+	}
+	if gap.Stream == 0 {
+		gap.Stream = frame.ID
+	}
+	c.mu.Lock()
+	s := c.streams[gap.Stream]
+	var onGap func(Gap)
+	if c.roam != nil {
+		onGap = c.roam.OnGap
+	}
+	c.mu.Unlock()
+	if s != nil && gap.First > 1 {
+		s.mu.Lock()
+		if s.seen < gap.First-1 {
+			s.seen = gap.First - 1
+		}
+		s.mu.Unlock()
+	}
+	if onGap != nil {
+		onGap(gap)
+	}
 }
 
 // ── the typed doors ─────────────────────────────────────────────────────────
@@ -1979,7 +2059,11 @@ func (a *Agent) Client() *Client { return a.c }
 // nothing a person can press is lost — but a caller reading this method's
 // signature should know which of the two it is holding.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
-	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text})
+	args := SubmitArgs{Text: text}
+	if a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(ctx, MethodSubmit, args)
 }
 
 // SubmitMessage is Submit with what the door knows about the message beyond its
@@ -2000,10 +2084,17 @@ func (a *Agent) SubmitMessage(ctx context.Context, message session.Submission) (
 	}
 	mark := argsOf(message)
 	mark.Queued = false
+	if a.MessageRepeatKnown() {
+		mark.ClientID = ""
+	}
 	if mark.marked() && !a.MessageMarksKnown() {
 		return nil, errors.New("engine: this engine cannot keep a message's description; update it before sending")
 	}
-	return a.open(ctx, MethodSubmit, argsOf(message))
+	args := argsOf(message)
+	if args.ClientID == "" && a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(ctx, MethodSubmit, args)
 }
 
 // SubmitComposed is Submit for a message that carries pictures and what the
@@ -2055,13 +2146,24 @@ func (a *Agent) SteerMessage(message session.Submission) (<-chan session.Event, 
 	if argsOf(message).composed() {
 		return nil, errors.New("engine: a correction carries no pictures; send them as a message")
 	}
-	if !argsOf(message).marked() {
+	mark := argsOf(message)
+	if a.MessageRepeatKnown() {
+		mark.ClientID = ""
+	}
+	if !mark.marked() {
+		if message.ClientID != "" {
+			return a.open(nil, MethodSteer, argsOf(message))
+		}
 		return a.Steer(message.Text)
 	}
 	if !a.SteerMarksKnown() {
 		return nil, errors.New("engine: this engine cannot keep a correction's description; update it before sending")
 	}
-	return a.open(nil, MethodSteer, argsOf(message))
+	args := argsOf(message)
+	if args.ClientID == "" && a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(nil, MethodSteer, args)
 }
 
 // FollowUpMessage is FollowUp with what the door knows about the message beyond
@@ -2075,10 +2177,14 @@ func (a *Agent) FollowUpMessage(message session.Submission) (<-chan session.Even
 	if argsOf(message).composed() {
 		return nil, errors.New("engine: a queued message carries no pictures; send them as a message")
 	}
-	if !argsOf(message).marked() {
+	mark := argsOf(message)
+	if a.MessageRepeatKnown() {
+		mark.ClientID = ""
+	}
+	if !mark.marked() {
 		// A creation context alone goes to an engine that keeps marks, and is
 		// left behind by one that does not: the team is then unknown there.
-		if message.Creation != nil && a.FollowUpMarksKnown() {
+		if (message.Creation != nil && a.FollowUpMarksKnown()) || message.ClientID != "" {
 			return a.followUp(argsOf(message))
 		}
 		return a.FollowUp(message.Text)
@@ -2144,6 +2250,9 @@ func (a *Agent) FollowUp(text string) (<-chan session.Event, error) {
 
 // followUp is the FollowUp call's one body, plain or marked.
 func (a *Agent) followUp(args SubmitArgs) (<-chan session.Event, error) {
+	if args.ClientID == "" && a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
 	payload, err := a.c.call(nil, MethodFollowUp, args)
 	if err != nil {
 		return nil, err
@@ -2151,6 +2260,11 @@ func (a *Agent) followUp(args SubmitArgs) (<-chan session.Event, error) {
 	var ref StreamRef
 	if err := json.Unmarshal(payload, &ref); err != nil {
 		return nil, err
+	}
+	if ref.Stream == 0 {
+		done := make(chan session.Event)
+		close(done)
+		return done, nil
 	}
 	s := a.c.stream(ref.Stream)
 	s.keepFollowRef(&a.c.followRefs, ref.Stream)
@@ -2234,7 +2348,11 @@ func (f *followRefs) forget() {
 // one; making the far end infer which was meant would erase the person's
 // intent at the wire.
 func (a *Agent) Steer(text string) (<-chan session.Event, error) {
-	return a.open(nil, MethodSteer, SubmitArgs{Text: text})
+	args := SubmitArgs{Text: text}
+	if a.c.resendUnanswered() {
+		args.ClientID = newSendClientID()
+	}
+	return a.open(nil, MethodSteer, args)
 }
 
 // open is the stream-opening calls' one body: the call, the [StreamRef] it
@@ -2247,6 +2365,11 @@ func (a *Agent) open(ctx context.Context, method string, args any) (<-chan sessi
 	var ref StreamRef
 	if err := json.Unmarshal(payload, &ref); err != nil {
 		return nil, err
+	}
+	if ref.Stream == 0 {
+		done := make(chan session.Event)
+		close(done)
+		return done, nil
 	}
 	return a.c.stream(ref.Stream).events(), nil
 }
@@ -3180,6 +3303,12 @@ func (a *Agent) MessageClientIDsKnown() bool {
 	return a.welcomeSays(func(w Welcome) bool { return w.MessageClientIDs })
 }
 
+// MessageRepeatKnown is whether the holder deduplicates remote sends by device
+// and ClientID ([Welcome.MessageRepeat]).
+func (a *Agent) MessageRepeatKnown() bool {
+	return a.welcomeSays(func(w Welcome) bool { return w.MessageRepeat })
+}
+
 // MessageFromKnown is whether the engine keeps who sent a message on the
 // person's behalf ([Welcome.MessageFrom]).
 func (a *Agent) MessageFromKnown() bool {
@@ -3190,7 +3319,7 @@ func (a *Agent) MessageFromKnown() bool {
 // sender or an attachment source this engine cannot keep, and nil for one that
 // carries none or whose engine can.
 func (a *Agent) refuseUnkeptMarks(message session.Submission) error {
-	if message.ClientID != "" && !a.MessageClientIDsKnown() {
+	if message.ClientID != "" && !a.MessageClientIDsKnown() && !a.MessageRepeatKnown() {
 		return errors.New("engine: this engine cannot keep a message's client id; update it before sending")
 	}
 	if message.From != "" && !a.MessageFromKnown() {
