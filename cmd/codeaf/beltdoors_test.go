@@ -47,8 +47,12 @@ const helpLineCap = 123
 //   - `show` and `revise` are the old top-level spellings of `plan show` and
 //     `plan revise`; the page names the commands they became.
 //   - `help` is the alias for `--help` itself.
+//   - `sessionhost` is the hosting service the organization's Compose stack
+//     starts in its own container (`probe` and `health` are the checks an
+//     operator runs there); a person never types it, and the manual's page on
+//     where hosted chats run says what it is for.
 var doorsOffThePage = map[string]bool{
-	"cell": true, "identity": true, "relay": true, "engine": true, "app": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true,
+	"cell": true, "identity": true, "relay": true, "engine": true, "app": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true, "sessionhost": true,
 }
 
 // THE FIRST GESTURE ON AN UNFAMILIAR DOOR IS `-h`, and it must not be a

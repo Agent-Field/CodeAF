@@ -321,6 +321,10 @@ func run() error {
 		// command that draws nothing and reads no keys would only be a puzzle
 		// in a list of commands that do.
 		return runRemoteEngine(os.Args[2:])
+	case "sessionhost":
+		// The compose stack starts this machinery, so it is deliberately
+		// absent from the usage text.
+		return runSessionhost(os.Args[2:])
 	case "app":
 		// The desktop app's backend: JSON lines on this process's own pipes,
 		// every agent held in this one process (app.go). Like `engine` it is
