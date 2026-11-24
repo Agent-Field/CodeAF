@@ -190,7 +190,15 @@ The chat's strip says where it stands: `live`, `reconnecting`, `offline` with wh
 
 The model, approval posture and spending limit of a live view are set on the computer running the chat, not from here, and the desktop's own tools are not given to that chat.
 
-What a computer lets another one do is set on that computer, in Settings → Devices → each other computer: watch its chats, and type into them. Off for typing unless you turned it on there. Chats a terminal holds can be opened live from the desktop. A chat this desktop itself is running is not offered to other computers yet: from another computer it still says where it is held.
+What a computer lets another one do is set on that computer, in Settings → Devices → each other computer: watch its chats, and type into them. A computer paired before remote control existed can watch but not type until you allow it; one paired since can do both, and you can turn either off. Chats a terminal holds can be opened live from the desktop, and a chat this desktop is running can be opened live from your other computers (*Offer a chat running on this desktop to another computer*).
+
+## Offer a chat running on this desktop to another computer — remote control, who may open it, how long, when it ends
+
+With **remote control** on (Settings → General, off by default), a chat this desktop is running can be opened live from your other computers, the way the desktop opens theirs: they see the history and the reply as it streams, and write in it only if this computer lets them. That is set the same way as the other direction, in Settings → Devices → that computer: whether it may watch your chats here, and whether it may write in them (a computer paired before remote control existed starts with watching only). The desktop's own window stays in the chat the whole time and keeps the chat's words; another computer is one more window on the same conversation, not a copy.
+
+A chat is offered while this desktop has it open. One a window has left idle is let go after its usual idle time, **unless another computer is watching it**, which keeps it open until they leave. Closing the chat here or quitting the desktop ends their view: they see `<this computer> closed this chat.`, and the chat reads from the saved copy from then on. A chat opened while remote control was off is not offered; turn it on, and chats opened afterwards are.
+
+If another computer takes the keyboard, the desktop's own box is refused with the sentence that says who has it, and the chat keeps running either way. A running factory stage is not offered. With remote control off, or when the desktop cannot open the door another computer would knock on (the state folder's path is too long for a socket, or its folder is read-only), nothing here applies and the chat says where it is held, as before.
 
 ## Send a message to a chat working on another computer — queued there, runs after the turn
 
