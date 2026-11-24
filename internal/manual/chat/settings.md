@@ -93,6 +93,8 @@ damaged configuration or invalid value reads off, as shown in Settings.
 
 **Settings → General → idle handoff** (`idle_handoff`, environment `CODEAF_IDLE_HANDOFF`) is **off by default**. While off, open idle chats keep renewing their hold and released remote chats use **Continue here**. Turn it on in Settings or with `CODEAF_IDLE_HANDOFF=1` so paired idle chats release their hold about 2 seconds after upload and released shared chats open directly on Home and through `agents.open` (`can_open`).
 
+**Settings → General → remote control** (`remote_control`, environment `CODEAF_REMOTE_CONTROL`) is **off by default**. It lets another computer of yours open this computer's running chats and, if you allow it, type into them. Off until you turn it on in Settings or with `CODEAF_REMOTE_CONTROL=1`.
+
 ## AI teams settings versus an individual AI team
 
 **AI teams** contains defaults for groups of AI chats, including questions to an

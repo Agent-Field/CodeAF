@@ -59,6 +59,10 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyTeamsShare:
 		p.Scope = "This computer"
 		p.Activation = "Applies immediately"
+	case KeyRemoteControl:
+		p.Label = "remote control"
+		p.Scope = "This computer"
+		p.Activation = "Applies immediately"
 	case KeyTaskColumn:
 		p.Label = "task sidebar"
 	case KeyQuickSwitch:
@@ -233,6 +237,8 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Aliases = append(p.Aliases, "privacy", "saved messages")
 	case KeyIdleHandoff:
 		p.Aliases = append(p.Aliases, "handoff", "idle release", "continue here", "other computers", "sync")
+	case KeyRemoteControl:
+		p.Aliases = append(p.Aliases, "other computer", "type from another computer", "drive")
 	}
 	return p
 }
