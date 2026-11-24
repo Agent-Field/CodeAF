@@ -328,6 +328,12 @@ func (m *Mux) Open(ctx context.Context, chat string) (*Channel, error) {
 		}
 		return ch, nil
 	case <-m.done:
+		m.mu.Lock()
+		refused, reason := ch.refused, ch.reason
+		m.mu.Unlock()
+		if refused {
+			return nil, &RefusedError{Reason: reason}
+		}
 		return nil, ErrLinkClosed
 	case <-ctx.Done():
 		m.mu.Lock()
@@ -418,6 +424,12 @@ func (m *Mux) WaitHelloAck(ctx context.Context) (HelloAck, error) {
 		m.mu.Unlock()
 		return ack, nil
 	case <-m.done:
+		m.mu.Lock()
+		ack, ok := m.helloAck, m.hasHelloAck
+		m.mu.Unlock()
+		if ok {
+			return ack, nil
+		}
 		return HelloAck{}, ErrLinkClosed
 	case <-ctx.Done():
 		return HelloAck{}, ctx.Err()
