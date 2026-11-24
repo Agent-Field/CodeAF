@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/livedoor"
@@ -150,7 +151,10 @@ func (s *Sync) attachRemoteControl(cfg *filesdoor.ServeConfig) {
 		p, _ := pair.Permits().For(identityID, device)
 		return p
 	}
-	cfg.Live = func(ctx context.Context, tun io.ReadWriteCloser, device string) error {
+	// serve is the one place a live tunnel becomes a livedoor.Serve call, whichever
+	// road carried it. direct is the host half a RELAY tunnel advertises, and is
+	// nil for every tunnel that must not offer one.
+	serve := func(ctx context.Context, tun io.ReadWriteCloser, device, road string, direct livedoor.DirectHost) error {
 		permit, class := pair.Permits().For(identityID, device)
 		peer := livedoor.Peer{
 			Device: device,
@@ -164,9 +168,35 @@ func (s *Sync) attachRemoteControl(cfg *filesdoor.ServeConfig) {
 			Budget:   s.budget(),
 			Permit:   readPermit,
 			Host:     s.hostLabel(),
-			Road:     "relay",
+			Road:     road,
+			Direct:   direct,
 			Clock:    livedoor.RealClock(),
 		})
+	}
+	// THE DIRECT ROAD EXISTS ONLY WHEN ALL THREE HOLD: remote control is on (the
+	// check above), the person did not pin the road to the relay, and the program
+	// installed an implementation. Otherwise nothing here constructs a peer
+	// connection, no STUN request can be made, the door advertises no direct road
+	// and a direct intent is refused before any Noise work.
+	if road, ok := InstalledDirectRoad(); ok && !config.RemoteRoadRelayOnly() {
+		host := road.NewHost(config.RemoteSTUN())
+		cfg.Direct = func(ctx context.Context, accept filesdoor.StreamAcceptor) {
+			host.SetAcceptor(ctx, accept)
+			guard.Go("syncsetup.directroad.close", func() {
+				<-ctx.Done()
+				host.Close()
+			})
+		}
+		cfg.LiveRoad = func(ctx context.Context, tun io.ReadWriteCloser, device, carried string) error {
+			if carried == livedoor.RoadDirect {
+				return serve(ctx, tun, device, livedoor.RoadDirect, nil)
+			}
+			return serve(ctx, tun, device, livedoor.RoadRelay, host)
+		}
+	} else {
+		cfg.Live = func(ctx context.Context, tun io.ReadWriteCloser, device string) error {
+			return serve(ctx, tun, device, livedoor.RoadRelay, nil)
+		}
 	}
 	cfg.Revoked = func(ctx context.Context, gone func(devices []string)) func() {
 		return subscribeRevoked(s.Home, func(ids []string) {

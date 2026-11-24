@@ -320,11 +320,14 @@ func (s *Sync) ensureFilesDoor() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &doorRun{stop: cancel, done: make(chan struct{}), remoteControl: cfg.Live != nil}
+	// Remote control is carried by whichever of the two live handlers is set: Live
+	// alone, or LiveRoad when the direct road is on.
+	servesLive := cfg.Live != nil || cfg.LiveRoad != nil
+	run := &doorRun{stop: cancel, done: make(chan struct{}), remoteControl: servesLive}
 	filesDoors.runs[s.Home] = run
 	homeDir := s.Home
 	var watchWG sync.WaitGroup
-	if cfg.Live != nil {
+	if servesLive {
 		watchWG.Add(1)
 		guard.Go("syncsetup.permitsWatch", func() {
 			defer watchWG.Done()
