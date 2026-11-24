@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -874,6 +875,12 @@ func (c *Client) SendRefusal() string {
 // again. A sentence that only reported the failure would leave a person
 // wondering whether their work survived.
 func (c *Client) gone(cause error) error {
+	// A view the far end ended on purpose already has its one true sentence,
+	// and "run the same command" would be wrong advice for it: the same command
+	// asks the same computer, which has just said no.
+	if reason, ended := endedByFarEnd(cause); ended {
+		return errors.New(chatlist.LiveSaid(reason, c.where()))
+	}
 	sentence := fmt.Sprintf("the connection to %s is gone — run the same command to pick the conversation back up", c.where())
 	// A cause worth repeating is one the FAR END chose to say (a "fatal" frame's
 	// reason). Transport errors are not: "read |0: file already closed" tells a

@@ -219,6 +219,28 @@ func plural(n int, word string) string {
 
 // ── the loop ────────────────────────────────────────────────────────────────
 
+// farEndEnded is what an error says when the link under a reader ended because
+// the far end CLOSED THE VIEW ON PURPOSE and said why (livedoor's
+// `remote-control-off`), as opposed to the link failing. It is an interface for
+// the reason [plannedRedial] is: this package cannot import livedoor, and the
+// reason itself is read through the `Reason() string` every channel error of a
+// live door already has.
+type farEndEnded interface{ EndsView() bool }
+
+// endedByFarEnd answers the closed reason the far end ended the view with, and
+// whether the cause is one of those.
+func endedByFarEnd(cause error) (reason string, ended bool) {
+	var ender farEndEnded
+	if !errors.As(cause, &ender) || !ender.EndsView() {
+		return "", false
+	}
+	var spoken interface{ Reason() string }
+	if errors.As(cause, &spoken) {
+		return spoken.Reason(), true
+	}
+	return "", false
+}
+
 // plannedRedial is what an error says when the link under a reader ended
 // because the road that carries it was CHANGED ON PURPOSE (livedoor's
 // `road-change`), not because anything failed. It is an interface so that this
@@ -248,6 +270,15 @@ func (c *Client) lost(cause error) bool {
 	left := c.welcome.SessionFile
 	c.mu.Unlock()
 	if roam == nil || closing || dead != nil || c.stopped() {
+		c.bury(cause)
+		return false
+	}
+	// A FAR END THAT ENDED THIS VIEW ON PURPOSE IS NOT A BLIP. It is up, it
+	// answered, and what it said was that it will not carry the view, so thirty
+	// minutes of redials would only be thirty minutes of a screen claiming the
+	// connection is being repaired. The client is buried at once, and what it says
+	// is the far end's own sentence ([Client.gone]).
+	if _, ended := endedByFarEnd(cause); ended {
 		c.bury(cause)
 		return false
 	}
