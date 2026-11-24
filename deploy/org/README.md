@@ -123,6 +123,11 @@ because it has to become a different Linux user for every chat. It is built from
 - **A user and a folder of its own.** The chat runs as its own Linux user (numbers from 200000 up) in
   `/chats/people/<person>/<chat>/`, mode 0700, with `home`, `work` and `tmp` inside. Another chat's user
   cannot read, write, list or signal it, and the organization server's own data is not on this machine's disk.
+  The folders above a chat (`/chats`, `people` and one per person, mode 0755) are readable by every chat's
+  user on purpose: the saved-history helper syncs every folder above a new file, and a folder that could only be
+  passed through made the first command of every new chat say "calls are not being sealed". The price is that a
+  command can list the names of other chats (a hashed name per person, a random identifier per chat), never what
+  is inside them.
 - **A fence on every command**, switched on and not removable from inside the chat. If this machine cannot
   apply one, the chat's commands are refused, never run open; if it cannot switch users it starts no chats
   and says so (`codeaf sessionhost probe` prints what it measured; `ok: false` is a refusal).

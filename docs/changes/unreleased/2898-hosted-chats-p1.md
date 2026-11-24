@@ -1,6 +1,6 @@
 ---
 kind: added
-title: Hosted chats get a metered model door, per-person sealed keys, git through the server and a port limit
+title: Hosted chats get a metered model door, sealed personal keys, server-side git and a port limit
 pr: 2898
 surface: [chat, engine, factory, build, docs]
 invalidates:

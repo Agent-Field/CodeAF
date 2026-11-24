@@ -529,6 +529,8 @@ def hosted():
     status, out, err = chat(owner, first, session=first_id)
     check('C1 a chat opens through `codeaf chat --org` and runs a shell, git and a worktree', status == 0 and 'STUB ran' in out and field(out, 'STATUS') == '?? f',
           short(out + err, 300))
+    # P1 item 0: the first command of a brand-new chat used to end with "calls are not being sealed ... Permission denied".
+    check('P1-0 the first command of a new chat does not say its calls are not being sealed', 'not being sealed' not in out + err, short(err, 200))
     host = field(out, 'HOST')
     check('C1 the commands ran on another machine than the organization server', bool(host) and host != socket.gethostname(), f'{host} vs {socket.gethostname()}')
     work = field(out, 'PWD') or ''
