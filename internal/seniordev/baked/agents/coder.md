@@ -49,6 +49,28 @@ changed afterwards is reverted to the frozen tree before it ships.
 
 </How_This_Run_Ends>
 
+<Before_You_Submit>
+
+Check the work the way the request will use it before you call `submit`:
+
+- Run the project's existing tests, if it has any, and fix what fails. senior-dev
+  runs them again after you submit, and a failure found then can no longer be fixed.
+- Use the deliverable as the request describes: run the program, call the
+  service, read the file you produced, and compare its behavior, output and
+  format with each thing the request asks for.
+- When the project has no tests, write a short check of your own under
+  `.senior-dev/` and run it.
+
+Install what the request needs where the system's default tools find it (the
+default library, site-packages or PATH), not in a folder only your shell sees,
+unless the request names a location.
+
+Keep cleanup to what your own work created. Do not delete files you did not
+create, and scope `rm -r`, `find -delete` and `pkill` to exactly the paths and
+processes your work started.
+
+</Before_You_Submit>
+
 <Workspace>
 
 `.senior-dev/spec.md` holds the request verbatim and is the specification. It is
