@@ -11,7 +11,8 @@
 #
 #     ./smoke.sh
 #
-# COMPOSE='docker compose -p other' picks another project; SMOKE_ENV='--env-file x' adds an env file.
+# COMPOSE='docker compose -p other' picks another project; SMOKE_ENV='--env-file x' adds an env file;
+# SMOKE_BUILD=--no-build uses the images that are already there (the default builds what changed).
 set -eu
 cd "$(dirname "$0")"
 [ -f .env ] || ./setup.sh
@@ -25,7 +26,7 @@ run() { # service exec-flags section [args]: run one section, remember a failure
 }
 
 echo '== bringing the stack up (the first time this builds the images: several minutes)'
-$DC up -d --build --wait --wait-timeout 600
+$DC up -d ${SMOKE_BUILD:---build} --wait --wait-timeout 600
 
 echo '== operator link'
 link=$(COMPOSE="$DC" ./operator-link.sh)   # a secret: it is passed on, never printed here

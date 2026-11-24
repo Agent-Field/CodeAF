@@ -46,13 +46,18 @@ from pinned commits of their public repositories.
 ./operator-link.sh              # prints the operator access link (a secret; it works once)
 ```
 
+On a laptop the link names `http://[::]:8787`. That is the address the server gives itself (its listen address) and a
+link is only accepted with exactly that address, so it is not rewritten. A connection to `[::]` reaches the local
+machine on Linux and macOS, so the desktop app on the same machine can use it; Windows cannot, and nobody on another
+machine can. For them, serve the organization on a public HTTPS name (see "Other people") and the link names that.
+
 1. Open that `codeaf://factory/join?operator=true...` link in the codeaf desktop app (or paste it into
    **Join an organization...**). Choose a username and a password. Whoever uses the link first is the operator,
    so keep it to yourself until you have.
 2. From **People**, the operator makes an **invite link** for the second person. They paste it into
    **Join an organization...** on their own computer and choose their own username and password.
-3. A codeaf client connects to this organization with the server's URL, which is inside the link. The URL is
-   `http://localhost:8787` on the machine running Compose, or your public HTTPS name for everyone else.
+3. A codeaf client connects to this organization with the server's URL, which is inside the link: your public
+   HTTPS name, or `http://[::]:8787` on the machine running Compose.
 
 If the operator link is lost before anyone used it, `docker compose restart codeaf` prints a fresh one.
 
@@ -121,10 +126,30 @@ mode 600); it is ignored by git and by the image build.
 
 ## Railway
 
-The same services run on Railway as one project: five services plus volumes, private networking between them,
-and a public domain on the `codeaf` service only. `deploy/org` is the build root for the four built services
-(`codeaf`, `runner`, `swe-af`, `pr-af`, each pointing at its own Dockerfile); `agentfield` runs the published
-image. See the end of this file for the variables each service takes.
+The same Dockerfiles run on Railway as one project: five services, a volume on each, private networking
+between them, and a public domain on `codeaf` only. Nothing needs Compose there; each service builds its own
+Dockerfile from this folder. (A one-click Railway template of this is the next step; until then it is built by hand,
+below, and the POC that proved it ran the keyless smoke test on itself.)
+
+Create an empty project, then one service per row. For the four built services choose **GitHub repo**, set
+**Root Directory** to `deploy/org`, and set the variable `RAILWAY_DOCKERFILE_PATH` (or the service's
+**Dockerfile Path**) to the Dockerfile in the row. Add a volume at the mount path in the row. Reference variables
+(`${{agentfield.RAILWAY_PRIVATE_DOMAIN}}`) are Railway's way of naming another service; keep them as written.
+
+| Service | Dockerfile | Volume | Variables |
+| --- | --- | --- | --- |
+| `agentfield` | `agentfield.Dockerfile` | `/data` | `AGENTFIELD_API_KEY=${{secret(64, "abcdef0123456789")}}`, `AGENTFIELD_HOME=/data`, `AGENTFIELD_CONFIG_FILE=/dev/null`, `AGENTFIELD_PORT=8080`, `PORT=8080`, `AGENTFIELD_STORAGE_MODE=local`, `AGENTFIELD_STORAGE_LOCAL_DATABASE_PATH=/data/agentfield.db`, `AGENTFIELD_STORAGE_LOCAL_KV_STORE_PATH=/data/agentfield.bolt`, `AGENTFIELD_RUN_OWNER_REQUIRE_PROOF=true`, `AGENTFIELD_TELEMETRY_ENABLED=false`. Health check path `/api/v1/health`. |
+| `codeaf` | `codeaf.Dockerfile` | `/data` | `CODEAF_ROLE=server`, `PORT=8787`, `CODEAF_ORG_NAME=...`, `CODEAF_PUBLIC_DOMAIN=${{RAILWAY_PUBLIC_DOMAIN}}`, `CODEAF_TRUSTED_PROXIES=100.64.0.0/10`. Generate a public domain for this service only, target port 8787. |
+| `runner` | `codeaf.Dockerfile` | `/data` | `CODEAF_ROLE=runner`, `AGENTFIELD_URL=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `ORG_MODEL=...`, `OPENROUTER_API_KEY=...`. |
+| `swe-af` | `swe-af.Dockerfile` | `/workspaces` | `NODE_ID=swe-planner`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `SWE_HITL_NATIVE=1`, `SWE_FENCE=off`, `SWE_PRO_ENGINE=0`, `SWE_DEFAULT_MODEL=openrouter/...`, `OPENROUTER_API_KEY=...`. |
+| `pr-af` | `pr-af.Dockerfile` | `/workspaces` | `NODE_ID=pr-af`, `PORT=8007`, `AGENTFIELD_SERVER=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080`, `AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}`, `AGENT_CALLBACK_URL=http://${{RAILWAY_PRIVATE_DOMAIN}}:8007`, `PR_AF_MODEL=...`, `OPENROUTER_API_KEY=...`. |
+| `modelstub` (keyless only) | `modelstub.Dockerfile` | none | `STUB_DELAY=2s`; then on `runner`, `swe-af` and `pr-af` set `CODEAF_BASE_URL=http://${{modelstub.RAILWAY_PRIVATE_DOMAIN}}:8890/api/v1`, `OPENROUTER_API_KEY=stub-key`, and the model variables to `stub/scripted` (SWE-AF: `openrouter/stub/scripted`); on `swe-af` also `SMOKE_FIXTURE_REPO=/workspaces/smoke-fixture`. |
+
+Two things differ from Compose. Railway's edge is an HTTPS proxy in front of `codeaf`, so
+`CODEAF_TRUSTED_PROXIES=100.64.0.0/10` (the edge's range) is required: without it every password sign-in is
+refused as plain HTTP. And there is no `docker exec`, so set `RUNNER_SELFTEST=1` on `runner` to have it run the
+smoke test's control and job sections on itself at start (PASS or FAIL lines in its log; `RUNNER_SELFTEST=after`
+runs the after-a-restart section instead). The operator link is in the `codeaf` deploy log.
 
 ## Known limits
 
@@ -132,8 +157,8 @@ image. See the end of this file for the variables each service takes.
   does not itself register the factory on AgentField. When codeaf ships a headless runner this goes away.
 - The organization keeps no canvases: the server needs a `canvas` program beside it, which this stack does not
   carry. It starts, says so in its log, and leaves the canvas routes off.
-- The operator link prints the address the server listens on unless `CODEAF_PUBLIC_DOMAIN` is set;
-  `./operator-link.sh` rewrites it for a laptop.
+- The server names itself by its listen address, so without `CODEAF_PUBLIC_DOMAIN` its links say `http://[::]:8787`,
+  which only the same Linux or macOS machine can use. A real deployment serves HTTPS on a name.
 - GitHub sign-in (`CODEAF_GITHUB_CLIENT_ID`) and invitation mail (`CODEAF_SMTP_URL`) are optional and untested here;
   username and password is the default way in.
 - One replica of each service; no high availability.
