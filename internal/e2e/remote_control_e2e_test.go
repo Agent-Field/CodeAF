@@ -636,7 +636,7 @@ func rcOldFlagsStillWork(t *testing.T) {
 // carries none of it.
 func rcDirectRoadComesUp(t *testing.T) {
 	rcRequireDirectRoad(t)
-	rc := newRCRig(t, rcOptions{viewers: 1})
+	rc := newRCRig(t, rcOptions{viewers: 1, direct: true})
 	host := rc.startHost()
 	rc.hostAsk(host, rcHostAsk, rcHostReply)
 	viewer := rc.startViewer(0)
@@ -682,7 +682,7 @@ func rcDirectRoadComesUp(t *testing.T) {
 // long it is watched, and a line typed on it travels the relay's tunnel.
 func rcRelayOnlyStaysOnTheRelay(t *testing.T) {
 	rcRequireDirectRoad(t)
-	rc := newRCRig(t, rcOptions{viewers: 1, hostEnv: []string{"CODEAF_REMOTE_ROAD=relay"}})
+	rc := newRCRig(t, rcOptions{viewers: 1, direct: true, hostEnv: []string{"CODEAF_REMOTE_ROAD=relay"}})
 	host := rc.startHost()
 	rc.hostAsk(host, rcHostAsk, rcHostReply)
 	viewer := rc.startViewer(0)
@@ -727,6 +727,14 @@ type rcOptions struct {
 	// unpaired leaves every home with no identity, for the scenario that pairs
 	// them through the product's own pairing and reads what that grants.
 	unpaired bool
+	// direct leaves the road automatic, which is what the two scenarios about the
+	// direct road need. Every other scenario holds its computers to the relay,
+	// because a swap to the direct road is a planned redial of the live view that
+	// can land half a second to a few seconds after it opens, and a live view that
+	// re-syncs drops what was only ever written locally, such as the sentence a
+	// refused move leaves. Those scenarios assert what the view says and does on
+	// one road; moving between roads is asserted where the road is the subject.
+	direct bool
 	// hostEnv is added to the environment of the host's windows alone, for the
 	// scenario that sets a switch on one computer and not the other.
 	hostEnv []string
@@ -752,6 +760,7 @@ type rcRig struct {
 	viewers  []rcHome
 	windows  int
 	hostEnv  []string
+	direct   bool
 }
 
 // newRCRig builds a scenario's world and leaves every window to the scenario.
@@ -774,7 +783,7 @@ func newRCRig(t *testing.T, opt rcOptions) *rcRig {
 	t.Setenv("CODEAF_TELEMETRY", "off")
 	t.Setenv("DO_NOT_TRACK", "1")
 
-	rc := &rcRig{t: t, root: root, model: startRCModel(t), hostEnv: opt.hostEnv}
+	rc := &rcRig{t: t, root: root, model: startRCModel(t), hostEnv: opt.hostEnv, direct: opt.direct}
 	rc.address, rc.audit = startAuditedRelay(t, root)
 	t.Setenv(syncsetup.URLVar, rc.address)
 
@@ -911,12 +920,16 @@ func (rc *rcRig) settlePairing() {
 // env is what every window and command of the rig runs with. The key is a string
 // and not a secret: nothing behind the model asks for one.
 func (rc *rcRig) env() []string {
-	return []string{config.APIKeyEnv + "=stub-key", "CODEAF_BASE_URL=" + rc.model.server.URL + "/api/v1", "CODEAF_PROFILE_DIR=",
+	env := []string{config.APIKeyEnv + "=stub-key", "CODEAF_BASE_URL=" + rc.model.server.URL + "/api/v1", "CODEAF_PROFILE_DIR=",
 		syncsetup.URLVar + "=" + rc.address, "CODEAF_SYNC_INTERVAL_MS=100", "CODEAF_TELEMETRY=off", "DO_NOT_TRACK=1",
 		"CODEAF_NO_UPDATE_CHECK=1", "CODEAF_NO_AUTOMATIONS=1", "CODEAF_REMOTE_CONTROL=1",
 		// No window of this suite asks a STUN server: the direct road is offered
 		// with this machine's own addresses and nothing else.
 		"CODEAF_REMOTE_STUN=off"}
+	if !rc.direct {
+		env = append(env, "CODEAF_REMOTE_ROAD=relay")
+	}
+	return env
 }
 
 // window opens one terminal on a computer. Names are numbered so a window that
