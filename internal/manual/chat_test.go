@@ -3755,6 +3755,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can my laptop answer a question that is waiting on my desktop", "remote-control"},
 		{"remote control says restart codeaf on the other computer", "remote-control"},
 		{"is remote control the same as codeaf serve and --at", "remote-control"},
+		// The desktop's own switch (desktop-sync.md): where it is and why it says restart.
+		{"how do I turn on remote control in the desktop app", "desktop-sync"},
+		{"the Remote control switch in the desktop settings says restart", "desktop-sync"},
+		{"Remote control is set by CODEAF_REMOTE_CONTROL and the switch is greyed out", "desktop-sync"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
