@@ -93,8 +93,6 @@ damaged configuration or invalid value reads off, as shown in Settings.
 
 **Settings → General → idle handoff** (`idle_handoff`, environment `CODEAF_IDLE_HANDOFF`) is **off by default**. While off, open idle chats keep renewing their hold and released remote chats use **Move here**. Turn it on in Settings or with `CODEAF_IDLE_HANDOFF=1` so paired idle chats release their hold about 2 seconds after upload and released shared chats open directly on Home and through `agents.open` (`can_open`).
 
-**Settings → General → remote control** (`remote_control`, environment `CODEAF_REMOTE_CONTROL`) is **off by default**. It lets another computer of yours open this computer's running chats and, if you allow it, type into them. Off until you turn it on in Settings or with `CODEAF_REMOTE_CONTROL=1`.
-
 ## AI teams settings versus an individual AI team
 
 **AI teams** contains defaults for groups of AI chats, including questions to an
@@ -254,6 +252,8 @@ the spending authority.
 Hosted relay storage is off by default while its privacy terms are being finished. Pairing alone does not enable it: saved keys, preferences, shared memories, teams, idle handoff and task copies wait. Chats and their files do not wait: they move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). Pairing, device presence, remote control (once it is turned on) and live `--at` still work. After pairing, press enter on **Settings → Devices → relay storage** to ask for approval. A self-hosted relay with `--store` needs no request.
 
 A paired account whose service reports storage permission has a **relay storage** row showing **on** or **off**. While **off**, press Enter (`enter request access`) to open a pre-filled GitHub issue. The panel also shows the public request code and link if no browser opens. The code is your identity id (`id_` and 32 hex digits), safe to post and granting nothing by itself. Choosing this row in Settings search clears the search and opens Devices. While **off**, Enter also requests access. While **on**, it opens Devices without offering or making a request. The row is absent with sync off, before pairing, or when the service answers without storage permission. A window already open when you pair checks for the answer within about a minute; an open Settings page then updates its row automatically. The first `/status` after pairing shows the cached dim line `relay storage  off` while storage is off.
+
+**Settings → Devices → remote control** (`remote_control`, environment `CODEAF_REMOTE_CONTROL`) stands below the computers and the add row, and is **off by default**. It lets another computer of yours open this computer's running chats and, if you allow it, type into them; Enter turns it on or off, and it applies at once. `CODEAF_REMOTE_CONTROL=1` turns it on for a launch and wins over the row. The row appears once the computer list has loaded and is absent when devices cannot work here. The page *Remote control* has the rest.
 
 ## Why Settings says held by an environment variable
 

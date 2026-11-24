@@ -79,7 +79,9 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Scope = "This computer"
 		p.Activation = "Applies immediately"
 	case KeyRemoteControl:
-		p.Label = "remote control"
+		// IT SITS ON THE DEVICES TAB, beside the computers it is about, and not on
+		// General with the other interface rows its registry category would give it.
+		p.Category, p.Label = "Devices", "remote control"
 		p.Scope = "This computer"
 		p.Activation = "Applies immediately"
 	case KeyTaskColumn:

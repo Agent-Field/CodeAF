@@ -353,7 +353,7 @@ func settingListing(registry *config.Settings, search string) string {
 		return fmt.Sprintf("No setting mentions %q. Call %s with no arguments to see every row.", search, settingsToolName)
 	}
 	var out strings.Builder
-	for _, category := range []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Privacy"} {
+	for _, category := range []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Devices", "Privacy"} {
 		if len(groups[category]) == 0 {
 			continue
 		}

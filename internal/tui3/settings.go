@@ -521,6 +521,14 @@ var settingUI = map[string]settingMeta{
 		tab: tabWorkspace, label: "idle handoff", widget: widgetToggle,
 		about: config.IdleHandoffHint,
 	},
+	// REMOTE CONTROL SITS ON THE DEVICES TAB, below the computers it is about
+	// (settings_devices.go). It is a registry row like the ones above, so the
+	// toggle, the write and the "set by CODEAF_REMOTE_CONTROL" note are the code
+	// every other switch already runs.
+	config.KeyRemoteControl: {
+		tab: tabDevices, label: "remote control", widget: widgetToggle,
+		about: config.RemoteControlHint,
+	},
 	// The three rows Google and Slack connections are signed with. They belong on this tab
 	// and not under Providers because they are not about which model answers
 	// what: they are about what codeaf may REACH on your behalf, which is the
@@ -1600,6 +1608,11 @@ func (s *sheet) build() {
 		for _, row := range s.rows {
 			meta, ok := s.metaFor(row)
 			if !ok || meta.tab != title || crewSeatKey(row.Key) {
+				continue
+			}
+			// THE SWITCH FOR REACHING OTHER COMPUTERS IS ABSENT WHEN THEY CANNOT BE
+			// REACHED, in a search as on the tab (settings_devices.go).
+			if row.Key == config.KeyRemoteControl && s.devicesUnavailable() != "" {
 				continue
 			}
 			score, hit, at, n := s.settingMatch(row, meta, title, terms)

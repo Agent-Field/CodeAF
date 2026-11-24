@@ -90,7 +90,7 @@ func TestChatPresentationHasNoRowsForTheRemovedScheduler(t *testing.T) {
 }
 
 func TestChatPresentationKeepsAliasesAndEveryVisibleRowCategorized(t *testing.T) {
-	categories := []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Privacy"}
+	categories := []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Devices", "Privacy"}
 	for _, row := range registry(t, t.TempDir()).Rows() {
 		p := row.ChatPresentation()
 		if !p.Hidden && !slices.Contains(categories, p.Category) {
