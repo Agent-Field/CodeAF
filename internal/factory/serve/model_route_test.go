@@ -490,7 +490,9 @@ func TestP1_5_UpstreamRejectingAnOwnKeyIsReturnedNotRetriedWithTheOrgKey(t *test
 		return nil, &provider.APIError{Status: 401, Message: "invalid key"}
 	})
 	w := callHostedModel(rg, rg.create(t, "santosh"), testHostedBody)
-	hostedModelErrorIs(t, w, 401, "", "invalid key")
+	// Item 0 changed the words, never the refusal: the person's key is named as
+	// theirs and the provider's own words are not passed on.
+	hostedModelErrorIs(t, w, 401, "", hostedOwnKeyRefused)
 	if !slices.Equal(seen, []string{testHostedOwnKey}) {
 		t.Fatalf("upstream got %v", seen)
 	}
@@ -655,5 +657,126 @@ func TestP1_1_DefaultBaseAndKeylessUpstream(t *testing.T) {
 				t.Fatalf("call = %d %s, configured base = %q, chosen key matched = %v", w.Code, w.Body, base, key == tc.useKey)
 			}
 		})
+	}
+}
+
+// operatorLog replaces the key-refusal log with a recorder and returns what it
+// has been told so far.
+func operatorLog(t *testing.T, rg *hostedRig) func() []string {
+	t.Helper()
+	var mu sync.Mutex
+	var lines []string
+	rg.h.config.Hosted.state.refusals.logf = func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, fmt.Sprintf(format, args...))
+	}
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(lines)
+	}
+}
+
+// Item 0: when the provider rejects the ORGANIZATION's key (401 or 403) the chat
+// gets a plain refusal that is not a bad gateway (the engine retries those
+// quietly, about once a minute), the person-facing words carry neither the key
+// nor the provider's text, the upstream is asked once per call, and the
+// operator's log gets ONE line naming the cause, not one per call.
+func TestItem0_OrgKeyRefusedByTheProviderIsAPlainRefusalAndOneOperatorLine(t *testing.T) {
+	for _, status := range []int{401, 403} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			var calls atomic.Int64
+			rg := newMeteredRig(t, 0, func(_ context.Context, key, _ string) (*ai.Response, error) {
+				calls.Add(1)
+				return nil, &provider.APIError{Status: status, Message: "User not found. " + key}
+			})
+			lines := operatorLog(t, rg)
+			chat := rg.create(t, "santosh")
+			for i := 1; i <= 3; i++ {
+				w := callHostedModel(rg, chat, testHostedBody)
+				hostedModelErrorIs(t, w, 401, "", hostedOrgKeyRefused)
+				if strings.Contains(w.Body.String(), testHostedOrgKey) || strings.Contains(w.Body.String(), "User not found") {
+					t.Fatalf("the refusal carries the key or the provider's words: %s", w.Body)
+				}
+				if w.Code >= 500 {
+					t.Fatalf("a refused key must not look like a gateway fault the engine retries: %d", w.Code)
+				}
+				if got := calls.Load(); got != int64(i) {
+					t.Fatalf("after %d calls the provider was asked %d times: the door must not retry", i, got)
+				}
+			}
+			got := lines()
+			if len(got) != 1 || !strings.Contains(got[0], "organization's model key") || !strings.Contains(got[0], fmt.Sprint(status)) ||
+				strings.Contains(got[0], testHostedOrgKey) {
+				t.Fatalf("operator lines = %q, want exactly one naming the organization's key and no key", got)
+			}
+		})
+	}
+}
+
+// Item 0: a refused key that later works is a new outage if it is refused
+// again, so the operator hears of it; and the quiet period ends by itself.
+func TestItem0_ARecoveredKeyThatFailsAgainIsLoggedAgain(t *testing.T) {
+	var refuse atomic.Bool
+	refuse.Store(true)
+	rg := newMeteredRig(t, 0, func(ctx context.Context, _, model string) (*ai.Response, error) {
+		if refuse.Load() {
+			return nil, &provider.APIError{Status: 401, Message: "no"}
+		}
+		return meteredAnswer(ctx, model, "ok", 0), nil
+	})
+	lines := operatorLog(t, rg)
+	chat := rg.create(t, "santosh")
+	callHostedModel(rg, chat, testHostedBody)
+	callHostedModel(rg, chat, testHostedBody)
+	refuse.Store(false)
+	if w := callHostedModel(rg, chat, testHostedBody); w.Code != 200 {
+		t.Fatalf("a working key = %d %s", w.Code, w.Body)
+	}
+	refuse.Store(true)
+	callHostedModel(rg, chat, testHostedBody)
+	if got := lines(); len(got) != 2 {
+		t.Fatalf("operator lines = %q, want one per outage (2)", got)
+	}
+	// The same outage is named again only after the quiet period.
+	state := &rg.h.config.Hosted.state.refusals
+	state.refused(time.Now().Add(hostedRefusalEvery+time.Minute), false, "santosh", 401)
+	if got := lines(); len(got) != 3 {
+		t.Fatalf("after the quiet period the line repeats: %q", got)
+	}
+}
+
+// Item 0: a person's own sealed key that the provider rejects gets the same
+// treatment, worded as their key, with one operator line that names the person
+// and never the key, and the organization's key is neither used nor named.
+func TestItem0_OwnKeyRefusedByTheProviderIsWordedAsTheirKey(t *testing.T) {
+	installHostedKeyHook(t, func(string, string) (string, bool, error) {
+		return testHostedOwnKey, true, nil
+	})
+	var seen []string
+	rg := newMeteredRig(t, 0, func(_ context.Context, key, _ string) (*ai.Response, error) {
+		seen = append(seen, key)
+		return nil, &provider.APIError{Status: 403, Message: "forbidden " + key}
+	})
+	lines := operatorLog(t, rg)
+	chat := rg.create(t, "santosh")
+	for range 2 {
+		w := callHostedModel(rg, chat, testHostedBody)
+		hostedModelErrorIs(t, w, 401, "", hostedOwnKeyRefused)
+		if strings.Contains(w.Body.String(), testHostedOwnKey) || strings.Contains(w.Body.String(), "forbidden") {
+			t.Fatalf("the refusal carries the key or the provider's words: %s", w.Body)
+		}
+	}
+	if !slices.Equal(seen, []string{testHostedOwnKey, testHostedOwnKey}) {
+		t.Fatalf("upstream got %v", seen)
+	}
+	got := lines()
+	if len(got) != 1 || !strings.Contains(got[0], "own model key") || !strings.Contains(got[0], "santosh") ||
+		strings.Contains(got[0], testHostedOwnKey) || strings.Contains(got[0], "organization") {
+		t.Fatalf("operator lines = %q, want one naming the person's own key", got)
+	}
+	if strings.Contains(hostedOwnKeyRefused+hostedOrgKeyRefused, "bearer") {
+		t.Fatal("plain words")
 	}
 }

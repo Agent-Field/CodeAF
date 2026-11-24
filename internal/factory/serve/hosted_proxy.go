@@ -89,6 +89,8 @@ type hostedState struct {
 	keysErr error
 	// models is the registry of each chat's metered model server (model_route.go).
 	models modelRegistry
+	// refusals keeps the operator's log to one line per refused key (model_refused.go).
+	refusals keyRefusals
 	// attach serializes the first attach of a chat with the push of its
 	// credentials. Without it a second window attaching at the same moment
 	// would see a live bearer, skip the push and reach the chat's host before

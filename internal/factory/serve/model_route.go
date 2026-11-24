@@ -35,7 +35,11 @@ const (
 	hostedMonthLimit = "You have reached your monthly limit of $%.2f, so this chat is paused. The organization's operator can raise it in Settings."
 	hostedModelBusy  = "This chat is already making as many requests as it may at once. Try again in a moment."
 	hostedOwnKey     = "Your own model key could not be opened on this server, so this chat paused instead of using the organization's."
-	hostedLimitCheck = "This chat could not check its limit just now."
+	// A provider that refuses a key (401 or 403) is a fact about the key, not a
+	// hiccup: the chat says so once, in a sentence, and is not retried.
+	hostedOrgKeyRefused = "The organization's model access was refused by its provider, so this chat paused. Ask the organization's operator to check the model key."
+	hostedOwnKeyRefused = "Your own model key was refused by its provider, so this chat paused. Replace it or remove it, then send your message again."
+	hostedLimitCheck    = "This chat could not check its limit just now."
 )
 
 var hostedCompletionPath = modelapi.ChatURL("")
@@ -322,12 +326,21 @@ func (h *Handler) openHostedModel(row bearerRow, space factory.OrgWorkstream, ce
 				ctx = entry.withBillingSource(ctx, call.own)
 				call.called.Store(true)
 				answer, err := completer.CompleteWithMessages(ctx, messages, opts...)
-				if status, _ := provider.StatusOf(err); call.own && status == http.StatusUnauthorized {
-					message := err.Error()
-					if refusal, ok := provider.RefusalFrom(err); ok && refusal.Message != "" {
-						message = refusal.Message
+				// THE PROVIDER REFUSING THE KEY IS ANSWERED AS A REFUSAL, NEVER AS A
+				// BAD GATEWAY. A 502 tells the engine the model may answer later, so it
+				// retried about once a minute while nothing said why. A 401 is its
+				// "this account is not served" answer: it stops, and the person reads
+				// the sentence. The provider's own words are not passed on (they can
+				// echo a key); the operator gets one line naming the cause.
+				if status, _ := provider.StatusOf(err); status == http.StatusUnauthorized || status == http.StatusForbidden {
+					message := hostedOrgKeyRefused
+					if call.own {
+						message = hostedOwnKeyRefused
 					}
 					call.rejected.Store(&message)
+					cfg.state.refusals.refused(h.clock(), call.own, row.person, status)
+				} else if err == nil {
+					cfg.state.refusals.accepted(call.own, row.person)
 				}
 				return answer, err
 			})
