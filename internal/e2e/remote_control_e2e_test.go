@@ -800,14 +800,23 @@ func (rc *rcRig) hostKnowsItsOthers() {
 	})
 }
 
-// hostAsk has the host's own window ask one question and waits for the reply.
+// hostAsk has the host's own window ask one question and waits for the reply, and
+// then for the chat to be on the relay's directory. The second wait is what a
+// person does without noticing: the desktop's turn ends, and a minute later the
+// laptop is opened. Starting the viewer the moment the reply shows would put its one
+// look at the directory before the desktop had written the chat there, and Home
+// asks again only on a slow beat, so a scenario would then wait out the beat.
 func (rc *rcRig) hostAsk(w *rig, words, reply string) {
 	rc.t.Helper()
 	rc.hostKnowsItsOthers()
+	before := rc.audit.cellCreates()
 	w.lit(words)
 	w.keys("Enter")
 	w.waitFor(rcReplyWithin, reply, "idle")
 	rc.abortIfFailed()
+	if before == 0 {
+		waitUntil(150*time.Second, func() bool { return rc.audit.cellCreates() > 0 })
+	}
 }
 
 // primeHost has the host's window finish one quick turn before the scenario
@@ -1197,6 +1206,21 @@ func startAuditedRelay(t *testing.T, root string) (string, *rcAudit) {
 		}
 	})
 	return server.URL, audit
+}
+
+// cellCreates is how many chats have been written to the relay's directory so far:
+// each is one POST to a cell's own path and nothing after it.
+func (a *rcAudit) cellCreates() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	n := 0
+	for _, call := range a.calls {
+		rest, ok := strings.CutPrefix(call.path, "/v1/dir/cells/")
+		if call.method == http.MethodPost && ok && rest != "" && !strings.Contains(rest, "/") {
+			n++
+		}
+	}
+	return n
 }
 
 // dials counts the requests that claimed a class of dial.
