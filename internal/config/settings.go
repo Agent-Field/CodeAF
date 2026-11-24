@@ -2608,7 +2608,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
 			Label: "knowledge", EmptyLabel: "follows your model",
-			Hint: "the OpenRouter model that builds your Library in the background. Blank makes it follow the model you chose; changes apply to the next compilation.",
+			Hint: "the model that builds your Library in the background. Blank makes it follow the model you chose; changes apply to the next compilation.",
 			read: func() string { return KnowledgeModelRowAt(dir) },
 			write: func(raw string) error {
 				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
@@ -4298,7 +4298,7 @@ func ModelFallbacksAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok && strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "nearest in the catalog" {
 		return strings.TrimSpace(value)
 	}
-	return ReachableDefaultAt(profileDir, SlotFallback, DefaultFallbackModel)
+	return DefaultFallbackAt(profileDir)
 }
 
 // ParseModelFallbacks reads the row into an ordered list of model slugs.

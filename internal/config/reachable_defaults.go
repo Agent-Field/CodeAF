@@ -27,9 +27,9 @@ import (
 // fallback on models nobody could reach, and every one of them failed with "no
 // API key". Titles, routing and the Library follow the conversation model
 // (internal/roles' background.go), so a reachable conversation model reaches
-// them too. [ReachableDefaultAt] keeps the built-in model
-// whenever a connected service can send it, and otherwise picks the model a
-// connected service offers that fits the slot.
+// them too. [ReachableDefaultAt] keeps the built-in model whenever a connected
+// service can send it, and otherwise picks the model a connected service offers
+// that fits the slot.
 type DefaultSlot string
 
 const (
@@ -443,19 +443,12 @@ type listKey struct {
 	n     int
 }
 
-// rankedView is one list ranked from lightest to strongest, with each model's
-// strength key in the list's own order.
-type rankedView struct {
-	ranked []catalog.Model
-	keys   [][5]float64
-}
-
 const maxListMemo = 256
 
 var (
 	viewMu     sync.Mutex
 	usableMemo = map[listKey][]catalog.Model{}
-	rankMemo   = map[listKey]rankedView{}
+	rankMemo   = map[listKey][]catalog.Model{}
 )
 
 func filterUsable(models []catalog.Model) []catalog.Model {
@@ -549,14 +542,11 @@ func withoutVariant(id string) string {
 // whose price or index is unknown is not thereby the cheapest or the weakest.
 // Models that cannot be told apart keep the provider's own order, the first one
 // listed counting as the stronger, since providers list their flagship first.
+//
+// The ranking is kept per list, so an unchanged list is ranked once.
 func rankByStrength(models []catalog.Model) []catalog.Model {
-	return rankView(models).ranked
-}
-
-// rankView is [rankByStrength] with each model's key, kept per list.
-func rankView(models []catalog.Model) rankedView {
 	if len(models) == 0 {
-		return rankedView{}
+		return nil
 	}
 	key := listKey{first: &models[0], n: len(models)}
 	viewMu.Lock()
@@ -565,17 +555,17 @@ func rankView(models []catalog.Model) rankedView {
 	if ok {
 		return held
 	}
-	view := computeRank(models)
+	ranked := computeRank(models)
 	viewMu.Lock()
 	if len(rankMemo) > maxListMemo {
-		rankMemo = map[listKey]rankedView{}
+		rankMemo = map[listKey][]catalog.Model{}
 	}
-	rankMemo[key] = view
+	rankMemo[key] = ranked
 	viewMu.Unlock()
-	return view
+	return ranked
 }
 
-func computeRank(models []catalog.Model) rankedView {
+func computeRank(models []catalog.Model) []catalog.Model {
 	listRanks.Add(1)
 	useIndex, usePrice := rankingSignals(models)
 	type scored struct {
@@ -584,10 +574,8 @@ func computeRank(models []catalog.Model) rankedView {
 		key   [5]float64
 	}
 	rows := make([]scored, len(models))
-	keys := make([][5]float64, len(models))
 	for index, model := range models {
-		keys[index] = strengthKey(model, useIndex, usePrice)
-		rows[index] = scored{model: model, index: index, key: keys[index]}
+		rows[index] = scored{model: model, index: index, key: strengthKey(model, useIndex, usePrice)}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		for k := range rows[i].key {
@@ -601,7 +589,7 @@ func computeRank(models []catalog.Model) rankedView {
 	for index := range rows {
 		out[index] = rows[index].model
 	}
-	return rankedView{ranked: out, keys: keys}
+	return out
 }
 
 // rankingSignals reports which published signals every model in the list

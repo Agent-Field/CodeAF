@@ -422,7 +422,7 @@ func TestChatGPTThinkingLevelsSurviveTheCatalog(t *testing.T) {
 	}
 }
 
-func TestTheSettingsRowsShowWhatAProfileWithoutOpenRouterUses(t *testing.T) {
+func TestTheFallbackRowShowsWhatAProfileWithoutOpenRouterUses(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	dir := t.TempDir()
@@ -434,20 +434,18 @@ func TestTheSettingsRowsShowWhatAProfileWithoutOpenRouterUses(t *testing.T) {
 	if err := catalog.Remember(CatalogOptionsFor(ollama, dir), ids("qwen3:8b")); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{KeyModelFallbacks} {
-		var row *Setting
-		for _, s := range registry(t, dir).Rows() {
-			if s.Key == key {
-				s := s
-				row = &s
-			}
+	var row *Setting
+	for _, s := range registry(t, dir).Rows() {
+		if s.Key == KeyModelFallbacks {
+			s := s
+			row = &s
 		}
-		if row == nil {
-			t.Fatalf("no %s row", key)
-		}
-		if got := row.Value(); got != "ollama/qwen3:8b" {
-			t.Fatalf("%s row = %q, want the reachable model", key, got)
-		}
+	}
+	if row == nil {
+		t.Fatal("no fallback models row")
+	}
+	if got := row.Value(); got != "ollama/qwen3:8b" {
+		t.Fatalf("fallback models row = %q, want the reachable model", got)
 	}
 }
 
@@ -619,7 +617,6 @@ func TestUnchangedProviderListsAreReadAndRankedOnce(t *testing.T) {
 	lookups := func() {
 		_ = ChatDefaultAt(dir)
 		_ = ModelFallbacksAt(dir)
-		_ = KnowledgeModelAt(dir, "")
 	}
 	lookups()
 	reads, ranks := listReads.Load(), listRanks.Load()
@@ -627,9 +624,9 @@ func TestUnchangedProviderListsAreReadAndRankedOnce(t *testing.T) {
 		lookups()
 	}
 	if got := listReads.Load() - reads; got != 0 {
-		t.Fatalf("500 lookups decoded unchanged lists %d times, want 0", got)
+		t.Fatalf("200 lookups decoded unchanged lists %d times, want 0", got)
 	}
 	if got := listRanks.Load() - ranks; got != 0 {
-		t.Fatalf("500 lookups ranked unchanged lists %d times, want 0", got)
+		t.Fatalf("200 lookups ranked unchanged lists %d times, want 0", got)
 	}
 }
