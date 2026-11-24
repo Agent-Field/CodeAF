@@ -337,6 +337,9 @@ func TestContractI8CollisionRollbackStaleDoorAndRestart(t *testing.T) {
 	}
 }
 
+// I9, as changed by org-follow A9 (Abir 2026-11-24): a chat moved into a shared
+// workstream keeps its privacy, so the workstream's people are not told of it
+// until it is shared; once shared they see its metadata only.
 func TestContractI9SharedWorkstreamChatListKeepsOnlyMetadata(t *testing.T) {
 	o := newWSOrg(t)
 	from := contractSpace(t, o, "santosh")
@@ -346,6 +349,11 @@ func TestContractI9SharedWorkstreamChatListKeepsOnlyMetadata(t *testing.T) {
 	contractMove(t, o, "santosh", chat.ID, to, 200, nil)
 	var rows api.AgentChatList
 	door := "/v1/workstreams/" + to
+	o.do(t, "abir", "GET", door+"/chats", -1, nil, http.StatusOK, &rows)
+	if len(rows.Others) != 0 {
+		t.Fatalf("a moved private chat is listed: %+v", rows)
+	}
+	o.do(t, "santosh", "POST", "/v1/resources/chat/"+chat.ID+"/grants", -1, personGrant("abir", "view"), 201, nil)
 	o.do(t, "abir", "GET", door+"/chats", -1, nil, http.StatusOK, &rows)
 	if len(rows.Others) != 1 || rows.Others[0].ID != chat.ID || rows.Others[0].Title != chat.Title ||
 		rows.Others[0].Owner != "santosh" || rows.Others[0].State == "" || rows.Others[0].LastActivity == "" {

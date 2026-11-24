@@ -21,6 +21,12 @@ A role is a named bundle of **verbs**. The verbs are fixed: view, comment, edit,
 
 The owner of a thing holds full on it. A person who reaches a thing in two ways (a share and a team grant, say) holds the verbs of both. A thing marked private is its owner's alone: shares and grants on it give nothing. Nobody holds "admin" on a thing; admin is the operator's word for the app, not a verb.
 
+## Are chats private by default — can other people in a workstream see my chat's name, owner or state
+
+Yes, private by default. A chat you start, in a workstream or in My space, is registered as private unless the organization's policy says new chats start otherwise. A private chat is hidden from every shared list: the workstream's people and the operator are told nothing of it, not its name, its owner, its state or when it last moved, and the server does not announce it to them when it is made. Only you and the people you have shared it with see it. Sharing it (a grant of view or more on that chat) adds it to that person's list of other people's chats in the workstream, with its name, owner, state and last activity, and never what was said; removing the grant, or its end date passing, takes it off their list again. Moving a private chat from My space into a workstream keeps it private.
+
+This changed on 2026-11-24. Before it, every chat in a shared workstream was listed to the workstream's people by name, owner and state whatever its own privacy. An organization that wants that back sets the policy's default for chats to `owner` (the workstream's people) or `org` (every member); it applies to chats made after the change, and a chat that already exists keeps what it was made as.
+
 ## Who sets the sharing rules — the operator's organization policy
 
 The operator holds the organization's **policy**: which roles exist and the verbs in each, whether new chats start private, shared with the owner's workstream, or visible to every member, who may share (anyone holding share, or only the owner), and what agents may do. Everyone in the organization can read the policy; only the operator can change it, and a stale edit is refused with "412" so two edits never overwrite each other.

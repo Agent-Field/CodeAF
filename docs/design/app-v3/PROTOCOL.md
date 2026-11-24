@@ -1101,9 +1101,14 @@ names a space's things. `factory.org_myspace_limit_set {limit_usd}` `PUT
 removes a person, their space goes to the heir as one private workstream named
 "<handle>'s space". `factory.org_workstream_chats {id}` `GET .../chats` lists the
 caller's own chats in a workstream (`{chats: [{id, title, state, created_at,
-updated_at}]}`, newest first) and, metadata only, everyone else's there (v2 ruling C10:
-`others: [{id, workstream, title, owner, owner_name?, state, last_activity}]`, newest
-activity first; never a line of what is said; always empty in a space). `id` is the
+updated_at}]}`, newest first) and, metadata only, the chats of others that the
+caller may view (`others: [{id, workstream, title, owner, owner_name?, state,
+last_activity}]`, newest activity first; never a line of what is said; always empty
+in a space). A chat is private by default (the policy's default for chats), and a
+private chat is listed only to its owner and to the people it is shared with, so
+`others` is empty until someone shares a chat with the caller; v2 ruling C10 once
+listed every chat of a shared workstream here whatever its own privacy, and no longer
+does. The list is decided by the same decider as `factory.org_grants`. `id` is the
 `chat_id` on the tasks and files that chat made. `factory.org_workstream_chat_new {id, title?}` `POST
 .../chats` (`edit`) makes one (`ch_` and 26 letters or digits; an empty title is the
 first message's first line). `factory.org_workstream_agent`, `_send` and `_stop` take
