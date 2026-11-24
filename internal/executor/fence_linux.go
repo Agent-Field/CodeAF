@@ -87,6 +87,11 @@ func confineFence(cmd *exec.Cmd, f *Fence) error {
 		}
 		return nil
 	}
+	if _, ok := fenceScope(f, landlockABI()); !ok {
+		// A required fence that cannot keep this chat's local sockets apart from
+		// another's is no fence at all for the thing it was required for.
+		return ErrFenceRequired
+	}
 	spec, err := writeFenceSpec(f, mode)
 	if err != nil {
 		return err
@@ -245,10 +250,38 @@ func fenceReadOnly(f *Fence) error {
 	return nil
 }
 
+// abstractScopeABI is the first Landlock ABI that can scope abstract Unix sockets
+// (Linux 6.12).
+const abstractScopeABI = 6
+
+// fenceScope is the Landlock scope a fence asks for and whether this kernel can
+// give it. ONLY A REQUIRED FENCE SCOPES: abstract Unix sockets have no owner and
+// no file mode, so every process in one network namespace can connect to every
+// other's, and a hosted chat shares that namespace with every other chat on its
+// machine. A command inside the scope cannot connect to an abstract socket made
+// outside its own fence (which also means two separate commands of one chat do
+// not reach each other's abstract sockets; filesystem sockets are untouched).
+// A fence that is not required keeps the ruleset it always had, so a laptop's
+// own commands are unchanged.
+func fenceScope(f *Fence, abi int) (scoped uint64, ok bool) {
+	if !f.Require {
+		return 0, true
+	}
+	if abi < abstractScopeABI {
+		return 0, false
+	}
+	return unix.LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET, true
+}
+
 // fenceLandlockRules reads anywhere and writes only where the fence says.
 func fenceLandlockRules(f *Fence) error {
-	write := writeAccess(landlockABI())
-	fd, err := createRuleset(readAccess | write)
+	abi := landlockABI()
+	write := writeAccess(abi)
+	scoped, ok := fenceScope(f, abi)
+	if !ok {
+		return ErrFenceRequired
+	}
+	fd, err := createRuleset(readAccess|write, scoped)
 	if err != nil {
 		return err
 	}
@@ -292,8 +325,13 @@ const fileRead = unix.LANDLOCK_ACCESS_FS_EXECUTE | unix.LANDLOCK_ACCESS_FS_READ_
 // the checkout (a worktree's); the checkout's own .git, and its .codeaf, are
 // written like the rest of the checkout, which [FencePartialLine] says.
 func fenceLandlockOnly(f *Fence) error {
-	write := writeAccess(landlockABI())
-	fd, err := createRuleset(readAccess | write)
+	abi := landlockABI()
+	write := writeAccess(abi)
+	scoped, ok := fenceScope(f, abi)
+	if !ok {
+		return ErrFenceRequired
+	}
+	fd, err := createRuleset(readAccess|write, scoped)
 	if err != nil {
 		return err
 	}
