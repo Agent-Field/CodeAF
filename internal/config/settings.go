@@ -1451,6 +1451,11 @@ var OperatorEnvPins = []string{
 	// CODEAF_REMOTE_CONTROL overrides the persisted remote_control row: it is a
 	// switch while the feature is new, and a row can set it too.
 	"CODEAF_REMOTE_CONTROL",
+	// CODEAF_REMOTE_DAILY_MB moves the live door's daily allowance of carrier
+	// bytes (internal/livedoor) off its built-in 256 MiB, for an operator
+	// measuring a relay. It is a safety rail's size, not a preference, so it
+	// stays in the environment.
+	"CODEAF_REMOTE_DAILY_MB",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

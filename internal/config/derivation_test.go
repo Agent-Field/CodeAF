@@ -121,6 +121,7 @@ var settingReaders = map[string]string{
 	KeyWork:              "workMode",
 	KeyIcons:             "iconMode",
 	KeyTeamsShare:        "TeamsShareAt",
+	KeyRemoteControl:     "RemoteControlOn",
 	KeyDailyBudget:       "DailyBudgetUSD",
 	KeyPlanConsent:       "PlanConsentUSD",
 	KeyDocumentEngine:    "DocumentEngine",
