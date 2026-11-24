@@ -264,3 +264,120 @@ func TestDirectHostEndsWithTheDoor(t *testing.T) {
 		t.Fatal("the direct host half outlived the files door that owned it")
 	}
 }
+
+// V36 (the viewer's half): a viewer link has a direct half, and so can make a
+// STUN request, under exactly the conditions the door answers one: remote
+// control on, the road not pinned to the relay, and a road installed. Anywhere
+// else the link is the relay link it was before this phase, with nothing to
+// signal and nothing to offer.
+func TestAViewerLinkOffersTheDirectRoadOnlyWhereTheDoorWouldAnswerIt(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     map[string]string
+		install bool
+		want    bool
+	}{
+		{"remote control off", map[string]string{"CODEAF_REMOTE_CONTROL": "off"}, true, false},
+		{"road pinned to the relay", map[string]string{"CODEAF_REMOTE_CONTROL": "on", "CODEAF_REMOTE_ROAD": "relay"}, true, false},
+		{"nothing installed", map[string]string{"CODEAF_REMOTE_CONTROL": "on"}, false, false},
+		{"on, default road", map[string]string{"CODEAF_REMOTE_CONTROL": "on"}, true, true},
+		{"on, road auto", map[string]string{"CODEAF_REMOTE_CONTROL": "on", "CODEAF_REMOTE_ROAD": "auto"}, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			r := newLiveRig(t)
+			installFakeDirectRoad(t)
+			if !tc.install {
+				SetDirectRoad(DirectRoad{})
+			}
+			cfg := r.b.liveLinkConfig(r.a.Device.ID(), nameA, nil, nil)
+			if (cfg.Direct != nil) != tc.want || (cfg.OnSignal != nil) != tc.want {
+				t.Fatalf("Direct set=%v and OnSignal set=%v, want both %v", cfg.Direct != nil, cfg.OnSignal != nil, tc.want)
+			}
+		})
+	}
+}
+
+// V30 and V36 (the viewer's half): an attempt hands the road the STUN list the
+// person configured (an empty one when they said off), gives it every signal the
+// host sends after the attempt began and none from before it, and never blocks
+// the relay's read loop however many arrive with nobody reading them.
+func TestAViewerLinksDirectAttemptReadsTheHostsSignalsAndNeverBlocksTheRelay(t *testing.T) {
+	t.Setenv("CODEAF_REMOTE_CONTROL", "on")
+	t.Setenv("CODEAF_REMOTE_STUN", "off")
+	r := newLiveRig(t)
+
+	type asked struct {
+		stun    []string
+		deliver <-chan []byte
+	}
+	started := make(chan asked, 1)
+	previous, _ := InstalledDirectRoad()
+	t.Cleanup(func() { SetDirectRoad(previous) })
+	SetDirectRoad(DirectRoad{
+		NewHost: func([]string) DirectRoadHost { return &fakeDirectRoadHost{closed: make(chan struct{})} },
+		Offer: func(ctx context.Context, stun []string, _ livedoor.Signaller, deliver <-chan []byte) (io.ReadWriteCloser, error) {
+			started <- asked{stun: slices.Clone(stun), deliver: deliver}
+			select {
+			case payload := <-deliver:
+				return nil, errors.New("the road read " + string(payload))
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+	})
+	cfg := r.b.liveLinkConfig(r.a.Device.ID(), nameA, nil, nil)
+	if cfg.Direct == nil || cfg.OnSignal == nil {
+		t.Fatal("the viewer link has no direct half with remote control on and a road installed")
+	}
+
+	// A flood nobody is reading must return at once: OnSignal runs on the relay's
+	// read loop, and a view whose loop is blocked is a view that has stopped.
+	flooded := make(chan struct{})
+	guard.Go("syncsetup.test.direct.flood", func() {
+		for range 4 * directSignalBuffer {
+			cfg.OnSignal([]byte("stale"))
+		}
+		close(flooded)
+	})
+	select {
+	case <-flooded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnSignal blocked with nobody reading the host's signals")
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	guard.Go("syncsetup.test.direct.dial", func() {
+		_, err := cfg.Direct.Dial(ctx, nopSignaller{})
+		result <- err
+	})
+	var got asked
+	select {
+	case got = <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the attempt never reached the road")
+	}
+	if got.stun == nil || len(got.stun) != 0 {
+		t.Fatalf("the road was given STUN %#v with CODEAF_REMOTE_STUN=off, want an empty list", got.stun)
+	}
+	cfg.OnSignal([]byte("answer"))
+	select {
+	case err := <-result:
+		if err == nil || err.Error() != "the road read answer" {
+			t.Fatalf("the attempt ended with %v, want it to have read the one signal that came after it began (not the %d stale ones)", err, 4*directSignalBuffer)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the attempt never read the host's signal")
+	}
+}
+
+// nopSignaller is a Signaller whose frames go nowhere, for a road that is not
+// the thing under test.
+type nopSignaller struct{}
+
+func (nopSignaller) Send([]byte) error { return nil }

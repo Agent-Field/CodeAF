@@ -246,7 +246,19 @@ func notifyRevoked(homeDir string, ids ...string) {
 // the files-door relay tunnel, mapping an unregistered host to
 // livedoor.ErrHostOffline so the surface transitions straight to WentOffline.
 func (s *Sync) LiveLink(hostDeviceID, hostName string, active func() bool, onState func(livedoor.State)) *livedoor.Link {
-	return livedoor.NewLink(livedoor.LinkConfig{
+	return livedoor.NewLink(s.liveLinkConfig(hostDeviceID, hostName, active, onState))
+}
+
+// directSignalBuffer is how many host signals a viewer link holds for the
+// attempt that is reading them. An attempt exchanges an answer and a handful of
+// candidates, so this is generous; a full buffer drops the newest signal rather
+// than ever blocking the relay's read loop, which would stall the whole view.
+const directSignalBuffer = 64
+
+// liveLinkConfig is LiveLink's configuration, apart from the link built from it,
+// so a test can read what the link was given.
+func (s *Sync) liveLinkConfig(hostDeviceID, hostName string, active func() bool, onState func(livedoor.State)) livedoor.LinkConfig {
+	cfg := livedoor.LinkConfig{
 		Home: s.Home,
 		Dial: func(ctx context.Context) (io.ReadWriteCloser, error) {
 			tun, err := filesdoor.DialLive(ctx, s.Relay, s.Identity, s.Device, hostDeviceID)
@@ -267,5 +279,41 @@ func (s *Sync) LiveLink(hostDeviceID, hostName string, active func() bool, onSta
 		HostName: hostName,
 		Active:   active,
 		OnState:  onState,
-	})
+	}
+	// THE VIEWER OFFERS THE DIRECT ROAD UNDER THE SAME THREE CONDITIONS THE DOOR
+	// ANSWERS IT: remote control is on, the person did not pin the road to the
+	// relay, and the program installed an implementation. Otherwise the link has
+	// no direct half at all, so it builds no peer connection, can make no STUN
+	// request, and never signals anything.
+	road, ok := InstalledDirectRoad()
+	if !ok || !config.RemoteControlOn() || config.RemoteRoadRelayOnly() {
+		return cfg
+	}
+	deliver := make(chan []byte, directSignalBuffer)
+	cfg.OnSignal = func(payload []byte) {
+		select {
+		case deliver <- payload:
+		default:
+		}
+	}
+	cfg.Direct = &livedoor.DirectConfig{
+		Dial: func(ctx context.Context, sig livedoor.Signaller) (io.ReadWriteCloser, error) {
+			// Whatever the host said to an attempt that has ended is of no use to
+			// this one (the road also checks each signal's attempt id), and it
+			// must not sit in the way of the answer.
+			for drained := false; !drained; {
+				select {
+				case <-deliver:
+				default:
+					drained = true
+				}
+			}
+			stream, err := road.Offer(ctx, config.RemoteSTUN(), sig, deliver)
+			if err != nil {
+				return nil, err
+			}
+			return filesdoor.DialDirect(ctx, stream, s.Identity, s.Device, hostDeviceID)
+		},
+	}
+	return cfg
 }
