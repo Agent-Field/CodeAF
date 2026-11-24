@@ -358,8 +358,17 @@ func TestAppCloseC3RealSessionContinuesOnceOnThePress(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.clock.advance(t, time.Minute)
+	// A turn is a request that carries the conversation on. The title the app
+	// asks for after the first reply is not one, and it lands whenever its own
+	// goroutine does, so counting it made this test fail one run in five.
 	model.mu.Lock()
-	turns := len(model.requests)
+	turns := 0
+	for _, request := range model.requests {
+		if words := request.texts(); len(words) > 0 && words[0] == "You name conversations." {
+			continue
+		}
+		turns++
+	}
 	model.mu.Unlock()
 	if r.b.interrupted(r.id) || turns != 1 {
 		t.Fatalf("continued more than once: requests=%d", turns)
