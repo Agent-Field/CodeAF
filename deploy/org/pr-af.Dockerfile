@@ -37,9 +37,8 @@ RUN git init -q /src && cd /src \
     && git checkout -q FETCH_HEAD \
     && test "$(git rev-parse HEAD)" = "${PRAF_REF}"
 WORKDIR /src/go
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -ldflags="-s -w" -o /out/pr-af ./cmd/pr-af
+RUN go mod download
+RUN go build -trimpath -ldflags="-s -w" -o /out/pr-af ./cmd/pr-af
 
 FROM debian:bookworm-slim AS runtime
 # git: reviews clone, fetch and check out the pull request. tini: reaps what a harness leaves behind.

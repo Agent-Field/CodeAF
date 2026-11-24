@@ -38,9 +38,8 @@ RUN git init -q /src && cd /src \
     && git checkout -q FETCH_HEAD \
     && test "$(git rev-parse HEAD)" = "${SWEAF_REF}"
 WORKDIR /src/go
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -ldflags="-s -w" -o /out/swe-planner ./cmd/swe-planner
+RUN go mod download
+RUN go build -trimpath -ldflags="-s -w" -o /out/swe-planner ./cmd/swe-planner
 
 FROM debian:bookworm-slim AS runtime
 # git and gh: clone, branch, and open the pull request. python3 and pytest: repositories
