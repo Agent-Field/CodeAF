@@ -287,6 +287,9 @@ func (s *v3ModelShelf) refreshService(ctx context.Context, service modelsource.C
 	s.stock(id, address, door, append([]tui3.Model(nil), rows...))
 	s.fetchError(id, nil)
 	_ = tui3.WriteModelCacheFor(service.Source.ID, service.Address, rows)
+	// The defaults read this list, so the crew snapshot built from them is
+	// built again now that it has landed.
+	config.NoteModelListChanged()
 	return rows, nil
 }
 

@@ -31,6 +31,8 @@ var helloFields = map[string]bool{
 	"LocalSavingReceipts": true,
 	// SyncNoticeWords is a boolean vocabulary capability, with no key or address.
 	"SyncNoticeWords": true,
+	// HoldInterruptedWork is a boolean about one open, with no key or address.
+	"HoldInterruptedWork": true,
 }
 
 // TestNoServiceKeyOrAddressCrossesTheWire refuses model-service credential

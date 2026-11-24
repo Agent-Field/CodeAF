@@ -177,6 +177,7 @@ func TestEveryMethodIsRefusedToAGuestUnlessItsListSaysOtherwise(t *testing.T) {
 		method string
 	}{
 		{"MethodAnswerLaneOffer", MethodAnswerLaneOffer},
+		{"MethodAppContinueInterrupted", MethodAppContinueInterrupted},
 		{"MethodAppMoveToTask", MethodAppMoveToTask},
 		{"MethodAppProgramActions", MethodAppProgramActions},
 		{"MethodAppQuickTaskAction", MethodAppQuickTaskAction},

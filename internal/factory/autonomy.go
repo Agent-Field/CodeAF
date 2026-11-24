@@ -109,7 +109,12 @@ func AutonomyBlockReason(it Item) string {
 		return "Job budget reached. Choose a higher Budget to continue."
 	}
 	if it.PublishError != "" {
-		return "Publication failed: " + strings.TrimSuffix(it.PublishError, ".") + ". Resolve the problem, then retry publishing."
+		reason := "Publication failed: " + strings.TrimSpace(it.PublishError)
+		// A remedy supplied by publishing is already complete; never repeat its retry instruction.
+		if strings.Contains(strings.ToLower(it.PublishError), "retry publishing") {
+			return reason
+		}
+		return strings.TrimSuffix(reason, ".") + ". Resolve the problem, then retry publishing."
 	}
 	if it.QKind != "" && it.QKind != QKindApprove && it.QKind != "cap" {
 		return it.Question

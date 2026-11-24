@@ -20,7 +20,11 @@ type KnowledgeHead struct {
 	HumanEdited          bool     `json:"human_edited"`
 	NeedsEditorialUpdate bool     `json:"needs_editorial_update"`
 	HasConflict          bool     `json:"has_conflict"`
-	Sections             []string `json:"sections"`
+	// FromChats is set when learning from chats wrote some of this page, not
+	// only what a person added on purpose. The Library marks it "From your
+	// chats", and a person can remove it.
+	FromChats bool     `json:"from_chats,omitempty"`
+	Sections  []string `json:"sections"`
 }
 type KnowledgeBuild struct {
 	Phase    knowledge.BuildPhase `json:"phase"`
@@ -42,14 +46,51 @@ type KnowledgeSnapshot struct {
 type KnowledgeRevision struct {
 	Revision string `json:"revision"`
 }
+
+// KnowledgeCapture keeps words in the Library. Its first form is a passage
+// from a saved agent reply (chat, message, text). Its second form is a
+// workstream file the person chose to keep (file, text) and names no chat: the
+// desk sends the file's own words, and the engine records which file they came
+// from so the Library can lead back to it.
 type KnowledgeCapture struct {
-	Chat    string `json:"chat"`
-	Message string `json:"message"`
-	Text    string `json:"text"`
+	Chat    string         `json:"chat,omitempty"`
+	Message string         `json:"message,omitempty"`
+	Text    string         `json:"text"`
+	File    *KnowledgeFile `json:"file,omitempty"`
 }
+
+// KnowledgeFile names a workstream file: the desk's workstream address (a
+// Personal id, or org:<connection>/<id>), the file's id and its name.
+type KnowledgeFile struct {
+	Workstream string `json:"workstream"`
+	ID         string `json:"id"`
+	Name       string `json:"name,omitempty"`
+}
+
+// FeatureKnowledgeCaptureFile is announced with the Library by an engine whose
+// knowledge.capture takes the file form. A desk that does not see it leaves
+// "Add to Library" off a file's menus, because an older engine would refuse
+// every call for want of a chat.
+const FeatureKnowledgeCaptureFile = "knowledge.capture_file"
+
+// FeatureKnowledgeKeepAlways is announced by an engine whose knowledge.capture
+// keeps a person's deliberate add (a file or a passage) with "Learn from chats
+// and jobs" off, and writes it into the Library then (owner decision 5). A desk
+// that does not see it offers Add to Library only while learning is on,
+// because an older engine refuses the call otherwise.
+const FeatureKnowledgeKeepAlways = "knowledge.keep_always"
+
+// MaxKnowledgeCaptureFile bounds a kept file's words. A saved reply's passage is
+// capped at 16000 characters; a file is a whole document, so it gets four times
+// that, which the vault stores in spans.
+const MaxKnowledgeCaptureFile = 64000
+
+// KnowledgeLocation is where a Library source came from: a chat message, or,
+// for a kept workstream file, the file (and then chat and message are empty).
 type KnowledgeLocation struct {
-	Chat    string `json:"chat"`
-	Message string `json:"message"`
+	Chat    string         `json:"chat"`
+	Message string         `json:"message"`
+	File    *KnowledgeFile `json:"file,omitempty"`
 }
 type KnowledgeSettlement struct {
 	ID       string `json:"id"`
@@ -93,7 +134,7 @@ type KnowledgeLibrary interface {
 
 func withKnowledgeFeature(h Hello, e Engine) Hello {
 	if _, ok := e.(KnowledgeLibrary); ok {
-		return withFeature(h, FeatureKnowledge)
+		return withFeature(withFeature(withFeature(h, FeatureKnowledge), FeatureKnowledgeCaptureFile), FeatureKnowledgeKeepAlways)
 	}
 	return h
 }
@@ -108,6 +149,15 @@ func libraryCall[P, R any](call func(KnowledgeLibrary, P) (*R, error)) method {
 }
 func init() {
 	methods["knowledge.capture"] = libraryCall(func(l KnowledgeLibrary, p KnowledgeCapture) (*Empty, error) {
+		if p.File != nil {
+			if p.Chat != "" || p.Message != "" || p.File.Workstream == "" || p.File.ID == "" || len(p.File.Workstream) > 256 || len(p.File.ID) > 256 || len(p.File.Name) > 512 {
+				return nil, Errorf(CodeBadParams, "Choose a file in a workstream")
+			}
+			if strings.TrimSpace(p.Text) == "" || len(p.Text) > MaxKnowledgeCaptureFile {
+				return nil, Errorf(CodeBadParams, "Choose a file with words in it, under %d characters", MaxKnowledgeCaptureFile)
+			}
+			return done(l.KnowledgeCapture(p))
+		}
 		if p.Chat == "" || p.Message == "" || strings.TrimSpace(p.Text) == "" || len(p.Text) > 16000 {
 			return nil, Errorf(CodeBadParams, "Choose a passage under 16000 characters from a saved reply")
 		}

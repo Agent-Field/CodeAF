@@ -94,7 +94,11 @@ type FactoryLinkParams struct {
 // [LinkMaxUses]; Login admits that one GitHub login and so needs MaxUses of 1
 // or none; ExpiresAt, when given, is in the future and within seven days.
 type FactoryLinkCreateParams struct {
-	Factory   string     `json:"factory"`
+	Factory string `json:"factory"`
+	// Kind "reset" makes the operator's one-time password reset link for
+	// Person, a password person: one use, one hour, no other choice.
+	Kind      string     `json:"kind,omitempty" enum:"invite,reset"`
+	Person    string     `json:"person,omitempty"`
 	Name      string     `json:"name,omitempty"`
 	Login     string     `json:"login,omitempty"`
 	MaxUses   *int       `json:"max_uses,omitempty"`
@@ -117,6 +121,8 @@ type FactoryLinkRevokeParams struct {
 // factory did not say; true means revoking it leaves the people who joined
 // signed in, false means revoking it ends their sessions as well.
 type FactoryLink struct {
+	// Kind is "reset" for a password reset link, whose Login is its person.
+	Kind      string     `json:"kind,omitempty" enum:"reset"`
 	ID        string     `json:"id"`
 	Name      string     `json:"name,omitempty"`
 	Login     string     `json:"login,omitempty"`
@@ -234,6 +240,22 @@ func CheckLinkCreate(p FactoryLinkCreateParams) (FactoryLinkCreateParams, error)
 	}
 	if p.Login, err = CheckLinkLogin(p.Login); err != nil {
 		return p, err
+	}
+	switch p.Kind {
+	case "", "invite":
+		p.Kind = ""
+		if strings.TrimSpace(p.Person) != "" {
+			return p, Errorf(CodeBadParams, "only a reset link names a person")
+		}
+	case "reset":
+		if p.Login != "" || p.Name != "" || p.MaxUses != nil || p.ExpiresAt != nil {
+			return p, Errorf(CodeBadParams, "a reset link takes only the person; it is one use for one hour")
+		}
+		if p.Person, err = CheckLinkLogin(p.Person); err != nil || p.Person == "" {
+			return p, Errorf(CodeBadParams, "person is the handle of a person who signs in with a password")
+		}
+	default:
+		return p, Errorf(CodeBadParams, `kind is "invite" or "reset"`)
 	}
 	if p.MaxUses != nil {
 		if *p.MaxUses < 1 || *p.MaxUses > LinkMaxUses {

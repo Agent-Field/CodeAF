@@ -275,6 +275,10 @@ func (r *Recorder) capture(ctx context.Context) {
 }
 
 func (r *Recorder) finishCapture(state *captureState, fault bool) bool {
+	// DECIDED BEFORE asyncMu IS TAKEN: the look at what is owed takes mu, and a
+	// settle takes mu and then asyncMu, so asking under asyncMu would cross them.
+	// A fault is never settled this way: a capture that panicked says so.
+	stale := !fault && r.staleFailure()
 	r.asyncMu.Lock()
 	defer r.asyncMu.Unlock()
 	if r.requested && !fault {
@@ -282,6 +286,9 @@ func (r *Recorder) finishCapture(state *captureState, fault bool) bool {
 	}
 	r.errorMu.Lock()
 	state.err = r.lastError
+	if stale {
+		state.err = nil
+	}
 	r.errorMu.Unlock()
 	completeCapture(r.cell.Root, state)
 	r.running = nil
@@ -311,7 +318,40 @@ func (r *Recorder) Drain(ctx context.Context) error {
 		r.report(err)
 		return err
 	}
+	stale := r.staleFailure()
 	r.errorMu.Lock()
 	defer r.errorMu.Unlock()
+	if stale {
+		return nil
+	}
 	return r.lastError
+}
+
+// viewing is a store that knows this window may only show the chat: another
+// computer holds it, or this window let go of it. [Drive] in internal/syncsetup
+// and the chat door's late store are the ones that say so.
+type viewing interface{ Viewing() bool }
+
+// staleFailure says the failure this recorder remembers is no longer a chat
+// that could not be saved. THE WINDOW ONLY SHOWS THE CHAT AND OWES IT NOTHING:
+// every seal it makes is refused as read-only, so none can ever clear the
+// failure an earlier attempt left behind, and reporting that failure at quit
+// told a person that turns were "kept" for a computer that had none of its own
+// to keep. It is deliberately narrow, so a real loss is never hidden: a call
+// still pending, a model call not yet sealed, or a transcript that has lines no
+// seal covers is this computer's own work, and keeps the failure.
+func (r *Recorder) staleFailure() bool {
+	r.errorMu.Lock()
+	failed := r.lastError != nil
+	r.errorMu.Unlock()
+	if !failed {
+		return false
+	}
+	if v, ok := r.store.(viewing); !ok || !v.Viewing() {
+		return false
+	}
+	r.mu.Lock()
+	owed := len(r.pending) > 0 || len(r.models) > 0
+	r.mu.Unlock()
+	return !owed && !r.transcriptGrew()
 }

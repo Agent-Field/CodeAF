@@ -3,15 +3,16 @@ package main
 // ── what the app's quit leaves behind, and what it picks up again ───────────
 //
 // QUITTING THE APP PAUSES ITS AGENTS AND STOPS ITS PROCESSES. A reply in the
-// middle of its work is stopped where it stands and carries on by itself when
-// the app opens again, with "Resumed after quit" in front of it; it is not left
-// reading failed or interrupted. A process the model started is sent SIGTERM,
+// middle of its work is stopped where it stands, and when the app opens again
+// the chat reads "Interrupted · Continue": it does not carry on by itself, so
+// the app never spends unattended after a restart (appinterrupted.go). The
+// person's Continue carries it on once, with "Resumed after quit" in front. A process the model started is sent SIGTERM,
 // then SIGKILL after appQuitGraceS seconds (the conversation's own shutdown,
 // given the app's grace), and is listed afterwards as "stopped by quit". What
 // runs on a schedule is untouched: an automation is the store's, not this
 // process's, and fires again once the app is open.
 //
-// The list of what to pick up is kept in the app's state file, written before
+// The list of what was stopped is kept in the app's state file, written before
 // anything is stopped, so a quit that never finishes still leaves it behind.
 
 import (
@@ -93,46 +94,41 @@ func (b *appBackend) markQuit(agents []*appAgent) {
 	})
 }
 
-// resumeAfterQuit carries on every reply the last quit stopped, once. Each is
-// opened, told it carries on, and does so as a turn of its own.
-func (b *appBackend) resumeAfterQuit() {
-	// Preserve the pending resume list if its actual budget cannot be established.
-	if err := b.settleDayLimit(); err != nil {
-		return
-	}
+// interruptAfterQuit turns what the last quit stopped into chats waiting for
+// the person's Continue (appinterrupted.go). NOTHING IS OPENED OR RESUMED. The
+// marks are written before this returns, so no window can open such a chat
+// before it is held; the footers are said behind it.
+func (b *appBackend) interruptAfterQuit() {
 	var resume, replies, tasks []string
+	marked := map[string]appInterrupted{}
+	at := b.now()
+	key := "interrupted-quit-" + at.UTC().Format("20060102T150405.000000000Z")
 	_ = b.state.write(func(f *appStateFile) error {
 		resume, replies, tasks = f.ResumeAfterQuit, f.QuitReplies, f.QuitTasks
 		f.ResumeAfterQuit, f.QuitReplies, f.QuitTasks = nil, nil, nil
+		for _, id := range resume {
+			entry := appInterrupted{At: at, Key: key, Road: appInterruptedQuit}
+			for _, r := range replies {
+				entry.Reply = entry.Reply || r == id
+			}
+			for _, t := range tasks {
+				if agent, _, ok := appSplitID(t); ok && agent == id {
+					entry.Tasks = append(entry.Tasks, t)
+				}
+			}
+			f.markInterrupted(id, entry)
+			marked[id] = f.Interrupted[id]
+		}
 		return nil
 	})
 	if len(resume) > 0 {
-		at := b.now()
 		b.locked(func() {
-			b.lastResume = &appwire.HealthResume{At: at, RepliesResumed: len(replies) > 0, Replies: len(replies), Tasks: len(tasks)}
+			b.lastResume = &appwire.HealthResume{At: at, Replies: len(replies), Tasks: len(tasks)}
 		})
 	}
-	for _, id := range resume {
-		reply := false
-		var mine []string
-		for _, r := range replies {
-			reply = reply || r == id
-		}
-		for _, t := range tasks {
-			if agent, _, ok := appSplitID(t); ok && agent == id {
-				mine = append(mine, t)
-			}
-		}
-		guard.Go("app/resume", func() { b.resumeOne(id, reply, mine) })
+	for id, entry := range marked {
+		guard.Go("app/interrupted", func() { b.sayInterrupted(id, entry) })
 	}
-}
-
-// resumeOne carries on one agent's reply, when it was in the middle of one,
-// and every task it had running: a task the quit left with nothing driving it
-// is picked up where its record stands.
-func (b *appBackend) resumeOne(id string, reply bool, tasks []string) {
-	defer b.allowLazyOpen(id)
-	b.resumeOneWith(id, reply, tasks, appwire.FooterResumedAfterQuit, appResumedWord, "quit-"+b.now().UTC().Format("20060102T150405.000000000Z"))
 }
 
 // resumeOneWith shares the held conversation, task continuation and private
@@ -156,6 +152,11 @@ func (b *appBackend) resumeOneWith(id string, reply bool, tasks []string, kind, 
 	}
 	if kind == appwire.FooterResumedAfterClose && !live.conn.Assembled {
 		return
+	}
+	// What the open held back carries on first, so the reply's turn finds its
+	// tasks running again (session's resume_quit.go).
+	if door, ok := live.conn.Conv.(appInterruptedDoor); ok {
+		_, _ = door.ContinueInterruptedWork()
 	}
 	for _, task := range tasks {
 		if _, local, ok := appSplitID(task); ok {

@@ -143,7 +143,13 @@ func TestAppFactoryPlanFilesAnswer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(proc.closeAll)
+			// The factory can still open conversations while it stops. Join it
+			// before closing the shared process and restoring its environment.
+			t.Cleanup(func() {
+				_ = s.backend.Close()
+				proc.closeAll()
+				closeEngineProcess()
+			})
 			launch, err := openV3Launch(proc, engineLaunchOptions(remote.Hello{Version: remote.Version, Workspace: g.workspace}, g.workspace, ""))
 			if err != nil {
 				t.Fatal(err)
@@ -180,10 +186,21 @@ func TestAppFactoryPlanFilesAnswer(t *testing.T) {
 			params := map[string]any{"factory": st.Factory, "job": id}
 			s.must("factory.job", params, &job)
 			s.must("factory.job_start", map[string]any{"factory": st.Factory, "job": id, "expect": map[string]any{"version": job.Version}}, &appwire.FactoryJobActed{})
-			eventually(t, "plan gate or build", func() bool {
+			// The plan has settled when its hold is published or its build has finished.
+			tick := time.NewTicker(10 * time.Millisecond)
+			for {
 				s.must("factory.job", params, &job)
-				return job.RuleHold != "" || len(job.Steps) > 2 && job.Steps[2].State == "done"
-			})
+				if job.RuleHold != "" || len(job.Steps) > 2 && job.Steps[2].State == "done" {
+					break
+				}
+				select {
+				case <-tick.C:
+				case <-t.Context().Done():
+					tick.Stop()
+					t.Fatal(t.Context().Err())
+				}
+			}
+			tick.Stop()
 			if job.RuleHold != tc.hold {
 				t.Errorf("hold = %q; want %q; Auto: %s", job.RuleHold, tc.hold, job.AutonomyWhy)
 			}

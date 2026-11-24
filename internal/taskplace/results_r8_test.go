@@ -78,10 +78,13 @@ func resultCopyFixture(t *testing.T) (taskdoor.CopyDeps, string, *plandb.Store, 
 type delayedResultStore struct {
 	blobstore.Store
 	entered, release chan struct{}
+	enteredOnce      sync.Once
 }
 
 func (s *delayedResultStore) GetMany(ctx context.Context, _ []string) ([]blobstore.Object, error) {
-	close(s.entered)
+	// The fetcher asks again when this answers ErrUnreachable once the gate is
+	// released, and a second close of entered panicked the whole package.
+	s.enteredOnce.Do(func() { close(s.entered) })
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

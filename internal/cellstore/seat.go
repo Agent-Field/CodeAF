@@ -114,8 +114,27 @@ func WithNotices(say func(string)) SeatOption {
 // session's seat and the `cell` verbs both come here, so a rewind restores the
 // tree that was sealed.
 func EngineFor(workspace string) Engine {
-	return Engine{Workspace: workspace, Compose: Composers{taskcopy.Carry{}, chatfiles.Carry{}}, Guard: Guard{Ledger: keys.NewLedger(), index: &captureIndex{}}}
+	return Engine{Workspace: workspace, Compose: Composers{taskcopy.Carry{}, chatfiles.Carry{}}, Guard: Guard{Ledger: cleanFiles, index: &captureIndex{}}}
 }
+
+// cleanFiles is the one ledger of files the secret scan found clean, shared by
+// every engine this process derives.
+//
+// ONE LEDGER PER PROCESS, NOT PER ENGINE. A take derives a fresh engine, and
+// before it restores a chat into the person's own folder it screens that folder
+// for secrets (screenCapture); with an empty ledger that is a read of every
+// byte. On a take-back to a 600 MB folder that read was 7 s of a 9.8 s take on
+// the loopback rig (docs/design/app-v3/MOVE-TIMING.md), although every file was
+// the one this process's own session had found clean at its last save. A
+// ledger entry names a file by its path and is honoured only while the file's
+// identity, mode, size and modification time are the ones noted, so a file
+// another engine judged is exactly as trustworthy here, and anything changed
+// since is read again. It holds at most cleanFilesMost files (a few tens of
+// megabytes at worst), because unlike a session's ledger it is never dropped.
+var cleanFiles = keys.NewBoundedLedger(cleanFilesMost)
+
+// cleanFilesMost bounds the process-wide clean-file ledger.
+const cleanFilesMost = 100_000
 
 func recorderFor(inner executor.Executor, store Store, c cell.Cell, opts Options) (*Recorder, error) {
 	return NewRecorder(inner, store, c, Engine{}.WALPath(c), opts)

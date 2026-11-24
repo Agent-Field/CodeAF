@@ -233,6 +233,10 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 		return Status{}, err
 	}
 	service := plug.Service()
+	if service.ID == GitHubID && m.offered(service) {
+		// GitHub takes a pasted token beside its browser sign-in (github.go).
+		return m.connectGitHubKey(ctx, key)
+	}
 	holder, ok := plug.(keyService)
 	if !ok {
 		return Status{}, fmt.Errorf("%s is connected in a browser, not with a key", service.Name)

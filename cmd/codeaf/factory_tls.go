@@ -55,7 +55,13 @@ func checkFactoryTLSConfig(cfg factoryHostConfig) error {
 	default:
 		return fmt.Errorf("tls must be auto, files or off, not %q", cfg.TLS)
 	}
-	if domain := strings.TrimSpace(cfg.Domain); domain != "" && !factoryDomainOK(domain) {
+	// localhost names this machine alone: no certificate authority issues
+	// one for it, but a certificate of the operator's own (tls: files) may,
+	// and it is the one name a browser treats as a secure context for trying
+	// a server's passkeys on one machine.
+	if domain := strings.TrimSpace(cfg.Domain); strings.EqualFold(domain, "localhost") && !(factoryTLSWord(cfg.TLS) == factoryTLSFiles || (factoryTLSWord(cfg.TLS) == "" && strings.TrimSpace(cfg.CertFile) != "")) {
+		return errors.New("domain: localhost needs tls: files with a certificate of your own; no certificate authority issues one for it")
+	} else if domain != "" && !strings.EqualFold(domain, "localhost") && !factoryDomainOK(domain) {
 		return fmt.Errorf("domain must be a host name such as factory.example.com, without https://, a path or a port; %q is not", cfg.Domain)
 	}
 	if (strings.TrimSpace(cfg.CertFile) == "") != (strings.TrimSpace(cfg.KeyFile) == "") {

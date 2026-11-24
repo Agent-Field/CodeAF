@@ -152,6 +152,34 @@ func (a *Agent) belt() []bare.Tool {
 	if a.config.mayBashBelt() {
 		return a.bashBelt()
 	}
+	// AN ORGANIZATION SERVER'S WORKSTREAM AGENT CARRIES ITS ONE TOOL AND NO
+	// OTHER, and no shelf a loader could reach (tools_workstream.go).
+	if a.config.mayWorkstream() {
+		a.clearShelf()
+		// Its tasks and files ride beside it when the door keeps them
+		// (tools_workstream_work.go); a door that does not leaves them absent.
+		belt := []bare.Tool{a.workstreamTool()}
+		if door := a.config.workstreamWorkDoor(); door != nil {
+			belt = append(belt, workstreamWorkBelt(door, a.guardDecisions)...)
+		}
+		// The organization's Library rides beside them on a server that keeps
+		// one (tools_org_library.go); it only reads.
+		if door := a.config.orgLibraryDoor(); door != nil {
+			belt = append(belt, orgLibraryTool(door))
+		}
+		// The canvas rides beside them on a server that keeps canvases
+		// (tools_workstream_canvas.go), and is absent on one that does not.
+		if door := a.config.canvasDoor(); door != nil {
+			belt = append(belt, a.wsCanvasTool(door))
+		}
+		return belt
+	}
+	// AN ORGANIZATION'S SETUP CONVERSATION CARRIES ITS ONE VERB AND NO OTHER
+	// (tools_org_setup.go): there is no workstream yet to read or write.
+	if a.config.mayOrgSetup() {
+		a.clearShelf()
+		return []bare.Tool{a.orgSetupTool()}
+	}
 	// A MODEL WITH NO TOOLS CARRIES NO BELT, and no shelf a loader could reach
 	// either: the catalog says it cannot call one (chatpage.go).
 	if a.config.promptProfile().chat() {

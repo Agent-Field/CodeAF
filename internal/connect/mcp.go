@@ -133,6 +133,9 @@ type toolServer struct {
 	// answers is the vendor's closed list for blank. A value outside it is
 	// refused here rather than turned into a host nobody published.
 	answers []string
+	// bearer says the service takes the machine's one GitHub token as it is,
+	// rather than keys from a sign-in this package ran (github.go).
+	bearer bool
 }
 
 func (s *toolServer) Service() Service                         { return s.service }

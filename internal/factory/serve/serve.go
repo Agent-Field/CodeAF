@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/factory/route"
 	"net"
 	"net/http"
 	"net/netip"
@@ -18,11 +17,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory/route"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/canvasrpc"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -124,6 +127,17 @@ type Config struct {
 	// pass), so a job a person just gave a repository is routed without
 	// waiting for the next poll. Nil leaves it to that poll, which is nudged.
 	Route func(context.Context) error
+	// WorkstreamAgent answers a message to an organization workstream's agent
+	// on this server (workstream_agent.go), with the organization's own model
+	// key. Nil is a server that runs no agents: it never offers "server" as
+	// where they run.
+	WorkstreamAgent AgentRunner
+	// WorkstreamAgents lists the named agents and crews a workstream's tasks
+	// may be done by (workstream_task_doers.go). It is THE SEAM for the
+	// organization's agent list (org-space DESIGN §4.6): nil is an
+	// organization with no shared agents yet, where only Afi, its people and
+	// its chats do tasks.
+	WorkstreamAgents func(factory.OrgWorkstream) []WorkstreamAgent
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline func(context.Context, string, string) (pipeline.File, error)
 	// JobPipeline reads the pipeline one job is bounded by, with the same
@@ -138,10 +152,15 @@ type Config struct {
 	// ([factorygithub.Standing]): "" while it is open, "closed" or "merged"
 	// when it ended. A person's start asks it first, so an issue closed on
 	// GitHub is finished instead of run. Nil starts on what the floor knows.
-	Recheck     func(context.Context, factory.Item) (factory.SourceStanding, error)
-	Address     string
-	Version     string
-	AccessToken string
+	Recheck func(context.Context, factory.Item) (factory.SourceStanding, error)
+	Address string
+	// HSTSSubdomains adds includeSubDomains to HSTS, for an operator who
+	// owns the whole name and serves every name under it over HTTPS. Off by
+	// default: the passkey cookie is __Host- already, so nothing here needs
+	// it, and it would break a plain-HTTP site below the name.
+	HSTSSubdomains bool
+	Version        string
+	AccessToken    string
 	// GitHubClientID enables GitHub device sign-in; Team optionally restricts handles.
 	GitHubClientID string
 	Team           []string
@@ -157,7 +176,10 @@ type Config struct {
 	// TokensPath names access-token rows beside the host config. Empty means
 	// only AccessToken is accepted. It is read on each request so a revoke
 	// applies without restarting the service.
-	TokensPath   string
+	TokensPath string
+	// SendMail sends one plain-text email. Nil is a server with no mailer:
+	// an invite is then a link to copy, and nothing says it was emailed.
+	SendMail     func(ctx context.Context, to, subject, body string) error
 	PollingEvery time.Duration
 	// GitHubLimit is when GitHub's spent rate limit resets, zero when it is
 	// not spent. About says it, so an app can show why nothing is read.
@@ -194,10 +216,29 @@ type Config struct {
 	// SpentToday is the runner's day figure when this process holds the
 	// ledger. Nil uses the floor's own reading of the same rule.
 	SpentToday func() float64
+	// Canvas runs canvas-core for the organization's canvases (`canvas
+	// rpc`). Nil keeps no canvases: the /v1/canvases routes are left off.
+	Canvas *canvasrpc.Sidecar
 }
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
+	// drivers holds each organization workstream's driver hand
+	// (workstream_driver.go).
+	drivers driverHands
+	// agentDesk holds each organization workstream's server agent and its
+	// conversation (workstream_agent.go).
+	agentDesk    agentDesk
+	grantSweeper grantSweeper
+	// ordersTimer wakes for the soonest standing order due in any
+	// organization workstream (workstream_orders.go).
+	ordersMu     sync.Mutex
+	ordersTimer  *time.Timer
+	ordersClosed bool
+	// chaseTimer wakes every [inviteChaseEvery] to ask the owners of tasks
+	// that wait on someone invited who has not joined (invite_chase.go). It
+	// shares ordersMu and ordersClosed with the orders' timer.
+	chaseTimer *time.Timer
 	// workerSettled is when a runner's request last settled the floor
 	// ([Handler.workerSettleDue]).
 	workerSettleMu sync.Mutex
@@ -217,6 +258,9 @@ type Handler struct {
 	// commentFlights holds the jobs with a comment on their issue being
 	// posted by this handler (issue_comment.go).
 	commentFlights sync.Map
+	// uploadWords holds each upload's words for a Files search, by the
+	// sha256 its bytes are kept under (workstream_files_search.go).
+	uploadWords uploadWordCache
 
 	// reposMu serializes every change to the watched list: the single-repo switch
 	// reads, edits and saves it, so any other writer must queue behind it. It is
@@ -246,24 +290,52 @@ type Handler struct {
 	// acts is the one sender of public acts (acts.go).
 	acts actRun
 
+	// teamOwnership answers whether a team owns a workstream (teams.go);
+	// nil means no team owns any.
+	teamOwnershipMu sync.Mutex
+	teamOwnership   TeamOwnership
+
 	seam    factory.Seam
 	areas   repoAreas
 	config  Config
 	factory api.Factory
-	mux     *http.ServeMux
-	watch   *rootWatch
+	// orgName is the name "Start your organization" gave it, read by
+	// factoryNow (org_setup.go); nil is the name it was started with.
+	orgName atomic.Pointer[string]
+	// setupFault, in tests alone, refuses one part of a set-up press by its
+	// key (org_setup.go), so a press that fails half way can be watched.
+	setupFault func(key string) error
+	mux        *http.ServeMux
+	watch      *rootWatch
 
-	workers        *workerService
-	sessions       *accessSessions
-	auth           *deviceFlows
-	viewer         *viewerState
-	consentMu      sync.Mutex
-	joinMu         sync.Mutex
+	workers   *workerService
+	sessions  *accessSessions
+	auth      *deviceFlows
+	viewer    *viewerState
+	consentMu sync.Mutex
+	joinMu    sync.Mutex
+	// pwGuard throttles password tries by username and by address
+	// (password_policy.go), made on first use.
+	pwOnce  sync.Once
+	pwGuard *passwordGuard
+	// accounts is accounts.json as last read (password_accounts.go).
+	accounts accountsCache
+	// passkeys holds the WebAuthn ceremonies in flight (passkey.go).
+	passkeys       passkeyState
 	replays        replayCache
 	machinesMu     sync.Mutex
 	machines       map[string]machineRow
 	machinesTimer  *time.Timer
 	machinesClosed bool
+
+	// Who has an organization item open (org_presence.go), and the item
+	// kinds presence knows with who may view each.
+	presenceDesk  presenceDesk
+	presenceKinds map[string]presenceKind
+	// canvasFrames caches each canvas's live node ids for its frame documents.
+	canvasFrames canvasFrames
+	// docs is the organization's live documents (docs.go).
+	docs docService
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -278,11 +350,17 @@ func New(seam factory.Seam, config Config) *Handler {
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.seam = h.areas.remembering(seam)
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
+	h.loadOrgName()
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	if config.Now != nil {
 		h.sessions.now = config.Now
 	}
 	h.auth = &deviceFlows{pending: make(map[string]*deviceFlow)}
+	// A named doer is checked against the agents the store keeps for each
+	// workstream, unless the door supplied its own list (org_agent_doers.go).
+	if h.config.WorkstreamAgents == nil {
+		h.config.WorkstreamAgents = h.sharedWorkstreamAgents
+	}
 	h.viewer = newViewerState()
 	h.sessions.err = h.loadSessions()
 	if _, err := tokens.LoadOperator(config.TokensPath); err != nil {
@@ -290,7 +368,10 @@ func New(seam factory.Seam, config Config) *Handler {
 	}
 	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice, http.MethodDelete: h.cancelDevice})
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
-	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
+	h.route("/v1/auth/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordSignIn})
+	h.route("/v1/me/password", map[string]http.HandlerFunc{http.MethodPost: h.passwordChange})
+	h.passkeyRoutes()
+	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.accessPage, http.MethodPost: h.accessPage})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
 	h.read("/v1/jobs/{id}", h.job)
@@ -333,8 +414,36 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/spend/models", h.spendModels)
 	h.jobVerbs()
 	h.goAheadRoutes()
+	h.teamRoutes()
+	h.inviteRoutes()
+	h.workstreamRoutes()
+	h.presenceRoutes()
+	h.docRoutes()
+	h.orgKeyRoutes()
+	h.agentRoutes()
+	// Settles the task runs a restart cut off, and those that went quiet.
+	h.startTaskSweep()
+	h.orgSetupRoutes()
+	h.chatRoutes()
+	h.accessRoutes()
+	h.reconcileChatFolders()
+	h.backfillChats()
+	h.backfillSessions()
+	h.startGrantSweep()
+	h.mySpaceRoutes()
+	h.orgAgentRoutes()
+	h.orgLibraryRoutes()
+	// After presence and the documents, so a canvas registers its own
+	// presence kind and the canvas half of the documents' access.
+	h.canvasRoutes()
+	if config.Store != nil {
+		// A team that owns an organization workstream cannot be deleted.
+		h.SetTeamOwnership(config.Store)
+	}
 	h.jobScreens()
 	h.scheduleJobTimer()
+	h.scheduleOrderTimer()
+	h.scheduleInviteChase()
 	if config.Store != nil {
 		h.setupMu.Lock()
 		if saved, err := h.loadSetup("local"); err == nil {
@@ -364,6 +473,10 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeGrantSweep()
+		h.closeOrders()
+		h.closeAgents()
+		h.closeDocs()
 		h.reposRead.mu.Lock()
 		h.reposRead.closed = true
 		if h.reposRead.cancel != nil {
@@ -416,6 +529,9 @@ func (h *Handler) Close() {
 		}
 		h.machinesMu.Unlock()
 	}
+	if h != nil {
+		h.closePresence()
+	}
 	if h != nil && h.watch != nil {
 		h.watch.stop()
 	}
@@ -432,7 +548,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// A caller who reached the factory over HTTPS is told to keep doing so.
 	// Over plain HTTP the header means nothing and is not sent.
 	if secureRequest(r) {
-		w.Header().Set("Strict-Transport-Security", hstsValue)
+		w.Header().Set("Strict-Transport-Security", h.hsts())
 	}
 	if h.config.ServedBy == "app" && !workerPath(r.URL.Path) && !h.floorToken(bearer(r)) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
@@ -445,7 +561,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) && !h.allowed(r) {
 		if h.authFailed(w, r) {
 			return
 		}
@@ -462,7 +578,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
-	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" {
+	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) {
 		if session, ok := h.credential(r); ok && session.tokenID != "" {
 			for _, tok := range h.tokenRows() {
 				if tok.ID == session.tokenID && (tok.AccessLink || tok.InvitedBy != "") {
@@ -619,6 +735,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	q.Factory = h.factory
 	q.Mode = h.mode()
+	if q.Mode != api.FactorySolo && !operator {
+		h.markNeedsWorkstream(r, q.Repos)
+	}
 	if h.config.DefaultModel != nil {
 		q.Model = strings.TrimSpace(h.config.DefaultModel())
 	}
@@ -656,7 +775,10 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	// One token lookup for the whole list. Presenting each job would otherwise
 	// ask again, and the host's answer can start a process.
-	r = h.rememberHostToken(r)
+	r = h.rememberPickUp(h.rememberHostToken(r))
+	if h.githubNotConnected(r) {
+		q.GitHub = api.GitHubNotConnected
+	}
 	held := false
 	for i := range q.Jobs {
 		was := q.Jobs[i].NeedsYou
@@ -762,7 +884,7 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 		if factory.IsIssueJob(it) && (it.ID == id || factory.JobKey(it) == r.PathValue("id")) {
 			// A hidden job is the same answer as a missing one, so the
 			// caller cannot tell which repositories exist.
-			visible := h.repoVisible(r, itemRepo(it))
+			visible := h.repoVisible(r, itemRepo(it)) && h.jobVisible(r, it)
 			if h.authFailed(w, r) {
 				return factory.Item{}, false
 			}
@@ -938,11 +1060,20 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	body := h.meBody(profile, session.id)
 	// Only a credential that carries a GitHub-verified profile is a sign-in; a
 	// script token, access-link secret or legacy dashboard session is not.
-	body.GitHubSignedIn = session.profile != nil && session.profile.Handle != ""
+	// SignInKind says which way a person signed in; GitHubSignedIn is true only
+	// for GitHub, so a password person is never said to have a GitHub sign-in.
+	if session.profile != nil && session.profile.Handle != "" {
+		body.SignInKind = personKind(*session.profile)
+		body.GitHubSignedIn = body.SignInKind == signInGitHub
+		if session.via != "" && body.SignInKind == signInPassword {
+			body.SignInKind = session.via
+		}
+	}
 	// What this factory is configured to do, said by the factory itself so a
 	// client never probes a real GitHub device flow to find out.
 	body.GitHubSignInAvailable = h.config.GitHubClientID != ""
-	body.InviteAvailable = body.GitHubSignInAvailable && h.config.TokensPath != ""
+	// An invitation can be redeemed with a password as well as with GitHub.
+	body.InviteAvailable = (body.GitHubSignInAvailable || h.passwordsOn()) && h.config.TokensPath != ""
 	body.Machines = machines
 	body.Mode, body.Operator = h.mode(), h.isOperator(r)
 	if body.Mode == api.FactoryTeam && h.operatorLogin(r) == "" {
@@ -953,6 +1084,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.TakesUnassigned = takes
+	body.Teams = h.Membership().TeamsOf(handle)
 	h.write(w, http.StatusOK, body)
 }
 
@@ -977,8 +1109,11 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		// limit is spent, and GitHubResumesAt is when it resets.
 		GitHubLimited   string     `json:"github_limited,omitempty"`
 		GitHubResumesAt *time.Time `json:"github_resumes_at,omitempty"`
-	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
-		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes})
+		// SignIn is how a person may sign in, preferred first: "password",
+		// "github". Absent from an older server, which means GitHub only.
+		SignIn []string `json:"sign_in"`
+	}{h.factoryNow(), scheme(r), h.aboutName(), h.factoryNow().Version, api.Contract, h.needsWord(),
+		h.accessMode(), h.pollingEvery(), h.servedBy(), true, limited, resumes, h.signInMethods()})
 }
 
 // githubLimited is the reason and reset time about carries while GitHub's
@@ -1043,7 +1178,7 @@ func (h *Handler) pollingEvery() string {
 }
 
 func (h *Handler) aboutName() string {
-	return h.factory.Name
+	return h.factoryNow().Name
 }
 
 func loopbackListen(address string) bool {

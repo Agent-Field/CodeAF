@@ -10,7 +10,11 @@ type Person struct {
 	Factory Factory `json:"factory"`
 	Handle  string  `json:"handle"`
 	factory.GitHubPerson
-	Login       string      `json:"login"`
+	Login string `json:"login"`
+	// Kind is "password" for a person who signs in with a username and a
+	// password, "github" for a GitHub person; a password person has no
+	// GitHub photo, and only a password person can be sent a reset link.
+	Kind        string      `json:"kind,omitempty"`
 	You         bool        `json:"you"`
 	Operator    bool        `json:"operator"`
 	Status      string      `json:"status"`

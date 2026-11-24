@@ -577,6 +577,7 @@ func (a *Agent) armTeamTools(roles []teamRole, lead bool) {
 		member = false
 	case manager:
 		arriving = append(arriving, a.managerTools()...)
+		arriving = append(arriving, a.teamLinkTools()...)
 		arriving = append(arriving, a.packetTools()...)
 		arriving = append(arriving, a.wrapUpTools()...)
 	}

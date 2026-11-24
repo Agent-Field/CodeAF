@@ -11,17 +11,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
 
-func knowledgeModel(profile string) string { return config.KnowledgeModelAt(profile) }
-
 const knowledgeProjectionVersion = "knowledge-projection-4"
 
 func (v *Vault) compile(ctx context.Context, key string, force bool) (err error) {
-	if !v.Enabled() {
+	if !v.mayLearn(ctx) {
 		return ErrDisabled
 	}
 	if err = ctx.Err(); err != nil {
@@ -59,7 +56,7 @@ func (v *Vault) compile(ctx context.Context, key string, force bool) (err error)
 		return err
 	}
 	defer db.Close()
-	model := compilerModel{ctx: ctx, root: v.root, key: key, model: knowledgeModel(v.profile), db: db, calls: v.calls, repeats: v.repeats}
+	model := compilerModel{ctx: ctx, root: v.root, key: key, model: v.model(), db: db, calls: v.calls, repeats: v.repeats}
 	defer func() {
 		message := ""
 		if err != nil {
@@ -323,7 +320,10 @@ func compilerSourceSelection(ctx context.Context, payload string) (string, []any
 		return "0", nil
 	}
 	if len(owners) == 0 {
-		return "coalesce(json_extract(" + payload + ",'$.job'),0)=0", nil
+		// A background compile leaves out the chats still being written in
+		// (build_idle.go).
+		held, args := heldClause(ctx, payload)
+		return "coalesce(json_extract(" + payload + ",'$.job'),0)=0 AND " + held, args
 	}
 	clauses := make([]string, 0, len(owners))
 	args := make([]any, 0, len(owners)*3)

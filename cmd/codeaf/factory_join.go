@@ -51,10 +51,10 @@ func (l factoryJoinLink) canonical() string {
 func parseFactoryJoinLink(raw string) (factoryJoinLink, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Scheme != "codeaf" {
-		return factoryJoinLink{}, errors.New("use a factory access link: codeaf://factory/join?url=…#token=…")
+		return factoryJoinLink{}, errors.New("use an organization invite link: codeaf://factory/join?url=…#token=…")
 	}
 	if !(u.Host == "factory" && u.Path == "/join") && !(u.Host == "join" && (u.Path == "" || u.Path == "/")) {
-		return factoryJoinLink{}, errors.New("this is not a factory access link")
+		return factoryJoinLink{}, errors.New("this is not an organization invite link")
 	}
 	base, err := factoryURL(u.Query().Get("url"))
 	if err != nil {

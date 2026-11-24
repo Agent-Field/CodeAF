@@ -36,6 +36,7 @@ var eventShapes = map[string]reflect.Type{
 	EventCrewChanged:       reflect.TypeFor[CrewChanged](),
 	EventCrewRemoved:       reflect.TypeFor[CrewRemoved](),
 	EventCrewLog:           reflect.TypeFor[CrewLogEvent](),
+	EventCrewItem:          reflect.TypeFor[CrewItemEvent](),
 	EventMemberChanged:     reflect.TypeFor[MemberChanged](),
 	EventDecisionOpened:    reflect.TypeFor[DecisionEvent](),
 	EventDecisionChanged:   reflect.TypeFor[DecisionEvent](),

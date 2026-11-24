@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"net/url"
 	"os/exec"
 	"sort"
 	"strings"
@@ -102,24 +101,16 @@ func (st *Store) repositoryIdentities() (repositoryIDs, error) {
 	return ids, nil
 }
 
-func githubRemoteName(remote string) string {
-	if strings.HasPrefix(remote, "git@github.com:") {
-		remote = "ssh://git@github.com/" + strings.TrimPrefix(remote, "git@github.com:")
-	}
-	u, err := url.Parse(remote)
-	if err != nil || !strings.EqualFold(u.Hostname(), "github.com") {
-		return ""
-	}
-	full := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(strings.Trim(u.Path, "/"), ".git"), "/"))
-	if !RepoName(full) {
-		return ""
-	}
-	return full
-}
+func githubRemoteName(remote string) string { return factory.GitHubRemoteName(remote) }
 
 // canonicalItem preserves unknown local jobs until their identity can be
 // resolved. Product is the owner on older forge jobs, independent of checkout.
 func (ids repositoryIDs) canonicalItem(it *factory.Item) bool {
+	// A FOLDER ON THIS COMPUTER IS ITS OWN NAME (factory.FolderOf): it is
+	// never rewritten to the GitHub repository its origin happens to name.
+	if factory.IsFolderRepo(it.Repo) {
+		return false
+	}
 	full := ids.resolve(it.Repo)
 	if !RepoName(it.Repo) && RepoName(it.Product+"/"+it.Repo) {
 		full = strings.ToLower(it.Product + "/" + it.Repo)
@@ -145,7 +136,7 @@ func (ids repositoryIDs) canonicalItem(it *factory.Item) bool {
 }
 
 func needsRepositoryLookup(it factory.Item) bool {
-	return it.Repo != "" && !RepoName(it.Repo) && !RepoName(it.Product+"/"+it.Repo)
+	return it.Repo != "" && !factory.IsFolderRepo(it.Repo) && !RepoName(it.Repo) && !RepoName(it.Product+"/"+it.Repo)
 }
 
 func (st *Store) itemIdentities(it factory.Item) (repositoryIDs, error) {

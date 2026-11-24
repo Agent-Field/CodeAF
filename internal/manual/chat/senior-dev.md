@@ -785,7 +785,8 @@ request happen after the run — ask the chat.
 In a git repository senior-dev works in a git worktree of your repository under your
 account's cache folder (`~/Library/Caches/codeaf/worktrees/<repository>-<random>` on a
 Mac, `~/.cache/codeaf/worktrees/…` on Linux; `worktrees` inside `CODEAF_HOME` when that
-moves codeaf's folder), private to your account and not emptied by a restart. It is not for you to open: it exists so several runs can work on one repository
+moves codeaf's folder; in the desktop app, a folder of its own under the cache folder,
+named for the app's folder), private to your account and not emptied by a restart. It is not for you to open: it exists so several runs can work on one repository
 at once and your checkout is never touched, and it is removed the moment senior-dev exits.
 `git worktree list` shows it while the run works. A copies folder that is a link, or that
 another account made, is refused rather than used.

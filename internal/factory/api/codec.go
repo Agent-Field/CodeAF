@@ -227,6 +227,12 @@ func FromItem(it factory.Item) Job {
 	AreaIn(&j, nil)
 	j.ReadSize = readSize(it)
 	j.PR = fromPR(it.PullRequest)
+	// A pull request opened from a folder is carried whenever it was opened, so
+	// a read never loses it, even for an item whose place no longer reads as a
+	// folder.
+	if dir := factory.FolderOf(it); dir != "" || it.FolderPR != nil {
+		j.Folder = &JobFolder{Path: dir, Branch: factory.WorkBranch(it), PR: it.FolderPR}
+	}
 	j.Merge = jobMerge(it)
 	if !it.MergeOfferedAt.IsZero() {
 		at := it.MergeOfferedAt.UTC()
@@ -663,6 +669,9 @@ func ToItem(j Job) factory.Item {
 		Activity: mapList(d.Activity, toActivity),
 	}
 	it.PullRequest = toPR(j.PR)
+	if j.Folder != nil {
+		it.FolderPR = j.Folder.PR
+	}
 	it.MergePolicy, it.Merging = unmerge(j.Merge)
 	if j.MergeOfferedAt != nil {
 		it.MergeOfferedAt = j.MergeOfferedAt.UTC()
@@ -1421,7 +1430,7 @@ func toPhase(s Step) factory.Phase {
 	// A step of the run that is no step of the pipeline and has an ask is an
 	// extra task ([phaseDef]). A call of an AgentField run is never one.
 	if !s.InPipeline && strings.TrimSpace(s.Ask) != "" && kind != string(factory.StageAgentField) && s.Target == "" {
-		p.Task = &factory.TaskAsk{Words: s.Ask, By: s.By}
+		p.Task = &factory.JobTaskRequest{Words: s.Ask, By: s.By}
 	}
 	// THE WHOLE REPORT WINS WHEN IT CAME. A worker's pull carries it; a
 	// reader's job, and a pull from an older factory, carry only the step's

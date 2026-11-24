@@ -31,6 +31,13 @@ import (
 // the core removes its item. A restored sign-in the factory later refuses is
 // forgotten once, which reads as signed out and queues its removal.
 //
+// factory.sessions_store {can_keep} is the core saying whether it can keep a
+// secret in the OS's secure store at all. It is sent at launch, before the
+// windows are let go, and again with false the moment a keep is refused.
+// Only while it is true does the engine ask an organization for a device
+// token; nothing said (an older app) is false, so a machine that keeps
+// nothing never fills a person's trusted devices.
+//
 // ALL OF THIS IS OPTIONAL. An engine that is not a [FactorySessionKeeper]
 // answers both methods as unknown_method and does not announce the feature.
 
@@ -49,12 +56,22 @@ const FactorySessionsTakeLife = 60 * time.Second
 
 // FactorySessionChange is one sign-in to keep, or, with Removed, one to forget.
 // Expires is absent for a sign-in that does not expire.
+//
+// Device is the organization's trusted-device token for this machine, a
+// secret kept beside the sign-in and handed back the same way: a later
+// password sign-in presents it, so a stranger guessing at the person's
+// username from elsewhere does not lock this machine out. It outlives the
+// sign-in: Removed forgets only the sign-in, and a Device on the same change
+// is still kept. DeviceRemoved forgets the device too (the connection itself
+// was removed).
 type FactorySessionChange struct {
-	Factory string     `json:"factory"`
-	URL     string     `json:"url,omitempty"`
-	Token   string     `json:"token,omitempty"`
-	Expires *time.Time `json:"expires,omitempty"`
-	Removed bool       `json:"removed,omitempty"`
+	Factory       string     `json:"factory"`
+	URL           string     `json:"url,omitempty"`
+	Token         string     `json:"token,omitempty"`
+	Expires       *time.Time `json:"expires,omitempty"`
+	Removed       bool       `json:"removed,omitempty"`
+	Device        string     `json:"device,omitempty"`
+	DeviceRemoved bool       `json:"device_removed,omitempty"`
 }
 
 // FactorySessionsTaken is every change not yet taken, oldest first.
@@ -62,12 +79,20 @@ type FactorySessionsTaken struct {
 	Changes []FactorySessionChange `json:"changes"`
 }
 
-// FactorySessionRestoreParams is a kept sign-in handed back.
+// FactorySessionRestoreParams is a kept sign-in handed back, with the device
+// token kept beside it. Either may be absent, not both: a person who signed
+// out still has the device.
 type FactorySessionRestoreParams struct {
 	Factory string     `json:"factory"`
 	URL     string     `json:"url"`
-	Token   string     `json:"token"`
+	Token   string     `json:"token,omitempty"`
 	Expires *time.Time `json:"expires,omitempty"`
+	Device  string     `json:"device,omitempty"`
+}
+
+// FactorySessionsStoreParams says whether the app can keep secrets.
+type FactorySessionsStoreParams struct {
+	CanKeep bool `json:"can_keep"`
 }
 
 // FactorySessionRestored says whether the engine now holds the sign-in.
@@ -79,6 +104,7 @@ type FactorySessionRestored struct {
 type FactorySessionKeeper interface {
 	FactorySessionsTake(ctx context.Context) (FactorySessionsTaken, error)
 	FactorySessionRestore(ctx context.Context, p FactorySessionRestoreParams) (FactorySessionRestored, error)
+	FactorySessionsStore(ctx context.Context, p FactorySessionsStoreParams) error
 }
 
 func withFactorySessionsFeature(hello Hello, e Engine) Hello {
@@ -136,8 +162,9 @@ func init() {
 			if p.Factory, err = factoryID(strings.TrimSpace(p.Factory)); err != nil {
 				return nil, err
 			}
-			if p.Token = strings.TrimSpace(p.Token); p.Token == "" || len(p.Token) > 4096 {
-				return nil, Errorf(CodeBadParams, "factory.session_restore: token is required")
+			p.Token, p.Device = strings.TrimSpace(p.Token), strings.TrimSpace(p.Device)
+			if (p.Token == "" && p.Device == "") || len(p.Token) > 4096 || len(p.Device) > 4096 {
+				return nil, Errorf(CodeBadParams, "factory.session_restore: token or device is required")
 			}
 			ctx, cancel := factoryCall()
 			defer cancel()
@@ -146,6 +173,22 @@ func init() {
 				return nil, err
 			}
 			return &out, nil
+		}),
+		"factory.sessions_store": shaped[FactorySessionsStoreParams, Empty](func(e Engine, raw json.RawMessage) (*Empty, error) {
+			k, err := factoryKeeperOf(e, "factory.sessions_store")
+			if err != nil {
+				return nil, err
+			}
+			var p FactorySessionsStoreParams
+			if err := decodeStrict("factory.sessions_store", raw, &p); err != nil {
+				return nil, err
+			}
+			ctx, cancel := factoryCall()
+			defer cancel()
+			if err := k.FactorySessionsStore(ctx, p); err != nil {
+				return nil, err
+			}
+			return &Empty{}, nil
 		}),
 	} {
 		methods[name] = m

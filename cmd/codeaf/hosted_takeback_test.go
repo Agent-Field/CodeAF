@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -319,7 +320,14 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	}
 	staleHoldForMove(t, h.a, h.c.ID, 1)
 	var started time.Time
+	var phaseMu sync.Mutex
+	var measured []handoff.Phase
 	phases := func(p handoff.Phase) {
+		if !p.Ended.IsZero() {
+			phaseMu.Lock()
+			measured = append(measured, p)
+			phaseMu.Unlock()
+		}
 		if p.Ended.IsZero() {
 			t.Logf("phase %s at %s", p.Name, p.Started.Sub(started))
 		} else {
@@ -346,8 +354,23 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 		t.Fatalf("take and reopened writer made %d acquires; want both", len(h.acquires))
 	}
 	t.Logf("relay first acquire after key: %s", h.acquires[0].Sub(started))
-	if elapsed := h.acquires[0].Sub(started); elapsed > time.Second {
-		t.Errorf("first acquire took %s; want within 1s", elapsed)
+	// THE BOUND IS ON WAITING, NOT ON THE MACHINE'S SPEED. Before the first
+	// acquire the take-back reads git, stages and files the chat; on a box
+	// running other suites that work alone passed a second (dirty check
+	// 690ms, staging 360ms on 2026-11-16), and a wall-clock ceiling failed a
+	// take-back that waited for nothing. What F3 forbids is a release delay:
+	// time no measured phase accounts for, or a handoff phase that waits.
+	phaseMu.Lock()
+	unaccounted, work := waitedBefore(started, h.acquires[0], measured)
+	for _, p := range measured {
+		if (p.Name == "retirement" || p.Name == "directory" || p.Name == "acquire") && p.Ended.Sub(p.Started) > time.Second {
+			t.Errorf("phase %s waited %s; want within 1s", p.Name, p.Ended.Sub(p.Started))
+		}
+	}
+	phaseMu.Unlock()
+	t.Logf("before first acquire: %s measured work, %s unaccounted", work, unaccounted)
+	if unaccounted > time.Second {
+		t.Errorf("first acquire waited %s outside any phase (of %s); want within 1s", unaccounted, h.acquires[0].Sub(started))
 	}
 	for i := 1; i < len(h.acquires); i++ {
 		t.Logf("relay acquire %d after key: %s; gap: %s", i+1, h.acquires[i].Sub(started), h.acquires[i].Sub(h.acquires[i-1]))
@@ -363,6 +386,37 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 			t.Errorf("shared work uploaded before acquire: %s", r)
 		}
 	}
+}
+
+// waitedBefore splits the time from start to end into what the measured
+// phases cover (their union, so overlapping phases count once) and what none
+// of them does.
+func waitedBefore(start, end time.Time, phases []handoff.Phase) (unaccounted, work time.Duration) {
+	spans := make([][2]time.Time, 0, len(phases))
+	for _, p := range phases {
+		from, to := p.Started, p.Ended
+		if from.Before(start) {
+			from = start
+		}
+		if to.After(end) {
+			to = end
+		}
+		if to.After(from) {
+			spans = append(spans, [2]time.Time{from, to})
+		}
+	}
+	slices.SortFunc(spans, func(a, b [2]time.Time) int { return a[0].Compare(b[0]) })
+	var reach time.Time
+	for _, span := range spans {
+		if span[0].After(reach) {
+			reach = span[0]
+		}
+		if span[1].After(reach) {
+			work += span[1].Sub(reach)
+			reach = span[1]
+		}
+	}
+	return end.Sub(start) - work, work
 }
 
 type crashedWriterConfig struct {

@@ -133,6 +133,9 @@ func TestARepairIsRefusedBeforeAnythingHappens(t *testing.T) {
 	if _, err := h.s.Stop("agent-a", live.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Stop sends its signal from its own goroutine, so the count below is only
+	// settled once the grace barrier is reached.
+	awaitGrace(t, h.clock)
 	if _, err := h.s.Repair("agent-a", live.ID, portSpec(h.dir, 5176), PolicyOnFailure, Provenance{}); !errors.Is(err, ErrStopping) {
 		t.Fatalf("a service in its stop grace was repaired: %v", err)
 	}

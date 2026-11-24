@@ -18,7 +18,7 @@ after a restart.
 Set ids start with a lowercase letter, followed by lowercase letters, digits,
 underscores, dots or hyphens, up to 64 characters. Tool names exclude dots and
 hyphens. Descriptions take 1–2048 bytes; schemas are JSON objects with
-`type: "object"`, up to 16 KiB. Instructions allow 4096 bytes per set. Tools
+`type: "object"`, up to 16 KiB. Instructions allow 8192 bytes per set. Tools
 declare `read`, `edit` or `create`; reading-only contexts refuse changes.
 The usual approval rules apply.
 

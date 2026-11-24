@@ -225,10 +225,11 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 		{"codex", ListingNone, "", "gpt-5.5"},
 		{"ollama", ListingModels, "", ""},
 		{"custom", ListingModels, "", ""},
-		// OBSERVED 2026-11-03 against opencode.ai/inference/go/v1: /models
-		// answers 200 with the key and 401 without one, and chat completions
-		// share that root. The preferred id is the plan's own flagship GLM.
-		{"opencode-go", ListingModels, "glm-5.3", "glm-5.3"},
+		{"claude-code", ListingNone, "", "sonnet"},
+		// /models answers 200 without a bearer and 401 with a bad bearer.
+		// The connect check always sends a bearer, so its 200 proves that
+		// the key sent was accepted. Chat completions share that root.
+		{"opencode-go", ListingModels, "", "glm-5.3"},
 	}
 	// Rows are read by identity, not position: claude-code sits between
 	// custom and opencode-go and makes no listing claim this table covers.
@@ -243,7 +244,7 @@ func TestVendoredListingHintsAndProbeModelsMatchTheProviderSurvey(t *testing.T) 
 				index, row.ID, row.Listing, row.ProbeModel, row.Preferred,
 				expected.id, expected.listing, expected.probeModel, expected.preferred)
 		}
-		if row.ID != "codex" && (row.Probe.Method != "GET" || row.Probe.Address != "/models") {
+		if row.ID != "codex" && row.ID != "claude-code" && (row.Probe.Method != "GET" || row.Probe.Address != "/models") {
 			t.Errorf("row %s does not try the listing first: %+v", row.ID, row.Probe)
 		}
 	}
@@ -350,7 +351,7 @@ func TestEveryVendoredProbeNamesTheSharedTimeout(t *testing.T) {
 		}
 		return true
 	})
-	if timeoutFields != 2 {
-		t.Fatalf("modelsource describes %d probe timeout fields, want 2", timeoutFields)
+	if timeoutFields != 3 {
+		t.Fatalf("modelsource describes %d probe timeout fields (models, chat, plan proof), want 3", timeoutFields)
 	}
 }

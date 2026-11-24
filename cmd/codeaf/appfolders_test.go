@@ -274,14 +274,14 @@ func TestAppFolderSidecarsAndMembership(t *testing.T) {
 		if got := f.b.renderDir(f.a); got != f.dir {
 			t.Fatalf("render folder = %q, want %q", got, f.dir)
 		}
-		if err := f.b.keepAppFooter(f.a, "folder-receipt", appwire.FooterStoppedByClose, appCloseStoppedWord); err != nil {
+		if err := f.b.keepAppFooter(f.a, "folder-receipt", appwire.FooterInterrupted, appInterruptedWord); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(filepath.Join(f.dir, appFootersName)); err != nil {
 			t.Fatal(err)
 		}
 		kept, err := appReadFooters(f.transcript)
-		if err != nil || len(kept) != 1 || kept[0].Entry.ID != "folder-receipt" || kept[0].Entry.Agent != f.id || kept[0].Entry.Text != appCloseStoppedWord {
+		if err != nil || len(kept) != 1 || kept[0].Entry.ID != "folder-receipt" || kept[0].Entry.Agent != f.id || kept[0].Entry.Text != appInterruptedWord {
 			t.Fatalf("saved receipt = %+v, %v", kept, err)
 		}
 		team := teamstore.Team{Members: []teamstore.Member{{Key: f.transcript, File: f.transcript}}}

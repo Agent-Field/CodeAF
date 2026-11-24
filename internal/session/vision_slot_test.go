@@ -133,3 +133,33 @@ func TestASlotNamingTheBlindModelIsRefused(t *testing.T) {
 		t.Fatalf("the model was called %d times for a refused message", completer.requests())
 	}
 }
+
+// solo-sheets F17: with no looking row and no pin, the resolver elects nobody,
+// and the session looks with the model the person chose when it can see. When
+// it cannot, nothing looks: view_image is off the belt rather than quietly
+// riding another vendor's model.
+func TestLookingFollowsThePersonsOwnModelAndNeverAnotherVendors(t *testing.T) {
+	sighted, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		withSlot(map[string]string{})(config)
+		config.SupportsImages = func(model string) bool { return model == "vendor/chosen" }
+	})
+	sighted.SetModel("vendor/chosen")
+	if seer := sighted.visionSeer(); seer != "vendor/chosen" {
+		t.Fatalf("the seer is %q, want the person's own sighted model", seer)
+	}
+	if tools := sighted.viewTools(); len(tools) != 1 {
+		t.Fatalf("a sighted chosen model left view_image off the belt: %d tools", len(tools))
+	}
+
+	blind, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		withSlot(map[string]string{})(config)
+		config.SupportsImages = func(model string) bool { return model == "google/gemini-3.7-flash" }
+	})
+	blind.SetModel("deepseek/deepseek-v4.1-flash")
+	if seer := blind.visionSeer(); seer != "" {
+		t.Fatalf("a blind chosen model looked through %q", seer)
+	}
+	if tools := blind.viewTools(); len(tools) != 0 {
+		t.Fatal("view_image is on the belt with nothing the person chose able to see")
+	}
+}

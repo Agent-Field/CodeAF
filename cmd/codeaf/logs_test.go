@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -107,6 +108,8 @@ func TestMain(m *testing.M) {
 	// Ordinary doctor tests have fake keys and must never contact a provider.
 	doctorKeyClient = &http.Client{Transport: setupHealthTransport(func(*http.Request) (*http.Response, error) { return nil, errors.New("offline test fixture") })}
 	readinessLookPath = func(string) (string, error) { return "", errors.New("tools absent in test fixture") }
+	// No test asks the developer's own gh who it is signed in as (connect_github.go).
+	ghLoginAsk = func(context.Context) (string, error) { return "", nil }
 	restore := isolateTestEnvironment()
 	// AND THE CREW ROUTER READS ONE FIXED CATALOG. The process's catalog is
 	// seated once, by whichever test first builds it, from whatever server that

@@ -36,6 +36,9 @@ type PageDetail struct {
 	Page
 	ClaimDetails []ClaimDetail             `json:"claim_details"`
 	Sources      map[string]SourceLocation `json:"sources"`
+	// FromChats marks a page learning from chats wrote, as [LearnedFromChats]
+	// reads it: the Library says "From your chats" on it.
+	FromChats bool `json:"from_chats,omitempty"`
 }
 
 // ReadDetail pins the page and its provenance to the same publication. Source
@@ -62,6 +65,7 @@ func (v *Vault) ReadDetail(id string) (PageDetail, error) {
 		return result, err
 	}
 	result.EditableMarkdown = PageMarkdown(result.Page)
+	result.FromChats = LearnedFromChats(result.Page)
 	published, err := stateDocument(db, "published")
 	if err != nil {
 		return result, err

@@ -335,12 +335,12 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 		return status.Account, ""
 	}
 
-	url, wait, err := a.connect.BeginAuth(ctx, service.ID, answer.key)
+	url, code, wait, err := a.connect.BeginAuth(ctx, service.ID, answer.key)
 	if err != nil {
 		a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Failed: true})
 		return "", "Connecting " + service.Name + " did not work: " + connect.SignInFailureReason(err)
 	}
-	a.sendConnect(Event{Kind: EventConnectAuth, Service: service.ID, AuthURL: url})
+	a.sendConnect(Event{Kind: EventConnectAuth, Service: service.ID, AuthURL: url, AuthCode: code})
 
 	// The ceiling is on a context of this call's own, so the wait ends on the
 	// turn being interrupted OR on the person never finishing — and the two are

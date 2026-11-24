@@ -977,6 +977,13 @@ type Hello struct {
 	// runs on, and cmd/codeaf refuses them over --host and --at by name.
 	Launch *LaunchShape `json:"launch,omitempty"`
 
+	// HoldInterruptedWork opens the conversation without carrying on the work
+	// the last process left in the middle ([session.Config.HoldInterruptedWork]).
+	// It is not part of [LaunchShape] because it is a fact about this one open,
+	// not about how the conversation is built: a window joining it later must
+	// not read the difference as another shape.
+	HoldInterruptedWork bool `json:"holdInterruptedWork,omitempty"`
+
 	// Encodings are the optional frame payload encodings this surface can read.
 	// They are negotiated INSIDE one protocol version because absence means the
 	// old JSON payload and every added field is omitempty: an older engine

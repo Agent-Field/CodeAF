@@ -56,7 +56,7 @@ func (b *appBackend) KnowledgeSnapshot() (appwire.KnowledgeSnapshot, error) {
 		}
 	}
 	for _, p := range s.Pages {
-		h := appwire.KnowledgeHead{ID: p.ID, Title: p.Title, TitleEdited: p.TitleEdited, Folder: append([]string{}, p.Folder...), Kind: p.Kind, Revision: p.Revision, HumanEdited: p.HumanEdited, NeedsEditorialUpdate: p.NeedsEditorialUpdate, Sections: []string{}}
+		h := appwire.KnowledgeHead{ID: p.ID, Title: p.Title, TitleEdited: p.TitleEdited, Folder: append([]string{}, p.Folder...), Kind: p.Kind, Revision: p.Revision, HumanEdited: p.HumanEdited, NeedsEditorialUpdate: p.NeedsEditorialUpdate, FromChats: knowledge.LearnedFromChats(p), Sections: []string{}}
 		for _, e := range p.Evidence {
 			if at, err := time.Parse(time.RFC3339Nano, e.TS); err == nil {
 				previous, _ := time.Parse(time.RFC3339Nano, h.UpdatedAt)
@@ -182,6 +182,12 @@ func (b *appBackend) KnowledgeSource(id, source string) (appwire.KnowledgeLocati
 	if err != nil {
 		return appwire.KnowledgeLocation{}, libraryError(err)
 	}
+	if file, ok := workstreamFileSource(source); ok {
+		if _, cited := page.Sources[source]; !cited {
+			return appwire.KnowledgeLocation{}, appwire.Errorf(appwire.CodeNotFound, "This source file is unavailable")
+		}
+		return appwire.KnowledgeLocation{File: &file}, nil
+	}
 	location, ok := page.Sources[source]
 	if !ok || location.Session == "" {
 		return appwire.KnowledgeLocation{}, appwire.Errorf(appwire.CodeNotFound, "This source chat is unavailable")
@@ -262,9 +268,14 @@ func (b *appBackend) watchLibrary() {
 	})
 }
 
+// KnowledgeCapture keeps what a person chose to add: a workstream file (Add to
+// Library) or a passage of a saved reply (Keep in Library). A DELIBERATE ADD
+// NEVER WAITS ON LEARNING (owner decision 5, knowledge/keep.go): with "Learn
+// from chats and jobs" off, the words are still kept and written into the
+// Library, and nothing else is read.
 func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
-	if !b.library().Enabled() {
-		return libraryError(knowledge.ErrDisabled)
+	if p.File != nil {
+		return b.captureWorkstreamFile(*p.File, p.Text)
 	}
 	before := ""
 	for n := 0; n < 10; n++ {
@@ -278,12 +289,8 @@ func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
 					return appwire.Errorf(appwire.CodeBadParams, "Choose words from a saved agent reply")
 				}
 				sum := sha256.Sum256([]byte(p.Chat + "\x00" + p.Message + "\x00" + p.Text))
-				source := knowledge.Source{ID: fmt.Sprintf("desk:%x", sum), Session: p.Chat, Text: p.Text, TS: entry.At.UTC().Format(time.RFC3339Nano), Role: "assistant", Kind: "agent_synthesis"}
-				if err = b.library().Capture(source); err != nil {
-					return libraryError(err)
-				}
-				b.libraryChanged()
-				return nil
+				source := knowledge.Source{ID: fmt.Sprintf("%s%x", knowledge.KeptPassagePrefix, sum), Session: p.Chat, Text: p.Text, TS: entry.At.UTC().Format(time.RFC3339Nano), Role: "assistant", Kind: "agent_synthesis"}
+				return b.keepInLibrary(source)
 			}
 		}
 		if !more || len(entries) == 0 {
@@ -292,4 +299,86 @@ func (b *appBackend) KnowledgeCapture(p appwire.KnowledgeCapture) error {
 		before = entries[0].ID
 	}
 	return appwire.Errorf(appwire.CodeNotFound, "The saved reply is unavailable")
+}
+
+// A kept workstream file's source id is "workstream-file:<address>/<file>@<hash>"
+// (a long file's spans add ":span:<n>" after the hash). The address may itself
+// hold a slash (org:<connection>/<id>), and a file id never does, so the last
+// slash before the hash is the one between them. The hash is of the words, so
+// keeping the same file twice is one source, and keeping it after an edit is a
+// new one beside the old.
+const workstreamFileSourcePrefix = knowledge.WorkstreamFileSourcePrefix
+
+func (b *appBackend) captureWorkstreamFile(file appwire.KnowledgeFile, text string) error {
+	if strings.ContainsAny(file.ID, "/@") {
+		return appwire.Errorf(appwire.CodeBadParams, "Choose a file in a workstream")
+	}
+	at := time.Now()
+	if b.now != nil {
+		at = b.now()
+	}
+	words := text
+	if name := strings.TrimSpace(file.Name); name != "" {
+		words = name + "\n\n" + text
+	}
+	sum := sha256.Sum256([]byte(words))
+	source := knowledge.Source{
+		ID:      fmt.Sprintf("%s%s/%s@%x", workstreamFileSourcePrefix, file.Workstream, file.ID, sum[:12]),
+		Session: "workstream:" + file.Workstream,
+		Text:    words,
+		TS:      at.UTC().Format(time.RFC3339Nano),
+		Role:    "user",
+		Kind:    knowledge.KindWorkstreamFile,
+	}
+	return b.keepInLibrary(source)
+}
+
+// keepInLibrary stores a person's deliberate add and sees it written into the
+// Library. With learning on, the background build writes it as it writes
+// everything; with learning off there is no background build, so this add is
+// written on its own, scoped to its own words ([knowledge.Vault.Write]).
+func (b *appBackend) keepInLibrary(source knowledge.Source) error {
+	v := b.library()
+	if err := v.Admit(source); err != nil {
+		return libraryError(err)
+	}
+	if !v.Enabled() {
+		writeKeptToLibrary(b, source.Session)
+	}
+	b.libraryChanged()
+	return nil
+}
+
+// writeKeptToLibrary writes one deliberate add into the Library in the
+// background, on the engine process's lifetime and the person's own key. A
+// failure leaves the source pending, which the next add or a Build retries.
+// Tests replace it to see that the write was asked for without a model.
+var writeKeptToLibrary = func(b *appBackend, session string) {
+	proc, err := b.process()
+	if err != nil {
+		return
+	}
+	guard.Go("app/library-keep", func() {
+		ctx, cancel := context.WithTimeout(proc.lifetime(), 10*time.Minute)
+		defer cancel()
+		_ = b.library().Write(ctx, config.APIKeyAt(b.profileDir), session)
+		b.libraryChanged()
+	})
+}
+
+func workstreamFileSource(source string) (appwire.KnowledgeFile, bool) {
+	rest, ok := strings.CutPrefix(source, workstreamFileSourcePrefix)
+	if !ok {
+		return appwire.KnowledgeFile{}, false
+	}
+	at := strings.LastIndex(rest, "@")
+	if at < 0 {
+		return appwire.KnowledgeFile{}, false
+	}
+	rest = rest[:at]
+	slash := strings.LastIndex(rest, "/")
+	if slash <= 0 || slash == len(rest)-1 {
+		return appwire.KnowledgeFile{}, false
+	}
+	return appwire.KnowledgeFile{Workstream: rest[:slash], ID: rest[slash+1:]}, true
 }

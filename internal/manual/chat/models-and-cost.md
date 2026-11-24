@@ -143,18 +143,46 @@ that is no longer listed; existing requests finish on the model they started wit
 Remote sessions keep the engine's opening model; this laptop's catalog does not
 choose a default for another machine.
 
+## Default models without OpenRouter — ChatGPT only, Claude Code only, Ollama only
+
+codeaf's built-in defaults are OpenRouter models: the conversation model and
+the `fallback models` row. Each one is used only while a connected provider can
+send it, and lists it when that provider publishes a model list. Without an
+OpenRouter key, every default you have not chosen comes from the providers you
+did connect instead:
+
+- the conversation opens on the provider's preferred model; when the account does not
+  list it, on the first model the account lists, and on a provider that names none
+  (Ollama, a custom endpoint), on its strongest;
+- the fallback is a different strong model, on the same provider when it offers
+  one, else on another connected provider; with only one model, the fallback is
+  that model, so a failed reply stays on it rather than moving to a provider you
+  did not connect. A provider that publishes no model list offers its preferred
+  model and the model its connection check uses (Qwen's `qwen3.8-flash`), so the
+  fallback still has a second model.
+
+The **reflex**, **small work** and **knowledge** rows ship empty and follow the
+conversation model, so titles, routing, the memory pass and the Library run on
+whatever model the conversation opened on.
+
+Strength is read from the provider's published intelligence score or price,
+then from the model's name (mini, flash or haiku against pro, opus or max), its
+size (8b, 70b) and how many thinking levels it takes, each counted only when every
+model in the list has it. With several providers, every default follows the
+conversation model's provider: the one you chose, else a hosted provider before a
+local server. A model you chose yourself is never replaced.
+With an OpenRouter key, or with nothing connected at all, the built-in OpenRouter
+models stay exactly as they are.
+
 ## Sign in with ChatGPT and use my Codex plan — models, context window, price, limits and expiry
 
 Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way
 the Codex CLI does; OpenAI's terms for a ChatGPT plan apply to what runs on it. The
 service reads the model list belonging to that account, and a new connection moves this
-conversation to `codex/gpt-5.5`. Every model from it is qualified as `codex/<slug>`.
-
-While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
-the conversation stays on its previous model and `enter` on Codex tries again.
-The Codex row in `/settings` uses the same cancellation: the first `esc` cancels
-the pending sign-in while keeping Settings open; later `esc` presses use the
-page's ordinary back-out behavior.
+conversation to `codex/gpt-5.5` when the account lists it, otherwise to the first model the
+account lists. Every model from it is qualified as `codex/<slug>`. Without an OpenRouter
+key a crew seat on the plan may use any model the account lists; with one, crew seats on
+the plan use `codex/gpt-5.5`.
 
 A Codex model's context window is the one that account's model list gives it — `272k` on
 every model it lists today — so the status line reads `…/272k` on `codex/gpt-5.5` and
@@ -169,7 +197,17 @@ conversation file's `call` lines name `Codex` as the endpoint that served each r
 A Codex call has no dollar price codeaf can know. The spend page therefore shows no
 invented `$0.00` or unknown-price label; when the backend reports usage, it still counts
 the prompt, completion, cached-prompt and reasoning tokens. The plan is paid for outside
-codeaf. When its allowance is exhausted, the turn says exactly:
+codeaf.
+
+## Codex sign-in — cancel while waiting, plan usage limit reached, sign-in expired
+
+While the browser sign-in is waiting, `esc` cancels it and closes the waiting listener;
+the conversation stays on its previous model and `enter` on Codex tries again.
+The Codex row in `/settings` uses the same cancellation: the first `esc` cancels
+the pending sign-in while keeping Settings open; later `esc` presses use the
+page's ordinary back-out behavior.
+
+When the ChatGPT plan's allowance is exhausted, the turn says exactly:
 
 ```
 codex reached your chatgpt plan's usage limit · it resets on its own
@@ -621,8 +659,9 @@ whenever one serves the model.
 
 The crew is three seats because those are the calls a task spends most of its money on.
 codeaf also makes smaller calls on your behalf — naming a session, the safety gate, memory
-— and those ride two rows of their own in `/settings` → Models, **reflex** and
-**small work**, which ship pointed at near-free models and are not part of the crew.
+— and those follow **the model you chose**. Two rows in `/settings` → Models, **reflex**
+and **small work**, let you point them at a cheaper model; both ship empty, and neither is
+part of the crew.
 
 **`/model` is untouched.** It is the model you talk to, and nothing about the crew moves
 it.
@@ -1284,6 +1323,59 @@ sent the lowest level it offers instead of a switch-off it would refuse, so `off
 `low` on the wire and the row says `low` with no pin word beside it. That is the section
 *A model that cannot stop thinking*.
 
+## Which model names my chats, summarizes, and builds the Library — background work uses your model, so spending never shows one you did not pick
+
+Calls you did not type and no task asked for run in the background: the title a
+conversation gives itself, the reflex pass after every turn (the running summary and what to
+remember), task and job names, the step captions, the router that asks whether a message
+should have been a task and its second look (`routerconfirm`), suggested replies, the safety
+gate, the page AI, and the compiler that builds your Library. **Every one of them runs on the
+model you chose** — the one `/model` and the desktop's model setting name — and, on an
+organization's server, on the model the organization chose. codeaf ships no model of its own
+for any of them, so picking one model means paying for one model.
+Builds before 2026-11-16 ran some of them on models of their own (a gemini row for the
+reflex, an older deepseek for titles and the router); if Spending still shows those, the
+rows are from before, or from a small work, reflex or pin you wrote.
+
+You can still make them cheaper on purpose:
+
+- **small work** and **reflex** in `/settings` → Models (or Small jobs in the desktop's Task
+  Models) point those calls at a model you name. Both ship empty.
+- A role's own pin (`models.roles`, e.g. `title:vendor/model`) moves that one call.
+- **knowledge** (`knowledge.model`) moves the Library compiler.
+
+What does **not** move them: the crew's worker, checker and planner. Those rows belong to
+tasks; a background call never reads them, even when the crew's router has picked a model
+there. With one model turned on, every background call uses that one model.
+
+Spending lists each background call by its role (`title`, `reflex`, `router`,
+`routerconfirm`, `reply_suggestion`, `knowledge`), so you can see what each one cost.
+
+## When does the Library build? Memory calls that keep running after I stop chatting — they wait until a chat goes quiet, and whose spending they are
+
+The Library is built in the background from your saved chats. A chat that is still
+being written in is **not compiled yet**: its new lines are read, but the compiler waits
+until that chat has had **no new writes for two minutes**. While another chat is still
+being written in, a chat that has gone quiet waits for it too, for **up to ten minutes**,
+so the chats of one sitting are compiled together in one pass and the Library's learning
+steps are paid for once. When the last of them is compiled, the Library makes no more
+calls until a chat changes again: an engine left running with nothing new costs nothing.
+Pressing **Build** on the Library compiles everything at once, busy chats included,
+because that is you asking rather than background work deciding.
+
+Before this, the compiler ran about every two seconds while any chat was growing, so a
+conversation was compiled in many small slices while you were still in it, and each
+slice paid again for the Library's learning steps. One measured session of twelve chats
+made 175 Library calls in 42 passes and was still compiling minutes after the last
+request. Then it was one compile per chat, after each chat went quiet; now it is one
+compile per sitting. A scripted replay of that session's shape went from 46 Library calls
+to 12, and then to 2, with none in the idle hour after.
+
+Each Library call is charged to a conversation: a pass that compiles one chat's lines
+puts every one of its calls, the learning steps included, on that chat's line in the
+spending ledger. A pass that compiles several chats at once (a Build) belongs to none of
+them, and the ledger files it under the Library alone.
+
 ## Why reflex has its own model class
 
 `reflex` is the role called **after every finished turn**: one call that updates the
@@ -1361,10 +1453,8 @@ then **the model you are talking to**.
 The page AI's roles add two rungs after their own pin. Every `insight_` override
 (`insight_notes`, `insight_ask`, `insight_themes`, `insight_pipeline`, `insight_views`,
 `insight_factory_read`, `insight_factory_scout`) reads **the `insight` pin** next, so one pin on `insight` moves every page.
-Then comes **codeaf's default for `insight`**: `deepseek/deepseek-v4.1-flash` on
-OpenRouter, while OpenRouter is connected and your allowed models admit it. That default is
-never written into `models.roles`; it stops applying the moment either condition does, and
-any pin you write outranks it. Without it the page AI follows the small work row.
+Then the page AI follows the small work row, and, when that is empty, the model you chose.
+codeaf has no model of its own for it.
 
 Two things worth knowing:
 
@@ -1481,8 +1571,9 @@ planner, checker and probe — whatever your crew rows say, and `CODEAF_CHECK_MO
 down too. Under this flag **nothing hops** — not on a refusal,
 not on a reply that keeps stalling, not on rate limiting that will not clear — because a
 run whose cost is being attributed to one model cannot have finished a single reply on
-another. That includes the catalog's own guess: with no `fallback models` row written, an
-ordinary run defaults to DeepSeek V4.1 Flash, and this flag withholds that too.
+another. That includes codeaf's default: with no `fallback models` row written, an
+ordinary run defaults to DeepSeek V4.1 Flash (with OpenRouter or nothing connected;
+otherwise a model your providers offer), and this flag withholds that too.
 
 **The two calls that ordinarily refuse the conversation's model ride it too.** The reader that
 decides whether a long answer is moved to a task, and the writer of the brief that task opens
@@ -1804,7 +1895,7 @@ the model · asking again · 2 of 3`, or `the model went quiet mid-reply · aski
 2 of 3`.
 
 **If all three attempts come back with nothing, codeaf finishes the reply on another
-model** — the next one in your `fallback models` row, or DeepSeek V4.1 Flash by default when you have written no row. It is said out loud before it happens, naming
+model** — the next one in your `fallback models` row, or codeaf's default when you have written no row: DeepSeek V4.1 Flash with OpenRouter or nothing connected, otherwise a model your providers offer. It is said out loud before it happens, naming
 where the rest of the answer is coming from:
 
 ```
@@ -2074,7 +2165,8 @@ while it is replying* above, and *I changed the model but my task is still on th
 
 Yes. **A model that will not take your request at all is given up on the same way a model
 that goes quiet is: codeaf finishes the reply on the next model in your `fallback models`
-row**, or on DeepSeek V4.1 Flash when you have written no row.
+row**, or on codeaf's default when you have written no row: DeepSeek V4.1 Flash with
+OpenRouter or nothing connected, otherwise a model your providers offer.
 
 This is what happens. A request that fails outright — a refusal from the machine serving
 your model, a `502`, a torn connection, a deadline — is asked again, with a dim line each

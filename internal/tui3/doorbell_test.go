@@ -339,6 +339,23 @@ func TestAnAnswerOverAConnectionAsksTheFarMachineNothingFromUpdate(t *testing.T)
 		t.Fatal("the question is not on the block")
 	}
 	firstRowsReadHome(t, a)
+	// The ordered line starts work as soon as Update queues it, independently
+	// of when its returned command runs. Hold an earlier job so a scheduled
+	// answer cannot be mistaken for a synchronous call from Update.
+	blocked, release := make(chan struct{}), make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	a.offLoop(func() func(bool) tea.Cmd {
+		close(blocked)
+		<-release
+		return nil
+	})
+	<-blocked
 	before := client.CallsMade()
 	cmd := a.answerQuestion(head, session.Answer{Key: "1", Picked: []string{"1"}})
 	// THE ASSERTION IS HERE, BETWEEN UPDATE RETURNING AND THE COMMAND RUNNING.
@@ -349,8 +366,9 @@ func TestAnAnswerOverAConnectionAsksTheFarMachineNothingFromUpdate(t *testing.T)
 	if a.questioning() {
 		t.Fatal("the question did not settle on the keystroke")
 	}
-	// AND THE ANSWER STILL GOES. It travels on the command, through the door
-	// line, and the far machine is asked exactly once.
+	// AND THE ANSWER STILL GOES. Release the ordered line, then fold its answer
+	// through the command; the far machine is asked exactly once.
+	close(release)
 	spend(t, a, cmd)
 	select {
 	case <-answered:

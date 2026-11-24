@@ -292,6 +292,13 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
+		// A PERSONAL FACTORY RUNS WITHOUT GITHUB. With no forge login its one
+		// runner on this machine attaches under the reserved local name, which
+		// is never a forge identity, so a folder job (which needs no GitHub)
+		// runs. A team factory never does this: its runners are people.
+		if handle == "" && h.mode() == api.FactorySolo {
+			handle = factory.LocalRunnerHandle
+		}
 		body.Handle = handle
 	}
 	if body.Name == "" || body.Handle == "" {

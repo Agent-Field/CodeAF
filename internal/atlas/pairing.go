@@ -206,7 +206,7 @@ var Pairing = &Map{
 			{From: "hosted", To: "cellsync", Message: "download the encrypted frames into the inbox", Edge: "cellsync-hosted"},
 			{From: "sync", To: "hosted", Message: "Dir.Acquire: new lease and fence; A loses the drive (Batcher.lost)", Edge: "sync-hosted"},
 			{From: "cellstore", To: "furrowDaemon", Message: "import (verify + decrypt), then materialize --head into a stage", Edge: "cellstore-daemon"},
-			{From: "sync", To: "machineB", Message: "restoreCopies, pullVault, restoreChatFiles; the chat opens on B, and B now publishes"},
+			{From: "sync", To: "machineB", Message: "restoreCopies, pullVaultVia, restoreChatFiles; the chat opens on B, and B now publishes"},
 		}},
 		{ID: "furrow", Title: "Furrow seal → fork → materialize", Summary: "How a turn becomes encrypted frames that another machine turns back into an identical workspace.", Steps: []Step{
 			{From: "cellstore", To: "cellstore", Message: "Recorder writes the call's intent to the WAL, runs it, writes completion", Note: "internal/cellstore/recorder.go, wal.go"},

@@ -33,7 +33,10 @@ ahead build gets nothing. Source and unstamped builds — `make build`, `go run`
 built from source · rebuild with make build, or install a release: curl -fsSL
 https://agentfield.ai/get/codeaf | bash`. A codeaf owned by Homebrew, Nix or the
 system package manager, or one in a folder this account cannot write, is never
-replaced in place: the launch names the manager and the curl line instead.
+replaced in place: the launch names the manager and the curl line instead. So is
+the codeaf inside a Mac application, such as the one the desktop app carries
+(`WorkAF.app/Contents/…`): that app updates it, and `codeaf update` and
+`/update` say so, although that engine is a source build.
 
 ## Does it update itself automatically — automatic updates — auto update on launch — restart on the new version — stop updating itself
 
@@ -100,8 +103,8 @@ the tag is the deliberate downgrade, and it is the ONLY road that rolls a file
 back — a bare `/update` you type while an offer is up installs what the offer is
 about and never steps the file backwards. An automatic or channel update never installs an older build than the one
 on disk, and a release already on disk is a quiet no-op. If the file is owned by
-Homebrew, Nix or the system package manager, or is in a folder this account
-cannot write, neither road replaces it in place. One install runs at a time per executable:
+Homebrew, Nix or the system package manager, or is inside a Mac application
+bundle, or is in a folder this account cannot write, neither road replaces it in place. One install runs at a time per executable:
 two terminals, or two profiles sharing one codeaf, cannot replace it at once, and
 a window that resolves a release another terminal has already superseded installs
 nothing.
@@ -430,7 +433,11 @@ provider is checked the way `/connect` checks it: its model list, a one-token ca
 it has none, and for a provider with a coding plan each way of paying in turn, plan
 first. What the check found besides the key — the region, the plan the key opened, the
 address — is kept in the profile where the terminal reads it; the key is not. A provider
-that lists no models offers the model `/connect` would move a conversation onto.
+that has no model list offers the model `/connect` would move a conversation onto; one
+that answers with an empty list is turned away, at the check and again when the
+connection is saved. Another custom endpoint is added as its own connection, with its
+own saved address and id, rather than replacing the first (see "Add another custom
+endpoint or replace a connection").
 
 The ChatGPT sign-in is the one credential the app leaves in the profile, exactly where
 the terminal keeps it, because its tokens change on every refresh; the app keeps no key
@@ -557,18 +564,27 @@ three pinned models (⌥⌘1–3) are the app's own. Permissions lists every
 always-allow rule, a tool's or a command pattern's, and removing one takes it
 out of the profile; Memory lists what codeaf remembers and forgets a line on
 request; Export writes a CSV of every billed call between two days into the
-app's exports folder. Signing in to GitHub is not in the app yet.
+app's exports folder. GitHub is connected on the Connectors page or in the
+Factory's first step, one connection for both (see "Connect GitHub").
 
-## Quitting the desktop app — agents pause and resume, processes stop
+## Quitting the desktop app mid-reply — Interrupted · Continue; a reopened app never resumes a chat or spends money unasked
 
-Quitting the desktop app does not fail the work in it. An agent in the middle
-of a reply is stopped where it stands and carries on by itself the next time
-the app opens, with "Resumed after quit" in front of it; a task it had running
-is picked up where its record stands. A process the model started is sent
-SIGTERM, then SIGKILL five seconds later, and the Processes list says "stopped
-by quit". Automations are not touched by a quit and fire again once the app is
-open. A conversation the app joined in a terminal window is that window's, and
-quitting the app only lets go of it.
+An agent in the middle of a reply is stopped where it stands, and it waits
+for you. When the app opens again that chat shows a dim
+"Interrupted" line where the turn stopped, with **Continue** beside it. Until
+you press it nothing in the chat runs or spends: the reply does not resume, its
+running tasks stay interrupted, and their background work does not wake the
+chat. Opening the chat to read it starts nothing either.
+
+Continue carries the reply on once, on the chat's own model, with "Resumed
+after quit" in front of it, and picks its tasks up where their records stand. A
+second press does nothing. Sending a message or answering a question in that
+chat also clears the mark, and its tasks carry on with you there.
+
+A process the model started is sent SIGTERM, then SIGKILL five seconds later,
+and the Processes list says "stopped by quit". Automations are not touched by a
+quit and fire again once the app is open. A conversation the app joined in a
+terminal window is that window's, and quitting the app only lets go of it.
 
 The app waits for local saving, publishes the newest saved turn and releases its
 hold so another computer can continue. Each saving boundary waits up to 30 seconds.
@@ -588,42 +604,34 @@ Closing the desktop's input pipe starts the same bounded shutdown as a first
 SIGTERM, including while the engine is waiting for a lock. A second SIGTERM
 ends the process immediately.
 
-## When the desktop app closes unexpectedly — a reply stuck working, carrying on after it closed
+## When the desktop app closes unexpectedly — a reply stuck working, Interrupted · Continue
 
-If the desktop app closes unexpectedly during a reply, opening it again carries
-the reply and its running tasks on from where their records stand.
-"Resumed after the app closed" appears before that reply. Finished steps are
-not repeated; the agent checks the result of an unfinished step before relying
-on it. Another window still working on the conversation is left alone. An idle
-conversation without a promised reply stays idle.
+If the desktop app closes unexpectedly during a reply, opening it again does
+not carry the reply on. Once the old window's working claim has run out, the
+chat reads "Interrupted" with **Continue** beside it, exactly as after a quit,
+and nothing in it — the reply, its running tasks, their background work —
+runs or spends until you press Continue. Opening the chat to look at it does
+not start anything. Another window still working on the conversation is left
+alone, an idle conversation stays idle, and a deleted conversation never
+carries on.
 
-If the app closes again before its promised reply begins, opening it again
-tries that reply with the same notice. Newer task activity keeps that promise's
-original notice and age. Another reply starting does not cancel
-that promise. A message, correction, queued message or answer from you cancels
-that promise, including a message sent in another window while the app was
-closed. A deleted conversation never carries on.
+Continue carries the reply on once, with "Resumed after the app closed" in
+front of it. Finished steps are not repeated; the agent checks the result of
+an unfinished step before relying on it. A message, correction, queued message
+or answer from you in that chat also clears the Interrupted mark and lets its
+tasks carry on. These lines stay in the conversation when you close and reopen
+the app.
 
-A conversation carries on automatically at most twice in a row. A reply that
-finishes normally, or a direction from you, resets that limit; the agent's own
-notes do not. Compacting or rewinding the conversation does not reset it.
-Retrying a promised reply uses an attempt too. On the third
-opening within ten minutes that finds unfinished replies, none carry on
-automatically. A reply last active more than an hour before opening is left
-for you to choose. For a promised reply that never began, the hour starts when
-that promise was first saved, even if its tasks worked again afterwards.
-
-When work is left for you, its chat says "The app closed while this was working · send a message to carry on".
-Send a message to continue. These lines, and "Resumed after quit" after a normal
-quit, stay in the conversation when you close and reopen the app.
+Earlier builds carried such a reply on unasked, up to twice in a row. That is
+gone: a chat that was mid-turn at a quit or crash waits for you.
 
 ## Reopening the app while the last one is still leaving — your factory isn't answering, another codeaf is still running this factory
 
 When the app closes, or its window is killed, the codeaf behind it leaves by
 itself: it never keeps working without the app. It lets go of this machine's
 factory first (a running job stops the way a quit stops it and goes back to the
-queue), then stops its replies and processes, which carry on when the app opens
-again. Leaving takes at most two minutes, including the final saving waits.
+queue), then stops its replies and processes; a stopped reply waits for your
+Continue when the app opens again. Leaving takes at most two minutes, including the final saving waits.
 A second SIGTERM or SIGINT ends it at once.
 
 If the app is opened again before the last one has let go, the factory on this
@@ -1321,7 +1329,7 @@ installed goes on running them until this version's first start removes it — a
 unknown command would exit 1, which the timer reports as a failure every five minutes.
 Neither is listed in `--help`, and neither takes, checks or refuses a flag.
 
-## What did that task actually do — see one piece of work's turn-by-turn record, with codeaf why
+## What did that task actually do — see one piece of work's turn-by-turn record, what one step of a headless run did, with codeaf why
 
 This prints one piece of work's whole record: every turn, what it said, every tool it
 called with its arguments, what came back, and how it ended.
@@ -2178,9 +2186,10 @@ proposed only for separate streams of work that each need multiple people.
 The final **Bring in helpers** ask still offers **Make the crew**, **Edit**, and
 **Keep it one agent**. If the stream stops after at least one helper, the ask
 keeps those helpers and says "Stopped after 2 helpers", with the actual count.
-An answer with no usable helpers leaves one quiet notice. Handles are limited to
-12 characters. Longer model-proposed handles are shortened at the last hyphen
-that fits, or to the first 12 characters, with numbering for clashes.
+An answer with no usable helpers leaves one quiet notice. Proposed handles are
+limited to 12 characters. Longer model-proposed handles are shortened at the last
+hyphen that fits, or to the first 12 characters, with numbering for clashes. A
+handle you type in the proposal's card may be up to 24 characters.
 
 Accepting a proposal keeps this conversation as manager and creates one flat
 crew. All helpers are seated under their approved handles before creation returns.
