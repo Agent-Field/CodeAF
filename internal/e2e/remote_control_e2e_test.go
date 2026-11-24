@@ -44,6 +44,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -538,7 +539,9 @@ func rcOldFlagsStillWork(t *testing.T) {
 		if m := rcReachName.FindStringSubmatch(s); m != nil {
 			name = m[1]
 		}
-		code = rcCodeShape.FindString(s)
+		if m := rcServeCode.FindStringSubmatch(s); m != nil {
+			code = m[1]
+		}
 		return name != "" && code != ""
 	}) {
 		t.Fatalf("codeaf serve never showed its name and code:\n%s", serve.capture())
@@ -782,9 +785,25 @@ func (rc *rcRig) abortIfFailed() {
 	}
 }
 
+// hostKnowsItsOthers waits until the host's window has read the roster and written
+// down that another computer is paired. A chat that finishes a turn before that is
+// kept on the host for want of a second computer to share it with, and is on no
+// other computer's Home until a later turn ends, which is a fact about how soon
+// after starting a person asks and not about anything this suite checks. The wait
+// is soft: a host that never learns it goes on, and the scenario fails where it
+// needed the chat.
+func (rc *rcRig) hostKnowsItsOthers() {
+	rc.t.Helper()
+	waitUntil(30*time.Second, func() bool {
+		found, _ := filepath.Glob(filepath.Join(rc.host.home, "v3", "sync", "others", "*"))
+		return len(found) > 0
+	})
+}
+
 // hostAsk has the host's own window ask one question and waits for the reply.
 func (rc *rcRig) hostAsk(w *rig, words, reply string) {
 	rc.t.Helper()
+	rc.hostKnowsItsOthers()
 	w.lit(words)
 	w.keys("Enter")
 	w.waitFor(rcReplyWithin, reply, "idle")
@@ -905,15 +924,18 @@ func (rc *rcRig) hostCLI(args ...string) string {
 	return string(out)
 }
 
-// pauseHost stops the host's engine without ending it, which is how a door that
-// stops answering in the middle of a move looks from the other side. The answer
-// resumes it, and a cleanup does too, so a failed scenario never leaves a frozen
-// process for the teardown to wait on.
+// pauseHost stops every process of the host's home without ending any of them,
+// which is how a computer that stops answering in the middle of a move looks from
+// the other side. It is the window and the engine both, because the door a move
+// goes through is the window's and the door a live view goes through is the
+// engine's, and stopping one alone leaves the other answering. The answer resumes
+// them, and a cleanup does too, so a failed scenario never leaves a frozen process
+// for the teardown to wait on.
 func (rc *rcRig) pauseHost() func() {
 	rc.t.Helper()
-	pids := engineDaemonsOf(rc.host.work)
+	pids := processesOfHome(rc.host.home)
 	if len(pids) == 0 {
-		rc.t.Fatalf("the host has no engine of its own to stop")
+		rc.t.Fatalf("the host has no process of its own to stop")
 	}
 	for _, pid := range pids {
 		_ = syscall.Kill(pid, syscall.SIGSTOP)
@@ -928,6 +950,26 @@ func (rc *rcRig) pauseHost() func() {
 	}
 	rc.t.Cleanup(resume)
 	return resume
+}
+
+// processesOfHome is every process that runs with this home as its CODEAF_HOME,
+// read from the process table by the environment each was started with and never
+// by a pattern in a command line.
+func processesOfHome(home string) []int {
+	want := "CODEAF_HOME=" + home + "\x00"
+	entries, _ := os.ReadDir("/proc")
+	var pids []int
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid == os.Getpid() {
+			continue
+		}
+		env, err := os.ReadFile(filepath.Join("/proc", e.Name(), "environ"))
+		if err == nil && strings.Contains(string(env), want) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
 
 // assertLiveDial holds the relay to the one thing every scenario that opens a
@@ -1195,6 +1237,8 @@ var (
 	// rcCodeShape is a pairing code as the two doors show it, nameplate and six
 	// digits.
 	rcCodeShape = regexp.MustCompile(`\b\d{1,4}-\d{3}-\d{3}\b`)
+	// rcServeCode is the code `codeaf serve` shows, as two groups of three digits.
+	rcServeCode = regexp.MustCompile(`with code\s+(\d{3}\s\d{3})`)
 	// rcReachName is the name `codeaf serve` says the machine is reachable as.
 	rcReachName = regexp.MustCompile(`reachable as\s+(\S+)`)
 	// rcSeenAt is the time on the banner of a copy nobody is running.
