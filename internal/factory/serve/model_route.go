@@ -21,6 +21,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 )
@@ -265,7 +266,7 @@ func (h *Handler) hostedKeyLookup() func(person, provider string) (string, bool,
 }
 
 func (h *Handler) chooseHostedModelKey(person string) (string, bool, error) {
-	if key, own, err := h.hostedKeyLookup()(person, "openrouter"); err != nil || own {
+	if key, own, err := h.hostedKeyLookup()(person, modelsource.DefaultID); err != nil || own {
 		return key, own, err
 	}
 	cfg := h.config.Hosted

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // ── A PERSON'S OWN KEYS, SEALED ────────────────────────────────────────────
@@ -40,7 +41,7 @@ import (
 // wrongly or a new one is sealed under a key the old ones cannot be read with.
 
 // PersonKeyProviders are the providers a person may keep a secret for.
-var PersonKeyProviders = []string{"openrouter", "github"}
+var PersonKeyProviders = []string{modelsource.DefaultID, "github"}
 
 // KnownPersonKeyProvider says p is a provider a person may keep a secret for.
 func KnownPersonKeyProvider(p string) bool {

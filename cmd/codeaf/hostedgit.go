@@ -10,11 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 func hostedPrepareGit() {
-	home, gitURL := os.Getenv("HOME"), os.Getenv("CODEAF_HOSTED_GIT_URL")
+	home, gitURL := os.Getenv("HOME"), env.Get("CODEAF_HOSTED_GIT_URL")
 	if home == "" || gitURL == "" {
 		return
 	}
@@ -42,7 +43,7 @@ func writeHostedGitSetup(home, gitURL string) error {
 		return err
 	}
 	var config strings.Builder
-	for _, raw := range strings.Split(os.Getenv("CODEAF_HOSTED_GIT_HOSTS"), ",") {
+	for _, raw := range strings.Split(env.Get("CODEAF_HOSTED_GIT_HOSTS"), ",") {
 		if raw == "" {
 			continue
 		}
