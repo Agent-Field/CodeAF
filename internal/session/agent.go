@@ -2104,6 +2104,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.rebindClientLocked(a.model)
 	a.stopJobWakeLocked()
 	a.running = true
+	a.teamStopHoldOver()
 	a.takeHeldNotesLocked()
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.runnerTurn = user.runner
@@ -2647,6 +2648,7 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
+	a.teamStopHoldLocked(door)
 	cutPass := a.cutManualPassLocked()
 	a.dropFollowUpsLocked()
 	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
@@ -4233,12 +4235,18 @@ func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 // as [jobRegistry.settleExit] composed it. The whole log remains available
 // through `jobs output` for anything past the tail.
 func (a *Agent) enqueueJobNote(text string) {
+	if a.teamStopHeldNote(text) {
+		return
+	}
 	a.enqueueNote(jobNote(text))
 }
 
 // enqueueJobNoteUnowed carries the registry's unowed process ending to the
 // same queue, retaining the one fact the idle wake scheduler needs.
 func (a *Agent) enqueueJobNoteUnowed(text string) {
+	if a.teamStopHeldNote(text) {
+		return
+	}
 	note := jobNote(text)
 	note.deferJobWake = true
 	a.enqueueNote(note)
@@ -4288,6 +4296,9 @@ func (a *Agent) enqueueJobNoteQuiet(text string) {
 // news does not carry one.
 func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 	if fired {
+		if a.teamStopHeldNote(text) {
+			return
+		}
 		note := wakeNote(text)
 		note.otherResults = true
 		note.attention = true

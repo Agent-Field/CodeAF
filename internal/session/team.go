@@ -263,6 +263,9 @@ type teamSeat struct {
 	// its last turn ended. A turn's ending takes it ([Agent.teamHandedTake]):
 	// it is what makes a stop of that turn the stop of handed-out work.
 	handed map[string]time.Time
+	// stopHold is the person's stop of this conversation's turn while it sat
+	// in a team, kept until a turn next begins (team_stophold.go).
+	stopHold teamStopHold
 }
 
 // teamAnsweringLocked is the id this conversation's replies in team id answer
@@ -375,6 +378,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	if !now.present {
 		a.team.teamsAt, a.team.roles, a.team.file = now, nil, nil
 		a.team.events.member.Store(false)
+		a.team.stopHold.seated.Store(false)
 		return nil
 	}
 	file, err := teamView(profile, keys)
@@ -388,6 +392,7 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	a.team.roles = rolesFor(file, keys, a.team.defaults)
 	a.team.file = file
 	a.team.events.member.Store(eventfulRoles(a.team.roles))
+	a.team.stopHold.seated.Store(len(a.team.roles) > 0)
 	return a.team.roles
 }
 

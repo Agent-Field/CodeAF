@@ -351,6 +351,21 @@ and told the work is not done, that you chose to stop it, and not to hand it out
 you ask. Stopping a turn that carried only what you typed to the member tells the manager
 nothing, and neither does codeaf quitting or a paused member's stray wake being ended.
 
+## A stopped member's command is still running — why it did not start again when the command ended
+
+Stopping a turn leaves a command it started in the background running, as it does in any
+conversation. In a crew, that command's ending does not start the conversation again. From
+a stop of a running turn (yours, or the manager's `team_stop`) until a turn next begins, the
+ending of a background command, or a watch firing, is written into the conversation as a
+record and starts no turn. This holds for a member and for the manager.
+
+The conversation starts again when somebody means it to: your own message to it, or the
+manager's next hand-off. That turn reads the record, which says it arrived after the stop
+and is no reason to take the stopped work up again.
+
+To end the command itself, use **Stop all** on the conversation's Processes tab. A
+conversation in no crew is unchanged: there a command's ending still starts its turn.
+
 ## Why a member stays asking after it crashed
 
 It does not. `asking` means a live process is held on the prompt. If that process dies, the

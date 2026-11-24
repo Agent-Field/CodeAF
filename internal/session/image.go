@@ -449,6 +449,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		return refusedStream(err)
 	}
 	a.running = true
+	a.teamStopHoldOver()
 	a.runnerTurn = false
 	hub := a.newReplayHubLocked()
 	a.hub = hub
