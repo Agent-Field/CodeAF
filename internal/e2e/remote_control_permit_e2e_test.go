@@ -33,3 +33,19 @@ func rcGrant(t *testing.T, hostHome, identityID, device string, watch, drive boo
 		t.Fatalf("writing the permit for %s: %v", device, err)
 	}
 }
+
+// rcStampJoin is what joining an identity does to a computer's own book, so that
+// every computer it meets afterwards is a new pairing and not an older one: the
+// computer is not asked, once, whether the others may type into its chats. The
+// rig pairs by writing the files a pairing would leave, so it writes this one too;
+// leaving it out would put the one-time question over every Home in the suite.
+func rcStampJoin(t *testing.T, home, identityID string) {
+	t.Helper()
+	dir := filepath.Join(home, "v3", "remote")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("a computer's remote folder: %v", err)
+	}
+	if err := pair.PermitsAt(filepath.Join(dir, "permits.json")).SnapshotLegacy(identityID, nil); err != nil {
+		t.Fatalf("stamping the join in %s: %v", home, err)
+	}
+}

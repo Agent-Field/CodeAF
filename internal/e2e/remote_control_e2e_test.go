@@ -718,6 +718,9 @@ func (rc *rcRig) pairDirectly() {
 			}
 		}
 	}
+	for _, h := range rc.homes() {
+		rcStampJoin(t, h.home, rc.identity)
+	}
 	for _, v := range rc.viewers {
 		rcGrant(t, rc.host.home, rc.identity, v.device, true, true)
 	}
@@ -1103,7 +1106,18 @@ func startAuditedRelay(t *testing.T, root string) (string, *rcAudit) {
 		audit.mu.Lock()
 		audit.calls = append(audit.calls, rcCall{method: r.Method, path: r.URL.Path, door: r.Header.Get(relay.HeaderDoor)})
 		audit.mu.Unlock()
-		if r.Method != http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/store/") {
+		// The hosted service says, on every reading of the account's storage, that
+		// it is off. A self-hosted relay would answer on, and a computer that
+		// believes that tries an upload, is refused, and tries again, which is a
+		// property of the fixture and not of the live road.
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/store/stats" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"storage":"off","puts":0,"gets":0,"has":0,"bytes_in":0,"bytes_out":0}`))
+			return
+		}
+		// An upload is the only request that stores something: a Has or a Locate
+		// asks what the relay holds and writes nothing.
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/store/frames" {
 			if audit.armed.Load() {
 				audit.storeWrites.Add(1)
 			}
