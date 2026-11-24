@@ -393,7 +393,7 @@ func rcHostGoesAwayAndComesBack(t *testing.T) {
 	}
 	// The box is the viewer's again once it has the keyboard, and the words it held
 	// through the drop are in it.
-	rc.takeKeyboard(viewer)
+	rc.takeKeyboardAfterAReturn(viewer)
 	if after = viewer.capture(); !strings.Contains(after, draft) {
 		t.Errorf("the words in the box did not survive the resume:\n%s", after)
 	}
@@ -1164,6 +1164,21 @@ func (rc *rcRig) takeKeyboard(r *rig) {
 	if !waitUntil(10*time.Second, func() bool { return !strings.Contains(r.capture(), say(rc.t, "liveWatching")) }) {
 		rc.t.Errorf("enter did not take the keyboard:\n%s", r.capture())
 	}
+}
+
+// takeKeyboardAfterAReturn is takeKeyboard for the moment a host has just come
+// back. The keyboard follows the newest window, and the window the host started
+// again is newer than the one that was typing, so the contract says the view that
+// comes back does NOT hold it and must say so. It waits for that line, where
+// takeKeyboard reads the screen once and takes a box it has not seen the line for
+// to be the typing one, and then takes the keyboard and waits for the line to go
+// before the scenario sends anything.
+func (rc *rcRig) takeKeyboardAfterAReturn(r *rig) {
+	rc.t.Helper()
+	if !waitUntil(10*time.Second, func() bool { return strings.Contains(r.capture(), say(rc.t, "liveWatching")) }) {
+		rc.t.Fatalf("the view that came back never said another computer has the keyboard:\n%s", r.capture())
+	}
+	rc.takeKeyboard(r)
 }
 
 // send types words into a window and sends them.

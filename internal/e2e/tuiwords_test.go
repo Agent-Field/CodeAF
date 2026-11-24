@@ -611,8 +611,9 @@ var tuiWords = map[string]tuiWord{
 	"liveWatching": {
 		screen: "typing from",
 		pkg:    "internal/chatlist",
-		why: "what a live view without the keyboard says about who has it (`typing from desktop now`); " +
-			"pressing enter there takes the keyboard",
+		why: "what a live view without the keyboard says about who has it (`typing from desktop now`, or " +
+			"`typing from the other computer now` when the holder has no name yet); it stands where the box " +
+			"would be, so a draft cannot hide it, and pressing enter there takes the keyboard and sends nothing",
 	},
 
 	// ── a pairing, read where the approving person reads it ──────────────────
