@@ -28,6 +28,16 @@ func TestHostedChatQuestionsReachTheirPage(t *testing.T) {
 		{"how do I turn on hosted chats for my organization", []string{"CODEAF_HOSTED_URL", "codeaf sessionhost probe"}},
 		{"how do I stop or delete a chat that runs on the server", []string{"every process it started"}},
 		{"The organization's model access was refused by its provider, so this chat paused", []string{"Ask the organization's operator to check the model key", "Your own model key was refused by its provider"}},
+		{"can someone I shared my hosted chat with send messages in it", []string{"also send messages, files and images", "interrupt"}},
+		{"if I give someone run access to my hosted chat whose GitHub identity does it use", []string{"acts with your GitHub identity, your files and your spending limits"}},
+		{"Only its owner can do that", []string{"Only its owner can do that"}},
+		{"you were not given permission to send messages in it", []string{"you were not given permission to send messages in it", "keyboard"}},
+		{"I can watch this chat but was not given permission to steer it", []string{"Ask its owner", "keyboard"}},
+		{"Your access to this chat was removed.", []string{"Your access to this chat was removed."}},
+		{"who pays when a guest steers my hosted chat", []string{"approximate", "owner's spending limits"}},
+		{"can the operator open my hosted chat", []string{"only metadata", "There is no such chat."}},
+		{"can a bot start a hosted chat", []string{"a bot cannot use this yet", "recorded as made by the bot"}},
+		{"may I still start a chat on my own computer after joining an organization", []string{"local_sessions", "switch to your personal account"}},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
