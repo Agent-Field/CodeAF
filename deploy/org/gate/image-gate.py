@@ -30,11 +30,24 @@ WHAT IT CHECKS (README.md "Published images" repeats this list; change both toge
       in one's error message is not a leak; a range written with a /prefix length is a network, not a host. The strong
       patterns also run over labels and the configuration.
   C2  with --expect-commit: the image's org.opencontainers.image.revision label is that commit.
+
+  NOT SCANNED, AND SAID SO: a file that a package manager installed and that is still byte for byte what it installed. dpkg
+  records the md5 of every file of a package (`/var/lib/dpkg/info/*.md5sums`, and the `Conffiles` of `/var/lib/dpkg/status`
+  for configuration files) and pip records a sha256 (`*.dist-info/RECORD`). Such a file is the package's published content,
+  public by construction, and it is where the false positives are (libgnutls carries test private keys, a PAM sample file
+  carries example addresses). The file is hashed; only a match exempts it, so a file edited after the install, or planted
+  under a package's name, is scanned like any other. The count of exempted files is printed, and trivy findings on them
+  are dropped the same way. Our own files (the codeaf binary, scripts, configuration) are never in these lists.
 """
 import argparse
+import base64
+import csv
 import gzip
+import hashlib
+import io
 import json
 import os
+import posixpath
 import re
 import shlex
 import subprocess
@@ -179,6 +192,79 @@ INTERNAL_RE = re.compile(INTERNAL_HOST.encode(), re.I)
 PRIVATE_IP_RE = re.compile(PRIVATE_IP.encode())
 
 
+def canon(path):
+    """A path as the package databases spell it, comparable with a layer's: no leading slash, and the usr-merge links
+    (/bin, /sbin, /lib, /lib64 -> /usr/...) folded in, because dpkg lists some files under one name and some under the other."""
+    path = posixpath.normpath(path.lstrip("/"))
+    top = path.split("/", 1)[0]
+    if top in ("bin", "sbin", "lib", "lib32", "lib64", "libx32"):
+        return "usr/" + path
+    return path
+
+
+RECORD_RE = re.compile(r"^(?P<root>.*?)/?[^/]+\.dist-info/RECORD$")
+
+
+def add_owned(owned, path, kind, digest):
+    owned.setdefault(canon(path), set()).add(f"{kind}:{digest}")
+
+
+def parse_dpkg_status(owned, text):
+    """Conffiles: ` /etc/x <md5>` lines in the continuation of a `Conffiles:` field."""
+    in_conffiles = False
+    for line in text.splitlines():
+        if line.startswith("Conffiles:"):
+            in_conffiles = True
+        elif in_conffiles and line.startswith((" ", "\t")):
+            parts = line.split()
+            if len(parts) >= 2 and parts[0].startswith("/") and re.fullmatch(r"[0-9a-f]{32}", parts[1]):
+                add_owned(owned, parts[0], "md5", parts[1])
+        else:
+            in_conffiles = False
+
+
+def collect_owned(tf, layers):
+    """Pass 1: the (path, hash) pairs the package managers recorded, from every layer (the lists are small)."""
+    owned = {}
+    for name in layers:
+        with layer_tar(tf, name) as lt:
+            for member in lt:
+                if not member.isreg() or member.size > 64 * 1024 * 1024:
+                    continue
+                path = re.sub(r"^(?:\./)+", "", member.name).lstrip("/")
+                is_md5 = path.startswith("var/lib/dpkg/info/") and path.endswith(".md5sums")
+                is_status = path == "var/lib/dpkg/status" or path.startswith("var/lib/dpkg/status.d/")
+                record = RECORD_RE.match(path) if path.endswith("/RECORD") else None
+                if not (is_md5 or is_status or record):
+                    continue
+                text = lt.extractfile(member).read().decode("utf-8", "replace")
+                if is_md5:
+                    for line in text.splitlines():
+                        m = re.fullmatch(r"([0-9a-f]{32})\s+\*?(.+)", line.strip())
+                        if m:
+                            add_owned(owned, m.group(2), "md5", m.group(1))
+                elif is_status:
+                    parse_dpkg_status(owned, text)
+                else:
+                    root = record.group("root")
+                    for row in csv.reader(io.StringIO(text)):
+                        if len(row) >= 2 and row[1].startswith("sha256="):
+                            add_owned(owned, posixpath.join(root, row[0]), "sha256", row[1][len("sha256="):].rstrip("="))
+    return owned
+
+
+def is_installed_unmodified(owned, path, data):
+    wanted = owned.get(canon(path))
+    if not wanted:
+        return False
+    if any(w.startswith("md5:") for w in wanted) and "md5:" + hashlib.md5(data).hexdigest() in wanted:
+        return True
+    if any(w.startswith("sha256:") for w in wanted):
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("=")
+        return "sha256:" + digest in wanted
+    return False
+
+
 def scan_bytes(findings, where, data, under_system):
     for rule, rx in KEY_RES:
         for m in rx.finditer(data):
@@ -202,8 +288,10 @@ def scan_bytes(findings, where, data, under_system):
         findings.add("C1", where, "private-address", m.group(0))
 
 
-def scan_layers(tf, layers, findings):
+def scan_layers(tf, layers, findings, owned):
+    """Pass 2. Returns (files scanned, the paths exempted as installed unmodified by a package manager)."""
     files = 0
+    exempt = set()
     for index, name in enumerate(layers, start=1):
         with layer_tar(tf, name) as lt:
             for member in lt:
@@ -219,9 +307,12 @@ def scan_layers(tf, layers, findings):
                     findings.add("A2", f"layer {index} /{path}", "file-too-large-to-scan", b"x" * 4)
                     continue
                 data = lt.extractfile(member).read()
+                if is_installed_unmodified(owned, path, data):
+                    exempt.add(canon(path))
+                    continue
                 files += 1
                 scan_bytes(findings, f"layer {index} /{path}", data, path.startswith(SYSTEM_PREFIXES))
-    return files
+    return files, exempt
 
 
 def scan_text_for_shapes(findings, check, where, text):
@@ -267,7 +358,7 @@ def check_history(findings, config):
         scan_text_for_shapes(findings, "B2", where, line)
 
 
-def run_trivy(tar_path, findings, layer_count):
+def run_trivy(tar_path, findings, layer_count, exempt=frozenset()):
     """A1. Returns (layers scanned, error). The scanner's JSON is read for rule, file and line only: its Match text is dropped.
     A scan that did not read every layer is an error, not a pass: a scanner that saw nothing says the same as one that saw nothing wrong."""
     cfg = os.path.join(HERE, "trivy-secret.yaml")
@@ -288,6 +379,8 @@ def run_trivy(tar_path, findings, layer_count):
     if scanned != layer_count:
         return None, "trivy read %d of the image's %d layers" % (scanned, layer_count)
     for result in report.get("Results") or []:
+        if canon(result.get("Target", "?")) in exempt:
+            continue
         for secret in result.get("Secrets") or []:
             where = "%s:%s" % (result.get("Target", "?"), secret.get("StartLine", "?"))
             findings.add("A1", where, "trivy:%s (%s)" % (secret.get("RuleID", "?"), secret.get("Severity", "?")), b"redacted")
@@ -336,14 +429,15 @@ def main():
             commit = (config.get("config") or {}).get("Labels", {}).get("org.opencontainers.image.revision", "")
             if args.expect_commit and commit != args.expect_commit:
                 findings.add("C2", "label org.opencontainers.image.revision", "revision-label-is-not-the-built-commit", commit.encode() or b"empty")
-            nfiles = scan_layers(tf, layers, findings)
+            owned = collect_owned(tf, layers)
+            nfiles, exempt = scan_layers(tf, layers, findings, owned)
 
-        layers_scanned, err = run_trivy(tar_path, findings, len(layers))
+        layers_scanned, err = run_trivy(tar_path, findings, len(layers), exempt)
         if err:
             errors.append("A1: " + err)
     except Exception as exc:  # the gate could not run: not a pass
         errors.append("%s: %s" % (type(exc).__name__, exc))
-        nfiles = 0
+        nfiles, exempt = 0, set()
     finally:
         if tmp:
             tmp.cleanup()
@@ -363,6 +457,8 @@ def main():
         for line in findings.lines(check):
             print("         " + line)
         rows.append((check, title, status, n))
+    note = "%d files scanned; %d more were installed by dpkg or pip and are unmodified, so they were not (see the header of image-gate.py)" % (nfiles, len(exempt))
+    print("  " + note)
     for e in errors:
         print("  gate error: " + e)
     verdict = "FAIL" if findings.by_check else ("ERROR" if errors else "PASS")
@@ -378,6 +474,7 @@ def main():
                 for check, _ in CHECKS:
                     for line in findings.lines(check):
                         fh.write("- %s %s\n" % (check, line))
+                fh.write("- %s\n" % note)
                 for e in errors:
                     fh.write("- gate error: %s\n" % e)
                 fh.write("\n")

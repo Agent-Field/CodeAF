@@ -24,6 +24,8 @@ trap cleanup EXIT
 
 rand_alnum() { python3 -c 'import secrets,string,sys; print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(int(sys.argv[1]))))' "$1"; }
 rand_hex()   { python3 -c 'import secrets,sys; print(secrets.token_hex(int(sys.argv[1])))' "$1"; }
+md5_of()     { python3 -c 'import hashlib,sys; print(hashlib.md5(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
+sha256_b64_of() { python3 -c 'import base64,hashlib,sys; print(base64.urlsafe_b64encode(hashlib.sha256(open(sys.argv[1],"rb").read()).digest()).rstrip(b"=").decode())' "$1"; }
 rand_b64()   { python3 -c 'import base64,secrets,sys; print(base64.b64encode(secrets.token_bytes(int(sys.argv[1]))).decode())' "$1"; }
 
 OPENROUTER_FAKE="sk-or-""v1-$(rand_hex 32)"
@@ -124,6 +126,36 @@ BUILD_ARGS=(--build-arg "API_TOKEN=$(rand_alnum 40)")
 build_and_gate build-arg-secret 1 B2 <<'EOF'
 ARG API_TOKEN
 RUN echo built
+EOF
+
+# Files a package manager installed and that are still what it installed (the false positives of a real base image: a library
+# that embeds test private keys, a PAM sample file with example addresses) are not scanned; a file that differs from what the
+# package recorded is. The exemption is by recorded hash, not by place: these live under /opt and /etc, not under a system tree.
+new_case owned-dpkg-unmodified
+{ printf '\177ELF\000\000'; printf '%s\n' "$PEM_FAKE"; } >"$WORK/owned-dpkg-unmodified/ctx/lib.so"
+printf '%s  opt/vendor/lib.so\n' "$(md5_of "$WORK/owned-dpkg-unmodified/ctx/lib.so")" >"$WORK/owned-dpkg-unmodified/ctx/vendor.md5sums"
+build_and_gate owned-dpkg-unmodified 0 - <<'EOF'
+COPY ctx/lib.so /opt/vendor/lib.so
+COPY ctx/vendor.md5sums /var/lib/dpkg/info/vendor.md5sums
+EOF
+new_case owned-dpkg-conffile; printf '%s\n' '- : ALL : 192.168.1.1' >"$WORK/owned-dpkg-conffile/ctx/access.conf"
+printf 'Package: vendor\nStatus: install ok installed\nConffiles:\n /etc/vendor/access.conf %s\nDescription: x\n' "$(md5_of "$WORK/owned-dpkg-conffile/ctx/access.conf")" >"$WORK/owned-dpkg-conffile/ctx/status"
+build_and_gate owned-dpkg-conffile 0 - <<'EOF'
+COPY ctx/access.conf /etc/vendor/access.conf
+COPY ctx/status /var/lib/dpkg/status
+EOF
+new_case owned-dpkg-modified; printf 'original content\n' >"$WORK/owned-dpkg-modified/ctx/original"
+printf '%s  opt/vendor/config.json\n' "$(md5_of "$WORK/owned-dpkg-modified/ctx/original")" >"$WORK/owned-dpkg-modified/ctx/vendor.md5sums"
+printf '{"openrouter":"%s"}\n' "$OPENROUTER_FAKE" >"$WORK/owned-dpkg-modified/ctx/config.json"
+build_and_gate owned-dpkg-modified 1 A2 <<'EOF'
+COPY ctx/config.json /opt/vendor/config.json
+COPY ctx/vendor.md5sums /var/lib/dpkg/info/vendor.md5sums
+EOF
+new_case owned-pip-unmodified; printf '%s\n' "$PEM_FAKE" >"$WORK/owned-pip-unmodified/ctx/data.pem"
+printf 'pkg/data.pem,sha256=%s,%s\n' "$(sha256_b64_of "$WORK/owned-pip-unmodified/ctx/data.pem")" "$(wc -c <"$WORK/owned-pip-unmodified/ctx/data.pem")" >"$WORK/owned-pip-unmodified/ctx/RECORD"
+build_and_gate owned-pip-unmodified 0 - <<'EOF'
+COPY ctx/data.pem /usr/local/lib/python3.12/site-packages/pkg/data.pem
+COPY ctx/RECORD /usr/local/lib/python3.12/site-packages/pkg-1.0.dist-info/RECORD
 EOF
 
 # Private hostnames and addresses in files we put there (C1).

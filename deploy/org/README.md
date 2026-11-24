@@ -341,9 +341,17 @@ the layer, the path, the rule, and the first four characters and length of the m
 | C1 | `railway.app`, `up.railway`, `railway.internal`, or credentials in a `localhost` URL anywhere, compiled programs included; any other `.internal` host name (except `metadata.google.internal` and Docker's own) and any `10.`, `192.168.` or `172.16`-`172.31.` address in the TEXT files our build added, outside the distribution's own trees (`/usr/lib`, `/usr/share`, `/bin`, `/usr/bin`, ...). Compiled programs come from public source, so an example address in an error message is not a leak; a range with a `/prefix` is not an address |
 | C2 | the image's revision label is not the commit that was built |
 
+A file that dpkg or pip installed and that is still byte for byte what it installed is not content-scanned: dpkg records an md5
+for every file (and for configuration files, in its status database) and pip a sha256 in each `RECORD`, the gate hashes the file
+and only a match exempts it, so an edited file, or one planted under a package's name, is scanned like any other. Those files
+are the package's published content, and they are where a real base image gives false positives (a TLS library that embeds test
+private keys, a PAM sample file with example addresses). The gate prints how many files it exempted; our own files are never
+in those lists.
+
 `gate/selftest.sh` proves the gate fails what it should: it builds throwaway images with fake keys, a key in a deleted layer, a
 secret `ENV`, label and build argument, and private hosts planted in them, requires each to fail the check meant to catch it, and
-requires a clean image (with a network range, the metadata host and a documentation URL in it) to pass. `gate/context-check.sh`
+requires a clean image (with a network range, the metadata host and a documentation URL in it) to pass, and an unmodified
+package file to be exempt and a modified one not. `gate/context-check.sh`
 plants `.env` files, key files and a profile folder across a copy of the repository and requires that none enters the codeaf
 build context, which is deny-by-default (`codeaf.Dockerfile.dockerignore`; the other Dockerfiles share `.dockerignore`). Both run
 in CI before any image is built, beside `gate/pins-check.sh`, which fails a Dockerfile whose base image or syntax frontend has no
