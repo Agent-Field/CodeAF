@@ -388,7 +388,7 @@ func machineLineWithDesc(row chatlist.Row, readAt, now time.Time, desc, merge bo
 		now = readAt
 	}
 	at := readAt.Add(-row.DurableAgo)
-	note, short := chatlist.StatusLine(row), ""
+	note, short := chatlist.StatusLineAt(row, now), ""
 	if row.Status == chatlist.Branch {
 		// A branch's sentence names what can be done with it and has a narrow
 		// spelling for frames that cannot hold the whole.

@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 
@@ -57,7 +58,33 @@ import (
 // the top of an hour-old conversation's last two screens and stopped, with the
 // rest of it sitting in the journal underneath. Now it is the size of ONE
 // helping — the opening one, and every one [app.backfill] hands up afterwards.
-const replayTail = 40
+const (
+	replayTail     = 40
+	olderPageLimit = 200
+)
+
+// liveOlderReader returns the front live conversation's OlderReader when the
+// front conversation is a live view and its agent implements OlderReader.
+func (a *app) liveOlderReader() OlderReader {
+	if a.liveFront() == nil || a.agent == nil {
+		return nil
+	}
+	older, _ := a.agent.(OlderReader)
+	return older
+}
+
+// syncLiveOlder resets the live transcript base and older-page availability
+// from the front live agent when it implements OlderReader.
+func (a *app) syncLiveOlder() {
+	older := a.liveOlderReader()
+	if older == nil {
+		a.transcriptBase = 0
+		a.olderMore = false
+		return
+	}
+	a.transcriptBase = max(0, older.TranscriptBase())
+	a.olderMore = a.transcriptBase > 0
+}
 
 // replay folds the tail of the agent's transcript into entries. It runs once,
 // at construction, before the surface has drawn anything — and again whenever
@@ -101,6 +128,7 @@ func (a *app) replayList(all []session.DisplayEntry) {
 	// dropped and asked for again, so a rebuild after a rewind trusts nothing it
 	// was holding before the cut.
 	a.earlier, a.earlierFloor, a.earlierFrom, a.earlierSeam = nil, 0, 0, false
+	a.syncLiveOlder()
 	if a.agent == nil {
 		return
 	}
@@ -169,7 +197,7 @@ func (a *app) moreHistory() bool {
 	if a.agent == nil {
 		return false
 	}
-	return a.replayFrom > a.earlierFloor || a.earlierFrom > 0
+	return a.replayFrom > a.earlierFloor || a.earlierFrom > 0 || (a.liveOlderReader() != nil && a.olderMore)
 }
 
 // rebase hands the backfill's bookkeeping over to the region a pass has just
@@ -325,6 +353,25 @@ func (a *app) prefetchHistory() tea.Cmd {
 			return nil
 		}
 		source = a.earlier
+	case a.liveOlderReader() != nil && a.olderMore && a.transcriptBase > 0:
+		older := a.liveOlderReader()
+		before := a.transcriptBase
+		baseCtx := a.ctx
+		if baseCtx == nil {
+			baseCtx = context.Background()
+		}
+		a.historyLoading = true
+		return func() tea.Msg {
+			entries, more, err := older.Older(baseCtx, before, olderPageLimit)
+			return historyPageMsg{
+				gen:     msg.gen,
+				entries: append([]session.DisplayEntry(nil), entries...),
+				older:   true,
+				before:  before,
+				more:    more,
+				err:     err,
+			}
+		}
 	default:
 		return nil
 	}
@@ -344,6 +391,31 @@ func (a *app) historyPrefetched(msg historyPageMsg) tea.Cmd {
 		return nil
 	}
 	a.historyLoading = false
+	if msg.older {
+		if a.liveOlderReader() == nil || a.transcriptBase != msg.before {
+			return nil
+		}
+		if msg.err != nil {
+			a.note(msg.err.Error())
+			a.touch()
+			return nil
+		}
+		a.transcript = append(append([]session.DisplayEntry(nil), msg.entries...), a.transcript...)
+		a.transcriptBase = max(0, msg.before-len(msg.entries))
+		a.olderMore = msg.more && len(msg.entries) > 0 && a.transcriptBase > 0
+		if len(msg.entries) > 0 {
+			height := a.viewHeight()
+			beforeTotal := len(a.visible(a.bodyWidth()))
+			beforeOffset := a.offsetFor(beforeTotal, height)
+			a.prepend(msg.entries, false)
+			afterTotal := len(a.visible(a.bodyWidth()))
+			if !a.stick {
+				a.offset = beforeOffset + afterTotal - beforeTotal
+			}
+		}
+		a.touch()
+		return nil
+	}
 	if msg.earlier {
 		if a.earlierFrom != msg.to {
 			return a.prefetchHistory()

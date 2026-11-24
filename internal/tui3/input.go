@@ -341,8 +341,8 @@ func (e *editor) down() {
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	a.touchLive()
-	// The removal question consumes its answer whole, including cancellation chords.
-	if c := a.openDevicesCard(); c != nil && c.removing != nil {
+	// The removal or type-permission question consumes its answer whole, including cancellation chords.
+	if c := a.openDevicesCard(); c != nil && c.confirming() {
 		cmd, _ := c.key(a, msg.String())
 		a.touch()
 		return cmd

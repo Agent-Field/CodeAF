@@ -94,7 +94,9 @@ func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 			a.devRow.version++
 		}
 		a.devRow.devices = msg.devices
+		a.machineRead.rows = a.withHolderSeen(a.machineRead.rows)
 		a.considerResume()
+		a.rebuildMachines()
 		a.touch()
 	}
 	return a.finishBring()

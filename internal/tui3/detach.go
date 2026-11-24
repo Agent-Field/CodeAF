@@ -401,6 +401,7 @@ func (a *app) clearConversation() {
 	// transcript being put down. [app.replay] rebuilds both on the way back —
 	// clearing them here is what makes that the design rather than luck.
 	a.replayFrom, a.replayFloor = 0, 0
+	a.transcriptBase, a.olderMore = 0, false
 	a.earlier, a.earlierFloor, a.earlierFrom, a.earlierSeam = nil, 0, 0, false
 	a.transcript = nil
 	a.historyGen++

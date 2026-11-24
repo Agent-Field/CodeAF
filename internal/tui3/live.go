@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -69,6 +70,21 @@ func (a *app) liveRead() LiveRead {
 	return live.Read()
 }
 
+func liveMessageHint(host string) string {
+	return "Message " + host
+}
+
+func liveLegendHost(host string, on bool) string {
+	if on {
+		return "on " + host + " · live"
+	}
+	return "on " + host
+}
+
+func liveRoadLine(road string) string {
+	return "live · " + road
+}
+
 // seamHost returns the host label for the seam line above the composer. A live
 // conversation names the computer it runs on and adds the live word while the
 // connection is healthy; every other conversation uses the window-wide host.
@@ -77,10 +93,7 @@ func (a *app) seamHost() string {
 	if live == nil || live.Host == "" {
 		return a.host
 	}
-	if a.liveRead().Kind == LiveOn {
-		return "on " + live.Host + " · live"
-	}
-	return "on " + live.Host
+	return liveLegendHost(live.Host, a.liveRead().Kind == LiveOn)
 }
 
 // liveMoving reports whether a Move started from the front live view is
@@ -176,7 +189,7 @@ func (a *app) liveRoadWord() string {
 	if live == nil || live.Road == "" || a.liveRead().Kind == LiveCopy {
 		return ""
 	}
-	return "live · " + live.Road
+	return liveRoadLine(live.Road)
 }
 
 // liveTurnTouchEvery bounds how often a running turn reports activity on a live
@@ -446,4 +459,93 @@ func (a *app) swapForLive(conv Conversation) tea.Cmd {
 	}
 	a.touch()
 	return cmd
+}
+
+const (
+	homePermitKind      session.QuestionKind = "surface-permit"
+	permitAskHead                            = "Let your other computers type into chats here?"
+	permitAskOptionType                      = "let them type"
+	permitAskOptionKeep                      = "keep them watching"
+	permitAskOptionPick                      = "choose in /devices"
+)
+
+func permitAskReason(names []string) string {
+	var clean []string
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			clean = append(clean, name)
+		}
+	}
+	who := strings.Join(clean, " and ")
+	if who == "" {
+		who = "Your other computers"
+	}
+	return who + " can watch your chats here but cannot type yet."
+}
+
+// considerPermitAsk raises the one-time question on Home when a local window has
+// older paired computers that can watch chats here but cannot type yet, at most
+// once per Home visit and never over another open card.
+func (a *app) considerPermitAsk() {
+	if !a.at(pageHome) || a.hosted() || a.permitAsk == nil || a.home.permitAsked || a.machineRead.computerRemoved {
+		return
+	}
+	if _, asking := a.homeAsking(); asking || a.pair.open {
+		return
+	}
+	names, ask := a.permitAsk.AskOnce()
+	if !ask {
+		return
+	}
+	a.home.permitAsked = true
+	a.home.armed = ""
+	a.raiseHomeAsk(a.permitAskShown(names))
+	a.sayHomeAsk()
+}
+
+func (a *app) permitAskShown(names []string) questionShown {
+	return questionShown{
+		question: session.Question{
+			ID:     a.nextContinueAskID(),
+			Kind:   homePermitKind,
+			Ask:    session.AskConfirmation,
+			Form:   session.FormCard,
+			Asker:  session.Asker{Kind: session.AskerSurface},
+			Head:   permitAskHead,
+			Reason: permitAskReason(names),
+			Options: []session.AnswerOption{
+				{Key: "1", Label: permitAskOptionType},
+				{Key: "2", Label: permitAskOptionKeep, Safe: true},
+				{Key: "3", Label: permitAskOptionPick},
+			},
+			Stakes: session.StakesReversible,
+			Asked:  a.now(),
+		},
+		pick: 0,
+		local: func(answer session.Answer) tea.Cmd {
+			a.dropHomeAsk()
+			a.home.armed = ""
+			if a.permitAsk == nil {
+				return nil
+			}
+			key := answer.FirstKey()
+			var allow bool
+			switch key {
+			case "1":
+				allow = true
+			case "2", "3":
+				allow = false
+			default:
+				return nil
+			}
+			if err := a.permitAsk.Answer(allow); err != nil {
+				a.home.say(err.Error(), "")
+				return nil
+			}
+			if key == "3" {
+				return a.openDevices()
+			}
+			return nil
+		},
+	}
 }

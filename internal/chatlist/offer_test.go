@@ -167,3 +167,34 @@ func TestEarlierRemovedNoticeIsStillARemoval(t *testing.T) {
 		t.Fatal("removal notices from before --replace are no longer recognised")
 	}
 }
+
+// V27 (Part 4): an offline row says when its holder was last seen only when
+// HolderSeen is non-zero, and a zero timestamp renders as nothing.
+func TestAnOfflineRowSaysWhenItWasLastSeenOnlyWhenKnown(t *testing.T) {
+	now := time.Date(2026, time.November, 23, 16, 30, 0, 0, time.Local)
+	seenToday := time.Date(2026, time.November, 23, 14, 2, 0, 0, time.Local)
+	seenEarlier := time.Date(2026, time.January, 2, 14, 2, 0, 0, time.Local)
+
+	unknown := Row{Status: Off, Device: "tower"}
+	if got, want := StatusLineAt(unknown, now), "tower offline"; got != want {
+		t.Fatalf("offline row with unknown HolderSeen = %q, want %q", got, want)
+	}
+	if got, want := StatusLine(unknown), "tower offline"; got != want {
+		t.Fatalf("StatusLine with unknown HolderSeen = %q, want %q", got, want)
+	}
+
+	knownToday := Row{Status: Off, Device: "tower", HolderSeen: seenToday}
+	if got, want := StatusLineAt(knownToday, now), "tower offline · last seen 14:02"; got != want {
+		t.Fatalf("offline row with today HolderSeen = %q, want %q", got, want)
+	}
+
+	knownEarlier := Row{Status: Off, Device: "tower", HolderSeen: seenEarlier}
+	if got, want := StatusLineAt(knownEarlier, now), "tower offline · last seen 2 Jan 14:02"; got != want {
+		t.Fatalf("offline row with earlier HolderSeen = %q, want %q", got, want)
+	}
+
+	running := Row{Status: Running, Device: "tower", HolderSeen: seenToday}
+	if got, want := StatusLineAt(running, now), "held on tower"; got != want {
+		t.Fatalf("running row with HolderSeen = %q, want %q", got, want)
+	}
+}

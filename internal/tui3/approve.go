@@ -50,6 +50,19 @@ type PendingDevice struct {
 	ExpiresAt   time.Time
 }
 
+// DevicePermit is what another computer in this person's roster may do with
+// chats on this computer. Drive is permission to type into them.
+type DevicePermit struct {
+	Watch, Drive bool
+}
+
+// PermitSetter is an optional face of the Approvals door that changes what
+// another paired computer may do with chats on this computer. A nil pointer
+// leaves that half of the permit as it is.
+type PermitSetter interface {
+	SetPermit(id string, watch, drive *bool) error
+}
+
 // DeviceRow is one device of the fleet as the device list shows it.
 type DeviceRow struct {
 	ID       string
@@ -57,8 +70,9 @@ type DeviceRow struct {
 	Platform string
 	Self     bool
 	Revoked  bool
-	Online   bool      // set by the screen from the feed, not by the door
-	LastSeen time.Time // zero when never seen
+	Online   bool          // set by the screen from the feed, not by the door
+	LastSeen time.Time     // zero when never seen
+	Permit   *DevicePermit // nil when this door does not offer the switches
 }
 
 // Approvals is the door onto answering and revoking devices. Nil in [Options]

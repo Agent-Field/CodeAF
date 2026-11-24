@@ -2321,7 +2321,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 	}
 	s := &a.sheet
 	defer a.touch()
-	if s.dev != nil && s.dev.removing != nil {
+	if s.dev != nil && s.dev.confirming() {
 		cmd, _ := s.dev.key(a, msg.String())
 		return cmd, true
 	}
@@ -2406,29 +2406,19 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
 
 	case "enter":
 		return a.activate(), true
-	case "r":
+	case "r", "n", "w", "t":
+		key := msg.String()
 		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
 			if s.dev != nil && s.dev.loaded {
 				s.syncDeviceCursor()
 				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
-					return a.revoke(s.dev), true
+					cmd, _ := s.dev.key(a, key)
+					return cmd, true
 				}
 			}
 			return nil, true
 		}
-		s.query.insert("r")
-		s.build()
-	case "n":
-		if s.onDevices() && !s.searching() && s.devicesUnavailable() == "" {
-			if s.dev != nil && s.dev.loaded {
-				s.syncDeviceCursor()
-				if item, ok := s.current(); ok && item.dev != nil && !item.dev.add && !item.dev.storage && !item.dev.unavailable {
-					s.dev.startNaming()
-				}
-			}
-			return nil, true
-		}
-		s.query.insert("n")
+		s.query.insert(key)
 		s.build()
 	case " ", "space":
 		// A SPACE WHILE A SEARCH IS TYPED IS A WORD IN THE QUERY and not a

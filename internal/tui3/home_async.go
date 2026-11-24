@@ -42,6 +42,7 @@ func (a *app) furnishHomeCached() {
 	}
 	a.machine.hands, a.machine.wants = machineCounts(a.now(), a.home.world.Sessions(), a.exchanges)
 	a.home.build()
+	a.considerPermitAsk()
 }
 
 func (a *app) refreshHomeLater() tea.Cmd {

@@ -394,7 +394,7 @@ func (s *sheet) devicesDetails(frameWidth, bodyWidth int) []string {
 // under the cursor: `r remove` only on a removable computer, `↑↓ choose` only
 // when more than one row can be walked, and `enter add` on the add row.
 func (s *sheet) devicesKeysLine() string {
-	if s.dev != nil && s.dev.removing != nil {
+	if s.dev != nil && s.dev.confirming() {
 		return s.dev.hint()
 	}
 	if s.devTyping() {
@@ -420,9 +420,7 @@ func (s *sheet) devicesKeysLine() string {
 		} else {
 			out = append(out, devicesNameKey)
 			if s.dev != nil && item.dev.index >= 0 && item.dev.index < len(s.dev.rowsOf) {
-				if row := s.dev.rowsOf[item.dev.index]; !row.Self && !row.Revoked {
-					out = append(out, devicesGoneKey)
-				}
+				out = append(out, s.dev.rowActionKeys(s.dev.rowsOf[item.dev.index])...)
 			}
 		}
 	}

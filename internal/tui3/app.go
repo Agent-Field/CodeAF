@@ -731,6 +731,10 @@ type (
 		to      int
 		earlier bool
 		seam    bool
+		older   bool
+		before  int
+		more    bool
+		err     error
 	}
 	// gitMsg is what the workspace's repository answered (see [gitHead]). It is
 	// a message rather than a call because `git status` on a large tree is tens
@@ -1066,8 +1070,10 @@ type app struct {
 	// journal only ever grows at its end, so an index taken at open still names
 	// the same block an hour of turns later — where a count back from the end
 	// would have slid forward under every one of them.
-	replayFrom  int
-	replayFloor int
+	replayFrom     int
+	replayFloor    int
+	transcriptBase int
+	olderMore      bool
 	// earlier is the conversation a compaction edited away — what
 	// [session.Agent.EarlierHistory] hands over — and earlierFrom is where the
 	// DRAWN conversation starts inside it, exactly as replayFrom names a place in
@@ -2375,6 +2381,7 @@ type app struct {
 	machines       chatlist.Source
 	taker          Taker
 	openLive       func(context.Context, chatlist.Row) (Conversation, error)
+	permitAsk      PermitAsker
 	branches       BranchActions
 	machineRead    machineReading
 	machinesAsking bool
@@ -3142,6 +3149,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		openLive:            opts.OpenLive,
+		permitAsk:           opts.PermitAsk,
 		pairing:             opts.Pairing,
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
@@ -9010,6 +9018,7 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	}
 	a.liveView = conv.Live
 	a.liveTurnTouchAt = time.Time{}
+	a.syncLiveOlder()
 }
 
 // freshAndEmpty is the conversation nobody has used yet: nothing on screen, no

@@ -227,6 +227,12 @@ func nameList(names []string) string {
 // StatusLine is what a list row says beside the title. Idle and Here say
 // nothing (the emptiness law), so their line is empty.
 func StatusLine(r Row) string {
+	return StatusLineAt(r, time.Now())
+}
+
+// StatusLineAt formats a list row's status at a caller-supplied clock so an
+// offline holder's last-seen word uses the surface's own calendar day.
+func StatusLineAt(r Row, now time.Time) string {
 	switch r.Status {
 	case Running:
 		if r.Working {
@@ -234,7 +240,11 @@ func StatusLine(r Row) string {
 		}
 		return fmt.Sprintf(heldOn, r.Device)
 	case Off:
-		return fmt.Sprintf(deviceOff, r.Device)
+		line := fmt.Sprintf(deviceOff, r.Device)
+		if seen := LiveSeenAt(r.HolderSeen, now); seen != "" {
+			line += " · last seen " + seen
+		}
+		return line
 	case Branch:
 		return fmt.Sprintf(branchLine, turns(r.OrphanTurns), r.Device)
 	}

@@ -3,6 +3,7 @@ package chatlist
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
@@ -22,6 +23,8 @@ type Device struct {
 	ID, Name string
 	// Self marks the device the row is drawn on.
 	Self bool
+	// LastSeen is when the directory last heard from this device, or zero when unknown.
+	LastSeen time.Time
 }
 
 // Devices lists the devices that are not revoked, this one first and the rest by
@@ -30,7 +33,11 @@ func Devices(l directory.Listing, self string, open Opener) []Device {
 	var out []Device
 	for id, d := range l.Devices {
 		if !d.Revoked {
-			out = append(out, Device{ID: id, Name: ownName(id == self, d, open, id, l), Self: id == self})
+			var seen time.Time
+			if d.LastSeen > 0 {
+				seen = time.UnixMilli(d.LastSeen)
+			}
+			out = append(out, Device{ID: id, Name: ownName(id == self, d, open, id, l), Self: id == self, LastSeen: seen})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return deviceBefore(out[i], out[j]) })

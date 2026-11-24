@@ -747,7 +747,8 @@ type homeView struct {
 	// nil (homeconfirm.go). It is not on the block: home takes the frame whole,
 	// so the block's rows are not on screen here, and a card home raised about a
 	// row on home is not a thing to meet after walking away from home.
-	ask *questionShown
+	ask         *questionShown
+	permitAsked bool
 
 	// tier is which of home's three shapes this frame has room for — the list
 	// alone, the list and a card, or the zones in a column of their own beside
@@ -1343,6 +1344,7 @@ func (a *app) furnishHome() {
 	// on the beat this is a rescan and a rebuild and nothing else.
 	a.home.build()
 	a.rememberHomeReading()
+	a.considerPermitAsk()
 }
 
 // placesRoot is where the projects live. The field is the test's door and

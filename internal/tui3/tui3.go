@@ -187,6 +187,30 @@ type Agent interface {
 	EarlierHistory() session.EarlierHistory
 }
 
+// OlderReader is an Agent that can fetch entries from before the ones it hands
+// over in Transcript(), a page at a time.
+type OlderReader interface {
+	// Older returns up to limit entries that come immediately before the absolute
+	// index before (counted from the start of the chat's transcript), oldest
+	// first, and whether there are still older ones.
+	Older(ctx context.Context, before, limit int) ([]session.DisplayEntry, bool, error)
+	// TranscriptBase is the absolute index of Transcript()[0].
+	TranscriptBase() int
+}
+
+// PermitAsker asks once on Home whether computers paired before remote control
+// shipped should also be allowed to type into chats on this computer.
+type PermitAsker interface {
+	// AskOnce says whether Home should ask now, and the names of the computers it
+	// is about. It is true at most until Answer is called once. IT IS ASKED ON THE
+	// UPDATE LOOP, every time Home is built, so it must answer from what the door
+	// already holds and never read a file or the wire.
+	AskOnce() (names []string, ask bool)
+	// Answer records the person's decision: true lets those computers type, and
+	// false keeps them watching. Either answer ends the question for good.
+	Answer(allow bool) error
+}
+
 // detachable is an agent whose conversation OUTLIVES THIS TERMINAL, and it is
 // how this surface tells the two apart without guessing.
 //
@@ -473,6 +497,9 @@ type Options struct {
 	// view inside this local window. Nil means remote control is off and the
 	// surface behaves as it does without live views.
 	OpenLive func(ctx context.Context, row chatlist.Row) (Conversation, error)
+	// PermitAsk asks once on Home whether older paired computers may type into
+	// chats on this computer. Nil means there is nothing to ask.
+	PermitAsk PermitAsker
 	// Pairing shares this computer's chats with another, and receives another's
 	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
 	// sentence while the first-run screen leaves its code field out.

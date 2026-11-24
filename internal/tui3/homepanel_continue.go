@@ -132,7 +132,7 @@ const (
 // sentences are contract copy and too long for a one-line foot, so a frame with
 // no column to draw the card in shows them on a screen of their own
 // ([app.machineScreen]).
-var machineAsks = map[session.QuestionKind]bool{homeContinueKind: true, homeBranchKind: true}
+var machineAsks = map[session.QuestionKind]bool{homeContinueKind: true, homeBranchKind: true, homePermitKind: true}
 
 // armedBy reports that a question was raised from this row. A chat on another
 // machine is armed by its key, which no transcript path can spell.
@@ -356,7 +356,7 @@ func (a *app) raiseContinue(row chatlist.Row, at int) tea.Cmd {
 		return nil
 	}
 	if a.taker == nil {
-		return a.sayOffer(row, chatlist.Offer{Line: chatlist.StatusLine(row)})
+		return a.sayOffer(row, chatlist.Offer{Line: chatlist.StatusLineAt(a.presentRow(row), a.now())})
 	}
 	if a.homeTaking != "" && !a.homeTakeAutomatic {
 		a.raiseMachineAsk(row, a.continueBusyShown(row))
@@ -518,7 +518,10 @@ func (a *app) presentRow(row chatlist.Row) chatlist.Row {
 	self := a.resumeState().self
 	row.Mine = row.Mine || self != "" && row.DeviceID == self
 	if a.resumeState().away(row) {
-		return row.Quiet()
+		row = row.Quiet()
+	}
+	if row.HolderSeen.IsZero() {
+		row.HolderSeen = a.holderSeenFor(row.DeviceID)
 	}
 	return row
 }
@@ -949,6 +952,7 @@ func (a *app) rebuildMachines() {
 	if a.home.gridOn() || a.home.phone {
 		a.home.build()
 	}
+	a.considerPermitAsk()
 	a.touch()
 }
 
@@ -1491,6 +1495,7 @@ func (a *app) othersNow() machineReading {
 		return machineReading{}
 	}
 	reading := a.machineRead
+	reading.rows = a.withHolderSeen(reading.rows)
 	reading.away = a.resumeState().away
 	return reading
 }
