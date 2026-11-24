@@ -23,10 +23,27 @@ type maxTunnelsProvider interface {
 	maxTunnelsPerDevice() int
 }
 
+// roadProvider is implemented by a Closer that knows which road it arrived on.
+// A Closer that does not is a relay tunnel, which is every tunnel that existed
+// before the direct road did.
+type roadProvider interface {
+	roadName() string
+}
+
 type regEntry struct {
 	id     uint64
 	device string
+	road   string
 	closer Closer
+}
+
+func roadOf(c Closer) string {
+	if p, ok := c.(roadProvider); ok {
+		if road := p.roadName(); road != "" {
+			return road
+		}
+	}
+	return RoadRelay
 }
 
 // Registry tracks active live-door tunnels by authenticated viewer device ID so
@@ -46,8 +63,14 @@ func NewRegistry() *Registry {
 }
 
 // Add registers c under device and returns an idempotent removal callback. When
-// device already holds MaxTunnelsPerDevice active tunnels, the oldest tunnel is
-// closed with ReasonHostClosing outside the registry lock before Add returns.
+// device already holds MaxTunnelsPerDevice active tunnels ON THE SAME ROAD, the
+// oldest of that road is closed with ReasonHostClosing outside the registry lock
+// before Add returns.
+//
+// THE CAP IS PER ROAD, because a reconnecting relay link briefly overlaps its
+// dying predecessor and must be allowed to, and a cap shared with the direct road
+// would let that reconnect evict a healthy direct tunnel (or the other way
+// round). Each road evicts only its own.
 func (r *Registry) Add(device string, c Closer) (remove func()) {
 	if r == nil || c == nil {
 		return func() {}
@@ -58,19 +81,26 @@ func (r *Registry) Add(device string, c Closer) (remove func()) {
 			maxTunnels = m
 		}
 	}
+	road := roadOf(c)
 
 	var evicted []Closer
 	r.mu.Lock()
 	r.nextID++
 	id := r.nextID
 	list := r.byDevice[device]
-	for len(list) >= maxTunnels {
-		evicted = append(evicted, list[0].closer)
-		list = list[1:]
+	for sameRoad(list, road) >= maxTunnels {
+		for i, entry := range list {
+			if entry.road == road {
+				evicted = append(evicted, entry.closer)
+				list = append(append([]*regEntry(nil), list[:i]...), list[i+1:]...)
+				break
+			}
+		}
 	}
 	list = append(list, &regEntry{
 		id:     id,
 		device: device,
+		road:   road,
 		closer: c,
 	})
 	r.byDevice[device] = list
@@ -99,6 +129,17 @@ func (r *Registry) Add(device string, c Closer) (remove func()) {
 			r.mu.Unlock()
 		})
 	}
+}
+
+// sameRoad counts the entries in list that arrived on road.
+func sameRoad(list []*regEntry, road string) int {
+	n := 0
+	for _, entry := range list {
+		if entry.road == road {
+			n++
+		}
+	}
+	return n
 }
 
 // Revoke removes and closes every registered tunnel belonging to any of devices
@@ -162,6 +203,36 @@ func (r *Registry) Count(device string) int {
 	return len(r.byDevice[device])
 }
 
+// HasRoad reports whether device has at least one tunnel registered on road. The
+// host uses it to excuse a silent relay standby while a direct tunnel of the same
+// device is open.
+func (r *Registry) HasRoad(device, road string) bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return sameRoad(r.byDevice[device], road) > 0
+}
+
+// countRoad reports how many tunnels are registered on road across every
+// device: what the host's own direct-tunnel cap is measured against.
+func (r *Registry) countRoad(road string) int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, list := range r.byDevice {
+		n += sameRoad(list, road)
+	}
+	return n
+}
+
+// onBudgetExhausted resets the channels of every RELAY tunnel. A direct tunnel
+// is not counted by the daily budget and a spent budget never touches it: the
+// budget exists for the relay's cost.
 func (r *Registry) onBudgetExhausted() {
 	if r == nil {
 		return
@@ -170,6 +241,9 @@ func (r *Registry) onBudgetExhausted() {
 	r.mu.Lock()
 	for _, list := range r.byDevice {
 		for _, entry := range list {
+			if entry.road == RoadDirect {
+				continue
+			}
 			if cr, ok := entry.closer.(channelResetter); ok {
 				targets = append(targets, cr)
 			}

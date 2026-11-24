@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultRoad             = "relay"
+	defaultRoad             = RoadRelay
 	hostBackstopExtra       = time.Minute
 	opFlushClose      uint8 = 0xff
 )
@@ -40,7 +40,17 @@ type ServeConfig struct {
 	Clock    Clock
 	Limits   Limits
 	Host     string
-	Road     string
+	// Road is "relay" (the default) or "direct", and the CALLER chooses it from
+	// how the tunnel arrived, never from anything the viewer said. A direct
+	// tunnel is served with no daily budget at all, whatever Budget says, and
+	// with the direct road's pacing and liveness wherever Limits leaves them
+	// unset.
+	Road string
+	// Direct, when set on a relay tunnel, is the host half of the direct road:
+	// the link advertises it in the HelloAck and hands it every offer a viewer
+	// signals. A nil Direct means this host takes no offers, and an offer that
+	// arrives anyway is refused before anything is allocated.
+	Direct DirectHost
 }
 
 type tunnelRWC struct {
@@ -76,6 +86,15 @@ type serverTunnel struct {
 	chans         map[uint32]*activeChan
 	closing       bool
 	droppedFrames atomic.Int64
+
+	// ctx is the lifetime of the tunnel's Serve call. sessions holds the direct
+	// attempts this tunnel's viewer has pending, by attempt id.
+	ctx      context.Context
+	sessions map[string]DirectSession
+	// muxReady closes once st.mux is assigned. The mux's reader goroutine starts
+	// inside NewMux, so a signalling frame could arrive before the assignment
+	// completes, and a handler that answers on the mux waits for this first.
+	muxReady chan struct{}
 }
 
 type activeChan struct {
@@ -235,11 +254,21 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 	if clk == nil {
 		clk = RealClock()
 	}
-	lim := cfg.Limits.withDefaults()
 	road := cfg.Road
 	if road == "" {
 		road = defaultRoad
 	}
+	if road == RoadDirect {
+		// THE ROAD DECIDES THE LIMITS, NOT THE CALLER'S MEMORY OF THEM. The daily
+		// byte budget exists for the relay's cost, so a direct tunnel is neither
+		// counted by it nor cut by it, and a viewer that spent the day's relay
+		// allowance can still type on a direct path.
+		cfg.Budget = nil
+		cfg.Limits = cfg.Limits.directDefaults()
+		// A direct tunnel offers no further direct road.
+		cfg.Direct = nil
+	}
+	lim := cfg.Limits.withDefaults()
 
 	st := &serverTunnel{
 		peer:     peer,
@@ -249,7 +278,13 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 		road:     road,
 		lastRead: clk.Now(),
 		chans:    make(map[uint32]*activeChan),
+		ctx:      ctx,
+		sessions: make(map[string]DirectSession),
+		muxReady: make(chan struct{}),
 	}
+	// A direct attempt still pending when the tunnel ends is closed with it, so a
+	// viewer that goes away cannot leave a peer connection half built on the host.
+	defer st.closeSessions()
 	curPermit := st.readPermit()
 	st.lastPermit = curPermit
 
@@ -259,7 +294,9 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 		Limits:         lim,
 		OnFrameRead:    st.onFrameRead,
 		OnFrameWritten: st.onFrameWritten,
+		OnSignal:       st.onSignal,
 	})
+	close(st.muxReady)
 
 	if !curPermit.Watch {
 		_ = st.mux.SendHelloAck(HelloAck{
@@ -316,6 +353,7 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 		Drive:  drive,
 		Road:   road,
 		Limits: lim,
+		Direct: st.directAdvertised(),
 	}); err != nil {
 		_ = st.mux.Close()
 		return nil
@@ -340,6 +378,17 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 				elapsed := clk.Now().Sub(st.lastRead)
 				st.mu.Unlock()
 				if elapsed >= backstopWait {
+					// A RELAY TUNNEL THAT IS A SILENT STANDBY IS NOT DEAD. While a
+					// direct tunnel of the same device is registered the viewer
+					// sends nothing on the relay on purpose (the Durable Object
+					// keeps hibernating), so silence here is the design. The
+					// exemption is derived from the registry, with no message, and
+					// ends the next time the timer fires after the direct tunnel
+					// is gone.
+					if st.standbyExempt() {
+						timer = clk.NewTimer(hostBackstopExtra)
+						continue
+					}
 					_ = st.mux.Close()
 					return
 				}
@@ -379,6 +428,133 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 
 func (st *serverTunnel) maxTunnelsPerDevice() int {
 	return st.limits.MaxTunnelsPerDevice
+}
+
+// roadName is the road this tunnel arrived on; the registry caps tunnels and
+// skips the budget reset per road with it.
+func (st *serverTunnel) roadName() string {
+	return st.road
+}
+
+// standbyExempt reports whether this relay tunnel's silence is excused because
+// a direct tunnel of the same device is open.
+func (st *serverTunnel) standbyExempt() bool {
+	return st.road != RoadDirect && st.cfg.Registry != nil && st.cfg.Registry.HasRoad(st.peer.Device, RoadDirect)
+}
+
+// directAdvertised is what the HelloAck says about the direct road: yes only
+// for a relay tunnel whose host has a direct half to answer with and room for
+// another direct tunnel.
+func (st *serverTunnel) directAdvertised() bool {
+	if st.road != RoadRelay || st.cfg.Direct == nil {
+		return false
+	}
+	return st.cfg.Registry == nil || st.cfg.Registry.countRoad(RoadDirect) < MaxDirect
+}
+
+// muxSignaller sends a host's signalling frames over the relay link they
+// belong to.
+type muxSignaller struct{ m *Mux }
+
+func (s muxSignaller) Send(payload []byte) error { return s.m.SendSignal(payload) }
+
+// onSignal handles one signalling payload from the viewer. It runs on the
+// link's reader goroutine, so it only decides, hands over, and answers; the
+// peer-to-peer work happens behind the DirectHost.
+//
+// A payload that does not decode is dropped: the mux has already bounded its
+// size and rate, and a viewer cannot make a host do anything with a frame this
+// code does not understand. Frames for an attempt this tunnel does not have
+// pending are dropped too, which is what keeps a stale attempt's late candidates
+// from reaching a new one.
+func (st *serverTunnel) onSignal(payload []byte) {
+	sig, err := DecodeSignal(payload)
+	if err != nil || sig.ID == "" {
+		return
+	}
+	select {
+	case <-st.muxReady:
+	case <-st.ctx.Done():
+		return
+	}
+	switch sig.T {
+	case SignalOffer:
+		st.onOffer(sig, payload)
+	case SignalCandidate:
+		st.mu.Lock()
+		session := st.sessions[sig.ID]
+		st.mu.Unlock()
+		if session != nil {
+			session.Deliver(payload)
+		}
+	case SignalEnd:
+		st.endSession(sig.ID)
+	}
+}
+
+// onOffer answers an offer by refusing it before anything is allocated, or by
+// handing it to the host's direct half. A new offer from a viewer SUPERSEDES
+// its earlier pending one, because a viewer that retried after a lost `end`
+// must not be locked out by its own dead attempt.
+func (st *serverTunnel) onOffer(sig Signal, payload []byte) {
+	refuse := func(reason string) {
+		if raw, err := EncodeSignal(Signal{T: SignalRefuse, ID: sig.ID, Reason: reason}); err == nil {
+			_ = st.mux.SendSignal(raw)
+		}
+	}
+	switch {
+	case st.road != RoadRelay:
+		refuse(RefuseOff)
+		return
+	case st.cfg.Direct == nil:
+		refuse(RefuseRelayOnly)
+		return
+	case st.cfg.Registry != nil && st.cfg.Registry.countRoad(RoadDirect) >= MaxDirect:
+		refuse(RefuseBusy)
+		return
+	}
+	st.mu.Lock()
+	closing := st.closing
+	st.mu.Unlock()
+	if closing {
+		return
+	}
+	st.closeSessions()
+	session := st.cfg.Direct.Offered(st.ctx, st.peer, payload, muxSignaller{st.mux})
+	if session == nil {
+		refuse(RefuseBusy)
+		return
+	}
+	st.mu.Lock()
+	if st.closing {
+		st.mu.Unlock()
+		session.Close()
+		return
+	}
+	st.sessions[sig.ID] = session
+	st.mu.Unlock()
+}
+
+// endSession closes one pending attempt, if this tunnel has it.
+func (st *serverTunnel) endSession(id string) {
+	st.mu.Lock()
+	session := st.sessions[id]
+	delete(st.sessions, id)
+	st.mu.Unlock()
+	if session != nil {
+		session.Close()
+	}
+}
+
+// closeSessions closes every pending attempt of this tunnel.
+func (st *serverTunnel) closeSessions() {
+	st.mu.Lock()
+	sessions := st.sessions
+	st.sessions = make(map[string]DirectSession)
+	st.mu.Unlock()
+	for _, session := range sessions {
+		session.Close()
+	}
 }
 
 func (st *serverTunnel) readPermit() pair.Permit {
@@ -426,6 +602,9 @@ func (st *serverTunnel) flushAndClose() {
 func (st *serverTunnel) CloseWithReason(reason string) {
 	st.mu.Lock()
 	st.closing = true
+	st.mu.Unlock()
+	st.closeSessions()
+	st.mu.Lock()
 	active := make([]*activeChan, 0, len(st.chans))
 	for _, ac := range st.chans {
 		active = append(active, ac)
