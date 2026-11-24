@@ -747,3 +747,17 @@ func TestHostedPlanPageCarriesTheLedgersModel(t *testing.T) {
 		t.Fatalf("PlanTaskWork over the host = (%+v, %v), want the door to answer", work, found)
 	}
 }
+
+// SocketPathUnder is what a supervisor measures before it makes anybody a home,
+// so it must be exactly as long as the socket a host really listens on.
+func TestSocketPathUnderIsTheLengthOfARealHostSocket(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CODEAF_HOME", root)
+	real, err := SocketPath("/work/some/place")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := SocketPathUnder(root); len(got) != len(real) {
+		t.Fatalf("SocketPathUnder is %d bytes, a real host socket is %d", len(got), len(real))
+	}
+}
