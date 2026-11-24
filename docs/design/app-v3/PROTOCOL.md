@@ -56,6 +56,7 @@ decides which combinations are accepted.
 | `agents.entries` | `in.EntriesParams` | `EntriesResult` |
 | `agents.errand` | `in.ErrandParams` | `Errand` |
 | `agents.errand.models` | `in.ErrandModelsParams` | `ErrandModels` |
+| `agents.hosted_list` | `{org}` | `HostedListResult` |
 | `agents.idle` | `{days}` | `IDsResult` |
 | `agents.labels` | `{ids}` | `AgentLabels` |
 | `agents.list` | `in.AgentsListParams` | `AgentsResult` |
@@ -85,6 +86,19 @@ decides which combinations are accepted.
 | `agents.steer` | `in.sayTo` | `Empty` |
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
+
+The `agents.hosted` feature enables `agents.hosted_list` and the optional
+`org` connection ID on `agents.create`. The hosted list returns the caller's
+own and shared chats, newest first. Its `available` field is true when the
+organization's server serves hosted chats. A server with hosted chats off
+returns an empty `agents` array and `available: false`. The server's
+`hosting` policy object is included when supplied. Authentication failures
+answer `signed_out` and transport failures answer `unreachable`.
+
+Hosted rows carry `hosted` facts and use a self-describing
+`<session>_<connection>` ID. `agents.open` attaches that session's wire and
+`agents.close` releases it. Use `agents.stop` to interrupt its current turn.
+`agents.list` stays scoped to chats on this computer.
 
 `agents.stop` is a bounded stop. It interrupts the running turn and answers at
 once; a turn that has still not let go ten seconds later (one parked on a wait
