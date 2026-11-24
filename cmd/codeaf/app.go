@@ -358,6 +358,13 @@ type appConn struct {
 	// Lent says this is a factory stage the factory owns, lent as a view
 	// (app_lend.go): its model, posture and budget are not the app's to set.
 	Lent bool
+	// Remote says this is a LIVE VIEW of a chat another computer holds
+	// (app_live_open.go): the conversation runs there, and its model, posture,
+	// budget and client tools are that computer's to set, never this one's.
+	Remote bool
+	// Gone is closed when the connection is released, for what watches it and
+	// must stop with it; nil where nothing does.
+	Gone <-chan struct{}
 }
 
 type appOpener func(appOpenAsk) (*appConn, error)
@@ -685,6 +692,14 @@ type appBackend struct {
 	turns         atomic.Uint64
 	assembled     atomic.Bool
 
+	// liveMu guards liveHosts, the roads to the other computers this process
+	// holds live views on (app_live_open.go). It is a leaf lock: nothing else is
+	// taken or called while it is held. liveViews counts the live agents, so the
+	// hook every agents.* call goes through costs nothing when there are none.
+	liveMu    sync.Mutex
+	liveHosts map[string]*appLiveHost
+	liveViews atomic.Int32
+
 	// unreadSay is held from working an agent's unread and saved spend out
 	// to saying them, so the last readings the window hears are the latest
 	// (appunread.go). It is taken before mu and the app file's lock, never
@@ -839,6 +854,9 @@ type appAgent struct {
 	// viewOpen preserves the person's open view through idle sweeps. Retiring
 	// it would let its next read immediately take back the released hold.
 	viewOpen bool
+	// liveRemote is set once the agent has been opened as a live view of a chat
+	// another computer holds (app_live_open.go); nil for every other agent.
+	liveRemote *appLiveRemote
 	// crewHeld keeps an established crew hold due after its engine closes.
 	crewHeld bool
 	// What it has said to the person (appunread.go): repliedAt its last
@@ -1308,7 +1326,7 @@ func (b *appBackend) find(id string) (*appAgent, error) {
 	held := false
 	b.locked(func() {
 		a = b.agents[id]
-		held = a != nil && a.transcript != ""
+		held = a != nil && (a.transcript != "" || a.liveRemote != nil)
 	})
 	if held {
 		// A cached transcript is not a lease on another window's working state.
@@ -1410,7 +1428,7 @@ func (b *appBackend) ListAgents(workspace string) ([]appwire.Agent, error) {
 	var beyond []beyondWalk
 	b.locked(func() {
 		for id, a := range b.agents {
-			if !seen[id] && !a.view.FactoryOwned && !factoryOwnedConversation(a.transcript) && (a.live != nil || a.opening) && matches(a.view.Workspace) {
+			if !seen[id] && !a.view.FactoryOwned && !a.liveOnly() && !factoryOwnedConversation(a.transcript) && (a.live != nil || a.opening) && matches(a.view.Workspace) {
 				beyond = append(beyond, beyondWalk{view: a.view, transcript: a.transcript, said: a.saidLocked()})
 			}
 		}
@@ -1914,7 +1932,14 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		}
 	})
 	var moved bool
-	b.locked(func() { moved = a.windowMoved })
+	var liveRemote *appLiveRemote
+	b.locked(func() { moved, liveRemote = a.windowMoved, a.liveRemote })
+	// A LIVE VIEW IS OPENED OVER THE LIVE DOOR, NEVER BUILT HERE: the chat runs
+	// on another computer, so this process spends nothing on it, moves nothing
+	// and is not held by the day's cap (app_live_open.go).
+	if liveRemote != nil {
+		return b.ensureLive(a, liveRemote)
+	}
 	if moved {
 		return appwire.Agent{}, false, appwire.Errorf(appwire.CodeConflict, "%s", appWindowConflict)
 	}
@@ -3826,6 +3851,13 @@ func (b *appBackend) EntriesWithFallback(id, before string, limit int) (appwire.
 	if err != nil {
 		return appwire.EntriesResult{}, err
 	}
+	// A LIVE VIEW READS ITS HISTORY OVER THE LIVE DOOR, never from a folder
+	// here and never from a saved head (app_live_open.go).
+	var liveView bool
+	b.locked(func() { liveView = a.liveRemote != nil })
+	if liveView {
+		return b.liveEntries(a, before, limit)
+	}
 	page, more, head, remoteErr := b.remoteEntries(a, before, limit)
 	if head != "" {
 		return appwire.EntriesResult{Entries: page, More: more, RemoteHead: head}, nil
@@ -4293,8 +4325,8 @@ func (b *appBackend) SetModel(id, model string) (appwire.Agent, error) {
 		live = a.live
 		live.lastUse = b.now()
 	})
-	if live.conn.Lent {
-		return appwire.Agent{}, errLentStage("model")
+	if live.conn.Lent || live.conn.Remote {
+		return appwire.Agent{}, appFenceError(live.conn, "model")
 	}
 	if checked, ok := live.conn.Conv.(interface{ SetModelChecked(string) error }); ok {
 		if err := checked.SetModelChecked(model); err != nil {
@@ -4827,6 +4859,9 @@ func (b *appBackend) Close() error {
 	}
 	b.clientTools.disconnect()
 	appClientToolsBackend.CompareAndSwap(b, nil)
+	// The links to other computers go first: a view being redialled would
+	// otherwise hold the relay's tunnel while the app leaves.
+	b.closeLive()
 	already := false
 	var waitClosed chan struct{}
 	var crews *appCrewRun

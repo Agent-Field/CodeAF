@@ -108,8 +108,8 @@ func (b *appBackend) lentFence(a *appAgent, what string) error {
 	var live *appLive
 	var transcript string
 	b.locked(func() { live, transcript = a.live, a.transcript })
-	if live != nil && live.conn.Lent {
-		return errLentStage(what)
+	if live != nil && (live.conn.Lent || live.conn.Remote) {
+		return appFenceError(live.conn, what)
 	}
 	if live == nil && transcript != "" {
 		if _, staged := liveStageFor(transcript); staged {
@@ -122,7 +122,7 @@ func (b *appBackend) lentFence(a *appAgent, what string) error {
 // bindBudgetConn is [appBackend.bindBudget] for a held connection: a lent stage
 // keeps the factory's budget, so the app's saved agent figure is not bound onto it.
 func (b *appBackend) bindBudgetConn(id string, conn *appConn) error {
-	if conn.Lent {
+	if conn.Lent || conn.Remote {
 		return nil
 	}
 	return b.bindBudget(id, conn.Conv)

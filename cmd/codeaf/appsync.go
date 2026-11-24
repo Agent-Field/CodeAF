@@ -186,6 +186,14 @@ func (b *appBackend) located(a *appAgent, location *appwire.Location) {
 		if old == nil && location == nil {
 			return
 		}
+		// A LIVE VIEW'S FACTS ARE THE LIVE LINK'S: the chat list says where the
+		// chat is held, not how this window's view of it stands, so an update
+		// from the list keeps what the link last said.
+		if a.liveRemote != nil && old != nil && old.Live != nil && location != nil && location.Live == nil && !location.Here {
+			kept := *location
+			kept.Live = old.Live
+			location = &kept
+		}
 		if reflect.DeepEqual(old, location) {
 			return
 		}
@@ -305,7 +313,10 @@ func (b *appBackend) AcknowledgeSync(id string) error {
 }
 
 func appLocationRefusal(location *appwire.Location) error {
-	if location == nil || location.Here {
+	// A LIVE VIEW IS NEVER A REFUSAL: the chat is held elsewhere on purpose and
+	// is worked from here through the live door, which says for itself, per
+	// call, whether the person may type (app_live_open.go).
+	if location == nil || location.Here || location.Live != nil {
 		return nil
 	}
 	return &appwire.Error{Code: appwire.CodeConflict, Message: location.Line, Detail: appwire.HeldElsewhere{Kind: "held_elsewhere", Holder: location.Holder}}
