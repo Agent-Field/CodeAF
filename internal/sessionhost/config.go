@@ -43,11 +43,14 @@ func ConfigFromEnv(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Listen:     value("LISTEN", "0.0.0.0:8790"),
 		Secret:     value("SECRET", ""),
-		Data:       value("DATA", "/sessions"),
+		Data:       value("DATA", "/chats"),
 		Require:    value("REQUIRE", modeFenced),
 		Model:      value("MODEL", ""),
 		ForceProbe: value("FORCE_PROBE", ""),
 		Engine:     value("ENGINE", ""),
+	}
+	if err := checkSocketRoom(cfg.Data); err != nil {
+		return Config{}, err
 	}
 	if utf8.RuneCountInString(cfg.Secret) < 32 {
 		return Config{}, fmt.Errorf("CODEAF_SESSIONHOST_SECRET must be at least 32 characters long")
