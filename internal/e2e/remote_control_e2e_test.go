@@ -483,6 +483,13 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 	// V8: the same move with the host answering. The sentence is short-lived, so
 	// the screen is read quickly from the answer on, and the arrival is what the
 	// scenario insists on.
+	//
+	// A move on one machine is over in a fraction of a second, which is shorter
+	// than a screen poll, so the relay is told to take two seconds over the
+	// decision: the sentence is then true for two seconds, and the scenario
+	// can insist on it being there while the chat is on its way without racing
+	// the clock.
+	rc.audit.slowAcquire.Store(2000)
 	viewer.keys("M-m")
 	viewer.waitFor(rcOpenWithin, say(t, "moveAsk"))
 	viewer.keys("1", "Enter")
@@ -494,6 +501,7 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 	}) {
 		t.Fatalf("the chat never arrived on the viewer (moving seen: %v):\n%s", sawMoving, viewer.capture())
 	}
+	rc.audit.slowAcquire.Store(0)
 	if !sawMoving {
 		t.Errorf("the viewer never said %q while the chat was on its way", say(t, "movingHere"))
 	}
@@ -1373,6 +1381,12 @@ type rcAudit struct {
 	// refuseAcquire makes the relay answer every request to take a chat's lease
 	// with a server error, which is how a move that cannot finish is made.
 	refuseAcquire atomic.Bool
+	// slowAcquire holds every request to take a chat's lease for that many
+	// milliseconds before the relay answers it. A move is a fraction of a second
+	// on one machine, and a sentence that is true for exactly as long as the move
+	// runs ("Moving here") is then on screen for less than a screen poll, so the
+	// scenario that checks the sentence makes the move last.
+	slowAcquire atomic.Int64
 	// live is every byte, in both directions, that crossed the carrier of a dial
 	// that said it was a live one. It is how a scenario sees that a view on the
 	// direct road leaves the relay's tunnel silent.
@@ -1439,6 +1453,11 @@ func startAuditedRelay(t *testing.T, root string) (string, *rcAudit) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"storage":"off","puts":0,"gets":0,"has":0,"bytes_in":0,"bytes_out":0}`))
 			return
+		}
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/dir/cells/") && strings.HasSuffix(r.URL.Path, "/acquire") {
+			if hold := audit.slowAcquire.Load(); hold > 0 {
+				time.Sleep(time.Duration(hold) * time.Millisecond)
+			}
 		}
 		if r.Method == http.MethodPost && audit.refuseAcquire.Load() &&
 			strings.HasPrefix(r.URL.Path, "/v1/dir/cells/") && strings.HasSuffix(r.URL.Path, "/acquire") {
