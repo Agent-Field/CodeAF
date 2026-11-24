@@ -685,14 +685,27 @@ func FenceRefused(output []byte) bool {
 
 // WithFenceLine is output with [FenceLine] added once when it reads as a
 // refusal, and output unchanged otherwise.
-func WithFenceLine(output string) string {
+func WithFenceLine(output string) string { return withNote(output, FenceLine) }
+
+// WithNote is [WithFenceLine] with the sentence THIS fence explains its
+// refusals with: a chat whose commands are limited to some ports is told what
+// it may reach, and not to edit a repository's jail.allow, which a chat cannot
+// do and which names a mechanism a person reading a chat never meets.
+func (f *Fence) WithNote(output string) string {
+	if f == nil {
+		return WithFenceLine(output)
+	}
+	return withNote(output, f.noteLine())
+}
+
+func withNote(output, line string) string {
 	if !FenceRefused([]byte(output)) || strings.Contains(output, FenceLine) || strings.Contains(output, FenceConnectLine) {
 		return output
 	}
 	if output != "" && !strings.HasSuffix(output, "\n") {
 		output += "\n"
 	}
-	return output + FenceLine
+	return output + line
 }
 
 // Allows reports whether the fence lets an in-process file tool read (write
@@ -745,19 +758,23 @@ func avoiding(grant string, avoid []string) map[string]bool {
 			delete(out, g)
 			for dir := g; dir != a; {
 				next := nextOnPath(dir, a)
-				entries, err := os.ReadDir(dir)
-				if err != nil {
-					break
-				}
-				for _, e := range entries {
-					p := filepath.Join(dir, e.Name())
-					if p == next {
-						continue
+				// A folder this user may pass through but not list (a hosted
+				// chat's machine keeps others' folders that way) cannot say what
+				// is beside the path, so none of it is granted, and the walk
+				// goes on below it. Stopping here instead dropped every grant
+				// beneath, and the chat's own files were then refused to its
+				// own commands.
+				if entries, err := os.ReadDir(dir); err == nil {
+					for _, e := range entries {
+						p := filepath.Join(dir, e.Name())
+						if p == next {
+							continue
+						}
+						if real, err := filepath.EvalSymlinks(p); err == nil && real != p && pathInAny(real, avoid) {
+							continue
+						}
+						out[p] = true
 					}
-					if real, err := filepath.EvalSymlinks(p); err == nil && real != p && pathInAny(real, avoid) {
-						continue
-					}
-					out[p] = true
 				}
 				dir = next
 			}

@@ -178,3 +178,29 @@ func TestP1_0c_NoListKeepsTheWholeNetwork(t *testing.T) {
 		t.Fatalf("a required fence with no list lost the network: err %v exit %d stderr %q", err, res.Exit, res.Stderr)
 	}
 }
+
+// TestP1_0c_ARefusedCommandsNoteNamesWhatTheChatMayReach is the sentence a
+// person reads in the chat's own transcript: for a chat limited to some ports it
+// is the connect sentence, for every other fence it is the old one, and never
+// both.
+func TestP1_0c_ARefusedCommandsNoteNamesWhatTheChatMayReach(t *testing.T) {
+	refused := "/bin/bash: connect: Permission denied"
+	limited := &Fence{Require: true, ConnectPorts: []int{443}}
+	if got := limited.WithNote(refused); !strings.HasSuffix(got, FenceConnectLine) || strings.Contains(got, FenceLine) {
+		t.Errorf("a chat limited to ports was told: %q", got)
+	}
+	if got := (&Fence{}).WithNote(refused); !strings.HasSuffix(got, FenceLine) || strings.Contains(got, FenceConnectLine) {
+		t.Errorf("a fence with no port limit was told: %q", got)
+	}
+	once := limited.WithNote(refused)
+	if limited.WithNote(once) != once {
+		t.Error("the note was added twice")
+	}
+	if got := limited.WithNote("build failed: syntax error"); got != "build failed: syntax error" {
+		t.Errorf("a command that was not refused was annotated: %q", got)
+	}
+	var none *Fence
+	if got := none.WithNote(refused); !strings.HasSuffix(got, FenceLine) {
+		t.Errorf("no fence at all: %q", got)
+	}
+}
