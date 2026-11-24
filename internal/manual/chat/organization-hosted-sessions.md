@@ -42,9 +42,9 @@ What the operator of the machine could do is a separate matter: see *what can th
 
 Whoever runs the machine, and whoever is its administrator on the hosting platform, can read everything on its disk. A hosted chat is not private from them. The disk is not encrypted by the server software itself.
 
-The chat can reach the internet, and the other machines on the server's private network if the platform leaves that network open. What protects the organization's other services is that each one asks for its own sign-in, not that a chat cannot find them.
+The chat can reach the internet. A command in it can connect only to the TCP ports the operator allowed (443, 80, 22 and 9418 unless the operator changed the list) and to the organization's own server; any other port is refused by the machine and the command fails with `permission denied` and one line that says so. That keeps a chat off the other services the organization runs on the same private network. It filters by port and not by address, so a hostile service listening on one of the allowed ports is still reachable, and a service of your own on some other port (a dev server on 3000, say) cannot be reached by a command either, even from the same chat; the operator can add ports. Each of the organization's services should still ask for its own sign-in.
 
-A chat has no key of the organization's. It reaches a model only through the organization's server, with access made for that chat alone. That access ends when you stop or delete the chat, and after twelve hours. If the organization's server restarts, the chat has no model access until your next attach, which makes new access.
+A chat has no key of the organization's, no key of yours and no GitHub access of yours. It reaches a model only through the organization's server, with access made for that chat alone, and reaches git only through the same server, which adds your GitHub access to each request. That chat access ends when you stop or delete the chat, and after seven days. If the organization's server restarts, a chat that was running keeps working, and the access is still good.
 
 If you do not want your code on a machine the organization runs, do not open it with `--org`.
 
@@ -54,7 +54,7 @@ A turn that is running on the server when you disconnect, lose the connection or
 
 An idle chat stops its own program after a while and starts it again, with its conversation, the next time you open it. Files stay in place the whole time. Processes you started that were still running stay running until you stop the chat.
 
-If the server itself restarts, its running processes end and its files stay. Your first attach afterwards may say `This chat has no model access yet.`; open it again and it works.
+If the machine that runs chats restarts, its running processes end and its files stay. Your first attach afterwards works: the organization's server notices the machine lost your chat's model access and hands over new access before anything is sent. If the organization's server restarts instead, the chats keep working and so does the access they hold.
 
 ## how many chats can I have on the server at once — limits and waiting
 
@@ -72,7 +72,7 @@ Both are done through the organization's server by its owner, and only its owner
 
 ## the server says it cannot keep my chat apart — hosted chat refusals
 
-The machine that runs chats measures what it can do when it starts. A chat only runs where two things hold: each chat can run as a separate user of the machine, and the machine can confine a chat's commands to its own folder, including keeping its local sockets from other chats, which needs Linux 6.12 or newer. If it cannot, it starts no chats and says: `This server cannot keep your chat apart from other people's, so it did not start one.` That is the operator's to fix.
+The machine that runs chats measures what it can do when it starts. A chat only runs where two things hold: each chat can run as a separate user of the machine, and the machine can confine a chat's commands to its own folder, including keeping its local sockets from other chats, which needs Linux 6.12 or newer. On an older kernel the default stays closed: the operator reads which setting accepts the gap, `CODEAF_SESSIONHOST_REQUIRE=uid`, and chats then run on the user switch alone, with no limit on what their commands reach (including the port limit). If it cannot, it starts no chats and says: `This server cannot keep your chat apart from other people's, so it did not start one.` That is the operator's to fix.
 
 If the machine cannot confine commands, a command in a chat is not run at all, and you read: `This computer cannot keep commands inside this chat's folder, so no command was run.` It never runs the command with fewer limits instead.
 
@@ -84,6 +84,24 @@ An operator who has chosen to run on the user switch alone, because the machine 
 
 Hosted chats are off by default. The operator turns them on by running the chats' machine beside the organization's server, in the organization's deployment (`deploy/org/README.md`, "Hosted chats"), and giving both the same long secret, which `./setup.sh` makes.
 
-On the organization's server set `CODEAF_HOSTED_URL` to the chats' machine, `CODEAF_HOSTED_SECRET`, `CODEAF_HOSTED_MODEL_UPSTREAM` (the model endpoint the organization pays for) and `CODEAF_HOSTED_MODEL_KEY`. On the chats' machine set `CODEAF_SESSIONHOST_SECRET` to the same secret, and optionally `CODEAF_SESSIONHOST_MAX_RUNNING`, `CODEAF_SESSIONHOST_MAX_PER_PERSON`, `CODEAF_SESSIONHOST_IDLE` and `CODEAF_SESSIONHOST_MODEL`.
+On the organization's server set `CODEAF_HOSTED_URL` to the chats' machine, `CODEAF_HOSTED_SECRET`, `CODEAF_HOSTED_MODEL_UPSTREAM` (the model endpoint the organization pays for; OpenRouter's when empty) and `CODEAF_HOSTED_MODEL_KEY` (or the key the server already holds for model calls). Set `CODEAF_SERVER_KEY` too (64 hexadecimal characters; `./setup.sh` makes it): people's own keys are sealed with it, and a server that holds keys sealed with another one, or with none, refuses to start instead of carrying on. Optional: `CODEAF_HOSTED_SESSION_CAP_USD` (what one chat may spend, default 5) and `CODEAF_HOSTED_GIT_HOSTS` (the git hosts chats may reach, default `https://github.com`). On the chats' machine set `CODEAF_SESSIONHOST_SECRET` to the same secret, and optionally `CODEAF_SESSIONHOST_MAX_RUNNING`, `CODEAF_SESSIONHOST_MAX_PER_PERSON`, `CODEAF_SESSIONHOST_IDLE`, `CODEAF_SESSIONHOST_MODEL` and `CODEAF_SESSIONHOST_CONNECT_PORTS` (the TCP ports commands may connect to, default `443,80,22,9418`).
 
 `codeaf sessionhost probe` prints what the machine can do and exits non-zero when it cannot keep chats apart. The machine runs as root inside its container and keeps only the capabilities it needs to switch users; it holds no organization secret except the shared one and no model key. The key stays on the organization's server, which adds it to each model request.
+
+## what does a hosted chat cost and who pays — the organization's key, the spending limit and the monthly limit
+
+A hosted chat calls its model through the organization's server, with the organization's key unless you stored your own. Every call is counted to the cent in your My space on that server, and the organization's operator sees only totals. A chat stops at its own spending limit, five dollars unless the operator set another, and you read: `This chat has reached its spending limit of $5.00, so it is paused. Start a new chat to carry on.` Your My space has a monthly limit too, twenty dollars unless the operator set another, and at it you read: `You have reached your monthly limit of $20.00, so this chat is paused. The organization's operator can raise it in Settings.`
+
+A refused message makes no model call and costs nothing. Calls made with your own key are counted too, against both limits. A chat that is making as many requests as it may at once, four, reads: `This chat is already making as many requests as it may at once. Try again in a moment.`
+
+## keep my own model key or GitHub access on the organization's server — stored sealed, only yours
+
+You can give the organization's server your own OpenRouter key and your own GitHub access (a token) for your chats. They go to `PUT /v1/hosted/keys/openrouter` and `PUT /v1/hosted/keys/github` with your sign-in and the body `{"key":"..."}`; `GET /v1/hosted/keys` lists what you stored as the provider, the last four characters and when, never the key, and `DELETE /v1/hosted/keys/<provider>` removes one. codeaf's own chat has no screen for it yet.
+
+Each person's keys are sealed on the server's disk under a key of that person's own, which is itself sealed by the server key the operator set; another person cannot read them, and neither can a chat. With your own model key stored, your chats' calls go out with it and never with the organization's, and if it cannot be opened the chat pauses and says so rather than using the organization's instead. If the operator has set no server key, the server answers that it cannot keep personal keys safe yet and stores nothing; chats then use the organization's key. Signing in with GitHub gives the server your GitHub access for git without storing anything yourself, unless you stored your own.
+
+## use git in a hosted chat — clone and push through the organization's server
+
+A hosted chat is set up so that `git clone https://github.com/<owner>/<repo>.git` and `git push` work with your GitHub access without the chat ever holding it. The commands go to the organization's server, which adds your access to each request and sends it on; only the git hosts the operator allowed (GitHub unless changed) are reached this way, and one line per git operation is kept, which you can read with `GET /v1/hosted/audit` (your own lines only).
+
+If you have no GitHub access stored you read: `You have no GitHub access stored on this server yet. Add it, then try again.` A host the operator did not allow reads: `This server does not reach that git host for chats.` The chat itself holds only access for that one chat, which ends when the chat is stopped. It is not limited to one repository: your GitHub access decides what you can reach.
