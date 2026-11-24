@@ -415,6 +415,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.read` | `ChatReadParams` | `ChatReadResult` |
 | `chats.preview` | `{cell}` | `{last_user?: string, last_assistant?: string}` |
 | `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
@@ -3537,6 +3538,31 @@ runs (20 per chat) and dropped once the chat is here. The
 chat, not the computer, is the address: a message not yet taken goes to
 whichever computer holds the chat when it is read, including the sender after a
 move. Only an engine that keeps the chat list (the app) takes messages.
+
+`chats.read {cell, before?, limit?}` answers `{entries, more, before?, head,
+sealed_at_ms?, fetched_bytes}`: one page of the transcript of a chat another
+computer holds, as that computer last sealed it, without taking the chat. A
+turn running there now is not on it. `entries` are the same `Entry`
+`agents.entries` answers for a local chat, oldest to newest within the page;
+the first call (no `before`) is the newest page, and `before` from a page is
+the opaque cursor of the next older one, read at the same `head` even after
+newer turns land. `more` is false once a page reaches the start. A page holds
+at least `limit` entries (default 50) unless it reaches the start, and never
+splits a turn, so it can hold more. Entry ids are unique within a page read;
+a client replaces its pages when `head` changes. Turn footers, notices and tool
+output facts are local records and are not on a remote page. `fetched_bytes`
+is what the call pulled from the relay (0 when every byte was held). It fetches
+only the transcript's own objects and the chunks under the page, into the
+store a later `agents.take` of the chat fetches into, so continuing the chat
+afterwards copies only the rest. No lease is taken, nothing is restored, no
+agent is opened. `chats.read.paged` in `hello` says the method exists: only
+when a relay is configured and the engine's furrow can read one path of a
+snapshot. It is a word of its own. The older `chats.read` word means something
+else and is advertised on its own terms: that `agents.entries` on a remote row
+follows a saved remote head without taking the chat. An engine may say either,
+both or neither, so a client checks `chats.read.paged` before calling the
+`chats.read` method and `chats.read` before relying on `agents.entries` for a
+chat held elsewhere.
 
 `chats.crew` in `hello` says every `chats.list` row and `chat.changed` row
 carries the crew its chat belongs to on its holder, additively: `crew` (the
