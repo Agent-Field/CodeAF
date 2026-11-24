@@ -71,7 +71,9 @@ func runTests(m *testing.M) int {
 	// could start and assert nothing about the outcome, so the package waits a
 	// quarter of a second; the tests that do read the outcome take their own
 	// wait ([fastTeamWake]).
+	teamWatchClockMu.Lock()
 	teamSendSettle, teamSendLook = 250*time.Millisecond, 5*time.Millisecond
+	teamWatchClockMu.Unlock()
 	real := home.InheritedDir()
 	before := journalTrees(real)
 	// AND THE CHECKOUT THIS BINARY IS RUNNING IN, for the same reason and at the

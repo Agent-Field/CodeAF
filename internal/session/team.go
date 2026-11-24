@@ -469,6 +469,18 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 		}
 		roles = append(roles, role)
 	}
+	// A PAUSE HOLDS THE CONVERSATION IN EVERY TEAM. The person paused the
+	// member, not one of its memberships, and an interface that finds the
+	// member paused ends a turn another team's traffic started; so no team's
+	// traffic starts one. A team this conversation manages is not held.
+	for _, role := range roles {
+		if role.paused {
+			for i := range roles {
+				roles[i].paused = !roles[i].manager
+			}
+			break
+		}
+	}
 	return roles
 }
 
@@ -742,6 +754,10 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 			if teamWakes(role, entry) {
 				save = true
 			}
+			if role.standby && entry.Kind == teams.KindStart && entry.ID == role.startID {
+				// Its start line is being handed over: standby is over.
+				a.teamStandbyOver(profile, role)
+			}
 			if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) && !a.teamOwnStart(role, entry) {
 				continue
 			}
@@ -797,6 +813,14 @@ func (a *Agent) teamOwnStart(role teamRole, entry teams.Entry) bool {
 // cursor for. A fresh conversation skips the team's earlier history except
 // its own start, whose brief is handed over as the manager's words.
 func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
+	// A MEMBER ON STANDBY HAS NOT BEEN HANDED ITS START LINE, however long ago
+	// it was written and however many times its conversation has been opened
+	// since: it takes no turn until its manager's first directive, so no
+	// boundary has saved a cursor for it. It starts just before that line, and
+	// reads it and everything sent to it since.
+	if role.standby && !role.manager && role.startID != "" {
+		return teamCursorBefore(role.startID)
+	}
 	tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
 	if err != nil {
 		return teamLogStart
@@ -1249,6 +1273,7 @@ func (a *Agent) teamDigestWithSharing(profile string, sharing bool) string {
 		log, _ := teams.ReadHistory(profile, role.id, teamStateLook, sharing)
 		states := memberStates(team, keys, now, log, &a.team.journals)
 		markShared(file, team, states)
+		markPaused(file, team, states)
 		parts = append(parts, teams.Digest(team, states, recentOf(log), teamDigestBudget))
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
@@ -1734,7 +1759,7 @@ func teamRoster(role teamRole, file *teams.File) string {
 		// The role is what the manager chooses a member by, so it comes before
 		// the title, which is only the start of whatever the member was first told.
 		if roleName := strings.TrimSpace(member.Role); roleName != "" {
-			who += ", " + cutRunesTeam(roleName, teamRosterWord)
+			who += " (" + cutRunesTeam(roleName, teamRosterWord) + ")"
 		} else if word := strings.TrimSpace(member.Word); word != "" {
 			who += " (" + cutRunesTeam(word, teamRosterWord) + ")"
 		}

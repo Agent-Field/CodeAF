@@ -111,6 +111,8 @@ func teamLineParts(line string) (TeamLine, bool) {
 		if rest != "" {
 			head = " #" + rest
 		}
+	case strings.HasPrefix(head, teamStandbyBriefWord):
+		parsed.From, parsed.Kind, head = teams.FromManager, teams.KindStart, strings.TrimPrefix(head, teamStandbyBriefWord)
 	case strings.HasPrefix(head, teamBriefWord):
 		parsed.From, parsed.Kind, head = teams.FromManager, teams.KindStart, strings.TrimPrefix(head, teamBriefWord)
 	case strings.HasPrefix(head, "◆ directive from manager"):

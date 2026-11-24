@@ -264,6 +264,9 @@ func (b *appBackend) memberMove(t teamstore.Team, m teamstore.Member, agent, to 
 	err := b.crewEdit(func(f *teamstore.File) error {
 		moved := m
 		moved.Home, moved.Started = false, false
+		// Its start line stays on the crew it leaves, so it is not waiting on
+		// one here. A pause goes with it: the person paused the member.
+		moved.Standby = false
 		if err := f.AddMember(to, moved); err != nil {
 			return err
 		}
@@ -278,7 +281,7 @@ func (b *appBackend) memberMove(t teamstore.Team, m teamstore.Member, agent, to 
 	err = b.crewLayer().write(func(f *appCrewLayerFile) error {
 		old := f.member(t.ID, agent)
 		next := f.member(to, agent)
-		next.Role, next.Paused = old.Role, old.Paused
+		next.Role = old.Role
 		next.Was = &appwire.MemberWas{Crew: t.ID, Role: old.Role, At: b.now()}
 		delete(f.Members, appMemberKey(t.ID, agent))
 		return nil
@@ -458,6 +461,15 @@ func (b *appBackend) RoleUpdate(id string, name, instructions, model *string) (a
 		return appwire.Role{}, appEngineError(err)
 	}
 	for _, c := range copies {
+		// A renamed role is renamed on each member's team record too, where
+		// the member's session and its manager read it.
+		if name != nil {
+			if t, _, err := b.crewTeam(c.Crew); err == nil {
+				if m, ok := b.crewMemberOf(t, c.Agent); ok && m.Role != role.Name {
+					_ = b.crewEdit(func(f *teamstore.File) error { return f.SetRole(c.Crew, m.Key, role.Name) })
+				}
+			}
+		}
 		send := role
 		if !told {
 			send.Instructions = ""

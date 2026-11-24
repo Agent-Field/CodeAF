@@ -26,18 +26,18 @@ func fastTeamWake(t *testing.T) {
 	teamWatchClockMu.Lock()
 	every, settle, retry, longest := teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax
 	teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax = 20*time.Millisecond, 300*time.Millisecond, 50*time.Millisecond, 200*time.Millisecond
-	teamWatchClockMu.Unlock()
-	// A send waits to see its members start; with the watch this fast a second
-	// and a half is many looks, and a test of a member that never starts does
-	// not sit out the shipped four seconds.
+	// A send waits to see its members start. With the watch this fast three
+	// seconds is over a hundred looks, room enough on a loaded machine, and a
+	// send whose member starts returns as soon as it has.
 	sendSettle, sendLook := teamSendSettle, teamSendLook
-	teamSendSettle, teamSendLook = 1500*time.Millisecond, 5*time.Millisecond
+	teamSendSettle, teamSendLook = 3*time.Second, 5*time.Millisecond
+	teamWatchClockMu.Unlock()
 	t.Cleanup(func() {
 		forgetRouses()
 		teamWatchClockMu.Lock()
 		teamWatchEvery, teamWakeSettle, teamRouseRetry, teamRouseRetryMax = every, settle, retry, longest
-		teamWatchClockMu.Unlock()
 		teamSendSettle, teamSendLook = sendSettle, sendLook
+		teamWatchClockMu.Unlock()
 	})
 }
 

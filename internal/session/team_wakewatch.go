@@ -494,6 +494,14 @@ func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) 
 		a.teamCapSay(profile, roles, reason)
 		return
 	}
+	// THE PAUSE IS READ AGAIN, FRESH, BEFORE ANYTHING IS HANDED OVER. The look
+	// that chose these roles read the teams file through a memo up to a tick
+	// old ([sharedTeamsStamp]), so a directive sent in the second after the
+	// person pressed Pause reached here as if nothing held it, and the turn it
+	// started consumed the directive the pause was meant to keep.
+	if roles = a.teamPausedSince(profile, roles); len(roles) == 0 {
+		return
+	}
 	news := a.teamBoundary()
 	if news == "" {
 		// A boundary that ran in the moment between the look and here has
@@ -513,14 +521,14 @@ func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) 
 		if woke {
 			a.teamSay(profile, role.id, teams.Entry{
 				Kind: teams.KindEvent, From: teams.FromManager, To: role.handle, Member: role.key,
-				State: teams.StateRunning, Text: "woke @" + role.handle, Answers: answers,
+				State: teams.StateRunning, Text: teamWokePrefix + "@" + role.handle, Answers: answers,
 			})
 			continue
 		}
 		if reason != "" {
 			a.teamSay(profile, role.id, teams.Entry{
 				Kind: teams.KindEvent, From: teams.FromSystem, To: role.handle, Member: role.key,
-				State: teams.StateIdle, Text: "could not wake @" + role.handle + ": " + reason, Answers: answers,
+				State: teams.StateIdle, Text: teamCouldNotPrefix + "@" + role.handle + ": " + reason, Answers: answers,
 			})
 		}
 	}
@@ -587,7 +595,7 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 		if reason != "" {
 			a.teamSay(profile, id, teams.Entry{
 				Kind: teams.KindEvent, From: teams.FromSystem, To: teams.ToManager, Member: role.key,
-				State: teams.StateIdle, Text: "could not wake ◆: " + reason,
+				State: teams.StateIdle, Text: teamCouldNotPrefix + "◆: " + reason,
 			})
 		}
 	}
@@ -675,7 +683,7 @@ func (a *Agent) teamCapSay(profile string, roles []teamRole, reason string) {
 		}
 		a.teamSay(profile, role.id, teams.Entry{
 			Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: role.key,
-			State: teams.StateIdle, Text: "held " + who + ": " + reason,
+			State: teams.StateIdle, Text: teamHeldPrefix + who + ": " + reason,
 		})
 	}
 }
@@ -698,7 +706,7 @@ func (a *Agent) teamWakeLimitSay(profile string, roles []teamRole, reason string
 		}
 		a.teamSay(profile, role.id, teams.Entry{
 			Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: role.key,
-			State: teams.StateIdle, Text: "could not wake " + who + ": " + reason,
+			State: teams.StateIdle, Text: teamCouldNotPrefix + who + ": " + reason,
 		})
 	}
 }
@@ -770,7 +778,7 @@ func teamEventLines(entries []teams.Entry) []string {
 			lines = append(lines, who+" is waiting on the person: "+strings.TrimPrefix(text, "asks: "))
 		case teams.StateIdle:
 			if text == teams.StoppedByPerson {
-				lines = append(lines, who+"'s turn was "+teams.StoppedByPerson+" before it finished; it reported nothing, so what you handed it is not done")
+				lines = append(lines, who+teamStoppedByPersonLine)
 			}
 		}
 	}
@@ -908,7 +916,7 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 				if to == "" {
 					who, to = "a member with no handle", teams.ToRoom
 				}
-				text := "could not wake " + who + ": " + reason
+				text := teamCouldNotPrefix + who + ": " + reason
 				if kept {
 					text += teamRouseKept
 				}

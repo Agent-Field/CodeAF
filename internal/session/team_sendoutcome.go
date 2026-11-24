@@ -34,26 +34,37 @@ import (
 // one that has to be opened first took half a second where it was measured.
 // Four seconds covers both with room, and is short enough that a manager does
 // not read the wait as a stall. teamSendLook is how often the traffic is read
-// while waiting. Both are vars so a test does not sleep.
+// while waiting. Both are vars so a test does not sleep, read under
+// teamWatchClockMu like the watch's own clocks ([teamSendWait]).
 var (
 	teamSendSettle = 4 * time.Second
 	teamSendLook   = 200 * time.Millisecond
 )
 
-// The traffic lines a wake writes, as the send reads them back. They are the
-// prefixes of the texts team_wakewatch.go and team_pause.go write.
+// teamSendWait is the two waits as this moment has them.
+func teamSendWait() (settle, look time.Duration) {
+	teamWatchClockMu.RLock()
+	defer teamWatchClockMu.RUnlock()
+	return teamSendSettle, teamSendLook
+}
+
+// How the traffic lines about a wake open. The writers (team_wakewatch.go,
+// team_pause.go) and the send that reads them back use these, so neither can
+// drift from the other.
 const (
-	teamWokePrefix      = "woke @"
-	teamCouldNotPrefix  = "could not wake "
-	teamHeldPrefix      = "held "
-	teamNotUnderWayRule = "Do not tell the person this work is under way."
+	teamWokePrefix     = "woke "
+	teamCouldNotPrefix = "could not wake "
+	teamHeldPrefix     = "held "
 )
+
+// teamNotUnderWayRule closes an answer in which some member did not start.
+const teamNotUnderWayRule = "Do not tell the person this work is under way."
 
 // teamSendOutcome is the sentences that follow "Sent a directive to …": what
 // became of it for each member it was sent to on this computer. ready are the
 // members a wake was asked for and paused the ones the person paused.
 func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.Team, id string, ready, paused []teams.Member) string {
-	var started, busy, unseen []string
+	var started, busy, asking, unseen []string
 	refused := map[string]string{}
 	var refusedOrder []string
 	waiting := map[string]teams.Member{}
@@ -62,14 +73,20 @@ func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.
 		if member.Handle == "" {
 			continue
 		}
-		if state, _, ok := a.team.journals.stateOf(member.File, now); ok &&
-			(state.State == teams.StateRunning || state.State == teams.StateAsking) {
-			busy = append(busy, "@"+member.Handle)
-			continue
+		if state, _, ok := a.team.journals.stateOf(member.File, now); ok {
+			switch state.State {
+			case teams.StateRunning:
+				busy = append(busy, "@"+member.Handle)
+				continue
+			case teams.StateAsking:
+				asking = append(asking, "@"+member.Handle)
+				continue
+			}
 		}
 		waiting[member.Key] = member
 	}
-	deadline := now.Add(teamSendSettle)
+	settle, look := teamSendWait()
+	deadline := now.Add(settle)
 	for len(waiting) > 0 {
 		entries, err := teams.ReadTraffic(profile, team.ID, id, teamPageLimit)
 		if err == nil {
@@ -80,7 +97,7 @@ func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.
 				}
 				text := strings.TrimSpace(entry.Text)
 				switch {
-				case entry.State == teams.StateRunning && strings.HasPrefix(text, teamWokePrefix):
+				case entry.State == teams.StateRunning && strings.HasPrefix(text, teamWokePrefix+"@"):
 					started = append(started, "@"+member.Handle)
 					delete(waiting, entry.Member)
 					delete(refused, member.Handle)
@@ -99,7 +116,7 @@ func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.
 		select {
 		case <-ctx.Done():
 			deadline = time.Time{}
-		case <-time.After(teamSendLook):
+		case <-time.After(look):
 		}
 	}
 	for _, member := range ready {
@@ -116,7 +133,10 @@ func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.
 	if len(busy) > 0 {
 		said = append(said, strings.Join(busy, ", ")+" "+isAre(len(busy))+" in a turn and "+readsRead(len(busy))+" it at the next step.")
 	}
-	if len(started)+len(busy) > 0 {
+	if len(asking) > 0 {
+		said = append(said, strings.Join(asking, ", ")+" "+isAre(len(asking))+" waiting on the person and "+readsRead(len(asking))+" it once they answer.")
+	}
+	if len(started)+len(busy)+len(asking) > 0 {
 		said = append(said, "Replies and endings wake you when they arrive, so there is no need to wait or poll.")
 	}
 	for _, member := range paused {
@@ -142,10 +162,12 @@ func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.
 }
 
 // splitPaused divides a directive's local targets into the members the person
-// paused and the rest. The manager is never paused.
-func splitPaused(team teams.Team, targets []teams.Member) (ready, paused []teams.Member) {
+// paused, in this team or another of theirs ([teams.File.PausedAnywhere]), and
+// the rest. The manager is never paused.
+func splitPaused(file *teams.File, team teams.Team, targets []teams.Member) (ready, paused []teams.Member) {
 	for _, member := range targets {
-		if member.Paused && member.Key != team.Manager {
+		_, elsewhere := file.PausedAnywhere(member.Key)
+		if (member.Paused || elsewhere) && member.Key != team.Manager {
 			paused = append(paused, member)
 			continue
 		}

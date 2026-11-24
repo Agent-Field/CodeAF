@@ -333,8 +333,9 @@ A deliberate message jump opens the activity and tool-call groups that contain t
 A member of a team that has a manager tells the manager, through the traffic, three things it
 would never write in a message:
 
-- `finished` when a turn ends, `stopped` when its manager stopped it, `stopped by the person`
-  when you did, and `failed: ` with the error's first line when a turn ends on one;
+- `finished` when a turn ends, `stopped` when its manager or codeaf itself ended it or you
+  stopped a turn you had started yourself, `stopped by the person` when you stopped a turn the
+  team's traffic had started, and `failed: ` with the error's first line when a turn ends on one;
 - when it starts waiting on you: the permission line for a permission prompt (`needs your ok
   to run bash`), or `asks: ` and the question for anything else;
 - `no longer waiting` when the last of those questions comes down.
@@ -560,8 +561,8 @@ working, that is straight away. When it is idle, it depends on the kind of messa
   start (see **Pausing a crew member**).
 - A **note** wakes nobody. An idle member reads it when it next runs, for whatever reason.
 - A member's **reply to the manager** (`team_post` to the manager), and a member finishing
-  without a reply, failing, starting to wait on you, or having its turn stopped by you, start
-  an idle manager's turn. A reply
+  without a reply, failing, starting to wait on you, or having a turn the team started stopped
+  by you, start an idle manager's turn. A reply
   and the end of the same turn are one wake, even if the ending arrives after the manager
   already ran. Replies arriving within a few seconds are gathered into one turn.
 
@@ -572,8 +573,13 @@ the app and run there.
 
 The manager is told what became of each directive in `team_send`'s answer, which waits up to
 four seconds to see it: `@web started a turn on it`, `@web is in a turn and reads it at the
-next step`, `@web did NOT start:` with the reason, or `@web has shown no sign of starting
-yet`. A manager reports work as under way only where the answer says a member started.
+next step`, `@web is waiting on the person and reads it once they answer`, `@web did NOT
+start:` with the reason, or `@web has shown no sign of starting yet`. A manager reports work
+as under way only where the answer says a member started.
+
+When you stop a member's turn that the team's traffic had started, its manager is woken and
+told the work is not done, that you chose to stop it, and not to hand it out again unless you
+ask. Stopping a turn you started by typing to the member tells the manager nothing.
 
 ## could not wake ◆ — a wake that cannot be delivered is kept, not dropped
 
@@ -600,27 +606,29 @@ The ten wakes count ten replies when each member turn replies and then finishes.
 
 ## Pausing a crew member — pause, resume, why a directive did not start, held
 
-You can pause a member of a crew in the desktop app: **Pause** in the member's menu, and
-**Resume** to lift it. A pause stops the member's current turn and is kept on the team's own
-record, so the member's session, its manager and every window read the same answer. The
-manager itself cannot be paused; stop its turn instead.
+You can pause a member of a crew in the desktop app: **Pause** on its row in the Members tab
+or in the member's menu, and **Resume** to lift it. A pause stops the member's current turn
+and is kept on the team's own record, so the member's session, its manager and every window
+read the same answer. The manager itself cannot be paused; stop its turn instead.
 
-While a member is paused, team traffic starts no turn for it:
+While a member is paused, team traffic starts no turn for it, in any crew it belongs to:
 
 - A directive waits on the crew's log, unread. The traffic says
-  `held @web: the person paused it; it starts on this when they resume it`, once, at the send.
+  `held @web: the person paused it; it starts on this when they resume it`, once per directive.
 - `team_send` tells the manager `@web did NOT start` with the same reason, and that only you
   can resume it. The manager cannot lift a pause.
-- `team_status` shows the member as `paused by the person; a directive waits until they
+- `team_status` shows the member as `paused by the person; it starts nothing until they
   resume it`, with `has not started on #22` when a directive is waiting.
 - codeaf does not open the member's conversation for traffic it would only hold.
 
-**Resume** writes `resumed` to the crew's log, and the directive that waited starts the
-member's turn within a second or two. Nothing is lost and nothing is delivered twice.
+**Resume** writes `resumed` to the crew's log, and a directive that waited starts the member's
+turn within a second or two, including after codeaf was closed in between. With the team's
+auto-wake off, a resumed member reads it at its next turn like any other message.
 
 Your own words are not held: typing into a paused member's conversation starts its turn, and
-that turn reads what was waiting. A pause made by an earlier version of the app is carried
-onto the team's record the first time the updated app opens.
+that turn reads what was waiting. Anything else that would wake it, such as one of its
+background processes ending, is stopped at once in the desktop app. A pause made by an earlier
+version of the app is carried onto the team's record the first time the updated app opens.
 
 ## A new crew's members wait on standby — why nobody started after Make the crew
 
@@ -629,11 +637,13 @@ Each helper is created with its handle and role, and nobody begins work: the pro
 describes who the crew is, and accepting it is not a request to start.
 
 - The traffic says `opened @web on standby; it starts on its manager's first directive`.
-- `team_status` shows `on standby; no work handed out yet` until the member first runs.
+- `team_status` shows `on standby; no work handed out yet` until the member's first turn.
 - The line the member was made with is handed to it at its first turn marked
   `◆ your standing role from manager`, together with the directive that started that turn.
 - A member's role name is told to it in its team note (`Your role in this team: …`) and shown
-  to the manager beside the handle.
+  to the manager beside the handle, `@web (Frontend developer)`.
+- Standby lasts across restarts: however much later the first directive comes, the member is
+  still handed its role line with it.
 
 The first work starts when you ask the manager for it and it sends a directive. A member the
 manager starts itself with `team_start`, or one you add with a brief from the crew's page,

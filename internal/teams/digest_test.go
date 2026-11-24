@@ -95,6 +95,8 @@ func TestDigestSaysPausedStandbyAndUnstartedWork(t *testing.T) {
 		{Key: "b", Handle: "review", Role: "Reviewer", Standby: true},
 		{Key: "c", Handle: "design", Word: "Design the tiles"},
 		{Key: "d", Handle: "docs", Word: "Write the guide"},
+		{Key: "e", Handle: "busy", Word: "Port the parser"},
+		{Key: "f", Handle: "shared", Word: "Shared helper"},
 	}}
 	at := time.Date(2026, 11, 23, 22, 2, 0, 0, time.UTC)
 	recent := []Entry{
@@ -103,30 +105,38 @@ func TestDigestSaysPausedStandbyAndUnstartedWork(t *testing.T) {
 		{ID: "000000000023", At: at, Kind: KindEvent, From: FromSystem, To: "dev", Member: "a", State: StateIdle, Text: "held @dev: the person paused it", Answers: "000000000022"},
 		{ID: "000000000024", At: at, Kind: KindEvent, From: FromManager, To: "docs", Member: "d", State: StateRunning, Text: "woke @docs", Answers: "000000000021"},
 		{ID: "000000000025", At: at, Kind: KindEvent, From: "design", To: ToManager, Member: "c", State: StateIdle, Text: StoppedByPerson},
+		// Sent to a member in a turn: it reads it at its next step, with no wake line.
+		{ID: "000000000026", At: at, Kind: KindDirective, From: FromManager, To: "busy", Text: "Then the lexer."},
 	}
 	states := map[string]MemberState{
 		"m": {State: StateRunning},
 		"a": {State: StateIdle, SinceActive: time.Hour},
-		"b": {State: StateIdle},
+		// The journal of a member that never ran still has an age: its file's.
+		"b": {State: StateIdle, SinceActive: time.Minute},
 		"c": {State: StateIdle, SinceActive: time.Minute},
 		"d": {State: StateRunning, SinceActive: time.Minute},
+		"e": {State: StateRunning, SinceActive: time.Minute},
+		"f": {State: StateIdle, SinceActive: time.Minute, Paused: true},
 	}
 	got := Digest(team, states, recent, 0)
 	for _, want := range []string{
 		`- @boss (manager) "Harbor manager": running`,
 		`- @dev, macOS developer "Scaffold the app": ` + DigestPaused + `, has not started on #22, active 1h ago`,
-		`- @review, Reviewer: ` + DigestStandby,
+		`- @review, Reviewer: ` + DigestStandby + `, active within the hour`,
 		`- @design "Design the tiles": idle, its last turn was ` + StoppedByPerson + `, active within the hour`,
 		`- @docs "Write the guide": running, active within the hour`,
+		`- @busy "Port the parser": running, active within the hour`,
+		// Paused by the person in another of its teams.
+		`- @shared "Shared helper": ` + DigestPaused + `, active within the hour`,
 	} {
 		if !strings.Contains(got, want+"\n") {
 			t.Errorf("the digest lacks the line\n%s\nin\n%s", want, got)
 		}
 	}
-	// A member that ran is no longer on standby, whatever its record says.
-	states["b"] = MemberState{State: StateIdle, SinceActive: time.Minute}
+	// Standby is the member's record, cleared when its role line is handed to it.
+	team.Members[2].Standby = false
 	if got := Digest(team, states, nil, 0); strings.Contains(got, DigestStandby) {
-		t.Errorf("a member that has run still reads as on standby:\n%s", got)
+		t.Errorf("a member whose standby is over still reads as on standby:\n%s", got)
 	}
 }
 

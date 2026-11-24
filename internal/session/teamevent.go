@@ -207,12 +207,8 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 		return
 	}
 	if door, stopped := stopCause(ctx); stopped {
-		// THE PERSON'S STOP IS SAID AS THE PERSON'S. The manager performed its
-		// own stop and knows of it; a turn the person ended is work the manager
-		// handed out ending without a report, which nothing else tells it
-		// ([teams.StoppedByPerson] wakes it, team_wakewatch.go).
 		text := "stopped"
-		if door == StopByPerson {
+		if a.teamStoppedByPerson(door, origin) {
 			text = teams.StoppedByPerson
 		}
 		a.teamEventOwed(origin, teams.StateIdle, text)

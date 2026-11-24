@@ -151,6 +151,8 @@ func seatTopManagers(teams []Team, rootID string) bool {
 			continue
 		}
 		m.Home, m.Started, m.StartEntry, m.StartID = false, false, "", ""
+		// What the person said of it in its own team is not said of its seat here.
+		m.Paused, m.Standby, m.Role = false, false, ""
 		if m.Handle != "" && handleProblem(teams[r], m.Key, m.Handle) != nil {
 			m.Handle = ""
 		}

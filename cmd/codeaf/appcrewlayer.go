@@ -240,9 +240,11 @@ func (b *appBackend) crewPaused(agent string) bool {
 }
 
 // movePausesToStore carries a pause an earlier build kept in this layer into
-// the team's own record, once, so a member paused before the update stays
-// paused where the engine reads it. A pause that cannot be carried (its crew
-// or member is gone) is dropped with the rest of that record.
+// the team's own record, so a member paused before the update stays paused
+// where the engine reads it. A flag is cleared here only once it is on the
+// team's record, or its crew or member is gone; one that could not be carried
+// (the store could not be read or written) stays, and the next launch tries
+// again.
 func (b *appBackend) movePausesToStore() {
 	var paused []string
 	_ = b.crewLayer().read(func(f *appCrewLayerFile) {
@@ -255,21 +257,35 @@ func (b *appBackend) movePausesToStore() {
 	if len(paused) == 0 {
 		return
 	}
+	var settled []string
 	for _, key := range paused {
 		crew, agent, ok := strings.Cut(key, "/")
 		if !ok {
+			settled = append(settled, key)
 			continue
 		}
 		t, _, err := b.crewTeam(crew)
 		if err != nil {
+			var wire *appwire.Error
+			if errors.As(err, &wire) && wire.Code == appwire.CodeNotFound {
+				settled = append(settled, key)
+			}
 			continue
 		}
-		if m, found := b.crewMemberOf(t, agent); found {
-			_ = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, true) })
+		m, found := b.crewMemberOf(t, agent)
+		if !found || m.Key == t.Manager {
+			settled = append(settled, key)
+			continue
+		}
+		if err := b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, true) }); err == nil {
+			settled = append(settled, key)
 		}
 	}
+	if len(settled) == 0 {
+		return
+	}
 	_ = b.crewLayer().write(func(f *appCrewLayerFile) error {
-		for _, key := range paused {
+		for _, key := range settled {
 			if m := f.Members[key]; m != nil {
 				m.Paused = false
 			}

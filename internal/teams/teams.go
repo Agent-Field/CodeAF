@@ -87,9 +87,11 @@ type Member struct {
 	// member in its role note and shown to the manager beside the handle. Empty
 	// on a membership nobody gave one.
 	Role string `json:"role,omitempty"`
-	// Standby says this membership was made without work to start on: its start
-	// line is a standing description of the role, read at the member's first
-	// turn, and that line starts no turn. The first directive does.
+	// Standby says this membership was made without work to start on and has
+	// not been handed its start line yet: that line is a standing description
+	// of the role, read at the member's first turn, and starts no turn. The
+	// first directive does, and the member's session clears this once the line
+	// is handed over ([File.SetStandby]).
 	Standby bool `json:"standby,omitempty"`
 	// Unknown membership fields survive whole-file updates from this build.
 	extra map[string]json.RawMessage
@@ -590,6 +592,10 @@ func (f *File) SetManager(id, key string) error {
 		f.Teams[idx].FormerManager = old
 	}
 	f.Teams[idx].Manager = key
+	// A manager is neither paused nor on standby: the person talks to it.
+	if j := f.Teams[idx].member(key); j >= 0 {
+		f.Teams[idx].Members[j].Paused, f.Teams[idx].Members[j].Standby = false, false
+	}
 	assignHandles(&f.Teams[idx])
 	if f.Teams[idx].Root {
 		// Explicitly assigning the optional global role reconnects its current
@@ -660,6 +666,42 @@ func (f *File) SetPaused(id, key string, paused bool) error {
 	}
 	t.Members[j].Paused = paused
 	return nil
+}
+
+// SetStandby marks or clears the member with key in team id as waiting for its
+// first work ([Member.Standby]).
+func (f *File) SetStandby(id, key string, standby bool) error {
+	i, err := f.at(id)
+	if err != nil {
+		return err
+	}
+	t := &f.Teams[i]
+	j := t.member(key)
+	if j < 0 {
+		return fmt.Errorf("%s is not in team %s", key, t.Name)
+	}
+	t.Members[j].Standby = standby && t.Manager != key
+	return nil
+}
+
+// PausedAnywhere reports whether the person paused the conversation with key in
+// any open team it is a member (and not the manager) of, and that team's name.
+// A pause is the person's word about the conversation: while it holds, no
+// team's traffic starts its turn, so a team that did not write the pause reads
+// it here.
+func (f *File) PausedAnywhere(key string) (string, bool) {
+	if f == nil {
+		return "", false
+	}
+	for _, t := range f.Teams {
+		if t.Closed() || t.Manager == key {
+			continue
+		}
+		if m, ok := t.Member(key); ok && m.Paused {
+			return t.Name, true
+		}
+	}
+	return "", false
 }
 
 // SetRole names what the member with key in team id is there for

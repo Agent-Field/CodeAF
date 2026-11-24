@@ -1024,7 +1024,10 @@ func (b *appBackend) crewStart(t teamstore.Team, manager teamstore.Member, e tea
 	member.ReportsTo = pending.ReportsTo
 	// What the start was made with: the role's name, and whether the member
 	// waits for a directive rather than beginning on this line.
-	member.Role, member.Standby = pending.RoleName, pending.Standby
+	// Standby is what accepting a proposal asks for, and only that: a pending
+	// start left behind by a proposal that failed half-way must not put a
+	// member the manager starts later under the same handle on standby.
+	member.Role, member.Standby = pending.RoleName, pending.Standby && createdBy == appwire.CreatedByPerson
 	// THE MEMBERSHIP KEEPS THE ID OF THE LINE THAT MADE IT, so its brief is
 	// that line by identity and survives a rename or a handle reused later.
 	// Only a manager's start of this crew is recorded; the terminal's start

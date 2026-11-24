@@ -44,6 +44,9 @@ type MemberState struct {
 	// team's manager may read and send a note to, and not direct. A shared
 	// member that is running is drawn busy for that team.
 	ReportsTo string
+	// Paused says the person paused this conversation in another of its teams
+	// ([File.PausedAnywhere]); the member's own record says it for this one.
+	Paused bool
 }
 
 // Digest limits.
@@ -117,9 +120,9 @@ func address(m Member) string {
 // who caused it and what ends it.
 const (
 	// DigestPaused is a member the person paused ([Member.Paused]).
-	DigestPaused = "paused by the person; a directive waits until they resume it"
-	// DigestStandby is a member made without work that has not run yet
-	// ([Member.Standby]).
+	DigestPaused = "paused by the person; it starts nothing until they resume it"
+	// DigestStandby is a member made without work that has not been handed its
+	// start line yet ([Member.Standby]).
 	DigestStandby = "on standby; no work handed out yet"
 )
 
@@ -144,8 +147,19 @@ func lastWord(m Member, recent []Entry) string {
 			// The wake line: the member started on what it was sent.
 			return ""
 		case e.Kind == KindDirective && e.From == FromManager && e.Addressed(m.Handle):
-			return "has not started on " + ThreadNumber(e.ID)
+			return digestNotStarted + ThreadNumber(e.ID)
 		}
+	}
+	return ""
+}
+
+// digestNotStarted opens the digest's word for a directive nobody began.
+const digestNotStarted = "has not started on "
+
+// lastNotStarted is last when it is that word, "" otherwise.
+func lastNotStarted(last string) string {
+	if strings.HasPrefix(last, digestNotStarted) {
+		return last
 	}
 	return ""
 }
@@ -169,17 +183,20 @@ func memberLine(m Member, s MemberState, manager bool, last string) string {
 	if s.ReportsTo != "" && state == StateRunning {
 		state = "busy for " + s.ReportsTo
 	}
+	resting := state == StateIdle || state == "unknown"
 	switch {
 	case manager:
-	case m.Paused && (state == StateIdle || state == "unknown"):
+	case (m.Paused || s.Paused) && resting:
 		state = DigestPaused
-	case m.Paused:
+	case m.Paused || s.Paused:
 		state += ", " + DigestPaused
-	case m.Standby && s.SinceActive == 0 && (state == StateIdle || state == "unknown"):
+	case m.Standby && resting:
 		state = DigestStandby
 	}
 	b.WriteString(": " + state)
-	if last != "" && !manager {
+	// A directive a member in a turn has not answered yet is not one it has
+	// not started on: it reads it at its next step.
+	if last != "" && !manager && (resting || last != lastNotStarted(last)) {
 		b.WriteString(", " + last)
 	}
 	if m.Independent {
