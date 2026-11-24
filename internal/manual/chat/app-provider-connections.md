@@ -30,7 +30,9 @@ cannot produce a successful connection. A storage error also fails the save.
 
 OpenRouter models retain their exact live catalog IDs, including
 `deepseek/deepseek-v4.1-flash-1017` when the account's live list supplies it.
-Connecting a provider does not change the chosen default model.
+Connecting a provider does not change a default model you chose. A default you
+never chose follows the providers you connect: without OpenRouter, it is a model
+those providers offer.
 
 ## Older engines and adding another server
 

@@ -215,7 +215,7 @@ There is no practice limit any more: codeaf no longer practises on its own, and
 ## Knowledge model for background learning
 
 Settings → Models has a **knowledge** model choice (`knowledge.model`).
-It controls the OpenRouter model used to extract, organize and review project
+It controls the model used to extract, organize and review project
 knowledge. Left empty — the default — it follows the model you chose to talk
 to. Clearing the choice goes back to following it.
 

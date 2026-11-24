@@ -2608,7 +2608,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
 			Label: "knowledge", EmptyLabel: "follows your model",
-			Hint: "the OpenRouter model that builds your Library in the background. Blank makes it follow the model you chose; changes apply to the next compilation.",
+			Hint: "the model that builds your Library in the background. Blank makes it follow the model you chose; changes apply to the next compilation.",
 			read: func() string { return KnowledgeModelRowAt(dir) },
 			write: func(raw string) error {
 				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
@@ -2631,12 +2631,13 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
-			Label: "fallback models", EmptyLabel: "DeepSeek V4.1 Flash",
+			Label: "fallback models", EmptyLabel: "codeaf's default",
 			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
 				"it will take the request, it keeps going quiet mid-reply, or it is being " +
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
-				"to use DeepSeek V4.1 Flash by default. The turn says which " +
+				"for codeaf's default: DeepSeek V4.1 Flash with OpenRouter or nothing connected, " +
+				"otherwise a model your connected providers offer. The turn says which " +
 				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
@@ -4289,11 +4290,15 @@ func RetiredPinNote(raw string) string {
 const DefaultFallbackModel = "deepseek/deepseek-v4.1-flash"
 
 // ModelFallbacksAt resolves an explicit chain, or the shared default when blank.
+// The shared default is kept while OpenRouter is connected or a connected
+// service lists it; a profile without OpenRouter falls back to another model its
+// own providers offer, or names the conversation's model when they offer only
+// that one, which keeps a failed reply on it ([ReachableDefaultAt]).
 func ModelFallbacksAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok && strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "nearest in the catalog" {
 		return strings.TrimSpace(value)
 	}
-	return DefaultFallbackModel
+	return DefaultFallbackAt(profileDir)
 }
 
 // ParseModelFallbacks reads the row into an ordered list of model slugs.

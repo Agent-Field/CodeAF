@@ -817,7 +817,7 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 			}
 		case strings.EqualFold(source.ID, "codex"):
 			p.Kind = crewroute.Plan
-			p.Serves = []string{source.Preferred}
+			p.Serves = codexServes(service, profileDir, openRouterConnected(set))
 		case strings.EqualFold(source.ID, "claude-code"):
 			p.Kind = crewroute.Plan
 		case strings.EqualFold(source.ID, "ollama"):
@@ -911,6 +911,32 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 		}
 	}
 	return crewroute.Route{Provider: p.ID, Send: p.send(vendor, tail), Kind: p.Kind}, true
+}
+
+// codexServes is the models a ChatGPT sign-in can be sent: the account's own
+// remembered listing, and the vendored preferred model only while nothing is
+// remembered. The preferred id alone was a model the account may not list — on
+// 2026-11-23 a ChatGPT account answered `gpt-5.5` with "not supported when
+// using Codex with a ChatGPT account", and the crew's second router look sent
+// it there anyway.
+//
+// With OpenRouter connected it stays the preferred id alone, as it always was:
+// that profile's crew is routed among OpenRouter's models, and widening what the
+// plan serves would move seats off OpenRouter.
+func codexServes(service modelsource.Connected, profileDir string, openRouter bool) []string {
+	if openRouter {
+		return []string{service.Source.Preferred}
+	}
+	var ids []string
+	for _, row := range recallCached(CatalogOptionsFor(service, profileDir)) {
+		if id := strings.TrimSpace(row.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 && strings.TrimSpace(service.Source.Preferred) != "" {
+		ids = []string{service.Source.Preferred}
+	}
+	return ids
 }
 
 // send is the id a call to this connection carries, which is not always its

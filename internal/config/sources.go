@@ -437,6 +437,7 @@ func ConnectClaudeCode(ctx context.Context, profileDir string) (modelsource.Outc
 		_ = DisconnectService(profileDir, claudemodel.ID)
 		return modelsource.Outcome{}, err
 	}
+	bumpSettingsGeneration()
 	// A PROFILE WITH NOTHING ELSE TO TALK WITH TALKS WITH CLAUDE. Connecting
 	// Claude Code as the first service moves new conversations onto it, the way
 	// a first connection of any service does; one that already has a key or a
@@ -492,7 +493,10 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 	for _, model := range models {
 		if id := strings.TrimSpace(model.ID); id != "" {
 			outcome.ModelIDs = append(outcome.ModelIDs, id)
-			remembered = append(remembered, catalog.Model{ID: id, ContextLength: model.ContextLength, PriceUnknown: true})
+			// The thinking levels are kept too: they are the one strength signal
+			// the account's listing gives, and the default seats rank by them
+			// ([ReachableDefaultAt]).
+			remembered = append(remembered, codexCatalogRow(codexauth.Model{ID: id, ContextLength: model.ContextLength, ReasoningLevels: model.ReasoningLevels}))
 		}
 	}
 	outcome.Models = len(outcome.ModelIDs)
@@ -505,6 +509,9 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 		_ = DisconnectService(profileDir, "codex")
 		return modelsource.Outcome{}, err
 	}
+	// The defaults read this list; a snapshot built while it was still being
+	// fetched is built again.
+	bumpSettingsGeneration()
 	return outcome, nil
 }
 

@@ -1947,6 +1947,13 @@ type Config struct {
 	// instead, through NearestModels.
 	ModelFallbacks []string
 
+	// ModelFallbacksNow, when set, answers ModelFallbacks again each time a
+	// model client is built, which includes a live switch to another service.
+	// A terminal chat that starts with nothing connected reads the built-in
+	// fallback at launch; once the person connects a provider and moves onto
+	// it, the new client asks again and gets a fallback that provider can serve.
+	ModelFallbacksNow func() []string
+
 	// NearestModels names the models closest to one that just refused
 	// everything. It is consulted ONLY when ModelFallbacks is empty, and it never
 	// waits: a catalog that has not resolved answers nil, and a chain with no

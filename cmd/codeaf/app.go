@@ -4586,7 +4586,11 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 		offered[group] = true
 		models = append(models, model)
 	}
-	if !seen && chosen != "" {
+	// The engine's default is offered as an extra row only when a connected
+	// service can send it. With a provider connected whose list has not landed
+	// yet, the default can still be the built-in OpenRouter model, and a row for
+	// it would let first-run setup save a model nobody can reach.
+	if !seen && chosen != "" && appCanSend(sources, chosen) {
 		provider := modelsource.DefaultID
 		if service, bare := sources.For(chosen); bare != chosen && service.Source.Written != "" {
 			provider = strings.ToLower(service.Source.Written)
@@ -5283,4 +5287,10 @@ func appModelFacts(model *appwire.Model, row tui3.Model) {
 // never goes out.
 func appPerMillion(perToken float64) float64 {
 	return math.Round(perToken*1e6*1e9) / 1e9
+}
+
+// appCanSend reports whether model routes to a service that can authenticate.
+func appCanSend(sources modelsource.Set, model string) bool {
+	service, _ := sources.For(model)
+	return service.HasCredentials()
 }
