@@ -293,6 +293,18 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	public := secure.publicURL(listener.Addr().String())
 	jobWrites := factorygithub.JobWrites{Token: func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, home.Dir()); return t }}
+	// Hosted chats are an organization server's opt-in: they are read only
+	// for the explicit server, never for a window serving in-process, and a
+	// setting that is half written stops the start with a sentence instead of
+	// running chats on a secret nobody checked.
+	var hosted *serve.HostedConfig
+	if servedBy == "factory" {
+		hosted, err = serve.ParseHostedConfig(env.Get("CODEAF_HOSTED_URL"), env.Get("CODEAF_HOSTED_SECRET"),
+			env.Get("CODEAF_HOSTED_MODEL_URL"), env.Get("CODEAF_HOSTED_MODEL_UPSTREAM"), env.Get("CODEAF_HOSTED_MODEL_KEY"))
+		if err != nil {
+			return nil, err
+		}
+	}
 	handlerConfig := serve.Config{
 		GitHubToken: jobWrites.Token,
 
@@ -304,7 +316,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// A drop deletes the job's local branch and folder on this machine,
 		// and the conversations and crew kept on this machine, never anything
 		// on GitHub, so the team server does it too.
-		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, HSTSSubdomains: host.HSTSIncludeSubdomains, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Hosted: hosted, HSTSSubdomains: host.HSTSIncludeSubdomains, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
 		// The organization's workstream agents, when the operator runs them

@@ -219,6 +219,11 @@ type Config struct {
 	// Canvas runs canvas-core for the organization's canvases (`canvas
 	// rpc`). Nil keeps no canvases: the /v1/canvases routes are left off.
 	Canvas *canvasrpc.Sidecar
+	// Hosted turns on chats that run on the organization's own machine, with
+	// the /v1/hosted routes and the /v1/model address a hosted chat reaches
+	// its model through (hosted_proxy.go). Nil, the default, registers
+	// nothing and changes no path's answer.
+	Hosted *HostedConfig
 }
 
 // Handler keeps the seam and host identity together for every response.
@@ -426,6 +431,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.orgSetupRoutes()
 	h.chatRoutes()
 	h.accessRoutes()
+	h.hostedRoutes()
 	h.reconcileChatFolders()
 	h.backfillChats()
 	h.backfillSessions()
@@ -542,6 +548,13 @@ func (h *Handler) Close() {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = authRequest(h.withClient(r))
 	w.Header().Set("Cache-Control", "no-store")
+	// A hosted chat's model call proves itself with the bearer minted for it
+	// and has no sign-in, so it is answered before the sign-in below. False
+	// unless hosted chats are turned on, which leaves every path as it was.
+	if h.modelPath(r) {
+		h.modelProxy(w, r)
+		return
+	}
 	if markPreMutation(r) {
 		w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
 	}
