@@ -61,3 +61,28 @@ func TestTheLiveWordsTheTmuxSuiteWaitsForAreSpelledHere(t *testing.T) {
 		}
 	}
 }
+
+// V30 and V41: the road row has exactly two values and one home, whichever
+// surface draws it, and a road nobody has named yet draws as nothing.
+func TestTheRoadWordsHaveOneHome(t *testing.T) {
+	for road, want := range map[string]string{
+		"direct":         "live · direct",
+		"relay":          "live · relay",
+		" direct ":       "live · direct",
+		"somewhere else": "live · relay",
+		"":               "",
+	} {
+		if got := LiveRoad(road); got != want {
+			t.Fatalf("LiveRoad(%q) = %q, want %q", road, got, want)
+		}
+	}
+}
+
+// A road change is the viewer's own business and is never spoken: it has no
+// sentence of its own, so asking for one gets the generic fallback every unknown
+// reason gets, and the closed set above stays closed.
+func TestARoadChangeIsViewerLocalAndHasNoSentenceOfItsOwn(t *testing.T) {
+	if got, fallback := LiveSaid("road-change", "Desktop"), LiveSaid("unknown-reason-sentinel", "Desktop"); got != fallback {
+		t.Fatalf("road-change has a sentence of its own: %q", got)
+	}
+}

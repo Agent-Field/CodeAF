@@ -123,24 +123,29 @@ func (r *syncRoad) current() livedoor.State {
 	return r.state
 }
 
+// Read is what the door says about the view on every draw. The ROAD rides along
+// with it, read from the link's own state each time, so that a swap between the
+// relay and the direct road shows on the next frame and the seam's static word
+// is only ever the first paint.
 func (r *syncRoad) Read() tui3.LiveRead {
 	st := r.current()
+	read := tui3.LiveRead{Kind: tui3.LiveOn, Road: st.Road}
 	switch st.Kind {
 	case livedoor.Live, livedoor.WatchOnly:
-		return tui3.LiveRead{Kind: tui3.LiveOn}
+		read.Kind = tui3.LiveOn
 	case livedoor.Connecting, livedoor.Reconnecting:
-		return tui3.LiveRead{Kind: tui3.LiveReconnecting}
+		read.Kind = tui3.LiveReconnecting
 	case livedoor.WentOffline:
-		return tui3.LiveRead{Kind: tui3.LiveWentOffline}
+		read.Kind = tui3.LiveWentOffline
 	case livedoor.Idle:
-		return tui3.LiveRead{Kind: tui3.LiveIdle}
+		read.Kind = tui3.LiveIdle
 	case livedoor.Revoked:
-		return tui3.LiveRead{Kind: tui3.LiveRevoked, Reason: st.Reason}
+		read.Kind = tui3.LiveRevoked
+		read.Reason = st.Reason
 	case livedoor.StateBudget:
-		return tui3.LiveRead{Kind: tui3.LiveBudget}
-	default:
-		return tui3.LiveRead{Kind: tui3.LiveOn}
+		read.Kind = tui3.LiveBudget
 	}
+	return read
 }
 
 func (r *syncRoad) Changed() <-chan struct{} {

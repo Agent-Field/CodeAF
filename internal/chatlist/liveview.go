@@ -1,6 +1,9 @@
 package chatlist
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // The words of a live view: a chat that keeps running on another of this
 // person's computers and is read, and typed into, from this one. They live in
@@ -104,4 +107,24 @@ func LiveSaid(reason, host string) string {
 		return name + " has too many computers open on its chats right now. Try again in a minute."
 	}
 	return "Lost the connection to " + name + "."
+}
+
+// LiveRoad is the road row of /status and of the desktop's live strip: how the
+// bytes of a live view travel right now. It has exactly two values, and both
+// surfaces read them from here so the terminal and the desktop cannot disagree
+// about a swap. A road the link has not named yet draws as nothing (the
+// emptiness law), and any road that is not the direct one is the relay, the
+// word phase 1 already shipped.
+//
+// "relay" appears here as the name of the server, as it did on the row phase 1
+// shipped; no sentence calls the feature relay (V12).
+func LiveRoad(road string) string {
+	switch strings.TrimSpace(road) {
+	case "":
+		return ""
+	case "direct":
+		return "live · direct"
+	default:
+		return "live · relay"
+	}
 }

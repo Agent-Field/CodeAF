@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/manual"
 )
 
@@ -33,7 +34,7 @@ func TestEverySentenceOfALiveViewTheTerminalSpellsIsOnTheRemoteControlPage(t *te
 		permitAskOptionType,
 		permitAskOptionKeep,
 		permitAskOptionPick,
-		liveRoadLine("relay"),
+		chatlist.LiveRoad("relay"),
 	}
 	for _, sentence := range sentences {
 		if !strings.Contains(page, sentence) {

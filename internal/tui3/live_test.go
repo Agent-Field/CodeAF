@@ -566,6 +566,75 @@ func TestStatusShowsTheRoadOfALiveConversationOnly(t *testing.T) {
 	}
 }
 
+// V30, V41: /status says which road the bytes travel from what the door reads
+// on every draw, so the same live view says `live · relay` and then `live ·
+// direct` and back as the road changes, and the seam's own Road is only what the
+// first paint knows.
+func TestStatusShowsLiveDirectAndLiveRelayFromTheRoadTheLinkReports(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	road := ""
+	a.takeUp(Conversation{
+		Agent: &fakeAgent{model: "m"},
+		Live: &LiveSeam{
+			Host: "Desktop",
+			Road: "relay",
+			Read: func() LiveRead { return LiveRead{Kind: LiveOn, Road: road} },
+		},
+	}, true)
+
+	for _, step := range []struct{ said, want string }{
+		{"", "live · relay"}, // the door has not said yet: the first paint's word
+		{"direct", "live · direct"},
+		{"relay", "live · relay"},
+		{"direct", "live · direct"},
+	} {
+		road = step.said
+		text, json := a.statusText(), a.statusJSON()
+		if !strings.Contains(text, step.want) || !strings.Contains(json, `"road":"`+step.want+`"`) {
+			t.Fatalf("with the door saying %q, /status should say %q:\n%s\n%s", step.said, step.want, text, json)
+		}
+		other := "live · relay"
+		if step.want == other {
+			other = "live · direct"
+		}
+		if strings.Contains(text, other) || strings.Contains(json, other) {
+			t.Fatalf("with the door saying %q, /status also says %q:\n%s\n%s", step.said, other, text, json)
+		}
+	}
+}
+
+// V30: a road swap redraws the view and says nothing about it: the door's change
+// signal is what asks for the redraw, and no banner, notice or note is added.
+func TestARoadFlipRedrawsWithoutABanner(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	road := "relay"
+	changed := make(chan struct{})
+	a.takeUp(Conversation{
+		Agent: &fakeAgent{model: "m"},
+		Live: &LiveSeam{
+			Host:    "Desktop",
+			Road:    "relay",
+			Read:    func() LiveRead { return LiveRead{Kind: LiveOn, Road: road} },
+			Changed: func() <-chan struct{} { return changed },
+		},
+	}, true)
+	before := a.statusText()
+	barBefore, onBefore := a.liveBar()
+
+	road = "direct"
+	close(changed)
+	if cmd := a.liveMoved(liveChangedMsg{gen: a.convGen}); cmd == nil {
+		t.Fatalf("a road flip did not ask to be watched again")
+	}
+	after := a.statusText()
+	if after == before || !strings.Contains(after, "live · direct") {
+		t.Fatalf("/status did not follow the road flip:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if barAfter, onAfter := a.liveBar(); barAfter != barBefore || onAfter != onBefore {
+		t.Fatalf("a road flip changed the bar above the composer: %q -> %q", barBefore, barAfter)
+	}
+}
+
 // V27 (contract 4 and contract 5): an offline copy (LiveCopy) shows the last
 // seen bar formatted by chatlist.LiveSeenAt, swallows typed keys, and sends
 // nothing when Enter is pressed while keeping existing words in the box.

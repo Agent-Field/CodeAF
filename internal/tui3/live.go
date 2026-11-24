@@ -38,6 +38,11 @@ type LiveRead struct {
 	Kind   LiveKind
 	Reason string
 	SeenAt time.Time
+	// Road is how the bytes of this view travel right now ("direct" or "relay"),
+	// said by the door on every draw so that a swap of the road shows on the next
+	// frame. It wins over [LiveSeam.Road] when set; the seam's field is only what
+	// the first paint knows before the door has been asked.
+	Road string
 }
 
 // LiveSeam travels on Conversation.Live. A nil seam means the conversation is
@@ -79,10 +84,6 @@ func liveLegendHost(host string, on bool) string {
 		return "on " + host + " · live"
 	}
 	return "on " + host
-}
-
-func liveRoadLine(road string) string {
-	return "live · " + road
 }
 
 // seamHost returns the host label for the seam line above the composer. A live
@@ -186,10 +187,18 @@ func (a *app) liveReconnect() tea.Cmd {
 // is a live view other than an offline copy and the seam names its road.
 func (a *app) liveRoadWord() string {
 	live := a.liveFront()
-	if live == nil || live.Road == "" || a.liveRead().Kind == LiveCopy {
+	if live == nil {
 		return ""
 	}
-	return liveRoadLine(live.Road)
+	read := a.liveRead()
+	if read.Kind == LiveCopy {
+		return ""
+	}
+	road := read.Road
+	if road == "" {
+		road = live.Road
+	}
+	return chatlist.LiveRoad(road)
 }
 
 // liveTurnTouchEvery bounds how often a running turn reports activity on a live

@@ -284,3 +284,28 @@ func TestALiveAgentPagesOlderEntriesThroughItsOwnConnection(t *testing.T) {
 		t.Fatalf("road.Older was called %d times when pager was set, want 0", len(road.olderCalls))
 	}
 }
+
+// V30, V41: the road the view reads is the road its link reports, on every draw,
+// and a flip of the road with the same kind of state still wakes the surface so
+// the next frame shows it; a road the link has not named reads as nothing.
+func TestSyncRoadReadsTheRoadTheLinkReportsAndWakesTheSurfaceOnAFlip(t *testing.T) {
+	link := newTestLiveLink()
+	road := newSyncRoad(link, "Desktop")
+	t.Cleanup(road.Close)
+
+	if got := road.Read().Road; got != "" {
+		t.Fatalf("before the link says anything the road reads %q, want nothing", got)
+	}
+	for _, step := range []string{"relay", "direct", "relay", "direct"} {
+		woke := road.Changed()
+		road.onState(livedoor.State{Kind: livedoor.Live, Road: step})
+		select {
+		case <-woke:
+		default:
+			t.Fatalf("a flip to %q did not wake the surface", step)
+		}
+		if got := road.Read(); got.Road != step || got.Kind != tui3.LiveOn {
+			t.Fatalf("after a flip to %q the view reads %+v", step, got)
+		}
+	}
+}
