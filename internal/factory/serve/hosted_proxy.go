@@ -48,6 +48,8 @@ type HostedConfig struct {
 	// refused, in dollars; zero means the default of $5.00
 	// (CODEAF_HOSTED_SESSION_CAP_USD).
 	SessionCapUSD float64
+	// Heartbeat is how often a guest wire checks access. Zero uses DefaultHostedHeartbeat.
+	Heartbeat time.Duration
 	// CompleterFor builds the funnel one call on a model goes out through, for
 	// an upstream address and a key. Nil keeps the pass-through of P0 for
 	// chat completions (the unmetered road a server without the model road has).
@@ -103,6 +105,11 @@ type hostedState struct {
 	// The model door and wire may record or read the current asker concurrently.
 	askerMu sync.RWMutex
 	askers  map[string]string
+	// Guest wires are hijacked, so the handler closes them during its own shutdown.
+	guestMu      sync.Mutex
+	guests       map[*hostedGuest]struct{}
+	guestsClosed bool
+	guestWG      sync.WaitGroup
 }
 
 func (hs *hostedState) noteAsker(id, person string) {
@@ -410,11 +417,17 @@ func (h *Handler) hostedList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	policy := v.acc.rules().Hosting
 	h.write(w, http.StatusOK, struct {
 		hostedSessionsList
 		Shared  []hostedSharedRow `json:"shared"`
-		Hosting acl.Hosting       `json:"hosting"`
-	}{own, shared, acl.Hosting{LocalSessions: v.acc.rules().Hosting.LocalSessionsFor(true)}})
+		Hosting hostedListPolicy  `json:"hosting"`
+	}{own, shared, hostedListPolicy{LocalSessions: policy.LocalSessionsFor(true), Words: policy.Words(true)}})
+}
+
+type hostedListPolicy struct {
+	LocalSessions string `json:"local_sessions"`
+	Words         string `json:"words,omitempty"`
 }
 
 func (h *Handler) hostedGet(w http.ResponseWriter, r *http.Request) {
@@ -464,7 +477,7 @@ func (h *Handler) hostedGet(w http.ResponseWriter, r *http.Request) {
 // can never name a chat into existence or onto someone else's folder.
 func (h *Handler) hostedCreate(w http.ResponseWriter, r *http.Request) {
 	v, ok := h.hostedViewer(w, r)
-	if !ok {
+	if !ok || !h.mayCreateResource(w, v) {
 		return
 	}
 	st := h.config.Store
@@ -661,6 +674,10 @@ func (h *Handler) hostedWire(w http.ResponseWriter, r *http.Request) {
 		ModifyResponse: func(res *http.Response) error {
 			if res.StatusCode == http.StatusConflict {
 				hs.bearers.revokeFor(id, person)
+			}
+			if res.StatusCode == http.StatusSwitchingProtocols {
+				// Only an accepted attach clears the previous guest's attribution.
+				hs.noteAsker(id, person)
 			}
 			return nil
 		},

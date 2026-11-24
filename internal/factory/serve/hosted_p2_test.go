@@ -116,7 +116,7 @@ func TestP2_2_HostedListKeepsOwnRowsAndLimitsSharedMetadata(t *testing.T) {
 		t.Helper()
 		var out listing
 		rg.do(t, who, http.MethodGet, hostedSessionsPath, -1, nil, http.StatusOK, &out)
-		if !reflect.DeepEqual(out.Hosting, map[string]string{"local_sessions": "warn"}) || out.Shared == nil {
+		if !reflect.DeepEqual(out.Hosting, map[string]string{"local_sessions": "warn", "words": acl.HostingWarnWords}) || out.Shared == nil {
 			t.Fatalf("list for %s = %+v", who, out)
 		}
 		return out
@@ -368,15 +368,19 @@ func TestP2_4_HostedWireClassUsesCurrentVerbsWithoutOperator(t *testing.T) {
 		})
 	}
 	before := rg.host.count()
-	for _, who := range []string{"abir", "owner"} {
-		w := rg.send(who, http.MethodGet, hostedSessionsPath+"/"+chat+"/wire", nil, nil)
-		if w.Code != http.StatusNotFound || w.Body.String() != hostNoSuchChat {
-			t.Fatalf("wire as %s = %d %s", who, w.Code, w.Body)
-		}
+	w := rg.send("owner", http.MethodGet, hostedSessionsPath+"/"+chat+"/wire", nil, nil)
+	if w.Code != http.StatusNotFound || w.Body.String() != hostNoSuchChat {
+		t.Fatalf("operator wire = %d %s", w.Code, w.Body)
 	}
 	if got := rg.host.count(); got != before {
-		t.Fatalf("guest stub or operator called the owner wire: %d requests", got-before)
+		t.Fatalf("operator called the owner wire: %d requests", got-before)
 	}
+	opened := recordGuestHostWires(rg)
+	srv := httptest.NewServer(rg.h)
+	defer srv.Close()
+	client, _ := guestConnect(t, srv, opened, rg.tokens["abir"], chat)
+	guestWrite(t, client, guestCall(1, "SetModel"))
+	guestRefusal(t, client, 1, guestOwnerWords)
 }
 
 // P2-7

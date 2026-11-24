@@ -483,6 +483,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeHostedGuests()
 		h.closeHostedModels()
 		h.closeGrantSweep()
 		h.closeOrders()

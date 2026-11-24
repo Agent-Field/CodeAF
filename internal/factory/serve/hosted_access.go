@@ -41,8 +41,9 @@ func hostedWithoutOperator(v Viewer) Viewer {
 
 func (h *Handler) hostedViewer(w http.ResponseWriter, r *http.Request) (Viewer, bool) {
 	if h.config.Store == nil {
+		// With no store there are no teams and no grants, so the viewer is the person under the default policy.
 		person, ok := h.hostedPerson(w, r)
-		return Viewer{Handle: person}, ok
+		return h.viewerOf(person), ok
 	}
 	v, err := h.itemViewer(r)
 	return v, h.hostedSignedIn(w, v.Handle, err)

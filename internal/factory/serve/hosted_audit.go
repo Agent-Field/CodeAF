@@ -22,6 +22,7 @@ type hostedAuditEntry struct {
 	Host    string `json:"host"`
 	Repo    string `json:"repo"`
 	Service string `json:"service"`
+	Asker   string `json:"asker,omitempty"`
 }
 
 // One organization process owns the file, so the same lock gives readers
@@ -36,10 +37,17 @@ func (h *Handler) hostedAuditPath() string {
 }
 
 func (h *Handler) hostedAudit(person, chat, kind, host, repo, service string) {
-	entry := hostedAuditEntry{
-		At: h.clock().UTC().Format(time.RFC3339Nano), Person: person, Chat: chat,
-		Kind: kind, Host: host, Repo: repo, Service: service,
+	entry := hostedAuditEntry{Person: person, Chat: chat, Kind: kind, Host: host, Repo: repo, Service: service}
+	if kind == "git" {
+		if asker := h.config.Hosted.state.askerOf(chat); asker != person {
+			entry.Asker = asker
+		}
 	}
+	h.recordHostedAudit(entry)
+}
+
+func (h *Handler) recordHostedAudit(entry hostedAuditEntry) {
+	entry.At = h.clock().UTC().Format(time.RFC3339Nano)
 	if err := appendHostedAudit(h.hostedAuditPath(), entry); err != nil {
 		log.Print("audit")
 	}
