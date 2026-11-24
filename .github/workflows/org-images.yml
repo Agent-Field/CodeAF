@@ -184,7 +184,11 @@ jobs:
           out="$(docker run --rm --entrypoint codeaf "${LOCAL_IMAGE}" version)"
           echo "${out}"
           case "${out}" in *"${GITHUB_SHA::10}"*) ;; *) echo "codeaf version does not name ${GITHUB_SHA::10}" >&2; exit 1 ;; esac
-          docker run --rm --entrypoint codeaf "${LOCAL_IMAGE}" sessionhost --help > /dev/null
+          # The sessionhost refuses to start without its shared secret, and says which variable: that line proves the
+          # subcommand is in this binary (an unknown subcommand prints something else) without starting a server.
+          refusal="$(docker run --rm --entrypoint codeaf "${LOCAL_IMAGE}" sessionhost 2>&1 || true)"
+          echo "${refusal}"
+          case "${refusal}" in *CODEAF_SESSIONHOST_SECRET*) ;; *) echo "codeaf sessionhost did not ask for its secret" >&2; exit 1 ;; esac
 
       # THE LEAK GATE. A finding fails the job here, before any login. What it checks is written at the top of
       # deploy/org/gate/image-gate.py and in deploy/org/README.md "Published images".
