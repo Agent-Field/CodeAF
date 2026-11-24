@@ -252,6 +252,65 @@ func TestCloseChatEndsEveryViewerOfThatChatAndNoOtherAndHoldsUnderASymlinkedSpel
 	}
 }
 
+// TestCloseAllChatsEndsTheViewersOfEveryChatAndLeavesTheListenerServing is what
+// turning remote control off asks of the listener: every viewer of every chat
+// ends, and the listener is still there to refuse a new one itself.
+func TestCloseAllChatsEndsTheViewersOfEveryChatAndLeavesTheListenerServing(t *testing.T) {
+	homeDir := shortTempDir(t)
+	chats := []string{filepath.Join(homeDir, "a.jsonl"), filepath.Join(homeDir, "b.jsonl")}
+	sessions := map[string]*remote.Session{}
+	for _, file := range chats {
+		sess := remote.NewSession(&remote.Engine{Agent: &minimalWrappedAgent{title: file}, Workspace: "/work/p", SessionFile: file}, true)
+		t.Cleanup(func() { _ = sess.Close() })
+		sessions[chatKey(file)] = sess
+	}
+	tr := UnixTransport()
+	ln, err := Listen(homeDir, func(transcript string) (*remote.Session, bool) {
+		sess, ok := sessions[chatKey(transcript)]
+		return sess, ok
+	}, tr)
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	sock := filepath.Join(homeDir, "v3", "live", strconv.Itoa(os.Getpid())+".sock")
+	var viewers []*remote.Client
+	for _, file := range chats {
+		conn, err := tr.Dial(context.Background(), sock)
+		if err != nil {
+			t.Fatalf("Dial: %v", err)
+		}
+		client, err := remote.Dial(conn, "laptop", remote.Hello{Workspace: "/work/p", Session: file, Join: true})
+		if err != nil {
+			_ = conn.Close()
+			t.Fatalf("remote.Dial %s: %v", file, err)
+		}
+		t.Cleanup(func() { _ = client.Close() })
+		viewers = append(viewers, client)
+	}
+
+	if n := ln.CloseAllChats(); n != len(chats) {
+		t.Fatalf("CloseAllChats ended %d connections, want the %d viewers", n, len(chats))
+	}
+	for i, client := range viewers {
+		deadline := time.Now().Add(5 * time.Second)
+		for client.Err() == nil && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if client.Err() == nil {
+			t.Fatalf("viewer %d was still connected after every chat was closed", i)
+		}
+	}
+	if n := ln.CloseAllChats(); n != 0 {
+		t.Fatalf("a second CloseAllChats ended %d connections, want none left", n)
+	}
+	conn, err := tr.Dial(context.Background(), sock)
+	if err != nil {
+		t.Fatalf("the listener stopped serving after CloseAllChats: %v", err)
+	}
+	_ = conn.Close()
+}
+
 // minimalWrappedAgent is the smallest implementation of remote.WrappedAgent
 // needed to back a real remote.Session in package livedoor's tests.
 type minimalWrappedAgent struct {

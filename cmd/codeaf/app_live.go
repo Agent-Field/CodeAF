@@ -287,16 +287,10 @@ func (b *appBackend) deskViewed(a *appAgent) bool {
 // desktop is running. It is what turning remote control off does for the people
 // already looking, beside the door's own refusal of anyone new.
 func (h *appDeskHost) endAllViewers() {
-	var conns []*deskConn
-	h.locked(func() {
-		for _, set := range h.viewing {
-			for c := range set {
-				conns = append(conns, c)
-			}
-		}
-	})
-	for _, c := range conns {
-		_ = c.Close()
+	var l *livedoor.Listener
+	h.locked(func() { l = h.listener })
+	if l != nil {
+		l.CloseAllChats()
 	}
 }
 

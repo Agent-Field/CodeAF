@@ -223,6 +223,28 @@ func (l *Listener) CloseChat(chat string) int {
 	return len(doomed)
 }
 
+// CloseAllChats ends every viewer connection this listener has handed to any
+// chat, and says how many it ended. It is what turning remote control off does
+// for the people already looking, beside the door's own refusal of anyone new:
+// each viewer reads the end of the holder's connection as the holder having gone,
+// exactly as it does for one chat (see [Listener.CloseChat]). A connection that
+// has not yet opened a chat is not a viewer of one and is left to its own
+// refusal.
+func (l *Listener) CloseAllChats() int {
+	l.mu.Lock()
+	var doomed []net.Conn
+	for c, k := range l.conns {
+		if k != "" {
+			doomed = append(doomed, c)
+		}
+	}
+	l.mu.Unlock()
+	for _, c := range doomed {
+		_ = c.Close()
+	}
+	return len(doomed)
+}
+
 // chatKey is the one spelling of a transcript path the listener compares by: the
 // cleaned path with every symlink resolved, falling back to the resolved folder
 // for a file that does not exist yet.
