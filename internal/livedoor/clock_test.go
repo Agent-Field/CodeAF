@@ -1,11 +1,8 @@
 package livedoor
 
 import (
-	"sync"
 	"testing"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // TestFakeClockFiresTimersInDeadlineOrderAndStopPreventsFiring verifies contract
@@ -28,48 +25,43 @@ func TestFakeClockFiresTimersInDeadlineOrderAndStopPreventsFiring(t *testing.T) 
 		t.Fatalf("BlockedTimers() after Stop = %d, want 3", got)
 	}
 
-	var (
-		mu    sync.Mutex
-		order []int
-		done  = make(chan struct{}, 3)
-	)
-	watch := func(id int, tm Timer) {
-		guard.Go("livedoor.clock.test", func() {
-			<-tm.C()
-			mu.Lock()
-			order = append(order, id)
-			mu.Unlock()
-			done <- struct{}{}
-		})
-	}
-	watch(30, t30)
-	watch(10, t10)
-	watch(25, t25)
-
-	fc.WaitForTimers(3)
-	fc.Advance(40 * time.Millisecond)
-
-	for i := 0; i < 3; i++ {
-		<-done
-	}
-
-	select {
-	case <-t20Stopped.C():
-		t.Fatal("a stopped timer fired on Advance")
-	default:
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	want := []int{10, 25, 30}
-	if len(order) != len(want) {
-		t.Fatalf("fired %v, want %v", order, want)
-	}
-	for i := range want {
-		if order[i] != want[i] {
-			t.Fatalf("fired order = %v, want %v", order, want)
+	// THE ORDER IS PROVED BY STEPPING, NOT BY GOROUTINES RACING TO RECORD IT.
+	// Each Advance releases only the timers that are due, so a timer that fires
+	// early shows up as a value on a channel that should still be empty, with no
+	// scheduler in the way.
+	fired := func(tm Timer) (time.Time, bool) {
+		select {
+		case at := <-tm.C():
+			return at, true
+		default:
+			return time.Time{}, false
 		}
 	}
+	fc.Advance(10 * time.Millisecond)
+	if at, ok := fired(t10); !ok || !at.Equal(start.Add(10*time.Millisecond)) {
+		t.Fatalf("after 10ms the 10ms timer = (%v, %v), want it fired at its own deadline", at, ok)
+	}
+	if _, ok := fired(t25); ok {
+		t.Fatal("the 25ms timer fired at 10ms")
+	}
+	if _, ok := fired(t30); ok {
+		t.Fatal("the 30ms timer fired at 10ms")
+	}
+	fc.Advance(15 * time.Millisecond)
+	if at, ok := fired(t25); !ok || !at.Equal(start.Add(25*time.Millisecond)) {
+		t.Fatalf("after 25ms the 25ms timer = (%v, %v), want it fired at its own deadline", at, ok)
+	}
+	if _, ok := fired(t30); ok {
+		t.Fatal("the 30ms timer fired at 25ms")
+	}
+	fc.Advance(15 * time.Millisecond)
+	if at, ok := fired(t30); !ok || !at.Equal(start.Add(30*time.Millisecond)) {
+		t.Fatalf("after 40ms the 30ms timer = (%v, %v), want it fired at its own deadline", at, ok)
+	}
+	if _, ok := fired(t20Stopped); ok {
+		t.Fatal("a stopped timer fired on Advance")
+	}
+
 	if !fc.Now().Equal(start.Add(40 * time.Millisecond)) {
 		t.Fatalf("Now() = %v, want %v", fc.Now(), start.Add(40*time.Millisecond))
 	}
