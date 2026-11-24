@@ -212,6 +212,7 @@ func (a *fakeLivePeerAgent) counts() (closes, detaches, interrupts int) {
 
 // V14: `codeaf chat --at` and `--host`, `codeaf serve` behave exactly as before, and remote control is off unless explicitly switched on.
 func TestRemoteControlIsOffUnlessSwitchedOn(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
 	t.Setenv("CODEAF_REMOTE_CONTROL", "")
 	_ = os.Unsetenv("CODEAF_REMOTE_CONTROL")
 	if remoteControlWanted() {
@@ -235,9 +236,10 @@ func TestRemoteControlIsOffUnlessSwitchedOn(t *testing.T) {
 func TestWireLiveLeavesOpenLiveNilWhenOffOrWithoutARoadOrOnAHostedWindow(t *testing.T) {
 	prevRoads := liveRoads
 	t.Cleanup(func() { liveRoads = prevRoads })
+	t.Setenv("CODEAF_HOME", t.TempDir())
 
 	road := newFakeLiveRoad()
-	lookup := func(device string) (liveRoad, string, bool) {
+	lookup := func(device, _ string) (liveRoad, string, bool) {
 		return road, "Desktop", true
 	}
 
@@ -288,7 +290,7 @@ func TestAKeypressOrARunningTurnKeepsTheLiveLinkActive(t *testing.T) {
 	door := &liveDoor{
 		home:  t.TempDir(),
 		cache: viewcache.Open(t.TempDir()),
-		roads: func(device string) (liveRoad, string, bool) {
+		roads: func(device, _ string) (liveRoad, string, bool) {
 			return road, "Desktop", device == "dev-desktop"
 		},
 		dial: func(liveRoad, chatlist.Row) (tui3.Agent, remote.Welcome, error) {
@@ -355,7 +357,7 @@ func TestAnOfflineComputerOpensTheLastSeenCopyAndSendsNothing(t *testing.T) {
 		home:  home,
 		cache: cache,
 		clock: clk,
-		roads: func(device string) (liveRoad, string, bool) {
+		roads: func(device, _ string) (liveRoad, string, bool) {
 			return road, "Desktop", device == "dev-desktop"
 		},
 	}
@@ -430,7 +432,7 @@ func TestTheLiveCopyIsSavedAfterATurnAndOnDetachNeverPerDelta(t *testing.T) {
 		home:  home,
 		cache: cache,
 		clock: clk,
-		roads: func(device string) (liveRoad, string, bool) {
+		roads: func(device, _ string) (liveRoad, string, bool) {
 			return road, "Desktop", device == "dev-desktop"
 		},
 		dial: func(liveRoad, chatlist.Row) (tui3.Agent, remote.Welcome, error) {
@@ -551,7 +553,7 @@ func TestClosingALiveConversationNeverEndsTheChatOnTheOtherComputer(t *testing.T
 	door := &liveDoor{
 		home:  t.TempDir(),
 		cache: viewcache.Open(t.TempDir()),
-		roads: func(device string) (liveRoad, string, bool) {
+		roads: func(device, _ string) (liveRoad, string, bool) {
 			return road, "Desktop", device == "dev-desktop"
 		},
 	}
@@ -595,7 +597,7 @@ func TestALiveAgentPagesOlderEntriesThroughTheRoad(t *testing.T) {
 	door := &liveDoor{
 		home:  t.TempDir(),
 		cache: viewcache.Open(t.TempDir()),
-		roads: func(device string) (liveRoad, string, bool) {
+		roads: func(device, _ string) (liveRoad, string, bool) {
 			return road, "Desktop", device == "dev-desktop"
 		},
 		dial: func(liveRoad, chatlist.Row) (tui3.Agent, remote.Welcome, error) {
@@ -670,12 +672,27 @@ func TestMovingAChatHereForgetsItsLastSeenCopy(t *testing.T) {
 		}
 	}
 
-	forgetViewedChat(home, "dev-desktop", "cell-moved")
+	forgetViewedChatEverywhere(home, "cell-moved")
 	if _, ok := cache.Load("dev-desktop", "cell-moved"); ok {
-		t.Fatal("forgetViewedChat left cell-moved in the viewer cache")
+		t.Fatal("forgetViewedChatEverywhere left cell-moved in the viewer cache")
 	}
 	if _, ok := cache.Load("dev-desktop", "cell-remaining"); !ok {
-		t.Fatal("forgetViewedChat removed another chat's copy")
+		t.Fatal("forgetViewedChatEverywhere removed another chat's copy")
+	}
+
+	// The window that moved the chat does not know which computer the copy was
+	// last seen on, so a second computer's copy of the same chat goes too.
+	if err := cache.SaveNow("dev-laptop", "cell-moved", viewcache.Snapshot{Host: "dev-laptop", Chat: "cell-moved", Entries: []session.DisplayEntry{{Role: "user", Text: "x"}}}); err != nil {
+		t.Fatalf("save second computer's copy: %v", err)
+	}
+	forgetViewedChatEverywhere(home, "cell-moved")
+	if _, ok := cache.Load("dev-laptop", "cell-moved"); ok {
+		t.Fatal("forgetViewedChatEverywhere left another computer's copy of the moved chat")
+	}
+	// A takeover built without a home (every test's literal) forgets nothing and does not fail.
+	takeover{}.movedHere("cell-remaining")
+	if _, ok := cache.Load("dev-desktop", "cell-remaining"); !ok {
+		t.Fatal("a takeover with no home removed a copy")
 	}
 
 	forgetViewed(home, "dev-desktop")

@@ -277,6 +277,7 @@ func (b *appBackend) RemoveDevice(deviceID string) (appwire.DeviceRemoveResult, 
 		}
 		livedoor.NotifyRemoved(home.Dir(), deviceID)
 		_ = pair.Permits().Forget(deviceID)
+		forgetViewed(home.Dir(), deviceID)
 		line = pair.ChatsRevokedLine(name)
 	}
 	// Success is retained even if a later user-requested refresh cannot reach

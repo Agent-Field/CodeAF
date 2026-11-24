@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
-	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -20,16 +20,8 @@ const (
 )
 
 // remoteControlWanted says whether this build's remote control is switched on.
-// Today it reads CODEAF_REMOTE_CONTROL (1, on, true, yes; anything else, unset
-// or empty is off); it is the ONE place that later calls
-// config.RemoteControlOn(). Default OFF.
 func remoteControlWanted() bool {
-	switch strings.ToLower(strings.TrimSpace(env.Get("CODEAF_REMOTE_CONTROL"))) {
-	case "1", "on", "true", "yes":
-		return true
-	default:
-		return false
-	}
+	return config.RemoteControlOn()
 }
 
 // liveRoad is everything the terminal needs from the viewer side of one other
@@ -49,7 +41,10 @@ type liveRoad interface {
 	Road() string
 	// Permit is what the other computer lets this one do: may it type, and the sentence that says why not.
 	Permit() (drive bool, readOnly string)
-	// Older returns up to limit entries before the absolute index, oldest first, whether older ones remain, and the absolute index of the first returned.
+}
+
+// olderRoad is a road that can read older pages by itself; the real road cannot and the agent pages through its own connection instead.
+type olderRoad interface {
 	Older(ctx context.Context, chat string, before, limit int) (entries []session.DisplayEntry, base int, more bool, err error)
 }
 
@@ -57,7 +52,7 @@ type liveRoad interface {
 // and whether one exists. It is the one injection point: nil (the state of
 // every build until the adapter lands) means no road, so remote control is
 // absent.
-var liveRoads func(device string) (road liveRoad, name string, ok bool)
+var liveRoads func(device, name string) (liveRoad, string, bool)
 
 // liveDoor opens a chat held on another of this person's computers as a live
 // view when that computer can be reached, and falls back to the viewer's
@@ -65,17 +60,17 @@ var liveRoads func(device string) (road liveRoad, name string, ok bool)
 type liveDoor struct {
 	home  string
 	cache *viewcache.Cache
-	roads func(device string) (road liveRoad, name string, ok bool)
+	roads func(device, name string) (liveRoad, string, bool)
 	clock viewcache.Clock
 	dial  func(road liveRoad, row chatlist.Row) (tui3.Agent, remote.Welcome, error)
 }
 
-func (d *liveDoor) lookupRoad(device string) (liveRoad, string, bool) {
+func (d *liveDoor) lookupRoad(device, name string) (liveRoad, string, bool) {
 	if d.roads != nil {
-		return d.roads(device)
+		return d.roads(device, name)
 	}
 	if liveRoads != nil {
-		return liveRoads(device)
+		return liveRoads(device, name)
 	}
 	return nil, "", false
 }
@@ -83,7 +78,7 @@ func (d *liveDoor) lookupRoad(device string) (liveRoad, string, bool) {
 // Open dials a live view of row on the computer holding it, or opens the
 // local last-seen copy read-only when that computer is offline.
 func (d *liveDoor) Open(ctx context.Context, row chatlist.Row) (tui3.Conversation, error) {
-	road, name, ok := d.lookupRoad(row.DeviceID)
+	road, name, ok := d.lookupRoad(row.DeviceID, row.Device)
 	host := strings.TrimSpace(name)
 	if host == "" {
 		host = strings.TrimSpace(row.Device)
@@ -100,6 +95,7 @@ func (d *liveDoor) Open(ctx context.Context, row chatlist.Row) (tui3.Conversatio
 		welcome   remote.Welcome
 		link      tui3.LinkSeam
 		taskRoom  func(uint64, int) (session.TaskRecord, error)
+		pager     func(context.Context, int, int) (remote.Page, error)
 		shut      func() error
 	)
 	if d.dial != nil {
@@ -116,6 +112,7 @@ func (d *liveDoor) Open(ctx context.Context, row chatlist.Row) (tui3.Conversatio
 			seams := newHostSeams(client)
 			link = hostLink(seams)
 			taskRoom = remoteAgent.TaskRoom
+			pager = remoteAgent.TranscriptPage
 			shut = client.Close
 			baseAgent = countedAgent(remoteAgent)
 		} else if room, ok := baseAgent.(interface {
@@ -151,6 +148,7 @@ func (d *liveDoor) Open(ctx context.Context, row chatlist.Row) (tui3.Conversatio
 		link.Driving = liveDriving(link.Driving, road)
 		remoteAgent := client.Agent()
 		taskRoom = remoteAgent.TaskRoom
+		pager = remoteAgent.TranscriptPage
 		baseAgent = countedAgent(remoteAgent)
 		shut = client.Close
 	}
@@ -158,6 +156,7 @@ func (d *liveDoor) Open(ctx context.Context, row chatlist.Row) (tui3.Conversatio
 	agent := &liveAgent{
 		Agent:     baseAgent,
 		road:      road,
+		pager:     pager,
 		cache:     d.cache,
 		host:      host,
 		device:    row.DeviceID,
@@ -262,6 +261,7 @@ func liveDriving(base func() tui3.Driving, road liveRoad) func() tui3.Driving {
 type liveAgent struct {
 	tui3.Agent
 	road      liveRoad
+	pager     func(ctx context.Context, before, limit int) (remote.Page, error)
 	cache     *viewcache.Cache
 	host      string
 	device    string
@@ -282,18 +282,27 @@ type liveAgent struct {
 
 var _ tui3.OlderReader = (*liveAgent)(nil)
 
-// Older fetches a page of entries before the absolute index through the road
-// and updates TranscriptBase to the absolute index of the first entry returned.
+// Older fetches a page of entries before the absolute index through the
+// agent's own connection (or an olderRoad fallback) and updates TranscriptBase
+// to the absolute index of the first entry returned.
 func (a *liveAgent) Older(ctx context.Context, before, limit int) ([]session.DisplayEntry, bool, error) {
-	if a.road == nil {
-		return nil, false, nil
+	if a.pager != nil {
+		page, err := a.pager(ctx, before, limit)
+		if err != nil {
+			return nil, false, err
+		}
+		a.setBase(page.Base)
+		return page.Entries, page.More, nil
 	}
-	entries, base, more, err := a.road.Older(ctx, a.cell, before, limit)
-	if err != nil {
-		return nil, false, err
+	if road, ok := a.road.(olderRoad); ok {
+		entries, base, more, err := road.Older(ctx, a.cell, before, limit)
+		if err != nil {
+			return nil, false, err
+		}
+		a.setBase(base)
+		return entries, more, nil
 	}
-	a.setBase(base)
-	return entries, more, nil
+	return nil, false, nil
 }
 
 // TranscriptBase returns the absolute transcript index of the first entry held.
@@ -638,11 +647,12 @@ func forgetViewed(home, device string) {
 	viewcache.Open(home).Forget(device)
 }
 
-// forgetViewedChat removes the last-seen copy of one chat when that chat is
-// moved to this computer.
-func forgetViewedChat(home, device, chat string) {
-	if strings.TrimSpace(home) == "" || strings.TrimSpace(device) == "" || strings.TrimSpace(chat) == "" {
+// forgetViewedChatEverywhere removes the last-seen copy of one chat kept for
+// every computer, because the chat now runs on this one. The window that moved
+// it does not know which computer the copy was last seen on.
+func forgetViewedChatEverywhere(home, chat string) {
+	if strings.TrimSpace(home) == "" || strings.TrimSpace(chat) == "" {
 		return
 	}
-	viewcache.Open(home).ForgetChat(device, chat)
+	viewcache.Open(home).ForgetChatEverywhere(chat)
 }

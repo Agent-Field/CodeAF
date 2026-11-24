@@ -627,6 +627,7 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 	}
 	livedoor.NotifyRemoved(home.Dir(), row.id)
 	_ = pair.Permits().Forget(row.id)
+	forgetViewed(home.Dir(), row.id)
 	return pair.ChatsRevokedLine(row.Name), nil
 }
 

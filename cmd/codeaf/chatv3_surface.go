@@ -157,7 +157,11 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 			<-copiesDone
 		}()
 		options.Pairing = chatPairDoor{}
-		options.Approvals = newApprovalsDoor(home.Dir())
+		door := newApprovalsDoor(home.Dir())
+		options.Approvals = door
+		// THE ONE-TIME QUESTION ABOUT OLDER PAIRINGS exists only with remote
+		// control on; newPermitAsker answers nil otherwise, and nil is absent.
+		options.PermitAsk = newPermitAsker(door)
 	}
 	options.UpdateRunning = revision
 	options.UpdateCurl = curl
