@@ -1242,7 +1242,10 @@ class Wire:
         mask = os.urandom(4)
         n = len(data)
         head = b'\x82' + (bytes([0x80 | n]) if n < 126 else b'\xfe' + n.to_bytes(2, 'big') if n < 65536 else b'\xff' + n.to_bytes(8, 'big'))
-        self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+        try:
+            self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+        except OSError:
+            self.closed = True
 
     def _frames(self):
         """Pops every complete WebSocket message from the buffer, joined into the byte stream."""
@@ -1394,17 +1397,6 @@ def p2_ids(listing, key):
     return [row.get('id') for row in (listing or {}).get(key, [])] if isinstance(listing, dict) else []
 
 
-def p2_quiet(people, seconds=90):
-    """Waits until none of these people's chats is running, so the per-person limit on running chats cannot get in the way."""
-    def idle():
-        for token in people:
-            code, body = http('GET', ORG + '/v1/hosted/sessions', token)
-            if code != 200 or any(row.get('state') == 'running' for row in body.get('sessions', [])):
-                return False
-        return True
-    return bool(wait_until(idle, seconds, 3))
-
-
 def p2_grant(owner_token, chat, who, role):
     code, made = http('POST', ORG + '/v1/resources/session/%s/grants' % chat, owner_token, {'subject': {'kind': 'person', 'id': who}, 'role': role})
     return code, (made or {}).get('id', '') if isinstance(made, dict) else ''
@@ -1419,6 +1411,25 @@ def p2_error(result):
     return (result or {}).get('error', '') if isinstance(result, dict) else '(no answer)'
 
 
+def p2_put_policy(operator, change):
+    """Reads the policy fresh, applies `change` to a copy and writes it with the revision just read (a write against an older one is refused)."""
+    code, current = http('GET', ORG + '/v1/org/policy', operator)
+    if code != 200 or not isinstance(current, dict):
+        return code, current
+    edited = json.loads(json.dumps(current))
+    change(edited)
+    return http('PUT', ORG + '/v1/org/policy', operator, edited)
+
+
+def p2_restore_policy(operator, original):
+    """Puts the policy's content back as it was read at the start, on the current revision."""
+    def change(policy):
+        for key in [k for k in policy if k not in ('rev', 'updated_at', 'updated_by')]:
+            policy.pop(key)
+        policy.update({k: v for k, v in original.items() if k not in ('rev', 'updated_at', 'updated_by')})
+    return p2_put_policy(operator, change)
+
+
 def hosted_p2_prepare():
     print('--- hosted chats P2: making the chats (and the third person)')
     secret = password()
@@ -1427,7 +1438,7 @@ def hosted_p2_prepare():
     if not operator:
         return
     ids = {}
-    for who, name in (('priya', 'p2_priya'), ('noor', 'p2_noor')):
+    for who, name in (('kai', 'p2_kai'), ('noor', 'p2_noor')):
         token = p2_person(who, operator, secret)
         check(f'P2 {who} signs in', bool(token))
         code, made = http('POST', ORG + '/v1/hosted/sessions', token, {}) if token else (0, None)
@@ -1441,58 +1452,59 @@ def hosted_p2():
     print('--- hosted chats P2: private by default, shared and watched, the operator, bots, the hosting policy')
     secret = password()
     operator = sign_in('owner')
-    priya = sign_in('priya')
+    kai = sign_in('kai')
     noor = p2_person('noor', operator, secret) if operator else None
-    check('P2 the operator and two people sign in', bool(operator and priya and noor))
-    if not (operator and priya and noor):
+    check('P2 the operator and two people sign in', bool(operator and kai and noor))
+    if not (operator and kai and noor):
         return
     ids = json.loads(P2_IDS.read_text())
-    chat_p, chat_n = ids['p2_priya'], ids['p2_noor']
-    check('P2 the other chats have stopped running (so the limit on running chats is not in the way)', p2_quiet([operator, priya, noor]), '')
+    chat_p, chat_n = ids['p2_kai'], ids['p2_noor']
+    original_policy = http('GET', ORG + '/v1/org/policy', operator)[1]
 
     # P2-1: a chat is private by default, at the list, at every door, and in the live event stream.
-    code, mine = http('GET', ORG + '/v1/hosted/sessions', priya)
+    code, mine = http('GET', ORG + '/v1/hosted/sessions', kai)
     check('P2-1 the owner lists the chat as their own', code == 200 and chat_p in p2_ids(mine, 'sessions'), short(mine, 200))
     for who, token in (('Noor', noor), ('the operator', operator)):
         code, other = http('GET', ORG + '/v1/hosted/sessions', token)
-        check(f'P2-1 {who} has none of Priya\'s chat in either list', code == 200 and chat_p not in p2_ids(other, 'sessions') + p2_ids(other, 'shared'), short(other, 200))
+        check(f'P2-1 {who} has none of Kai\'s chat in either list', code == 200 and chat_p not in p2_ids(other, 'sessions') + p2_ids(other, 'shared'), short(other, 200))
     unknown = http('GET', ORG + '/v1/hosted/sessions/' + UNKNOWN_CHAT, noor)
     for who, token in (('Noor', noor), ('the operator', operator)):
         got = http('GET', ORG + '/v1/hosted/sessions/' + chat_p, token)
-        check(f'P2-1 {who} opening Priya\'s private chat gets exactly what an unknown chat gets', got == unknown and got[0] == 404 and (got[1] or {}).get('error') == NO_SUCH_CHAT, f'{got} vs {unknown}')
+        check(f'P2-1 {who} opening Kai\'s private chat gets exactly what an unknown chat gets', got == unknown and got[0] == 404 and (got[1] or {}).get('error') == NO_SUCH_CHAT, f'{got} vs {unknown}')
         wire = wire_answer(token, chat_p)
-        check(f'P2-1 {who} attaching to Priya\'s private chat gets the same words', wire[0] == 404 and NO_SUCH_CHAT in wire[1], wire)
+        check(f'P2-1 {who} attaching to Kai\'s private chat gets the same words', wire[0] == 404 and NO_SUCH_CHAT in wire[1], wire)
         for suffix, verb in (('/stop', 'POST'), ('', 'DELETE')):
             code, body = http(verb, ORG + '/v1/hosted/sessions/' + chat_p + suffix, token, {} if verb == 'POST' else None)
             check(f'P2-1 {who} cannot {"stop" if suffix else "delete"} it either', code == 404 and (body or {}).get('error') == NO_SUCH_CHAT, f'{code} {body}')
 
-    watchers = {'noor': Events(noor), 'operator': Events(operator), 'priya': Events(priya)}
-    code, made = http('POST', ORG + '/v1/hosted/sessions', priya, {})
+    watchers = {'noor': Events(noor), 'operator': Events(operator), 'kai': Events(kai)}
+    code, made = http('POST', ORG + '/v1/hosted/sessions', kai, {})
     extra = (made or {}).get('id', '') if isinstance(made, dict) else ''
     check('P2-1 the owner makes another chat while others are watching the event stream', code in (200, 201) and extra.startswith('hs_'), f'{code}')
-    http('POST', ORG + '/v1/hosted/sessions/%s/stop' % extra, priya, {})
-    http('DELETE', ORG + '/v1/hosted/sessions/' + extra, priya)
+    http('POST', ORG + '/v1/hosted/sessions/%s/stop' % extra, kai, {})
+    http('DELETE', ORG + '/v1/hosted/sessions/' + extra, kai)
     time.sleep(3)
     streams = {name: watcher.stop() for name, watcher in watchers.items()}
-    check('P2-1 the owner\'s own event stream carried the chat being made and removed', extra in streams['priya'], short(streams['priya'], 160))
+    check('P2-1 the owner\'s own event stream carried the chat being made and removed', extra in streams['kai'], short(streams['kai'], 160))
     check('P2-1 neither the other person\'s nor the operator\'s event stream ever carried it', extra not in streams['noor'] and extra not in streams['operator']
           and chat_p not in streams['noor'] and chat_p not in streams['operator'], f'noor {len(streams["noor"])} bytes, operator {len(streams["operator"])} bytes')
 
     # P2-2 and P2-5: sharing it makes it appear in the grantee's shared list, and a view grant watches and cannot send.
-    code, g_view = p2_grant(priya, chat_p, 'noor', 'view')
+    code, g_view = p2_grant(kai, chat_p, 'noor', 'view')
     check('P2-5 the owner shares the chat with Noor (view)', code == 201 and bool(g_view), f'{code}')
     code, listed = http('GET', ORG + '/v1/hosted/sessions', noor)
     rows = [r for r in (listed or {}).get('shared', []) if r.get('id') == chat_p] if isinstance(listed, dict) else []
     check('P2-2 Noor now lists it under shared, never under his own chats', len(rows) == 1 and chat_p not in p2_ids(listed, 'sessions'), short(listed, 300))
     check('P2-2 a shared row carries only the id, owner, role, how, state and times (no model access, no warning)',
-          len(rows) == 1 and set(rows[0]) == LIST_SHARED_KEYS and rows[0].get('role') == 'view' and rows[0].get('access') == 'shared' and rows[0].get('owner') == 'priya', rows)
+          len(rows) == 1 and set(rows[0]) == LIST_SHARED_KEYS and rows[0].get('role') == 'view' and rows[0].get('access') == 'shared' and rows[0].get('owner') == 'kai', rows)
     check('P2-2 the list says what the organization\'s policy is for chats on a computer', isinstance(listed, dict) and (listed.get('hosting') or {}).get('local_sessions') == 'refuse', short((listed or {}).get('hosting'), 80))
     code, other = http('GET', ORG + '/v1/hosted/sessions', operator)
     check('P2-1 the operator still has none of it', code == 200 and chat_p not in p2_ids(other, 'sessions') + p2_ids(other, 'shared'), short(other, 200))
 
     # The owner's turn goes first: it starts the chat and gives the guest something to watch.
-    status, out, err = chat(priya, 'bash: echo before-noor-attached', session=chat_p)
-    check('P2-8 the owner talks in their own chat through the client door as before', status == 0 and 'before-noor-attached' in out, short(out + err, 200))
+    status, out, err = chat(kai, 'bash: echo before-noor-attached; echo "UID $(id -u)"; pwd | sed "s/^/PWD /"', session=chat_p)
+    owner_uid, owner_pwd = field(out, 'UID'), field(out, 'PWD')
+    check('P2-8 the owner talks in their own chat through the client door as before', status == 0 and 'before-noor-attached' in out and bool(owner_uid), short(out + err, 200))
     guest = Wire(noor, chat_p)
     check('P2-4 Noor\'s window attaches to the shared chat', guest.status == 101, f'{guest.status} {guest.refusal}')
     if guest.status != 101:
@@ -1515,51 +1527,70 @@ def hosted_p2():
     banned = [w for w in BANNED_WORDS if w in (GUEST_OWNER_ONLY + GUEST_NEEDS_RUN + GUEST_NEEDS_STEER + ACCESS_REMOVED).lower()]
     check('P2-5 the refusal sentences keep to plain words', not banned, banned)
 
-    # The owner's turn runs while the guest watches: the guest's window is told what happens (events or facts frames).
-    watched = []
-    thread = threading.Thread(target=lambda: watched.append(chat(priya, 'bash: echo seen-live-by-noor', session=chat_p)), daemon=True)
-    thread.start()
-    seen = guest.read_until(lambda f: f.get('kind') in ('event', 'facts'), 90)
-    thread.join(120)
+    # The owner's own window drives a turn while the guest watches: the guest's window is told what happens, and the owner's window is the
+    # unchanged byte-copying wire (P2-10), welcomed exactly as at home.
+    owner_wire = Wire(kai, chat_p)
+    owner_welcome = owner_wire.hello(clientID='smoke-owner') if owner_wire.status == 101 else None
+    check('P2-10 the owner attaches through the unchanged wire and is welcomed', owner_wire.status == 101 and owner_welcome is not None and owner_welcome.get('kind') == 'welcome', f'{owner_wire.status} {short(owner_welcome, 160)}')
+    owner_sent = owner_wire.call('Submit', {'text': 'bash: echo seen-live-by-noor'}, seconds=60) if owner_wire.status == 101 else None
+    check('P2-10 the owner\'s message is taken by the chat from their own window', owner_sent is not None and not p2_error(owner_sent), short(owner_sent, 200))
+    seen = guest.read_until(lambda f: 'seen-live-by-noor' in json.dumps(f), 60)
     check('P2-5 a guest watching live is told what the owner\'s turn does', seen is not None, short(seen, 160))
-    check('P2-5 and the owner\'s turn was not disturbed by the watcher', bool(watched) and watched[0][0] == 0 and 'seen-live-by-noor' in watched[0][1], short(watched, 200))
+    owner_text = json.dumps(owner_wire.read_until(lambda f: 'seen-live-by-noor' in json.dumps(f), 30))
+    check('P2-10 and the owner\'s own window is not disturbed by the watcher', 'seen-live-by-noor' in owner_text, short(owner_text, 160))
 
     # The role `edit` holds run, steer and answer in the default policy: a guest given it sends messages and they run as the OWNER
     # (the owner's sandbox and credentials), with the asker recorded; everything that is the owner's alone stays refused.
-    code, g_edit = p2_grant(priya, chat_p, 'noor', 'edit')
+    code, g_edit = p2_grant(kai, chat_p, 'noor', 'edit')
     check('P2-5 the owner gives Noor a role that may run (edit)', code == 201 and bool(g_edit), f'{code}')
-    p2_revoke(priya, chat_p, g_view)
+    p2_revoke(kai, chat_p, g_view)
     time.sleep(HEARTBEAT * 3 + 1)
-    spent_before = spent_of(priya)
-    sent = guest.call('Submit', {'text': 'bash: echo from-noor-as-the-owner; id -un'}, seconds=120)
-    check('P2-5 with run a guest\'s message is no longer refused by the organization\'s server (the chat answers)', sent is not None and p2_error(sent) not in (GUEST_NEEDS_RUN, GUEST_OWNER_ONLY), short(sent, 240))
+    # THE KNOWN KEYBOARD LIMIT, pinned here so a change to it is noticed: the chat lets one window type at a time, so while the owner's
+    # own window holds the keyboard the chat refuses a guest's message with its own sentence. Interrupting is not typing and goes through.
+    blocked = guest.call('Submit', {'text': 'bash: echo noor-while-the-owner-types'}, seconds=60)
+    check('P2-5 while the owner\'s window holds the keyboard the chat refuses a guest\'s message with its own keyboard sentence', 'the keyboard is in another window' in p2_error(blocked), short(blocked, 240))
+    nudged = guest.call('Interrupt')
+    check('P2-5 and a guest who may steer can still interrupt while the owner types (it is not typing)', nudged is not None and not p2_error(nudged), short(nudged, 200))
+    owner_wire.close()
+    spent_before = spent_of(kai)
+    guest_command = 'bash: echo from-noor-as-the-owner; echo "UID $(id -u)"; pwd | sed "s/^/PWD /"'
 
+    def guest_may_type():
+        got = guest.call('Submit', {'text': guest_command}, seconds=60)
+        return got if got is not None and not p2_error(got) else None
+    sent = wait_until(guest_may_type, 45, 3)
+    check('P2-5 once the owner\'s window is closed the guest\'s message goes through', sent is not None, short(sent, 240))
     def noor_turn_in_transcript():
         got = guest.call('Transcript')
         text = json.dumps(got)
-        return text if 'from-noor-as-the-owner' in text and 'STUB ran' in text else None
+        return text if 'STUB ran: from-noor-as-the-owner' in text else None
     transcript_text = wait_until(noor_turn_in_transcript, 90, 3)
     check('P2-5 the guest\'s message ran in the chat (the transcript holds it and the command\'s answer)', bool(transcript_text), short(sent, 160))
-    check('P2-8 and the command ran as the chat\'s owner, not as the guest', bool(transcript_text) and ('priya' in transcript_text or 'chat' in transcript_text) and 'noor' not in transcript_text.replace('noor-was-here', '').replace('from-noor-as-the-owner', ''), short(transcript_text, 200))
-    audit = [e for e in audit_lines(priya) if e.get('kind') == 'prompt' and e.get('chat') == chat_p]
+    answer = (transcript_text or '').split('STUB ran: from-noor-as-the-owner', 1)[-1]
+    guest_uid, guest_pwd = re.search(r'UID (\d+)', answer), re.search(r'PWD (/[^\\\s"]+)', answer)
+    check('P2-8 and the command ran as the chat\'s owner: the same user and the owner\'s own chat folder', bool(guest_uid) and bool(guest_pwd) and guest_uid.group(1) == owner_uid and guest_pwd.group(1) == owner_pwd and chat_p in owner_pwd,
+          f'owner {owner_uid} {owner_pwd}, guest {guest_uid.group(1) if guest_uid else None} {guest_pwd.group(1) if guest_pwd else None}')
+    audit = [e for e in audit_lines(kai) if e.get('kind') == 'prompt' and e.get('chat') == chat_p]
     check('P2-8 the owner\'s activity list holds one line for that message, naming who asked and never what was said',
-          len(audit) >= 1 and all(e.get('asker') == 'noor' and e.get('person') == 'priya' for e in audit) and 'from-noor' not in json.dumps(audit), short(audit, 300))
-    spent_after = wait_until(lambda: (lambda value: value if value is not None and value > spent_before else None)(spent_of(priya)), 30, 2)
+          len(audit) >= 1 and all(e.get('asker') == 'noor' and e.get('person') == 'kai' for e in audit) and 'from-noor' not in json.dumps(audit), short(audit, 300))
+    spent_after = wait_until(lambda: (lambda value: value if value is not None and value > spent_before else None)(spent_of(kai)), 30, 2)
     check('P2-8 what the guest\'s message cost is the OWNER\'s spend', spent_after is not None and spent_of(noor) in (None, 0, 0.0), f'owner {spent_before} -> {spent_after}, guest {spent_of(noor)}')
     db = glob.glob('/data/**/factory-workstreams.db', recursive=True)
     asked = []
     if len(db) == 1:
         import sqlite3
         with sqlite3.connect('file:%s?mode=ro' % db[0], uri=True) as conn:
-            asked = conn.execute("SELECT by, asker FROM spend WHERE chat = ? AND asker <> ''", (chat_p,)).fetchall()
-    check('P2-8 the spend row says who asked (approximately) and is still charged to the owner', bool(asked) and all(row == ('priya', 'noor') for row in asked), asked)
+            asked = conn.execute("SELECT by, asker FROM spend WHERE chat = ? AND asker <> ''", ('hosted:' + chat_p,)).fetchall()
+    check('P2-8 the spend row says who asked (approximately) and is still charged to the owner', bool(asked) and all(row == ('kai', 'noor') for row in asked), asked)
     # The chat's git goes through the organization with the OWNER's stored GitHub access whoever typed the message; the activity list says who.
+    code, stored = http('PUT', ORG + '/v1/hosted/keys/github', kai, {'key': GIT_TOKEN})
+    check('P2-8 the owner stores their GitHub access (the stub git host\'s token)', code in (200, 201, 204), f'{code} {short(stored, 120)}')
     time.sleep(6)
     sent_git = guest.call('Submit', {'text': 'bash: git clone -q http://gitstub:8891/acme/widgets.git gp 2>&1; echo "GITGUEST $?"'}, seconds=120)
     cloned = wait_until(lambda: (lambda text: text if 'GITGUEST 0' in text else None)(json.dumps(guest.call('Transcript'))), 120, 3)
     check('P2-8 a guest with run has the chat clone through the owner\'s GitHub access', bool(cloned), short(sent_git, 200))
-    git_lines = [e for e in audit_lines(priya) if e.get('kind') == 'git' and e.get('chat') == chat_p and e.get('asker') == 'noor']
-    check('P2-8 and each of those git lines in the owner\'s activity list names who was asking', len(git_lines) >= 2 and all(e.get('person') == 'priya' for e in git_lines), short(git_lines, 300))
+    git_lines = [e for e in audit_lines(kai) if e.get('kind') == 'git' and e.get('chat') == chat_p and e.get('asker') == 'noor']
+    check('P2-8 and each of those git lines in the owner\'s activity list names who was asking', len(git_lines) >= 1 and all(e.get('person') == 'kai' for e in git_lines), short(git_lines, 300))
     steered = guest.call('Steer', {'text': 'noor-steering'})
     check('P2-5 with that role a steer is no longer refused by the organization\'s server (the chat itself answers)', p2_error(steered) != GUEST_NEEDS_STEER and steered is not None, short(steered, 240))
     for method, payload in (('StopWork', None), ('SetModel', 'x/y'), ('Fetch.File', {'path': '/etc/passwd'})):
@@ -1568,36 +1599,42 @@ def hosted_p2():
     check('P2-5 the server does not close an open guest window because its role changed', not guest.closed, '')
 
     # Whether a non-owner may send prompts is a POLICY EDIT: take run out of `edit` and the very next message is refused (no code, no new grant).
-    code, policy_now = http('GET', ORG + '/v1/org/policy', operator)
-    trimmed = json.loads(json.dumps(policy_now)) if code == 200 and isinstance(policy_now, dict) else None
-    if trimmed:
-        for role in trimmed.get('roles', []):
+    def without_run(policy):
+        for role in policy.get('roles', []):
             if role.get('name') == 'edit':
                 role['verbs'] = [v for v in role.get('verbs', []) if v != 'run']
-        code, put = http('PUT', ORG + '/v1/org/policy', operator, trimmed)
-        check('P2-5 the operator takes run out of the edit role', code == 200, f'{code} {short(put, 160)}')
-        time.sleep(HEARTBEAT * 3 + 1)
-        refused = guest.call('Submit', {'text': 'noor-again'})
-        check('P2-5 with run gone from the role the guest\'s next message is refused in the exact words', p2_error(refused) == GUEST_NEEDS_RUN, short(refused, 240))
-        still = guest.call('Interrupt')
-        check('P2-5 and steering still goes through (it is another verb)', p2_error(still) != GUEST_NEEDS_STEER and still is not None, short(still, 200))
-        code, put = http('PUT', ORG + '/v1/org/policy', operator, policy_now)
-        check('P2-5 the operator puts the policy back', code == 200, f'{code} {short(put, 160)}')
-        time.sleep(HEARTBEAT * 3 + 1)
+    code, put = p2_put_policy(operator, without_run)
+    check('P2-5 the operator takes run out of the edit role', code == 200, f'{code} {short(put, 160)}')
+    time.sleep(HEARTBEAT * 3 + 1)
+    refused = guest.call('Submit', {'text': 'noor-again'})
+    check('P2-5 with run gone from the role the guest\'s next message is refused in the exact words', p2_error(refused) == GUEST_NEEDS_RUN, short(refused, 240))
+    still = guest.call('Interrupt')
+    check('P2-5 and steering still goes through (it is another verb)', p2_error(still) != GUEST_NEEDS_STEER and still is not None, short(still, 200))
+    code, put = p2_restore_policy(operator, original_policy)
+    check('P2-5 the operator puts the policy back', code == 200, f'{code} {short(put, 160)}')
+    time.sleep(HEARTBEAT * 3 + 1)
 
-    # A turn that is running can be interrupted by a guest who may steer.
-    started = []
-    runner = threading.Thread(target=lambda: started.append((time.time(), chat(priya, 'bash: sleep 40; echo slept-the-full-time', session=chat_p, timeout=100), time.time())), daemon=True)
-    runner.start()
+    # A turn that is running can be interrupted by a guest who may steer: the owner's window starts a long one, the guest ends it early.
+    owner_two = Wire(kai, chat_p)
+    owner_two.hello(clientID='smoke-owner-2') if owner_two.status == 101 else None
+    began = time.time()
+    long_turn = owner_two.call('Submit', {'text': 'bash: sleep 40; echo slept-the-full-time'}, seconds=60) if owner_two.status == 101 else None
+    check('P2-5 the owner starts a long turn from their own window', long_turn is not None and not p2_error(long_turn), short(long_turn, 200))
     time.sleep(8)
     interrupted = guest.call('Interrupt')
     check('P2-5 a guest who may steer can interrupt a running turn', interrupted is not None and not p2_error(interrupted), short(interrupted, 240))
-    runner.join(100)
-    ran_for = (started[0][2] - started[0][0]) if started else 0
-    check('P2-5 and the turn did stop early', bool(started) and 'slept-the-full-time' not in started[0][1][1], f'ran {ran_for:.0f}s: {short(started[0][1] if started else None, 200)}')
+
+    def turn_ended():
+        text = json.dumps(guest.call('Transcript'))
+        if 'STUB ran: slept-the-full-time' in text:
+            return 'full'
+        return 'early' if 'Command aborted' in text else None
+    outcome = wait_until(turn_ended, 30, 2)
+    check('P2-5 and the turn did stop early', outcome == 'early' and time.time() - began < 38, f'{outcome} after {time.time() - began:.0f}s')
+    owner_two.close()
 
     # Taking the access away ends the open window within a few heartbeats, in plain words.
-    p2_revoke(priya, chat_p, g_edit)
+    p2_revoke(kai, chat_p, g_edit)
     frames, closed = guest.drain_until_closed(HEARTBEAT * 8 + 5)
     check('P2-5 the guest\'s open window is ended after the access is removed', closed, f'{len(frames)} frames, closed {closed}')
     check('P2-5 and the last thing it was told is that its access was removed', any(f.get('kind') == 'fatal' and ACCESS_REMOVED in str(f.get('error', f)) for f in frames), short(frames[-2:], 240))
@@ -1608,32 +1645,32 @@ def hosted_p2():
     check('P2-1 and it left his shared list', chat_p not in p2_ids(listed, 'shared'), short(listed, 200))
 
     # P2-4 and P2-9: what the operator is shown of a chat that the policy does not keep private, and never the wire.
-    code, policy = http('GET', ORG + '/v1/org/policy', operator)
-    original = json.loads(json.dumps(policy)) if code == 200 and isinstance(policy, dict) else None
-    check('P2-9 the operator reads the organization policy', original is not None, code)
+    original = original_policy if isinstance(original_policy, dict) else None
+    check('P2-9 the operator reads the organization policy', original is not None, '')
     if original is None:
         return
-    changed = json.loads(json.dumps(original))
-    changed.setdefault('defaults', {})['session'] = {'visibility': 'owner'}
-    code, put = http('PUT', ORG + '/v1/org/policy', operator, changed)
+    code, put = p2_put_policy(operator, lambda policy: policy.setdefault('defaults', {}).__setitem__('session', {'visibility': 'owner'}))
     check('P2-4 the operator makes new chats visible as metadata (the default for chats is no longer private)', code == 200, f'{code} {short(put, 160)}')
     status, out, err = 0, '', ''
-    code, made = http('POST', ORG + '/v1/hosted/sessions', priya, {})
+    code, made = http('POST', ORG + '/v1/hosted/sessions', kai, {})
     visible = (made or {}).get('id', '') if isinstance(made, dict) else ''
     code, listed = http('GET', ORG + '/v1/hosted/sessions', operator)
     seen_rows = [r for r in (listed or {}).get('shared', []) if r.get('id') == visible] if isinstance(listed, dict) else []
     check('P2-2 the operator lists that chat as metadata only (id, owner, how, state, times)', len(seen_rows) == 1 and set(seen_rows[0]) == LIST_OPERATOR_KEYS and seen_rows[0].get('access') == 'operator', short(seen_rows or listed, 300))
     wire = wire_answer(operator, visible)
     check('P2-4 and the operator still cannot attach to it, or read it, from that role', wire[0] == 404 and NO_SUCH_CHAT in wire[1], wire)
-    code, back = http('PUT', ORG + '/v1/org/policy', operator, original)
+    code, back = p2_restore_policy(operator, original)
     check('P2-4 the operator puts the policy back', code == 200, f'{code} {short(back, 160)}')
+    http('POST', ORG + '/v1/hosted/sessions/%s/stop' % visible, kai, {})
+    http('DELETE', ORG + '/v1/hosted/sessions/' + visible, kai)
+    code, made = http('POST', ORG + '/v1/hosted/sessions', kai, {})
+    private_again = (made or {}).get('id', '') if isinstance(made, dict) else ''
     code, listed = http('GET', ORG + '/v1/hosted/sessions', operator)
-    check('P2-1 and the chat is gone from the operator\'s list again', visible not in p2_ids(listed, 'shared'), short(listed, 200))
-    http('POST', ORG + '/v1/hosted/sessions/%s/stop' % visible, priya, {})
-    http('DELETE', ORG + '/v1/hosted/sessions/' + visible, priya)
+    check('P2-1 and a chat made after the policy is put back is private to the operator again', private_again.startswith('hs_') and private_again not in p2_ids(listed, 'shared') + p2_ids(listed, 'sessions'), short(listed, 200))
+    http('DELETE', ORG + '/v1/hosted/sessions/' + private_again, kai)
 
     # P2-6: a bot is its creator and no more, decided again at every request.
-    code, made = http('POST', ORG + '/v1/bots', priya, {'name': 'p2-smoke'})
+    code, made = http('POST', ORG + '/v1/bots', kai, {'name': 'p2-smoke'})
     bot = (made or {}).get('token', '') if isinstance(made, dict) else ''
     bot_id = ((made or {}).get('bot') or {}).get('id', '') if isinstance(made, dict) else ''
     check('P2-6 a person makes a bot', code in (200, 201) and bot.startswith('cbt_'), f'{code}')
@@ -1644,7 +1681,7 @@ def hosted_p2():
     code, made = http('POST', ORG + '/v1/hosted/sessions', bot, {})
     bot_chat = (made or {}).get('id', '') if isinstance(made, dict) else ''
     check('P2-6 the bot starts a chat', code in (200, 201) and bot_chat.startswith('hs_'), f'{code} {short(made, 160)}')
-    code, mine = http('GET', ORG + '/v1/hosted/sessions', priya)
+    code, mine = http('GET', ORG + '/v1/hosted/sessions', kai)
     check('P2-6 the bot\'s chat is its creator\'s', bot_chat in p2_ids(mine, 'sessions'), short(mine, 200))
     for who, token in (('Noor', noor), ('the operator', operator)):
         code, other = http('GET', ORG + '/v1/hosted/sessions', token)
@@ -1655,11 +1692,10 @@ def hosted_p2():
     code, refused = http('PUT', ORG + '/v1/hosted/keys/openrouter', bot, {'key': 'sk-not-from-a-bot'})
     check('P2-6 and cannot store one', code in (401, 403) and BOT_REFUSED in json.dumps(refused), f'{code} {short(refused, 160)}')
 
-    code, g_bot = p2_grant(noor, chat_n, 'priya', 'view')
-    check('P2-6 Noor shares his chat with Priya (view)', code == 201 and bool(g_bot), f'{code}')
+    code, g_bot = p2_grant(noor, chat_n, 'kai', 'view')
+    check('P2-6 Noor shares his chat with Kai (view)', code == 201 and bool(g_bot), f'{code}')
     code, theirs = http('GET', ORG + '/v1/hosted/sessions', bot)
-    check('P2-6 the bot now lists Noor\'s chat under shared, as Priya does', chat_n in p2_ids(theirs, 'shared'), short(theirs, 240))
-    status, out, err = chat(noor, 'bash: echo noor-first', session=chat_n)
+    check('P2-6 the bot now lists Noor\'s chat under shared, as Kai does', chat_n in p2_ids(theirs, 'shared'), short(theirs, 240))
     bot_wire = Wire(bot, chat_n)
     welcome = bot_wire.hello(clientID='smoke-bot') if bot_wire.status == 101 else None
     check('P2-6 the bot attaches to the chat its creator may watch', bot_wire.status == 101 and welcome is not None and welcome.get('kind') == 'welcome', f'{bot_wire.status} {short(welcome, 160)}')
@@ -1676,46 +1712,45 @@ def hosted_p2():
     code, gone = http('DELETE', ORG + '/v1/hosted/sessions/' + bot_chat, bot)
     check('P2-7 the bot can end its own chat', code in (200, 204), f'{code}')
     if bot_id:
-        http('DELETE', ORG + '/v1/bots/' + bot_id, priya)
+        http('DELETE', ORG + '/v1/bots/' + bot_id, kai)
 
     # P2-9: the hosting policy: reported in the list, changed only by the operator, refused when it is not one of the three words.
     def hosting(token, key='local_sessions'):
         code, body = http('GET', ORG + '/v1/hosted/sessions', token)
         return ((body or {}).get('hosting') or {}).get(key) if isinstance(body, dict) else None
-    check('P2-9 an organization with chats on starts at refuse', hosting(priya) == 'refuse', hosting(priya))
+    check('P2-9 an organization with chats on starts at refuse', hosting(kai) == 'refuse', hosting(kai))
     check('P2-9 and the words for it say chats do not start on this computer and point at the personal account',
-          'do not start on this computer' in (hosting(priya, 'words') or '') and 'switch to your personal account' in (hosting(priya, 'words') or ''), hosting(priya, 'words'))
+          'do not start on this computer' in (hosting(kai, 'words') or '') and 'switch to your personal account' in (hosting(kai, 'words') or ''), hosting(kai, 'words'))
+    def set_hosting(word):
+        return p2_put_policy(operator, lambda policy: policy.__setitem__('hosting', {'local_sessions': word}))
     for word, phrase in (('warn', 'not part of the organization\'s account'), ('allow', '')):
-        edited = json.loads(json.dumps(original))
-        edited['hosting'] = {'local_sessions': word}
-        code, _ = http('PUT', ORG + '/v1/org/policy', operator, edited)
-        check(f'P2-9 the operator sets it to {word} and the list says {word}', code == 200 and hosting(priya) == word, f'{code} {hosting(priya)}')
-        words = hosting(priya, 'words') or ''
+        code, _ = set_hosting(word)
+        check(f'P2-9 the operator sets it to {word} and the list says {word}', code == 200 and hosting(kai) == word, f'{code} {hosting(kai)}')
+        words = hosting(kai, 'words') or ''
         check(f'P2-9 and its words are {"the warning" if phrase else "none"}', (phrase in words) if phrase else not words, words)
-    bad_edit = json.loads(json.dumps(original))
-    bad_edit['hosting'] = {'local_sessions': 'sometimes'}
-    code, refused = http('PUT', ORG + '/v1/org/policy', operator, bad_edit)
-    check('P2-9 a word that is not allow, warn or refuse is refused in words and changes nothing', code in (400, 422) and 'allow, warn or refuse' in json.dumps(refused) and hosting(priya) == 'allow', f'{code} {short(refused, 200)}')
-    edited = json.loads(json.dumps(original))
+    code, refused = set_hosting('sometimes')
+    check('P2-9 a word that is not allow, warn or refuse is refused in words and changes nothing', code in (400, 422) and 'allow, warn or refuse' in json.dumps(refused) and hosting(kai) == 'allow', f'{code} {short(refused, 200)}')
+    code, current = http('GET', ORG + '/v1/org/policy', operator)
+    edited = json.loads(json.dumps(current)) if isinstance(current, dict) else {}
     edited['hosting'] = {'local_sessions': 'warn'}
-    code, _ = http('PUT', ORG + '/v1/org/policy', priya, edited)
-    check('P2-9 a person who is not the operator cannot change it', code in (401, 403) and hosting(priya) == 'allow', f'{code}')
-    code, back = http('PUT', ORG + '/v1/org/policy', operator, original)
-    check('P2-9 the operator puts the policy back and the list reads refuse again', code == 200 and hosting(priya) == 'refuse', f'{code} {hosting(priya)}')
+    code, _ = http('PUT', ORG + '/v1/org/policy', kai, edited)
+    check('P2-9 a person who is not the operator cannot change it', code in (401, 403) and hosting(kai) == 'allow', f'{code}')
+    code, back = p2_restore_policy(operator, original)
+    check('P2-9 the operator puts the policy back and the list reads refuse again', code == 200 and hosting(kai) == 'refuse', f'{code} {hosting(kai)}')
 
-    P2_STATE.write_text(json.dumps({'priya_chat': chat_p, 'noor_chat': chat_n}))
+    P2_STATE.write_text(json.dumps({'kai_chat': chat_p, 'noor_chat': chat_n}))
     P2_STATE.chmod(0o600)
 
 
 def hosted_p2_after():
     print('--- hosted chats P2 after every service restarted')
-    operator, priya, noor = sign_in('owner'), sign_in('priya'), sign_in('noor')
-    check('P2 the three people still sign in', bool(operator and priya and noor))
-    if not (operator and priya and noor):
+    operator, kai, noor = sign_in('owner'), sign_in('kai'), sign_in('noor')
+    check('P2 the three people still sign in', bool(operator and kai and noor))
+    if not (operator and kai and noor):
         return
     state = json.loads(P2_STATE.read_text())
-    chat_p = state['priya_chat']
-    code, mine = http('GET', ORG + '/v1/hosted/sessions', priya)
+    chat_p = state['kai_chat']
+    code, mine = http('GET', ORG + '/v1/hosted/sessions', kai)
     check('P2-1 the owner still has the chat after the restart', chat_p in p2_ids(mine, 'sessions'), short(mine, 200))
     for who, token in (('Noor', noor), ('the operator', operator)):
         code, other = http('GET', ORG + '/v1/hosted/sessions', token)

@@ -94,7 +94,7 @@ if [ "$HOSTED" = 1 ]; then
   # rights, a bot is its creator and no more, and the policy says where chats may run. Needs a third person, invited by the section.
   run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-p2-prepare
   $DC exec -T codeaf cat /data/smoke-p2-ids.json | $DC exec -T sessionhost python3 $SMOKE hosted-seed || bad=1
-  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-p2
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787 -e GITSTUB_TOKEN' hosted-p2
 fi
 [ "$FULL" = 1 ] && run runner '' job
 
