@@ -144,8 +144,11 @@ func TestContractI4ChatMoveSendsOneEventToTheUnionAndRecordsIt(t *testing.T) {
 	events := contractResourceEvents(t, o, chat.ID)
 	contractMove(t, o, "santosh", chat.ID, to, 200, nil)
 	got := contractResourceEvents(t, o, chat.ID)
+	// CONTRACT CHANGE (org-follow A4): a chat shared with abir stays private, so the
+	// destination's people (mia) and the operator do not hear of it; only the owner
+	// and the grantee do. Before, the first grant opened it to the destination too.
 	if len(got) != len(events)+1 || !got[len(got)-1].itemAudience.Equal(acl.Audience{
-		Persons: []string{"abir", "mia", "santosh"}, Operator: true,
+		Persons: []string{"abir", "santosh"},
 	}) {
 		t.Fatalf("move events: before %+v, after %+v", events, got)
 	}

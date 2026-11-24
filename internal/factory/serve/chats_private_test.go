@@ -89,7 +89,7 @@ func TestContractA4SharingAChatListsItToThatPersonAlone(t *testing.T) {
 		}
 	}
 	o.do(t, "abir", "GET", "/v1/workstreams/"+ws+"/agent?chat="+chat.ID, -1, nil, 404, nil)
-	o.do(t, "santosh", "DELETE", path+"/grants/"+grant.ID, -1, nil, 200, nil)
+	o.do(t, "santosh", "DELETE", path+"/grants/"+grant.ID, -1, nil, 204, nil)
 	if rows := othersOf(t, o, "abir", list); len(rows) != 0 {
 		t.Fatalf("a removed grant still lists the chat: %+v", rows)
 	}

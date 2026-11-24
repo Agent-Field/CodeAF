@@ -86,9 +86,14 @@ type Share struct {
 type Item struct {
 	OwnerKind, OwnerID string
 	Private            bool
-	Visibility         string
-	Shares             []Share
-	Grants             []Grant
+	// Closed is a private item that grants on the item itself have opened: it
+	// stays private, so shares, the organization's visibility and the operator
+	// (unless the policy lets it see private things) are still kept out, and
+	// only its owner and the people those grants name reach it.
+	Closed     bool
+	Visibility string
+	Shares     []Share
+	Grants     []Grant
 }
 
 // VerbSet is a set of verbs from the closed enum.
@@ -138,7 +143,8 @@ func (it Item) ownedBy(c Caller) bool {
 // held returns the names of every role the caller holds on the item. THE LAW
 // OF A PRIVATE ITEM: it is its owner's alone, so shares, grants and the
 // organization's visibility are not consulted, and the operator is let in only
-// when the policy says it sees private items.
+// when the policy says it sees private items. A private item that has been
+// opened by grants on itself (Closed) adds those grants and nothing else.
 func (p Policy) held(c Caller, it Item, now time.Time) map[string]bool {
 	roles := map[string]bool{}
 	if it.ownedBy(c) {
@@ -147,15 +153,17 @@ func (p Policy) held(c Caller, it Item, now time.Time) map[string]bool {
 	if c.Operator && (!it.Private || p.Operator.SeesPrivate) {
 		roles[p.Operator.Role] = true
 	}
-	if it.Private {
+	if it.Private && !it.Closed {
 		return roles
 	}
-	if it.Visibility == Org && c.Member {
-		roles[p.OrgRole] = true
-	}
-	for _, s := range it.Shares {
-		if (s.Kind == "person" || s.Kind == "team") && (Subject{Kind: s.Kind, ID: s.ID}).matches(c) {
-			roles[s.Role] = true
+	if !it.Private {
+		if it.Visibility == Org && c.Member {
+			roles[p.OrgRole] = true
+		}
+		for _, s := range it.Shares {
+			if (s.Kind == "person" || s.Kind == "team") && (Subject{Kind: s.Kind, ID: s.ID}).matches(c) {
+				roles[s.Role] = true
+			}
 		}
 	}
 	for _, g := range it.Grants {

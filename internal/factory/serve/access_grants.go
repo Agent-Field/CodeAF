@@ -16,7 +16,7 @@ import (
 // listAccessGrants lists the live tuples on a resource for anyone who may view
 // it: the owner, the legacy shares (source "share"), the stored grants and the
 // grants the policy wrote for itself (source "policy"). A private resource
-// lists only its owner.
+// lists only its owner, and, once grants on itself have opened it, those grants.
 func (h *Handler) listAccessGrants(w http.ResponseWriter, r *http.Request) {
 	res, v, ok := h.findAccessResource(w, r)
 	if !ok {
@@ -28,7 +28,7 @@ func (h *Handler) listAccessGrants(w http.ResponseWriter, r *http.Request) {
 		{AccessGrant: acl.Grant{ID: "owner:" + data.OwnerKind + ":" + data.OwnerID,
 			Subject: acl.Subject{Kind: data.OwnerKind, ID: data.OwnerID}, Resource: res.ref, Role: p.OwnerRole}, Source: "owner", Live: true},
 	}}
-	if !data.Private {
+	if !data.Private || data.Closed {
 		for _, share := range data.Shares {
 			out.Grants = append(out.Grants, api.GrantTuple{AccessGrant: acl.Grant{ID: "share:" + share.Kind + ":" + share.ID,
 				Subject: acl.Subject{Kind: share.Kind, ID: share.ID}, Resource: res.ref, Role: share.Role}, Source: "share", Live: true})
