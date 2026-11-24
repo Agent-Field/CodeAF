@@ -3970,6 +3970,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I give someone access until a date, and what happens when it ends", "organization-sharing"},
 		{"can I share my Afi pane with someone in the organization", "organization-sharing"},
 		{"what is a grant on a workstream and who may add one", "organization-sharing"},
+		{"are my chats private by default in a shared workstream", "organization-sharing"},
+		{"can other people in the workstream see the title of my chat", "organization-sharing"},
+		{"how do I make a bot token for a script that calls the organization server", "organization-sharing"},
+		{"can a bot do more than the person who made it", "organization-sharing"},
+		{"what happens to a bot when its creator is removed from the organization", "organization-sharing"},
+		{"does a request from the server's own computer have to sign in on a team factory", "factory"},
+		{"what does loopback_trust do", "factory"},
+		{"is a request through a reverse proxy on the same machine treated as local", "factory"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
