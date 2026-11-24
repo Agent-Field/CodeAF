@@ -76,7 +76,7 @@ typing from tower now · enter types here
 
 That line stands where the box would be, so words already in the box are kept but not drawn, and a view that is not holding the keyboard always says so. When the other computer has not told this one its name, the line reads `typing from the other computer now · enter types here`.
 
-Press `enter` there to type from this computer instead. That first `enter` only takes the keyboard and sends nothing: the box comes back with the words you had kept, and the next `enter` sends them once. Words you typed while it was not your turn are kept, not sent, and are in the box when it is. This is the same hand-over two windows of one chat already do; scrolling, copy mode and Home still work while you are not holding the keyboard.
+Press `enter` there to type from this computer instead. That first `enter` only takes the keyboard and sends nothing: the box comes back with any words it held when the other computer took the keyboard, and the next `enter` sends them once. Letters and commands typed while you are not holding the keyboard go nowhere, `/status` included, so press `enter` first and then type. This is the same hand-over two windows of one chat already do; scrolling, copy mode and Home (`space space`) still work while you are not holding the keyboard.
 
 ## The other computer went offline — last seen copy, my words are still in the box, last seen
 
