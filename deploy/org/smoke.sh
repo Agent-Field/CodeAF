@@ -20,7 +20,9 @@
 # SMOKE_HOSTED=1 adds hosted chats (the `hosted` profile, .env.stub.hosted): two people run chats on the
 # sessionhost through `codeaf chat --org`, and the test checks that the chats are kept apart, hold no
 # secrets, cannot reach the other services, can only be attached by their owner, survive a closed
-# client, are cleaned up on a stop, and survive a restart of the sessionhost. It needs a codeaf with
+# client, are cleaned up on a stop, and survive a restart of the sessionhost; then (P1) the metered model door, people's own
+# keys and git through the organization, and (P2) private-by-default chats, a guest watching a shared chat through a wire that
+# refuses what the guest's rights do not allow, bots, and the hosting policy. It needs a codeaf with
 # `codeaf sessionhost` in it, so build the image from a local binary (README.md "Hosted chats"):
 #
 #     cp ../../bin/codeaf codeaf-local && SMOKE_HOSTED=1 CODEAF_BINARY_FROM=local ./smoke.sh
@@ -88,6 +90,11 @@ if [ "$HOSTED" = 1 ]; then
   else
     echo "FAIL  C4 the refusal was not a clean one   $out" >&2; bad=1
   fi
+  # P2: a chat is private until it is shared, a shared chat is watched through a wire that checks every call against the guest's
+  # rights, a bot is its creator and no more, and the policy says where chats may run. Needs a third person, invited by the section.
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-p2-prepare
+  $DC exec -T codeaf cat /data/smoke-p2-ids.json | $DC exec -T sessionhost python3 $SMOKE hosted-seed || bad=1
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-p2
 fi
 [ "$FULL" = 1 ] && run runner '' job
 
@@ -102,6 +109,7 @@ if [ "$HOSTED" = 1 ]; then
   $DC exec -T sessionhost python3 $SMOKE hosted-leftovers || bad=1
   run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-after
   run codeaf '-e ORG_URL=http://127.0.0.1:8787 -e GITSTUB_TOKEN' hosted-p1-after
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-p2-after
 fi
 
 if [ "$bad" = 0 ]; then echo 'SMOKE PASSED'; else echo 'SMOKE FAILED' >&2; exit 1; fi
