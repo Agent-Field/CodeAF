@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.10
+#
+# The AgentField control plane, from the PUBLISHED image, pinned by tag and digest.
+#
+# That image is built with `-tags "embedded sqlite_fts5"` (see AgentField's
+# deployments/docker/Dockerfile.control-plane), which matters: a control plane
+# built without sqlite_fts5 registers nodes happily and then fails every
+# execution insert with "no such module: fts5". Do not swap in a binary built
+# another way.
+#
+# The base image is distroless, so it has no shell and no curl for a health
+# check. This file adds one static busybox binary for that and changes nothing
+# else; it still runs as the base image's non-root user.
+#
+# Build context is this folder:   docker build -f agentfield.Dockerfile -t agentfield-org .
+# To move to a newer control plane change the tag and the digest together.
+
+ARG AGENTFIELD_IMAGE=agentfield/control-plane:staging-0.1.147-rc.11@sha256:1c85c2f1cf53239b1a68b0fb3df772c6e77dd18292071bd98829259261be7d15
+
+FROM busybox:1.37.0-glibc AS busybox
+
+FROM ${AGENTFIELD_IMAGE}
+COPY --from=busybox /bin/busybox /usr/local/bin/busybox
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD ["/usr/local/bin/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/v1/health"]
