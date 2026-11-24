@@ -112,7 +112,9 @@ const teamStartDescription = "Start a new member conversation in this team with 
 	"kind team starts a sub-team instead: a new team under yours (name) whose manager is the new conversation, with its share of your pool; members you name move into it. " +
 	"Its manager reports to you and takes your orders; its members are its manager's to direct, not yours."
 
-const teamStartSchema = `{"type":"object","properties":{"handle":{"type":"string","description":"2 to 12 lowercase letters or digits, unique in the team. For kind team, the new team's manager."},` +
+// teamStartSchema names the handle limits from internal/teams, so the manager is
+// told the same range the store accepts.
+var teamStartSchema = fmt.Sprintf(`{"type":"object","properties":{"handle":{"type":"string","description":"%d to %d lowercase letters, digits or hyphens, starting with a letter or digit, unique in the team; one short role word reads best. For kind team, the new team's manager."},`, teams.HandleMin, teams.HandleMax) +
 	`"brief":{"type":"string","description":"The whole assignment, as its first message."},` +
 	`"model":{"type":"string","description":"Model for this new conversation, when the person names one; catalog ID or unique name. Omit for the profile default."},` +
 	`"kind":{"type":"string","enum":["member","team"],"description":"Default member."},` +

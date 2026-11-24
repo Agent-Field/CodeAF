@@ -623,7 +623,8 @@ func stageHandle(job Job) string {
 }
 
 // stageHandleMost is the longest a team handle may be (internal/teams'
-// HandleMax), spelled here so this package does not import the teams store.
+// HandleWordMax, the limit for handles the engine picks), spelled here so
+// this package does not import the teams store.
 const stageHandleMost = 12
 
 // stageAsk is the brief's first line, the stage's name and its ask: `review:

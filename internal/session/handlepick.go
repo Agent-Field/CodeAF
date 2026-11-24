@@ -264,7 +264,8 @@ func cleanHandleChoices(raw string) []string {
 			}
 			return -1
 		}, w)
-		if teams.ValidHandle(w) != nil || handleWorkWords[w] || strings.Trim(w, "0123456789") == "" {
+		// The model's word is engine-picked: one within HandleWordMax, or none.
+		if teams.ValidHandle(w) != nil || len(w) > teams.HandleWordMax || handleWorkWords[w] || strings.Trim(w, "0123456789") == "" {
 			continue
 		}
 		if !handleSeen(out, w) {

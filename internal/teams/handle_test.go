@@ -96,13 +96,13 @@ func TestSetHandleValidates(t *testing.T) {
 	f := &File{Teams: []Team{{ID: "t1", Members: []Member{{Key: "a", Word: "alpha"}, {Key: "b", Word: "beta"}}}}}
 	tidy(f.Teams)
 	for h, why := range map[string]string{
-		"beta":          "another member's handle",
-		"b":             "too short",
-		"thirteenchars": "too long",
-		"Alpha":         "upper case",
-		"al pha":        "a space",
-		"-alpha":        "a leading hyphen",
-		"everyone":      "a reserved address",
+		"beta":                      "another member's handle",
+		"b":                         "too short",
+		"twentyfivecharacterslong1": "too long",
+		"Alpha":                     "upper case",
+		"al pha":                    "a space",
+		"-alpha":                    "a leading hyphen",
+		"everyone":                  "a reserved address",
 	} {
 		if err := f.SetHandle("t1", "a", h); err == nil {
 			t.Errorf("%q (%s) was accepted", h, why)
@@ -116,6 +116,12 @@ func TestSetHandleValidates(t *testing.T) {
 	}
 	if m, ok := f.Teams[0].ByHandle("lead-1"); !ok || m.Key != "a" {
 		t.Fatalf("by handle: %+v %v", m, ok)
+	}
+	// A typed handle may run to HandleMax, longer than any the engine derives.
+	for _, h := range []string{"review-and-testing", "abcdefghijklmnopqrstuvwx"} {
+		if err := f.SetHandle("t1", "a", h); err != nil {
+			t.Errorf("%q (%d characters) was refused: %v", h, len(h), err)
+		}
 	}
 	if err := f.SetHandle("t1", "zz", "free"); err == nil || !strings.Contains(err.Error(), "not in team") {
 		t.Fatalf("a stranger's handle: %v", err)
@@ -180,6 +186,17 @@ func TestChooseHandleTakesTheModelsWord(t *testing.T) {
 	// Chosen once: a later answer changes nothing.
 	if old, now, _ := f.ChooseHandle("t1", "a", []string{"complexity"}, titles["a"]); old != "security" || now != "security" {
 		t.Errorf("a chosen handle was chosen again: %q -> %q", old, now)
+	}
+}
+
+// A word the model chooses stays within HandleWordMax: the longer limit is for
+// handles a person or the manager types.
+func TestChooseHandleSkipsWordsPastTheWordLimit(t *testing.T) {
+	f := &File{Teams: []Team{{ID: "t1", Name: "test", Members: []Member{{Key: "a", Word: "observability dashboards"}}}}}
+	tidy(f.Teams)
+	_, now, err := f.ChooseHandle("t1", "a", []string{"observabilities", "dashboards"}, "observability dashboards")
+	if err != nil || now != "dashboards" {
+		t.Fatalf("got %q, %v; want the choice within %d characters", now, err, HandleWordMax)
 	}
 }
 
