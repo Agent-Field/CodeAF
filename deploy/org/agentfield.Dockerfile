@@ -9,7 +9,7 @@
 # another way.
 #
 # The base image is distroless, so it has no shell and no curl for a health
-# check. This file adds one static busybox binary for that and changes nothing
+# check. This file adds one statically linked (musl) busybox binary for that and changes nothing
 # else; it still runs as the base image's non-root user.
 #
 # Build context is this folder:   docker build -f agentfield.Dockerfile -t agentfield-org .
@@ -17,7 +17,7 @@
 
 ARG AGENTFIELD_IMAGE=agentfield/control-plane:staging-0.1.147-rc.11@sha256:1c85c2f1cf53239b1a68b0fb3df772c6e77dd18292071bd98829259261be7d15
 
-FROM busybox:1.37.0-glibc AS busybox
+FROM busybox:1.37.0-musl AS busybox
 
 FROM ${AGENTFIELD_IMAGE}
 COPY --from=busybox /bin/busybox /usr/local/bin/busybox

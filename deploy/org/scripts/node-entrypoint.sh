@@ -19,4 +19,14 @@ if [ -n "${GH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
   gh auth setup-git --hostname github.com --force >/dev/null 2>&1 || true
 fi
 
+# The keyless smoke test needs a repository for SWE-AF to plan against, on THIS container's disk
+# (the runner that creates the job is another container). Only when asked to, and only once.
+if [ -n "${SMOKE_FIXTURE_REPO:-}" ] && [ ! -d "$SMOKE_FIXTURE_REPO/.git" ]; then
+  mkdir -p "$SMOKE_FIXTURE_REPO" \
+    && printf '# smoke fixture\n' > "$SMOKE_FIXTURE_REPO/README.md" \
+    && git -C "$SMOKE_FIXTURE_REPO" init -q -b main \
+    && git -C "$SMOKE_FIXTURE_REPO" add README.md \
+    && git -C "$SMOKE_FIXTURE_REPO" commit -q -m "fixture"
+fi
+
 exec "$@"

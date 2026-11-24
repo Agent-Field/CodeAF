@@ -57,7 +57,9 @@ COPY scripts/node-entrypoint.sh scripts/drop-root.sh /opt/org/
 RUN chmod 0755 /opt/org/node-entrypoint.sh
 # legacy-name: AgentField's SDKs still call the codeaf coding harness "aforge" (the provider
 # and its command variable), and CODEAF_BIN below says which binary it runs. Both spellings are theirs.
-ENV HOME=/home/sweaf \
+# ORG_*: who the entrypoint hands the platform volume to, and runs the node as (scripts/drop-root.sh).
+ENV ORG_UID=10002 ORG_HOME=/home/sweaf ORG_DIRS=/workspaces \
+    HOME=/home/sweaf \
     NODE_ID=swe-planner \
     AGENTFIELD_NODE_LINK_ONLY=1 \
     SWE_WORKSPACE_ROOT=/workspaces \
