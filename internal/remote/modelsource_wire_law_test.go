@@ -23,6 +23,10 @@ var helloFields = map[string]bool{
 	// Window says the connection is a person's window, so the far machine holds
 	// automations presence for it (wire_automations.go). A boolean, not a credential.
 	"Window": true,
+	// Remote is the stamp a door puts on a viewer that reached this chat through
+	// another computer: a device id, a label, two booleans and the name of the road.
+	// It carries no key or address.
+	"Remote": true,
 	// LocalSavingReceipts is a boolean capability, with no key or address.
 	"LocalSavingReceipts": true,
 	// SyncNoticeWords is a boolean vocabulary capability, with no key or address.
