@@ -31,7 +31,8 @@ import (
 //   - WHAT IS SAID IS PRIVATE TO ITS PERSON. Nobody else reads it or hears its
 //     events; what the agent puts in files and pages is the workstream's. In
 //     a shared workstream the chat's title, owner, state and last activity
-//     are the workstream's to see (v2 ruling C10); in a space, nothing is.
+//     are seen only by its owner and those it is shared with (the chat is
+//     private unless the policy says otherwise); in a space, nobody else's.
 //   - IT RUNS HERE, never on a laptop, whatever the operator chose for Afi's
 //     pane, so closing the laptop mid-answer loses nothing.
 //   - IT SPENDS THE ORGANIZATION'S KEY, posted to the workstream under its
@@ -217,21 +218,35 @@ func (h *Handler) myChats(ws, person string) []api.AgentChat {
 }
 
 // listAgentChats is GET /v1/workstreams/{id}/chats: the caller's own chats,
-// and everyone else's as metadata only.
+// and the chats of others that the caller is allowed to see, as metadata only.
 func (h *Handler) listAgentChats(w http.ResponseWriter, r *http.Request) {
-	ws, _, ok := h.findWorkstream(w, r)
+	ws, v, ok := h.findWorkstream(w, r)
 	if !ok {
 		return
 	}
 	me := h.orgActor(r)
-	h.write(w, http.StatusOK, api.AgentChatList{Chats: h.myChats(ws.ID, me), Others: h.othersChats(ws, me)})
+	h.write(w, http.StatusOK, api.AgentChatList{Chats: h.myChats(ws.ID, me), Others: h.othersChats(ws, me, v)})
 }
 
-// othersChats are the chats in ws of everyone but me, newest activity first:
-// title, owner, state and last activity only. A space's are nobody else's.
-func (h *Handler) othersChats(ws factory.OrgWorkstream, me string) []api.OtherChat {
+// othersChats are the chats in ws of everyone but me that v may see, newest
+// activity first: title, owner, state and last activity only. A space's are
+// nobody else's.
+//
+// A CHAT IS LISTED TO SOMEONE ELSE ONLY IF THE ONE DECIDER SAYS THEY MAY VIEW
+// IT. Chats are private by default (the policy's default for the kind), and a
+// private chat is its owner's and its grantees' alone, so its title, owner,
+// state and last activity are hidden from the workstream's people and from the
+// operator, because a title alone can say what the work is. A chat with no
+// registry row is unknown, and unknown is hidden. An organization that wants
+// every member to see each other's chat titles sets the policy's default for
+// chats to owner or org; that applies to chats made after it.
+func (h *Handler) othersChats(ws factory.OrgWorkstream, me string, v Viewer) []api.OtherChat {
 	out := []api.OtherChat{}
 	if ws.Space {
+		return out
+	}
+	visible := h.chatsMaySee(ws, v)
+	if len(visible) == 0 {
 		return out
 	}
 	people, err := os.ReadDir(filepath.Join(h.config.Store.Root(), agentDirName, ws.ID, "people"))
@@ -244,6 +259,9 @@ func (h *Handler) othersChats(ws factory.OrgWorkstream, me string) []api.OtherCh
 			continue
 		}
 		for _, c := range h.myChats(ws.ID, p.Name()) {
+			if !visible[c.ID] {
+				continue
+			}
 			out = append(out, api.OtherChat{ID: c.ID, Workstream: ws.ID, Title: c.Title, Owner: p.Name(), OwnerName: nameOf(p.Name()), State: c.State, LastActivity: c.UpdatedAt})
 		}
 	}
@@ -254,6 +272,28 @@ func (h *Handler) othersChats(ws factory.OrgWorkstream, me string) []api.OtherCh
 		return strings.Compare(b.ID, a.ID)
 	})
 	return out
+}
+
+// chatsMaySee is the ids of the chats registered under ws that v may view,
+// asked of the one decider in a few queries rather than one per chat.
+func (h *Handler) chatsMaySee(ws factory.OrgWorkstream, v Viewer) map[string]bool {
+	seen := map[string]bool{}
+	rows, err := h.config.Store.ResourcesIn("chat", workstreamResource(ws).ref)
+	if err != nil {
+		slog.Error("could not read the workstream's chats", "error", err)
+		return seen
+	}
+	resources := make([]accessResource, 0, len(rows))
+	for _, row := range rows {
+		resources = append(resources, h.registeredResource(row, ws))
+	}
+	v.acc.prefetchResources(resources)
+	for _, res := range resources {
+		if can(v, res.item, acl.VerbView) {
+			seen[res.ref.ID] = true
+		}
+	}
+	return seen
 }
 
 // createAgentChat is POST /v1/workstreams/{id}/chats: a new chat of the

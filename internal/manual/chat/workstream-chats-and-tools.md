@@ -2,12 +2,12 @@
 
 ## a chat inside a workstream is private — what is private and what is shared, can others see my chat's name
 
-Use **New chat** in the Chats header to open a private conversation. What you and the chat say stays private to you. Its tasks and files are shared in the workstream. The Chats tab lists only your own chats; it does not show other people's chats.
+Use **New chat** in the Chats header to open a private conversation. What you and the chat say stays private to you. Its tasks and files are shared in the workstream. The Chats tab lists only your own chats; it does not show other people's chats. The organization's server lists a chat to anyone else only after it is shared with them (see "Are chats private by default" in the organization sharing page); until then not even its name leaves you, and the operator does not see it either.
 
 | What | Who sees it |
 | --- | --- |
 | What you and a chat say to each other, and its Asks | you only |
-| A chat's name and state in Chats | you only |
+| A chat's name, owner and state in Chats | you, and the people you share the chat with |
 | The tasks and files a chat makes | everyone in the workstream |
 | One line on a task when your private request changed it | everyone in the workstream |
 | Your chats in My space, their names included | you only |

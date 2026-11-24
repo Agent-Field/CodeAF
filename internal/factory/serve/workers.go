@@ -138,6 +138,16 @@ func workerPath(path string) bool {
 		strings.HasPrefix(path, "/v1/runners/leases/") || strings.HasPrefix(path, "/v1/runners/recover/") || path == "/v1/runners/pull" || path == "/v1/runners/presence" || path == "/v1/runner/self"
 }
 
+// attachLocal is whether a runner registration may lean on the server's own
+// computer: the request comes from it and the host trusts it (loopback_trust,
+// on for a solo factory and off for a team one), or it is the app's private
+// listener, where the host token is the credential anyway. A team factory with
+// the setting off asks every runner for a runner credential, the same one a
+// remote runner uses: the host's access token, or a signed-in person's session.
+func (h *Handler) attachLocal(r *http.Request) bool {
+	return loopbackRequest(r) && (h.config.ServedBy == "app" || h.loopbackTrusted())
+}
+
 func bearer(r *http.Request) string {
 	values := r.Header.Values("Authorization")
 	if len(values) != 1 {
@@ -267,7 +277,8 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Name, body.Handle = strings.TrimSpace(body.Name), factory.NormalizeHandle(body.Handle)
-	if h.mode() == api.FactoryTeam && !loopbackRequest(r) && !h.floorToken(bearer(r)) {
+	local := h.attachLocal(r)
+	if h.mode() == api.FactoryTeam && !local && !h.floorToken(bearer(r)) {
 		session, ok := h.credential(r)
 		if !ok || session.profile == nil {
 			h.fail(w, http.StatusForbidden, "Sign in with GitHub through an access link")
@@ -282,12 +293,13 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		body.Handle = session.profile.Handle
 	}
 	if body.Handle == "" {
-		if !loopbackRequest(r) {
+		if !local {
 			h.fail(w, http.StatusUnprocessableEntity, "worker attach requires a handle")
 			return
 		}
-		// Only a worker on this machine may use the factory's person when
-		// it has no forge login; an access token never supplies that identity.
+		// Only a worker on this machine, and only where the host trusts its own
+		// computer (loopback_trust), may use the factory's person when it has no
+		// forge login; an access token never supplies that identity.
 		handle, err := h.seam.PersonHandle(r.Context())
 		if h.failed(w, err) {
 			return

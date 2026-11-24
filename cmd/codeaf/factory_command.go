@@ -311,7 +311,8 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		}
 	}
 	handlerConfig := serve.Config{
-		GitHubToken: jobWrites.Token,
+		GitHubToken:   jobWrites.Token,
+		LoopbackTrust: host.LoopbackTrust,
 
 		ProfileDir:     home.Dir(),
 		ChangeAssignee: jobWrites.Assign,

@@ -144,8 +144,11 @@ func TestContractI4ChatMoveSendsOneEventToTheUnionAndRecordsIt(t *testing.T) {
 	events := contractResourceEvents(t, o, chat.ID)
 	contractMove(t, o, "santosh", chat.ID, to, 200, nil)
 	got := contractResourceEvents(t, o, chat.ID)
+	// CONTRACT CHANGE (org-follow A4): a chat shared with abir stays private, so the
+	// destination's people (mia) and the operator do not hear of it; only the owner
+	// and the grantee do. Before, the first grant opened it to the destination too.
 	if len(got) != len(events)+1 || !got[len(got)-1].itemAudience.Equal(acl.Audience{
-		Persons: []string{"abir", "mia", "santosh"}, Operator: true,
+		Persons: []string{"abir", "santosh"},
 	}) {
 		t.Fatalf("move events: before %+v, after %+v", events, got)
 	}
@@ -337,6 +340,9 @@ func TestContractI8CollisionRollbackStaleDoorAndRestart(t *testing.T) {
 	}
 }
 
+// I9, as changed by org-follow A9 (Abir 2026-11-24): a chat moved into a shared
+// workstream keeps its privacy, so the workstream's people are not told of it
+// until it is shared; once shared they see its metadata only.
 func TestContractI9SharedWorkstreamChatListKeepsOnlyMetadata(t *testing.T) {
 	o := newWSOrg(t)
 	from := contractSpace(t, o, "santosh")
@@ -346,6 +352,11 @@ func TestContractI9SharedWorkstreamChatListKeepsOnlyMetadata(t *testing.T) {
 	contractMove(t, o, "santosh", chat.ID, to, 200, nil)
 	var rows api.AgentChatList
 	door := "/v1/workstreams/" + to
+	o.do(t, "abir", "GET", door+"/chats", -1, nil, http.StatusOK, &rows)
+	if len(rows.Others) != 0 {
+		t.Fatalf("a moved private chat is listed: %+v", rows)
+	}
+	o.do(t, "santosh", "POST", "/v1/resources/chat/"+chat.ID+"/grants", -1, personGrant("abir", "view"), 201, nil)
 	o.do(t, "abir", "GET", door+"/chats", -1, nil, http.StatusOK, &rows)
 	if len(rows.Others) != 1 || rows.Others[0].ID != chat.ID || rows.Others[0].Title != chat.Title ||
 		rows.Others[0].Owner != "santosh" || rows.Others[0].State == "" || rows.Others[0].LastActivity == "" {

@@ -72,7 +72,18 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 		t.Fatalf("discovery must be private: %v, %v", info, err)
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
-	response, err := client.Get(address + "/v1/queue")
+	// A team factory (an access_token makes it one) no longer takes a request
+	// from its own computer on trust; a local client sends the token it finds in
+	// the discovery file, as every codeaf client does.
+	get := func(path string) (*http.Response, error) {
+		request, err := http.NewRequest(http.MethodGet, address+path, nil)
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Authorization", "Bearer "+discovery.Token)
+		return client.Do(request)
+	}
+	response, err := get("/v1/queue")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +92,7 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if err != nil || response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("command fixture")) {
 		t.Fatalf("queue: status=%d body=%s error=%v", response.StatusCode, body, err)
 	}
-	response, err = client.Get(address + "/v1/audit")
+	response, err = get("/v1/audit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +100,28 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("record is absent from the service: status=%d", response.StatusCode)
 	}
-	response, err = client.Post(address+"/v1/workers/attach", "application/json", strings.NewReader(`{"name":"test worker","handle":"tester"}`))
+	// A runner on this computer asks a team factory for a runner credential too:
+	// without one the attach is refused, with the host token it is accepted.
+	attach, err := http.NewRequest(http.MethodPost, address+"/v1/workers/attach", strings.NewReader(`{"name":"test worker","handle":"tester"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach.Header.Set("Content-Type", "application/json")
+	if refused, err := client.Do(attach); err != nil {
+		t.Fatal(err)
+	} else {
+		refused.Body.Close()
+		if refused.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("a credential-free attach from this computer: status=%d, want 401", refused.StatusCode)
+		}
+	}
+	attach, err = http.NewRequest(http.MethodPost, address+"/v1/workers/attach", strings.NewReader(`{"name":"test worker","handle":"tester"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach.Header.Set("Content-Type", "application/json")
+	attach.Header.Set("Authorization", "Bearer "+discovery.Token)
+	response, err = client.Do(attach)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +140,7 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if after := readFactoryTestFile(t, discoveryPath); !bytes.Equal(after, originalDiscovery) {
 		t.Fatal("second service replaced discovery")
 	}
-	response, err = client.Get(address + "/v1/events")
+	response, err = get("/v1/events")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,5 +242,35 @@ func TestFactoryStepsPrintsEveryBuiltInPrompt(t *testing.T) {
 	}
 	if out.String() != pipeline.FormatSteps() {
 		t.Fatalf("built-ins differ: %s", out.String())
+	}
+}
+
+func TestContractC1FactoryConfigLoopbackTrust(t *testing.T) {
+	for _, value := range []string{"true", "false", "wrong"} {
+		t.Run(value, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := writeFactoryPrivate(path, []byte("loopback_trust: "+value+"\n")); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := factoryHostConfigAt(path, false)
+			if value == "wrong" {
+				if err == nil || !strings.Contains(err.Error(), "bool") {
+					t.Fatalf("expected a boolean config error, got %v", err)
+				}
+				return
+			}
+			want := value == "true"
+			if err != nil || cfg.LoopbackTrust == nil || *cfg.LoopbackTrust != want {
+				t.Fatalf("setting did not parse: %v, %v", cfg.LoopbackTrust, err)
+			}
+			rotated, err := factoryHostConfigAt(path, true)
+			if err != nil || rotated.AccessToken == cfg.AccessToken {
+				t.Fatalf("token did not rotate: %v", err)
+			}
+			saved, err := readFactoryHostConfig(path)
+			if err != nil || saved.LoopbackTrust == nil || *saved.LoopbackTrust != want {
+				t.Fatalf("rotation lost the setting: %v, %v", saved.LoopbackTrust, err)
+			}
+		})
 	}
 }

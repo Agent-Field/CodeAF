@@ -113,9 +113,24 @@ func (h *Handler) getMySpace(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusForbidden, "My space is someone's; sign in first")
 		return
 	}
-	space, err := h.ensureSpace(v.Handle)
-	if h.failed(w, err) {
-		return
+	var space factory.OrgWorkstream
+	if isBotCall(r) {
+		// The bot reads its creator's existing space through the item evaluator.
+		all, err := h.config.Store.Workstreams()
+		if h.failed(w, err) {
+			return
+		}
+		var found bool
+		space, found = spaceOf(all, v.Handle)
+		if !found || !v.canSee(space) {
+			h.fail(w, http.StatusNotFound, errWorkstreamGone.Error())
+			return
+		}
+	} else {
+		space, err = h.ensureSpace(v.Handle)
+		if h.failed(w, err) {
+			return
+		}
 	}
 	body, err := h.workstreamBody(space, v)
 	if h.failed(w, err) {

@@ -26,7 +26,10 @@ func TestTwoWorkersDeliverRepliesAndReportTheirManagerLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	seam := factory.LocalSeam(st, time.Now())
-	h := serve.New(seam, serve.Config{Mode: api.FactoryTeam, Store: st, PullWait: time.Millisecond})
+	// The test says a person's words to the factory with no sign-in, as the host's
+	// own person on this computer; a team factory's default no longer allows that.
+	trustLoopback := true
+	h := serve.New(seam, serve.Config{Mode: api.FactoryTeam, LoopbackTrust: &trustLoopback, Store: st, PullWait: time.Millisecond})
 	s := httptest.NewServer(h)
 	t.Cleanup(func() { s.Close(); h.Close() })
 	ctx, cancel := context.WithCancel(context.Background())

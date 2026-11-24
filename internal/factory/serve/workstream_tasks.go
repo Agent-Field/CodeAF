@@ -262,6 +262,8 @@ func (h *Handler) taskRefused(w http.ResponseWriter, err error) bool {
 		h.fail(w, http.StatusPreconditionFailed, err.Error())
 	case errors.Is(err, store.ErrTaskGone):
 		h.fail(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, errBotRun):
+		h.fail(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, errTaskAnswered), errors.Is(err, factory.ErrTaskNoAsk), errors.Is(err, factory.ErrTaskOfferGone),
 		errors.Is(err, factory.ErrTaskUndoOver), errors.Is(err, errTaskDeleteUndoOver), errors.Is(err, factory.ErrTaskFactoryState), wakeRefused(err):
 		h.fail(w, http.StatusConflict, err.Error())
@@ -368,7 +370,7 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		made, woke = out.Task, true
-		return h.wakeTaskDoer(ws, made, v.Handle)
+		return h.wakeRequestedTaskDoer(r, ws, made, v.Handle)
 	})
 	if woke && err != nil && !wakeRefused(err) {
 		// The write failed after the doer took the task: nothing says it is
@@ -524,6 +526,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	var out factory.TaskChange
 	wake := false
 	_, byAgent := agentCallOf(r)
+	_, byAfi := afiCallOf(r)
 	var rewaited, autoStarted []factory.WorkstreamTask
 	jobs, err := h.workstreamJobs(r, ws)
 	if h.failed(w, err) {
@@ -550,11 +553,11 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		}
 		// A person's start wakes the doer before the task may say running
 		// (workstream_task_wake.go); the agent's own "running" is its run.
-		wake = !byAgent && target.ID == "" && t.State != factory.TaskRunning && out.Task.State == factory.TaskRunning
+		wake = !byAfi && target.ID == "" && t.State != factory.TaskRunning && out.Task.State == factory.TaskRunning
 		// START ON A TASK THAT SAYS RUNNING WITH NOTHING BEHIND IT STARTS IT
 		// AGAIN (live2 WL: it answered 200 and did nothing, and only Stop then
 		// Start recovered it). A run that is going is left alone.
-		if !byAgent && target.ID == "" && p.State != nil && *p.State == factory.TaskRunning && t.State == factory.TaskRunning &&
+		if !byAfi && target.ID == "" && p.State != nil && *p.State == factory.TaskRunning && t.State == factory.TaskRunning &&
 			t.DoneBy.Kind == factory.TaskByAfi && !h.taskTurnRunning(ws.ID, tid) {
 			wake = true
 			out.Events = append(out.Events, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: tid, At: out.Task.UpdatedAt, By: by,
@@ -627,7 +630,7 @@ func (h *Handler) patchWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			// Last, with the write still open: a doer that cannot take the
 			// task leaves nothing kept, and the run's own first write waits
 			// for this one.
-			return h.wakeTaskDoer(ws, out.Task, v.Handle)
+			return h.wakeRequestedTaskDoer(r, ws, out.Task, v.Handle)
 		}
 		return nil
 	})
@@ -685,7 +688,9 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	now := h.clock().UTC()
 	actor, by := taskActor(v, ws), h.taskBy(r, v)
 	// The rules first, on the task as read: who answers, and what.
-	by.Name = h.personNames()(v.Handle)
+	if !isBotCall(r) {
+		by.Name = h.personNames()(v.Handle)
+	}
 	change, err := factory.AnswerTask(t, body.Ask, body.Option, body.Text, actor, by, taskFallback(ws), h.newTaskID("te_"), now)
 	if h.taskRefused(w, err) {
 		return
@@ -768,11 +773,14 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if wake {
 			// Last, with the write still open: a Go Afi cannot take keeps no
 			// answer, so the question stays asked.
-			return h.wakeTaskDoer(ws, change.Task, v.Handle)
+			return h.wakeRequestedTaskDoer(r, ws, change.Task, v.Handle)
 		}
 		if limit && change.Task.State == factory.TaskRunning {
 			// Keep going: a new run on the same conversation, with a fresh
 			// allowance. A server that cannot run Afi now refuses the answer.
+			if isBotCall(r) {
+				return errBotRun
+			}
 			return h.startTaskRun(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name, body.Text), 0, true)
 		}
 		return nil
@@ -1023,7 +1031,7 @@ func (h *Handler) startTask(r *http.Request, ws factory.OrgWorkstream, v Viewer,
 		if err := tw.Append(ws.ID, out.Events...); err != nil {
 			return err
 		}
-		return h.wakeTaskDoer(ws, out.Task, v.Handle)
+		return h.wakeRequestedTaskDoer(r, ws, out.Task, v.Handle)
 	})
 	if err != nil && !wakeRefused(err) {
 		h.stopTaskTurn(ws.ID, tid)
