@@ -420,7 +420,7 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 	if !waitUntil(100*time.Second, func() bool {
 		s := viewer.capture()
 		return !strings.Contains(s, say(t, "movingHere")) && !strings.Contains(s, say(t, "moveAsk")) &&
-			(strings.Contains(s, say(t, "liveMessageHint")+rcHostName) || strings.Contains(s, say(t, "liveWentOffline")))
+			strings.Contains(s, say(t, "moveFailed")) && strings.Contains(s, say(t, "liveLegend"))
 	}) {
 		t.Fatalf("a move the relay refused did not put the viewer back in the live view:\n%s", viewer.capture())
 	}

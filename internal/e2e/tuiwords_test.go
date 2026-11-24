@@ -567,6 +567,12 @@ var tuiWords = map[string]tuiWord{
 			"sentence of a live view that the terminal and the desktop app both read out of chatlist",
 	},
 
+	"moveFailed": {
+		screen: "could not move this chat here",
+		why: "the note a live view carries when a Move here did not finish: it sits beside the live foot " +
+			"(`on desktop · live`) and the words still in the box, which is how a person knows nothing moved",
+	},
+
 	// ── a chat another computer runs, worked in from here ────────────────────
 	"liveLegend": {
 		screen: " · live",
