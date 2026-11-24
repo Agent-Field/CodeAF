@@ -1,7 +1,7 @@
 ---
 kind: added
 title: Open hosted chats in the desktop organization's window
-pr: 2901
+pr: 2904
 surface: [app, engine, docs]
 invalidates:
   - "Opening a hosted chat on an organization's server required the terminal command. The desktop organization window can now start and reopen those chats and list any the server has shared with you."
