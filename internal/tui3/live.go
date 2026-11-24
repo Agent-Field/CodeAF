@@ -132,7 +132,16 @@ func (a *app) liveBar() (string, bool) {
 		if driving.ReadOnly != "" {
 			return driving.ReadOnly, true
 		}
-		if !driving.Yours && driving.Holder != "" {
+		// A VIEW THAT DOES NOT HOLD THE KEYBOARD SAYS SO, WHOEVER HOLDS IT, AND
+		// WHETHER OR NOT THE BOX HAS WORDS IN IT. The bar stands in the box's place
+		// ([app.watchBar]), so a draft cannot hide it. What used to hide it was a
+		// holder with no name: the engine had said another window typed, the
+		// holder's name had not arrived, and the old condition read an empty name
+		// as "this view types". The box was then drawn with the keyboard
+		// elsewhere, no cue anywhere on the frame, and the first enter was a send
+		// the host refused. [chatlist.LiveTypingFrom] already has a word for a
+		// holder it cannot name, so the fact is told and the name is optional.
+		if !driving.Yours {
 			return chatlist.LiveTypingFrom(driving.Holder), true
 		}
 	}
@@ -162,7 +171,11 @@ func (a *app) liveBarEnter() tea.Cmd {
 		if driving.ReadOnly != "" {
 			return nil
 		}
-		if !driving.Yours && driving.Holder != "" {
+		// ENTER ON A VIEW THAT WATCHES TAKES THE KEYBOARD AND SENDS NOTHING, for the
+		// reason [app.liveBar] states it: a person can be typing at the host's own
+		// window, so one keyboard means one enter moves it and a LATER enter sends
+		// what is in the box. The draft is not touched.
+		if !driving.Yours {
 			return a.takeKeyboard()
 		}
 	}
