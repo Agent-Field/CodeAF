@@ -3,7 +3,7 @@ package appwire
 import (
 	"context"
 	"encoding/json"
-	"math"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -65,8 +65,10 @@ type FactoryPipelineStarter interface {
 // old expect on an active job or its current running step.
 const FeatureFactoryStopAnyVersion = "factory.stop_any_version"
 
-// FactoryBudgetSteps are the standard limits factory.job_set_budget accepts,
-// in US dollars. Larger amounts must equal the job's next cap. The job owner can choose either direction, never below recorded spending.
+// FactoryBudgetSteps are the suggested limits a budget picker offers, in US
+// dollars. factory.job_set_budget and factory.job_create accept any amount from
+// factory.MinJobBudget up, to the cent; the job owner can choose either
+// direction, never below recorded spending.
 var FactoryBudgetSteps = factory.JobBudgetSteps()
 
 // The priorities factory.job_set_priority takes, as the factory spells them.
@@ -161,8 +163,8 @@ type FactoryJobPriorityParams struct {
 	Expect   *api.Expect `json:"expect"`
 }
 
-// FactoryJobBudgetParams changes a job's limit to one of [FactoryBudgetSteps]
-// or its next cap above those steps, as validated by the factory.
+// FactoryJobBudgetParams changes a job's limit to any amount from
+// factory.MinJobBudget ($1) up, to the cent; [FactoryBudgetSteps] are suggestions.
 // An increase above spend resumes a cap wait; a smaller increase keeps the
 // question. A decrease below recorded spending is refused.
 type FactoryJobBudgetParams struct {
@@ -279,12 +281,23 @@ type FactoryJobCreateParams struct {
 	Group string `json:"group,omitempty"`
 	// Milestone is a second label with the same bounds as Group.
 	Milestone string `json:"milestone,omitempty"`
-	// Budget sets the job's initial cap to one of FactoryBudgetSteps.
+	// Budget sets the job's initial cap: any amount from factory.MinJobBudget
+	// ($1) up, to the cent; FactoryBudgetSteps are suggestions.
 	Budget *float64 `json:"budget,omitempty"`
 	// Key is carried as Idempotency-Key on this create request alone.
 	Key string `json:"key,omitempty"`
 	// SplitFrom is a visible job number on the same Factory, at least 1.
 	SplitFrom *int `json:"split_from,omitempty"`
+	// Workstream is the organization workstream the job is made in (ws_…):
+	// the factory checks the caller can edit it and the job joins it in the
+	// same write. A job on a repository the caller reads only because the
+	// organization turned it on is refused without one.
+	Workstream string `json:"workstream,omitempty"`
+	// Folder is a folder on the factory's own computer that holds a git
+	// repository, sent in place of Repo: the job works in its own worktree
+	// off it and finishes on a local branch. Only a Personal factory takes
+	// it, one whose factory.features lists local_folder.
+	Folder string `json:"folder,omitempty"`
 }
 
 func (p *FactoryJobCreateParams) pickedPipeline() string { return p.Pipeline }
@@ -426,6 +439,11 @@ func factoryActorOf(e Engine, name string) (FactoryActor, error) {
 }
 
 // factoryLogin is a GitHub login with an optional leading @.
+// factoryWorkstreamID is an organization workstream's id as the factory
+// mints it: ws_ and a cell id. It is checked here only for shape; the factory
+// decides whether the caller may make a job in it.
+var factoryWorkstreamID = regexp.MustCompile(`^ws_[A-Za-z0-9]{1,64}$`)
+
 var factoryLogin = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
 
 var factoryCommit = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
@@ -570,17 +588,14 @@ func prepBudget(p *FactoryJobBudgetParams) error {
 	if err := checkJob(&p.Factory, p.Job, p.Expect); err != nil {
 		return err
 	}
-	// The factory validates larger amounts against the job's current next cap.
-	if p.Budget > FactoryBudgetSteps[len(FactoryBudgetSteps)-1] {
-		return nil
+	// Any amount from factory.MinJobBudget up, to the cent; the factory still
+	// refuses one below the job's recorded spending.
+	budget, err := factory.CheckJobBudget(p.Budget)
+	if err != nil {
+		return Errorf(CodeBadParams, "%s", err.Error())
 	}
-	for _, step := range FactoryBudgetSteps {
-		if math.Abs(p.Budget-step) < 1e-9 {
-			p.Budget = step
-			return nil
-		}
-	}
-	return Errorf(CodeBadParams, "budget must be 5, 10, 20, 30 US dollars or the job's next cap")
+	p.Budget = budget
+	return nil
 }
 
 func prepApprove(p *FactoryJobApproveParams) error {
@@ -674,7 +689,12 @@ func prepCreate(p *FactoryJobCreateParams) error {
 		return err
 	}
 	p.Factory = id
-	if p.Repo, err = FactoryRepoName(p.Repo); err != nil {
+	if p.Folder, err = factoryFolder(p.Folder, p.Repo); err != nil {
+		return err
+	}
+	if p.Folder != "" {
+		p.Repo = ""
+	} else if p.Repo, err = FactoryRepoName(p.Repo); err != nil {
 		return err
 	}
 	if err := checkPipelinePick(&p.Pipeline); err != nil {
@@ -685,6 +705,9 @@ func prepCreate(p *FactoryJobCreateParams) error {
 	}
 	if _, err = words("text", p.Text, MaxFactoryJobText, false); err != nil {
 		return err
+	}
+	if p.Workstream = strings.TrimSpace(p.Workstream); p.Workstream != "" && !factoryWorkstreamID.MatchString(p.Workstream) {
+		return Errorf(CodeBadParams, "workstream must be a workstream id")
 	}
 	if p.Assignee != nil {
 		login := strings.TrimPrefix(strings.TrimSpace(*p.Assignee), "@")
@@ -737,3 +760,21 @@ func init() {
 
 // factoryActionMethods is the table of factory.job_*, for the tests that walk it.
 var factoryActionMethods = map[string]method{}
+
+// factoryFolder is a create's folder, checked for shape only: a full path,
+// one line, at most 4096 bytes, and never beside a repository. "" is no
+// folder. Whether it holds a repository is the factory's to say, since only
+// it can look at its own disk.
+func factoryFolder(folder, repo string) (string, error) {
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return "", nil
+	}
+	if strings.TrimSpace(repo) != "" {
+		return "", Errorf(CodeBadParams, "send a repo or a folder, not both")
+	}
+	if len(folder) > 4096 || !filepath.IsAbs(folder) || strings.ContainsFunc(folder, func(r rune) bool { return r < ' ' || r == 0x7f }) {
+		return "", Errorf(CodeBadParams, "folder must be a full path on the factory's computer")
+	}
+	return folder, nil
+}

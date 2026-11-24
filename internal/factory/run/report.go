@@ -843,7 +843,9 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 			it.Stream.Paused = false
 			return nil
 		}
-		if factory.NeedsPublishApproval(*it) || len(it.Proof) == 0 || !clean(*it) {
+		// A folder job's worker ships it locally ([finishInFolder]); there
+		// is no proof approval for the factory to hold it to.
+		if factory.FolderOf(*it) == "" && (factory.NeedsPublishApproval(*it) || len(it.Proof) == 0 || !clean(*it)) {
 			return fmt.Errorf("job requires proof approval")
 		}
 		landItem(it, now)
@@ -862,10 +864,48 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 	return nil
 }
 
+// finishInFolder ends a folder job on its local branch ([landItem]): done,
+// nothing asked of anyone, every step that was waiting passed.
+func finishInFolder(it *factory.Item, dir string, now time.Time) bool {
+	it.State = factory.StateShipped
+	it.Question, it.QKind = "", ""
+	it.Asking = nil
+	it.Approval = nil
+	it.DoneAt = now
+	it.Stream.Ended = now
+	it.Stream.Paused = false
+	if n := len(it.Stream.Phases); n > 0 {
+		it.Stream.Cur = n - 1
+	}
+	if g := factory.LandingGate(*it); g >= 0 && it.Stream.Phases[g].State != factory.PhaseDone {
+		setPhaseState(&it.Stream.Phases[g], factory.PhaseSkipped, now)
+		it.Stream.Phases[g].SkipReason = "nothing to publish from a folder on this computer"
+	}
+	loopSay(it, now, "ok", factory.FolderFinishedWords(JobBranch(*it), dir))
+	return true
+}
+
+// JobBranch is the branch a job's work is on: the one its worktree recorded,
+// else the name it would be given.
+func JobBranch(it factory.Item) string {
+	if b := recordedWorkBranch(it); b != "" {
+		return b
+	}
+	return branchFor(it)
+}
+
 // logShippedHabit is the log's line for a job that shipped itself.
 const logShippedHabit = "shipped · habit · proof all green"
 
 func landItem(it *factory.Item, now time.Time) bool {
+	// A JOB ON A FOLDER OF THIS COMPUTER FINISHES WHERE IT LANDS (owner
+	// decision 2, 2026-11-17): nothing is published, so there is no approval
+	// to wait on. The work stays on the job's own branch in that folder with
+	// its proof beside it, and the job is done; a pull request is a separate,
+	// later choice ("Open a pull request", factory.FolderGitHub).
+	if dir := factory.FolderOf(*it); dir != "" && it.PullRequest == nil {
+		return finishInFolder(it, dir, now)
+	}
 	it.State = factory.StateLanded
 	if it.FollowUp != nil && (it.FollowUp.State == "queued" || it.FollowUp.State == "running") {
 		f := *it.FollowUp

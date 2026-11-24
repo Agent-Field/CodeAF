@@ -67,7 +67,10 @@ type PublishInfo struct {
 	Class, Title string
 	// Folder is the sealed name of the folder the chat works in, "" when it
 	// has none worth naming.
-	Folder  string
+	Folder string
+	// Crew is the sealed crew the chat belongs to here (chatlist.Crew), ""
+	// when this caller does not say; a sealed empty crew says "none".
+	Crew    string
 	Size    uint64
 	Pending uint32
 	Keys    map[string]map[string]string
@@ -243,7 +246,7 @@ func (p *Publisher) move(ctx context.Context, d Driving, head string, in Publish
 	_, err := p.Dir.Publish(ctx, d.ID(), directory.Publish{
 		Fence: d.Fence, OldHead: d.Head, Head: head,
 		SavedAt: in.savedAt,
-		Size:    in.Size, Class: in.Class, Title: in.Title, Folder: in.Folder, Pending: in.Pending,
+		Size:    in.Size, Class: in.Class, Title: in.Title, Folder: in.Folder, Crew: in.Crew, Pending: in.Pending,
 		Frames: frames, FrameHints: in.hints,
 	})
 	return d.Fence, refusal(err)
@@ -270,7 +273,7 @@ func (p *Publisher) resume(ctx context.Context, d Driving, head string, in Publi
 
 func (p *Publisher) create(ctx context.Context, d Driving, head string, in PublishInfo, frames []string) (uint64, error) {
 	v, err := p.Dir.Create(ctx, d.ID(), directory.CellInit{
-		Head: head, Class: in.Class, Title: in.Title, Folder: in.Folder, Size: in.Size, Keys: in.Keys,
+		Head: head, Class: in.Class, Title: in.Title, Folder: in.Folder, Crew: in.Crew, Size: in.Size, Keys: in.Keys,
 		SavedAt: in.savedAt,
 		Frames:  frames, FrameHints: in.hints,
 	})

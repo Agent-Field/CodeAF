@@ -1052,6 +1052,8 @@ type TaskGraph struct {
 	// other way round.
 	plan   *planState
 	planMu sync.Mutex
+	// planSpend joins the off-road writes after their workers have stopped.
+	planSpend sync.WaitGroup
 	// pagePlan is the store as the task pages read it when the switch is off
 	// ([TaskGraph.planForPages]); it is never the plan any worker runs on.
 	pagePlan *planState

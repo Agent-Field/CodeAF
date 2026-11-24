@@ -1,0 +1,279 @@
+package appwire
+
+import (
+	"net/http"
+	"net/url"
+	"reflect"
+	"strconv"
+	"strings"
+)
+
+// ── AN ORGANIZATION WORKSTREAM'S AGENT ON THE ORGANIZATION'S SERVER ────────
+//
+// While the operator runs the organization's workstream agents on its server
+// (agent_runner "server"), every workstream has one agent there, and each
+// person who can edit it has their own private conversation with it (private
+// on the answer); nobody reads another's. The server runs it with the organization's model key,
+// which only the operator sets and which no desk ever reads back.
+//
+//	factory.org_keys                    OrgConn                     -> OrgKeys            GET    /v1/org/keys (operator)
+//	factory.org_key_set                 OrgKeySetParams             -> OrgKey             PUT    /v1/org/keys/{provider} (operator)
+//	factory.org_key_delete              OrgKeyParams                -> {}                 DELETE /v1/org/keys/{provider} (operator)
+//	factory.org_workstream_agent        OrgWorkstreamAgentParams    -> OrgWorkstreamAgent GET    /v1/workstreams/{id}/agent?since=
+//	factory.org_workstream_agent_send   OrgWorkstreamAgentSendParams -> OrgWorkstreamAgent POST  /v1/workstreams/{id}/agent/messages
+//	factory.org_workstream_agent_stop   OrgWorkstreamAgentStopParams -> OrgWorkstreamAgent POST  /v1/workstreams/{id}/agent/stop?chat=
+//
+// With hello word "org_myspace" each of the three also takes chat, one of
+// the person's own chats kept on the server (factory_org_myspace.go); empty
+// is the workstream's Afi conversation, as before.
+//
+// The server's `agent.entry` and `agent.state` are relayed as
+// factory.org_workstream_agent, already filtered by the server to the one
+// person whose conversation it is. A message sent while the agent still
+// answers that person's last one is conflict with detail {"reason":"busy"}.
+
+// FeatureOrgAgentServer is the hello word for the methods above.
+const FeatureOrgAgentServer = "org_agent_server"
+
+// EventFactoryOrgWorkstreamAgent is one line of a workstream agent's
+// conversation, or a change to what it is doing; its data is
+// [FactoryOrgWorkstreamAgent].
+const EventFactoryOrgWorkstreamAgent = "factory.org_workstream_agent"
+
+// OrgKey is one of the organization's model keys as a screen may show it.
+type OrgKey struct {
+	Provider string `json:"provider"`
+	Last4    string `json:"last4"`
+	SetAt    string `json:"set_at"`
+	SetBy    string `json:"set_by"`
+}
+
+// OrgKeys is every key kept, and the providers a key may be kept for.
+type OrgKeys struct {
+	Keys      []OrgKey `json:"keys"`
+	Providers []string `json:"providers"`
+}
+
+func (k *OrgKeys) fill() {
+	if k.Keys == nil {
+		k.Keys = []OrgKey{}
+	}
+	if k.Providers == nil {
+		k.Providers = []string{}
+	}
+}
+
+// OrgKeyParams names one provider.
+type OrgKeyParams struct {
+	OrgConn
+	Provider string `json:"provider"`
+}
+
+// OrgKeySetParams is the key the operator hands the server.
+type OrgKeySetParams struct {
+	OrgConn
+	Provider string `json:"provider"`
+	Key      string `json:"key"`
+}
+
+// OrgAgentEntry is one line of the conversation: what someone asked
+// ("person", By is them), the agent's answer ("agent"), one thing it did on
+// the way ("step", Tool, Failed), or the server saying what happened ("note").
+type OrgAgentEntry struct {
+	Seq    int    `json:"seq"`
+	At     string `json:"at"`
+	Kind   string `json:"kind"`
+	By     string `json:"by,omitempty"`
+	Text   string `json:"text"`
+	Tool   string `json:"tool,omitempty"`
+	Failed bool   `json:"failed,omitempty"`
+	Turn   string `json:"turn,omitempty"`
+	// Cards is a "cards" line's proposal: tasks the agent proposes, which the
+	// person adds with factory.org_workstream_agent_cards_add.
+	Cards *OrgAgentCards `json:"cards,omitempty"`
+	// Took is the seq of the cards line a note says was added; Tasks are the
+	// ids it made.
+	Took  int      `json:"took,omitempty"`
+	Tasks []string `json:"tasks,omitempty"`
+}
+
+// OrgAgentState is what the agent is doing: "idle", "working" (For is whose
+// message it answers) or "stopping" (For is who stopped it).
+type OrgAgentState struct {
+	State string `json:"state"`
+	Turn  string `json:"turn,omitempty"`
+	For   string `json:"for,omitempty"`
+	Since string `json:"since,omitempty"`
+}
+
+// OrgWorkstreamAgent is the agent as the caller reads it: its state, the
+// lines after since, the last seq, and whether the caller may talk to it now.
+// Cannot is the one sentence saying why not; it is empty for a reader who
+// could never talk to it.
+type OrgWorkstreamAgent struct {
+	ID   string `json:"id"`
+	Chat string `json:"chat,omitempty"`
+	OrgAgentState
+	Entries []OrgAgentEntry `json:"entries"`
+	Seq     int             `json:"seq"`
+	CanTalk bool            `json:"can_talk"`
+	Cannot  string          `json:"cannot,omitempty"`
+	// Private is true when the server keeps each person's conversation with
+	// the agent to that person alone: the pane says "Private to you".
+	Private bool `json:"private,omitempty"`
+}
+
+func (a *OrgWorkstreamAgent) fill() {
+	if a.Entries == nil {
+		a.Entries = []OrgAgentEntry{}
+	}
+	if a.State == "" {
+		a.State = "idle"
+	}
+}
+
+// OrgWorkstreamAgentParams reads one workstream's agent after Since.
+type OrgWorkstreamAgentParams struct {
+	OrgConn
+	ID    string `json:"id"`
+	Since int    `json:"since,omitempty"`
+	Chat  string `json:"chat,omitempty"`
+}
+
+// OrgWorkstreamAgentStopParams stops the answer in Afi's conversation, or in
+// Chat, one of the caller's own chats.
+type OrgWorkstreamAgentStopParams struct {
+	OrgConn
+	ID   string `json:"id"`
+	Chat string `json:"chat,omitempty"`
+}
+
+// OrgWorkstreamAgentSendParams is one message to the agent.
+type OrgWorkstreamAgentSendParams struct {
+	OrgConn
+	ID   string `json:"id"`
+	Text string `json:"text"`
+	// TZ is the sender's time zone as an IANA name ("America/Toronto"), so
+	// the agent reckons today's date where they are. Optional.
+	TZ   string `json:"tz,omitempty"`
+	Chat string `json:"chat,omitempty"`
+	// Cards is true from a desk that draws Afi's task cards and adds them
+	// (factory.org_workstream_agent_cards_add); only then does Afi propose.
+	Cards bool `json:"cards,omitempty"`
+}
+
+// FactoryOrgWorkstreamAgent is one agent event on the connection it came
+// from: a new line (Entry) or what the agent is doing now (State).
+type FactoryOrgWorkstreamAgent struct {
+	Connection string         `json:"connection"`
+	ID         string         `json:"id"`
+	Chat       string         `json:"chat,omitempty"`
+	Entry      *OrgAgentEntry `json:"entry,omitempty"`
+	State      *OrgAgentState `json:"state,omitempty"`
+}
+
+// orgAgentMessageMost is the longest message, as the server takes it.
+const orgAgentMessageMost = 16 << 10
+
+func orgKeyPath(provider string) (string, error) {
+	p, err := orgSegment("provider", provider)
+	if err != nil {
+		return "", err
+	}
+	return "/v1/org/keys/" + url.PathEscape(p), nil
+}
+
+func init() {
+	eventShapes[EventFactoryOrgWorkstreamAgent] = reflect.TypeFor[FactoryOrgWorkstreamAgent]()
+	agent := func(a *OrgWorkstreamAgent) { a.fill() }
+	methods["factory.org_keys"] = filled(orgMethod[OrgConn, OrgKeys]("factory.org_keys", func(OrgConn) (OrgRequest, error) {
+		return OrgRequest{Method: http.MethodGet, Path: "/v1/org/keys"}, nil
+	}), func(k *OrgKeys) { k.fill() })
+	methods["factory.org_key_set"] = orgMethod[OrgKeySetParams, OrgKey]("factory.org_key_set", func(p OrgKeySetParams) (OrgRequest, error) {
+		path, err := orgKeyPath(p.Provider)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		key := strings.TrimSpace(p.Key)
+		if key == "" || len(key) > 512 || strings.ContainsAny(key, " \t\r\n") {
+			return OrgRequest{}, Errorf(CodeBadParams, "key is one word of at most 512 characters")
+		}
+		return OrgRequest{Method: http.MethodPut, Path: path, Body: map[string]string{"key": key}}, nil
+	})
+	methods["factory.org_key_delete"] = orgMethod[OrgKeyParams, Empty]("factory.org_key_delete", func(p OrgKeyParams) (OrgRequest, error) {
+		path, err := orgKeyPath(p.Provider)
+		return OrgRequest{Method: http.MethodDelete, Path: path}, err
+	})
+	methods["factory.org_workstream_agent"] = filled(orgMethod[OrgWorkstreamAgentParams, OrgWorkstreamAgent]("factory.org_workstream_agent", func(p OrgWorkstreamAgentParams) (OrgRequest, error) {
+		path, err := orgWorkstreamPath(p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		if p.Since < 0 {
+			return OrgRequest{}, Errorf(CodeBadParams, "since is the last seq you have")
+		}
+		chat, err := orgChatID(p.Chat)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		q := url.Values{}
+		if p.Since > 0 {
+			q.Set("since", strconv.Itoa(p.Since))
+		}
+		if chat != "" {
+			q.Set("chat", chat)
+		}
+		path += "/agent"
+		if len(q) > 0 {
+			path += "?" + q.Encode()
+		}
+		return OrgRequest{Method: http.MethodGet, Path: path}, nil
+	}), agent)
+	methods["factory.org_workstream_agent_send"] = filled(orgMethod[OrgWorkstreamAgentSendParams, OrgWorkstreamAgent]("factory.org_workstream_agent_send", func(p OrgWorkstreamAgentSendParams) (OrgRequest, error) {
+		path, err := orgWorkstreamPath(p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		text := strings.TrimSpace(p.Text)
+		if text == "" || len(text) > orgAgentMessageMost {
+			return OrgRequest{}, Errorf(CodeBadParams, "text is 1 to 16384 bytes of words")
+		}
+		chat, err := orgChatID(p.Chat)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		body := orgAgentMessageBody(text, p.TZ, p.Cards)
+		if chat != "" {
+			body["chat"] = chat
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/agent/messages", Body: body}, nil
+	}), agent)
+	methods["factory.org_workstream_agent_stop"] = filled(orgMethod[OrgWorkstreamAgentStopParams, OrgWorkstreamAgent]("factory.org_workstream_agent_stop", func(p OrgWorkstreamAgentStopParams) (OrgRequest, error) {
+		path, err := orgWorkstreamPath(p.ID)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		chat, err := orgChatID(p.Chat)
+		if err != nil {
+			return OrgRequest{}, err
+		}
+		path += "/agent/stop"
+		if chat != "" {
+			path += "?chat=" + url.QueryEscape(chat)
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path}, nil
+	}), agent)
+}
+
+// orgAgentMessageBody is the server's AgentMessageNew: the words, and the
+// sender's time zone when the app sent one.
+func orgAgentMessageBody(text, tz string, cards bool) map[string]any {
+	body := map[string]any{"text": text}
+	if tz = strings.TrimSpace(tz); tz != "" && len(tz) <= 64 {
+		body["tz"] = tz
+	}
+	if cards {
+		body["cards"] = true
+	}
+	return body
+}

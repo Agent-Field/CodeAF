@@ -194,10 +194,23 @@ func TestQueueListsVisibleWatchedRepositoriesWithoutJobs(t *testing.T) {
 			t.Fatalf("watched empty repo = %+v", q)
 		}
 	}
+	// A WATCHED REPOSITORY IS THE ORGANIZATION'S (org_repos.go): the operator
+	// turned it on, so it stays in a member's picker when their own token
+	// stops reading it. It used to vanish with ReasonNoVisibleRepos (film D10).
 	g.repoStatus = 404
 	*now = now.Add(repoVisibilityTTL)
+	if q := queueAs(t, h, signed.AccessToken, false); len(q.Repos) != 1 || q.Repos[0].Name != "acme/new" || q.Reason != "" {
+		t.Fatalf("the organization's watched repo = %+v", q)
+	}
+	// What the organization did not turn on still follows the person's token.
+	if err := st.SetRepos(nil); err != nil {
+		t.Fatal(err)
+	}
+	h.seam.Load = func() (factory.Snapshot, error) {
+		return factory.Snapshot{Now: *now, Items: []factory.Item{{ID: 1, Repo: "acme/new", Title: "hidden"}}}, nil
+	}
 	if q := queueAs(t, h, signed.AccessToken, false); len(q.Repos) != 0 || q.Reason != api.ReasonNoVisibleRepos {
-		t.Fatalf("hidden watched repo = %+v", q)
+		t.Fatalf("a repository the person's token cannot read and nobody turned on = %+v", q)
 	}
 }
 

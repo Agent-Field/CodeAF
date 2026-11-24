@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -42,6 +43,9 @@ func (h *Handler) operatorLogin(r *http.Request) string {
 
 // isOperator accepts script credentials or the persisted operator's signed-in identity.
 func (h *Handler) isOperator(r *http.Request) bool {
+	if call, ok := agentCallOf(r); ok {
+		return call.operator
+	}
 	if h.floorToken(bearer(r)) {
 		return true
 	}
@@ -102,8 +106,14 @@ func (h *Handler) peopleDirectory(w http.ResponseWriter, r *http.Request) {
 	if !found && operator != "" {
 		members = append(members, api.Member{Handle: operator, LastSeen: h.now()})
 	}
+	accounts, _ := h.loadAccounts()
 	for _, member := range members {
-		p := api.Person{Factory: h.factory, Handle: member.Handle, Login: member.Handle, Role: "member", You: member.Handle == caller,
+		if _, ok := accounts.Find(member.Handle); ok {
+			member.Kind = signInPassword
+		} else if member.Kind == "" {
+			member.Kind = signInGitHub
+		}
+		p := api.Person{Factory: h.factory, Handle: member.Handle, Login: member.Handle, Kind: member.Kind, Role: "member", You: member.Handle == caller,
 			Operator: member.Handle == operator, Status: personStatus(member.LastSeen, h.now()), Owns: []api.Ownership{}, Machines: []api.Machine{}}
 		p.Name, p.AvatarURL = member.Name, member.AvatarURL
 		last := member.LastSeen
@@ -174,10 +184,47 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "person handle must be a GitHub handle")
 		return
 	}
+	heir, ok := h.workstreamHeir(w, r, handle)
+	if !ok {
+		return
+	}
 	if h.failed(w, h.revokePerson(r, handle)) {
 		return
 	}
-	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, "jobs moved to Unassigned"))
+	// A removed password person's password signs nobody in any more.
+	err := tokens.RemoveAccount(h.config.TokensPath, handle)
+	h.forgetAccounts()
+	if h.failed(w, err) {
+		return
+	}
+	// The invite they joined by is closed too, so People stops listing them as Joined (v2 J4): a removed person is
+	// gone from the table, and inviting the same email again makes a fresh invite.
+	if h.failed(w, closeInvitesOf(h.config.TokensPath, handle, h.now())) {
+		return
+	}
+	// A person the operator removes leaves every team with their sign-ins,
+	// and their workstreams go to an heir rather than keep a gone owner.
+	if h.failed(w, h.leaveEveryTeam(r, handle)) {
+		return
+	}
+	given, err := h.handOnWorkstreams(handle, heir, h.orgActor(r))
+	if h.failed(w, err) {
+		return
+	}
+	// THE TASKS THEY OWN ARE OFFERED TO WHOEVER REMOVED THEM (v2 J4, C6), so
+	// nothing is left without an owner: they arrive in that person's "Handed
+	// to you", from the person who left, to hand on.
+	if admin := h.orgActor(r); h.config.Store != nil && admin != "" && admin != handle {
+		from := &factory.PersonRef{ID: handle, Name: h.personNames()(handle)}
+		if h.failed(w, h.rebindTasks(r, handle, admin, admin, from)) {
+			return
+		}
+	}
+	detail := "jobs moved to Unassigned"
+	if given > 0 {
+		detail += fmt.Sprintf("; %d workstreams given to @%s", given, heir)
+	}
+	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, detail))
 }
 
 // revokePerson ends sign-ins and runner credentials before ownership is made available again.
@@ -237,6 +284,7 @@ func (h *Handler) soloJob(job *api.Job, stored factory.Item, caller string) {
 	if a := factory.JobApproval(it); !decisionPaused && a != nil && a.State == "waiting" {
 		job.Can.Approve = factory.NormalizeHandle(caller) != ""
 	}
+	h.folderCan(job, stored)
 	job.AssignedTo = ""
 	job.Assignee, job.WaitingFor = "", ""
 	job.Can.AssignToMe = false

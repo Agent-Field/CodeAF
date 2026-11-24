@@ -59,7 +59,10 @@ import (
 // nobody, so the side that wrote the line asks the engine to open that
 // conversation headless ([SetTeamResume]); it attaches no surface, and a window
 // that opens it later joins the running one. Where there is no such road, the
-// Traffic says so (`could not wake @x: …`) rather than the writer pretending.
+// Traffic says so (`could not wake @x: …`) rather than the writer pretending,
+// and the wake is KEPT and tried again until the conversation can be reached
+// (team_rousequeue.go): a reply to a manager that moved out of reach is a wake
+// owed, never one dropped.
 //
 // AND IT IS BOUNDED TWICE. A conversation is woken at most [teamWakesPerHour]
 // times in an hour, and a manager woken [teamLoopRounds] times by its team with
@@ -862,6 +865,12 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 	guard.Go("team rouse", func() {
 		for _, member := range absent {
 			if reason := rouseMember(member); reason != "" {
+				// THE WAKE IS KEPT (team_rousequeue.go). A conversation whose
+				// wake is already owed is the same wake, said once already.
+				kept := strings.TrimSpace(member.File) != ""
+				if kept && !queueRouse(profile, team.ID, member, reason) {
+					continue
+				}
 				who, to := "@"+member.Handle, member.Handle
 				if member.Key == team.Manager {
 					who, to = "◆", teams.ToManager
@@ -869,9 +878,13 @@ func (a *Agent) teamRouse(profile string, team teams.Team, wakes bool, targets [
 				if to == "" {
 					who, to = "a member with no handle", teams.ToRoom
 				}
+				text := "could not wake " + who + ": " + reason
+				if kept {
+					text += teamRouseKept
+				}
 				a.teamSay(profile, team.ID, teams.Entry{
 					Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: member.Key,
-					State: teams.StateIdle, Text: "could not wake " + who + ": " + reason, Answers: answers,
+					State: teams.StateIdle, Text: text, Answers: answers,
 					Provenance: prov,
 				})
 			}

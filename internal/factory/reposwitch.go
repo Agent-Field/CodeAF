@@ -79,7 +79,13 @@ func (s RepoSwitch) Watched(repo string) bool { return s.on[repoKey(repo)] }
 
 // Off says repo is switched off. A name that is not `owner/name` is never off:
 // it cannot be on the list, so the switch says nothing about it.
+//
+// A folder on this computer ([IsFolderRepo]) is never off either: it is no
+// repository the factory watches, so there is no switch for it.
 func (s RepoSwitch) Off(repo string) bool {
+	if IsFolderRepo(repo) {
+		return false
+	}
 	key := repoKey(repo)
 	return s.kept && strings.Count(key, "/") == 1 && !s.on[key]
 }

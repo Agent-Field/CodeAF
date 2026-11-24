@@ -286,15 +286,17 @@ func (b *appBackend) FactoryLocalRun(ctx context.Context, _ string) (appwire.Fac
 	if err != nil {
 		return appwire.FactoryLocalStatus{}, err
 	}
-	// THE FACTORY REFUSES A WORKER WITH NO HANDLE, and a runner that is refused
-	// retries in silence for as long as the engine lives, so a person who has
-	// not connected GitHub is told so here instead of waiting on a job that
-	// can never start.
+	// A TEAM FACTORY REFUSES A WORKER WITH NO HANDLE, and a runner that is
+	// refused retries in silence for as long as the engine lives, so a person
+	// who has not connected GitHub is told so here instead of waiting on a job
+	// that can never start. A Personal (solo) factory never refuses for that:
+	// its runner on this machine attaches under factory.LocalRunnerHandle, so
+	// a folder job runs with no GitHub at all.
 	var me api.Me
 	if err := b.factoryHub().read(ctx, id, "/v1/me", appFactorySmall, &me); err != nil {
 		return appwire.FactoryLocalStatus{}, err
 	}
-	if strings.TrimSpace(me.Handle) == "" {
+	if strings.TrimSpace(me.Handle) == "" && me.Mode != api.FactorySolo {
 		return appwire.FactoryLocalStatus{}, appwire.Errorf(appwire.CodeConflict, "connect GitHub before turning the runner on: the factory needs to know whose jobs these are")
 	}
 	return b.startLocalRunner()

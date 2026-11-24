@@ -834,23 +834,24 @@ func TestMaskCredentialHidesTheKeyAndItsLength(t *testing.T) {
 // The three throttle rows read their defaults, take a person's answer, and hand
 // it back to the accessor the session door calls — which is the whole of what a
 // settings row has to do.
-// THE TWO ROWS THAT ARE NOT CREW SEATS SHIP POINTED AT A MODEL, and the two
-// answers a person can give one are different from each other: never touching
-// it is this build's own choice, emptying it on purpose is "follow the
-// conversation". The crew's three seats ship with NO model: unpinned, a seat is
-// routed, and a profile with no provider connected has nothing to route to.
-func TestEveryTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
+// THE TWO ROWS THAT ARE NOT CREW SEATS SHIP EMPTY: their calls are
+// background seats and follow the model the person chose (internal/roles'
+// background.go). A row the person writes is theirs, and clearing it goes back
+// to following. The crew's three seats ship with NO model either: unpinned, a
+// seat is routed, and a profile with no provider connected has nothing to
+// route to.
+func TestNoTierShipsWithAModelAndAWrittenRowIsHonoured(t *testing.T) {
 	dir := t.TempDir()
 	row := mustRow(t, registry(t, dir), KeyTierReflexModel)
 
-	if got := TierModelAt(dir, ModelTierReflex); got != DefaultReflexModel {
-		t.Fatalf("an untouched profile resolves the reflex tier to %q, want %q", got, DefaultReflexModel)
+	if got := TierModelAt(dir, ModelTierReflex); got != "" {
+		t.Fatalf("an untouched profile resolves the reflex tier to %q, want it to follow the conversation", got)
 	}
-	if got := row.Value(); got != DefaultReflexModel {
-		t.Fatalf("the reflex row reads %q in an untouched profile, want %q", got, DefaultReflexModel)
+	if got := row.Value(); got != "follows the conversation" {
+		t.Fatalf("the reflex row reads %q in an untouched profile, want its empty label", got)
 	}
-	if got := TierModelAt(dir, ModelTierLow); got != DefaultLowModel {
-		t.Fatalf("the low tier resolves %q in an untouched profile, want %q", got, DefaultLowModel)
+	if got := TierModelAt(dir, ModelTierLow); got != "" {
+		t.Fatalf("the low tier resolves %q in an untouched profile, want it to follow the conversation", got)
 	}
 	for _, tier := range []string{ModelTierWorker, ModelTierHigh, ModelTierMastermind} {
 		if seat := TierSeatAt(dir, tier); seat.Source != SeatRouted {

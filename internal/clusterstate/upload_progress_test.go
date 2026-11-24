@@ -51,3 +51,18 @@ func TestRecordKeepsItsFolder(t *testing.T) {
 		t.Fatalf("a publish naming a folder did not replace it: %+v, %v", moved, err)
 	}
 }
+
+func TestRecordKeepsItsCrew(t *testing.T) {
+	c := Created(CellInit{Head: "h", Crew: "sealed-crew"}, "dev_a", 5)
+	if c.Crew != "sealed-crew" {
+		t.Fatalf("created %+v", c)
+	}
+	kept, err := PublishTo(c, "dev_a", Publish{Fence: c.Lease.Fence, OldHead: "h", Head: "h2"}, 6)
+	if err != nil || kept.Crew != "sealed-crew" {
+		t.Fatalf("a publish without a crew lost it: %+v, %v", kept, err)
+	}
+	moved, err := PublishTo(kept, "dev_a", Publish{Fence: c.Lease.Fence, OldHead: "h2", Head: "h3", Crew: "sealed-none"}, 7)
+	if err != nil || moved.Crew != "sealed-none" {
+		t.Fatalf("a publish naming a crew did not replace it: %+v, %v", moved, err)
+	}
+}

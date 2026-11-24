@@ -57,7 +57,7 @@ func (h *Handler) taskJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 	}
 	defer unlock()
 	added, err := lease.NewDoors(h.workers.desk).Task(it.ID, by, words, body.Now)
-	var refused factory.TaskRefused
+	var refused factory.JobTaskRefused
 	if errors.As(err, &refused) {
 		status, reason := http.StatusConflict, "conflict"
 		if words == "" {
@@ -69,7 +69,7 @@ func (h *Handler) taskJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 	// THE MAIN AGENT'S LIMIT IS A REFUSAL, NOT A FAULT. A task it sends to a
 	// stop it has already put back to work as often as it may is refused by
 	// the same rule as its other decisions (factory's task_handoff.go). That
-	// error is not a [factory.TaskRefused], so it used to leave here as a 500,
+	// error is not a [factory.JobTaskRefused], so it used to leave here as a 500,
 	// which the app reads as "this may have happened".
 	if errors.Is(err, factory.ErrManagerRoundsUsed) {
 		h.refuse(w, http.StatusConflict, err.Error(), "conflict", "", nil, factory.JobState(it))

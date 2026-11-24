@@ -5,8 +5,9 @@
 `PR gate` (`ci.yml`) runs on pull requests into `dev`, `app/v3` and
 `santos/dev2`, and pushes to `dev` and `santos/dev2`. The required `check`
 status combines the light gate and successful touched-package checks.
-Pull requests compare against their exact base SHA, so an `app/v3` PR selects
-packages and attributes failures against `app/v3`, rather than `dev`.
+Pull requests resolve the merge-base of HEAD and their exact base SHA, so an
+`app/v3` PR selects its own changes and attributes failures against its branch
+point on `app/v3`, rather than `dev` or unrelated newer base changes.
 
 The light gate builds and vets all Go packages, checks formatting, generates
 and tests packed manuals, validates change entries, and runs manual coverage,
@@ -19,7 +20,10 @@ Every listed test passed natively when it was added. The job is advisory: it is
 not part of `check` until it has stayed green.
 
 Touched packages use `scripts/touched-packages.sh` to map the committed diff to
-root-module packages. Module changes select the whole tree; changes without Go
+root-module packages using `git diff "$base...HEAD"`, measured from the merge-base.
+A base branch advancing after the PR forked therefore does not select other lanes'
+packages. CI and local verification use the same selector and pass that merge-base to
+the failure classifier. Module changes select the whole tree; changes without Go
 or module edits select no package leg. Tests run fresh with `-count=1` in
 separate chat, session, command and remaining-package jobs. Heavy packages are
 sharded from one compiled test binary, with a 15-minute timeout per shard.

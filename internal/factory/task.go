@@ -40,10 +40,10 @@ const TaskRounds = 2
 // taskName is the first task's name; a job's later ones are numbered.
 const taskName = "task"
 
-// TaskAsk is what an extra task's phase carries: the instructions, whole, and
+// JobTaskRequest is what an extra task's phase carries: the instructions, whole, and
 // who gave them. A phase's note changes as it runs (a shortfall, a question),
 // so the instructions are kept here.
-type TaskAsk struct {
+type JobTaskRequest struct {
 	Words string
 	By    string
 }
@@ -70,28 +70,28 @@ type TaskAdded struct {
 	By   string
 }
 
-// TaskRefused is why a task cannot be added now, in words a person reads.
-type TaskRefused string
+// JobTaskRefused is why a task cannot be added now, in words a person reads.
+type JobTaskRefused string
 
-func (e TaskRefused) Error() string { return string(e) }
+func (e JobTaskRefused) Error() string { return string(e) }
 
 // The refusals. They are said to the person and to the main agent as they are.
 const (
-	taskNoWords     TaskRefused = "Say what the task is."
-	taskFinished    TaskRefused = "This job is finished, so it takes no more tasks."
-	taskStopped     TaskRefused = "You stopped this job. Start it again first."
-	taskNotStarted  TaskRefused = "Start the job first. A task needs a job that is under way, with its checkout made."
-	taskElsewhere   TaskRefused = "This job runs on AgentField and has no checkout here for a task."
-	taskPutAway     TaskRefused = "A decision on this job was put away. "
-	taskTakenOver   TaskRefused = "You have taken this job over. Give it back with Resume pipeline first."
-	taskBudget      TaskRefused = "Job budget reached. Raise the budget before sending a task."
-	taskNoBudget    TaskRefused = "Choose a budget for this job before sending a task."
-	taskPublishing  TaskRefused = "A push is in flight. Send the task after it lands."
-	taskMerging     TaskRefused = "A merge is in flight. Send the task after it settles."
-	taskPlanWaits   TaskRefused = "The plan is waiting for approval. Approve it or send it back first. A task runs once the plan is approved."
-	taskSpendStop   TaskRefused = "This job is stopped after its last step, as you asked. Answer that first."
-	taskNotSaved    TaskRefused = "The last step's results were not saved. Run the step again or resume the pipeline first."
-	taskRunApproval TaskRefused = "An AgentField run is waiting for its approval. Answer that first."
+	taskNoWords     JobTaskRefused = "Say what the task is."
+	taskFinished    JobTaskRefused = "This job is finished, so it takes no more tasks."
+	taskStopped     JobTaskRefused = "You stopped this job. Start it again first."
+	taskNotStarted  JobTaskRefused = "Start the job first. A task needs a job that is under way, with its checkout made."
+	taskElsewhere   JobTaskRefused = "This job runs on AgentField and has no checkout here for a task."
+	taskPutAway     JobTaskRefused = "A decision on this job was put away. "
+	taskTakenOver   JobTaskRefused = "You have taken this job over. Give it back with Resume pipeline first."
+	taskBudget      JobTaskRefused = "Job budget reached. Raise the budget before sending a task."
+	taskNoBudget    JobTaskRefused = "Choose a budget for this job before sending a task."
+	taskPublishing  JobTaskRefused = "A push is in flight. Send the task after it lands."
+	taskMerging     JobTaskRefused = "A merge is in flight. Send the task after it settles."
+	taskPlanWaits   JobTaskRefused = "The plan is waiting for approval. Approve it or send it back first. A task runs once the plan is approved."
+	taskSpendStop   JobTaskRefused = "This job is stopped after its last step, as you asked. Answer that first."
+	taskNotSaved    JobTaskRefused = "The last step's results were not saved. Run the step again or resume the pipeline first."
+	taskRunApproval JobTaskRefused = "An AgentField run is waiting for its approval. Answer that first."
 )
 
 // TaskRefusal says why a task with these words cannot be added to the job
@@ -102,7 +102,7 @@ func TaskRefusal(it Item, words string) error {
 		return taskNoWords
 	}
 	if err := RefuseDropped(it); err != nil {
-		return TaskRefused(err.Error())
+		return JobTaskRefused(err.Error())
 	}
 	if JobState(it) == "done" {
 		return taskFinished
@@ -111,7 +111,7 @@ func TaskRefusal(it Item, words string) error {
 		return taskStopped
 	}
 	if err := RequireIssueJob(it); err != nil {
-		return TaskRefused(err.Error())
+		return JobTaskRefused(err.Error())
 	}
 	if JobState(it) == "backlog" || !taskStarted(it) {
 		return taskNotStarted
@@ -120,7 +120,7 @@ func TaskRefusal(it Item, words string) error {
 		return taskElsewhere
 	}
 	if RecoveryPaused(it) {
-		return taskPutAway + TaskRefused(DecisionPauseDetail(it))
+		return taskPutAway + JobTaskRefused(DecisionPauseDetail(it))
 	}
 	if it.Manual {
 		return taskTakenOver
@@ -239,7 +239,7 @@ func TaskPhase(it Item, by, words string) Phase {
 // runner that is told of a task makes the phase the factory made.
 func NamedTaskPhase(name, by, words string) Phase {
 	words = strings.TrimSpace(words)
-	return Phase{Name: name, Kind: StageChat, State: PhasePending, Note: firstLine(words), Task: &TaskAsk{Words: words, By: TaskBy(by)}}
+	return Phase{Name: name, Kind: StageChat, State: PhasePending, Note: firstLine(words), Task: &JobTaskRequest{Words: words, By: TaskBy(by)}}
 }
 
 // TaskBy reads who asked for a task: the main agent, or the person for any

@@ -218,7 +218,7 @@ func TestNewJobInvalidExtrasHaveNoEffects(t *testing.T) {
 	reopenJobs(t, f)
 	for _, path := range []string{"/v1/jobs", "/v1/issues"} {
 		for field, value := range map[string]any{
-			"budget": 7, "group": strings.Repeat("g", 201), "milestone": "bad\x00label",
+			"budget": 0.5, "group": strings.Repeat("g", 201), "milestone": "bad\x00label",
 			"context": []factory.JobContext{{Title: "reference", Markdown: strings.Repeat("x", 100001)}},
 		} {
 			raw, err := json.Marshal(map[string]any{"repo": "acme/api", "title": "Fix", "issue": true, field: value})

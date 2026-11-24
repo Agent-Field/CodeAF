@@ -82,6 +82,9 @@ func (h *HTTP) Create(ctx context.Context, id string, in CellInit) (v CellView, 
 	if in.Folder != "" && !h.chatFolders(ctx, id) {
 		in.Folder = ""
 	}
+	if in.Crew != "" && !h.chatCrews(ctx, id) {
+		in.Crew = ""
+	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, ""), in, &v)
 }
 
@@ -179,6 +182,22 @@ func (h *HTTP) chatFolders(ctx context.Context, id string) bool {
 	return known == true
 }
 
+// ChatCrewsHeader advertises a record's optional sealed crew. Older relays
+// strictly decode signed bodies, so clients omit the field without it, and a
+// chat on such a relay simply travels with no crew (a loose row elsewhere).
+const ChatCrewsHeader = "Codeaf-Chat-Crews"
+
+var chatCrewServices sync.Map
+
+func (h *HTTP) chatCrews(ctx context.Context, id string) bool {
+	if known, ok := chatCrewServices.Load(h.serviceKey()); ok {
+		return known == true
+	}
+	_, _ = h.Cell(ctx, id)
+	known, _ := chatCrewServices.Load(h.serviceKey())
+	return known == true
+}
+
 func (h *HTTP) savedTurnTimes(ctx context.Context, id string) bool {
 	if known, ok := savedTimeServices.Load(h.serviceKey()); ok {
 		return known == true
@@ -222,6 +241,9 @@ func (h *HTTP) Publish(ctx context.Context, id string, p Publish) (v CellView, e
 	}
 	if p.Folder != "" && !h.chatFolders(ctx, id) {
 		p.Folder = ""
+	}
+	if p.Crew != "" && !h.chatCrews(ctx, id) {
+		p.Crew = ""
 	}
 	return v, h.do(ctx, http.MethodPost, cellPath(id, "publish"), p, &v)
 }
@@ -284,6 +306,7 @@ func (h *HTTP) doHeader(ctx context.Context, method, path string, in, out any) (
 		workingServices.Store(h.serviceKey(), resp.Header.Get(WorkingBeatsHeader) == "1")
 		noteServices.Store(h.serviceKey(), resp.Header.Get(ChatNotesHeader) == "1")
 		chatFolderServices.Store(h.serviceKey(), resp.Header.Get(ChatFoldersHeader) == "1")
+		chatCrewServices.Store(h.serviceKey(), resp.Header.Get(ChatCrewsHeader) == "1")
 	}
 	if resp.StatusCode >= 300 {
 		return resp.Header, refusal(resp)

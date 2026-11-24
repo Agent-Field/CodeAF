@@ -2468,21 +2468,18 @@ func (b *appBackend) CrewItems(id string) ([]appwire.CrewItem, error) {
 	return items, nil
 }
 
-// CrewLink links a job, issue, pull request or file to a crew (app layer).
+// CrewLink links a job, issue, pull request or file to a crew (app layer),
+// and tells the window: a link the crew's manager made with team_link arrives
+// on no reply of the window's own.
 func (b *appBackend) CrewLink(id, kind, ref, title string) (appwire.CrewItem, error) {
 	if _, _, err := b.crewTeam(id); err != nil {
 		return appwire.CrewItem{}, err
 	}
-	var item appwire.CrewItem
-	err := b.crewLayer().write(func(f *appCrewLayerFile) error {
-		item = appwire.CrewItem{ID: f.next("i"), Crew: id, Kind: kind, Ref: strings.TrimSpace(ref), Title: strings.TrimSpace(title), At: b.now()}
-		extra := f.crew(id)
-		extra.Items = append(extra.Items, item)
-		return nil
-	})
+	item, err := linkCrewItem(b.crewLayer(), session.TeamLink{Team: id, Kind: kind, Ref: ref, Title: title}, b.now())
 	if err != nil {
 		return appwire.CrewItem{}, appEngineError(err)
 	}
+	b.emit.Emit(appwire.EventCrewItem, appwire.CrewItemEvent{Item: item})
 	return item, nil
 }
 

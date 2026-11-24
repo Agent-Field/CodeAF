@@ -381,7 +381,7 @@ type Phase struct {
 	Passed *Passed `json:",omitempty"`
 	// Task is set on the phase of an extra task (task.go): its instructions
 	// and who gave them. Nil on every step of the pipeline.
-	Task *TaskAsk `json:",omitempty"`
+	Task *JobTaskRequest `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in
@@ -1024,6 +1024,10 @@ type Item struct {
 	Publish string `json:",omitempty"`
 	// CommentURL is the receipt for approved proof that needed no new commit.
 	CommentURL string `json:",omitempty"`
+	// FolderPR is the pull request a person opened from a finished folder
+	// job's branch ([FolderOf], "Open a pull request"). It is a receipt and
+	// nothing more: the job stays done, and nothing follows the pull request.
+	FolderPR *PublishedPR `json:",omitempty"`
 
 	// Activity is the item's own short history, oldest first: it arrived, it
 	// changed upstream, it was read, a conversation was made, its stages
@@ -1041,6 +1045,17 @@ func (it Item) Person() string {
 	}
 	return ""
 }
+
+// LocalRunnerHandle is the name a Personal (solo) factory's own runner attaches
+// under while no forge is connected (serve's worker attach, on loopback only).
+// IT IS NEVER A FORGE IDENTITY: it is used only while the factory has no GitHub
+// token, so no write can ever reach GitHub under it, and a factory that later
+// connects GitHub attaches its runner under the login instead. It keeps the
+// record's handle shape (lowercase letters, digits and hyphens), which the
+// factory's history refuses anything outside of. It exists because a folder
+// job needs no GitHub at all, and a runner with no name to attach under left
+// such a job waiting in the queue forever.
+const LocalRunnerHandle = "this-computer"
 
 // NormalizeHandle lets workers and stored ownership compare forge handles
 // without treating display prefixes or case as a different person.

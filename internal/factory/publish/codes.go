@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
@@ -20,6 +21,14 @@ var ErrCommitChanged = errors.New("job changed since approval; approve again")
 const (
 	CodePushRejected     = "push_rejected"
 	CodeBranchNamesTaken = "branch_names_taken"
+	// CodeGitHubNotConnected is a publish from a computer with no GitHub
+	// connection, and CodeGitHubOtherAccount one whose connection is not the
+	// job's person. NEITHER IS A MISSING WRITE ACCESS: telling someone to ask
+	// for write access when nobody's GitHub is connected sent them to the
+	// wrong person. Their words name the accounts, so each failure carries
+	// its own sentence ([Reason] prefers it to the table's).
+	CodeGitHubNotConnected = factory.PublishGitHubNotConnected
+	CodeGitHubOtherAccount = factory.PublishGitHubOtherAccount
 )
 
 // Code is a stable wire identifier and the next action a person can take.
@@ -31,6 +40,8 @@ type Code struct {
 var codes = []Code{
 	{"branch_protected", "Ask a repo admin to allow codeaf, or open the PR yourself from the branch."},
 	{"no_push_permission", "Ask for write access to this repo, then Retry publishing."},
+	{CodeGitHubNotConnected, "Connect GitHub to publish: connect it in Settings › Connectors on the computer that ran this job, then Retry publishing."},
+	{CodeGitHubOtherAccount, "Connect GitHub to publish: that computer is connected to GitHub as someone else. Connect GitHub as the job's person in Settings › Connectors there, or have a teammate who signs in with GitHub take the job, then Retry publishing."},
 	{CodePushRejected, "This pull request's branch moved on GitHub, and nothing was overwritten. Follow PR reads what landed there; approve again after that."},
 	{CodeBranchNamesTaken, "This job's branch name and its spare names on GitHub hold other commits, and nothing was overwritten. Delete a branch nobody needs, then Retry publishing."},
 	{"pr_create_forbidden", "Open the PR yourself from the branch; this account cannot open PRs here."},
@@ -57,6 +68,13 @@ func Known(code string) bool {
 // Reason is the failure in a person's words: what to do about a code that names
 // its remedy, else the first line of what the forge said.
 func Reason(code, detail string) string {
+	// A GitHub-connection failure says its own sentence, which names the
+	// accounts; the table's words are for a failure that carries none.
+	if code == CodeGitHubNotConnected || code == CodeGitHubOtherAccount {
+		if line, _, _ := strings.Cut(strings.TrimSpace(detail), "\n"); strings.TrimSpace(line) != "" {
+			return strings.TrimSpace(line)
+		}
+	}
 	if code != "unknown" {
 		for _, row := range codes {
 			if row.Code == code {

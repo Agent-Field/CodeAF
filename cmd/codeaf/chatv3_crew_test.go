@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 
@@ -178,13 +177,14 @@ func TestTheCrewSourceIsSafeUnderConcurrentTurns(t *testing.T) {
 
 // The surface writes credit records while the engine seats the crew. External
 // writes do not move this process's settings generation. The live source must
-// notice the threshold record, but only explicit free-route opt-in may change
-// its model; low means <= $0.50, not proof that the account is empty.
+// notice the threshold record without seating a helper row on a model of its
+// own: since 2026-11-16 the reflex and small-work rows ship empty and follow
+// the conversation (internal/roles' background.go), low balance or not.
 func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
 	for _, freeAllowed := range []bool{false, true} {
-		name := "free routes off keeps paid helpers"
+		name := "free routes off"
 		if freeAllowed {
-			name = "explicit opt-in follows external balance"
+			name = "explicit opt-in"
 		}
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -201,8 +201,8 @@ func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
 			}
 			reflex := roles.TierKey(roles.TierReflex)
 			paid, _ := source(reflex)
-			if paid != config.DefaultReflexModel {
-				t.Fatalf("a profile with no record seated reflex on %q, want %q", paid, config.DefaultReflexModel)
+			if paid != "" {
+				t.Fatalf("a profile with no record seated reflex on %q, want it to follow the conversation", paid)
 			}
 			generation := config.SettingsGeneration()
 			writeExternalRecord := func(low bool, readAt string) {
@@ -223,18 +223,11 @@ func TestACreditRecordWrittenByAnotherProcessReseatsTheLiveCrew(t *testing.T) {
 			if !config.CreditsLowAt(dir) {
 				t.Fatal("external low threshold record was not visible")
 			}
-			current, _ := source(reflex)
-			if freeAllowed {
-				if current == paid || current != config.TierModelAt(dir, config.ModelTierReflex) || !strings.HasSuffix(current, ":free") {
-					t.Fatalf("opted-in live crew ignored external low reading: %q", current)
-				}
-			} else {
-				if current != paid {
-					t.Fatalf("a low threshold record silently enabled free reflex: %q", current)
-				}
-				if low, _ := source(roles.TierKey(roles.TierLow)); strings.HasSuffix(low, ":free") {
-					t.Fatalf("a low threshold record silently enabled free small-work: %q", low)
-				}
+			if current, _ := source(reflex); current != "" {
+				t.Fatalf("a low threshold record seated reflex on %q, want it to follow the conversation", current)
+			}
+			if low, _ := source(roles.TierKey(roles.TierLow)); low != "" {
+				t.Fatalf("a low threshold record seated small work on %q, want it to follow the conversation", low)
 			}
 			writeExternalRecord(false, "2026-09-24T21:50:00Z")
 			if back, _ := source(reflex); back != paid {

@@ -2297,6 +2297,13 @@ type Config struct {
 	// tasks are runs in the plan store ([Config.mayQuickTask]). The desktop
 	// app sets it.
 	QuickTasks bool
+	// HoldInterruptedWork opens a conversation WITHOUT carrying on the work the
+	// last process left in the middle: an interrupted task run is not resumed and
+	// the task frontier is not turned until [Agent.ContinueInterruptedWork] is
+	// called. The desktop app sets it for a chat the app's quit or close stopped
+	// mid-turn, so opening that chat to look at it spends nothing; the person's
+	// Continue is what carries it on (resume_quit.go).
+	HoldInterruptedWork bool
 
 	// BashBackgroundAfterSeconds is how long a foreground command stays in the
 	// turn before the same running process is kept as a job (promote.go,
@@ -2584,6 +2591,23 @@ type Config struct {
 	// so the page and the tasks description cannot disagree.
 	ownWork bool
 
+	// inWorkstream says the page is composed for a conversation that belongs to
+	// a workstream (workstream_mark.go). Only the agent sets it, from the mark it
+	// last read, so the page and the belt cannot disagree.
+	inWorkstream bool
+
+	// Workstream is an organization server's door onto the ONE workstream
+	// this conversation is the agent of (tools_workstream.go). NIL IS NO
+	// DOOR. When it is set the belt is `workstream_pages` and nothing else:
+	// the server's agent touches no shell, file or machine.
+	Workstream WorkstreamDoor
+
+	// OrgSetup is an organization server's door for its setup conversation
+	// (tools_org_setup.go). NIL IS NO DOOR. When it is set the belt is
+	// `org_propose_setup` and nothing else: the conversation that sets an
+	// empty organization up touches no shell, file or machine.
+	OrgSetup OrgSetupDoor
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
@@ -2815,6 +2839,8 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// heldWork is the recovery [Config.HoldInterruptedWork] kept back (resume_quit.go).
+	heldWork           heldRecovery
 	settingError       atomic.Pointer[settingResult]
 	settingsWrites     atomic.Int64
 	modelChanges       sync.Mutex
@@ -2854,7 +2880,12 @@ type Agent struct {
 	taskComputerPrompt bool
 	// ownWorkTold is the scope the page and the tasks description last told the
 	// model (scope.go). It is atomic because belts are built outside a.mu.
-	ownWorkTold   atomic.Bool
+	ownWorkTold atomic.Bool
+	// workstreamTold is the workstream mark the page and the belt last followed.
+	workstreamTold atomic.Bool
+	// canvasGuided says this conversation has been answered the canvas guide
+	// (tools_workstream_canvas.go), so ws_canvas runs its changes.
+	canvasGuided  atomic.Bool
 	remoteAckJobs sync.WaitGroup
 	// knowledgeWake is signalled after each journal line reaches the file.
 	// initKnowledge creates it once before the agent is reachable and never

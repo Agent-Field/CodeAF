@@ -41,6 +41,8 @@ type knowledgeHistoryRecord struct {
 	ID        string `json:"id"`
 	Cwd       string `json:"cwd"`
 	Workspace string `json:"workspace"`
+	// Workstream is the conversation's workstream mark (workstream_mark.go).
+	Workstream string `json:"workstream"`
 }
 
 // KnowledgeHistory reads every saved conversation under the named places root,
@@ -268,6 +270,16 @@ func (h knowledgeHistory) Inventory(ctx context.Context) ([]knowledge.Journal, e
 			}
 			if metaErr != nil && !os.IsNotExist(metaErr) {
 				journals = append(journals, knowledge.Journal{ID: place.Transcript(), Session: place.ID(), Error: metaErr.Error()})
+				continue
+			}
+			// A CONVERSATION IN A WORKSTREAM IS NEVER READ INTO THE LIBRARY,
+			// by the build any more than by the turn (workstream_mark.go). Its
+			// words and its tasks' reports belong to the workstream's Files,
+			// and a suggestion a person dropped there must never come back as
+			// something the Library learned (E3 F4). Like a deleted
+			// conversation, its tasks in the sibling roots are passed over too.
+			if strings.TrimSpace(meta.Workstream) != "" {
+				deletedOwners[place.ID()] = true
 				continue
 			}
 			if err = add(place.Transcript(), place.ID(), meta.Workspace, false); err != nil {

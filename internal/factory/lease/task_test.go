@@ -116,7 +116,7 @@ func TestARefusedTaskLeavesTheJobAndTheHold(t *testing.T) {
 	}
 	before, _ := f.store.Revision(it.ID)
 	_, err := doors.Task(it.ID, factory.TaskByMainAgent, "Add the rounding note.", true)
-	var refused factory.TaskRefused
+	var refused factory.JobTaskRefused
 	if !errors.As(err, &refused) {
 		t.Fatalf("err = %v, want a task refusal", err)
 	}

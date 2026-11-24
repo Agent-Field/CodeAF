@@ -2774,6 +2774,7 @@ func (s *Sync) publishInfo(c cell.Cell, title string) cellsync.PublishInfo {
 	if folder := chatFolder(c.Root); folder != "" {
 		in.Folder, _ = directory.SealTitle(directory.MetadataKey(s.Identity.CellKey()), folder)
 	}
+	in.Crew = s.sealedCrew(c)
 	return in
 }
 

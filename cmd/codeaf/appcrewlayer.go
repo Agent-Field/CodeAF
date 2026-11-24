@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
@@ -123,9 +124,26 @@ func (l *appCrewLayer) read(fn func(*appCrewLayerFile)) error {
 }
 
 // write changes the layer and saves it whole: a new file renamed over the old.
+//
+// THE WRITE HOLDS THE LAYER'S FILE LOCK, because the app is no longer its only
+// writer: an engine process records a crew manager's team_link here too
+// (appteamlink.go), and two read-modify-writes of one whole file would each
+// lose the other's change.
 func (l *appCrewLayer) write(fn func(*appCrewLayerFile) error) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if err := os.MkdirAll(filepath.Dir(l.path), appStateFolderMode); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(l.path+".lock", os.O_RDWR|os.O_CREATE, appStateFileMode)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, false); err != nil {
+		return err
+	}
+	defer func() { _ = filelock.Unlock(lock) }()
 	if err := l.loadLocked(); err != nil {
 		return err
 	}
@@ -143,9 +161,6 @@ func (l *appCrewLayer) write(fn func(*appCrewLayerFile) error) error {
 	}
 	out, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(l.path), appStateFolderMode); err != nil {
 		return err
 	}
 	temp := l.path + ".tmp"

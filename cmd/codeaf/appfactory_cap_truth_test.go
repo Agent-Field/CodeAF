@@ -74,7 +74,7 @@ func TestAppFactoryCapQuestionHasOneAmount(t *testing.T) {
 			}
 			saved = f.create(t, it)
 			if tc.cap == 30 && tc.spent == 31 {
-				alice.w.mustFail("factory.job_set_budget", alice.params(t, saved.ID, map[string]any{"budget": 50}), appwire.CodeBadParams)
+				alice.w.mustFail("factory.job_set_budget", alice.params(t, saved.ID, map[string]any{"budget": 0.5}), appwire.CodeBadParams)
 			}
 			alice.act(t, "factory.job_set_budget", saved.ID, map[string]any{"budget": tc.next})
 			raised := alice.job(t, saved.ID)

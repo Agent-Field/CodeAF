@@ -959,9 +959,9 @@ func TestAPinnedThinkingLevelIsSentWithThePin(t *testing.T) {
 	}
 }
 
-// `auto` IN THE REFLEX OR SMALL-WORK ROW WAS THIS BUILD'S OWN MODEL for that
-// row before crews were routed, and it still is: it is never sent to a
-// provider as a model id, and the migration takes the row away. A row a person
+// `auto` IN THE REFLEX OR SMALL-WORK ROW reads as an unwritten row — which
+// now follows the conversation, since neither row ships a model: it is never
+// sent to a provider as a model id, and the migration takes the row away. A row a person
 // cleared on purpose (empty) is theirs and stays.
 func TestAutoInAHelperRowReadsTheDefaultAndMigrates(t *testing.T) {
 	dir := crewProfile(t)
@@ -969,7 +969,7 @@ func TestAutoInAHelperRowReadsTheDefaultAndMigrates(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tier := range []string{ModelTierLow, ModelTierReflex} {
-		if got := TierModelAt(dir, tier); got == "" || strings.EqualFold(got, "auto") {
+		if got := TierModelAt(dir, tier); strings.EqualFold(got, "auto") {
 			t.Errorf("before migration the %s row reads %q", tier, got)
 		}
 	}

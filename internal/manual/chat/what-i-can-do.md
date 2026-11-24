@@ -916,9 +916,10 @@ image and **20MB** for all the images on one message.
   `session: shot.tiff is not an image this surface can send — png, jpeg, webp and gif are`
 - Unreadable: `session: could not read <path>`
 
-When the model you are on **cannot** see, codeaf does not simply refuse. It
-sends the picture and your words to a vision model in one shot and that answer
-becomes the reply, prefixed so you always know who spoke:
+When the model you are on **cannot** see and you have set a **looking** model
+(the looking row in settings, or a `vision` pin), codeaf does not simply refuse.
+It sends the picture and your words to that looking model in one shot and that
+answer becomes the reply, prefixed so you always know who spoke:
 
 ```
 [vision: <model>]
@@ -929,7 +930,9 @@ transcript, no tools. The conversation afterwards keeps text only, with a marker
 line like `[attached image: shot.png]`, because the model you are talking to is
 blind by construction.
 
-If no vision model can be reached at all:
+With no looking model set and a model that cannot see, nothing is chosen for
+you — codeaf never quietly sends your picture to another vendor's model — and the
+message is refused:
 `session: <model> cannot read images — switch to a model with vision, or describe what the picture shows`
 
 If a turn is already running:
@@ -978,8 +981,29 @@ fails.
 **One model does all the looking.** The looking slot in the settings sheet is
 the single answer to "what can see here": the fallback above, `read_document`'s
 image rung, and the `view_image` tool below all use that one model. Change it
-once and all three change. Leave it alone and codeaf picks the best model that
-publishes vision, so looking works on a machine that has never opened settings.
+once and all three change. Leave it on `automatic` and codeaf looks with the
+model you chose, when that model can see. **It never picks another model to look
+for you**: when the model you chose cannot read pictures and the looking row is
+empty, nothing looks — `view_image` is not offered, `read` on a picture says it
+cannot look, and an attached picture is refused by name. Set the looking row (or
+pick a model that can see) to turn looking on.
+
+## Why can't codeaf look at the picture — my model cannot see images, view_image is missing
+
+Looking follows the model you chose. If that model takes no images — many fast
+text models do not — and the **looking** row in the Models settings is empty,
+codeaf has no way to look and says so, instead of switching to a different
+model or vendor you never picked and billing you for it. `view_image` is then off
+the belt entirely, so the agent cannot check a screenshot or a canvas render; it
+tells you it cannot see the picture.
+
+To turn looking on, either:
+
+- set the **looking** row (or `CODEAF_VISION_MODEL`) to a model that can see —
+  every look then uses it and the answer names it; or
+- talk to a model that can see images, which then looks itself.
+
+A `vision` role pin works the same way as the looking row.
 
 ## Can you join videos, cut a longer video together, or add music to a video?
 

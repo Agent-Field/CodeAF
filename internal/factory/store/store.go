@@ -79,7 +79,8 @@ type Store struct {
 	// second, and a counter is how a test proves that without a clock.
 	reads atomic.Int64
 	// talks retains the last bounded stop lookup.
-	talks talkIndex
+	talks  talkIndex
+	policy policyCache
 }
 
 // Reads is how many item documents this store has read and decoded since it

@@ -31,8 +31,8 @@ const routeAsk = "audit the pricing code across every package and tell me what i
 // (route_judge.go: a second reader handed the first reader's verdict is a
 // reader agreeing with it), so the system prompt cannot tell them apart and the
 // only honest thing that can is the model each one actually rode. Setting the
-// two tiers here is therefore both the fixture and one of the assertions: a
-// confirm that resolved anywhere but the mastermind's model never reaches
+// screen's tier and the confirm's pin here is therefore both the fixture and one
+// of the assertions: a confirm that resolved anywhere but its pin never reaches
 // routeConfirmModel and every both-yes test below fails.
 const (
 	routeScreenModel  = "test/cheap-router"
@@ -371,7 +371,12 @@ func routeAgent(t *testing.T, completer Completer) (*Agent, *routeRun, *ran) {
 		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
 		config.OrchestrateRunner = runs.start
 		config.RolesSource = tierSettings(map[string]string{
-			roles.TierKey(roles.TierLow):        routeScreenModel,
+			roles.TierKey(roles.TierLow): routeScreenModel,
+			// The confirm is a background seat and no longer reads the crew's
+			// planner row (internal/roles' background.go); a person who wants it
+			// on a stronger model pins it, which is what this fixture does.
+			roles.PinKey(roles.RoleRouterConfirm): routeConfirmModel,
+			// The mark reader is crew work and still reads the planner row.
 			roles.TierKey(roles.TierMastermind): routeConfirmModel,
 		})
 	})

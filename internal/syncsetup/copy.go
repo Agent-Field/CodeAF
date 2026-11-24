@@ -476,7 +476,7 @@ func (s *Sync) publishCopy(ctx context.Context, e cellstore.Engine, c cell.Cell,
 	}
 	defer lock.Close()
 	answered = watch.asking(0)
-	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, SavedAt: head.Turn.SealedAtMs, Class: info.Class, Title: info.Title, Folder: info.Folder, Size: info.Size, Keys: info.Keys})
+	view, err := s.Dir.Create(ctx, c.ID, directory.CellInit{Head: head.Turn.ID, SavedAt: head.Turn.SealedAtMs, Class: info.Class, Title: info.Title, Folder: info.Folder, Crew: info.Crew, Size: info.Size, Keys: info.Keys})
 	answered()
 	if errors.Is(err, directory.ErrExists) {
 		return attempt, nil

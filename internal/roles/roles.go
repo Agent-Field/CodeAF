@@ -719,7 +719,9 @@ func Ladder(src Source, role Role, sessionDefault string) ([]Call, error) {
 			}
 		}
 	}
-	if value, ok := read(src, TierKey(tier)); ok {
+	// A BACKGROUND ROLE ON A CREW TIER SKIPS THE TIER ([readsTier]): that row is
+	// the crew router's, and a background seat follows the person's model.
+	if value, ok := read(src, TierKey(tier)); ok && readsTier(role, tier) {
 		add(call(value))
 	}
 	// THE SESSION MODEL IS NOT SPLIT. It is the id a running conversation is on,

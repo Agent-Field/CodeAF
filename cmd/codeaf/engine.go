@@ -118,6 +118,9 @@ func runRemoteEngine(args []string) error {
 	// wake it (team_resume.go). Only the two roads below that serve sessions
 	// ever use the door; the splice between them serves none.
 	armTeamResume()
+	// AND A CREW'S MANAGER CAN LINK WHAT ITS CREW MADE to the crew the app
+	// lists (appteamlink.go).
+	armEngineTeamLink()
 	if *daemon {
 		return runEngineHost(*workspace, *file)
 	}
@@ -1228,6 +1231,9 @@ func assembleEngine(hello remote.Hello, workspace, sessionFlag, launchDir string
 		cfg.StandingOrders = hello.Launch.StandingOrders
 		cfg.QuickTasks = hello.Launch.QuickTasks
 	}
+	// A chat the app's quit stopped mid-turn opens without carrying on by
+	// itself; the person's Continue releases it (session's resume_quit.go).
+	cfg.HoldInterruptedWork = hello.HoldInterruptedWork
 	agent, cfg, notice, err := openV3Agent(cfg, workspace, open)
 	if err != nil {
 		return nil, err

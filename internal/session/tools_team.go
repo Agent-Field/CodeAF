@@ -69,7 +69,7 @@ const teamGroup = "team"
 var teamToolNames = []string{
 	teamStatusToolName, teamReadToolName, teamSendToolName, teamStopToolName, teamStartToolName,
 	teamDecideToolName, teamEscalateToolName, teamCloseReportToolName, teamDissolveToolName,
-	teamPostToolName, teamRaiseToolName, teamAddToolName, teamRemoveToolName,
+	teamPostToolName, teamRaiseToolName, teamAddToolName, teamRemoveToolName, teamLinkToolName,
 }
 
 // The optional `team` argument every verb takes. It is needed only by a

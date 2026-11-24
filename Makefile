@@ -22,6 +22,10 @@ BUILD_STAMP := -X $(BUILDINFO).rev=$(BUILD_REV) -X $(BUILDINFO).dirty=$(BUILD_DI
 # not a secret; a build without one simply has no browser sign-in (the gh
 # login and a pasted token still work). Set it from the environment or the
 # command line: make app-sidecar CODEAF_GITHUB_CLIENT_ID=Ov23li...
+# app-sidecar records the ID it was built with beside the binary
+# (codeaf-<triple>.github-client-id, empty when unset) and warns when it is
+# empty: garble's -literals hides the string itself, so the desktop app's
+# bundle reads that record and refuses a sidecar with no sign-in.
 CODEAF_GITHUB_CLIENT_ID ?=
 ifneq ($(strip $(CODEAF_GITHUB_CLIENT_ID)),)
 BUILD_STAMP += -X github.com/Agent-Field/codeaf/internal/factory/github.clientID=$(strip $(CODEAF_GITHUB_CLIENT_ID))
@@ -250,7 +254,7 @@ manual-gates:
 # every package; otherwise each changed Go file contributes its directory, and
 # a directory emptied by the change contributes nothing. BASE may name the
 # pull request's exact base SHA; on a laptop it defaults to origin/dev. This
-# refuses uncommitted Go or module files because the real gate sees BASE..HEAD:
+# refuses uncommitted Go or module files because the real gate sees BASE...HEAD:
 # silently ignoring those files under-tests, while folding a shared checkout's
 # unrelated edits into this run over-tests. Commit the candidate, then prove
 # exactly what the pull request will send. The preflight is separate so
@@ -279,7 +283,7 @@ test-touched-preflight:
 # Every named failure gets one focused rerun and, if needed, a base comparison.
 test-touched: test-touched-preflight
 	@set -eu; \
-	base="$${BASE:-origin/dev}"; \
+	base="$$(git merge-base "$${BASE:-origin/dev}" HEAD)"; \
 	pkgs="$$(BASE="$$base" ./scripts/touched-packages.sh)"; \
 	if test -z "$$pkgs"; then \
 		echo 'No Go file and no module file changed; nothing to run.'; \
@@ -295,7 +299,7 @@ test-touched: test-touched-preflight
 # work, with `make check` as the full-tree laptop/Spark spelling.
 pr-ready: test-touched-preflight
 	$(MAKE) --no-print-directory test-quick
-	@if ! git diff --quiet "$${BASE:-origin/dev}" HEAD -- \
+	@if ! git diff --quiet "$${BASE:-origin/dev}...HEAD" -- \
 		scripts Makefile bench/run.sh bench/canary/lib bench/oneroad/lib/corpus.sh; then \
 		$(MAKE) --no-print-directory test-tooling; \
 	fi
@@ -547,6 +551,11 @@ app-sidecar: embed $(if $(filter windows,$(APP_GOOS)),,$(GARBLE))
 		printf 'seed=%s\nrev=%s\ntarget=%s/%s\n' "$$seed" "$(BUILD_REV)" "$(APP_GOOS)" "$(APP_GOARCH)" \
 			> "$(APP_SEED_DIR)/$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum.seed"; \
 		printf 'app-sidecar: seed kept as %s.seed\n' "$(BUILD_REV)-$(APP_GOOS)-$(APP_GOARCH)-$$sum"; \
+	fi; \
+	printf '%s\n' "$(strip $(CODEAF_GITHUB_CLIENT_ID))" > $(APP_DIST)/codeaf-$$triple$$ext.github-client-id; \
+	if [ -z "$(strip $(CODEAF_GITHUB_CLIENT_ID))" ]; then \
+		printf '\napp-sidecar: WARNING: CODEAF_GITHUB_CLIENT_ID is unset, so this build offers NO GitHub sign-in.\n' >&2; \
+		printf 'app-sidecar: the desktop app'"'"'s bundle refuses it. Rebuild with CODEAF_GITHUB_CLIENT_ID=Ov23liZE8n5kPnDn5RcK (the WorkAF app; public).\n\n' >&2; \
 	fi; \
 	printf 'app-sidecar: %s\n' "$(APP_DIST)/codeaf-$$triple$$ext"
 

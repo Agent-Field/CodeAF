@@ -121,13 +121,12 @@ func TestAnEmptyProfileUsesYoloAndFollowsTheSessionModel(t *testing.T) {
 	if got := cfg.ApprovalPolicy.Check("read", json.RawMessage(`{"path":"x"}`)); got.Action != approval.ActionAllow {
 		t.Fatalf("a fresh install asked about a read: %s", got)
 	}
-	// And every auxiliary call rides THE CLASS IT SHIPS ON rather than the model
-	// the person is talking to. That changed when the crew landed
-	// (internal/config's crew.go): a whole crew following the conversation means
-	// the most expensive model in the build answering the cheapest questions in it.
+	// And every background call rides THE MODEL THE PERSON CHOSE: the small-work
+	// row ships empty (internal/roles' background.go), so a fresh install's
+	// title is named by the conversation's own model.
 	model, err := roles.Resolve(cfg.RolesSource, roles.RoleTitle, "session/model")
-	if err != nil || model != config.DefaultLowModel {
-		t.Fatalf("the title role resolved to %q (%v), want its class's %q", model, err, config.DefaultLowModel)
+	if err != nil || model != "session/model" {
+		t.Fatalf("the title role resolved to %q (%v), want the conversation's model", model, err)
 	}
 	// The floor is still there and is still the conversation's model — it is what
 	// a class somebody CLEARED falls to.
