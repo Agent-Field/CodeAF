@@ -3978,6 +3978,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does a request from the server's own computer have to sign in on a team factory", "factory"},
 		{"what does loopback_trust do", "factory"},
 		{"is a request through a reverse proxy on the same machine treated as local", "factory"},
+		{"can a runner on the same machine as my team server attach without a token", "factory"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

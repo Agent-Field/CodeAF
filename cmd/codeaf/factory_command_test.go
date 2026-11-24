@@ -100,7 +100,28 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("record is absent from the service: status=%d", response.StatusCode)
 	}
-	response, err = client.Post(address+"/v1/workers/attach", "application/json", strings.NewReader(`{"name":"test worker","handle":"tester"}`))
+	// A runner on this computer asks a team factory for a runner credential too:
+	// without one the attach is refused, with the host token it is accepted.
+	attach, err := http.NewRequest(http.MethodPost, address+"/v1/workers/attach", strings.NewReader(`{"name":"test worker","handle":"tester"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach.Header.Set("Content-Type", "application/json")
+	if refused, err := client.Do(attach); err != nil {
+		t.Fatal(err)
+	} else {
+		refused.Body.Close()
+		if refused.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("a credential-free attach from this computer: status=%d, want 401", refused.StatusCode)
+		}
+	}
+	attach, err = http.NewRequest(http.MethodPost, address+"/v1/workers/attach", strings.NewReader(`{"name":"test worker","handle":"tester"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attach.Header.Set("Content-Type", "application/json")
+	attach.Header.Set("Authorization", "Bearer "+discovery.Token)
+	response, err = client.Do(attach)
 	if err != nil {
 		t.Fatal(err)
 	}

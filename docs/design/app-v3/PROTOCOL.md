@@ -1166,6 +1166,16 @@ metadata and a short hint.
 | `factory.org_bot_token_revoke {bot, token}` | `DELETE /v1/bots/{bot}/tokens/{token}` | The creator or operator revokes a token by ID. |
 | `factory.org_bot_remove {bot}` | `DELETE /v1/bots/{bot}` | The creator or operator removes a bot and ends its tokens. |
 
+Who an organization server takes a request to be: a person's token or sign-in, a
+bot's token, or, only where `loopback_trust` is on (solo by default, off on a team
+server), a request from the server's own computer. A request carrying a forwarding
+header is never from the server's own computer unless a listed proxy names a
+loopback client in `X-Forwarded-For`. Registering a runner (`POST /v1/workers/attach`
+and `POST /v1/runners/attach`) follows the same setting: with it off, a runner
+presents the host's access token or a signed-in person's session even from the
+server's own computer, and names its handle unless its session does; with it on,
+nothing changes. A bot token is refused there.
+
 An engine whose hello carries `org_agents` keeps an organization's agents: a name and
 instructions one person made in their space. `factory.org_agents` `GET /v1/agents`
 answers `{agents: [{id, name, instructions?, owner, owner_name?, roster?, team?, mine?,

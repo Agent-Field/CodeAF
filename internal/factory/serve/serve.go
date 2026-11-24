@@ -573,7 +573,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) && !h.allowed(r) && !h.localWorkerAttach(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/factory-access" && r.URL.Path != "/v1/about" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) && !h.allowed(r) {
 		if h.authFailed(w, r) {
 			return
 		}

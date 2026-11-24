@@ -24,7 +24,10 @@ func TestTheWorkerCarriesAStopToARunThatGoesOnElsewhere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := serve.New(factory.LocalSeam(st, time.Now()), serve.Config{Mode: api.FactoryTeam, Store: st, PullWait: time.Millisecond})
+	// This runner attaches with no credential from the host's own computer, which a
+	// team factory no longer allows unless it is told to.
+	trustLoopback := true
+	h := serve.New(factory.LocalSeam(st, time.Now()), serve.Config{Mode: api.FactoryTeam, LoopbackTrust: &trustLoopback, Store: st, PullWait: time.Millisecond})
 	s := httptest.NewServer(h)
 	t.Cleanup(func() { s.Close(); h.Close() })
 	it, err := st.Create(factory.Item{Title: "Add Debits", State: factory.StateRunning, Assignee: "sam", WorktreeMachine: "studio",
