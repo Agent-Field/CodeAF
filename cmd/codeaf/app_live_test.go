@@ -255,6 +255,34 @@ func TestAppOpenLiveServesARemoteChatAsALocalLookingAgent(t *testing.T) {
 	})
 }
 
+// V41 (the road of a live view reaches the desktop): a road flip the link
+// reports is one agent.changed that carries the new road with the view still
+// live, and the same word said again is no event at all. The desktop draws its
+// strip from this field, so a flip it never hears of would leave the strip
+// saying the wrong road until something else moved.
+func TestARoadFlipReachesTheDesktopAsOneAgentChangedAndARepeatIsSilent(t *testing.T) {
+	r := newLiveRig(t, true)
+	r.open()
+	r.b.liveStateMoved(liveRigHostID, livedoor.State{Kind: livedoor.Live, Road: "relay"})
+	settled := len(r.liveEvents())
+
+	r.b.liveStateMoved(liveRigHostID, livedoor.State{Kind: livedoor.Live, Road: "direct"})
+	events := r.liveEvents()
+	if len(events) != settled+1 || events[len(events)-1].State != "live" || events[len(events)-1].Road != "direct" {
+		t.Fatalf("a flip to the direct road must be exactly one live fact that still says live: %+v", events[min(settled, len(events)):])
+	}
+	r.b.liveStateMoved(liveRigHostID, livedoor.State{Kind: livedoor.Live, Road: "direct"})
+	if n := len(r.liveEvents()); n != settled+1 {
+		t.Fatalf("the same road said twice emitted %d more events, want none", n-settled-1)
+	}
+
+	r.b.liveStateMoved(liveRigHostID, livedoor.State{Kind: livedoor.Live, Road: "relay"})
+	events = r.liveEvents()
+	if len(events) != settled+2 || events[len(events)-1].Road != "relay" {
+		t.Fatalf("a flip back to the relay must be one more live fact that says relay: %+v", events[min(settled, len(events)):])
+	}
+}
+
 // V2 (typing in a live view): a send to a live agent is agents.send, which
 // reaches the host's running conversation and needs no stored copy anywhere:
 // with no sync service the waiting-note door refuses, and the live send is not

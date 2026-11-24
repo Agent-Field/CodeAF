@@ -101,7 +101,10 @@ type LocationLive struct {
 	// Driver names who holds the keyboard when it is not this window. Absent
 	// says nobody else does.
 	Driver *LiveDriver `json:"driver,omitempty"`
-	// Road is how the bytes travel: "relay" today.
+	// Road is how the bytes travel: "relay", or "direct" once the two computers
+	// have connected to each other. It changes while a view is open and the engine
+	// says so with an agent.changed of its own; it is a word of the strip and
+	// nothing a call may depend on.
 	Road string `json:"road,omitempty"`
 	// SeenAt is when the other computer was last heard from, RFC 3339.
 	SeenAt string `json:"seen_at,omitempty"`
