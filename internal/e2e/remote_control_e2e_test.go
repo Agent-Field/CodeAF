@@ -447,8 +447,20 @@ func rcMoveHereFromTheLiveView(t *testing.T) {
 	if !sawMoving {
 		t.Errorf("the viewer never said %q while the chat was on its way", say(t, "movingHere"))
 	}
+	// The chat runs on the viewer now: a turn typed here is answered by the
+	// viewer's own engine, in the viewer's own window. What the stub model
+	// answers is not the point (it picks its words from the newest typed message
+	// it was handed), so a second reply line under the typed words is the proof,
+	// and the request the model saw is logged for the day that proof is missing.
 	rc.send(viewer, rcLaptopAsk)
-	viewer.waitFor(rcReplyWithin, rcLaptopReply, "idle")
+	if !waitUntil(rcReplyWithin, func() bool {
+		s := viewer.capture()
+		return rcLinesWith(s, rcLaptopAsk) == 1 && rcLinesWith(s, rcHostReply)+rcLinesWith(s, rcLaptopReply) >= 2
+	}) {
+		t.Fatalf("a chat moved here did not answer the turn typed on the viewer. The model was handed: %s\n%s",
+			rc.model.lastRequest(), viewer.capture())
+	}
+	t.Logf("after the move the model was handed: %s", rc.model.lastRequest())
 	if strings.Contains(viewer.capture(), say(t, "liveLegend")) {
 		t.Errorf("the chat runs on the viewer now, and its window still calls itself a live view:\n%s", viewer.capture())
 	}
@@ -968,6 +980,10 @@ type rcModel struct {
 	once   sync.Once
 	mu     sync.Mutex
 	asked  []string
+	// requests is, for every turn the model answered, the messages it was handed
+	// (role and the opening of the text), so a scenario that is answered with the
+	// wrong words can say what the model was actually asked.
+	requests []string
 }
 
 func startRCModel(t *testing.T) *rcModel {
@@ -987,6 +1003,16 @@ func startRCModel(t *testing.T) *rcModel {
 
 // open lets every held turn finish. It is idempotent.
 func (m *rcModel) open() { m.once.Do(func() { close(m.gate) }) }
+
+// lastRequest is what the newest answered turn was handed.
+func (m *rcModel) lastRequest() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.requests) == 0 {
+		return "(no turn yet)"
+	}
+	return m.requests[len(m.requests)-1]
+}
 
 // count is how many chat turns asked the model about words.
 func (m *rcModel) count(words string) int {
@@ -1054,8 +1080,17 @@ func (m *rcModel) complete(w http.ResponseWriter, r *http.Request) {
 		send("", "[DONE]")
 		return
 	}
+	var seen []string
+	for _, msg := range body.Messages {
+		text := strings.Join(strings.Fields(rcMessageText(msg.Content)), " ")
+		if len(text) > 90 {
+			text = text[:90] + "..."
+		}
+		seen = append(seen, msg.Role+": "+text)
+	}
 	m.mu.Lock()
 	m.asked = append(m.asked, ask)
+	m.requests = append(m.requests, strings.Join(seen, " | "))
 	m.mu.Unlock()
 	if strings.Contains(ask, "slow") {
 		send(fmt.Sprintf(`{"content":%q}`, rcPartial), "")
