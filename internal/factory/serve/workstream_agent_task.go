@@ -177,6 +177,10 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		Step:     watch.noting(h.taskWorkStep(key, turn)),
 		Progress: watch.progress(limit, pause)}
 	guard.Go("factory workstream task", func() {
+		// Counted out last of all, after the Working conversation has closed and
+		// told its watchers: Close waits for this run, and nothing of it may
+		// write once Close has returned.
+		defer d.wg.Done()
 		// The Working conversation opens here, never in launchLocked: it takes
 		// the desk's lock and publishes, and launchLocked holds that lock (a
 		// queued run starts from inside it). Steers wait in its inbox until
@@ -199,7 +203,6 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		// Before that: everyone reading the task sees this run end, so the
 		// next run's lines open a turn of their own.
 		defer func() { h.closeTaskWork(key, turn, failed, spent) }()
-		defer d.wg.Done()
 		defer cancel()
 		// The lease is kept first and beats while the run goes, so a restart
 		// that cuts the run off leaves a row the next start settles; it is
