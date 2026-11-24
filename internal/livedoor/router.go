@@ -126,13 +126,14 @@ func (a *activeChan) closeHolderAndQueue() {
 }
 
 type chanOutQueue struct {
-	mu       sync.Mutex
-	cond     *sync.Cond
-	lines    [][]byte
-	buffered int
-	limit    int
-	aborted  bool
-	eof      bool
+	mu         sync.Mutex
+	cond       *sync.Cond
+	lines      [][]byte
+	buffered   int
+	limit      int
+	aborted    bool
+	overflowed bool
+	eof        bool
 }
 
 func newChanOutQueue(limit int) *chanOutQueue {
@@ -152,6 +153,7 @@ func (q *chanOutQueue) enqueue(line []byte) bool {
 	}
 	if q.buffered+len(line) > q.limit {
 		q.aborted = true
+		q.overflowed = true
 		q.lines = nil
 		q.buffered = 0
 		q.cond.Broadcast()
@@ -164,6 +166,12 @@ func (q *chanOutQueue) enqueue(line []byte) bool {
 	q.cond.Signal()
 	q.mu.Unlock()
 	return true
+}
+
+func (q *chanOutQueue) didOverflow() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.overflowed
 }
 
 func (q *chanOutQueue) finishHolderEOF() {
@@ -425,7 +433,7 @@ func (st *serverTunnel) CloseWithReason(reason string) {
 	st.mu.Unlock()
 
 	for _, ac := range active {
-		ac.closeHolderAndQueue()
+		_ = ac.ch.Reset(reason)
 	}
 
 	if m := st.mux; m != nil {
@@ -446,6 +454,10 @@ func (st *serverTunnel) CloseWithReason(reason string) {
 				_ = ch.Reset(reason)
 			}
 		}
+	}
+
+	for _, ac := range active {
+		ac.closeHolderAndQueue()
 	}
 
 	st.flushAndClose()
@@ -685,7 +697,9 @@ func (st *serverTunnel) serveChannel(ctx context.Context, ch *Channel, req OpenR
 	outQ := newChanOutQueue(st.limits.QueueMax)
 	ac.setOutQueue(outQ)
 	if !outQ.enqueue(replyLine) {
-		_ = ch.Reset(ReasonLagging)
+		if outQ.didOverflow() && !channelEnded(ch) {
+			_ = ch.Reset(ReasonLagging)
+		}
 		return
 	}
 
@@ -740,7 +754,7 @@ func (st *serverTunnel) serveChannel(ctx context.Context, ch *Channel, req OpenR
 				}
 			case viewerLineRefuse:
 				if !outQ.enqueue(refusalLine) {
-					if !channelEnded(ch) {
+					if outQ.didOverflow() && !channelEnded(ch) {
 						_ = ch.Reset(ReasonLagging)
 					}
 					ac.closeHolderAndQueue()
@@ -770,7 +784,7 @@ func (st *serverTunnel) serveChannel(ctx context.Context, ch *Channel, req OpenR
 			break
 		}
 		if !outQ.enqueue(hLine) {
-			if !channelEnded(ch) {
+			if outQ.didOverflow() && !channelEnded(ch) {
 				_ = ch.Reset(ReasonLagging)
 			}
 			ac.closeHolderAndQueue()
