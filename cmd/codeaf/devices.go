@@ -31,6 +31,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 	"github.com/Agent-Field/codeaf/internal/syncwords"
@@ -624,6 +625,8 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if err := c.dir.Revoke(ctx, row.id); err != nil {
 		return "", c.explain(err)
 	}
+	livedoor.NotifyRemoved(home.Dir(), row.id)
+	_ = pair.Permits().Forget(row.id)
 	return pair.ChatsRevokedLine(row.Name), nil
 }
 
