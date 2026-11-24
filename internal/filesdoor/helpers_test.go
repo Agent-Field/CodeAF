@@ -1,6 +1,7 @@
 package filesdoor
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdh"
 	"crypto/sha256"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -30,12 +32,47 @@ type countedRelay struct {
 	inner  http.Handler
 	engine atomic.Int64
 	dial   atomic.Int64
+
+	mu          sync.Mutex
+	engineConns []net.Conn
+}
+
+// hijackSpy remembers the connection the relay takes over, so a test can end a
+// registration the way a network drop would: from underneath it.
+type hijackSpy struct {
+	http.ResponseWriter
+	saw func(net.Conn)
+}
+
+func (h hijackSpy) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := h.ResponseWriter.(http.Hijacker).Hijack()
+	if err == nil {
+		h.saw(conn)
+	}
+	return conn, rw, err
+}
+
+// dropRegistrations closes the connection of every registration that has been
+// made, which is what the network going away looks like to the door.
+func (c *countedRelay) dropRegistrations() {
+	c.mu.Lock()
+	conns := c.engineConns
+	c.engineConns = nil
+	c.mu.Unlock()
+	for _, conn := range conns {
+		_ = conn.Close()
+	}
 }
 
 func (c *countedRelay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == relay.EnginePath:
 		c.engine.Add(1)
+		w = hijackSpy{ResponseWriter: w, saw: func(conn net.Conn) {
+			c.mu.Lock()
+			c.engineConns = append(c.engineConns, conn)
+			c.mu.Unlock()
+		}}
 	case strings.HasPrefix(r.URL.Path, relay.DialPrefix):
 		c.dial.Add(1)
 	}

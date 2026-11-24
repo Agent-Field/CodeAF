@@ -19,6 +19,14 @@ const (
 	OpPing     uint8 = 8
 	OpPong     uint8 = 9
 	OpHelloAck uint8 = 10
+
+	// OpSignal carries one signalling payload of the direct road on channel 0 of
+	// a tunnel that is already open: an offer, an answer, a candidate or a
+	// refusal. It is ADDITIVE BY CONSTRUCTION. A build that does not know it
+	// reads the frame like any unknown op, consumes its bounded payload and
+	// carries on, so an older host or viewer simply never takes part and the
+	// view stays on the relay.
+	OpSignal uint8 = 11
 )
 
 // Closed reason vocabulary carried by OpRefused, OpClose, and OpReset frames.
@@ -35,6 +43,13 @@ const (
 	ReasonIdle          = "idle"
 	ReasonHostClosing   = "host-closing"
 	ReasonTooMany       = "too-many"
+
+	// ReasonRoadChange is the reason a viewer's own link gives a channel it ends
+	// on purpose so the channel's chat can be redialled over the other road. IT
+	// IS VIEWER-LOCAL: it is never written on a wire frame and never spoken to a
+	// person, so chatlist has no sentence for it and the words law lists it as
+	// exempt.
+	ReasonRoadChange = "road-change"
 )
 
 const frameHeaderBytes = 9
@@ -51,7 +66,7 @@ type frame struct {
 }
 
 func isKnownOp(op uint8) bool {
-	return op >= OpOpen && op <= OpHelloAck
+	return op >= OpOpen && op <= OpSignal
 }
 
 // writeFrame encodes f onto w in a single write and returns the total wire

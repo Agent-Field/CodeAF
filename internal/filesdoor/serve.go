@@ -73,12 +73,45 @@ type ServeConfig struct {
 	// or the tunnel closes. When nil, live-intent connections are refused
 	// before Noise completes.
 	Live func(ctx context.Context, tun io.ReadWriteCloser, device string) error
+	// LiveRoad is Live for a handler that must know which road carried the
+	// tunnel: "relay" for a stream that came through the registration, "direct"
+	// for one the Direct host handed to [door.AcceptStream]. When it is set it
+	// serves every live tunnel and Live is not consulted; a direct stream is
+	// refused before Noise completes when it is nil.
+	LiveRoad func(ctx context.Context, tun io.ReadWriteCloser, device, road string) error
+	// Direct, when set, is called once as Serve starts with the acceptor the
+	// peer-to-peer host hands each opened data-channel stream to. The context is
+	// the lifetime of Serve itself, NOT of any one registration: a direct tunnel
+	// does not ride the relay, so the relay registration dropping and being
+	// remade must not end it.
+	Direct func(ctx context.Context, accept StreamAcceptor)
 	// Revoked subscribes to device-removal notifications for the life of one
 	// registration and calls gone with any device ids that were removed.
 	Revoked func(ctx context.Context, gone func(devices []string)) (stop func())
 	// Ready, when set, is called after every successful registration, before
 	// the door starts answering. It must not block.
 	Ready func()
+}
+
+// StreamAcceptor takes one peer-to-peer stream whose far end has not yet been
+// authenticated and runs the whole connection on the calling goroutine: Noise,
+// the device hello, the roster, then the live handler. It returns when the
+// connection ends and closes the stream either way.
+type StreamAcceptor func(ctx context.Context, stream io.ReadWriteCloser)
+
+// liveHandler is the one function that serves every live tunnel, whichever of
+// the two config fields supplied it, or nil when the door serves none.
+func (c ServeConfig) liveHandler() func(ctx context.Context, tun io.ReadWriteCloser, device, road string) error {
+	switch {
+	case c.LiveRoad != nil:
+		return c.LiveRoad
+	case c.Live != nil:
+		live := c.Live
+		return func(ctx context.Context, tun io.ReadWriteCloser, device, _ string) error {
+			return live(ctx, tun, device)
+		}
+	}
+	return nil
 }
 
 func (c ServeConfig) check() error {
@@ -137,6 +170,15 @@ func Serve(ctx context.Context, cfg ServeConfig) error {
 		liveCancels: make(map[string][]liveCancel),
 	}
 	d.roster = &rosterCache{fetch: cfg.Roster, now: time.Now, ttl: ttl, onGone: d.evict}
+	d.serveCtx = ctx
+	// DIRECT STREAMS ARE OWNED BY THIS CONTEXT AND NOT BY A REGISTRATION. They are
+	// waited for when Serve ends, so nothing touches the roster or the live
+	// handler once Serve has returned, and they are never waited for by a
+	// registration that merely dropped.
+	defer d.closeDirect()
+	if cfg.Direct != nil {
+		cfg.Direct(ctx, d.AcceptStream)
+	}
 	(&registrar{
 		service:  cfg.Service,
 		key:      key,
@@ -260,10 +302,21 @@ type door struct {
 	key    *ecdh.PrivateKey
 	roster *rosterCache
 
+	// serveCtx is the lifetime of Serve, kept so a direct stream can be tied to it.
+	serveCtx context.Context
+
 	liveMu      sync.Mutex
 	liveCount   int
 	liveNextID  uint64
 	liveCancels map[string][]liveCancel
+
+	// directMu guards the direct-stream bookkeeping. directClosed is set once
+	// Serve is ending, after which a stream is refused rather than started, so
+	// directWG.Add can never race the Wait that closeDirect runs.
+	directMu     sync.Mutex
+	directCount  int
+	directClosed bool
+	directWG     sync.WaitGroup
 }
 
 type liveCancel struct {
@@ -285,6 +338,36 @@ func (d *door) releaseLive() {
 	d.liveMu.Lock()
 	d.liveCount--
 	d.liveMu.Unlock()
+}
+
+// admitDirect takes one of the host's MaxDirect direct-stream slots, before
+// Noise, so a flood of streams costs a counter and not a handshake. It refuses
+// once Serve is ending.
+func (d *door) admitDirect() bool {
+	d.directMu.Lock()
+	defer d.directMu.Unlock()
+	if d.directClosed || d.directCount >= MaxDirect {
+		return false
+	}
+	d.directCount++
+	d.directWG.Add(1)
+	return true
+}
+
+func (d *door) releaseDirect() {
+	d.directMu.Lock()
+	d.directCount--
+	d.directMu.Unlock()
+	d.directWG.Done()
+}
+
+// closeDirect stops new direct streams and waits for the open ones, which end
+// because their contexts derive from Serve's, now done.
+func (d *door) closeDirect() {
+	d.directMu.Lock()
+	d.directClosed = true
+	d.directMu.Unlock()
+	d.directWG.Wait()
 }
 
 func (d *door) trackLive(device string, cancel context.CancelFunc) func() {
@@ -367,29 +450,74 @@ func (d *door) hold(ctx context.Context, registration *relay.Registration) {
 // and nothing finishes it, so it ends with registrationEnded, or the
 // registrar could never register again while one was open.
 func (d *door) answer(ctx, registrationEnded context.Context, stream io.ReadWriteCloser) {
+	d.serveStream(ctx, registrationEnded, stream, false)
+}
+
+// AcceptStream runs one peer-to-peer stream through the same door a relay
+// stream goes through: the same Noise handshake against the same door key, the
+// same device hello, the same roster and revocation, and the same live
+// handler. It is the [StreamAcceptor] the Direct host is handed.
+//
+// THE DIFFERENCE IS THE INTENT AND THE PROLOGUE, AND THE HOST CHOOSES THEM. A
+// direct stream completes only with [pair.IntentDirect] and
+// [DirectTunnelPrologue]; the relay registration's prologue map has no direct
+// entry, and this one has nothing else, so a stream made for one road can never
+// finish against the other, or against the files door, even though every one
+// of them uses the same static door key. What the door learns about the road
+// is therefore never something the viewer says.
+//
+// IT IS OWNED BY THE LIFETIME OF SERVE. A relay registration dropping and being
+// remade must not kill a healthy direct tunnel, so the stream's context is
+// derived from ctx and ended when Serve ends, and never from a registration.
+func (d *door) AcceptStream(ctx context.Context, stream io.ReadWriteCloser) {
+	if d.serveCtx == nil {
+		_ = stream.Close()
+		return
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(d.serveCtx, cancel)()
+	d.serveStream(ctx, ctx, stream, true)
+}
+
+// serveStream is the body both [door.answer] and [door.AcceptStream] share.
+func (d *door) serveStream(ctx, registrationEnded context.Context, stream io.ReadWriteCloser, direct bool) {
 	defer stream.Close()
 	defer context.AfterFunc(ctx, func() { _ = stream.Close() })()
 	guard := newWatch(handshakeWithin, func() { _ = stream.Close() })
 	defer guard.stop()
 
-	prologues := map[byte]string{pair.IntentFiles: FilesTunnelPrologue}
-	if d.cfg.Live != nil {
-		prologues[pair.IntentLive] = LiveTunnelPrologue
-	}
-	admittedLive := false
-	defer func() {
-		if admittedLive {
-			d.releaseLive()
+	live := d.cfg.liveHandler()
+	prologues := map[byte]string{}
+	switch {
+	case direct:
+		if live != nil {
+			prologues[pair.IntentDirect] = DirectTunnelPrologue
 		}
+	default:
+		prologues[pair.IntentFiles] = FilesTunnelPrologue
+		if live != nil {
+			prologues[pair.IntentLive] = LiveTunnelPrologue
+		}
+	}
+	admitted := byte(0)
+	defer func() {
+		d.releaseAdmitted(admitted)
 	}()
 	tunnel, intent, err := pair.AcceptWithKeyPrologues(stream, d.key, func(intent byte) bool {
-		if intent != pair.IntentLive {
+		switch intent {
+		case pair.IntentLive:
+			if live == nil || !d.admitLive() {
+				return false
+			}
+		case pair.IntentDirect:
+			if live == nil || !d.admitDirect() {
+				return false
+			}
+		default:
 			return true
 		}
-		if d.cfg.Live == nil || !d.admitLive() {
-			return false
-		}
-		admittedLive = true
+		admitted = intent
 		return true
 	}, prologues)
 	if err != nil {
@@ -400,15 +528,19 @@ func (d *door) answer(ctx, registrationEnded context.Context, stream io.ReadWrit
 	if err != nil {
 		return
 	}
-	if intent == pair.IntentLive {
+	if intent == pair.IntentLive || intent == pair.IntentDirect {
+		road := "relay"
+		if intent == pair.IntentDirect {
+			road = "direct"
+		}
 		// A live view may sit quiet for minutes while the person reads, so the
 		// files door's request watchdog must stop once the hello has finished.
 		guard.stop()
-		d.answerLive(registrationEnded, tunnel, device)
-		if admittedLive {
-			admittedLive = false
-			d.releaseLive()
-		}
+		d.answerLive(registrationEnded, tunnel, device, road, live)
+		// The slot is given back as soon as the view ends, not when this
+		// goroutine unwinds, so a viewer that redials at once finds it free.
+		d.releaseAdmitted(admitted)
+		admitted = 0
 		_ = tunnel.Close()
 		return
 	}
@@ -447,12 +579,24 @@ func (d *door) answer(ctx, registrationEnded context.Context, stream io.ReadWrit
 	}
 }
 
+// releaseAdmitted gives back the slot an admitted connection took, if it took
+// one: the live count for the relay, the direct count for a peer-to-peer one.
+func (d *door) releaseAdmitted(intent byte) {
+	switch intent {
+	case pair.IntentLive:
+		d.releaseLive()
+	case pair.IntentDirect:
+		d.releaseDirect()
+	}
+}
+
 // answerLive runs a live-view connection under a revocable context and a
 // periodic roster re-check. A roster error younger than the roster cache's TTL
 // is masked by the cached answer and keeps the link; a failure once the TTL has
 // expired returns an error from allows and closes the tunnel so a removed
-// device's view is never extended past the TTL.
-func (d *door) answerLive(ctx context.Context, tunnel *pair.Tunnel, device string) {
+// device's view is never extended past the TTL. It is the same for both roads:
+// a removed device loses its direct tunnel as fast as its relay one.
+func (d *door) answerLive(ctx context.Context, tunnel *pair.Tunnel, device, road string, live func(ctx context.Context, tun io.ReadWriteCloser, device, road string) error) {
 	linkCtx, cancelLink := context.WithCancel(ctx)
 	defer cancelLink()
 	// A CANCELLED LINK CLOSES ITS TUNNEL whatever the handler does with its
@@ -498,7 +642,7 @@ func (d *door) answerLive(ctx context.Context, tunnel *pair.Tunnel, device strin
 		}
 	}()
 
-	_ = d.cfg.Live(linkCtx, tunnel, device)
+	_ = live(linkCtx, tunnel, device, road)
 }
 
 // reply is one response before it is written.

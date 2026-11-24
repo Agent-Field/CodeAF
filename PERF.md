@@ -402,6 +402,24 @@ always coordinate through it, so no build leaves it out. On linux/amd64 it adds
 base), and the cap moves by the same amount, from 75,811,848 to 79,191,048, so
 the 56,063 bytes of headroom the base had are kept.
 
+## Direct road binary size
+
+Every build links the direct road: the pion WebRTC stack (ICE, DTLS, SCTP and
+the data channel) that lets two of a person's computers talk to each other
+without the relay. It is built with CGO off, so it adds no C toolchain and no
+shared library, and it is linked by `cmd/codeaf` alone: `internal/syncsetup`
+states what it needs through a seam the program fills, so no other package pays
+for it. The cap moves by 4,700,000 bytes, from 79,191,048 to 83,891,048. THAT
+NUMBER IS PROVISIONAL: it is an estimate from the dependency's own size, set so
+the gate does not fail the branch, and the one that is checked in when the wave
+lands is the measured delta on the merged branch with the same Go version,
+target, flags and embedded engine artifact. The rule above applies: compare like
+with like, and keep the headroom the base had.
+
+When remote control is off, or `CODEAF_REMOTE_ROAD=relay` is set, nothing from
+this stack runs: no peer connection is built and no STUN request is made. The
+linked code costs bytes, never time.
+
 ## Usage writer identity startup
 
 `TestUsageMillionRowLedgerFlush` constructs 1,000,000 unique historical call
@@ -892,4 +910,16 @@ any of them changes this section in the same commit.
 | `livedoor.ActiveWindow` | 30 s | How long after a user action a viewed link remains in active ping mode before going quiet to keep the relay hibernated. |
 | `livedoor.IdleDetach` | 10 min | How long an inactive viewer with no running turn stays attached before closing channels with reason `idle` so the relay costs nothing at rest. |
 | `livedoor.WriteDeadline` | 2 s | How long the holder waits on a remote guest socket write before dropping that guest so a local surface never stalls. |
+| `livedoor.MaxDirect` | 14 | Concurrent direct tunnels on the host; a direct tunnel holds no relay stream, so this is its own number, and `filesdoor.MaxDirect` is the same figure counted at the door. |
+| `livedoor.DirectRate` | 64 MiB/s | Pacing (and burst) of a direct tunnel in each direction; the relay's 1 MiB/s exists for the relay's abuse breaker and bill, which a direct path has neither of. |
+| `livedoor.SignalMax` | 8 KiB | One signalling payload (an offer, answer or candidate), half of `ChunkBytes`, so a signal fits one frame and an oversize one ends the link. |
+| `livedoor.SignalRate` | 64 a minute | Signalling frames a link may carry in a minute before it is closed as `too-many`, so a viewer cannot turn the relay link into a flood. |
+| `livedoor.PendingOffers` | 4 | Direct attempts a host has in flight at once over every viewer, so offers cannot make it build peer connections without limit. |
+| `livedoor.OfferTTL` | 12 s | How long a host keeps an attempt that has produced no stream before it lets the attempt go. |
+| `livedoor.DirectPingEvery` | 1 s | The multiplexer ping interval on a direct tunnel; it costs the relay nothing and is how a dead direct path is noticed. |
+| `livedoor.DirectDeadAfter` | 2 s | The silence window after a ping before a direct tunnel is declared dead, so a dead path is noticed in about three seconds. |
+| `livedoor.DirectSettle` | 500 ms | How long after a view's first channel opens that the viewer makes its first direct attempt, so the first paint never waits on the path finding. |
+| `livedoor.DirectConnectWithin` | 8 s | The time one direct attempt gets to finish ICE, DTLS, SCTP, the handshake and the hello before it is abandoned. |
+| `livedoor.DirectBackoff` | 5 s, 15 s, 1 min, 5 min, 10 min (repeating) | The wait after each failed direct attempt, ending in a ten-minute wait that repeats, so a blocked network costs a handful of packets an hour. |
+| `livedoor.DirectStableAfter` | 60 s | How long a direct tunnel must stay up before the backoff ladder starts over. |
 

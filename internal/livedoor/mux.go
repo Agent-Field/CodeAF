@@ -28,6 +28,15 @@ var ErrLinkClosed = errors.New("livedoor: link closed")
 // ErrProtocol reports that the peer violated the multiplexer wire contract.
 var ErrProtocol = errors.New("livedoor: protocol error")
 
+// ErrSignalTooLarge reports a signalling payload over SignalMax, which the
+// sender refuses to send and the receiver refuses to read.
+var ErrSignalTooLarge = fmt.Errorf("%w: signal over SignalMax", ErrProtocol)
+
+// ErrTooManySignals reports that a link carried more than SignalRate signalling
+// frames in a minute. The sender refuses to send the one that would be over, and
+// a receiver closes the link on it.
+var ErrTooManySignals = fmt.Errorf("%w: too many signalling frames", ErrProtocol)
+
 // ErrInvalidRole reports that an operation belongs to the opposite mux role.
 var ErrInvalidRole = errors.New("livedoor: operation not valid for role")
 
@@ -79,13 +88,22 @@ type HelloAck struct {
 	Drive  bool   `json:"drive"`
 	Road   string `json:"road"`
 	Limits Limits `json:"limits"`
+	// Direct says the host will take an offer for a direct road on this link:
+	// its remote control is on, its road is not forced to the relay, and it has
+	// room for another direct tunnel. ADDITIVE: an older host never sets it and
+	// an older viewer ignores it, so nobody offers to a host that cannot answer.
+	Direct bool `json:"direct,omitempty"`
 }
 
 // MuxConfig configures a Mux over an io.ReadWriteCloser.
 type MuxConfig struct {
-	Clock          Clock
-	Limits         Limits
-	OnPong         func(seq uint32)
+	Clock  Clock
+	Limits Limits
+	OnPong func(seq uint32)
+	// OnSignal is handed each signalling payload that arrives, in order. It runs
+	// on the link's reader goroutine, so it must not block; a handler that has
+	// work to do queues it.
+	OnSignal       func(payload []byte)
 	OnFrameWritten func(n int)
 	OnFrameRead    func(n int)
 }
@@ -124,6 +142,11 @@ type Mux struct {
 
 	tokens     float64
 	lastRefill time.Time
+
+	// signalsIn and signalsOut are the times of the signalling frames this link
+	// received and sent in the last minute, kept to hold both to SignalRate.
+	signalsIn  []time.Time
+	signalsOut []time.Time
 
 	helloAck     HelloAck
 	hasHelloAck  bool
@@ -380,6 +403,47 @@ func (m *Mux) SendPing(seq uint32) error {
 		payload: encodeUint32(seq),
 	})
 	return nil
+}
+
+// SendSignal sends one signalling payload as an OpSignal frame on channel 0. It
+// refuses a payload over SignalMax and refuses to send more than SignalRate
+// frames in a minute, because the far end closes a link that does either.
+func (m *Mux) SendSignal(payload []byte) error {
+	if len(payload) > SignalMax {
+		return ErrSignalTooLarge
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return ErrLinkClosed
+	}
+	if !m.noteSignalLocked(&m.signalsOut) {
+		return ErrTooManySignals
+	}
+	m.enqueueControlLocked(frame{
+		op:      OpSignal,
+		channel: 0,
+		payload: append([]byte(nil), payload...),
+	})
+	return nil
+}
+
+// noteSignalLocked records one signalling frame against the per-minute rate and
+// reports whether it is within it.
+func (m *Mux) noteSignalLocked(window *[]time.Time) bool {
+	now := m.clock.Now()
+	kept := (*window)[:0]
+	for _, at := range *window {
+		if now.Sub(at) < time.Minute {
+			kept = append(kept, at)
+		}
+	}
+	*window = kept
+	if len(*window) >= SignalRate {
+		return false
+	}
+	*window = append(*window, now)
+	return true
 }
 
 // SendHelloAck sends an OpHelloAck frame on channel 0 from the host.
@@ -654,6 +718,21 @@ func (m *Mux) handleFrame(f frame) error {
 		}
 		if m.cfg.OnPong != nil {
 			m.cfg.OnPong(seq)
+		}
+		return nil
+
+	case OpSignal:
+		if f.channel != 0 || len(f.payload) > SignalMax {
+			return ErrProtocol
+		}
+		m.mu.Lock()
+		within := m.noteSignalLocked(&m.signalsIn)
+		m.mu.Unlock()
+		if !within {
+			return ErrTooManySignals
+		}
+		if m.cfg.OnSignal != nil {
+			m.cfg.OnSignal(f.payload)
 		}
 		return nil
 

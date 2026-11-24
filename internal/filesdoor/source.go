@@ -2,6 +2,7 @@ package filesdoor
 
 import (
 	"context"
+	"crypto/ecdh"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -767,11 +768,7 @@ func (s *Source) checkAnswer(tunnel *pair.Tunnel, typ byte, body []byte) error {
 func DialLive(ctx context.Context, service string, id identity.Identity, dev identity.Dev, host string) (io.ReadWriteCloser, error) {
 	attempt, cancel := context.WithTimeout(ctx, dialWithin)
 	defer cancel()
-	mine, err := DoorKey(id, dev.ID())
-	if err != nil {
-		return nil, err
-	}
-	theirs, err := DoorKey(id, host)
+	keys, err := liveKeys(id, dev, host)
 	if err != nil {
 		return nil, err
 	}
@@ -783,6 +780,47 @@ func DialLive(ctx context.Context, service string, id identity.Identity, dev ide
 	if err != nil {
 		return nil, err
 	}
+	return sayLive(attempt, stream, id, dev, host, keys, pair.IntentLive, LiveTunnelPrologue)
+}
+
+// DialDirect finishes a live-view tunnel over a stream that already exists: the
+// byte stream of an open peer-to-peer data channel. It is DialLive for a
+// carrier the caller built, with the direct intent and prologue, the same
+// door-key handshake against the host's pinned key and the same device hello,
+// and it returns a READY tunnel, which is the contract a link's Dial has. The
+// stream is closed when the handshake fails, and the dial ends with
+// [dialWithin].
+func DialDirect(ctx context.Context, stream io.ReadWriteCloser, id identity.Identity, dev identity.Dev, host string) (io.ReadWriteCloser, error) {
+	attempt, cancel := context.WithTimeout(ctx, dialWithin)
+	defer cancel()
+	keys, err := liveKeys(id, dev, host)
+	if err != nil {
+		_ = stream.Close()
+		return nil, err
+	}
+	return sayLive(attempt, stream, id, dev, host, keys, pair.IntentDirect, DirectTunnelPrologue)
+}
+
+// liveKeysOf are the two door keys a live dial uses: this device's own, and the
+// host's, whose public half the handshake pins.
+type liveKeysOf struct{ mine, theirs *ecdh.PrivateKey }
+
+func liveKeys(id identity.Identity, dev identity.Dev, host string) (liveKeysOf, error) {
+	mine, err := DoorKey(id, dev.ID())
+	if err != nil {
+		return liveKeysOf{}, err
+	}
+	theirs, err := DoorKey(id, host)
+	if err != nil {
+		return liveKeysOf{}, err
+	}
+	return liveKeysOf{mine: mine, theirs: theirs}, nil
+}
+
+// sayLive is the handshake and hello every live dial runs over a stream it has
+// been handed, whichever road made the stream. It takes the stream's ownership:
+// a failed or timed-out dial closes it.
+func sayLive(attempt context.Context, stream io.ReadWriteCloser, id identity.Identity, dev identity.Dev, host string, keys liveKeysOf, intent byte, prologue string) (io.ReadWriteCloser, error) {
 	succeeded := false
 	defer func() {
 		if !succeeded {
@@ -792,7 +830,7 @@ func DialLive(ctx context.Context, service string, id identity.Identity, dev ide
 	stop := context.AfterFunc(attempt, func() { _ = stream.Close() })
 	defer stop()
 
-	tunnel, err := pair.ConnectWithKeyIntent(stream, theirs.PublicKey().Bytes(), mine, pair.IntentLive, LiveTunnelPrologue)
+	tunnel, err := pair.ConnectWithKeyIntent(stream, keys.theirs.PublicKey().Bytes(), keys.mine, intent, prologue)
 	if err != nil {
 		return nil, err
 	}
