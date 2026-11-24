@@ -158,27 +158,36 @@ func storageOpenAt(home string) bool {
 // relay refusing, no other computer yet) never reaches this read, and a chat
 // whose storage is still closed stays exactly as it was.
 func (l *liveDrive) storageReopened() {
-	l.mu.Lock()
-	if !l.storageWaiting || l.closed.Load() {
-		l.mu.Unlock()
+	open, due := l.storageRecheck()
+	if !due {
 		return
-	}
-	now := l.nowTime()
-	if !l.storageChecked.IsZero() && now.Sub(l.storageChecked) < storageRecheckEvery {
-		l.mu.Unlock()
-		return
-	}
-	l.storageChecked = now
-	open := l.storageOpen
-	l.mu.Unlock()
-	if open == nil {
-		open = storageOpenAt
 	}
 	// The read and the wake happen outside the lock: waking clears the wait and
 	// may start the drive, which takes it again.
 	if open(home.Dir()) {
 		l.storageOpened()
 	}
+}
+
+// storageRecheck says whether a touch should look at local files now, and
+// through which read, and starts the two seconds again when it should. A chat
+// that is not waiting for storage, or that looked less than two seconds ago, is
+// not due.
+func (l *liveDrive) storageRecheck() (open func(home string) bool, due bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.storageWaiting || l.closed.Load() {
+		return nil, false
+	}
+	now := l.nowTime()
+	if !l.storageChecked.IsZero() && now.Sub(l.storageChecked) < storageRecheckEvery {
+		return nil, false
+	}
+	l.storageChecked = now
+	if l.storageOpen != nil {
+		return l.storageOpen, true
+	}
+	return storageOpenAt, true
 }
 
 // begin spends the reserved startup exactly once after the journal opens.
