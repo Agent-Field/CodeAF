@@ -1,6 +1,6 @@
 # Starting an organization and Afi's set-up
 
-## start your organization — create an organization, name it, what it does in a line
+## start a new organization — create an organization, name it, and say what it does
 
 There is no hosted account and no plan to pick. An organization is a server someone runs with `codeaf factory serve`; you sign in to it in the desktop app (**Sign in to WorkAF**: a passkey first, then a password, then GitHub, as the server takes them).
 
@@ -11,6 +11,10 @@ The first time the operator signs in to an organization nobody has set up, the a
 - **Just me, on this computer**, a quiet link back to Personal.
 
 The name and the line are kept on the organization's server. Every Afi in the organization (the set-up conversation and each workstream's agent) is told them, so Afi knows what the organization does. Someone who is not the operator never sees this page; they land on Work.
+
+## start or open a chat in your organization's desktop window
+
+When the organization has enabled hosted chats, open its window in the desktop app to start a chat there or reopen one from the window's chat list. Your conversation and the work it runs stay on the organization's server. Closing the window leaves the chat running there. See [Chats that run on the organization's server](organization-hosted-sessions.md) for sharing, sign-in and limits.
 
 ## Afi sets up the organization — one card, workstreams, teams and invites in one press
 

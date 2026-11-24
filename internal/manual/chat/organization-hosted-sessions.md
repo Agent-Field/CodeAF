@@ -8,6 +8,14 @@ This is a different thing from `--host` and `--at`, which reach one computer tha
 
 It is off unless the organization's operator has turned it on. When it is off, the server answers `--org` the way it answers any address it does not know. Nothing about your own chats, on your own computer, changes either way.
 
+## open, start or reopen a hosted chat in a desktop organization window
+
+Sign in to the organization in the desktop app and open its window. The window offers new chat only when the organization has enabled hosted chats. Its chat list shows the chats you started and any chats the server says were shared with you. In a shared chat you can use the actions your role allows, such as reading the conversation or sending messages. Use a Personal window for chats on your computer.
+
+The organization chooses where each chat works on its server. The desktop app creates no conversation folder on your computer for that chat. Attachments are refused with `Attachments cannot go to a chat on <host> yet.`
+
+If the server is down, the app says `<host> is unreachable.` If your sign-in is missing or has expired, it says `Sign in to <host> first.`
+
 ## open a chat on the organization's server — codeaf chat --org
 
 ```
@@ -100,7 +108,7 @@ If you do not want your code on a machine the organization runs, do not open it 
 
 ## what happens to a hosted chat when I disconnect — the turn goes on and I come back to it
 
-A turn that is running on the server when you disconnect, lose the connection or kill `codeaf chat --org` goes on running there. When you open the same chat again with `codeaf chat --org`, the result is there.
+A turn that is running on the server when you close its desktop window, disconnect, or quit `codeaf chat --org` goes on running there. Reopen the chat in the organization window or with `codeaf chat --org` to read the result. Stop in the desktop chat interrupts the current turn. The server's stop action below ends the chat's processes.
 
 An idle chat stops its own program after a while and starts it again, with its conversation, the next time you open it. Files stay in place the whole time. Processes you started that were still running stay running until you stop the chat.
 
