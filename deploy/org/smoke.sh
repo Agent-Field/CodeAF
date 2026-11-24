@@ -26,13 +26,19 @@
 #     cp ../../bin/codeaf codeaf-local && SMOKE_HOSTED=1 CODEAF_BINARY_FROM=local ./smoke.sh
 set -eu
 cd "$(dirname "$0")"
-[ -f .env ] || ./setup.sh
+# Idempotent: makes .env once, and adds a secret a newer version needs to an .env that predates it.
+./setup.sh
 HOSTED="${SMOKE_HOSTED:-0}"
 SERVICES=
 FULL=1
-if [ "${SMOKE_HOSTED_ONLY:-0}" = 1 ]; then HOSTED=1; FULL=0; SERVICES="codeaf sessionhost modelstub"; fi
+if [ "${SMOKE_HOSTED_ONLY:-0}" = 1 ]; then HOSTED=1; FULL=0; SERVICES="codeaf sessionhost modelstub gitstub"; fi
 HOSTED_FLAGS=
-[ "$HOSTED" = 1 ] && HOSTED_FLAGS="--env-file .env.stub.hosted --profile hosted"
+if [ "$HOSTED" = 1 ]; then
+  HOSTED_FLAGS="--env-file .env.stub.hosted --profile hosted"
+  # The stub git host wants this as the person's GitHub access; it is made for this run and is worth nothing.
+  GITSTUB_TOKEN="${GITSTUB_TOKEN:-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
+  export GITSTUB_TOKEN
+fi
 # shellcheck disable=SC2086
 DC="${COMPOSE:-docker compose} --env-file .env --env-file .env.stub $HOSTED_FLAGS ${SMOKE_ENV:-} --profile stub"
 SMOKE=/opt/org/smoke.py
@@ -61,6 +67,16 @@ if [ "$HOSTED" = 1 ]; then
   run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted
   # What only the machine itself can show: the state the client side just wrote goes in on stdin.
   $DC exec -T codeaf cat /data/smoke-hosted.json | $DC exec -T sessionhost python3 $SMOKE hosted-host || bad=1
+  # P1: the real model door (metered, capped), people's own keys, git through the organization, and what the machine holds.
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787 -e GITSTUB_TOKEN' hosted-p1
+  $DC exec -T codeaf cat /data/smoke-p1.json | $DC exec -T sessionhost python3 $SMOKE hosted-p1-host || bad=1
+  # The organization server alone restarts: a running chat's access must keep working, and stop at once when its chat is stopped.
+  # shellcheck disable=SC2086
+  $DC restart codeaf
+  # shellcheck disable=SC2086
+  $DC up -d --wait --wait-timeout 600 codeaf
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-p1-restart
+  $DC exec -T codeaf cat /data/smoke-p1.json | $DC exec -T sessionhost python3 $SMOKE hosted-p1-bearer || bad=1
   mode=$($DC logs sessionhost 2>&1 | grep -m1 'sessionhost: mode' || true)
   if [ -n "$mode" ]; then echo "PASS  C4 the machine started in a mode that keeps chats apart   ${mode##*: }"; else echo 'FAIL  C4 the machine said no mode at start' >&2; bad=1; fi
   # Fail closed: the same machine without the right to switch users must refuse, not run chats as root.
@@ -85,6 +101,7 @@ run codeaf '-e ORG_URL=http://127.0.0.1:8787' after-org
 if [ "$HOSTED" = 1 ]; then
   $DC exec -T sessionhost python3 $SMOKE hosted-leftovers || bad=1
   run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-after
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787 -e GITSTUB_TOKEN' hosted-p1-after
 fi
 
 if [ "$bad" = 0 ]; then echo 'SMOKE PASSED'; else echo 'SMOKE FAILED' >&2; exit 1; fi

@@ -129,13 +129,31 @@ because it has to become a different Linux user for every chat. It is built from
   `CODEAF_SESSIONHOST_REQUIRE=uid` (default `uid+fence`) lets an operator whose kernel has no fence run on the
   user switch alone; it says so once at start and in every chat's `warning`, and it is not a default. The fence
   also scopes abstract Unix sockets (they belong to no user, so nothing else keeps one chat from connecting to
-  another's), which needs Landlock ABI 6 (Linux 6.12 or newer): on an older kernel the probe says so and the
-  machine starts no chats unless the operator chose `REQUIRE=uid`. Chats also start with `umask 077`, because
+  another's), which needs Landlock ABI 6. **Requires Linux 6.12 or newer; on older kernels set
+  `CODEAF_SESSIONHOST_REQUIRE=uid`.** Without it an older kernel starts no chats and the refusal at start names that
+  exact setting (`codeaf sessionhost probe` prints the same reason); with it the chats run on the user switch alone, with
+  no limit on what their commands reach, the port limit below included. Chats also start with `umask 077`, because
   `/tmp` and `/dev/shm` are shared by every chat on the machine; a chat can still open its own files up.
+- **A port limit on the network** (`CODEAF_SESSIONHOST_CONNECT_PORTS`, default `443,80,22,9418`). A private network
+  with no policies of its own (Railway's, and any Compose stack that puts a chat's machine beside other services)
+  lets a chat's command connect to the node APIs, the model stub and anything else listening there. The fence
+  therefore carries a Landlock TCP-connect allowlist: a command may connect to those ports and to the port of the
+  organization server's own address (the model door and git, taken from the chat's credentials), and every other
+  port is refused by the kernel with `permission denied` and one plain line saying so. `none` allows the organization
+  server's port alone. **It filters by port, not by address**: a hostile service listening on an allowed port is still
+  reachable, a service of the chat's own on another port (a dev server on 3000) is not, and AgentField, the nodes and the
+  stub must keep their own sign-in because a service that shares an allowed port is open to a chat. Keep AgentField's
+  port (8080), the nodes' (8003, 8007), the model stub's (8890) and the sessionhost's own (8790) out of the list. Needs
+  Landlock ABI 4 (Linux 6.7); a chat whose kernel cannot do it is refused, never run with the network open.
 - **No keys.** The sessionhost holds no organization secret except the one it shares with the organization
-  server, no AgentField key, no GitHub token and no model key. A chat reaches a model only through the
-  organization server's `/v1/model/` door with a bearer the server minted for that chat (twelve hours, ended on
-  stop or delete, held in the server's memory), and that door adds the organization's real key itself.
+  server, no AgentField key, no GitHub token and no model key, and a chat holds none of a person's keys either. A
+  chat reaches a model only through the organization server's `/v1/model/` door with a bearer the server minted for
+  that chat (seven days, ended at once on stop or delete, kept as a hash in the organization's data so a restart of
+  the server does not end it); the door adds the real key itself, metered into the person's spend. Git goes the same
+  way: the chat's `git clone`/`push` of an allowed host is rewritten to the organization server's
+  `/v1/hosted/git/` door, which adds the person's own GitHub access to each request, so the chat never holds a GitHub
+  token (a credential helper, `codeaf git-credential`, hands git only the chat's own bearer, and only to that one
+  address).
 - **Limits.** `CODEAF_SESSIONHOST_MAX_RUNNING` chats at once (default 20) and `CODEAF_SESSIONHOST_MAX_PER_PERSON`
   per person (default 3). A chat counts while it has a process; a person over their limit can still make a
   chat but cannot start a third and reads "You already have N chats running; stop one first."
@@ -159,20 +177,42 @@ The five capabilities the container is given (`cap_drop: [ALL]`, then `cap_add`)
 The supervisor narrows itself to these five when it starts, whatever the platform gave root.
 
 What this does NOT do, plainly: whoever is root on the machine (the operator, or the platform) can read every
-chat, and the volume is not encrypted by this stack; a chat can reach the internet and, on a platform whose
-private network is open (Railway's), the other services' private addresses, so the secrets that matter there
-are the authentication of each service, not the network; the model access a chat holds is its own scoped
-bearer, and the chat's own shell can read the bearer of the chat's engine process; and a restart of the
-organization server (which holds the bearers in memory) ends model access until the chat's next attach. Each of
-those is a next step, not a hidden property.
+chat, and the volume is not encrypted by this stack; a chat can reach the internet and any service that listens on
+an allowed port of the private network (the limit is by port, not by address), so each service on that network
+must keep its own sign-in (the node APIs of AgentField's reasoner nodes do not yet ask for one: an agentfield
+follow-up); the model access a chat holds is its own scoped bearer, and the chat's own shell can read the bearer
+of the chat's engine process and of the private file git's helper reads; the git door is not limited to one
+repository, because the person's own GitHub access decides what they reach (GitHub App installation tokens per
+repository are a next step); and a person's own model key counts toward both spending limits like the
+organization's. Each of those is a next step, not a hidden property.
+
+### Keys, spend and git (P1)
+
+- **The real model door.** `CODEAF_HOSTED_MODEL_UPSTREAM` (OpenRouter's when empty) is called with
+  `CODEAF_HOSTED_MODEL_KEY`, or the key the organization server already holds for model calls, or no key at all for a
+  keyless stub. The key never leaves the organization server. Every call is metered to the cent into the signed-in
+  person's My space; a chat stops at `CODEAF_HOSTED_SESSION_CAP_USD` (default 5) and a person at the monthly limit the
+  operator sets in Settings (`PUT /v1/myspace/limit`, default 20). A refused message is a plain sentence and makes no
+  upstream call.
+- **People's own keys.** `PUT /v1/hosted/keys/openrouter` and `.../github` with a person's sign-in store their own key
+  or GitHub access, sealed with a data key of that person's own, itself sealed by `CODEAF_SERVER_KEY` (64 hex
+  characters; `./setup.sh` makes it) with AES-256-GCM, in `person-keys.json` beside the server's other data. The
+  server key is held by the `codeaf` service only. **Back it up with `.env`**: a server that finds keys sealed with a
+  different server key, or people's keys and no server key, refuses to start with a sentence and touches nothing;
+  with no server key at all, personal keys are refused with a 409 and chats use the organization's key. Never the
+  other way round: a person's own key that cannot be opened pauses their chat; it is never replaced by the
+  organization's.
+- **Git.** `CODEAF_HOSTED_GIT_HOSTS` (default `https://github.com`) are the hosts a chat's git reaches through the
+  server. One audit line per operation goes to `hosted-audit.jsonl` (`GET /v1/hosted/audit` shows a person their own).
 
 ### Turning it on
 
 1. `./setup.sh` writes `CODEAF_HOSTED_SECRET` (64 hex characters, never printed) into `.env`; an `.env` from
    before this feature gets one appended, once.
 2. In `.env`: `COMPOSE_PROFILES=hosted`, `CODEAF_HOSTED_URL=http://sessionhost:8790`, the organization's model
-   endpoint in `CODEAF_HOSTED_MODEL_UPSTREAM` (for OpenRouter `https://openrouter.ai/api/v1`) and its key in
-   `CODEAF_HOSTED_MODEL_KEY`, and the model chats use in `CODEAF_SESSIONHOST_MODEL`.
+   endpoint in `CODEAF_HOSTED_MODEL_UPSTREAM` (for OpenRouter `https://openrouter.ai/api/v1`, which is also the default
+   when empty) and its key in `CODEAF_HOSTED_MODEL_KEY`, and the model chats use in `CODEAF_SESSIONHOST_MODEL`.
+   `./setup.sh` also writes `CODEAF_SERVER_KEY`, which seals people's own keys: keep a copy.
    `CODEAF_HOSTED_MODEL_URL` is the address chats use to reach the organization server's model door
    (`http://codeaf:8787/v1/model` by default).
 3. `docker compose up -d`. The image must hold a codeaf that has `codeaf sessionhost`; until a release does, build
@@ -180,14 +220,21 @@ those is a next step, not a hidden property.
    (`codeaf-local` is ignored by git; `CODEAF_BINARY_FROM` defaults to `fetch`, the pinned release.)
 
 The sessionhost sits on a network of its own, shared only with `codeaf`, so a chat's commands cannot reach
-AgentField, the nodes, the runner or the model stub. Its API (`/v1/sessions` ...) wants the shared secret and a
+AgentField, the nodes, the runner or the model stub. On a platform with no such network (Railway), the port limit above
+is what keeps them out. Its API (`/v1/sessions` ...) wants the shared secret and a
 person's name from the organization server, and answers anything else with an empty `401`.
 
 `SMOKE_HOSTED=1 ./smoke.sh` runs everything above against the scripted stub (so it spends nothing): two people
 run chats; the test checks that they cannot see each other's files, processes or environment, that no secret
-is in a chat's shell, folder or process list, that a chat cannot reach the other services, that only the owner
-can attach, that closing the client mid-turn loses nothing, that a stopped chat leaves no process, and that a
-restart of the sessionhost leaves the files in place. It prints PASS or FAIL per check.
+is in a chat's shell, folder or process list, that a chat cannot reach the other services (and that the kernel refuses
+a port nobody allowed), that only the owner can attach, that closing the client mid-turn loses nothing, that a stopped
+chat leaves no process, and that a restart of the sessionhost leaves the files in place. It also checks, against the
+stub model (each call reports it cost a cent) and a stub git host: the upstream sees only the organization's key, spend
+is exact to the cent, the monthly and per-chat limits refuse in plain words, a person's own key is used for them alone
+and sits sealed on disk, clone and push work through the organization with one audit line each and no key or GitHub
+access in any chat folder, process environment or argument list, a chat's access still works after the organization
+server restarts and ends the moment the chat is stopped, and the first attach after a restart of the chats' machine
+needs no retry. It prints PASS or FAIL per check. A live check against a real provider is the one step it does not do.
 
 On Railway the sessionhost is a sixth service from the same image: `CODEAF_ROLE=sessionhost`, a volume at
 `/chats`, no public domain, `CODEAF_SESSIONHOST_SECRET=${{codeaf.CODEAF_HOSTED_SECRET}}`, and on `codeaf`

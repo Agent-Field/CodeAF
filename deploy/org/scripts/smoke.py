@@ -331,6 +331,18 @@ HOSTED_STATE = Path(os.environ.get('SMOKE_HOSTED_STATE', '/data/smoke-hosted.jso
 HOSTED_IDS = Path(os.environ.get('SMOKE_HOSTED_IDS', '/data/smoke-hosted-ids.json'))
 CLIENT_HOME = Path(os.environ.get('SMOKE_CLIENT_HOME', '/tmp/smoke-client'))
 CLIENT_CWD = CLIENT_HOME / 'cwd'
+STUB = os.environ.get('STUB_URL', 'http://modelstub:8890').rstrip('/')
+GITSTUB = os.environ.get('GITSTUB_URL', 'http://gitstub:8891').rstrip('/')
+# The key the organization's model door sends upstream (.env.stub.hosted sets it, and it is the stub's, not a secret): distinct
+# from every other service's, so the stub's record of calls shows exactly what the hosted chats spent.
+HOSTED_ORG_KEY = os.environ.get('SMOKE_HOSTED_MODEL_KEY', 'stub-hosted-org-key-0001')
+GIT_TOKEN = os.environ.get('GITSTUB_TOKEN', '')
+STUB_COST = float(os.environ.get('SMOKE_STUB_COST_USD', '0.01'))
+SESSION_CAP = float(os.environ.get('SMOKE_SESSION_CAP_USD', '0.50'))
+P1_STATE = Path(os.environ.get('SMOKE_P1_STATE', '/data/smoke-p1.json'))
+# What a chat's shell may not reach on the private network, and the suffix Railway's names carry. On Compose the
+# chats' machine is on a network of its own and the names do not resolve; on Railway they do, and the kernel answers.
+NET_SUFFIX = os.environ.get('SMOKE_NET_SUFFIX', '')
 NO_SUCH_CHAT = 'There is no such chat.'
 UNKNOWN_CHAT = 'hs_' + '0' * 24
 BANNED_WORDS = ('uid', 'sandbox', 'sessionhost', 'fence', 'landlock', 'daemon')
@@ -404,11 +416,11 @@ def wire_answer(token, session):
 
 
 def hosted_prepare():
-    """Makes the three chats the test uses (two for the owner, one for the member) and writes their names to
+    """Makes the chats the test uses (two for the owner, two for the member) and writes their names to
     HOSTED_IDS, which smoke.sh pipes to `hosted-seed` on the chats' machine before anyone types."""
     print('--- hosted chats: making the chats')
     ids = {}
-    for who, name in (('owner', 'owner_first'), ('owner', 'owner_second'), ('priya', 'member')):
+    for who, name in (('owner', 'owner_first'), ('owner', 'owner_second'), ('priya', 'member'), ('priya', 'member_cap')):
         token = sign_in(who)
         code, made = http('POST', ORG + '/v1/hosted/sessions', token, {}) if token else (0, None)
         ids[name] = (made or {}).get('id', '') if isinstance(made, dict) else ''
@@ -604,19 +616,34 @@ def hosted():
     check('C2 another chat\'s engine cannot be connected to', (field(out, 'ENGINE') or '').startswith('refused'), field(out, 'ENGINE'))
 
     # C3 and C3b: what a chat's shell can find, and where it can go.
-    net = ('p() { timeout 4 bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null && echo "NET $1:$2 open" || echo "NET $1:$2 closed"; }; '
+    # `denied` is the kernel refusing the connection (permission denied): the answer a port nobody allowed gives. `closed` is
+    # anything else (no such name, nothing listening, no route).
+    net = ('p() { e=$(timeout 4 bash -c "exec 3<>/dev/tcp/$1/$2" 2>&1) && echo "NET $1:$2 open" || '
+           '{ case "$e" in *ermission*) echo "NET $1:$2 denied";; *) echo "NET $1:$2 closed";; esac; }; }; '
            'h() { exec 3<>/dev/tcp/$1/$2; printf "$3 $4 HTTP/1.0\\r\\nHost: x\\r\\n\\r\\n" >&3; head -n1 <&3; }; '
-           'p agentfield 8080; p modelstub 8890; p swe-af 8003; p pr-af 8007; p 169.254.169.254 80; p codeaf 8787; p sessionhost 8790; '
+           'p agentfield@X 8080; p modelstub@X 8890; p swe-af@X 8003; p pr-af@X 8007; p 169.254.169.254 80; p codeaf 8787; p sessionhost 8790; '
+           'p 127.0.0.1 8790; '
            'echo "SESSIONHOST $(h sessionhost 8790 GET /v1/sessions 2>&1)"; '
-           'echo "ORG $(h codeaf 8787 GET /v1/hosted/sessions 2>&1)"; echo "MODEL $(h codeaf 8787 POST /v1/model/chat/completions 2>&1)"')
+           'echo "ORG $(h codeaf 8787 GET /v1/hosted/sessions 2>&1)"; echo "MODEL $(h codeaf 8787 POST /v1/model/chat/completions 2>&1)"').replace('@X', NET_SUFFIX)
     # What a chat's shell holds in its environment and in its folders is read from the machine's side (hosted_host),
     # because the engine rightly refuses a command that searches for secrets; here the shell only tries to reach things.
     status, out, err = chat(owner, 'bash: ' + net, session=first_id)
     trace('the network probe', 'NET ', status, out, err)
-    closed = ('agentfield:8080', 'modelstub:8890', 'swe-af:8003', 'pr-af:8007', '169.254.169.254:80')
+    closed = ('agentfield%s:8080' % NET_SUFFIX, 'modelstub%s:8890' % NET_SUFFIX, 'swe-af%s:8003' % NET_SUFFIX, 'pr-af%s:8007' % NET_SUFFIX, '169.254.169.254:80')
     check('C3b the chat cannot reach AgentField, the nodes, the model stub or the metadata address',
-          all('NET %s closed' % target in out for target in closed), short(re.findall(r'^NET .*$', out, re.M), 400))
-    check('C3b the chats\' machine API refuses a chat that has no secret', '401' in (field(out, 'SESSIONHOST') or ''), field(out, 'SESSIONHOST'))
+          all('NET %s open' % target not in out and 'NET %s' % target in out for target in closed), short(re.findall(r'^NET .*$', out, re.M), 400))
+    # P1-0c: a port nobody allowed is refused by the kernel itself, which is what closes the services of a private network that
+    # has no policies of its own (Railway's). Here the chats' machine's own API is the one that answers on this network: its
+    # name resolves to the machine the chat runs on, and so does loopback. The organization's own door is the port that is let through.
+    denied = ('sessionhost:8790', '127.0.0.1:8790') + (closed[:4] if NET_SUFFIX else ())
+    check('P1-0c a command in a chat is REFUSED (permission denied) on the ports of the chats\' machine' + (', AgentField, the nodes and the model stub' if NET_SUFFIX else ''),
+          all('NET %s denied' % target in out for target in denied), short(re.findall(r'^NET .*$', out, re.M), 500))
+    check('P1-0c the organization server\'s own door is the port that stays open to a chat', 'NET codeaf:8787 open' in out, short(re.findall(r'^NET codeaf.*$', out, re.M), 100))
+    status, refused_out, refused_err = chat(owner, 'bash: exec 3<>/dev/tcp/127.0.0.1/8790', session=first_id)
+    check('P1-0c the refusal says in one plain sentence what a chat\'s commands may reach', 'only on the ports the organization allows' in refused_out + refused_err,
+          short(refused_out + refused_err, 300))
+    check('C3b the chats\' machine API cannot be used by a chat that has no secret (refused outright, or 401)',
+          '401' in (field(out, 'SESSIONHOST') or '') or 'denied' in (re.findall(r'^NET sessionhost:8790 (\w+)$', out, re.M) or [''])[0], field(out, 'SESSIONHOST'))
     check('C3b the organization server refuses a chat that has no sign-in', any(c in (field(out, 'ORG') or '') for c in ('401', '403')), field(out, 'ORG'))
     check('C3b the model door refuses a chat that has no model bearer', '401' in (field(out, 'MODEL') or ''), field(out, 'MODEL'))
 
@@ -815,17 +842,12 @@ def hosted_after():
     first = state['owner_first']
     code, rows = hosted_sessions(owner)
     check('C6 the owner\'s chat is still listed after the restart', any(r['id'] == first['id'] for r in rows), [r['id'] for r in rows])
-    # The chats' machine forgot the model bearers with its memory; the first attach says so in a plain sentence
-    # and the next one works, because the organization server mints and hands over a new one on that retry.
-    attempts = []
-    out = ''
-    for _ in range(2):
-        status, out, err = chat(owner, 'bash: cat secretA; cat wt/f; cat c5.txt', session=first['id'])
-        attempts.append((status, (out + err).strip()))
-        if 'A-ONLY' in out:
-            break
-        time.sleep(2)
-    check('C6 the files are intact and the person is back in the chat (a retry is allowed once)', 'A-ONLY' in out and 'C5-DONE' in out, short(attempts, 300))
+    # The chats' machine forgot the model bearers with its memory. Since P1 the organization server notices that when the person
+    # attaches (the machine says which access it holds) and hands over a fresh one before anything is sent, so the FIRST attach
+    # after a restart works: no "no model access yet", no retry.
+    status, out, err = chat(owner, 'bash: cat secretA; cat wt/f; cat c5.txt', session=first['id'])
+    check('P1-7 the person is back in the chat on the first attach after the restart, files intact', 'A-ONLY' in out and 'C5-DONE' in out and 'no model access' not in out + err,
+          short((status, (out + err).strip()), 300))
 
 
 def hosted_leftovers():
@@ -848,13 +870,316 @@ def hosted_leftovers():
     check('C6 the chats\' volume survived the restart', 'people' in layout, layout)
 
 
+
+# ---- P1: the real model door, per-person keys, git, and what survives a restart -------------------------------------------
+
+def stub_rows():
+    code, body = http('GET', STUB + '/_calls')
+    return (body or {}).get('calls', []) if code == 200 and isinstance(body, dict) else []
+
+
+def calls_with(key, rows=None):
+    return [r for r in (rows if rows is not None else stub_rows()) if r.get('key') == key and r.get('status') == 200]
+
+
+def git_calls():
+    code, body = http('GET', GITSTUB + '/_calls')
+    return body if code == 200 and isinstance(body, list) else []
+
+
+def spent_of(token):
+    code, body = http('GET', ORG + '/v1/myspace', token)
+    return round(float((body or {}).get('spent_usd', 0)), 2) if code == 200 and isinstance(body, dict) else None
+
+
+def quiet_count(key, seconds=2, limit=30):
+    """The number of stub calls made with `key` once no more are arriving (a chat can make a call after its answer)."""
+    last = -1
+    deadline = time.time() + limit
+    while time.time() < deadline:
+        now = len(calls_with(key))
+        if now == last:
+            return now
+        last = now
+        time.sleep(seconds)
+    return last
+
+
+def audit_lines(token):
+    code, body = http('GET', ORG + '/v1/hosted/audit', token)
+    return (body or {}).get('entries', []) if code == 200 and isinstance(body, dict) else []
+
+
+def p1_state():
+    try:
+        return json.loads(P1_STATE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def p1_save(state):
+    P1_STATE.write_text(json.dumps(state))
+    P1_STATE.chmod(0o600)
+
+
+def hosted_p1():
+    print('--- hosted chats P1: the model door, keys, spend, caps and git')
+    owner, member = sign_in('owner'), sign_in('priya')
+    check('P1 both people sign in', bool(owner and member))
+    if not (owner and member):
+        return
+    ids = json.loads(HOSTED_IDS.read_text())
+    owner_chat, member_chat, cap_chat = ids['owner_first'], ids['member'], ids['member_cap']
+    state = {'own_key': 'sk-own-smoke-' + secrets.token_hex(10), 'member_chat': member_chat, 'cap_chat': cap_chat, 'owner_chat': owner_chat,
+             'git_token': GIT_TOKEN, 'hosted_key': HOSTED_ORG_KEY}
+    check('P1 the stub reports what it was asked and costs (so metering can be checked)', http('GET', STUB + '/_calls')[0] == 200 and GIT_TOKEN != '',
+          f'stub {http("GET", STUB + "/_calls")[0]}, git token set {GIT_TOKEN != ""}')
+
+    # P1-1 and P1-2: a chat's model calls go upstream with the organization's key and are metered into the person's spend to the cent.
+    before_calls = quiet_count(HOSTED_ORG_KEY)
+    before_spent = spent_of(member)
+    for number in range(3):
+        status, out, err = chat(member, 'bash: echo meter-%d' % number, session=member_chat)
+        check(f'P1 the member\'s message {number + 1} gets an answer through the model door', status == 0 and 'STUB ran' in out, short(out + err, 200))
+    after_calls = quiet_count(HOSTED_ORG_KEY)
+    made = after_calls - before_calls
+    check('P1-1 the model calls reached the upstream with the organization\'s own key', made >= 3, f'{made} calls')
+    check('P1-1 no key of a chat (cmt_...) ever reached the upstream', not [r for r in stub_rows() if str(r.get('key', '')).startswith('cmt_')], '')
+    spent_after = wait_until(lambda: (lambda value: value if value is not None and round(value - before_spent, 2) == round(made * STUB_COST, 2) else None)(spent_of(member)), 20, 1)
+    check('P1-2 the person\'s spend rose by exactly what those calls cost, to the cent', spent_after is not None, f'{made} calls x ${STUB_COST} -> spent {before_spent} then {spent_of(member)}')
+
+    # P1-5: a person's own keys are kept sealed, are only theirs, and are used only for them.
+    code, _ = http('PUT', ORG + '/v1/hosted/keys/openrouter', member, {'key': state['own_key']})
+    check('P1-5 a person can store their own model key', code == 204, code)
+    code, _ = http('PUT', ORG + '/v1/hosted/keys/github', member, {'key': GIT_TOKEN})
+    check('P1-5 a person can store their own GitHub access', code == 204, code)
+    code, listing = http('GET', ORG + '/v1/hosted/keys', member)
+    rows = (listing or {}).get('keys', []) if isinstance(listing, dict) else []
+    check('P1-5 the list shows the last four characters and never the key', sorted(r.get('provider') for r in rows) == ['github', 'openrouter']
+          and state['own_key'] not in json.dumps(listing) and GIT_TOKEN not in json.dumps(listing)
+          and {r['provider']: r.get('last4') for r in rows}.get('openrouter') == state['own_key'][-4:], short(listing, 300))
+    code, other = http('GET', ORG + '/v1/hosted/keys', owner)
+    check('P1-5 another person sees none of those keys', code == 200 and (other or {}).get('keys') == [], short(other, 200))
+    stored = glob.glob('/data/**/person-keys.json', recursive=True)
+    body = open(stored[0], 'rb').read() if len(stored) == 1 else b''
+    check('P1-5 the stored keys are on disk sealed: mode 0600 and neither key is in the file', len(stored) == 1 and (os.stat(stored[0]).st_mode & 0o777) == 0o600
+          and state['own_key'].encode() not in body and GIT_TOKEN.encode() not in body and len(body) > 20, stored)
+
+    own_before = quiet_count(state['own_key'])
+    org_before = quiet_count(HOSTED_ORG_KEY)
+    spent_before = spent_of(member)
+    status, out, err = chat(member, 'bash: echo own-key', session=member_chat)
+    own_made = quiet_count(state['own_key']) - own_before
+    check('P1-5 with an own key stored, the member\'s calls go upstream with it', status == 0 and own_made >= 1, f'{own_made} calls {short(out + err, 120)}')
+    check('P1-5 and none of them went with the organization\'s key', quiet_count(HOSTED_ORG_KEY) == org_before, '')
+    own_spent = wait_until(lambda: (lambda value: value if value is not None and round(value - spent_before, 2) == round(own_made * STUB_COST, 2) else None)(spent_of(member)), 20, 1)
+    check('P1-5 own-key calls are counted in the person\'s spend too', own_spent is not None, f'{own_made} calls -> {spent_of(member)} from {spent_before}')
+    org_before = quiet_count(HOSTED_ORG_KEY)
+    own_before = quiet_count(state['own_key'])
+    status, out, err = chat(owner, 'bash: echo not-the-members-key', session=owner_chat)
+    check('P1-5 one person\'s key is never used for another person\'s chat', status == 0 and quiet_count(state['own_key']) == own_before and quiet_count(HOSTED_ORG_KEY) > org_before,
+          f'own {quiet_count(state["own_key"])} vs {own_before}')
+
+    # P1-3: the limits refuse in plain words, and spend nothing once refused.
+    code, _ = http('DELETE', ORG + '/v1/hosted/keys/openrouter', member)
+    check('P1-5 a person can remove their own model key', code == 204, code)
+    code, limit = http('PUT', ORG + '/v1/myspace/limit', owner, {'limit_usd': 0})
+    check('P1-3 the operator can set the monthly limit', code == 200, f'{code} {short(limit, 100)}')
+    before_refused = len(stub_rows())
+    status, out, err = chat(member, 'bash: echo over-the-month', session=member_chat)
+    words = out + err
+    check('P1-3 at the monthly limit the chat is refused in a plain sentence', 'monthly limit of $0.00' in words and 'paused' in words, short(words, 300))
+    check('P1-3 and the refused message made no call upstream', len(stub_rows()) == before_refused, f'{len(stub_rows()) - before_refused} calls')
+    code, _ = http('PUT', ORG + '/v1/myspace/limit', owner, {'limit_usd': 20})
+    status, out, err = chat(member, 'bash: echo back-in-the-month', session=member_chat)
+    check('P1-3 raising the limit lets the chat carry on', status == 0 and 'STUB ran' in out, short(out + err, 200))
+
+    refused_with = ''
+    sent = 0
+    for sent in range(1, 60):
+        status, out, err = chat(member, 'bash: echo fill-%d' % sent, session=cap_chat)
+        if 'spending limit' in out + err:
+            refused_with = out + err
+            break
+    check('P1-3 a chat that spends up to its cap is refused in a plain sentence', 'spending limit of $%.2f' % SESSION_CAP in refused_with and 'Start a new chat' in refused_with,
+          f'after {sent} messages: {short(refused_with, 300)}')
+    cap_calls = quiet_count(HOSTED_ORG_KEY)
+    status, out, err = chat(member, 'bash: echo again', session=cap_chat)
+    check('P1-3 a message after the refusal is refused again and makes no call upstream', 'spending limit' in out + err and quiet_count(HOSTED_ORG_KEY) == cap_calls, short(out + err, 200))
+    state['cap_spent_after'] = spent_of(member)
+
+    # P1-6 and P1-9: git goes through the organization and the GitHub access never reaches the chat.
+    before = len(git_calls())
+    status, out, err = chat(owner, 'bash: git clone -q http://gitstub:8891/acme/none.git gn 2>&1; echo "GITNOKEY $?"', session=owner_chat)
+    check('P1-6 a person with no stored GitHub access is refused, and nothing reached the git host', field(out, 'GITNOKEY') not in (None, '0') and len(git_calls()) == before,
+          short(out + err, 200))
+    script = ('git clone -q http://gitstub:8891/acme/widgets.git gw 2>&1 && cd gw && echo hello > hello.txt && git add hello.txt && '
+              'git -c user.name=smoke -c user.email=smoke@example.invalid commit -q -m first && git push -q origin HEAD:main 2>&1; echo "GIT $?"')
+    status, out, err = chat(member, 'bash: ' + script, session=member_chat)
+    check('P1-6 a chat clones and pushes through the organization with the person\'s own access', field(out, 'GIT') == '0', short(out + err, 300))
+    calls = [c for c in git_calls() if '/acme/widgets.git/' in c.get('path', '')]
+    check('P1-6 the git host saw the person\'s access, injected by the organization', len(calls) >= 3 and all(c.get('password_ok') and c.get('user') == 'x-access-token' for c in calls)
+          and {c.get('service') for c in calls} >= {'git-upload-pack', 'git-receive-pack'}, short(calls, 300))
+    lines = [e for e in audit_lines(member) if 'widgets' in e.get('repo', '')]
+    refs = [c for c in calls if c.get('path', '').endswith('/info/refs')]
+    check('P1-6 each git operation left one audit line, naming the chat and the repository', len(lines) == len(refs) >= 2 and all(e.get('chat') == member_chat and e.get('kind') == 'git' for e in lines),
+          f'{len(lines)} lines for {len(refs)} operations')
+    check('P1-6 the audit shows a person only their own lines', not [e for e in audit_lines(owner) if 'widgets' in e.get('repo', '')], '')
+    state['audit_lines'] = len(audit_lines(member))
+    state['member_spent'] = spent_of(member)
+    p1_save(state)
+
+
+def hosted_p1_host():
+    """Run in the sessionhost container as root, with hosted_p1's state on stdin: what only the machine can show. Nothing a person
+    stored, and no key of the organization, is anywhere a chat can read: not in a folder, not in a process's environment or
+    arguments. The chat's own access is kept to the engine and to the one private file git's helper reads."""
+    print('--- hosted chats P1: what is on the chats\' machine')
+    state = json.load(sys.stdin)
+    needles = {'the person\'s own model key': state['own_key'], 'the person\'s GitHub access': state['git_token'], 'the organization\'s model key': state['hosted_key']}
+    people = glob.glob('/chats/people/*/hs_*')
+    check('P1 the chats\' machine has chat folders to read (so the scans mean something)', len(people) >= 3, len(people))
+
+    def scan(folder):
+        def work():
+            hits, files = [], 0
+            for root, _, names in os.walk(folder):
+                for name in names:
+                    path = os.path.join(root, name)
+                    try:
+                        if os.path.getsize(path) > 50_000_000:
+                            continue
+                        data = open(path, 'rb').read()
+                        files += 1
+                        for label, needle in needles.items():
+                            if needle.encode() in data:
+                                hits.append((label, path))
+                    except OSError:
+                        pass
+            return {'files': files, 'hits': hits}
+        return work
+    hits, files = [], 0
+    for folder in people:
+        info = os.stat(folder)
+        found = as_user(info.st_uid, info.st_gid, scan(folder)) or {'files': 0, 'hits': [('could not read', folder)]}
+        files += found['files']
+        hits += found['hits']
+    check('P1 neither key and no GitHub access is in any chat\'s folder, transcripts included', files > 0 and not hits, hits[:3] or f'{files} files read')
+
+    # Every chat's own access is held where git's helper reads it (a private file) and in its engine's environment, and nowhere else.
+    def read_broker(folder):
+        def work():
+            for line in open(os.path.join(folder, 'home', '.config', 'codeaf-hosted', 'broker')).read().splitlines():
+                if line.startswith('bearer='):
+                    return line[len('bearer='):]
+            return ''
+        return work
+    bearers = {}
+    for folder in people:
+        info = os.stat(folder)
+        found = as_user(info.st_uid, info.st_gid, read_broker(folder))
+        if found:
+            bearers[folder] = found
+    leaks = []
+    for entry in os.listdir('/proc'):
+        if not entry.isdigit():
+            continue
+        try:
+            environ = open('/proc/%s/environ' % entry, 'rb').read()
+            cmdline = open('/proc/%s/cmdline' % entry, 'rb').read()
+        except OSError:
+            continue
+        for label, needle in needles.items():
+            if needle.encode() in environ or needle.encode() in cmdline:
+                leaks.append((label, entry, cmdline.split(b'\0')[0][-30:].decode('utf-8', 'replace')))
+        for token in bearers.values():
+            if token.encode() in cmdline:
+                leaks.append(('a chat\'s access', entry, 'arguments'))
+    check('P1 none of those is in any process\'s environment or arguments on the machine', not leaks, leaks[:3])
+    check('P1-6 git is set up in the chats that ran (each holds a chat access in the private file its helper reads)', len(bearers) >= 2 and all(t.startswith('cmt_') for t in bearers.values()),
+          len(bearers))
+    crossed = []
+    for folder, token in bearers.items():
+        for other in people:
+            if other == folder:
+                continue
+            info = os.stat(other)
+            hit = as_user(info.st_uid, info.st_gid, lambda f=other, t=token: [os.path.join(p, n) for p, _, names in os.walk(f) for n in names
+                                                                              if t.encode() in open(os.path.join(p, n), 'rb').read()])
+            crossed += hit or []
+    check('P1 one chat\'s access is not in any other chat\'s folder', not crossed, crossed[:2])
+    mine = [token for folder, token in bearers.items() if folder.endswith(state['member_chat'])]
+    if mine:
+        Path('/tmp/smoke-p1-access').write_text(mine[0])
+        os.chmod('/tmp/smoke-p1-access', 0o600)
+    brokers = glob.glob('/chats/people/*/hs_*/home/.config/codeaf-hosted/broker')
+    check('P1-6 the file git\'s helper reads is closed to everyone but the chat', brokers and all((os.stat(b).st_mode & 0o777) == 0o600 for b in brokers),
+          [oct(os.stat(b).st_mode & 0o777) for b in brokers])
+
+
+def model_door(token, verb='GET', path='/v1/model/models'):
+    return http(verb, ORG + path, token)
+
+
+def hosted_p1_bearer():
+    """Run in the sessionhost container as root after the organization server alone was restarted, with the state file on stdin (it
+    holds a fresh sign-in): the chat access a running chat held before the restart still works, and stops working the moment
+    its chat is stopped."""
+    print('--- hosted chats P1: the chat access across a restart of the organization server')
+    state = json.load(sys.stdin)
+    path = Path('/tmp/smoke-p1-access')
+    token = path.read_text() if path.exists() else ''
+    check('P1-4 the chat access read before the restart is still here to try', token.startswith('cmt_'), 'read' if token else 'missing')
+    if not token:
+        return
+    code, body = model_door(token)
+    check('P1-4 after the organization server restarted, a running chat\'s access still works', code == 200, f'{code} {short(body, 120)}')
+    code, stopped = http('POST', ORG + '/v1/hosted/sessions/' + state['member_chat'] + '/stop', state['restart_token'], {})
+    check('P1-4 stopping a chat is accepted', code in (200, 202, 204), f'{code}')
+    code, body = model_door(token)
+    check('P1-4 and its access stops working at once, in a plain sentence', code == 401 and 'model access has ended' in json.dumps(body), f'{code} {short(body, 160)}')
+    path.unlink()
+    check('P1-4 nothing of the access is left behind on the machine', not path.exists())
+
+
+def hosted_p1_restart():
+    """Run in the codeaf container after the organization server restarted: signs in again and says which chat the machine side
+    should stop, in the state file the next step reads."""
+    print('--- hosted chats P1: after the organization server restarted')
+    member = sign_in('priya')
+    state = p1_state()
+    check('P1-4 people can sign in again and the keys they stored are still there', bool(member) and [r['provider'] for r in (http('GET', ORG + '/v1/hosted/keys', member)[1] or {}).get('keys', [])] == ['github'],
+          short(http('GET', ORG + '/v1/hosted/keys', member)[1], 200) if member else '')
+    state['restart_token'] = member
+    p1_save(state)
+
+
+def hosted_p1_after():
+    print('--- hosted chats P1: after everything restarted')
+    member = sign_in('priya')
+    state = p1_state()
+    check('P1-4 the person\'s stored GitHub access survived the restart', bool(member) and [r['provider'] for r in (http('GET', ORG + '/v1/hosted/keys', member)[1] or {}).get('keys', [])] == ['github'], '')
+    check('P1-2 the person\'s spend survived the restart', spent_of(member) is not None and spent_of(member) >= (state.get('member_spent') or 0), f'{spent_of(member)} vs {state.get("member_spent")}')
+    status, out, err = chat(member, 'bash: echo after', session=state['cap_chat'])
+    check('P1-3 a chat that reached its cap is still refused after the restart (its spend was kept)', 'spending limit' in out + err, short(out + err, 200))
+    lines = audit_lines(member)
+    check('P1-6 the audit lines survived the restart', len(lines) >= state.get('audit_lines', 1) >= 2, f'{len(lines)} vs {state.get("audit_lines")}')
+    status, out, err = chat(member, 'bash: cd gw && echo more >> hello.txt && git add hello.txt && git -c user.name=smoke -c user.email=smoke@example.invalid commit -q -m second && git push -q origin HEAD:main 2>&1; echo "GIT $?"',
+                            session=state['member_chat'])
+    check('P1-6 git still works through the organization after the restart', field(out, 'GIT') == '0', short(out + err, 300))
+    check('P1-6 and the new operation left an audit line', len(audit_lines(member)) > len(lines), f'{len(audit_lines(member))} vs {len(lines)}')
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('section', choices=['all', 'control', 'job', 'org', 'after', 'after-org', 'hosted-prepare', 'hosted-seed', 'hosted', 'hosted-host', 'hosted-after', 'hosted-leftovers'])
+    parser.add_argument('section', choices=['all', 'control', 'job', 'org', 'after', 'after-org', 'hosted-prepare', 'hosted-seed', 'hosted', 'hosted-host', 'hosted-after', 'hosted-leftovers',
+                                            'hosted-p1', 'hosted-p1-host', 'hosted-p1-restart', 'hosted-p1-bearer', 'hosted-p1-after'])
     parser.add_argument('--operator-link', default='')
     args = parser.parse_args()
     for name, run in (('control', control), ('job', job), ('org', lambda: org(args.operator_link)), ('after', after), ('after-org', after_org),
-                      ('hosted-prepare', hosted_prepare), ('hosted-seed', hosted_seed), ('hosted', hosted), ('hosted-host', hosted_host), ('hosted-after', hosted_after), ('hosted-leftovers', hosted_leftovers)):
+                      ('hosted-prepare', hosted_prepare), ('hosted-seed', hosted_seed), ('hosted', hosted), ('hosted-host', hosted_host), ('hosted-after', hosted_after), ('hosted-leftovers', hosted_leftovers),
+                      ('hosted-p1', hosted_p1), ('hosted-p1-host', hosted_p1_host), ('hosted-p1-restart', hosted_p1_restart), ('hosted-p1-bearer', hosted_p1_bearer),
+                      ('hosted-p1-after', hosted_p1_after)):
         if args.section == name or (args.section == 'all' and name in ('control', 'job')):
             run()
     print('RESULT ' + ('PASS' if failures == 0 else f'FAIL ({failures} check(s) failed)'))

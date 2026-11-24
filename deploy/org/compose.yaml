@@ -61,8 +61,18 @@ services:
       CODEAF_HOSTED_URL: ${CODEAF_HOSTED_URL:-}
       CODEAF_HOSTED_SECRET: ${CODEAF_HOSTED_SECRET:-}
       CODEAF_HOSTED_MODEL_URL: ${CODEAF_HOSTED_MODEL_URL:-http://codeaf:8787/v1/model}
+      # The model door (README.md "Hosted chats"): the upstream is OpenRouter's unless set, and the key it is called with is
+      # CODEAF_HOSTED_MODEL_KEY, else the key this server already holds for model calls. Every call is metered into the
+      # person's spend; a chat stops at CODEAF_HOSTED_SESSION_CAP_USD (default 5).
       CODEAF_HOSTED_MODEL_UPSTREAM: ${CODEAF_HOSTED_MODEL_UPSTREAM:-}
       CODEAF_HOSTED_MODEL_KEY: ${CODEAF_HOSTED_MODEL_KEY:-}
+      CODEAF_HOSTED_SESSION_CAP_USD: ${CODEAF_HOSTED_SESSION_CAP_USD:-}
+      # The key that keeps people's own provider keys and GitHub access sealed on disk (./setup.sh makes it). This service
+      # alone holds it: never the chats' machine, never a node. Losing it makes what people stored unreadable, and the server
+      # then refuses to start rather than carry on without it.
+      CODEAF_SERVER_KEY: ${CODEAF_SERVER_KEY:-}
+      # The git hosts a chat's clone and push may reach through this server, comma separated origins (default https://github.com).
+      CODEAF_HOSTED_GIT_HOSTS: ${CODEAF_HOSTED_GIT_HOSTS:-}
     volumes: [codeaf-data:/data]
     # The default network reaches every service; `hosted` is the one the hosted chats' machine is on.
     networks: [default, hosted]
@@ -181,6 +191,10 @@ services:
       CODEAF_SESSIONHOST_IDLE: ${CODEAF_SESSIONHOST_IDLE:-30m}
       CODEAF_SESSIONHOST_REQUIRE: ${CODEAF_SESSIONHOST_REQUIRE:-uid+fence}
       CODEAF_SESSIONHOST_MODEL: ${CODEAF_SESSIONHOST_MODEL:-}
+      # The TCP ports a chat's commands may connect to, besides the organization server's own (default 443,80,22,9418).
+      # The kernel refuses every other port, which is what keeps a chat off the other services of a private network
+      # that has no policies of its own. It filters by PORT, not by address: README.md says what that does not cover.
+      CODEAF_SESSIONHOST_CONNECT_PORTS: ${CODEAF_SESSIONHOST_CONNECT_PORTS:-}
     volumes: [sessions-data:/chats]
     networks: [hosted]
     healthcheck:
@@ -198,6 +212,17 @@ services:
     build: { context: ., dockerfile: modelstub.Dockerfile }
     environment:
       STUB_DELAY: ${STUB_DELAY:-2s}
+      # Set by .env.stub.hosted: what each call reports it cost, so metering can be checked to the cent.
+      STUB_COST_USD: ${STUB_COST_USD:-}
+
+  # --- Keyless smoke test only: a git host that wants the person's access and records who asked ---
+  gitstub:
+    <<: *defaults
+    profiles: ["stub"]
+    image: ${GITSTUB_ORG_IMAGE:-codeaf-org/gitstub:local}
+    build: { context: ., dockerfile: gitstub.Dockerfile }
+    environment:
+      GITSTUB_TOKEN: ${GITSTUB_TOKEN:-}
 
 volumes:
   agentfield-data:
