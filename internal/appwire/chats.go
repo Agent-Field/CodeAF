@@ -23,6 +23,11 @@ const (
 	// It is absent while the account's hosted sync storage is off ([ChatsSendOffer]).
 	FeatureChatsSend = "chats.send"
 	FeatureSyncRelay = "sync.relay"
+	// FeatureChatsLive says chats.open_live and chats.live_keyboard exist and
+	// chat rows carry can_live: a chat another computer holds can be opened as a
+	// live view and typed into there, with nothing moved. It is absent unless
+	// the engine can dial that computer and remote control is on.
+	FeatureChatsLive = "chats.live"
 	EventChatChanged = "chat.changed"
 	EventChatRemoved = "chat.removed"
 )
@@ -61,6 +66,9 @@ type ChatRow struct {
 	// Working says the holder has a turn or background work still to settle
 	// and save (status running only). Absent while it is merely open there.
 	Working bool `json:"working,omitempty"`
+	// CanLive says chats.open_live may be asked for this chat now: the computer
+	// holding it is online and running it, and this engine can dial it.
+	CanLive bool `json:"can_live,omitempty"`
 	// Notes are the messages this computer wrote to the chat while another
 	// computer held it, oldest first: waiting until that computer takes one into
 	// the chat's queue, then delivered. Delivered ones are kept while this engine
@@ -159,6 +167,41 @@ type TakeParams struct {
 type TakeResult struct {
 	Agent Agent `json:"agent"`
 }
+
+// ChatOpenLiveParams is chats.open_live: the chat another computer holds, by
+// its cell id.
+type ChatOpenLiveParams struct {
+	Cell string `json:"cell"`
+}
+
+// ChatOpenLiveResult is the chat as a local-looking agent. Its location carries
+// live; a send into it is agents.send, never chats.send.
+type ChatOpenLiveResult struct {
+	Agent Agent `json:"agent"`
+}
+
+// ChatLiveKeyboardParams is chats.live_keyboard: take, or only ask who holds,
+// the keyboard of an agent opened live.
+type ChatLiveKeyboardParams struct {
+	Agent string `json:"agent"`
+	Take  bool   `json:"take,omitempty"`
+}
+
+// ChatLiveKeyboardResult says who holds the keyboard now.
+type ChatLiveKeyboardResult struct {
+	Driver LiveDriver `json:"driver"`
+}
+
+// ChatsLiveOpener opens a chat another computer holds as a live view.
+type ChatsLiveOpener interface {
+	OpenLive(ChatOpenLiveParams) (Agent, error)
+	LiveKeyboard(ChatLiveKeyboardParams) (ChatLiveKeyboardResult, error)
+}
+
+// ChatsLiveOffer is an engine's answer to whether live views are on now. A
+// capability that cannot work is absent, not broken: an engine that answers
+// false does not advertise chats.live, so no client shows the verb.
+type ChatsLiveOffer interface{ ChatsLiveOffered() bool }
 type TakeCancelParams struct {
 	Cell string `json:"cell"`
 }
@@ -229,6 +272,11 @@ func withChatsFeatures(h Hello, e Engine) Hello {
 			h = withFeature(h, FeatureChatsSend)
 		}
 	}
+	if _, ok := e.(ChatsLiveOpener); ok {
+		if offer, asked := e.(ChatsLiveOffer); asked && offer.ChatsLiveOffered() {
+			h = withFeature(h, FeatureChatsLive)
+		}
+	}
 	if d, ok := e.(RelayReporter); ok && d.RelayKnown() {
 		h = withFeature(h, FeatureSyncRelay)
 	}
@@ -282,6 +330,28 @@ func init() {
 		}
 		got, err := d.SendToChat(p)
 		return &ChatSendResult{Note: got}, err
+	})
+	methods["chats.open_live"] = typed(func(e Engine, p ChatOpenLiveParams) (*ChatOpenLiveResult, error) {
+		d, ok := e.(ChatsLiveOpener)
+		if offer, asked := e.(ChatsLiveOffer); !ok || !asked || !offer.ChatsLiveOffered() {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not open chats on other computers live")
+		}
+		if _, err := required("cell", p.Cell); err != nil {
+			return nil, err
+		}
+		got, err := d.OpenLive(p)
+		return &ChatOpenLiveResult{Agent: got}, err
+	})
+	methods["chats.live_keyboard"] = typed(func(e Engine, p ChatLiveKeyboardParams) (*ChatLiveKeyboardResult, error) {
+		d, ok := e.(ChatsLiveOpener)
+		if offer, asked := e.(ChatsLiveOffer); !ok || !asked || !offer.ChatsLiveOffered() {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not open chats on other computers live")
+		}
+		if _, err := required("agent", p.Agent); err != nil {
+			return nil, err
+		}
+		got, err := d.LiveKeyboard(p)
+		return &got, err
 	})
 	methods["agents.take_cancel"] = typed(func(e Engine, p TakeCancelParams) (*TakeCancelResult, error) {
 		d, ok := e.(ChatsMover)

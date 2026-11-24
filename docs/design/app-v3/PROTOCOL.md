@@ -370,6 +370,8 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.live_keyboard` | `ChatLiveKeyboardParams` | `ChatLiveKeyboardResult` |
+| `chats.open_live` | `ChatOpenLiveParams` | `ChatOpenLiveResult` |
 | `chats.preview` | `{cell}` | `{last_user?: string, last_assistant?: string}` |
 | `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
@@ -387,6 +389,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `devices.list` | `in.DeviceListParams` | `DevicesResult` |
+| `devices.permit` | `in.DevicePermitParams` | `DevicePermitResult` |
 | `devices.remove` | `in.DeviceRemoveParams` | `DeviceRemoveResult` |
 | `devices.rename` | `in.DeviceRenameParams` | `DeviceRenameResult` |
 
@@ -2484,6 +2487,45 @@ runs (20 per chat) and dropped once the chat is here. The
 chat, not the computer, is the address: a message not yet taken goes to
 whichever computer holds the chat when it is read, including the sender after a
 move. Only an engine that keeps the chat list (the app) takes messages.
+
+Remote control (a live view). `chats.live` in `hello` says `chats.open_live
+{cell}` and `chats.live_keyboard {agent, take?}` exist and rows may carry
+`can_live:true`. It is absent unless the engine can dial the live door AND the
+person turned Remote control on, so a client that never sees it must never send
+either call. `can_live` is true on a row whose chat another computer holds and
+runs while that computer is online. `chats.open_live` opens that chat WITHOUT
+moving it and answers an `agent`, a local-looking one: its `location` carries
+`here:false`, the chat's `cell`, `holder`, `can_take` and `seen` as for any held
+chat (so `agents.take` still works from it) plus `live`. Everything the app does
+in a chat is the agent's own call: a live send is `agents.send` on that agent,
+never `chats.send`; steer, queue, stop, close and `asks.answer` likewise; older
+messages are `agents.entries {before, limit}`. Opening it again is how a view
+that detached or went offline is repaired, and answers the same agent id. It
+refuses with `not_found` (the chat is not listed), `unreachable` (the computer
+is not on, is not running that chat, or needs a restart, each in its own
+sentence), or `conflict` (that computer does not share its chats with this one,
+or this computer was removed). Every refusal carries the sentence a person
+reads and `detail:{kind:"live_refused", reason}` with the closed reason.
+
+`location.live` is `{state, driver?, road?, seen_at?, permit?}`. `state` is
+`live`, `reconnecting`, `offline`, `idle` (the view detached after ten quiet
+minutes and sent nothing first) or `watching` (the holder allows reading and not
+typing, or its daily allowance is used). `driver` is `{yours?, machine?, here?}`
+and is present only when another window holds the keyboard; `chats.live_keyboard
+{agent, take:true}` asks for it and answers `{driver}`. `road` is `relay`.
+`seen_at` is RFC 3339. `permit` is `{watch, drive, reason?}`; `reason` is the
+finished sentence for why typing is off, shown verbatim. Every change to any of
+these arrives as one `agent.changed` carrying the whole agent; there is no new
+event and no field on `turn.delta` or `turn.thinking`. A live agent is left out
+of `agents.list`.
+
+`devices.permit {id, watch?, drive?}` edits ONLY this computer's own book of what
+a paired computer may do in chats here (`devices.permit` in `hello`, absent while
+Remote control is off); a switch left out keeps what it was. Each device row
+then carries `permit:{watch, drive}` (absent on this computer's own row and on a
+removed one). The answer is `{device?, line?}` and `devices.changed` follows
+with the whole roster. A permit edited by the terminal's `codeaf devices permit`
+arrives the same way.
 
 Before a move, a row says what it would copy: `folder` is the name of the
 folder the chat works in on its holder (absent for a chat in its own private
