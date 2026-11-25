@@ -185,8 +185,8 @@ func TestBuildChecksThreeRoundsAndRestoresEarlierScreen(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := waitState(t, jobs, plan.Draft, builder.Ready)
-	if len(state.Checkpoints) != 4 || len(state.Screens) == 0 || state.Published {
-		t.Fatalf("expected a plan and three writing turns, got %+v", state)
+	if len(state.Checkpoints) != 2 || len(state.Screens) == 0 || state.Published {
+		t.Fatalf("expected a plan and one checked build, got %+v", state)
 	}
 	preview, err := jobs.Preview(builder.PreviewRequest{Draft: plan.Draft})
 	if err != nil {
@@ -200,8 +200,8 @@ func TestBuildChecksThreeRoundsAndRestoresEarlierScreen(t *testing.T) {
 		t.Fatalf("preview should serve the compiler's exact screen: %v", err)
 	}
 	earlier, err := jobs.Preview(builder.PreviewRequest{Draft: plan.Draft, Checkpoint: state.Checkpoints[1].ID})
-	if err != nil || earlier.Scope == preview.Scope {
-		t.Fatalf("earlier step should have a separate preview: %+v, %v", earlier, err)
+	if err != nil || earlier.Scope != preview.Scope {
+		t.Fatalf("the latest checked step should reuse its preview: %v", err)
 	}
 	meta, err := jobs.Apply(plan.Draft)
 	if err != nil || meta.Version != 1 {
@@ -215,7 +215,7 @@ func TestBuildChecksThreeRoundsAndRestoresEarlierScreen(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, err = jobs.State(draft)
-	if err != nil || len(state.Checkpoints) != 5 || len(state.Screens) != 0 || state.Published {
+	if err != nil || len(state.Checkpoints) != 3 || len(state.Screens) != 0 || state.Published {
 		t.Fatalf("restore should append a step and reopen the earlier plan: %+v, %v", state, err)
 	}
 	if _, err := jobs.Apply(draft); err == nil {
@@ -350,5 +350,31 @@ func TestPlanNamesTheCallLimitWhenTheTurnKeepsWorking(t *testing.T) {
 	_, err = jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
 	if err == nil || !strings.Contains(err.Error(), "20-call limit") {
 		t.Fatalf("plan error = %v", err)
+	}
+}
+
+func TestDeskUnavailableKeepsTheBuildOffTheCheckpointHistory(t *testing.T) {
+	opts := scriptedApp(t, t.TempDir())
+	opts.Check = func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report {
+		return schema.Report{Problems: []schema.Problem{{Code: "desk_unavailable", Message: "Open the desktop to check the app’s layout."}}}
+	}
+	jobs, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	plan, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Build(plan.Draft); err != nil {
+		t.Fatal(err)
+	}
+	state := waitState(t, jobs, plan.Draft, builder.NeedsYou)
+	if len(state.Checkpoints) != 1 || !strings.Contains(state.Problem, "Open the desktop") {
+		t.Fatalf("the build should show the Desk failure and only the plan checkpoint: %+v", state)
+	}
+	if _, err := jobs.Apply(plan.Draft); err == nil {
+		t.Fatal("Apply accepted a build without Desk Look")
 	}
 }

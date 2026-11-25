@@ -26,8 +26,15 @@ func (p *SampleProblem) Error() string { return p.Detail }
 
 // Pipeline validates the same files the kit and the store will open, then
 // exercises their behavior in isolated sample storage.
+type LookViewport struct {
+	Theme string
+	Width int
+}
+
+var ErrDeskUnavailable = errors.New("open the desktop to check the app’s layout")
+
 type Pipeline struct {
-	Look   func(context.Context, string, string) ([]string, error)
+	Look   func(context.Context, string, string, LookViewport) ([]string, error)
 	Seed   func(draft string, app []byte, rows map[string][]map[string]any) error
 	DryRun func(ctx context.Context, draft, run string, def schema.Definition) error
 }
@@ -84,14 +91,27 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 			report.Problems = append(report.Problems, problem(file, "run_failed", message))
 		}
 	}
-	if report.OK() && p.Look != nil {
-		for _, file := range def.ScreenFiles() {
-			problems, err := p.Look(ctx, draft, schema.FileID(file))
-			if err != nil {
-				problems = append(problems, "The desktop could not draw this screen.")
-			}
-			for _, message := range problems {
-				report.Problems = append(report.Problems, problem(file, "screen_layout", message))
+	if !report.OK() {
+		return report
+	}
+	for _, file := range def.ScreenFiles() {
+		for _, theme := range []string{"dark", "light"} {
+			for _, width := range []int{800, 1120} {
+				if p.Look == nil {
+					report.Problems = append(report.Problems, problem(file, "desk_unavailable", ErrDeskUnavailable.Error()))
+					return report
+				}
+				problems, err := p.Look(ctx, draft, schema.FileID(file), LookViewport{theme, width})
+				if errors.Is(err, ErrDeskUnavailable) {
+					report.Problems = append(report.Problems, problem(file, "desk_unavailable", ErrDeskUnavailable.Error()))
+					return report
+				}
+				if err != nil {
+					problems = append(problems, "The desktop could not draw this screen.")
+				}
+				for _, message := range problems {
+					report.Problems = append(report.Problems, problem(file, "screen_layout", fmt.Sprintf("%s at %d px: %s", theme, width, message)))
+				}
 			}
 		}
 	}

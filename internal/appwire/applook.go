@@ -6,17 +6,29 @@ const CodeDeskUnavailable = "desk_unavailable"
 
 const EventAppLookRequested = "apps.look_requested"
 
+type AppLookViewport struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
+}
+
 type AppLookParams struct {
-	App    string `json:"app,omitempty"`
-	Draft  string `json:"draft,omitempty"`
-	Screen string `json:"screen"`
+	Theme      string           `json:"theme,omitempty"`
+	Viewport   *AppLookViewport `json:"viewport,omitempty"`
+	Checkpoint string           `json:"checkpoint,omitempty"`
+	App        string           `json:"app,omitempty"`
+	Draft      string           `json:"draft,omitempty"`
+	Screen     string           `json:"screen"`
 }
 
 type AppLookRequest struct {
-	ID     string `json:"id"`
-	Scope  string `json:"scope"`
-	App    string `json:"app"`
-	Screen string `json:"screen"`
+	Checkpoint string           `json:"checkpoint,omitempty"`
+	Theme      string           `json:"theme,omitempty"`
+	Viewport   *AppLookViewport `json:"viewport,omitempty"`
+	Fixture    string           `json:"fixture,omitempty"`
+	ID         string           `json:"id"`
+	Scope      string           `json:"scope"`
+	App        string           `json:"app"`
+	Screen     string           `json:"screen"`
 }
 
 type AppLookPage struct {

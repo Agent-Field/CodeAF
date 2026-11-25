@@ -15,3 +15,7 @@ checked version when the person is ready.
 The Builder reads one relevant kit descriptor at a time and keeps definition
 and Check replies compact. Failed jobs record what stopped the app and show
 the reason in build progress.
+
+Check now requires Desk Look in both themes at two widths. Only checked
+app layouts become checkpoints. Collection recipes order typed columns,
+provide empty states, and add views and summary metrics from record fields.

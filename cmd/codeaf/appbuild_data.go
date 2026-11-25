@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
@@ -35,11 +33,6 @@ func (b *appBackend) appBuildCatalog(exclude string) (builder.Catalog, error) {
 		catalog.Counts[typ.Name] = typ.Count
 	}
 	return catalog, nil
-}
-
-func (b *appBackend) appBuildTypes(id string) (schema.TypeSet, error) {
-	catalog, err := b.appBuildCatalog(id)
-	return catalog.Types, err
 }
 
 func (b *appBackend) seedBuildSample(draft string, app []byte, rows map[string][]map[string]any) error {
@@ -76,24 +69,6 @@ func (b *appBackend) closeBuildPreview(scope string) {
 	if place, err := b.appData(); err == nil {
 		_ = place.CloseDraft(scope)
 	}
-}
-
-func (b *appBackend) registerBuiltApp(raw json.RawMessage) error {
-	main, err := b.dataStore("")
-	if err != nil {
-		return err
-	}
-	return main.RegisterApp(raw)
-}
-
-// RegisterAppDefinition synchronizes the record registry when a working
-// definition is copied forward by Revert.
-func (b *appBackend) RegisterAppDefinition(id string) error {
-	app, err := b.AppDefinitions().Get(id)
-	if err != nil {
-		return err
-	}
-	return b.registerBuiltApp(app.App)
 }
 
 // The data lane checks its own record declarations before a draft includes

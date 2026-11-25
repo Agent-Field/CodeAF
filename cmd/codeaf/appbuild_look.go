@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cell"
@@ -50,6 +52,12 @@ func (b *appBackend) LookApp(params appwire.AppLookParams) (appwire.AppLookPage,
 }
 
 func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) (appwire.AppLookPage, error) {
+	if params.Theme != "" && params.Theme != "dark" && params.Theme != "light" && params.Theme != "black" {
+		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeBadParams, "Choose a supported desktop theme.")
+	}
+	if v := params.Viewport; v != nil && (v.Width < 1 || v.Width > 2048 || v.Height < 1 || v.Height > 2048) {
+		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeBadParams, "Choose a viewport between 1 and 2048 pixels per side.")
+	}
 	if !b.builds.look.ready.Load() {
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeDeskUnavailable, "The desktop renderer isn't connected. Open the app in the desktop and try again.")
 	}
@@ -67,7 +75,7 @@ func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) 
 			}
 		}
 	}
-	preview, err := builds.Preview(builder.PreviewRequest{Draft: draft, Data: "sample"})
+	preview, err := builds.Preview(builder.PreviewRequest{Draft: draft, Data: "sample", Checkpoint: params.Checkpoint})
 	if err != nil || !slices.Contains(preview.Screens, params.Screen) {
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeNotFound, "That screen isn't available to preview.")
 	}
@@ -85,10 +93,10 @@ func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) 
 	state := &b.builds.look
 	reply := state.addLook(id)
 	defer state.removeLook(id)
-	b.emit.Emit(appwire.EventAppLookRequested, appwire.AppLookRequest{ID: id, Scope: preview.Scope, App: app.ID, Screen: params.Screen})
+	b.emit.Emit(appwire.EventAppLookRequested, appwire.AppLookRequest{ID: id, Scope: preview.Scope, App: app.ID, Screen: params.Screen, Theme: params.Theme, Viewport: params.Viewport, Fixture: "synthetic", Checkpoint: params.Checkpoint})
 	select {
 	case capture := <-reply:
-		return saveAppLook(preview.Scope, capture)
+		return saveAppLook(preview.Scope, params.Viewport, capture)
 	case <-ctx.Done():
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeDeskUnavailable, "The desktop didn't draw this screen in time.")
 	}
@@ -111,17 +119,20 @@ func (state *appLookState) removeLook(id string) {
 	delete(state.pending, id)
 }
 
-// A headless engine can check files and behavior without a desktop. When
-// the desktop announces its renderer the same Check also measures each page.
-func (b *appBackend) checkAppLook(ctx context.Context, draft, screen string) ([]string, error) {
-	if !b.builds.look.ready.Load() {
-		return nil, nil
+// Check asks the same desk renderer as the person's Look command.
+func (b *appBackend) checkAppLook(ctx context.Context, draft, screen string, view check.LookViewport) ([]string, error) {
+	page, err := b.lookApp(ctx, appwire.AppLookParams{
+		Draft: draft, Screen: screen, Theme: view.Theme,
+		Viewport: &appwire.AppLookViewport{Width: view.Width, Height: 760},
+	})
+	var wireErr *appwire.Error
+	if errors.As(err, &wireErr) && wireErr.Code == appwire.CodeDeskUnavailable {
+		return nil, check.ErrDeskUnavailable
 	}
-	page, err := b.lookApp(ctx, appwire.AppLookParams{Draft: draft, Screen: screen})
 	return page.Problems, err
 }
 
-func saveAppLook(scope string, capture appwire.AppLookCapture) (appwire.AppLookPage, error) {
+func saveAppLook(scope string, viewport *appwire.AppLookViewport, capture appwire.AppLookCapture) (appwire.AppLookPage, error) {
 	if capture.Problem != "" {
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "The desktop could not draw this screen.")
 	}
@@ -130,7 +141,8 @@ func saveAppLook(scope string, capture appwire.AppLookCapture) (appwire.AppLookP
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "The desktop returned an invalid app preview image.")
 	}
 	info, err := png.DecodeConfig(bytes.NewReader(picture))
-	if err != nil || info.Width > 8192 || info.Height > 8192 {
+	if err != nil || info.Width > 8192 || info.Height > 8192 ||
+		(viewport != nil && (info.Width != viewport.Width || info.Height != viewport.Height)) {
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "The desktop returned an invalid app preview image.")
 	}
 	dir := home.Join("apps", "_drafts", scope)

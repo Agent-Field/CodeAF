@@ -48,7 +48,6 @@ type Options struct {
 	Check        func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
 	SeedPreview  func(scope string, def schema.Definition, real bool) error
 	ClosePreview func(scope string)
-	Register     func(app json.RawMessage) error
 	Changed      func(Event)
 	Notify       func(Summary)
 }
@@ -128,13 +127,17 @@ type Checkpoint struct {
 	Screens []string `json:"screens"`
 }
 
-type Target struct {
+// AppBuildTarget is the address of an element in an app preview.
+type AppBuildTarget struct {
 	Node       string `json:"node,omitempty"`
 	Checkpoint string `json:"checkpoint,omitempty"`
 
 	Screen string `json:"screen"`
 	Path   []any  `json:"path"`
 }
+
+// Target is the app authoring address used by job callers.
+type Target = AppBuildTarget
 
 type PlanRequest struct {
 	Ask     string `json:"ask,omitempty"`
@@ -157,11 +160,13 @@ type turn struct {
 	Target    *Target
 	Round     int
 	Report    *schema.Report
+	Reply     string
 }
 
 type snapshot struct {
-	Files  map[string]string
-	Passed bool
+	Files       map[string]string
+	Passed      bool
+	LookChecked bool
 }
 
 type job struct {
@@ -469,7 +474,7 @@ func (s *Jobs) Build(id string) error {
 	if err != nil {
 		return err
 	}
-	if !j.Dirty || j.Working.Passed || slices.ContainsFunc(j.Queue, func(t turn) bool { return t.Stage != Planning }) {
+	if !j.Dirty || j.Working.LookChecked || slices.ContainsFunc(j.Queue, func(t turn) bool { return t.Stage != Planning }) {
 		return nil
 	}
 	_, err = s.enqueue(j, Writing, "", nil)

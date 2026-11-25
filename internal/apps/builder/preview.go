@@ -61,7 +61,7 @@ func (s *Jobs) Preview(p PreviewRequest) (Preview, error) {
 		current.revision = j.Revision
 	} else {
 		current.files = j.Working.Files
-		if n := len(j.Checkpoints); n > 0 {
+		if n := len(j.Checkpoints); j.Working.Passed && n > 0 {
 			current.checkpoint = j.Checkpoints[n-1].ID
 		} else {
 			current.revision = j.Revision
@@ -197,15 +197,33 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 	if err != nil {
 		return store.Meta{}, err
 	}
-	if len(j.Queue) != 0 || !j.Working.Passed {
+	if len(j.Queue) != 0 {
 		return store.Meta{}, fmt.Errorf("%w: finish checking before keeping the app", store.ErrConflict)
 	}
 	if !j.Dirty && j.App != "" {
 		live, err := s.opts.Store.Get(j.App)
 		return live.Meta, err
 	}
+	if !j.Working.LookChecked {
+		// A pre-Look build may have stopped after publishing but before
+		// recording the receipt. It can finish only that same publication.
+		app := j.App
+		if app == "" {
+			app = j.Draft
+		}
+		live, err := s.opts.Store.Get(app)
+		if !j.Publishing || err != nil || !samePublication(live, j) {
+			if j.Publishing {
+				j.Publishing = false
+				if err := s.save(j, Event{}); err != nil {
+					return store.Meta{}, err
+				}
+			}
+			return store.Meta{}, fmt.Errorf("%w: finish Desk Look before keeping the app", store.ErrConflict)
+		}
+	}
 	// Record the intent before publication. If the process stops between
-	// publishing and registration, retry recognizes its own published files.
+	// committing and recording the result, retry recognizes its own published files.
 	if !j.Publishing {
 		j.Publishing = true
 		if err := s.save(j, Event{}); err != nil {
@@ -230,11 +248,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 			return store.Meta{}, err
 		}
 	}
-	if s.opts.Register != nil {
-		if err := s.opts.Register(live.App); err != nil {
-			return store.Meta{}, err
-		}
-	}
+
 	j.App, j.Base, j.Name = live.Meta.ID, live.Meta.Version, live.Meta.Name
 	j.Dirty, j.Publishing, j.Editable = false, false, true
 	j.Working = snapshot{Files: live.Files(), Passed: true}

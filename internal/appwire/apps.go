@@ -15,12 +15,6 @@ type AppDefinitions interface {
 	AppDefinitions() *store.Store
 }
 
-// AppDefinitionRegistry keeps a reverted app's record shape in step with its
-// published definition.
-type AppDefinitionRegistry interface {
-	RegisterAppDefinition(id string) error
-}
-
 type (
 	appKitParams struct {
 		Kit *int `json:"kit,omitempty"`
@@ -105,17 +99,8 @@ var appMethods = map[string]method{
 		versions, err := s.Versions(p.App)
 		return &appVersionsResult{Versions: versions}, err
 	}),
-	"apps.revert": typed(func(e Engine, p appRevertParams) (*appMetaResult, error) {
-		defs, ok := e.(AppDefinitions)
-		if !ok {
-			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app definitions.")
-		}
-		m, err := defs.AppDefinitions().Revert(p.App, p.N)
-		if err == nil {
-			if registry, ok := e.(AppDefinitionRegistry); ok {
-				err = registry.RegisterAppDefinition(p.App)
-			}
-		}
+	"apps.revert": appCall(func(s *store.Store, p appRevertParams) (*appMetaResult, error) {
+		m, err := s.Revert(p.App, p.N)
 		return &appMetaResult{Meta: m}, buildError(err)
 	}),
 	"apps.archive": appCall(func(s *store.Store, p appParams) (*appMetaResult, error) {

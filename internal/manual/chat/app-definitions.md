@@ -83,9 +83,12 @@ the outline, manifest and file names. Ask for an individual definition
 with `app context {"file":"screens/deals.json"}`.
 
 `app look` uses the open desktop to draw the selected screen on example
-records. If the desktop cannot draw it, the command replies with
-`desk_unavailable`. Design changes stay in the editing tab until you
-choose **Apply**.
+records. Check draws every screen in Dark and Light at 800 and 1120 pixels.
+Clipping, overlap, truncation, empty bound columns, contrast problems and
+competing primary actions must be fixed before a step can be kept.
+If the renderer is unavailable, open the desktop and try Check again.
+`app look` returns `desk_unavailable` until the renderer connects.
+Design changes stay in the editing tab until you choose **Apply**.
 
 If a build stops, reopen it to see the reason in the build progress.
 ## How app commands describe a screen and the work it does

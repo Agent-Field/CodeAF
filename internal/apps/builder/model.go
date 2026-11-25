@@ -70,6 +70,9 @@ run's sample trigger or filter. Use existing recipe defaults for styling.
 Use singular type ids such as deal, company, contact and candidate. Use
 the person's existing type only when it appears under using. Before they
 accept, declare a matching shape so they can see the reuse offer.
+After they accept, declare add-type {"name":"contact","definition":{"uses":true}}.
+If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
+Fill the visible fields in your examples so Check can measure bound columns.
 Keep existing screen and node ids. For marked edits, use claim with screen
 and node and preserve the rest of that screen. The Data place imports CSV.
 Provide fields that map to the CSV headers. Finish with what the person can
@@ -352,6 +355,8 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	case "repair":
 		prompt += `Fix the issues in context.report first. Add missing planned screens
 with their exact ids, and remove extras with remove-screen {"id":"extra"}.
+For a layout finding, replace only the affected screen with markup
+{"screen":"...","replace":true,"markup":"..."}, keeping existing node ids.
 Keep everything unaffected. Run check and finish.`
 	default:
 		prompt += `Complete the planned screens and samples before making refinements.

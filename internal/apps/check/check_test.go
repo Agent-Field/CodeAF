@@ -1,6 +1,8 @@
 package check_test
 
 import (
+	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,5 +27,38 @@ func TestSampleReportsIDsSharedByDifferentTypes(t *testing.T) {
 	_, err := check.Sample(def)
 	if err == nil || !strings.Contains(err.Error(), "Example contact row 1 reuses id") {
 		t.Fatalf("sample problem = %v", err)
+	}
+}
+
+func TestCheckRequiresDeskLookInBothThemesAtBothWidths(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipeline := check.Pipeline{
+		Seed:   func(string, []byte, map[string][]map[string]any) error { return nil },
+		DryRun: func(context.Context, string, string, schema.Definition) error { return nil },
+	}
+	if report := pipeline.Run(t.Context(), "draft", def, nil); !slices.Contains(report.Codes(), "desk_unavailable") {
+		t.Fatalf("Check without Desk: %v", report)
+	}
+	seen := map[check.LookViewport]int{}
+	pipeline.Look = func(_ context.Context, draft, screen string, view check.LookViewport) ([]string, error) {
+		seen[view]++
+		if screen == "deals" && view.Theme == "light" && view.Width == 800 {
+			return []string{"[deal-list] value truncates"}, nil
+		}
+		return nil, nil
+	}
+	report := pipeline.Run(t.Context(), "draft", def, nil)
+	for _, theme := range []string{"dark", "light"} {
+		for _, width := range []int{800, 1120} {
+			if got := seen[check.LookViewport{Theme: theme, Width: width}]; got != len(def.ScreenFiles()) {
+				t.Errorf("%s at %d got %d renders", theme, width, got)
+			}
+		}
+	}
+	if !slices.Contains(report.Codes(), "screen_layout") || !strings.Contains(report.String(), "light at 800 px") {
+		t.Fatalf("Check must fail the measured problem: %v", report)
 	}
 }

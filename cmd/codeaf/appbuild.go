@@ -37,13 +37,12 @@ func (b *appBackend) AppBuilds() (*builder.Jobs, error) {
 		return door.jobs, nil
 	}
 	pipeline := check.Pipeline{Seed: b.seedBuildSample, DryRun: b.CheckDraftRun, Look: b.checkAppLook}
-	compiler, _ := any(b).(builder.Compiler)
 	jobs, err := builder.OpenJobs(builder.Options{
 		Home: home.Dir(), Store: b.AppDefinitions(), Model: appBuilderModel,
 		Check: pipeline.Run, Changed: b.appBuildChanged, Notify: b.appBuildNotice,
 		Catalog: b.appBuildCatalog, SeedPreview: b.seedBuildPreview,
-		ClosePreview: b.closeBuildPreview, Register: b.registerBuiltApp,
-		Compiler: compiler, ValidateTypes: validateAppBuilderTypes,
+		ClosePreview: b.closeBuildPreview,
+		Compiler:     b, ValidateTypes: validateAppBuilderTypes,
 		CanLook: b.builds.look.ready.Load,
 		Look: func(ctx context.Context, draft, screen string) ([]string, error) {
 			page, err := b.lookApp(ctx, appwire.AppLookParams{Draft: draft, Screen: screen})

@@ -271,8 +271,13 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 		event := Event{Stage: Checking, Round: t.Round, OK: &ok, Report: &report}
 		if ok {
 			j.Working.Passed = true
-			if n := len(j.Checkpoints); n > 0 {
-				j.Saved[j.Checkpoints[n-1].ID] = j.Working
+			j.Working.LookChecked = true
+			reply := t.Reply
+			if reply == "" {
+				reply = "I checked this version of the app."
+			}
+			if err := j.checkpoint(reply); err != nil {
+				return err
 			}
 			j.State.State = Ready
 			event.Stage, event.Line = Ready, "Ready to try."
@@ -289,7 +294,15 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 				j.Problem = "Choose whether this app should use your existing records."
 			}
 			if unavailable {
-				j.Problem = "This engine couldn't try every part of the app. Reopen it once the engine supports these checks."
+				for _, issue := range report.Problems {
+					if strings.HasSuffix(issue.Code, "_unavailable") {
+						j.Problem = issue.Message
+						break
+					}
+				}
+			}
+			if t.Reply != "" {
+				j.Transcript = append(j.Transcript, Message{ID: t.ID + "-reply", Role: "assistant", Text: t.Reply})
 			}
 			event.Stage, event.Line = NeedsYou, j.Problem
 			return s.finish(j, event)
@@ -305,17 +318,18 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 	if reply == "" {
 		reply = "I updated your app."
 	}
-	if err := j.checkpoint(reply); err != nil {
-		return err
-	}
 	if t.Stage == Planning {
 		if len(j.Plan) == 0 || j.Working.Files[schema.AppFile] == "" {
 			j.State.State, j.Problem = NeedsYou, reply
 			return s.finish(j, Event{Line: reply})
 		}
+		if err := j.checkpoint(reply); err != nil {
+			return err
+		}
 		j.State.State = Ready
 		return s.finish(j, Event{Stage: Planning, Line: "Plan ready to review."})
 	}
+	j.Queue[0].Reply = reply
 	j.Queue[0].Round++
 	j.Queue[0].Report = nil
 	j.State.State = Checking
