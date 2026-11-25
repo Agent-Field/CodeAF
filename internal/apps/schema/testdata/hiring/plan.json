@@ -1,0 +1,11 @@
+{
+  "$schema": "https://codeaf.dev/schema/plan/1.json",
+  "ask": "Track the people I am hiring, linked to my contacts.",
+  "data": [
+    { "id": "candidate", "line": "Candidate · name, role, stage (Applied → Hired/Declined), contact, applied" },
+    { "id": "contact", "line": "Your Contacts · adds the role they applied for", "uses": true }
+  ],
+  "screens": [{ "id": "candidates", "line": "Candidates · board by stage, candidate in the panel" }],
+  "agent": { "line": "Hiring agent · answers where each candidate stands" },
+  "needs": "computed"
+}
