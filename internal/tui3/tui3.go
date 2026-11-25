@@ -494,9 +494,17 @@ type Options struct {
 	// (homepanel_continue.go).
 	Takeover Taker
 	// OpenLive opens a chat held on another of this person's computers as a live
-	// view inside this local window. Nil means remote control is off and the
-	// surface behaves as it does without live views.
+	// view inside this local window. Nil means this window has no road to open
+	// one on (no other computer, or a hosted session) and the surface behaves as
+	// it does without live views.
 	OpenLive func(ctx context.Context, row chatlist.Row) (Conversation, error)
+	// RemoteControl says, at the moment it is asked, whether remote control is
+	// switched on. It is read each time a live view could be opened and never
+	// kept, so turning the setting on or off in a running window takes effect
+	// on the next Enter without a restart. Nil means the opener's presence is
+	// the whole answer: a window given OpenLive and no RemoteControl offers live
+	// views.
+	RemoteControl func() bool
 	// PermitAsk asks once on Home whether older paired computers may type into
 	// chats on this computer. Nil means there is nothing to ask.
 	PermitAsk PermitAsker

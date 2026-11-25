@@ -83,7 +83,16 @@ func (d *liveDoor) lookupRoad(device, name string) (liveRoad, string, bool) {
 
 // Open dials a live view of row on the computer holding it, or opens the
 // local last-seen copy read-only when that computer is offline.
+//
+// IT REFUSES WHILE REMOTE CONTROL IS OFF. The surface already does not ask
+// then, and the road lookup refuses too, but the last-seen copy of an offline
+// chat needs no road: without this line a caller that skipped the surface's
+// check would be handed a view of another computer's chat on a setting that
+// says no.
 func (d *liveDoor) Open(ctx context.Context, row chatlist.Row) (tui3.Conversation, error) {
+	if !remoteControlWanted() {
+		return tui3.Conversation{}, tui3.ErrNoLiveView
+	}
 	road, name, ok := d.lookupRoad(row.DeviceID, row.Device)
 	host := strings.TrimSpace(name)
 	if host == "" {
@@ -666,15 +675,30 @@ func (v *viewcacheAgent) AttachReplay() ([]session.DisplayEntry, <-chan session.
 	return v.Transcript(), ch, func() {}
 }
 
-// wireLive attaches the live-view opener to Options when remote control is
-// switched on, a road lookup is installed, and the window is not itself a
-// hosted session.
+// wireLive attaches the live-view opener to Options when a road lookup is
+// installed and the window is not itself a hosted session, WHETHER OR NOT
+// remote control is switched on. The setting is not a start-up fact: a person
+// turns it on in /settings, or with CODEAF_REMOTE_CONTROL, in a window that is
+// already open, and that window's next Enter on a held chat has to open it live.
+// So the surface is handed the setting as a live read (Options.RemoteControl)
+// and asks it each time, and the door refuses with tui3.ErrNoLiveView while it
+// is off. With it off the window offers exactly what a window with no opener
+// offers.
 func wireLive(o *tui3.Options, home string) {
-	if o == nil || o.Host != "" || !remoteControlWanted() || liveRoads == nil {
+	if o == nil || o.Host != "" || liveRoads == nil {
 		return
 	}
+	if o.RemoteControl == nil {
+		o.RemoteControl = remoteControlWanted
+	}
 	cache := viewcache.Open(home)
-	guard.Go(livePruneScope, cache.Prune)
+	// THE LAST-SEEN COPIES ARE TRIMMED ONLY WHEN REMOTE CONTROL IS ON AT START,
+	// as before: with it off nothing here touches the disk, and a window switched
+	// on later trims at its next start, which is soon enough for a cap that bounds
+	// one small file per chat.
+	if remoteControlWanted() {
+		guard.Go(livePruneScope, cache.Prune)
+	}
 	if o.OpenLive == nil {
 		door := &liveDoor{
 			home:  home,

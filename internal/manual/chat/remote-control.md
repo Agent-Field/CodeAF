@@ -141,9 +141,11 @@ The view says why in these words:
 
 The desktop app can open a chat another computer is running too. On such a chat it offers **Open on tower**, the strip says it is live, and its box reads `Message tower`. Move here is its other button. This needs a desktop app version that includes remote control; an older one keeps the single Move here button, and nothing in the terminal depends on it.
 
-## Remote control is off — how to turn it on, remote control says restart codeaf on the other computer
+## Remote control is off — how to turn it on, do I need to restart codeaf after turning remote control on, remote control says restart codeaf on the other computer
 
-Remote control is off until you turn it on, on both computers: open `/settings` → `Devices` and turn `remote control` on, or start codeaf with `CODEAF_REMOTE_CONTROL=1`. In the desktop app it is the **Remote control** switch in Settings → Devices (*Turn remote control on or off in the desktop app*). With it off, everything works as before: `enter` on another computer's chat asks to move it, and no computer can open yours live. Turning it off while codeaf is running does the same at once for any computer that tries to open a chat of yours, and ends the live views other computers already have open within about half a minute. The chats here keep running and keep everything that was typed.
+Remote control is off until you turn it on, on both computers: open `/settings` → `Devices` and turn `remote control` on, or start codeaf with `CODEAF_REMOTE_CONTROL=1`. In the desktop app it is the **Remote control** switch in Settings → Devices (*Turn remote control on or off in the desktop app*). With it off, everything works as before: `enter` on another computer's chat asks to move it, and no computer can open yours live.
+
+You do not need to restart codeaf in the terminal. Turning it on in a window that is already open takes effect at once, both ways: the next `enter` on a chat another computer is running opens it live, and another computer can open yours. Turning it off does the same at once: `enter` asks to move the chat again and any computer that tries to open a chat of yours is refused, and the live views other computers already have open end within about half a minute. The chats here keep running and keep everything that was typed.
 
 Both computers need a codeaf that includes it. If the other one still runs an older codeaf in the background, the view says `Restart codeaf on tower to share this chat.`: close codeaf there and open it again.
 

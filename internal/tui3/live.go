@@ -285,13 +285,24 @@ func (a *app) liveMoved(msg liveChangedMsg) tea.Cmd {
 	return tea.Batch(a.wake(), a.armLive())
 }
 
+// liveOffered says this window may open a live view right now: the opener is
+// wired and remote control is switched on. THE SETTING IS ASKED EACH TIME AND
+// NEVER KEPT, because a person turns it on in /settings while the window is
+// open and the very next Enter on a held chat must open it live; a window that
+// remembered the answer from its start was the one that needed a restart.
+// With the setting off the answer is false and every caller below does exactly
+// what a window with no opener does.
+func (a *app) liveOffered() bool {
+	return a.openLive != nil && (a.remoteControl == nil || a.remoteControl())
+}
+
 // liveEligible reports whether a chat row held on another computer may be
-// opened as a live view in this window: the openLive seam is wired, this window
-// is not itself a hosted session, the row is held elsewhere, neither this
-// computer nor the holder is marked removed, and the holder is another computer
-// in this person's roster.
+// opened as a live view in this window: live views are offered
+// ([app.liveOffered]), this window is not itself a hosted session, the row is
+// held elsewhere, neither this computer nor the holder is marked removed, and
+// the holder is another computer in this person's roster.
 func (a *app) liveEligible(row chatlist.Row) bool {
-	if a.openLive == nil || a.hosted() || a.machineRead.computerRemoved || row.HolderRemoved || !heldElsewhere(row) {
+	if !a.liveOffered() || a.hosted() || a.machineRead.computerRemoved || row.HolderRemoved || !heldElsewhere(row) {
 		return false
 	}
 	for _, d := range a.devRow.devices {

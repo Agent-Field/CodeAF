@@ -2394,6 +2394,7 @@ type app struct {
 	machines       chatlist.Source
 	taker          Taker
 	openLive       func(context.Context, chatlist.Row) (Conversation, error)
+	remoteControl  func() bool
 	permitAsk      PermitAsker
 	branches       BranchActions
 	machineRead    machineReading
@@ -3167,6 +3168,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
 		syncStats:           opts.SyncStats,
+		remoteControl:       opts.RemoteControl,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
 		taskComputers:       opts.TaskComputers,
