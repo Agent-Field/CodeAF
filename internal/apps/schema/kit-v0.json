@@ -8,7 +8,7 @@
       "summary": "Children one above the other.",
       "children": "nodes",
       "interactive": false,
-      "bindings": [],
+      "bindings": ["params"],
       "events": [],
       "props": {
         "type": "object",
@@ -24,7 +24,7 @@
       "summary": "Children side by side.",
       "children": "nodes",
       "interactive": false,
-      "bindings": [],
+      "bindings": ["params"],
       "events": [],
       "props": {
         "type": "object",
@@ -38,10 +38,10 @@
     },
     {
       "name": "Panel",
-      "summary": "The right-hand panel for the selected item.",
+      "summary": "The right-hand panel for the selected item. Bound to a list's selection, its children read that selection's record type.",
       "children": "nodes",
       "interactive": false,
-      "bindings": [],
+      "bindings": ["selection"],
       "events": [],
       "props": {
         "type": "object",

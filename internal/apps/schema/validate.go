@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -65,6 +66,7 @@ const (
 	CodeSampleBadValue    = "sample_bad_value"    // a sample value that is not one of its field's values
 	CodeSampleRefMissing  = "sample_ref_missing"  // a sample ref to a row that is not in the sample
 	CodeSampleIDMissing   = "sample_id_missing"   // a sample row without an id
+	CodeFileNotAllowed    = "file_not_allowed"    // a file an app may not have: outside the folder, a link, or unknown
 )
 
 // Problem is one thing wrong with an app's files, in words a person can act on.
@@ -131,6 +133,7 @@ type checker struct {
 	screens  map[string]bool
 	runs     map[string]bool
 	commands map[string]Command
+	stepIDs  map[string]bool // the run being checked, for goto
 	report   Report
 }
 
@@ -159,8 +162,12 @@ func Validate(def Definition, existing TypeSet) Report {
 		c.screens[FileID(f)] = true
 	}
 	for _, f := range c.def.RunFiles() {
+		if c.runs[FileID(f)] {
+			c.add(f, "", CodeDuplicateID, "Two run files are called %q; keep one of runs/%s.yaml and runs/%s.yml.", FileID(f), FileID(f), FileID(f))
+		}
 		c.runs[FileID(f)] = true
 	}
+	c.checkPaths()
 
 	if raw, ok := c.def.Files[AppFile]; !ok {
 		c.add(AppFile, "", CodeMissingFile, "The app has no app.json, so it has no record types or capabilities.")
@@ -274,6 +281,32 @@ func (c *checker) schemaCheck(file string, raw []byte, s interface{ Validate(any
 	return true
 }
 
+// checkPaths refuses every file an app may not have. An app folder holds exactly
+// app.json, plan.json, sample.json, its agent file, screens/*.json and
+// runs/*.yaml; anything else, anything outside the folder and any link is refused,
+// because the store copies these names to disk and a name like ../../x would write
+// wherever it points.
+func (c *checker) checkPaths() {
+	agent, agentOK := agentPathOf(c.def.Files[AppFile])
+	screens, runs := c.def.ScreenFiles(), c.def.RunFiles()
+	for _, name := range sortedKeys(c.def.Files) {
+		clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(name)))
+		switch {
+		case name == "" || strings.HasPrefix(name, "/") || filepath.IsAbs(name) || strings.Contains(name, `\`):
+			c.add(name, "", CodeFileNotAllowed, "%q is not a path inside the app folder.", name)
+		case clean != name || clean == ".." || strings.HasPrefix(clean, "../"):
+			c.add(name, "", CodeFileNotAllowed, "%q is not a plain path inside the app folder; write it as %q.", name, clean)
+		case name == AppFile || name == PlanFile || name == SampleFile || (agentOK && name == agent):
+		case contains(screens, name) || contains(runs, name):
+		default:
+			c.add(name, "", CodeFileNotAllowed, "An app has no file called %s. It may have app.json, plan.json, sample.json, its agent file, screens/<id>.json and runs/<id>.yaml.", name)
+		}
+	}
+	for _, link := range c.def.Links {
+		c.add(link, "", CodeFileNotAllowed, "%s is a link to somewhere else. An app is plain files; put the file itself here.", link)
+	}
+}
+
 // ---------- app.json ----------
 
 // typeFields returns the fields a type has as this app sees it: the app's own
@@ -364,7 +397,7 @@ func (c *checker) checkApp() {
 	for _, name := range sortedKeys(a.Capabilities.Connectors) {
 		con := a.Capabilities.Connectors[name]
 		for _, verb := range con.Can {
-			if outbound[verb] && !contains(con.Approve, verb) {
+			if isOutbound(verb) && !contains(con.Approve, verb) {
 				c.add(AppFile, "/capabilities/connectors/"+name, CodeSendGateMissing, "%s may %s, which leaves your computer, so %q must also be listed under approve.", name, verb, verb)
 			}
 		}
@@ -421,15 +454,12 @@ func (c *checker) checkApp() {
 	}
 
 	if a.Agent != nil {
-		if _, ok := c.def.Files[cleanRel(a.Agent.File)]; !ok {
+		if rel, ok := AgentPath(a.Agent.File); !ok {
+			c.add(AppFile, "/agent/file", CodeFileNotAllowed, "The agent file %q must be a Markdown file inside the app folder.", a.Agent.File)
+		} else if _, ok := c.def.Files[rel]; !ok {
 			c.add(a.Agent.File, "", CodeMissingFile, "app.json names the agent file %q, but the app has no such file.", a.Agent.File)
 		}
 	}
-}
-
-func cleanRel(p string) string {
-	p = strings.TrimPrefix(p, "./")
-	return p
 }
 
 func (c *checker) access(typ string) string {
@@ -567,6 +597,15 @@ func (c *checker) checkAction(ctx actionCtx, at string, act Action) {
 // lists it under approve, since a screen has no gate of its own.
 func (c *checker) checkTool(file, at, tool string, fromScreen bool) {
 	con, verb, _ := strings.Cut(tool, ".")
+	// Whether a call leaves the computer is decided before anything can wave it
+	// through: an MCP tool listed whole under capabilities.tools has no approve
+	// list of its own, so from a screen, which has no gate, it can never send.
+	if fromScreen && isOutbound(tool) {
+		cc, isConnector := c.app.Capabilities.Connectors[con]
+		if !isConnector || !contains(cc.Approve, verb) {
+			c.add(file, at, CodeSendGateMissing, "This would %s through %s without asking you first; a screen can only do that through a connector that lists %q under approve.", lastSegment(tool), con, verb)
+		}
+	}
 	if contains(c.app.Capabilities.Tools, tool) || contains(c.app.Capabilities.Tools, con) {
 		return
 	}
@@ -579,10 +618,16 @@ func (c *checker) checkTool(file, at, tool string, fromScreen bool) {
 		c.add(file, at, CodeToolNotAllowed, "This asks %s to %s, but the app may only %s with it.", con, verb, strings.Join(cc.Can, ", "))
 		return
 	}
-	if fromScreen && outbound[verb] && !contains(cc.Approve, verb) {
-		c.add(file, at, CodeSendGateMissing, "This would %s through %s without asking you first; list %q under approve.", verb, con, verb)
-	}
 }
+
+// lastSegment is the verb of a dotted tool name: "slack.chat.post" posts.
+func lastSegment(tool string) string {
+	return tool[strings.LastIndex(tool, ".")+1:]
+}
+
+// isOutbound reports whether a tool name's verb leaves the computer, judged by its
+// last segment so a longer name cannot hide a send in its middle.
+func isOutbound(tool string) bool { return outbound[lastSegment(tool)] }
 
 // ---------- screens ----------
 
@@ -617,6 +662,13 @@ func (c *checker) checkScreen(file string, s Screen) {
 		}
 		if n.Part == "SectionTabs" {
 			navs++
+		}
+		// A params binding on a layout part declares params the same way the
+		// screen's own list does, as A2 writes it on the root.
+		if n.Bind != nil {
+			for _, p := range n.Bind.Params {
+				declared[p] = true
+			}
 		}
 		for i, ch := range n.Children {
 			learn(ch, fmt.Sprintf("%s/children/%d", at, i))
@@ -714,6 +766,8 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 			kind = "run"
 		case b.Runs != "":
 			kind = "runs"
+		case len(b.Params) > 0:
+			kind = "params"
 		}
 		if kind == "" || !contains(part.Bindings, kind) {
 			accepts := "no binding"
@@ -726,7 +780,9 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 		case "records":
 			typ = b.Records
 		case "record":
-			typ = ctx.resolveType(b.Type, b.Record)
+			inner := ctx
+			inner.rowType = rowType
+			typ = inner.resolveType(b.Type, b.Record)
 			if typ == "" {
 				c.add(ctx.file, at+"/bind", CodeBindTypeUnknown, "This shows the record %q but cannot tell its type; add \"type\" to the binding.", b.Record)
 			}
@@ -878,6 +934,7 @@ func (c *checker) checkRun(file string, r Run) {
 	}
 	collect(r.Steps, "/steps")
 
+	c.stepIDs = stepIDs
 	loopVars := map[string]string{}
 	c.checkSteps(file, r, r.Steps, "/steps", recordType, loopVars)
 
@@ -928,6 +985,9 @@ func (c *checker) checkSteps(file string, r Run, steps []Step, at, recordType st
 		if len(kinds) > 1 {
 			c.add(file, sat, CodeStepKind, "The step %q is %s at once; split it into one step each.", s.ID, strings.Join(kinds, " and "))
 		}
+		if target, ok := strings.CutPrefix(s.OnError, "goto "); ok && !c.stepIDs[strings.TrimSpace(target)] {
+			c.add(file, sat+"/on_error", CodeStepRefUnknown, "The step %q goes to %q when it fails, but the run has no step by that id.", s.ID, strings.TrimSpace(target))
+		}
 		if len(s.Steps) > 0 && s.Loop == nil {
 			c.add(file, sat+"/steps", CodeStepKind, "The step %q has steps inside it but is not a loop.", s.ID)
 		}
@@ -943,8 +1003,7 @@ func (c *checker) checkSteps(file string, r Run, steps []Step, at, recordType st
 			if c.appOK {
 				c.checkTool(file, sat+"/tool", s.Tool, false)
 			}
-			_, verb, _ := strings.Cut(s.Tool, ".")
-			if outbound[verb] && (s.Gate == nil || s.Gate.Approval != "send") {
+			if isOutbound(s.Tool) && (s.Gate == nil || s.Gate.Approval != "send") {
 				c.add(file, sat, CodeSendGateMissing, "The step %q uses %s, which leaves your computer, so it needs gate: {approval: send} to wait for your yes.", s.ID, s.Tool)
 			}
 		}

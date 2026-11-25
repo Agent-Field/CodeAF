@@ -45,7 +45,8 @@
         "selection": { "type": "string" },
         "run": { "type": "string" },
         "runs": { "type": "string" },
-        "for": { "type": "string" }
+        "for": { "type": "string" },
+        "params": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
       }
     },
     "action": {

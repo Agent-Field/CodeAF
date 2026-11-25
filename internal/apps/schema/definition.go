@@ -27,6 +27,38 @@ const (
 // bytes, the store keeps bytes, and only the validator decides whether they parse.
 type Definition struct {
 	Files map[string][]byte
+	// Links are paths Load found as symbolic links and did not follow. An app is
+	// plain files; a link could point anywhere on the computer, so Validate
+	// refuses the app rather than read through it.
+	Links []string
+}
+
+// AgentPath cleans an agent file name from app.json into the slash path it has in
+// Files. It is false for a name that is absolute, climbs out of the app folder, or
+// is not Markdown. Load and Validate both go through it so they agree on the name.
+func AgentPath(name string) (string, bool) {
+	if name == "" || filepath.IsAbs(name) || strings.HasPrefix(name, "/") || strings.Contains(name, `\`) {
+		return "", false
+	}
+	rel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(name)))
+	if rel == ".." || strings.HasPrefix(rel, "../") || !strings.HasSuffix(rel, ".md") {
+		return "", false
+	}
+	return rel, true
+}
+
+// agentPathOf is the agent file app.json names, or agent.md when it names none or
+// cannot be read.
+func agentPathOf(appRaw []byte) (string, bool) {
+	var head struct {
+		Agent *struct {
+			File string `json:"file"`
+		} `json:"agent"`
+	}
+	if json.Unmarshal(appRaw, &head) == nil && head.Agent != nil && head.Agent.File != "" {
+		return AgentPath(head.Agent.File)
+	}
+	return "agent.md", true
 }
 
 // Load reads an app folder into a Definition. It reads app.json, plan.json,
@@ -36,11 +68,23 @@ type Definition struct {
 func Load(dir string) (Definition, error) {
 	def := Definition{Files: map[string][]byte{}}
 	read := func(rel string) error {
-		raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		info, err := os.Lstat(full)
 		if err != nil {
 			if os.IsNotExist(err) {
 				return nil
 			}
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			def.Links = append(def.Links, rel)
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		raw, err := os.ReadFile(full)
+		if err != nil {
 			return err
 		}
 		def.Files[rel] = raw
@@ -51,20 +95,9 @@ func Load(dir string) (Definition, error) {
 			return def, err
 		}
 	}
-	agentFile := "agent.md"
-	if raw, ok := def.Files[AppFile]; ok {
-		var head struct {
-			Agent *struct {
-				File string `json:"file"`
-			} `json:"agent"`
-		}
-		if json.Unmarshal(raw, &head) == nil && head.Agent != nil && head.Agent.File != "" {
-			agentFile = filepath.ToSlash(filepath.Clean(head.Agent.File))
-		}
-	}
 	// The agent file is read only from inside the app folder: a name that climbs
-	// out of it is left unread, and Validate reports it as missing.
-	if !strings.HasPrefix(agentFile, "../") && !filepath.IsAbs(agentFile) {
+	// out of it is left unread, and Validate says why.
+	if agentFile, ok := agentPathOf(def.Files[AppFile]); ok {
 		if err := read(agentFile); err != nil {
 			return def, err
 		}
@@ -289,14 +322,15 @@ type Node struct {
 // Bind is where a node's data comes from. Exactly one of Records, Record,
 // Selection, Run or Runs is the binding; Query and Type qualify it.
 type Bind struct {
-	Records   string `json:"records,omitempty"`
-	Query     string `json:"query,omitempty"`
-	Record    string `json:"record,omitempty"`
-	Type      string `json:"type,omitempty"`
-	Selection string `json:"selection,omitempty"`
-	Run       string `json:"run,omitempty"`
-	Runs      string `json:"runs,omitempty"`
-	For       string `json:"for,omitempty"`
+	Records   string   `json:"records,omitempty"`
+	Query     string   `json:"query,omitempty"`
+	Record    string   `json:"record,omitempty"`
+	Type      string   `json:"type,omitempty"`
+	Selection string   `json:"selection,omitempty"`
+	Run       string   `json:"run,omitempty"`
+	Runs      string   `json:"runs,omitempty"`
+	For       string   `json:"for,omitempty"`
+	Params    []string `json:"params,omitempty"`
 }
 
 // Run is one runs/<id>.yaml.

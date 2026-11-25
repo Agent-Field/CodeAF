@@ -2,6 +2,8 @@ package schema
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -279,10 +281,10 @@ func TestBrokenDefinitionsSayWhatIsWrong(t *testing.T) {
 
 // untabled are the codes the CRM-based table cannot reach, each proven by its own
 // test below.
-var untabled = map[string]bool{CodeTypeTaken: true, CodeUsesUnknown: true, CodeUsesFieldTaken: true, CodeBindTypeUnknown: true, CodeLoopShape: true}
+var untabled = map[string]bool{CodeFileNotAllowed: true, CodeTypeTaken: true, CodeUsesUnknown: true, CodeUsesFieldTaken: true, CodeBindTypeUnknown: true, CodeLoopShape: true}
 
 func allCodes() []string {
-	return []string{CodeParse, CodeSchema, CodeMissingFile, CodeTypeUnknown, CodeTypeTaken, CodeUsesUnknown, CodeUsesFieldTaken, CodeFieldUnknown, CodeFieldNotEnum, CodeFieldNotAI, CodeDefaultNotValue, CodeCapabilityUnknown, CodeNotAllowed, CodeRunUnknown, CodeCommandUnknown, CodeCommandEmpty, CodeDuplicateID, CodeTriggerV0, CodeTriggerShape, CodePartUnknown, CodePartProps, CodePartChildren, CodeLabelMissing, CodeNavTwice, CodeBindNotAccepted, CodeBindTypeUnknown, CodeEventUnknown, CodeActionVerb, CodeOpenUnknown, CodeListUnknown, CodeSelectionUnknown, CodeParamUndeclared, CodeBoardByMissing, CodeScreenIDMismatch, CodeRunIDMismatch, CodeStepKind, CodeShellRefused, CodeWorkspaceRefused, CodeLoopShape, CodeLoopMax, CodeAgentUnknown, CodeToolNotAllowed, CodeSendGateMissing, CodeStepTypeUnknown, CodeStepRefUnknown, CodeWaitV0, CodeRunBudgetOver, CodePlanUnknownID, CodePlanMissingLine, CodeSampleUnknownType, CodeSampleBadValue, CodeSampleRefMissing, CodeSampleIDMissing}
+	return []string{CodeParse, CodeSchema, CodeMissingFile, CodeTypeUnknown, CodeTypeTaken, CodeUsesUnknown, CodeUsesFieldTaken, CodeFieldUnknown, CodeFieldNotEnum, CodeFieldNotAI, CodeDefaultNotValue, CodeCapabilityUnknown, CodeNotAllowed, CodeRunUnknown, CodeCommandUnknown, CodeCommandEmpty, CodeDuplicateID, CodeTriggerV0, CodeTriggerShape, CodePartUnknown, CodePartProps, CodePartChildren, CodeLabelMissing, CodeNavTwice, CodeBindNotAccepted, CodeBindTypeUnknown, CodeEventUnknown, CodeActionVerb, CodeOpenUnknown, CodeListUnknown, CodeSelectionUnknown, CodeParamUndeclared, CodeBoardByMissing, CodeScreenIDMismatch, CodeRunIDMismatch, CodeStepKind, CodeShellRefused, CodeWorkspaceRefused, CodeLoopShape, CodeLoopMax, CodeAgentUnknown, CodeToolNotAllowed, CodeSendGateMissing, CodeStepTypeUnknown, CodeStepRefUnknown, CodeWaitV0, CodeRunBudgetOver, CodePlanUnknownID, CodePlanMissingLine, CodeSampleUnknownType, CodeSampleBadValue, CodeSampleRefMissing, CodeSampleIDMissing, CodeFileNotAllowed}
 }
 
 func hasCode(r Report, code string) bool {
@@ -380,5 +382,131 @@ func TestBrokenAppDoesNotCascade(t *testing.T) {
 	}
 	if len(r.Problems) == 0 {
 		t.Fatal("kit 2 should be refused")
+	}
+}
+
+func crmFiles(t *testing.T) map[string][]byte {
+	t.Helper()
+	crm := load(t, "testdata/crm")
+	files := map[string][]byte{}
+	for k, v := range crm.Files {
+		files[k] = append([]byte(nil), v...)
+	}
+	return files
+}
+
+// A send is judged by the tool's last segment and before an MCP tool listing can
+// wave it through, so neither a whole-server listing nor a longer name hides it.
+func TestSendGateCannotBeBypassed(t *testing.T) {
+	files := crmFiles(t)
+	jsonEdit(AppFile, func(v map[string]any) { at(v, "capabilities")["tools"] = []any{"mail"} })(t, files)
+	jsonEdit("screens/deals.json", func(v map[string]any) {
+		at(newDealButton(v), "on")["click"] = []any{map[string]any{"tools.call": []any{"mail", "send", map[string]any{}}}}
+	})(t, files)
+	if r := Validate(Definition{Files: files}, nil); !hasCode(r, CodeSendGateMissing) {
+		t.Fatalf("mail.send from a screen through an MCP listing should need approval:\n%s", r)
+	}
+
+	files = crmFiles(t)
+	jsonEdit(AppFile, func(v map[string]any) { at(v, "capabilities")["tools"] = []any{"slack.chat.post"} })(t, files)
+	textEdit("runs/won-handoff.yaml", "    gate: { approval: send, who: $me }\n    tool: slack.post", "    tool: slack.chat.post")(t, files)
+	r := Validate(Definition{Files: files}, nil)
+	if !hasCode(r, CodeSendGateMissing) {
+		t.Fatalf("slack.chat.post without a gate should be refused:\n%s", r)
+	}
+}
+
+func TestAppIDIsASlugOrAULID(t *testing.T) {
+	for id, ok := range map[string]bool{"crm": true, "01KAT0000A0000000000000001": true, "CRM!": false, "01KAT0000A00000000000000IL": false} {
+		files := crmFiles(t)
+		jsonEdit(AppFile, func(v map[string]any) { v["id"] = id })(t, files)
+		r := Validate(Definition{Files: files}, nil)
+		if r.OK() != ok {
+			t.Errorf("id %q: ok=%v, want %v:\n%s", id, r.OK(), ok, r)
+		}
+	}
+}
+
+func TestOnlyAppFilesInsideTheFolder(t *testing.T) {
+	for _, name := range []string{"../escape.json", "/etc/passwd", "screens/../app2.json", "notes.txt", "screens/sub/x.json", "runs/x.sh", "./plan.json"} {
+		files := crmFiles(t)
+		files[name] = []byte("{}")
+		r := Validate(Definition{Files: files}, nil)
+		found := false
+		for _, p := range r.Problems {
+			if p.Code == CodeFileNotAllowed && p.File == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q should be refused:\n%s", name, r)
+		}
+	}
+
+	files := crmFiles(t)
+	jsonEdit(AppFile, func(v map[string]any) { at(v, "agent")["file"] = "../secret.md" })(t, files)
+	if r := Validate(Definition{Files: files}, nil); !hasCode(r, CodeFileNotAllowed) {
+		t.Fatalf("an agent file outside the folder should be refused:\n%s", r)
+	}
+	if _, ok := AgentPath("./prompts/../agent.md"); !ok {
+		t.Fatal("AgentPath should clean a path that stays inside the folder")
+	}
+}
+
+func TestLoadRefusesLinks(t *testing.T) {
+	dir := t.TempDir()
+	src := load(t, "testdata/crm")
+	for name, raw := range src.Files {
+		full := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outside := filepath.Join(t.TempDir(), "secret.json")
+	if err := os.WriteFile(outside, []byte(`{"screen":"x"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "screens", "x.json")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	def := load(t, dir)
+	if _, read := def.Files["screens/x.json"]; read {
+		t.Fatal("Load followed a link")
+	}
+	if r := Validate(def, nil); !hasCode(r, CodeFileNotAllowed) {
+		t.Fatalf("a linked screen should be refused:\n%s", r)
+	}
+}
+
+func TestGotoAndDuplicateRuns(t *testing.T) {
+	files := crmFiles(t)
+	textEdit("runs/won-handoff.yaml", "  - id: settle\n", "  - id: settle\n    on_error: goto nowhere\n")(t, files)
+	if r := Validate(Definition{Files: files}, nil); !hasCode(r, CodeStepRefUnknown) {
+		t.Fatalf("goto a missing step should be refused:\n%s", r)
+	}
+	files = crmFiles(t)
+	files["runs/won-handoff.yml"] = files["runs/won-handoff.yaml"]
+	if r := Validate(Definition{Files: files}, nil); !hasCode(r, CodeDuplicateID) {
+		t.Fatalf("two files for one run should be refused:\n%s", r)
+	}
+}
+
+// The A2 panel shape: a Panel bound to a list's selection, its RecordPage reading
+// $record, and a params binding on the root that declares $params.
+func TestPanelSelectionAndParamsBindings(t *testing.T) {
+	files := crmFiles(t)
+	jsonEdit("screens/contacts.json", func(v map[string]any) {
+		body := at(v, "body")
+		body["bind"] = map[string]any{"params": []any{"company"}}
+		at(body, "children", 0, "bind")["query"] = "company:$params.company"
+		panel := at(body, "children", 1)
+		panel["bind"] = map[string]any{"selection": "contacts"}
+		at(panel, "children", 0)["bind"] = map[string]any{"record": "$record.id"}
+	})(t, files)
+	if r := Validate(Definition{Files: files}, nil); !r.OK() {
+		t.Fatalf("the A2 panel shape should validate:\n%s", r)
 	}
 }

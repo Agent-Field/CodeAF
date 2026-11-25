@@ -8,7 +8,10 @@
   "required": ["id", "name", "version", "kit", "records", "capabilities"],
   "properties": {
     "$schema": { "type": "string" },
-    "id": { "$ref": "#/$defs/name" },
+    "id": {
+      "description": "A slug the Builder chose, or the ULID the app store assigned.",
+      "anyOf": [{ "$ref": "#/$defs/name" }, { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" }]
+    },
     "name": { "type": "string", "minLength": 1, "maxLength": 60 },
     "icon": { "type": "string" },
     "version": { "type": "integer", "minimum": 1 },

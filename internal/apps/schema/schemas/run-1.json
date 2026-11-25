@@ -40,7 +40,7 @@
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
         "title": { "type": "string" },
         "if": { "type": "string" },
-        "on_error": { "type": "string" },
+        "on_error": { "type": "string", "pattern": "^(stop|continue|goto [a-z][a-z0-9_-]*)$" },
         "retry": {
           "type": "object",
           "additionalProperties": false,
