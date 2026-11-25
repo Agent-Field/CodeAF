@@ -190,48 +190,53 @@ type WorkPatch struct {
 // CreateWorkItem makes a work item. A transition's effect, a run's ask step,
 // a person and an agent all make them the same way.
 func (s *Store) CreateWorkItem(sc Scope, in WorkItem) (*WorkItem, error) {
+	var out *WorkItem
+	err := s.write(func(w *writeTx) error {
+		var err error
+		out, err = w.createWorkItem(sc, in)
+		return err
+	})
+	return out, err
+}
+
+func (w *writeTx) createWorkItem(sc Scope, in WorkItem) (*WorkItem, error) {
 	in.Title = strings.TrimSpace(in.Title)
 	if in.Title == "" || len(in.Title) > titleMax {
 		return nil, errorf(CodeInvalid, "a work item has a title of at most %d characters", titleMax)
 	}
-	var out *WorkItem
-	err := s.write(func(w *writeTx) error {
-		t, _, err := w.subject(sc, in.Type, in.Record, false)
-		if err != nil {
-			return err
-		}
-		item := WorkItem{ID: w.s.ids.next(w.now), Title: in.Title, Record: in.Record, Form: strings.TrimSpace(in.Form), Status: WorkOpen,
-			App: sc.App, CreatedBy: w.schema.actor(sc), CreatedAt: w.now.UTC().Format(stamp)}
-		item.UpdatedAt = item.CreatedAt
-		if t != nil {
-			item.Type = t.Name
-		}
-		if item.Assignee, err = w.schema.personValue(orMe(in.Assignee)); err != nil {
-			return err
-		}
-		if item.Due, err = when(in.Due, w.now); err != nil {
-			return err
-		}
-		if item.SLAAt, err = when(in.SLAAt, w.now); err != nil {
-			return err
-		}
-		if len(item.Form) > 200 {
-			return errorf(CodeInvalid, "a form reference is at most 200 characters")
-		}
-		typeID := ""
-		if t != nil {
-			typeID = t.ID
-		}
-		if _, err := w.tx.Exec(`INSERT INTO work_items(id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at)
-			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, ?, ?)`,
-			item.ID, item.Title, typeID, item.Record, item.Assignee, item.Due, item.SLAAt, item.Form, item.Status, item.App, item.CreatedBy, item.CreatedAt, item.UpdatedAt); err != nil {
-			return err
-		}
-		w.itemChange(sc, "work_item")
-		out = &item
-		return w.item(TableWorkItems, EventWorkItemCreated, t, item.Record, item.App, item.ID, item.Row())
-	})
-	return out, err
+	t, _, err := w.subject(sc, in.Type, in.Record, false)
+	if err != nil {
+		return nil, err
+	}
+	item := WorkItem{ID: w.s.ids.next(w.now), Title: in.Title, Record: in.Record, Form: strings.TrimSpace(in.Form), Status: WorkOpen,
+		App: sc.App, CreatedBy: w.schema.actor(sc), CreatedAt: w.now.UTC().Format(stamp)}
+	item.UpdatedAt = item.CreatedAt
+	if t != nil {
+		item.Type = t.Name
+	}
+	if item.Assignee, err = w.schema.personValue(orMe(in.Assignee)); err != nil {
+		return nil, err
+	}
+	if item.Due, err = when(in.Due, w.now); err != nil {
+		return nil, err
+	}
+	if item.SLAAt, err = when(in.SLAAt, w.now); err != nil {
+		return nil, err
+	}
+	if len(item.Form) > 200 {
+		return nil, errorf(CodeInvalid, "a form reference is at most 200 characters")
+	}
+	typeID := ""
+	if t != nil {
+		typeID = t.ID
+	}
+	if _, err := w.tx.Exec(`INSERT INTO work_items(id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, ?, ?)`,
+		item.ID, item.Title, typeID, item.Record, item.Assignee, item.Due, item.SLAAt, item.Form, item.Status, item.App, item.CreatedBy, item.CreatedAt, item.UpdatedAt); err != nil {
+		return nil, err
+	}
+	w.itemChange(sc, "work_item")
+	return &item, w.item(TableWorkItems, EventWorkItemCreated, t, item.Record, item.App, item.ID, item.Row())
 }
 
 // orMe is the person when no one is named.

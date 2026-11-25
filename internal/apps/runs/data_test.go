@@ -162,3 +162,80 @@ func TestAppRunsDataAdapterScopesRefsAndCommittedRows(t *testing.T) {
 		t.Fatal("record commit hook did not fire")
 	}
 }
+
+func TestIntakeRunsStartOnceAndFillFieldsAsAI(t *testing.T) {
+	db, err := data.Open(filepath.Join(t.TempDir(), "data.db"), data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const app = `{"id":"crm","records":{"contact":{"title":"name","fields":{
+		"name":{"type":"text"},"summary":{"type":"text","ai":"Extract a short summary"}}}},
+		"capabilities":{"records":{"contact":"rw"}}}`
+	if err := db.RegisterApp([]byte(app)); err != nil {
+		t.Fatal(err)
+	}
+	adapter := runs.Data{Store: func() (*data.Store, error) { return db, nil }}
+	var calls []runs.AgentCall
+	cfg := runs.Config{
+		Root: t.TempDir(), Records: adapter.Write, RecordInput: adapter.RecordInput,
+		Agent: func(_ context.Context, call runs.AgentCall) (runs.Reply, error) {
+			calls = append(calls, call)
+			return runs.Reply{Output: "Parsed from the attachment"}, nil
+		},
+		Load: func(app, run string) (runs.Definition, error) {
+			if app != "crm" || run != "extract" {
+				t.Fatalf("unexpected run %s/%s", app, run)
+			}
+			return runs.Parse([]byte(`
+run: extract
+steps:
+  - id: read
+    agent: self
+    prompt: "Summarize the attachment from {{input.channel}}"
+  - id: fill
+    records.update: {id: $record.id, set: {summary: $steps.read.output}}
+`))
+		},
+	}
+	e, err := runs.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = e.Close() }()
+	if err := adapter.ConsumeOutbox(t.Context(), e); err != nil {
+		t.Fatal(err)
+	}
+	in := data.IntakeDelivery{App: "crm", Channel: "drop", Run: "extract", Type: "contact",
+		Key: "dropped-1", Set: map[string]any{"name": "new contact"}}
+	made, err := db.Deliver(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.ConsumeOutbox(t.Context(), e); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	e, err = runs.Open(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Deliver(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := adapter.ConsumeOutbox(t.Context(), e); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	if len(calls) != 1 || calls[0].IntakeType != "contact" || calls[0].IntakeRecord != made.Rows[0] ||
+		calls[0].Prompt != "Summarize the attachment from drop" {
+		t.Fatalf("agent calls = %+v", calls)
+	}
+	history, err := db.History(data.Scope{}, "contact", made.Rows[0])
+	if err != nil || len(history) != 2 || history[0].ByKind != data.ByAI ||
+		history[0].After["summary"] != "Parsed from the attachment" || history[1].Cause != "channel:drop" {
+		t.Fatalf("history = %+v, %v", history, err)
+	}
+}

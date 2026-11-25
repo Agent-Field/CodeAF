@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 // stamp is how every datetime is stored: UTC with milliseconds, fixed width,
@@ -54,6 +56,8 @@ func (f *Field) coerce(v any, c coercion) (any, error) {
 		return nil, nil
 	}
 	switch f.Type {
+	case TypeFile, TypeFiles:
+		return v, appschema.ValidateFileValue(f.Type, v)
 	case TypeText, TypeLongtext:
 		s, ok := v.(string)
 		if !ok {

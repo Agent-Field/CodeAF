@@ -244,6 +244,7 @@ func runApp(args []string) error {
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
 	backend.stopAppRuns = backend.openAppRuns(ctx)
+	backend.openAppIntake(ctx)
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()
@@ -593,6 +594,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	intake           appIntakeState
 	appRuns          atomic.Pointer[runs.Engine]
 	startAppRunsOnce func()
 	stopAppRuns      func()
@@ -4998,6 +5000,7 @@ func (b *appBackend) Close() error {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
+	b.closeAppIntake()
 	if b.stopAppRuns != nil {
 		b.stopAppRuns()
 	}

@@ -33,6 +33,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"how do I share a web form from my app", "app-intake"},
+		{"turn emails into tickets", "app-intake"},
+		{"drop a file to create a record in my app", "app-intake"},
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
 		{"can Claude Code make a canvas", "claude-code-provider"},
 		{"does Claude Code see my codeaf skills", "claude-code-provider"},

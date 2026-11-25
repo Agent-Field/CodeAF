@@ -382,6 +382,10 @@
         "form": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "workItem": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
         }
       },
       "required": [
@@ -416,13 +420,60 @@
         "event": {
           "type": "string",
           "minLength": 1
+        },
+        "mapping": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "propertyNames": {
+            "enum": [
+              "subject",
+              "from",
+              "body",
+              "attachments"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
         }
       },
       "required": [
         "kind",
-        "record",
-        "connector",
-        "event"
+        "record"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "mapping"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "connector"
+                ]
+              },
+              {
+                "required": [
+                  "event"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "connector",
+            "event"
+          ],
+          "not": {
+            "required": [
+              "mapping"
+            ]
+          }
+        }
       ]
     },
     "webhook-in": {
@@ -443,12 +494,49 @@
         "run": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "mapping": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
+        },
+        "secret": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
         }
       },
       "required": [
         "kind",
-        "record",
-        "run"
+        "record"
+      ],
+      "dependentRequired": {
+        "mapping": [
+          "secret"
+        ],
+        "secret": [
+          "mapping"
+        ]
+      },
+      "anyOf": [
+        {
+          "required": [
+            "run"
+          ]
+        },
+        {
+          "required": [
+            "secret",
+            "mapping"
+          ]
+        }
       ]
     },
     "file-drop": {
@@ -480,12 +568,32 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "mapping": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
+        },
+        "fileField": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "nameField": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
         }
       },
       "required": [
         "kind",
-        "record",
-        "form"
+        "record"
       ]
     },
     "connector-event": {
@@ -514,13 +622,56 @@
         "event": {
           "type": "string",
           "minLength": 1
+        },
+        "mapping": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          }
+        },
+        "secret": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
         }
       },
       "required": [
         "kind",
-        "record",
-        "connector",
-        "event"
+        "record"
+      ],
+      "dependentRequired": {
+        "mapping": [
+          "secret"
+        ],
+        "secret": [
+          "mapping"
+        ],
+        "connector": [
+          "event"
+        ],
+        "event": [
+          "connector"
+        ]
+      },
+      "anyOf": [
+        {
+          "required": [
+            "connector",
+            "event"
+          ]
+        },
+        {
+          "required": [
+            "secret",
+            "mapping"
+          ]
+        }
       ]
     }
   }
