@@ -35,19 +35,24 @@ opt-in profile of the same file. Nothing in an image is a secret; model keys com
 | `pr-af` | PR-AF, node `pr-af`, called by AgentField over HTTP | none | `pr-af-workspaces` | uid 10003 |
 | `sessionhost` | the machine hosted chats run on, only with `--profile hosted` (or `COMPOSE_PROFILES=hosted`); see "Hosted chats" | none | `sessions-data` | root, with five capabilities |
 | `modelstub` | a scripted model, only with `--profile stub` (the keyless smoke test) | none | none | nonroot |
-| `gitstub` | a scripted git host, only with `--profile stub` (the hosted part of the smoke test) | none | none | root (a test stub) |
+| `gitstub` | a scripted git host, only with `--profile gitstub`; `smoke.sh` turns it on with the hosted part and makes the token it will not start without | none | none | root (a test stub) |
 
 A plain `docker compose up` starts the first five; the other three need their profile.
 Apart from the `sessionhost` and the `gitstub` test stub, every container starts as root only long enough to hand a
 freshly mounted volume to its user, then drops to that user (`scripts/drop-root.sh`, or the control plane's own
 entrypoint); the `sessionhost` stays root on purpose, because it has to become a different Linux user for every chat
 (see "Hosted chats"). Published ports listen on 127.0.0.1 until you change `CODEAF_BIND` / `AGENTFIELD_BIND` in `.env`.
+Ports 8787 (`codeaf`) and 8080 (`agentfield`) must be free on the host: if one is taken, `docker compose up` stops with
+`port is already allocated` and leaves the services it had not reached created but not started. Set `CODEAF_PORT` or
+`AGENTFIELD_PORT` in `.env` (the template lists both) and run it again; the services reach each other over Compose's own
+network, so AgentField's host port is only for you to look at it.
 State is in six named volumes, one per row that names one. There are two networks: `default`, which every service
 but the `sessionhost` is on, and `hosted`, which only `codeaf` and the `sessionhost` share.
 
 ## What you need
 
-- Docker with Compose v2.24 or newer (`docker compose version`), about 4 GB of free memory and 5 GB of disk.
+- Docker with Compose v2.24 or newer (`docker compose version`), `git`, about 4 GB of free memory and 5 GB of disk, and
+  ports 8787 and 8080 free on the host (see "What it runs").
 - For anyone who is not on the same machine: **HTTPS**. An organization server takes a password only over
   HTTPS (or from its own machine), so put a proxy that serves HTTPS in front of port 8787 (see "Other people").
 - For real work: an OpenRouter key (`OPENROUTER_API_KEY`) and, to let the nodes clone private repositories and
@@ -55,12 +60,16 @@ but the `sessionhost` is on, and `hosted`, which only `codeaf` and the `sessionh
 
 ## Start it
 
+The files are this repository: the images are built from your checkout, so clone it first (the installer on the front page
+puts only the `codeaf` program on a computer, not these files).
+
 ```sh
-cd deploy/org
+git clone https://github.com/Agent-Field/codeaf
+cd codeaf/deploy/org
 ./setup.sh                      # writes .env with fresh secrets: AgentField key, organization token, hosted-chats secret, server key (once)
 $EDITOR .env                    # optional: OPENROUTER_API_KEY=..., GH_TOKEN=..., CODEAF_ORG_NAME=...
 docker compose up -d --build    # the first build takes several minutes; later starts take seconds
-docker compose ps               # every service says "healthy"
+docker compose ps               # every service says "healthy" (the scripted model, if you turn it on, says only "Up")
 ```
 
 The first build compiles codeaf from this checkout (several minutes; the repository root is the build context) and builds SWE-AF
@@ -69,28 +78,60 @@ and PR-AF from pinned commits of their public repositories. codeaf is built from
 `CODEAF_BINARY_FROM=fetch docker compose up -d --build` downloads the pinned release instead (checked against its sha256);
 `compose.yaml` says how to tell when `fetch` can be the default again.
 
+### Without a model key
+
+To see the whole organization work before you spend anything, point every model call at the scripted model (profile `stub`),
+which answers a message with `STUB noted: <your message>`. Add these to `.env` (they are the values of `.env.stub`, plus the
+hosted ones of `.env.stub.hosted` that matter for a first chat), then `docker compose up -d --build`:
+
+```sh
+COMPOSE_PROFILES=hosted,stub
+CODEAF_HOSTED_URL=http://sessionhost:8790
+CODEAF_HOSTED_MODEL_UPSTREAM=http://modelstub:8890/api/v1
+CODEAF_HOSTED_MODEL_KEY=stub-hosted-org-key-0001
+CODEAF_SESSIONHOST_MODEL=stub/scripted
+CODEAF_BASE_URL=http://modelstub:8890/api/v1
+OPENROUTER_API_KEY=stub-key
+ORG_MODEL=stub/scripted
+SWE_DEFAULT_MODEL=openrouter/stub/scripted
+PR_AF_MODEL=stub/scripted
+```
+
+Put your own keys back and drop `stub` from `COMPOSE_PROFILES` when you are done. `./smoke.sh` is a different thing: it runs a
+scripted check of the stack and uses the operator link up itself (see "The keyless smoke test").
+
 ## Claim the organization, invite a second person
 
 ```sh
-./operator-link.sh              # prints the operator access link (a secret; it works once)
+./operator-link.sh              # prints the operator access link (a secret; it works once, and for 24 hours)
 ```
 
-On a laptop the link names `http://[::]:8787`. That is the address the server gives itself (its listen address) and a
-link is only accepted with exactly that address, so it is not rewritten. A connection to `[::]` reaches the local
-machine on Linux and macOS, so the desktop app on the same machine can use it; Windows cannot, and nobody on another
-machine can. For them, serve the organization on a public HTTPS name (see "Other people") and the link names that.
+The link names the address the server knows itself by, and that decides who can use it:
+
+- **With `CODEAF_PUBLIC_DOMAIN` set and an HTTPS proxy in front** (see "Other people: HTTPS") the link names
+  `https://<your name>` and works from any computer. That is how an organization is run, and the setup in which a password
+  sign-in is accepted.
+- **Without it** the link names `http://[::]:8787`, the server's own listen address, which a link is only accepted with.
+  Do not use it, even on the machine running Compose. The published port listens on 127.0.0.1 only, and `[::]` did not
+  connect to it when this was tried. Over `http://127.0.0.1:8787` the server answers, but it refuses a password
+  (`Passwords are only sent to this server over https.`): Docker hands a request to the container from its bridge, not from
+  loopback, so the server does not take it for its own machine. For a trial on one computer, give the stack a name and an
+  HTTPS proxy as in "Trying it on one machine".
+
+`./operator-link.sh` prints a link only while the server says it can still claim the organization. Once the organization is
+claimed, or the link is older than 24 hours, it says so and prints nothing. If nobody has claimed it yet,
+`docker compose restart codeaf` prints a fresh link and retires the older ones.
 
 1. Open that `codeaf://factory/join?operator=true...` link in the codeaf desktop app (or paste it into
    **Join an organization...**). Choose a username and a password. Whoever uses the link first is the operator,
-   so keep it to yourself until you have.
+   so keep it to yourself until you have. Without the desktop app, the same thing is one request to the server:
+   see "From a terminal" in [docs/organizations.md](../../docs/organizations.md#from-a-terminal).
 2. From **People** (Settings, Organizations, your organization), the operator uses **Invite someone** for the
    second person. Without `CODEAF_SMTP_URL` nothing is emailed and the button reads **Copy an invite link**; the link
    works for 7 days and for one person. They paste it into **Join an organization...** on their own computer and
-   choose their own username and password.
+   choose their own username and password. (From a terminal: the same page, "From a terminal".)
 3. A codeaf client connects to this organization with the server's URL, which is inside the link: your public
-   HTTPS name, or `http://[::]:8787` on the machine running Compose.
-
-If the operator link is lost before anyone used it, `docker compose restart codeaf` prints a fresh one.
+   HTTPS name.
 
 **A request from the server's own computer is not trusted.** An organization server never takes a request to be a
 person because of where it came from: a request from the server's own computer that carries no sign-in, token or bot
@@ -118,7 +159,33 @@ CODEAF_BIND=127.0.0.1                         # the proxy runs on this machine; 
 
 For example Caddy, on the same host: `org.example.com { reverse_proxy 127.0.0.1:8787 }`. Links the server prints
 then name `https://org.example.com`. Without `CODEAF_TRUSTED_PROXIES` the server sees every request as plain HTTP
-and refuses passwords with "Passwords are only sent to this server over https".
+and refuses passwords with "Passwords are only sent to this server over https". Check it from outside:
+`curl https://org.example.com/v1/about` must say `"scheme": "https"`. The server logs `warning: serving plain HTTP on
+[::]:8787` at every start, behind a proxy too: it speaks plain HTTP to the proxy, and that is expected.
+
+### Trying it on one machine
+
+A trial needs the same three things a real name does: a name, an HTTPS proxy on it, and the proxy's certificate trusted by
+whatever connects. `localhost` is refused as `CODEAF_PUBLIC_DOMAIN` (no certificate authority issues one for it), so use a
+name with a dot that resolves to 127.0.0.1: every name under `localtest.me` does in public DNS (offline, put one in
+`/etc/hosts`). Caddy can run as a container on Compose's network and make its own certificate authority. The default project
+is `codeaf-org` (`name:` in `compose.yaml`); `docker network ls` shows the network if you set another.
+
+```sh
+# .env
+CODEAF_PUBLIC_DOMAIN=codeaf.localtest.me
+CODEAF_TRUSTED_PROXIES=172.16.0.0/12          # or the range `docker network inspect codeaf-org_default` prints
+
+docker compose up -d --build
+docker run -d --name org-https --network codeaf-org_default -p 127.0.0.1:443:443 caddy:2.10.2 \
+  caddy reverse-proxy --from https://codeaf.localtest.me --to http://codeaf:8787 --internal-certs
+docker cp org-https:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt     # the authority to trust
+curl --cacert ./caddy-root.crt https://codeaf.localtest.me/v1/about                  # "scheme": "https"
+```
+
+Run `./operator-link.sh` after that, so the link names `https://codeaf.localtest.me`. On Linux the `codeaf` command trusts the
+authority through `SSL_CERT_FILE=./caddy-root.crt`; a program that uses the system's trust store (the desktop app) needs the
+file added to it, which was not tried here. Port 443 on the host must be free. `docker rm -f org-https` removes the proxy.
 
 - **Browser chat connections.** A WebSocket upgrade with an `Origin` header is accepted only if the header names the host
   the request was sent to or the public name set with `CODEAF_PUBLIC_DOMAIN`. Otherwise the server returns `403` with
@@ -141,7 +208,10 @@ and SWE-AF pauses at its plan so the owner can approve it or ask for changes.
 ```
 
 It restarts the stack against the scripted stub (so nothing is spent, whatever keys `.env` holds) and checks,
-printing `PASS` or `FAIL` for each:
+printing `PASS` or `FAIL` for each. **Run it on a stack nobody has claimed**: it claims the organization itself, with
+throwaway people, which uses the operator link up (afterwards `./operator-link.sh` has nothing to print), and on a stack
+that is already claimed it stops at that step. To go from a smoke run to a real organization, `docker compose down -v`
+(that deletes every volume) and start again:
 
 - every service is healthy; AgentField, SWE-AF, PR-AF and the factory are registered; PR-AF answers a call;
 - the operator link claims the organization once, a second person joins by invite, roles are enforced;
@@ -417,16 +487,41 @@ Landlock (`"mode": "uid+fence"`, `"fence_mode": "landlock"`).
 
 ## State, backups and upgrades
 
-State lives in six named volumes (`docker volume ls`, prefix `codeaf-org_`): `agentfield-data`, `codeaf-data`,
+State lives in six named volumes (`docker volume ls`; each name is the Compose project's name, `codeaf-org` unless you set `-p` or
+`COMPOSE_PROJECT_NAME`, then `_` and the volume, as below): `agentfield-data`, `codeaf-data`,
 `runner-data`, `swe-af-workspaces`, `pr-af-workspaces`, and `sessions-data` (the hosted chats' folders, used only with
 the `hosted` profile). `docker compose down` keeps them, `docker compose down -v` deletes them. The organization server's own
 state (its people, access links, spend and sealed keys) is in `codeaf-data` and the hosted chats' folders are in
-`sessions-data`; back `codeaf-data` up together with `.env`, which holds the server key that seals people's own keys.
-A backup of one volume:
+`sessions-data`. **Back up `codeaf-data` together with `.env`** (which holds the server key that seals people's own keys), and
+`sessions-data` too if the hosted chats' files matter: the server's list of chats and the chats' machine hold one state between
+them, so copy the two at the same moment and restore both. The archive holds people's password hashes, their sign-in sessions
+and the organization's access token, so treat it like `.env`: make it readable by you alone (`umask 077`) and keep it off the
+host it came from. Stop the services that write while you copy, so the files come from one moment:
 
 ```sh
-docker run --rm -v codeaf-org_codeaf-data:/d -v "$PWD":/b busybox tar czf /b/codeaf-data.tgz -C /d .
+umask 077
+docker compose stop codeaf sessionhost       # leave sessionhost out where hosted chats are off
+docker run --rm -v codeaf-org_codeaf-data:/d busybox tar czf - -C /d . > codeaf-data.tgz
+docker run --rm -v codeaf-org_sessions-data:/d busybox tar czf - -C /d . > sessions-data.tgz    # "socket ignored" lines are fine
+docker compose start codeaf sessionhost
 ```
+
+The archive goes to standard output, so it is a file of yours; with a `-v "$PWD":/b` mount instead, root owns it and the host's
+default mode applies, and some Docker setups refuse the mount. `agentfield-data` holds the runs AgentField has recorded: copy it
+the same way if you want them (the nodes register again by themselves on every start).
+
+**Restore** into the same Compose project, services stopped and the volume emptied first. On a new machine put the saved `.env`
+back before the first start: without its `CODEAF_SERVER_KEY` the server refuses to start rather than carry on.
+
+```sh
+docker compose stop codeaf sessionhost
+docker run --rm -v codeaf-org_codeaf-data:/d busybox sh -c 'rm -rf /d/* /d/.[!.]*'
+docker run --rm -i -v codeaf-org_codeaf-data:/d busybox tar xzf - -C /d < codeaf-data.tgz
+# the same two lines with sessions-data and sessions-data.tgz
+docker compose up -d codeaf sessionhost
+```
+
+The people, their sign-ins, the invitations and the chats come back as they were.
 
 Everything outside this checkout is pinned: the codeaf release that `CODEAF_BINARY_FROM=fetch` downloads (`CODEAF_RELEASE` and
 its two sha256 values at the top of `codeaf.Dockerfile`), the SWE-AF and PR-AF commits (`SWEAF_REF`, `PRAF_REF`) and the AgentField
@@ -458,7 +553,7 @@ repository from an organization that has not installed Railway's GitHub App but 
 | `agentfield/codeaf-org-agentfield` | the published AgentField control plane, pinned by digest (built with `-tags "embedded sqlite_fts5"`), plus a health check and a volume hand-off | `agentfield` |
 | `agentfield/codeaf-org-swe-af` | SWE-AF at the commit `swe-af.Dockerfile` pins | `swe-af` |
 | `agentfield/codeaf-org-pr-af` | PR-AF at the commit `pr-af.Dockerfile` pins | `pr-af` |
-| `agentfield/codeaf-org-modelstub`, `agentfield/codeaf-org-gitstub` | the keyless smoke test's scripted model and git host | `modelstub`, `gitstub` (profile `stub`) |
+| `agentfield/codeaf-org-modelstub`, `agentfield/codeaf-org-gitstub` | the keyless smoke test's scripted model and git host | `modelstub` (profile `stub`), `gitstub` (profile `gitstub`) |
 
 The names all start with `codeaf-org` so none can be mistaken for `agentfield/control-plane`, which `codeaf-org-agentfield` is
 built on. Tags: `<12-character commit id>` is one exact build and never moves; `dev` moves with every push to `dev`;
@@ -670,7 +765,8 @@ kernel, and the public name serves over HTTPS. None of them makes a model call o
 - The organization keeps no canvases: the server needs a `canvas` program beside it, which this stack does not
   carry. It starts, says so in its log, and leaves the canvas routes off.
 - The server names itself by its listen address, so without `CODEAF_PUBLIC_DOMAIN` its links say `http://[::]:8787`,
-  which only the same Linux or macOS machine can use. A real deployment serves HTTPS on a name.
+  which does not connect to the published port and which the server would not take a password over anyway. Even a trial needs
+  a name and an HTTPS proxy ("Trying it on one machine"); a real deployment serves HTTPS on a name.
 - GitHub sign-in (`CODEAF_GITHUB_CLIENT_ID`) and invitation mail (`CODEAF_SMTP_URL`) are optional and untested here;
   username and password is the default way in.
 - `scripts/serve.sh` writes the organization server's host config from the environment on every start, so a setting with
