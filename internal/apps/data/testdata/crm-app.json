@@ -1,0 +1,50 @@
+{
+  "id": "crm", "name": "CRM", "version": 1, "kit": 0,
+  "agent": { "name": "CRM agent", "file": "agent.md" },
+  "records": {
+    "company": {
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true, "unique": true },
+        "domain": { "type": "url", "index": true },
+        "size": { "type": "enum", "values": ["1-10", "11-50", "51-200", "201+"] },
+        "owner": { "type": "person" }
+      }
+    },
+    "contact": {
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "email": { "type": "email", "index": true },
+        "phone": { "type": "phone", "masked": true },
+        "company": { "type": "ref", "to": "company" }
+      }
+    },
+    "deal": {
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "company": { "type": "ref", "to": "company" },
+        "contacts": { "type": "refs", "to": "contact" },
+        "stage": { "type": "enum", "default": "Lead", "values": ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"] },
+        "amount": { "type": "money", "currency": "USD" },
+        "close_on": { "type": "date" },
+        "owner": { "type": "person", "default": "$me" },
+        "last_touch": { "type": "datetime" },
+        "tags": { "type": "enums", "values": ["hot", "renewal", "partner"] },
+        "urgent": { "type": "bool" },
+        "age_days": { "type": "number", "computed": "days_since(created_at)" },
+        "weighted": { "type": "money", "computed": "amount * stage_weight[stage]" },
+        "likely": { "type": "enum", "values": ["Likely", "Maybe", "Unlikely"], "ai": "likely to close this month" }
+      },
+      "constants": { "stage_weight": { "Lead": 0.1, "Qualified": 0.25, "Proposal": 0.5, "Negotiation": 0.7, "Won": 1, "Lost": 0 } },
+      "freeze": [
+        { "when": "stage in ['Won', 'Lost']", "except": ["last_touch"], "unfreeze": "Editor" },
+        { "period": "quarter", "field": "close_on", "after": "5d" }
+      ]
+    }
+  },
+  "capabilities": { "records": { "deal": "rw", "company": "rw", "contact": "rw" }, "connectors": {}, "ai": ["sort"], "tools": [] },
+  "triggers": [], "commands": [],
+  "budget": { "month": 20, "per_run": 0.5, "at_cap": "ask" }
+}
