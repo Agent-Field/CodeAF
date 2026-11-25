@@ -63,8 +63,11 @@ docker compose up -d --build    # the first build takes several minutes; later s
 docker compose ps               # every service says "healthy"
 ```
 
-The first build downloads the pinned codeaf release (checked against its sha256) and builds SWE-AF and PR-AF
-from pinned commits of their public repositories.
+The first build compiles codeaf from this checkout (several minutes; the repository root is the build context) and builds SWE-AF
+and PR-AF from pinned commits of their public repositories. codeaf is built from source because hosted chats need
+`codeaf sessionhost` and no release has it yet. If you leave hosted chats off and want to skip the compile,
+`CODEAF_BINARY_FROM=fetch docker compose up -d --build` downloads the pinned release instead (checked against its sha256);
+`compose.yaml` says how to tell when `fetch` can be the default again.
 
 ## Claim the organization, invite a second person
 
@@ -322,6 +325,13 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   `a bot cannot use this yet`): it makes, lists, opens, stops and deletes exactly what its creator may, narrowed by
   its scope, decided again at every request. A bot's chat is owned by the person who made the bot, and `created_by`
   records the bot, as for any other thing a bot makes.
+- **Who may move a chat.** `PUT /v1/org/policy` takes `"chats": {"move_by": "owner"}` or `"chats": {"move_by": "manage"}`. Absent or
+  empty means `owner`: only the person who owns a chat moves it, which is what the server always did, and a policy stored before the
+  field existed reads that way. `manage` lets anyone who holds the `manage` verb on the chat move it, so a person it is shared with at
+  `full`; `edit` still cannot and a bot never can, and a person who is not the owner can move it into a workstream they can edit, never
+  into their own My space. The refusals read `Only the person who owns this chat can move it, and they need permission to manage it.`
+  (the default) and `Only the person who owns this chat, or someone with permission to manage it, can move it.` Any other word is
+  refused with a 422.
 - **The hosting policy.** `PUT /v1/org/policy` takes `"hosting": {"local_sessions": "allow|warn|refuse",
   "max_session_cost_usd": 0}`. Empty `local_sessions` means `refuse` for an organization that has chats' machine and
   `allow` for one that does not; the list reports the value that applies, with `words` to show for `refuse` (that
@@ -349,13 +359,11 @@ is a change to the wire's own protocol and not made here.
    `./setup.sh` also writes `CODEAF_SERVER_KEY`, which seals people's own keys: keep a copy.
    `CODEAF_HOSTED_MODEL_URL` is the address chats use to reach the organization server's model door
    (`http://codeaf:8787/v1/model` by default).
-3. `docker compose up -d`. The image must hold a codeaf that has `codeaf sessionhost`, and the pinned release (what a plain
-   `--build` fetches) does not until one ships it. Use the published image (`--env-file images.env`, see "Published images"), or
-   build the codeaf image from this repository's source (the `docker build` under "Published images", run from the repository root,
-   which tags `codeaf-org/codeaf:local`) and start with `docker compose up -d` without `--build` (Compose builds only the images that
-   are missing, so it uses the codeaf image you just made; `--no-build` is for when every image is already built or pulled).
-   `codeaf`, `runner` and `sessionhost` all run that one image. Do not build from a binary of your own machine: the image should be this commit's source, which is what `codeaf version`
-   inside it reports.
+3. `docker compose up -d --build`. The image must hold a codeaf that has `codeaf sessionhost`, and a plain build gives it one: Compose
+   builds codeaf from this checkout by default (`CODEAF_BINARY_FROM=source`, see "Start it"). Do not set `CODEAF_BINARY_FROM=fetch` for
+   hosted chats: the pinned release it downloads does not have the sessionhost until one ships it. To skip the compile, use the
+   published image (`--env-file images.env`, see "Published images"). `codeaf`, `runner` and `sessionhost` all run that one image. Do not build
+   from a binary of your own machine: the image should be this commit's source, which is what `codeaf version` inside it reports.
 
 The sessionhost sits on a network of its own, shared only with `codeaf`, so a chat's commands cannot reach
 AgentField, the nodes, the runner or the model stub. On a platform with no such network (Railway), the port limit above
@@ -363,10 +371,11 @@ is what keeps them out. Its API (`/v1/sessions` ...) wants the shared secret and
 person's name from the organization server, and answers anything else with an empty `401`.
 
 `SMOKE_HOSTED=1 ./smoke.sh` runs everything above against the scripted stub (so it spends nothing). It needs an image
-whose codeaf has `codeaf sessionhost` (step 3 above: the pinned release a plain build fetches does not), so give it
-one that is already built or pulled with `SMOKE_BUILD=--no-build` (and `SMOKE_ENV='--env-file images.env'` for the
+whose codeaf has `codeaf sessionhost`, and a plain run builds one from this checkout (step 3 above). To skip that compile,
+give it an image that is already built or pulled with `SMOKE_BUILD=--no-build` (and `SMOKE_ENV='--env-file images.env'` for the
 published ones), or build from a binary copied beside the Dockerfile as `codeaf-local` with
-`CODEAF_BINARY_FROM=local` (the header of `smoke.sh` has the command). Two people
+`CODEAF_BINARY_FROM=local` (the header of `smoke.sh` has the command). `CODEAF_BINARY_FROM=fetch` does not work here for the
+reason in step 3. Two people
 run chats; the test checks that they cannot see each other's files, processes or environment, that no secret
 is in a chat's shell, folder or process list, that a chat cannot reach the other services (and that the kernel refuses
 a port nobody allowed), that nobody but the owner can attach to a chat that is not shared, that closing the client mid-turn loses nothing, that a stopped
@@ -405,10 +414,11 @@ A backup of one volume:
 docker run --rm -v codeaf-org_codeaf-data:/d -v "$PWD":/b busybox tar czf /b/codeaf-data.tgz -C /d .
 ```
 
-Everything is pinned: the codeaf release (`CODEAF_RELEASE` and its two sha256 values at the top of
-`codeaf.Dockerfile`, `swe-af.Dockerfile` and `pr-af.Dockerfile`), the SWE-AF and PR-AF commits (`SWEAF_REF`,
-`PRAF_REF`) and the AgentField image (`AGENTFIELD_IMAGE`, tag and digest together in `agentfield.Dockerfile`).
-To upgrade, change the pin, then `docker compose up -d --build`. Changing the line in the file is what makes
+Everything outside this checkout is pinned: the codeaf release that `CODEAF_BINARY_FROM=fetch` downloads (`CODEAF_RELEASE` and
+its two sha256 values at the top of `codeaf.Dockerfile`), the SWE-AF and PR-AF commits (`SWEAF_REF`, `PRAF_REF`) and the AgentField
+image (`AGENTFIELD_IMAGE`, tag and digest together in `agentfield.Dockerfile`). The default build does not download a codeaf at all:
+it compiles this checkout, so updating codeaf means updating the checkout (`git pull`) and building again.
+To upgrade a pin, change it, then `docker compose up -d --build`. Changing the line in the file is what makes
 Docker rebuild that layer; a loose version would keep restoring the cached one. From the published images, change
 `ORG_TAG` (see "Published images") and pull instead.
 
@@ -417,8 +427,9 @@ Docker rebuild that layer; a loose version would keep restoring the cached one. 
 No secret is baked into an image. The AgentField key, the organization token, the hosted-chats secret, the server key
 and the model keys come from `.env` or your environment. SWE-AF, PR-AF and the runner (not `codeaf` or `agentfield`) can be
 given a key as a mounted file instead, with `AGENTFIELD_API_KEY_FILE`, `OPENROUTER_API_KEY_FILE` or `GH_TOKEN_FILE`.
-Treat `.env` like a password file (`setup.sh` writes it mode 600). The image builds ignore it, but no rule in this
-repository keeps it out of git: do not `git add` the folder as a whole, and add `.env` to your own ignore rules.
+Treat `.env` like a password file (`setup.sh` writes it mode 600). The image builds ignore it, and so does git: `deploy/org/.gitignore`
+keeps `.env` and any `.env.*` copy of it (a backup, a second environment) out of the tree, apart from the committed templates
+(`.env.example`, `.env.stub`, `.env.stub.hosted`). A key file or anything else you add to the folder yourself is not covered.
 
 ## Published images
 
@@ -534,7 +545,8 @@ What a first install needs that the table does not show:
 
 - **Why `codeaf`, `runner` and `sessionhost` build from the repository root.** They are one image, and the pinned release a plain
   build fetches has no `codeaf sessionhost`, so the image is built from this repository's source (`CODEAF_BINARY_FROM=source`, and
-  `ORG_DIR` says where `deploy/org` is inside that context). Railway hands every service variable to the build as a build argument,
+  `ORG_DIR` says where `deploy/org` is inside that context; Compose passes the same two by default, but the Dockerfile's own default
+  stays `fetch`, so Railway has to set them). Railway hands every service variable to the build as a build argument,
   which is how those two reach it; they stay in the running service's environment too, where nothing reads them. Never use
   `CODEAF_BINARY_FROM=local`: it expects a binary beside the Dockerfile that a repository build does not have. Each of the three
   compiles codeaf (about four minutes each); the other four take about a minute. `codeaf version` in the running service names the

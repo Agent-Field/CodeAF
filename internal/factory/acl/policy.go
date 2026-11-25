@@ -123,6 +123,31 @@ func (h Hosting) Words(hasChatHost bool) string {
 	}
 }
 
+// Chats holds the organization's rules for the chats its people keep. There is one so far: who may move a chat to another
+// workstream or into My space.
+type Chats struct {
+	// MoveBy is MoveByOwner or MoveByManage. Empty means MoveByOwner, so a policy stored before this field existed, and
+	// a policy that never mentions it, keep the rule the server always had.
+	MoveBy string `json:"move_by,omitempty"`
+}
+
+const (
+	// MoveByOwner lets only the person who owns a chat move it, as long as they still hold manage on it. It is the
+	// default, and what the server did before the rule was a setting.
+	MoveByOwner = "owner"
+	// MoveByManage lets anyone who holds the manage verb on a chat move it, its owner included. Under the starting
+	// roles that is whoever the chat is shared with at `full`.
+	MoveByManage = "manage"
+)
+
+// MoveByFor is the rule that applies, with an empty setting read as the default.
+func (c Chats) MoveByFor() string {
+	if c.MoveBy == "" {
+		return MoveByOwner
+	}
+	return c.MoveBy
+}
+
 // Policy is the organization's access document: the roles, what each kind of
 // resource starts as, who may share, what the operator and agents may do. It
 // is stored as one row with a revision and changes only through a PUT by the
@@ -139,6 +164,7 @@ type Policy struct {
 	Operator  Operator               `json:"operator"`
 	Agents    Agents                 `json:"agents"`
 	Hosting   Hosting                `json:"hosting,omitzero"`
+	Chats     Chats                  `json:"chats,omitzero"`
 }
 
 // legacyRoles are the four names old shares and clients already use, so a
@@ -255,6 +281,11 @@ func (p Policy) Validate(prev Policy, inUse func(role string) bool) error {
 	case "", "allow", "warn", "refuse":
 	default:
 		return invalid("hosting local sessions must be allow, warn or refuse")
+	}
+	switch p.Chats.MoveBy {
+	case "", MoveByOwner, MoveByManage:
+	default:
+		return invalid("who may move a chat must be the owner or people with manage permission")
 	}
 	if cost := p.Hosting.MaxSessionCostUSD; math.IsNaN(cost) || cost < 0 || cost > 1_000_000 {
 		return invalid("hosting chat cost must be between 0 and 1,000,000 dollars")

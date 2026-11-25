@@ -19,6 +19,15 @@ const chatKind = "chat"
 
 const chatMoveBusy = "stop it or wait for it to finish, then move it"
 
+// The sentences that refuse a move for want of the right to make it. The first is what every organization has always
+// read, and it is still what one that has not changed the rule reads; the second is for an organization whose policy
+// lets people with manage move a chat (acl.MoveByManage), where "only the owner" would be untrue.
+const (
+	chatMoveOwnerOnlyWords = "Only the person who owns this chat can move it, and they need permission to manage it."
+	chatMoveManageWords    = "Only the person who owns this chat, or someone with permission to manage it, can move it."
+	chatMoveOwnSpaceWords  = "Only the person who owns this chat can move it into their My space."
+)
+
 type chatMoveRefusal struct {
 	status int
 	words  string
@@ -72,8 +81,12 @@ func (h *Handler) moveChat(move store.ResourceMove, v Viewer, id, to string) (ou
 	if !found || !can(v, item, acl.VerbView) {
 		return out, audience, chatMoveRefusal{http.StatusNotFound, "resource not found"}
 	}
-	if v.Agent != nil || !v.owns(item) || !can(v, item, acl.VerbManage) {
-		return out, audience, chatMoveRefusal{http.StatusForbidden, "Only the person who owns this chat can move it, and they need permission to manage it."}
+	if v.Agent != nil || !mayMoveChat(v, item) {
+		words := chatMoveOwnerOnlyWords
+		if v.acc.rules().Chats.MoveByFor() == acl.MoveByManage {
+			words = chatMoveManageWords
+		}
+		return out, audience, chatMoveRefusal{http.StatusForbidden, words}
 	}
 	if row.Parent.ID == to {
 		return out, audience, chatMoveRefusal{http.StatusConflict, "it is already there"}
@@ -81,6 +94,12 @@ func (h *Handler) moveChat(move store.ResourceMove, v Viewer, id, to string) (ou
 	dest, err := h.chatMoveDestination(v, to)
 	if err != nil {
 		return out, audience, err
+	}
+	// A My space is its person's own. Where the policy lets someone with manage move another person's chat, the only
+	// My space they can name is their own, and a chat that is not theirs does not go into it: it would leave its owner's
+	// workstream for a place its owner does not keep, with every grant on it dropped.
+	if dest.Space && !v.owns(item) {
+		return out, audience, chatMoveRefusal{http.StatusForbidden, chatMoveOwnSpaceWords}
 	}
 
 	h.agentDesk.mu.Lock()
@@ -137,6 +156,16 @@ func (h *Handler) moveChat(move store.ResourceMove, v Viewer, id, to string) (ou
 		out.AgentWords = agentErr.Error()
 	}
 	return out, acl.Union(before, v.acc.audienceOf(res.item)), nil
+}
+
+// mayMoveChat is the organization's rule for who moves a chat. Moving always needs manage on the chat. By default the
+// person must also own it, which is what the server did before the rule was a setting; with acl.MoveByManage, manage is
+// enough. A bot is refused before this is asked, and a policy never lets one move a chat.
+func mayMoveChat(v Viewer, item Item) bool {
+	if !can(v, item, acl.VerbManage) {
+		return false
+	}
+	return v.owns(item) || v.acc.rules().Chats.MoveByFor() == acl.MoveByManage
 }
 
 func (h *Handler) chatMoveDestination(v Viewer, id string) (factory.OrgWorkstream, error) {

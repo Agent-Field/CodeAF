@@ -3,7 +3,7 @@
 # join with their own desktop apps by invite link.
 #
 #     ./setup.sh                  # writes .env with fresh secrets (once)
-#     docker compose up -d        # builds what is not published, starts everything
+#     docker compose up -d        # builds what is missing (codeaf from this checkout), starts everything
 #     docker compose logs codeaf | grep 'operator access link'
 #
 # deploy/org/README.md has the rest: joining, the keyless smoke test, upgrading, backups.
@@ -13,6 +13,28 @@ x-defaults: &defaults
   restart: unless-stopped
   init: false
   stop_grace_period: 30s
+
+# How the codeaf image gets its binary. The `codeaf`, `runner` and `sessionhost` services all run this one image, and the
+# hosted chats' machine is a command of the binary in it (`codeaf sessionhost`), which no published release has yet. So
+# the default, CODEAF_BINARY_FROM=source, builds the binary from THIS checkout, the same build the published image is made
+# from, and the build context is therefore the repository root (codeaf.Dockerfile.dockerignore lets in only the files
+# that build needs). The first build compiles codeaf and takes several minutes; later ones reuse Docker's layer cache.
+#   CODEAF_BINARY_FROM=fetch   downloads the pinned, checksummed release named in codeaf.Dockerfile: quick, but a release
+#                              without `codeaf sessionhost` cannot run hosted chats, so use it only when you leave them off.
+#   CODEAF_BINARY_FROM=local   takes a codeaf you built yourself and put beside this file as `codeaf-local`.
+# FLIP THE DEFAULT BACK TO `fetch` when the release pinned in codeaf.Dockerfile (CODEAF_RELEASE) ships the sessionhost. The
+# check that tells you is that release's own binary: `codeaf sessionhost --help` says "there is no `codeaf sessionhost`" while
+# the release lacks it, and names the sessionhost's settings (CODEAF_SESSIONHOST_SECRET) once it has it. Then change the
+# default below, and the "Start it" and "Railway" text in README.md, in the same change.
+# SOURCE_COMMIT=$(git rev-parse HEAD) before `docker compose up --build` puts the commit into `codeaf version`; without it
+# the image reports `unknown`, because the build has no .git to ask.
+x-codeaf-build: &codeaf-build
+  context: ../..
+  dockerfile: deploy/org/codeaf.Dockerfile
+  args:
+    ORG_DIR: deploy/org
+    CODEAF_BINARY_FROM: ${CODEAF_BINARY_FROM:-source}
+    SOURCE_COMMIT: ${SOURCE_COMMIT:-}
 
 services:
   # --- AgentField: the control plane every node and the factory dial ---------------------------
@@ -42,7 +64,7 @@ services:
   codeaf:
     <<: *defaults
     image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
-    build: { context: ., dockerfile: codeaf.Dockerfile, args: { CODEAF_BINARY_FROM: "${CODEAF_BINARY_FROM:-fetch}" } }
+    build: *codeaf-build
     command: ["server"]
     environment:
       CODEAF_ORG_NAME: ${CODEAF_ORG_NAME:-codeaf organization}
@@ -91,7 +113,7 @@ services:
   runner:
     <<: *defaults
     image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
-    build: { context: ., dockerfile: codeaf.Dockerfile, args: { CODEAF_BINARY_FROM: "${CODEAF_BINARY_FROM:-fetch}" } }
+    build: *codeaf-build
     command: ["runner"]
     depends_on:
       agentfield: { condition: service_healthy }
@@ -180,7 +202,7 @@ services:
     <<: *defaults
     profiles: ["hosted"]
     image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
-    build: { context: ., dockerfile: codeaf.Dockerfile, args: { CODEAF_BINARY_FROM: "${CODEAF_BINARY_FROM:-fetch}" } }
+    build: *codeaf-build
     command: ["sessionhost"]
     cap_drop: [ALL]
     cap_add: [SETUID, SETGID, CHOWN, KILL, SETPCAP]

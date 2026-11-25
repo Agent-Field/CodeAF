@@ -6,11 +6,12 @@
 #
 # WHERE THE BINARY COMES FROM (CODEAF_BINARY_FROM):
 #   fetch   a PUBLISHED, PINNED codeaf build: the dev-channel release below, checked
-#           against its sha256 before it enters the image. The default for a local
-#           `docker compose up --build`. To move to a newer build change all three
-#           of CODEAF_RELEASE and the two checksums together (they are in that
-#           release's checksums.txt); changing the strings also busts Docker's layer
-#           cache, which a floating "latest" would not.
+#           against its sha256 before it enters the image. The default of this file
+#           when it is built by hand; compose.yaml passes `source` instead, until the
+#           release below has `codeaf sessionhost` (compose.yaml says how to tell).
+#           To move to a newer build change all three of CODEAF_RELEASE and the two
+#           checksums together (they are in that release's checksums.txt); changing the
+#           strings also busts Docker's layer cache, which a floating "latest" would not.
 #   source  built here from the source in the build context, with `make build`, the
 #           same build the release makes. This is what the published image is
 #           (.github/workflows/org-images.yml): it carries exactly the commit it is
@@ -23,7 +24,8 @@
 #   local   a codeaf built on this machine and placed beside this file as `codeaf-local`.
 #               docker build --build-arg CODEAF_BINARY_FROM=local -f codeaf.Dockerfile -t codeaf-org/codeaf:local .
 #
-# Build context for fetch and local is this folder:   docker build -f codeaf.Dockerfile -t codeaf-org .
+# Built by hand, the context for fetch and local is this folder:   docker build -f codeaf.Dockerfile -t codeaf-org .
+# Compose builds all three modes from the repository root (ORG_DIR=deploy/org), because source needs it.
 #
 # EVERY BASE IMAGE IS PINNED BY DIGEST (tag kept for the reader). To move one, resolve the tag again
 # (`docker buildx imagetools inspect <tag> --format '{{.Manifest.Digest}}'`) and change tag and digest together.

@@ -23,7 +23,8 @@
 # client, are cleaned up on a stop, and survive a restart of the sessionhost; then (P1) the metered model door, people's own
 # keys and git through the organization, and (P2) private-by-default chats, a guest watching a shared chat through a wire that
 # refuses what the guest's rights do not allow, bots, and the hosting policy. It needs a codeaf with
-# `codeaf sessionhost` in it, so build the image from a local binary (README.md "Hosted chats"):
+# `codeaf sessionhost` in it. A plain run builds the image from this checkout (compose.yaml), which has it; to skip
+# that compile, build the image from a binary you made yourself (README.md "Hosted chats"):
 #
 #     cp ../../bin/codeaf codeaf-local && SMOKE_HOSTED=1 CODEAF_BINARY_FROM=local ./smoke.sh
 set -eu
