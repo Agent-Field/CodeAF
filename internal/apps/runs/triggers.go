@@ -25,6 +25,8 @@ type Trigger struct {
 type Change struct {
 	Seq    int64
 	Type   string
+	TypeID string
+	Batch  string
 	ID     string
 	Before map[string]any
 	After  map[string]any
@@ -126,7 +128,7 @@ func (e *Engine) RecordChanges(changes []Change) error {
 func (e *Engine) recordChanged(change Change, all []Trigger) error {
 	var err error
 	for _, t := range all {
-		if t.On != "record.changed" || t.Type != change.Type {
+		if t.On != "record.changed" || (change.TypeID == "" || e.cfg.RecordInput == nil) && t.Type != change.Type {
 			continue
 		}
 		receipt := t.App + "/" + t.ID
@@ -143,7 +145,8 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		scoped := change
 		if e.cfg.RecordInput != nil {
 			var scopeErr error
-			scoped, scopeErr = e.cfg.RecordInput(t.App, change)
+			scoped.Type = t.Type
+			scoped, scopeErr = e.cfg.RecordInput(t.App, scoped)
 			if errors.Is(scopeErr, ErrNotFound) {
 				continue
 			}
@@ -156,7 +159,7 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		if record == nil {
 			record = make(map[string]any)
 		}
-		record["id"], record["type"] = change.ID, change.Type
+		record["id"], record["type"] = change.ID, scoped.Type
 		input := map[string]any{"record": record, "before": scoped.Before, "after": scoped.After}
 		vars := maps.Clone(record)
 		for field := range scoped.Before {

@@ -437,7 +437,7 @@ func (s *Store) watchSnapshot(sub *subscription) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return Snapshot{Rows: page.Rows, Next: page.Next, Total: page.Total}, nil
+	return Snapshot{Rows: append([]Row{}, page.Rows...), Next: page.Next, Total: page.Total}, nil
 }
 
 func (s *Store) watchTable(sub *subscription) ([]Row, error) {

@@ -517,7 +517,7 @@ func (w *writeTx) note(t *Type, before, after *record) error {
 		w.change.befores[id] = before
 	}
 	if w.change.ByKind == BySync || w.change.Op == OpRefresh {
-		return w.emit(outboxRow{event: EventFreshnessChanged, typeID: t.ID})
+		return w.emit(outboxRow{event: EventFreshnessChanged, typeID: t.ID, record: id})
 	}
 	event := EventRecordUpdated
 	switch {

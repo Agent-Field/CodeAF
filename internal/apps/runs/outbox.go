@@ -64,15 +64,9 @@ func (d Data) ConsumeOutbox(ctx context.Context, engine *Engine) error {
 		}
 		switch event.Event {
 		case data.EventRecordCreated, data.EventRecordUpdated, data.EventRecordDeleted:
-			var change Change
-			change, err = decode[Change](event.Payload)
-			if err != nil {
-				return fmt.Errorf("read app run outbox event %d: %w", event.Seq, err)
-			}
-			change.Seq, change.Type, change.ID = event.Seq, event.Type, event.Record
-			normalize(change.Before)
-			normalize(change.After)
-			changes = append(changes, change)
+			changes = append(changes, Change{
+				Seq: event.Seq, Type: event.Type, TypeID: event.TypeID, ID: event.Record, Batch: event.Batch,
+			})
 		}
 		cursor = event.Seq
 	}
