@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -27,21 +28,28 @@ var (
 	ErrCorrupt  = errors.New("app metadata is unreadable")
 )
 
+// TypeCatalog reads the person's record definitions for publication. It omits
+// fields already contributed by appID so an edit can keep them. It is called
+// under the app store lock, so it must not call back into Store.
+type TypeCatalog func(appID string) (schema.TypeSet, error)
+
 // Store is a handle to one engine home's definitions. Handles and processes
 // sharing that home take the same filesystem lock.
 type Store struct {
-	root     string
-	validate func(map[string][]byte) error
+	root  string
+	types TypeCatalog
 }
 
-// New uses the same home as the rest of the engine.
-func New(validate func(map[string][]byte) error) *Store {
-	return NewAt(home.Dir(), validate)
+// New opens the engine home's app store. Saved versions carry the type
+// definitions needed to validate them on read.
+func New() *Store {
+	return NewAt(home.Dir(), nil)
 }
 
-// NewAt lets a caller choose the engine home before opening any files.
-func NewAt(engineHome string, validate func(map[string][]byte) error) *Store {
-	return &Store{root: filepath.Join(engineHome, "apps"), validate: validate}
+// NewAt chooses the engine home and can supply the person's catalog of types
+// for definitions that use types owned by other apps.
+func NewAt(engineHome string, types TypeCatalog) *Store {
+	return &Store{root: filepath.Join(engineHome, "apps"), types: types}
 }
 
 // Meta remains after archive or delete so an old app ID is never reused.
@@ -67,6 +75,7 @@ type Definition struct {
 	AgentMD string          `json:"agent_md"`
 
 	files files
+	types schema.TypeSet
 }
 
 // Screen returns a screen from the same version as App and Plan.
@@ -103,6 +112,13 @@ type Version struct {
 	Summary string    `json:"summary"`
 }
 
+// A receipt saves the type definitions used to validate a version. This lets
+// the same checks run when a reader opens that version without a data store.
+type versionReceipt struct {
+	Version
+	Types schema.TypeSet `json:"types,omitempty"`
+}
+
 // lock keeps a reader from seeing a partial publication and a writer from
 // assigning the same version as another process. A fresh read creates nothing.
 func (s *Store) lock(write, create bool) (func(), error) {
@@ -119,6 +135,9 @@ func (s *Store) lock(write, create bool) (func(), error) {
 		flags |= os.O_CREATE
 	}
 	f, err := os.OpenFile(filepath.Join(s.root, ".lock"), flags, 0o600)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: the app store lock is missing", ErrCorrupt)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -255,11 +274,11 @@ func (s *Store) Versions(id string) ([]Version, error) {
 	}
 	out := make([]Version, 0, len(nums))
 	for _, n := range nums {
-		v, err := readVersion(s.snapshot(id, n), n)
+		v, err := s.readReceipt(id, n)
 		if err != nil {
 			return nil, fmt.Errorf("version %d: %w", n, err)
 		}
-		out = append(out, v)
+		out = append(out, v.Version)
 	}
 	return out, nil
 }

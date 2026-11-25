@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
 
 const (
-	appFile    = "app.json"
-	planFile   = "plan.json"
+	appFile    = schema.AppFile
+	planFile   = schema.PlanFile
 	agentFile  = "agent.md"
-	sampleFile = "sample.json"
+	sampleFile = schema.SampleFile
 )
 
 var definitionID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
@@ -28,13 +29,11 @@ func fileID(id string) bool {
 }
 
 type appHeader struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Icon    string `json:"icon"`
-	Version int    `json:"version"`
-	Agent   *struct {
-		File string `json:"file"`
-	} `json:"agent"`
+	ID      string           `json:"id"`
+	Name    string           `json:"name"`
+	Icon    string           `json:"icon"`
+	Version int              `json:"version"`
+	Agent   *schema.AgentRef `json:"agent"`
 }
 
 // files holds only definition files by their slash-separated names. The
@@ -53,6 +52,15 @@ func checkDir(dir string) error {
 }
 
 func readRegular(root *os.Root, name string) ([]byte, error) {
+	for dir := filepath.Dir(name); dir != "."; dir = filepath.Dir(dir) {
+		info, err := root.Lstat(dir)
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("%s is not a directory", dir)
+		}
+	}
 	fi, err := root.Lstat(name)
 	if err != nil {
 		return nil, err
@@ -63,7 +71,7 @@ func readRegular(root *os.Root, name string) ([]byte, error) {
 	return root.ReadFile(name)
 }
 
-func readDefinition(dir string) (files, error) {
+func readDefinition(dir string, extra ...string) (files, error) {
 	if err := checkDir(dir); err != nil {
 		return nil, err
 	}
@@ -74,7 +82,7 @@ func readDefinition(dir string) (files, error) {
 	defer root.Close()
 
 	f := files{}
-	for _, name := range []string{appFile, planFile, agentFile, sampleFile} {
+	for _, name := range []string{appFile, planFile, sampleFile} {
 		raw, err := readRegular(root, name)
 		if err == nil {
 			f[name] = raw
@@ -82,13 +90,52 @@ func readDefinition(dir string) (files, error) {
 			return nil, err
 		}
 	}
-	if err := f.readGroup(root, "screens", ".json"); err != nil {
+	a, err := f.header()
+	if err != nil {
 		return nil, err
 	}
-	if err := f.readGroup(root, "runs", ".yaml", ".yml"); err != nil {
+	name, err := a.agentPath()
+	if err != nil {
+		return nil, err
+	}
+	if raw, err := readRegular(root, name); err == nil {
+		f[name] = raw
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	if err := f.readGroup(root, schema.ScreensDir, ".json"); err != nil {
+		return nil, err
+	}
+	if err := f.readGroup(root, schema.RunsDir, ".yaml", ".yml"); err != nil {
+		return nil, err
+	}
+	if err := f.checkEntries(root.FS(), extra); err != nil {
 		return nil, err
 	}
 	return f, nil
+}
+
+// checkEntries refuses unsupported output without reading it. The caller
+// names the files that belong to the store or draft instead of the definition.
+func (f files) checkEntries(tree fs.FS, extra []string) error {
+	dirs := map[string]bool{".": true, schema.ScreensDir: true, schema.RunsDir: true}
+	for name := range f {
+		for dir := path.Dir(name); !dirs[dir]; dir = path.Dir(dir) {
+			dirs[dir] = true
+		}
+	}
+	return fs.WalkDir(tree, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() && dirs[name] {
+			return nil
+		}
+		if _, ok := f[name]; ok || (entry.Type().IsRegular() && slices.Contains(extra, name)) {
+			return nil
+		}
+		return fmt.Errorf("unsupported definition file %q", name)
+	})
 }
 
 func (f files) readGroup(root *os.Root, dir string, exts ...string) error {
@@ -141,10 +188,13 @@ func (f files) write(dir string) (err error) {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		parent := filepath.Dir(path)
 		if !dirs[parent] {
-			if err := os.Mkdir(parent, 0o700); err != nil {
+			if err := os.MkdirAll(parent, 0o700); err != nil {
 				return err
 			}
-			dirs[parent] = true
+			for !dirs[parent] {
+				dirs[parent] = true
+				parent = filepath.Dir(parent)
+			}
 		}
 		if err := writeSynced(path, raw); err != nil {
 			return err
@@ -165,13 +215,18 @@ func (f files) header() (appHeader, error) {
 	if err := json.Unmarshal(f[appFile], &a); err != nil {
 		return appHeader{}, err
 	}
-	if !fileID(a.ID) || strings.TrimSpace(a.Name) == "" || a.Version < 1 {
-		return appHeader{}, fmt.Errorf("app.json needs an id, name and positive version")
-	}
-	if a.Agent != nil && a.Agent.File != agentFile {
-		return appHeader{}, fmt.Errorf("app.json must use %s for its instructions", agentFile)
-	}
 	return a, nil
+}
+
+func (a appHeader) agentPath() (string, error) {
+	if a.Agent == nil {
+		return agentFile, nil
+	}
+	name, ok := schema.AgentPath(a.Agent.File)
+	if !ok || !fs.ValidPath(name) || !filepath.IsLocal(filepath.FromSlash(name)) {
+		return "", fmt.Errorf("the agent file must be Markdown inside the app folder")
+	}
+	return name, nil
 }
 
 func (f files) stamp(id string, n int) error {
@@ -191,19 +246,21 @@ func (f files) stamp(id string, n int) error {
 	return err
 }
 
-func (s *Store) validateDefinition(f files) error {
-	if s.validate == nil {
-		return fmt.Errorf("%w: validator unavailable", ErrInvalid)
-	}
+func validateDefinition(f files, existing schema.TypeSet) error {
 	// Check the exact bytes that will be served or published.
-	if err := s.validate(f); err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	report := schema.Validate(schema.Definition{Files: f}, existing)
+	if !report.OK() {
+		return fmt.Errorf("%w: %s", ErrInvalid, strings.TrimSpace(report.String()))
 	}
 	return nil
 }
 
 func (s *Store) loadCurrent(m Meta) (Definition, error) {
-	return s.load(filepath.Join(s.root, m.ID, "current"), m)
+	v, err := s.readReceipt(m.ID, m.Version)
+	if err != nil {
+		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	return load(filepath.Join(s.root, m.ID, "current"), m, v.Types)
 }
 
 func (s *Store) loadLive(m Meta) (Definition, error) {
@@ -224,21 +281,17 @@ func (s *Store) loadLive(m Meta) (Definition, error) {
 }
 
 func (s *Store) loadSnapshot(m Meta, n int) (Definition, error) {
-	dir := s.snapshot(m.ID, n)
-	if err := checkDir(filepath.Dir(dir)); err != nil {
-		return Definition{}, err
-	}
-	v, err := readVersion(dir, n)
+	v, err := s.readReceipt(m.ID, n)
 	if err != nil {
 		return Definition{}, err
 	}
 	m.Version = n
 	m.UpdatedAt = v.At
-	return s.load(dir, m)
+	return load(s.snapshot(m.ID, n), m, v.Types, versionFile)
 }
 
-func (s *Store) load(dir string, m Meta) (Definition, error) {
-	f, err := readDefinition(dir)
+func load(dir string, m Meta, existing schema.TypeSet, extra ...string) (Definition, error) {
+	f, err := readDefinition(dir, extra...)
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -249,23 +302,25 @@ func (s *Store) load(dir string, m Meta) (Definition, error) {
 	if a.ID != m.ID || a.Version != m.Version {
 		return Definition{}, fmt.Errorf("%w: app.json does not match the app ID and version", ErrInvalid)
 	}
-	if err := s.validateDefinition(f); err != nil {
+	if err := validateDefinition(f, existing); err != nil {
 		return Definition{}, err
 	}
 	m.Name, m.Icon = a.Name, a.Icon
-	d := Definition{
-		Meta: m, App: f[appFile], Plan: f[planFile], AgentMD: string(f[agentFile]),
-		Screens: []string{}, Runs: []string{}, files: f,
+	agent, err := a.agentPath()
+	if err != nil {
+		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	for path := range f {
-		switch group, name, _ := strings.Cut(path, "/"); group {
-		case "screens":
-			d.Screens = append(d.Screens, strings.TrimSuffix(name, ".json"))
-		case "runs":
-			d.Runs = append(d.Runs, strings.TrimSuffix(name, filepath.Ext(name)))
-		}
+	shape := schema.Definition{Files: f}
+	return Definition{
+		Meta: m, App: f[appFile], Plan: f[planFile], AgentMD: string(f[agent]),
+		Screens: idsOf(shape.ScreenFiles()), Runs: idsOf(shape.RunFiles()), files: f, types: existing,
+	}, nil
+}
+
+func idsOf(paths []string) []string {
+	ids := make([]string, len(paths))
+	for i, name := range paths {
+		ids[i] = schema.FileID(name)
 	}
-	sort.Strings(d.Screens)
-	sort.Strings(d.Runs)
-	return d, nil
+	return ids
 }

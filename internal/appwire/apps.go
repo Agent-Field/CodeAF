@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
 
@@ -11,7 +12,6 @@ import (
 // The store owns their validation and publication even when a caller is local.
 type AppDefinitions interface {
 	AppDefinitions() *store.Store
-	AppKit() json.RawMessage
 }
 
 type (
@@ -76,11 +76,10 @@ var appMethods = map[string]method{
 		return done(err)
 	}),
 	"apps.kit": typed(func(e Engine, _ Empty) (*json.RawMessage, error) {
-		apps, ok := e.(AppDefinitions)
-		if !ok {
+		if _, ok := e.(AppDefinitions); !ok {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve app definitions")
 		}
-		raw := apps.AppKit()
+		raw := json.RawMessage(schema.KitJSON())
 		return &raw, nil
 	}),
 }
@@ -99,6 +98,8 @@ func appCall[P, R any](call func(*store.Store, P) (*R, error)) method {
 			return nil, Errorf(CodeBadParams, "The app, screen or version is invalid.")
 		case errors.Is(err, store.ErrNotFound):
 			return nil, Errorf(CodeNotFound, "The app, screen or version could not be found.")
+		case errors.Is(err, store.ErrConflict):
+			return nil, Errorf(CodeConflict, "This app changed since the draft was opened.")
 		case errors.Is(err, store.ErrInvalid):
 			return nil, Errorf(CodeEngine, "This app definition could not be opened. Fix it or revert to a working version.")
 		case errors.Is(err, store.ErrCorrupt):

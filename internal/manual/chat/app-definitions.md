@@ -13,7 +13,8 @@ screen can use and the properties and bindings each part accepts.
 and summary. `apps.revert` copies a chosen working version forward as a new
 version. It keeps all earlier versions. An invalid change stays in its draft.
 If live definition files become invalid, the engine serves the latest valid
-saved version it can find.
+saved version it can find. When it serves an older version, revert to that
+version before starting a new change.
 
 ## Archive or delete an app and keep its records
 

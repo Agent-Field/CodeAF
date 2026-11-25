@@ -3,31 +3,26 @@ package store_test
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
 
 func testStore(t *testing.T) (*store.Store, string) {
 	t.Helper()
 	home := t.TempDir()
-	return store.NewAt(home, validateTest), home
+	return store.NewAt(home, nil), home
 }
 
-func validateTest(files map[string][]byte) error {
-	raw := files["screens/main.json"]
-	var screen struct{ Part string }
-	if err := json.Unmarshal(raw, &screen); err != nil {
-		return err
-	}
-	if screen.Part != "Stack" {
-		return errors.New("unknown kit part")
-	}
-	return nil
-}
+const (
+	appJSON    = `{"id":"crm","name":"CRM","version":1,"kit":0,"agent":{"name":"CRM agent","file":"agent.md"},"records":{"contact":{"title":"name","fields":{"name":{"type":"text"}}}},"capabilities":{"records":{"contact":"rw"}}}`
+	planJSON   = `{"ask":"Contact list","data":[{"id":"contact","line":"Contact names"}],"screens":[{"id":"main","line":"Contacts"}],"agent":{"line":"Manage contacts"}}`
+	mainScreen = `{"screen":"main","title":"Contacts","body":{"part":"Stack"}}`
+)
 
 func write(t *testing.T, dir, name, content string) {
 	t.Helper()
@@ -46,10 +41,10 @@ func makeApp(t *testing.T, s *store.Store) store.Meta {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, draft.Dir(), "app.json", `{"id":"crm","name":"CRM","version":1,"kit":0}`)
-	write(t, draft.Dir(), "plan.json", `{"ask":"Contact list"}`)
+	write(t, draft.Dir(), "app.json", appJSON)
+	write(t, draft.Dir(), "plan.json", planJSON)
 	write(t, draft.Dir(), "agent.md", "Manage contacts.")
-	write(t, draft.Dir(), "screens/main.json", `{"part":"Stack"}`)
+	write(t, draft.Dir(), "screens/main.json", mainScreen)
 	meta, err := s.Promote(draft, "Keep CRM")
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +82,7 @@ func TestAppKeepAndReadDefinition(t *testing.T) {
 func TestAppConcurrentKeepRejectsStaleDraft(t *testing.T) {
 	s, home := testStore(t)
 	meta := makeApp(t, s)
-	other := store.NewAt(home, validateTest)
+	other := store.NewAt(home, nil)
 	first, err := s.NewDraft(meta.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +128,8 @@ func TestAppRevertMakesNewVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, d.Dir(), "agent.md", "Use the pipeline.")
-	write(t, d.Dir(), "screens/detail.json", `{"part":"Stack"}`)
+	write(t, d.Dir(), "screens/detail.json", `{"screen":"detail","title":"Contact","body":{"part":"Stack"}}`)
+	write(t, d.Dir(), "plan.json", `{"ask":"Contact list","data":[{"id":"contact","line":"Contact names"}],"screens":[{"id":"main","line":"Contacts"},{"id":"detail","line":"Contact details"}],"agent":{"line":"Manage contacts"}}`)
 	write(t, d.Dir(), "sample.db", "draft sample")
 	if _, err := s.Promote(d, "Add pipeline\nMore details"); err != nil {
 		t.Fatal(err)
@@ -169,20 +165,20 @@ func TestAppInvalidDraftAndCurrentKeepLastValidVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, d.Dir(), "screens/main.json", `{"part":"Unknown"}`)
+	write(t, d.Dir(), "screens/main.json", `{"screen":"main","title":"Contacts","body":{"part":"Unknown"}}`)
 	if _, err := s.Promote(d, "Break main screen"); !errors.Is(err, store.ErrInvalid) {
 		t.Fatalf("invalid keep: %v", err)
 	}
 	if _, err := os.Stat(d.Dir()); err != nil {
 		t.Fatal(err)
 	}
-	write(t, d.Dir(), "screens/main.json", `{"part":"Stack"}`)
+	write(t, d.Dir(), "screens/main.json", mainScreen)
 	write(t, d.Dir(), "agent.md", "Second version")
 	if _, err := s.Promote(d, "Update agent"); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(home, "apps", meta.ID)
-	write(t, filepath.Join(dir, "current"), "screens/main.json", `{"part":"Unknown"}`)
+	write(t, filepath.Join(dir, "current"), "screens/main.json", `{"screen":"main","title":"Contacts","body":{"part":"Unknown"}}`)
 	rows, err := s.List()
 	if err != nil || len(rows) != 1 || rows[0].Status != "broken" {
 		t.Fatalf("broken current status: %+v, %v", rows, err)
@@ -191,10 +187,13 @@ func TestAppInvalidDraftAndCurrentKeepLastValidVersion(t *testing.T) {
 	if err != nil || got.Meta.Version != 2 || got.AgentMD != "Second version" {
 		t.Fatalf("last valid snapshot: %+v, %v", got, err)
 	}
-	write(t, filepath.Join(dir, "versions", "2"), "screens/main.json", `{"part":"Unknown"}`)
+	write(t, filepath.Join(dir, "versions", "2"), "screens/main.json", `{"screen":"main","title":"Contacts","body":{"part":"Unknown"}}`)
 	got, err = s.Get(meta.ID)
 	if err != nil || got.Meta.Version != 1 || got.AgentMD != "Manage contacts." {
 		t.Fatalf("older valid snapshot: %+v, %v", got, err)
+	}
+	if _, err := s.NewDraft(meta.ID); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("draft started from a superseded definition: %v", err)
 	}
 	if _, err := s.Revert(meta.ID, 2); !errors.Is(err, store.ErrInvalid) {
 		t.Fatalf("invalid historical version: %v", err)
@@ -270,9 +269,17 @@ func TestAppInterruptedPublishKeepsCommittedVersion(t *testing.T) {
 	dir := filepath.Join(home, "apps", meta.ID)
 	// A process may stop after moving both directories and before committing meta.
 	next := filepath.Join(dir, "versions", "2")
-	ahead := fmt.Sprintf(`{"id":%q,"name":"Uncommitted","version":2,"kit":0}`, meta.ID)
+	current := filepath.Join(dir, "current")
+	if err := os.CopyFS(next, os.DirFS(current)); err != nil {
+		t.Fatal(err)
+	}
+	committed, err := os.ReadFile(filepath.Join(current, "app.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ahead := strings.NewReplacer(`"name": "CRM"`, `"name": "Uncommitted"`, `"version": 1`, `"version": 2`).Replace(string(committed))
 	write(t, next, "app.json", ahead)
-	write(t, filepath.Join(dir, "current"), "app.json", ahead)
+	write(t, current, "app.json", ahead)
 
 	got, err := s.Get(meta.ID)
 	if err != nil || got.Meta.Version != 1 || got.Meta.Name != "CRM" {
@@ -304,13 +311,109 @@ func TestAppDefinitionCannotLoadLinkedFilesOutsideDraft(t *testing.T) {
 	if err := os.Symlink(target, filepath.Join(d.Dir(), "agent.md")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	write(t, d.Dir(), "app.json", `{"id":"crm","name":"CRM","version":1,"kit":0}`)
-	write(t, d.Dir(), "plan.json", `{"ask":"Contact list"}`)
-	write(t, d.Dir(), "screens/main.json", `{"part":"Stack"}`)
+	write(t, d.Dir(), "app.json", appJSON)
+	write(t, d.Dir(), "plan.json", planJSON)
+	write(t, d.Dir(), "screens/main.json", mainScreen)
 	if _, err := s.Promote(d, "Keep"); !errors.Is(err, store.ErrInvalid) {
 		t.Fatalf("keep with linked agent instructions: %v", err)
 	}
 	if rows, err := s.List(); err != nil || len(rows) != 0 {
 		t.Fatalf("published draft with linked file: %+v, %v", rows, err)
+	}
+}
+
+func TestAppCRMFixtureKeepsItsScreensAndRuns(t *testing.T) {
+	s, _ := testStore(t)
+	d, err := s.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.CopyFS(d.Dir(), os.DirFS("testdata/crm")); err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Promote(d, "Keep the CRM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Meta.Icon != "people" || len(got.Screens) != 3 || len(got.Runs) != 2 {
+		t.Fatalf("CRM definition: %+v", got)
+	}
+	if run, ok := got.Run("follow-up"); !ok || len(run) == 0 {
+		t.Fatal("CRM follow-up run is missing")
+	}
+	var app schema.App
+	if err := json.Unmarshal(got.App, &app); err != nil || app.ID != m.ID {
+		t.Fatalf("CRM app ID: %q, %v", app.ID, err)
+	}
+}
+
+func TestAppCanValidateSharedTypesFromThePersonsCatalog(t *testing.T) {
+	app := `{"id":"hiring","name":"Hiring","version":1,"kit":0,"records":{"contact":{"uses":true,"title":"name","fields":{"role_applied":{"type":"text"}}}},"capabilities":{"records":{"contact":"r"}}}`
+	plan := `{"ask":"Contacts","data":[{"id":"contact","line":"Use contacts","uses":true}],"screens":[{"id":"main","line":"Contacts"}]}`
+	types := schema.TypeSet{"contact": {Owner: "crm", Fields: map[string]schema.Field{"name": {Type: "text"}}}}
+	home := t.TempDir()
+	s := store.NewAt(home, func(string) (schema.TypeSet, error) { return types, nil })
+	d, err := s.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, d.Dir(), "app.json", app)
+	write(t, d.Dir(), "plan.json", plan)
+	write(t, d.Dir(), "screens/main.json", mainScreen)
+
+	if _, err := store.NewAt(home, nil).Promote(d, "Use contacts"); !errors.Is(err, store.ErrInvalid) {
+		t.Fatalf("shared type without a catalog: %v", err)
+	}
+	m, err := s.Promote(d, "Use contacts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := store.NewAt(home, nil)
+	if _, err := reader.Get(m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if next, err := reader.Revert(m.ID, 1); err != nil || next.Version != 2 {
+		t.Fatalf("revert with saved type definitions: %+v, %v", next, err)
+	}
+}
+
+func TestAppKeepsAgentInstructionsAtTheirDeclaredPath(t *testing.T) {
+	s, _ := testStore(t)
+	d, err := s.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, d.Dir(), "app.json", strings.Replace(appJSON, "agent.md", "agents/contacts/agent.md", 1))
+	write(t, d.Dir(), "plan.json", planJSON)
+	write(t, d.Dir(), "screens/main.json", mainScreen)
+	write(t, d.Dir(), "agents/contacts/agent.md", "Use the contacts view.")
+	m, err := s.Promote(d, "Keep contacts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(m.ID)
+	if err != nil || got.AgentMD != "Use the contacts view." {
+		t.Fatalf("agent instructions: %q, %v", got.AgentMD, err)
+	}
+}
+
+func TestAppKeepRefusesUnsupportedDefinitionFiles(t *testing.T) {
+	s, _ := testStore(t)
+	m := makeApp(t, s)
+	d, err := s.NewDraft(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, d.Dir(), "custom/anything.txt", "Scratch outside the definition.")
+	if _, err := s.Promote(d, "Add custom output"); !errors.Is(err, store.ErrInvalid) {
+		t.Fatalf("keep with unsupported output: %v", err)
+	}
+	got, err := s.Get(m.ID)
+	if err != nil || got.Meta.Version != 1 {
+		t.Fatalf("app after refused change: %+v, %v", got.Meta, err)
 	}
 }

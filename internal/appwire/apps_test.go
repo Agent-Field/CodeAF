@@ -1,7 +1,6 @@
 package appwire
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,13 +16,9 @@ type definitionEngine struct {
 
 func (e definitionEngine) AppDefinitions() *store.Store { return e.apps }
 
-func (e definitionEngine) AppKit() json.RawMessage {
-	return json.RawMessage(`{"kit":0,"parts":[{"name":"Stack"}]}`)
-}
-
 func TestAppsMethodsServeDefinitions(t *testing.T) {
 	fake := &fakeEngine{}
-	apps := store.NewAt(t.TempDir(), func(map[string][]byte) error { return nil })
+	apps := store.NewAt(t.TempDir(), nil)
 	w := startWireOver(t, definitionEngine{fake, apps}, fake)
 	w.next()
 	call := func(method, params string) map[string]any {
@@ -46,9 +41,9 @@ func TestAppsMethodsServeDefinitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for file, contents := range map[string]string{
-		"app.json":           `{"id":"crm","name":"CRM","version":1,"kit":0}`,
-		"plan.json":          `{"ask":"Contacts"}`,
-		"screens/deals.json": `{"part":"Stack"}`,
+		"app.json":           `{"id":"crm","name":"CRM","version":1,"kit":0,"agent":{"name":"CRM agent","file":"agent.md"},"records":{"contact":{"title":"name","fields":{"name":{"type":"text"}}}},"capabilities":{"records":{"contact":"rw"}}}`,
+		"plan.json":          `{"ask":"Contacts","data":[{"id":"contact","line":"Contact names"}],"screens":[{"id":"deals","line":"Contacts"}],"agent":{"line":"Manage contacts"}}`,
+		"screens/deals.json": `{"screen":"deals","title":"Contacts","body":{"part":"Stack"}}`,
 		"agent.md":           "Manage contacts.",
 	} {
 		if err := os.WriteFile(filepath.Join(draft.Dir(), file), []byte(contents), 0o600); err != nil {
@@ -66,7 +61,7 @@ func TestAppsMethodsServeDefinitions(t *testing.T) {
 	if got := call("apps.get", params); got["agent_md"] != "Manage contacts." || got["app"].(map[string]any)["id"] != meta.ID || got["screens"].([]any)[0] != "deals" {
 		t.Fatalf("get = %v", got)
 	}
-	if got := call("apps.screen", fmt.Sprintf(`{"app":%q,"screen":"deals"}`, meta.ID)); got["screen"].(map[string]any)["part"] != "Stack" {
+	if got := call("apps.screen", fmt.Sprintf(`{"app":%q,"screen":"deals"}`, meta.ID)); got["screen"].(map[string]any)["body"].(map[string]any)["part"] != "Stack" {
 		t.Fatalf("screen = %v", got)
 	}
 	if got := call("apps.versions", params)["versions"].([]any)[0].(map[string]any); got["request"] != "Keep contacts" {

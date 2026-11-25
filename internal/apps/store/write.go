@@ -12,9 +12,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/fsreplace"
 )
+
+const versionFile = "version.json"
+
+// The Builder may keep its sample database beside the draft definition.
+var draftFiles = []string{"sample.db", "sample.db-journal", "sample.db-shm", "sample.db-wal"}
 
 // Draft is the Builder's handle for an editable definition. The Builder must
 // finish writing its files before calling Promote or Discard.
@@ -63,7 +69,10 @@ func (s *Store) NewDraft(fromApp string) (Draft, error) {
 	if err != nil {
 		return Draft{}, err
 	}
-	d.base = m.Version
+	if def.Meta.Version != m.Version {
+		return Draft{}, fmt.Errorf("%w: revert to working version %d before opening a draft", ErrConflict, def.Meta.Version)
+	}
+	d.base = def.Meta.Version
 	if err := def.files.write(d.dir); err != nil {
 		return Draft{}, err
 	}
@@ -129,11 +138,11 @@ func (s *Store) Promote(d Draft, request string) (Meta, error) {
 	} else if err != nil {
 		return Meta{}, err
 	}
-	f, err := readDefinition(d.dir)
+	f, err := readDefinition(d.dir, draftFiles...)
 	if err != nil {
 		return Meta{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	meta, err := s.publish(m, f, request, requestSummary(request))
+	meta, err := s.publish(m, f, request, requestSummary(request), nil)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -184,7 +193,7 @@ func (s *Store) Revert(id string, n int) (Meta, error) {
 		return Meta{}, err
 	}
 	msg := fmt.Sprintf("Revert to version %d", n)
-	return s.publish(m, d.files, msg, msg)
+	return s.publish(m, d.files, msg, msg, d.types)
 }
 
 // Archive keeps the definition available for inspection and marks its shelf
@@ -234,7 +243,7 @@ func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
 	return m, nil
 }
 
-func (s *Store) publish(m Meta, f files, request, summary string) (Meta, error) {
+func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet) (Meta, error) {
 	if m.Version == math.MaxInt {
 		return Meta{}, ErrCorrupt
 	}
@@ -246,7 +255,16 @@ func (s *Store) publish(m Meta, f files, request, summary string) (Meta, error) 
 	if err != nil {
 		return Meta{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	if err := s.validateDefinition(f); err != nil {
+	if strings.TrimSpace(a.Name) == "" {
+		return Meta{}, fmt.Errorf("%w: app.json needs an app name", ErrInvalid)
+	}
+	if s.types != nil {
+		existing, err = s.types(m.ID)
+		if err != nil {
+			return Meta{}, fmt.Errorf("read record type definitions: %w", err)
+		}
+	}
+	if err := validateDefinition(f, existing); err != nil {
 		return Meta{}, err
 	}
 	next := m
@@ -268,7 +286,8 @@ func (s *Store) publish(m Meta, f files, request, summary string) (Meta, error) 
 	if err := f.write(snapshot); err != nil {
 		return Meta{}, err
 	}
-	if err := writeJSON(filepath.Join(snapshot, "version.json"), Version{n, next.UpdatedAt, request, summary}); err != nil {
+	receipt := versionReceipt{Version: Version{n, next.UpdatedAt, request, summary}, Types: existing}
+	if err := writeJSON(filepath.Join(snapshot, versionFile), receipt); err != nil {
 		return Meta{}, err
 	}
 	meta := filepath.Join(tx, "meta.json")
@@ -308,9 +327,10 @@ func installVersion(app, tx, snapshot string) (err error) {
 		return err
 	}
 	next := filepath.Join(versions, filepath.Base(snapshot))
-	// Only an uncommitted snapshot from an interrupted write can use this
-	// number. Move it out of the way without changing any committed history.
-	if err := moveIfPresent(next, filepath.Join(tx, "abandoned")); err != nil {
+	// The number may be left by an interrupted write. Keep its bytes out of
+	// the numbered history in case the metadata itself was rolled back.
+	abandoned := filepath.Join(versions, filepath.Base(tx)+"-"+filepath.Base(snapshot))
+	if err := moveIfPresent(next, abandoned); err != nil {
 		return err
 	}
 	if err := fsreplace.Rename(snapshot, next); err != nil {
@@ -371,25 +391,29 @@ func writeJSON(path string, value any) error {
 	return writeSynced(path, append(raw, '\n'))
 }
 
-func readVersion(dir string, n int) (Version, error) {
+func (s *Store) readReceipt(id string, n int) (versionReceipt, error) {
+	dir := s.snapshot(id, n)
+	if err := checkDir(filepath.Dir(dir)); err != nil {
+		return versionReceipt{}, err
+	}
 	if err := checkDir(dir); err != nil {
-		return Version{}, err
+		return versionReceipt{}, err
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return Version{}, err
+		return versionReceipt{}, err
 	}
 	defer root.Close()
-	raw, err := readRegular(root, "version.json")
+	raw, err := readRegular(root, versionFile)
 	if err != nil {
-		return Version{}, err
+		return versionReceipt{}, err
 	}
-	var v Version
+	var v versionReceipt
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return Version{}, fmt.Errorf("%w: %w", ErrCorrupt, err)
+		return versionReceipt{}, fmt.Errorf("%w: %w", ErrCorrupt, err)
 	}
 	if v.N != n || v.At.IsZero() {
-		return Version{}, ErrCorrupt
+		return versionReceipt{}, ErrCorrupt
 	}
 	return v, nil
 }
