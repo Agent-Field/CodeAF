@@ -2920,8 +2920,9 @@ that is absent, refuses or answers in an unknown shape reports no limit.
 
 `needs` is the window the app's prompts ask for, 32000 tokens (the engine's lean
 threshold). `source` says how `window` is known: `loaded` (the server is running
-the model with this window), `modelfile` (the model is not loaded and its
-Modelfile sets `num_ctx`, which overrides the server's own setting) or
+the model with this window and its Modelfile sets no `num_ctx`), `modelfile`
+(its Modelfile sets `num_ctx`, which overrides the server's own setting;
+`window` is the window it runs with when it is loaded, else the Modelfile's) or
 `last_loaded` (not loaded, nothing sets it, and `window` is what the server gave
 the model when this engine last saw it running in `GET /api/ps`). A window of
 `needs` or more is no limit. A model that is not loaded, sets no `num_ctx` and
@@ -2931,14 +2932,20 @@ setting, and its API does not say what that will be. The engine remembers each
 model's last window per service address for as long as it runs, not on disk.
 `most` is the most the model itself can hold, when the server says. A model the
 server only forwards to another machine has no `small_window`. A server that
-sends no capability list has no `no_tools`. A list that runs out of time before
+sends no capability list has no `no_tools`, and a model whose capability list
+lacks `completion` (an embedding model) has no limits at all. A list that runs out of time before
 it can ask about a model repeats that model's limits from the last list that
 could. Engines before `last_loaded` could send `source` `default` with no
 `window`; an app reads it as nothing measured and shows no warning for it.
 
 When a turn ends on an Ollama model the server was not running at the last
-`models.list`, the engine emits `models.changed` once: the turn loaded the
-model, so the next list reads the window the server really gave it.
+`models.list`, or one that list gave a `small_window`, the engine emits
+`models.changed` once for that turn: the turn loaded the model, or may have
+reloaded it with a larger window after the person raised Ollama's setting, so
+the next list reads the window the server really gave it. A model the server
+lists as running without a window is not counted as not running, and a model
+the list after such a notice still finds not running raises no further notice
+for not running until a list sees it running.
 
 ## orders methods
 

@@ -144,11 +144,15 @@ type Reading struct {
 	// Limits is where the model falls short, empty when nothing is known
 	// against it.
 	Limits []appwire.ModelLimit
-	// Unloaded says the server answered that it is not running the model.
+	// Loaded says the server answered that it is running the model, and with
+	// what window; Unloaded that it is not running the model at all. A server
+	// that lists the model as running without a window (one from before the
+	// field was added) has said neither, and neither does a list it refused.
+	Loaded   bool
 	Unloaded bool
 	// Stale says this list ran out of time before the server could answer
-	// about the model, so Limits and Unloaded are those of the last list that
-	// could (nothing, when none could).
+	// about the model, so Limits, Loaded and Unloaded are those of the last
+	// list that could (nothing, when none could).
 	Stale bool
 }
 
@@ -204,16 +208,17 @@ func (p Probe) Read(ctx context.Context, names []string, needs int) map[string]R
 	ctx, cancel := context.WithTimeout(ctx, Whole)
 	defer cancel()
 	var (
-		running map[string]int
-		listed  outcome
-		wait    sync.WaitGroup
+		running    map[string]int
+		windowless map[string]bool
+		listed     outcome
+		wait       sync.WaitGroup
 	)
 	shows := make([]shown, len(names))
 	gate := make(chan struct{}, atOnce)
 	wait.Add(1 + len(names))
 	guard.Go("ollamalimits/loaded", func() {
 		defer wait.Done()
-		running, listed = p.loaded(ctx)
+		running, windowless, listed = p.loaded(ctx)
 	})
 	for i, name := range names {
 		guard.Go("ollamalimits/show", func() {
@@ -237,15 +242,24 @@ func (p Probe) Read(ctx context.Context, names []string, needs int) map[string]R
 		var reading Reading
 		if listed == answered {
 			loaded := running[tagged(name)]
-			reading.Unloaded = loaded == 0
-			if limit, small := smallWindow(loaded, p.Memory.lastWindow(p.base, name), shows[i], needs); small {
+			reading.Loaded = loaded > 0
+			reading.Unloaded = loaded == 0 && !windowless[tagged(name)]
+		}
+		// A MODEL THAT CANNOT HOLD A CONVERSATION IS NOT A WEAK CHAT MODEL. An
+		// embedding model says so in its capabilities (no "completion"), and
+		// Ollama's listing carries it beside the chat models: a window or a lack
+		// of tools said of it would be advice about a conversation it cannot
+		// have. A server that sends no list has not said so either way.
+		chats := len(shows[i].capabilities) == 0 || slices.Contains(shows[i].capabilities, "completion")
+		if listed == answered && chats {
+			if limit, small := smallWindow(running[tagged(name)], p.Memory.lastWindow(p.base, name), shows[i], needs); small {
 				reading.Limits = append(reading.Limits, limit)
 			}
 		}
 		// A SERVER THAT SENDS NO LIST HAS NOT SAID THE MODEL LACKS TOOLS. Older
 		// servers send none at all, and reading that as "no tools" would warn
 		// about every model they hold.
-		if len(shows[i].capabilities) > 0 && !slices.Contains(shows[i].capabilities, "tools") {
+		if chats && len(shows[i].capabilities) > 0 && !slices.Contains(shows[i].capabilities, "tools") {
 			reading.Limits = append(reading.Limits, appwire.ModelLimit{Kind: appwire.LimitNoTools})
 		}
 		p.Memory.keep(p.base, name, reading)
@@ -259,20 +273,28 @@ func (p Probe) Read(ctx context.Context, names []string, needs int) map[string]R
 // (last), either 0 when there is none. Whether the server answered /api/ps at
 // all is the caller's: without that nobody knows which window counts.
 //
-// A window running now is believed over the Modelfile's, which only says what
-// the next load would ask for; the Modelfile's over the last load's, because
-// it overrides the server's own setting; and a model with none of the three
+// A window running now is the figure believed over the Modelfile's, which only
+// says what the next load would ask for, and over the last load's. What is
+// said of where it comes from follows the server's own order: its setting
+// first, then a Modelfile's num_ctx over it. So a model whose Modelfile sets
+// num_ctx is said to have its window from the Modelfile whether or not it is
+// loaded, because raising the server's setting would not change it; with
+// nothing loaded its figure is the Modelfile's, and only a model that sets
+// none is read by the window it last ran with. A model with none of the three
 // has no window limit. The server decides its default when it loads a model,
 // from the machine's memory or a setting the person may have raised, and no
 // API says what it is, so a warning without a figure would be a guess.
 func smallWindow(loaded, last int, model shown, needs int) (appwire.ModelLimit, bool) {
 	limit := appwire.ModelLimit{Kind: appwire.LimitSmallWindow, Needs: needs, Most: model.most}
+	modelfile := model.asked == answered && !model.remote && model.numCtx > 0
 	switch {
+	case loaded > 0 && modelfile:
+		limit.Window, limit.Source = loaded, appwire.WindowModelfile
 	case loaded > 0:
 		limit.Window, limit.Source = loaded, appwire.WindowLoaded
 	case model.asked != answered || model.remote:
 		return limit, false
-	case model.numCtx > 0:
+	case modelfile:
 		limit.Window, limit.Source = model.numCtx, appwire.WindowModelfile
 	case last > 0:
 		limit.Window, limit.Source = last, appwire.WindowLastLoaded
@@ -282,9 +304,10 @@ func smallWindow(loaded, last int, model shown, needs int) (appwire.ModelLimit, 
 	return limit, limit.Window < needs
 }
 
-// loaded is the window of every model the server is running now, by name, and
-// how the question went.
-func (p Probe) loaded(ctx context.Context) (map[string]int, outcome) {
+// loaded is the window of every model the server is running now, by name, the
+// models it says it is running without saying the window, and how the
+// question went.
+func (p Probe) loaded(ctx context.Context) (map[string]int, map[string]bool, outcome) {
 	var answer struct {
 		Models *[]struct {
 			Name          string `json:"name"`
@@ -293,22 +316,26 @@ func (p Probe) loaded(ctx context.Context) (map[string]int, outcome) {
 		} `json:"models"`
 	}
 	if asked := p.ask(ctx, http.MethodGet, "/api/ps", nil, &answer); asked != answered {
-		return nil, asked
+		return nil, nil, asked
 	}
 	if answer.Models == nil {
-		return nil, refused
+		return nil, nil, refused
 	}
-	running := map[string]int{}
+	running, windowless := map[string]int{}, map[string]bool{}
 	for _, model := range *answer.Models {
 		// A server from before the field was added sends no window; such a
-		// model is then read by its Modelfile as though it were not loaded.
+		// model is then read by its Modelfile as though it were not loaded,
+		// though it is not said to be unloaded: it is running, and a turn on
+		// it would learn nothing new.
 		if model.ContextLength <= 0 {
+			windowless[tagged(model.Name)] = true
+			windowless[tagged(model.Model)] = true
 			continue
 		}
 		running[tagged(model.Name)] = model.ContextLength
 		running[tagged(model.Model)] = model.ContextLength
 	}
-	return running, answered
+	return running, windowless, answered
 }
 
 // show is what the server says about one model.

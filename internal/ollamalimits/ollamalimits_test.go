@@ -104,17 +104,50 @@ const (
 	plainModel = `{"capabilities":["completion","tools","thinking"],"parameters":"temperature                    0.6\nstop                           \"<|im_end|>\"","model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`
 )
 
-// The window the server is running a model with is the one a turn gets, so it
-// is reported over whatever the Modelfile asks for.
+// The window the server is running a model with is the figure reported, over
+// whatever the Modelfile asks for. Where it comes from follows the server's own
+// order: a Modelfile's num_ctx overrides the server's setting, so a loaded
+// model whose Modelfile sets one is said to have its window from the Modelfile,
+// and only a model that sets none is said to be running with the server's.
 func TestALoadedWindowIsBelievedOverTheModelfile(t *testing.T) {
 	stub := &stubServer{
-		ps:   `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096}]}`,
-		show: map[string]string{"qwen3:8b": `{"capabilities":["completion","tools"],"parameters":"num_ctx                        65536","model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`},
+		ps: `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096},{"name":"plain:latest","model":"plain:latest","context_length":4096}]}`,
+		show: map[string]string{
+			"qwen3:8b": `{"capabilities":["completion","tools"],"parameters":"num_ctx                        65536","model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`,
+			"plain":    plainModel,
+		},
 	}
-	got := limitsFrom(t, stub, "qwen3:8b")
-	want := map[string][]appwire.ModelLimit{"qwen3:8b": {{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowLoaded}}}
+	got := limitsFrom(t, stub, "qwen3:8b", "plain")
+	want := map[string][]appwire.ModelLimit{
+		"qwen3:8b": {{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowModelfile}},
+		"plain":    {{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowLoaded}},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("limits = %+v, want %+v", got, want)
+	}
+}
+
+// A model whose Modelfile sets a small num_ctx is said to have that window from
+// its Modelfile, loaded or not: raising the server's setting cannot change it,
+// so the advice must not flip with the model loading and unloading.
+func TestALoadedModelWithASmallModelfileWindowIsTheModelfiles(t *testing.T) {
+	stub := &stubServer{
+		ps:   `{"models":[{"name":"pinned:latest","model":"pinned:latest","context_length":4096}]}`,
+		show: map[string]string{"pinned": `{"capabilities":["completion","tools"],"parameters":"num_ctx 4096","model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`},
+	}
+	server := httptest.NewServer(stub)
+	defer server.Close()
+	probe, _ := At(server.URL+"/v1", "")
+	probe.Memory = &Memory{}
+	want := []appwire.ModelLimit{{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowModelfile}}
+	loaded := probe.Read(context.Background(), []string{"pinned"}, needs)["pinned"]
+	if !loaded.Loaded || loaded.Unloaded || !reflect.DeepEqual(loaded.Limits, want) {
+		t.Fatalf("loaded reading = %+v, want loaded with %+v", loaded, want)
+	}
+	stub.ps = nothingRunning
+	unloaded := probe.Read(context.Background(), []string{"pinned"}, needs)["pinned"]
+	if unloaded.Loaded || !unloaded.Unloaded || !reflect.DeepEqual(unloaded.Limits, want) {
+		t.Fatalf("unloaded reading = %+v, want unloaded with %+v", unloaded, want)
 	}
 }
 
@@ -182,7 +215,7 @@ func TestALastLoadedWindowIsRememberedPerServer(t *testing.T) {
 		ps: `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096},{"name":"pinned:latest","model":"pinned:latest","context_length":4096}]}`,
 		show: map[string]string{
 			"qwen3:8b": plainModel,
-			"pinned":   `{"capabilities":["tools"],"parameters":"num_ctx 8192"}`,
+			"pinned":   `{"capabilities":["completion","tools"],"parameters":"num_ctx 8192"}`,
 		},
 	}
 	server := httptest.NewServer(stub)
@@ -266,15 +299,38 @@ func TestALateListAnswersTheLastFinishedReading(t *testing.T) {
 }
 
 // A server that runs a model from before it reported windows says the model is
-// loaded and not with what, so the model is read as though it were not.
+// loaded and not with what, so the model is read by its Modelfile as though it
+// were not loaded. It is not said to be unloaded either: it is running, and a
+// turn on it would load nothing the next list could read.
 func TestALoadedModelWithNoWindowIsReadByItsModelfile(t *testing.T) {
 	stub := &stubServer{
-		ps:   `{"models":[{"name":"qwen3:8b","model":"qwen3:8b"}]}`,
-		show: map[string]string{"qwen3:8b": `{"parameters":"num_ctx 4096"}`},
+		ps:   `{"models":[{"name":"qwen3:8b","model":"qwen3:8b"},{"name":"plain:latest","model":"plain:latest"}]}`,
+		show: map[string]string{"qwen3:8b": `{"parameters":"num_ctx 4096"}`, "plain": plainModel},
 	}
-	got := limitsFrom(t, stub, "qwen3:8b")["qwen3:8b"]
-	if len(got) != 1 || got[0].Source != appwire.WindowModelfile || got[0].Window != 4096 {
-		t.Fatalf("limits = %+v, want the Modelfile's window", got)
+	server := httptest.NewServer(stub)
+	defer server.Close()
+	probe, _ := At(server.URL+"/v1", "")
+	got := probe.Read(context.Background(), []string{"qwen3:8b", "plain"}, needs)
+	if r := got["qwen3:8b"]; r.Loaded || r.Unloaded || len(r.Limits) != 1 || r.Limits[0].Source != appwire.WindowModelfile || r.Limits[0].Window != 4096 {
+		t.Fatalf("reading = %+v, want the Modelfile's window, neither loaded nor unloaded", r)
+	}
+	if r := got["plain"]; !reflect.DeepEqual(r, Reading{}) {
+		t.Fatalf("a running model with no window and no num_ctx = %+v, want nothing", r)
+	}
+}
+
+// A model that cannot hold a conversation (an embedding model, whose
+// capabilities lack "completion") is not a weak chat model: neither a window
+// nor a lack of tools is reported for it, whatever its Modelfile sets.
+func TestAModelThatCannotChatHasNoLimits(t *testing.T) {
+	stub := &stubServer{ps: `{"models":[{"name":"nomic-embed-text:latest","context_length":2048}]}`, show: map[string]string{
+		"nomic-embed-text": `{"capabilities":["embedding"],"parameters":"num_ctx 2048","model_info":{"general.architecture":"nomic-bert","nomic-bert.context_length":2048}}`,
+		"mxbai-embed":      `{"capabilities":["embedding"],"parameters":"num_ctx 512"}`,
+		"tiny":             `{"capabilities":["completion"],"parameters":"num_ctx 2048"}`,
+	}}
+	got := limitsFrom(t, stub, "nomic-embed-text", "mxbai-embed", "tiny")
+	if len(got) != 1 || len(got["tiny"]) != 2 {
+		t.Fatalf("limits = %+v, want only the chat model's", got)
 	}
 }
 
@@ -350,8 +406,8 @@ func TestAFailedOrOddAnswerReportsNothingForThatModel(t *testing.T) {
 // either still reports the window, with no most.
 func TestMostIsAbsentWhenTheServerDoesNotSayIt(t *testing.T) {
 	stub := &stubServer{ps: nothingRunning, show: map[string]string{
-		"bare":  `{"capabilities":["tools"],"parameters":"num_ctx 4096","model_info":{"general.architecture":"llama"}}`,
-		"words": `{"capabilities":["tools"],"parameters":"num_ctx 4096","model_info":{"general.architecture":"llama","llama.context_length":"many"}}`,
+		"bare":  `{"capabilities":["completion","tools"],"parameters":"num_ctx 4096","model_info":{"general.architecture":"llama"}}`,
+		"words": `{"capabilities":["completion","tools"],"parameters":"num_ctx 4096","model_info":{"general.architecture":"llama","llama.context_length":"many"}}`,
 	}}
 	got := limitsFrom(t, stub, "bare", "words")
 	for _, name := range []string{"bare", "words"} {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -81,7 +82,7 @@ func TestAppOllamaLimitsAreAskedOfTheOllamaServiceAlone(t *testing.T) {
 		{ID: "deepseek/deepseek-chat", Provider: "deepseek"},
 		{ID: "ollama/library/gemma3", Provider: "ollama"},
 	}
-	unloaded, unasked := appOllamaLimits(context.Background(), models, sources, stub.Client(), &ollamalimits.Memory{})
+	readings := appOllamaLimits(context.Background(), models, sources, stub.Client(), &ollamalimits.Memory{})
 
 	// Nothing is loaded and nothing sets a window, so the window is the
 	// server's to decide when it loads the model: no window limit is reported.
@@ -95,8 +96,8 @@ func TestAppOllamaLimitsAreAskedOfTheOllamaServiceAlone(t *testing.T) {
 	if !slices.Equal(stub.asked, []string{"library/gemma3", "qwen3:8b"}) {
 		t.Fatalf("the server was asked about %q", stub.asked)
 	}
-	if len(unloaded) != 2 || !unloaded["qwen3:8b"] || !unloaded["library/gemma3"] || unasked != nil {
-		t.Fatalf("models the server is not running = %v, not asked about = %v", unloaded, unasked)
+	if len(readings) != 2 || !readings["qwen3:8b"].Unloaded || !readings["library/gemma3"].Unloaded || readings["qwen3:8b"].Stale {
+		t.Fatalf("readings = %+v, want both models answered and not running", readings)
 	}
 
 	data, err := json.Marshal(models[:2])
@@ -118,8 +119,8 @@ func TestAppOllamaLimitsAskNothingWithoutAnOllamaService(t *testing.T) {
 		modelsource.Connected{Source: vendor, Key: "sk-test", Address: stub.URL + "/v1"},
 	)
 	models := []appwire.Model{{ID: "local/qwen3:8b", Provider: "local"}, {ID: "deepseek/deepseek-chat", Provider: "deepseek"}, {ID: "qwen3:8b", Provider: "local"}}
-	if unloaded, unasked := appOllamaLimits(context.Background(), models, sources, stub.Client(), &ollamalimits.Memory{}); unloaded != nil || unasked != nil {
-		t.Fatalf("models not running = %v, not asked about = %v", unloaded, unasked)
+	if readings := appOllamaLimits(context.Background(), models, sources, stub.Client(), &ollamalimits.Memory{}); readings != nil {
+		t.Fatalf("readings = %+v", readings)
 	}
 	for _, model := range models {
 		if model.Limits != nil {
@@ -144,22 +145,21 @@ func TestAppOllamaLimitsLeaveTheListAloneWhenThereIsNothingToAsk(t *testing.T) {
 
 	stub.Close()
 	models = []appwire.Model{{ID: "ollama/qwen3:8b", Provider: "ollama"}}
-	if unloaded, _ := appOllamaLimits(context.Background(), models, sources, nil, nil); unloaded != nil || models[0].Limits != nil {
-		t.Fatalf("an absent server reported %+v, %v", models[0].Limits, unloaded)
+	if readings := appOllamaLimits(context.Background(), models, sources, nil, nil); readings["qwen3:8b"].Unloaded || models[0].Limits != nil {
+		t.Fatalf("an absent server reported %+v, %+v", models[0].Limits, readings)
 	}
 }
 
-// A turn on an Ollama model the server was not running at the last list tells
-// the app to list again, once: the server can say the window now that the
-// model is loaded. A turn on any other model, or on a model that was already
-// loaded, says nothing.
+// A turn on an Ollama model the last list marked tells the app to list again,
+// once: the server can say the window now that the model is loaded. A turn on
+// any other model, or on a model the list did not mark, says nothing.
 func TestAppTurnOnAnUnloadedOllamaModelAsksForOneNewList(t *testing.T) {
 	sources := modelsource.NewSet(
 		modelsource.Connected{Source: modelsource.DefaultSource(""), Key: "sk-or-test"},
 		modelsource.Connected{Source: appVendoredSource(t, "ollama")},
 	)
 	told := 0
-	backend := &appBackend{tellModels: func() { told++ }, ollamaUnloaded: map[string]bool{"qwen3:8b": true}}
+	backend := &appBackend{tellModels: func() { told++ }, ollamaRelist: map[string]bool{"qwen3:8b": true}}
 	for _, model := range []string{"qwen/qwen3:8b", "qwen3:8b", "ollama/gemma3:4b", ""} {
 		if backend.ollamaLoaded(sources, model); told != 0 {
 			t.Fatalf("a turn on %q asked for a new list", model)
@@ -171,13 +171,13 @@ func TestAppTurnOnAnUnloadedOllamaModelAsksForOneNewList(t *testing.T) {
 		t.Fatalf("told the app %d times, want once", told)
 	}
 	// Before the app's model notices are joined there is nobody to tell.
-	quiet := &appBackend{ollamaUnloaded: map[string]bool{"qwen3:8b": true}}
+	quiet := &appBackend{ollamaRelist: map[string]bool{"qwen3:8b": true}}
 	quiet.ollamaLoaded(sources, "ollama/qwen3:8b")
 }
 
 // A list whose time ran out before the server could be asked keeps what the
-// last list found: the row's limits, and that the server was not running the
-// model, so the turn after it still asks for a new list.
+// last list found: the row's limits, and that the model is worth a new list
+// after a turn, so the turn after it still asks for one.
 func TestAppALateListKeepsTheLastListsLimitsAndUnloadedModels(t *testing.T) {
 	var mu sync.Mutex
 	ps := `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096}]}`
@@ -197,22 +197,22 @@ func TestAppALateListKeepsTheLastListsLimitsAndUnloadedModels(t *testing.T) {
 
 	loaded := row()
 	backend.addModelLimits(time.Now().Add(time.Second), loaded, sources)
-	if len(loaded[0].Limits) != 1 || loaded[0].Limits[0].Source != appwire.WindowLoaded || len(backend.ollamaUnloaded) != 0 {
-		t.Fatalf("loaded: limits %+v, not running %v", loaded[0].Limits, backend.ollamaUnloaded)
+	if len(loaded[0].Limits) != 1 || loaded[0].Limits[0].Source != appwire.WindowLoaded || !backend.ollamaRelist["qwen3:8b"] {
+		t.Fatalf("loaded: limits %+v, to list again %v", loaded[0].Limits, backend.ollamaRelist)
 	}
 	mu.Lock()
 	ps = `{"models":[]}`
 	mu.Unlock()
 	unloaded := row()
 	backend.addModelLimits(time.Now().Add(time.Second), unloaded, sources)
-	if len(unloaded[0].Limits) != 1 || unloaded[0].Limits[0].Source != appwire.WindowLastLoaded || !backend.ollamaUnloaded["qwen3:8b"] {
-		t.Fatalf("unloaded: limits %+v, not running %v", unloaded[0].Limits, backend.ollamaUnloaded)
+	if len(unloaded[0].Limits) != 1 || unloaded[0].Limits[0].Source != appwire.WindowLastLoaded || !backend.ollamaRelist["qwen3:8b"] {
+		t.Fatalf("unloaded: limits %+v, to list again %v", unloaded[0].Limits, backend.ollamaRelist)
 	}
 
 	late := row()
 	backend.addModelLimits(time.Now().Add(-time.Second), late, sources)
-	if !slices.Equal(late[0].Limits, unloaded[0].Limits) || !backend.ollamaUnloaded["qwen3:8b"] {
-		t.Fatalf("late: limits %+v, not running %v", late[0].Limits, backend.ollamaUnloaded)
+	if !slices.Equal(late[0].Limits, unloaded[0].Limits) || !backend.ollamaRelist["qwen3:8b"] {
+		t.Fatalf("late: limits %+v, to list again %v", late[0].Limits, backend.ollamaRelist)
 	}
 }
 
@@ -226,7 +226,7 @@ func TestAppALateListKeepsTheLastListsLimitsAndUnloadedModels(t *testing.T) {
 func TestAppATurnOnAnUnloadedOllamaModelBringsItsWindowToTheList(t *testing.T) {
 	_, workspace := wakeEnvironment(t, resolvedTempDir(t))
 	var mu sync.Mutex
-	running := false
+	running, window := false, 4096
 	ollama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -234,10 +234,10 @@ func TestAppATurnOnAnUnloadedOllamaModelBringsItsWindowToTheList(t *testing.T) {
 			io.WriteString(w, `{"object":"list","data":[{"id":"qwen3:8b","object":"model","owned_by":"library"}]}`)
 		case "/api/ps":
 			mu.Lock()
-			loaded := running
+			loaded, size := running, window
 			mu.Unlock()
 			if loaded {
-				io.WriteString(w, `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096}]}`)
+				fmt.Fprintf(w, `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":%d}]}`, size)
 				return
 			}
 			io.WriteString(w, `{"models":[]}`)
@@ -336,12 +336,6 @@ func TestAppATurnOnAnUnloadedOllamaModelBringsItsWindowToTheList(t *testing.T) {
 	if loaded := row(); !slices.Equal(loaded.Limits, want) {
 		t.Fatalf("the loaded model's limits = %+v, want %+v", loaded.Limits, want)
 	}
-	// It was loaded at that list, so the next turn on it asks for nothing.
-	before = settled()
-	turn(agent.ID)
-	if after := settled(); after != before {
-		t.Fatalf("a turn on a loaded model raised %d models.changed", after-before)
-	}
 
 	mu.Lock()
 	running = false
@@ -349,5 +343,142 @@ func TestAppATurnOnAnUnloadedOllamaModelBringsItsWindowToTheList(t *testing.T) {
 	want[0].Source = appwire.WindowLastLoaded
 	if unloaded := row(); !slices.Equal(unloaded.Limits, want) {
 		t.Fatalf("the unloaded model's limits = %+v, want %+v", unloaded.Limits, want)
+	}
+
+	// The person raises Ollama's setting and restarts it, and the next turn
+	// loads the model with the larger window. The row last said the window was
+	// small, so that turn asks for one new list, which drops the warning; the
+	// turn after, on a model loaded with room enough, asks for nothing.
+	mu.Lock()
+	running, window = true, 32768
+	mu.Unlock()
+	before = settled()
+	turn(agent.ID)
+	if after := settled(); after != before+1 {
+		t.Fatalf("a turn on a model listed with a small window raised %d models.changed, want 1", after-before)
+	}
+	if raised := row(); raised.Limits != nil {
+		t.Fatalf("the model loaded with a larger window reported %+v", raised.Limits)
+	}
+	before = settled()
+	turn(agent.ID)
+	if after := settled(); after != before {
+		t.Fatalf("a turn on a model loaded with room enough raised %d models.changed", after-before)
+	}
+}
+
+// A turn on a model listed with a small window asks for one new list, whether
+// the model was loaded at that list or not: the person may have raised Ollama's
+// setting and restarted it, and only a new list reads the window the turn's
+// reload gave. One turn asks once, however the model is marked.
+func TestAppTurnOnASmallWindowModelAsksForOneNewList(t *testing.T) {
+	var mu sync.Mutex
+	window := 4096
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.URL.Path == "/api/ps" {
+			fmt.Fprintf(w, `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":%d}]}`, window)
+			return
+		}
+		io.WriteString(w, `{"capabilities":["completion","tools"],"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`)
+	}))
+	defer stub.Close()
+	sources := modelsource.NewSet(modelsource.Connected{Source: appVendoredSource(t, "ollama"), Address: stub.URL + "/v1"})
+	told := 0
+	backend := &appBackend{tellModels: func() { told++ }}
+	list := func() []appwire.Model {
+		models := []appwire.Model{{ID: "ollama/qwen3:8b", Provider: "ollama"}}
+		backend.addModelLimits(time.Now().Add(time.Second), models, sources)
+		return models
+	}
+
+	if small := list(); len(small[0].Limits) != 1 || small[0].Limits[0].Source != appwire.WindowLoaded {
+		t.Fatalf("limits = %+v, want the loaded small window", small[0].Limits)
+	}
+	backend.ollamaLoaded(sources, "ollama/qwen3:8b")
+	backend.ollamaLoaded(sources, "ollama/qwen3:8b")
+	if told != 1 {
+		t.Fatalf("turns on a loaded small-window model told the app %d times, want once before a new list", told)
+	}
+
+	mu.Lock()
+	window = 32768
+	mu.Unlock()
+	if raised := list(); raised[0].Limits != nil {
+		t.Fatalf("limits after the raise = %+v, want none", raised[0].Limits)
+	}
+	backend.ollamaLoaded(sources, "ollama/qwen3:8b")
+	if told != 1 {
+		t.Fatalf("a turn on a model loaded with room enough told the app again (%d)", told)
+	}
+}
+
+// A server that never keeps a model loaded (keep_alive 0), or one too old to
+// say a running model's window, would otherwise make every turn on the model
+// ask for a new list, each a round of questions to the server. A model the
+// server lists as running without a window is not marked at all; one the
+// asked-for list still finds unloaded is not asked about again until a list
+// sees it running.
+func TestAppAModelTheServerNeverKeepsLoadedIsAskedAboutOnce(t *testing.T) {
+	var mu sync.Mutex
+	ps := `{"models":[]}`
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if r.URL.Path == "/api/ps" {
+			io.WriteString(w, ps)
+			return
+		}
+		io.WriteString(w, `{"capabilities":["completion","tools"],"model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`)
+	}))
+	defer stub.Close()
+	setPS := func(body string) {
+		mu.Lock()
+		ps = body
+		mu.Unlock()
+	}
+	sources := modelsource.NewSet(modelsource.Connected{Source: appVendoredSource(t, "ollama"), Address: stub.URL + "/v1"})
+	told := 0
+	backend := &appBackend{tellModels: func() { told++ }}
+	list := func() {
+		backend.addModelLimits(time.Now().Add(time.Second), []appwire.Model{{ID: "ollama/qwen3:8b", Provider: "ollama"}}, sources)
+	}
+	turn := func() { backend.ollamaLoaded(sources, "ollama/qwen3:8b") }
+
+	list()
+	turn()
+	if told != 1 {
+		t.Fatalf("the first turn on an unloaded model told the app %d times, want 1", told)
+	}
+	// keep_alive 0: the asked-for list still finds the model unloaded.
+	for range 3 {
+		list()
+		turn()
+	}
+	if told != 1 {
+		t.Fatalf("turns on a model the server never keeps loaded told the app %d times, want 1", told)
+	}
+	// Seen running once, it is worth asking about again when it next unloads.
+	setPS(`{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":65536}]}`)
+	list()
+	setPS(`{"models":[]}`)
+	list()
+	turn()
+	if told != 2 {
+		t.Fatalf("after the model was seen running, told the app %d times, want 2", told)
+	}
+
+	// An old server lists the running model without its window: it is not
+	// unloaded, and a turn on it asks for nothing.
+	old := &appBackend{tellModels: func() { told++ }}
+	setPS(`{"models":[{"name":"qwen3:8b","model":"qwen3:8b"}]}`)
+	told = 0
+	for range 3 {
+		old.addModelLimits(time.Now().Add(time.Second), []appwire.Model{{ID: "ollama/qwen3:8b", Provider: "ollama"}}, sources)
+		old.ollamaLoaded(sources, "ollama/qwen3:8b")
+	}
+	if told != 0 {
+		t.Fatalf("turns on a model running without a reported window told the app %d times", told)
 	}
 }

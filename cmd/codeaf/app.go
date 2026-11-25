@@ -798,11 +798,16 @@ type appBackend struct {
 	// the initial catalog waiter and cancellable sender when this app closes.
 	stopModelNotices func()
 	// tellModels says models.changed through that subscription's queue;
-	// ollamaUnloaded is the models the Ollama service was not running at the
-	// last list, and ollamaSeen what this app has seen of that service's
-	// models, for the lists after ([appBackend.addModelLimits]).
+	// ollamaRelist is the models of the Ollama service a turn's end should ask
+	// the app to list again (not running, or a small window, at the last list),
+	// ollamaRelisted those a turn has asked that for since, ollamaQuiet those
+	// whose asked-for list still found them unloaded, and ollamaSeen what this
+	// app has seen of that service's models, for the lists after
+	// ([appBackend.addModelLimits]).
 	tellModels     func()
-	ollamaUnloaded map[string]bool
+	ollamaRelist   map[string]bool
+	ollamaRelisted map[string]bool
+	ollamaQuiet    map[string]bool
 	ollamaSeen     *ollamalimits.Memory
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
