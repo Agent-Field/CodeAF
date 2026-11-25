@@ -1,10 +1,30 @@
 # A codeaf organization you host yourself
 
+New to organizations? Start with [docs/organizations.md](../../docs/organizations.md); this page is the operator's
+walkthrough for running one yourself.
+
+**Contents**
+
+- [What it runs](#what-it-runs)
+- [What you need](#what-you-need)
+- [Start it](#start-it)
+- [Claim the organization, invite a second person](#claim-the-organization-invite-a-second-person) (and [HTTPS for other people](#other-people-https))
+- [Real work](#real-work)
+- [The keyless smoke test](#the-keyless-smoke-test)
+- [Hosted chats (optional)](#hosted-chats-optional): [keys, spend and git](#keys-spend-and-git-p1), [sharing, guests and bots](#sharing-guests-and-bots-p2), [turning it on](#turning-it-on)
+- [State, backups and upgrades](#state-backups-and-upgrades)
+- [Secrets](#secrets)
+- [Published images](#published-images) (and the leak gate)
+- [Railway](#railway)
+- [Known limits](#known-limits)
+
+## What it runs
+
 One `docker compose up` brings up everything an organization needs, on your own machine or
 server: the **organization server** people join with their codeaf desktop app, the **AgentField**
 control plane that routes work, and the reasoner nodes the factory sends work to, **SWE-AF** (builds an
-issue into a pull request) and **PR-AF** (reviews one). Nothing in an image is a secret; model keys
-come from your environment.
+issue into a pull request) and **PR-AF** (reviews one). Hosted chats (the **sessionhost**, below) are an
+opt-in profile of the same file. Nothing in an image is a secret; model keys come from your environment.
 
 | Service | What it is | Published port | State (volume) | Runs as |
 | --- | --- | --- | --- | --- |
@@ -13,11 +33,17 @@ come from your environment.
 | `runner` | the factory runner: a codeaf engine that registers the factory on AgentField as the node `codeaf-factory` | none | `runner-data` | uid 10001 |
 | `swe-af` | SWE-AF, node `swe-planner`, dials AgentField over its node link | none | `swe-af-workspaces` | uid 10002 |
 | `pr-af` | PR-AF, node `pr-af`, called by AgentField over HTTP | none | `pr-af-workspaces` | uid 10003 |
+| `sessionhost` | the machine hosted chats run on, only with `--profile hosted` (or `COMPOSE_PROFILES=hosted`); see "Hosted chats" | none | `sessions-data` | root, with five capabilities |
 | `modelstub` | a scripted model, only with `--profile stub` (the keyless smoke test) | none | none | nonroot |
+| `gitstub` | a scripted git host, only with `--profile stub` (the hosted part of the smoke test) | none | none | root (a test stub) |
 
-Every container starts as root only long enough to hand a freshly mounted volume to its user, then
-drops to that user (`scripts/drop-root.sh`); nothing long-lived runs as root. Published ports listen on
-127.0.0.1 until you change `CODEAF_BIND` / `AGENTFIELD_BIND` in `.env`.
+A plain `docker compose up` starts the first five; the other three need their profile.
+Apart from the `sessionhost` and the `gitstub` test stub, every container starts as root only long enough to hand a
+freshly mounted volume to its user, then drops to that user (`scripts/drop-root.sh`, or the control plane's own
+entrypoint); the `sessionhost` stays root on purpose, because it has to become a different Linux user for every chat
+(see "Hosted chats"). Published ports listen on 127.0.0.1 until you change `CODEAF_BIND` / `AGENTFIELD_BIND` in `.env`.
+State is in six named volumes, one per row that names one. There are two networks: `default`, which every service
+but the `sessionhost` is on, and `hosted`, which only `codeaf` and the `sessionhost` share.
 
 ## What you need
 
@@ -31,7 +57,7 @@ drops to that user (`scripts/drop-root.sh`); nothing long-lived runs as root. Pu
 
 ```sh
 cd deploy/org
-./setup.sh                      # writes .env with a fresh AgentField key and organization token (once)
+./setup.sh                      # writes .env with fresh secrets: AgentField key, organization token, hosted-chats secret, server key (once)
 $EDITOR .env                    # optional: OPENROUTER_API_KEY=..., GH_TOKEN=..., CODEAF_ORG_NAME=...
 docker compose up -d --build    # the first build takes several minutes; later starts take seconds
 docker compose ps               # every service says "healthy"
@@ -54,12 +80,26 @@ machine can. For them, serve the organization on a public HTTPS name (see "Other
 1. Open that `codeaf://factory/join?operator=true...` link in the codeaf desktop app (or paste it into
    **Join an organization...**). Choose a username and a password. Whoever uses the link first is the operator,
    so keep it to yourself until you have.
-2. From **People**, the operator makes an **invite link** for the second person. They paste it into
-   **Join an organization...** on their own computer and choose their own username and password.
+2. From **People** (Settings, Organizations, your organization), the operator uses **Invite someone** for the
+   second person. Without `CODEAF_SMTP_URL` nothing is emailed and the button reads **Copy an invite link**; the link
+   works for 7 days and for one person. They paste it into **Join an organization...** on their own computer and
+   choose their own username and password.
 3. A codeaf client connects to this organization with the server's URL, which is inside the link: your public
    HTTPS name, or `http://[::]:8787` on the machine running Compose.
 
 If the operator link is lost before anyone used it, `docker compose restart codeaf` prints a fresh one.
+
+**A request from the server's own computer is not trusted.** An organization server never takes a request to be a
+person because of where it came from: a request from the server's own computer that carries no sign-in, token or bot
+token is refused with a 401, like one from anywhere else (`/v1/about` and the sign-in routes stay open), and a request
+that came through a proxy is never counted as local unless a proxy listed in `CODEAF_TRUSTED_PROXIES` names a
+loopback caller. A script on the server's machine must send a token. Solo servers (a desktop window's own) do trust
+their own computer; a team server does so only when its host config file says `loopback_trust: true`. The file is
+`<codeaf home>/factory/config.yaml`, or the one `codeaf factory serve --config` names. **In this stack the key cannot
+be set:** `scripts/serve.sh` writes that file from the environment on every start (`/data/codeaf/factory/config.yaml`
+in the `codeaf` container) and has no variable for `loopback_trust`, so the server here always runs with it off, and a
+line added by hand is replaced at the next start. Nothing in the stack needs it on: the health check treats any HTTP
+answer, a 401 included, as up, and the smoke test signs in.
 
 ### Other people: HTTPS
 
@@ -104,16 +144,19 @@ puts your own keys back.
 
 ## Hosted chats (optional)
 
-By default a person's chat runs on their own computer. With hosted chats on, a person can instead run a
-chat on a machine of the organization's: `codeaf chat --org https://your-organization` opens it from their
-terminal, the work goes on there, and it is still there when they close the terminal and come back. Nothing
-here changes while it is off: with `CODEAF_HOSTED_URL` empty the organization server answers exactly as it did.
+An organization is its own account in the desktop app, separate from a person's personal one. With hosted chats
+on, every chat made in the organization's window runs on a machine of the organization's, never on the person's
+computer, and the window starts, lists and reopens them; there is no local escape inside it, and the way to work on
+one's own computer is to switch to the personal account, which never sees the organization's chats or files.
+`codeaf chat --org https://your-organization` opens the same chats from a terminal. The work goes on there, and it is
+still there when they close the window or terminal and come back. Nothing here changes while it is off: with
+`CODEAF_HOSTED_URL` empty the organization server answers exactly as it did.
 
 ```
-person's terminal --wss--> organization server --(shared secret)--> sessionhost --> one chat
- codeaf chat --org           signs the person in,                    one Linux user,
-                             names them to the sessionhost           one folder, fenced commands
-                             mints the chat's model access
+person's app or terminal --wss--> organization server --(shared secret)--> sessionhost --> one chat
+ codeaf chat --org                  signs the person in,                    one Linux user,
+                                    names them to the sessionhost           one folder, fenced commands
+                                    mints the chat's model access
 ```
 
 The **sessionhost** (`sessionhost` in `compose.yaml`) is the one container that starts as root and stays root,
@@ -160,17 +203,22 @@ because it has to become a different Linux user for every chat. It is built from
   token (a credential helper, `codeaf git-credential`, hands git only the chat's own bearer, and only to that one
   address).
 - **Limits.** `CODEAF_SESSIONHOST_MAX_RUNNING` chats at once (default 20) and `CODEAF_SESSIONHOST_MAX_PER_PERSON`
-  per person (default 3). A chat counts while it has a process; a person over their limit can still make a
-  chat but cannot start a third and reads "You already have N chats running; stop one first."
+  per person (default 3). A chat counts while it has a process; a person at their limit can still make a
+  chat but cannot start another and reads "You already have N chats running; stop one first."
   A chat that is stopped or deleted leaves no process behind, including ones that detached themselves.
+  `CODEAF_SESSIONHOST_IDLE` (default `30m`, never under `5s`) is how long a chat's own program waits with nobody
+  attached before it stops itself; the conversation and files stay and the next open starts it again. Each chat that
+  exists holds one of `CODEAF_SESSIONHOST_UID_COUNT` user numbers (default 10000, from `CODEAF_SESSIONHOST_UID_BASE`,
+  default 200000), and a deleted chat's number rests for 24 hours; with none free a new chat reads "This server has no room for another chat right now."
 - **A turn goes on without the client.** The chat's engine keeps its conversation behind a socket in the chat's
   own home, so closing the client in the middle of a turn loses nothing and the next attach shows the result. A
   socket path has a hard length ceiling, so `CODEAF_SESSIONHOST_DATA` (default `/chats`) must be short: the
   sessionhost refuses to start with a folder that leaves no room, and says how many characters it may have.
-- **Only the owner drives, and a chat is private until it is shared.** The organization server names the signed-in
-  person to the sessionhost, which knows only owners, so every call it makes for a chat is made as the chat's owner;
-  whether someone else may reach the chat at all is decided by the organization's access core first (below, "Sharing,
-  guests and bots (P2)"). A chat nobody has shared answers "There is no such chat.", word for word as an unknown one does.
+- **The sessionhost knows only owners, and a chat is private until it is shared.** The organization server names the
+  signed-in person to the sessionhost, which knows only owners, so every call it makes for a chat is made as the chat's
+  owner, a guest's included. Whether someone else may reach the chat at all, and what they may do in it, is decided
+  first by the organization's access core and the guest's wire (below, "Sharing, guests and bots (P2)"); the chat
+  itself is the owner's. A chat nobody has shared answers "There is no such chat.", word for word as an unknown one does.
 
 The five capabilities the container is given (`cap_drop: [ALL]`, then `cap_add`), and why:
 
@@ -228,7 +276,7 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
 - **The list.** `GET /v1/hosted/sessions` answers `sessions` (the caller's own chats, the rows P1 gave, so the
   client's `--org` pick is unchanged), `shared` (chats of other people the caller may open: `id`, `owner`, `role`,
   `access`, `state`, `created`, `last_active`, and nothing about the model access or warnings; the operator's rows,
-  only for a chat the policy keeps from being private, hold the same without `role` and have `access: operator`) and
+  only for a chat the policy does not make private, hold the same without `role` and have `access: operator`) and
   `hosting` (`local_sessions`, below). Every row of `sessions` and `shared` also carries `verbs`: what the policy
   gives the caller in that chat right now, in the order of the policy's verbs, decided the way the guest's wire
   decides it (an operator-only row holds none, and the answer to `POST /v1/hosted/sessions` carries the same field
@@ -279,9 +327,10 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   `allow` for one that does not; the list reports the value that applies, with `words` to show for `refuse` (that
   chats do not start on this computer and that the personal account is the way to work here) and for `warn`. An
   organization is its own account in the app, separate from the person's personal one: inside it every chat is
-  hosted and there is no local escape; switching to the personal account is the escape. A positive `max_session_cost_usd` replaces
-  `CODEAF_HOSTED_SESSION_CAP_USD` for every chat. Nothing in the client acts on `local_sessions` yet: this release
-  reports and stores it.
+  hosted and there is no local escape; switching to the personal account is the escape. That does not depend on
+  `local_sessions`: the organization's window is always hosted, and no client acts on `allow` or `warn` yet, so the
+  setting is reported and stored and nothing more. A positive `max_session_cost_usd` replaces
+  `CODEAF_HOSTED_SESSION_CAP_USD` for every chat.
 
 Known limit of this version: a guest's `Steer` or prompt is refused by the chat itself, in the chat's own words about
 the keyboard, while the owner's window holds the keyboard, because the guest's window does not take it on arrival; it
@@ -303,8 +352,9 @@ is a change to the wire's own protocol and not made here.
 3. `docker compose up -d`. The image must hold a codeaf that has `codeaf sessionhost`, and the pinned release (what a plain
    `--build` fetches) does not until one ships it. Use the published image (`--env-file images.env`, see "Published images"), or
    build the codeaf image from this repository's source (the `docker build` under "Published images", run from the repository root,
-   which tags `codeaf-org/codeaf:local`) and start with `docker compose up -d --no-build`. `codeaf`, `runner` and `sessionhost` all
-   run that one image. Do not build from a binary of your own machine: the image should be this commit's source, which is what `codeaf version`
+   which tags `codeaf-org/codeaf:local`) and start with `docker compose up -d` without `--build` (Compose builds only the images that
+   are missing, so it uses the codeaf image you just made; `--no-build` is for when every image is already built or pulled).
+   `codeaf`, `runner` and `sessionhost` all run that one image. Do not build from a binary of your own machine: the image should be this commit's source, which is what `codeaf version`
    inside it reports.
 
 The sessionhost sits on a network of its own, shared only with `codeaf`, so a chat's commands cannot reach
@@ -312,10 +362,14 @@ AgentField, the nodes, the runner or the model stub. On a platform with no such 
 is what keeps them out. Its API (`/v1/sessions` ...) wants the shared secret and a
 person's name from the organization server, and answers anything else with an empty `401`.
 
-`SMOKE_HOSTED=1 ./smoke.sh` runs everything above against the scripted stub (so it spends nothing): two people
+`SMOKE_HOSTED=1 ./smoke.sh` runs everything above against the scripted stub (so it spends nothing). It needs an image
+whose codeaf has `codeaf sessionhost` (step 3 above: the pinned release a plain build fetches does not), so give it
+one that is already built or pulled with `SMOKE_BUILD=--no-build` (and `SMOKE_ENV='--env-file images.env'` for the
+published ones), or build from a binary copied beside the Dockerfile as `codeaf-local` with
+`CODEAF_BINARY_FROM=local` (the header of `smoke.sh` has the command). Two people
 run chats; the test checks that they cannot see each other's files, processes or environment, that no secret
 is in a chat's shell, folder or process list, that a chat cannot reach the other services (and that the kernel refuses
-a port nobody allowed), that only the owner can attach, that closing the client mid-turn loses nothing, that a stopped
+a port nobody allowed), that nobody but the owner can attach to a chat that is not shared, that closing the client mid-turn loses nothing, that a stopped
 chat leaves no process, and that a restart of the sessionhost leaves the files in place. It also checks, against the
 stub model (each call reports it cost a cent) and a stub git host: the upstream sees only the organization's key, spend
 is exact to the cent, the monthly and per-chat limits refuse in plain words, a person's own key is used for them alone
@@ -328,7 +382,7 @@ command it tries is refused in the exact sentence and never reaches the chat; wi
 message reaches the chat, runs as the owner and is recorded against it, it may interrupt a running turn, and the
 owner's approvals and settings stay refused; taking `run` out of the role by a policy edit refuses its next message;
 taking the access away ends its open window within the heartbeat;
-the operator sees only metadata of a chat the policy keeps from being private and never its wire; a bot sees
+the operator sees only metadata of a chat the policy does not make private and never its wire; a bot sees
 exactly what its creator sees, starts chats that are its creator's alone, and loses a shared chat the moment its
 creator does; the hosting policy is reported, changed only by the operator and refused when it is not one of the
 three words. It prints PASS or FAIL per check. A live check against a real provider is the one step it does not do.
@@ -340,8 +394,12 @@ Landlock (`"mode": "uid+fence"`, `"fence_mode": "landlock"`).
 
 ## State, backups and upgrades
 
-State lives in five named volumes (`docker volume ls`, prefix `codeaf-org_`); `docker compose down` keeps them,
-`docker compose down -v` deletes them. A backup of one volume:
+State lives in six named volumes (`docker volume ls`, prefix `codeaf-org_`): `agentfield-data`, `codeaf-data`,
+`runner-data`, `swe-af-workspaces`, `pr-af-workspaces`, and `sessions-data` (the hosted chats' folders, used only with
+the `hosted` profile). `docker compose down` keeps them, `docker compose down -v` deletes them. The organization server's own
+state (its people, access links, spend and sealed keys) is in `codeaf-data` and the hosted chats' folders are in
+`sessions-data`; back `codeaf-data` up together with `.env`, which holds the server key that seals people's own keys.
+A backup of one volume:
 
 ```sh
 docker run --rm -v codeaf-org_codeaf-data:/d -v "$PWD":/b busybox tar czf /b/codeaf-data.tgz -C /d .
@@ -351,14 +409,16 @@ Everything is pinned: the codeaf release (`CODEAF_RELEASE` and its two sha256 va
 `codeaf.Dockerfile`, `swe-af.Dockerfile` and `pr-af.Dockerfile`), the SWE-AF and PR-AF commits (`SWEAF_REF`,
 `PRAF_REF`) and the AgentField image (`AGENTFIELD_IMAGE`, tag and digest together in `agentfield.Dockerfile`).
 To upgrade, change the pin, then `docker compose up -d --build`. Changing the line in the file is what makes
-Docker rebuild that layer; a loose version would keep restoring the cached one.
+Docker rebuild that layer; a loose version would keep restoring the cached one. From the published images, change
+`ORG_TAG` (see "Published images") and pull instead.
 
 ## Secrets
 
-No secret is baked into an image. The AgentField key, the organization token and the model keys come from `.env`
-or your environment. A service that is given a key as a mounted file can use `AGENTFIELD_API_KEY_FILE`,
-`OPENROUTER_API_KEY_FILE` or `GH_TOKEN_FILE` instead. Treat `.env` like a password file (`setup.sh` writes it
-mode 600); it is ignored by git and by the image build.
+No secret is baked into an image. The AgentField key, the organization token, the hosted-chats secret, the server key
+and the model keys come from `.env` or your environment. SWE-AF, PR-AF and the runner (not `codeaf` or `agentfield`) can be
+given a key as a mounted file instead, with `AGENTFIELD_API_KEY_FILE`, `OPENROUTER_API_KEY_FILE` or `GH_TOKEN_FILE`.
+Treat `.env` like a password file (`setup.sh` writes it mode 600). The image builds ignore it, but no rule in this
+repository keeps it out of git: do not `git add` the folder as a whole, and add `.env` to your own ignore rules.
 
 ## Published images
 
@@ -387,6 +447,9 @@ docker compose --env-file .env --env-file images.env pull
 docker compose --env-file .env --env-file images.env up -d --no-build
 ORG_TAG=<12-character commit id> docker compose --env-file .env --env-file images.env pull   # one exact build: how to run it for real
 ```
+
+If `pull` says an image is not found, nothing has been published under that name or tag yet (a run of the workflow in a repository
+without Docker Hub credentials builds and scans the images and pushes none): build them here instead.
 
 Without `images.env`, `docker compose up -d --build` still builds everything here, as before.
 
@@ -444,8 +507,8 @@ tag and digest together.
 
 ## Railway
 
-The same Dockerfiles run on Railway as one project: seven services, a volume on each but the model stub, private networking
-between them, and a public domain on `codeaf` only. Nothing needs Compose there; each service builds from this repository, on
+The same Dockerfiles run on Railway as one project: six services (seven with the keyless model stub), a volume on each but
+the model stub, private networking between them, and a public domain on `codeaf` only. Nothing needs Compose there; each service builds from this repository, on
 Railway's builders. (A Railway template needs images, not a repository: `railway/make-template.sh` makes a draft one from the
 published images above, without the sessionhost yet. The table below is the configuration by hand. It was followed from an empty
 project, with the keyless stub, and every service came up healthy: see "Check it" below.)
@@ -514,4 +577,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<the codeaf domain>/access     
   which only the same Linux or macOS machine can use. A real deployment serves HTTPS on a name.
 - GitHub sign-in (`CODEAF_GITHUB_CLIENT_ID`) and invitation mail (`CODEAF_SMTP_URL`) are optional and untested here;
   username and password is the default way in.
+- `scripts/serve.sh` writes the organization server's host config from the environment on every start, so a setting with
+  no variable here, such as `loopback_trust` (always off for this team server; see "Claim the organization"), cannot be
+  changed in this stack, and a hand edit of the file is replaced.
 - One replica of each service; no high availability.
