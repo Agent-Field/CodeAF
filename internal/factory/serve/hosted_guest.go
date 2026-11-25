@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/acl"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/coder/websocket"
 )
 
@@ -43,8 +44,9 @@ type hostedGuest struct {
 	cancel       context.CancelFunc
 	heartbeat    time.Duration
 	client, host net.Conn
-	verbs        atomic.Value
-	writeMu      sync.Mutex
+	// rights holds a hostedGuestRights and is replaced on every heartbeat.
+	rights  atomic.Value
+	writeMu sync.Mutex
 }
 
 // addGuest and closeHostedGuests use one lock so shutdown also reaches a wire still opening.
@@ -113,14 +115,14 @@ func (h *Handler) hostedGuestWire(w http.ResponseWriter, r *http.Request, item I
 	clientConn, closeClient := hostedGuestConn(ctx, client)
 	defer closeClient()
 	p.client = clientConn
-	p.verbs.Store(hostedGuestVerbs(v, item))
+	p.rights.Store(hostedGuestRightsOf(v, item))
 	var pumps sync.WaitGroup
 	defer func() {
 		cancel()
 		pumps.Wait()
 	}()
 	pumps.Go(func() {
-		p.checkHeartbeat(func() acl.VerbSet {
+		p.checkHeartbeat(func() hostedGuestRights {
 			return h.refreshHostedGuest(r, item.ID, owner, v.Handle)
 		})
 	})
@@ -202,8 +204,8 @@ func (p *hostedGuest) fromClient(forwarding func(method, class string)) {
 		if err != nil {
 			return
 		}
-		verbs := p.verbs.Load().(acl.VerbSet)
-		if !verbs.Has(acl.VerbView) {
+		rights := p.rights.Load().(hostedGuestRights)
+		if !rights.verbs.Has(acl.VerbView) {
 			// The heartbeat owns the final line when it takes access away.
 			<-p.ctx.Done()
 			return
@@ -221,8 +223,8 @@ func (p *hostedGuest) fromClient(forwarding func(method, class string)) {
 				p.fatal(hostedGuestBadCall)
 				return
 			}
-			class := hostedGuestMethods[frame.Method]
-			if words := hostedGuestRefusal(class, verbs); words != "" {
+			class, words := hostedGuestDecision(frame, rights)
+			if words != "" {
 				// A result always has an ID, including when the caller used zero.
 				result := struct {
 					Kind  string `json:"kind"`
@@ -357,7 +359,63 @@ func hostedGuestVerbs(v Viewer, item Item) acl.VerbSet {
 	return v.acc.rules().Verbs(v.caller(), v.acc.item(item), v.acc.time())
 }
 
-func (p *hostedGuest) checkHeartbeat(refresh func() acl.VerbSet) {
+// hostedGuestRights is what one guest wire may do right now: the verbs the policy gives the person on the chat, and the
+// organization's rule for who approves a tool call. Both are read again on every heartbeat, so a policy change reaches a
+// window that is already open, in the same beat that takes a verb away.
+type hostedGuestRights struct {
+	verbs     acl.VerbSet
+	approvals string
+}
+
+func hostedGuestRightsOf(v Viewer, item Item) hostedGuestRights {
+	return hostedGuestRights{verbs: hostedGuestVerbs(v, item), approvals: v.acc.rules().Chats.ApprovalsByFor()}
+}
+
+// hostedGuestDecision classifies one call from a guest and answers the sentence the guest is refused with, or "" when
+// the call may reach the chat. The method table decides almost everything; the two doors that carry a tool approval are
+// the exception, because approving is not one method: the older frame is ResolveConsent, and the answer to ANY question
+// the chat asks, an allow among them, is ResolveQuestion.
+func hostedGuestDecision(frame remote.Frame, rights hostedGuestRights) (class, refusal string) {
+	class = hostedGuestMethods[frame.Method]
+	if frame.Method == remote.MethodConsent && rights.approvals == acl.ApprovalsByAnswer {
+		// One allow or one refusal of the call the chat is waiting on. Allowing a tool for good has its own frame,
+		// ResolveConsentRemember, which the table leaves with the owner under every setting.
+		class = acl.VerbAnswer
+	}
+	if words := hostedGuestRefusal(class, rights.verbs); words != "" {
+		return class, words
+	}
+	if frame.Method == remote.MethodQuestionResolve && !hostedGuestMayAnswer(frame, rights) {
+		return class, hostedGuestOwnerOnly
+	}
+	return class, ""
+}
+
+// hostedGuestMayAnswer is whether a guest who already holds the answer verb may send this ResolveQuestion. An answer that
+// is not to a tool approval always may. One that is waits for the owner unless the organization let answerers approve,
+// and even then only the two plain answers (allow once, refuse) pass. The payload is read with the engine's own decoder
+// into the engine's own type, so this cannot read an answer differently from the way the chat will.
+func hostedGuestMayAnswer(frame remote.Frame, rights hostedGuestRights) bool {
+	var args remote.QuestionArgs
+	if len(frame.Payload) != 0 && json.Unmarshal(frame.Payload, &args) != nil {
+		// The chat cannot read it either and refuses it by itself.
+		return true
+	}
+	answer := args.Answer
+	if !strings.EqualFold(strings.TrimSpace(string(answer.Kind)), string(session.QuestionConsent)) {
+		return true
+	}
+	if rights.approvals != acl.ApprovalsByAnswer || answer.Dismissed || answer.Revises || answer.Clarify {
+		return false
+	}
+	switch answer.FirstKey() {
+	case "1", "3":
+		return true
+	}
+	return false
+}
+
+func (p *hostedGuest) checkHeartbeat(refresh func() hostedGuestRights) {
 	ticker := time.NewTicker(p.heartbeat)
 	defer ticker.Stop()
 	for {
@@ -365,9 +423,9 @@ func (p *hostedGuest) checkHeartbeat(refresh func() acl.VerbSet) {
 		case <-p.ctx.Done():
 			return
 		case <-ticker.C:
-			verbs := refresh()
-			p.verbs.Store(verbs)
-			if !verbs.Has(acl.VerbView) {
+			rights := refresh()
+			p.rights.Store(rights)
+			if !rights.verbs.Has(acl.VerbView) {
 				p.fatal(hostedGuestRemoved)
 				return
 			}
@@ -375,34 +433,34 @@ func (p *hostedGuest) checkHeartbeat(refresh func() acl.VerbSet) {
 	}
 }
 
-func (h *Handler) refreshHostedGuest(r *http.Request, id, owner, asker string) acl.VerbSet {
+func (h *Handler) refreshHostedGuest(r *http.Request, id, owner, asker string) hostedGuestRights {
 	r = authRequest(r)
 	if !h.allowed(r) {
-		return nil
+		return hostedGuestRights{}
 	}
 	v, err := h.itemViewer(r)
 	if err != nil || v.Handle != asker || !h.teamAllows(v.Handle) || r.Context().Value(authErrorKey{}).(*authErrorState).err != nil {
-		return nil
+		return hostedGuestRights{}
 	}
 	st := h.config.Store
 	if call, _ := agentCallOf(r); call.bot != "" {
 		bot, _, state, err := st.FindBotToken(sessionHash(bearer(r)), h.now())
 		if err != nil || state != store.BotTokenLive || bot.ID != call.bot || bot.Creator != v.Handle {
-			return nil
+			return hostedGuestRights{}
 		}
 		// The stored scope and the policy bundle can both change while the bot is attached.
 		v.Agent.Only = botScopeVerbs(v.acc.rules(), bot.Scope)
 	}
 	row, found, err := st.Resource(store.SessionKind, id)
 	if err != nil || !found || row.Owner.ID != owner || !hostedRegistration(row) {
-		return nil
+		return hostedGuestRights{}
 	}
-	return hostedGuestVerbs(v, h.resourceItem(row, factory.OrgWorkstream{}))
+	return hostedGuestRightsOf(v, h.resourceItem(row, factory.OrgWorkstream{}))
 }
 
 func (h *Handler) noteHostedGuestCall(id, owner, asker, method, class string) {
 	// Attribution is approximate because the next model call can follow any accepted words.
-	if class == acl.VerbRun || method == remote.MethodSteer || method == remote.MethodQuestionResolve {
+	if class == acl.VerbRun || method == remote.MethodSteer || method == remote.MethodQuestionResolve || method == remote.MethodConsent {
 		h.config.Hosted.state.noteAsker(id, asker)
 	}
 	// The chat checks the keyboard for prompts and steer. A guest with run can use Take to drive.
