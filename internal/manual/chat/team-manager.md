@@ -353,7 +353,7 @@ left that the member waits on. So a turn such a command's ending starts is still
 so is a turn you opened by typing to the member while it waits on one. Stopping a member
 with none of the manager's work under way tells the manager nothing, and neither does codeaf
 quitting or a paused member's stray wake being ended. The global
-manager is not woken by a top-level team's manager being stopped (see **The global manager**).
+manager is not woken by a member of `All teams` being stopped (see **The global manager**).
 
 ## A stopped member's command is still running — why it did not start again when the command ended
 
@@ -540,18 +540,19 @@ report to it, so their questions and conflicts between teams come to it before t
 you. It can start a new top-level team with `team_start` of kind `team`. Without a global
 manager, nothing here changes: each top-level manager reports to you.
 
-A top-level manager's turn ending does not start the global manager's turn. You talk to
-those managers directly and each answer ends a turn, so the endings stay in `All teams`'
-traffic, where `team_status` reads them. The global manager is woken by what a manager posts
-to it with `team_post`, by a manager's question or a permission it is held on, and by a
-manager's turn failing. So a directive the global manager sent is answered with `team_post`:
-each manager is told to answer its directives that way, and apart from those answers to post
-only what the global manager should act on or tell you. A manager that ends its turn on a
-directive without posting has told the global manager nothing, and `team_status` is where it
-finds out. The global manager is told never to send a manager your own request to that manager
-back as a directive. A member of `All teams` that manages no team is an ordinary member
-there: it is told what a member of any team is told, and its turn ending wakes the global
-manager as in any team.
+No turn in `All teams` that finishes or is stopped starts the global manager's turn. You talk
+to the top-level managers directly and each answer ends a turn, so the endings stay in
+`All teams`' traffic, where `team_status` reads them. The global manager is woken by what a
+member posts to it with `team_post`, by a member's question or a permission it is held on, and
+by a member's turn failing. So a directive the global manager sent, and the brief it started
+a team on, are answered with `team_post`: each top-level manager is told so, and apart from
+those answers to post only what the global manager should act on or tell you. A manager that
+finishes a turn without posting has told it nothing, the first turn of a team it started
+included: `team_start` says so, and `team_status` is where it finds out. The global manager
+is told never to send a manager your own request to that manager back as a directive.
+`All teams` can also hold a conversation that manages no team now, such as a manager you
+replaced. The global manager neither lists nor directs it, its turn ending is as quiet, and
+it is told what a member of any team is told.
 
 ## Conflicts between members and teams
 
@@ -612,7 +613,7 @@ working, that is straight away. When it is idle, it depends on the kind of messa
   manager's work, start an idle manager's turn. A reply
   and the end of the same turn are one wake, even if the ending arrives after the manager
   already ran. Replies arriving within a few seconds are gathered into one turn. The global
-  manager is the exception: a top-level team's manager finishing or being stopped does not
+  manager is the exception: a member of `All teams` finishing or being stopped does not
   start its turn (see **The global manager**).
 
 A member no window has open is opened by codeaf in the background so it can run, and a window

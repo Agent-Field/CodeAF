@@ -124,12 +124,12 @@ type teamRole struct {
 	// manager is the global manager, and its other members are the top-level
 	// teams' managers.
 	root bool
-	// tops is, for the root, the keys of the members that manage a top-level
-	// team now ([teams.File.TopManagers]). The root can hold others, a manager
-	// that stopped being one or a conversation the person put there, and the
-	// rule that keeps a manager's turn ending from waking the global manager is
-	// about these members alone ([teamRole.quietEnding]).
-	tops map[string]bool
+	// top says this seat in the root is a top-level team's manager's now
+	// ([teams.File.TopManagers]). The root can hold others, a manager that
+	// stopped being one or a conversation the person put there, and only a
+	// manager is told it sits there because it manages a team
+	// ([teamMemberRole]).
+	top bool
 	// dissolvable says this conversation manages the team and the team has
 	// never held anyone but it ([teams.File.Dissolvable]), which is when its
 	// manager is given team_dissolve (team_dissolve.go).
@@ -461,7 +461,7 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			boss:        boss,
 			bossName:    bossName,
 			root:        team.Root,
-			tops:        topManagerKeys(file, team),
+			top:         team.Root && topManager(file, member.Key),
 			key:         member.Key,
 			wakes:       effective.Wake,
 			questionsUp: effective.QuestionsUp,
@@ -1736,7 +1736,7 @@ func teamManagerScope(role teamRole, file *teams.File) string {
 	if role.root {
 		parts = append(parts, fmt.Sprintf("You are the global manager: %q holds every team, and your members are the managers of the top-level teams, never their members. "+
 			"Direct those managers and they pass it on. Their questions and conflicts between teams come to you before the person. team_start with kind team starts a new top-level team. "+
-			"A manager answers a directive of yours with team_post, since its turn ending tells you nothing; team_status says where each of them stands. "+
+			"A manager answers a directive of yours, and the brief you started it on, with team_post, since its turn finishing does not start yours; team_status says where each of them stands. "+
 			"The person talks to those managers directly, and what the person asked one of them is that manager's work already: never send a manager the person's own request to it as a directive of yours.", role.name))
 	} else if home, ok := file.Home(role.key); ok && home.Team != role.id {
 		boss := "its manager"
@@ -1776,12 +1776,11 @@ func teamManagerDelivery(role teamRole) string {
 	if !role.wakes {
 		return "This team's auto-wake is off: what you send, and your members' replies, wait for each conversation's next turn, so an idle member does not start on a directive until it next runs."
 	}
-	// The global manager's turn is not started by a top-level manager's turn
-	// ending ([teamEventWakesManagerOf]). The root can hold ordinary members
-	// too, so the sentence names whose ending it is.
+	// The global manager's turn is not started by a turn ending in the root,
+	// finished or stopped ([teamEventWakesManagerOf]).
 	back, except := "Members' replies to you, and their finishing, failing or asking,", ""
 	if role.root {
-		back, except = "Members' replies to you, and their failing or asking,", " A top-level team's manager ending its turn does not start yours."
+		back, except = "Members' replies to you, and their failing or asking,", " A member's turn finishing or being stopped does not start yours."
 	}
 	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. team_send's answer says whether each member started: one the person paused does not start until they resume it, and work is under way only where the answer says so. " + back + " come back to you and start your turn when you are idle, so do not wait or poll for them." + except
 }
@@ -1836,13 +1835,14 @@ func teamMemberRole(role teamRole) string {
 	if role.handle != "" {
 		you = "@" + role.handle
 	}
-	// Only a top-level team's manager is told its ending is silent: anybody
-	// else the root holds is an ordinary member there, whose ending wakes the
-	// global manager ([teamRole.quietEnding]), and reads the text below.
-	if role.quietEnding(role.key) {
+	// Only a top-level team's manager is told why it sits in the root and how
+	// to answer the global manager. Nobody's ending there wakes that manager
+	// ([teamEventWakesManagerOf]), but it directs only these, so anybody else
+	// the root holds reads the member's text below, which promises no wake.
+	if role.top {
 		return fmt.Sprintf("You are %s in %q because you manage a top-level team: you report to its manager, the global manager. Its directives reach you marked \"◆ from manager\", "+
 			"your questions go to it before the person, and you report to it with team_post to the manager. "+
-			"Your turn ending tells it nothing: answer each of its directives with team_post to the manager. "+
+			"Your turn ending tells it nothing: answer each of its directives, and the brief it started you on if it started you, with team_post to the manager. "+
 			"Apart from those answers, post only what it should act on or tell the person.", you, role.name)
 	}
 	if role.boss != "" && role.boss != role.id && !role.shared {
