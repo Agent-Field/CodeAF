@@ -618,6 +618,9 @@ var errStageStays = errors.New("a factory step's reply stays in its step")
 // running stage to a person (cmd/codeaf's app_lend.go), and this is the one
 // door through which their move would have reached it.
 func (a *Agent) MoveTurnToTask() error {
+	if a.config.AppScope != nil {
+		return errAppTask
+	}
 	if err := a.CheckWork(); err != nil {
 		return err
 	}

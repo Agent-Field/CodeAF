@@ -143,6 +143,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if client == nil {
 		return nil, errors.New("session: completer is required")
 	}
+	if err := checkAppScope(config); err != nil {
+		return nil, err
+	}
 	if err := configureOwnedChat(&config); err != nil {
 		return nil, fmt.Errorf("prepare conversation storage: %w", err)
 	}
@@ -309,6 +312,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.initKnowledge()
 	agent.ownWorkTold.Store(config.ownWork)
 	agent.tools = agent.belt()
+	if config.AppScope != nil {
+		agent.appApprovals = config.AppScope.ApprovalTools
+	}
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
 		return nil, err

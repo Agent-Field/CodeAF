@@ -339,6 +339,13 @@ func (a *Agent) turnCue(user userMessage) string {
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (finished bool) {
+	if a.config.AppScope != nil {
+		if err := a.refreshAppScope(); err != nil {
+			hub.send(Event{Kind: EventError, Err: err})
+			return false
+		}
+		ctx = a.withAppTurn(ctx, user)
+	}
 	if user.factoryWork || user.wake && !user.answersPerson && !user.answer {
 		ctx = context.WithValue(ctx, factoryAutomaticTurnKey{}, a.automaticFactoryRefusal)
 	} else if why := a.automaticFactoryRefusal(); why != "" {
@@ -3942,6 +3949,9 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
+		}
+		if a.config.AppScope != nil && call.Function.Name != AppChangeToolName {
+			markAppTool(ctx)
 		}
 		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
 			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true, rejected: true})
