@@ -247,8 +247,8 @@ organization's. Each of those is a next step, not a hidden property.
 ### Keys, spend and git (P1)
 
 - **The real model door.** `CODEAF_HOSTED_MODEL_UPSTREAM` (OpenRouter's when empty) is called with
-  `CODEAF_HOSTED_MODEL_KEY`, or the key the organization server already holds for model calls, or no key at all for a
-  keyless stub. The key never leaves the organization server. Every call is metered to the cent into the signed-in
+  `CODEAF_HOSTED_MODEL_KEY`, or else the organization key an operator saved in Settings, Organizations, or no key at all for a
+  keyless stub. The door never reads the `OPENROUTER_API_KEY` variable (that one is for the runner and the nodes). The key never leaves the organization server. Every call is metered to the cent into the signed-in
   person's My space; a chat stops at `CODEAF_HOSTED_SESSION_CAP_USD` (default 5) and a person at the monthly limit the
   operator sets in Settings (`PUT /v1/myspace/limit`, default 20). A refused message is a plain sentence and makes no
   upstream call.

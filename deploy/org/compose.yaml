@@ -84,7 +84,8 @@ services:
       CODEAF_HOSTED_SECRET: ${CODEAF_HOSTED_SECRET:-}
       CODEAF_HOSTED_MODEL_URL: ${CODEAF_HOSTED_MODEL_URL:-http://codeaf:8787/v1/model}
       # The model door (README.md "Hosted chats"): the upstream is OpenRouter's unless set, and the key it is called with is
-      # CODEAF_HOSTED_MODEL_KEY, else the key this server already holds for model calls. Every call is metered into the
+      # CODEAF_HOSTED_MODEL_KEY, else the organization key saved in Settings, Organizations (never OPENROUTER_API_KEY, which
+      # is for the runner and the nodes). Every call is metered into the
       # person's spend; a chat stops at CODEAF_HOSTED_SESSION_CAP_USD (default 5).
       CODEAF_HOSTED_MODEL_UPSTREAM: ${CODEAF_HOSTED_MODEL_UPSTREAM:-}
       CODEAF_HOSTED_MODEL_KEY: ${CODEAF_HOSTED_MODEL_KEY:-}
