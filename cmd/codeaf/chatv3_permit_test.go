@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/tui3"
@@ -189,20 +190,52 @@ func TestAnUnreadableRosterAsksNothingNow(t *testing.T) {
 	}
 }
 
-// V14: with remote control off there is no asker at all, so Home is exactly
-// what it was before the setting existed.
-func TestWithRemoteControlOffThereIsNoOneTimeQuestion(t *testing.T) {
+// V14, as the 2026-11-24 hand test corrected it: remote control is switched on in
+// a window that is already open, so the asker is there whatever the setting says
+// at start, and it asks only while the setting is on. Off, it says there is
+// nothing to ask and starts no work, which is Home exactly as it was.
+func TestTheOneTimeQuestionFollowsRemoteControlWhileTheWindowIsOpen(t *testing.T) {
+	profile := t.TempDir()
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
 	t.Setenv("CODEAF_REMOTE_CONTROL", "")
-	if got := newPermitAsker(newApprovalsDoor(t.TempDir())); got != nil {
-		t.Fatalf("newPermitAsker with remote control off = %T, want nil", got)
-	}
-	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
-	if got := newPermitAsker(newApprovalsDoor(t.TempDir())); got == nil {
-		t.Fatal("newPermitAsker with remote control on answered nil")
-	}
+	_ = os.Unsetenv("CODEAF_REMOTE_CONTROL")
 	if got := newPermitAsker(nil); got != nil {
 		t.Fatalf("newPermitAsker with no door = %T, want nil", got)
+	}
+
+	// The real wrapper over a real door, with the book's work queued by the test.
+	got := newPermitAsker(newApprovalsDoor(t.TempDir()))
+	gate, ok := got.(whenRemoteControlIsOn)
+	if !ok {
+		t.Fatalf("newPermitAsker answered %T, want the asker that follows the setting", got)
+	}
+	if gate.on() {
+		t.Fatal("the gate reads remote control as on in a fresh profile")
+	}
+	if err := applyRow(profile, config.KeyRemoteControl, "on"); err != nil {
+		t.Fatal(err)
+	}
+	if !gate.on() {
+		t.Fatal("the gate still reads remote control as off after /settings switched it on")
+	}
+
+	// What the gate does with each answer.
+	asker, queued := permitAskerOver(permitBookWithLegacy(t), permitRoster(), time.Now)
+	on := false
+	gated := whenRemoteControlIsOn{asker: asker, on: func() bool { return on }}
+	if names, ask := gated.AskOnce(); ask || len(names) != 0 || len(*queued) != 0 {
+		t.Fatalf("with remote control off the asker answered (%v, %t) and queued %d reads, want nothing", names, ask, len(*queued))
+	}
+	on = true
+	gated.AskOnce()
+	runQueued(queued)
+	if names, ask := gated.AskOnce(); !ask || !reflect.DeepEqual(names, []string{"tower"}) {
+		t.Fatalf("after switching remote control on the asker answered (%v, %t), want (tower, true)", names, ask)
+	}
+	on = false
+	if _, ask := gated.AskOnce(); ask {
+		t.Fatal("the asker kept asking after remote control was switched off")
 	}
 }
 
