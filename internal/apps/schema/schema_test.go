@@ -510,3 +510,93 @@ func TestPanelSelectionAndParamsBindings(t *testing.T) {
 		t.Fatalf("the A2 panel shape should validate:\n%s", r)
 	}
 }
+
+func TestSendGateIgnoresSpelling(t *testing.T) {
+	for _, tool := range []string{"slack.chat.POST", "slack.Post", "mail.send_message", "mail.send ", "mail.x.reply"} {
+		if !isOutbound(tool) {
+			t.Errorf("%q should count as outbound", tool)
+		}
+	}
+	for _, verb := range []string{"Send", "SEND", "send ", "send."} {
+		files := crmFiles(t)
+		jsonEdit(AppFile, func(v map[string]any) { at(v, "capabilities")["tools"] = []any{"mail"} })(t, files)
+		jsonEdit("screens/deals.json", func(v map[string]any) {
+			at(newDealButton(v), "on")["click"] = []any{map[string]any{"tools.call": []any{"mail", verb, map[string]any{}}}}
+		})(t, files)
+		if r := Validate(Definition{Files: files}, nil); r.OK() {
+			t.Errorf("verb %q from a screen should be refused", verb)
+		}
+	}
+	files := crmFiles(t)
+	textEdit("runs/won-handoff.yaml", "    gate: { approval: send, who: $me }\n    tool: slack.post", "    tool: slack.chat.POST")(t, files)
+	if r := Validate(Definition{Files: files}, nil); r.OK() {
+		t.Error("slack.chat.POST without a gate should be refused")
+	}
+}
+
+func TestLoadRefusesLinkedFolders(t *testing.T) {
+	src := load(t, "testdata/crm")
+	write := func(root string, skip func(string) bool) {
+		for name, raw := range src.Files {
+			if skip(name) {
+				continue
+			}
+			full := filepath.Join(root, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(full, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// A screens folder that is a link elsewhere is not read through.
+	dir, elsewhere := t.TempDir(), t.TempDir()
+	write(dir, func(n string) bool { return strings.HasPrefix(n, "screens/") })
+	write(elsewhere, func(n string) bool { return !strings.HasPrefix(n, "screens/") })
+	if err := os.Symlink(filepath.Join(elsewhere, "screens"), filepath.Join(dir, "screens")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	def := load(t, dir)
+	if len(def.ScreenFiles()) != 0 {
+		t.Fatal("Load read screens through a linked folder")
+	}
+	if r := Validate(def, nil); !hasCode(r, CodeFileNotAllowed) {
+		t.Fatalf("a linked screens folder should be refused:\n%s", r)
+	}
+
+	// An agent file under a linked folder is not read either.
+	dir2, outside := t.TempDir(), t.TempDir()
+	write(dir2, func(n string) bool { return n == "agent.md" })
+	if err := os.WriteFile(filepath.Join(outside, "agent.md"), []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir2, "p")); err != nil {
+		t.Fatal(err)
+	}
+	app := strings.Replace(string(src.Files[AppFile]), `"file": "agent.md"`, `"file": "p/agent.md"`, 1)
+	if err := os.WriteFile(filepath.Join(dir2, AppFile), []byte(app), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	def = load(t, dir2)
+	if _, read := def.Files["p/agent.md"]; read {
+		t.Fatal("Load read an agent file through a linked folder")
+	}
+	if r := Validate(def, nil); !hasCode(r, CodeFileNotAllowed) {
+		t.Fatalf("an agent file behind a link should be refused:\n%s", r)
+	}
+}
+
+func TestScreenAndRunFileNamesAreIDs(t *testing.T) {
+	for _, name := range []string{"screens/.json", "runs/.yml", "screens/Deals.json"} {
+		files := crmFiles(t)
+		files[name] = []byte("{}")
+		found := false
+		for _, p := range Validate(Definition{Files: files}, nil).Problems {
+			found = found || (p.Code == CodeFileNotAllowed && p.File == name)
+		}
+		if !found {
+			t.Errorf("%q should be refused", name)
+		}
+	}
+}

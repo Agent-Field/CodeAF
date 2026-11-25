@@ -50,14 +50,14 @@
             "properties": {
               "as": { "enum": ["me"] },
               "account": { "type": "string" },
-              "can": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-              "approve": { "type": "array", "items": { "type": "string" } },
+              "can": { "type": "array", "items": { "$ref": "#/$defs/verb" }, "minItems": 1 },
+              "approve": { "type": "array", "items": { "$ref": "#/$defs/verb" } },
               "channels": { "type": "array", "items": { "type": "string" } }
             }
           }
         },
         "ai": { "type": "array", "items": { "enum": ["sort", "summarise"] }, "uniqueItems": true },
-        "tools": { "type": "array", "items": { "type": "string" } }
+        "tools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_]*)*$" } }
       }
     },
     "triggers": {
@@ -109,6 +109,11 @@
     }
   },
   "$defs": {
+    "verb": {
+      "description": "A connector verb, lowercase, so the outbound check reads it exactly as it is called.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+    },
     "name": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
     "recordType": {
       "type": "object",

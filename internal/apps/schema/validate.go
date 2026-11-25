@@ -115,11 +115,12 @@ var outbound = map[string]bool{"send": true, "post": true, "reply": true, "pay":
 var systemFields = map[string]bool{"id": true, "created_at": true, "updated_at": true}
 
 var (
-	selectionRef = regexp.MustCompile(`\$selection\.([a-z][a-z0-9_-]*)`)
-	paramsRef    = regexp.MustCompile(`\$params\.([a-z][a-z0-9_]*)`)
-	stepsRef     = regexp.MustCompile(`\$steps\.([a-z][a-z0-9_-]*)`)
-	durationText = regexp.MustCompile(`^[0-9]+(s|m|h|d|w)$`)
-	cronField    = regexp.MustCompile(`^[0-9*,/\-A-Za-z]+$`)
+	selectionRef  = regexp.MustCompile(`\$selection\.([a-z][a-z0-9_-]*)`)
+	paramsRef     = regexp.MustCompile(`\$params\.([a-z][a-z0-9_]*)`)
+	stepsRef      = regexp.MustCompile(`\$steps\.([a-z][a-z0-9_-]*)`)
+	durationText  = regexp.MustCompile(`^[0-9]+(s|m|h|d|w)$`)
+	cronField     = regexp.MustCompile(`^[0-9*,/\-A-Za-z]+$`)
+	fileIDPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,47}$`)
 )
 
 // checker carries what every check needs: the parsed app, the types it can see,
@@ -298,6 +299,12 @@ func (c *checker) checkPaths() {
 			c.add(name, "", CodeFileNotAllowed, "%q is not a plain path inside the app folder; write it as %q.", name, clean)
 		case name == AppFile || name == PlanFile || name == SampleFile || (agentOK && name == agent):
 		case contains(screens, name) || contains(runs, name):
+			if !fileIDPattern.MatchString(FileID(name)) {
+				c.add(name, "", CodeFileNotAllowed, "%s is not a usable name; a screen or run file is named <id>.json or <id>.yaml, with an id of lowercase letters, digits, - and _.", name)
+			}
+		case !agentOK && !strings.Contains(name, "/") && strings.HasSuffix(name, ".md"):
+			// app.json already says its agent file name is wrong; one mistake is
+			// one problem.
 		default:
 			c.add(name, "", CodeFileNotAllowed, "An app has no file called %s. It may have app.json, plan.json, sample.json, its agent file, screens/<id>.json and runs/<id>.yaml.", name)
 		}
@@ -627,7 +634,19 @@ func lastSegment(tool string) string {
 
 // isOutbound reports whether a tool name's verb leaves the computer, judged by its
 // last segment so a longer name cannot hide a send in its middle.
-func isOutbound(tool string) bool { return outbound[lastSegment(tool)] }
+//
+// The verb is compared lowercased and trimmed, and each underscore-separated word
+// of it counts, so "Send", "send " and "send_message" are all sends. The schemas
+// already insist on lowercase verbs; this is the second lock on the same door.
+func isOutbound(tool string) bool {
+	verb := strings.ToLower(strings.TrimSpace(lastSegment(strings.TrimSpace(tool))))
+	for _, word := range strings.Split(verb, "_") {
+		if outbound[word] {
+			return true
+		}
+	}
+	return false
+}
 
 // ---------- screens ----------
 

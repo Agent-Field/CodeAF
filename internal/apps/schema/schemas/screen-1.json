@@ -99,7 +99,7 @@
           "type": "array",
           "minItems": 2,
           "maxItems": 3,
-          "prefixItems": [{ "type": "string" }, { "type": "string" }, { "type": "object" }]
+          "prefixItems": [{ "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" }, { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" }, { "type": "object" }]
         },
         "ai.sort": { "type": "string" },
         "field": { "type": "string" },

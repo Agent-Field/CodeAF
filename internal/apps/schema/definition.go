@@ -69,6 +69,14 @@ func Load(dir string) (Definition, error) {
 	def := Definition{Files: map[string][]byte{}}
 	read := func(rel string) error {
 		full := filepath.Join(dir, filepath.FromSlash(rel))
+		// Every folder on the way is checked too: Lstat looks only at the last
+		// name, and a linked folder would carry the read outside the app.
+		if linked, err := linkOnPath(dir, rel); err != nil {
+			return err
+		} else if linked {
+			def.Links = append(def.Links, rel)
+			return nil
+		}
 		info, err := os.Lstat(full)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -106,6 +114,10 @@ func Load(dir string) (Definition, error) {
 		dir  string
 		exts []string
 	}{{ScreensDir, []string{".json"}}, {RunsDir, []string{".yaml", ".yml"}}} {
+		if info, err := os.Lstat(filepath.Join(dir, folder.dir)); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			def.Links = append(def.Links, folder.dir)
+			continue
+		}
 		entries, err := os.ReadDir(filepath.Join(dir, folder.dir))
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -123,6 +135,28 @@ func Load(dir string) (Definition, error) {
 		}
 	}
 	return def, nil
+}
+
+// linkOnPath reports whether any folder between dir and rel (rel itself excluded)
+// is a symbolic link. A folder that does not exist is no link: the read that
+// follows simply finds nothing.
+func linkOnPath(dir, rel string) (bool, error) {
+	parts := strings.Split(rel, "/")
+	cur := dir
+	for _, p := range parts[:len(parts)-1] {
+		cur = filepath.Join(cur, p)
+		info, err := os.Lstat(cur)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func hasExt(name string, exts []string) bool {
