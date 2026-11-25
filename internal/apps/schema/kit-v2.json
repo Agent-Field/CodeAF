@@ -4764,6 +4764,105 @@
         ],
         "modifiers": []
       },
+      "data.process": {
+        "id": "data.process",
+        "version": 1,
+        "doc": "Reads a record's state, guards, checklist, work, timers and sign-offs.",
+        "example": {"data.process": {"record": {"type": "deal", "id": "$row.id"}}},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "data.process": {"type": "object", "additionalProperties": false, "properties": {"app": {"type": "string", "minLength": 1}, "draft": {"type": "string", "minLength": 1}, "record": {"type": "object", "additionalProperties": false, "properties": {"type": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}}, "required": ["type", "id"]}}, "required": ["record"]}
+          },
+          "required": ["data.process"]
+        }
+      },
+      "data.transition_batch": {
+        "id": "data.transition_batch",
+        "version": 1,
+        "doc": "Moves selected records in one transaction after checking each record's guard and revision.",
+        "example": {"data.transition_batch": {"transition": "win", "records": [{"record": {"type": "deal", "id": "$row.id"}, "expected_rev": 1}]}},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "data.transition_batch": {"type": "object", "additionalProperties": false, "properties": {"app": {"type": "string", "minLength": 1}, "draft": {"type": "string", "minLength": 1}, "transition": {"type": "string", "minLength": 1}, "records": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "properties": {"record": {"type": "object", "additionalProperties": false, "properties": {"type": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}}, "required": ["type", "id"]}, "expected_rev": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "string", "pattern": "^[1-9][0-9]*$"}]}}, "required": ["record", "expected_rev"]}}, "reason": {"type": "string"}, "unfreeze": {"type": "string"}}, "required": ["transition", "records"]}
+          },
+          "required": ["data.transition_batch"]
+        },
+        "transition": true
+      },
+      "data.checklist_set": {
+        "id": "data.checklist_set",
+        "version": 1,
+        "doc": "Completes or reopens a declared checklist step and returns current process state.",
+        "example": {"data.checklist_set": {"record": {"type": "deal", "id": "$row.id"}, "checklist": "review", "step": "terms", "done": true, "expected_rev": 1}},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "data.checklist_set": {"type": "object", "additionalProperties": false, "properties": {"app": {"type": "string", "minLength": 1}, "draft": {"type": "string", "minLength": 1}, "record": {"type": "object", "additionalProperties": false, "properties": {"type": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}}, "required": ["type", "id"]}, "checklist": {"type": "string", "minLength": 1}, "step": {"type": "string", "minLength": 1}, "done": {"type": "boolean"}, "expected_rev": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "string", "pattern": "^[1-9][0-9]*$"}]}, "evidence": {"type": "object", "additionalProperties": false, "properties": {"kind": {"enum": ["note", "record"]}, "text": {"type": "string", "minLength": 1}, "record": {"type": "object", "additionalProperties": false, "properties": {"type": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}}, "required": ["type", "id"]}}, "required": ["kind"]}}, "required": ["record", "checklist", "step", "done", "expected_rev"]}
+          },
+          "required": ["data.checklist_set"]
+        }
+      },
+      "work_items.list": {
+        "id": "work_items.list",
+        "version": 1,
+        "doc": "Lists open work assigned to the person or their agents.",
+        "example": {"work_items.list": {}},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "work_items.list": {"type": "object", "additionalProperties": false, "properties": {"app": {"type": "string", "minLength": 1}, "draft": {"type": "string", "minLength": 1}}}
+          },
+          "required": ["work_items.list"]
+        }
+      },
+      "work_items.claim": {
+        "id": "work_items.claim",
+        "version": 1,
+        "doc": "Claims an unassigned open work item.",
+        "example": {"work_items.claim": {"id": "$row.id"}},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "work_items.claim": {"type": "object", "additionalProperties": false, "properties": {"app": {"type": "string", "minLength": 1}, "draft": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}}, "required": ["id"]}
+          },
+          "required": ["work_items.claim"]
+        }
+      },
+      "work_items.complete": {
+        "id": "work_items.complete",
+        "version": 1,
+        "doc": "Completes an open item with its answers.",
+        "example": {"work_items.complete": {"id": "$row.id", "values": {"approved": true}}},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "work_items.complete": {"type": "object", "additionalProperties": false, "properties": {"app": {"type": "string", "minLength": 1}, "draft": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}, "values": {"type": "object"}}, "required": ["id"]}
+          },
+          "required": ["work_items.complete"]
+        }
+      },
+      "work_items.reassign": {
+        "id": "work_items.reassign",
+        "version": 1,
+        "doc": "Changes an open item's assignee. An empty assignee releases the item.",
+        "example": {"work_items.reassign": {"id": "$row.id", "assignee": "me"}},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "work_items.reassign": {"type": "object", "additionalProperties": false, "properties": {"app": {"type": "string", "minLength": 1}, "draft": {"type": "string", "minLength": 1}, "id": {"type": "string", "minLength": 1}, "assignee": {"type": "string"}}, "required": ["id", "assignee"]}
+          },
+          "required": ["work_items.reassign"]
+        }
+      },
       "lifecycle.transition": {
         "id": "lifecycle.transition",
         "version": 1,

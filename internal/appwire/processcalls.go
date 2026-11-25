@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"strconv"
+
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 const EventWorkItemsChanged = "work_items.changed"
@@ -131,7 +133,7 @@ type ProcessCalls interface {
 func processCall[P, R any](name string, call func(ProcessCalls, P) (*R, error)) method {
 	return typed(func(e Engine, p P) (*R, error) {
 		d, ok := e.(ProcessCalls)
-		if !ok {
+		if !ok || !schema.HasAction(name) {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve %s", name)
 		}
 		return call(d, p)

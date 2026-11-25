@@ -420,7 +420,8 @@ no undo receipt for lifecycle moves. Revisions may also be decimal strings.
 their agents. `work_items.claim` claims an unassigned item, `work_items.complete`
 saves `values` and closes the item, and `work_items.reassign` sets `assignee`
 (an empty string releases it). Each mutation takes `id` and returns the
-updated `item`. A committed work-item change emits `work_items.changed`.
+updated `item`. A committed work-item change emits `work_items.changed`. The kit 2 Action
+registry declares these calls under their wire method names.
 
 ## competence methods
 
