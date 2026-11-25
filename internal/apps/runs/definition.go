@@ -85,6 +85,10 @@ func validateStep(s Step, targets map[string]bool) error {
 	if kinds > 1 || (kinds == 0 && s.Gate == nil) || (s.Loop == nil && len(s.Steps) > 0) {
 		return errors.New("a step needs one action or a gate")
 	}
+	if (s.RecordsCreate != nil && s.RecordsCreate.Set == nil) ||
+		(s.RecordsUpdate != nil && len(s.RecordsUpdate.Set) == 0) {
+		return errors.New("record writes need a set of fields")
+	}
 	if s.Gate != nil {
 		switch s.Gate.Approval {
 		case "plan", "proof", "start", "send":

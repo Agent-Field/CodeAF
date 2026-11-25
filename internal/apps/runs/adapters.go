@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"sync"
 )
 
@@ -100,17 +99,4 @@ func copyCall(call Call) Call {
 	call.Args = nil
 	_ = json.Unmarshal(encoded, &call.Args)
 	return call
-}
-
-// Outbound reports tool names that intrinsically require a send approval.
-// A connector adapter may also classify verbs using its trusted catalog.
-func Outbound(name string) bool {
-	for part := range strings.FieldsFuncSeq(strings.ToLower(name), func(r rune) bool { return strings.ContainsRune(".:_-/", r) }) {
-		for _, verb := range []string{"send", "post", "pay", "charge", "publish", "transfer", "refund"} {
-			if strings.HasPrefix(part, verb) {
-				return true
-			}
-		}
-	}
-	return false
 }

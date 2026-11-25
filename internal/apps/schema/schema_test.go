@@ -513,7 +513,7 @@ func TestPanelSelectionAndParamsBindings(t *testing.T) {
 
 func TestSendGateIgnoresSpelling(t *testing.T) {
 	for _, tool := range []string{"slack.chat.POST", "slack.Post", "mail.send_message", "mail.send ", "mail.x.reply"} {
-		if !isOutbound(tool) {
+		if !IsOutboundTool(tool) {
 			t.Errorf("%q should count as outbound", tool)
 		}
 	}

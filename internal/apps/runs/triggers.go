@@ -103,10 +103,25 @@ func (e *Engine) fire(t Trigger, now time.Time) error {
 // RecordChanged starts matching triggers after the data store commits.
 // It does not execute actions on the data store's writer goroutine.
 func (e *Engine) RecordChanged(change Change) error {
-	if e.cfg.Triggers == nil {
+	return e.RecordChanges([]Change{change})
+}
+
+// RecordChanges loads trigger definitions once for a whole committed batch.
+func (e *Engine) RecordChanges(changes []Change) error {
+	if e.cfg.Triggers == nil || len(changes) == 0 {
 		return nil
 	}
 	all, err := e.cfg.Triggers()
+	for _, change := range changes {
+		if changeErr := e.recordChanged(change, all); changeErr != nil {
+			err = errors.Join(err, changeErr)
+		}
+	}
+	return err
+}
+
+func (e *Engine) recordChanged(change Change, all []Trigger) error {
+	var err error
 	for _, t := range all {
 		if t.On != "record.changed" || t.Type != change.Type {
 			continue

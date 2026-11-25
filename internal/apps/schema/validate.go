@@ -109,7 +109,10 @@ func (r Report) String() string {
 // outbound is the set of tool verbs that leave the person's computer. Each one must
 // wait for the person's approval: a gate on a run step, an `approve` entry on the
 // connector. THIS IS A LAW: v0 never sends anything nobody said yes to.
-var outbound = map[string]bool{"send": true, "post": true, "reply": true, "pay": true, "publish": true, "invite": true}
+var outbound = map[string]bool{
+	"send": true, "post": true, "reply": true, "pay": true, "payment": true,
+	"publish": true, "invite": true, "charge": true, "transfer": true, "refund": true,
+}
 
 // systemFields are fields every record has without the app declaring them.
 var systemFields = map[string]bool{"id": true, "created_at": true, "updated_at": true}
@@ -404,7 +407,7 @@ func (c *checker) checkApp() {
 	for _, name := range sortedKeys(a.Capabilities.Connectors) {
 		con := a.Capabilities.Connectors[name]
 		for _, verb := range con.Can {
-			if isOutbound(verb) && !contains(con.Approve, verb) {
+			if IsOutboundTool(verb) && !contains(con.Approve, verb) {
 				c.add(AppFile, "/capabilities/connectors/"+name, CodeSendGateMissing, "%s may %s, which leaves your computer, so %q must also be listed under approve.", name, verb, verb)
 			}
 		}
@@ -607,7 +610,7 @@ func (c *checker) checkTool(file, at, tool string, fromScreen bool) {
 	// Whether a call leaves the computer is decided before anything can wave it
 	// through: an MCP tool listed whole under capabilities.tools has no approve
 	// list of its own, so from a screen, which has no gate, it can never send.
-	if fromScreen && isOutbound(tool) {
+	if fromScreen && IsOutboundTool(tool) {
 		cc, isConnector := c.app.Capabilities.Connectors[con]
 		if !isConnector || !contains(cc.Approve, verb) {
 			c.add(file, at, CodeSendGateMissing, "This would %s through %s without asking you first; a screen can only do that through a connector that lists %q under approve.", lastSegment(tool), con, verb)
@@ -632,13 +635,13 @@ func lastSegment(tool string) string {
 	return tool[strings.LastIndex(tool, ".")+1:]
 }
 
-// isOutbound reports whether a tool name's verb leaves the computer, judged by its
+// IsOutboundTool reports whether a tool name's verb leaves the computer, judged by its
 // last segment so a longer name cannot hide a send in its middle.
 //
 // The verb is compared lowercased and trimmed, and each underscore-separated word
 // of it counts, so "Send", "send " and "send_message" are all sends. The schemas
 // already insist on lowercase verbs; this is the second lock on the same door.
-func isOutbound(tool string) bool {
+func IsOutboundTool(tool string) bool {
 	verb := strings.ToLower(strings.TrimSpace(lastSegment(strings.TrimSpace(tool))))
 	for _, word := range strings.Split(verb, "_") {
 		if outbound[word] {
@@ -1022,7 +1025,7 @@ func (c *checker) checkSteps(file string, r Run, steps []Step, at, recordType st
 			if c.appOK {
 				c.checkTool(file, sat+"/tool", s.Tool, false)
 			}
-			if isOutbound(s.Tool) && (s.Gate == nil || s.Gate.Approval != "send") {
+			if IsOutboundTool(s.Tool) && (s.Gate == nil || s.Gate.Approval != "send") {
 				c.add(file, sat, CodeSendGateMissing, "The step %q uses %s, which leaves your computer, so it needs gate: {approval: send} to wait for your yes.", s.ID, s.Tool)
 			}
 		}

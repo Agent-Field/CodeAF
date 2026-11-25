@@ -175,7 +175,7 @@ func (c *checkpoint) scope(now time.Time) ([]Step, map[string]any) {
 
 func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 	a := action{Call: Call{App: c.App, Run: c.DefinitionID, ID: c.ID, Step: step.ID,
-		Key: fmt.Sprintf("%s-%d", c.ID, c.Visit), Name: step.Tool, As: "me"}, Outbound: Outbound(step.Tool)}
+		Key: fmt.Sprintf("%s-%d", c.ID, c.Visit), Name: step.Tool, As: "me"}, Outbound: schema.IsOutboundTool(step.Tool)}
 	if step.As != "" {
 		as, err := resolve(step.As, vars)
 		if err != nil {

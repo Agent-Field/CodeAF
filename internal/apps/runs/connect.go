@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
@@ -90,7 +91,7 @@ func (c ConnectedTools) check(ctx context.Context, call Call) (connectedOperatio
 		}
 		tool := tools[at]
 		// Known outbound verbs still ask even if the server called them reads.
-		if Outbound(call.Name) {
+		if schema.IsOutboundTool(call.Name) {
 			tool.ReadOnly = false
 		}
 		op.outbound = !tool.ReadOnly
@@ -113,7 +114,7 @@ func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
-	if (ask || Outbound(call.Name)) && !call.approved {
+	if (ask || schema.IsOutboundTool(call.Name)) && !call.approved {
 		return Reply{}, errors.New("approval is required before calling " + call.Name)
 	}
 	if op.native == "" {
