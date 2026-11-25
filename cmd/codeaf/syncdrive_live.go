@@ -64,6 +64,10 @@ type liveDrive struct {
 	changes     chan struct{}
 	idleCheck   func() bool
 	surfaceIdle func() bool
+	// firstSave seals the chat now, through the recorder that seals everything
+	// else. It is set by the seat once there is one, and it is how a chat that
+	// has never been sealed gets the head an early record stands on.
+	firstSave func()
 }
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
@@ -287,6 +291,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 		l.told = nil
 		l.refusedSince = time.Time{}
 		d.Working(l.working)
+		l.askFirstSave(d)
 		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
 		l.retryWait = 0
@@ -428,7 +433,31 @@ func (l *liveDrive) Working(on bool) {
 	l.working = on
 	if l.drive != nil {
 		l.drive.Working(on)
+		if on {
+			l.askFirstSave(l.drive)
+		}
 	}
+}
+
+// setFirstSave gives the drive the seat's way of sealing the chat now.
+func (l *liveDrive) setFirstSave(save func()) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.firstSave = save
+}
+
+// askFirstSave has the chat sealed when its first spoken turn has just started
+// and there is no head for the early record to stand on ([syncsetup.Drive.
+// EarlyHeadOwed]). A chat opened with /new has none, so without this the row
+// waited for the turn to end. The seal runs off the turn's goroutine and
+// reaches the drive through the ordinary store, which notes it and creates the
+// record. The caller holds mu; nothing here waits for the seal.
+func (l *liveDrive) askFirstSave(d *syncsetup.Drive) {
+	if l.firstSave == nil || !d.EarlyHeadOwed() {
+		return
+	}
+	save := l.firstSave
+	guard.Go("first save of a new chat", save)
 }
 
 // TurnEnded keeps the shared working flag until all work the reply left behind
