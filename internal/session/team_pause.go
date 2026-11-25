@@ -18,6 +18,13 @@ package session
 // for it to be opened. Something else may still open it (a question's answer,
 // a wake the retry queue kept); it is then open and held, which costs nothing.
 //
+// AND WHERE THE TRAFFIC IS DELIVERED. A turn something else starts in a paused
+// member (a sub-task landing, a command ending) reads none of its teams' lines
+// and moves no cursor ([Agent.teamNewsLocked]): its first request used to carry
+// the held directive, and the resume then had nothing to start on. A turn that
+// does deliver them, the person's own, ends the hold, so the resume starts no
+// second turn on lines already read.
+//
 // A PAUSE IS THE PERSON'S WORD ABOUT THE CONVERSATION, so it holds in every
 // team the conversation is a member of ([teams.File.PausedAnywhere]), not only
 // the one it was pressed in: an interface that finds the member paused ends a

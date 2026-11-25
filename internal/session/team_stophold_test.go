@@ -104,6 +104,9 @@ func TestTeamPersonStopOfAMemberWaitingOnACommandHolds(t *testing.T) {
 	waitQuiet(t, web)
 	web.settleTeamEvents()
 	one := settlementJob(t, web.jobs)
+	one.mu.Lock()
+	one.notify = true
+	one.mu.Unlock()
 
 	web.Interrupt()
 	deadline := time.Now().Add(5 * time.Second)
@@ -129,6 +132,87 @@ func TestTeamPersonStopOfAMemberWaitingOnACommandHolds(t *testing.T) {
 	if !told {
 		t.Fatal("the manager was not told the work it handed out was stopped")
 	}
+}
+
+// A COMMAND NOBODY WAITS ON IS HELD AND SAID TO NOBODY. The member finished its
+// directive and left a server running; a later stop found only that. Its ending
+// starts no turn, and the manager is not told finished work "is not done".
+func TestTeamPersonStopOfAMemberWithACommandNobodyWaitsOn(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	managerCalls := oneAnswer(8)
+	manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+	calls := oneAnswer(4)
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	sendDirective(t, manager, "web")
+	waitRequests(t, calls, 1)
+	waitQuiet(t, web)
+	web.settleTeamEvents()
+	one := settlementJob(t, web.jobs)
+
+	web.Interrupt()
+	web.jobs.settleExit(one, 7)
+	quietFor()
+	web.settleTeamEvents()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the stopped member was asked %d times, want only its first turn", got)
+	}
+	if said := trafficEvents(t, fixture, teams.StoppedByPerson); len(said) != 0 {
+		t.Fatalf("finished work was logged as stopped by the person: %+v", said)
+	}
+	for i := 0; i < managerCalls.requests(); i++ {
+		if strings.Contains(userTextIn(managerCalls.request(i)), teamStoppedByPersonLine) {
+			t.Fatal("the manager was told finished work was stopped before it finished")
+		}
+	}
+}
+
+// A MANAGER'S STOP PERFORMED BY THE MEMBER'S OWN SESSION HOLDS AS THE PERSON'S
+// DOES. A headless member stopped by team_stop was woken by the ending of the
+// command its turn had started and took the stopped directive up again. The
+// manager is not told of its own stop.
+func TestTeamManagerStopByTheMembersSessionHolds(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	managerCalls := oneAnswer(8)
+	manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+	streaming := make(chan struct{})
+	calls := &scriptedCompleter{steps: []step{thinkingStep(streaming), okStep(), okStep()}}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	sendDirective(t, manager, "web")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start on the directive")
+	}
+	one := settlementJob(t, web.jobs)
+	if said, failed := callTool(t, manager.teamStopTool, `{"handle":"web"}`); failed {
+		t.Fatalf("team_stop refused: %s", said)
+	}
+	waitQuiet(t, web)
+	web.settleTeamEvents()
+
+	web.jobs.settleExit(one, 7)
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the member the manager stopped was asked %d times, want only the stopped turn", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), "job 1 exited 7") || !strings.Contains(string(journal), teamStopHeldRule) {
+		t.Fatalf("the command's ending was not kept as a record:\n%s", journal)
+	}
+	if said := trafficEvents(t, fixture, teams.StoppedByPerson); len(said) != 0 {
+		t.Fatalf("the manager's own stop was logged as the person's: %+v", said)
+	}
+	if got := managerCalls.requests(); got != 0 {
+		t.Fatalf("the manager was woken %d times by its own stop", got)
+	}
+
+	sendDirective(t, manager, "web")
+	waitRequests(t, calls, 2)
 }
 
 // A STOP WITH NOTHING RUNNING AND NOTHING PENDING HOLDS NOTHING: a command the
