@@ -10,7 +10,7 @@ It is off unless the organization's operator has turned it on. When it is off, t
 
 ## open, start or reopen a hosted chat in a desktop organization window
 
-Sign in to the organization in the desktop app and open its window. The window offers new chat only when the organization has enabled hosted chats. Its chat list shows the chats you started and any chats the server says were shared with you. In a shared chat you can use the actions your role allows, such as reading the conversation or sending messages. Use a Personal window for chats on your computer.
+Sign in to the organization in the desktop app and open its window. The window offers new chat only when the organization has enabled hosted chats. Its chat list shows the chats you started and any chats the server says were shared with you. In a shared chat you can use the actions the organization's server says you hold there, such as reading the conversation or sending messages. The window asks the server each time it lists the chats, so a change to the organization's permissions shows up on the next refresh, and a chat the server named no permissions for is shown as watch only. The server checks every action as you take it, whatever the window shows. Use a Personal window for chats on your computer.
 
 The organization chooses where each chat works on its server. The desktop app creates no conversation folder on your computer for that chat. Attachments are refused with `Attachments cannot go to a chat on <host> yet.`
 

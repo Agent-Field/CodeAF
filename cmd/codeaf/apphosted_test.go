@@ -49,6 +49,7 @@ type hostedTestServer struct {
 	status  int
 	refusal string
 	guest   string
+	made    []string
 	seen    []string
 }
 
@@ -56,12 +57,12 @@ func newHostedTestServer(t *testing.T) *hostedTestServer {
 	t.Helper()
 	f := &hostedTestServer{
 		bearer: rand.Text(), calls: make(chan remote.Frame, 64), closed: make(chan struct{}, 8),
-		session: orgID('a'), list: `{"sessions":[]}`,
+		session: orgID('a'), list: `{"sessions":[]}`, made: acl.Verbs,
 	}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.seen = append(f.seen, r.Method+" "+r.URL.RequestURI())
-		list, status, refusal, guest := f.list, f.status, f.refusal, f.guest
+		list, status, refusal, guest, made := f.list, f.status, f.refusal, f.guest, f.made
 		f.mu.Unlock()
 		if r.Header.Get("Authorization") != "Bearer "+f.bearer {
 			t.Error("the organization did not receive its held sign-in in Authorization")
@@ -87,7 +88,7 @@ func newHostedTestServer(t *testing.T) *hostedTestServer {
 		switch r.URL.Path {
 		case "/v1/hosted/sessions":
 			if r.Method == http.MethodPost {
-				_ = json.NewEncoder(w).Encode(map[string]string{"id": f.session, "state": "running"})
+				_ = json.NewEncoder(w).Encode(map[string]any{"id": f.session, "state": "running", "verbs": made})
 			} else {
 				_, _ = io.WriteString(w, list)
 			}
@@ -258,6 +259,8 @@ func hostedTestNext[T any](t *testing.T, ch <-chan T) T {
 func TestAppHostedV1CreateOnOrganizationServer(t *testing.T) {
 	hostedTestHome(t)
 	f := newHostedTestServer(t)
+	// A policy whose owner role cannot steer: the chat just made shows what the server said.
+	f.made = []string{"view", "comment", "run", "answer"}
 	w, _ := hostedTestBackend(t, f.server.URL, f.bearer)
 	places := hostedTestPlaces(t)
 	workspace := filepath.Join(t.TempDir(), "untouched")
@@ -267,6 +270,9 @@ func TestAppHostedV1CreateOnOrganizationServer(t *testing.T) {
 	}).Agent
 	if got.ID != f.session+"_"+hostedTestOrg || got.Hosted == nil || got.Hosted.Org != hostedTestOrg || got.Workspace != "" {
 		t.Fatalf("hosted create = %+v, hosted = %+v", got.Agent, got.Hosted)
+	}
+	if !slices.Equal(got.Hosted.Verbs, f.made) {
+		t.Fatalf("created chat verbs = %v, the server said %v", got.Hosted.Verbs, f.made)
 	}
 	if !slices.Contains(w.hello, "agents.hosted") {
 		t.Fatal("the app did not advertise hosted chats")
@@ -297,11 +303,11 @@ func TestAppHostedV2ListOnlyOwnAndShared(t *testing.T) {
 	hostedTestHome(t)
 	f := newHostedTestServer(t)
 	f.list = `{"sessions":[
-		{"id":"` + orgID('a') + `","state":"running","last_active":7},
+		{"id":"` + orgID('a') + `","state":"running","last_active":7,"verbs":["view","comment","edit"]},
 		{"id":"` + orgID('b') + `","state":"stopped","created":6},
 		{"id":"bad","state":"running"}
 	],"shared":[
-		{"id":"` + orgID('c') + `","state":"running","last_active":8,"access":"shared","role":"edit","owner":"noor"},
+		{"id":"` + orgID('c') + `","state":"running","last_active":8,"access":"shared","role":"edit","owner":"noor","verbs":["view","run"]},
 		{"id":"` + orgID('d') + `","state":"running","last_active":9,"access":"operator"}
 	],"hosting":{"local_sessions":true}}`
 	w, _ := hostedTestBackend(t, f.server.URL, f.bearer)
@@ -315,20 +321,41 @@ func TestAppHostedV2ListOnlyOwnAndShared(t *testing.T) {
 			t.Fatalf("row %d = %+v", i, got[i])
 		}
 	}
+	// The verbs are the server's own words. This organization's policy gives its edit role run
+	// and not steer or answer, and holds back everything but three verbs from the owner, which
+	// the default roles would not have done.
 	shared := got[0].Hosted
-	if shared.Owner != "noor" || shared.Role != "edit" ||
-		!slices.Contains(shared.Verbs, "run") || !slices.Contains(shared.Verbs, "steer") || !slices.Contains(shared.Verbs, "answer") {
+	if shared.Owner != "noor" || shared.Role != "edit" || !slices.Equal(shared.Verbs, []string{"view", "run"}) {
 		t.Fatalf("shared access = %+v", shared)
 	}
-	if got[1].State != "idle" || got[2].State != "stopped" || !slices.Equal(got[1].Hosted.Verbs, acl.Verbs) {
+	if got[1].State != "idle" || got[2].State != "stopped" || !slices.Equal(got[1].Hosted.Verbs, []string{"view", "comment", "edit"}) {
 		t.Fatalf("owner rows = %+v, %+v", got[1], got[2])
 	}
+	// A row with no verbs is view only, for another person's chat and for the person's own.
+	if !slices.Equal(got[2].Hosted.Verbs, []string{"view"}) {
+		t.Fatalf("own row with no verbs = %+v", got[2].Hosted)
+	}
+	for name, list := range map[string]string{
+		"a role name the program has never heard of": `{"shared":[{"id":"` + orgID('c') + `","access":"shared","role":"new-role"}]}`,
+		"a familiar role name and no verbs":          `{"shared":[{"id":"` + orgID('c') + `","access":"shared","role":"edit"}]}`,
+		"verbs that name nothing it knows":           `{"shared":[{"id":"` + orgID('c') + `","access":"shared","verbs":["bogus"]}]}`,
+		"verbs empty":                                `{"sessions":[{"id":"` + orgID('c') + `","verbs":[]}]}`,
+	} {
+		f.mu.Lock()
+		f.list = list
+		f.mu.Unlock()
+		got = hostedTestCall[listed](t, w, "agents.hosted_list", map[string]string{"org": hostedTestOrg}).Agents
+		if len(got) != 1 || got[0].Hosted == nil || !slices.Equal(got[0].Hosted.Verbs, []string{"view"}) {
+			t.Fatalf("%s: rows = %+v", name, got)
+		}
+	}
+	// Verbs come back once each, in the fixed order, and only the ones the program knows.
 	f.mu.Lock()
-	f.list = `{"shared":[{"id":"` + orgID('c') + `","access":"shared","role":"new-role"}]}`
+	f.list = `{"shared":[{"id":"` + orgID('c') + `","access":"shared","verbs":["steer","view","bogus","view","answer"]}]}`
 	f.mu.Unlock()
 	got = hostedTestCall[listed](t, w, "agents.hosted_list", map[string]string{"org": hostedTestOrg}).Agents
-	if len(got) != 1 || got[0].Hosted == nil || !slices.Equal(got[0].Hosted.Verbs, []string{"view"}) {
-		t.Fatalf("unknown role rows = %+v", got)
+	if len(got) != 1 || got[0].Hosted == nil || !slices.Equal(got[0].Hosted.Verbs, []string{"view", "steer", "answer"}) {
+		t.Fatalf("messy verbs rows = %+v", got)
 	}
 	f.mu.Lock()
 	f.list = ""
@@ -342,7 +369,9 @@ func TestAppHostedV2ListOnlyOwnAndShared(t *testing.T) {
 func TestAppHostedV3ReopenHistoryAndDetach(t *testing.T) {
 	hostedTestHome(t)
 	f := newHostedTestServer(t)
-	f.list = `{"sessions":[{"id":"` + f.session + `","state":"running"}]}`
+	// The server says its owner holds every verb here. Without that word the chat would read view only.
+	held, _ := json.Marshal(acl.Verbs)
+	f.list = `{"sessions":[{"id":"` + f.session + `","state":"running","verbs":` + string(held) + `}]}`
 	w, _ := hostedTestBackend(t, f.server.URL, f.bearer)
 	p := map[string]string{"id": f.session + "_" + hostedTestOrg}
 	places := hostedTestPlaces(t)
@@ -391,7 +420,7 @@ func TestAppHostedV5GuestVerbsAndExactRefusal(t *testing.T) {
 	f := newHostedTestServer(t)
 	const sentence = "You can read this chat but not send a message."
 	f.guest = sentence
-	f.list = `{"shared":[{"id":"` + f.session + `","access":"shared","owner":"noor","role":"view"}]}`
+	f.list = `{"shared":[{"id":"` + f.session + `","access":"shared","owner":"noor","role":"view","verbs":["view"]}]}`
 	w, out := hostedTestBackend(t, f.server.URL, f.bearer)
 	p := map[string]string{"id": f.session + "_" + hostedTestOrg, "text": "A guest's message."}
 	rows := hostedTestCall[appwire.AgentsResult](t, w, "agents.hosted_list", map[string]string{"org": hostedTestOrg}).Agents

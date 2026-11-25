@@ -96,7 +96,11 @@ returns an empty `agents` array and `available: false`. The server's
 answer `signed_out` and transport failures answer `unreachable`.
 
 Hosted rows carry `hosted` facts and use a self-describing
-`<session>_<connection>` ID. `agents.open` attaches that session's wire and
+`<session>_<connection>` ID. `hosted.verbs` is what the organization's server
+says the person may do in that chat, taken from the `verbs` of the server's
+list row as it stood when the list was read; the app works nothing out from a
+role name, and a row the server sent no verbs for reads `["view"]`. The
+server's wire enforces the verbs whatever a window shows. `agents.open` attaches that session's wire and
 `agents.close` releases it. Use `agents.stop` to interrupt its current turn.
 `agents.list` stays scoped to chats on this computer.
 

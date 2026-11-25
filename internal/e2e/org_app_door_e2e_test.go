@@ -192,7 +192,8 @@ func newOrgAppServer(t *testing.T, bin, modelURL string) *orgAppServer {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		row := map[string]string{"id": orgAppSession, "state": "running"}
+		// The stand-in says what the organization's server says: its owner holds every verb.
+		row := map[string]any{"id": orgAppSession, "state": "running", "verbs": acl.Verbs}
 		var result any
 		switch request {
 		case "GET /v1/about":
@@ -200,7 +201,7 @@ func newOrgAppServer(t *testing.T, bin, modelURL string) *orgAppServer {
 		case "GET /v1/me":
 			result = map[string]any{"handle": "owner", "mode": "team", "factory": map[string]string{"name": "Hosted chat fixture"}}
 		case "GET " + orgAppSessions:
-			sessions := []map[string]string{}
+			sessions := []map[string]any{}
 			if created {
 				sessions = append(sessions, row)
 			}

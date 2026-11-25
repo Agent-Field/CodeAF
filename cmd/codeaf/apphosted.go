@@ -35,9 +35,10 @@ type appHostedRow struct {
 	Owner  string `json:"owner"`
 	Role   string `json:"role"`
 	Access string `json:"access"`
+	// Verbs is what the server's policy lets this person do in the chat, as it stood when the
+	// list was read. The server is the only party that decides it.
+	Verbs []string `json:"verbs"`
 }
-
-var appHostedRoles = acl.DefaultPolicy().Roles
 
 func (o appHostedOpen) dial(ask appOpenAsk) (*appConn, error) {
 	socket, err := o.door.open(context.Background(), o.ref.session)
@@ -152,20 +153,30 @@ func (b *appBackend) hostedCredentialStillHeld(org string, door *orgDoor) error 
 	return nil
 }
 
-func appHostedFacts(ref appHostedRef, row appHostedRow, own bool, door *orgDoor) *appwire.HostedFacts {
-	facts := &appwire.HostedFacts{Org: ref.org, Session: ref.session, Note: door.clean(row.Warning)}
-	if own {
-		facts.Verbs = slices.Clone(acl.Verbs)
-		return facts
-	}
-	facts.Owner, facts.Role = door.clean(row.Owner), door.clean(row.Role)
-	for _, role := range appHostedRoles {
-		if role.Name == row.Role {
-			facts.Verbs = slices.Clone(role.Verbs)
-			return facts
+// appHostedVerbs keeps the verbs this program knows, in their fixed order, from what the server
+// said a person may do. A server that said nothing (an older build, or a chat the list did not
+// carry) leaves view only, and that is safe because it only hides controls: the server's wire
+// refuses every call the person has no right to whatever this window shows, so a missing verb
+// can cost a button and never lends a right. Nothing here works a verb out from a role name,
+// because the organization's roles and policy are its own to change.
+func appHostedVerbs(said []string) []string {
+	held := make([]string, 0, len(acl.Verbs))
+	for _, verb := range acl.Verbs {
+		if slices.Contains(said, verb) {
+			held = append(held, verb)
 		}
 	}
-	facts.Verbs = []string{acl.VerbView}
+	if len(held) == 0 {
+		return []string{acl.VerbView}
+	}
+	return held
+}
+
+func appHostedFacts(ref appHostedRef, row appHostedRow, own bool, door *orgDoor) *appwire.HostedFacts {
+	facts := &appwire.HostedFacts{Org: ref.org, Session: ref.session, Note: door.clean(row.Warning), Verbs: appHostedVerbs(row.Verbs)}
+	if !own {
+		facts.Owner, facts.Role = door.clean(row.Owner), door.clean(row.Role)
+	}
 	return facts
 }
 
