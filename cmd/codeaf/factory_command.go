@@ -379,7 +379,11 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			return nil, err
 		}
 		served, s.notes = local, notes
-	} else if !factoryLoopbackListen(listener.Addr().String()) && host.secure != nil {
+	} else if !factoryLoopbackListen(listener.Addr().String()) && host.secure != nil && len(secure.proxies) == 0 {
+		// A LISTED PROXY IS THE OPERATOR SAYING HTTPS ENDS IN FRONT OF THIS
+		// PROCESS, so the warning would only tell them what they set up on
+		// purpose, at every start of a Compose or Railway stack. With none
+		// listed the plain socket is the only way in and the warning stands.
 		s.notes = append(s.notes, "warning: serving plain HTTP on "+listener.Addr().String()+
 			"; access tokens and sign-in sessions cross the network unencrypted. Serve HTTPS with tls: auto and a domain, "+
 			"or put a reverse proxy that serves HTTPS in front and list it in trusted_proxies (the manual: hosting a team factory over HTTPS)")

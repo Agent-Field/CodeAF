@@ -311,3 +311,47 @@ func TestFactoryHTTPDoorRedirectsToHTTPSExceptTheChallenge(t *testing.T) {
 		t.Fatalf("redirect off 443 = %q", w.Header().Get("Location"))
 	}
 }
+
+// Contract item 6 of the overnight fixes: a server that serves plain HTTP on
+// every interface warns about it at start, unless the operator listed a proxy
+// that serves HTTPS in front of it. Both halves go through the host config and
+// the real start, so the words the operator writes are what is judged.
+func TestPlainHTTPWarningIsQuietOnlyBehindATrustedProxy(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		proxies []string
+		warns   bool
+	}{
+		{"no proxy listed keeps the warning", nil, true},
+		{"a proxy listed as a range is quiet", []string{"172.16.0.0/12"}, false},
+		{"a proxy listed as one address is quiet", []string{"10.1.2.3"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(home.EnvVar, t.TempDir())
+			dir := t.TempDir()
+			st, err := store.Open(filepath.Join(dir, "store"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			l, err := net.Listen("tcp", "0.0.0.0:0")
+			if err != nil {
+				t.Skipf("no wildcard listener on this machine: %v", err)
+			}
+			cfg := factoryHostConfig{TLS: factoryTLSOff, TrustedProxies: tc.proxies}
+			secure, err := resolveFactoryTLS(cfg, l.Addr().String(), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.secure = &secure
+			s, err := startFactoryService(context.Background(), st, factory.LocalSeam(st, time.Now()), l, "floor-secret", "", cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(s.close)
+			warned := slices.ContainsFunc(s.notes, func(n string) bool { return strings.Contains(n, "warning: serving plain HTTP on ") })
+			if warned != tc.warns {
+				t.Fatalf("warned = %v, want %v; notes: %q", warned, tc.warns, s.notes)
+			}
+		})
+	}
+}
