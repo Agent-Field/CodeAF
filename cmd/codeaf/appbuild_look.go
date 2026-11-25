@@ -98,7 +98,10 @@ func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) 
 	case capture := <-reply:
 		return saveAppLook(preview.Scope, params.Viewport, capture)
 	case <-ctx.Done():
-		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeDeskUnavailable, "The desktop didn't draw this screen in time.")
+		if !state.ready.Load() {
+			return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeDeskUnavailable, "The desktop renderer disconnected.")
+		}
+		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "The desktop didn't draw this screen in time.")
 	}
 }
 

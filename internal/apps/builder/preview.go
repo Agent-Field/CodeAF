@@ -222,14 +222,6 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 			return store.Meta{}, fmt.Errorf("%w: finish checking before keeping the app", store.ErrConflict)
 		}
 	}
-	// Record the intent before publication. If the process stops between
-	// committing and recording the result, retry recognizes its own published files.
-	if !j.Publishing {
-		j.Publishing = true
-		if err := s.save(j, Event{}); err != nil {
-			return store.Meta{}, err
-		}
-	}
 	app := j.App
 	if app == "" {
 		app = j.Draft
@@ -239,9 +231,24 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 		return store.Meta{}, err
 	}
 	if !samePublication(live, j) {
+		// Record the intent before publication. If the process stops between
+		// committing and recording the result, retry recognizes its own published files.
+		if !j.Publishing {
+			j.Publishing = true
+			if err := s.save(j, Event{}); err != nil {
+				return store.Meta{}, err
+			}
+		}
 		meta, err := s.opts.Store.PublishBuild(j.Draft, j.App, j.Base, definition(j.Working.Files), j.LastRequest)
 		if err != nil {
-			return store.Meta{}, err
+			j.Publishing = false
+			var event Event
+			if errors.Is(err, store.ErrConflict) {
+				j.State.State = NeedsYou
+				j.Problem = "The saved app changed while you were editing. Discard this draft to start from the latest version."
+				event.Line = j.Problem
+			}
+			return store.Meta{}, errors.Join(err, s.save(j, event))
 		}
 		live, err = s.opts.Store.Get(meta.ID)
 		if err != nil {

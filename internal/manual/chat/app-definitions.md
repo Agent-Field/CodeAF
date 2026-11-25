@@ -88,14 +88,17 @@ with `app context {"file":"screens/deals.json"}`.
 records. When the desktop renderer is connected, Check draws every screen
 in Dark and Light at 800 and 1120 pixels. Clipping, overlap, truncation,
 empty bound columns, contrast problems and competing primary actions must
-be fixed before a step can be kept.
+be fixed before a step can be kept. If the connected renderer times out,
+try Check again.
 
 With the CLI alone, Check still validates the app. The Check result and
 change card show `look: skipped (desk not running)`. You can keep the
 checkpoint and choose **Apply**. The standalone `app look` command returns
 `desk_unavailable` until the renderer connects.
 
-If a build stops, reopen it to see the reason in the build progress.
+If a build stops, reopen it to see the reason in the build progress. If
+the saved app changed during editing, discard the stale draft to start
+from the latest version.
 ## How app commands describe a screen and the work it does
 
 App authoring can compile an intent for a list, board, table, calendar, form,

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
 
 type script func(context.Context, []ai.Message, []ai.ToolDefinition) (ai.Message, error)
@@ -414,4 +417,63 @@ func buildWithDesk(t *testing.T, look func(context.Context, string, string, chec
 		t.Fatal(err)
 	}
 	return jobs, plan.Draft
+}
+
+func TestConflictingApplyLeavesTheDraftDiscardableAfterRestart(t *testing.T) {
+	home := t.TempDir()
+	opts := scriptedApp(t, home)
+	opts.Store = store.NewAt(home, nil)
+	jobs, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	plan, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Build(plan.Draft); err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, jobs, plan.Draft, builder.Ready)
+	first, err := jobs.Apply(plan.Draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit, err := jobs.Change(first.ID, "Tidy the CRM.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, jobs, edit, builder.Ready)
+	other, err := opts.Store.NewDraft(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other.Dir(), "agent.md"), []byte("A different published edit."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := opts.Store.Promote(other, "Change the agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jobs.Apply(edit); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("stale Apply = %v", err)
+	}
+	jobs.Close()
+	reopened, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	state, err := reopened.State(edit)
+	if err != nil || state.State != builder.NeedsYou || !strings.Contains(state.Problem, "saved app changed") {
+		t.Fatalf("reopened conflict = %s, %q, %v", state.State, state.Problem, err)
+	}
+	if err := reopened.Discard(edit); err != nil {
+		t.Fatalf("discard after the failed publication: %v", err)
+	}
+	live, err := opts.Store.Get(first.ID)
+	if err != nil || live.Meta.Version != second.Version {
+		t.Fatalf("discard changed the other publication: version %d, %v", live.Meta.Version, err)
+	}
 }

@@ -24,6 +24,8 @@ func Pristine(home string) (bool, error) {
 	return !used && err == nil, err
 }
 
+var appBuilderStartup = within(rules{"_drafts": within(rules{".builder.lock": emptyFile})})
+
 // started is the whole of what starting codeaf leaves in a home, read off a real
 // run: it is the one place that says which files are made again on demand and
 // which are the person's. Each name is a glob on one entry, and each entry
@@ -43,8 +45,10 @@ var startupRules = rules{
 	"app.lock":              never,
 	"app":                   within(rules{"state.json": appStartupState}),
 	"services":              within(rules{"lock": emptyFile, "logs": within(rules{}), "services.json": serviceStartup}),
-	".codeaf": within(rules{"skills": within(rules{
-		"workaf-canvas": within(rules{"SKILL.md": bundledCanvasSkill}),
+	"apps":                  appBuilderStartup,
+	".codeaf": within(rules{"apps": appBuilderStartup, "skills": within(rules{
+		"workaf-canvas": within(rules{"SKILL.md": bundledSkill("workaf-canvas")}),
+		"workaf-apps":   within(rules{"SKILL.md": bundledSkill("workaf-apps")}),
 	})}),
 	"model-catalog-*.json": catalogCache, // Provider catalog caches are fetched again on demand.
 	"knowledge": within(rules{
