@@ -45,6 +45,12 @@ func reap(args []string) error {
 	if err := reapAt(int(dir.Fd()), mode); err != nil {
 		return errLayout
 	}
+	// The shared areas are swept in every mode, for the same reason the chat's
+	// tmp folder is: a stopped chat, a deleted one and a new one on a recycled
+	// Linux user all begin with nothing of an earlier chat's in them.
+	if err := sweepShared(os.Geteuid(), sharedAreas, sysvDir); err != nil {
+		return errLayout
+	}
 	return nil
 }
 
