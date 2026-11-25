@@ -417,3 +417,39 @@ func TestAppKeepRefusesUnsupportedDefinitionFiles(t *testing.T) {
 		t.Fatalf("app after refused change: %+v, %v", got.Meta, err)
 	}
 }
+
+func TestGalleryContentSurvivesKeepAndRevert(t *testing.T) {
+	s, home := testStore(t)
+	draft, err := s.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := schema.Load("../schema/testdata/month-end-close")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range fixture.Files {
+		write(t, draft.Dir(), name, string(raw))
+	}
+	meta, err := s.Promote(draft, "Keep month-end close")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := s.NewDraft(meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, edited.Dir(), "sheets/ledger.csv", "account,amount\nNostro USD,350000\n")
+	if _, err = s.Promote(edited, "Update ledger"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Revert(meta.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"sheets/ledger.csv", "sheets/formulas.json"} {
+		got, err := os.ReadFile(filepath.Join(home, "apps", meta.ID, "current", name))
+		if err != nil || string(got) != string(fixture.Files[name]) {
+			t.Fatalf("%s after Revert = %q, %v", name, got, err)
+		}
+	}
+}

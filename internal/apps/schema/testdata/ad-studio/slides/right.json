@@ -1,0 +1,18 @@
+{
+  "frame": "board",
+  "size": [
+    1200,
+    800
+  ],
+  "boxes": [
+    {
+      "id": "headline",
+      "type": "text",
+      "x": 40,
+      "y": 40,
+      "w": 900,
+      "h": 100,
+      "text": "Spend less time setting up"
+    }
+  ]
+}

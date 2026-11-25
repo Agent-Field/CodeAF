@@ -1,0 +1,6917 @@
+{
+  "kit": 2,
+  "hooks": {
+    "useRecords": [
+      "records"
+    ],
+    "useRecord": [
+      "record"
+    ],
+    "useParts": [
+      "content-part"
+    ],
+    "useRuns": [
+      "runs"
+    ],
+    "useRun": [
+      "run"
+    ],
+    "useAgent": [],
+    "usePeople": []
+  },
+  "parts": [
+    {
+      "name": "Button",
+      "summary": "A verb. Its words are the node's label.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "click"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "primary",
+              "secondary",
+              "quiet",
+              "danger"
+            ]
+          },
+          "icon": {
+            "type": "string"
+          },
+          "confirm": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "size": {
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ]
+          }
+        }
+      },
+      "tier": "primitive",
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Button"
+      },
+      "example": {}
+    },
+    {
+      "name": "IconButton",
+      "tier": "primitive",
+      "summary": "An icon with an accessible label.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "click"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "type": "string"
+          },
+          "size": {
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ]
+          }
+        },
+        "required": [
+          "icon"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.IconButton"
+      },
+      "example": {
+        "icon": "more"
+      }
+    },
+    {
+      "name": "Chip",
+      "tier": "primitive",
+      "summary": "A selectable word or value.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "selected": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Chip"
+      },
+      "example": {
+        "value": "Example"
+      }
+    },
+    {
+      "name": "Token",
+      "tier": "primitive",
+      "summary": "A removable query token.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "remove"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "value"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Token"
+      },
+      "example": {
+        "field": "stage",
+        "value": "Example"
+      }
+    },
+    {
+      "name": "Field",
+      "tier": "primitive",
+      "summary": "A labelled field with inline feedback.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "change",
+        "submit"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "number",
+              "email",
+              "url",
+              "password",
+              "longtext"
+            ]
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Field"
+      },
+      "example": {}
+    },
+    {
+      "name": "Select",
+      "tier": "primitive",
+      "summary": "A choice from labelled options.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "change"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "disabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "label",
+                "value"
+              ]
+            }
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "options"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Select"
+      },
+      "example": {
+        "options": []
+      }
+    },
+    {
+      "name": "Segmented",
+      "tier": "primitive",
+      "summary": "Switches a setting between visible options.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "change"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "disabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "label",
+                "value"
+              ]
+            }
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Segmented"
+      },
+      "example": {
+        "items": []
+      }
+    },
+    {
+      "name": "Toggle",
+      "tier": "primitive",
+      "summary": "An on or off setting.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "change"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "on": {
+            "type": "boolean"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Toggle"
+      },
+      "example": {}
+    },
+    {
+      "name": "Menu",
+      "tier": "primitive",
+      "summary": "A menu of named actions.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "pick",
+        "close"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "shortcut": {
+                  "type": "string"
+                },
+                "destructive": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Menu"
+      },
+      "example": {
+        "items": []
+      }
+    },
+    {
+      "name": "Sheet",
+      "summary": "A sheet over the screen with a title and one primary verb; shown while its `when` is true.",
+      "children": "nodes",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "submit",
+        "close"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "string"
+          }
+        }
+      },
+      "tier": "primitive",
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Sheet"
+      },
+      "example": {
+        "title": "Example"
+      }
+    },
+    {
+      "name": "Dialog",
+      "tier": "primitive",
+      "summary": "Confirms a decision or a destructive action.",
+      "children": "nodes",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "confirm",
+        "close"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "confirm": {
+            "type": "string"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "critical"
+            ]
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Dialog"
+      },
+      "example": {
+        "title": "Example"
+      }
+    },
+    {
+      "name": "Tooltip",
+      "tier": "primitive",
+      "summary": "A help label and optional shortcut.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "shortcut": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Tooltip"
+      },
+      "example": {
+        "text": "Example"
+      }
+    },
+    {
+      "name": "Toast",
+      "summary": "A short notice at the bottom of the screen.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [
+        "action"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "tone": {
+            "enum": [
+              "neutral",
+              "danger"
+            ]
+          }
+        }
+      },
+      "tier": "primitive",
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Toast"
+      },
+      "example": {
+        "text": "Example"
+      }
+    },
+    {
+      "name": "Avatar",
+      "tier": "primitive",
+      "summary": "Identifies a person or agent.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "person": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "size": {
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ]
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Avatar"
+      },
+      "example": {}
+    },
+    {
+      "name": "StateGlyph",
+      "tier": "primitive",
+      "summary": "Displays a run state.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "needs",
+              "running",
+              "queued",
+              "idle",
+              "done",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.StateGlyph"
+      },
+      "example": {
+        "state": "needs"
+      }
+    },
+    {
+      "name": "Icon",
+      "tier": "primitive",
+      "summary": "A mark from the icon vocabulary.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Icon"
+      },
+      "example": {
+        "name": "more"
+      }
+    },
+    {
+      "name": "Text",
+      "summary": "A line or paragraph of words in a type role.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "body",
+              "secondary",
+              "meta",
+              "mono"
+            ]
+          },
+          "ink": {
+            "enum": [
+              "ink",
+              "ink-2",
+              "ink-3",
+              "accent",
+              "danger"
+            ]
+          },
+          "size": {
+            "enum": [
+              "small",
+              "medium",
+              "large"
+            ]
+          },
+          "tone": {
+            "enum": [
+              "primary",
+              "secondary",
+              "muted",
+              "critical"
+            ]
+          }
+        }
+      },
+      "tier": "primitive",
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Text"
+      },
+      "example": {
+        "text": "Example"
+      }
+    },
+    {
+      "name": "Kbd",
+      "tier": "primitive",
+      "summary": "A keyboard shortcut.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "keys"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Kbd"
+      },
+      "example": {
+        "keys": []
+      }
+    },
+    {
+      "name": "Code",
+      "tier": "primitive",
+      "summary": "Monospaced literal text.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Code"
+      },
+      "example": {
+        "text": "Example"
+      }
+    },
+    {
+      "name": "Stack",
+      "summary": "Children one above the other.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": [
+        "params"
+      ],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "gap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6
+          },
+          "align": {
+            "enum": [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ]
+          }
+        }
+      },
+      "tier": "primitive",
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Stack"
+      },
+      "example": {}
+    },
+    {
+      "name": "Row",
+      "summary": "Children side by side.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": [
+        "params"
+      ],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "gap": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6
+          },
+          "align": {
+            "enum": [
+              "start",
+              "center",
+              "end",
+              "stretch"
+            ]
+          },
+          "wrap": {
+            "type": "boolean"
+          }
+        }
+      },
+      "tier": "primitive",
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Row"
+      },
+      "example": {}
+    },
+    {
+      "name": "Divider",
+      "summary": "A hairline between groups.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "inset": {
+            "type": "boolean"
+          },
+          "vertical": {
+            "type": "boolean"
+          }
+        }
+      },
+      "tier": "primitive",
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Divider"
+      },
+      "example": {}
+    },
+    {
+      "name": "DatePicker",
+      "tier": "primitive",
+      "summary": "Picks a date or date range.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "change"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "range": {
+            "type": "boolean"
+          },
+          "min": {
+            "type": "string"
+          },
+          "max": {
+            "type": "string"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.DatePicker"
+      },
+      "example": {}
+    },
+    {
+      "name": "PeoplePicker",
+      "tier": "primitive",
+      "summary": "Picks people or seats in a role.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "change"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "multiple": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.PeoplePicker"
+      },
+      "example": {}
+    },
+    {
+      "name": "FileDrop",
+      "tier": "primitive",
+      "summary": "Adds content-addressed files by dropping or browsing.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "files"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "accept": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.FileDrop"
+      },
+      "example": {}
+    },
+    {
+      "name": "Signature",
+      "tier": "primitive",
+      "summary": "Collects one signature for a role.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record"
+      ],
+      "events": [
+        "sign"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "signedBy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "person": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "person",
+              "at"
+            ]
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Signature"
+      },
+      "example": {
+        "role": "Example"
+      }
+    },
+    {
+      "name": "Timer",
+      "tier": "primitive",
+      "summary": "Displays elapsed time or a deadline.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [
+        "record"
+      ],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "up",
+              "down"
+            ]
+          },
+          "field": {
+            "type": "string"
+          },
+          "amber": {
+            "type": "string"
+          },
+          "red": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "field"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Timer"
+      },
+      "example": {
+        "direction": "up",
+        "field": "stage"
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "field",
+          "options": "clock"
+        }
+      ],
+      "binding_required": true
+    },
+    {
+      "name": "Masked",
+      "tier": "primitive",
+      "summary": "Asks for a reason before revealing a masked record field.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record"
+      ],
+      "events": [
+        "reveal"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "reason": {
+            "const": true
+          },
+          "logged": {
+            "const": true
+          }
+        },
+        "required": [
+          "field"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "primitive.Masked"
+      },
+      "example": {
+        "field": "stage"
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "field",
+          "options": "masked"
+        }
+      ],
+      "binding_required": true
+    },
+    {
+      "name": "QueryField",
+      "summary": "A standalone query line that edits the query of the RecordList named by `for`.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "for"
+        ],
+        "properties": {
+          "for": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "tier": "pattern",
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.QueryField"
+      },
+      "example": {
+        "for": "jobs"
+      },
+      "rules": [
+        {
+          "check": "list",
+          "path": "for"
+        }
+      ]
+    },
+    {
+      "name": "StateMeter",
+      "summary": "Counts per value of an enum field over the bound records; a segment click filters.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "records"
+      ],
+      "events": [
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "tier": "pattern",
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.StateMeter"
+      },
+      "example": {
+        "field": "stage"
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "field",
+          "options": "groupable"
+        }
+      ]
+    },
+    {
+      "name": "SectionTabs",
+      "summary": "The app's one navigation row; each item opens a screen.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "label",
+                "screen"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "screen": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "tier": "pattern",
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.SectionTabs"
+      },
+      "example": {
+        "items": [
+          {
+            "label": "Example",
+            "screen": "Example"
+          }
+        ]
+      },
+      "rules": [
+        {
+          "check": "screen",
+          "path": "items/*/screen"
+        }
+      ],
+      "navigation": true
+    },
+    {
+      "name": "List",
+      "tier": "pattern",
+      "summary": "A compact or nested list of rows.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/row"
+            }
+          },
+          "nested": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "$defs": {
+          "row": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/row"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ]
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.List"
+      },
+      "example": {
+        "rows": []
+      }
+    },
+    {
+      "name": "Panel",
+      "summary": "The right-hand panel for the selected item. Bound to a list's selection, its children read that selection's record type.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": [
+        "selection"
+      ],
+      "events": [
+        "close"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "tier": "pattern",
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.Panel"
+      },
+      "example": {}
+    },
+    {
+      "name": "Table",
+      "tier": "pattern",
+      "summary": "Rows with sortable columns.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "records"
+      ],
+      "events": [
+        "sort",
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "sort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.Table"
+      },
+      "example": {
+        "columns": []
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "columns/*"
+        }
+      ],
+      "selection": true
+    },
+    {
+      "name": "Board",
+      "tier": "pattern",
+      "summary": "Records grouped into columns by a field.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "records"
+      ],
+      "events": [
+        "move",
+        "open"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupBy"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.Board"
+      },
+      "example": {
+        "groupBy": "Example"
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "groupBy",
+          "options": "groupable"
+        },
+        {
+          "check": "lifecycle-group",
+          "path": "groupBy",
+          "options": "move"
+        }
+      ],
+      "selection": true
+    },
+    {
+      "name": "BulkBar",
+      "summary": "Verbs for the checked rows of the list named by `for`; its children are Buttons.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": [],
+      "events": [
+        "clear"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "for"
+        ],
+        "properties": {
+          "for": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "tier": "pattern",
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.BulkBar"
+      },
+      "example": {
+        "for": "jobs"
+      },
+      "rules": [
+        {
+          "check": "list",
+          "path": "for"
+        }
+      ]
+    },
+    {
+      "name": "Pages",
+      "tier": "pattern",
+      "summary": "A strip of parts with their status, presence and lock.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "content-part"
+      ],
+      "events": [
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ]
+            }
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.Pages"
+      },
+      "example": {}
+    },
+    {
+      "name": "Compare",
+      "tier": "pattern",
+      "summary": "Compares two files or content parts.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "a": {
+            "type": "string"
+          },
+          "b": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "side-by-side",
+              "overlay"
+            ]
+          }
+        },
+        "required": [
+          "a",
+          "b"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.Compare"
+      },
+      "example": {
+        "a": "docs/first.md",
+        "b": "docs/second.md"
+      },
+      "rules": [
+        {
+          "check": "content-file",
+          "path": "a"
+        },
+        {
+          "check": "content-file",
+          "path": "b"
+        }
+      ]
+    },
+    {
+      "name": "Checklist",
+      "tier": "pattern",
+      "summary": "An ordered set of checks with evidence.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record"
+      ],
+      "events": [
+        "check"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "checklist": {
+            "type": "string"
+          },
+          "template": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "checklist"
+            ]
+          },
+          {
+            "required": [
+              "template"
+            ]
+          }
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.Checklist"
+      },
+      "example": {
+        "checklist": "release"
+      },
+      "rules": [
+        {
+          "check": "policy",
+          "path": "checklist",
+          "options": "checklist"
+        },
+        {
+          "check": "process-ref",
+          "path": "template",
+          "options": "templates"
+        }
+      ],
+      "binding_required": true
+    },
+    {
+      "name": "Thread",
+      "tier": "pattern",
+      "summary": "Messages oldest first, with a reply action.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record",
+        "records"
+      ],
+      "events": [
+        "reply"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "messages": {
+            "type": "string"
+          },
+          "compose": {
+            "type": "boolean"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.Thread"
+      },
+      "example": {}
+    },
+    {
+      "name": "States",
+      "tier": "pattern",
+      "summary": "Empty, loading and error slots.",
+      "children": "slots",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "retry"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "empty": {
+            "type": "string"
+          },
+          "loading": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "pattern.States"
+      },
+      "example": {},
+      "slots": [
+        "empty",
+        "loading",
+        "error"
+      ]
+    },
+    {
+      "name": "RecordList",
+      "summary": "A live, paginated list of records with its QueryField, optional StateMeter, selection and keys; can show as a board by an enum field.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "records"
+      ],
+      "events": [
+        "open",
+        "select",
+        "move"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "board_by": {
+            "type": "string"
+          },
+          "meter": {
+            "type": "string"
+          },
+          "search": {
+            "type": "boolean"
+          },
+          "select": {
+            "enum": [
+              "none",
+              "one",
+              "many"
+            ]
+          },
+          "empty": {
+            "type": "string"
+          },
+          "viewOptions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object"
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "views"
+              ],
+              "properties": {
+                "views": {
+                  "contains": {
+                    "const": "board"
+                  }
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "board_by"
+              ]
+            }
+          }
+        ]
+      },
+      "tier": "data",
+      "version": 1,
+      "renderers": {
+        "desktop": "data.RecordList"
+      },
+      "example": {},
+      "rules": [
+        {
+          "check": "field",
+          "path": "columns/*"
+        },
+        {
+          "check": "field",
+          "path": "meter",
+          "options": "groupable"
+        },
+        {
+          "check": "field",
+          "path": "board_by",
+          "options": "groupable"
+        },
+        {
+          "check": "view",
+          "path": "views/*"
+        },
+        {
+          "check": "lifecycle-group",
+          "path": "board_by",
+          "options": "move"
+        }
+      ],
+      "selection": true
+    },
+    {
+      "name": "RecordPage",
+      "summary": "One record: its fields (editable where the app may write), its links and its history, with command buttons.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record"
+      ],
+      "events": [
+        "change"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "history": {
+            "type": "boolean"
+          },
+          "links": {
+            "type": "boolean"
+          }
+        }
+      },
+      "tier": "data",
+      "version": 1,
+      "renderers": {
+        "desktop": "data.RecordPage"
+      },
+      "example": {},
+      "rules": [
+        {
+          "check": "field",
+          "path": "fields/*"
+        },
+        {
+          "check": "command",
+          "path": "actions/*"
+        }
+      ]
+    },
+    {
+      "name": "Form",
+      "summary": "Create a record of `type`, or edit the bound record, from the type's own field definitions.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record"
+      ],
+      "events": [
+        "submit",
+        "cancel"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "submit": {
+            "type": "string"
+          },
+          "answerKey": {
+            "type": "object",
+            "minProperties": 1
+          },
+          "scoring": {
+            "enum": [
+              "exact",
+              "partial"
+            ]
+          },
+          "form": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "saveDraft": {
+            "type": "boolean"
+          }
+        }
+      },
+      "tier": "data",
+      "version": 1,
+      "renderers": {
+        "desktop": "data.Form"
+      },
+      "example": {},
+      "rules": [
+        {
+          "check": "form",
+          "path": "type"
+        },
+        {
+          "check": "writable-field",
+          "path": "fields/*"
+        },
+        {
+          "check": "field-value",
+          "path": "answerKey/*"
+        },
+        {
+          "check": "process-ref",
+          "path": "form",
+          "options": "forms"
+        }
+      ],
+      "capabilities": "rw"
+    },
+    {
+      "name": "RunTimeline",
+      "tier": "data",
+      "summary": "Live run steps, loop rounds and gates.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "run",
+        "runs"
+      ],
+      "events": [
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "selected": {
+            "type": "string"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.RunTimeline"
+      },
+      "example": {},
+      "binding_required": true
+    },
+    {
+      "name": "LogStream",
+      "tier": "data",
+      "summary": "Live output of a run.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [
+        "run"
+      ],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "step": {
+            "type": "string"
+          },
+          "follow": {
+            "type": "boolean"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.LogStream"
+      },
+      "example": {},
+      "binding_required": true
+    },
+    {
+      "name": "DiffViewer",
+      "tier": "data",
+      "summary": "File changes produced by a run.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "run"
+      ],
+      "events": [
+        "pick"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.DiffViewer"
+      },
+      "example": {},
+      "binding_required": true
+    },
+    {
+      "name": "ProofList",
+      "tier": "data",
+      "summary": "Claims and their evidence from a run.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [
+        "run"
+      ],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.ProofList"
+      },
+      "example": {},
+      "binding_required": true
+    },
+    {
+      "name": "ApprovalCard",
+      "tier": "data",
+      "summary": "A pending decision, also shown in Inbox.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "run",
+        "record"
+      ],
+      "events": [
+        "approve",
+        "edit",
+        "skip"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "plan",
+              "proof",
+              "start",
+              "send",
+              "spend"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.ApprovalCard"
+      },
+      "example": {}
+    },
+    {
+      "name": "SignOff",
+      "tier": "data",
+      "summary": "Named signers in order, with maker separation.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record"
+      ],
+      "events": [
+        "sign"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "chain": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain"
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.SignOff"
+      },
+      "example": {
+        "chain": "review"
+      },
+      "rules": [
+        {
+          "check": "policy",
+          "path": "chain",
+          "options": "signoff"
+        }
+      ],
+      "binding_required": true
+    },
+    {
+      "name": "Chart",
+      "summary": "A chart from a query or a live series.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [
+        "records",
+        "run"
+      ],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "bar",
+              "line",
+              "area",
+              "metric",
+              "live"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "x": {
+            "type": "string"
+          },
+          "y": {
+            "type": "string"
+          },
+          "metric": {
+            "enum": [
+              "count",
+              "sum",
+              "avg"
+            ]
+          },
+          "bucket": {
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "quarter"
+            ]
+          },
+          "series": {
+            "type": "string"
+          },
+          "viewOptions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object"
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "live"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "series"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "bar",
+                    "line",
+                    "area"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "x"
+              ]
+            }
+          }
+        ]
+      },
+      "tier": "data",
+      "version": 1,
+      "renderers": {
+        "desktop": "data.Chart"
+      },
+      "example": {
+        "kind": "bar",
+        "x": "created_at"
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "x"
+        },
+        {
+          "check": "field",
+          "path": "y"
+        },
+        {
+          "check": "view",
+          "path": "kind"
+        }
+      ]
+    },
+    {
+      "name": "FileViewer",
+      "tier": "data",
+      "summary": "Shows files, pins, region masks and revision comparison.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "file"
+      ],
+      "events": [
+        "pin",
+        "compare",
+        "reveal"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "pins": {
+            "type": "boolean"
+          },
+          "regionMasking": {
+            "type": "boolean"
+          },
+          "revisionCompare": {
+            "type": "boolean"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.FileViewer"
+      },
+      "example": {},
+      "binding_required": true
+    },
+    {
+      "name": "Media",
+      "tier": "data",
+      "summary": "A video or audio file with chapters and captions.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "file"
+      ],
+      "events": [
+        "seek"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "chapters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "at",
+                "label"
+              ]
+            }
+          },
+          "captions": {
+            "type": "string"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "data.Media"
+      },
+      "example": {},
+      "rules": [
+        {
+          "check": "content-file",
+          "path": "captions",
+          "options": "doc"
+        }
+      ],
+      "binding_required": true
+    },
+    {
+      "name": "Text",
+      "summary": "Markdown parts with live embeds, merge fields and review.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "content-part"
+      ],
+      "events": [
+        "edit",
+        "comment",
+        "restore",
+        "present",
+        "export"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mergeFields": {
+            "type": "boolean"
+          },
+          "trackChanges": {
+            "type": "boolean"
+          },
+          "clauseNumbering": {
+            "type": "boolean"
+          },
+          "docx": {
+            "type": "boolean"
+          },
+          "export": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "pdf",
+                "pptx",
+                "csv"
+              ]
+            }
+          }
+        }
+      },
+      "tier": "surface",
+      "version": 1,
+      "renderers": {
+        "desktop": "surface.Text"
+      },
+      "example": {},
+      "content": "doc",
+      "binding_required": true,
+      "variant_binding": "content-part"
+    },
+    {
+      "name": "Canvas",
+      "tier": "surface",
+      "summary": "Frames or boards with typed and positioned boxes.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "content-part"
+      ],
+      "events": [
+        "edit",
+        "comment",
+        "restore",
+        "present",
+        "export"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "enum": [
+              "16:9",
+              "4:3",
+              "board"
+            ]
+          },
+          "theme": {
+            "type": "string"
+          },
+          "export": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "pdf",
+                "pptx",
+                "csv"
+              ]
+            }
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "surface.Canvas"
+      },
+      "example": {},
+      "content": "canvas",
+      "binding_required": true
+    },
+    {
+      "name": "Grid",
+      "tier": "surface",
+      "summary": "CSV tabs and formulas, with optional pair matching.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "content-part"
+      ],
+      "events": [
+        "edit",
+        "comment",
+        "restore",
+        "present",
+        "export"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "cells",
+              "match"
+            ]
+          },
+          "match": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "with": {
+                "type": "string"
+              },
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "with",
+              "keys"
+            ]
+          },
+          "export": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "pdf",
+                "pptx",
+                "csv"
+              ]
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "mode"
+              ],
+              "properties": {
+                "mode": {
+                  "const": "match"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "match"
+              ]
+            }
+          }
+        ]
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "surface.Grid"
+      },
+      "example": {},
+      "rules": [
+        {
+          "check": "content-file",
+          "path": "match/with",
+          "options": "sheet"
+        }
+      ],
+      "content": "sheet",
+      "binding_required": true
+    },
+    {
+      "name": "Timeline",
+      "tier": "surface",
+      "summary": "Items in calendar, Gantt or shift views.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "content-part",
+        "record"
+      ],
+      "events": [
+        "edit",
+        "comment",
+        "restore",
+        "present",
+        "export"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "view": {
+            "enum": [
+              "gantt",
+              "calendar",
+              "shifts"
+            ]
+          },
+          "freeBusy": {
+            "type": "boolean"
+          },
+          "export": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "pdf",
+                "pptx",
+                "csv"
+              ]
+            }
+          },
+          "history": {
+            "type": "boolean"
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "surface.Timeline"
+      },
+      "example": {},
+      "content": "plan",
+      "binding_required": true
+    },
+    {
+      "name": "Graph",
+      "tier": "surface",
+      "summary": "Traceable records and their links.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "content-part"
+      ],
+      "events": [
+        "edit",
+        "comment",
+        "restore",
+        "present",
+        "export"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "view": {
+            "enum": [
+              "links",
+              "tree",
+              "flow"
+            ]
+          },
+          "live": {
+            "type": "boolean"
+          },
+          "export": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "pdf",
+                "pptx",
+                "csv"
+              ]
+            }
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "surface.Graph"
+      },
+      "example": {},
+      "content": "graph",
+      "binding_required": true
+    },
+    {
+      "name": "Map",
+      "tier": "surface",
+      "summary": "Places, routes and live positions.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "content-part"
+      ],
+      "events": [
+        "edit",
+        "comment",
+        "restore",
+        "present",
+        "export"
+      ],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "live": {
+            "type": "boolean"
+          },
+          "export": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "pdf",
+                "pptx",
+                "csv"
+              ]
+            }
+          }
+        }
+      },
+      "version": 1,
+      "renderers": {
+        "desktop": "surface.Map"
+      },
+      "example": {},
+      "content": "places",
+      "binding_required": true
+    },
+    {
+      "name": "StateBar",
+      "version": 1,
+      "tier": "data",
+      "summary": "Shows a state and its allowed transitions.",
+      "example": {},
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record"
+      ],
+      "events": [
+        "transition"
+      ],
+      "renderers": {
+        "desktop": "data.StateBar"
+      },
+      "binding_required": true,
+      "rules": [
+        {
+          "check": "lifecycle",
+          "path": ""
+        }
+      ]
+    },
+    {
+      "name": "CommandButton",
+      "version": 1,
+      "tier": "data",
+      "summary": "Runs a command with typed parameters and optional confirmation.",
+      "example": {
+        "command": "review"
+      },
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "params": {
+            "type": "object"
+          },
+          "confirm": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "command"
+        ]
+      },
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "record",
+        "selection",
+        "params"
+      ],
+      "events": [
+        "click"
+      ],
+      "renderers": {
+        "desktop": "data.CommandButton"
+      },
+      "rules": [
+        {
+          "check": "command",
+          "path": "command"
+        }
+      ]
+    },
+    {
+      "name": "TriageQueue",
+      "version": 1,
+      "tier": "data",
+      "summary": "Presents one record or work item at a time with next and previous actions.",
+      "example": {
+        "columns": [
+          "title"
+        ]
+      },
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          },
+          "workItem": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          }
+        }
+      },
+      "children": "none",
+      "interactive": true,
+      "bindings": [
+        "records"
+      ],
+      "events": [
+        "next",
+        "previous",
+        "act"
+      ],
+      "renderers": {
+        "desktop": "data.TriageQueue"
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "columns/*"
+        },
+        {
+          "check": "process-ref",
+          "path": "workItem",
+          "options": "work_items"
+        }
+      ],
+      "binding_required": true
+    },
+    {
+      "name": "DueChip",
+      "version": 1,
+      "tier": "data",
+      "summary": "Shows due time and SLA state from a clock field or timer.",
+      "example": {
+        "field": "due_at"
+      },
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "timer": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "field"
+            ]
+          },
+          {
+            "required": [
+              "timer"
+            ]
+          }
+        ]
+      },
+      "children": "none",
+      "interactive": false,
+      "bindings": [
+        "record"
+      ],
+      "events": [],
+      "renderers": {
+        "desktop": "data.DueChip"
+      },
+      "rules": [
+        {
+          "check": "field",
+          "path": "field",
+          "options": "clock"
+        },
+        {
+          "check": "process-ref",
+          "path": "timer",
+          "options": "timers"
+        }
+      ],
+      "binding_required": true
+    },
+    {
+      "name": "MyWork",
+      "version": 1,
+      "tier": "data",
+      "summary": "Shows work assigned to the current person.",
+      "example": {
+        "status": "open"
+      },
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "open",
+              "working",
+              "done",
+              "canceled"
+            ]
+          }
+        }
+      },
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [
+        "open",
+        "complete"
+      ],
+      "renderers": {
+        "desktop": "data.MyWork"
+      }
+    }
+  ],
+  "registries": {
+    "field_types": {
+      "text": {
+        "id": "text",
+        "version": 1,
+        "doc": "Single-line text.",
+        "example": "Northwind",
+        "schema": {
+          "type": "string"
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.text",
+        "editor": "editor.text",
+        "ai_fill": true,
+        "export": "text",
+        "tags": [
+          "sequence"
+        ]
+      },
+      "longtext": {
+        "id": "longtext",
+        "version": 1,
+        "doc": "Free-form text.",
+        "example": "Findings and follow-up notes.",
+        "schema": {
+          "type": "string"
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.longtext",
+        "editor": "editor.longtext",
+        "ai_fill": true,
+        "export": "text",
+        "tags": []
+      },
+      "number": {
+        "id": "number",
+        "version": 1,
+        "doc": "A finite number.",
+        "example": 300,
+        "schema": {
+          "type": "number"
+        },
+        "storage": "real",
+        "operators": [
+          "eq",
+          "ne",
+          "has",
+          "lt",
+          "lte",
+          "gt",
+          "gte"
+        ],
+        "renderer": "field.number",
+        "editor": "editor.number",
+        "ai_fill": true,
+        "export": "real",
+        "tags": [
+          "numeric"
+        ]
+      },
+      "money": {
+        "id": "money",
+        "version": 1,
+        "doc": "Money in major currency units.",
+        "example": 100.25,
+        "schema": {
+          "type": "number"
+        },
+        "storage": "real",
+        "operators": [
+          "eq",
+          "ne",
+          "has",
+          "lt",
+          "lte",
+          "gt",
+          "gte"
+        ],
+        "renderer": "field.money",
+        "editor": "editor.money",
+        "ai_fill": false,
+        "export": "real",
+        "tags": [
+          "numeric",
+          "currency"
+        ]
+      },
+      "date": {
+        "id": "date",
+        "version": 1,
+        "doc": "Calendar date.",
+        "example": "2026-11-25",
+        "schema": {
+          "type": "string",
+          "format": "date"
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has",
+          "lt",
+          "lte",
+          "gt",
+          "gte"
+        ],
+        "renderer": "field.date",
+        "editor": "editor.date",
+        "ai_fill": false,
+        "export": "text",
+        "tags": [
+          "clock"
+        ]
+      },
+      "datetime": {
+        "id": "datetime",
+        "version": 1,
+        "doc": "Timestamp with a UTC offset.",
+        "example": "2026-11-25T10:00:00Z",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has",
+          "lt",
+          "lte",
+          "gt",
+          "gte"
+        ],
+        "renderer": "field.datetime",
+        "editor": "editor.datetime",
+        "ai_fill": false,
+        "export": "text",
+        "tags": [
+          "clock"
+        ]
+      },
+      "duration": {
+        "id": "duration",
+        "version": 1,
+        "doc": "An ISO 8601 duration.",
+        "example": "PT2H",
+        "schema": {
+          "type": "string",
+          "format": "duration"
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has",
+          "lt",
+          "lte",
+          "gt",
+          "gte"
+        ],
+        "renderer": "field.duration",
+        "editor": "editor.duration",
+        "ai_fill": false,
+        "export": "text",
+        "tags": []
+      },
+      "enum": {
+        "id": "enum",
+        "version": 1,
+        "doc": "One declared choice.",
+        "example": "open",
+        "schema": {
+          "type": "string"
+        },
+        "rules": [
+          {
+            "check": "choices",
+            "path": ""
+          }
+        ],
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.enum",
+        "editor": "editor.enum",
+        "ai_fill": true,
+        "export": "text",
+        "tags": [
+          "choices",
+          "groupable"
+        ]
+      },
+      "enums": {
+        "id": "enums",
+        "version": 1,
+        "doc": "Several declared choices.",
+        "example": [
+          "open",
+          "held"
+        ],
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rules": [
+          {
+            "check": "choices",
+            "path": ""
+          }
+        ],
+        "storage": "json",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.enums",
+        "editor": "editor.enums",
+        "ai_fill": true,
+        "export": "json",
+        "tags": [
+          "choices"
+        ]
+      },
+      "bool": {
+        "id": "bool",
+        "version": 1,
+        "doc": "A true or false flag.",
+        "example": true,
+        "schema": {
+          "type": "boolean"
+        },
+        "storage": "integer",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.bool",
+        "editor": "editor.bool",
+        "ai_fill": true,
+        "export": "integer",
+        "tags": []
+      },
+      "person": {
+        "id": "person",
+        "version": 1,
+        "doc": "A person identifier.",
+        "example": "me",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.person",
+        "editor": "editor.person",
+        "ai_fill": false,
+        "export": "text",
+        "tags": [
+          "person"
+        ]
+      },
+      "people": {
+        "id": "people",
+        "version": 1,
+        "doc": "Person identifiers.",
+        "example": [
+          "me"
+        ],
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "storage": "json",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.people",
+        "editor": "editor.people",
+        "ai_fill": false,
+        "export": "json",
+        "tags": []
+      },
+      "ref": {
+        "id": "ref",
+        "version": 1,
+        "doc": "One record ID of the target type.",
+        "example": "01KAT0000A0000000000000001",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rules": [
+          {
+            "check": "sample-reference",
+            "path": ""
+          }
+        ],
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.ref",
+        "editor": "editor.ref",
+        "ai_fill": false,
+        "export": "text",
+        "tags": [
+          "relation"
+        ]
+      },
+      "refs": {
+        "id": "refs",
+        "version": 1,
+        "doc": "Record IDs of the target type.",
+        "example": [
+          "01KAT0000A0000000000000001"
+        ],
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rules": [
+          {
+            "check": "sample-reference",
+            "path": ""
+          }
+        ],
+        "storage": "json",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.refs",
+        "editor": "editor.refs",
+        "ai_fill": false,
+        "export": "json",
+        "tags": [
+          "relation"
+        ]
+      },
+      "email": {
+        "id": "email",
+        "version": 1,
+        "doc": "An email address.",
+        "example": "pat@example.org",
+        "schema": {
+          "type": "string",
+          "format": "email"
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.email",
+        "editor": "editor.email",
+        "ai_fill": false,
+        "export": "text",
+        "tags": []
+      },
+      "phone": {
+        "id": "phone",
+        "version": 1,
+        "doc": "A phone number.",
+        "example": "+14165550100",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.phone",
+        "editor": "editor.phone",
+        "ai_fill": false,
+        "export": "text",
+        "tags": []
+      },
+      "url": {
+        "id": "url",
+        "version": 1,
+        "doc": "A URL.",
+        "example": "https://example.org",
+        "schema": {
+          "type": "string",
+          "format": "uri"
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.url",
+        "editor": "editor.url",
+        "ai_fill": false,
+        "export": "text",
+        "tags": []
+      },
+      "file": {
+        "id": "file",
+        "version": 1,
+        "doc": "A content-addressed file with optional pins and masks.",
+        "example": {
+          "blob": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "name": "drawing.pdf",
+          "mime": "application/pdf"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/file-1.json"
+        },
+        "rules": [
+          {
+            "check": "blob-regions",
+            "path": ""
+          }
+        ],
+        "storage": "json",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.file",
+        "editor": "editor.file",
+        "ai_fill": false,
+        "export": "json",
+        "tags": [
+          "blob"
+        ]
+      },
+      "files": {
+        "id": "files",
+        "version": 1,
+        "doc": "A collection of content-addressed files.",
+        "example": [
+          {
+            "blob": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "name": "photo.png",
+            "mime": "image/png"
+          }
+        ],
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "https://codeaf.dev/schema/file-1.json"
+          }
+        },
+        "rules": [
+          {
+            "check": "blob-regions",
+            "path": "*"
+          }
+        ],
+        "storage": "json",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.files",
+        "editor": "editor.files",
+        "ai_fill": false,
+        "export": "json",
+        "tags": [
+          "blob"
+        ]
+      },
+      "geo": {
+        "id": "geo",
+        "version": 1,
+        "doc": "Longitude and latitude.",
+        "example": [
+          -79.38,
+          43.65
+        ],
+        "schema": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "prefixItems": [
+            {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "storage": "json",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.geo",
+        "editor": "editor.geo",
+        "ai_fill": false,
+        "export": "json",
+        "tags": []
+      },
+      "signature": {
+        "id": "signature",
+        "version": 1,
+        "doc": "A timestamped signer, issued by the sign-off policy.",
+        "example": {
+          "person": "me",
+          "at": "2026-11-25T10:00:00Z"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "person": {
+              "type": "string",
+              "minLength": 1
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "person",
+            "at"
+          ]
+        },
+        "storage": "json",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.signature",
+        "editor": "editor.signature",
+        "ai_fill": false,
+        "export": "json",
+        "tags": [
+          "policy-write"
+        ]
+      },
+      "rating": {
+        "id": "rating",
+        "version": 1,
+        "doc": "A rating from zero to five.",
+        "example": 4,
+        "schema": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "storage": "real",
+        "operators": [
+          "eq",
+          "ne",
+          "has",
+          "lt",
+          "lte",
+          "gt",
+          "gte"
+        ],
+        "renderer": "field.rating",
+        "editor": "editor.rating",
+        "ai_fill": true,
+        "export": "real",
+        "tags": [
+          "numeric"
+        ]
+      },
+      "barcode": {
+        "id": "barcode",
+        "version": 1,
+        "doc": "A barcode kept as text to preserve leading zeros.",
+        "example": "0040000000001",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storage": "text",
+        "operators": [
+          "eq",
+          "ne",
+          "has"
+        ],
+        "renderer": "field.barcode",
+        "editor": "editor.barcode",
+        "ai_fill": false,
+        "export": "text",
+        "tags": []
+      }
+    },
+    "content_types": {
+      "doc": {
+        "id": "doc",
+        "version": 1,
+        "doc": "Markdown with named sections.",
+        "example": "---\npart-ids: [intro]\n---\n<!-- part:intro -->\n# Handover\n",
+        "schema": {
+          "type": "string"
+        },
+        "rules": [
+          {
+            "check": "document-parts",
+            "path": ""
+          }
+        ],
+        "directory": "docs",
+        "extension": ".md",
+        "encoding": "markdown",
+        "part_model": "marker",
+        "filename": "",
+        "ops": [
+          "read",
+          "edit",
+          "comment",
+          "restore"
+        ],
+        "lock": "part",
+        "versions": "part",
+        "export": [
+          "pdf"
+        ]
+      },
+      "sheet": {
+        "id": "sheet",
+        "version": 1,
+        "doc": "One tab as CSV.",
+        "example": "Account,Amount\nRevenue,100\n",
+        "schema": {
+          "type": "string"
+        },
+        "directory": "sheets",
+        "extension": ".csv",
+        "encoding": "csv",
+        "part_model": "file",
+        "filename": "",
+        "ops": [
+          "read",
+          "edit",
+          "comment",
+          "restore"
+        ],
+        "lock": "part",
+        "versions": "part",
+        "export": [
+          "csv"
+        ]
+      },
+      "formulas": {
+        "id": "formulas",
+        "version": 1,
+        "doc": "Formula cells keyed by sheet and address.",
+        "example": {
+          "sheets": {
+            "close": {
+              "A1": "=1+1"
+            }
+          }
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/formulas-1.json"
+        },
+        "rules": [
+          {
+            "check": "sheets",
+            "path": "sheets"
+          }
+        ],
+        "directory": "sheets",
+        "extension": ".json",
+        "encoding": "json",
+        "part_model": "file",
+        "filename": "formulas",
+        "ops": [
+          "read",
+          "edit",
+          "comment",
+          "restore"
+        ],
+        "lock": "part",
+        "versions": "part",
+        "export": []
+      },
+      "canvas": {
+        "id": "canvas",
+        "version": 1,
+        "doc": "Typed boxes in a frame or board.",
+        "example": {
+          "frame": "16:9",
+          "size": [
+            1920,
+            1080
+          ],
+          "boxes": []
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/slides-1.json"
+        },
+        "rules": [
+          {
+            "check": "unique-ids",
+            "path": "boxes"
+          },
+          {
+            "check": "frame",
+            "path": "boxes"
+          },
+          {
+            "check": "record-reference",
+            "path": "boxes/*/record"
+          },
+          {
+            "check": "record-read",
+            "path": "boxes/*/bind/records"
+          }
+        ],
+        "directory": "slides",
+        "extension": ".json",
+        "encoding": "json",
+        "part_model": "box",
+        "filename": "",
+        "ops": [
+          "read",
+          "edit",
+          "comment",
+          "restore"
+        ],
+        "lock": "part",
+        "versions": "part",
+        "export": [
+          "pdf",
+          "pptx"
+        ]
+      },
+      "plan": {
+        "id": "plan",
+        "version": 1,
+        "doc": "Dated items and dependencies.",
+        "example": {
+          "scale": "week",
+          "items": []
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/timeline-1.json"
+        },
+        "rules": [
+          {
+            "check": "unique-ids",
+            "path": "items"
+          },
+          {
+            "check": "timeline-order",
+            "path": "items"
+          },
+          {
+            "check": "record-reference",
+            "path": "items/*/record"
+          }
+        ],
+        "directory": "plan",
+        "extension": ".json",
+        "encoding": "json",
+        "part_model": "item",
+        "filename": "",
+        "ops": [
+          "read",
+          "edit",
+          "comment",
+          "restore"
+        ],
+        "lock": "part",
+        "versions": "part",
+        "export": [
+          "csv"
+        ]
+      },
+      "graph": {
+        "id": "graph",
+        "version": 1,
+        "doc": "Nodes and links with optional record references.",
+        "example": {
+          "layout": "elk.layered",
+          "nodes": [],
+          "links": []
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/graph-1.json"
+        },
+        "rules": [
+          {
+            "check": "unique-ids",
+            "path": "nodes"
+          },
+          {
+            "check": "edge-endpoints",
+            "path": "links",
+            "options": "nodes"
+          },
+          {
+            "check": "record-reference",
+            "path": "nodes/*/record"
+          }
+        ],
+        "directory": "graph",
+        "extension": ".json",
+        "encoding": "json",
+        "part_model": "node",
+        "filename": "",
+        "ops": [
+          "read",
+          "edit",
+          "comment",
+          "restore"
+        ],
+        "lock": "part",
+        "versions": "part",
+        "export": [
+          "csv"
+        ]
+      },
+      "places": {
+        "id": "places",
+        "version": 1,
+        "doc": "GeoJSON points, routes and regions.",
+        "example": {
+          "type": "FeatureCollection",
+          "features": []
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/places-1.json"
+        },
+        "rules": [
+          {
+            "check": "unique-ids",
+            "path": "features"
+          },
+          {
+            "check": "record-reference",
+            "path": "features/*/properties/record"
+          }
+        ],
+        "directory": "places",
+        "extension": ".json",
+        "encoding": "json",
+        "part_model": "feature",
+        "filename": "",
+        "ops": [
+          "read",
+          "edit",
+          "comment",
+          "restore"
+        ],
+        "lock": "part",
+        "versions": "part",
+        "export": [
+          "csv"
+        ]
+      }
+    },
+    "view_types": {
+      "table": {
+        "id": "table",
+        "version": 1,
+        "doc": "The table projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.table"
+        },
+        "recipe": {
+          "part": "Table",
+          "props": {},
+          "fields": "columns"
+        }
+      },
+      "list": {
+        "id": "list",
+        "version": 1,
+        "doc": "The list projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.list"
+        },
+        "recipe": {
+          "part": "RecordList",
+          "props": {
+            "views": [
+              "list"
+            ]
+          },
+          "fields": "columns"
+        }
+      },
+      "board": {
+        "id": "board",
+        "version": 1,
+        "doc": "The board projection of records.",
+        "example": {
+          "groupBy": "stage"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "groupBy": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          },
+          "required": [
+            "groupBy"
+          ]
+        },
+        "rules": [
+          {
+            "check": "field",
+            "path": "groupBy",
+            "options": "groupable"
+          }
+        ],
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.board"
+        },
+        "recipe": {
+          "part": "RecordList",
+          "props": {
+            "views": [
+              "board"
+            ]
+          },
+          "by": "board_by",
+          "fields": "columns"
+        }
+      },
+      "calendar": {
+        "id": "calendar",
+        "version": 1,
+        "doc": "The calendar projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          }
+        },
+        "rules": [
+          {
+            "check": "field",
+            "path": "start",
+            "options": "clock"
+          },
+          {
+            "check": "field",
+            "path": "end",
+            "options": "clock"
+          }
+        ],
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.calendar"
+        },
+        "recipe": {
+          "part": "RecordList",
+          "props": {
+            "views": [
+              "calendar"
+            ]
+          },
+          "by": "start",
+          "fields": "columns"
+        }
+      },
+      "gallery": {
+        "id": "gallery",
+        "version": 1,
+        "doc": "The gallery projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.gallery"
+        }
+      },
+      "timeline": {
+        "id": "timeline",
+        "version": 1,
+        "doc": "The timeline projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          }
+        },
+        "rules": [
+          {
+            "check": "field",
+            "path": "start",
+            "options": "clock"
+          },
+          {
+            "check": "field",
+            "path": "end",
+            "options": "clock"
+          }
+        ],
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.timeline"
+        }
+      },
+      "map": {
+        "id": "map",
+        "version": 1,
+        "doc": "The map projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.map"
+        }
+      },
+      "graph": {
+        "id": "graph",
+        "version": 1,
+        "doc": "The graph projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.graph"
+        }
+      },
+      "bar": {
+        "id": "bar",
+        "version": 1,
+        "doc": "The bar projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.bar"
+        }
+      },
+      "line": {
+        "id": "line",
+        "version": 1,
+        "doc": "The line projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.line"
+        }
+      },
+      "area": {
+        "id": "area",
+        "version": 1,
+        "doc": "The area projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.area"
+        }
+      },
+      "metric": {
+        "id": "metric",
+        "version": 1,
+        "doc": "The metric projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.metric"
+        }
+      },
+      "live": {
+        "id": "live",
+        "version": 1,
+        "doc": "The live projection of stream.",
+        "example": {
+          "series": "latency"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "series": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "series"
+          ]
+        },
+        "collection": "stream",
+        "renderers": {
+          "desktop": "view.live"
+        }
+      },
+      "tree": {
+        "id": "tree",
+        "version": 1,
+        "doc": "The tree projection of records.",
+        "example": {},
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "collection": "records",
+        "renderers": {
+          "desktop": "view.tree"
+        }
+      },
+      "match": {
+        "id": "match",
+        "version": 1,
+        "doc": "The match projection of parts.",
+        "example": {
+          "with": "sheets/bank.csv",
+          "keys": [
+            "account"
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "with": {
+              "type": "string",
+              "minLength": 1
+            },
+            "keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "with",
+            "keys"
+          ]
+        },
+        "collection": "parts",
+        "renderers": {
+          "desktop": "view.match"
+        }
+      }
+    },
+    "action_kinds": {
+      "open": {
+        "id": "open",
+        "version": 1,
+        "doc": "Opens a screen or record.",
+        "example": {
+          "open": "work"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "open": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "beside": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "open"
+          ]
+        },
+        "rules": [
+          {
+            "check": "open",
+            "path": "open"
+          }
+        ],
+        "modifiers": [
+          "id",
+          "beside"
+        ]
+      },
+      "records.update": {
+        "id": "records.update",
+        "version": 1,
+        "doc": "Updates record fields.",
+        "example": {
+          "records.update": {
+            "type": "job",
+            "id": "$record.id",
+            "set": {
+              "title": "Checked"
+            }
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "records.update": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "set"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "ids": {
+                  "type": "string"
+                },
+                "set": {
+                  "type": "object",
+                  "minProperties": 1
+                }
+              }
+            },
+            "ask": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "confirm": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "records.update"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-write",
+            "path": "records.update"
+          }
+        ],
+        "modifiers": [
+          "ask",
+          "confirm"
+        ]
+      },
+      "records.create": {
+        "id": "records.create",
+        "version": 1,
+        "doc": "Creates a record.",
+        "example": {
+          "records.create": {
+            "type": "job",
+            "set": {
+              "title": "New job"
+            }
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "records.create": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "set": {
+                  "type": "object"
+                }
+              }
+            },
+            "ask": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "confirm": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "records.create"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-write",
+            "path": "records.create"
+          }
+        ],
+        "modifiers": [
+          "ask",
+          "confirm"
+        ]
+      },
+      "records.delete": {
+        "id": "records.delete",
+        "version": 1,
+        "doc": "Deletes a record.",
+        "example": {
+          "records.delete": {
+            "type": "job",
+            "id": "$record.id"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "records.delete": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "ids": {
+                  "type": "string"
+                }
+              }
+            },
+            "confirm": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "records.delete"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-write",
+            "path": "records.delete"
+          }
+        ],
+        "modifiers": [
+          "confirm"
+        ]
+      },
+      "runs.start": {
+        "id": "runs.start",
+        "version": 1,
+        "doc": "Starts a declared run.",
+        "example": {
+          "runs.start": "fix"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "runs.start": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "params": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "runs.start"
+          ]
+        },
+        "rules": [
+          {
+            "check": "run",
+            "path": "runs.start"
+          }
+        ],
+        "modifiers": [
+          "params"
+        ]
+      },
+      "runs.stop": {
+        "id": "runs.stop",
+        "version": 1,
+        "doc": "Requests that a run stop.",
+        "example": {
+          "runs.stop": "$run.id"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "runs.stop": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "runs.stop"
+          ]
+        },
+        "modifiers": []
+      },
+      "approve": {
+        "id": "approve",
+        "version": 1,
+        "doc": "Answers an approval.",
+        "example": {
+          "approve": "$run.gate.id"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "approve": {
+              "type": "string",
+              "minLength": 1
+            },
+            "answer": {
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          "required": [
+            "approve"
+          ]
+        },
+        "modifiers": [
+          "answer"
+        ]
+      },
+      "inbox.ask": {
+        "id": "inbox.ask",
+        "version": 1,
+        "doc": "Asks the person a question.",
+        "example": {
+          "inbox.ask": "Ready to proceed?"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inbox.ask": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "inbox.ask"
+          ]
+        },
+        "modifiers": []
+      },
+      "tools.call": {
+        "id": "tools.call",
+        "version": 1,
+        "doc": "Invokes an allowed connector operation.",
+        "example": {
+          "tools.call": [
+            "github",
+            "issues.list",
+            {}
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tools.call": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 3,
+              "prefixItems": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]*$"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": [
+            "tools.call"
+          ]
+        },
+        "rules": [
+          {
+            "check": "tool-tuple",
+            "path": "tools.call"
+          }
+        ],
+        "modifiers": []
+      },
+      "ai.sort": {
+        "id": "ai.sort",
+        "version": 1,
+        "doc": "Sorts a list with AI.",
+        "example": {
+          "ai.sort": "jobs"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ai.sort": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "field": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "ai.sort"
+          ]
+        },
+        "rules": [
+          {
+            "check": "ai",
+            "path": "ai.sort",
+            "options": "sort"
+          },
+          {
+            "check": "list",
+            "path": "ai.sort"
+          }
+        ],
+        "modifiers": [
+          "field"
+        ]
+      },
+      "ai.summarise": {
+        "id": "ai.summarise",
+        "version": 1,
+        "doc": "Summarises the bound input with AI.",
+        "example": {
+          "ai.summarise": "$record"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ai.summarise": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "ai.summarise"
+          ]
+        },
+        "rules": [
+          {
+            "check": "ai",
+            "path": "ai.summarise",
+            "options": "summarise"
+          }
+        ],
+        "modifiers": []
+      },
+      "link": {
+        "id": "link",
+        "version": 1,
+        "doc": "Links two records.",
+        "example": {
+          "link": {
+            "kind": "affects",
+            "from": {
+              "type": "ncr",
+              "id": "n1"
+            },
+            "to": {
+              "type": "drawing",
+              "id": "d1"
+            }
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "link": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "from": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "id"
+                  ]
+                },
+                "to": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "id"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "from",
+                "to"
+              ]
+            }
+          },
+          "required": [
+            "link"
+          ]
+        },
+        "rules": [
+          {
+            "check": "link",
+            "path": "link"
+          }
+        ],
+        "modifiers": []
+      },
+      "toast": {
+        "id": "toast",
+        "version": 1,
+        "doc": "Shows a short status message.",
+        "example": {
+          "toast": "Saved"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "toast": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "toast"
+          ]
+        },
+        "modifiers": []
+      },
+      "records.reveal": {
+        "id": "records.reveal",
+        "version": 1,
+        "doc": "Requests a logged reveal of a masked field.",
+        "example": {
+          "records.reveal": {
+            "type": "case",
+            "id": "$record.id",
+            "field": "pan",
+            "reason": "Check submitted identity"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "records.reveal": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "field": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "reason": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "type",
+                "id",
+                "field",
+                "reason"
+              ]
+            }
+          },
+          "required": [
+            "records.reveal"
+          ]
+        },
+        "rules": [
+          {
+            "check": "reveal",
+            "path": "records.reveal"
+          }
+        ],
+        "modifiers": []
+      },
+      "lifecycle.transition": {
+        "id": "lifecycle.transition",
+        "version": 1,
+        "doc": "Applies a declared transition through the engine write path.",
+        "example": {
+          "lifecycle.transition": {
+            "type": "deal",
+            "id": "$row.id",
+            "transition": "win"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lifecycle.transition": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "transition": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ],
+              "oneOf": [
+                {
+                  "required": [
+                    "transition"
+                  ]
+                },
+                {
+                  "required": [
+                    "to"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "lifecycle.transition"
+          ]
+        },
+        "rules": [
+          {
+            "check": "transition-effect",
+            "path": "lifecycle.transition"
+          }
+        ],
+        "transition": true
+      },
+      "work.create": {
+        "id": "work.create",
+        "version": 1,
+        "doc": "Creates a work item from a declaration.",
+        "example": {
+          "work.create": {
+            "template": "review-terms",
+            "id": "$record.id"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "work.create": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "template": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "template",
+                "id"
+              ]
+            }
+          },
+          "required": [
+            "work.create"
+          ]
+        },
+        "rules": [
+          {
+            "check": "work-effect",
+            "path": "work.create"
+          }
+        ]
+      },
+      "timers.start": {
+        "id": "timers.start",
+        "version": 1,
+        "doc": "Schedules a declared timer for the subject record.",
+        "example": {
+          "timers.start": {
+            "timer": "follow-up",
+            "id": "$record.id"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timers.start": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "timer": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "timer",
+                "id"
+              ]
+            }
+          },
+          "required": [
+            "timers.start"
+          ]
+        },
+        "rules": [
+          {
+            "check": "timer-effect",
+            "path": "timers.start"
+          }
+        ]
+      },
+      "process.start": {
+        "id": "process.start",
+        "version": 1,
+        "doc": "Instantiates a process template for a record.",
+        "example": {
+          "process.start": {
+            "template": "launch",
+            "id": "$record.id"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "process.start": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "template": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "template",
+                "id"
+              ]
+            }
+          },
+          "required": [
+            "process.start"
+          ]
+        },
+        "rules": [
+          {
+            "check": "template-effect",
+            "path": "process.start"
+          }
+        ]
+      },
+      "signoff.sign": {
+        "id": "signoff.sign",
+        "version": 1,
+        "doc": "Requests a signature on a declared chain.",
+        "example": {
+          "signoff.sign": {
+            "policy": "release",
+            "id": "$record.id"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "signoff.sign": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "policy",
+                "id"
+              ]
+            }
+          },
+          "required": [
+            "signoff.sign"
+          ]
+        },
+        "rules": [
+          {
+            "check": "signoff-effect",
+            "path": "signoff.sign"
+          }
+        ]
+      }
+    },
+    "step_kinds": {
+      "agent": {
+        "id": "agent",
+        "version": 1,
+        "doc": "Asks the app agent for an output.",
+        "example": {
+          "agent": "Factory agent"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agent": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent"
+          ]
+        },
+        "rules": [
+          {
+            "check": "agent",
+            "path": "agent"
+          }
+        ],
+        "modifiers": [
+          "prompt"
+        ],
+        "auxiliary": false
+      },
+      "tool": {
+        "id": "tool",
+        "version": 1,
+        "doc": "Calls a connector operation.",
+        "example": {
+          "tool": "github.issues.list"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tool": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_]*)+$"
+            },
+            "as": {
+              "type": "string"
+            },
+            "args": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "tool"
+          ]
+        },
+        "rules": [
+          {
+            "check": "tool-call",
+            "path": "tool"
+          }
+        ],
+        "modifiers": [
+          "as",
+          "args"
+        ],
+        "auxiliary": false
+      },
+      "records.update": {
+        "id": "records.update",
+        "version": 1,
+        "doc": "Updates record fields.",
+        "example": {
+          "records.update": {
+            "type": "job",
+            "set": {
+              "title": "Reviewed"
+            }
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "records.update": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "set"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "ids": {
+                  "type": "string"
+                },
+                "set": {
+                  "type": "object",
+                  "minProperties": 1
+                }
+              }
+            }
+          },
+          "required": [
+            "records.update"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-write",
+            "path": "records.update"
+          }
+        ],
+        "modifiers": [],
+        "auxiliary": false
+      },
+      "records.create": {
+        "id": "records.create",
+        "version": 1,
+        "doc": "Creates records.",
+        "example": {
+          "records.create": {
+            "type": "job",
+            "set": {
+              "title": "New"
+            }
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "records.create": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "set"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "set": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "required": [
+            "records.create"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-write",
+            "path": "records.create"
+          }
+        ],
+        "modifiers": [],
+        "auxiliary": false
+      },
+      "gate": {
+        "id": "gate",
+        "version": 1,
+        "doc": "Waits for an approval and can guard another step.",
+        "example": {
+          "gate": {
+            "approval": "plan"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gate": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "approval"
+              ],
+              "properties": {
+                "approval": {
+                  "enum": [
+                    "plan",
+                    "proof",
+                    "start",
+                    "send"
+                  ]
+                },
+                "who": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": [
+            "gate"
+          ]
+        },
+        "modifiers": [],
+        "auxiliary": true
+      },
+      "wait": {
+        "id": "wait",
+        "version": 1,
+        "doc": "Pauses until a time, for a duration, or for a connector event.",
+        "example": {
+          "wait": {
+            "for": "2h"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "wait": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "for": {
+                  "type": "string"
+                },
+                "until": {
+                  "type": "string"
+                },
+                "thread": {
+                  "type": "string"
+                },
+                "timeout": {
+                  "type": "string"
+                }
+              },
+              "oneOf": [
+                {
+                  "required": [
+                    "for"
+                  ]
+                },
+                {
+                  "required": [
+                    "until"
+                  ]
+                }
+              ]
+            },
+            "on_timeout": {
+              "enum": [
+                "fail",
+                "continue"
+              ]
+            }
+          },
+          "required": [
+            "wait"
+          ]
+        },
+        "rules": [
+          {
+            "check": "wait",
+            "path": "wait"
+          }
+        ],
+        "modifiers": [
+          "on_timeout"
+        ],
+        "auxiliary": false
+      },
+      "loop": {
+        "id": "loop",
+        "version": 1,
+        "doc": "Repeats a bounded list or condition.",
+        "example": {
+          "loop": {
+            "max": 3,
+            "until": "$steps.test.exit == 0"
+          },
+          "steps": [
+            {
+              "id": "test",
+              "shell": "go test ./..."
+            }
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "loop": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "over": {
+                  "type": "string"
+                },
+                "as": {
+                  "type": "string"
+                },
+                "until": {
+                  "type": "string"
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "max"
+              ],
+              "oneOf": [
+                {
+                  "required": [
+                    "over",
+                    "as"
+                  ]
+                },
+                {
+                  "required": [
+                    "until"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "over"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "as"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "steps": {
+              "$ref": "https://codeaf.dev/schema/run-2.json#/$defs/steps"
+            }
+          },
+          "required": [
+            "loop",
+            "steps"
+          ]
+        },
+        "rules": [
+          {
+            "check": "loop",
+            "path": "loop"
+          }
+        ],
+        "modifiers": [
+          "steps"
+        ],
+        "auxiliary": false
+      },
+      "shell": {
+        "id": "shell",
+        "version": 1,
+        "doc": "Runs a command inside the declared repository workspace.",
+        "example": {
+          "shell": "go test ./..."
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shell": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "shell"
+          ]
+        },
+        "rules": [
+          {
+            "check": "workspace",
+            "path": "shell"
+          }
+        ],
+        "modifiers": [],
+        "auxiliary": false
+      },
+      "sub-run": {
+        "id": "sub-run",
+        "version": 1,
+        "doc": "Starts another declared run.",
+        "example": {
+          "sub-run": "test"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sub-run": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "params": {}
+          },
+          "required": [
+            "sub-run"
+          ]
+        },
+        "rules": [
+          {
+            "check": "run",
+            "path": "sub-run"
+          }
+        ],
+        "modifiers": [
+          "params"
+        ],
+        "auxiliary": false
+      },
+      "stream.append": {
+        "id": "stream.append",
+        "version": 1,
+        "doc": "Appends one point to a run series.",
+        "example": {
+          "stream.append": {
+            "series": "latency",
+            "value": 52
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stream.append": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "series": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^\\$"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "series",
+                "value"
+              ]
+            }
+          },
+          "required": [
+            "stream.append"
+          ]
+        },
+        "modifiers": [],
+        "auxiliary": false
+      },
+      "ask": {
+        "id": "ask",
+        "version": 1,
+        "doc": "Creates a work item, waits for an answer, and resumes with the form result.",
+        "example": {
+          "ask": {
+            "item": "review-terms",
+            "id": "$record.id"
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ask": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "item",
+                "id"
+              ]
+            }
+          },
+          "required": [
+            "ask"
+          ]
+        },
+        "rules": [
+          {
+            "check": "ask-work",
+            "path": "ask"
+          }
+        ]
+      }
+    },
+    "trigger_sources": {
+      "schedule": {
+        "id": "schedule",
+        "version": 1,
+        "doc": "Runs on a five-field cron schedule.",
+        "example": {
+          "id": "start",
+          "run": "process",
+          "on": "schedule",
+          "cron": "0 9 * * 1-5"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "on": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "when": {
+              "type": "string",
+              "minLength": 1
+            },
+            "cron": {
+              "type": "string",
+              "pattern": "^\\S+( +\\S+){4}$"
+            }
+          },
+          "required": [
+            "id",
+            "on",
+            "run",
+            "cron"
+          ]
+        }
+      },
+      "record.changed": {
+        "id": "record.changed",
+        "version": 1,
+        "doc": "Starts after a record commit.",
+        "example": {
+          "id": "start",
+          "run": "process",
+          "on": "record.changed",
+          "type": "job"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "on": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "when": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          },
+          "required": [
+            "id",
+            "on",
+            "run",
+            "type"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-read",
+            "path": "type"
+          }
+        ]
+      },
+      "connector": {
+        "id": "connector",
+        "version": 1,
+        "doc": "Starts on a registered inbound connector event.",
+        "example": {
+          "id": "start",
+          "run": "process",
+          "on": "connector",
+          "connector": "gmail",
+          "event": "thread.received"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "on": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "when": {
+              "type": "string",
+              "minLength": 1
+            },
+            "connector": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "event": {
+              "type": "string",
+              "minLength": 1
+            },
+            "match": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "on",
+            "run",
+            "connector",
+            "event"
+          ]
+        },
+        "rules": [
+          {
+            "check": "connector-event",
+            "path": "event"
+          }
+        ]
+      },
+      "timer": {
+        "id": "timer",
+        "version": 1,
+        "doc": "Starts a run when a declared timer fires.",
+        "example": {
+          "id": "due",
+          "on": "timer",
+          "run": "follow-up",
+          "timer": "follow-up"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "on": {
+              "const": "timer"
+            },
+            "run": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "timer": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "when": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id",
+            "on",
+            "run",
+            "timer"
+          ]
+        },
+        "rules": [
+          {
+            "check": "process-ref",
+            "path": "timer",
+            "options": "timers"
+          }
+        ]
+      }
+    },
+    "policy_kinds": {
+      "signoff": {
+        "id": "signoff",
+        "version": 1,
+        "doc": "An ordered signature chain bound to a record revision and a statement.",
+        "example": {
+          "record": "job",
+          "makerCannotSign": true,
+          "roles": [
+            {
+              "id": "maker",
+              "label": "Maker",
+              "person": "$record.maker"
+            },
+            {
+              "id": "reviewer",
+              "label": "Reviewer",
+              "person": "me"
+            }
+          ],
+          "statement": "The attached evidence supports this decision."
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/records-2.json#/$defs/signoff"
+        },
+        "rules": [
+          {
+            "check": "signoff",
+            "path": ""
+          }
+        ]
+      },
+      "checklist": {
+        "id": "checklist",
+        "version": 1,
+        "doc": "Tracks checks and their evidence.",
+        "example": {
+          "record": "job",
+          "steps": [
+            {
+              "id": "evidence",
+              "label": "Attach test output",
+              "evidence": "file"
+            }
+          ]
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "record": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "evidence": {
+                    "enum": [
+                      "none",
+                      "note",
+                      "file",
+                      "record"
+                    ]
+                  },
+                  "role": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "evidence"
+                ]
+              }
+            },
+            "signoff": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          },
+          "required": [
+            "record",
+            "steps"
+          ]
+        },
+        "rules": [
+          {
+            "check": "checklist",
+            "path": "",
+            "options": "signoff"
+          }
+        ]
+      },
+      "mask": {
+        "id": "mask",
+        "version": 1,
+        "doc": "Requires a reason and an audit receipt to reveal a field.",
+        "example": {
+          "record": "job",
+          "fields": [
+            "secret"
+          ],
+          "reason": true
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "record": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              }
+            },
+            "reason": {
+              "const": true
+            }
+          },
+          "required": [
+            "record",
+            "fields",
+            "reason"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-read",
+            "path": "record"
+          },
+          {
+            "check": "masked-fields",
+            "path": "fields/*"
+          }
+        ]
+      },
+      "freeze": {
+        "id": "freeze",
+        "version": 1,
+        "doc": "Blocks writes when the condition holds.",
+        "example": {
+          "record": "job",
+          "when": "closed"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "record": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "when": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "record",
+            "when"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-read",
+            "path": "record"
+          },
+          {
+            "check": "expression",
+            "path": "when"
+          }
+        ]
+      },
+      "retention": {
+        "id": "retention",
+        "version": 1,
+        "doc": "Declares record retention in days.",
+        "example": {
+          "record": "job",
+          "days": 365
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "record": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "days": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "record",
+            "days"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-read",
+            "path": "record"
+          }
+        ]
+      },
+      "approval": {
+        "id": "approval",
+        "version": 1,
+        "doc": "Assigns an approval tier to a person.",
+        "example": {
+          "kind": "send",
+          "who": "me"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "who": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "who"
+          ]
+        }
+      },
+      "capability": {
+        "id": "capability",
+        "version": 1,
+        "doc": "Declares the record access needed for an effect.",
+        "example": {
+          "record": "job",
+          "access": "rw"
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "record": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "access": {
+              "enum": [
+                "r",
+                "rw"
+              ]
+            }
+          },
+          "required": [
+            "record",
+            "access"
+          ]
+        },
+        "rules": [
+          {
+            "check": "record-read",
+            "path": "record"
+          }
+        ]
+      }
+    },
+    "tools": {
+      "github": {
+        "id": "github",
+        "version": 1,
+        "doc": "Connect to github using a configured account.",
+        "example": "github",
+        "schema": {
+          "const": "github"
+        },
+        "auth": "configured-account",
+        "operations": {
+          "issues.list": {
+            "id": "issues.list",
+            "version": 1,
+            "doc": "List issues.",
+            "example": {
+              "repo": "acme/api",
+              "label": "agent"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repo": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "outbound": "read",
+            "fake": "github.issues.list"
+          },
+          "issues.labelled": {
+            "id": "issues.labelled",
+            "version": 1,
+            "doc": "Issue received with a selected label.",
+            "example": {
+              "repo": "acme/api",
+              "title": "Clarify retry message",
+              "number": 1498,
+              "label": "agent"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repo": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "number": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "repo",
+                "title",
+                "number",
+                "label"
+              ]
+            },
+            "outbound": "event",
+            "fake": "github.issues.labelled"
+          },
+          "pr.create": {
+            "id": "pr.create",
+            "version": 1,
+            "doc": "Publish a reviewed pull request.",
+            "example": {
+              "repo": "acme/api",
+              "branch": "fluid/retry-message"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repo": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "repo",
+                "branch"
+              ]
+            },
+            "outbound": "proof",
+            "fake": "github.pr.create"
+          },
+          "open_pr": {
+            "id": "open_pr",
+            "version": 1,
+            "doc": "Open a reviewed pull request.",
+            "example": {
+              "repo": "acme/api",
+              "branch": "fluid/retry-message"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "repo": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "repo",
+                "branch"
+              ]
+            },
+            "outbound": "proof",
+            "fake": "github.open_pr"
+          }
+        }
+      },
+      "gmail": {
+        "id": "gmail",
+        "version": 1,
+        "doc": "Connect to gmail using a configured account.",
+        "example": "gmail",
+        "schema": {
+          "const": "gmail"
+        },
+        "auth": "configured-account",
+        "operations": {
+          "search": {
+            "id": "search",
+            "version": 1,
+            "doc": "Search mail threads.",
+            "example": {
+              "q": "newer_than:7d"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "q": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "q"
+              ]
+            },
+            "outbound": "read",
+            "fake": "gmail.search"
+          },
+          "thread.received": {
+            "id": "thread.received",
+            "version": 1,
+            "doc": "An inbound email thread.",
+            "example": {
+              "thread": "thread-29",
+              "subject": "Invoice export",
+              "body": "Can you help?",
+              "received_at": "2026-11-25T09:00:00Z"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "thread": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                },
+                "received_at": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "thread",
+                "subject",
+                "body",
+                "received_at"
+              ]
+            },
+            "outbound": "event",
+            "fake": "gmail.thread.received"
+          },
+          "reply": {
+            "id": "reply",
+            "version": 1,
+            "doc": "Reply to a thread.",
+            "example": {
+              "thread": "thread-29",
+              "body": "Here are the steps."
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "thread": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "thread",
+                "body"
+              ]
+            },
+            "outbound": "send",
+            "fake": "gmail.reply"
+          },
+          "send": {
+            "id": "send",
+            "version": 1,
+            "doc": "Send a message.",
+            "example": {
+              "to": "pat@example.org",
+              "subject": "Update",
+              "body": "The order is ready."
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "subject": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "to",
+                "subject",
+                "body"
+              ]
+            },
+            "outbound": "send",
+            "fake": "gmail.send"
+          }
+        }
+      },
+      "calendar": {
+        "id": "calendar",
+        "version": 1,
+        "doc": "Connect to calendar using a configured account.",
+        "example": "calendar",
+        "schema": {
+          "const": "calendar"
+        },
+        "auth": "configured-account",
+        "operations": {
+          "free_busy": {
+            "id": "free_busy",
+            "version": 1,
+            "doc": "Read calendar availability.",
+            "example": {
+              "people": [
+                "me"
+              ],
+              "start": "2026-11-25T09:00:00Z",
+              "end": "2026-11-25T17:00:00Z"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "people": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "start": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "end": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "people",
+                "start",
+                "end"
+              ]
+            },
+            "outbound": "read",
+            "fake": "calendar.free_busy"
+          }
+        }
+      },
+      "sms": {
+        "id": "sms",
+        "version": 1,
+        "doc": "Connect to sms using a configured account.",
+        "example": "sms",
+        "schema": {
+          "const": "sms"
+        },
+        "auth": "configured-account",
+        "operations": {
+          "send": {
+            "id": "send",
+            "version": 1,
+            "doc": "Send a text message.",
+            "example": {
+              "to": "+14165550100",
+              "body": "Your delivery is due at 3 pm."
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "to": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "to",
+                "body"
+              ]
+            },
+            "outbound": "send",
+            "fake": "sms.send"
+          }
+        }
+      },
+      "slack": {
+        "id": "slack",
+        "version": 1,
+        "doc": "Connect to slack using a configured account.",
+        "example": "slack",
+        "schema": {
+          "const": "slack"
+        },
+        "auth": "configured-account",
+        "operations": {
+          "post": {
+            "id": "post",
+            "version": 1,
+            "doc": "Post a status update.",
+            "example": {
+              "channel": "incidents",
+              "body": "Investigating increased latency."
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "body": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "channel",
+                "body"
+              ]
+            },
+            "outbound": "send",
+            "fake": "slack.post"
+          }
+        }
+      },
+      "metrics": {
+        "id": "metrics",
+        "version": 1,
+        "doc": "Connect to metrics using a configured account.",
+        "example": "metrics",
+        "schema": {
+          "const": "metrics"
+        },
+        "auth": "configured-account",
+        "operations": {
+          "sample.received": {
+            "id": "sample.received",
+            "version": 1,
+            "doc": "A live metric sample.",
+            "example": {
+              "series": "latency",
+              "at": "2026-11-25T09:00:00Z",
+              "value": 52
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "series": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "at": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "series",
+                "at",
+                "value"
+              ]
+            },
+            "outbound": "event",
+            "fake": "metrics.sample.received"
+          },
+          "latest": {
+            "id": "latest",
+            "version": 1,
+            "doc": "Read the latest metric value.",
+            "example": {
+              "series": "latency"
+            },
+            "schema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "series": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "outbound": "read",
+            "fake": "metrics.latest"
+          }
+        }
+      }
+    },
+    "process_kinds": {
+      "lifecycles": {
+        "id": "lifecycles",
+        "version": 1,
+        "doc": "States and allowed transitions for one record type.",
+        "example": {
+          "field": "stage",
+          "initial": "lead",
+          "states": [
+            "lead",
+            "won"
+          ],
+          "transitions": {
+            "win": {
+              "label": "Mark won",
+              "from": [
+                "lead"
+              ],
+              "to": "won",
+              "actors": [
+                "person"
+              ],
+              "guard": "amount > 0"
+            }
+          }
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/lifecycle"
+        },
+        "rules": [
+          {
+            "check": "lifecycle",
+            "path": ""
+          }
+        ]
+      },
+      "forms": {
+        "id": "forms",
+        "version": 1,
+        "doc": "A ready-to-answer form with steps and conditional fields.",
+        "example": {
+          "record": "deal",
+          "title": "Review deal",
+          "steps": [
+            {
+              "id": "review",
+              "label": "Review",
+              "fields": [
+                {
+                  "field": "amount",
+                  "required": true
+                }
+              ]
+            }
+          ],
+          "saveDraft": true
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/form"
+        },
+        "rules": [
+          {
+            "check": "process-form",
+            "path": ""
+          }
+        ]
+      },
+      "work_items": {
+        "id": "work_items",
+        "version": 1,
+        "doc": "A space work item with a subject, assignee and completion form.",
+        "example": {
+          "title": "Review terms",
+          "subject": {
+            "type": "deal",
+            "id": "$record.id"
+          },
+          "assignee": "me",
+          "form": "review",
+          "sla": "PT4H"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/work_item"
+        },
+        "rules": [
+          {
+            "check": "work-item",
+            "path": ""
+          }
+        ]
+      },
+      "timers": {
+        "id": "timers",
+        "version": 1,
+        "doc": "A durable clock that emits registered actions.",
+        "example": {
+          "record": "deal",
+          "after": "P3D",
+          "effects": [
+            {
+              "runs.start": "follow-up"
+            }
+          ]
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/timer"
+        },
+        "rules": [
+          {
+            "check": "process-timer",
+            "path": ""
+          }
+        ]
+      },
+      "templates": {
+        "id": "templates",
+        "version": 1,
+        "doc": "A dependency graph of work-item declarations instantiated for a case.",
+        "example": {
+          "record": "deal",
+          "title": "Launch",
+          "items": [
+            {
+              "id": "review",
+              "workItem": "review-terms"
+            }
+          ]
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/template"
+        },
+        "rules": [
+          {
+            "check": "process-template",
+            "path": ""
+          }
+        ]
+      }
+    },
+    "app_declarations": {
+      "role": {
+        "id": "role",
+        "version": 1,
+        "doc": "Defines screens and transitions available to one role.",
+        "example": {
+          "kind": "requester",
+          "label": "Requester",
+          "screens": [
+            "request"
+          ]
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/role"
+        },
+        "rules": [
+          {
+            "check": "role",
+            "path": ""
+          }
+        ]
+      },
+      "audience": {
+        "id": "audience",
+        "version": 1,
+        "doc": "Groups roles around a validated set of screens and transitions.",
+        "example": {
+          "label": "Internal triage",
+          "roles": [
+            "worker"
+          ],
+          "screens": [
+            "triage"
+          ]
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/audience"
+        },
+        "rules": [
+          {
+            "check": "audience",
+            "path": ""
+          }
+        ]
+      },
+      "resource": {
+        "id": "resource",
+        "version": 1,
+        "doc": "Declares a booking range with an overlap constraint.",
+        "example": {
+          "record": "room",
+          "label": "Meeting rooms",
+          "booking": {
+            "type": "booking",
+            "resource": "room",
+            "start": "starts",
+            "end": "ends",
+            "overlap": "reject"
+          }
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/resource"
+        },
+        "rules": [
+          {
+            "check": "resource",
+            "path": ""
+          }
+        ]
+      },
+      "sequence": {
+        "id": "sequence",
+        "version": 1,
+        "doc": "Formats an engine-issued number with a prefix and pad or padding.",
+        "example": {
+          "prefix": "INV-",
+          "padding": 4
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/sequence"
+        }
+      },
+      "unique": {
+        "id": "unique",
+        "version": 1,
+        "doc": "Declares a key whose populated values are unique.",
+        "example": true,
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "money-currency": {
+        "id": "money-currency",
+        "version": 1,
+        "doc": "Records money in the declared ISO currency.",
+        "example": "USD",
+        "schema": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "ledger": {
+        "id": "ledger",
+        "version": 1,
+        "doc": "Declares an append-only record type whose corrections are reversing entries.",
+        "example": {
+          "reversal": "reversal_of"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/ledger"
+        }
+      },
+      "record-lifecycle": {
+        "id": "record-lifecycle",
+        "version": 1,
+        "doc": "Declares a record type’s lifecycle with ordered transitions and writer kinds.",
+        "example": {
+          "field": "stage",
+          "transitions": [
+            {
+              "id": "close",
+              "from": [
+                "open"
+              ],
+              "to": "closed",
+              "by": [
+                "person"
+              ]
+            }
+          ]
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/record-lifecycle"
+        }
+      }
+    },
+    "channel_kinds": {
+      "form-link": {
+        "id": "form-link",
+        "version": 1,
+        "doc": "Collects a submission with a declared form.",
+        "example": {
+          "kind": "form-link",
+          "record": "ticket",
+          "form": "request"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/form-link"
+        },
+        "rules": [
+          {
+            "check": "channel",
+            "path": ""
+          }
+        ]
+      },
+      "email-in": {
+        "id": "email-in",
+        "version": 1,
+        "doc": "Routes inbound email threads to records.",
+        "example": {
+          "kind": "email-in",
+          "record": "ticket",
+          "connector": "gmail",
+          "event": "thread.received"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/email-in"
+        },
+        "rules": [
+          {
+            "check": "channel",
+            "path": ""
+          }
+        ]
+      },
+      "webhook-in": {
+        "id": "webhook-in",
+        "version": 1,
+        "doc": "Declares a webhook intake for a run.",
+        "example": {
+          "kind": "webhook-in",
+          "record": "ticket",
+          "run": "ingest"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/webhook-in"
+        },
+        "rules": [
+          {
+            "check": "channel",
+            "path": ""
+          }
+        ]
+      },
+      "file-drop": {
+        "id": "file-drop",
+        "version": 1,
+        "doc": "Collects a file through a declared form.",
+        "example": {
+          "kind": "file-drop",
+          "record": "ticket",
+          "form": "request",
+          "accept": [
+            "application/pdf"
+          ]
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/file-drop"
+        },
+        "rules": [
+          {
+            "check": "channel",
+            "path": ""
+          }
+        ]
+      },
+      "connector-event": {
+        "id": "connector-event",
+        "version": 1,
+        "doc": "Receives a registered connector event.",
+        "example": {
+          "kind": "connector-event",
+          "record": "job",
+          "connector": "github",
+          "event": "issues.labelled"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/connector-event"
+        },
+        "rules": [
+          {
+            "check": "channel",
+            "path": ""
+          }
+        ]
+      }
+    },
+    "rule_kinds": {
+      "assignment": {
+        "id": "assignment",
+        "version": 1,
+        "doc": "Selects a work-item assignee using field, role, skill, round robin or load.",
+        "example": {
+          "kind": "assignment",
+          "record": "ticket",
+          "strategy": "field",
+          "field": "owner",
+          "workItem": "triage"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/assignment"
+        },
+        "rules": [
+          {
+            "check": "assignment",
+            "path": ""
+          }
+        ]
+      },
+      "approval-routing": {
+        "id": "approval-routing",
+        "version": 1,
+        "doc": "Routes decisions to a serial or parallel set of roles.",
+        "example": {
+          "kind": "approval-routing",
+          "record": "expense",
+          "order": "serial",
+          "roles": [
+            "finance",
+            "admin"
+          ],
+          "when": "amount > 10000"
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/approval-routing"
+        },
+        "rules": [
+          {
+            "check": "approval-routing",
+            "path": ""
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "ask": "Edit lessons, add captioned video and score a short quiz.",
+  "data": [
+    {
+      "id": "lesson",
+      "line": "Title and video"
+    },
+    {
+      "id": "attempt",
+      "line": "Name and format"
+    }
+  ],
+  "screens": [
+    {
+      "id": "lessons",
+      "line": "Lessons"
+    },
+    {
+      "id": "quiz",
+      "line": "Setup quiz"
+    }
+  ],
+  "agent": {
+    "line": "Help the maker update the lesson and check whether the quiz answer key matches the lesson."
+  }
+}

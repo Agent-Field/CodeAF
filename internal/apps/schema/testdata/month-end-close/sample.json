@@ -1,0 +1,14 @@
+{
+  "records": {
+    "close": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "November close",
+        "closed": false,
+        "amount": 503340,
+        "maker": "raj",
+        "reviewer": "me"
+      }
+    ]
+  }
+}

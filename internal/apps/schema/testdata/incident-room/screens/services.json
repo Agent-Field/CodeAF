@@ -1,0 +1,16 @@
+{
+  "screen": "services",
+  "title": "Service dependencies",
+  "body": {
+    "part": "Graph",
+    "label": "Live service status",
+    "props": {
+      "view": "flow",
+      "live": true
+    },
+    "bind": {
+      "content-part": "graph/services.json"
+    },
+    "id": "graph"
+  }
+}

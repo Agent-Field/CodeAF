@@ -1,0 +1,13 @@
+{
+  "records": {
+    "metric": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "November ARR",
+        "month": "2026-11-01",
+        "arr": 48000,
+        "published": true
+      }
+    ]
+  }
+}
