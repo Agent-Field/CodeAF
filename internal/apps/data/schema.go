@@ -2,8 +2,10 @@ package data
 
 import (
 	"database/sql"
+
 	"encoding/json"
 	"fmt"
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 	"sort"
 	"strings"
 	"time"
@@ -517,4 +519,24 @@ func parseSpan(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("%q is not a span", s)
 	}
 	return time.Duration(n) * unit, nil
+}
+
+// TypeSet is every visible type the store holds, with its owner and its
+// visible fields: what lane A's validator checks a new or changed app
+// against (its `uses` types, its refs into the person's data).
+func (s *Store) TypeSet() appschema.TypeSet {
+	out := appschema.TypeSet{}
+	for name, t := range s.schema.Load().types {
+		if t.Hidden {
+			continue
+		}
+		fields := map[string]appschema.Field{}
+		for fname, f := range t.Fields {
+			if !f.Hidden {
+				fields[fname] = f.FieldDef
+			}
+		}
+		out[name] = appschema.ExistingType{Owner: t.Owner, Fields: fields}
+	}
+	return out
 }

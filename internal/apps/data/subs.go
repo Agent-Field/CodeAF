@@ -220,4 +220,3 @@ func (s *Store) diff(sub *subscription, c *Change, ids []string) (Diff, bool) {
 	}
 	return d, true
 }
-

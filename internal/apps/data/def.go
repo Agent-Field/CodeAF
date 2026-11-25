@@ -2,8 +2,10 @@ package data
 
 import (
 	"bytes"
+
 	"encoding/json"
 	"fmt"
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 	"regexp"
 	"sort"
 	"strings"
@@ -64,33 +66,14 @@ var celReserved = map[string]bool{
 	"duration": true, "timestamp": true,
 }
 
-// FieldDef is one field as an app declares it.
-type FieldDef struct {
-	Type     string   `json:"type"`
-	Label    string   `json:"label,omitempty"`
-	Required bool     `json:"required,omitempty"`
-	Unique   bool     `json:"unique,omitempty"`
-	Index    bool     `json:"index,omitempty"`
-	Masked   bool     `json:"masked,omitempty"`
-	Default  any      `json:"default,omitempty"`
-	Values   []string `json:"values,omitempty"`
-	To       string   `json:"to,omitempty"`
-	Currency string   `json:"currency,omitempty"`
-	Computed string   `json:"computed,omitempty"`
-	AI       string   `json:"ai,omitempty"`
-}
+// FieldDef is one field as an app declares it: lane A's definition type, so
+// the validator and the store read one shape.
+type FieldDef = appschema.Field
 
 // FreezeRule makes matching records read-only: by a condition (When, with
 // Except naming fields that stay writable), or by a period (the record locks
 // After a duration once the Period holding its Field's date has ended).
-type FreezeRule struct {
-	When     string   `json:"when,omitempty"`
-	Except   []string `json:"except,omitempty"`
-	Unfreeze string   `json:"unfreeze,omitempty"`
-	Period   string   `json:"period,omitempty"`
-	Field    string   `json:"field,omitempty"`
-	After    string   `json:"after,omitempty"`
-}
+type FreezeRule = appschema.Freeze
 
 // TypeDef is one record type as an app declares it. Uses says the app uses a
 // type another app owns; its Fields are then the fields it adds.
