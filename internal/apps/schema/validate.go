@@ -109,7 +109,7 @@ func (r Report) String() string {
 // outbound is the set of tool verbs that leave the person's computer. Each one must
 // wait for the person's approval: a gate on a run step, an `approve` entry on the
 // connector. THIS IS A LAW: v0 never sends anything nobody said yes to.
-var outbound = map[string]bool{"send": true, "post": true, "reply": true, "pay": true, "publish": true, "invite": true}
+var outbound = map[string]bool{"send": true, "post": true, "reply": true, "pay": true, "publish": true, "invite": true, "charge": true, "transfer": true, "refund": true, "payment": true}
 
 // systemFields are fields every record has without the app declaring them.
 var systemFields = map[string]bool{"id": true, "created_at": true, "updated_at": true}
