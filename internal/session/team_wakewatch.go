@@ -455,47 +455,43 @@ func teamEventWakesManager(state, text string) bool {
 	return false
 }
 
-// teamEventWakesManagerOf is [teamEventWakesManager] for one member's event,
-// top when that member is a top-level team's manager seated in the team that
-// holds every team ([teamRole.quietEnding]).
+// teamEventWakesManagerOf is [teamEventWakesManager] for an event in one team,
+// root when that is the team that holds every team.
 //
-// The global manager is not woken by a top-level manager's turn ending,
-// finished or stopped. Its members are the managers of whole teams, each a
-// conversation the person talks to, and every answer one of them gave the
-// person ended a turn. Measured 2026-11-24 in the desktop app: one afternoon
-// of the person talking to two crew managers woke the global manager 22 times,
-// 803,496 input tokens, and it answered "[no change]" to all 22; the day
-// before, one such wake had it read a manager's conversation and send the
-// person's own request back to that manager as a directive. What a top-level
-// manager wants the global manager to act on it posts (a note wakes), and what
-// needs somebody still wakes: a failure, and a question or a permission it is
-// held on. The ending itself stays in the team's traffic, where team_status
-// reads it.
-func teamEventWakesManagerOf(top bool, state, text string) bool {
-	if top {
+// The global manager is not woken by a turn ending in the root, finished or
+// stopped. Its members are the managers of whole teams, each a conversation
+// the person talks to, and every answer one of them gave the person ended a
+// turn. Measured 2026-11-24 in the desktop app: one afternoon of the person
+// talking to two crew managers woke the global manager 22 times, 803,496 input
+// tokens, and it answered "[no change]" to all 22; the day before, one such
+// wake had it read a manager's conversation and send the person's own request
+// back to that manager as a directive. What a top-level manager wants the
+// global manager to act on it posts (a note wakes), and what needs somebody
+// still wakes: a failure, and a question or a permission it is held on. The
+// ending itself stays in the team's traffic, where team_status reads it.
+//
+// The rule is the whole root's, not the top-level managers' alone. A seat in
+// the root is never taken back, so it also holds a manager that was replaced
+// or whose team closed, and whoever the person put there; the global manager
+// neither sees nor directs those ([managedView]), so their endings are ones
+// it can do nothing with.
+func teamEventWakesManagerOf(root bool, state, text string) bool {
+	if root {
 		return state == teams.StateFailed || state == teams.StateAsking
 	}
 	return teamEventWakesManager(state, text)
 }
 
-// quietEnding reports whether member is a top-level team's manager seated in
-// the root: the one member whose turn ending does not wake the root's manager.
-// Anybody else the root holds is an ordinary member there.
-func (r teamRole) quietEnding(member string) bool {
-	return r.root && r.tops[member]
-}
-
-// topManagerKeys is the keys [teamRole.tops] holds, nil for every team but the
-// root.
-func topManagerKeys(file *teams.File, team teams.Team) map[string]bool {
-	if file == nil || !team.Root {
-		return nil
-	}
-	tops := map[string]bool{}
+// topManager reports whether key manages an open top-level team now
+// ([teams.File.TopManagers]), which is what [teamRole.top] says of a seat in
+// the root.
+func topManager(file *teams.File, key string) bool {
 	for _, m := range file.TopManagers() {
-		tops[m.Key] = true
+		if m.Key == key {
+			return true
+		}
 	}
-	return tops
+	return false
 }
 
 // teamWakes reports whether an entry starts this conversation's turn when it
@@ -503,7 +499,7 @@ func topManagerKeys(file *teams.File, team teams.Team) map[string]bool {
 // member; a member's post to the manager, or a member's finished, failed or
 // asking event, for the manager. The watch suppresses a finished event when
 // the same turn already posted a reply, and the global manager is not woken by
-// a top-level manager's turn ending ([teamEventWakesManagerOf]).
+// a turn ending in the root ([teamEventWakesManagerOf]).
 func teamWakes(role teamRole, entry teams.Entry) bool {
 	if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) {
 		return false
@@ -525,7 +521,7 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 		case teams.KindNote:
 			return entry.To == teams.ToManager && strings.TrimSpace(entry.Text) != ""
 		case teams.KindEvent:
-			return teamEventWakesManagerOf(role.quietEnding(entry.Member), entry.State, entry.Text)
+			return teamEventWakesManagerOf(role.root, entry.State, entry.Text)
 		}
 		return false
 	}

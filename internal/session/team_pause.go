@@ -204,9 +204,13 @@ func (a *Agent) teamHandedLocked(role teamRole, entry teams.Entry) {
 	if a.team.handed == nil {
 		a.team.handed = map[string]time.Time{}
 	}
-	if _, already := a.team.handed[role.id]; !already {
-		a.team.handed[role.id] = time.Now()
-	}
+	// THE TIME IS THE LATEST HAND-OFF'S. A manager's stop on the log since
+	// this time is read as the stop of the turn being stopped
+	// ([Agent.teamStoppedByPerson]). Kept at the first hand-off while work
+	// carried from turn to turn, it let a manager's stop that had found the
+	// member idle, and so stopped nothing, pass for the stop of a turn a later
+	// directive started, and the person's stop of that turn told nobody.
+	a.team.handed[role.id] = time.Now()
 }
 
 // teamHandedTake is the teams whose handed-out work this conversation is on,
