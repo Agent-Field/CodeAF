@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 // QUERIES ARE THE TOKENS A PERSON TYPES, compiled into parameterised SQL.
@@ -28,9 +30,11 @@ import (
 // search box never fails as a query. A sort, group, is: or has: naming no
 // field is refused: those are only ever typed on purpose.
 //
-// THE SQL HOLDS NO VALUE FROM A QUERY. Values are bound parameters; field and
-// type names are identifiers checked against the schema, and checked again
-// by mustIdent where they are spliced.
+//	company.industry:SaaS  a field of the record a link points to, one link away
+//
+// THE SQL HOLDS NO VALUE FROM A QUERY. Values are bound parameters; fields
+// and types reach SQL only as the ids the store made, checked again by
+// mustID where they are spliced.
 
 // The bounds of a query.
 const (
@@ -46,16 +50,27 @@ const (
 	tokensMax = 64
 )
 
-// compiled is a query ready to run: its conditions over the row alias r,
-// their parameters, its sort and its group.
+// compiled is a query ready to run: its conditions over its row alias
+// (r, or x inside a related record's test), their parameters, its sort and
+// its group.
 type compiled struct {
-	t *Type
+	t     *Type
+	sch   *schema
+	alias string
 	// refTitle answers the title field of a type a ref points to.
 	refTitle func(string) string
 	where    []string
 	args     []any
 	sort     sortSpec
 	group    string
+}
+
+// col is the SQL reading field f of the row this query tests.
+func (c *compiled) col(f *Field) string { return jsonPath(c.alias+".data_json", f.ID) }
+
+// eachOf is the SQL listing the items of list field f of the row.
+func (c *compiled) eachOf(f *Field) string {
+	return "json_each(" + c.alias + `.data_json, '$."` + mustID(f.ID) + `"')`
 }
 
 // sortSpec is how rows are ordered: an expression, its parameters, and its
@@ -79,23 +94,38 @@ func (s sortSpec) signature() string {
 // by as datetime fields.
 var pseudo = map[string]string{"created_at": "r.created_at", "updated_at": "r.updated_at"}
 
-// compileQuery reads a query's tokens against t for scope sc.
+// compileQuery reads a query's tokens against t for scope sc: the tokens
+// become the query IR, and the IR becomes SQL.
 func compileQuery(sch *schema, t *Type, sc Scope, text string, now time.Time) (*compiled, error) {
-	if len(text) > queryMax {
-		return nil, errorf(CodeInvalid, "the query is longer than %d characters", queryMax)
-	}
-	c := &compiled{t: t, refTitle: refTitles(sch, sc), sort: sortSpec{field: "created_at", desc: true, expr: "r.created_at"}}
-	tokens, err := tokenize(text)
+	ir, err := ParseQuery(text)
 	if err != nil {
 		return nil, err
 	}
-	if len(tokens) > tokensMax {
+	return compileIR(sch, t, sc, ir, now)
+}
+
+// compileIR compiles a query's IR against t for scope sc.
+func compileIR(sch *schema, t *Type, sc Scope, ir *QueryIR, now time.Time) (*compiled, error) {
+	c := &compiled{t: t, sch: sch, alias: "r", refTitle: refTitles(sch, sc), sort: sortSpec{field: "created_at", desc: true, expr: "r.created_at"}}
+	if len(ir.Where) > tokensMax {
 		return nil, errorf(CodeInvalid, "the query has more than %d parts", tokensMax)
 	}
-	for _, tok := range tokens {
-		if err := c.token(tok, sc, now); err != nil {
+	for _, cond := range ir.Where {
+		if err := c.cond(cond, sc, now); err != nil {
 			return nil, err
 		}
+	}
+	if ir.Sort != "" {
+		if err := c.sortBy(ir.Sort, sc); err != nil {
+			return nil, err
+		}
+	}
+	if len(ir.Group) > 0 {
+		f, err := c.usable(ir.Group[0], sc, "group by")
+		if err != nil {
+			return nil, err
+		}
+		c.group = f.Name
 	}
 	return c, nil
 }
@@ -165,19 +195,30 @@ func splitValues(s string) []string {
 // operators are the operators a token may hold, longest first.
 var operators = []string{">=", "<=", ":", ">", "<", "="}
 
-// token compiles one token into c.
-func (c *compiled) token(tok token, sc Scope, now time.Time) error {
+// parseToken reads one token into the IR: a condition, or a sort or group.
+func parseToken(tok token, ir *QueryIR) {
 	text := tok.raw
 	neg := false
 	if strings.HasPrefix(text, "-") && len(text) > 1 {
 		neg, text = true, text[1:]
 	}
 	if tok.phrase {
-		return c.words(unquote(text), neg, sc)
+		ir.Where = append(ir.Where, Cond{Value: unquote(text), Neg: neg})
+		return
 	}
 	name, op, value := "", "", ""
 	end := 0
-	for end < len(text) && (text[end] == '_' || text[end] >= 'a' && text[end] <= 'z' || text[end] >= '0' && text[end] <= '9') {
+	dot := false
+	for end < len(text) {
+		ch := text[end]
+		if ch == '.' && !dot && end > 0 && end+1 < len(text) && text[end+1] >= 'a' && text[end+1] <= 'z' {
+			dot = true
+			end++
+			continue
+		}
+		if !(ch == '_' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') {
+			break
+		}
 		end++
 	}
 	if end > 0 {
@@ -189,36 +230,93 @@ func (c *compiled) token(tok token, sc Scope, now time.Time) error {
 		}
 	}
 	if op == "" {
-		return c.words(unquote(text), neg, sc)
+		ir.Where = append(ir.Where, Cond{Value: unquote(text), Neg: neg})
+		return
 	}
 	switch name {
 	case "sort":
-		return c.sortBy(unquote(value), sc)
+		ir.Sort = unquote(value)
+		return
 	case "group":
-		f, err := c.usable(unquote(value), sc, "group by")
-		if err != nil {
-			return err
-		}
-		c.group = f.Name
-		return nil
+		ir.Group = []string{unquote(value)}
+		return
 	case "is", "has":
-		if op != ":" {
-			return c.words(unquote(tok.raw), false, sc)
+		if op == ":" {
+			ir.Where = append(ir.Where, Cond{Field: unquote(value), Op: name, Neg: neg, raw: tok.raw})
+			return
 		}
-		return c.flag(name, unquote(value), neg, sc)
 	}
-	if col, ok := pseudo[name]; ok {
-		f := &Field{Name: name, FieldDef: FieldDef{Type: TypeDatetime}}
-		return c.compare(f, col, op, value, neg, now)
+	if op == "=" {
+		op = ":"
 	}
-	f := c.t.field(name)
+	ir.Where = append(ir.Where, Cond{Field: name, Op: op, Value: value, Neg: neg, raw: tok.raw})
+}
+
+// cond compiles one condition of the IR into c. A field that is not one is
+// a free word, so text pasted into the search box never fails as a query; a
+// related field (company.industry) tests the record the ref points to.
+func (c *compiled) cond(cond Cond, sc Scope, now time.Time) error {
+	if cond.Field == "" {
+		return c.words(cond.Value, cond.Neg, sc)
+	}
+	// AN OP REACHES THE SQL ONLY AS ONE OF THESE SPELLINGS: a structured
+	// condition comes straight from the wire, so anything else is refused
+	// here, before a field is even looked up.
+	switch cond.Op {
+	case ":", "=", ">", ">=", "<", "<=", "is", "has":
+	case "":
+		return fieldErr(cond.Field, "a condition on %s needs an op: one of : = > >= < <= is has", cond.Field)
+	default:
+		return fieldErr(cond.Field, "%q is not an op; use one of : = > >= < <= is has", cond.Op)
+	}
+	if head, tail, ok := strings.Cut(cond.Field, "."); ok {
+		return c.relate(head, tail, cond, sc, now)
+	}
+	if cond.Op == "is" || cond.Op == "has" {
+		return c.flag(cond.Op, cond.Field, cond.Neg, sc)
+	}
+	if col, ok := pseudo[cond.Field]; ok {
+		f := &Field{Name: cond.Field, FieldDef: FieldDef{Field: appschema.Field{Type: TypeDatetime}}}
+		return c.compare(f, strings.Replace(col, "r.", c.alias+".", 1), cond.Op, cond.Value, cond.Neg, now)
+	}
+	f := c.t.field(cond.Field)
 	if f == nil {
-		return c.words(unquote(tok.raw), false, sc)
+		if cond.raw == "" {
+			return fieldErr(cond.Field, "%s records have no field %q", c.t.Name, cond.Field)
+		}
+		return c.words(unquote(cond.raw), false, sc)
 	}
 	if f.Masked && sc.App != "" {
-		return fieldErr(name, "%s is hidden until revealed, so it cannot be searched", name)
+		return fieldErr(f.Name, "%s is hidden until revealed, so it cannot be searched", f.Name)
 	}
-	return c.compare(f, jsonPath("r.data_json", mustIdent(f.Name)), op, value, neg, now)
+	return c.compare(f, c.col(f), cond.Op, cond.Value, cond.Neg, now)
+}
+
+// relate compiles a test of the record a ref points to: one hop, through a
+// ref or refs field, into a type the scope may read.
+func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time) error {
+	f := c.t.field(head)
+	if f == nil || f.Type != TypeRef && f.Type != TypeRefs {
+		return fieldErr(head, "%s is not a link to another record, so %s.%s means nothing", head, head, tail)
+	}
+	if strings.Contains(tail, ".") {
+		return fieldErr(cond.Field, "a query reaches one link away, not two")
+	}
+	target, err := c.sch.allow(sc, f.To, false)
+	if err != nil {
+		return err
+	}
+	inner := &compiled{t: target, sch: c.sch, alias: "x", refTitle: c.refTitle}
+	if err := inner.cond(Cond{Field: tail, Op: cond.Op, Value: cond.Value}, sc, now); err != nil {
+		return err
+	}
+	sub := "SELECT x.id FROM records x WHERE " + inner.base() + " AND " + strings.Join(inner.where, " AND ")
+	if f.Type == TypeRef {
+		c.add(c.col(f)+" IN ("+sub+")", cond.Neg, inner.args...)
+		return nil
+	}
+	c.add("EXISTS (SELECT 1 FROM "+c.eachOf(f)+" j WHERE j.value IN ("+sub+"))", cond.Neg, inner.args...)
+	return nil
 }
 
 // usable is a field a query may sort or group by.
@@ -245,7 +343,7 @@ func (c *compiled) sortBy(value string, sc Scope) error {
 	if err != nil {
 		return err
 	}
-	spec := sortSpec{field: f.Name, desc: desc, expr: jsonPath("r.data_json", mustIdent(f.Name))}
+	spec := sortSpec{field: f.Name, desc: desc, expr: c.col(f)}
 	if f.Type == TypeEnum {
 		// An enum sorts in its declared order (Lead before Won), not by
 		// spelling; a value it no longer has sorts with the empty ones.
@@ -271,7 +369,7 @@ func (c *compiled) flag(kind, name string, neg bool, sc Scope) error {
 	if f.Masked && sc.App != "" && kind == "is" {
 		return fieldErr(name, "%s is hidden until revealed, so it cannot be searched", name)
 	}
-	col := jsonPath("r.data_json", mustIdent(f.Name))
+	col := c.col(f)
 	var cond string
 	switch kind {
 	case "is":
@@ -310,7 +408,7 @@ func (c *compiled) words(text string, neg bool, sc Scope) error {
 			continue
 		}
 		if name == title || f.Type == TypeText || f.Type == TypeLongtext || f.Type == TypeEmail {
-			cols = append(cols, jsonPath("r.data_json", mustIdent(name)))
+			cols = append(cols, c.col(f))
 		}
 	}
 	if len(cols) == 0 {
@@ -347,7 +445,20 @@ func (c *compiled) compare(f *Field, col, op, value string, neg bool, now time.T
 	if op == ":" {
 		return c.match(f, col, value, neg, now)
 	}
-	sqlOp := op
+	// The SQL operator is chosen by a switch, never copied from the caller.
+	var sqlOp string
+	switch op {
+	case ">":
+		sqlOp = ">"
+	case ">=":
+		sqlOp = ">="
+	case "<":
+		sqlOp = "<"
+	case "<=":
+		sqlOp = "<="
+	default:
+		return fieldErr(f.Name, "%q is not an op; use one of : = > >= < <= is has", op)
+	}
 	var v any
 	switch f.Type {
 	case TypeNumber, TypeMoney:
@@ -458,10 +569,10 @@ func (c *compiled) matchOne(f *Field, col, v string, now time.Time) (string, []a
 		if err != nil {
 			return "", nil, fieldErr(f.Name, "%s %v", f.Name, err)
 		}
-		return "EXISTS (SELECT 1 FROM json_each(r.data_json, '$." + mustIdent(f.Name) + "') j WHERE j.value = ?)", []any{canon}, nil
+		return "EXISTS (SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value = ?)", []any{canon}, nil
 	case TypePerson:
-		if v == "$me" {
-			v = Me
+		if v == "$me" || v == Me {
+			v = c.sch.person
 		}
 		if strings.Contains(v, "*") {
 			return col + " LIKE ? ESCAPE '\\'", []any{wildcard(v)}, nil
@@ -477,12 +588,13 @@ func (c *compiled) matchOne(f *Field, col, v string, now time.Time) (string, []a
 // refMatch matches a ref (or one of a refs) by the id it holds or by the
 // title of the record it points to.
 func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
-	titles := "SELECT t.id FROM records t WHERE t.type = ? AND t.deleted_at IS NULL AND "
+	titles := "SELECT t.id FROM records t WHERE t.type_id = ? AND t.deleted_at IS NULL AND "
 	var args []any
 	title := c.refTitle(f.To)
 	var byTitle string
-	if title != "" {
-		byTitle = titles + "COALESCE(" + jsonPath("t.data_json", mustIdent(title)) + ", '') LIKE ? ESCAPE '\\'"
+	target := c.sch.typeNamed(f.To)
+	if title != "" && target != nil {
+		byTitle = titles + "COALESCE(" + jsonPath("t.data_json", target.Fields[title].ID) + ", '') LIKE ? ESCAPE '\\'"
 	}
 	pattern := wildcard(v)
 	if f.Type == TypeRef {
@@ -490,15 +602,15 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		args = append(args, v)
 		if byTitle != "" {
 			cond += " OR " + col + " IN (" + byTitle + ")"
-			args = append(args, f.To, pattern)
+			args = append(args, target.ID, pattern)
 		}
 		return cond, args, nil
 	}
-	each := "SELECT 1 FROM json_each(r.data_json, '$." + mustIdent(f.Name) + "') j WHERE j.value = ?"
+	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value = ?"
 	args = append(args, v)
 	if byTitle != "" {
 		each += " OR j.value IN (" + byTitle + ")"
-		args = append(args, f.To, pattern)
+		args = append(args, target.ID, pattern)
 	}
 	return "EXISTS (" + each + ")", args, nil
 }
@@ -565,7 +677,7 @@ func decodeCursor(s string) (*cursor, error) {
 // as a literal, not bound, because the partial indexes are made with it as
 // a literal and SQLite uses a partial index only for a matching literal.
 func (c *compiled) base() string {
-	return "r.type = '" + mustIdent(c.t.Name) + "' AND r.deleted_at IS NULL"
+	return c.alias + ".type_id = '" + mustID(c.t.ID) + "' AND " + c.alias + ".deleted_at IS NULL"
 }
 
 // filter is the WHERE clause and its parameters.
@@ -593,80 +705,11 @@ func (s *Store) Query(sc Scope, typ, query, after string, limit int) (*Page, err
 	if err != nil {
 		return nil, err
 	}
-	if limit <= 0 {
-		limit = PageDefault
-	}
-	if limit > PageMax {
-		limit = PageMax
-	}
-	where, args := c.filter()
-	var total int
-	if err := s.rdb.QueryRow(`SELECT count(*) FROM records r WHERE `+where, args...).Scan(&total); err != nil {
-		return nil, err
-	}
-	dir, cmp := "ASC", ">"
-	if c.sort.desc {
-		dir, cmp = "DESC", "<"
-	}
-	key := c.sort.expr
-	pageWhere := where
-	pageArgs := append([]any(nil), c.sort.args...)
-	pageArgs = append(pageArgs, args...)
-	if after != "" {
-		cur, err := decodeCursor(after)
-		if err != nil {
-			return nil, err
-		}
-		if cur.Sort != c.sort.signature() {
-			return nil, errorf(CodeInvalid, "the cursor belongs to another order; start again from the first page")
-		}
-		if cur.Null {
-			pageWhere += " AND (" + key + " IS NULL AND r.id " + cmp + " ?)"
-			pageArgs = append(pageArgs, c.sort.args...)
-			pageArgs = append(pageArgs, cur.ID)
-		} else {
-			pageWhere += " AND ((" + key + ") IS NULL OR (" + key + ") " + cmp + " ? OR ((" + key + ") = ? AND r.id " + cmp + " ?))"
-			pageArgs = append(pageArgs, c.sort.args...)
-			pageArgs = append(pageArgs, c.sort.args...)
-			pageArgs = append(pageArgs, cur.Key)
-			pageArgs = append(pageArgs, c.sort.args...)
-			pageArgs = append(pageArgs, cur.Key, cur.ID)
-		}
-	}
-	// The order's parameters come after the WHERE's in the text, so they are
-	// bound again at the end.
-	stmt := `SELECT ` + recordColumnsR + `, ` + key + ` FROM records r WHERE ` + pageWhere +
-		` ORDER BY (` + key + `) IS NULL, ` + key + ` ` + dir + `, r.id ` + dir + ` LIMIT ?`
-	pageArgs = append(pageArgs, c.sort.args...)
-	pageArgs = append(pageArgs, c.sort.args...)
-	pageArgs = append(pageArgs, limit+1)
-	rows, err := s.rdb.Query(stmt, pageArgs...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	page := &Page{Rows: []Row{}, Total: total}
-	var last *record
-	var lastKey any
-	for rows.Next() {
-		var k any
-		r, err := scanRecord(func(dest ...any) error { return rows.Scan(append(dest, &k)...) })
-		if err != nil {
-			return nil, err
-		}
-		if len(page.Rows) == limit {
-			cur := cursor{Sort: c.sort.signature(), ID: last.ID, Key: normalizeKey(lastKey), Null: lastKey == nil}
-			page.Next = cur.encode()
-			break
-		}
-		page.Rows = append(page.Rows, s.row(t, r, sc, false))
-		last, lastKey = r, k
-	}
-	return page, rows.Err()
+	return s.page(sch, t, sc, c, after, limit)
 }
 
 // recordColumnsR is [recordColumns] read through the alias r.
-const recordColumnsR = `r.id, r.type, r.data_json, r.meta_json, r.created_at, r.updated_at, r.deleted_at`
+const recordColumnsR = `r.id, r.type_id, r.rev, r.data_json, r.meta_json, r.created_at, r.updated_at, r.deleted_at`
 
 // normalizeKey is a sort value as a cursor carries it.
 func normalizeKey(k any) any {
@@ -687,7 +730,7 @@ func refTitles(sch *schema, sc Scope) func(string) string {
 		if _, err := sch.allow(sc, typ, false); err != nil {
 			return ""
 		}
-		if t := sch.types[typ]; t != nil {
+		if t := sch.typeNamed(typ); t != nil {
 			return t.titleField()
 		}
 		return ""
@@ -729,11 +772,18 @@ func (s *Store) Count(sc Scope, typ, query, group string) ([]Group, int, error) 
 	if err != nil {
 		return nil, 0, err
 	}
+	// Grouping by a link answers the ids it points to, which are only for
+	// a scope that may read that type.
+	if f.Type == TypeRef || f.Type == TypeRefs {
+		if _, err := c.sch.allow(sc, f.To, false); err != nil {
+			return nil, 0, err
+		}
+	}
 	var stmt string
 	if f.Type == TypeEnums || f.Type == TypeRefs {
-		stmt = `SELECT j.value, count(*) FROM records r, json_each(r.data_json, '$.` + mustIdent(f.Name) + `') j WHERE ` + where + ` GROUP BY j.value`
+		stmt = `SELECT j.value, count(*) FROM records r, ` + c.eachOf(f) + ` j WHERE ` + where + ` GROUP BY j.value`
 	} else {
-		col := jsonPath("r.data_json", mustIdent(f.Name))
+		col := c.col(f)
 		stmt = `SELECT ` + col + `, count(*) FROM records r WHERE ` + where + ` GROUP BY ` + col
 	}
 	rows, err := s.rdb.Query(stmt, args...)

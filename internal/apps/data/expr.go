@@ -3,6 +3,7 @@ package data
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,7 +14,8 @@ import (
 )
 
 // EXPRESSIONS ARE THE CEL SUBSET OF DESIGN A2: literals, fields, $ references,
-// comparisons, in, && || !, ?:, and now() days_since() changed() count() me().
+// comparisons, in, && || !, ?:, and now() days_since() changed() count() me(),
+// with signed() and open_work() in a lifecycle's guards.
 // They appear in computed fields, freeze rules and triggers, and every one is
 // compiled against the record type it reads, so a field name that does not
 // exist is a compile error at registration rather than a null at run time.
@@ -36,10 +38,12 @@ const masked = "••••"
 // exprEnv builds the environment for one record type: its fields, the row's
 // own names, its constants, and the functions of the subset. now is the
 // store's clock, so a test's clock is the expressions' clock too.
-func exprEnv(t *Type, now func() time.Time) (*cel.Env, error) {
+func exprEnv(t *Type, now func() time.Time, person string) (*cel.Env, error) {
 	opts := []cel.EnvOption{
 		cel.CrossTypeNumericComparisons(true),
 		cel.Variable("_changed", cel.ListType(cel.StringType)),
+		cel.Variable("_signed", cel.BoolType),
+		cel.Variable("_open_work", cel.DoubleType),
 		cel.Function("_ch",
 			cel.Overload("_ch_list_string", []*cel.Type{cel.ListType(cel.StringType), cel.StringType}, cel.BoolType,
 				cel.BinaryBinding(func(list, name ref.Val) ref.Val {
@@ -51,7 +55,7 @@ func exprEnv(t *Type, now func() time.Time) (*cel.Env, error) {
 				}))),
 		cel.Function("me",
 			cel.Overload("me_void", []*cel.Type{}, cel.StringType,
-				cel.FunctionBinding(func(...ref.Val) ref.Val { return types.String(Me) }))),
+				cel.FunctionBinding(func(...ref.Val) ref.Val { return types.String(person) }))),
 		cel.Function("now",
 			cel.Overload("now_void", []*cel.Type{}, cel.TimestampType,
 				cel.FunctionBinding(func(...ref.Val) ref.Val { return types.Timestamp{Time: now().UTC()} }))),
@@ -78,7 +82,7 @@ func exprEnv(t *Type, now func() time.Time) (*cel.Env, error) {
 					return types.NewErr("count needs a list")
 				}))),
 	}
-	declared := map[string]bool{"_changed": true}
+	declared := map[string]bool{"_changed": true, "_signed": true, "_open_work": true}
 	declare := func(name string) {
 		if declared[name] || celReserved[name] {
 			return
@@ -93,6 +97,11 @@ func exprEnv(t *Type, now func() time.Time) (*cel.Env, error) {
 		declare(name)
 	}
 	for _, name := range sortedKeys(t.Constants) {
+		declare(name)
+	}
+	// A renamed field keeps its old names here too, so a formula or a rule
+	// written before the rename reads the same value after it.
+	for _, name := range sortedKeys(t.aliases) {
 		declare(name)
 	}
 	return cel.NewEnv(opts...)
@@ -147,8 +156,17 @@ func (p *program) eval(t *Type, values map[string]any, changed []string) (any, e
 	for _, name := range t.Order {
 		vars[name] = nil
 	}
+	vars["_signed"], vars["_open_work"] = false, 0.0
 	for name, v := range values {
 		vars[name] = v
+	}
+	for alias, name := range t.aliases {
+		if _, current := t.Fields[alias]; !current {
+			vars[alias] = vars[name]
+			if slices.Contains(changed, name) {
+				changed = append(slices.Clip(changed), alias)
+			}
+		}
 	}
 	if changed == nil {
 		changed = []string{}
@@ -303,6 +321,34 @@ func rewrite(src string) string {
 				i = k + 1
 				continue
 			}
+			// signed() and open_work() read what a guard is given beside the
+			// record: whether this version is signed, how much work is open.
+			// signed may name the sign-off it means, signed('approval'); a
+			// record keeps one kind of sign-off, so any current one holds.
+			if (word == "signed" || word == "open_work") && k < len(src) && src[k] == '(' {
+				m := k + 1
+				for m < len(src) && src[m] == ' ' {
+					m++
+				}
+				if word == "signed" && m < len(src) && (src[m] == '\'' || src[m] == '"') {
+					q := src[m]
+					m++
+					for m < len(src) && src[m] != q && src[m] != '\\' {
+						m++
+					}
+					if m < len(src) && src[m] == q {
+						m++
+					}
+				}
+				for m < len(src) && src[m] == ' ' {
+					m++
+				}
+				if m < len(src) && src[m] == ')' {
+					b.WriteString("_" + word)
+					i = m + 1
+					continue
+				}
+			}
 			b.WriteString(word)
 			i = j
 		default:
@@ -337,7 +383,7 @@ func (s *Store) Match(typ, expr string, rc RecordChange) (bool, error) {
 	if cached, ok := s.matches.Load(key); ok {
 		p = cached.(*program)
 	} else {
-		env, err := exprEnv(t, s.now)
+		env, err := exprEnv(t, s.now, sch.person)
 		if err != nil {
 			return false, err
 		}

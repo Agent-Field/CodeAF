@@ -1,0 +1,76 @@
+{
+  "$schema": "https://codeaf.dev/schema/app/1.json",
+  "id": "crm",
+  "name": "CRM",
+  "icon": "people",
+  "version": 1,
+  "kit": 0,
+  "agent": { "name": "CRM agent", "file": "agent.md" },
+  "records": {
+    "company": {
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true, "unique": true },
+        "domain": { "type": "url", "index": true },
+        "size": { "type": "enum", "values": ["1-10", "11-50", "51-200", "201+"] },
+        "owner": { "type": "person", "default": "$me" }
+      }
+    },
+    "contact": {
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "email": { "type": "email", "index": true },
+        "phone": { "type": "phone", "masked": true },
+        "title": { "type": "text" },
+        "company": { "type": "ref", "to": "company" }
+      }
+    },
+    "deal": {
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "company": { "type": "ref", "to": "company", "required": true },
+        "contacts": { "type": "refs", "to": "contact" },
+        "stage": { "type": "enum", "default": "Lead", "values": ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"], "index": true },
+        "amount": { "type": "money", "currency": "USD" },
+        "close_on": { "type": "date" },
+        "owner": { "type": "person", "default": "$me" },
+        "last_touch": { "type": "datetime" },
+        "age_days": { "type": "number", "computed": "days_since(created_at)" },
+        "weighted": { "type": "money", "currency": "USD", "computed": "amount * stage_weight[stage]" },
+        "likely": { "type": "enum", "values": ["Likely", "Maybe", "Unlikely"], "ai": "likely to close this month" }
+      },
+      "constants": {
+        "stage_weight": { "Lead": 0.1, "Qualified": 0.25, "Proposal": 0.5, "Negotiation": 0.7, "Won": 1, "Lost": 0 }
+      },
+      "freeze": [
+        { "when": "stage in ['Won', 'Lost']", "except": ["last_touch"] }
+      ]
+    }
+  },
+  "capabilities": {
+    "records": { "deal": "rw", "company": "rw", "contact": "rw" },
+    "connectors": {
+      "gmail": { "can": ["search", "draft", "send"], "approve": ["send"] },
+      "slack": { "can": ["post"], "channels": ["#sales"], "approve": ["post"] }
+    },
+    "ai": ["sort", "summarise"],
+    "tools": []
+  },
+  "triggers": [
+    { "id": "stale", "on": "schedule", "cron": "0 9 * * 1-5", "run": "follow-up" },
+    { "id": "won", "on": "record.changed", "type": "deal", "when": "changed('stage') && stage == 'Won'", "run": "won-handoff" }
+  ],
+  "commands": [
+    { "id": "follow-up", "label": "Draft follow-up", "for": "deal", "key": "⌘⇧F", "run": "follow-up", "params": { "deals": "$selection.ids" } },
+    {
+      "id": "mark-won",
+      "label": "Mark won…",
+      "for": "deal",
+      "confirm": "Mark {{count}} deals won?",
+      "do": [{ "records.update": { "ids": "$selection.ids", "set": { "stage": "Won" } } }]
+    }
+  ],
+  "budget": { "month": 20, "currency": "USD", "per_run": 0.5, "at_cap": "ask" }
+}

@@ -2,13 +2,14 @@ package data
 
 import (
 	"bytes"
-
 	"encoding/json"
 	"fmt"
-	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 // THIS FILE READS ONLY WHAT THE DATA STORE NEEDS FROM app.json: the record
@@ -66,9 +67,82 @@ var celReserved = map[string]bool{
 	"duration": true, "timestamp": true,
 }
 
-// FieldDef is one field as an app declares it: internal/appschema's definition type, so
-// the validator and the store read one shape.
-type FieldDef = appschema.Field
+// FieldDef is one field as an app declares it: internal/appschema's
+// definition type, so the validator and the store read one shape, and the
+// declarations the store enforces that the schema has not yet named.
+type FieldDef struct {
+	appschema.Field
+	// Sequence numbers each new record: INV-0042.
+	Sequence *SequenceDef `json:"sequence,omitempty"`
+}
+
+// SequenceDef is a numbering: the text before the number and how many
+// digits it is padded to.
+type SequenceDef struct {
+	Prefix string `json:"prefix,omitempty"`
+	Pad    int    `json:"pad,omitempty"`
+	// Padding is the schema's spelling of Pad; either is read.
+	Padding int `json:"padding,omitempty"`
+}
+
+// digits is how many digits the number is padded to, by either spelling.
+func (sq *SequenceDef) digits() int {
+	return max(sq.Pad, sq.Padding)
+}
+
+// LedgerOption makes a type append-only. An app writes it as true, or as
+// {"reversal": "<field>"} to name a reference field that a reversing entry
+// fills with the entry it reverses.
+type LedgerOption struct {
+	On       bool
+	Reversal string
+}
+
+func (l *LedgerOption) UnmarshalJSON(raw []byte) error {
+	var on bool
+	if err := json.Unmarshal(raw, &on); err == nil {
+		*l = LedgerOption{On: on}
+		return nil
+	}
+	var obj struct {
+		Reversal string `json:"reversal"`
+	}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return fmt.Errorf("ledger is true or {\"reversal\": field}")
+	}
+	*l = LedgerOption{On: true, Reversal: obj.Reversal}
+	return nil
+}
+
+func (l LedgerOption) MarshalJSON() ([]byte, error) {
+	if !l.On || l.Reversal == "" {
+		return json.Marshal(l.On)
+	}
+	return json.Marshal(map[string]string{"reversal": l.Reversal})
+}
+
+// LifecycleDef is a type's process: the enum field that holds its state,
+// the state a new record starts in (the field's first value when empty),
+// and the named transitions that are the only way the state moves.
+type LifecycleDef struct {
+	Field       string          `json:"field"`
+	Initial     string          `json:"initial,omitempty"`
+	Transitions []TransitionDef `json:"transitions"`
+}
+
+// TransitionDef is one named move between states: from any of From ("*" is
+// any state) to To, allowed when Guard holds, fired by the writer kinds in By
+// (person and flow when empty), with Effects the engine carries out after the
+// commit (a work item, a timer, a run), handed over through the outbox.
+type TransitionDef struct {
+	ID      string           `json:"id"`
+	Label   string           `json:"label,omitempty"`
+	From    []string         `json:"from,omitempty"`
+	To      string           `json:"to"`
+	Guard   string           `json:"guard,omitempty"`
+	By      []string         `json:"by,omitempty"`
+	Effects []map[string]any `json:"effects,omitempty"`
+}
 
 // FreezeRule makes matching records read-only: by a condition (When, with
 // Except naming fields that stay writable), or by a period (the record locks
@@ -84,6 +158,10 @@ type TypeDef struct {
 	Fields    map[string]FieldDef `json:"fields,omitempty"`
 	Constants map[string]any      `json:"constants,omitempty"`
 	Freeze    []FreezeRule        `json:"freeze,omitempty"`
+	Lifecycle *LifecycleDef       `json:"lifecycle,omitempty"`
+	// Ledger makes records append-only: never changed or deleted, only
+	// reversed by a new entry.
+	Ledger LedgerOption `json:"ledger"`
 
 	// order is the fields in the order the file declares them.
 	order []string
@@ -132,10 +210,88 @@ func ParseApp(raw []byte) (*AppDef, error) {
 		t.order = objectKeys(fields.Fields)
 		def.Records[name] = t
 	}
+	if err := def.readProcess(raw); err != nil {
+		return nil, err
+	}
 	if err := def.check(); err != nil {
 		return nil, err
 	}
 	return &def, nil
+}
+
+// readProcess reads the lifecycles an app declares under process, the
+// schema's place for them, keyed by record type with transitions keyed by
+// name, into the type's own lifecycle. A transition's actors are person,
+// agent or flow; an agent writes as ai here. A type declares its lifecycle in
+// one place or the other, not both.
+func (d *AppDef) readProcess(raw []byte) error {
+	var shape struct {
+		Process struct {
+			Lifecycles map[string]json.RawMessage `json:"lifecycles"`
+		} `json:"process"`
+	}
+	if err := json.Unmarshal(raw, &shape); err != nil {
+		return nil
+	}
+	for _, typ := range sortedKeys(shape.Process.Lifecycles) {
+		var lc struct {
+			Field       string          `json:"field"`
+			Initial     string          `json:"initial"`
+			States      []string        `json:"states"`
+			Transitions json.RawMessage `json:"transitions"`
+		}
+		if err := json.Unmarshal(shape.Process.Lifecycles[typ], &lc); err != nil {
+			return errorf(CodeInvalid, "process.lifecycles.%s could not be read: %v", typ, err)
+		}
+		t, ok := d.Records[typ]
+		if !ok || t.Uses {
+			return errorf(CodeInvalid, "process.lifecycles.%s names a record type this app does not declare", typ)
+		}
+		if t.Lifecycle != nil {
+			return errorf(CodeInvalid, "%s declares its lifecycle twice, in records and in process", typ)
+		}
+		if f, ok := t.Fields[lc.Field]; ok {
+			values := map[string]bool{}
+			for _, v := range f.Values {
+				values[v] = true
+			}
+			for _, st := range lc.States {
+				if !values[st] {
+					return errorf(CodeInvalid, "%s's lifecycle state %q is not a value of %s", typ, st, lc.Field)
+				}
+			}
+		}
+		var trs map[string]struct {
+			Label   string           `json:"label"`
+			From    []string         `json:"from"`
+			To      string           `json:"to"`
+			Guard   string           `json:"guard"`
+			Actors  []string         `json:"actors"`
+			Effects []map[string]any `json:"effects"`
+		}
+		if len(lc.Transitions) > 0 {
+			if err := json.Unmarshal(lc.Transitions, &trs); err != nil {
+				return errorf(CodeInvalid, "process.lifecycles.%s.transitions could not be read: %v", typ, err)
+			}
+		}
+		out := &LifecycleDef{Field: lc.Field, Initial: lc.Initial}
+		for _, id := range objectKeys(lc.Transitions) {
+			tr := trs[id]
+			def := TransitionDef{ID: id, Label: tr.Label, From: tr.From, To: tr.To, Guard: tr.Guard, Effects: tr.Effects}
+			for _, actor := range tr.Actors {
+				if actor == "agent" {
+					actor = ByAI
+				}
+				if !slices.Contains(def.By, actor) {
+					def.By = append(def.By, actor)
+				}
+			}
+			out.Transitions = append(out.Transitions, def)
+		}
+		t.Lifecycle = out
+		d.Records[typ] = t
+	}
+	return nil
 }
 
 // check refuses what the store could not keep or would keep wrongly.
@@ -166,6 +322,19 @@ func (d *AppDef) check() error {
 				if _, err := parseSpan(rule.After); rule.After != "" && err != nil {
 					return errorf(CodeInvalid, "%s freeze rule %d: after %q is not a span like 5d", name, i+1, rule.After)
 				}
+			}
+		}
+		if lc := t.Lifecycle; lc != nil {
+			if err := checkLifecycle(name, t, lc); err != nil {
+				return err
+			}
+		}
+		if t.Ledger.On && t.Lifecycle != nil {
+			return errorf(CodeInvalid, "%s cannot be both a ledger and have a lifecycle: a ledger entry never changes state", name)
+		}
+		if field := t.Ledger.Reversal; field != "" {
+			if f, ok := t.Fields[field]; !ok || f.Type != TypeRef || f.To != name {
+				return errorf(CodeInvalid, "%s's ledger reversal %q needs to be a ref to %s that the type declares", name, field, name)
 			}
 		}
 	}
@@ -206,6 +375,55 @@ func checkField(typ, name string, f FieldDef) error {
 	}
 	if f.Computed != "" && (f.Required || f.Unique || f.Default != nil) {
 		return errorf(CodeInvalid, "%s.%s is computed; it cannot also be required, unique or have a default", typ, name)
+	}
+	if sq := f.Sequence; sq != nil {
+		if f.Type != TypeText || f.Computed != "" || f.AI != "" || f.Default != nil {
+			return errorf(CodeInvalid, "%s.%s numbers records: it is a plain text field with no default", typ, name)
+		}
+		if sq.Pad < 0 || sq.Padding < 0 || sq.digits() > 12 || len(sq.Prefix) > 20 {
+			return errorf(CodeInvalid, "%s.%s: a sequence pads to at most 12 digits after a prefix of at most 20 characters", typ, name)
+		}
+	}
+	return nil
+}
+
+// checkLifecycle checks a lifecycle against its type's own declaration: the
+// state field is an enum the type declares, every state named is one of its
+// values, and transition ids are names, each once.
+func checkLifecycle(typ string, t TypeDef, lc *LifecycleDef) error {
+	f, ok := t.Fields[lc.Field]
+	if !ok || f.Type != TypeEnum {
+		return errorf(CodeInvalid, "%s's lifecycle needs field %q to be an enum the type declares", typ, lc.Field)
+	}
+	if f.Computed != "" || f.AI != "" {
+		return errorf(CodeInvalid, "%s's lifecycle field %s cannot be computed or filled by AI", typ, lc.Field)
+	}
+	states := map[string]bool{}
+	for _, v := range f.Values {
+		states[v] = true
+	}
+	if lc.Initial != "" && !states[lc.Initial] {
+		return errorf(CodeInvalid, "%s's lifecycle starts in %q, which is not a value of %s", typ, lc.Initial, lc.Field)
+	}
+	seen := map[string]bool{}
+	for _, tr := range lc.Transitions {
+		if !identShape.MatchString(tr.ID) || seen[tr.ID] {
+			return errorf(CodeInvalid, "%s transition %q needs a name of its own (lower-case letters, digits, _)", typ, tr.ID)
+		}
+		seen[tr.ID] = true
+		if !states[tr.To] {
+			return errorf(CodeInvalid, "%s transition %s goes to %q, which is not a state", typ, tr.ID, tr.To)
+		}
+		for _, from := range tr.From {
+			if from != "*" && !states[from] {
+				return errorf(CodeInvalid, "%s transition %s starts from %q, which is not a state", typ, tr.ID, from)
+			}
+		}
+		for _, by := range tr.By {
+			if by != ByPerson && by != ByAI && by != ByFlow {
+				return errorf(CodeInvalid, "%s transition %s: by is person, ai or flow, not %q", typ, tr.ID, by)
+			}
+		}
 	}
 	return nil
 }

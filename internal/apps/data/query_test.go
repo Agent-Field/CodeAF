@@ -238,7 +238,8 @@ func TestEnumQueryUsesItsIndex(t *testing.T) {
 		_ = rows.Scan(&id, &parent, &unused, &detail)
 		plan = append(plan, detail)
 	}
-	if !strings.Contains(strings.Join(plan, "\n"), "rx_deal__stage") {
+	deal := s.schema.Load().types["deal"]
+	if !strings.Contains(strings.Join(plan, "\n"), "rx_"+deal.ID+"__"+deal.Fields["stage"].ID) {
 		t.Fatalf("plan does not use the index: %v", plan)
 	}
 }

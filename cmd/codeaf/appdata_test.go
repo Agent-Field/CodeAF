@@ -40,14 +40,14 @@ func dataBackend(t *testing.T) (*appBackend, *appRecorder) {
 func TestAppDataDoor(t *testing.T) {
 	backend, rec := dataBackend(t)
 	crm := appwire.DataScope{App: "crm"}
-	if err := backend.DataSubscribe(appwire.DataSubscribeParams{DataScope: crm, Sub: "deals", Type: "deal", Query: "-stage:Lost"}); err != nil {
+	if _, err := backend.DataSubscribe(appwire.DataSubscribeParams{DataScope: crm, Sub: "deals", Type: "deal", Query: "-stage:Lost"}); err != nil {
 		t.Fatal(err)
 	}
 	made, err := backend.DataCreate(appwire.DataCreateParams{DataScope: crm, Type: "deal", Set: map[string]any{"name": "Northwind", "amount": 48000.0}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if made.Batch == "" || made.Rows[0]["owner"] != "me" {
+	if owner, _ := made.Rows[0]["owner"].(string); made.Batch == "" || len(owner) != 26 {
 		t.Fatalf("create: %+v", made)
 	}
 	rec.waitFor(t, 5*time.Second, func(event string, d any) bool {
@@ -75,7 +75,7 @@ func TestAppDataDoor(t *testing.T) {
 		t.Fatalf("undo: %+v %v", undo, err)
 	}
 	types, err := backend.DataTypes(appwire.DataScope{})
-	if err != nil || len(types.Types) != 3 || types.Types[0].OwnerApp != "crm" {
+	if err != nil || len(types.Types) != 3 || types.Types[0].CreatedByApp != "crm" || types.Types[0].ID == "" {
 		t.Fatalf("types: %+v %v", types, err)
 	}
 	if err := backend.DataUnsubscribe("deals"); err != nil {

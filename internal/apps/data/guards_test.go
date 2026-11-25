@@ -57,8 +57,11 @@ func TestUndoAndFreeze(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Undo(Scope{App: "crm", Agent: true}, touched.Batch)
+	_, err = s.Undo(person, touched.Batch)
 	wantCode(t, err, CodeFrozen)
+	// And an agent may not undo a person's change at all.
+	_, err = s.Undo(Scope{App: "crm", Agent: true}, touched.Batch)
+	wantCode(t, err, CodeNotAllowed)
 }
 
 // A CHANGE OF MORE RECORDS THAN SQLITE HAS PARAMETERS STILL REACHES A LIVE
@@ -78,7 +81,7 @@ func TestLargeChangesReachSubscriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := newRecorder()
-	if err := s.Subscribe(person, SubSpec{ID: "all", Type: "contact"}, rec.take); err != nil {
+	if _, err := s.Subscribe(person, SubSpec{ID: "all", Type: "contact"}, rec.take); err != nil {
 		t.Fatal(err)
 	}
 	res, err := s.ImportCSV(person, "contact", ImportOptions{Path: path})

@@ -2,7 +2,6 @@ package data
 
 import (
 	"database/sql"
-	"encoding/json"
 )
 
 // Get answers one live record. Reveal shows its masked values, and writes one
@@ -20,7 +19,7 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 	if reveal && sc.Agent {
 		return nil, &Error{Code: CodeNotAllowed, Need: "reveal", Message: "an agent cannot reveal a masked value"}
 	}
-	r, err := loadRecord(s.rdb, id)
+	r, err := loadRecord(s.rdb, sch, id)
 	if err != nil {
 		return nil, err
 	}
@@ -39,8 +38,8 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 		if len(shown) > 0 {
 			err := s.write(func(w *writeTx) error {
 				for _, field := range shown {
-					if _, err := w.tx.Exec(`INSERT INTO reveals(type, id, field, app, actor, at) VALUES(?, ?, ?, ?, ?, ?)`,
-						t.Name, id, field, sc.App, sc.actor(), w.now.UTC().Format(stamp)); err != nil {
+					if _, err := w.tx.Exec(`INSERT INTO reveals(type_id, record, field_id, app, actor, at) VALUES(?, ?, ?, ?, ?, ?)`,
+						t.ID, id, t.Fields[field].ID, sc.App, w.schema.actor(sc), w.now.UTC().Format(stamp)); err != nil {
 						return err
 					}
 				}
@@ -63,6 +62,8 @@ type Entry struct {
 	Op      string
 	App     string
 	Actor   string
+	ByKind  string
+	Cause   string
 	Note    string
 	At      string
 	Undone  bool
@@ -83,9 +84,9 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 		return nil, errorf(CodeInvalid, "%q is not a record id", id)
 	}
 	rows, err := s.rdb.Query(`
-		SELECT h.seq, h.batch, h.op, h.app, h.actor, h.note, h.at, h.before_json, h.after_json, b.undone_by IS NOT NULL
+		SELECT h.seq, h.batch, h.op, h.app, h.actor, h.by_kind, h.cause, h.note, h.at, h.before_json, h.after_json, b.undone_by IS NOT NULL
 		FROM history h LEFT JOIN batches b ON b.batch = h.batch
-		WHERE h.type = ? AND h.id = ? ORDER BY h.seq DESC LIMIT ?`, t.Name, id, HistoryMax)
+		WHERE h.record = ? AND h.type_id = ? ORDER BY h.seq DESC LIMIT ?`, id, t.ID, HistoryMax)
 	if err != nil {
 		return nil, err
 	}
@@ -94,16 +95,16 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 	for rows.Next() {
 		var e Entry
 		var before, after sql.NullString
-		if err := rows.Scan(&e.Seq, &e.Batch, &e.Op, &e.App, &e.Actor, &e.Note, &e.At, &before, &after, &e.Undone); err != nil {
+		if err := rows.Scan(&e.Seq, &e.Batch, &e.Op, &e.App, &e.Actor, &e.ByKind, &e.Cause, &e.Note, &e.At, &before, &after, &e.Undone); err != nil {
 			return nil, err
 		}
 		var b, a *record
 		if before.Valid {
-			b = recordFromState(id, t.Name, before.String)
+			b = recordFromState(t, id, before.String)
 			e.Before = s.historyValues(t, b, sc)
 		}
 		if after.Valid {
-			a = recordFromState(id, t.Name, after.String)
+			a = recordFromState(t, id, after.String)
 			e.After = s.historyValues(t, a, sc)
 		}
 		e.Changed = changedFields(b, a)
@@ -113,13 +114,9 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 }
 
 // recordFromState reads a history row's state as a record.
-func recordFromState(id, typ, raw string) *record {
-	var st state
-	_ = json.Unmarshal([]byte(raw), &st)
-	r := &record{ID: id, Type: typ, Data: st.Data, Meta: st.Meta}
-	if r.Data == nil {
-		r.Data = map[string]any{}
-	}
+func recordFromState(t *Type, id, raw string) *record {
+	st := t.decodeState(raw)
+	r := &record{ID: id, Type: t.Name, Data: st.Data, Meta: st.Meta}
 	if st.Deleted {
 		r.DeletedAt = "deleted"
 	}
@@ -157,12 +154,14 @@ const refreshChunk = 500
 func (s *Store) Refresh() error {
 	sch := s.schema.Load()
 	for _, t := range sch.sortedTypes() {
-		if !t.clocked {
+		// A ledger entry is never rewritten, not even by the clock: what it
+		// says is what was booked.
+		if !t.clocked || t.Ledger {
 			continue
 		}
 		after := ""
 		for {
-			rows, err := s.rdb.Query(`SELECT id FROM records WHERE type = ? AND deleted_at IS NULL AND id > ? ORDER BY id LIMIT ?`, t.Name, after, refreshChunk)
+			rows, err := s.rdb.Query(`SELECT id FROM records WHERE type_id = ? AND deleted_at IS NULL AND id > ? ORDER BY id LIMIT ?`, t.ID, after, refreshChunk)
 			if err != nil {
 				return err
 			}
@@ -186,7 +185,7 @@ func (s *Store) Refresh() error {
 					return nil
 				}
 				for _, id := range ids {
-					before, err := loadRecord(w.tx, id)
+					before, err := loadRecord(w.tx, w.schema, id)
 					if err != nil {
 						return err
 					}
@@ -194,17 +193,24 @@ func (s *Store) Refresh() error {
 						continue
 					}
 					next := before.clone()
-					compute(t, next, nil)
+					compute(t, next, nil, w.schema.person)
 					if canonicalJSON(next.Data) == canonicalJSON(before.Data) {
 						continue
 					}
-					if err := w.save(next, false); err != nil {
+					// A new version, so a sign-off or an edit made against the
+					// one before it is told it is stale.
+					// updated_at stays: the clock is not an edit, and a formula
+					// reading it would otherwise never settle.
+					next.Rev++
+					if err := w.save(t, next, false); err != nil {
 						return err
 					}
 					if w.change == nil {
-						w.change = &Change{App: "", Actor: "codeaf", Op: OpRefresh, Type: t.Name, At: w.now}
+						w.change = &Change{App: "", Actor: "codeaf", ByKind: ByFlow, Cause: "clock", Op: OpRefresh, Type: t.Name, At: w.now}
 					}
-					w.note(before, next)
+					if err := w.note(t, before, next); err != nil {
+						return err
+					}
 				}
 				return nil
 			})

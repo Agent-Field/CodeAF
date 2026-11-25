@@ -13,13 +13,18 @@ import (
 // else. A draft names a Builder draft's sample file, with the same methods.
 //
 // A ROW IS A FLAT OBJECT: its id, its field values by name, created_at,
-// updated_at, type, and "_meta" (which values are masked, which came from AI,
+// updated_at, type, _rev (its revision, which a write may send back to refuse
+// a stale edit), and "_meta" (which values are masked, who set each value,
 // whether a freeze rule holds it). A refusal for a capability is not_allowed
 // with detail {need: "records.<type>.rw"}; a refused value is bad_params with
 // detail {field}.
 
 // EventDataChanged is a live query's row diff after a committed write.
 const EventDataChanged = "data.changed"
+
+// EventDataReset tells a live query that what changed since its cursor cannot
+// be sent as a diff: the client refetches, then carries on from the cursor.
+const EventDataReset = "data.reset"
 
 // FeatureData is hello's word for an engine serving the data.* methods.
 const FeatureData = "data"
@@ -33,6 +38,12 @@ const (
 	CodeFrozen = "frozen"
 	// CodeDuplicate is a value a unique field already holds elsewhere.
 	CodeDuplicate = "duplicate"
+	// CodeLifecycle is a raw write to a lifecycle's state, or a transition
+	// that cannot fire now (wrong state, guard not holding).
+	CodeLifecycle = "lifecycle"
+	// CodeLedger is a change, deletion or undo of a ledger entry; ledgers are
+	// only reversed.
+	CodeLedger = "ledger"
 )
 
 // DataRow is one record as the wire carries it.
@@ -49,10 +60,36 @@ type DataScope struct {
 type (
 	DataQueryParams struct {
 		DataScope
-		Type   string `json:"type"`
-		Query  string `json:"query,omitempty"`
-		Cursor string `json:"cursor,omitempty"`
-		Limit  int    `json:"limit,omitempty"`
+		Type   string     `json:"type"`
+		Query  string     `json:"query,omitempty"`
+		Where  []DataCond `json:"where,omitempty"`
+		Sort   string     `json:"sort,omitempty"`
+		Select []string   `json:"select,omitempty"`
+		Cursor string     `json:"cursor,omitempty"`
+		Limit  int        `json:"limit,omitempty"`
+	}
+	// DataCond is one condition of the query IR: field (or link.field) op
+	// value, or free words with no field. Op is : > >= < <= is has.
+	DataCond struct {
+		Field string `json:"field,omitempty"`
+		Op    string `json:"op,omitempty"`
+		Value string `json:"value,omitempty"`
+		Neg   bool   `json:"neg,omitempty"`
+	}
+	// DataAggregateParams asks for server aggregates over a query, grouped by
+	// up to two fields (a link's field included).
+	DataAggregateParams struct {
+		DataScope
+		Type      string     `json:"type"`
+		Query     string     `json:"query,omitempty"`
+		Where     []DataCond `json:"where,omitempty"`
+		Group     []string   `json:"group,omitempty"`
+		Aggregate []DataAgg  `json:"aggregate"`
+	}
+	DataAgg struct {
+		Fn    string `json:"fn"`
+		Field string `json:"field,omitempty"`
+		As    string `json:"as,omitempty"`
 	}
 	DataCountParams struct {
 		DataScope
@@ -78,12 +115,17 @@ type (
 		IDs      []string       `json:"ids"`
 		Set      map[string]any `json:"set"`
 		Unfreeze string         `json:"unfreeze,omitempty"`
+		// Rev is the revision the caller saw (one id only); Reset hands
+		// fields the person set back to AI.
+		Rev   int64    `json:"rev,omitempty"`
+		Reset []string `json:"reset,omitempty"`
 	}
 	DataDeleteParams struct {
 		DataScope
 		Type     string   `json:"type"`
 		IDs      []string `json:"ids"`
 		Unfreeze string   `json:"unfreeze,omitempty"`
+		Rev      int64    `json:"rev,omitempty"`
 	}
 	DataUndoParams struct {
 		DataScope
@@ -99,9 +141,15 @@ type (
 	DataSubscribeParams struct {
 		DataScope
 		Sub   string `json:"sub"`
-		Type  string `json:"type"`
+		Type  string `json:"type,omitempty"`
 		Query string `json:"query,omitempty"`
 		ID    string `json:"id,omitempty"`
+		// Table watches a work table (work_items, timers, signoffs,
+		// comments) instead of a type; with type and id, one record's.
+		Table string `json:"table,omitempty"`
+		// Cursor resumes from the last cursor the client saw: one diff of
+		// everything since, or a data.reset.
+		Cursor *int64 `json:"cursor,omitempty"`
 	}
 	DataUnsubscribeParams struct {
 		Sub string `json:"sub"`
@@ -114,16 +162,37 @@ type (
 		Types []DataType `json:"types"`
 	}
 	DataType struct {
-		Name     string      `json:"name"`
-		Title    string      `json:"title,omitempty"`
-		Label    string      `json:"label,omitempty"`
-		OwnerApp string      `json:"owner_app"`
-		UsedBy   []string    `json:"used_by"`
-		Count    int         `json:"count"`
-		Hidden   bool        `json:"hidden,omitempty"`
-		Fields   []DataField `json:"fields"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Title string `json:"title,omitempty"`
+		Label string `json:"label,omitempty"`
+		// CreatedByApp is where the type came from, only: a type is the
+		// person's, and deleting that app never touches it.
+		CreatedByApp string         `json:"created_by_app"`
+		DefinedBy    string         `json:"defined_by,omitempty"`
+		UsedBy       []string       `json:"used_by"`
+		Count        int            `json:"count"`
+		Hidden       bool           `json:"hidden,omitempty"`
+		Ledger       bool           `json:"ledger,omitempty"`
+		Lifecycle    *DataLifecycle `json:"lifecycle,omitempty"`
+		Fields       []DataField    `json:"fields"`
+	}
+	DataLifecycle struct {
+		Field       string           `json:"field"`
+		Initial     string           `json:"initial"`
+		Transitions []DataTransition `json:"transitions"`
+	}
+	DataTransition struct {
+		ID      string           `json:"id"`
+		Label   string           `json:"label,omitempty"`
+		From    []string         `json:"from,omitempty"`
+		To      string           `json:"to"`
+		Guard   string           `json:"guard,omitempty"`
+		By      []string         `json:"by"`
+		Effects []map[string]any `json:"effects,omitempty"`
 	}
 	DataField struct {
+		ID       string   `json:"id"`
 		Name     string   `json:"name"`
 		Type     string   `json:"type"`
 		App      string   `json:"app"`
@@ -137,6 +206,12 @@ type (
 		Currency string   `json:"currency,omitempty"`
 		Computed bool     `json:"computed,omitempty"`
 		AI       bool     `json:"ai,omitempty"`
+		// Sequence numbers new records: prefix then a zero-padded counter.
+		Sequence *DataSequence `json:"sequence,omitempty"`
+	}
+	DataSequence struct {
+		Prefix string `json:"prefix,omitempty"`
+		Pad    int    `json:"pad,omitempty"`
 	}
 	DataQueryResult struct {
 		Rows  []DataRow `json:"rows"`
@@ -163,6 +238,8 @@ type (
 		Op      string         `json:"op"`
 		App     string         `json:"app,omitempty"`
 		Actor   string         `json:"actor"`
+		ByKind  string         `json:"by_kind"`
+		Cause   string         `json:"cause,omitempty"`
 		Note    string         `json:"note,omitempty"`
 		At      string         `json:"at"`
 		Undone  bool           `json:"undone,omitempty"`
@@ -174,6 +251,25 @@ type (
 		Batch   string    `json:"batch"`
 		Rows    []DataRow `json:"rows"`
 		Removes []string  `json:"removes,omitempty"`
+		// Held is the values the write left alone because the person set
+		// them (an AI write below a person's value).
+		Held []DataHeld `json:"held,omitempty"`
+	}
+	DataHeld struct {
+		ID    string `json:"id"`
+		Field string `json:"field"`
+	}
+	DataAggregateResult struct {
+		Group  []string        `json:"group"`
+		Groups []DataAggregate `json:"groups"`
+		Total  int             `json:"total"`
+	}
+	DataAggregate struct {
+		Key    []any          `json:"key"`
+		Values map[string]any `json:"values"`
+	}
+	DataSubscribeResult struct {
+		Cursor int64 `json:"cursor"`
 	}
 	DataImportResult struct {
 		// Preview is a dry run's account; Created and Batch a real import's.
@@ -203,6 +299,12 @@ type (
 		Upserts []DataRow `json:"upserts"`
 		Removes []string  `json:"removes"`
 		Total   int       `json:"total"`
+		Cursor  int64     `json:"cursor"`
+	}
+	// DataReset tells a live query to refetch, then carry on from Cursor.
+	DataReset struct {
+		Sub    string `json:"sub"`
+		Cursor int64  `json:"cursor"`
 	}
 )
 
@@ -218,12 +320,15 @@ type Dataer interface {
 	DataDelete(DataDeleteParams) (*DataWriteResult, error)
 	DataUndo(DataUndoParams) (*DataWriteResult, error)
 	DataImportCSV(DataImportParams) (*DataImportResult, error)
-	DataSubscribe(DataSubscribeParams) error
+	DataAggregate(DataAggregateParams) (*DataAggregateResult, error)
+	DataSubscribe(DataSubscribeParams) (*DataSubscribeResult, error)
 	DataUnsubscribe(sub string) error
+	DataProcess
 }
 
 func init() {
 	eventShapes[EventDataChanged] = reflect.TypeFor[DataChanged]()
+	eventShapes[EventDataReset] = reflect.TypeFor[DataReset]()
 	for name, m := range dataMethods {
 		methods[name] = m
 	}
@@ -312,8 +417,8 @@ var dataMethods = map[string]method{
 		if err := needType(p.Type); err != nil {
 			return nil, err
 		}
-		if len(p.IDs) == 0 || len(p.Set) == 0 {
-			return nil, Errorf(CodeBadParams, "data.update needs ids and set")
+		if len(p.IDs) == 0 || len(p.Set) == 0 && len(p.Reset) == 0 {
+			return nil, Errorf(CodeBadParams, "data.update needs ids, and set or reset")
 		}
 		return d.DataUpdate(p)
 	}),
@@ -341,9 +446,20 @@ var dataMethods = map[string]method{
 		}
 		return d.DataImportCSV(p)
 	}),
-	"data.subscribe": dataMethod("data.subscribe", func(d Dataer, p DataSubscribeParams) (*Empty, error) {
+	"data.aggregate": dataMethod("data.aggregate", func(d Dataer, p DataAggregateParams) (*DataAggregateResult, error) {
 		if err := needType(p.Type); err != nil {
 			return nil, err
+		}
+		if len(p.Aggregate) == 0 {
+			return nil, Errorf(CodeBadParams, "aggregate is required")
+		}
+		return d.DataAggregate(p)
+	}),
+	"data.subscribe": dataMethod("data.subscribe", func(d Dataer, p DataSubscribeParams) (*DataSubscribeResult, error) {
+		if p.Table == "" {
+			if err := needType(p.Type); err != nil {
+				return nil, err
+			}
 		}
 		if _, err := required("sub", p.Sub); err != nil {
 			return nil, err
@@ -351,7 +467,7 @@ var dataMethods = map[string]method{
 		if p.ID != "" && p.Query != "" {
 			return nil, Errorf(CodeBadParams, "data.subscribe watches a query or one id, not both")
 		}
-		return done(d.DataSubscribe(p))
+		return d.DataSubscribe(p)
 	}),
 	"data.unsubscribe": dataMethod("data.unsubscribe", func(d Dataer, p DataUnsubscribeParams) (*Empty, error) {
 		if _, err := required("sub", p.Sub); err != nil {

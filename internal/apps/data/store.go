@@ -39,52 +39,83 @@ const (
 // migrations are the schema's versions, in order; PRAGMA user_version is how
 // many have run. A version once shipped is never edited: a change is a new
 // entry.
+//
+// EVERYTHING IS NAMED BY A STABLE ID, NOT BY ITS NAME. A type, a field and the
+// person each have a ULID made once; records point to their type by id and
+// keep their values under field ids, so renaming a field or a type is one row
+// and every value, history row and index stays where it was. A name a type or
+// field was once known by stays readable as an alias.
 var migrations = []string{
 	// 1: the first store.
 	`
+	CREATE TABLE space(
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
 	CREATE TABLE apps(
 		app TEXT PRIMARY KEY,
 		def_json TEXT NOT NULL,
 		registered_at TEXT NOT NULL
 	);
 	CREATE TABLE types(
-		name TEXT PRIMARY KEY,
-		owner_app TEXT NOT NULL,
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL UNIQUE,
+		created_by_app TEXT NOT NULL,
+		def_app TEXT NOT NULL,
 		def_json TEXT NOT NULL,
 		created_at TEXT NOT NULL
 	);
+	CREATE TABLE type_aliases(
+		alias TEXT PRIMARY KEY,
+		type_id TEXT NOT NULL
+	);
 	CREATE TABLE app_types(
 		app TEXT NOT NULL,
-		type TEXT NOT NULL,
+		type_id TEXT NOT NULL,
 		uses INTEGER NOT NULL DEFAULT 0,
-		PRIMARY KEY(app, type)
+		PRIMARY KEY(app, type_id)
+	);
+	CREATE TABLE fields(
+		id TEXT PRIMARY KEY,
+		type_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		UNIQUE(type_id, name)
+	);
+	CREATE TABLE field_aliases(
+		type_id TEXT NOT NULL,
+		alias TEXT NOT NULL,
+		field_id TEXT NOT NULL,
+		PRIMARY KEY(type_id, alias)
 	);
 	CREATE TABLE type_fields(
-		type TEXT NOT NULL,
-		field TEXT NOT NULL,
+		field_id TEXT NOT NULL,
 		app TEXT NOT NULL,
 		def_json TEXT NOT NULL,
 		pos INTEGER NOT NULL,
 		hidden INTEGER NOT NULL DEFAULT 0,
-		PRIMARY KEY(type, field, app)
+		PRIMARY KEY(field_id, app)
 	);
 	CREATE TABLE records(
 		id TEXT PRIMARY KEY,
-		type TEXT NOT NULL,
+		type_id TEXT NOT NULL,
+		rev INTEGER NOT NULL DEFAULT 1,
 		data_json TEXT NOT NULL,
 		meta_json TEXT NOT NULL DEFAULT '{}',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
 		deleted_at TEXT
 	);
-	CREATE INDEX records_type_created ON records(type, created_at, id) WHERE deleted_at IS NULL;
-	CREATE INDEX records_type_updated ON records(type, updated_at, id) WHERE deleted_at IS NULL;
+	CREATE INDEX records_type_created ON records(type_id, created_at, id) WHERE deleted_at IS NULL;
+	CREATE INDEX records_type_updated ON records(type_id, updated_at, id) WHERE deleted_at IS NULL;
 	CREATE TABLE batches(
 		batch TEXT PRIMARY KEY,
 		app TEXT NOT NULL,
 		actor TEXT NOT NULL,
+		by_kind TEXT NOT NULL,
+		cause TEXT NOT NULL DEFAULT '',
 		op TEXT NOT NULL,
-		type TEXT NOT NULL,
+		type_id TEXT NOT NULL,
 		at TEXT NOT NULL,
 		undoes TEXT,
 		undone_by TEXT
@@ -92,27 +123,109 @@ var migrations = []string{
 	CREATE TABLE history(
 		seq INTEGER PRIMARY KEY AUTOINCREMENT,
 		batch TEXT NOT NULL,
-		type TEXT NOT NULL,
-		id TEXT NOT NULL,
+		type_id TEXT NOT NULL,
+		record TEXT NOT NULL,
 		app TEXT NOT NULL,
 		actor TEXT NOT NULL,
+		by_kind TEXT NOT NULL,
+		cause TEXT NOT NULL DEFAULT '',
 		op TEXT NOT NULL,
 		note TEXT NOT NULL DEFAULT '',
 		before_json TEXT,
 		after_json TEXT,
 		at TEXT NOT NULL
 	);
-	CREATE INDEX history_record ON history(type, id, seq);
+	CREATE INDEX history_record ON history(record, seq);
 	CREATE INDEX history_batch ON history(batch, seq);
 	CREATE TABLE reveals(
 		seq INTEGER PRIMARY KEY AUTOINCREMENT,
-		type TEXT NOT NULL,
-		id TEXT NOT NULL,
-		field TEXT NOT NULL,
+		type_id TEXT NOT NULL,
+		record TEXT NOT NULL,
+		field_id TEXT NOT NULL,
 		app TEXT NOT NULL,
 		actor TEXT NOT NULL,
 		at TEXT NOT NULL
 	);
+	CREATE TABLE sequences(
+		field_id TEXT PRIMARY KEY,
+		next INTEGER NOT NULL
+	);
+	CREATE TABLE outbox(
+		seq INTEGER PRIMARY KEY AUTOINCREMENT,
+		event TEXT NOT NULL,
+		type_id TEXT NOT NULL DEFAULT '',
+		record TEXT NOT NULL DEFAULT '',
+		batch TEXT NOT NULL DEFAULT '',
+		app TEXT NOT NULL DEFAULT '',
+		by_kind TEXT NOT NULL,
+		cause TEXT NOT NULL DEFAULT '',
+		payload_json TEXT NOT NULL,
+		at TEXT NOT NULL
+	);
+	CREATE TABLE outbox_receipts(
+		seq INTEGER NOT NULL,
+		trigger TEXT NOT NULL,
+		at TEXT NOT NULL,
+		PRIMARY KEY(seq, trigger)
+	);
+	CREATE TABLE work_items(
+		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		type_id TEXT NOT NULL DEFAULT '',
+		record TEXT NOT NULL DEFAULT '',
+		assignee TEXT NOT NULL DEFAULT '',
+		due TEXT NOT NULL DEFAULT '',
+		sla_at TEXT NOT NULL DEFAULT '',
+		form_ref TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		outcome_json TEXT NOT NULL DEFAULT 'null',
+		app TEXT NOT NULL DEFAULT '',
+		created_by TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE INDEX work_items_assignee ON work_items(assignee, status);
+	CREATE INDEX work_items_record ON work_items(record);
+	CREATE TABLE timers(
+		id TEXT PRIMARY KEY,
+		type_id TEXT NOT NULL DEFAULT '',
+		record TEXT NOT NULL DEFAULT '',
+		fire_at TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		payload_json TEXT NOT NULL DEFAULT 'null',
+		every TEXT NOT NULL DEFAULT '',
+		fired_at TEXT,
+		cancelled_at TEXT,
+		app TEXT NOT NULL DEFAULT '',
+		created_by TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX timers_pending ON timers(fire_at) WHERE fired_at IS NULL AND cancelled_at IS NULL;
+	CREATE INDEX timers_record ON timers(record);
+	CREATE TABLE signoffs(
+		id TEXT PRIMARY KEY,
+		type_id TEXT NOT NULL,
+		record TEXT NOT NULL,
+		version_hash TEXT NOT NULL,
+		statement TEXT NOT NULL,
+		signer TEXT NOT NULL,
+		app TEXT NOT NULL DEFAULT '',
+		at TEXT NOT NULL
+	);
+	CREATE INDEX signoffs_record ON signoffs(record, at);
+	CREATE TABLE comments(
+		id TEXT PRIMARY KEY,
+		type_id TEXT NOT NULL DEFAULT '',
+		record TEXT NOT NULL DEFAULT '',
+		node TEXT NOT NULL DEFAULT '',
+		body TEXT NOT NULL,
+		author TEXT NOT NULL,
+		mentions_json TEXT NOT NULL DEFAULT '[]',
+		app TEXT NOT NULL DEFAULT '',
+		at TEXT NOT NULL
+	);
+	CREATE INDEX comments_record ON comments(record, at);
+	CREATE INDEX comments_node ON comments(app, node, at);
 	`,
 }
 
@@ -162,9 +275,14 @@ type Options struct {
 	// Draft names the draft a sample store belongs to; it is carried on
 	// every [Change] the store reports.
 	Draft string
-	// NoRefresh leaves the hourly recompute of clocked fields off, for a test
-	// that drives it with [Store.Refresh].
+	// NoRefresh leaves the hourly recompute of clocked fields and the timer
+	// clock off, for a test that drives them with [Store.Refresh] and
+	// [Store.FireDue].
 	NoRefresh bool
+	// Person is the person's id to use when the file has none yet: a draft's
+	// sample file takes the person of the real one, so "me" is one person in
+	// both.
+	Person string
 }
 
 // Open opens (making it if need be) the data file at path, runs the
@@ -205,6 +323,9 @@ func Open(path string, opts Options) (*Store, error) {
 	if err := migrate(wdb); err != nil {
 		return fail(err)
 	}
+	if err := ensurePerson(wdb, opts); err != nil {
+		return fail(err)
+	}
 	rq := url.Values{}
 	rq.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyWait.Milliseconds()))
 	// A reader connection refuses to write, so nothing can reach the file
@@ -232,8 +353,9 @@ func Open(path string, opts Options) (*Store, error) {
 	go s.writer()
 	go s.dispatcher()
 	if !opts.NoRefresh {
-		s.done.Add(1)
+		s.done.Add(2)
 		go s.refresher()
+		go s.clock()
 	}
 	return s, nil
 }
@@ -267,6 +389,21 @@ func migrate(db *sql.DB) error {
 	}
 	return nil
 }
+
+// ensurePerson gives the file its person, once: the id every "me", every
+// person field the person holds and every history row they wrote carries.
+func ensurePerson(db *sql.DB, opts Options) error {
+	person := opts.Person
+	if !validID(person) {
+		var g idGen
+		person = g.next(opts.Now())
+	}
+	_, err := db.Exec(`INSERT OR IGNORE INTO space(key, value) VALUES('person', ?)`, person)
+	return err
+}
+
+// Person is the id of the person this file belongs to.
+func (s *Store) Person() string { return s.schema.Load().person }
 
 // Path is the file the store keeps.
 func (s *Store) Path() string { return s.path }
@@ -303,6 +440,8 @@ type writeTx struct {
 	change *Change
 	// next is the schema a registration made, swapped in after the commit.
 	next *schema
+	// cursor is the last outbox row this write made.
+	cursor int64
 }
 
 // write hands fn to the writer and waits for it to commit or fail.
@@ -370,7 +509,7 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 	if w.next != nil {
 		s.schema.Store(w.next)
 	}
-	if w.change != nil && len(w.change.Records) > 0 {
+	if w.change != nil && (len(w.change.Records) > 0 || len(w.change.Items) > 0) {
 		w.change.Draft = s.draft
 		s.notify <- w.change
 	}
@@ -389,7 +528,7 @@ func (s *Store) RegisterApp(appJSON []byte) error {
 	}
 	caps := canonicalJSON(def.Capabilities.Records)
 	return s.write(func(w *writeTx) error {
-		next, err := registerApp(w.tx, w.schema, def, caps, s.now)
+		next, err := registerApp(w, def, caps)
 		if err != nil {
 			return err
 		}
@@ -422,7 +561,7 @@ func (s *Store) HasApp(app string) bool {
 func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 	sch := s.schema.Load()
 	counts := map[string]int{}
-	rows, err := s.rdb.Query(`SELECT type, count(*) FROM records WHERE deleted_at IS NULL GROUP BY type`)
+	rows, err := s.rdb.Query(`SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL GROUP BY type_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -443,13 +582,20 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 				continue
 			}
 		}
-		info := TypeInfo{Name: t.Name, Title: t.titleField(), Label: t.Label, OwnerApp: t.Owner, UsedBy: append([]string(nil), t.UsedBy...), Hidden: t.Hidden, Count: counts[t.Name]}
+		info := TypeInfo{
+			ID: t.ID, Name: t.Name, Title: t.titleField(), Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
+			UsedBy: append([]string(nil), t.UsedBy...), Hidden: t.Hidden, Count: counts[t.ID], Ledger: t.Ledger,
+		}
+		if t.Lifecycle != nil {
+			lc := t.Lifecycle.LifecycleDef
+			info.Lifecycle = &lc
+		}
 		for _, name := range t.Order {
 			f := t.Fields[name]
 			if f.Hidden && sc.App != "" {
 				continue
 			}
-			info.Fields = append(info.Fields, FieldInfo{Name: name, FieldDef: f.FieldDef, App: f.App, Hidden: f.Hidden})
+			info.Fields = append(info.Fields, FieldInfo{ID: f.ID, Name: name, FieldDef: f.FieldDef, App: f.App, Hidden: f.Hidden})
 		}
 		out = append(out, info)
 	}
@@ -492,6 +638,9 @@ func (s *Store) dispatcher() {
 	defer s.done.Done()
 	for c := range s.notify {
 		s.deliver(c)
+		if c.resume != nil {
+			continue
+		}
 		s.hooksMu.RLock()
 		hooks := make([]func(Change), 0, len(s.hooks))
 		for _, id := range sortedHookIDs(s.hooks) {
@@ -518,6 +667,27 @@ func sortedHookIDs(m map[int]func(Change)) []int {
 		}
 	}
 	return ids
+}
+
+// timerEvery is how often the store looks for timers come due. A timer is a
+// follow-up or an SLA, kept to the minute, not the millisecond.
+const timerEvery = 15 * time.Second
+
+// clock fires timers as they come due, and at the start every timer that came
+// due while the store was closed (the catch-up).
+func (s *Store) clock() {
+	defer s.done.Done()
+	_, _ = s.FireDue()
+	tick := time.NewTicker(timerEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+			_, _ = s.FireDue()
+		case <-s.quit:
+			return
+		}
+	}
 }
 
 // refresher recomputes clocked fields every [refreshEvery], and once at the

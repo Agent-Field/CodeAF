@@ -59,6 +59,11 @@ func (p *Place) Main() (*Store, error) {
 	if p.closed {
 		return nil, errorf(CodeClosed, "the data store is closed")
 	}
+	return p.mainLocked()
+}
+
+// mainLocked opens the person's own store if it is not open; p.mu is held.
+func (p *Place) mainLocked() (*Store, error) {
 	if p.main == nil {
 		s, err := Open(p.MainPath(), p.opts)
 		if err != nil {
@@ -101,6 +106,13 @@ func (p *Place) Store(draft string) (*Store, error) {
 func (p *Place) openDraft(draft, path string) (*Store, error) {
 	opts := p.opts
 	opts.Draft = draft
+	// The sample's "me" is the person: one id in both files, so a draft's
+	// person field means the same person once the app is kept.
+	main, err := p.mainLocked()
+	if err != nil {
+		return nil, err
+	}
+	opts.Person = main.Person()
 	s, err := Open(path, opts)
 	if err != nil {
 		return nil, err
@@ -218,10 +230,11 @@ func shapesOf(sch *schema, used []string) shapeApp {
 	want := map[string]bool{}
 	var walk func(string)
 	walk = func(name string) {
-		t := sch.types[name]
-		if t == nil || want[name] {
+		t := sch.typeNamed(name)
+		if t == nil || want[t.Name] {
 			return
 		}
+		name = t.Name
 		want[name] = true
 		for _, fname := range t.Order {
 			if f := t.field(fname); f != nil && (f.Type == TypeRef || f.Type == TypeRefs) {
@@ -235,7 +248,11 @@ func shapesOf(sch *schema, used []string) shapeApp {
 	app := shapeApp{ID: sharedShapes, Records: map[string]TypeDef{}}
 	for _, name := range sortedKeys(want) {
 		t := sch.types[name]
-		def := TypeDef{Title: t.Title, Label: t.Label, Constants: t.Constants, Fields: map[string]FieldDef{}}
+		def := TypeDef{Title: t.Title, Label: t.Label, Constants: t.Constants, Fields: map[string]FieldDef{}, Ledger: LedgerOption{On: t.Ledger, Reversal: t.LedgerReversal}}
+		if t.Lifecycle != nil {
+			lc := t.Lifecycle.LifecycleDef
+			def.Lifecycle = &lc
+		}
 		for _, rule := range t.Freeze {
 			def.Freeze = append(def.Freeze, rule.FreezeRule)
 		}
@@ -262,7 +279,7 @@ func (s *Store) seed(rows map[string][]map[string]any) error {
 			if err != nil {
 				return err
 			}
-			if _, err := w.newBatch(Scope{Actor: "sample"}, OpImport, typ); err != nil {
+			if _, err := w.newBatch(Scope{Actor: "sample"}, OpSeed, t); err != nil {
 				return err
 			}
 			for _, set := range list {
@@ -275,7 +292,7 @@ func (s *Store) seed(rows map[string][]map[string]any) error {
 				if id != "" && !validID(id) {
 					return errorf(CodeInvalid, "sample %s id %q is not a ULID", typ, id)
 				}
-				if _, err := w.createOneAs(t, Scope{Actor: "sample"}, set, OpImport, true, id); err != nil {
+				if _, err := w.createOneAs(t, Scope{Actor: "sample"}, set, OpSeed, id); err != nil {
 					return err
 				}
 			}

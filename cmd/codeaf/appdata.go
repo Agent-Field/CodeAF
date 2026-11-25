@@ -165,7 +165,11 @@ func wireWrite(res *data.WriteResult, err error) (*appwire.DataWriteResult, erro
 	if err != nil {
 		return nil, appDataError(err)
 	}
-	return &appwire.DataWriteResult{Batch: res.Batch, Rows: wireRows(res.Rows), Removes: res.Removes}, nil
+	out := &appwire.DataWriteResult{Batch: res.Batch, Rows: wireRows(res.Rows), Removes: res.Removes}
+	for _, h := range res.Held {
+		out.Held = append(out.Held, appwire.DataHeld{ID: h.ID, Field: h.Field})
+	}
+	return out, nil
 }
 
 func (b *appBackend) DataTypes(p appwire.DataScope) (*appwire.DataTypesResult, error) {
@@ -179,13 +183,38 @@ func (b *appBackend) DataTypes(p appwire.DataScope) (*appwire.DataTypesResult, e
 	}
 	out := &appwire.DataTypesResult{Types: []appwire.DataType{}}
 	for _, t := range types {
-		wt := appwire.DataType{Name: t.Name, Title: t.Title, Label: t.Label, OwnerApp: t.OwnerApp, UsedBy: nonNilStrings(t.UsedBy), Count: t.Count, Hidden: t.Hidden, Fields: []appwire.DataField{}}
+		wt := appwire.DataType{
+			ID: t.ID, Name: t.Name, Title: t.Title, Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
+			UsedBy: nonNilStrings(t.UsedBy), Count: t.Count, Hidden: t.Hidden, Ledger: t.Ledger, Fields: []appwire.DataField{},
+		}
+		if lc := t.Lifecycle; lc != nil {
+			wl := &appwire.DataLifecycle{Field: lc.Field, Initial: lc.Initial, Transitions: []appwire.DataTransition{}}
+			for _, f := range t.Fields {
+				if f.Name == lc.Field && wl.Initial == "" && len(f.Values) > 0 {
+					wl.Initial = f.Values[0]
+				}
+			}
+			for _, tr := range lc.Transitions {
+				by := tr.By
+				if len(by) == 0 {
+					by = []string{data.ByPerson, data.ByFlow}
+				}
+				wl.Transitions = append(wl.Transitions, appwire.DataTransition{
+					ID: tr.ID, Label: tr.Label, From: tr.From, To: tr.To, Guard: tr.Guard, By: by, Effects: tr.Effects,
+				})
+			}
+			wt.Lifecycle = wl
+		}
 		for _, f := range t.Fields {
-			wt.Fields = append(wt.Fields, appwire.DataField{
-				Name: f.Name, Type: f.Type, App: f.App, Hidden: f.Hidden, Label: f.Label,
+			wf := appwire.DataField{
+				ID: f.ID, Name: f.Name, Type: f.Type, App: f.App, Hidden: f.Hidden, Label: f.Label,
 				Required: f.Required, Unique: f.Unique, Masked: f.Masked, Values: f.Values, To: f.To,
 				Currency: f.Currency, Computed: f.Computed != "", AI: f.AI != "",
-			})
+			}
+			if sq := f.Sequence; sq != nil {
+				wf.Sequence = &appwire.DataSequence{Prefix: sq.Prefix, Pad: sq.Pad}
+			}
+			wt.Fields = append(wt.Fields, wf)
 		}
 		out.Types = append(out.Types, wt)
 	}
@@ -204,11 +233,57 @@ func (b *appBackend) DataQuery(p appwire.DataQueryParams) (*appwire.DataQueryRes
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.Query(dataScope(p.DataScope), p.Type, p.Query, p.Cursor, p.Limit)
+	ir, err := queryIR(p.Type, p.Query, p.Where)
+	if err != nil {
+		return nil, err
+	}
+	if p.Sort != "" {
+		ir.Sort = p.Sort
+	}
+	ir.Select = p.Select
+	page, err := s.QueryRows(dataScope(p.DataScope), ir, p.Cursor, p.Limit)
 	if err != nil {
 		return nil, appDataError(err)
 	}
 	return &appwire.DataQueryResult{Rows: wireRows(page.Rows), Next: page.Next, Total: page.Total}, nil
+}
+
+// queryIR is a wire query in the store's one intermediate form: the typed
+// tokens parsed, then the structured conditions added.
+func queryIR(typ, query string, where []appwire.DataCond) (*data.QueryIR, error) {
+	ir, err := data.ParseQuery(query)
+	if err != nil {
+		return nil, appDataError(err)
+	}
+	ir.Type = typ
+	for _, c := range where {
+		ir.Where = append(ir.Where, data.Cond{Field: c.Field, Op: c.Op, Value: c.Value, Neg: c.Neg})
+	}
+	return ir, nil
+}
+
+func (b *appBackend) DataAggregate(p appwire.DataAggregateParams) (*appwire.DataAggregateResult, error) {
+	s, err := b.dataStore(p.Draft)
+	if err != nil {
+		return nil, err
+	}
+	ir, err := queryIR(p.Type, p.Query, p.Where)
+	if err != nil {
+		return nil, err
+	}
+	ir.Group = p.Group
+	for _, a := range p.Aggregate {
+		ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: a.Fn, Field: a.Field, As: a.As})
+	}
+	res, err := s.Aggregate(dataScope(p.DataScope), ir)
+	if err != nil {
+		return nil, appDataError(err)
+	}
+	out := &appwire.DataAggregateResult{Group: nonNilStrings(res.Group), Groups: []appwire.DataAggregate{}, Total: res.Total}
+	for _, g := range res.Groups {
+		out.Groups = append(out.Groups, appwire.DataAggregate{Key: g.Key, Values: g.Values})
+	}
+	return out, nil
 }
 
 func (b *appBackend) DataCount(p appwire.DataCountParams) (*appwire.DataCountResult, error) {
@@ -251,7 +326,7 @@ func (b *appBackend) DataHistory(p appwire.DataRecordParams) (*appwire.DataHisto
 	out := &appwire.DataHistoryResult{History: []appwire.DataHistoryEntry{}}
 	for _, e := range entries {
 		out.History = append(out.History, appwire.DataHistoryEntry{
-			Seq: e.Seq, Batch: e.Batch, Op: e.Op, App: e.App, Actor: e.Actor, Note: e.Note, At: e.At,
+			Seq: e.Seq, Batch: e.Batch, Op: e.Op, App: e.App, Actor: e.Actor, ByKind: e.ByKind, Cause: e.Cause, Note: e.Note, At: e.At,
 			Undone: e.Undone, Before: e.Before, After: e.After, Changed: nonNilStrings(e.Changed),
 		})
 	}
@@ -275,7 +350,7 @@ func (b *appBackend) DataUpdate(p appwire.DataUpdateParams) (*appwire.DataWriteR
 	if err != nil {
 		return nil, err
 	}
-	return wireWrite(s.Update(dataScope(p.DataScope), p.Type, p.IDs, p.Set, data.UpdateOptions{Unfreeze: p.Unfreeze}))
+	return wireWrite(s.Update(dataScope(p.DataScope), p.Type, p.IDs, p.Set, data.UpdateOptions{Unfreeze: p.Unfreeze, Rev: p.Rev, Reset: p.Reset}))
 }
 
 func (b *appBackend) DataDelete(p appwire.DataDeleteParams) (*appwire.DataWriteResult, error) {
@@ -283,7 +358,7 @@ func (b *appBackend) DataDelete(p appwire.DataDeleteParams) (*appwire.DataWriteR
 	if err != nil {
 		return nil, err
 	}
-	return wireWrite(s.Delete(dataScope(p.DataScope), p.Type, p.IDs, data.UpdateOptions{Unfreeze: p.Unfreeze}))
+	return wireWrite(s.Delete(dataScope(p.DataScope), p.Type, p.IDs, data.UpdateOptions{Unfreeze: p.Unfreeze, Rev: p.Rev}))
 }
 
 func (b *appBackend) DataUndo(p appwire.DataUndoParams) (*appwire.DataWriteResult, error) {
@@ -320,30 +395,45 @@ func (b *appBackend) DataImportCSV(p appwire.DataImportParams) (*appwire.DataImp
 	return &appwire.DataImportResult{Created: &created, Batch: res.Batch, Failed: res.Failed, Problems: issues}, nil
 }
 
-func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) error {
+func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.DataSubscribeResult, error) {
 	s, err := b.dataStore(p.Draft)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// A sub id moving between stores (main to a draft) stops where it was.
 	_ = b.DataUnsubscribe(p.Sub)
-	spec := data.SubSpec{ID: p.Sub, Type: p.Type, Query: p.Query, Record: p.ID}
+	spec := data.SubSpec{ID: p.Sub, Type: p.Type, Query: p.Query, Record: p.ID, Table: p.Table}
+	if p.Cursor != nil {
+		spec.Resume, spec.After = true, *p.Cursor
+	}
 	emit := b.emit
-	err = s.Subscribe(dataScope(p.DataScope), spec, func(d data.Diff) {
+	// The live query is held before it can be told anything, so an early
+	// diff is never sent for a sub this connection has already let go of.
+	b.data.holdSub(p.Sub, s)
+	cursor, err := s.Subscribe(dataScope(p.DataScope), spec, func(d data.Diff) {
+		if d.Reset {
+			emit.Emit(appwire.EventDataReset, appwire.DataReset{Sub: d.Sub, Cursor: d.Cursor})
+			return
+		}
 		emit.Emit(appwire.EventDataChanged, appwire.DataChanged{
-			Sub: d.Sub, Upserts: wireRows(d.Upserts), Removes: nonNilStrings(d.Removes), Total: d.Total,
+			Sub: d.Sub, Upserts: wireRows(d.Upserts), Removes: nonNilStrings(d.Removes), Total: d.Total, Cursor: d.Cursor,
 		})
 	})
 	if err != nil {
-		return appDataError(err)
+		_ = b.data.takeSub(p.Sub)
+		return nil, appDataError(err)
 	}
-	b.data.mu.Lock()
-	defer b.data.mu.Unlock()
-	if b.data.subs == nil {
-		b.data.subs = map[string]*data.Store{}
+	return &appwire.DataSubscribeResult{Cursor: cursor}, nil
+}
+
+// holdSub keeps the store a live query lives on, to stop it there.
+func (d *appDataState) holdSub(sub string, s *data.Store) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.subs == nil {
+		d.subs = map[string]*data.Store{}
 	}
-	b.data.subs[p.Sub] = s
-	return nil
+	d.subs[sub] = s
 }
 
 // takeSub forgets one live query and hands back the store it was held on.

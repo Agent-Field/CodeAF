@@ -89,7 +89,7 @@ func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResu
 		if err != nil {
 			return err
 		}
-		batch, err := w.newBatch(sc, OpImport, typ)
+		batch, err := w.newBatch(sc, OpImport, t)
 		if err != nil {
 			return err
 		}
@@ -113,7 +113,7 @@ func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResu
 				res.problem(line, err)
 				continue
 			}
-			r, err := w.savepoint(func() (*record, error) { return w.createOne(t, sc, set, OpImport, true) })
+			r, err := w.savepoint(func() (*record, error) { return w.createOne(t, sc, set, OpImport) })
 			if err != nil {
 				if _, ok := AsError(err); !ok {
 					return err
@@ -158,13 +158,19 @@ func (w *writeTx) savepoint(fn func() (*record, error)) (*record, error) {
 	if _, err := w.tx.Exec(`SAVEPOINT row`); err != nil {
 		return nil, err
 	}
-	records := len(w.change.Records)
+	records, items, cursor, txCursor := len(w.change.Records), len(w.change.Items), w.change.Cursor, w.cursor
 	r, err := fn()
 	if err != nil {
 		if _, rerr := w.tx.Exec(`ROLLBACK TO row`); rerr != nil {
 			return nil, rerr
 		}
-		w.change.Records = w.change.Records[:records]
+		// A row a create refused never happened: it leaves no before for a
+		// live query and no event under the cursor.
+		for _, rc := range w.change.Records[records:] {
+			delete(w.change.befores, rc.ID)
+		}
+		w.change.Records, w.change.Items, w.change.Cursor = w.change.Records[:records], w.change.Items[:items], cursor
+		w.cursor = txCursor
 		_, _ = w.tx.Exec(`RELEASE row`)
 		return nil, err
 	}
@@ -198,7 +204,7 @@ func (w *writeTx) resolveTitles(t *Type, set map[string]any) error {
 		default:
 			continue
 		}
-		target := w.schema.types[f.To]
+		target := w.schema.typeNamed(f.To)
 		title := ""
 		if target != nil {
 			title = target.titleField()
@@ -213,8 +219,8 @@ func (w *writeTx) resolveTitles(t *Type, set map[string]any) error {
 				ids = append(ids, p)
 				continue
 			}
-			rows, err := w.tx.Query(`SELECT id FROM records WHERE type = ? AND deleted_at IS NULL AND `+
-				jsonPath("data_json", mustIdent(title))+` = ? COLLATE NOCASE LIMIT 2`, f.To, p)
+			rows, err := w.tx.Query(`SELECT id FROM records WHERE type_id = ? AND deleted_at IS NULL AND `+
+				jsonPath("data_json", target.Fields[title].ID)+` = ? COLLATE NOCASE LIMIT 2`, target.ID, p)
 			if err != nil {
 				return err
 			}

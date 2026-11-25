@@ -38,6 +38,8 @@ var (
 type coercion struct {
 	now     time.Time
 	lenient bool
+	// me is the person's id, which "me" and "$me" are stored as.
+	me string
 }
 
 // coerce checks v against f and answers the value to store: a number for a
@@ -123,8 +125,8 @@ func (f *Field) coerce(v any, c coercion) (any, error) {
 			return nil, fmt.Errorf("is a person")
 		}
 		s = strings.TrimSpace(s)
-		if s == "$me" {
-			s = Me
+		if (s == "$me" || s == Me) && c.me != "" {
+			s = c.me
 		}
 		if len(s) > personMax || strings.ContainsAny(s, "\r\n\x00") {
 			return nil, fmt.Errorf("is not a person")
@@ -326,6 +328,6 @@ func readTime(s string, now time.Time) (time.Time, error) {
 
 // coerceDefault is a field's default as a value, with $me and $now left for
 // the write to resolve. It is checked once, when an app is registered.
-func coerceDefault(f *Field) (any, error) {
-	return f.coerce(f.Default, coercion{now: time.Now()})
+func coerceDefault(f *Field, me string) (any, error) {
+	return f.coerce(f.Default, coercion{now: time.Now(), me: me})
 }
