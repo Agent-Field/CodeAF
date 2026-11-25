@@ -6,12 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"reflect"
 	"slices"
+	"strings"
 )
 
 type ProbeResult struct {
 	Name    string `json:"name"`
+	Unrun   bool   `json:"unrun,omitempty"`
 	Pass    bool   `json:"pass"`
 	Problem string `json:"problem,omitempty"`
 }
@@ -38,7 +39,7 @@ var dataProbes = []string{"empty-results", "large-results", "stale-edit"}
 func skippedProbes(reason string) []ProbeResult {
 	var result []ProbeResult
 	for _, name := range append(slices.Clone(dataProbes), slices.Sorted(maps.Keys(stimulusChecks))...) {
-		result = append(result, ProbeResult{Name: name, Problem: reason})
+		result = append(result, ProbeResult{Name: name, Unrun: true, Problem: reason})
 	}
 	return result
 }
@@ -67,13 +68,15 @@ func adversarial(ctx context.Context, app Adapter, record Record, id string) []P
 			var observed map[string]any
 			observed, err = stimulus.Exercise(ctx, probe.Name, id, record)
 			if err == nil {
-				for _, check := range stimulusChecks[probe.Name] {
-					if _, ok := observed[check.Path[1:]]; !ok || !reflect.DeepEqual(normalize(observed[check.Path[1:]]), normalize(check.Equals)) {
-						err = errors.Join(err, fmt.Errorf("%s should equal %v", check.Path, check.Equals))
-					}
+				raw, marshalErr := json.Marshal(observed)
+				if marshalErr != nil {
+					err = marshalErr
+				} else if problems := checkReply(raw, stimulusChecks[probe.Name]); len(problems) > 0 {
+					err = errors.New(strings.Join(problems, ", "))
 				}
 			}
 		}
+		probe.Unrun = false
 		probe.Problem = ""
 		if err != nil {
 			probe.Problem = err.Error()
@@ -100,11 +103,17 @@ func staleEdit(ctx context.Context, app Adapter, id string, record Record) error
 
 func largeResults(ctx context.Context, app Adapter, id string, record Record) error {
 	const batchSize, batches, pageSize = 100, 20, 100
-	rows := make([]any, batchSize)
-	for i := range rows {
-		rows[i] = record.Value
+	base, ok := record.Value[record.UniqueBy].(string)
+	if !ok {
+		return errors.New("large result fixture needs a text field for distinct rows")
 	}
-	for range batches {
+	for batch := range batches {
+		rows := make([]any, batchSize)
+		for i := range rows {
+			row := maps.Clone(record.Value)
+			row[record.UniqueBy] = fmt.Sprintf("%s+eval-%d", base, batch*batchSize+i)
+			rows[i] = row
+		}
 		if _, err := app.Call(ctx, "data.create", map[string]any{"app": id, "type": record.Type, "rows": rows}); err != nil {
 			return fmt.Errorf("seed rows: %w", err)
 		}

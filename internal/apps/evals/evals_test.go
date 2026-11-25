@@ -118,3 +118,18 @@ type refusalApp struct {
 func (f refusalApp) Call(context.Context, string, any) (json.RawMessage, error) {
 	return []byte(`{}`), f.err
 }
+
+func TestLoadRejectsAmbiguousAssertion(t *testing.T) {
+	_, err := Load(strings.NewReader(`
+- name: bad-oracle
+  prompt: Make a release tracker.
+  max_rounds: 2
+  steps:
+    - method: app.get
+      expect:
+        - {path: /app, exists: false, equals: true}
+`))
+	if err == nil || !strings.Contains(err.Error(), "exactly one assertion") {
+		t.Fatalf("got %v for an ambiguous assertion", err)
+	}
+}

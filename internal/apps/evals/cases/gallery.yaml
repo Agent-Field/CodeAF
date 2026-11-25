@@ -3,6 +3,7 @@
   max_rounds: 3
   record:
     type: contact
+    unique_by: name
     value: {name: Eval Contact}
     edit: {name: Updated Contact}
   looks: [{screen: deals, recipe: add-view/board}]
@@ -19,11 +20,13 @@
 - name: hiring-reuses-contacts
   prompt: Make a hiring tracker for candidates and interview stages, using my existing contacts if possible.
   max_rounds: 3
+  fixture: crm-contact
   plan:
     - {path: /offers/0/type, equals: contact}
     - {path: /offers/0/count, equals: 1}
   record:
     type: contact
+    unique_by: name
     value: {name: Eval Candidate}
     edit: {name: Updated Candidate}
   looks: [{screen: candidates, recipe: add-view/board}]
@@ -38,6 +41,7 @@
   max_rounds: 2
   record:
     type: transaction
+    unique_by: description
     value: {date: "2026-01-01", description: Eval Entry, category: Food, amount: 2.50}
     edit: {description: Updated Entry}
   looks: [{screen: transactions, recipe: add-view/table}]
@@ -65,6 +69,7 @@
   max_rounds: 3
   record:
     type: release
+    unique_by: version
     value: {version: "1.2.3", status: Planned, date: "2026-01-01"}
     edit: {version: "1.2.4"}
   looks: [{screen: releases, recipe: add-view/board}]
@@ -87,6 +92,7 @@
   max_rounds: 3
   record:
     type: book
+    unique_by: title
     value: {title: Eval Book}
     edit: {title: Updated Book}
   looks: [{screen: books, recipe: add-view/list}]
@@ -114,6 +120,7 @@
   max_rounds: 1
   record:
     type: item
+    unique_by: name
     value: {name: Eval Rice, quantity: 2}
     edit: {quantity: 3}
   looks: [{screen: items, recipe: add-view/list}]
@@ -134,6 +141,7 @@
   max_rounds: 3
   record:
     type: post
+    unique_by: text
     value: {text: Eval Post}
     edit: {text: Updated Post}
   looks: [{screen: posts, recipe: add-agent-button}]
@@ -143,9 +151,21 @@
       expect:
         - {path: /app/records/post/fields/topic, exists: true}
         - {path: /app/records/post/fields/sentiment, exists: true}
+        - {path: /app/budget/per_run, at_most: 0.10}
+    - method: data.create
+      params: {app: $app, type: post, set: {text: Synthetic product launch mention}}
+      capture: {post: /rows/0/id}
     - method: runs.start
-      params: {app: $app, run: draft-thread}
+      params: {app: $app, run: launch-research, params: {post: $post}}
+      expect: [{path: /id, exists: true}]
+    - method: runs.start
+      params: {app: $app, run: draft-thread, params: {post: $post}}
       capture: {run: /id}
     - method: runs.get
       params: {app: $app, id: $run}
-      expect: [{path: /state, equals: your_call}]
+      expect:
+        - {path: /state, equals: your_call}
+        - {path: /approval, exists: true}
+    - method: data.count
+      params: {app: $app, type: draft}
+      expect: [{path: /total, equals: 3}]

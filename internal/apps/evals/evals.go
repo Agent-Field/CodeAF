@@ -26,6 +26,7 @@ type Case struct {
 	Prompt    string  `yaml:"prompt"`
 	MaxRounds int     `yaml:"max_rounds"`
 	NoModel   bool    `yaml:"no_model"`
+	Fixture   string  `yaml:"fixture"`
 	Plan      []Check `yaml:"plan"`
 	Steps     []Step  `yaml:"steps"`
 	Looks     []Look  `yaml:"looks"`
@@ -33,9 +34,10 @@ type Case struct {
 }
 
 type Record struct {
-	Type  string         `yaml:"type"`
-	Value map[string]any `yaml:"value"`
-	Edit  map[string]any `yaml:"edit"`
+	Type     string         `yaml:"type"`
+	UniqueBy string         `yaml:"unique_by"`
+	Value    map[string]any `yaml:"value"`
+	Edit     map[string]any `yaml:"edit"`
 }
 
 // Steps name the public operation and capture only facts returned by the engine.
@@ -48,10 +50,11 @@ type Step struct {
 }
 
 type Check struct {
-	Path   string `yaml:"path"`
-	Exists *bool  `yaml:"exists"`
-	Equals any    `yaml:"equals"`
-	Length *int   `yaml:"length"`
+	Path   string   `yaml:"path"`
+	Exists *bool    `yaml:"exists"`
+	Equals any      `yaml:"equals"`
+	Length *int     `yaml:"length"`
+	AtMost *float64 `yaml:"at_most"`
 }
 
 type Usage struct {
@@ -72,6 +75,7 @@ type BuildState struct {
 
 type Result struct {
 	Case        string         `json:"case"`
+	Complete    bool           `json:"complete"`
 	Pass        bool           `json:"pass"`
 	Rounds      int            `json:"rounds"`
 	Usage       *Usage         `json:"usage"`
@@ -115,7 +119,16 @@ func Load(in io.Reader) ([]Case, error) {
 			return nil, fmt.Errorf("case %q needs a unique name, prompt, positive round budget and steps", c.Name)
 		}
 		seen[c.Name] = true
+		if c.Fixture != "" && c.Fixture != "crm-contact" {
+			return nil, fmt.Errorf("case %q has unknown fixture %q", c.Name, c.Fixture)
+		}
+		if err := validateChecks(c.Plan); err != nil {
+			return nil, fmt.Errorf("case %q plan: %w", c.Name, err)
+		}
 		for _, step := range c.Steps {
+			if err := validateChecks(step.Expect); err != nil {
+				return nil, fmt.Errorf("case %q %s: %w", c.Name, step.Method, err)
+			}
 			if step.Method == "" || (step.Error != "" && (len(step.Expect) > 0 || len(step.Capture) > 0)) {
 				return nil, fmt.Errorf("case %q has an invalid step", c.Name)
 			}
@@ -125,6 +138,21 @@ func Load(in io.Reader) ([]Case, error) {
 		return nil, errors.New("no app eval cases")
 	}
 	return cases, nil
+}
+
+func validateChecks(checks []Check) error {
+	for _, c := range checks {
+		fields := 0
+		for _, set := range []bool{c.Exists != nil, c.Equals != nil, c.Length != nil, c.AtMost != nil} {
+			if set {
+				fields++
+			}
+		}
+		if fields != 1 || (c.Path != "" && !strings.HasPrefix(c.Path, "/")) {
+			return fmt.Errorf("check %q needs a JSON pointer and exactly one assertion", c.Path)
+		}
+	}
+	return nil
 }
 
 func Run(ctx context.Context, app Adapter, c Case, variables ...map[string]any) (result Result) {
@@ -141,6 +169,7 @@ func Run(ctx context.Context, app Adapter, c Case, variables ...map[string]any) 
 			}
 		}
 		result.Pass = len(result.Failures) == 0
+		result.Complete = !slices.ContainsFunc(result.Adversarial, func(probe ProbeResult) bool { return probe.Unrun })
 	}()
 	var sawPlan bool
 	build, err := app.Build(ctx, c.Prompt, c.NoModel, func(state BuildState) error {
@@ -176,7 +205,7 @@ func Run(ctx context.Context, app Adapter, c Case, variables ...map[string]any) 
 	if c.Record.Type != "" {
 		result.Adversarial = adversarial(ctx, app, c.Record, build.App)
 		for _, probe := range result.Adversarial {
-			if !probe.Pass {
+			if !probe.Pass && !probe.Unrun {
 				result.Failures = append(result.Failures, probe.Name+": "+probe.Problem)
 			}
 		}
@@ -276,6 +305,10 @@ func checkReply(body json.RawMessage, checks []Check) []string {
 			failures = append(failures, fmt.Sprintf("%s existence should be %t", c.Path, *c.Exists))
 		case c.Equals != nil && (!ok || !reflect.DeepEqual(got, normalize(c.Equals))):
 			failures = append(failures, fmt.Sprintf("%s should equal %v, got %v", c.Path, c.Equals, got))
+		case c.AtMost != nil:
+			if number, ok := got.(float64); !ok || number > *c.AtMost {
+				failures = append(failures, fmt.Sprintf("%s should be at most %g, got %v", c.Path, *c.AtMost, got))
+			}
 		case c.Length != nil && (!ok || listLength(got) != *c.Length):
 			failures = append(failures, fmt.Sprintf("%s should have %d items, got %d", c.Path, *c.Length, listLength(got)))
 		}
@@ -342,6 +375,8 @@ func WriteReport(report, table io.Writer, results []Result) error {
 		status, tokens, price := "PASS", "—", "—"
 		if !r.Pass {
 			status = "FAIL"
+		} else if !r.Complete {
+			status = "INCOMPLETE"
 		}
 		if r.Usage != nil {
 			tokens = strconv.FormatInt(r.Usage.TokensIn+r.Usage.TokensOut, 10)

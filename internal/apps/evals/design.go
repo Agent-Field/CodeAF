@@ -33,9 +33,13 @@ type DesignResult struct {
 	Problem string `json:"problem,omitempty"`
 }
 
-func ScoreLook(ctx context.Context, judge DesignJudge, language string, look Look, data []byte) (Score, error) {
-	if _, err := png.DecodeConfig(bytes.NewReader(data)); err != nil {
+func ScoreLook(ctx context.Context, judge DesignJudge, language string, look Look, width int, data []byte) (Score, error) {
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
 		return Score{}, fmt.Errorf("look did not return a PNG: %w", err)
+	}
+	if config.Width != width {
+		return Score{}, fmt.Errorf("look width is %d, expected %d", config.Width, width)
 	}
 	score, err := judge.Score(ctx, language, look, data)
 	if err != nil {

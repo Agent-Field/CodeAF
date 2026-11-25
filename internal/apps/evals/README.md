@@ -27,8 +27,8 @@ The adversarial suite checks empty results, paginated reads after 2,000
 records, and the stale-write refusal through the data wire. Event replay,
 hostile text in records and email, identity after renames, guarded undo, and
 AI writes under an agent principal have independent assertions behind
-`Stimulus`. The stock process adapter reports these as failed with an
-unavailable reason until trusted stimulus support is connected. An engine
+`Stimulus`. The stock process adapter reports these as unrun and the case as
+incomplete until trusted stimulus support is connected. An engine
 that cannot publish a case still reports every unrun probe.
 
 For the design judge, set `CODEAF_APP_EVAL_LOOKS` to a directory of Desk

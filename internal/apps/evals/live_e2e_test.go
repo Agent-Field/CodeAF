@@ -35,8 +35,8 @@ func evalKey() string {
 
 func TestLiveGallery(t *testing.T) {
 	key := evalKey()
-	if key == "" {
-		t.Skip("no provider key resolved by the profile")
+	if !strings.HasPrefix(key, "sk-or-v1-") {
+		t.Skip("the profile did not resolve an OpenRouter key")
 	}
 	runGallery(t, key, false)
 }
@@ -72,11 +72,12 @@ func runGallery(t *testing.T, key string, noModel bool) {
 			defer cancel()
 			scratch := t.TempDir()
 			var crm string
-			if c.Name == "hiring-reuses-contacts" {
+			if c.Fixture == "crm-contact" {
 				crm = seedCRM(t, scratch)
 			}
 			engine, err := launch(ctx, binary, scratch, key, builderModel)
 			if err != nil {
+				results = append(results, Result{Case: c.Name, Failures: []string{err.Error()}, Adversarial: skippedProbes("engine could not start")})
 				t.Fatal(err)
 			}
 			defer func() {
@@ -102,6 +103,9 @@ func runGallery(t *testing.T, key string, noModel bool) {
 			results = append(results, result)
 			for _, failure := range result.Failures {
 				t.Error(failure)
+			}
+			if result.Pass && !result.Complete {
+				t.Log("some platform stimuli were unavailable; see the report")
 			}
 		})
 	}
@@ -179,7 +183,7 @@ func TestLiveDesignRubric(t *testing.T) {
 				data, err := fs.ReadFile(os.DirFS(root), path)
 				if err == nil {
 					var score Score
-					score, err = ScoreLook(t.Context(), frontierJudge{client}, string(language), look, data)
+					score, err = ScoreLook(t.Context(), frontierJudge{client}, string(language), look, viewport.pixels, data)
 					if err == nil {
 						entry.Score = &score
 					}

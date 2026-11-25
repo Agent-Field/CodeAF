@@ -21,12 +21,12 @@ func TestScoreLookValidatesJudgeOutput(t *testing.T) {
 		}
 		return valid, nil
 	})
-	got, err := ScoreLook(t.Context(), model, "Use one primary action.", look, capture.Bytes())
+	got, err := ScoreLook(t.Context(), model, "Use one primary action.", look, 2, capture.Bytes())
 	if err != nil || got != valid {
 		t.Fatalf("score = %+v, %v", got, err)
 	}
 	valid.Legibility = 6
-	if _, err := ScoreLook(t.Context(), model, "Use one primary action.", look, capture.Bytes()); err == nil {
+	if _, err := ScoreLook(t.Context(), model, "Use one primary action.", look, 2, capture.Bytes()); err == nil {
 		t.Fatal("judge score outside the rubric passed")
 	}
 }
