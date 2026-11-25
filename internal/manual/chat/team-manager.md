@@ -540,9 +540,14 @@ A top-level manager's turn ending does not start the global manager's turn. You 
 those managers directly and each answer ends a turn, so the endings stay in `All teams`'
 traffic, where `team_status` reads them. The global manager is woken by what a manager posts
 to it with `team_post`, by a manager's question or a permission it is held on, and by a
-manager's turn failing. It is told never to send a manager your own request to that manager
+manager's turn failing. So a directive the global manager sent is answered with `team_post`:
+each manager is told to answer its directives that way, and apart from those answers to post
+only what the global manager should act on or tell you. A manager that ends its turn on a
+directive without posting has told the global manager nothing, and `team_status` is where it
+finds out. The global manager is told never to send a manager your own request to that manager
 back as a directive. A member of `All teams` that manages no team is an ordinary member
-there: its turn ending wakes the global manager as in any team.
+there: it is told what a member of any team is told, and its turn ending wakes the global
+manager as in any team.
 
 ## Conflicts between members and teams
 

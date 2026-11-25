@@ -9,12 +9,15 @@ package session
 // teams.json and real Traffic, through internal/teams.
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -524,7 +527,10 @@ func TestAnUnmanagedSubTeamsMemberAnswersToTheManagerAbove(t *testing.T) {
 
 // THE GLOBAL MANAGER IS NOT WOKEN BY A TOP-LEVEL MANAGER'S TURN ENDING. The
 // person talks to that manager directly and each answer ends a turn; what the
-// global manager should act on is posted to it, and that still wakes it.
+// global manager should act on is posted to it, and that still wakes it. A
+// directive of the global manager's is answered the same way, and both sides
+// are told so, because the ending that closes the loop in any other team says
+// nothing here.
 func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
 	fastTeamWake(t)
 	n := newTeamTree(t, "gm", "boss", "web")
@@ -541,9 +547,13 @@ func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
 	}
 	gmCalls := oneAnswer(4)
 	gm := teamAgent(t, n.fixture, n.paths["gm"], gmCalls, nil)
-	boss := teamAgent(t, n.fixture, n.paths["boss"], oneAnswer(4), nil)
+	bossCalls := oneAnswer(4)
+	boss := teamAgent(t, n.fixture, n.paths["boss"], bossCalls, nil)
 
 	submitAndWait(t, boss, "plan the release")
+	if role := strings.Join(roleNotes(bossCalls.request(0)), "\n"); !strings.Contains(role, "Your turn ending tells it nothing: answer each of its directives with team_post to the manager.") {
+		t.Fatalf("the top-level manager is not told to answer the global manager's directive with a post:\n%s", role)
+	}
 	boss.settleTeamEvents()
 	// Past the settle a wake waits out, with room: a wake the ending had armed
 	// would have fired by now.
@@ -564,7 +574,7 @@ func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
 	}
 	waitRequests(t, gmCalls, 1)
 	asked := userTextIn(gmCalls.request(0))
-	for _, want := range []string{"from @boss: harbor shipped", "A manager's turn ending does not start yours", "and their failing or asking, come back to you"} {
+	for _, want := range []string{"from @boss: harbor shipped", "A manager answers a directive of yours with team_post", "and their failing or asking, come back to you", "A top-level team's manager ending its turn does not start yours."} {
 		if !strings.Contains(asked, want) {
 			t.Fatalf("the global manager's turn lacks %q:\n%s", want, asked)
 		}
@@ -575,8 +585,9 @@ func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
 	if strings.Contains(asked, "finished its turn") || strings.Contains(asked, "What your members in") {
 		t.Fatalf("the ending rode into the global manager's turn as something that woke it:\n%s", asked)
 	}
-	// Its own send's answer does not promise that an ending wakes it.
-	if said := sendDirective(t, gm, "boss"); strings.Contains(said, "endings wake you") || !strings.Contains(said, "A manager's turn ending on its own does not wake you") {
+	// Its own send's answer does not promise that an ending wakes it, and says
+	// what answers the directive.
+	if said := sendDirective(t, gm, "boss"); strings.Contains(said, "endings wake you") || !strings.Contains(said, "A top-level team's manager answers a directive with team_post: its turn ending alone does not wake you") {
 		t.Fatalf("the global manager's send says endings wake it: %s", said)
 	}
 }
@@ -584,7 +595,8 @@ func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
 // A GLOBAL MANAGER NOBODY HAS OPEN IS NOT OPENED BY THE ENDING EITHER, and is
 // still opened by a top-level manager's failure. A member of the team that
 // holds every team that manages nothing is an ordinary member there: its
-// ending opens the manager as it does in any team.
+// ending opens the manager as it does in any team, and its role says nothing
+// about managing a team or an ending nobody hears.
 func TestAClosedGlobalManagerIsNotOpenedByATopLevelManagersTurnEnding(t *testing.T) {
 	fastTeamWake(t)
 	n := newTeamTree(t, "gm", "boss", "web", "guest")
@@ -612,7 +624,18 @@ func TestAClosedGlobalManagerIsNotOpenedByATopLevelManagersTurnEnding(t *testing
 		}
 		return count
 	}
-	boss := teamAgent(t, n.fixture, n.paths["boss"], oneAnswer(2), nil)
+	waitOpened := func(want int) bool {
+		deadline := time.Now().Add(5 * time.Second)
+		for opened() < want && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		return opened() >= want
+	}
+	bossCalls := oneAnswer(1)
+	bossCalls.steps = append(bossCalls.steps, func(context.Context, []ai.Message) (*ai.Response, error) {
+		return nil, errors.New("insufficient_quota: out of budget")
+	})
+	boss := teamAgent(t, n.fixture, n.paths["boss"], bossCalls, nil)
 	submitAndWait(t, boss, "plan the release")
 	boss.settleTeamEvents()
 	time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
@@ -620,15 +643,32 @@ func TestAClosedGlobalManagerIsNotOpenedByATopLevelManagersTurnEnding(t *testing
 		t.Fatalf("a closed global manager was opened %d times by a top-level manager's turn ending", got)
 	}
 
-	guest := teamAgent(t, n.fixture, n.paths["guest"], oneAnswer(2), nil)
+	submitAndWait(t, boss, "ship it")
+	boss.settleTeamEvents()
+	all := teamFixture{profile: n.fixture.profile, teamID: root}
+	if failed := trafficEvents(t, all, "failed: "); len(failed) != 1 || failed[0].State != teams.StateFailed {
+		t.Fatalf("the top-level manager's failed turn is not one failed event in the team that holds every team: %+v", failed)
+	}
+	if !waitOpened(1) {
+		t.Fatal("a top-level manager's turn failed and the closed global manager was not opened")
+	}
+
+	before := opened()
+	guestCalls := oneAnswer(2)
+	guest := teamAgent(t, n.fixture, n.paths["guest"], guestCalls, nil)
 	submitAndWait(t, guest, "tidy the notes")
 	guest.settleTeamEvents()
-	deadline := time.Now().Add(5 * time.Second)
-	for opened() == 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if got := opened(); got == 0 {
+	if !waitOpened(before + 1) {
 		t.Fatal("a member of the team that holds every team that manages nothing ended its turn and its manager was not opened")
+	}
+	role := strings.Join(roleNotes(guestCalls.request(0)), "\n")
+	if !strings.Contains(role, `in the team "All teams", which has a manager.`) {
+		t.Fatalf("a member of the team that holds every team that manages nothing is not told it is a member there:\n%s", role)
+	}
+	for _, not := range []string{"you manage a top-level team", "Your turn ending tells it nothing"} {
+		if strings.Contains(role, not) {
+			t.Fatalf("a member that manages nothing is told %q, which is true of a top-level team's manager only:\n%s", not, role)
+		}
 	}
 }
 

@@ -1735,7 +1735,7 @@ func teamManagerScope(role teamRole, file *teams.File) string {
 	if role.root {
 		parts = append(parts, fmt.Sprintf("You are the global manager: %q holds every team, and your members are the managers of the top-level teams, never their members. "+
 			"Direct those managers and they pass it on. Their questions and conflicts between teams come to you before the person. team_start with kind team starts a new top-level team. "+
-			"A manager's turn ending does not start yours; team_status says where each of them stands. "+
+			"A manager answers a directive of yours with team_post, since its turn ending tells you nothing; team_status says where each of them stands. "+
 			"The person talks to those managers directly, and what the person asked one of them is that manager's work already: never send a manager the person's own request to it as a directive of yours.", role.name))
 	} else if home, ok := file.Home(role.key); ok && home.Team != role.id {
 		boss := "its manager"
@@ -1775,13 +1775,14 @@ func teamManagerDelivery(role teamRole) string {
 	if !role.wakes {
 		return "This team's auto-wake is off: what you send, and your members' replies, wait for each conversation's next turn, so an idle member does not start on a directive until it next runs."
 	}
-	// The global manager's turn is not started by a member's turn ending
-	// ([teamEventWakesManagerOf]).
-	back := "Members' replies to you, and their finishing, failing or asking,"
+	// The global manager's turn is not started by a top-level manager's turn
+	// ending ([teamEventWakesManagerOf]). The root can hold ordinary members
+	// too, so the sentence names whose ending it is.
+	back, except := "Members' replies to you, and their finishing, failing or asking,", ""
 	if role.root {
-		back = "Members' replies to you, and their failing or asking,"
+		back, except = "Members' replies to you, and their failing or asking,", " A top-level team's manager ending its turn does not start yours."
 	}
-	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. team_send's answer says whether each member started: one the person paused does not start until they resume it, and work is under way only where the answer says so. " + back + " come back to you and start your turn when you are idle, so do not wait or poll for them."
+	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. team_send's answer says whether each member started: one the person paused does not start until they resume it, and work is under way only where the answer says so. " + back + " come back to you and start your turn when you are idle, so do not wait or poll for them." + except
 }
 
 // teamRoster names the manager's members by handle, with the start of each
@@ -1834,10 +1835,14 @@ func teamMemberRole(role teamRole) string {
 	if role.handle != "" {
 		you = "@" + role.handle
 	}
-	if role.root {
+	// Only a top-level team's manager is told its ending is silent: anybody
+	// else the root holds is an ordinary member there, whose ending wakes the
+	// global manager ([teamRole.quietEnding]), and reads the text below.
+	if role.quietEnding(role.key) {
 		return fmt.Sprintf("You are %s in %q because you manage a top-level team: you report to its manager, the global manager. Its directives reach you marked \"◆ from manager\", "+
 			"your questions go to it before the person, and you report to it with team_post to the manager. "+
-			"Your turn ending does not start its turn: post what it should act on or tell the person, and nothing the person already has from you here.", you, role.name)
+			"Your turn ending tells it nothing: answer each of its directives with team_post to the manager. "+
+			"Apart from those answers, post only what it should act on or tell the person.", you, role.name)
 	}
 	if role.boss != "" && role.boss != role.id && !role.shared {
 		said := fmt.Sprintf("You are %s in the team %q, which has no manager of its own, so you answer to the manager of %q: team_post to the manager reaches it, and to the room or a teammate stays in %q.",
