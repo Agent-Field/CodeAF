@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -57,6 +58,7 @@ type ChangeEvent struct {
 type Config struct {
 	ResolveParams func(app string, declared map[string]Parameter, provided map[string]any) (map[string]any, error)
 	RecordInput   func(app string, change Change) (Change, error)
+	ReadRecords   func(app string, recordType string) ([]any, error)
 	Root          string
 	Now           func() time.Time
 	Load          func(app, run string) (Definition, error)
@@ -76,14 +78,21 @@ type Engine struct {
 	cfg     Config
 	journal *store.Store
 	lock    *os.File
-	// The clock serializes execution, while the journal lock allows starts
-	// and approvals to commit during a model turn or connector call.
+	// The clock serializes schedule scanning. Each runnable instance also
+	// claims a worker before it can make any effects.
 	clock       sync.Mutex
 	mu          sync.Mutex
 	checkpoints map[string]json.RawMessage
 	active      map[string]Run
-	started     bool
+	busy        map[string]bool
+	workers     sync.WaitGroup
+	openedAt    time.Time
+	closing     bool
 	closed      bool
+	lifetime    context.Context
+	cancel      context.CancelFunc
+	closeOnce   sync.Once
+	closeErr    error
 }
 
 type checkpoint struct {
@@ -98,7 +107,7 @@ type checkpoint struct {
 	Prepared     bool           `json:"prepared"`
 	Action       *action        `json:"action,omitempty"`
 	Approved     string         `json:"approved,omitempty"`
-	Denied       bool           `json:"denied,omitempty"`
+	Declined     string         `json:"declined,omitempty"`
 	RaisedBudget float64        `json:"raised_budget,omitempty"`
 	ApprovalSeq  int            `json:"approval_seq"`
 }
@@ -142,7 +151,12 @@ func Open(cfg Config) (*Engine, error) {
 		lock.Close()
 		return nil, err
 	}
-	e := &Engine{cfg: cfg, journal: journal, lock: lock, checkpoints: entries, active: make(map[string]Run)}
+	lifetime, cancel := context.WithCancel(context.Background())
+	e := &Engine{
+		cfg: cfg, journal: journal, lock: lock, checkpoints: entries,
+		active: make(map[string]Run), busy: make(map[string]bool),
+		lifetime: lifetime, cancel: cancel, openedAt: cfg.Now(),
+	}
 	for key, raw := range entries {
 		if !strings.HasPrefix(key, runPrefix) {
 			continue
@@ -158,15 +172,20 @@ func Open(cfg Config) (*Engine, error) {
 }
 
 func (e *Engine) Close() error {
-	e.clock.Lock()
-	defer e.clock.Unlock()
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.closed {
-		return nil
-	}
-	e.closed = true
-	return errors.Join(e.journal.Close(), e.lock.Close())
+	e.closeOnce.Do(func() {
+		e.clock.Lock()
+		e.mu.Lock()
+		e.closing = true
+		e.mu.Unlock()
+		e.clock.Unlock()
+		e.cancel()
+		e.workers.Wait()
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		e.closed = true
+		e.closeErr = errors.Join(e.journal.Close(), e.lock.Close())
+	})
+	return e.closeErr
 }
 
 func decode[T any](raw []byte) (T, error) {
@@ -367,7 +386,7 @@ func (e *Engine) answer(id, approval string, allow bool, dollars float64) error 
 		err = errors.New("this run approval is no longer waiting")
 	}
 	if err == nil && c.Approval.Kind == "budget" && allow {
-		if dollars <= max(c.Cost, c.budget()) {
+		if dollars <= c.Approval.MinBudget {
 			err = errors.New("enter a new budget above the current limit and cost")
 		} else {
 			c.RaisedBudget = dollars
@@ -379,7 +398,12 @@ func (e *Engine) answer(id, approval string, allow bool, dollars float64) error 
 		if c.Approval.Kind != "budget" {
 			c.Approved = c.Approval.Kind
 		}
-		c.Denied = !allow
+		if !allow {
+			c.Declined = "approval declined"
+			if c.Approval.Kind == "budget" {
+				c.Declined = "stopped at the per-run budget"
+			}
+		}
 		c.Approval = nil
 		c.State = Running
 		err = e.saveLocked(&c, "", nil)
@@ -394,28 +418,78 @@ func (e *Engine) answer(id, approval string, allow bool, dollars float64) error 
 // Tick fires due schedules and advances runnable steps until they block.
 // Check and Preview can drive it with a deterministic clock.
 func (e *Engine) Tick(ctx context.Context) error {
-	e.clock.Lock()
-	defer e.clock.Unlock()
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	err := e.schedules()
-	e.started = true
-	for _, r := range e.activeRuns() {
-		if ctx.Err() != nil {
-			return errors.Join(err, ctx.Err())
+	ready, err := e.ready(ctx)
+	for _, r := range ready {
+		if e.claim(r.ID) {
+			err = errors.Join(err, e.work(ctx, r.ID))
 		}
-		if r.State != Running && (r.State != Waiting || r.WakeAt.IsZero() || e.cfg.Now().Before(r.WakeAt)) {
-			continue
-		}
-		c, readErr := e.read(r.ID)
-		if readErr != nil {
-			err = errors.Join(err, readErr)
-			continue
-		}
-		err = errors.Join(err, e.progress(ctx, &c))
 	}
 	return err
+}
+
+const maxRunWorkers = 4
+
+// Dispatch fires due schedules and starts ready run workers. The live clock
+// can scan again while a connector or model is still answering another run.
+func (e *Engine) Dispatch(ctx context.Context, report func(error)) error {
+	ready, err := e.ready(ctx)
+	for _, r := range ready {
+		if e.claim(r.ID) {
+			guard.Go("app run", func() {
+				if err := e.work(ctx, r.ID); err != nil && report != nil {
+					report(err)
+				}
+			})
+		}
+	}
+	return err
+}
+
+func (e *Engine) ready(ctx context.Context) ([]Run, error) {
+	e.clock.Lock()
+	defer e.clock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := e.lifetime.Err(); err != nil {
+		return nil, err
+	}
+	err := e.schedules()
+	list := e.activeRuns()
+	return slices.DeleteFunc(list, func(r Run) bool { return !r.ready(e.cfg.Now()) }), err
+}
+
+func (r Run) ready(now time.Time) bool {
+	return r.State == Running || r.State == Waiting && !r.WakeAt.IsZero() && !now.Before(r.WakeAt)
+}
+
+func (e *Engine) claim(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closing || len(e.busy) >= maxRunWorkers || e.busy[id] {
+		return false
+	}
+	e.busy[id] = true
+	e.workers.Add(1)
+	return true
+}
+
+func (e *Engine) work(ctx context.Context, id string) error {
+	defer func() {
+		e.mu.Lock()
+		delete(e.busy, id)
+		e.mu.Unlock()
+		e.workers.Done()
+	}()
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(e.lifetime, cancel)
+	defer cancel()
+	defer stop()
+	c, err := e.read(id)
+	if err != nil || !c.Run.ready(e.cfg.Now()) {
+		return err
+	}
+	return e.progress(ctx, &c)
 }
 
 func validCost(cost float64) bool {

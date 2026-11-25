@@ -57,3 +57,39 @@ func TestCRMFollowUpOnSampleData(t *testing.T) {
 		t.Fatalf("record writes = %+v", writes)
 	}
 }
+
+func TestCRMWonTriggerDraftsThenWaitsForSlackApproval(t *testing.T) {
+	contents, err := os.ReadFile("testdata/crm/won-handoff.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := runs.NewFakeConnector(map[string]runs.Reply{"slack.post": {Output: "posted"}})
+	e := newEngine(t, string(contents), runs.Config{
+		Connector: fake,
+		Triggers: func() ([]runs.Trigger, error) {
+			return []runs.Trigger{{App: "crm", ID: "won", On: "record.changed", Run: "won-handoff", Type: "deal",
+				When: "changed('stage') && stage == 'Won'"}}, nil
+		},
+		Agent: func(_ context.Context, c runs.AgentCall) (runs.Reply, error) {
+			if !strings.Contains(c.Prompt, "Northstar upgrade at Northstar") {
+				t.Fatalf("prompt = %s", c.Prompt)
+			}
+			return runs.Reply{Output: "Handoff ready"}, nil
+		},
+	})
+	err = e.RecordChanged(runs.Change{
+		Type: "deal", ID: "d1", Before: map[string]any{"stage": "Proposal"},
+		After: map[string]any{"stage": "Won", "name": "Northstar upgrade", "company": map[string]any{"name": "Northstar"}, "amount": 2000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	list, err := e.List("crm", "won-handoff")
+	if err != nil || len(list) != 1 || list[0].Approval == nil || list[0].Approval.Tool != "slack.post" {
+		t.Fatalf("runs = %+v, %v", list, err)
+	}
+	if len(fake.Calls()) != 0 {
+		t.Fatal("Slack was called before approval")
+	}
+}

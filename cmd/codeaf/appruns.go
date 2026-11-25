@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -53,7 +54,11 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 		defer ticker.Stop()
 		var last string
 		for ctx.Err() == nil {
-			if err := e.Tick(ctx); err != nil && ctx.Err() == nil && err.Error() != last {
+			if err := e.Dispatch(ctx, func(err error) {
+				if ctx.Err() == nil {
+					fmt.Fprintln(os.Stderr, "app run:", err)
+				}
+			}); err != nil && ctx.Err() == nil && err.Error() != last {
 				last = err.Error()
 				fmt.Fprintln(os.Stderr, "app runs:", err)
 			}
@@ -108,7 +113,16 @@ func appRunError(err error) error {
 }
 
 func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.AgentCall) (runs.Reply, error) {
+	paidTurn := make(chan struct{}, 1)
 	return func(ctx context.Context, call runs.AgentCall) (runs.Reply, error) {
+		// Serialize the spend estimate and its receipt for app runs so two
+		// simultaneous model steps cannot both spend the same daily balance.
+		select {
+		case paidTurn <- struct{}{}:
+			defer func() { <-paidTurn }()
+		case <-ctx.Done():
+			return runs.Reply{}, ctx.Err()
+		}
 		system, model, err := files.AgentPrompt(call.App)
 		if err != nil {
 			return runs.Reply{}, err
@@ -196,10 +210,10 @@ func (b *appBackend) checkRunAnswer(agent, ask, option, text string) error {
 			return nil
 		case appwire.OptionRaise:
 			dollars, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
-			if err == nil && dollars > r.Cost {
+			if err == nil && !math.IsInf(dollars, 0) && dollars > r.Approval.MinBudget {
 				return nil
 			}
-			return appwire.Errorf(appwire.CodeBadParams, "enter a new budget in dollars above the run's cost")
+			return appwire.Errorf(appwire.CodeBadParams, "enter a new budget in dollars above the current limit and cost")
 		default:
 			return appwire.Errorf(appwire.CodeBadParams, "choose Raise budget or Stop")
 		}

@@ -1963,6 +1963,20 @@ $0.10 goes out as `0.1`.
 | `rules.list` | `{}` | `RulesResult` |
 | `rules.remove` | `in.crewID` | `Empty` |
 
+## runs methods
+
+| method | params | result |
+|---|---|---|
+| `runs.start` | `{app, run, params?, draft?}` | `{id}` |
+| `runs.list` | `{app?, run?}` | `{runs: [Run]}` |
+| `runs.get` | `{app?, id}` | `Run` |
+
+`run` names the saved definition and `id` names an individual execution.
+`Run` includes `{app, run, id, state, step, started_at, updated_at}` and can
+include `{caught_up, cost, approval, wake_at, ended_at, error}`. Use
+`runs.changed` to refresh a displayed run. Draft starts are refused until a
+preview engine can supply its sample store and connector fakes.
+
 ## search methods
 
 | method | params | result |
@@ -2242,6 +2256,7 @@ and the reply is empty.
 | `process.output` | `ProcessOutput` |
 | `provider.changed` | `ProviderChanged` |
 | `queue.changed` | `QueueChanged` |
+| `runs.changed` | `{app, run, id, state, step}` |
 | `quick.changed` | `QuickChangedEvent` |
 | `render.changed` | `RenderChanged` |
 | `settings.changed` | `SettingsChanged` |

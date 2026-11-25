@@ -84,7 +84,7 @@ func (e *Engine) fire(t Trigger, now time.Time) error {
 	}
 	// Jump directly to the next future slot. Creation of the one catch-up
 	// run and consumption of all missed slots commit together.
-	_, err = e.start(t.App, t.Run, nil, nil, (now.After(prev.Next) && !e.started) || now.Sub(prev.Next) >= time.Minute, key, clock)
+	_, err = e.start(t.App, t.Run, nil, nil, prev.Next.Before(e.openedAt), key, clock)
 	return err
 }
 
@@ -121,6 +121,7 @@ func (e *Engine) RecordChanged(change Change) error {
 		delete(vars, "type") // The reserved CEL name is still available through record.type.
 		vars["record"], vars["input"], vars["me"] = record, input, "me"
 		vars["now"] = e.cfg.Now().UTC().Format(time.RFC3339Nano)
+		e.addRecordReader(t.App, vars)
 		ok, conditionErr := condition(t.When, vars, scoped.changed)
 		if conditionErr != nil {
 			err = errors.Join(err, fmt.Errorf("%s trigger %s: %w", t.App, t.ID, conditionErr))

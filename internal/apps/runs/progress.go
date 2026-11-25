@@ -25,13 +25,14 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 		if c.Visit > maxTransitions {
 			return e.stop(c, YourCall, "step limit reached")
 		}
-		if c.Denied {
-			return e.stop(c, Incomplete, "approval declined")
+		if c.Declined != "" {
+			return e.stop(c, Incomplete, c.Declined)
 		}
 		if c.Approval != nil || (c.State == Waiting && e.cfg.Now().Before(c.WakeAt)) {
 			return nil
 		}
 		steps, vars := c.scope(e.cfg.Now())
+		e.addRecordReader(c.App, vars)
 		current := &c.Frames[len(c.Frames)-1]
 		if current.Index == len(steps) {
 			if len(c.Frames) == 1 {
@@ -289,6 +290,7 @@ func (e *Engine) enterRound(c *checkpoint) error {
 	}
 	if parent.Loop.Until != "" && frame.Round > 0 {
 		_, vars := c.scope(e.cfg.Now())
+		e.addRecordReader(c.App, vars)
 		finished, err := condition(parent.Loop.Until, vars, nil)
 		if err != nil {
 			return e.stop(c, Incomplete, err.Error())
@@ -316,6 +318,7 @@ func (e *Engine) askBudget(c *checkpoint) error {
 	c.State = YourCall
 	c.Error = ErrBudget.Error()
 	c.Approval = c.approval("budget")
+	c.Approval.MinBudget = max(c.Cost, c.budget())
 	return e.publishApproval(c)
 }
 
@@ -397,7 +400,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 
 func (c *checkpoint) reset() {
 	c.Action, c.Approval = nil, nil
-	c.Approved, c.Denied, c.Prepared = "", false, false
+	c.Approved, c.Declined, c.Prepared = "", "", false
 	c.Attempt, c.State, c.WakeAt = 0, Running, time.Time{}
 	c.Visit++
 }

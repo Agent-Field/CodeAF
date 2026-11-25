@@ -50,11 +50,12 @@ type AgentCall struct {
 }
 
 type Approval struct {
-	ID   string         `json:"id"`
-	Kind string         `json:"kind"`
-	Who  string         `json:"who"`
-	Tool string         `json:"tool,omitempty"`
-	Args map[string]any `json:"args,omitempty"`
+	ID        string         `json:"id"`
+	Kind      string         `json:"kind"`
+	Who       string         `json:"who"`
+	Tool      string         `json:"tool,omitempty"`
+	Args      map[string]any `json:"args,omitempty"`
+	MinBudget float64        `json:"min_budget,omitempty"`
 }
 
 type FakeConnector struct {

@@ -395,3 +395,85 @@ steps:
 		t.Fatalf("run = %+v, calls = %+v", got, fake.Calls())
 	}
 }
+
+func TestDispatchDoesNotHoldOtherRunsBehindAgent(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	blocked := make(chan struct{})
+	done := make(chan struct{})
+	e, err := runs.Open(runs.Config{
+		Root: t.TempDir(),
+		Load: func(_, run string) (runs.Definition, error) {
+			if run == "slow" {
+				return runs.Parse([]byte("run: slow\nsteps:\n  - id: model\n    agent: Example\n    prompt: Go"))
+			}
+			return runs.Parse([]byte("run: normal\nsteps:\n  - id: ask\n    gate: {approval: plan}"))
+		},
+		Agent: func(ctx context.Context, _ runs.AgentCall) (runs.Reply, error) {
+			close(blocked)
+			<-ctx.Done()
+			return runs.Reply{}, ctx.Err()
+		},
+		Ask: func(r runs.Run) {
+			if r.Run == "normal" {
+				close(done)
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if _, err := e.Start("app", "slow", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Dispatch(ctx, func(err error) { t.Error(err) }); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-blocked:
+	case <-ctx.Done():
+		t.Fatal("slow run never reached the model")
+	}
+	normal, err := e.Start("app", "normal", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Dispatch(ctx, func(err error) { t.Error(err) }); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+		if got := state(t, e, normal.ID); got.Approval == nil {
+			t.Fatalf("run = %+v", got)
+		}
+	case <-ctx.Done():
+		t.Fatal("another run's model blocked the approval")
+	}
+}
+
+func TestIfUsesScopedRecordsAndDollarReferences(t *testing.T) {
+	fake := runs.NewFakeConnector(map[string]runs.Reply{"demo.read": {Output: "ok"}})
+	e := newEngine(t, `
+run: example
+params:
+  currency: {type: text, default: '$USD'}
+steps:
+  - id: only
+    if: "count(records('deal')) == 1 && $me == me() && $params.currency == '$USD'"
+    tool: demo.read
+`, runs.Config{
+		Connector: fake,
+		ReadRecords: func(app, typ string) ([]any, error) {
+			if app != "app" || typ != "deal" {
+				t.Fatalf("record read = %s %s", app, typ)
+			}
+			return []any{map[string]any{"name": "Deal"}}, nil
+		},
+	})
+	r := start(t, e)
+	tick(t, e)
+	if got := state(t, e, r.ID); got.State != runs.Done || len(fake.Calls()) != 1 {
+		t.Fatalf("run = %+v, calls = %+v", got, fake.Calls())
+	}
+}
