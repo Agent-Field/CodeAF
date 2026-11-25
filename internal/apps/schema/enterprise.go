@@ -36,30 +36,39 @@ type Channel struct {
 }
 
 type RoutingRule struct {
-	Kind     string   `json:"kind"`
-	Record   string   `json:"record"`
-	When     string   `json:"when,omitempty"`
-	WorkItem string   `json:"workItem,omitempty"`
-	Strategy string   `json:"strategy,omitempty"`
-	Field    string   `json:"field,omitempty"`
-	Skill    string   `json:"skill,omitempty"`
-	Order    string   `json:"order,omitempty"`
-	Roles    []string `json:"roles,omitempty"`
-	Delegate string   `json:"delegate,omitempty"`
+	Kind            string            `json:"kind"`
+	Record          string            `json:"record"`
+	When            string            `json:"when,omitempty"`
+	Transition      string            `json:"transition,omitempty"`
+	Candidates      []string          `json:"candidates,omitempty"`
+	Matches         map[string]string `json:"matches,omitempty"`
+	OwnerField      string            `json:"ownerField,omitempty"`
+	Priority        int               `json:"priority,omitempty"`
+	Statement       string            `json:"statement,omitempty"`
+	MakerCannotSign bool              `json:"makerCannotSign,omitempty"`
+	WorkItem        string            `json:"workItem,omitempty"`
+	Strategy        string            `json:"strategy,omitempty"`
+	Field           string            `json:"field,omitempty"`
+	Skill           string            `json:"skill,omitempty"`
+	Order           string            `json:"order,omitempty"`
+	Roles           []string          `json:"roles,omitempty"`
+	Delegate        string            `json:"delegate,omitempty"`
 }
 
 type Resource struct {
-	Record  string  `json:"record"`
+	Record  string  `json:"record,omitempty"`
 	Label   string  `json:"label"`
 	Booking Booking `json:"booking"`
 }
 
 type Booking struct {
-	Type     string `json:"type"`
-	Resource string `json:"resource"`
-	Start    string `json:"start"`
-	End      string `json:"end"`
-	Overlap  string `json:"overlap"`
+	Type      string `json:"type"`
+	Resource  string `json:"resource"`
+	Start     string `json:"start,omitempty"`
+	End       string `json:"end,omitempty"`
+	Overlap   string `json:"overlap,omitempty"`
+	Day       string `json:"day,omitempty"`
+	MaxPerDay int    `json:"maxPerDay,omitempty"`
 }
 
 type Sequence struct {
@@ -196,10 +205,39 @@ func (c *checker) checkChannel(at string, channel Channel) {
 
 func (c *checker) checkRoutingRule(at string, r RoutingRule) {
 	c.checkRecordAccess(AppFile, at+"/record", r.Record, "r")
+	if def, ok := c.app.Records[r.Record]; !ok || def.Uses {
+		c.add(AppFile, at+"/record", CodePolicy, "The app must define the record type a rule governs.")
+	}
+	if r.Transition != "" {
+		l, _ := c.lifecycle(r.Record)
+		_, exists := l.Transitions[r.Transition]
+		if def := c.app.Records[r.Record].Lifecycle; def != nil {
+			for _, tr := range def.Transitions {
+				exists = exists || tr.ID == r.Transition
+			}
+		}
+		if !exists {
+			c.add(AppFile, at+"/transition", CodePolicy, "There is no %s transition named %q.", r.Record, r.Transition)
+		}
+	}
 	c.checkRecordExpression(AppFile, at+"/when", r.Record, r.When)
 	c.checkProcessRef(AppFile, at+"/workItem", "work_items", r.WorkItem, r.Record)
 	if r.Field != "" {
-		c.checkTaggedField(AppFile, at+"/field", r.Record, r.Field, "person")
+		fields, _ := c.typeFields(r.Record)
+		field := fields[r.Field]
+		switch {
+		case r.Strategy == "linked-owner":
+			if field.Type != "ref" || field.Masked {
+				c.add(AppFile, at+"/field", CodePolicy, "Linked owner needs a visible single record reference.")
+			} else {
+				c.checkRecordAccess(AppFile, at+"/field", field.To, "r")
+				c.checkRuleField(at+"/ownerField", field.To, r.OwnerField, "person")
+			}
+		case len(r.Matches) > 0:
+			c.checkRuleField(at+"/field", r.Record, r.Field, "text", "enum", "person")
+		default:
+			c.checkRuleField(at+"/field", r.Record, r.Field, "person")
+		}
 	}
 	for _, id := range append(append([]string(nil), r.Roles...), r.Delegate) {
 		if id != "" {
@@ -210,19 +248,39 @@ func (c *checker) checkRoutingRule(at string, r RoutingRule) {
 	}
 }
 
+func (c *checker) checkRuleField(at, record, name string, types ...string) {
+	fields, _ := c.typeFields(record)
+	field := fields[name]
+	if field.Masked || !contains(types, field.Type) {
+		c.add(AppFile, at, CodePolicy, "%s.%s must be a visible %v field.", record, name, types)
+	}
+}
+
 func (c *checker) checkResource(at string, r Resource) {
-	c.checkRecordAccess(AppFile, at+"/record", r.Record, "r")
 	b := r.Booking
 	if !c.checkRecordAccess(AppFile, at+"/booking/type", b.Type, "r") {
 		return
 	}
-	c.checkTaggedField(AppFile, at+"/booking/start", b.Type, b.Start, "clock")
-	c.checkTaggedField(AppFile, at+"/booking/end", b.Type, b.End, "clock")
-	fields, _ := c.typeFields(b.Type)
-	if b.Start == b.End || fields[b.Start].Type != fields[b.End].Type {
-		c.add(AppFile, at+"/booking", CodePolicy, "Booking needs two distinct clock fields of the same type.")
+	if def, ok := c.app.Records[b.Type]; !ok || def.Uses {
+		c.add(AppFile, at+"/booking/type", CodePolicy, "The app must define the booking record type.")
 	}
-	if !contains(c.kit.Registries.Fields[fields[b.Resource].Type].Tags, "relation") || fields[b.Resource].To != r.Record {
+	fields, _ := c.typeFields(b.Type)
+	if b.MaxPerDay > 0 {
+		c.checkRuleField(at+"/booking/day", b.Type, b.Day, "date", "datetime")
+	} else {
+		c.checkRuleField(at+"/booking/start", b.Type, b.Start, "date", "datetime")
+		c.checkRuleField(at+"/booking/end", b.Type, b.End, "date", "datetime")
+		if b.Start == b.End || fields[b.Start].Type != fields[b.End].Type {
+			c.add(AppFile, at+"/booking", CodePolicy, "Booking needs two distinct clock fields of the same type.")
+		}
+	}
+	if r.Record == "" {
+		c.checkRuleField(at+"/booking/resource", b.Type, b.Resource, "person")
+		return
+	}
+	c.checkRecordAccess(AppFile, at+"/record", r.Record, "r")
+	c.checkRuleField(at+"/booking/resource", b.Type, b.Resource, "ref")
+	if fields[b.Resource].To != r.Record {
 		c.add(AppFile, at+"/booking/resource", CodePolicy, "Booking must reference a %s resource record.", r.Record)
 	}
 }

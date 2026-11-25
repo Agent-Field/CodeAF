@@ -32,6 +32,8 @@ const (
 	// CodeDuplicate is a value a unique field already holds on another
 	// record.
 	CodeDuplicate = "duplicate"
+	// CodeBookingConflict names a conflicting booking.
+	CodeBookingConflict = "booking_conflict"
 	// CodeClosed is a call made after the store was closed.
 	CodeClosed = "closed"
 )

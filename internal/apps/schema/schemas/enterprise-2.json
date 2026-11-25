@@ -134,7 +134,8 @@
             "round-robin",
             "load",
             "skill",
-            "role"
+            "role",
+            "linked-owner"
           ]
         },
         "field": {
@@ -152,6 +153,35 @@
             "pattern": "^[a-z][a-z0-9_-]{0,47}$"
           },
           "minItems": 1
+        },
+        "transition": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "ownerField": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S"
+          }
+        },
+        "matches": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S"
+          }
         }
       },
       "required": [
@@ -202,9 +232,47 @@
             }
           },
           "then": {
-            "required": [
-              "roles"
+            "anyOf": [
+              {
+                "required": [
+                  "roles"
+                ]
+              },
+              {
+                "required": [
+                  "candidates"
+                ]
+              }
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "linked-owner"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "field",
+              "ownerField"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "matches"
+            ]
+          },
+          "then": {
+            "properties": {
+              "strategy": {
+                "const": "field"
+              }
+            }
           }
         }
       ]
@@ -236,11 +304,27 @@
             "type": "string",
             "pattern": "^[a-z][a-z0-9_-]{0,47}$"
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "delegate": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "transition": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "makerCannotSign": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -284,19 +368,71 @@
             },
             "overlap": {
               "const": "reject"
+            },
+            "day": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "maxPerDay": {
+              "type": "integer",
+              "minimum": 1
             }
           },
           "required": [
             "type",
-            "resource",
-            "start",
-            "end",
-            "overlap"
+            "resource"
+          ],
+          "oneOf": [
+            {
+              "required": [
+                "start",
+                "end",
+                "overlap"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "day"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "maxPerDay"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "required": [
+                "day",
+                "maxPerDay"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "start"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "end"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "overlap"
+                    ]
+                  }
+                ]
+              }
+            }
           ]
         }
       },
       "required": [
-        "record",
         "label",
         "booking"
       ]

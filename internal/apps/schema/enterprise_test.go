@@ -14,7 +14,7 @@ func TestGalleryEnterpriseDeclarationsResolveInPersonal(t *testing.T) {
 			fields["driver"] = map[string]any{"type": "person"}
 			fields["reversal_of"] = map[string]any{"type": "ref", "to": "delivery"}
 			at(app, "records", "delivery")["ledger"] = map[string]any{"reversal": "reversal_of"}
-			at(app, "records")["truck"] = map[string]any{"title": "name", "fields": map[string]any{"name": map[string]any{"type": "text"}}}
+			at(app, "records")["truck"] = map[string]any{"title": "name", "fields": map[string]any{"name": map[string]any{"type": "text"}, "owner": map[string]any{"type": "person"}}}
 			at(app, "capabilities", "records")["truck"] = "r"
 			app["process"] = map[string]any{
 				"forms": map[string]any{"request": map[string]any{"record": "delivery", "title": "Request a delivery",
@@ -31,10 +31,15 @@ func TestGalleryEnterpriseDeclarationsResolveInPersonal(t *testing.T) {
 				"file": map[string]any{"kind": "file-drop", "record": "delivery", "form": "request", "accept": []string{"text/csv"}}}
 			app["rules"] = map[string]any{
 				"owner":    map[string]any{"kind": "assignment", "record": "delivery", "strategy": "field", "field": "driver", "workItem": "assignment"},
-				"dispatch": map[string]any{"kind": "approval-routing", "record": "delivery", "order": "serial", "roles": []string{"driver"}},
+				"dispatch": map[string]any{"kind": "approval-routing", "record": "delivery", "order": "serial", "roles": []string{"driver"}, "priority": 10, "makerCannotSign": true},
+				"picker":   map[string]any{"kind": "assignment", "record": "delivery", "strategy": "round-robin", "candidates": []string{"agent:a", "agent:b"}, "workItem": "assignment"},
+				"linked":   map[string]any{"kind": "assignment", "record": "delivery", "strategy": "linked-owner", "field": "truck", "ownerField": "owner", "workItem": "assignment"},
+				"region":   map[string]any{"kind": "assignment", "record": "delivery", "strategy": "field", "field": "title", "matches": map[string]string{"Cartage": "me"}, "workItem": "assignment"},
 			}
-			app["resources"] = map[string]any{"trucks": map[string]any{"record": "truck", "label": "Trucks",
-				"booking": map[string]any{"type": "delivery", "resource": "truck", "start": "starts", "end": "ends", "overlap": "reject"}}}
+			app["resources"] = map[string]any{
+				"people": map[string]any{"label": "Drivers", "booking": map[string]any{"type": "delivery", "resource": "driver", "day": "starts", "maxPerDay": 2}},
+				"trucks": map[string]any{"record": "truck", "label": "Trucks",
+					"booking": map[string]any{"type": "delivery", "resource": "truck", "start": "starts", "end": "ends", "overlap": "reject"}}}
 		})(t, d.Files)
 		jsonEdit(PlanFile, func(v map[string]any) {
 			v["data"] = append(v["data"].([]any), map[string]any{"id": "truck", "line": "Available trucks"})
@@ -52,6 +57,8 @@ func TestGalleryEnterpriseDeclarationsResolveInPersonal(t *testing.T) {
 		{"audience widens role", CodePolicy, func(v map[string]any) { at(v, "audiences", "dispatchers")["screens"] = []string{"schedule"} }},
 		{"channel form missing", CodePolicy, func(v map[string]any) { at(v, "channels", "book")["form"] = "missing" }},
 		{"agent audience role missing", CodePolicy, func(v map[string]any) { at(v, "rules", "dispatch")["roles"] = []string{"missing"} }},
+		{"unknown linked owner", CodePolicy, func(v map[string]any) { at(v, "rules", "linked")["ownerField"] = "name" }},
+		{"unknown trigger transition", CodePolicy, func(v map[string]any) { at(v, "rules", "picker")["transition"] = "missing" }},
 		{"date range same endpoint", CodePolicy, func(v map[string]any) { at(v, "resources", "trucks", "booking")["end"] = "starts" }},
 		{"booking must reference resource", CodePolicy, func(v map[string]any) { at(v, "resources", "trucks", "booking")["resource"] = "driver" }},
 		{"sequence refuses an explicit default", CodePolicy, func(v map[string]any) { at(v, "records", "delivery", "fields", "tracking")["default"] = "manual" }},

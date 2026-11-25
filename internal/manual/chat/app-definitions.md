@@ -72,3 +72,61 @@ last cursor you applied. When the engine sends `data.reset`, clear what
 the subscription displayed and refetch under your current access. Set
 `invalidate_only` for a derived list or aggregate to receive resets with
 a cursor. Refetch that view to get its values.
+
+## Auto assign work items on create or transition
+
+Declare an `assignment` under `app.json.rules`. Set `record`, `workItem` (a
+name from `process.work_items`), and `strategy`. An optional `transition`
+limits the rule to that named move. Without it, the rule runs on create and
+on each transition. A `when` condition can filter the resulting record's
+values.
+
+- `round-robin` rotates through `candidates` in order and remembers its place.
+- `load` picks the candidate with the fewest open work items across the
+  space. Ties go to the first candidate.
+- `field` reads a person `field`, or looks up its text or enum value in
+  `matches` to find the assignee.
+- `linked-owner` follows a single record reference in `field` and reads the
+  linked record's person `ownerField`.
+
+Candidates can use `me` or `agent:<name>`. Declared `roles` resolve to
+the local person in Personal. A missing field match or linked owner leaves
+no assignment and adds the reason to record activity. The same writer
+handles app screens, automation, and agent writes.
+
+## Who approves a record and can the creator sign?
+
+An `approval-routing` rule names the `record`, `order` (`serial` or
+`parallel`), and the list of approval `roles`. Use `when` for an amount
+threshold or field condition, such as `amount >= 10000 && category == 'Travel'`.
+Money comparisons use the field's stored number. The highest `priority`
+wins, with equal priorities resolved by rule ID. `transition` limits the
+route to records whose latest transition has that name.
+
+`data.process` shows the selected rule and the approval steps. Each
+`data.signoffs.create` signs the next ready step. Supply the rule's
+`statement` if it declares one. A new record revision needs new sign-offs.
+A `signed()` guard on the move out of review waits for the whole active
+chain. The record timeline explains the route and shows each signed step.
+
+Personal binds each role to the local person. With `makerCannotSign: true`,
+the creator gets “The creator cannot approve their own record. This approval
+requires a second person.” A Personal space has one person, so those steps
+stay open. Agents can prepare work for review. Signing requires a person.
+
+## Prevent double booking or limit bookings per person per day
+
+Declare a resource in `app.json.resources` and give its `booking` the booking
+record `type` and the `resource` field. For rooms or equipment, name the
+resource record type in `record` and use a single reference field. A person
+field needs no separate resource record type.
+
+Use `start`, `end` and `overlap: "reject"` for a time span. A booking can
+start exactly when the previous one ends. Use `day` and `maxPerDay` for a
+daily limit. Datetime values count toward their UTC day. Set all booking
+fields together. Clear them or delete the booking to free its slot.
+
+The writer checks the limit before committing. If a slot is full, the
+`booking_conflict` refusal names a conflicting record. Inspect that record
+or choose another slot. Record activity shows why a committed booking was
+accepted.

@@ -50,6 +50,7 @@ type Field struct {
 // rules, lifecycle) it has now. Hidden is a type no app declares any more;
 // its records are kept and the Data place still shows them.
 type Type struct {
+	rules        writeRules
 	ID           string
 	Name         string
 	CreatedByApp string
@@ -267,7 +268,7 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 		t := &Type{
 			ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
 			Hidden: len(declared[id]) == 0, UsedBy: uses[id], declaredBy: declared[id], Fields: map[string]*Field{},
-			Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
+			rules: writeRules{declarations: def.Rules}, Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
 		}
 		for _, rule := range def.Freeze {
 			t.Freeze = append(t.Freeze, &freezeRule{FreezeRule: rule})
@@ -389,7 +390,9 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 
 	problems := map[string][]error{}
 	for _, name := range sortedKeys(s.types) {
-		if p := s.types[name].compile(now, s.person); len(p) > 0 {
+		p := s.types[name].compile(now, s.person)
+		p = append(p, s.compileRules(s.types[name], now)...)
+		if len(p) > 0 {
 			problems[name] = p
 		}
 	}
@@ -544,7 +547,9 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			return nil, err
 		}
 		if !t.Uses {
-			typeDef := canonicalJSON(TypeDef{Title: t.Title, Label: t.Label, Constants: t.Constants, Freeze: t.Freeze, Lifecycle: t.Lifecycle, Checklists: t.Checklists, Ledger: t.Ledger})
+			stored := t
+			stored.Fields = nil
+			typeDef := canonicalJSON(stored)
 			if _, err := tx.Exec(`UPDATE types SET def_app = ?, def_json = ? WHERE id = ?`, app, typeDef, id); err != nil {
 				return nil, err
 			}
@@ -673,7 +678,15 @@ func checkRegistered(tx *sql.Tx, s, before *schema, def *AppDef) error {
 			return errorf(CodeInvalid, "%s's capabilities name %s records, and there is no %s type", def.ID, typ, typ)
 		}
 	}
-	return ensureIndexes(tx, s)
+	if err := ensureIndexes(tx, s); err != nil {
+		return err
+	}
+	for _, name := range def.typeOrder {
+		if err := checkNewBookings(tx, s, before, s.appType(def.ID, name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // declarers is the apps that declare t without "uses": its definer, while

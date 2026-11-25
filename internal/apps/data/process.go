@@ -27,6 +27,7 @@ type ProcessSnapshot struct {
 	WorkItems   []WorkItem
 	Timers      []Timer
 	Signoffs    []Signoff
+	Approval    *ApprovalRoute
 	Timeline    []Activity
 }
 
@@ -76,8 +77,13 @@ func (w *writeTx) process(sc Scope, t *Type, r *record) (*ProcessSnapshot, error
 	if out.Timers, err = timersOn(w.tx, w.schema, sc, r.ID, false); err != nil {
 		return nil, err
 	}
-	if out.Signoffs, err = signoffsOn(w.tx, t, r.ID, versionHash(t, r)); err != nil {
+	if out.Signoffs, err = signoffsOn(w.tx, t, r.ID, r); err != nil {
 		return nil, err
+	}
+	if rule := t.approvalFor(r); rule != nil {
+		if out.Approval, err = rule.steps(w.tx, r, w.schema.person); err != nil {
+			return nil, err
+		}
 	}
 	if out.Timeline, err = activityOn(w.tx, w.schema, sc, t, r.ID, out.Signoffs); err != nil {
 		return nil, err
