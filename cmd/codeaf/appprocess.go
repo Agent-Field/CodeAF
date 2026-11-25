@@ -17,8 +17,12 @@ func (b *appBackend) DataTransition(p appwire.DataTransitionParams) (*appwire.Da
 	if err != nil {
 		return nil, err
 	}
-	return wireWrite(s.Transition(dataScope(p.DataScope), p.Type, p.ID, p.Transition,
+	out, err := wireWrite(s.Transition(dataScope(p.DataScope), p.Type, p.ID, p.Transition,
 		data.TransitionOptions{Rev: p.Rev, Reason: p.Reason, Unfreeze: p.Unfreeze}))
+	if err == nil {
+		out.Row = out.Rows[0]
+	}
+	return out, err
 }
 
 func (b *appBackend) DataTransitions(p appwire.DataRecordParams) (*appwire.DataTransitionsResult, error) {

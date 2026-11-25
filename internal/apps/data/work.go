@@ -41,6 +41,8 @@ const (
 	WorkOpen      = "open"
 	WorkDone      = "done"
 	WorkCancelled = "cancelled"
+	// AgentAssigneePrefix is the stored prefix for an agent's assignment.
+	AgentAssigneePrefix = "agent:"
 )
 
 // The bounds of the work tables.
@@ -243,6 +245,26 @@ func orMe(v string) string {
 // UpdateWorkItem changes a work item: reassigns it, moves its dates, or
 // closes it with its outcome. A closed item may be opened again.
 func (s *Store) UpdateWorkItem(sc Scope, id string, p WorkPatch) (*WorkItem, error) {
+	return s.updateWorkItem(sc, id, p, "")
+}
+
+// ClaimWorkItem assigns open, unassigned work to the caller.
+func (s *Store) ClaimWorkItem(sc Scope, id string) (*WorkItem, error) {
+	return s.updateWorkItem(sc, id, WorkPatch{}, "claim")
+}
+
+// CompleteWorkItem closes an open work item with the caller's answers.
+func (s *Store) CompleteWorkItem(sc Scope, id string, values map[string]any) (*WorkItem, error) {
+	status := WorkDone
+	return s.updateWorkItem(sc, id, WorkPatch{Status: &status, Outcome: values}, "complete")
+}
+
+// ReassignWorkItem changes the assignee of open work. Empty releases it.
+func (s *Store) ReassignWorkItem(sc Scope, id, assignee string) (*WorkItem, error) {
+	return s.updateWorkItem(sc, id, WorkPatch{Assignee: &assignee}, "reassign")
+}
+
+func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) (*WorkItem, error) {
 	if !validID(id) {
 		return nil, errorf(CodeInvalid, "%q is not a work item", id)
 	}
@@ -260,6 +282,27 @@ func (s *Store) UpdateWorkItem(sc Scope, id string, p WorkPatch) (*WorkItem, err
 				return err
 			}
 		}
+		if action != "" {
+			if item.Status != WorkOpen {
+				return errorf(CodeStale, "this work item is %s", item.Status)
+			}
+			actor := workActor(w.schema, sc)
+			switch action {
+			case "claim":
+				if item.Assignee == actor {
+					out = item
+					return nil
+				}
+				if item.Assignee != "" {
+					return errorf(CodeNotAllowed, "this work item is already assigned")
+				}
+				item.Assignee = actor
+			case "complete", "reassign":
+				if item.Assignee != actor && (sc.below() || sc.Flow || (item.Assignee != "" && !strings.HasPrefix(item.Assignee, AgentAssigneePrefix))) {
+					return errorf(CodeNotAllowed, "this work item belongs to another assignee")
+				}
+			}
+		}
 		if p.Title != nil {
 			title := strings.TrimSpace(*p.Title)
 			if title == "" || len(title) > titleMax {
@@ -268,7 +311,11 @@ func (s *Store) UpdateWorkItem(sc Scope, id string, p WorkPatch) (*WorkItem, err
 			item.Title = title
 		}
 		if p.Assignee != nil {
-			if item.Assignee, err = w.schema.personValue(orMe(*p.Assignee)); err != nil {
+			value := *p.Assignee
+			if action == "" {
+				value = orMe(value)
+			}
+			if item.Assignee, err = w.schema.personValue(value); err != nil {
 				return err
 			}
 		}
@@ -346,9 +393,44 @@ type WorkFilter struct {
 // WorkItems lists work items, the soonest due first (undated last), at most
 // [ListMax]: the person's "My work" across every app, or one app's queue.
 func (s *Store) WorkItems(sc Scope, f WorkFilter) ([]WorkItem, error) {
-	sch := s.schema.Load()
+	return workItemsOn(s.rdb, s.schema.Load(), sc, f, false)
+}
+
+// MyWork lists open items assigned to the person or their agents. An agent
+// calling it sees only its own assignments.
+func (s *Store) MyWork(sc Scope) ([]WorkItem, error) {
+	var out []WorkItem
+	err := s.write(func(w *writeTx) error {
+		f := WorkFilter{Status: WorkOpen}
+		mine := !sc.below()
+		if !mine {
+			f.Assignee = workActor(w.schema, sc)
+		}
+		var err error
+		out, err = workItemsOn(w.tx, w.schema, sc, f, mine)
+		return err
+	})
+	return out, err
+}
+
+func workActor(sch *schema, sc Scope) string {
+	if sc.below() {
+		name := sc.Actor
+		if name == "" {
+			name = sc.App
+		}
+		return AgentAssigneePrefix + strings.TrimPrefix(name, AgentAssigneePrefix)
+	}
+	return sch.person
+}
+
+func workItemsOn(q querier, sch *schema, sc Scope, f WorkFilter, mine bool) ([]WorkItem, error) {
 	where := []string{"1"}
 	var args []any
+	if mine {
+		where = append(where, "(assignee = ? OR substr(assignee, 1, ?) = ?)")
+		args = append(args, sch.person, len(AgentAssigneePrefix), AgentAssigneePrefix)
+	}
 	if f.Assignee != "" {
 		a, err := sch.personValue(f.Assignee)
 		if err != nil {
@@ -370,7 +452,7 @@ func (s *Store) WorkItems(sc Scope, f WorkFilter) ([]WorkItem, error) {
 		where, args = append(where, "record = ?"), append(args, f.Record)
 	}
 	out := []WorkItem{}
-	err := eachRow(s.rdb, `SELECT `+workColumns+` FROM work_items WHERE `+strings.Join(where, " AND ")+
+	err := eachRow(q, `SELECT `+workColumns+` FROM work_items WHERE `+strings.Join(where, " AND ")+
 		` ORDER BY due = '', due, created_at, id`, args, func(scan func(...any) error) error {
 		wi, typeID, err := scanWorkItem(sch, scan)
 		if err != nil {
@@ -520,7 +602,10 @@ func loadTimer(q querier, sch *schema, id string) (*Timer, string, error) {
 // Timers lists timers, soonest first, at most [ListMax]: one record's, or
 // (Pending) every one still to fire.
 func (s *Store) Timers(sc Scope, record string, pending bool) ([]Timer, error) {
-	sch := s.schema.Load()
+	return timersOn(s.rdb, s.schema.Load(), sc, record, pending)
+}
+
+func timersOn(q querier, sch *schema, sc Scope, record string, pending bool) ([]Timer, error) {
 	where := []string{"1"}
 	var args []any
 	if record != "" {
@@ -530,7 +615,7 @@ func (s *Store) Timers(sc Scope, record string, pending bool) ([]Timer, error) {
 		where = append(where, "fired_at IS NULL AND cancelled_at IS NULL")
 	}
 	out := []Timer{}
-	err := eachRow(s.rdb, `SELECT `+timerColumns+` FROM timers WHERE `+strings.Join(where, " AND ")+` ORDER BY fire_at, id`, args,
+	err := eachRow(q, `SELECT `+timerColumns+` FROM timers WHERE `+strings.Join(where, " AND ")+` ORDER BY fire_at, id`, args,
 		func(scan func(...any) error) error {
 			tm, typeID, err := scanTimer(sch, scan)
 			if err != nil {
@@ -682,8 +767,12 @@ func (s *Store) Signoffs(sc Scope, typ, id string) ([]Signoff, error) {
 	if r != nil && r.Type == t.Name {
 		current = versionHash(t, r)
 	}
+	return signoffsOn(s.rdb, t, id, current)
+}
+
+func signoffsOn(q querier, t *Type, id, current string) ([]Signoff, error) {
 	out := []Signoff{}
-	err = eachRow(s.rdb, `SELECT id, record, version_hash, statement, signer, app, at FROM signoffs WHERE record = ? AND type_id = ? ORDER BY at, id`,
+	err := eachRow(q, `SELECT id, record, version_hash, statement, signer, app, at FROM signoffs WHERE record = ? AND type_id = ? ORDER BY at, id`,
 		[]any{id, t.ID}, func(scan func(...any) error) error {
 			so := Signoff{Type: t.Name}
 			if err := scan(&so.ID, &so.Record, &so.VersionHash, &so.Statement, &so.Signer, &so.App, &so.At); err != nil {
@@ -779,7 +868,10 @@ func (s *Store) AddComment(sc Scope, in Comment) (*Comment, error) {
 // Comments lists the comments on one record, or on one node of one app, in
 // the order they were written, at most [ListMax].
 func (s *Store) Comments(sc Scope, typ, record, app, node string) ([]Comment, error) {
-	sch := s.schema.Load()
+	return commentsOn(s.rdb, s.schema.Load(), sc, typ, record, app, node)
+}
+
+func commentsOn(q querier, sch *schema, sc Scope, typ, record, app, node string) ([]Comment, error) {
 	var stmt string
 	var args []any
 	switch {
@@ -798,7 +890,7 @@ func (s *Store) Comments(sc Scope, typ, record, app, node string) ([]Comment, er
 		return nil, errorf(CodeInvalid, "comments are listed for a record or a node")
 	}
 	out := []Comment{}
-	err := eachRow(s.rdb, `SELECT id, type_id, record, node, body, author, mentions_json, app, at FROM comments WHERE `+stmt+` ORDER BY at, id LIMIT ?`,
+	err := eachRow(q, `SELECT id, type_id, record, node, body, author, mentions_json, app, at FROM comments WHERE `+stmt+` ORDER BY at, id LIMIT ?`,
 		append(args, ListMax), func(scan func(...any) error) error {
 			var c Comment
 			var typeID, mentions string
@@ -865,24 +957,36 @@ func (s *Store) RecordActivity(sc Scope, typ, id string) ([]Activity, error) {
 	if !validID(id) {
 		return nil, errorf(CodeInvalid, "%q is not a record id", id)
 	}
+	signoffs, err := s.Signoffs(sc, typ, id)
+	if err != nil {
+		return nil, err
+	}
+	return activityOn(s.rdb, sch, sc, t, id, signoffs)
+}
+
+func activityOn(q querier, sch *schema, sc Scope, t *Type, id string, signoffs []Signoff) ([]Activity, error) {
 	out := []Activity{}
-	if lc := t.Lifecycle; lc != nil {
-		err := eachRow(s.rdb, `SELECT seq, actor, by_kind, note, before_json, after_json, at FROM history WHERE record = ? AND type_id = ? AND op = ? ORDER BY seq DESC LIMIT ?`,
-			[]any{id, t.ID, OpTransition, ListMax}, func(scan func(...any) error) error {
+	if lc := t.Lifecycle; lc != nil || len(t.checklists) != 0 {
+		err := eachRow(q, `SELECT seq, op, actor, by_kind, note, before_json, after_json, at FROM history WHERE record = ? AND type_id = ? AND op IN (?, ?) ORDER BY seq DESC LIMIT ?`,
+			[]any{id, t.ID, OpTransition, OpChecklist, ListMax}, func(scan func(...any) error) error {
 				var seq int64
 				var note string
 				var before, after sql.NullString
-				a := Activity{Kind: ActivityTransition}
-				if err := scan(&seq, &a.Actor, &a.ByKind, &note, &before, &after, &a.At); err != nil {
+				var a Activity
+				if err := scan(&seq, &a.Kind, &a.Actor, &a.ByKind, &note, &before, &after, &a.At); err != nil {
 					return err
 				}
 				a.ID = fmt.Sprint(seq)
-				a.Transition, a.Reason, _ = strings.Cut(note, ": ")
-				if before.Valid {
-					a.From, _ = t.decodeState(before.String).Data[lc.Field].(string)
-				}
-				if after.Valid {
-					a.To, _ = t.decodeState(after.String).Data[lc.Field].(string)
+				if a.Kind == OpChecklist {
+					a.Reason = note
+				} else if lc != nil {
+					a.Transition, a.Reason, _ = strings.Cut(note, ": ")
+					if before.Valid {
+						a.From, _ = t.decodeState(before.String).Data[lc.Field].(string)
+					}
+					if after.Valid {
+						a.To, _ = t.decodeState(after.String).Data[lc.Field].(string)
+					}
 				}
 				out = append(out, a)
 				return nil
@@ -891,16 +995,12 @@ func (s *Store) RecordActivity(sc Scope, typ, id string) ([]Activity, error) {
 			return nil, err
 		}
 	}
-	comments, err := s.Comments(sc, typ, id, "", "")
+	comments, err := commentsOn(q, sch, sc, t.Name, id, "", "")
 	if err != nil {
 		return nil, err
 	}
 	for _, c := range comments {
 		out = append(out, Activity{Kind: ActivityComment, ID: c.ID, At: c.At, Actor: c.Author, Body: c.Body, Mentions: c.Mentions})
-	}
-	signoffs, err := s.Signoffs(sc, typ, id)
-	if err != nil {
-		return nil, err
 	}
 	for _, so := range signoffs {
 		out = append(out, Activity{Kind: ActivitySignoff, ID: so.ID, At: so.At, Actor: so.Signer, ByKind: ByPerson, Body: so.Statement})

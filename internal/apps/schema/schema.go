@@ -63,6 +63,13 @@ func KitJSONFor(version int) []byte {
 	}
 }
 
+// HasAction reports whether the current kit declares the action. Engine
+// wire adapters use it to keep executable actions on the authored registry.
+func HasAction(name string) bool {
+	_, ok := schemas().kits[2].Registries.Actions[name]
+	return ok
+}
+
 // SchemaJSON returns an embedded schema by its file name so the Builder can
 // show the model the real contract.
 func SchemaJSON(name string) ([]byte, error) {

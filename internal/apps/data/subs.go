@@ -190,31 +190,28 @@ func (s *Store) deliver(c *Change) {
 		}
 		return
 	}
+	ids := make(map[string][]string)
+	for _, rc := range c.Records {
+		ids[rc.Type] = append(ids[rc.Type], rc.ID)
+	}
 	s.subsMu.Lock()
 	var subs []*subscription
 	for _, sub := range s.subs {
 		if c.Cursor > 0 && c.Cursor <= sub.from.Load() {
 			continue
 		}
-		if sub.spec.Table == "" && sub.spec.Type == c.Type && len(c.Records) > 0 || sub.spec.Table != "" && len(c.Items) > 0 {
+		if sub.spec.Table == "" && len(ids[sub.spec.Type]) > 0 || sub.spec.Table != "" && len(c.Items) > 0 {
 			subs = append(subs, sub)
 		}
 	}
 	s.subsMu.Unlock()
-	if len(subs) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(c.Records))
-	for _, rc := range c.Records {
-		ids = append(ids, rc.ID)
-	}
 	for _, sub := range subs {
 		var d Diff
 		var ok bool
 		if sub.spec.Table != "" {
 			d, ok = s.tableDiff(sub, c)
 		} else {
-			d, ok = s.diff(sub, c, ids)
+			d, ok = s.diff(sub, c, ids[sub.spec.Type])
 		}
 		if ok {
 			d.Cursor = c.Cursor

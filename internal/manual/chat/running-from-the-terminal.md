@@ -2200,3 +2200,22 @@ against the limit. `"m":"GH"` is a `gh` the engine ran. It is off by default. It
 never holds a token, a query, a body, a repository name or a file path. A `gh` run
 by an agent's own shell command is not in it: a jump in `used` between two lines
 that the lines do not explain was spent somewhere else on the same account.
+
+## App record lifecycle, bulk transitions, checklists and My work
+
+With the desktop engine (`codeaf app`), call `data.process` for a record to
+see its current state and revision, available transitions and why a move is
+blocked, checklist progress, open work items, timers, sign-offs and history.
+Pass the revision you saw to `data.checklist_set` to complete or reopen a
+declared step. Steps can require a note or a record reference. Steps that
+require a file stay incomplete until file evidence is available.
+
+Use `data.transition_batch` for one named move across selected records.
+Each type must declare the move. Send each record's revision. If a record
+is stale, its guard fails, or the move is unavailable, the entire selection
+stays where it was.
+To move a record back, fire a transition that goes back.
+
+`work_items.list` shows open items assigned to you or your agents.
+Use `work_items.claim` to take unassigned work, `work_items.reassign` to
+change its assignee, or `work_items.complete` to close it with its answers.
