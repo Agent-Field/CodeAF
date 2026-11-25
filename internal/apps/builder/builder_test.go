@@ -71,7 +71,7 @@ func scriptedApp(t *testing.T, home string) builder.Options {
 					return ai.Message{}, errors.New("the scoped command did not supply its phase")
 				}
 				calls := []ai.ToolCall{
-					command("plan", map[string]any{"name": app.Name, "plan": json.RawMessage(def.Files["plan.json"])}),
+					command("plan", map[string]any{"name": app.Name, "kit": app.Kit, "plan": json.RawMessage(def.Files["plan.json"])}),
 				}
 				for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 					calls = append(calls, command("add-type", map[string]any{"name": name, "definition": app.Records[name]}))
