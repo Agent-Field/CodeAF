@@ -229,6 +229,7 @@ type AgentRef struct {
 // RecordType is one record type the app owns, or, with Uses set, a type another app
 // owns that this app uses and adds its own fields to.
 type RecordType struct {
+	Lifecycle *RecordLifecycle `json:"lifecycle,omitempty"`
 	ID        string           `json:"id,omitempty"`
 	Ledger    *Ledger          `json:"ledger,omitempty"`
 	Title     string           `json:"title,omitempty"`

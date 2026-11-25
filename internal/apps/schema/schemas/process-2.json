@@ -53,8 +53,7 @@
           "items": {
             "type": "string",
             "minLength": 1
-          },
-          "minItems": 1
+          }
         },
         "to": {
           "type": "string",
@@ -300,6 +299,76 @@
         "title",
         "items"
       ]
+    },
+    "record-lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "transitions"
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,47}$"
+        },
+        "initial": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "to"
+            ],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "from": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "to": {
+                "type": "string",
+                "minLength": 1
+              },
+              "guard": {
+                "type": "string",
+                "minLength": 1
+              },
+              "effects": {
+                "type": "array",
+                "items": {
+                  "$ref": "https://codeaf.dev/schema/screen-2.json#/$defs/action"
+                }
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,47}$"
+              },
+              "by": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "person",
+                    "ai",
+                    "flow"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "type": "object",

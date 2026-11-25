@@ -307,30 +307,38 @@
       "properties": {
         "prefix": {
           "type": "string",
-          "maxLength": 32
+          "maxLength": 20
         },
         "padding": {
           "type": "integer",
-          "minimum": 1,
-          "maximum": 18
+          "minimum": 0,
+          "maximum": 12
+        },
+        "pad": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
         }
-      },
-      "required": [
-        "prefix",
-        "padding"
-      ]
+      }
     },
     "ledger": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "reversal": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "reversal": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          },
+          "required": [
+            "reversal"
+          ]
         }
-      },
-      "required": [
-        "reversal"
       ]
     },
     "channel": {

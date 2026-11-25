@@ -54,7 +54,7 @@ func TestGalleryEnterpriseDeclarationsResolveInPersonal(t *testing.T) {
 		{"agent audience role missing", CodePolicy, func(v map[string]any) { at(v, "rules", "dispatch")["roles"] = []string{"missing"} }},
 		{"date range same endpoint", CodePolicy, func(v map[string]any) { at(v, "resources", "trucks", "booking")["end"] = "starts" }},
 		{"booking must reference resource", CodePolicy, func(v map[string]any) { at(v, "resources", "trucks", "booking")["resource"] = "driver" }},
-		{"sequence requires unique", CodePolicy, func(v map[string]any) { at(v, "records", "delivery", "fields", "tracking")["unique"] = false }},
+		{"sequence refuses an explicit default", CodePolicy, func(v map[string]any) { at(v, "records", "delivery", "fields", "tracking")["default"] = "manual" }},
 		{"ledger needs reversing entry", CodePolicy, func(v map[string]any) { at(v, "records", "delivery", "ledger")["reversal"] = "truck" }},
 		{"currency is required", CodePolicy, func(v map[string]any) {
 			at(v, "records", "delivery", "fields")["price"] = map[string]any{"type": "money"}
@@ -68,5 +68,27 @@ func TestGalleryEnterpriseDeclarationsResolveInPersonal(t *testing.T) {
 				t.Fatalf("want %s, got %s", tc.code, r)
 			}
 		})
+	}
+}
+
+func TestGalleryAcceptsStoreDeclarations(t *testing.T) {
+	def := load(t, "testdata/inventory-po")
+	jsonEdit(AppFile, func(app map[string]any) {
+		at(app, "records", "purchase")["ledger"] = true
+		at(app, "records", "sku", "fields")["serial"] = map[string]any{
+			"type": "text", "sequence": map[string]any{"prefix": "SKU-", "pad": 4},
+		}
+		at(app, "records", "sku", "fields")["stage"] = map[string]any{
+			"type": "enum", "values": []string{"open", "closed"},
+		}
+		at(app, "records", "sku")["lifecycle"] = map[string]any{
+			"field": "stage", "transitions": []any{map[string]any{
+				"id": "close", "from": []string{"*"}, "to": "closed", "by": []string{"person"},
+				"guard": "open_work() == 0 && signed()",
+			}},
+		}
+	})(t, def.Files)
+	if r := Validate(def, nil); !r.OK() {
+		t.Fatal(r)
 	}
 }

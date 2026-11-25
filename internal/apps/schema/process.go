@@ -22,11 +22,24 @@ type Lifecycle struct {
 	Transitions map[string]Transition `json:"transitions,omitempty"`
 }
 
+// RecordLifecycle is the store's ordered declaration on a record type.
+type RecordLifecycle struct {
+	Field       string             `json:"field"`
+	Initial     string             `json:"initial,omitempty"`
+	Transitions []RecordTransition `json:"transitions"`
+}
+
+type RecordTransition struct {
+	ID string   `json:"id"`
+	By []string `json:"by,omitempty"`
+	Transition
+}
+
 type Transition struct {
 	Label   string   `json:"label"`
 	From    []string `json:"from"`
 	To      string   `json:"to"`
-	Actors  []string `json:"actors"`
+	Actors  []string `json:"actors,omitempty"`
 	Guard   string   `json:"guard,omitempty"`
 	Effects []Action `json:"effects,omitempty"`
 }
@@ -83,14 +96,47 @@ type TemplateItem struct {
 }
 
 func (c *checker) lifecycle(typ string) (Lifecycle, bool) {
-	if c.app.Process == nil {
-		return Lifecycle{}, false
+	t := c.app.Records[typ]
+	if lc := t.Lifecycle; lc != nil {
+		states := t.Fields[lc.Field].Values
+		l := Lifecycle{Field: lc.Field, Initial: lc.Initial, States: states, Transitions: map[string]Transition{}}
+		if l.Initial == "" && len(states) > 0 {
+			l.Initial = states[0]
+		}
+		for _, tr := range lc.Transitions {
+			l.Transitions[tr.ID] = tr.Transition
+		}
+		return l, true
 	}
-	l, ok := c.app.Process.Lifecycles[typ]
-	return l, ok
+	if c.app.Process != nil {
+		l, ok := c.app.Process.Lifecycles[typ]
+		return l, ok
+	}
+	return Lifecycle{}, false
 }
 
 func (c *checker) checkProcess() {
+	for _, typ := range sortedKeys(c.app.Records) {
+		t := c.app.Records[typ]
+		if t.Lifecycle == nil {
+			continue
+		}
+		at := "/records/" + typ + "/lifecycle"
+		if c.app.Process != nil {
+			if _, duplicate := c.app.Process.Lifecycles[typ]; duplicate {
+				c.add(AppFile, at, CodePolicy, "Declare the lifecycle once per record type.")
+			}
+		}
+		seen := map[string]bool{}
+		for i, tr := range t.Lifecycle.Transitions {
+			if seen[tr.ID] {
+				c.add(AppFile, fmt.Sprintf("%s/transitions/%d/id", at, i), CodeDuplicateID, "Duplicate transition %q.", tr.ID)
+			}
+			seen[tr.ID] = true
+		}
+		l, _ := c.lifecycle(typ)
+		c.checkLifecycle(at, typ, l)
+	}
 	if c.app.Process == nil {
 		return
 	}
@@ -132,6 +178,10 @@ func (c *checker) checkLifecycle(at, typ string, lifecycle Lifecycle) {
 	}
 	c.checkTaggedField(AppFile, at+"/field", typ, lifecycle.Field, "groupable")
 	fields, _ := c.typeFields(typ)
+	field := c.app.Records[typ].Fields[lifecycle.Field]
+	if field.Type == "" || field.Computed != "" || field.AI != "" || c.app.Records[typ].Uses {
+		c.add(AppFile, at+"/field", CodePolicy, "A lifecycle requires a locally declared state field that the engine writes.")
+	}
 	choices := fields[lifecycle.Field].Values
 	if len(choices) != len(lifecycle.States) {
 		c.add(AppFile, at+"/states", CodePolicy, "Lifecycle states must match the state field's choices.")
@@ -147,8 +197,11 @@ func (c *checker) checkLifecycle(at, typ string, lifecycle Lifecycle) {
 	for _, name := range sortedKeys(lifecycle.Transitions) {
 		tr := lifecycle.Transitions[name]
 		tat := at + "/transitions/" + name
-		for _, state := range append(append([]string(nil), tr.From...), tr.To) {
-			if !contains(lifecycle.States, state) {
+		if !contains(lifecycle.States, tr.To) {
+			c.add(AppFile, tat+"/to", CodePolicy, "Transition %q refers to unknown state %q.", name, tr.To)
+		}
+		for _, state := range tr.From {
+			if state != "*" && !contains(lifecycle.States, state) {
 				c.add(AppFile, tat, CodePolicy, "Transition %q refers to unknown state %q.", name, state)
 			}
 		}

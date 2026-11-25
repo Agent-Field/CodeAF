@@ -6701,7 +6701,7 @@
       "sequence": {
         "id": "sequence",
         "version": 1,
-        "doc": "Formats a unique engine-issued number.",
+        "doc": "Formats an engine-issued number with a prefix and pad or padding.",
         "example": {
           "prefix": "INV-",
           "padding": 4
@@ -6738,6 +6738,29 @@
         },
         "schema": {
           "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/ledger"
+        }
+      },
+      "record-lifecycle": {
+        "id": "record-lifecycle",
+        "version": 1,
+        "doc": "Declares a record type’s lifecycle with ordered transitions and writer kinds.",
+        "example": {
+          "field": "stage",
+          "transitions": [
+            {
+              "id": "close",
+              "from": [
+                "open"
+              ],
+              "to": "closed",
+              "by": [
+                "person"
+              ]
+            }
+          ]
+        },
+        "schema": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/record-lifecycle"
         }
       }
     },

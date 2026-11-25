@@ -128,7 +128,7 @@
             "actors": [
               "person"
             ],
-            "guard": "checklist_done(\"checks\") && signed(\"review\")"
+            "guard": "open_work() == 0 && signed(\"review\")"
           }
         }
       }

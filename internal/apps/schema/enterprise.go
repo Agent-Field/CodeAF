@@ -1,6 +1,9 @@
 package schema
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type Role struct {
 	Kind        string          `json:"kind"`
@@ -61,11 +64,36 @@ type Booking struct {
 
 type Sequence struct {
 	Prefix  string `json:"prefix"`
-	Padding int    `json:"padding"`
+	Pad     int    `json:"pad,omitempty"`
+	Padding int    `json:"padding,omitempty"`
 }
 
 type Ledger struct {
+	On       bool   `json:"-"`
 	Reversal string `json:"reversal"`
+}
+
+func (l *Ledger) UnmarshalJSON(raw []byte) error {
+	var on bool
+	if err := json.Unmarshal(raw, &on); err == nil {
+		*l = Ledger{On: on}
+		return nil
+	}
+	type declaration Ledger
+	var entry declaration
+	if err := json.Unmarshal(raw, &entry); err != nil {
+		return err
+	}
+	*l = Ledger(entry)
+	l.On = true
+	return nil
+}
+
+func (l Ledger) MarshalJSON() ([]byte, error) {
+	if l.Reversal == "" {
+		return json.Marshal(l.On)
+	}
+	return json.Marshal(map[string]string{"reversal": l.Reversal})
 }
 
 func (c *checker) checkEnterprise() {
@@ -203,8 +231,13 @@ func (c *checker) checkLedger(typ string, ledger *Ledger) {
 	if ledger == nil {
 		return
 	}
-	fields, _ := c.typeFields(typ)
-	field := fields[ledger.Reversal]
+	if _, ok := c.lifecycle(typ); ledger.On && ok {
+		c.add(AppFile, "/records/"+typ+"/ledger", CodePolicy, "A ledger cannot also have a lifecycle.")
+	}
+	if ledger.Reversal == "" {
+		return
+	}
+	field := c.app.Records[typ].Fields[ledger.Reversal]
 	manifest := c.kit.Registries.Fields[field.Type]
 	if !contains(manifest.Tags, "relation") || manifest.Storage != "text" || field.To != typ || field.Required {
 		c.add(AppFile, "/records/"+typ+"/ledger/reversal", CodePolicy, "A ledger reversal must optionally reference one entry of the same type.")

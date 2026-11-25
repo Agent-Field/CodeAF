@@ -474,6 +474,9 @@
         "id": {
           "type": "string",
           "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "lifecycle": {
+          "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/record-lifecycle"
         }
       }
     },

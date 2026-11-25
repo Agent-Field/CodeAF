@@ -292,8 +292,20 @@ func (c *checker) changeProcess(r Recipe) error {
 		if _, exists := lifecycle.Transitions[r.ID]; exists {
 			return fmt.Errorf("transition %q already exists", r.ID)
 		}
-		setRecipeEntry(&lifecycle.Transitions, r.ID, *r.Transition)
-		process.Lifecycles[r.Record] = lifecycle
+		if record := c.app.Records[r.Record]; record.Lifecycle != nil {
+			native := RecordTransition{ID: r.ID, Transition: *r.Transition}
+			native.Actors = nil
+			for _, actor := range r.Transition.Actors {
+				if actor == "agent" {
+					actor = "ai"
+				}
+				native.By = append(native.By, actor)
+			}
+			record.Lifecycle.Transitions = append(record.Lifecycle.Transitions, native)
+		} else {
+			setRecipeEntry(&lifecycle.Transitions, r.ID, *r.Transition)
+			process.Lifecycles[r.Record] = lifecycle
+		}
 	case "add-form":
 		if r.Form == nil || r.Form.Record != r.Record {
 			return fmt.Errorf("the form needs the same record type as the recipe")

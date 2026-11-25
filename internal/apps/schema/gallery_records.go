@@ -86,7 +86,8 @@ func (c *checker) checkRecordExpression(file, at, typ, expr string) {
 		cel.Function("days_since", cel.Overload("days_since_dyn", []*cel.Type{cel.DynType}, cel.DoubleType)),
 		cel.Function("count", cel.Overload("count_dyn", []*cel.Type{cel.DynType}, cel.DoubleType)),
 		cel.Function("checklist_done", cel.Overload("checklist_done_id", []*cel.Type{cel.StringType}, cel.BoolType)),
-		cel.Function("signed", cel.Overload("signed_id", []*cel.Type{cel.StringType}, cel.BoolType)),
+		cel.Function("signed", cel.Overload("signed_id", []*cel.Type{cel.StringType}, cel.BoolType), cel.Overload("signed_void", nil, cel.BoolType)),
+		cel.Function("open_work", cel.Overload("open_work_void", nil, cel.DynType)),
 	}
 	fields, _ := c.typeFields(typ)
 	names := map[string]bool{}
@@ -180,8 +181,8 @@ func (c *checker) checkGalleryField(typ, name string, field Field) {
 	if field.Default != nil {
 		c.checkGalleryValue(AppFile, at+"/default", field, field.Default, nil)
 	}
-	if field.Sequence != nil && (!contains(entry.Tags, "sequence") || !field.Unique || field.Default != nil || field.Computed != "" || field.AI != "") {
-		c.add(AppFile, at+"/sequence", CodePolicy, "A sequence needs a unique text field managed by the engine.")
+	if field.Sequence != nil && (!contains(entry.Tags, "sequence") || len(field.Sequence.Prefix) > 20 || field.Default != nil || field.Computed != "" || field.AI != "") {
+		c.add(AppFile, at+"/sequence", CodePolicy, "A sequence needs a plain text field managed by the engine.")
 	}
 	if contains(entry.Tags, "currency") != (field.Currency != "") {
 		c.add(AppFile, at+"/currency", CodePolicy, "Only a money field declares a currency, and it must have one.")
