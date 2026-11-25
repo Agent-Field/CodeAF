@@ -27,7 +27,7 @@ const appRunAskPrefix = "run:"
 
 func (b *appBackend) openAppRuns(ctx context.Context) func() {
 	files := runs.Files(home.Join("apps"))
-	place, err := b.appData()
+	_, err := b.appData()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "app runs:", err)
 		return func() {}
@@ -60,14 +60,21 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 		}
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	unsubscribe, commitsDone := watchAppRunCommits(ctx, place, e)
 	done := make(chan struct{})
 	guard.Go("app/runs", func() {
 		defer close(done)
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
-		var last string
+		var last, lastOutbox string
 		for ctx.Err() == nil {
+			if err := records.ConsumeOutbox(ctx, e); err != nil {
+				if ctx.Err() == nil && err.Error() != lastOutbox {
+					lastOutbox = err.Error()
+					fmt.Fprintln(os.Stderr, "app run outbox:", err)
+				}
+			} else {
+				lastOutbox = ""
+			}
 			if err := e.Dispatch(ctx, func(err error) {
 				if ctx.Err() == nil {
 					fmt.Fprintln(os.Stderr, "app run:", err)
@@ -85,8 +92,6 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 	})
 	return func() {
 		cancel()
-		unsubscribe()
-		<-commitsDone
 		<-done
 		if err := e.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, "app runs:", err)

@@ -80,6 +80,7 @@ type Engine struct {
 	// The clock serializes schedule scanning. Each runnable instance also
 	// claims a worker before it can make any effects.
 	clock       sync.Mutex
+	outbox      sync.Mutex
 	mu          sync.Mutex
 	checkpoints map[string]json.RawMessage
 	active      map[string]Run
@@ -247,23 +248,32 @@ func (e *Engine) Start(app, run string, params map[string]any) (Run, error) {
 }
 
 func (e *Engine) start(app, run string, params, input map[string]any, caughtUp bool, clockKey string, clock any) (Run, error) {
-	if !validID(app) || !validID(run) {
-		return Run{}, errors.New("valid app and run ids are required")
-	}
-	def, err := e.cfg.Load(app, run)
+	c, err := e.newCheckpoint(app, run, params, input, caughtUp)
 	if err != nil {
 		return Run{}, err
 	}
+	err = e.save(&c, clockKey, clock)
+	return c.Run, err
+}
+
+func (e *Engine) newCheckpoint(app, run string, params, input map[string]any, caughtUp bool) (checkpoint, error) {
+	if !validID(app) || !validID(run) {
+		return checkpoint{}, errors.New("valid app and run ids are required")
+	}
+	def, err := e.cfg.Load(app, run)
+	if err != nil {
+		return checkpoint{}, err
+	}
 	if def.Run != run {
-		return Run{}, fmt.Errorf("run file %s declares %s", run, def.Run)
+		return checkpoint{}, fmt.Errorf("run file %s declares %s", run, def.Run)
 	}
 	if err := validate(def); err != nil {
-		return Run{}, err
+		return checkpoint{}, err
 	}
 	now := e.cfg.Now()
 	id, err := cell.NewID(now)
 	if err != nil {
-		return Run{}, err
+		return checkpoint{}, err
 	}
 	// The plan is captured with the run so an edit to a live app cannot
 	// move a checkpoint to a different step after a restart.
@@ -279,7 +289,7 @@ func (e *Engine) start(app, run string, params, input map[string]any, caughtUp b
 	if e.cfg.ResolveParams != nil {
 		p, err = e.cfg.ResolveParams(app, def.Params, p)
 		if err != nil {
-			return Run{}, err
+			return checkpoint{}, err
 		}
 	}
 	c := checkpoint{
@@ -287,8 +297,7 @@ func (e *Engine) start(app, run string, params, input map[string]any, caughtUp b
 		Definition: def, Params: p, Input: input, Outputs: make(map[string]any), Frames: []frame{{}},
 		Visit: 1,
 	}
-	err = e.save(&c, clockKey, clock)
-	return c.Run, err
+	return c, nil
 }
 
 func (e *Engine) save(c *checkpoint, clockKey string, clock any) error {

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 )
 
@@ -41,4 +42,43 @@ func (s *Store) AppRunCheckpoints() (map[string]json.RawMessage, error) {
 		checkpoints[key] = json.RawMessage(payload)
 	}
 	return checkpoints, rows.Err()
+}
+
+// ClaimAppRun records the trigger receipt and the initial run checkpoint
+// together. The data outbox remains readable if either write is interrupted.
+func (s *Store) ClaimAppRun(seq int64, trigger, key string, payload json.RawMessage) (bool, error) {
+	return s.withAppRunClaim(seq, trigger, func(tx *sql.Tx) error {
+		_, _, err := appendEvent(tx, key, eventAppRunCheckpoint, payload)
+		return err
+	})
+}
+
+// AppRunClaimed lets a replay skip trigger evaluation for a committed run.
+func (s *Store) AppRunClaimed(seq int64, trigger string) (bool, error) {
+	var exists bool
+	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM app_run_receipts WHERE seq = ? AND trigger_id = ?)`, seq, trigger).Scan(&exists)
+	return exists, err
+}
+
+func (s *Store) withAppRunClaim(seq int64, trigger string, record func(*sql.Tx) error) (bool, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec(`INSERT INTO app_run_receipts(seq, trigger_id) VALUES (?, ?) ON CONFLICT DO NOTHING`, seq, trigger)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count == 0 {
+		return false, err
+	}
+	if err := record(tx); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }

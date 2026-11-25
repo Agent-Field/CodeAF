@@ -1,6 +1,7 @@
 package runs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -21,6 +22,7 @@ type Trigger struct {
 }
 
 type Change struct {
+	Seq    int64
 	Type   string
 	ID     string
 	Before map[string]any
@@ -126,6 +128,17 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		if t.On != "record.changed" || t.Type != change.Type {
 			continue
 		}
+		receipt := t.App + "/" + t.ID
+		if change.Seq > 0 {
+			claimed, claimErr := e.journal.AppRunClaimed(change.Seq, receipt)
+			if claimErr != nil {
+				err = errors.Join(err, claimErr)
+				continue
+			}
+			if claimed {
+				continue
+			}
+		}
 		scoped := change
 		if e.cfg.RecordInput != nil {
 			var scopeErr error
@@ -159,9 +172,46 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 			continue
 		}
 		if ok {
-			_, startErr := e.start(t.App, t.Run, nil, input, false, "", nil)
+			startErr := e.startTriggered(t, change.Seq, receipt, input)
 			err = errors.Join(err, startErr)
 		}
 	}
 	return err
+}
+
+// startTriggered commits the run before publishing it to workers or clients.
+func (e *Engine) startTriggered(t Trigger, seq int64, receipt string, input map[string]any) error {
+	if seq == 0 {
+		_, err := e.start(t.App, t.Run, nil, input, false, "", nil)
+		return err
+	}
+	c, err := e.newCheckpoint(t.App, t.Run, nil, input, false)
+	if err != nil {
+		return err
+	}
+	c.UpdatedAt = e.cfg.Now()
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	claimed, err := e.commitTriggered(seq, receipt, c.Run, raw)
+	if claimed {
+		e.changed(c.Run)
+	}
+	return err
+}
+
+func (e *Engine) commitTriggered(seq int64, receipt string, run Run, raw json.RawMessage) (bool, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return false, errors.New("app runs are closed")
+	}
+	key := runPrefix + run.ID
+	claimed, err := e.journal.ClaimAppRun(seq, receipt, key, raw)
+	if claimed {
+		e.checkpoints[key] = raw
+		e.track(run)
+	}
+	return claimed, err
 }
