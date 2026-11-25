@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/remote"
@@ -211,6 +212,14 @@ func (a *fakeLivePeerAgent) counts() (closes, detaches, interrupts int) {
 	return a.closes, a.detaches, a.interrupts
 }
 
+// switchRemoteControlOn is the setting the door refuses without, the way a person
+// switches it on from outside the window: the variable, which wins over the
+// persisted row.
+func switchRemoteControlOn(t *testing.T) {
+	t.Helper()
+	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
+}
+
 // V14: `codeaf chat --at` and `--host`, `codeaf serve` behave exactly as before, and remote control is off unless explicitly switched on.
 func TestRemoteControlIsOffUnlessSwitchedOn(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
@@ -233,27 +242,19 @@ func TestRemoteControlIsOffUnlessSwitchedOn(t *testing.T) {
 	}
 }
 
-// V14: wireLive leaves Options.OpenLive nil when remote control is off, when no road is installed, or on a hosted window, and sets it only when all three hold.
-func TestWireLiveLeavesOpenLiveNilWhenOffOrWithoutARoadOrOnAHostedWindow(t *testing.T) {
+// V14, as the 2026-11-24 hand test corrected it: wireLive leaves Options.OpenLive nil only when no road is installed or on a hosted window. Remote control being off is NOT a reason to leave it nil, because the setting is turned on in a window that is already open (see TestAWindowStartedWithRemoteControlOffOpensLiveOnceItIsSwitchedOn).
+func TestWireLiveLeavesOpenLiveNilWithoutARoadOrOnAHostedWindowAndWiresItWhateverTheSettingSays(t *testing.T) {
 	prevRoads := liveRoads
 	t.Cleanup(func() { liveRoads = prevRoads })
 	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 
 	road := newFakeLiveRoad()
 	lookup := func(device, _ string) (liveRoad, string, bool) {
 		return road, "Desktop", true
 	}
 
-	// Absent 1: remote control is off.
-	t.Setenv("CODEAF_REMOTE_CONTROL", "off")
-	liveRoads = lookup
-	var offOpts tui3.Options
-	wireLive(&offOpts, t.TempDir())
-	if offOpts.OpenLive != nil {
-		t.Fatal("wireLive wired OpenLive while remote control was off")
-	}
-
-	// Absent 2: no road adapter is installed.
+	// Absent 1: no road adapter is installed, with remote control on.
 	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
 	liveRoads = nil
 	var noRoadOpts tui3.Options
@@ -262,20 +263,165 @@ func TestWireLiveLeavesOpenLiveNilWhenOffOrWithoutARoadOrOnAHostedWindow(t *test
 		t.Fatal("wireLive wired OpenLive with liveRoads == nil")
 	}
 
-	// Absent 3: the window is itself a hosted session.
-	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
+	// Absent 2: the window is itself a hosted session, with remote control on.
 	liveRoads = lookup
 	hostedOpts := tui3.Options{Host: "devbox"}
 	wireLive(&hostedOpts, t.TempDir())
-	if hostedOpts.OpenLive != nil {
-		t.Fatal("wireLive wired OpenLive on a hosted window")
+	if hostedOpts.OpenLive != nil || hostedOpts.RemoteControl != nil {
+		t.Fatal("wireLive wired a live opener on a hosted window")
 	}
 
-	// Present path: remote control is on, a road lookup is installed, and Host is empty.
+	// Present, on: remote control is on, a road lookup is installed, and Host is empty.
 	var liveOpts tui3.Options
 	wireLive(&liveOpts, t.TempDir())
-	if liveOpts.OpenLive == nil {
-		t.Fatal("wireLive left OpenLive nil when remote control was on with a road")
+	if liveOpts.OpenLive == nil || liveOpts.RemoteControl == nil || !liveOpts.RemoteControl() {
+		t.Fatal("wireLive did not offer live views with remote control on and a road")
+	}
+
+	// Present, off: the same wiring, and the live read says no.
+	t.Setenv("CODEAF_REMOTE_CONTROL", "off")
+	var offOpts tui3.Options
+	wireLive(&offOpts, t.TempDir())
+	if offOpts.OpenLive == nil || offOpts.RemoteControl == nil {
+		t.Fatal("wireLive left the opener unwired because remote control was off at start, so switching it on would need a restart")
+	}
+	if offOpts.RemoteControl() {
+		t.Fatal("the live read says remote control is on while it is off")
+	}
+}
+
+// C1, C3: a window wired while remote control was off follows the setting from then on. The row /settings writes turns it on with no new wiring, and the environment variable, when set to a value, still wins over the row in both directions.
+func TestAWindowStartedWithRemoteControlOffOpensLiveOnceItIsSwitchedOn(t *testing.T) {
+	prevRoads := liveRoads
+	t.Cleanup(func() { liveRoads = prevRoads })
+	profile := t.TempDir()
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	t.Setenv("CODEAF_REMOTE_CONTROL", "")
+	_ = os.Unsetenv("CODEAF_REMOTE_CONTROL")
+	liveRoads = func(string, string) (liveRoad, string, bool) { return newFakeLiveRoad(), "Desktop", true }
+
+	var opts tui3.Options
+	wireLive(&opts, t.TempDir())
+	if opts.OpenLive == nil || opts.RemoteControl == nil {
+		t.Fatal("the window was not wired for live views while remote control was off")
+	}
+	if opts.RemoteControl() {
+		t.Fatal("remote control reads on in a fresh profile")
+	}
+
+	// What /settings does: the row is written, nothing else.
+	if err := applyRow(profile, config.KeyRemoteControl, "on"); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.RemoteControl() {
+		t.Fatal("the window still reads remote control as off after the row was switched on")
+	}
+	if err := applyRow(profile, config.KeyRemoteControl, "off"); err != nil {
+		t.Fatal(err)
+	}
+	if opts.RemoteControl() {
+		t.Fatal("the window still reads remote control as on after the row was switched off")
+	}
+
+	// C3: a set variable wins over the row, live, in both directions. The row is
+	// written first in each case, because a set variable makes the row read only.
+	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
+	if !opts.RemoteControl() {
+		t.Fatal("CODEAF_REMOTE_CONTROL=1 did not win over an off row")
+	}
+	_ = os.Unsetenv("CODEAF_REMOTE_CONTROL")
+	if err := applyRow(profile, config.KeyRemoteControl, "on"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_REMOTE_CONTROL", "0")
+	if opts.RemoteControl() {
+		t.Fatal("CODEAF_REMOTE_CONTROL=0 did not win over an on row")
+	}
+}
+
+// C2: while remote control is off the door refuses with the surface's own "nothing to open" answer, even for an offline chat whose last-seen copy it holds and which needs no road, and it opens that same chat once it is on.
+func TestTheLiveDoorRefusesWhileRemoteControlIsOffAndOpensWhenItIsOn(t *testing.T) {
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	t.Setenv("CODEAF_REMOTE_CONTROL", "")
+	_ = os.Unsetenv("CODEAF_REMOTE_CONTROL")
+	home := t.TempDir()
+	cache := viewcache.Open(home)
+	if err := cache.SaveNow("dev-desktop", "chat-1", viewcache.Snapshot{
+		Title:   "Port the picker",
+		Entries: []session.DisplayEntry{{Role: "user", Text: "hello"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	road := newFakeLiveRoad()
+	door := &liveDoor{
+		home:  home,
+		cache: cache,
+		roads: func(string, string) (liveRoad, string, bool) { return road, "Desktop", true },
+	}
+	row := chatlist.Row{Cell: "chat-1", Title: "Port the picker", Device: "Desktop", DeviceID: "dev-desktop", Status: chatlist.Off}
+
+	if _, err := door.Open(context.Background(), row); !errors.Is(err, tui3.ErrNoLiveView) {
+		t.Fatalf("Open with remote control off = %v, want tui3.ErrNoLiveView", err)
+	}
+	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
+	conv, err := door.Open(context.Background(), row)
+	if err != nil {
+		t.Fatalf("Open with remote control on: %v", err)
+	}
+	if conv.Agent == nil {
+		t.Fatal("Open with remote control on returned no agent")
+	}
+}
+
+// Housekeeping decided on purpose: the last-seen copies are trimmed at start only when remote control is on then. With it off, wiring the opener must touch nothing on disk.
+func TestWireLiveTrimsTheLastSeenCopiesOnlyWhenRemoteControlIsOnAtStart(t *testing.T) {
+	prevRoads := liveRoads
+	t.Cleanup(func() { liveRoads = prevRoads })
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	liveRoads = func(string, string) (liveRoad, string, bool) { return newFakeLiveRoad(), "Desktop", true }
+
+	// A temporary file a crashed write left behind, an hour old, is what Prune removes.
+	stray := func(home string) string {
+		dir := filepath.Join(home, "v3", "viewed", "dev-desktop")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "stray.tmp")
+		if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().Add(-time.Hour)
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "off")
+	offHome := t.TempDir()
+	offPath := stray(offHome)
+	var offOpts tui3.Options
+	wireLive(&offOpts, offHome)
+	time.Sleep(300 * time.Millisecond)
+	if _, err := os.Stat(offPath); err != nil {
+		t.Fatalf("wiring the opener with remote control off trimmed the copies: %v", err)
+	}
+
+	t.Setenv("CODEAF_REMOTE_CONTROL", "1")
+	onHome := t.TempDir()
+	onPath := stray(onHome)
+	var onOpts tui3.Options
+	wireLive(&onOpts, onHome)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(onPath); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("wiring the opener with remote control on never trimmed the copies")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 
@@ -288,6 +434,7 @@ func TestAKeypressOrARunningTurnKeepsTheLiveLinkActive(t *testing.T) {
 		return turnCh, nil
 	}
 
+	switchRemoteControlOn(t)
 	door := &liveDoor{
 		home:  t.TempDir(),
 		cache: viewcache.Open(t.TempDir()),
@@ -354,6 +501,7 @@ func TestAnOfflineComputerOpensTheLastSeenCopyAndSendsNothing(t *testing.T) {
 		}
 	}
 
+	switchRemoteControlOn(t)
 	door := &liveDoor{
 		home:  home,
 		cache: cache,
@@ -429,6 +577,7 @@ func TestTheLiveCopyIsSavedAfterATurnAndOnDetachNeverPerDelta(t *testing.T) {
 		return currentTurn, nil
 	}
 
+	switchRemoteControlOn(t)
 	door := &liveDoor{
 		home:  home,
 		cache: cache,
@@ -551,6 +700,7 @@ func TestClosingALiveConversationNeverEndsTheChatOnTheOtherComputer(t *testing.T
 		}
 	}
 
+	switchRemoteControlOn(t)
 	door := &liveDoor{
 		home:  t.TempDir(),
 		cache: viewcache.Open(t.TempDir()),
@@ -595,6 +745,7 @@ func TestClosingALiveConversationNeverEndsTheChatOnTheOtherComputer(t *testing.T
 func TestALiveAgentPagesOlderEntriesThroughTheRoad(t *testing.T) {
 	road := newFakeLiveRoad()
 	peer := &fakeLivePeerAgent{}
+	switchRemoteControlOn(t)
 	door := &liveDoor{
 		home:  t.TempDir(),
 		cache: viewcache.Open(t.TempDir()),
@@ -716,6 +867,7 @@ func TestTheLiveRoamingTurnsOnResendUnansweredTheLineBoundAndTheGapHandler(t *te
 	road.dialFn = func(string) remote.Dialer { return dialer }
 	var asked remote.Roaming
 	stop := errors.New("stop here: the policy is all this test reads")
+	switchRemoteControlOn(t)
 	door := &liveDoor{
 		home:  t.TempDir(),
 		roads: func(device, name string) (liveRoad, string, bool) { return road, "desktop", true },

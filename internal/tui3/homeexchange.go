@@ -1392,7 +1392,7 @@ func (a *app) errandPlace() (workspace, bucket string) {
 		if path := a.errandWorkspaceOf(here); path != "" {
 			return path, here
 		}
-		if path := strings.TrimSpace(a.workspace); path != "" {
+		if path := a.ownWorkspace(); path != "" {
 			return path, here
 		}
 	}

@@ -118,7 +118,7 @@ func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 // roster can be asked, and the holder is not in the one last read. Such a chat
 // waits for a fresh read instead of being refused.
 func (a *app) rosterCanAdmit(row chatlist.Row) bool {
-	if _, ok := a.fleet.(Roster); !ok || a.openLive == nil || a.hosted() {
+	if _, ok := a.fleet.(Roster); !ok || !a.liveOffered() || a.hosted() {
 		return false
 	}
 	if a.machineRead.computerRemoved || row.HolderRemoved || !heldElsewhere(row) {

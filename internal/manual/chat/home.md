@@ -671,7 +671,8 @@ use `alt+p`. To start a chat from a conversation row's folder, use `ctrl+t`.
 A row is the folder's path, how many conversations are in it and how many are running, and
 where its repository stands — the branch and the dirty count as one clause. **This window's
 folder is always the first row**, even before anyone has spoken in it, which is why the
-panel is never empty. **Paths are absolute and truncate on the right**: `/tmp/landing-test`
+panel is never empty. A live view of a chat on another computer does not change it: that chat's
+folder is on the other computer (*Home's project after a live view*). **Paths are absolute and truncate on the right**: `/tmp/landing-test`
 stays `/tmp/landing-test` while it fits, and a longer path becomes `/tmp/landing-te…`
 when space runs out. Only paths inside your home directory use `~/`; home itself is `~`.
 A similarly named sibling directory does not get that abbreviation. Counts and repository

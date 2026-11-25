@@ -159,8 +159,9 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		options.Pairing = chatPairDoor{}
 		door := newApprovalsDoor(home.Dir())
 		options.Approvals = door
-		// THE ONE-TIME QUESTION ABOUT OLDER PAIRINGS exists only with remote
-		// control on; newPermitAsker answers nil otherwise, and nil is absent.
+		// THE ONE-TIME QUESTION ABOUT OLDER PAIRINGS is asked only while remote
+		// control is on, and the asker reads that setting each time, so turning
+		// it on in this window brings the question with it.
 		options.PermitAsk = newPermitAsker(door)
 	}
 	options.UpdateRunning = revision

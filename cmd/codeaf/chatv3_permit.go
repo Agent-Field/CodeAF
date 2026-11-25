@@ -46,12 +46,38 @@ type permitAsker struct {
 }
 
 // newPermitAsker returns the asker over this computer's own door, or nil when
-// remote control is off: with it off no question is asked and nothing is
-// different on Home.
+// there is no door. REMOTE CONTROL IS ASKED EACH TIME, never at start: a person
+// turns it on in /settings in a window that is already open, and the one
+// question about older pairings has to come with it, not at the next launch.
+// With it off the asker says there is nothing to ask and does nothing else, so
+// Home is exactly what it was before the setting existed.
 func newPermitAsker(door *approvalsDoor) tui3.PermitAsker {
-	if door == nil || !config.RemoteControlOn() {
+	if door == nil {
 		return nil
 	}
+	return whenRemoteControlIsOn{asker: newDoorPermitAsker(door), on: config.RemoteControlOn}
+}
+
+// whenRemoteControlIsOn asks the question only while remote control is on. It
+// is a wrapper and not a check inside the asker so that, with the setting off,
+// no roster is read, no book is opened and no background work is started.
+type whenRemoteControlIsOn struct {
+	asker tui3.PermitAsker
+	on    func() bool
+}
+
+func (w whenRemoteControlIsOn) AskOnce() ([]string, bool) {
+	if !w.on() {
+		return nil, false
+	}
+	return w.asker.AskOnce()
+}
+
+func (w whenRemoteControlIsOn) Answer(allow bool) error { return w.asker.Answer(allow) }
+
+var _ tui3.PermitAsker = whenRemoteControlIsOn{}
+
+func newDoorPermitAsker(door *approvalsDoor) *permitAsker {
 	dir := door.dir
 	return &permitAsker{
 		who: func() string {

@@ -3977,6 +3977,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the difference between remote control and move here", "remote-control"},
 		{"can my laptop answer a question that is waiting on my desktop", "remote-control"},
 		{"remote control says restart codeaf on the other computer", "remote-control"},
+		{"do I need to restart codeaf after I turn remote control on", "remote-control"},
+		{"I turned remote control on in settings but enter still asks to move the chat", "remote-control"},
+		{"after I open a chat live from my other computer Home's project is a folder that does not exist on this computer", "remote-control"},
+		{"does opening a chat live change the project on home", "remote-control"},
 		{"is remote control the same as codeaf serve and --at", "remote-control"},
 		// The direct road (the same page): two computers on one network connect
 		// without the relay, what /status says, and the switches that govern it.
