@@ -396,3 +396,19 @@ func TestAStageToldItsEventsWithItsJournal(t *testing.T) {
 		t.Fatalf("heard %+v", got)
 	}
 }
+
+// A SCRIPT'S OWN CALL IS NOT A BOUNDARY in a held step's words: the words on
+// either side of it are one message.
+func TestAScriptsCallDoesNotSplitAStepsWords(t *testing.T) {
+	backend, rec, transcript, id := heldStepChat(t)
+	backend.stageEvent(transcript, session.Event{Kind: session.EventTextDelta, Text: "one "})
+	backend.stageEvent(transcript, session.Event{Kind: session.EventToolBegin, Tool: "bash", CallID: "s-script-1", Parent: "s"})
+	backend.stageEvent(transcript, session.Event{Kind: session.EventToolEnd, Tool: "bash", CallID: "s-script-1", Parent: "s"})
+	backend.stageEvent(transcript, session.Event{Kind: session.EventTextDelta, Text: "two"})
+	deltas := waitDeltas(t, rec, id, "one two")
+	for _, d := range deltas[1:] {
+		if d.Msg != deltas[0].Msg {
+			t.Fatalf("a script's call split the words into messages %d and %d", deltas[0].Msg, d.Msg)
+		}
+	}
+}

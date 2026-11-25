@@ -1034,7 +1034,9 @@ func (a *app) pilotEvent(msg taskPilotMsg) tea.Cmd {
 	if pilot == nil || pilot.gen != msg.gen {
 		return nil
 	}
-	if node := a.tasks[msg.id]; node != nil {
+	if node := a.tasks[msg.id]; node != nil && !msg.ev.FromScript() {
+		// A script's own calls leave the node's word on the script, which is
+		// what the node is doing until it ends.
 		switch msg.ev.Kind {
 		case session.EventToolAnnounced:
 			// ASKED FOR, NOT STARTED — so the name changes and the clock does not

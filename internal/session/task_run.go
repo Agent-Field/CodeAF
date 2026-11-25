@@ -7085,6 +7085,12 @@ func taughtSomething(event Event, ledger *progressLedger) bool {
 	if event.HarnessMade || !couldHaveTaught(event) {
 		return false
 	}
+	// A SCRIPT'S ANSWER IS JUDGED WITHOUT ITS OWN STATUS LINE, which carries
+	// the script's duration: the same findings at a different speed are the
+	// same answer, and a spin must not read as news because its clock moved.
+	if event.Tool == ScriptToolName {
+		event.Output = scriptReportBody(event.Output)
+	}
 	return freshAnswer(event, ledger)
 }
 
@@ -7100,8 +7106,13 @@ func taughtSomething(event Event, ledger *progressLedger) bool {
 // this clause a node that measured its three clips before joining them was three
 // steps nearer being stopped for making no progress — the precise punishment for
 // exploring that [knowledgeTools] was widened to the whole read-only belt to end.
+//
+// A SCRIPT IS BASH'S CASE ONE LEVEL UP. Its calls are the node's reading as
+// much as a bash command's are, and they never reach this counter on their own
+// (a nested call is not a step), so the script's answer is what the node
+// learned from them.
 func couldHaveTaught(event Event) bool {
-	if event.Tool == "bash" || knowledgeTools[event.Tool] {
+	if event.Tool == "bash" || event.Tool == ScriptToolName || knowledgeTools[event.Tool] {
 		return true
 	}
 	return savingTools[event.Tool] && !producedAFile(event.Tool, event.Args)
@@ -8010,6 +8021,10 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// never be handed the belt, and at the landing's gate, which keeps the
 		// experiment's work unaudited (workTaskNode).
 		bashBelt: bashExperiment,
+		// AND THE SCRIPT TOOL'S SWITCH, read where a plan run's worker reads it
+		// (bashbelt_worker.go): a task chat starts is a task worker too, and
+		// only [Config.mayScript] decides whether this belt carries it.
+		script: bashExperiment && scriptAsked(),
 		// ── THE TWO THINGS A QUICK WORKER HAS THAT NOTHING ELSE DOES ─────────
 		//
 		// THE CLAIM IT MADE ABOUT FILES, armed as the ordinary write bound: this

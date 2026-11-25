@@ -9,7 +9,12 @@ FIELDS = ["task", "harness", "seed", "outcome", "settle_reason", "stranded_ids",
           "changed_files_landed", "stranded_worktree_files", "changed_files_total", "upstream_commits_in_head", "contaminated",
           "road", "route", "armed", "parts", "peak_workers", "refused", "chat_tool_calls",
           "checkpoint_marks", "escalated", "escalation_seen_on_pane", "pre_turn_line",
-          "exit", "model", "base_commit", "loadavg_before", "loadavg_after"]
+          "exit", "model", "base_commit", "loadavg_before", "loadavg_after",
+          "steps", "script_steps", "script_calls",
+          "tokens_in", "tokens_out", "tokens_cache",
+          "worker_usd", "worker_tokens_in", "worker_tokens_out",
+          "worker_tokens_cache", "worker_model_calls",
+          "chat_steps", "chat_script_steps", "chat_script_calls"]
 
 
 def active_wall(cell, row):

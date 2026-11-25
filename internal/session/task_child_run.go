@@ -404,6 +404,14 @@ func (r *childRun) drain(events <-chan Event) {
 // clock that bounds the wait for its next event.
 func (r *childRun) observe(event Event) {
 	r.room.publish(event)
+	// A SCRIPT'S OWN CALL IS NOT A STEP: the script is, and its end comes after
+	// every call it made. A check it ran is still a check the node ran.
+	if event.FromScript() {
+		if event.Kind == EventToolEnd || event.Kind == EventToolFailed {
+			r.noteCheck(event)
+		}
+		return
+	}
 	switch event.Kind {
 	case EventToolBegin:
 		r.batchBegan()
@@ -457,6 +465,14 @@ func (r *childRun) tellSpend() {
 	home.emitTaskUpdate(r.node.notice())
 }
 
+// noteCheck records a finished call that ran the node's work — a build, a
+// test — whether the model made it or a script did.
+func (r *childRun) noteCheck(event Event) {
+	if checkingTools[event.Tool] && !event.HarnessMade {
+		r.ranCheck = true
+	}
+}
+
 // step reads ONE FINISHED TOOL CALL, which is the only unit available from out
 // here: the child's model round-trips are inside its own loop, and this side of
 // the wall sees the calls they produce.
@@ -486,9 +502,7 @@ func (r *childRun) step(event Event) {
 	// (withdrawn.go's [checkingTools]). A harness-made failure does not
 	// count: an answer this side of the wall wrote is not the node
 	// having run anything.
-	if checkingTools[event.Tool] && !event.HarnessMade {
-		r.ranCheck = true
-	}
+	r.noteCheck(event)
 	// ALL THREE QUESTIONS ARE ASKED OF EVERY STEP, and each is
 	// asked before any of them is read, because two of them RECORD
 	// as they answer. The worktree fingerprint has to be refreshed

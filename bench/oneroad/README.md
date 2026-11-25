@@ -78,6 +78,66 @@ Repeatability rules, all of them load-bearing:
 green is reported as a failure with its other numbers shown but struck through,
 because the fastest way to a green suite is always to delete the test.
 
+## Measuring the script tool
+
+`codeaf-script-flash` and `codeaf-script-crew` are `codeaf-new-flash` and
+`codeaf-new-crew` with `CODEAF_TASK_SCRIPT=on` in codeaf's environment and
+nothing else changed, so each pair measures the task worker's `script` tool
+alone (internal/session/tool_script.go). Run the pairs on the same tasks and
+seeds:
+
+```sh
+bench/oneroad/wave.sh <task> codeaf-new-crew codeaf-script-crew
+# for example: NEW_BIN=$PWD/bin/codeaf bench/oneroad/wave.sh 21 codeaf-new-crew codeaf-script-crew
+```
+
+Every codeaf cell's `meta.json` carries, and `collect.py` puts in
+`results.csv`:
+
+- `steps`, `script_steps`, `script_calls`: the workers' tool calls, their
+  script calls and the calls those scripts made, read from plan-run
+  trajectories and chat-task transcripts alike (`lib/script_use.py`). Read
+  these first: a script arm whose workers wrote no scripts measured nothing
+  about the tool, and its differences are noise.
+- `worker_usd`, `worker_tokens_in`, `worker_tokens_out`,
+  `worker_tokens_cache`, `worker_model_calls`: every model call a task worker
+  made, from the profile's usage ledger (`v3/usage.jsonl`, the rows on the
+  worker seat or naming a task: a plan run's workers carry only the seat). This is where the tool's effect on spend shows; compare it between
+  the pair. The plan store's spend rows are not used: they hold only a plan
+  run's workers, and a chat task's spend is not in them.
+- `tokens_in`, `tokens_out`, `tokens_cache`: the conversation's own model
+  calls (`lib/road.py`), the same names the peer arms' tokens use. They do
+  not include the workers.
+
+`cost_usd` prefers the conversation's call lines when it has them, so it can
+leave the workers' bill out; for this comparison read `worker_usd` beside it.
+Then compare outcome, tests after and `wall_s_active`. A run calls live models
+on the key in `OPENROUTER_API_KEY` and is billed.
+
+### What the pilots found
+
+Four pilot cells on `batch` (2026-11-18) wrote one script between them, and
+it failed: DeepSeek v4 flash read the tool as Node.js, and Sonnet 5.5 did its
+reading in `bash` instead, chaining commands in one call. A grid here would
+measure that the tool goes unused. `bench/scriptbench` measures the case it
+is for, and found the saving there.
+
+### The chat-side arm
+
+`codeaf-chatscript-flash` and `codeaf-chatscript-crew` are the new arms with
+`CODEAF_CHAT_SCRIPT=on`: the same tool on the conversation's own belt, the
+workers untouched. Run them beside `codeaf-new-*` in the same wave:
+
+```sh
+NEW_BIN=... bench/oneroad/wave.sh batch codeaf-new-crew codeaf-chatscript-crew
+```
+
+Read `chat_script_steps` and `chat_script_calls` first, for the reason the
+worker arm's counts come first. The effect shows in the conversation's own
+`tokens_in`, `tokens_out` and `tokens_cache`, beside `worker_*` and `road`:
+a chat that can make many calls in one step may do work itself that it would
+otherwise have handed to a task, and that is a change of road, not a saving.
+
 ## Reading a comparison honestly
 
 - Quote wall clock only beside the verdict. A harness that finishes in half the

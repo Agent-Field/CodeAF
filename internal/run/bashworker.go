@@ -322,6 +322,16 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				banked = spent
 				bankSpend(runCtx, spent)
 			}
+			// A SCRIPT'S OWN CALL IS NOT A STEP. The step is the script, and
+			// its end — which comes after every call it made — is what the cap,
+			// the same-action law and the live step read. Each finished call is
+			// kept for that step's line instead (tool_script.go names the parent).
+			if event.FromScript() {
+				if event.Kind == session.EventToolEnd || event.Kind == session.EventToolFailed {
+					rec.nest(event)
+				}
+				continue
+			}
 			switch event.Kind {
 			case session.EventToolBegin:
 				// A LIVE STEP IS TRUE ONLY WHILE ITS COMMAND RUNS. The begin event is
@@ -332,17 +342,15 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 				// [stepCommand] reads off the event, and the moment the store stamps.
 				// The step's own end line clears it, and so does every ending below,
 				// so a task that is not running a command never claims a present.
-				_ = w.store.SetLive(task.ID, stepNumber+1, stepCommand(event))
+				_ = w.store.SetLiveCall(task.ID, stepNumber+1, event.Tool, stepCommand(event))
 			case session.EventToolEnd, session.EventToolFailed:
 				// THE CAP IS THE LAST STEP COUNTED. The step handshake keeps the
 				// next action behind this decision. Any remaining end events are
 				// drained without extending the record past its bound.
-				if capped {
-					continue
-				}
 				// THE SAME-ACTION LAW ENDS THE RECORD WHERE IT FELL, before the
 				// acknowledgement permits another action.
-				if stalled {
+				if capped || stalled {
+					rec.drop(event.CallID)
 					continue
 				}
 				steps++
@@ -1047,6 +1055,28 @@ type stepRecorder struct {
 	taskID   string
 	children map[string]bool
 	spilled  int
+	// calls are a script's ended calls by the script call's id; the script's
+	// own step, which ends after them, takes its own.
+	calls map[string][]StepCall
+}
+
+// drop lets go of the calls of a step that will not be recorded — one the cap
+// or the same-action law ended before its line was written.
+func (r *stepRecorder) drop(parent string) { delete(r.calls, parent) }
+
+// nest keeps one call a script made, for the script's own step.
+func (r *stepRecorder) nest(event session.Event) {
+	if r.calls == nil {
+		r.calls = map[string][]StepCall{}
+	}
+	r.calls[event.Parent] = append(r.calls[event.Parent], StepCall{
+		Tool:        event.Tool,
+		Command:     stepCommand(event),
+		Observation: observationHead(event.Output),
+		ExitCode:    exitCodeOf(event),
+		Failed:      event.Kind == session.EventToolFailed,
+		NotRun:      event.HarnessMade,
+	})
 }
 
 // record appends one step line: the command the model spelled, the head of
@@ -1061,33 +1091,66 @@ func (r *stepRecorder) record(n int, event session.Event) error {
 		Command:     command,
 		Observation: observationHead(event.Output),
 		FullOutput:  r.takeSpill(),
-		Writes:      planVerbs(command),
+		Writes:      planVerbs(stepWritesText(event, command) + "\n" + nestedBash(r.calls[event.CallID])),
 		Children:    r.takeChildren(),
+		Calls:       r.calls[event.CallID],
 		NotRun:      event.HarnessMade,
 		Refused:     event.HarnessMade && event.Refused,
 	}
+	delete(r.calls, event.CallID)
 	// THE COMMAND'S OWN EXIT IS RECORDED FROM THE EVENT, and only for a bash
 	// command the belt actually ran: an ended bash tool exited zero, a failed one
 	// exited non-zero (the belt appends "Command exited with code N", read back
 	// here when it survived the output cap, otherwise a plain non-zero). A harness
 	// refusal never ran the command and a non-bash tool has no exit, so both leave
 	// the field nil, which a reader treats as unknown rather than as a zero.
-	if event.Tool == "bash" {
-		switch event.Kind {
-		case session.EventToolEnd:
-			zero := 0
-			step.ExitCode = &zero
-		case session.EventToolFailed:
-			if !event.HarnessMade {
-				code := 1
-				if parsed, ok := exitStatusFromOutput(event.Output); ok {
-					code = parsed
-				}
-				step.ExitCode = &code
-			}
+	step.ExitCode = exitCodeOf(event)
+	return appendTrajectory(r.storeDir, r.taskID, step)
+}
+
+// stepWritesText is the step's own text read for plandb verbs: its command,
+// or nothing for a script, whose source runs nothing itself. A word in a
+// script's comment or string is not a command; its bash calls are read
+// instead ([nestedBash]).
+func stepWritesText(event session.Event, command string) string {
+	if event.Tool == session.ScriptToolName {
+		return ""
+	}
+	return command
+}
+
+// nestedBash is the commands of a script's bash calls, one per line: a plan
+// write a script made went through one of them.
+func nestedBash(calls []StepCall) string {
+	var commands []string
+	for _, call := range calls {
+		if call.Tool == "bash" && !call.NotRun {
+			commands = append(commands, call.Command)
 		}
 	}
-	return appendTrajectory(r.storeDir, r.taskID, step)
+	return strings.Join(commands, "\n")
+}
+
+// exitCodeOf is a bash call's exit status read off its end, by the rule above;
+// nil for every other tool and for a call the harness answered.
+func exitCodeOf(event session.Event) *int {
+	if event.Tool != "bash" {
+		return nil
+	}
+	switch event.Kind {
+	case session.EventToolEnd:
+		zero := 0
+		return &zero
+	case session.EventToolFailed:
+		if !event.HarnessMade {
+			code := 1
+			if parsed, ok := exitStatusFromOutput(event.Output); ok {
+				code = parsed
+			}
+			return &code
+		}
+	}
+	return nil
 }
 
 // exitStatusFromOutput reads the exit code the belt appended to a failed

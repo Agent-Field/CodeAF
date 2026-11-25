@@ -319,6 +319,19 @@ func (c Config) mayProposeSubharness() bool {
 // on.
 func (c Config) mayBashBelt() bool { return c.InTask && c.bashBelt && !c.readingTask() }
 
+// mayScript is the script tool's predicate: a bash-belt worker whose switch was
+// on when it was built (tool_script.go), unless it is a quick task's.
+//
+// A QUICK WORKER HOLDS ITS NODE'S LOCK FOR THE WHOLE OF EACH CALL
+// ([Agent.executeTaskTool]), and a script's nested call takes the same lock
+// again; the mutex is not reentrant, so the script would wait forever.
+func (c Config) mayScript() bool { return c.mayBashBelt() && c.script && c.quickItems == nil }
+
+// mayChatScript is the script tool's predicate on a conversation's belt: a
+// session that is not a task, built by [New] with CODEAF_CHAT_SCRIPT on
+// (tool_script.go).
+func (c Config) mayChatScript() bool { return c.chatScript && !c.InTask }
+
 // ── the facts ───────────────────────────────────────────────────────────────
 
 // beltFact is one run of session-facts bullets that names a tool, together with

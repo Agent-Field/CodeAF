@@ -102,8 +102,10 @@ func displayToolOutput(id, output string) string {
 // runner still owns final truncation and the full spill file. Incomplete UTF-8
 // is retained across writes so remote JSON frames cannot corrupt split runes.
 type shellOutput struct {
-	hub          *eventHub
-	id, tool     string
+	hub      *eventHub
+	id, tool string
+	// parent is the script that made the call, or "" ([Event.Parent]).
+	parent       string
 	bytes, lines int
 	pending      []byte
 	cut          bool
@@ -129,12 +131,12 @@ func (w *shellOutput) Write(p []byte) (int, error) {
 		}
 	}
 	if end > 0 {
-		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Text: strings.ToValidUTF8(string(w.pending[:end]), "�")})
+		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Parent: w.parent, Text: strings.ToValidUTF8(string(w.pending[:end]), "�")})
 	}
 	w.pending = append(w.pending[:0], w.pending[end:]...)
 	if w.cut {
 		w.pending = nil
-		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Text: "\n[Live output limit reached; the final result includes the saved output path.]\n"})
+		w.hub.send(Event{Kind: EventToolOutput, Tool: w.tool, CallID: w.id, Parent: w.parent, Text: "\n[Live output limit reached; the final result includes the saved output path.]\n"})
 	}
 	return n, nil
 }

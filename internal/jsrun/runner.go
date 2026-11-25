@@ -150,12 +150,7 @@ func (r *Runner) stopped(err error, rec *recorder) (exec.RunResult, bool) {
 	if err == nil {
 		return exec.RunResult{}, false
 	}
-	var interrupted *goja.InterruptedError
-	if errors.As(err, &interrupted) {
-		why := "it stopped before it finished."
-		if stop, ok := interrupted.Value().(halt); ok {
-			why = stop.why
-		}
+	if why, interrupted := interruption(err); interrupted {
 		return exec.RunResult{Incomplete: why, Report: rec.report, Spend: rec.spend}, true
 	}
 	fellBack := "it stopped partway through — " + brief(err)

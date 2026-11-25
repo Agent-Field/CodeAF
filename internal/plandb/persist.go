@@ -219,6 +219,7 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS live (
 		task_id TEXT    PRIMARY KEY,
 		step    INTEGER NOT NULL,
+		tool    TEXT    NOT NULL DEFAULT '',
 		command TEXT    NOT NULL,
 		since   TEXT    NOT NULL
 	)`,
@@ -359,6 +360,11 @@ func schemaTransaction(db *sql.DB) error {
 // tables and a reader never sees one column present and its sibling absent.
 func migrateColumns(tx *sql.Tx) error {
 	if err := ensureColumn(tx, "meta", "stopped", "INTEGER", "0"); err != nil {
+		return err
+	}
+	// THE LIVE STEP'S TOOL arrived with the script tool: a file written before
+	// it still opens, each live row reading back with no tool — a bash step.
+	if err := ensureColumn(tx, "live", "tool", "TEXT", "''"); err != nil {
 		return err
 	}
 	for _, table := range []string{"tasks", "notes", "contexts"} {

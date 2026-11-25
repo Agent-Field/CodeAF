@@ -209,7 +209,7 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 			if hub != nil {
 				hub.send(Event{Kind: EventToolFinished, Tool: call.Function.Name, Args: rendered[index], CallID: call.ID, Took: took})
 			}
-			byID[call.ID] = a.finishToolResult(ep, call, toolResult{text: sweepMovedWord, harness: true})
+			byID[call.ID] = a.finishToolResult(ctx, ep, call, toolResult{text: sweepMovedWord, harness: true})
 		}
 		for index, call := range rest {
 			byID[call.ID] = restResults[index]
@@ -272,7 +272,7 @@ func (a *Agent) handoffReadSweep(ctx context.Context, ep *episode, hub *eventHub
 		if index == 0 {
 			text = sweepHandoffWord(id) + "\n\n" + answer
 		}
-		byID[call.ID] = a.finishToolResult(ep, call, toolResult{text: text, harness: true})
+		byID[call.ID] = a.finishToolResult(ctx, ep, call, toolResult{text: text, harness: true})
 		if hub != nil {
 			hub.send(Event{
 				Kind: EventToolEnd, Tool: call.Function.Name, CallID: call.ID,

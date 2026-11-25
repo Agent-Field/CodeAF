@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -185,6 +186,12 @@ type sessionEntry struct {
 	// no duration at all. Absent from every line that is not one, and from every
 	// file written before the line existed.
 	Took *journalTook `json:"took,omitempty"`
+
+	// Nested is ONE CALL A SCRIPT MADE (tool_script.go). The model read only
+	// the script's result, so no message carries the call, and a reopened
+	// conversation draws it under its script from this line alone. Absent from
+	// every line that is not one, and from every file written before it existed.
+	Nested *journalNested `json:"nested,omitempty"`
 
 	// Pace is ONE TURN'S DECOMPOSITION: how long the person waited to be sent
 	// anywhere, how long they then waited for a word, and the worst gap between a
@@ -1005,6 +1012,17 @@ type journalTook struct {
 	DurationMS int64  `json:"durationMs"`
 }
 
+// journalNested is ONE CALL A SCRIPT MADE as the journal holds it: the script
+// call it came from, its own id, and the row a person was shown — its rendered
+// arguments and its output capped as the live row's was.
+type journalNested struct {
+	Parent string `json:"parent"`
+	CallID string `json:"callId"`
+	Tool   string `json:"tool"`
+	Args   string `json:"args,omitempty"`
+	Output string `json:"output,omitempty"`
+}
+
 // journalFlight is ONE REQUEST'S LIFE, written at its two ends: once when it
 // goes out and once when it comes back, whichever way it came back.
 //
@@ -1238,6 +1256,11 @@ type sessionFile struct {
 	// nowhere else to sit. A replay without this index draws finished rows with
 	// no duration, which is the lie a room opened after landing used to tell.
 	tooks map[string]journalTook
+
+	// nesteds is THE CALLS EACH SCRIPT MADE, in the order they ended, keyed by
+	// the script call's id ([journalNested]). It lives here for the tooks'
+	// reason: the model never read these calls, so no message holds them.
+	nesteds map[string][]journalNested
 
 	// stamps is when each message's line was written (entrytime.go).
 	stamps *stampIndex
@@ -1509,6 +1532,33 @@ func (s *sessionFile) appendTook(callID string, took time.Duration) {
 	s.writeLine(sessionEntry{Type: "took", Took: &mark, Timestamp: stamp()})
 }
 
+// appendNested journals one call a script made and indexes it under its
+// script, so the live record and a reopened one draw the same rows.
+func (s *sessionFile) appendNested(mark journalNested) {
+	if s == nil || strings.TrimSpace(mark.Parent) == "" || strings.TrimSpace(mark.CallID) == "" {
+		return
+	}
+	s.mu.Lock()
+	if s.nesteds == nil {
+		s.nesteds = make(map[string][]journalNested, 1)
+	}
+	s.nesteds[mark.Parent] = append(s.nesteds[mark.Parent], mark)
+	s.mu.Unlock()
+	s.writeLine(sessionEntry{Type: "nested", Nested: &mark, Timestamp: stamp()})
+}
+
+// nested answers the calls one script made, in the order they ended; none for
+// a call that is not a script, a file with no journal, and every file written
+// before the line existed.
+func (s *sessionFile) nested(parent string) []journalNested {
+	if s == nil || parent == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.nesteds[parent])
+}
+
 // rememberSteer marks one message as a splice, in a map the caller owns — the
 // file's, under its lock, or the one a replay is still building. It is
 // [rememberNote]'s twin and keeps its shape on purpose: the two facts are
@@ -1757,6 +1807,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.steers = replayed.steers
 	journal.captions = replayed.captions
 	journal.tooks = replayed.tooks
+	journal.nesteds = replayed.nesteds
 	journal.stamps = replayed.stamps
 	if journal.stamps == nil {
 		journal.stamps = &stampIndex{}
@@ -1948,6 +1999,9 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// one call's duration that is not carried by any message (see
 	// [sessionFile.tooks]).
 	tooks := make(map[string]journalTook)
+	// And the nested index, for the tooks' reason: a script's calls are not
+	// carried by any message (see [sessionFile.nesteds]).
+	nesteds := make(map[string][]journalNested)
 	replyTags := make(map[string][]TaskReplyTag)
 	delivered := make(map[string]bool)
 	noteDeliveries := make(map[string][]string)
@@ -2173,6 +2227,17 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				continue
 			}
 			tooks[mark.CallID] = mark
+		case "nested":
+			// ONE CALL A SCRIPT MADE. It rebuilds no message — the model read
+			// only the script's result — so it only indexes, under its script.
+			if entry.Nested == nil {
+				continue
+			}
+			mark := *entry.Nested
+			if strings.TrimSpace(mark.Parent) == "" || strings.TrimSpace(mark.CallID) == "" {
+				continue
+			}
+			nesteds[mark.Parent] = append(nesteds[mark.Parent], mark)
 		case "steer":
 			// A STEER THAT FELL THROUGH, and nothing is rebuilt from it
 			// ([sessionFile.appendSteerFellThrough]). Those words never reached
@@ -2387,6 +2452,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		steers:         steers,
 		captions:       captions,
 		tooks:          tooks,
+		nesteds:        nesteds,
 		usage:          spent,
 		created:        created,
 		requests:       requests,
@@ -2598,6 +2664,9 @@ type replayedSession struct {
 	// tooks is how long each call ran, keyed by the call's own id — the index
 	// [sessionFile.tooks] is opened holding.
 	tooks map[string]journalTook
+	// nesteds is the calls each script made, keyed by the script call's id —
+	// the index [sessionFile.nesteds] is opened holding.
+	nesteds map[string][]journalNested
 	// stamps is when each message's line was written (entrytime.go).
 	stamps *stampIndex
 	// unread is the 1-based line of the file this reading could not get past, and

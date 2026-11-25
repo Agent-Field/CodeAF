@@ -482,6 +482,11 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 	}
 	for event := range events {
 		tellStageNews(c.file, event)
+		// A SCRIPT IS ONE CALL IN THE ITEM'S LOG. The calls it made are its own
+		// data, and a failure it caught is not the stage's.
+		if event.FromScript() {
+			continue
+		}
 		switch event.Kind {
 		case session.EventTextDelta:
 			if c.progress != nil && prose.Len() < 4*1024 {

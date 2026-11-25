@@ -438,6 +438,16 @@ func RunBash(ctx context.Context, cwd string, args json.RawMessage, caps Caps, o
 	return newBashTool(cwd, caps).Execute(WithBashOutput(ctx, output), args)
 }
 
+// BashToolCapped is bash alone, built as [AllToolsCapped] builds it, for a
+// caller that needs only the shell; ok is false where bash is not available.
+func BashToolCapped(cwd string, caps Caps) (tool Tool, ok bool) {
+	tools := availableTools([]Tool{newBashTool(cwd, caps.resolve())})
+	if len(tools) == 0 {
+		return Tool{}, false
+	}
+	return tools[0], true
+}
+
 func newBashTool(cwd string, caps Caps) Tool {
 	caps = caps.resolve()
 	return Tool{
@@ -729,7 +739,7 @@ func newBashTool(cwd string, caps Caps) Tool {
 				observe(exitCode)
 			}
 			if exitCode != 0 {
-				return appendStatus(text, fmt.Sprintf("Command exited with code %d", exitCode)), true, nil
+				return appendStatus(text, ExitStatusLine(exitCode)), true, nil
 			}
 
 			return text, false, nil
@@ -748,6 +758,11 @@ func startFailedText(goos string, err error) string {
 	}
 	return "Failed to start command: " + reason + "\n" + advice + "\nWindows said: " + err.Error()
 }
+
+// ExitStatusLine is the status line a non-zero exit appends to bash's output,
+// exported so a caller that receives the code as data ([WithBashExit]) can
+// take the line back off without spelling it a second time.
+func ExitStatusLine(code int) string { return fmt.Sprintf("Command exited with code %d", code) }
 
 // appendStatus mirrors pi's bash.js:appendStatus: join text and status with
 // "\n\n", or just status if text is empty.

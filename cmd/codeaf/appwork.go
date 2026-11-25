@@ -639,6 +639,10 @@ func appInFlight(entries []session.DisplayEntry) *session.DisplayEntry {
 // pilot folds one task's call events into its line until the lane closes.
 func (b *appBackend) pilot(live *appLive, key string, lane <-chan session.Event) {
 	for event := range lane {
+		// A SCRIPT IS ONE CALL ON THE LINE: its own calls never move it.
+		if event.FromScript() {
+			continue
+		}
 		var call string
 		switch event.Kind {
 		case session.EventToolAnnounced, session.EventToolBegin:

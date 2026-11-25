@@ -322,7 +322,7 @@ func renderSystemAt(config Config, now time.Time) string {
 			// requirement rather than follow a doctrine that promises it.
 			out.WriteString("You are codeaf. Shell commands are unavailable here. Explain the shell requirement from Project, and do not claim to run commands. The manual tool can explain Windows setup.\n")
 		} else {
-			out.WriteString(bashWorkerPage())
+			out.WriteString(bashWorkerDoctrine(config))
 			if config.AttributionOff {
 				out.WriteString("\n\n")
 				out.WriteString(exec.AttributionOffLaw)
@@ -416,6 +416,18 @@ func renderSystemAt(config Config, now time.Time) string {
 }
 
 // ── the bash worker's page ──────────────────────────────────────────────────
+
+// bashWorkerDoctrine is [bashWorkerPage] with the paragraph for each hand this
+// worker carries beyond the page's own: today only the script tool, which is
+// named only where the belt has it, because a page naming a tool the belt lacks
+// is the prompt lying.
+func bashWorkerDoctrine(config Config) string {
+	page := bashWorkerPage()
+	if config.mayScript() {
+		page += "\n\n" + scriptWorkerRule
+	}
+	return page
+}
 
 // bashWorkerPage composes the page a bash-belt worker opens message[0] on: the
 // loop policy it works by and the belt's doctrine (the plan CLI and the shell

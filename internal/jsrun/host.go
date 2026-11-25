@@ -36,19 +36,24 @@ import (
 // calls are ordinary synchronous calls, and a program that wants a sequence
 // writes a sequence.
 type host struct {
-	runner  *Runner
-	ctx     context.Context
-	vm      *goja.Runtime
-	rec     *recorder
-	fuel    Fuel
-	input   any
-	unwatch func()
+	*machine
+	runner *Runner
+	input  any
 }
 
 // newHost builds the interpreter for one run and binds the six doors into it.
 func (r *Runner) newHost(ctx context.Context, input any, rec *recorder) (*host, error) {
-	vm := goja.New()
-	h := &host{runner: r, ctx: ctx, vm: vm, rec: rec, fuel: r.bundle.Fuel, input: input}
+	fuel := r.bundle.Fuel
+	h := &host{
+		machine: newMachine(ctx, rec, limits{
+			steps:  fuel.steps(),
+			tokens: fuel.Tokens,
+			wall:   fuel.wall(r.bundle.Manifest.SubharnessInfo),
+		}),
+		runner: r,
+		input:  input,
+	}
+	vm := h.vm
 
 	// The Env is handed this bundle's prompt assets where it asked for them, so
 	// that the ref the journal records can be resolved to the text the model
@@ -74,16 +79,8 @@ func (r *Runner) newHost(ctx context.Context, input any, rec *recorder) (*host, 
 		return nil, fmt.Errorf("%q could not be handed its input: %w", r.bundle.Manifest.Name, err)
 	}
 
-	h.unwatch = watch(ctx, vm, h.fuel.wall(r.bundle.Manifest.SubharnessInfo))
+	h.watch()
 	return h, nil
-}
-
-// close stops the watchdog. A run that finished on its own must not leave a
-// goroutine waiting to interrupt an interpreter nobody is using.
-func (h *host) close() {
-	if h.unwatch != nil {
-		h.unwatch()
-	}
 }
 
 // execute evaluates the bundle and reads its answer out.
@@ -96,18 +93,6 @@ func (h *host) execute() (goja.Value, error) {
 		return entry(goja.Undefined(), h.vm.ToValue(h.input))
 	}
 	return value, nil
-}
-
-// throw raises a JavaScript error inside the program.
-//
-// A FAILED DOOR IS CATCHABLE AND A SPENT BUDGET IS NOT, and the difference is
-// deliberate: a tool that was not there, a prompt that does not exist, a model
-// call that failed are all things a program may legitimately have a plan B for,
-// so they arrive as ordinary exceptions. Running out of fuel arrives through the
-// interrupt (fuel.go), which no `catch` can reach. An error that nobody catches
-// ends the run as a fallback, which is [Runner.stopped]'s job.
-func (h *host) throw(err error) {
-	panic(h.vm.NewGoError(err))
 }
 
 // ── ai ──────────────────────────────────────────────────────────────────────
@@ -241,18 +226,6 @@ func (h *host) aiOptions(value goja.Value) (exec.AIOptions, error) {
 		opts.Effort = parsed
 	}
 	return opts, nil
-}
-
-// parse hands structured JSON back to the program as a JavaScript value,
-// falling back to the text when the bytes will not parse. A model that promised
-// a shape and sent something else is the Env's problem to report; this door's
-// job is not to lose what did come back.
-func (h *host) parse(raw json.RawMessage, fallback string) goja.Value {
-	var decoded any
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return h.vm.ToValue(fallback)
-	}
-	return h.vm.ToValue(decoded)
 }
 
 // ── tool ────────────────────────────────────────────────────────────────────

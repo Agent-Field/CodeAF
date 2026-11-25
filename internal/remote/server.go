@@ -1571,10 +1571,14 @@ func factsMoved(kind session.EventKind) bool {
 // token column — saw a big file read join the conversation one whole step late.
 // The next request is the first moment the results are certainly in, and its
 // first word is the first event this pump sees from it.
-func (sess *Session) weighsAgainLocked(kind session.EventKind) bool {
-	switch kind {
+func (sess *Session) weighsAgainLocked(event session.Event) bool {
+	switch event.Kind {
 	case session.EventToolEnd, session.EventToolFailed:
-		sess.weighOwed = true
+		// A script's own call ends inside the script's step: its result never
+		// joins the conversation, so only the script's end owes a weighing.
+		if !event.FromScript() {
+			sess.weighOwed = true
+		}
 	case session.EventTurnDone, session.EventError:
 		// The turn's own end states the facts whole, results and all.
 		sess.weighOwed = false
@@ -1727,7 +1731,7 @@ func (sess *Session) emit(id, generation uint64, event session.Event) {
 		}
 		sess.held.raise(wire, id, drawn)
 	}
-	weighs := sess.weighsAgainLocked(event.Kind)
+	weighs := sess.weighsAgainLocked(event)
 	sess.mu.Unlock()
 
 	// THE FACTS GO FIRST, AHEAD OF THE EVENT THAT MOVED THEM. A surface settles
