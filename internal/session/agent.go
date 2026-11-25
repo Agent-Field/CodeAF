@@ -4459,7 +4459,10 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 	if wakeStanding[note.cause].pause {
 		// The pause this note may be held by is read now, off the lock: it is
 		// the person's word in a file another process writes (team_pause.go).
-		a.teamPauseFresh()
+		// Only a conversation with a role in a team can be paused, and every
+		// other one, a belt landing holding its run's delivery lock among them,
+		// pays nothing for it.
+		a.teamPauseFreshSeated()
 	}
 	taken, receipt, why := a.enqueueNoteLocked(note, text)
 	if receipt != nil {

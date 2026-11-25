@@ -259,6 +259,11 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 			// waits on. One written before this session began is history.
 			if teamManagerStops(role, entry) && !entry.At.Before(a.startedAt) {
 				stopped = true
+				// WHAT ASKED FOR A TURN BEFORE THE STOP IN THIS LOOK IS WHAT
+				// IT STOPS. Kept, it started a turn on the very directive the
+				// manager had just stopped, right after the stop held what
+				// the member waits on. A directive after the stop still wakes.
+				waking = waking[:0]
 			}
 			if !role.wakes {
 				continue
@@ -766,19 +771,27 @@ func (a *Agent) teamWakeWith(text string) (bool, string) {
 // ITS CALLER HAS ALREADY DECIDED, AND THIS DECIDES AGAIN. The text is what a
 // boundary just handed over, read after [Agent.decideWake] said a turn could
 // start, and the agent's lock was let go in between: a turn may have begun, or
-// a gate closed. So the answer here is the one that counts, and what it does
-// with text that can no longer start a turn is what every other note gets. A
-// turn that began takes it at its next step. A seat that may not work and a
-// job that refuses automatic work keep nothing ([Agent.enqueueNote],
-// [Agent.wakeAnsweringLocked]), nor does a closed session, whose queue nothing
-// drains. Every other gate leaves it queued for the next turn.
+// a gate closed. So the answer here is the one that counts. A turn that began
+// takes the text at its next step, and every gate but one leaves it queued for
+// the next turn. A closed session keeps nothing, since nothing drains its queue.
+//
+// THE TEXT IS LINES THE BOUNDARY HAS ALREADY HANDED OVER: their cursor has
+// moved and been saved, so text dropped here is never read by any turn. A seat
+// that may not work and a job that refuses automatic work keep it as an
+// ordinary line, not a wake, which is what the boundary of the next turn would
+// have handed over had the gate closed before the decision: such a job drops
+// automatic work it refuses ([Agent.wakeAnsweringLocked]), not team lines.
 func (a *Agent) wakeWith(text string) wakeDecision {
 	note := userMessage{message: textMessage("user", strings.TrimSpace(text)), wake: true, authored: true}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	d := a.decideWakeLocked()
 	switch d.gate {
-	case wakeGateFactory, wakeGateSeat, wakeGateClosed:
+	case wakeGateClosed:
+		return d
+	case wakeGateFactory, wakeGateSeat:
+		note.wake = false
+		a.steering = append(a.steering, note)
 		return d
 	}
 	a.steering = append(a.steering, note)
