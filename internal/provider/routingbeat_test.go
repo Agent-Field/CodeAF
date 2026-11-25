@@ -50,9 +50,8 @@ func TestBareProviderRoutingWakesTheBeat(t *testing.T) {
 				client := routingBeatClient(t, strategy, false)
 				sheet := &routingBeatSheet{}
 				lanes.Default().SetSheet(sheet)
-				ctx, stop := context.WithCancel(context.Background())
-				defer stop()
-				go lanes.Beat(ctx, sheet, []string{"routing/model"}, 0)
+				ctx, end := startRoutingBeat(sheet)
+				defer end()
 				synctest.Wait()
 				time.Sleep(30 * time.Minute)
 				blocked := make(chan struct{})
@@ -88,9 +87,8 @@ func TestColdProbeSelectionAloneWakesTheBeat(t *testing.T) {
 		client := routingBeatClient(t, RoutingLatency, false)
 		sheet := &routingBeatSheet{}
 		lanes.Default().SetSheet(sheet)
-		ctx, stop := context.WithCancel(context.Background())
-		defer stop()
-		go lanes.Beat(ctx, sheet, []string{"routing/model"}, 0)
+		ctx, end := startRoutingBeat(sheet)
+		defer end()
 		synctest.Wait()
 		time.Sleep(30 * time.Minute)
 		client.ProbeLanes(ctx, "routing/model")
@@ -139,9 +137,8 @@ func TestProbeRoutingDoesNotWaitForRefreshOrSend(t *testing.T) {
 			<-ctx.Done()
 			return 0, ctx.Err()
 		}}))
-		ctx, stop := context.WithCancel(context.Background())
-		defer stop()
-		go lanes.Beat(ctx, sheet, []string{"routing/model"}, 0)
+		ctx, end := startRoutingBeat(sheet)
+		defer end()
 		synctest.Wait()
 		time.Sleep(30 * time.Minute)
 		blocked := make(chan struct{})
@@ -182,9 +179,8 @@ func TestProviderRoutingGatesLeaveTheBeatIdle(t *testing.T) {
 				client := routingBeatClient(t, strategy, direct)
 				sheet := &routingBeatSheet{}
 				lanes.Default().SetSheet(sheet)
-				ctx, stop := context.WithCancel(context.Background())
-				defer stop()
-				go lanes.Beat(ctx, sheet, []string{"routing/model"}, 0)
+				ctx, end := startRoutingBeat(sheet)
+				defer end()
 				synctest.Wait()
 				time.Sleep(30 * time.Minute)
 				if _, err := client.CompleteWithMessages(ctx, userMessages("read this")); err != nil {
@@ -228,9 +224,8 @@ func TestSilentRouterCanRecoverOnTheNextRoutingCompletion(t *testing.T) {
 		client := routingBeatClient(t, RoutingLatency, false)
 		fetch := &recoveringSheetFetcher{}
 		lanes.WireSheet(client.config.BaseURL, "fixture", fetch, false)
-		ctx, stop := context.WithCancel(context.Background())
-		defer stop()
-		go lanes.Beat(ctx, lanes.Default().Sheet(), []string{"routing/model"}, 0)
+		ctx, end := startRoutingBeat(lanes.Default().Sheet())
+		defer end()
 		synctest.Wait()
 		if fetch.calls != 1 {
 			t.Fatalf("startup made %d fetches; want 1", fetch.calls)
@@ -261,9 +256,8 @@ func TestInstalledProbeChooserStillCountsRouting(t *testing.T) {
 		lanes.Default().SetChooser(&countingChooser{})
 		sheet := &routingBeatSheet{}
 		lanes.Default().SetSheet(sheet)
-		ctx, stop := context.WithCancel(context.Background())
-		defer stop()
-		go lanes.Beat(ctx, sheet, []string{"routing/model"}, 0)
+		ctx, end := startRoutingBeat(sheet)
+		defer end()
 		synctest.Wait()
 		time.Sleep(30 * time.Minute)
 		client.ProbeLanes(ctx, "routing/model")
@@ -284,9 +278,8 @@ func TestATerminalPreferenceRefusalLeavesTheBeatIdle(t *testing.T) {
 		client := routingBeatClient(t, RoutingLatency, false)
 		fetch := &recoveringSheetFetcher{}
 		lanes.WireSheet(client.config.BaseURL, "fixture", fetch, false)
-		ctx, stop := context.WithCancel(context.Background())
-		defer stop()
-		go lanes.Beat(ctx, lanes.Default().Sheet(), []string{"routing/model"}, 0)
+		ctx, end := startRoutingBeat(lanes.Default().Sheet())
+		defer end()
 		synctest.Wait()
 		if fetch.calls != 1 {
 			t.Fatalf("startup made %d fetches; want 1", fetch.calls)
@@ -303,4 +296,33 @@ func TestATerminalPreferenceRefusalLeavesTheBeatIdle(t *testing.T) {
 			t.Fatalf("completion after terminal preference refusal: %d fetches; want startup only", fetch.calls)
 		}
 	})
+}
+
+// startRoutingBeat runs [lanes.Beat] over the routing model inside the
+// caller's synctest bubble and hands back its context and the one call that
+// ends it.
+//
+// A BEAT IS WAITED FOR, NEVER ABANDONED. The beat can be asleep inside the lane
+// store's lock backoff when a test reaches its last line: the completion the
+// test just made and the beat's own reload wake at the same fake instant and
+// race for the store's file lock, and the loser sleeps. synctest.Wait counts
+// that sleep as idle, so the assertions pass and the test returns, and a
+// bubble whose main goroutine has gone while one of its goroutines is still
+// asleep panics with "deadlock: main bubble goroutine has exited but blocked
+// goroutines remain". That is how
+// TestSilentRouterCanRecoverOnTheNextRoutingCompletion failed three CI runs in
+// a row on 2026-11-25 while passing every run on a laptop. end cancels the
+// beat and then waits for it to return, and waiting lets the bubble's clock
+// carry the sleeper through its backoff to the cancelled context.
+func startRoutingBeat(sheet lanes.Sheet) (context.Context, func()) {
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		lanes.Beat(ctx, sheet, []string{"routing/model"}, 0)
+	}()
+	return ctx, func() {
+		stop()
+		<-done
+	}
 }

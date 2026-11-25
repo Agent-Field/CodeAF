@@ -3181,6 +3181,17 @@ func terminalFailureWords(err error, service string) (string, bool) {
 		return provider.PlanPauseSentence(paused.Reset, paused.OverflowDoor), true
 	}
 	refusal, ok := provider.RefusalFrom(err)
+	// THE ORGANIZATION'S OWN LIMIT IS NOT A SERVICE'S REFUSAL. A hosted chat that
+	// reached the limit the organization set is told so by the organization's
+	// model door in a finished sentence, and that sentence is the whole answer: put
+	// behind "<service> accepted the key but the account cannot pay" it blamed the
+	// vendor and the person's own account, and it needs no service at all
+	// (provider/orgdoor.go). It is read before the service check for that reason.
+	if ok {
+		if said, own := refusal.OrgLimitWords(); own {
+			return said, true
+		}
+	}
 	if !ok || !refusal.AccountCannotPay() || strings.TrimSpace(service) == "" {
 		return "", false
 	}
@@ -3916,7 +3927,7 @@ func (a *Agent) executeRecorded(ctx context.Context, tool bare.Tool, args json.R
 		// A COMMAND THE FENCE STOPPED SAYS SO, in the one sentence the model and
 		// the person both read, under the command's own error.
 		if isError && err == nil && a.config.fence() != nil {
-			text = procexec.WithFenceLine(text)
+			text = a.config.fence().WithNote(text)
 		}
 		return []byte(text), isError || err != nil
 	})

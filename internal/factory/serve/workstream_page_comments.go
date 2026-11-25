@@ -125,7 +125,7 @@ func (h *Handler) postPageComment(w http.ResponseWriter, r *http.Request) {
 	// Markdown, never the editor's blocks, so its thread has no block path and
 	// its block text is the quote itself. The desk finds the words on the live
 	// page the same way it finds every thread's (the one place that says them).
-	_, agent := agentCallOf(r)
+	_, agent := afiCallOf(r)
 	text, err := commentWords(body.Text)
 	switch {
 	case err != nil:

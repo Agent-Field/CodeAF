@@ -63,7 +63,9 @@ func TestForwardedHeadersAreBelievedOnlyFromTrustedProxies(t *testing.T) {
 // A PROXY ON THIS MACHINE THAT NOBODY LISTED MUST NOT OPEN THE FLOOR. Its
 // requests arrive from loopback, which alone would be the open local grant.
 func TestAnUnlistedLocalProxyDoesNotOpenTheLoopbackFloor(t *testing.T) {
-	h := New(factory.FixtureSeam(time.Now()), Config{AccessToken: "test-secret"})
+	// The proxy rule holds whatever the loopback knob says; this table is about a
+	// host that trusts its own computer, so the knob is on.
+	h := New(factory.FixtureSeam(time.Now()), Config{AccessToken: "test-secret", LoopbackTrust: boolPtr(true)})
 	defer h.Close()
 	for _, tc := range []struct {
 		name    string

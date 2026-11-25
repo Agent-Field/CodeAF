@@ -56,6 +56,7 @@ decides which combinations are accepted.
 | `agents.entries` | `in.EntriesParams` | `EntriesResult` |
 | `agents.errand` | `in.ErrandParams` | `Errand` |
 | `agents.errand.models` | `in.ErrandModelsParams` | `ErrandModels` |
+| `agents.hosted_list` | `{org}` | `HostedListResult` |
 | `agents.idle` | `{days}` | `IDsResult` |
 | `agents.labels` | `{ids}` | `AgentLabels` |
 | `agents.list` | `in.AgentsListParams` | `AgentsResult` |
@@ -85,6 +86,23 @@ decides which combinations are accepted.
 | `agents.steer` | `in.sayTo` | `Empty` |
 | `agents.stop` | `in.IDParams` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
+
+The `agents.hosted` feature enables `agents.hosted_list` and the optional
+`org` connection ID on `agents.create`. The hosted list returns the caller's
+own and shared chats, newest first. Its `available` field is true when the
+organization's server serves hosted chats. A server with hosted chats off
+returns an empty `agents` array and `available: false`. The server's
+`hosting` policy object is included when supplied. Authentication failures
+answer `signed_out` and transport failures answer `unreachable`.
+
+Hosted rows carry `hosted` facts and use a self-describing
+`<session>_<connection>` ID. `hosted.verbs` is what the organization's server
+says the person may do in that chat, taken from the `verbs` of the server's
+list row as it stood when the list was read; the app works nothing out from a
+role name, and a row the server sent no verbs for reads `["view"]`. The
+server's wire enforces the verbs whatever a window shows. `agents.open` attaches that session's wire and
+`agents.close` releases it. Use `agents.stop` to interrupt its current turn.
+`agents.list` stays scoped to chats on this computer.
 
 `agents.stop` is a bounded stop. It interrupts the running turn and answers at
 once; a turn that has still not let go ten seconds later (one parked on a wait
@@ -415,6 +433,7 @@ keeps the value in a private file the agent's commands read (the model's own
 | method | params | result |
 |---|---|---|
 | `chats.list` | `{}` | `ChatsResult` |
+| `chats.read` | `ChatReadParams` | `ChatReadResult` |
 | `chats.preview` | `{cell}` | `{last_user?: string, last_assistant?: string}` |
 | `chats.send` | `ChatSendParams` | `ChatSendResult` |
 
@@ -1101,9 +1120,14 @@ names a space's things. `factory.org_myspace_limit_set {limit_usd}` `PUT
 removes a person, their space goes to the heir as one private workstream named
 "<handle>'s space". `factory.org_workstream_chats {id}` `GET .../chats` lists the
 caller's own chats in a workstream (`{chats: [{id, title, state, created_at,
-updated_at}]}`, newest first) and, metadata only, everyone else's there (v2 ruling C10:
-`others: [{id, workstream, title, owner, owner_name?, state, last_activity}]`, newest
-activity first; never a line of what is said; always empty in a space). `id` is the
+updated_at}]}`, newest first) and, metadata only, the chats of others that the
+caller may view (`others: [{id, workstream, title, owner, owner_name?, state,
+last_activity}]`, newest activity first; never a line of what is said; always empty
+in a space). A chat is private by default (the policy's default for chats), and a
+private chat is listed only to its owner and to the people it is shared with, so
+`others` is empty until someone shares a chat with the caller; v2 ruling C10 once
+listed every chat of a shared workstream here whatever its own privacy, and no longer
+does. The list is decided by the same decider as `factory.org_grants`. `id` is the
 `chat_id` on the tasks and files that chat made. `factory.org_workstream_chat_new {id, title?}` `POST
 .../chats` (`edit`) makes one (`ch_` and 26 letters or digits; an empty title is the
 first message's first line). `factory.org_workstream_agent`, `_send` and `_stop` take
@@ -1112,11 +1136,34 @@ chat, and every turn in a space, runs on the server whatever `agent_runner` says
 `org_myspace`, the operator is no longer told a private workstream or canvas exists:
 the `name_only` row is gone.
 
+A server with hosted chats on (`CODEAF_HOSTED_URL`, deploy/org/README.md) also posts what
+every hosted chat's model calls cost to the caller's space: one spend row per call, `chat`
+`hosted:<chat id>` (`hosted:<chat id>:own` when the call used the person's own key), so
+`spent_usd` and `at_limit` above count them and a person at `limit_usd` has their hosted
+chat refused with "You have reached your monthly limit of $L, so this chat is paused. The
+organization's operator can raise it in Settings." (HTTP 402 from the model door, whose every
+error carries `"door":"organization"` in its envelope so a client shows the sentence as written
+rather than as a payment failure; a chat's own cap, `CODEAF_HOSTED_SESSION_CAP_USD`, default 5, refuses with "This chat has reached its
+spending limit of $C, so it is paused. Start a new chat to carry on."). These are HTTP
+routes of the organization server with no engine method yet, answered only to a signed-in
+person and only about them: `GET /v1/hosted/keys` answers `{keys: [{provider, last4, at,
+source}]}` (`provider` is `openrouter` or `github`, `source` is `own` or `sign-in`, never
+the key), `PUT /v1/hosted/keys/{provider}` with `{key}` answers 204 (409 "This server cannot
+keep personal keys safe yet, so it did not store yours. Its operator can set that up." when
+the server has no `CODEAF_SERVER_KEY`), `DELETE /v1/hosted/keys/{provider}` answers 204, and
+`GET /v1/hosted/audit` answers `{entries: [{at, person, chat, kind: "git", host, repo,
+service}]}`, the caller's own latest git operations. A chat reaches git through
+`/v1/hosted/git/<host>/<owner>/<repo>.git/...`, authenticated by the chat's own model access
+as the password; the server adds the person's GitHub access upstream.
+
 An engine whose hello carries `org_access` serves an organization's access policy and the
 grants on its things. `factory.org_policy` `GET /v1/org/policy` answers the policy to any
 member: `{rev, roles: [{name, verbs}], owner_role, org_role, defaults: {<kind>: {visibility}},
 sharing: {who}, operator: {role, sees_private, may_govern}, agents: {may_create, may_share,
-may_grant, default_scope, scopes?}}`, and the default policy when none was ever saved, which
+may_grant, default_scope, scopes?}, chats?: {move_by?, approvals_by?, wake_by?}}` (`chats` is present only when set, and
+each field only when set: `move_by` is `owner`, the default, or `manage`, who may move a chat; `approvals_by` is `owner`, the
+default, or `answer`, who approves a tool call in a shared hosted chat; `wake_by` is `view`, the default, `run` or `owner`, who
+may start a hosted chat that is not running), and the default policy when none was ever saved, which
 is how the server behaved before policies existed. A role is a named bundle of verbs from a
 closed list (`view`, `comment`, `edit`, `run`, `steer`, `answer`, `share`, `manage`), every
 role holds `view`, and the four names `view`, `comment`, `edit` and `full` are kept. Only
@@ -1147,6 +1194,28 @@ its own methods and answers `conflict` naming them.
 | Chat move answer | Adds `agent_usable` to `{resource, dropped}` and includes `agent_words` when the named agent is unavailable in the destination. The conversation stays readable and future spending goes to the destination. |
 | `factory.org_transcript {kind, id, since?}` → `GET /v1/resources/{kind}/{id}/transcript` | Reads a registered chat or session through the current view permission. Answers `{kind, id, state, seq, entries}`. With `since`, entries begin after that sequence number. The transcript offers read access only. A missing or inaccessible resource returns `not_found`. |
 | `resource.changed {kind, id}` | A chat move or a lapse of a grant on a registered resource reaches the combined old and new audience. Canvas and workstream grant lapses emit `canvas.changed` and `workstream.changed`. |
+
+An engine whose hello carries `org_bots` can manage bot identities on an organization
+server. The server returns each secret in its minting answer once. Lists show token
+metadata and a short hint.
+
+| method | HTTP request | Server behavior |
+| --- | --- | --- |
+| `factory.org_bots` | `GET /v1/bots` | Lists the caller's bots and their token metadata. The operator sees all bots. |
+| `factory.org_bot_new {name, scope?}` | `POST /v1/bots` | Creates a bot and returns `{bot, token}`. The optional scope names a current organization role. |
+| `factory.org_bot_token_new {bot, label?, expires_at?}` | `POST /v1/bots/{bot}/tokens` | The bot's creator mints a token. The response includes `token_id` and `token`. |
+| `factory.org_bot_token_revoke {bot, token}` | `DELETE /v1/bots/{bot}/tokens/{token}` | The creator or operator revokes a token by ID. |
+| `factory.org_bot_remove {bot}` | `DELETE /v1/bots/{bot}` | The creator or operator removes a bot and ends its tokens. |
+
+Who an organization server takes a request to be: a person's token or sign-in, a
+bot's token, or, only where `loopback_trust` is on (solo by default, off on a team
+server), a request from the server's own computer. A request carrying a forwarding
+header is never from the server's own computer unless a listed proxy names a
+loopback client in `X-Forwarded-For`. Registering a runner (`POST /v1/workers/attach`
+and `POST /v1/runners/attach`) follows the same setting: with it off, a runner
+presents the host's access token or a signed-in person's session even from the
+server's own computer, and names its handle unless its session does; with it on,
+nothing changes. A bot token is refused there.
 
 An engine whose hello carries `org_agents` keeps an organization's agents: a name and
 instructions one person made in their space. `factory.org_agents` `GET /v1/agents`
@@ -3532,6 +3601,33 @@ runs (20 per chat) and dropped once the chat is here. The
 chat, not the computer, is the address: a message not yet taken goes to
 whichever computer holds the chat when it is read, including the sender after a
 move. Only an engine that keeps the chat list (the app) takes messages.
+
+`chats.read {cell, before?, limit?}` answers `{entries, more, before?, head,
+sealed_at_ms?, fetched_bytes}`: one page of the transcript of a chat another
+computer holds, as that computer last sealed it, without taking the chat. A
+turn running there now is not on it. `entries` are the same `Entry`
+`agents.entries` answers for a local chat, oldest to newest within the page;
+the first call (no `before`) is the newest page, and `before` from a page is
+the opaque cursor of the next older one, read at the same `head` even after
+newer turns land. `more` is false once a page reaches the start. A page holds
+at least `limit` entries (default 50) unless it reaches the start, and never
+splits a turn, so it can hold more. Entry ids are unique within a page read;
+a client replaces its pages when `head` changes. Turn footers, notices and tool
+output facts are local records and are not on a remote page. `fetched_bytes`
+is what the call pulled from the relay (0 when every byte was held). It fetches
+only the transcript's own objects and the chunks under the page, into the
+store a later `agents.take` of the chat fetches into, so continuing the chat
+afterwards copies only the rest. No lease is taken, nothing is restored, no
+agent is opened. `chats.read.paged` in `hello` says the method exists: only
+when a relay is configured and the engine's furrow can read one path of a
+snapshot. It is a word of its own. The older `chats.read` word means something
+else and is advertised on its own terms: that `agents.entries` on a remote row
+follows a saved remote head without taking the chat. An engine may say either,
+both or neither, so a client checks `chats.read.paged` before calling the
+`chats.read` method and `chats.read` before relying on `agents.entries` for a
+chat held elsewhere. The `chats.read` method and the older `chats.read` hello word
+are different things that share a name: the method reads a page, and the word only
+says `agents.entries` follows a saved remote head.
 
 `chats.crew` in `hello` says every `chats.list` row and `chat.changed` row
 carries the crew its chat belongs to on its holder, additively: `crew` (the

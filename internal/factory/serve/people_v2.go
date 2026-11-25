@@ -9,8 +9,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
+
+const teamHandleRefusal = "this GitHub handle is not on the factory team"
 
 // mode follows the actual serving door unless the host explicitly selects a mode.
 func (h *Handler) mode() string {
@@ -188,9 +191,11 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if h.failed(w, h.revokePerson(r, handle)) {
+	if h.failed(w, h.revokePerson(handle, true)) {
 		return
 	}
+	// Their hosted chats hold a model bearer of their own, which sign-in revocation does not reach.
+	h.endHostedLifeOf(r.Context(), handle)
 	// A removed password person's password signs nobody in any more.
 	err := tokens.RemoveAccount(h.config.TokensPath, handle)
 	h.forgetAccounts()
@@ -200,6 +205,12 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	// The invite they joined by is closed too, so People stops listing them as Joined (v2 J4): a removed person is
 	// gone from the table, and inviting the same email again makes a fresh invite.
 	if h.failed(w, closeInvitesOf(h.config.TokensPath, handle, h.now())) {
+		return
+	}
+	// WHAT OTHERS GAVE THEM GOES TOO, whichever door they came in by: a grant left on someone's chat would apply again
+	// to anyone who later joins under the same handle (found on a production run, 2026-11-25).
+	ended, err := h.endGrantsOf(handle)
+	if h.failed(w, err) {
 		return
 	}
 	// A person the operator removes leaves every team with their sign-ins,
@@ -224,11 +235,27 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if given > 0 {
 		detail += fmt.Sprintf("; %d workstreams given to @%s", given, heir)
 	}
+	if ended > 0 {
+		detail += fmt.Sprintf("; %d grants ended", ended)
+	}
 	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, detail))
 }
 
-// revokePerson ends sign-ins and runner credentials before ownership is made available again.
-func (h *Handler) revokePerson(r *http.Request, handle string) error {
+// endGrantsOf deletes every grant that names a removed person and answers how many it deleted.
+func (h *Handler) endGrantsOf(handle string) (int, error) {
+	if h.config.Store == nil {
+		return 0, nil
+	}
+	return h.config.Store.RemoveGrantsOfSubject("person", factory.NormalizeHandle(handle))
+}
+
+// revokePerson ends sign-ins and runner credentials. Leaving the
+// organization also ends the person's bot credentials.
+func (h *Handler) revokePerson(handle string, leaving bool) error {
+	if leaving {
+		h.botCreateMu.Lock()
+		defer h.botCreateMu.Unlock()
+	}
 	h.sessions.mu.Lock()
 	for key, s := range h.sessions.ids {
 		if profileHandle(s) == handle {
@@ -240,6 +267,11 @@ func (h *Handler) revokePerson(r *http.Request, handle string) error {
 	h.sessions.mu.Unlock()
 	if err != nil {
 		return err
+	}
+	if leaving && h.config.Store != nil {
+		if err := h.config.Store.DisableBotsOf(handle, store.ErrBotDisabled.Error(), h.now()); err != nil {
+			return err
+		}
 	}
 	if h.workers != nil {
 		h.workers.mu.Lock()

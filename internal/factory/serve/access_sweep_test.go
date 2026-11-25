@@ -42,8 +42,10 @@ func TestContractL1SweepCoalescesLapsesAndTellsTheirAudienceOnce(t *testing.T) {
 	o.now = o.now.Add(3 * time.Minute)
 	contractSweep(t, o)
 	after := contractResourceEvents(t, o, chat.ID)
+	// CONTRACT CHANGE (org-follow A4): a chat shared with two people is still
+	// private, so the operator is not told of its lapses either.
 	if len(after) != before+1 || !after[before].itemAudience.Equal(acl.Audience{
-		Persons: []string{"abir", "mia", "santosh"}, Operator: true,
+		Persons: []string{"abir", "mia", "santosh"},
 	}) {
 		t.Fatalf("lapse events before %d, after %+v", before, after)
 	}

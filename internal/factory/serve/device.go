@@ -196,7 +196,7 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.teamAllows(handle) {
 		h.forgetDevice(body.DeviceCode, flow)
-		h.fail(w, http.StatusForbidden, "this GitHub handle is not on the factory team")
+		h.fail(w, http.StatusForbidden, teamHandleRefusal)
 		return
 	}
 	profile := api.Profile{Handle: handle, Name: user.Name, AvatarURL: user.AvatarURL,

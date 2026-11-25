@@ -213,7 +213,23 @@ func TestDiscoverCodexSystemSkills(t *testing.T) {
 // A skill folder that is a link to a directory is a skill folder, reported at
 // the link, and weighed at the folder it names. A link to nothing is not.
 func TestDiscoverFollowsLinkedSkillFolders(t *testing.T) {
-	found := discover(t, filepath.Join("testdata", "links", "project"), filepath.Join("testdata", "links", "home"))
+	fixture := filepath.Join("testdata", "links")
+	linked, err := filepath.Abs(filepath.Join(fixture, "home", "shared", "linked"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	skillDir := filepath.Join(home, ".claude", "skills")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linked, filepath.Join(skillDir, "linked")); err != nil {
+		t.Skipf("creating linked skill symlink: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(home, "missing"), filepath.Join(skillDir, "dangling")); err != nil {
+		t.Skipf("creating dangling skill symlink: %v", err)
+	}
+	found := discover(t, filepath.Join(fixture, "project"), home)
 	skill, ok := byDir(found, filepath.Join(".claude", "skills", "linked"))
 	if !ok {
 		t.Fatalf("the linked skill folder was not discovered: %+v", found)

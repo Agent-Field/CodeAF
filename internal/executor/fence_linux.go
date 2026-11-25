@@ -22,7 +22,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -51,8 +53,16 @@ const (
 	fenceNone fenceMode = ""
 )
 
+// fenceModeInTests stands in for a kernel that supports less (or more) of the
+// fence than the one the tests run on. Only test support installs it;
+// production always asks the kernel.
+var fenceModeInTests func() fenceMode
+
 // thisFenceMode is what this kernel supports.
 func thisFenceMode() fenceMode {
+	if fenceModeInTests != nil {
+		return fenceModeInTests()
+	}
 	c := Probe()
 	switch {
 	case c.UserNS && c.Landlock:
@@ -65,14 +75,30 @@ func thisFenceMode() fenceMode {
 
 // confineFence rewrites cmd to run under the helper. With neither user
 // namespaces nor Landlock the command runs as it is, which [FenceLimitLine]
-// says once.
+// says once, UNLESS THE FENCE IS REQUIRED: a required fence that cannot be
+// applied refuses the command, because running it open is exactly the thing
+// the requirement exists to prevent.
 func confineFence(cmd *exec.Cmd, f *Fence) error {
 	if cmd.Err != nil {
 		return cmd.Err
 	}
 	mode := thisFenceMode()
 	if mode == fenceNone {
+		if f.Require {
+			return ErrFenceRequired
+		}
 		return nil
+	}
+	if _, ok := fenceScope(f, landlockABI()); !ok {
+		// A required fence that cannot keep this chat's local sockets apart from
+		// another's is no fence at all for the thing it was required for.
+		return ErrFenceRequired
+	}
+	if _, ok := fenceNet(f, landlockABI()); !ok {
+		// The same for a required fence told to keep the network to a list of
+		// ports: a kernel that cannot do it would run the command with the whole
+		// network, which is the thing the list was written to prevent.
+		return ErrFenceRequired
 	}
 	spec, err := writeFenceSpec(f, mode)
 	if err != nil {
@@ -232,14 +258,93 @@ func fenceReadOnly(f *Fence) error {
 	return nil
 }
 
+// abstractScopeABI is the first Landlock ABI that can scope abstract Unix sockets
+// (Linux 6.12).
+const abstractScopeABI = 6
+
+// fenceScope is the Landlock scope a fence asks for and whether this kernel can
+// give it. ONLY A REQUIRED FENCE SCOPES: abstract Unix sockets have no owner and
+// no file mode, so every process in one network namespace can connect to every
+// other's, and a hosted chat shares that namespace with every other chat on its
+// machine. A command inside the scope cannot connect to an abstract socket made
+// outside its own fence (which also means two separate commands of one chat do
+// not reach each other's abstract sockets; filesystem sockets are untouched).
+// A fence that is not required keeps the ruleset it always had, so a laptop's
+// own commands are unchanged.
+func fenceScope(f *Fence, abi int) (scoped uint64, ok bool) {
+	if !f.Require {
+		return 0, true
+	}
+	if abi < abstractScopeABI {
+		return 0, false
+	}
+	return unix.LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET, true
+}
+
+// netConnectABI is the first Landlock ABI that can limit TCP connects by port
+// (Linux 6.7).
+const netConnectABI = 4
+
+// fenceNet is the Landlock network access a fence handles and whether this
+// kernel can give it. ONLY A REQUIRED FENCE WITH A PORT LIST LIMITS: handling
+// TCP connect with no rule for a port refuses that port, so a ruleset that
+// handled it without a list would cut a chat off the network entirely. A fence
+// without a list keeps the ruleset it always had.
+func fenceNet(f *Fence, abi int) (handled uint64, ok bool) {
+	if !f.limitsPorts() {
+		return 0, true
+	}
+	if abi < netConnectABI {
+		return 0, false
+	}
+	return unix.LANDLOCK_ACCESS_NET_CONNECT_TCP, true
+}
+
+// landlockRuleNetPort is the rule type that names one TCP port
+// (LANDLOCK_RULE_NET_PORT); golang.org/x/sys has the path rule only.
+const landlockRuleNetPort = 2
+
+// landlockNetPortAttr is struct landlock_net_port_attr.
+type landlockNetPortAttr struct {
+	Allowed_access uint64
+	Port           uint64
+}
+
+// allowPorts lets the ruleset's commands connect to each port in the list.
+func allowPorts(ruleset int, ports []int) error {
+	for _, port := range ports {
+		rule := landlockNetPortAttr{Allowed_access: unix.LANDLOCK_ACCESS_NET_CONNECT_TCP, Port: uint64(port)}
+		_, _, errno := unix.Syscall6(unix.SYS_LANDLOCK_ADD_RULE, uintptr(ruleset),
+			landlockRuleNetPort, uintptr(unsafe.Pointer(&rule)), 0, 0, 0)
+		if err := errnoErr(errno); err != nil {
+			return errors.New("allow port " + strconv.Itoa(port) + ": " + err.Error())
+		}
+	}
+	return nil
+}
+
 // fenceLandlockRules reads anywhere and writes only where the fence says.
 func fenceLandlockRules(f *Fence) error {
-	write := writeAccess(landlockABI())
-	fd, err := createRuleset(readAccess | write)
+	abi := landlockABI()
+	write := writeAccess(abi)
+	scoped, ok := fenceScope(f, abi)
+	if !ok {
+		return ErrFenceRequired
+	}
+	net, ok := fenceNet(f, abi)
+	if !ok {
+		return ErrFenceRequired
+	}
+	fd, err := createRulesetNet(readAccess|write, net, scoped)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(fd)
+	if net != 0 {
+		if err := allowPorts(fd, f.ConnectPorts); err != nil {
+			return err
+		}
+	}
 	rules := map[string]uint64{"/": readAccess, "/dev": readAccess | write, f.Root: readAccess | write,
 		f.Tmp: readAccess | write, f.Cache: readAccess | write}
 	if !fenceSharesTmp(f) {
@@ -279,12 +384,26 @@ const fileRead = unix.LANDLOCK_ACCESS_FS_EXECUTE | unix.LANDLOCK_ACCESS_FS_READ_
 // the checkout (a worktree's); the checkout's own .git, and its .codeaf, are
 // written like the rest of the checkout, which [FencePartialLine] says.
 func fenceLandlockOnly(f *Fence) error {
-	write := writeAccess(landlockABI())
-	fd, err := createRuleset(readAccess | write)
+	abi := landlockABI()
+	write := writeAccess(abi)
+	scoped, ok := fenceScope(f, abi)
+	if !ok {
+		return ErrFenceRequired
+	}
+	net, ok := fenceNet(f, abi)
+	if !ok {
+		return ErrFenceRequired
+	}
+	fd, err := createRulesetNet(readAccess|write, net, scoped)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(fd)
+	if net != 0 {
+		if err := allowPorts(fd, f.ConnectPorts); err != nil {
+			return err
+		}
+	}
 	rules := map[string]uint64{"/": unix.LANDLOCK_ACCESS_FS_READ_DIR}
 	add := func(p string, access uint64) { rules[p] |= access }
 	for _, p := range f.ReadGrants {

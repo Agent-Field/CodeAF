@@ -181,9 +181,10 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 	// including their runners.
 	if !revoked.Counted() {
 		for _, member := range revoked.Members() {
-			if h.failed(w, h.revokePerson(r, member.Profile.Handle)) {
+			if h.failed(w, h.revokePerson(member.Profile.Handle, true)) {
 				return
 			}
+			h.endHostedLifeOf(r.Context(), member.Profile.Handle)
 			if h.failed(w, h.leaveEveryTeam(r, member.Profile.Handle)) {
 				return
 			}

@@ -1,0 +1,266 @@
+# A self-hosted codeaf organization: the organization server, the AgentField control
+# plane, and the reasoner nodes (SWE-AF, PR-AF) that the factory sends work to. People
+# join with their own desktop apps by invite link.
+#
+#     ./setup.sh                  # writes .env with fresh secrets (once)
+#     docker compose up -d        # builds what is missing (codeaf from this checkout), starts everything
+#     docker compose logs codeaf | grep 'operator access link'
+#
+# deploy/org/README.md has the rest: joining, the keyless smoke test, upgrading, backups.
+name: codeaf-org
+
+x-defaults: &defaults
+  restart: unless-stopped
+  init: false
+  stop_grace_period: 30s
+
+# How the codeaf image gets its binary. The `codeaf`, `runner` and `sessionhost` services all run this one image, and the
+# hosted chats' machine is a command of the binary in it (`codeaf sessionhost`), which no published release has yet. So
+# the default, CODEAF_BINARY_FROM=source, builds the binary from THIS checkout, the same build the published image is made
+# from, and the build context is therefore the repository root (codeaf.Dockerfile.dockerignore lets in only the files
+# that build needs). The first build compiles codeaf and takes several minutes; later ones reuse Docker's layer cache.
+#   CODEAF_BINARY_FROM=fetch   downloads the pinned, checksummed release named in codeaf.Dockerfile: quick, but a release
+#                              without `codeaf sessionhost` cannot run hosted chats, so use it only when you leave them off.
+#   CODEAF_BINARY_FROM=local   takes a codeaf you built yourself and put beside this file as `codeaf-local`.
+# FLIP THE DEFAULT BACK TO `fetch` when the release pinned in codeaf.Dockerfile (CODEAF_RELEASE) ships the sessionhost. The
+# check that tells you is that release's own binary: `codeaf sessionhost --help` says "there is no `codeaf sessionhost`" while
+# the release lacks it, and names the sessionhost's settings (CODEAF_SESSIONHOST_SECRET) once it has it. Then change the
+# default below, and the "Start it" and "Railway" text in README.md, in the same change.
+# SOURCE_COMMIT=$(git rev-parse HEAD) before `docker compose up --build` puts the commit into `codeaf version`; without it
+# the image reports `unknown`, because the build has no .git to ask.
+x-codeaf-build: &codeaf-build
+  context: ../..
+  dockerfile: deploy/org/codeaf.Dockerfile
+  args:
+    ORG_DIR: deploy/org
+    CODEAF_BINARY_FROM: ${CODEAF_BINARY_FROM:-source}
+    SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+
+services:
+  # --- AgentField: the control plane every node and the factory dial ---------------------------
+  agentfield:
+    <<: *defaults
+    image: ${AGENTFIELD_ORG_IMAGE:-codeaf-org/agentfield:local}
+    build: { context: ., dockerfile: agentfield.Dockerfile }
+    command: ["server", "--open=false"]
+    environment:
+      AGENTFIELD_HOME: /data
+      # The control plane's own config file would win over AGENTFIELD_HOME, so none is read and
+      # the database and key-value store are placed explicitly.
+      AGENTFIELD_CONFIG_FILE: /dev/null
+      AGENTFIELD_PORT: "8080"
+      AGENTFIELD_STORAGE_MODE: local
+      AGENTFIELD_STORAGE_LOCAL_DATABASE_PATH: /data/agentfield.db
+      AGENTFIELD_STORAGE_LOCAL_KV_STORE_PATH: /data/agentfield.bolt
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      # Strict run-owner proofs: only the node that owns a run can act on it. The factory
+      # sends its proof over its node link; this stays on.
+      AGENTFIELD_RUN_OWNER_REQUIRE_PROOF: ${AGENTFIELD_RUN_OWNER_REQUIRE_PROOF:-true}
+      AGENTFIELD_TELEMETRY_ENABLED: "false"
+    volumes: [agentfield-data:/data]
+    ports: ["${AGENTFIELD_BIND:-127.0.0.1}:${AGENTFIELD_PORT:-8080}:8080"]
+
+  # --- The organization server: `codeaf factory serve`, team mode -------------------------------
+  codeaf:
+    <<: *defaults
+    image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
+    build: *codeaf-build
+    command: ["server"]
+    environment:
+      CODEAF_ORG_NAME: ${CODEAF_ORG_NAME:-codeaf organization}
+      # The public name people reach this server on, WITHOUT a scheme, when a proxy in front
+      # serves HTTPS on it. Leave empty on a laptop: links then name the listen address.
+      CODEAF_PUBLIC_DOMAIN: ${CODEAF_PUBLIC_DOMAIN:-}
+      CODEAF_GITHUB_CLIENT_ID: ${CODEAF_GITHUB_CLIENT_ID:-}
+      CODEAF_TRUSTED_PROXIES: ${CODEAF_TRUSTED_PROXIES:-}
+      CODEAF_FACTORY_TOKEN: ${CODEAF_FACTORY_TOKEN:-}
+      CODEAF_SMTP_URL: ${CODEAF_SMTP_URL:-}
+      CODEAF_SMTP_FROM: ${CODEAF_SMTP_FROM:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+      # Hosted chats (opt-in: all empty means the server is exactly what it was). See the sessionhost
+      # service below and README.md "Hosted chats". The secret is shared with the sessionhost and with nobody else.
+      CODEAF_HOSTED_URL: ${CODEAF_HOSTED_URL:-}
+      CODEAF_HOSTED_SECRET: ${CODEAF_HOSTED_SECRET:-}
+      CODEAF_HOSTED_MODEL_URL: ${CODEAF_HOSTED_MODEL_URL:-http://codeaf:8787/v1/model}
+      # The model door (README.md "Hosted chats"): the upstream is OpenRouter's unless set, and the key it is called with is
+      # CODEAF_HOSTED_MODEL_KEY, else the organization key saved in Settings, Organizations (never OPENROUTER_API_KEY, which
+      # is for the runner and the nodes). Every call is metered into the
+      # person's spend; a chat stops at CODEAF_HOSTED_SESSION_CAP_USD (default 5).
+      CODEAF_HOSTED_MODEL_UPSTREAM: ${CODEAF_HOSTED_MODEL_UPSTREAM:-}
+      CODEAF_HOSTED_MODEL_KEY: ${CODEAF_HOSTED_MODEL_KEY:-}
+      CODEAF_HOSTED_SESSION_CAP_USD: ${CODEAF_HOSTED_SESSION_CAP_USD:-}
+      # How often an open guest window's right to a shared chat is checked again (a Go duration, 1s to 1m, default 5s).
+      CODEAF_HOSTED_HEARTBEAT: ${CODEAF_HOSTED_HEARTBEAT:-}
+      # The key that keeps people's own provider keys and GitHub access sealed on disk (./setup.sh makes it). This service
+      # alone holds it: never the chats' machine, never a node. Losing it makes what people stored unreadable, and the server
+      # then refuses to start rather than carry on without it.
+      CODEAF_SERVER_KEY: ${CODEAF_SERVER_KEY:-}
+      # The git hosts a chat's clone and push may reach through this server, comma separated origins (default https://github.com).
+      CODEAF_HOSTED_GIT_HOSTS: ${CODEAF_HOSTED_GIT_HOSTS:-}
+    volumes: [codeaf-data:/data]
+    # The default network reaches every service; `hosted` is the one the hosted chats' machine is on.
+    networks: [default, hosted]
+    ports: ["${CODEAF_BIND:-127.0.0.1}:${CODEAF_PORT:-8787}:8787"]
+    healthcheck:
+      # Any HTTP answer means it is up (curl exits 0 on a 401 too); a refused connection is exit 7.
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:8787/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+
+  # --- The factory runner: registers the factory on AgentField as the node codeaf-factory -------
+  runner:
+    <<: *defaults
+    image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
+    build: *codeaf-build
+    command: ["runner"]
+    depends_on:
+      agentfield: { condition: service_healthy }
+    environment:
+      AGENTFIELD_URL: http://agentfield:8080
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      ORG_MODEL: ${ORG_MODEL:-deepseek/deepseek-v4-flash-0731}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+      CODEAF_FACTORY_NODE_ID: ${CODEAF_FACTORY_NODE_ID:-codeaf-factory}
+    volumes:
+      - runner-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /data/ready.json"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  # --- Reasoner nodes ---------------------------------------------------------------------------
+  swe-af:
+    <<: *defaults
+    image: ${SWE_AF_ORG_IMAGE:-codeaf-org/swe-af:local}
+    build: { context: ., dockerfile: swe-af.Dockerfile }
+    depends_on:
+      agentfield: { condition: service_healthy }
+    environment:
+      NODE_ID: swe-planner
+      AGENTFIELD_SERVER: http://agentfield:8080
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      SWE_DEFAULT_MODEL: ${SWE_DEFAULT_MODEL:-openrouter/deepseek/deepseek-v4-flash-0731}
+      # Pause a build at its plan for a person (the human-in-the-loop question the factory shows).
+      SWE_HITL_NATIVE: "1"
+      SWE_FENCE: "off"
+      SWE_PRO_ENGINE: "0"
+      # Keyless smoke test only (.env.stub): a throwaway repository on this container's disk.
+      SMOKE_FIXTURE_REPO: ${SWE_SMOKE_FIXTURE_REPO:-}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+      AGENTFIELD_NODE_HOST: swe-af
+    volumes:
+      - swe-af-workspaces:/workspaces
+    healthcheck:
+      # No procps in the image: look for the process by name in /proc.
+      test: ["CMD-SHELL", "grep -qx swe-planner /proc/[0-9]*/comm 2>/dev/null"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  pr-af:
+    <<: *defaults
+    image: ${PR_AF_ORG_IMAGE:-codeaf-org/pr-af:local}
+    build: { context: ., dockerfile: pr-af.Dockerfile }
+    depends_on:
+      agentfield: { condition: service_healthy }
+    environment:
+      NODE_ID: pr-af
+      PORT: "8007"
+      AGENTFIELD_SERVER: http://agentfield:8080
+      AGENTFIELD_API_KEY: ${AGENTFIELD_API_KEY:?run ./setup.sh to create .env}
+      # The address the control plane calls this node on, from inside this network.
+      AGENT_CALLBACK_URL: http://pr-af:8007
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      PR_AF_MODEL: ${PR_AF_MODEL:-deepseek/deepseek-v4-flash-0731}
+      CODEAF_BASE_URL: ${CODEAF_BASE_URL:-}
+    volumes: [pr-af-workspaces:/workspaces]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8007/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  # --- Hosted chats: the machine people's chats run on (opt-in: `--profile hosted`) -------------
+  # One chat = one Linux user of its own, in its own folder, with its commands fenced. This is the
+  # ONLY container that starts as root and stays root: it has to switch to each chat's user. It
+  # holds five capabilities and nothing else (setuid/setgid to become that user, chown for the one
+  # fresh folder it hands over, kill to end a chat, setpcap to empty a chat's capability set), no
+  # org secret, no GH_TOKEN, no model key, a volume of its own, and a network that reaches only
+  # the organization server. README.md "Hosted chats" says why and what Railway needs.
+  sessionhost:
+    <<: *defaults
+    profiles: ["hosted"]
+    image: ${CODEAF_ORG_IMAGE:-codeaf-org/codeaf:local}
+    build: *codeaf-build
+    command: ["sessionhost"]
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, KILL, SETPCAP]
+    environment:
+      CODEAF_SESSIONHOST_SECRET: ${CODEAF_HOSTED_SECRET:-}
+      CODEAF_SESSIONHOST_DATA: /chats
+      CODEAF_SESSIONHOST_LISTEN: 0.0.0.0:8790
+      CODEAF_SESSIONHOST_MAX_RUNNING: ${CODEAF_SESSIONHOST_MAX_RUNNING:-20}
+      CODEAF_SESSIONHOST_MAX_PER_PERSON: ${CODEAF_SESSIONHOST_MAX_PER_PERSON:-3}
+      CODEAF_SESSIONHOST_IDLE: ${CODEAF_SESSIONHOST_IDLE:-30m}
+      CODEAF_SESSIONHOST_REQUIRE: ${CODEAF_SESSIONHOST_REQUIRE:-uid+fence}
+      CODEAF_SESSIONHOST_MODEL: ${CODEAF_SESSIONHOST_MODEL:-}
+      # The TCP ports a chat's commands may connect to, besides the organization server's own (default 443,80,22,9418).
+      # The kernel refuses every other port, which is what keeps a chat off the other services of a private network
+      # that has no policies of its own. It filters by PORT, not by address: README.md says what that does not cover.
+      CODEAF_SESSIONHOST_CONNECT_PORTS: ${CODEAF_SESSIONHOST_CONNECT_PORTS:-}
+    volumes: [sessions-data:/chats]
+    networks: [hosted]
+    healthcheck:
+      test: ["CMD-SHELL", "codeaf sessionhost health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+
+  # --- Keyless smoke test only: `docker compose --profile stub up` --------------------------------
+  modelstub:
+    <<: *defaults
+    profiles: ["stub"]
+    image: ${MODELSTUB_ORG_IMAGE:-codeaf-org/modelstub:local}
+    build: { context: ., dockerfile: modelstub.Dockerfile }
+    environment:
+      STUB_DELAY: ${STUB_DELAY:-2s}
+      # Set by .env.stub.hosted: what each call reports it cost, so metering can be checked to the cent.
+      STUB_COST_USD: ${STUB_COST_USD:-}
+
+  # --- Keyless smoke test only: a git host that wants the person's access and records who asked ---
+  # Its own profile, `gitstub`, because it refuses to start without GITSTUB_TOKEN (smoke.sh makes one for each run). In
+  # the `stub` profile it crash-looped for anyone who turned the scripted model on by hand and had no such token.
+  gitstub:
+    <<: *defaults
+    profiles: ["gitstub"]
+    image: ${GITSTUB_ORG_IMAGE:-codeaf-org/gitstub:local}
+    build: { context: ., dockerfile: gitstub.Dockerfile }
+    environment:
+      GITSTUB_TOKEN: ${GITSTUB_TOKEN:-}
+
+volumes:
+  agentfield-data:
+  codeaf-data:
+  runner-data:
+  swe-af-workspaces:
+  pr-af-workspaces:
+  sessions-data:
+
+networks:
+  # The organization server and the hosted chats' machine, and nobody else: a chat's commands can
+  # reach the organization server's model door (which wants a bearer) and the internet, not
+  # AgentField, the nodes, the runner or the model stub.
+  hosted:

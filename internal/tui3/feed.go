@@ -1556,6 +1556,15 @@ func (f *feed) failureNote(err error, service string) string {
 	if paused, ok := provider.PlanPauseFrom(err); ok {
 		return provider.PlanPauseSentence(paused.Reset, paused.OverflowDoor)
 	}
+	// THE ORGANIZATION'S OWN LIMIT IS SAID AS IT WAS WRITTEN. A hosted chat at the
+	// limit the organization set gets a finished sentence from the organization's
+	// model door; behind a service name and "the account cannot pay" it blamed the
+	// vendor for a limit the vendor never set (provider/orgdoor.go).
+	if refusal, ok := provider.RefusalFrom(err); ok {
+		if said, own := refusal.OrgLimitWords(); own {
+			return said
+		}
+	}
 	if said, ok := cannotPayWords(err); ok && strings.TrimSpace(service) != "" {
 		return serviceCannotPayWord(service, said)
 	}

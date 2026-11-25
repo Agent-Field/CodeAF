@@ -10,17 +10,17 @@ My space is not Personal. Personal is your life outside any organization and liv
 
 My space holds documents and files, canvases, chats, and your own agents (its Agents tab; see "Making my own agent in an organization"). It holds no tasks: a task is a promise other people can see, so it belongs in a workstream. Asking for a task in My space is refused with "My space holds no tasks: a task belongs in a workstream, where others can see it."
 
-My space cannot be shared, handed to someone else, renamed, archived or deleted, and no workstream can sit inside it. To share something you made there, move it into a workstream (below).
+My space cannot be shared, handed to someone else, renamed, archived or deleted, and no workstream can sit inside it. To share a document or file you made there, move it into a workstream (below); a chat is shared by a grant instead (see "Can I share a chat, a canvas or a workstream with a teammate"), because moving a chat does not share it.
 
 ## Chats in an organization run on the organization's server
 
 In an organization window, New chat starts a chat in My space. It runs on the organization's server, never on this computer: close the laptop mid-answer and the chat finishes anyway, with what it made waiting in My space when you come back. It uses the organization's model key and the model the organization chose.
 
-A chat in My space is private to you, like Afi's pane: nobody else lists or reads it, its name included. (A chat started inside a workstream is different: its name and state are seen there, never what is said.) Its title is its first message's first line. What the agent writes into documents and canvases lands in My space.
+A chat in My space is private to you, like Afi's pane: nobody else lists or reads it, its name included, unless you share it. (A chat started inside a workstream is private the same way: its name, its owner and its state are listed to other people only after you share it, and never what is said.) Its title is its first message's first line. What the agent writes into documents and canvases lands in My space.
 
 ## Who pays for My space — the organization, under your name, up to a monthly limit
 
-Everything My space spends is paid with the organization's key and recorded under your name. The operator sets one monthly limit for everyone's space in Settings › Organizations (it starts at $20). When your space reaches it, its chats stop taking messages and say "Paused: this month's limit for your space is reached." It starts again on the first of the next month (UTC), or sooner if the operator raises the limit. Work in workstreams is not affected; it runs under each workstream's own budget.
+Everything My space spends is recorded under your name, and is paid with the organization's key (or with your own, for a hosted chat when you have stored one). The operator sets one monthly limit for everyone's space in Settings › Organizations (it starts at $20). When your space reaches it, its chats stop taking messages and say "Paused: this month's limit for your space is reached." It starts again on the first of the next month (UTC), or sooner if the operator raises the limit. Work in workstreams is not affected; it runs under each workstream's own budget.
 
 ## What the organization's admin can see of my space — totals only
 
