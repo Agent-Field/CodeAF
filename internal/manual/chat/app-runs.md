@@ -11,7 +11,8 @@ Runs advance while codeaf is running. Completed steps, approval requests and wai
 ## Start an app run when a record changes
 
 Apps can start a run when a record is created, updated or deleted and its
-trigger condition matches. codeaf reads committed record changes from its
+trigger condition matches. This includes a source sync that commits a new
+record revision. codeaf reads committed record changes from its
 saved queue. Each matching trigger creates one run for the change, including
 when codeaf restarts before it finishes reading the queue. The first time the
 queue is connected, it starts with new changes. A trigger with an invalid
