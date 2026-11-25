@@ -202,6 +202,18 @@ Only if you shared the chat with a role that holds `run` (the `edit` and `full` 
 
 If the server cannot be reached, the desktop window says `<host> is unreachable.` once, with **Try again**, and the chat stays where it is. If your sign-in is missing or has ended it says `Sign in to <host> first.` In neither case does the app start a chat on your computer in its place: a hosted chat never falls back to running locally. A turn that was already running on the server goes on without you, and the conversation is there when the server answers again.
 
+## what tools does a hosted chat have — python, git and curl, but no pip, pytest, go, node, make or a compiler, so my project's tests will not run
+
+A hosted chat's machine has `python3` (3.11 in the one organization this was checked on), `git`, `curl` and `openssh-client`. It has no `pip`, no `pytest`, no `go`, no `node`, no `make` and no compiler such as `gcc`, and a chat's Linux user is not root, so it cannot install them. A project that needs only the standard library works; one that needs a third-party Python package, a build step or another language's toolchain cannot run its tests there, and in the check the first test project failed at its first import for that reason. The chat can still read, edit and search the code, and use git through the organization's server.
+
+There is no setting that adds tools. The list is the packages installed in the runtime stage of `deploy/org/codeaf.Dockerfile`, so an operator who wants more builds the organization's own image from that file; that was not tried. If you need to run a project's tests, run them on your own computer in a personal chat, outside the organization's window.
+
+## do the background jobs count toward the organization's spend and limits — SWE-AF, PR-AF and the runner call the model provider directly
+
+No. Hosted chats are metered because they call their model through the organization's server, which counts each call to the cent in My space and stops a chat or a person at their limit. The organization's background jobs do not go that way. SWE-AF, PR-AF and the runner that hosts them each call the model provider directly with their own copy of the provider key. Their spend is not in the spend table, in anyone's My space or in any chat's or person's limit, and those limits do not stop them. In one run, a job's own view showed a cost of `0.00027` while the provider billed about $0.56 for it.
+
+To bound that spend, put a credit limit on the key at the provider, and give those services a key of their own if you want their bill apart from the chats'. Hosted chats are counted exactly as described in *what does a hosted chat cost and who pays*.
+
 ## turn on chats on the server — for the operator
 
 Hosted chats are off by default. The operator turns them on by running the chats' machine beside the organization's server, in the organization's deployment (`deploy/org/README.md`, "Hosted chats"), and giving both the same long secret, which `./setup.sh` makes.

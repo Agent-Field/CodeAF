@@ -51,6 +51,8 @@ After joining through the link and signing in, a person lands on their organizat
 
 In the People table, a joined person's menu has **Remove from <organization>…**. Removing someone takes them off the People table, ends their sign-ins and stops their bots, takes them out of every team and every workstream, and gives the workstreams they owned to you. The tasks they owned are **offered to you to hand over**: they arrive in your **Handed to you**, marked as handed over by them, so nothing is left without an owner.
 
+It works the same whichever way the person joined, a named invitation or an anonymous access link: they leave the People table either way, and every share others gave them on a chat or a workstream ends, so joining again later, by a new link or the old one, brings no share back. Their spent use of the link stays spent, so a link that admitted one person does not reopen for someone else. A person who joined by a link that admits several people leaves only themselves; the others stay.
+
 ## Teams — a group you add to a workstream in one step
 
 **Teams in <organization>** lists the organization's teams with **New team**. A team is a group of people you can add to a workstream in one step. Inviting someone with a team puts them in it when they join.
