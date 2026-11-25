@@ -64,7 +64,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 		if err == nil && checking {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
-			report = j.checkReuse()
+			report = j.checkReuse(catalog)
 			if report.OK() {
 				if s.opts.Check != nil {
 					report = s.opts.Check(ctx, id, def, existing)
@@ -109,6 +109,7 @@ func externalTypes(types schema.TypeSet, ids ...string) schema.TypeSet {
 }
 
 type modelType struct {
+	Common string                `json:"common,omitempty"`
 	Name   string                `json:"name"`
 	Fields map[string]modelField `json:"fields"`
 	Count  int                   `json:"count"`
@@ -124,7 +125,7 @@ type modelField struct {
 func safeTypes(types schema.TypeSet, counts map[string]int) []modelType {
 	out := make([]modelType, 0, len(types))
 	for _, name := range slices.Sorted(maps.Keys(types)) {
-		typ := modelType{Name: name, Fields: map[string]modelField{}, Count: counts[name]}
+		typ := modelType{Name: name, Common: types[name].Common, Fields: map[string]modelField{}, Count: counts[name]}
 		for field, shape := range types[name].Fields {
 			typ.Fields[field] = modelField{Type: shape.Type, To: shape.To, Values: shape.Values, Required: shape.Required}
 		}
@@ -335,11 +336,11 @@ func (s *Jobs) finish(j *job, event Event) error {
 	return nil
 }
 
-func (j *job) checkReuse() schema.Report {
+func (j *job) checkReuse(catalog Catalog) schema.Report {
 	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
-		if app.Records[name].Uses && !slices.Contains(j.Accepted, name) {
+		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
 			report.Problems = append(report.Problems, schema.Problem{
 				File: schema.AppFile, Path: "/records/" + name, Code: "choose_reuse",
 				Message: "The person needs to confirm sharing their " + name + " records.",
@@ -351,17 +352,29 @@ func (j *job) checkReuse() schema.Report {
 
 func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catalog) []Offer {
 	offers := []Offer{}
+	lib := schema.CommonTypes()
+	keys := map[string]string{}
+	for name, record := range app.Records {
+		if key := commonKey(lib, name, record); key != "" {
+			keys[name] = key
+		}
+	}
 	for _, name := range slices.Sorted(maps.Keys(catalog.Types)) {
 		existing := catalog.Types[name]
-		if existing.Owner == liveID || existing.Owner == app.ID {
+		source := catalog.source(name)
+		if source == "" || source == liveID || source == app.ID {
 			continue
 		}
-		if slices.Contains(accepted, name) {
+		if slices.Contains(accepted, name) || existing.Common != "" && slices.Contains(accepted, "common:"+existing.Common) {
 			continue
 		}
+		offer := Offer{Type: name, Count: catalog.Counts[name], App: source, Common: existing.Common, Line: "Use " + catalog.reuseText(name)}
 		for proposed, shape := range app.Records {
-			if reusable(proposed, name, shape.Fields, existing.Fields) {
-				offers = append(offers, Offer{Type: name, Count: catalog.Counts[name], App: existing.Owner})
+			if shape.Common != "" && existing.Common != "" && shape.Common != existing.Common {
+				continue
+			}
+			if existing.Common != "" && keys[proposed] == existing.Common || reusable(proposed, name, shape.Fields, existing.Fields) {
+				offers = append(offers, offer)
 				break
 			}
 		}
@@ -371,7 +384,15 @@ func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catal
 			if candidate, ok := app.Records["candidate"]; ok && strings.TrimSuffix(name, "s") == "contact" &&
 				(candidate.Fields["name"].Type == "text" && existing.Fields["name"].Type == "text" ||
 					reusable("person", "contact", candidate.Fields, existing.Fields)) {
-				offers = append(offers, Offer{Type: name, Count: catalog.Counts[name], App: existing.Owner})
+				offers = append(offers, offer)
+			}
+		}
+	}
+	if app.Kit == 2 {
+		for _, key := range slices.Compact(slices.Sorted(maps.Values(keys))) {
+			typ, ok := lib.Types[key]
+			if ok {
+				offers = append(offers, Offer{Type: key, Common: key, Line: "Start with " + typ.Label})
 			}
 		}
 	}

@@ -86,14 +86,23 @@ func (b *appBackend) serveAppCommands() (func(), error) {
 
 func runAppCommand(args []string) error {
 	verb := strings.ReplaceAll(args[0], "-", "_")
+	if verb == "parts" {
+		verb = "kit"
+	}
 	params := json.RawMessage("{}")
 	switch {
 	case verb == "help":
-		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|reference|list|get|screen|versions|mark|presence> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|common-types|bind-common-type|reference|list|get|screen|versions|mark|presence> [JSON|-]")
 		return nil
 	case verb == "kit" && len(args) == 1:
 		_, err := fmt.Fprintln(os.Stdout, string(schema.KitJSON()))
 		return err
+	case verb == "common_types" && len(args) == 1:
+		value, err := appwire.RunAppCommand(nil, verb, params)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(value)
 	case verb == "reference" && len(args) == 1:
 		_, err := fmt.Fprintln(os.Stdout, builder.Reference())
 		return err

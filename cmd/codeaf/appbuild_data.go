@@ -19,19 +19,32 @@ func (b *appBackend) appBuildCatalog(exclude string) (builder.Catalog, error) {
 	if err != nil {
 		return builder.Catalog{}, err
 	}
-	catalog := builder.Catalog{Types: schema.TypeSet{}, Counts: map[string]int{}}
+	catalog := builder.Catalog{
+		Types: main.TypeSetFor(exclude), Counts: map[string]int{},
+		Origins: map[string]string{}, TypeLabels: map[string]string{}, AppNames: map[string]string{},
+	}
 	for _, typ := range types {
-		if typ.Hidden || typ.DefinedBy == exclude {
+		shape, ok := catalog.Types[typ.Name]
+		if !ok {
 			continue
 		}
-		shape := schema.ExistingType{Owner: typ.DefinedBy, Fields: map[string]schema.Field{}}
-		for _, field := range typ.Fields {
-			if !field.Hidden && field.App != exclude {
-				shape.Fields[field.Name] = field.FieldDef.Field
-			}
-		}
-		catalog.Types[typ.Name] = shape
 		catalog.Counts[typ.Name] = typ.Count
+		catalog.Origins[typ.Name] = typ.CreatedByApp
+		catalog.TypeLabels[typ.Name] = typ.Label
+		app := shape.Owner
+		if app == "" {
+			app = typ.CreatedByApp
+		}
+		if _, read := catalog.AppNames[app]; read || app == "" {
+			continue
+		}
+		published, _, err := main.Publication(app)
+		if err != nil {
+			return builder.Catalog{}, err
+		}
+		var meta struct{ Name string }
+		_ = json.Unmarshal(published.Metadata, &meta)
+		catalog.AppNames[app] = meta.Name
 	}
 	return catalog, nil
 }

@@ -56,8 +56,11 @@ type Options struct {
 // Catalog carries shape and counts only. The model adapter projects the
 // fields again so validation metadata such as expressions and defaults stay local.
 type Catalog struct {
-	Types  schema.TypeSet
-	Counts map[string]int
+	Types      schema.TypeSet
+	Counts     map[string]int
+	Origins    map[string]string
+	TypeLabels map[string]string
+	AppNames   map[string]string
 }
 
 type Jobs struct {
@@ -110,9 +113,11 @@ type Event struct {
 }
 
 type Offer struct {
-	Type  string `json:"type"`
-	Count int    `json:"count"`
-	App   string `json:"app"`
+	Common string `json:"common,omitempty"`
+	Line   string `json:"line,omitempty"`
+	Type   string `json:"type"`
+	Count  int    `json:"count"`
+	App    string `json:"app"`
 }
 
 type Message struct {
@@ -663,8 +668,11 @@ func (j *job) describe(catalog Catalog) {
 	}
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		typ := app.Records[name]
-		if typ.Uses && slices.Contains(j.Accepted, name) {
+		if typ.Uses && j.reuseAccepted(name, typ, catalog) {
 			j.Using = append(j.Using, name)
+			if typ.Common != "" {
+				j.Needs = append(j.Needs, "Uses "+catalog.reuseText(catalog.reuseName(name, typ)))
+			}
 		}
 		access := app.Capabilities.Records[name]
 		if access == "r" || access == "rw" {
@@ -699,8 +707,12 @@ func (j *job) acceptKeptUses() {
 	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
 	j.Accepted = []string{}
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
-		if app.Records[name].Uses {
-			j.Accepted = append(j.Accepted, name)
+		if typ := app.Records[name]; typ.Uses {
+			accepted := name
+			if typ.Common != "" {
+				accepted = "common:" + typ.Common
+			}
+			j.Accepted = append(j.Accepted, accepted)
 		}
 	}
 }
@@ -714,9 +726,10 @@ func (j *job) applyReuseChoice(request string) {
 		return
 	}
 	field, _, _ := strings.Cut(text, " ")
-	name := strings.TrimSuffix(strings.Trim(field, ".,:;!?"), "s")
+	name := strings.Trim(field, ".,:;!?")
 	for _, offer := range j.Offers {
-		if strings.TrimSuffix(offer.Type, "s") == name && !slices.Contains(j.Accepted, offer.Type) {
+		if offer.App != "" && (typeWordMatches(name, offer.Type) || typeWordMatches(offer.Type, name)) &&
+			!slices.Contains(j.Accepted, offer.Type) {
 			j.Accepted = append(j.Accepted, offer.Type)
 			return
 		}

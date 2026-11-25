@@ -46,8 +46,16 @@ claim {"screen":"deals","node":"..."} shows where you are working.
 For planning, create the plan and its record types. For writing, compile the
 screens, write the named automations and sample rows, and run the checks.
 Use singular type ids such as deal, company, contact and candidate. Use
-an existing type only when it appears in accepted reuse. Keep screen and node
-ids stable. If the request names a node, keep the rest of the screen intact.
+a common key from the kit for applicable record types: Contacts are Person,
+Companies are Organization, and reusable currency amounts are Money. Declare
+it as "common":"person" inside the type definition, keeping the record's local
+name and the fields the app needs. When context lists an existing type bound
+to that key, plan around it and let the person choose reuse. Once accepted,
+keep the common key and set "uses":true. Refer to the existing fields by their
+current names without declaring them again. Use an existing type only when it
+appears in accepted reuse (a common: prefix means it was kept in this app).
+Keep screen and node ids stable. If the request names a node, keep the rest
+of the screen intact.
 Give every main list usable search and a way to edit its records.
 
 Use three to six synthetic records per relevant type. Link references to the
@@ -139,8 +147,11 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			view.Definition = files
 			out, err := json.Marshal(view)
 			return string(out), err
-		case "kit":
+		case "kit", "parts":
 			return string(schema.KitJSON()), nil
+		case "common_types":
+			raw, err := json.Marshal(schema.CommonTypes())
+			return string(raw), err
 		case "reference":
 			return reference, nil
 		case "check":
