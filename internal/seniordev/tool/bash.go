@@ -297,8 +297,8 @@ func (r *Registry) pruneShellGroup(pid int) {
 // CloseShellProcesses ends background jobs left in the process groups that
 // the run's bash tool started before the run releases its workspace.
 //
-// SENIOR_DEV_KEEP_SHELL_PROCESSES=1 leaves them running (a local stopgap for
-// #2901: a service the task asked to be left up must outlive the run).
+// SENIOR_DEV_KEEP_SHELL_PROCESSES=1 leaves them running, so a service the
+// request asked to be left up outlives the run (#2901).
 func (r *Registry) CloseShellProcesses() {
 	processes := r.shellProcesses
 	processes.mu.Lock()

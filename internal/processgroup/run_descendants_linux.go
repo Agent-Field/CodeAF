@@ -16,8 +16,8 @@ import (
 
 const RunMarkerEnv = "CODEAF_DELEGATE_RUN"
 
-// keepEnv=1 leaves a run's processes running when it ends: a local stopgap for
-// #2901, where a service the task asked to be left up must outlive the run.
+// keepEnv=1 leaves a run's processes running when it ends, so a service the
+// request asked to be left up outlives the run (#2901).
 const keepEnv = "SENIOR_DEV_KEEP_SHELL_PROCESSES"
 
 func keepProcesses() bool { return os.Getenv(keepEnv) == "1" }
