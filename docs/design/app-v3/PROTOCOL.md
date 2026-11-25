@@ -3073,3 +3073,20 @@ Settings includes `knowledge_model`; `settings.set {knowledge_model}` changes th
 `knowledge.recall` is an explicit read of saved guides, including while `enabled` is false. It does not enable capture, import chats or publish new knowledge. Automatic memory use remains gated by the profile setting.
 
 Library page detail includes `changes: [{before, after, reason}]` for automatic replacements; `claim_details` and `sources` retain the corresponding claims and chat locators.
+
+## Personal app definitions
+
+The app ID accepted by these methods is the ULID from `meta.id` or
+`apps.list`. The engine stamps the same ID into the saved definition's
+`app.id`.
+
+| method | params | result |
+|---|---|---|
+| `apps.list` | `{}` | `{apps:[{id,name,icon,version,updated_at,status}]}`. Status is `active`, `archived`, or `broken`. Deleted apps are omitted. |
+| `apps.get` | `{app}` | `{meta,app,plan,screens:[ids],runs:[ids],agent_md}` for the same checked version. Falls back to the newest valid saved version when needed. |
+| `apps.screen` | `{app,screen}` | `{screen}` containing the screen JSON from the live checked version. |
+| `apps.versions` | `{app}` | `{versions:[{n,at,request,summary}]}`, newest first. |
+| `apps.revert` | `{app,n}` | `{meta}` after copying version `n` forward into a new version. |
+| `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
+| `apps.delete` | `{app}` | `{}`. The app is marked deleted. Saved definitions and the person's data stay on disk. |
+| `apps.kit` | `{}` | The embedded kit catalog object, including its version and parts. |
