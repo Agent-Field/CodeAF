@@ -174,6 +174,7 @@ mid-turn; twice within 1.5 seconds while idle quits.
 | `--no-compact` | Never compact automatically. |
 | `--one-model` | Put every text call on the session model. |
 | `--host`, `--at`, `--no-host` | Choose where the session runs and how this surface attaches. |
+| `--org <https-url>` | Run the chat on your organization's server, one hosted chat per `--session hs_...`. Sign in with `CODEAF_ORG_TOKEN` or `codeaf attach <url> --token <token>`; see [Organizations](organizations.md). |
 | `--debug` | Keep the full run record. |
 | `--max-hours`, `--max-cost` | Bound an unattended `--yolo` session. |
 
@@ -435,6 +436,9 @@ Current boundary: spend, search and memory pages still read local files, and ins
 remote task room steering, stopping and model changes are absent.
 
 Read [remote access](REMOTE.md) and its [testing guide](remote-access-testing.md).
+
+To run chats on a server your company hosts instead, `codeaf chat --org https://your-organization`; [Organizations](organizations.md)
+says how to stand one up with Docker Compose, join it and share a chat, from a terminal as well as the desktop app.
 
 ## Contributing
 

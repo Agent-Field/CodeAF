@@ -9,9 +9,9 @@ from inside the running chat is the manual's `organization-*.md` pages (`interna
 Two readers:
 
 - **The operator** is whoever hosts the organization (an IT person at a company). Read "What runs where", "The ten
-  minutes" and "What the operator can and cannot see".
+  minutes", "From a terminal" and "What the operator can and cannot see".
 - **A person** is someone who joins one and uses it from the desktop app or the terminal. Read "Joining and working in
-  one", "Sharing a chat" and "What the operator can and cannot see".
+  one", "From a terminal", "Sharing a chat" and "What the operator can and cannot see".
 
 ## What an organization is
 
@@ -113,6 +113,19 @@ read along without acting as you.
 The server sends each person's verbs with every chat row, and the client only hides the controls it was not given.
 Taking a share away ends the guest's open window within a few seconds (`CODEAF_HOSTED_HEARTBEAT`, five by default).
 
+**From a terminal.** The desktop app has no sharing buttons for chats yet, so the owner shares one with a request. The
+chat's name, `hs_...`, is in the owner's list; the share names a person by username and a role:
+
+```sh
+curl -sS "$ORG/v1/hosted/sessions" -H "Authorization: Bearer $TOKEN"        # "sessions": [{"id":"hs_...", ...}]
+curl -sS -X POST "$ORG/v1/resources/session/$CHAT/grants" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"subject":{"kind":"person","id":"owner"},"role":"view"}'              # 201
+```
+
+The person then sees the chat under `shared` in their own list, with the verbs they hold, and opens it with
+`codeaf chat --org $ORG --session $CHAT`. At `view` they watch, and a message they send is refused in the chat's own words:
+`You can watch this chat, but you were not given permission to send messages in it. Ask its owner.`
+
 ## Bots
 
 A person can make a **bot**: a named identity with its own token (`cbt_...`, shown once, kept only as a hash) for a
@@ -141,18 +154,21 @@ Compose stack cannot turn it on.
 
 ## The ten minutes
 
-You need Docker with Compose v2.24 or newer, 4 GB of free memory, and a Linux host (Linux 6.12 or newer for the full
-sandbox; see the sandbox note below). For real work add an OpenRouter key. For anyone who is not on the same
-machine you need an HTTPS name in front of port 8787.
+You need `git`, Docker with Compose v2.24 or newer, 4 GB of free memory, ports 8787 and 8080 free on the host, and a
+Linux host (Linux 6.12 or newer for the full sandbox; see the sandbox note below). For real work add an OpenRouter key; to
+try it first, the scripted model needs none. For anyone to sign in with a password, **including you on the same machine**,
+you need an HTTPS name in front of port 8787: the server takes a password only over HTTPS, and Docker does not hand it a
+request from the machine's own address ("Trying it on one machine" in the operator README is the one-computer version).
 
 **On Railway instead of Docker?** Skip to "Railway" in the [operator README](../deploy/org/README.md#railway): it has the services
 and variables to set, how to get the source onto Railway, the operator link and the checks. Railway serves the HTTPS name, so
 steps 1 to 3 below are replaced by that section, and steps 4 and 5 are the same.
 
-**1. Set it up.**
+**1. Get the files and set it up.** The files are this repository, and the images are built from your checkout.
 
 ```sh
-cd deploy/org
+git clone https://github.com/Agent-Field/codeaf
+cd codeaf/deploy/org
 ./setup.sh        # writes .env with fresh secrets; never prints one
 $EDITOR .env      # set the lines below, then save a copy of .env somewhere safe
 ```
@@ -168,13 +184,16 @@ CODEAF_PUBLIC_DOMAIN=codeaf.example.com            # only when a proxy serves HT
 CODEAF_TRUSTED_PROXIES=<the proxy's address or range>
 ```
 
+No model key yet? "Without a model key" in the [operator README](../deploy/org/README.md#without-a-model-key) has the lines
+that point every call at a scripted model, which answers `STUB noted: <your message>` and spends nothing.
+
 **2. Start it.** Compose builds the codeaf image from this checkout by default (`CODEAF_BINARY_FROM=source`), because no
 published release has `codeaf sessionhost` yet. Do not set `CODEAF_BINARY_FROM=fetch` when hosted chats are on. Published
 images work too, once they exist: see "Published images" in the operator README.
 
 ```sh
 docker compose up -d --build
-docker compose ps                                       # every service says "healthy"
+docker compose ps                                       # every service says "healthy" (the scripted model says "Up")
 docker compose exec sessionhost codeaf sessionhost probe  # "ok": true on a machine that can keep chats apart
 ```
 
@@ -188,19 +207,22 @@ alone, with no limit on what a chat's commands can reach, and it warns in every 
 **3. Claim the organization.**
 
 ```sh
-./operator-link.sh      # prints the operator link; it is a secret and works once
+./operator-link.sh      # prints the operator link; it is a secret, works once and lasts 24 hours
 ```
 
 (On Railway the link is in the `codeaf` service's log; `deploy/org/railway/operator-link.sh` prints it.)
 
-Open that `codeaf://factory/join?operator=true...` link in the desktop app (or paste it into **Join an organization...**)
-and choose a username and password. Whoever uses it first is the operator, so keep it to yourself until you have. If it
-is lost before anyone used it, `docker compose restart codeaf` prints a fresh one.
+The link names your HTTPS name, so set `CODEAF_PUBLIC_DOMAIN` before you ask for it. Without one it names `http://[::]:8787`, which
+does not connect. Open that `codeaf://factory/join?operator=true...` link in the desktop app (or paste it into **Join an
+organization...**) and choose a username and password; with no desktop app, "From a terminal" below does the same. Whoever
+uses it first is the operator, so keep it to yourself until you have. `./operator-link.sh` prints nothing once the
+organization is claimed. If the link is lost or too old before anyone used it, `docker compose restart codeaf` prints a
+fresh one.
 
 **4. Invite a person.** In the desktop app, Settings, Organizations, your organization, **People**: **Invite someone**.
 Without `CODEAF_SMTP_URL` nothing is emailed; the button gives you a link to copy. It works for seven days and for one
 person. They paste it into **Join an organization...** on their own computer and choose their own username and
-password (a passkey or GitHub if the server takes them).
+password (a passkey or GitHub if the server takes them). From a terminal, see "From a terminal" below.
 
 **5. Run a first hosted chat.** In the desktop app, switch from Personal to the organization and start a new chat there;
 it runs on the sessionhost. From a terminal:
@@ -210,11 +232,58 @@ CODEAF_ORG_TOKEN=<your sign-in token> codeaf chat --org https://codeaf.example.c
 ```
 
 `--org` takes `https://` for a real server (plain `http://` only for the computer you are on), opens your most recent
-chat or makes your first, and a chat shared with you opens with `--session hs_...`. It needs the sign-in token your
-organization gave you in `CODEAF_ORG_TOKEN`, or kept once with `codeaf attach <url> --token <token>`.
+chat or makes your first, and a chat shared with you opens with `--session hs_...`. It needs your sign-in token in
+`CODEAF_ORG_TOKEN`, or kept once with `codeaf attach <url> --token <token>` (that also makes this computer's new codeaf
+windows use the organization's factory until `codeaf detach`). The token is the `access_token` that joining or signing in
+answers with: "From a terminal" below shows both. The `codeaf` that runs it has to be new enough to have the flag
+(`codeaf chat --help` lists `--org`); no stable release has it yet, so build `bin/codeaf` from the checkout with `make build`.
 
 To check the whole stack without spending anything: `SMOKE_HOSTED=1 ./smoke.sh` (it runs against a scripted model and
-needs an image that has `codeaf sessionhost`; the operator README says how to point it at yours).
+needs an image that has `codeaf sessionhost`; the operator README says how to point it at yours). It claims the organization
+itself, with throwaway people, so run it on a stack nobody has claimed, and `docker compose down -v` before the real set-up.
+
+## From a terminal
+
+Joining is one request to the server, the one the desktop app sends, so a person with no desktop app can do it with `curl`.
+Set the address once, and add `--cacert ./caddy-root.crt` to each `curl` if your proxy's certificate is not from a public
+authority ("Trying it on one machine" in the operator README):
+
+```sh
+ORG=https://codeaf.example.com
+```
+
+**Claim it, as the operator**, with the link `./operator-link.sh` printed:
+
+```sh
+LINK='codeaf://factory/join?operator=true&url=...#token=...'
+curl -sS "$ORG/v1/factory-access" -H 'Content-Type: application/json' \
+  -d "{\"verb\":\"sign_up\",\"link\":\"$LINK\",\"username\":\"owner\",\"password\":\"twelve or more characters\",\"name\":\"Your Name\"}"
+```
+
+The answer holds `"state":"joined"` and an `"access_token"`: your sign-in token. Keep it like a password; it ends after 30
+days without use, or 90 days at most. A refusal is not an error code: the answer is `200` with `"state":"ready"` and a
+`"message"` (`A password cannot contain your username.`), and a link already used says `"state":"used_up"`.
+
+**Invite a person**, as the operator, with the token from above:
+
+```sh
+curl -sS -X POST "$ORG/v1/access/links" -H "Authorization: Bearer $OPERATOR_TOKEN" -H 'Content-Type: application/json' -d '{}'
+```
+
+`link.url` in the answer is the invitation: one person, seven days. The person joins with the same `sign_up` request, giving that
+link and a username and password of their own, and keeps their `access_token` as `CODEAF_ORG_TOKEN`:
+
+```sh
+CODEAF_ORG_TOKEN=<their access_token> codeaf chat --org $ORG
+```
+
+**Sign in again** when a token has ended or on another computer, with no link:
+
+```sh
+curl -sS "$ORG/v1/auth/password" -H 'Content-Type: application/json' -d '{"username":"priya","password":"..."}'
+```
+
+It answers with an `access_token` the same way.
 
 ## Joining and working in one
 
@@ -244,6 +313,10 @@ needs an image that has `codeaf sessionhost`; the operator README says how to po
   about the keyboard. It goes through when the owner has no window open, or after the guest takes the keyboard (allowed
   with `run`). Interrupting and answering are not affected. A tool-use approval stays with the owner, so a command that
   needs one waits for the owner.
+- A guest who runs `codeaf chat --org ... --session ... --once` on a chat that is not running starts it for its owner in that
+  one-shot mode, even when the guest's own message is refused. The owner's window then reads `this conversation is already
+  open in a different interactive or headless mode; close it before retrying` until the chat is stopped (the owner's stop, or
+  `POST /v1/hosted/sessions/<chat>/stop`) or stops itself when idle.
 - By default only the owner moves a chat between My space and a workstream; the policy's `chats.move_by` set to `manage` lets
   people with the `manage` verb on the chat move it too (never into their own My space, never a bot).
 - `local_sessions` `allow` and `warn` are reported and stored; nothing in a client acts on them yet.
