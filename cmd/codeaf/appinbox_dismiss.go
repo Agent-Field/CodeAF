@@ -98,6 +98,12 @@ func (b *appBackend) dismissAsk(id, agent, ask string) error {
 	switch {
 	case appRunAsk(ask):
 		return appwire.Errorf(appwire.CodeBadParams, "choose Approve or Decline for a run approval")
+	case strings.HasPrefix(agent, appwire.AppDraftInboxPrefix) && ask == appBuildInboxAsk:
+		b.inbox.locked(func() {
+			b.inbox.closing[id] = appwire.AskClosed{ID: ask, Option: appwire.ResolvedDismissed, At: b.now()}
+		})
+		b.inboxResolved(id, appwire.Entry{})
+		return nil
 	case strings.HasPrefix(ask, "service:"):
 		return b.dismissServiceLine(id)
 	case strings.HasPrefix(ask, appwire.OrderAskPrefix):

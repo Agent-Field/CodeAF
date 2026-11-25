@@ -1,0 +1,13 @@
+---
+kind: added
+title: Personal app editing jobs resume with marked screens and explicit Apply
+pr: 2937
+surface: [app, engine]
+invalidates:
+  - "The desktop engine previously opened saved definitions only. It now keeps editing jobs, previews, and a history of changes across restarts."
+---
+
+The app command opens a scoped editing turn that works on definitions. The
+desktop can draw screens on synthetic records and return layout findings.
+Check exercises automations with fake connectors. Apply publishes the
+checked version when the person is ready.
