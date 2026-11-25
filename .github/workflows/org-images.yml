@@ -24,11 +24,20 @@ name: org images
 #
 # THIRD-PARTY ACTIONS ARE PINNED TO A COMMIT, not a tag: this workflow can hold a registry token, and a tag can be moved.
 # The comment beside each is the release it was resolved from.
+# A pull request into `org/main` that touches the stack builds and scans every image without pushing, so the leak gate and
+# the context checks are proven before the line moves rather than after; a push to `org/main` builds, scans and (with
+# credentials) publishes `branch-org-main`.
 on:
   push:
     branches:
       - dev
-      - w24/org-images
+      - org/main
+  pull_request:
+    branches:
+      - org/main
+    paths:
+      - "deploy/org/**"
+      - ".github/workflows/org-images.yml"
   workflow_dispatch:
 
 permissions:
@@ -93,7 +102,13 @@ jobs:
           fi
           echo "short=${short}" >> "${GITHUB_OUTPUT}"
           echo "tags=${tags}" >> "${GITHUB_OUTPUT}"
-          echo "push=${HAVE_PUSH_SECRETS}" >> "${GITHUB_OUTPUT}"
+          # A pull request never publishes, even from a branch of this repository that can read the secrets: only a push
+          # or a person's dispatch moves a public tag.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "push=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "push=${HAVE_PUSH_SECRETS}" >> "${GITHUB_OUTPUT}"
+          fi
           if [ "${HAVE_PUSH_SECRETS}" != "true" ]; then
             echo "No registry credentials here (DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are not both set): every image is built and scanned, none is pushed." >> "${GITHUB_STEP_SUMMARY}"
           fi
