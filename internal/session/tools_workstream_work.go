@@ -201,7 +201,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			"Only the task's owner answers an Ask; put your recommendation first and mark it recommended, and set reversible honestly. " +
 			"Before calling a task done, check the result against each acceptance line and say what you checked in check, and leave handoff: what you made, what you assumed, what the next task should know. Done without a handoff is refused. " +
 			"The workstream's rule \"" + factory.AsksBeforePublishingRule + "\" binds you unless it says otherwise: before a task publishes, sends, posts or pays, make it ready and raise an ask to the owner. " +
-			"When you cannot do the task (an input is missing, or it needs something you lack, such as the web), do not set failed: raise an ask to the owner saying what you lack, with options such as \"Paste their text\" (words true), \"Do it myself\" and \"Drop it\". A failed state you set becomes that question to the owner. " +
+			"When you cannot do the task (an input is missing, or it needs something you lack, such as a sign-in only a person holds), do not set failed: raise an ask to the owner saying what you lack, with options such as \"Paste their text\" (words true), \"Do it myself\" and \"Drop it\". A failed state you set becomes that question to the owner. " +
 			"When a private request changes this shared task, set request_note to ONE line naming who asked for what (\"Priya asked to keep it under 300 words\"), never the conversation, and decision to what it now settles. " +
 			"List what you decided without asking under assumed. Calling a task done is checked against the workstream's decisions; work that goes against one is not done until its maker answers.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +

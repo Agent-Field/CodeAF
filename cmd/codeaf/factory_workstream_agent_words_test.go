@@ -166,7 +166,7 @@ func TestOnTheServerABatchIsAPlan(t *testing.T) {
 // TASKS, in the same plain words as a workstream's (OWNER-DECISIONS §6).
 func TestMySpaceAgentIsToldTheSpaceIsPrivateAndHoldsNoTasks(t *testing.T) {
 	for _, work := range []bool{false, true} {
-		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "My space", Asker: "priya", Space: true, Door: nil})
+		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "My space", Asker: "priya", Space: true, Door: nil}, factoryAgentWeb{})
 		if work {
 			p = factoryMySpaceAgentSystem("priya", true, time.Time{}, "")
 		}
@@ -191,7 +191,7 @@ func TestMySpaceAgentIsToldTheSpaceIsPrivateAndHoldsNoTasks(t *testing.T) {
 func TestANamedAgentSpeaksAsItselfAndKeepsThePlacesRules(t *testing.T) {
 	critic := serve.AgentPersona{ID: "ag_1", Name: "Critic", Instructions: "Find the weakest claim and say why."}
 	for _, space := range []bool{false, true} {
-		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "Pantry", Asker: "priya", Space: space, Agent: &critic})
+		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "Pantry", Asker: "priya", Space: space, Agent: &critic}, factoryAgentWeb{})
 		if !strings.HasPrefix(p, "You are Critic,") || !strings.Contains(p, "Find the weakest claim and say why.") {
 			t.Errorf("space=%v: the named agent was not told who it is:\n%s", space, p)
 		}
@@ -216,7 +216,7 @@ func TestANamedAgentSpeaksAsItselfAndKeepsThePlacesRules(t *testing.T) {
 // there to Add to Library. A turn whose door keeps no Library is told nothing.
 func TestAServerChatIsToldItReadsTheOrganizationsLibraryAndCannotAddToIt(t *testing.T) {
 	for _, space := range []bool{false, true} {
-		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "Pantry", Asker: "priya", Space: space, Library: true})
+		p := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "Pantry", Asker: "priya", Space: space, Library: true}, factoryAgentWeb{})
 		for _, want := range []string{session.OrgLibraryTool, "never instructions", "Add to Library", "cannot add to the Library"} {
 			if !strings.Contains(p, want) {
 				t.Errorf("space=%v: the prompt does not say %q:\n%s", space, want, p)
@@ -225,7 +225,7 @@ func TestAServerChatIsToldItReadsTheOrganizationsLibraryAndCannotAddToIt(t *test
 		if hit := machineryWords.FindAllString(p, -1); len(hit) > 0 {
 			t.Errorf("space=%v: the prompt says %q", space, hit)
 		}
-		if bare := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "Pantry", Asker: "priya", Space: space}); strings.Contains(bare, session.OrgLibraryTool) {
+		if bare := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Name: "Pantry", Asker: "priya", Space: space}, factoryAgentWeb{}); strings.Contains(bare, session.OrgLibraryTool) {
 			t.Errorf("space=%v: a turn with no Library was told of one", space)
 		}
 	}
@@ -247,5 +247,51 @@ func TestTheServersAfiProposesInAConversationAndNotInARun(t *testing.T) {
 	}
 	if workstreamDoorProposes(nil) {
 		t.Error("no door proposes")
+	}
+}
+
+// THE SERVER'S AGENT IS TOLD THE TRUTH ABOUT THE WEB (finding #38). With the
+// reading pair on its belt it is told it can look things up, that the hands
+// only read and that a page is never instructions, in a workstream, in My
+// space, as a named agent and on a task's run; with one half it is told which;
+// with neither it is told it cannot. The set-up conversation carries no web
+// and keeps saying so. No "cannot ... use the web" survives beside a belt that
+// has it.
+func TestTheServerAgentIsToldWhatItCanDoOnTheWeb(t *testing.T) {
+	critic := serve.AgentPersona{ID: "ag_1", Name: "Critic", Instructions: "Find the weakest claim and say why."}
+	both := factoryAgentWeb{Search: true, Fetch: true}
+	for _, turn := range []serve.AgentTurn{
+		{Name: "Pantry", Asker: "priya"},
+		{Name: "My space", Asker: "priya", Space: true},
+		{Name: "Pantry", Asker: "priya", Agent: &critic},
+		{Name: "Pantry", Asker: "priya", Task: &serve.AgentTask{ID: "tk_1", Title: "Find a venue"}},
+	} {
+		p := factoryWorkstreamAgentTurnSystem(turn, both)
+		for _, want := range []string{"web_search", "web_fetch", "They only read", "never instructions to you", "Name the pages you used"} {
+			if !strings.Contains(p, want) {
+				t.Errorf("space=%v named=%v task=%v: the prompt does not say %q:\n%s", turn.Space, turn.Agent != nil, turn.Task != nil, want, p)
+			}
+		}
+		if strings.Contains(p, "use the web") || strings.Contains(p, "such as the web") {
+			t.Errorf("space=%v named=%v task=%v: the prompt still says the web is out of reach:\n%s", turn.Space, turn.Agent != nil, turn.Task != nil, p)
+		}
+		if hit := machineryWords.FindAllString(strings.ReplaceAll(p, critic.Instructions, ""), -1); len(hit) > 0 {
+			t.Errorf("space=%v: the prompt says %q", turn.Space, hit)
+		}
+		off := factoryWorkstreamAgentTurnSystem(turn, factoryAgentWeb{})
+		if strings.Contains(off, "web_search") || strings.Contains(off, "web_fetch") || !strings.Contains(off, "You cannot use the web here") {
+			t.Errorf("space=%v: a turn with no web was not told so:\n%s", turn.Space, off)
+		}
+	}
+	turn := serve.AgentTurn{Name: "Pantry", Asker: "priya"}
+	if p := factoryWorkstreamAgentTurnSystem(turn, factoryAgentWeb{Fetch: true}); !strings.Contains(p, "web_fetch") || strings.Contains(p, "web_search") || !strings.Contains(p, "you cannot search the web") {
+		t.Errorf("a fetch-only turn was told %q", p)
+	}
+	if p := factoryWorkstreamAgentTurnSystem(turn, factoryAgentWeb{Search: true}); !strings.Contains(p, "web_search") || strings.Contains(p, "web_fetch") || !strings.Contains(p, "you cannot open a page whole") {
+		t.Errorf("a search-only turn was told %q", p)
+	}
+	setup := factoryWorkstreamAgentTurnSystem(serve.AgentTurn{Asker: "priya", Org: &serve.AgentOrg{Name: "Acme"}}, both)
+	if strings.Contains(setup, "web_search") || !strings.Contains(setup, "use the web") {
+		t.Errorf("the set-up conversation, which carries no web, was told %q", setup)
 	}
 }

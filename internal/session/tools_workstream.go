@@ -13,8 +13,10 @@ package session
 //   - THE SERVER'S AGENT TOUCHES NOTHING BUT ITS WORKSTREAM. No shell, no files,
 //     no repository and no machine: it runs on the organization's server, which
 //     is nobody's laptop, so a door that set it loose there would be a door onto
-//     every other organization item on that disk. Its belt is this tool alone
-//     ([Agent.belt] returns early), and every other verb is ABSENT rather than
+//     every other organization item on that disk. Its belt is this tool, the
+//     workstream's own tools beside it, and the web's two READING hands
+//     (web_search, web_fetch, tools_search.go) so research can be answered
+//     ([Agent.belt] returns early); every other verb is ABSENT rather than
 //     present and refusing.
 //
 //   - IT WRITES AS THE PERSON WHO ASKED. The door checks their rights again on

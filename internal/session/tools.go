@@ -152,8 +152,9 @@ func (a *Agent) belt() []bare.Tool {
 	if a.config.mayBashBelt() {
 		return a.bashBelt()
 	}
-	// AN ORGANIZATION SERVER'S WORKSTREAM AGENT CARRIES ITS ONE TOOL AND NO
-	// OTHER, and no shelf a loader could reach (tools_workstream.go).
+	// AN ORGANIZATION SERVER'S WORKSTREAM AGENT CARRIES ITS WORKSTREAM'S TOOLS
+	// AND THE WEB'S READING PAIR, NO OTHER, and no shelf a loader could reach
+	// (tools_workstream.go).
 	if a.config.mayWorkstream() {
 		a.clearShelf()
 		// Its tasks and files ride beside it when the door keeps them
@@ -172,7 +173,15 @@ func (a *Agent) belt() []bare.Tool {
 		if door := a.config.canvasDoor(); door != nil {
 			belt = append(belt, a.wsCanvasTool(door))
 		}
-		return belt
+		// AND THE WEB'S TWO READING HANDS, web_search and web_fetch
+		// (tools_search.go), on the condition they carry everywhere: a pair the
+		// surface wired. Research a workstream is asked for (venues, prices,
+		// opening hours) is answered from the web or not at all, and both only
+		// read: a search through the resolved back end, a page through a
+		// reader service, never a request from the server itself to an address
+		// the model chose. Nothing that writes, runs or signs in rides with
+		// them.
+		return append(belt, a.searchTools()...)
 	}
 	// AN ORGANIZATION'S SETUP CONVERSATION CARRIES ITS ONE VERB AND NO OTHER
 	// (tools_org_setup.go): there is no workstream yet to read or write.

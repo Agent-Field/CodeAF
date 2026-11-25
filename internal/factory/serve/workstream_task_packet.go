@@ -287,7 +287,7 @@ func (h *Handler) taskPacket(ctx context.Context, d *agentDoor, task, words stri
 		"This task's id is %s; leave rev out when you update it. ", t.ID) +
 		"Make the deliverable with ws_file_create, from_task " + t.ID + ". " +
 		"When it is finished, call ws_task_update with state done, check saying what you checked it against, and handoff: two to four lines on what you made, what you assumed, and what the next task should know. " +
-		"If you cannot do it (an input is missing, or it needs something you do not have, such as the web), do not fail it: raise an ask to the owner with options such as \"Paste their text\".")
+		"If you cannot do it (an input is missing, or it needs something you do not have, such as a sign-in only a person holds), do not fail it: raise an ask to the owner with options such as \"Paste their text\".")
 	return out.String(), used
 }
 
