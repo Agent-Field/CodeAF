@@ -156,16 +156,21 @@ func TestHostedRowVerbsMatchWhatTheWireEnforces(t *testing.T) {
 
 // P2-2
 // Contract 1: a bot's rows hold what its person holds, narrowed by its scope, the way its wire does.
+// (A view bot can no longer START a chat, because starting one needs run; so the chat a view bot sees
+// is one its person's other bot made, and the view bot's own rows are read from it.)
 func TestHostedRowVerbsOfABotAreItsScope(t *testing.T) {
 	rg := newHostedRig(t)
+	editBot := rg.contractBot(t, "abir", "Edit bot", "edit")
 	viewBot := rg.contractBot(t, "abir", "View bot", "view")
 	var made struct {
 		ID    string
 		Verbs []string
 	}
-	rg.botDo(t, viewBot.Token, http.MethodPost, hostedSessionsPath, -1, nil, http.StatusCreated, &made)
-	if !reflect.DeepEqual(made.Verbs, []string{"view"}) {
-		t.Fatalf("a view bot's new chat answered verbs %v, want view only", made.Verbs)
+	rg.botDo(t, editBot.Token, http.MethodPost, hostedSessionsPath, -1, nil, http.StatusCreated, &made)
+	// The chat is its person's, who holds every verb on it, so the edit bot's answer is its scope alone:
+	// run and what rides with it, and never share or manage.
+	if got := slices.Sorted(slices.Values(made.Verbs)); !reflect.DeepEqual(got, []string{"answer", "comment", "edit", "run", "steer", "view"}) {
+		t.Fatalf("an edit bot's new chat answered verbs %v, want its scope's", made.Verbs)
 	}
 	shared := rg.create(t, "mia")
 	hostedGrant(t, rg, "mia", shared, "abir", "edit")
@@ -176,7 +181,7 @@ func TestHostedRowVerbsOfABotAreItsScope(t *testing.T) {
 		}
 	}
 	rg.botDo(t, viewBot.Token, http.MethodGet, hostedSessionsPath, -1, nil, http.StatusOK, &listed)
-	if len(listed.Sessions) != 1 || len(listed.Shared) != 1 ||
+	if len(listed.Sessions) != 1 || listed.Sessions[0].ID != made.ID || len(listed.Shared) != 1 ||
 		!reflect.DeepEqual(listed.Sessions[0].Verbs, []string{"view"}) || !reflect.DeepEqual(listed.Shared[0].Verbs, []string{"view"}) {
 		t.Fatalf("a view bot's rows = %+v", listed)
 	}
