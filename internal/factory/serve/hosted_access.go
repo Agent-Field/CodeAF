@@ -14,6 +14,10 @@ import (
 
 const hostedOwnerManage = "Only this chat's owner, or someone it is shared with in full, can stop or delete it."
 
+// hostedBotNeedsRun is what a bot reads when its scope does not let it run the
+// chat it would start, which is every scope below `run` (view and comment).
+const hostedBotNeedsRun = "This bot's scope does not let it run chats, so it cannot start one. Ask the person who made it."
+
 type hostedWireClass uint8
 
 const (
@@ -47,6 +51,14 @@ func (h *Handler) hostedViewer(w http.ResponseWriter, r *http.Request) (Viewer, 
 	}
 	v, err := h.itemViewer(r)
 	return v, h.hostedSignedIn(w, v.Handle, err)
+}
+
+// hostedStartItem is the chat a person is about to start, as the access core
+// sees it: theirs, private, and with no grant yet, so what a caller holds on it
+// is what they would hold the moment it exists.
+func (h *Handler) hostedStartItem(id, owner string) Item {
+	row := hostedResourceRow(id, owner, acl.Principal{Kind: "person", ID: owner}, acl.Private, h.clock())
+	return h.resourceItem(row, factory.OrgWorkstream{})
 }
 
 // hostedRegistration only accepts parentless person-owned hosted chats because other session resources live elsewhere.

@@ -489,6 +489,15 @@ func (h *Handler) hostedCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := "hs_" + hex.EncodeToString(raw[:])
+	// A BOT STARTS A CHAT ONLY WHEN IT COULD RUN ONE. The chat is its creator's
+	// from its first moment, and a bot holds on it what its creator holds
+	// narrowed by its scope, which is the same `run` the wire asks of anyone
+	// who types into a chat. A bot whose scope leaves `run` out would make a
+	// chat it can only watch, so it is refused here, before anything is made.
+	if v.Agent != nil && !hostedGuestVerbs(v, h.hostedStartItem(id, person)).Has(acl.VerbRun) {
+		h.fail(w, http.StatusForbidden, hostedBotNeedsRun)
+		return
+	}
 	token, err := hs.bearers.mint(id, person, h.clock())
 	if err != nil {
 		log.Printf("hosted chats: a chat could not be started: %v", err)
