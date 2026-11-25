@@ -49,6 +49,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
@@ -242,10 +243,12 @@ func runApp(args []string) error {
 		defer keepAutomationsWindow("app")()
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
+	stopRuns := backend.openAppRuns(ctx)
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
+	stopRuns()
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
 		// engine closes it once its conversation is gone (engine.go).
@@ -591,6 +594,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	appRuns        *runs.Engine
 	clientTools    appClientTools
 	libraryWatch   sync.Once
 	libraryInboxMu sync.Mutex

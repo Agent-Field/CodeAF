@@ -96,6 +96,8 @@ func (b *appBackend) DismissInbox(id string) error {
 // dismissAsk closes one ask through the door its kind closes by.
 func (b *appBackend) dismissAsk(id, agent, ask string) error {
 	switch {
+	case appRunAsk(ask):
+		return appwire.Errorf(appwire.CodeBadParams, "choose Approve or Decline for a run approval")
 	case strings.HasPrefix(ask, "service:"):
 		return b.dismissServiceLine(id)
 	case strings.HasPrefix(ask, appwire.OrderAskPrefix):
