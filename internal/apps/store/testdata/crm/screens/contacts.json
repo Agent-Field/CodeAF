@@ -1,0 +1,27 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "contacts",
+  "title": "Contacts",
+  "nav": { "part": "SectionTabs", "label": "CRM sections", "props": { "items": [ { "label": "Deals", "screen": "deals" }, { "label": "Companies", "screen": "companies" }, { "label": "Contacts", "screen": "contacts" } ] } },
+  "body": {
+    "part": "Row",
+    "props": { "gap": 3, "align": "start" },
+    "children": [
+      {
+        "part": "RecordList",
+        "id": "contacts",
+        "label": "Contacts",
+        "bind": { "records": "contact", "query": "sort:name" },
+        "props": { "views": ["list"], "columns": ["name", "title", "company", "email"], "select": "many", "empty": "No contacts yet." }
+      },
+      {
+        "part": "Panel",
+        "when": "$selection.contacts.count == 1",
+        "props": { "title": "Contact" },
+        "children": [
+          { "part": "RecordPage", "label": "Contact", "bind": { "record": "$selection.contacts.id" }, "props": { "fields": ["name", "title", "company", "email", "phone"], "history": true } }
+        ]
+      }
+    ]
+  }
+}

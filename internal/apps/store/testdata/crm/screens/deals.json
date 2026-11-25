@@ -1,0 +1,120 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "deals",
+  "title": "Deals",
+  "params": ["view"],
+  "nav": { "part": "SectionTabs", "label": "CRM sections", "props": { "items": [ { "label": "Deals", "screen": "deals" }, { "label": "Companies", "screen": "companies" }, { "label": "Contacts", "screen": "contacts" } ] } },
+  "body": {
+    "part": "Stack",
+    "props": { "gap": 3 },
+    "children": [
+      {
+        "part": "Row",
+        "props": { "gap": 2 },
+        "children": [
+          { "part": "StatTile", "bind": { "records": "deal", "query": "-stage:Won,Lost" }, "props": { "title": "Open pipeline", "metric": "sum", "field": "amount", "format": "money" } },
+          { "part": "StatTile", "bind": { "records": "deal", "query": "-stage:Won,Lost" }, "props": { "title": "Weighted", "metric": "sum", "field": "weighted", "format": "money" } },
+          { "part": "StatTile", "bind": { "records": "deal", "query": "stage:Won" }, "props": { "title": "Won", "metric": "count", "format": "number" } }
+        ]
+      },
+      {
+        "part": "Row",
+        "props": { "gap": 3, "align": "start" },
+        "children": [
+          {
+            "part": "Stack",
+            "props": { "gap": 2 },
+            "children": [
+              {
+                "part": "Row",
+                "props": { "gap": 2, "align": "center" },
+                "children": [
+                  { "part": "Heading", "props": { "text": "Deals", "level": 1 } },
+                  {
+                    "part": "Button",
+                    "label": "New deal",
+                    "props": { "kind": "primary", "icon": "plus" },
+                    "on": {
+                      "click": [
+                        {
+                          "records.create": { "type": "deal", "set": { "name": "$input.name", "company": "$input.company", "amount": "$input.amount" } },
+                          "ask": { "name": "text", "company": "ref", "amount": "money" }
+                        },
+                        { "toast": "Deal added" }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "part": "RecordList",
+                "id": "deals",
+                "label": "Deals",
+                "bind": { "records": "deal", "query": "-stage:Lost sort:-amount" },
+                "props": {
+                  "views": ["list", "board"],
+                  "board_by": "stage",
+                  "meter": "stage",
+                  "columns": ["name", "company", "stage", "amount", "close_on", "likely"],
+                  "select": "many",
+                  "empty": "No deals yet. New deal adds one."
+                },
+                "on": { "open": [{ "open": "deal", "id": "$row.id" }] }
+              },
+              {
+                "part": "BulkBar",
+                "when": "$selection.deals.count > 0",
+                "props": { "for": "deals" },
+                "children": [
+                  {
+                    "part": "Button",
+                    "label": "Move to…",
+                    "on": {
+                      "click": [
+                        { "records.update": { "ids": "$selection.deals.ids", "set": { "stage": "$input.stage" } }, "ask": { "stage": "enum" } }
+                      ]
+                    }
+                  },
+                  {
+                    "part": "Button",
+                    "label": "Draft follow-ups",
+                    "on": { "click": [{ "runs.start": "follow-up", "params": { "deals": "$selection.deals.ids" } }] }
+                  },
+                  {
+                    "part": "Button",
+                    "label": "Likely to close · AI",
+                    "props": { "kind": "quiet" },
+                    "on": { "click": [{ "ai.sort": "deals", "field": "likely" }] }
+                  },
+                  {
+                    "part": "Button",
+                    "label": "Delete…",
+                    "props": { "kind": "danger", "confirm": "Delete {{count}} deals? You can undo this for a while." },
+                    "on": { "click": [{ "records.delete": { "ids": "$selection.deals.ids" } }] }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "part": "Panel",
+            "when": "$selection.deals.count == 1",
+            "props": { "title": "Deal" },
+            "children": [
+              {
+                "part": "RecordPage",
+                "label": "Deal",
+                "bind": { "record": "$selection.deals.id" },
+                "props": {
+                  "fields": ["name", "company", "contacts", "stage", "amount", "close_on", "owner", "last_touch", "weighted", "age_days", "likely"],
+                  "actions": ["follow-up", "mark-won"],
+                  "history": true
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
