@@ -3950,9 +3950,6 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		if tool.Name != call.Function.Name {
 			continue
 		}
-		if a.config.AppScope != nil && call.Function.Name != AppChangeToolName {
-			markAppTool(ctx)
-		}
 		if invalid := invalidBashArguments(call.Function.Name, json.RawMessage(call.Function.Arguments)); invalid != "" {
 			return a.finishToolResult(ep, call, toolResult{text: invalid, isError: true, rejected: true})
 		}

@@ -3055,8 +3055,6 @@ type Agent struct {
 	// arming happens inside a tool call, and a tool call must never take the
 	// lock Interrupt has to be able to take.
 	armMu sync.Mutex
-	// appApprovals is the app tool list's one-time approval set, under armMu.
-	appApprovals map[string]bool
 	// held is the held-range ledger (heldreads.go): which line ranges of which
 	// files this conversation's transcript already carries verbatim, so a read
 	// for exactly that is answered with a pointer and the disk is not opened.

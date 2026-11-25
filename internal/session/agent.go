@@ -312,9 +312,6 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.initKnowledge()
 	agent.ownWorkTold.Store(config.ownWork)
 	agent.tools = agent.belt()
-	if config.AppScope != nil {
-		agent.appApprovals = config.AppScope.ApprovalTools
-	}
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
 		return nil, err

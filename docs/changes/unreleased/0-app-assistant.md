@@ -1,12 +1,12 @@
 ---
 kind: added
-title: Ask an app's assistant about its records or request a change
+title: Open a conversation scoped to a personal app
 pr: 0
 surface: [app, engine]
 invalidates:
-  - "An app previously had no conversation of its own. Its assistant now uses the app's allowed record types, automations and connectors."
+  - "A personal app previously had no scoped conversation of its own. Its assistant now keeps a conversation with the app's identity and command scope."
 ---
 
-Record changes are attributed to the app's agent. Outgoing messages wait for
-approval in the Inbox. An app change starts a separate editing job using only
-the person's request, and the live app stays in use while the change is prepared.
+The assistant uses declared app views and actions through the shared app command.
+Actions carry AI provenance. A requested app edit passes only the person's
+request to a fresh editing session and is published by Apply.

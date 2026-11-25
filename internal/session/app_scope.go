@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"maps"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -15,9 +14,8 @@ import (
 // AppScope supplies the complete tool list for a personal app conversation.
 // Its owners bind app identity and check the live definition at execution.
 type AppScope struct {
-	ID            string
-	Tools         []bare.Tool
-	ApprovalTools map[string]bool
+	ID    string
+	Tools []bare.Tool
 	// Refresh reads the live app at the start of each turn so a Keep or Revert
 	// cannot leave the old tool list in a conversation already open.
 	Refresh func() (string, *AppScope, error)
@@ -44,9 +42,6 @@ func checkAppScope(config Config) error {
 	}
 	return nil
 }
-
-// AppChangeToolName names the one tool permitted to read the person's proposal text.
-const AppChangeToolName = "propose_change"
 
 type appTurnKey struct{}
 
@@ -96,24 +91,14 @@ func AppChangeRequest(ctx context.Context) (string, bool) {
 	return turn.request, true
 }
 
-func markAppTool(ctx context.Context) {
+// MarkAppContent prevents a tool result from starting a proposal in this turn.
+func MarkAppContent(ctx context.Context) {
 	if turn, _ := ctx.Value(appTurnKey{}).(*appTurn); turn != nil {
 		turn.called.Store(true)
 	}
 }
 
 var errAppTask = errors.New("Tasks are unavailable in an app conversation.")
-
-const appOutboundApproval = "This app action needs your approval each time."
-
-func (a *Agent) appOutbound(tool string) bool {
-	if a.config.AppScope == nil {
-		return false
-	}
-	a.armMu.Lock()
-	defer a.armMu.Unlock()
-	return a.appApprovals[tool]
-}
 
 func (a *Agent) refreshAppScope() error {
 	scope := a.config.AppScope
@@ -136,7 +121,6 @@ func (a *Agent) refreshAppScope() error {
 	a.armMu.Lock()
 	a.tools = append([]bare.Tool(nil), next.Tools...)
 	a.definitions = definitions
-	a.appApprovals = maps.Clone(next.ApprovalTools)
 	a.armMu.Unlock()
 	a.system = system
 	a.refreshSystemLocked()

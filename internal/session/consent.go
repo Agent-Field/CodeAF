@@ -238,23 +238,6 @@ func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision appro
 // approve is the gate. It returns the refusal to hand the model and false when
 // the call must not run.
 func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
-	if a.config.AppScope != nil {
-		if decision, governed := a.decide(call); governed && decision.Action == approval.ActionDeny {
-			return refusal("denied by approval rule: " + decision.Rule), false
-		}
-		if !a.appOutbound(call.Function.Name) {
-			return toolResult{}, true
-		}
-		if !a.config.AskConsent || hub == nil {
-			return refusal(appOutboundApproval), false
-		}
-		decision := approval.Decision{Action: approval.ActionPrompt, Rule: appOutboundApproval}
-		answer, err := a.askAnswer(ctx, hub, call, decision)
-		if err != nil {
-			return refusal(notApprovedWording(err)), false
-		}
-		return a.consentVerdict(answer, decision)
-	}
 	// AN AGENT DOES NOT READ THE PERSON'S CREDENTIALS, and nothing below can say
 	// otherwise: no mode, rule, memo, guardian or setup grant is asked about it
 	// (internal/approval's credentials.go). It reads as the refusal itself, with
@@ -449,7 +432,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 			Rule: consentRule(call, decision),
 			// And whether the memo is even available, so a surface can leave the
 			// "always" key off a question it would be dropped on (see Event.Memo).
-			Memo: !a.appOutbound(call.Function.Name),
+			Memo: true,
 			// Silence is not a no. The card draws this so the wait mode is not a
 			// hidden deny timer (F41).
 			Wait: ConsentWaiting,
@@ -469,7 +452,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		// already wrote the rule the person picked, and a memo beside it would be
 		// the coarse tool-wide yes this scope exists to stop making. See its
 		// doc for the consequence.
-		if answer.scope == ConsentToolSession && !a.appOutbound(call.Function.Name) {
+		if answer.scope == ConsentToolSession {
 			// A STANDING YES ABOUT AN ACCOUNT IS A SETTING, NOT A MEMO. It is
 			// written where the settings sheet writes it, and it is written
 			// INSTEAD of the session memo rather than beside it: two records of
@@ -674,10 +657,7 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 	if policy := a.approvalGate(); policy != nil {
 		outside = policy.OutsideRule(call.Function.Name, []byte(call.Function.Arguments))
 	}
-	irreversible := approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) || a.appOutbound(call.Function.Name)
-	if a.appOutbound(call.Function.Name) {
-		scopes, alwaysAsk = nil, "acts_as_you"
-	}
+	irreversible := approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments))
 	stakes := StakesCostly
 	options := AnswerOptions(QuestionConsent)
 	scope := []AnswerScope{ScopeOnce, ScopeAlways}
