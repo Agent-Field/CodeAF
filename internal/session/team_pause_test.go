@@ -1077,3 +1077,234 @@ func TestTeamHeldProgramLandingIsRecordedOnce(t *testing.T) {
 		t.Fatalf("the open surface was sent the limit %d times, want once", notices)
 	}
 }
+
+// pauseCutHandedTurn is a member in a turn on its manager's directive, cut by
+// the person's Pause the way the app cuts it; later turns take the steps after.
+func pauseCutHandedTurn(t *testing.T, after ...step) (teamFixture, *Agent, *scriptedCompleter, *Agent, *scriptedCompleter) {
+	t.Helper()
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	managerCalls := oneAnswer(8)
+	manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+	streaming := make(chan struct{})
+	calls := &scriptedCompleter{steps: append([]step{thinkingStep(streaming)}, after...)}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	sendDirective(t, manager, "web")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start on the directive")
+	}
+	pauseLikeTheApp(t, fixture, web)
+	waitQuiet(t, web)
+	waitTeamEvents(t, fixture, "stopped", 1)
+	web.settleTeamEvents()
+	return fixture, manager, managerCalls, web, calls
+}
+
+// pauseCutPersonsTurn is a member in a turn the person's own words opened, cut
+// by Pause; steps is that turn's step and the ones after.
+func pauseCutPersonsTurn(t *testing.T, cut chan struct{}, steps ...step) (teamFixture, *Agent, *scriptedCompleter) {
+	t.Helper()
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	calls := &scriptedCompleter{steps: steps}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	events := mustSubmit(t, web, "start the build")
+	go func() {
+		for range events {
+		}
+	}()
+	select {
+	case <-cut:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the person's turn did not start")
+	}
+	pauseLikeTheApp(t, fixture, web)
+	waitQuiet(t, web)
+	waitTeamEvents(t, fixture, "stopped", 1)
+	web.settleTeamEvents()
+	return fixture, web, calls
+}
+
+// A STOP OF A PAUSED MEMBER ENDS THE DIRECTIVE THE PAUSE HELD TOO. The member
+// was on handed work, the person paused it, the manager sent another directive
+// (held), and the person pressed Stop: the manager was told the work was
+// stopped and not to hand it out again. Resume used to start the member on the
+// held directive anyway, with `woke @web`. It starts nothing now; a directive
+// sent after the stop is a new hand-off and starts the member.
+func TestTeamStopOfAPausedMemberDropsTheDirectiveThePauseHeld(t *testing.T) {
+	fixture, manager, managerCalls, web, calls := pauseCutHandedTurn(t, okStep(), okStep())
+	sendDirective(t, manager, "web")
+	waitTeamEvents(t, fixture, teamHeldPausedText("web"), 1)
+	quietFor()
+
+	web.Interrupt()
+	waitTeamEvents(t, fixture, teams.StoppedByPerson, 1)
+	waitManagerToldOfStop(t, managerCalls)
+	quietFor()
+	setPaused(t, fixture, fixture.web, false)
+	quietFor()
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the stopped member was asked %d times after Resume, want only the turn the pause cut", got)
+	}
+	if woke := trafficEvents(t, fixture, "woke @web"); len(woke) != 1 {
+		t.Fatalf("the traffic says the member woke %d times, want only for the first directive", len(woke))
+	}
+
+	sendDirective(t, manager, "web")
+	waitRequests(t, calls, 2)
+	waitQuiet(t, web)
+}
+
+// THE TURN RESUME OWES KEEPS TO THE HOUR'S LIMIT. A directive waited on the
+// paused member; at Resume the hour's limit held its wake and the traffic said
+// `could not wake @web`, and in the same look the turn the pause owed started
+// anyway and handed the directive over. The owed turn is held by the same
+// limit, and stays owed.
+func TestTeamResumeOwedTurnKeepsToTheHourLimit(t *testing.T) {
+	fixture, manager, _, web, calls := pauseCutHandedTurn(t, okStep(), okStep())
+	sendDirective(t, manager, "web")
+	waitTeamEvents(t, fixture, teamHeldPausedText("web"), 1)
+	quietFor()
+	web.team.mu.Lock()
+	for range teamWakesPerHour {
+		web.team.watch.woken = append(web.team.watch.woken, time.Now())
+	}
+	web.team.mu.Unlock()
+
+	setPaused(t, fixture, fixture.web, false)
+	waitTeamEvents(t, fixture, teamCouldNotPrefix+"@web", 1)
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the member was asked %d times, want only the turn the pause cut: the hour's limit holds", got)
+	}
+	if !web.team.pauseHold.owed.Load() {
+		t.Fatal("the hour's limit spent the turn the pause owes")
+	}
+	if said := trafficEvents(t, fixture, teamCouldNotPrefix+"@web"); len(said) != 1 {
+		t.Fatalf("the limit was said %d times, want once", len(said))
+	}
+}
+
+// RESUME CARRIES ON A TURN THE PERSON'S OWN WORDS OPENED. The pause cut it, and
+// only a turn on a manager's handed work used to be owed: Resume started
+// nothing. It starts one turn now, told why it began.
+func TestTeamPauseOfThePersonsOwnTurnResumesIt(t *testing.T) {
+	cut := make(chan struct{})
+	fixture, web, calls := pauseCutPersonsTurn(t, cut, thinkingStep(cut), okStep(), okStep())
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the paused member was asked %d times, want only the turn the pause cut", got)
+	}
+	setPaused(t, fixture, fixture.web, false)
+	waitRequests(t, calls, 2)
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, teamPauseResumedRule) {
+		t.Fatalf("the turn Resume started was not told why it began:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	quietFor()
+	if got := calls.requests(); got != 2 {
+		t.Fatalf("Resume started %d turns, want one", got-1)
+	}
+}
+
+// NEWS THE CUT TURN DRAINS AS IT WINDS DOWN IS READ AT RESUME. A command ended
+// while the turn the Pause cut was still running; the turn's end wrote it into
+// the conversation with nothing to answer it, and nothing marked it owed, so
+// it stayed unread after Resume. The turn Resume starts reads it.
+func TestTeamNewsTheCutTurnDrainsIsReadAtResume(t *testing.T) {
+	cut := make(chan struct{})
+	var web *Agent
+	windDown := func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		close(cut)
+		<-ctx.Done()
+		web.enqueueJobNote("job 8 exited 0")
+		return nil, ctx.Err()
+	}
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	calls := &scriptedCompleter{steps: []step{windDown, okStep(), okStep()}}
+	web = teamAgent(t, fixture, fixture.web, calls, nil)
+	events := mustSubmit(t, web, "start the build")
+	go func() {
+		for range events {
+		}
+	}()
+	<-cut
+	pauseLikeTheApp(t, fixture, web)
+	waitQuiet(t, web)
+	waitTeamEvents(t, fixture, "stopped", 1)
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the paused member was asked %d times, want only the turn the pause cut", got)
+	}
+	setPaused(t, fixture, fixture.web, false)
+	waitRequests(t, calls, 2)
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, "job 8 exited 0") {
+		t.Fatalf("the turn Resume started did not read the ending the cut turn drained:\n%s", asked)
+	}
+}
+
+// A GATE THAT REFUSES AT RESUME DOES NOT SPEND THE OWED TURN. Owed was cleared
+// before the gate was asked, so a refusal lost the turn for good. It starts
+// once the gate opens.
+func TestTeamResumeOwedTurnSurvivesAGateThatRefuses(t *testing.T) {
+	fixture, _, _, web, calls := pauseCutHandedTurn(t, okStep(), okStep())
+	web.mu.Lock()
+	web.workStopped = true
+	web.mu.Unlock()
+	setPaused(t, fixture, fixture.web, false)
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the member was asked %d times while its work was stopped", got)
+	}
+	if !web.team.pauseHold.owed.Load() {
+		t.Fatal("a refusing gate spent the turn the pause owes")
+	}
+	web.mu.Lock()
+	web.workStopped = false
+	web.mu.Unlock()
+	waitRequests(t, calls, 2)
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, teamPauseResumedRule) {
+		t.Fatalf("the owed turn was not told why it began:\n%s", asked)
+	}
+}
+
+// A PAUSE KEEPS WHAT THE PERSON QUEUED. The pause ran the stop's path, which
+// drops every queued follow-up, so the words the person had queued behind the
+// running turn were lost. Their words are never held: the follow-up starts its
+// own turn when the cut turn ends, and that turn reads what the pause kept, so
+// Resume starts nothing more.
+func TestTeamPauseKeepsThePersonsQueuedFollowUp(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	streaming := make(chan struct{})
+	calls := &scriptedCompleter{steps: []step{thinkingStep(streaming), okStep(), okStep()}}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	events := mustSubmit(t, web, "start the build")
+	go func() {
+		for range events {
+		}
+	}()
+	<-streaming
+	queued, err := web.FollowUp("then write it up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pauseLikeTheApp(t, fixture, web)
+	collect(t, queued)
+	if got := calls.requests(); got != 2 {
+		t.Fatalf("the model was asked %d times, want the cut turn and the person's follow-up", got)
+	}
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, "then write it up") {
+		t.Fatalf("the follow-up's turn did not carry the person's words:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	setPaused(t, fixture, fixture.web, false)
+	quietFor()
+	if got := calls.requests(); got != 2 {
+		t.Fatalf("Resume started a turn on what the follow-up's turn already read: %d calls", got)
+	}
+}

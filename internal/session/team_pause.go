@@ -55,10 +55,11 @@ package session
 // person's Stop: through that door the pause began the stop hold, so what
 // arrived next was kept as stopped work, the manager was told the person had
 // stopped what it handed out, and Resume started nothing. The pause's door
-// begins no hold and tells no manager anything; a turn it cuts on handed work
-// keeps that work, and Resume starts one turn that carries on with it
-// ([Agent.teamPauseCut]). A stop of the paused member still ends the work, and
-// withdraws that turn ([Agent.teamStopHoldLocked]).
+// begins no hold and tells no manager anything; a turn it cuts keeps its work,
+// whatever opened it, and Resume starts one turn that carries on with it
+// ([Agent.teamPauseCutLocked]). A stop of the paused member still ends the
+// work, and withdraws that turn and the directives the pause held
+// ([Agent.teamStopHoldLocked]).
 //
 // THE PERSON'S OWN WORDS ARE NOT HELD, as with the daily cap (team_cap.go): a
 // person typing into a paused member's conversation starts its turn, and that
@@ -93,11 +94,19 @@ type teamPauseHold struct {
 	// teams, as of the last time its roles were read. Read without a lock or a
 	// disk.
 	paused atomic.Bool
-	// owed is set when the pause kept news from starting a turn (a command's
-	// ending, a watch's firing, a task landing, what a turn's end recorded),
-	// and cleared when a turn next begins, which reads it. Resume starts that
-	// turn ([Agent.teamPauseOwedWake]).
+	// owed is set when the pause cut a turn ([Agent.teamPauseCutLocked]) or
+	// kept news from starting one (a command's ending, a watch's firing, a
+	// task landing, what a turn's end recorded), and cleared when a turn next
+	// begins, which reads it. Resume starts that turn ([Agent.teamPauseOwedWake]). It lives in
+	// this process alone: a restart while paused loses it, and the records stay
+	// in the conversation for the next turn.
 	owed atomic.Bool
+	// stopped is set when a stop's hold begins ([Agent.teamStopHoldLocked]),
+	// and the watch's next idle look forgets the directives the pause held
+	// ([teamWatch].pausedHeld): the stop ended that work, so Resume does not
+	// start a turn on it. A directive the pause holds after the stop is a new
+	// hand-off and still starts the member at Resume.
+	stopped atomic.Bool
 }
 
 // teamPauseFreshSeated is [Agent.teamPauseFresh] for a conversation that has a
@@ -114,11 +123,30 @@ func (a *Agent) teamPauseFreshSeated() {
 // reads what the pause kept.
 func (a *Agent) teamPauseOwedOver() { a.team.pauseHold.owed.Store(false) }
 
-// teamPauseCut is a turn the person's Pause ended ([StopByPause]). Work a
-// manager handed this conversation is kept, not ended: the turn Resume starts
-// carries on with it, and a stop of the paused member is the stop of that work
-// ([Agent.teamStopHoldLocked]). A turn on none of a manager's work owes nothing
-// for its own sake.
+// teamPauseCutLocked reports whether the turn ending was cut by the person's
+// Pause ([StopByPause]), and marks it owed when it was. It is asked where the
+// turn ends, under a.mu, before a follow-up the person queued may start.
+//
+// THE CUT TURN IS OWED WHATEVER OPENED IT, the person's own words, a manager's
+// handed work or a directive the pause had held: Resume carries on with the
+// work it was on, and reads whatever the cut turn's end drained into the
+// conversation (a command's ending, a task's result that arrived while it
+// wound down). Only a turn on handed work used to be owed, so the rest stayed
+// unread after Resume. A follow-up the person queued is their own words, which
+// are never held: it starts its turn here, which reads all of it and so clears
+// what this marked ([Agent.startTurnLocked]).
+func (a *Agent) teamPauseCutLocked(door StopDoor, stopped bool) bool {
+	if !stopped || door != StopByPause {
+		return false
+	}
+	a.team.pauseHold.owed.Store(true)
+	return true
+}
+
+// teamPauseCut keeps the work a manager handed this conversation when the
+// person's Pause cut its turn: the work is not ended, the turn Resume starts
+// carries on with it ([Agent.teamPauseCutLocked]), and a stop of the paused
+// member is the stop of that work ([Agent.teamStopHoldLocked]).
 func (a *Agent) teamPauseCut(origin turnOrigin) {
 	a.team.mu.Lock()
 	handed := len(a.team.handed) > 0
@@ -130,7 +158,6 @@ func (a *Agent) teamPauseCut(origin turnOrigin) {
 	hold.mu.Lock()
 	hold.origin = origin
 	hold.mu.Unlock()
-	a.team.pauseHold.owed.Store(true)
 }
 
 // teamPauseOwedWake starts the turn a lifted pause owes the news it held.
@@ -141,16 +168,37 @@ func (a *Agent) teamPauseCut(origin turnOrigin) {
 // command used to stay idle after Resume with the command's ending unread,
 // unless a directive had also waited. A stop is different: what its hold
 // keeps starts nothing even later ([teamStopHeldRule]), so a stop since the
-// pause leaves the records where they are. The traffic is told nothing: this
-// turn is the member's own news, not its team's.
-func (a *Agent) teamPauseOwedWake() {
+// pause leaves the records where they are. The traffic is told nothing when
+// the turn starts: this turn is the member's own news, not its team's.
+//
+// THE TEAM'S BOUNDS STILL BIND IT. Its boundary hands over a directive the
+// pause held, so the hour's limit and the cap that just held that directive's
+// wake hold this turn too, and their line is the one the directive's wake
+// wrote, said once ([Agent.wakeSayOnce]): a turn started past them delivered
+// the directive the traffic had just said could not wake the member. And owed
+// is cleared only by the turn beginning ([Agent.startTurnLocked]), so a bound
+// or a gate that refuses now leaves it for a later look.
+func (a *Agent) teamPauseOwedWake(profile string, roles []teamRole, now time.Time) {
 	hold := &a.team.pauseHold
-	if !hold.owed.Load() {
+	if !hold.owed.Load() || hold.paused.Load() || a.team.stopHold.held.Load() {
 		return
+	}
+	var members []teamRole
+	for _, role := range roles {
+		if role.managed && !role.manager && role.handle != "" {
+			members = append(members, role)
+		}
+	}
+	cause := wakeCause{kind: wakeDirective, roles: members}
+	for _, rule := range []wakeRule{wakeLimitRule, wakeCapRule} {
+		if d := rule(a, profile, &cause, now); d.by != heldByNothing {
+			a.sayWake(profile, cause, d, now)
+			return
+		}
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.running || hold.paused.Load() || !hold.owed.Swap(false) || a.team.stopHold.held.Load() {
+	if a.running || hold.paused.Load() || !hold.owed.Load() || a.team.stopHold.held.Load() {
 		return
 	}
 	if gate, _ := a.wakeRefusalLocked(false, false); gate != wakeGateOpen {

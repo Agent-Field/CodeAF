@@ -2171,6 +2171,13 @@ func (a *Agent) InterruptWithinErr(grace time.Duration) error {
 	return err
 }
 
+// InterruptWithinFor is [Agent.InterruptWithin] through a named door. The
+// engine bounds the person's Pause as it bounds their Stop; an engine built
+// before that reads the door and stops the turn unbounded.
+func (a *Agent) InterruptWithinFor(door session.StopDoor, grace time.Duration) {
+	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(door), Within: grace.Milliseconds()})
+}
+
 // AnswerLaneOffer answers the question a stalled PINNED lane raises: the
 // machine this person named has gone quiet, there is somewhere else to go, and
 // a pin is asked rather than overridden. The `y` they pressed takes this road

@@ -20,6 +20,7 @@ import (
 // stage by an optional interface, so a rename on the session's side would
 // leave every hosted stop unbounded again with these tests still passing.
 var _ boundedStopper = (*session.Agent)(nil)
+var _ doorBoundedStopper = (*session.Agent)(nil)
 
 // boundedFakeAgent is a [fakeAgent] whose stop can carry its second stage.
 type boundedFakeAgent struct {
@@ -27,12 +28,26 @@ type boundedFakeAgent struct {
 
 	mu     sync.Mutex
 	graces []time.Duration
+	doors  []session.StopDoor
 }
 
 func (a *boundedFakeAgent) InterruptWithin(grace time.Duration) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.graces = append(a.graces, grace)
+}
+
+func (a *boundedFakeAgent) InterruptWithinFor(door session.StopDoor, grace time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.doors = append(a.doors, door)
+	a.graces = append(a.graces, grace)
+}
+
+func (a *boundedFakeAgent) boundDoors() []session.StopDoor {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]session.StopDoor(nil), a.doors...)
 }
 
 func (a *boundedFakeAgent) bounds() []time.Duration {
@@ -112,5 +127,45 @@ func TestTheClientsBoundedStopSendsItsBound(t *testing.T) {
 	}
 	if args.Door != string(session.StopByPerson) || args.Within != 10_000 {
 		t.Fatalf("stop args = %+v", args)
+	}
+}
+
+// THE PERSON'S PAUSE CARRIES ITS BOUND ACROSS THE WIRE TOO, through its own
+// door: the desktop app's Pause has no second key either.
+func TestAPausesBoundedStopReachesTheAgentsSecondStage(t *testing.T) {
+	plain := &fakeAgent{}
+	bounded := &boundedFakeAgent{fakeAgent: plain}
+	engine := engineOn(plain)
+	engine.Agent = bounded
+	sess := NewSession(engine, true)
+	t.Cleanup(func() { _ = sess.Close() })
+	l := dialSession(t, sess)
+	l.hello(Hello{Version: Version})
+
+	l.ok(1, MethodInterrupt, InterruptArgs{Door: string(session.StopByPause), Within: 2500})
+	if got, doors := bounded.bounds(), bounded.boundDoors(); len(got) != 1 || got[0] != 2500*time.Millisecond || len(doors) != 1 || doors[0] != session.StopByPause {
+		t.Fatalf("the bounded pause armed %v through %v, want one bound of 2.5s through the pause's door", got, doors)
+	}
+	plain.mu.Lock()
+	interrupts := plain.interrupts
+	plain.mu.Unlock()
+	if interrupts != 0 {
+		t.Fatalf("a bounded pause also sent %d plain interrupts", interrupts)
+	}
+}
+
+func TestTheClientsBoundedPauseSendsItsDoorAndBound(t *testing.T) {
+	client, e := newEngine(t)
+	client.Agent().InterruptWithinFor(session.StopByPause, 10*time.Second)
+	calls := e.calls(MethodInterrupt)
+	if len(calls) != 1 {
+		t.Fatalf("the bounded pause travelled %d times", len(calls))
+	}
+	var args InterruptArgs
+	if err := json.Unmarshal(calls[0].Payload, &args); err != nil {
+		t.Fatalf("stop payload: %v", err)
+	}
+	if args.Door != string(session.StopByPause) || args.Within != 10_000 {
+		t.Fatalf("pause args = %+v", args)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -32,6 +33,20 @@ func (d *dooredConversation) stops() []session.StopDoor {
 	d.doorMu.Lock()
 	defer d.doorMu.Unlock()
 	return slices.Clone(d.doors)
+}
+
+// boundedDooredConversation is a [dooredConversation] whose stop through a
+// named door can carry its bound, as one reached across a connection can.
+type boundedDooredConversation struct {
+	*dooredConversation
+	graces []time.Duration
+}
+
+func (b *boundedDooredConversation) InterruptWithinFor(door session.StopDoor, grace time.Duration) {
+	b.InterruptFor(door)
+	b.doorMu.Lock()
+	defer b.doorMu.Unlock()
+	b.graces = append(b.graces, grace)
 }
 
 // dooredBackend holds one conversation that records its stops.
@@ -260,4 +275,50 @@ func TestAppPauseEndsTheTurnThroughThePausesDoor(t *testing.T) {
 		t.Fatal(err)
 	}
 	only(session.StopByPerson)
+}
+
+// A PAUSE CARRIES THE BOUND THE PERSON'S STOP CARRIES. Through an unbounded
+// interrupt a turn parked on a wait that ignores its context stayed "working"
+// after Pause; the conversation is given the stop's own grace with the pause's
+// door.
+func TestAppPauseIsBoundedLikeTheStop(t *testing.T) {
+	state, profile := t.TempDir(), t.TempDir()
+	conv := &boundedDooredConversation{dooredConversation: &dooredConversation{fakeConversation: &fakeConversation{}}}
+	backend := newFakeBackend(newAppRecorder(), func(ask appOpenAsk) (*appConn, error) {
+		return &appConn{Conv: conv, Workspace: ask.Workspace, Transcript: appFakeTranscript, Release: func() {}}, nil
+	})
+	t.Cleanup(func() { backend.Close() })
+	backend.state = &appState{path: filepath.Join(state, appStateName)}
+	backend.profileDir = profile
+	agent, err := mustCreate(t, backend, appwire.CreateAsk{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	crew := teamstore.NewID()
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: crew, Name: "crew"})
+		lead := filepath.Join(t.TempDir(), "lead", "transcript.jsonl")
+		if err := f.AddMember(crew, teamstore.Member{Key: lead, File: lead, Handle: "lead"}); err != nil {
+			return err
+		}
+		if err := f.AddMember(crew, teamstore.Member{Key: appFakeTranscript, File: appFakeTranscript, Handle: "scout", Started: true}); err != nil {
+			return err
+		}
+		return f.SetManager(crew, lead)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Member("pause", appwire.MemberAsk{Crew: crew, Agent: agent.ID}); err != nil {
+		t.Fatal(err)
+	}
+	conv.doorMu.Lock()
+	defer conv.doorMu.Unlock()
+	if len(conv.doors) == 0 || len(conv.graces) != len(conv.doors) {
+		t.Fatalf("the pause stopped through %v with bounds %v, want each stop bounded", conv.doors, conv.graces)
+	}
+	for i, door := range conv.doors {
+		if door != session.StopByPause || conv.graces[i] != session.StopGrace {
+			t.Fatalf("the pause stopped through %v with bounds %v, want the pause's door with %v", conv.doors, conv.graces, session.StopGrace)
+		}
+	}
 }

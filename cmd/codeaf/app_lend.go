@@ -180,6 +180,10 @@ func (l lentAgent) InterruptFor(door session.StopDoor) {
 // that had not ended. The job's own Stop is the door that ends a stage.
 func (l lentAgent) InterruptWithin(time.Duration) { l.Agent.Interrupt() }
 
+// InterruptWithinFor is [lentAgent.InterruptFor] without the bound, for the
+// reason [lentAgent.InterruptWithin] has none.
+func (l lentAgent) InterruptWithinFor(door session.StopDoor, _ time.Duration) { l.InterruptFor(door) }
+
 // InterruptNamed is [lentAgent.InterruptFor] with the window the door named.
 func (l lentAgent) InterruptNamed(door session.StopDoor, name string) {
 	if endsAView(door) {

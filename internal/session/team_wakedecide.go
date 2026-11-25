@@ -29,8 +29,10 @@ package session
 // begins, and the person's pause. They bind the news that arrives through the
 // session's own queue (a command's ending, a watch's firing, a task landing,
 // what a turn's end recorded), and are read where that news is queued
-// ([wakeStanding], [Agent.standingHoldLocked]). What they hold is kept in the
-// conversation as a record that starts no turn, and that record is its line.
+// ([wakeStanding], [Agent.standingHoldLocked]). What they hold starts no turn
+// and is read by the next one: kept in the conversation as a record, and that
+// record is its line, or, for endings already queued when a command's wake
+// clock fires, left on the queue that turn drains ([Agent.deferJobWakeLocked]).
 
 import (
 	"fmt"
@@ -153,8 +155,9 @@ func init() {
 
 // wakeStanding is which of a conversation's standing holds bind which cause.
 // A standing hold is the agent's own state, read under a.mu where the news is
-// queued, and what it holds is kept in the conversation as a record that
-// starts no turn: the record is its line, and the traffic is told nothing.
+// queued, and what it holds starts no turn: it is kept in the conversation as
+// a record, which is its line, or left queued for the next turn when it was
+// queued before the hold began, and the traffic is told nothing.
 //
 // A STOP HOLDS WHAT THE STOPPED WORK LEFT BEHIND: a command's ending, a watch's
 // firing and a background task's landing. The person's own words and a
@@ -180,12 +183,14 @@ var wakeStanding = map[wakeKind]struct{ stop, pause bool }{
 // starting a turn, with the sentence its record is given as why; the zero
 // decision when none does. The caller holds a.mu.
 //
-// A PAUSE HOLDS NOTHING FROM A TURN IN FLIGHT. The only turn that runs in a
-// paused conversation is one the person's own words opened, and news that
-// arrives while it runs is that turn's to read at its next step, as anywhere.
-// What it leaves unread at its end is asked about again there
-// ([Agent.turnEndHeldLocked]). A stop holds through the turn it stopped, which
-// is still winding down when a command it left behind ends.
+// A PAUSE HOLDS NOTHING FROM A TURN IN FLIGHT. A turn runs in a paused
+// conversation when the person's own words opened it, or while the turn the
+// Pause cut is still winding down, and news that arrives meanwhile is that
+// turn's to read at its next step, as anywhere. What a turn the person opened
+// leaves unread at its end is asked about again there
+// ([Agent.turnEndHeldLocked]); what the cut turn's end drains is owed the turn
+// Resume starts ([Agent.teamPauseCut]). A stop holds through the turn it
+// stopped, which is still winding down when a command it left behind ends.
 func (a *Agent) standingHoldLocked(kind wakeKind) wakeDecision {
 	binds := wakeStanding[kind]
 	if binds.stop && a.team.stopHold.held.Load() {

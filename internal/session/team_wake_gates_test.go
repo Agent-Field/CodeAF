@@ -40,6 +40,27 @@ func TestTeamWakeWithKeepsTheLinesWhenTheSeatClosedSinceTheDecision(t *testing.T
 	}
 }
 
+// THE KEPT LINES SAY NOTHING THAT IS FALSE OF THE TURN THAT READS THEM. They
+// kept the wake's lead, "Your manager started this turn …; the person did not
+// speak", and the turn that next read them could be the person's own. They are
+// kept as the next turn's boundary would have handed them over.
+func TestTeamWakeWithKeepsTheLinesWithoutTheWakesLead(t *testing.T) {
+	calls := &scriptedCompleter{}
+	agent, _ := newTestAgent(t, calls, func(config *Config) { config.Seat = refusingSeat{Seat: procexec.Host} })
+	agent.wakeWith(teamWakeMemberLead + "\n\nFix the header.")
+	agent.wakeWith(teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\n@web finished.")
+	agent.mu.Lock()
+	steering := append([]userMessage(nil), agent.steering...)
+	agent.mu.Unlock()
+	if len(steering) != 2 || steering[0].text() != "Fix the header." || steering[1].text() != "@web finished." {
+		var texts []string
+		for _, note := range steering {
+			texts = append(texts, note.text())
+		}
+		t.Fatalf("the kept lines are not the lines alone: %q", texts)
+	}
+}
+
 // A MANAGER'S STOP READ IN THE SAME LOOK AS THE DIRECTIVE BEFORE IT STOPS THAT
 // DIRECTIVE. The member waited on a command; the manager sent a directive and
 // stopped it at once, and one idle look read both: the stop held what the

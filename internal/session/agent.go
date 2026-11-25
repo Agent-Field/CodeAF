@@ -2343,6 +2343,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// is told as theirs. The cause is still the stop's: the turn's own
 			// cancel(nil) is deferred first, so it runs after this.
 			door, stopped := stopCause(turnCtx)
+			pauseCut := a.teamPauseCutLocked(door, stopped)
 			a.programOutcomeUnansweredLocked(hub, completed, stopped && door == StopByPerson)
 			// AND THE SECOND LOOK AT A YOUNG COMMAND IS LET GO OF WITH THE TURN
 			// IT WAS ARMED IN. It re-checks this turn's number before it touches
@@ -2370,7 +2371,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// have the follow-up land behind it, out of the order the person
 			// typed them in.
 			var retired []Question
-			if next, ok := a.nextFollowUpLocked(completed); ok {
+			// A PAUSE IS NOT A STOP: a follow-up the person queued is their own
+			// words, which a pause never holds, so the turn it cut starts it
+			// (team_pause.go's [Agent.teamPauseCutLocked]).
+			if next, ok := a.nextFollowUpLocked(completed || pauseCut); ok {
 				// THE PERSON'S QUEUED WORDS ARE THEIR REPLY once their turn
 				// starts, as a sent message's are (said below, after the unlock).
 				retired = a.personClosesQuestionsLocked(next.message)
@@ -2663,7 +2667,12 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 	cancel := a.cancel
 	waiting, withdrew := a.teamStopHoldLocked(door)
 	cutPass := a.cutManualPassLocked()
-	a.dropFollowUpsLocked()
+	// THE PERSON'S PAUSE KEEPS WHAT THEY QUEUED. It is not a stop of their
+	// words, which a pause never holds: the cut turn's end starts the
+	// follow-up (team_pause.go's [Agent.teamPauseCutLocked]).
+	if door != StopByPause {
+		a.dropFollowUpsLocked()
+	}
 	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
 	// not later by the turn's own cleanup. The cancel below is made with the
 	// lock let go of, so a watch left armed has a real interval in which the

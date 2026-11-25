@@ -511,7 +511,10 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 			a.abandon = nil
 			close(done)
 			var retired []Question
-			if next, ok := a.nextFollowUpLocked(completed); ok {
+			// A turn the person's Pause cut is owed to Resume, and a follow-up
+			// they queued still starts, as for an ordinary turn (agent.go).
+			pauseCut := a.teamPauseCutLocked(stopCause(turnCtx))
+			if next, ok := a.nextFollowUpLocked(completed || pauseCut); ok {
 				// The person's queued words are their reply once their turn
 				// starts, as a sent message's are.
 				retired = a.personClosesQuestionsLocked(next.message)

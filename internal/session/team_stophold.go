@@ -96,13 +96,15 @@ func (a *Agent) teamStopHoldLocked(door StopDoor) (waiting, withdrew bool) {
 	}
 	if a.running {
 		hold.held.Store(true)
+		a.team.pauseHold.stopped.Store(true)
 		return false, false
 	}
 	// A command that failed moments ago has its wake on a clock, and that turn
 	// would end the hold: the clock is withdrawn and its notes stay queued
 	// for the next turn. So is the turn a pause owes Resume: a pause is
 	// temporary and a stop is final, so the stop of a paused member is the stop
-	// of the work the pause cut and of what it held ([Agent.teamPauseOwedWake]).
+	// of the work the pause cut and of what it held ([Agent.teamPauseOwedWake]),
+	// directives it held among them ([teamPauseHold].stopped).
 	withdrew = a.jobWake != nil
 	if a.team.pauseHold.owed.Swap(false) {
 		withdrew = true
@@ -111,6 +113,7 @@ func (a *Agent) teamStopHoldLocked(door StopDoor) (waiting, withdrew bool) {
 		return false, false
 	}
 	a.stopJobWakeLocked()
+	a.team.pauseHold.stopped.Store(true)
 	return !hold.held.Swap(true), withdrew
 }
 

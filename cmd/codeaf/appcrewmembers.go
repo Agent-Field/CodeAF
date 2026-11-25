@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -293,9 +294,24 @@ func (b *appBackend) pauseStop(id string) error {
 	}
 	if live := b.liveOf(a); live != nil {
 		b.locked(func() { live.stopping = live.running })
-		appInterruptFor(live.conn.Conv, session.StopByPause)
+		appPauseInterrupt(live.conn.Conv)
 	}
 	return nil
+}
+
+// appPauseInterrupt ends the turn through the pause's door WITH THE BOUND THE
+// PERSON'S STOP CARRIES ([appStopByPerson]): a turn parked on a wait that
+// ignores its context stayed "working" after Pause, which has no second key
+// either. A conversation that cannot bound a named door is stopped through the
+// door unbounded.
+func appPauseInterrupt(conv appConversation) {
+	if bounded, ok := conv.(interface {
+		InterruptWithinFor(session.StopDoor, time.Duration)
+	}); ok {
+		bounded.InterruptWithinFor(session.StopByPause, session.StopGrace)
+		return
+	}
+	appInterruptFor(conv, session.StopByPause)
 }
 
 // memberCap is a member's budget: the agent's own spending limit.

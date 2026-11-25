@@ -226,6 +226,13 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		return true
 	}
 	a.team.mu.Lock()
+	// A STOP SINCE THE LAST LOOK ENDED WHAT THE PAUSE HELD. The directives it
+	// held are the stopped work, so Resume does not start a turn on them; they
+	// stay on the log for the next turn (team_pause.go). A directive read from
+	// here on is held afresh.
+	if a.team.pauseHold.stopped.Swap(false) {
+		a.team.watch.pausedHeld = nil
+	}
 	roles := a.team.roles
 	if sharedTeamsStamp(profile) != a.team.teamsAt {
 		roles = a.teamRolesLocked(profile)
@@ -317,7 +324,7 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 	}
 	// Last, so a directive that waited is what a resumed member starts on, and
 	// news its pause kept is read in that same turn.
-	a.teamPauseOwedWake()
+	a.teamPauseOwedWake(profile, roles, now)
 	return true
 }
 
@@ -780,7 +787,9 @@ func (a *Agent) teamWakeWith(text string) (bool, string) {
 // that may not work and a job that refuses automatic work keep it as an
 // ordinary line, not a wake, which is what the boundary of the next turn would
 // have handed over had the gate closed before the decision: such a job drops
-// automatic work it refuses ([Agent.wakeAnsweringLocked]), not team lines.
+// automatic work it refuses ([Agent.wakeAnsweringLocked]), not team lines. So
+// the line is kept without the lead that says who started the turn, which is
+// false when the next turn is the person's ([teamWakeKept]).
 func (a *Agent) wakeWith(text string) wakeDecision {
 	note := userMessage{message: textMessage("user", strings.TrimSpace(text)), wake: true, authored: true}
 	a.mu.Lock()
@@ -791,6 +800,7 @@ func (a *Agent) wakeWith(text string) wakeDecision {
 		return d
 	case wakeGateFactory, wakeGateSeat:
 		note.wake = false
+		note.message = textMessage("user", teamWakeKept(text))
 		a.steering = append(a.steering, note)
 		return d
 	}

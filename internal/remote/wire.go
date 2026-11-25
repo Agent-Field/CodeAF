@@ -1615,9 +1615,11 @@ type Moved struct {
 //
 // WITHIN IS THE STOP'S BOUND, IN MILLISECONDS, for a surface that cannot keep
 // the deadline itself: a turn that has not let go by then is abandoned by the
-// engine ([session.Agent.InterruptWithin]). Zero is the plain stop every
-// surface sent before the field existed, and an engine too old to read it
-// stops as it always did, with no second stage: the field can only add one.
+// engine ([session.Agent.InterruptWithin]). It is honoured on the person's
+// door and on their Pause ([session.StopByPause]), and on no other. Zero is
+// the plain stop every surface sent before the field existed, and an engine
+// too old to read it stops as it always did, with no second stage: the field
+// can only add one.
 type InterruptArgs struct {
 	Door   string `json:"door,omitempty"`
 	Within int64  `json:"within,omitempty"`

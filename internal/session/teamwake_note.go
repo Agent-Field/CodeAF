@@ -39,3 +39,20 @@ func TeamWakeNote(text string) bool {
 	}
 	return false
 }
+
+// teamWakeKept is a wake note kept as an ordinary line when the turn it was to
+// start was refused after its lines were handed over ([Agent.wakeWith]). The
+// lead that says the manager or the team started the turn is dropped, with the
+// delivery rule after a manager's, because the turn that next reads the line
+// may be the person's own: what is left is the lines as the next turn's
+// boundary would have handed them over.
+func teamWakeKept(text string) string {
+	text = strings.TrimSpace(text)
+	for _, lead := range []string{teamWakeMemberLead, teamWakeManagerLead} {
+		if rest, ok := strings.CutPrefix(text, lead); ok {
+			rest = strings.TrimSpace(rest)
+			return strings.TrimSpace(strings.TrimPrefix(rest, teamWakeDeliveryRule))
+		}
+	}
+	return text
+}
