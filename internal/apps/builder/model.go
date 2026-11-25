@@ -27,7 +27,8 @@ type Completer interface {
 const instructions = `You make personal apps in codeaf. Use codeaf app COMMAND {JSON}
 through the available command executor. It executes a single app command
 directly. Run one command at a time so each sees the changes before it.
-The engine supplies your scope from this session.
+The engine supplies your scope from this session. During long tool sequences,
+report brief progress before six consecutive tool replies without text.
 
 Start with codeaf app context. It gives your phase, manifest, plan, other
 definition names and the last Check findings. Inspect an existing type with

@@ -30,7 +30,7 @@ func TestSampleReportsIDsSharedByDifferentTypes(t *testing.T) {
 	}
 }
 
-func TestCheckRequiresDeskLookInBothThemesAtBothWidths(t *testing.T) {
+func TestCheckMeasuresDeskLookInBothThemesAtBothWidths(t *testing.T) {
 	def, err := schema.Load("../schema/testdata/crm")
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestCheckRequiresDeskLookInBothThemesAtBothWidths(t *testing.T) {
 		Seed:   func(string, []byte, map[string][]map[string]any) error { return nil },
 		DryRun: func(context.Context, string, string, schema.Definition) error { return nil },
 	}
-	if report := pipeline.Run(t.Context(), "draft", def, nil); !slices.Contains(report.Codes(), "desk_unavailable") {
+	if report := pipeline.Run(t.Context(), "draft", def, nil); !report.OK() || report.Look != "skipped (desk not running)" {
 		t.Fatalf("Check without Desk: %v", report)
 	}
 	seen := map[check.LookViewport]int{}

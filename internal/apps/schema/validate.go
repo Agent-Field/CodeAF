@@ -83,6 +83,7 @@ type Problem struct {
 // loaded and run.
 type Report struct {
 	Problems []Problem `json:"problems"`
+	Look     string    `json:"look,omitempty"`
 }
 
 // OK reports whether nothing is wrong.
@@ -97,11 +98,22 @@ func (r Report) Codes() []string {
 	return out
 }
 
-// String is the report as lines, one problem each.
+// LookNote is the display line for a visual check outcome.
+func (r Report) LookNote() string {
+	if r.Look == "" {
+		return ""
+	}
+	return "look: " + r.Look
+}
+
+// String renders each problem and the visual check outcome on separate lines.
 func (r Report) String() string {
 	var b strings.Builder
 	for _, p := range r.Problems {
 		fmt.Fprintf(&b, "%s%s: %s (%s)\n", p.File, p.Path, p.Message, p.Code)
+	}
+	if note := r.LookNote(); note != "" {
+		b.WriteString(note + "\n")
 	}
 	return b.String()
 }

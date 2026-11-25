@@ -164,9 +164,10 @@ type turn struct {
 }
 
 type snapshot struct {
-	Files       map[string]string
-	Passed      bool
-	LookChecked bool
+	Files         map[string]string
+	Passed        bool
+	CheckComplete bool
+	Look          string
 }
 
 type job struct {
@@ -474,7 +475,7 @@ func (s *Jobs) Build(id string) error {
 	if err != nil {
 		return err
 	}
-	if !j.Dirty || j.Working.LookChecked || slices.ContainsFunc(j.Queue, func(t turn) bool { return t.Stage != Planning }) {
+	if !j.Dirty || j.Working.CheckComplete || slices.ContainsFunc(j.Queue, func(t turn) bool { return t.Stage != Planning }) {
 		return nil
 	}
 	_, err = s.enqueue(j, Writing, "", nil)

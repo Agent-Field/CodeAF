@@ -204,7 +204,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 		live, err := s.opts.Store.Get(j.App)
 		return live.Meta, err
 	}
-	if !j.Working.LookChecked {
+	if !j.Working.CheckComplete {
 		// A pre-Look build may have stopped after publishing but before
 		// recording the receipt. It can finish only that same publication.
 		app := j.App
@@ -219,7 +219,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 					return store.Meta{}, err
 				}
 			}
-			return store.Meta{}, fmt.Errorf("%w: finish Desk Look before keeping the app", store.ErrConflict)
+			return store.Meta{}, fmt.Errorf("%w: finish checking before keeping the app", store.ErrConflict)
 		}
 	}
 	// Record the intent before publication. If the process stops between

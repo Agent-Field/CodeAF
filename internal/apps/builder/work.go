@@ -271,7 +271,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 		event := Event{Stage: Checking, Round: t.Round, OK: &ok, Report: &report}
 		if ok {
 			j.Working.Passed = true
-			j.Working.LookChecked = true
+			j.Working.CheckComplete = true
+			j.Working.Look = report.Look
 			reply := t.Reply
 			if reply == "" {
 				reply = "I checked this version of the app."
@@ -281,8 +282,13 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 			}
 			j.State.State = Ready
 			event.Stage, event.Line = Ready, "Ready to try."
+			if note := report.LookNote(); note != "" {
+				event.Line += " " + note
+			}
 			return s.finish(j, event)
 		}
+		j.Working.Passed, j.Working.CheckComplete = false, false
+		j.Working.Look = report.Look
 		pendingReuse := slices.ContainsFunc(report.Problems, func(p schema.Problem) bool { return p.Code == "choose_reuse" })
 		unavailable := slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
 			return strings.HasSuffix(p.Code, "_unavailable")
@@ -345,6 +351,10 @@ func (j *job) checkpoint(reply string) error {
 	summary = strings.Join(strings.Fields(summary), " ")
 	if runes := []rune(summary); len(runes) > 200 {
 		summary = string(runes[:197]) + "…"
+	}
+	if note := (schema.Report{Look: j.Working.Look}).LookNote(); note != "" {
+		summary += " · " + note
+		reply += "\n\n" + note
 	}
 	j.Checkpoints = append(j.Checkpoints, Checkpoint{ID: id, Summary: summary, Screens: j.Screens})
 	j.Saved[id] = j.Working

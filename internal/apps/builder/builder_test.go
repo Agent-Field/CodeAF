@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
@@ -103,7 +104,11 @@ func scriptedApp(t *testing.T, home string) builder.Options {
 					call := calls[cursor]
 					cursor++
 					call.ID = fmt.Sprintf("app-%02d", cursor)
-					return toolCalls(call), nil
+					message := toolCalls(call)
+					if cursor%4 == 0 {
+						message.Content = []ai.ContentPart{{Type: "text", Text: fmt.Sprintf("Saved %d CRM definition changes.", cursor-1)}}
+					}
+					return message, nil
 				}
 				return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I set up your CRM."}}}, nil
 			}), nil
@@ -353,16 +358,54 @@ func TestPlanNamesTheCallLimitWhenTheTurnKeepsWorking(t *testing.T) {
 	}
 }
 
-func TestDeskUnavailableKeepsTheBuildOffTheCheckpointHistory(t *testing.T) {
-	opts := scriptedApp(t, t.TempDir())
-	opts.Check = func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report {
-		return schema.Report{Problems: []schema.Problem{{Code: "desk_unavailable", Message: "Open the desktop to check the app’s layout."}}}
+func TestHeadlessApplyPublishesAndRecordsSkippedLook(t *testing.T) {
+	jobs, draft := buildWithDesk(t, func(context.Context, string, string, check.LookViewport) ([]string, error) {
+		return nil, check.ErrDeskUnavailable
+	})
+	state := waitState(t, jobs, draft, builder.Ready)
+	const notice = "look: skipped (desk not running)"
+	if len(state.Checkpoints) != 2 || !strings.Contains(state.Checkpoints[1].Summary, notice) {
+		t.Fatalf("the change card must show the skipped Look: %+v", state.Checkpoints)
 	}
+	if !slices.ContainsFunc(state.Progress, func(event builder.Event) bool {
+		return event.OK != nil && *event.OK && event.Report != nil && event.Report.Look == "skipped (desk not running)"
+	}) {
+		t.Fatalf("the passing Check must record the skipped Look: %+v", state.Progress)
+	}
+	if meta, err := jobs.Apply(draft); err != nil || meta.Version != 1 {
+		t.Fatalf("headless Apply = %+v, %v", meta, err)
+	}
+}
+
+func TestDeskLayoutFindingBlocksCheckpointAndApply(t *testing.T) {
+	jobs, draft := buildWithDesk(t, func(_ context.Context, _, screen string, view check.LookViewport) ([]string, error) {
+		if screen == "deals" && view.Theme == "light" && view.Width == 800 {
+			return []string{"[deal-list] value truncates"}, nil
+		}
+		return nil, nil
+	})
+	state := waitState(t, jobs, draft, builder.NeedsYou)
+	if len(state.Checkpoints) != 1 || !strings.Contains(state.Problem, "light at 800 px: [deal-list] value truncates") {
+		t.Fatalf("the layout finding must block the writing checkpoint: %+v", state)
+	}
+	if _, err := jobs.Apply(draft); err == nil {
+		t.Fatal("Apply accepted a draft with a measured layout problem")
+	}
+}
+
+func buildWithDesk(t *testing.T, look func(context.Context, string, string, check.LookViewport) ([]string, error)) (*builder.Jobs, string) {
+	t.Helper()
+	opts := scriptedApp(t, t.TempDir())
+	opts.Check = (check.Pipeline{
+		Seed:   func(string, []byte, map[string][]map[string]any) error { return nil },
+		DryRun: func(context.Context, string, string, schema.Definition) error { return nil },
+		Look:   look,
+	}).Run
 	jobs, err := builder.OpenJobs(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer jobs.Close()
+	t.Cleanup(jobs.Close)
 	plan, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
 	if err != nil {
 		t.Fatal(err)
@@ -370,11 +413,5 @@ func TestDeskUnavailableKeepsTheBuildOffTheCheckpointHistory(t *testing.T) {
 	if err := jobs.Build(plan.Draft); err != nil {
 		t.Fatal(err)
 	}
-	state := waitState(t, jobs, plan.Draft, builder.NeedsYou)
-	if len(state.Checkpoints) != 1 || !strings.Contains(state.Problem, "Open the desktop") {
-		t.Fatalf("the build should show the Desk failure and only the plan checkpoint: %+v", state)
-	}
-	if _, err := jobs.Apply(plan.Draft); err == nil {
-		t.Fatal("Apply accepted a build without Desk Look")
-	}
+	return jobs, plan.Draft
 }

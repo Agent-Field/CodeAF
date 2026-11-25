@@ -31,7 +31,9 @@ type LookViewport struct {
 	Width int
 }
 
-var ErrDeskUnavailable = errors.New("open the desktop to check the app’s layout")
+var ErrDeskUnavailable = errors.New("desktop renderer unavailable")
+
+const skippedLook = "skipped (desk not running)"
 
 type Pipeline struct {
 	Look   func(context.Context, string, string, LookViewport) ([]string, error)
@@ -94,16 +96,16 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 	if !report.OK() {
 		return report
 	}
+	if p.Look == nil {
+		report.Look = skippedLook
+		return report
+	}
 	for _, file := range def.ScreenFiles() {
 		for _, theme := range []string{"dark", "light"} {
 			for _, width := range []int{800, 1120} {
-				if p.Look == nil {
-					report.Problems = append(report.Problems, problem(file, "desk_unavailable", ErrDeskUnavailable.Error()))
-					return report
-				}
 				problems, err := p.Look(ctx, draft, schema.FileID(file), LookViewport{theme, width})
 				if errors.Is(err, ErrDeskUnavailable) {
-					report.Problems = append(report.Problems, problem(file, "desk_unavailable", ErrDeskUnavailable.Error()))
+					report.Look = skippedLook
 					return report
 				}
 				if err != nil {

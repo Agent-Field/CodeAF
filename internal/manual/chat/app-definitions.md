@@ -83,12 +83,15 @@ the outline, manifest and file names. Ask for an individual definition
 with `app context {"file":"screens/deals.json"}`.
 
 `app look` uses the open desktop to draw the selected screen on example
-records. Check draws every screen in Dark and Light at 800 and 1120 pixels.
-Clipping, overlap, truncation, empty bound columns, contrast problems and
-competing primary actions must be fixed before a step can be kept.
-If the renderer is unavailable, open the desktop and try Check again.
-`app look` returns `desk_unavailable` until the renderer connects.
-Design changes stay in the editing tab until you choose **Apply**.
+records. When the desktop renderer is connected, Check draws every screen
+in Dark and Light at 800 and 1120 pixels. Clipping, overlap, truncation,
+empty bound columns, contrast problems and competing primary actions must
+be fixed before a step can be kept.
+
+With the CLI alone, Check still validates the app. The Check result and
+change card show `look: skipped (desk not running)`. You can keep the
+checkpoint and choose **Apply**. The standalone `app look` command returns
+`desk_unavailable` until the renderer connects.
 
 If a build stops, reopen it to see the reason in the build progress.
 ## How app commands describe a screen and the work it does

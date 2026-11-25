@@ -3174,5 +3174,8 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.look_result` | `{id,png?,problems?,problem?}` | Completes a Look request. |
 
 Events include `apps.build` and `apps.look_requested`. The latter carries `{id,scope,app,screen,theme?,viewport?,fixture}`. The issued scope
-pins the definition and synthetic fixture. A build Check requests Dark and
-Light at widths 800 and 1120. Each Desk problem fails the current Check round.
+pins the definition and synthetic fixture. With Desk connected, Check requests
+Dark and Light at widths 800 and 1120. Each Desk problem fails the current
+Check round. When the renderer is absent, the report carries
+`look: "skipped (desk not running)"`, and the checkpoint summary shows the
+same notice. A structurally valid app can be applied.
