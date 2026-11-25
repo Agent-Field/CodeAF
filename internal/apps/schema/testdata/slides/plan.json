@@ -1,0 +1,18 @@
+{
+  "ask": "Build and present a themed deck with record-backed slides.",
+  "data": [
+    {
+      "id": "deck",
+      "line": "Title and quarter"
+    }
+  ],
+  "screens": [
+    {
+      "id": "deck",
+      "line": "Quarterly deck"
+    }
+  ],
+  "agent": {
+    "line": "Make the deck concise and keep figures linked to their records."
+  }
+}

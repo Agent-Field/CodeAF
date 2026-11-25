@@ -1,0 +1,22 @@
+{
+  "layout": "elk.layered",
+  "nodes": [
+    {
+      "id": "ncr",
+      "label": "NCR-031",
+      "record": "ncr/01KAT0000A00000000000000001"
+    },
+    {
+      "id": "drawing",
+      "label": "B-114 rev C",
+      "record": "drawing/01KAT0000A00000000000000002"
+    }
+  ],
+  "links": [
+    {
+      "from": "ncr",
+      "to": "drawing",
+      "label": "affects"
+    }
+  ]
+}

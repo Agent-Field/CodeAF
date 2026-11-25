@@ -1,0 +1,41 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "depot",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.38,
+          43.65
+        ]
+      },
+      "properties": {
+        "label": "Northwind depot",
+        "record": "delivery/01KAT0000A00000000000000001",
+        "live": true
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "route",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -79.4,
+            43.66
+          ],
+          [
+            -79.38,
+            43.65
+          ]
+        ]
+      },
+      "properties": {
+        "label": "Route 4"
+      }
+    }
+  ]
+}

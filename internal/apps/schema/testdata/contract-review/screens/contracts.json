@@ -1,0 +1,49 @@
+{
+  "screen": "contracts",
+  "title": "Contracts",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Contract queue",
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "contract"
+        },
+        "id": "contract-list"
+      },
+      {
+        "part": "Text",
+        "label": "Redline review",
+        "props": {
+          "trackChanges": true,
+          "clauseNumbering": true,
+          "docx": true,
+          "export": [
+            "pdf"
+          ]
+        },
+        "bind": {
+          "content-part": "docs/agreement.md"
+        }
+      },
+      {
+        "part": "ApprovalCard",
+        "label": "Approve sharing the redline",
+        "props": {
+          "kind": "send"
+        },
+        "bind": {
+          "record": "$selection.contract-list.id",
+          "type": "contract"
+        }
+      }
+    ]
+  }
+}

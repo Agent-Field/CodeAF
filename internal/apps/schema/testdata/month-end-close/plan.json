@@ -1,0 +1,18 @@
+{
+  "ask": "Match the ledger to bank entries and collect close evidence and signatures.",
+  "data": [
+    {
+      "id": "close",
+      "line": "Title and closed, amount, maker, reviewer"
+    }
+  ],
+  "screens": [
+    {
+      "id": "close",
+      "line": "Close"
+    }
+  ],
+  "agent": {
+    "line": "Explain reconciliation differences and collect evidence for the checker. Freeze the period after approval."
+  }
+}

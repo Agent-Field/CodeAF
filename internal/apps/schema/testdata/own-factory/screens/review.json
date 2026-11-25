@@ -1,0 +1,48 @@
+{
+  "screen": "review",
+  "title": "Run and proof",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RunTimeline",
+        "label": "Run timeline",
+        "bind": {
+          "run": "fix"
+        }
+      },
+      {
+        "part": "LogStream",
+        "props": {
+          "follow": true
+        },
+        "bind": {
+          "run": "fix"
+        }
+      },
+      {
+        "part": "DiffViewer",
+        "label": "Patch",
+        "bind": {
+          "run": "fix"
+        }
+      },
+      {
+        "part": "ProofList",
+        "bind": {
+          "run": "fix"
+        }
+      },
+      {
+        "part": "ApprovalCard",
+        "label": "Approve proof and open the PR",
+        "props": {
+          "kind": "proof"
+        },
+        "bind": {
+          "run": "fix"
+        }
+      }
+    ]
+  }
+}

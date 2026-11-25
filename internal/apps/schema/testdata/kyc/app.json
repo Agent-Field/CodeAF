@@ -1,0 +1,101 @@
+{
+  "id": "kyc",
+  "name": "KYC review",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "KYC review agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "case": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "pan": {
+          "type": "text",
+          "masked": true
+        },
+        "identity": {
+          "type": "files"
+        },
+        "stage": {
+          "type": "enum",
+          "values": [
+            "new",
+            "review",
+            "done"
+          ]
+        },
+        "maker": {
+          "type": "person"
+        },
+        "reviewer": {
+          "type": "person"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "case": "rw"
+    }
+  },
+  "policies": [
+    {
+      "id": "review",
+      "kind": "signoff",
+      "config": {
+        "record": "case",
+        "makerCannotSign": true,
+        "roles": [
+          {
+            "id": "maker",
+            "label": "Maker",
+            "person": "$record.maker"
+          },
+          {
+            "id": "checker",
+            "label": "Independent reviewer",
+            "person": "$record.reviewer"
+          }
+        ]
+      }
+    },
+    {
+      "id": "checks",
+      "kind": "checklist",
+      "config": {
+        "record": "case",
+        "signoff": "review",
+        "steps": [
+          {
+            "id": "evidence",
+            "label": "Check identity document",
+            "evidence": "file",
+            "role": "maker"
+          },
+          {
+            "id": "check",
+            "label": "Review evidence",
+            "evidence": "note",
+            "role": "checker"
+          }
+        ]
+      }
+    },
+    {
+      "id": "privacy",
+      "kind": "mask",
+      "config": {
+        "record": "case",
+        "fields": [
+          "pan"
+        ],
+        "reason": true
+      }
+    }
+  ]
+}

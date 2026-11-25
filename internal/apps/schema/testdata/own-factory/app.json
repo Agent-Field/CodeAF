@@ -1,0 +1,72 @@
+{
+  "id": "own-factory",
+  "name": "Own factory",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Own factory agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "job": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "issue": {
+          "type": "number"
+        },
+        "repo": {
+          "type": "text"
+        },
+        "state": {
+          "type": "enum",
+          "values": [
+            "queued",
+            "running",
+            "review",
+            "done"
+          ]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "job": "rw"
+    },
+    "connectors": {
+      "github": {
+        "can": [
+          "issues.labelled",
+          "issues.list",
+          "pr.create"
+        ],
+        "approve": [
+          "pr.create"
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "labelled",
+      "on": "connector",
+      "connector": "github",
+      "event": "issues.labelled",
+      "match": {
+        "label": "agent"
+      },
+      "run": "ingest"
+    }
+  ],
+  "exports": {
+    "types": [
+      "job"
+    ],
+    "views": [
+      "jobs"
+    ]
+  }
+}

@@ -4,8 +4,25 @@
 
 The desktop engine uses `apps.list` for the app shelf. `apps.get` reads an app's
 definition, plan, screen and run names, and agent instructions. `apps.screen`
-opens one screen from the same checked definition. `apps.kit` lists the parts a
-screen can use and the properties and bindings each part accepts.
+opens one screen from the same checked definition. `apps.kit` returns the
+version 2 registry, with descriptions, schemas and examples for parts, fields,
+views, content, actions, run steps, triggers, policies and connectors.
+
+## Which kit version checks my app and its custom parts?
+
+The `kit` setting in app.json selects the rules for that app. Kit 0 definitions
+keep their original parts and limits. Kit 2 definitions can name a custom part
+with a manifest beside its source in the custom folder. The engine checks the
+manifest, props, bindings and events, then saves those files with the app.
+Rendering a custom part requires the desktop sandbox.
+
+## Which gallery app features can the engine check?
+
+Kit 2 can check Markdown, sheets, timelines, graphs, maps and slide content.
+It also checks declarations for file references, record links, reasoned reveals,
+sign-off, evidence and timers. These declarations describe what an app needs.
+The data store, run engine and desktop each implement their own execution and
+rendering, including carrying out a run in a repository.
 
 ## Fix or revert a broken app and read its versions
 

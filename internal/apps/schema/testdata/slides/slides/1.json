@@ -1,0 +1,32 @@
+{
+  "frame": "16:9",
+  "theme": "acme",
+  "size": [
+    1920,
+    1080
+  ],
+  "boxes": [
+    {
+      "id": "title",
+      "type": "text",
+      "style": "title",
+      "x": 120,
+      "y": 96,
+      "w": 1200,
+      "h": 140,
+      "text": "Q4 pipeline"
+    },
+    {
+      "id": "quarter",
+      "type": "record",
+      "x": 120,
+      "y": 310,
+      "w": 1200,
+      "h": 300,
+      "record": "deck/01KAT0000A00000000000000001",
+      "fields": [
+        "quarter"
+      ]
+    }
+  ]
+}

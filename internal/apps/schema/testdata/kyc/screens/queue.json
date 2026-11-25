@@ -1,0 +1,88 @@
+{
+  "screen": "queue",
+  "title": "Review queue",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Case queue",
+        "props": {
+          "columns": [
+            "title",
+            "stage"
+          ],
+          "select": "one",
+          "views": [
+            "list",
+            "board"
+          ],
+          "board_by": "stage"
+        },
+        "bind": {
+          "records": "case"
+        },
+        "id": "case-list"
+      },
+      {
+        "part": "Masked",
+        "label": "Tax identifier",
+        "props": {
+          "field": "pan",
+          "reason": true,
+          "logged": true
+        },
+        "bind": {
+          "record": "$selection.case-list.id",
+          "type": "case"
+        },
+        "on": {
+          "reveal": [
+            {
+              "records.reveal": {
+                "type": "case",
+                "id": "$selection.case-list.id",
+                "field": "pan",
+                "reason": "$input.reason"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "part": "FileViewer",
+        "label": "Identity evidence",
+        "props": {
+          "regionMasking": true
+        },
+        "bind": {
+          "file": "$selection.case-list.id",
+          "type": "case",
+          "field": "identity"
+        }
+      },
+      {
+        "part": "Checklist",
+        "label": "Review checklist",
+        "props": {
+          "checklist": "checks"
+        },
+        "bind": {
+          "record": "$selection.case-list.id",
+          "type": "case"
+        }
+      },
+      {
+        "part": "SignOff",
+        "label": "Review signatures",
+        "props": {
+          "chain": "review"
+        },
+        "bind": {
+          "record": "$selection.case-list.id",
+          "type": "case"
+        }
+      }
+    ]
+  }
+}

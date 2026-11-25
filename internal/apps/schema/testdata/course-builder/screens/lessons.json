@@ -1,0 +1,53 @@
+{
+  "screen": "lessons",
+  "title": "Lessons",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Lesson queue",
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "lesson"
+        },
+        "id": "lesson-list"
+      },
+      {
+        "part": "Text",
+        "label": "Lesson notes",
+        "props": {},
+        "bind": {
+          "content-part": "docs/setup.md"
+        }
+      },
+      {
+        "part": "Media",
+        "label": "Setup video",
+        "props": {
+          "captions": "docs/setup-captions.md",
+          "chapters": [
+            {
+              "at": 0,
+              "label": "Install"
+            },
+            {
+              "at": 45,
+              "label": "Check the version"
+            }
+          ]
+        },
+        "bind": {
+          "file": "$selection.lesson-list.id",
+          "type": "lesson",
+          "field": "video"
+        }
+      }
+    ]
+  }
+}

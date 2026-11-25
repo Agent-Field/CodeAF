@@ -1,0 +1,44 @@
+{
+  "screen": "jobs",
+  "title": "Issues",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Job queue",
+        "props": {
+          "columns": [
+            "title",
+            "repo",
+            "state"
+          ],
+          "select": "one",
+          "views": [
+            "list",
+            "board"
+          ],
+          "board_by": "state"
+        },
+        "bind": {
+          "records": "job"
+        },
+        "id": "job-list"
+      },
+      {
+        "part": "Button",
+        "label": "Start selected job",
+        "on": {
+          "click": [
+            {
+              "runs.start": "fix",
+              "params": {
+                "issue": "$selection.job-list.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "screen": "update",
+  "title": "Investor update",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "Chart",
+        "props": {
+          "kind": "line",
+          "x": "month",
+          "y": "arr"
+        },
+        "bind": {
+          "records": "metric"
+        }
+      },
+      {
+        "part": "Text",
+        "label": "Investor letter",
+        "props": {
+          "mergeFields": true
+        },
+        "bind": {
+          "content-part": "docs/update.md"
+        }
+      },
+      {
+        "part": "ApprovalCard",
+        "label": "Send the update",
+        "props": {
+          "kind": "send"
+        },
+        "bind": {
+          "record": "01KAT0000A00000000000000001",
+          "type": "metric"
+        }
+      }
+    ]
+  }
+}

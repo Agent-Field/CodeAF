@@ -1,0 +1,58 @@
+{
+  "screen": "review",
+  "title": "Disposition",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Ncr queue",
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "ncr"
+        },
+        "id": "ncr-list"
+      },
+      {
+        "part": "RecordPage",
+        "label": "Nonconformance details",
+        "props": {
+          "links": true
+        },
+        "bind": {
+          "record": "$selection.ncr-list.id",
+          "type": "ncr"
+        }
+      },
+      {
+        "part": "FileViewer",
+        "label": "Drawing revisions",
+        "props": {
+          "pins": true,
+          "revisionCompare": true
+        },
+        "bind": {
+          "file": "$selection.ncr-list.id",
+          "type": "ncr",
+          "field": "drawing"
+        }
+      },
+      {
+        "part": "SignOff",
+        "label": "Review signatures",
+        "props": {
+          "chain": "review"
+        },
+        "bind": {
+          "record": "$selection.ncr-list.id",
+          "type": "ncr"
+        }
+      }
+    ]
+  }
+}

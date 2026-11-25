@@ -1,0 +1,44 @@
+{
+  "screen": "trace",
+  "title": "Trace",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "Graph",
+        "label": "Affected records",
+        "props": {
+          "view": "links",
+          "live": true
+        },
+        "bind": {
+          "content-part": "graph/affected.json"
+        }
+      },
+      {
+        "part": "RecordList",
+        "label": "Affected drawings",
+        "props": {
+          "columns": [
+            "title",
+            "rev"
+          ]
+        },
+        "bind": {
+          "records": "drawing",
+          "trace": {
+            "from": {
+              "type": "ncr",
+              "id": "01KAT0000A00000000000000001"
+            },
+            "direction": "out",
+            "depth": 2,
+            "kinds": [
+              "affects"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

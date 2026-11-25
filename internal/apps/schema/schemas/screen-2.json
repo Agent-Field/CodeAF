@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/screen-2.json",
+  "title": "screens/<id>.json",
+  "description": "A screen tree whose parts, props and events resolve through the app registry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["screen", "title", "body"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "screen": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+    "title": {"type": "string", "minLength": 1},
+    "params": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}, "uniqueItems": true},
+    "nav": {"$ref": "#/$defs/node"},
+    "body": {"$ref": "#/$defs/node"}
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part"],
+      "properties": {
+        "part": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+        "label": {"type": "string", "minLength": 1},
+        "props": {"type": "object"},
+        "bind": {"$ref": "#/$defs/bind"},
+        "on": {
+          "type": "object",
+          "additionalProperties": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/action"}}
+        },
+        "when": {"type": "string", "minLength": 1},
+        "children": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+        "slot": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"}
+      }
+    },
+    "bind": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "records": {"type": "string", "minLength": 1},
+        "query": {"type": "string"},
+        "record": {"type": "string", "minLength": 1},
+        "type": {"type": "string"},
+        "selection": {"type": "string", "minLength": 1},
+        "run": {"type": "string", "minLength": 1},
+        "runs": {"type": "string", "minLength": 1},
+        "for": {"type": "string"},
+        "params": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "file": {"type": "string", "minLength": 1},
+        "field": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+        "content-part": {"type": "string", "minLength": 1},
+        "part-id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+        "trace": {"$ref": "https://codeaf.dev/schema/records-2.json#/$defs/trace"}
+      },
+      "oneOf": [
+        {"required": ["records"]},
+        {"required": ["record"]},
+        {"required": ["selection"]},
+        {"required": ["params"]},
+        {"required": ["run"]},
+        {"required": ["runs"]},
+        {"required": ["file"]},
+        {"required": ["content-part"]}
+      ],
+      "allOf": [
+        {"if": {"required": ["file"]}, "then": {"required": ["field"]}},
+        {"if": {"required": ["field"]}, "then": {"anyOf": [{"required": ["file"]}]}},
+        {"if": {"required": ["part-id"]}, "then": {"anyOf": [{"required": ["content-part"]}]}},
+        {"if": {"required": ["trace"]}, "then": {"anyOf": [{"required": ["records"]}]}},
+        {
+          "if": {"required": ["query"]},
+          "then": {"anyOf": [{"required": ["records"]}, {"required": ["runs"]}]}
+        },
+        {
+          "if": {"required": ["type"]},
+          "then": {"anyOf": [{"required": ["record"]}, {"required": ["file"]}]}
+        },
+        {"if": {"required": ["for"]}, "then": {"anyOf": [{"required": ["run"]}]}}
+      ]
+    },
+    "action": {"type": "object", "minProperties": 1}
+  }
+}

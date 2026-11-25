@@ -1,0 +1,90 @@
+{
+  "id": "month-end-close",
+  "name": "Month-end close",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Month-end close agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "close": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "closed": {
+          "type": "bool"
+        },
+        "amount": {
+          "type": "money",
+          "currency": "USD"
+        },
+        "maker": {
+          "type": "person"
+        },
+        "reviewer": {
+          "type": "person"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "close": "rw"
+    }
+  },
+  "policies": [
+    {
+      "id": "review",
+      "kind": "signoff",
+      "config": {
+        "record": "close",
+        "makerCannotSign": true,
+        "roles": [
+          {
+            "id": "maker",
+            "label": "Maker",
+            "person": "$record.maker"
+          },
+          {
+            "id": "checker",
+            "label": "Independent reviewer",
+            "person": "$record.reviewer"
+          }
+        ]
+      }
+    },
+    {
+      "id": "checks",
+      "kind": "checklist",
+      "config": {
+        "record": "close",
+        "signoff": "review",
+        "steps": [
+          {
+            "id": "evidence",
+            "label": "Attach reconciliation evidence",
+            "evidence": "file",
+            "role": "maker"
+          },
+          {
+            "id": "check",
+            "label": "Review evidence",
+            "evidence": "note",
+            "role": "checker"
+          }
+        ]
+      }
+    },
+    {
+      "id": "closed",
+      "kind": "freeze",
+      "config": {
+        "record": "close",
+        "when": "closed"
+      }
+    }
+  ]
+}

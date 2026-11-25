@@ -1,0 +1,12 @@
+{
+  "scale": "hour",
+  "items": [
+    {
+      "id": "dropoff",
+      "label": "Depot drop-off",
+      "start": "2026-11-25T15:00:00Z",
+      "end": "2026-11-25T15:30:00Z",
+      "record": "delivery/01KAT0000A00000000000000001"
+    }
+  ]
+}

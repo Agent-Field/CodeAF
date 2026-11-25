@@ -126,16 +126,18 @@ var (
 // checker carries what every check needs: the parsed app, the types it can see,
 // and the report being written.
 type checker struct {
-	def      Definition
-	kit      Kit
-	app      App
-	appOK    bool
-	existing TypeSet
-	screens  map[string]bool
-	runs     map[string]bool
-	commands map[string]Command
-	stepIDs  map[string]bool // the run being checked, for goto
-	report   Report
+	def       Definition
+	kit       Kit
+	custom    map[string]customPart
+	sampleIDs map[string]map[string]bool
+	app       App
+	appOK     bool
+	existing  TypeSet
+	screens   map[string]bool
+	runs      map[string]bool
+	commands  map[string]Command
+	stepIDs   map[string]bool // the run being checked, for goto
+	report    Report
 }
 
 func (c *checker) add(file, path, code, format string, args ...any) {
@@ -154,7 +156,13 @@ func Validate(def Definition, existing TypeSet) Report {
 		c.add("", "", CodeSchema, "codeaf's own app schemas do not load: %v", compiled.err)
 		return c.report
 	}
-	c.kit = compiled.kit
+	version := kitVersion(def.Files[AppFile])
+	c.kit = compiled.kits[0]
+	appSchema, screenSchema, runSchema := compiled.app, compiled.screen, compiled.run
+	if version == 2 {
+		c.kit = compiled.kits[2]
+		appSchema, screenSchema, runSchema = compiled.resources["app-2.json"], compiled.resources["screen-2.json"], compiled.resources["run-2.json"]
+	}
 	if c.def.Files == nil {
 		c.def.Files = map[string][]byte{}
 	}
@@ -168,11 +176,10 @@ func Validate(def Definition, existing TypeSet) Report {
 		}
 		c.runs[FileID(f)] = true
 	}
-	c.checkPaths()
 
 	if raw, ok := c.def.Files[AppFile]; !ok {
 		c.add(AppFile, "", CodeMissingFile, "The app has no app.json, so it has no record types or capabilities.")
-	} else if c.schemaCheck(AppFile, raw, compiled.app) {
+	} else if c.schemaCheck(AppFile, raw, appSchema) {
 		app, err := ParseApp(raw)
 		if err != nil {
 			c.add(AppFile, "", CodeParse, "app.json could not be read: %v", err)
@@ -183,8 +190,14 @@ func Validate(def Definition, existing TypeSet) Report {
 			}
 		}
 	}
+	c.checkPaths()
+	if c.appOK && version == 2 {
+		c.loadCustomParts()
+		c.indexSample()
+	}
 	if c.appOK {
 		c.checkApp()
+		c.checkContent()
 	}
 
 	var plan *Plan
@@ -203,7 +216,7 @@ func Validate(def Definition, existing TypeSet) Report {
 	}
 	for _, f := range c.def.ScreenFiles() {
 		raw := c.def.Files[f]
-		if !c.schemaCheck(f, raw, compiled.screen) {
+		if !c.schemaCheck(f, raw, screenSchema) {
 			continue
 		}
 		s, err := ParseScreen(raw)
@@ -220,7 +233,7 @@ func Validate(def Definition, existing TypeSet) Report {
 			c.add(f, "", CodeParse, "The run is not valid YAML: %v", err)
 			continue
 		}
-		if !c.schemaCheck(f, j, compiled.run) {
+		if !c.schemaCheck(f, j, runSchema) {
 			continue
 		}
 		var r Run
@@ -282,11 +295,9 @@ func (c *checker) schemaCheck(file string, raw []byte, s interface{ Validate(any
 	return true
 }
 
-// checkPaths refuses every file an app may not have. An app folder holds exactly
-// app.json, plan.json, sample.json, its agent file, screens/*.json and
-// runs/*.yaml; anything else, anything outside the folder and any link is refused,
-// because the store copies these names to disk and a name like ../../x would write
-// wherever it points.
+// checkPaths accepts the fixed app files and the groups its kit declares.
+// Every path must stay inside the app because the store copies checked files
+// to an immutable version.
 func (c *checker) checkPaths() {
 	agent, agentOK := agentPathOf(c.def.Files[AppFile])
 	screens, runs := c.def.ScreenFiles(), c.def.RunFiles()
@@ -298,6 +309,7 @@ func (c *checker) checkPaths() {
 		case clean != name || clean == ".." || strings.HasPrefix(clean, "../"):
 			c.add(name, "", CodeFileNotAllowed, "%q is not a plain path inside the app folder; write it as %q.", name, clean)
 		case name == AppFile || name == PlanFile || name == SampleFile || (agentOK && name == agent):
+		case c.kit.Kit == 2 && c.validGalleryPath(name):
 		case contains(screens, name) || contains(runs, name):
 			if !fileIDPattern.MatchString(FileID(name)) {
 				c.add(name, "", CodeFileNotAllowed, "%s is not a usable name; a screen or run file is named <id>.json or <id>.yaml, with an id of lowercase letters, digits, - and _.", name)
@@ -375,6 +387,10 @@ func (c *checker) checkApp() {
 		for _, fname := range sortedKeys(t.Fields) {
 			f := t.Fields[fname]
 			fat := at + "/fields/" + fname
+			if a.Kit == 2 {
+				c.checkGalleryField(name, fname, f)
+				continue
+			}
 			if (f.Type == "ref" || f.Type == "refs") && !c.knownType(f.To) {
 				c.add(AppFile, fat+"/to", CodeTypeUnknown, "%s.%s links to %q, which is not a record type here or in your other apps.", name, fname, f.To)
 			}
@@ -385,6 +401,9 @@ func (c *checker) checkApp() {
 			}
 		}
 		for i, fr := range t.Freeze {
+			if a.Kit == 2 {
+				c.checkRecordExpression(AppFile, fmt.Sprintf("%s/freeze/%d/when", at, i), name, fr.When)
+			}
 			for _, e := range append(append([]string{}, fr.Except...), fr.Field) {
 				if e == "" {
 					continue
@@ -404,6 +423,10 @@ func (c *checker) checkApp() {
 	for _, name := range sortedKeys(a.Capabilities.Connectors) {
 		con := a.Capabilities.Connectors[name]
 		for _, verb := range con.Can {
+			if a.Kit == 2 {
+				c.checkConnectorDeclaration(name, verb, con)
+				continue
+			}
 			if isOutbound(verb) && !contains(con.Approve, verb) {
 				c.add(AppFile, "/capabilities/connectors/"+name, CodeSendGateMissing, "%s may %s, which leaves your computer, so %q must also be listed under approve.", name, verb, verb)
 			}
@@ -417,21 +440,25 @@ func (c *checker) checkApp() {
 			c.add(AppFile, at+"/id", CodeDuplicateID, "Two triggers are called %q.", t.ID)
 		}
 		seen[t.ID] = true
-		switch t.On {
-		case "schedule":
-			if fields := strings.Fields(t.Cron); len(fields) != 5 || !allMatch(fields, cronField) {
-				c.add(AppFile, at+"/cron", CodeTriggerShape, "The trigger %q runs on a schedule but its cron %q is not five fields like \"0 9 * * 1-5\".", t.ID, t.Cron)
+		if a.Kit == 2 {
+			c.checkGalleryTrigger(i, at)
+		} else {
+			switch t.On {
+			case "schedule":
+				if fields := strings.Fields(t.Cron); len(fields) != 5 || !allMatch(fields, cronField) {
+					c.add(AppFile, at+"/cron", CodeTriggerShape, "The trigger %q runs on a schedule but its cron %q is not five fields like \"0 9 * * 1-5\".", t.ID, t.Cron)
+				}
+			case "record.changed":
+				if t.Type == "" {
+					c.add(AppFile, at, CodeTriggerShape, "The trigger %q runs when a record changes but does not say which type.", t.ID)
+				} else if !c.knownType(t.Type) {
+					c.add(AppFile, at+"/type", CodeTypeUnknown, "The trigger %q watches %q, which is not a record type here.", t.ID, t.Type)
+				} else if !c.canRead(t.Type) {
+					c.add(AppFile, at+"/type", CodeNotAllowed, "The trigger %q watches %s records, which the app may not read. Add %q to capabilities.records.", t.ID, t.Type, t.Type)
+				}
+			default:
+				c.add(AppFile, at+"/on", CodeTriggerV0, "The trigger %q starts on %q. This version of codeaf starts runs only on a schedule or when a record changes.", t.ID, t.On)
 			}
-		case "record.changed":
-			if t.Type == "" {
-				c.add(AppFile, at, CodeTriggerShape, "The trigger %q runs when a record changes but does not say which type.", t.ID)
-			} else if !c.knownType(t.Type) {
-				c.add(AppFile, at+"/type", CodeTypeUnknown, "The trigger %q watches %q, which is not a record type here.", t.ID, t.Type)
-			} else if !c.canRead(t.Type) {
-				c.add(AppFile, at+"/type", CodeNotAllowed, "The trigger %q watches %s records, which the app may not read. Add %q to capabilities.records.", t.ID, t.Type, t.Type)
-			}
-		default:
-			c.add(AppFile, at+"/on", CodeTriggerV0, "The trigger %q starts on %q. This version of codeaf starts runs only on a schedule or when a record changes.", t.ID, t.On)
 		}
 		if !c.runs[t.Run] {
 			c.add(AppFile, at+"/run", CodeRunUnknown, "The trigger %q starts the run %q, but there is no runs/%s.yaml.", t.ID, t.Run, t.Run)
@@ -460,6 +487,9 @@ func (c *checker) checkApp() {
 		}
 	}
 
+	if a.Kit == 2 {
+		c.checkGalleryApp()
+	}
 	if a.Agent != nil {
 		if rel, ok := AgentPath(a.Agent.File); !ok {
 			c.add(AppFile, "/agent/file", CodeFileNotAllowed, "The agent file %q must be a Markdown file inside the app folder.", a.Agent.File)
@@ -482,6 +512,7 @@ func (c *checker) canWrite(typ string) bool { return c.access(typ) == "rw" }
 // type of the row or record around it, the type of the lists on its screen, and,
 // in a command, the type the command is for.
 type actionCtx struct {
+	locals        map[string]string
 	file          string
 	rowType       string
 	selectionType string            // what a bare $selection.ids means (commands)
@@ -511,6 +542,10 @@ func (ctx actionCtx) resolveType(explicit, ids string) string {
 
 func (c *checker) checkAction(ctx actionCtx, at string, act Action) {
 	if !c.appOK {
+		return
+	}
+	if c.kit.Kit == 2 {
+		c.checkGalleryAction(ctx, at, act)
 		return
 	}
 	var found []string
@@ -670,16 +705,17 @@ func (c *checker) checkScreen(file string, s Screen) {
 		if n == nil {
 			return
 		}
+		part, _ := c.findPart(n)
 		if n.ID != "" {
 			if ids[n.ID] {
 				c.add(file, at+"/id", CodeDuplicateID, "Two parts on this screen are called %q.", n.ID)
 			}
 			ids[n.ID] = true
-			if n.Part == "RecordList" && n.Bind != nil && n.Bind.Records != "" {
+			if (part.Selection || c.kit.Kit == 0 && n.Part == "RecordList") && n.Bind != nil && n.Bind.Records != "" {
 				ctx.lists[n.ID] = n.Bind.Records
 			}
 		}
-		if n.Part == "SectionTabs" {
+		if part.Navigation || c.kit.Kit == 0 && n.Part == "SectionTabs" {
 			navs++
 		}
 		// A params binding on a layout part declares params the same way the
@@ -726,16 +762,16 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 	if n == nil {
 		return
 	}
-	part, ok := c.kit.Part(n.Part)
-	if !ok {
-		c.add(ctx.file, at+"/part", CodePartUnknown, "%q is not a kit part. A screen may use only %s.", n.Part, strings.Join(c.kit.Names(), ", "))
+	part, propsSchema := c.findPart(n)
+	if propsSchema == nil {
+		c.add(ctx.file, at+"/part", CodePartUnknown, "%q is not registered for this screen. First-party parts: %s.", n.Part, strings.Join(c.kit.Names(), ", "))
 		return
 	}
 	props := n.Props
 	if props == nil {
 		props = map[string]any{}
 	}
-	if err := schemas().props[n.Part].Validate(jsonValue(props)); err != nil {
+	if err := propsSchema.Validate(jsonValue(props)); err != nil {
 		for _, p := range schemaProblems(ctx.file, err) {
 			p.Code = CodePartProps
 			p.Path = at + "/props" + p.Path
@@ -773,21 +809,7 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 	}
 	typ := rowType
 	if b := n.Bind; b != nil {
-		kind := ""
-		switch {
-		case b.Records != "":
-			kind = "records"
-		case b.Record != "":
-			kind = "record"
-		case b.Selection != "":
-			kind = "selection"
-		case b.Run != "":
-			kind = "run"
-		case b.Runs != "":
-			kind = "runs"
-		case len(b.Params) > 0:
-			kind = "params"
-		}
+		kind := bindingKind(b)
 		if kind == "" || !contains(part.Bindings, kind) {
 			accepts := "no binding"
 			if len(part.Bindings) > 0 {
@@ -817,7 +839,7 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 			}
 		}
 	}
-	if n.Part == "RecordForm" && (n.Bind == nil || n.Bind.Record == "") {
+	if c.kit.Kit == 0 && n.Part == "RecordForm" && (n.Bind == nil || n.Bind.Record == "") {
 		t, _ := props["type"].(string)
 		if t == "" {
 			c.add(ctx.file, at, CodeBindTypeUnknown, "This RecordForm neither edits a bound record nor says which type it creates; add props.type.")
@@ -831,7 +853,11 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 		}
 	}
 
-	c.checkPartFields(ctx, n, at, typ, props)
+	if c.kit.Kit == 2 {
+		typ = c.checkGalleryPart(ctx, n, part, at, typ)
+	} else {
+		c.checkPartFields(ctx, n, at, typ, props)
+	}
 
 	actx := ctx
 	actx.rowType = typ
@@ -929,7 +955,8 @@ func (c *checker) checkRun(file string, r Run) {
 	// trigger that starts this run watches the same type.
 	recordType := ""
 	for _, t := range c.app.Triggers {
-		if t.Run == id && t.On == "record.changed" {
+		recordTrigger := c.kit.Kit == 2 && t.Type != "" || c.kit.Kit == 0 && t.On == "record.changed"
+		if t.Run == id && recordTrigger {
 			if recordType == "" || recordType == t.Type {
 				recordType = t.Type
 			} else {
@@ -955,7 +982,11 @@ func (c *checker) checkRun(file string, r Run) {
 
 	c.stepIDs = stepIDs
 	loopVars := map[string]string{}
-	c.checkSteps(file, r, r.Steps, "/steps", recordType, loopVars)
+	if c.kit.Kit == 2 {
+		c.checkGalleryRun(file, recordType)
+	} else {
+		c.checkSteps(file, r, r.Steps, "/steps", recordType, loopVars)
+	}
 
 	var raw any
 	if j, err := RunJSON(c.def.Files[file]); err == nil {
@@ -1165,6 +1196,10 @@ func (c *checker) checkSample(raw []byte) {
 					continue
 				}
 				v := row[f]
+				if c.kit.Kit == 2 {
+					c.checkGalleryValue(SampleFile, at+"/"+f, fd, v, ids)
+					continue
+				}
 				switch fd.Type {
 				case "enum":
 					if sv, ok := v.(string); !ok || !contains(fd.Values, sv) {

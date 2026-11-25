@@ -1,0 +1,26 @@
+{
+  "ask": "Trace affected drawings and collect an independent disposition.",
+  "data": [
+    {
+      "id": "ncr",
+      "line": "Title and drawing, maker, reviewer"
+    },
+    {
+      "id": "drawing",
+      "line": "Title and rev"
+    }
+  ],
+  "screens": [
+    {
+      "id": "review",
+      "line": "Disposition"
+    },
+    {
+      "id": "trace",
+      "line": "Trace"
+    }
+  ],
+  "agent": {
+    "line": "Summarise deviations and affected drawings so the independent reviewer can choose a disposition."
+  }
+}

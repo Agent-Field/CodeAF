@@ -1,0 +1,26 @@
+{
+  "ask": "Track candidates and collect blind scores before the hiring debrief.",
+  "data": [
+    {
+      "id": "candidate",
+      "line": "Title and stage, score, interview"
+    }
+  ],
+  "screens": [
+    {
+      "id": "candidates",
+      "line": "Candidates"
+    },
+    {
+      "id": "interviews",
+      "line": "Interview schedule"
+    },
+    {
+      "id": "offers",
+      "line": "Offer letter"
+    }
+  ],
+  "agent": {
+    "line": "Find interview slots and draft offer letters. Keep other reviewers’ scores hidden until submission."
+  }
+}

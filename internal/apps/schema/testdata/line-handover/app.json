@@ -1,0 +1,38 @@
+{
+  "id": "line-handover",
+  "name": "Line and handover",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Line and handover agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "line": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "minutes": {
+          "type": "number"
+        },
+        "shift": {
+          "type": "date"
+        },
+        "stage": {
+          "type": "enum",
+          "values": [
+            "running",
+            "held"
+          ]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "line": "rw"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "ask": "Turn labelled GitHub issues into reviewed changes with at most three local test rounds.",
+  "data": [
+    {
+      "id": "job",
+      "line": "Title and issue, repo, state"
+    }
+  ],
+  "screens": [
+    {
+      "id": "jobs",
+      "line": "Issues"
+    },
+    {
+      "id": "review",
+      "line": "Run and proof"
+    }
+  ],
+  "agent": {
+    "line": "Propose a plan for the selected issue. Make the approved code change, then record tests and evidence for review."
+  },
+  "automation": [
+    {
+      "id": "ingest",
+      "line": "Capture issues labelled agent"
+    },
+    {
+      "id": "fix",
+      "line": "Approve a plan, code and test up to three times, approve proof, then open a PR"
+    }
+  ]
+}

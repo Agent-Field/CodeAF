@@ -1,0 +1,37 @@
+{
+  "screen": "stock",
+  "title": "Stock",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Sku queue",
+        "props": {
+          "columns": [
+            "title",
+            "code",
+            "on_hand"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "sku"
+        },
+        "id": "sku-list"
+      },
+      {
+        "part": "Form",
+        "label": "Create purchase order",
+        "props": {
+          "type": "purchase",
+          "fields": [
+            "title",
+            "sku",
+            "qty"
+          ]
+        }
+      }
+    ]
+  }
+}

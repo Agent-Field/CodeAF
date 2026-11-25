@@ -1,0 +1,36 @@
+{
+  "screen": "lines",
+  "title": "Lines",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Line queue",
+        "props": {
+          "columns": [
+            "title",
+            "minutes",
+            "stage"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "line"
+        },
+        "id": "line-list"
+      },
+      {
+        "part": "Chart",
+        "props": {
+          "kind": "bar",
+          "x": "shift",
+          "y": "minutes"
+        },
+        "bind": {
+          "records": "line"
+        }
+      }
+    ]
+  }
+}

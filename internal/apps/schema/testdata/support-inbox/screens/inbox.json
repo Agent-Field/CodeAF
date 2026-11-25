@@ -1,0 +1,60 @@
+{
+  "screen": "inbox",
+  "title": "Shared inbox",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Ticket queue",
+        "props": {
+          "columns": [
+            "subject",
+            "received_at",
+            "reply_by"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "ticket"
+        },
+        "id": "ticket-list"
+      },
+      {
+        "part": "Thread",
+        "label": "Email thread",
+        "props": {
+          "messages": "body",
+          "compose": true
+        },
+        "bind": {
+          "record": "$selection.ticket-list.id",
+          "type": "ticket"
+        }
+      },
+      {
+        "part": "Timer",
+        "props": {
+          "field": "reply_by",
+          "direction": "down",
+          "amber": "PT30M",
+          "red": "PT0S"
+        },
+        "bind": {
+          "record": "$selection.ticket-list.id",
+          "type": "ticket"
+        }
+      },
+      {
+        "part": "ApprovalCard",
+        "label": "Approve reply",
+        "props": {
+          "kind": "send"
+        },
+        "bind": {
+          "run": "reply"
+        }
+      }
+    ]
+  }
+}

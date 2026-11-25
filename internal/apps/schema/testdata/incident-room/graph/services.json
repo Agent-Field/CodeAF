@@ -1,0 +1,11 @@
+{
+  "layout": "elk.layered",
+  "nodes": [
+    {
+      "id": "checkout",
+      "label": "Checkout",
+      "record": "incident/01KAT0000A00000000000000001"
+    }
+  ],
+  "links": []
+}
