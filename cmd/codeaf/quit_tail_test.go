@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -660,6 +661,21 @@ func checkRemovedHostedQuit(t *testing.T, stalled bool) {
 	_, _ = h.a.Dir.List(t.Context())
 	h.wait("removal notice", h.a.Removed)
 	h.say("Keep working locally after removal.")
+	// THE WINDOW WOULD HAVE SHOWN THE REMOVAL SENTENCE, SO THE QUIT IS NOT ITS
+	// ONE TO SAY. The hold's heartbeat can reach the relay in the millisecond
+	// between the revoke and this computer's own marker, and then the drive
+	// raises the sentence while nobody is looking; the engine keeps such a
+	// sentence for the closing report ("TakeSavingNotices also claims live
+	// sentences the window has not displayed"), which is right for a person who
+	// quits before reading it and is what made this test fail about one run in
+	// four (7 of 30 on the base commit as well). This fixture opens its window
+	// only at quit, so it takes the sentence the way a window shows it, once,
+	// and the quit that follows must still print nothing.
+	for _, line := range h.client.Agent().TakeSavingNotices() {
+		if line != chatlist.Removed {
+			t.Errorf("a notice other than the removal sentence was pending before quit: %q", line)
+		}
+	}
 	h.mu.Lock()
 	h.requests = nil
 	h.mu.Unlock()
