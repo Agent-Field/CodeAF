@@ -15,7 +15,7 @@ import (
 
 // EXPRESSIONS ARE THE CEL SUBSET OF DESIGN A2: literals, fields, $ references,
 // comparisons, in, && || !, ?:, and now() days_since() changed() count() me(),
-// with signed() and open_work() in a lifecycle's guards.
+// with signed(), open_work() and checklist_done() in a lifecycle's guards.
 // They appear in computed fields, freeze rules and triggers, and every one is
 // compiled against the record type it reads, so a field name that does not
 // exist is a compile error at registration rather than a null at run time.
@@ -44,6 +44,7 @@ func exprEnv(t *Type, now func() time.Time, person string) (*cel.Env, error) {
 		cel.Variable("_changed", cel.ListType(cel.StringType)),
 		cel.Variable("_signed", cel.BoolType),
 		cel.Variable("_open_work", cel.DoubleType),
+		cel.Variable("_checklists", cel.ListType(cel.StringType)),
 		cel.Function("_ch",
 			cel.Overload("_ch_list_string", []*cel.Type{cel.ListType(cel.StringType), cel.StringType}, cel.BoolType,
 				cel.BinaryBinding(func(list, name ref.Val) ref.Val {
@@ -82,7 +83,7 @@ func exprEnv(t *Type, now func() time.Time, person string) (*cel.Env, error) {
 					return types.NewErr("count needs a list")
 				}))),
 	}
-	declared := map[string]bool{"_changed": true, "_signed": true, "_open_work": true}
+	declared := map[string]bool{"_changed": true, "_signed": true, "_open_work": true, "_checklists": true}
 	declare := func(name string) {
 		if declared[name] || celReserved[name] {
 			return
@@ -156,7 +157,7 @@ func (p *program) eval(t *Type, values map[string]any, changed []string) (any, e
 	for _, name := range t.Order {
 		vars[name] = nil
 	}
-	vars["_signed"], vars["_open_work"] = false, 0.0
+	vars["_signed"], vars["_open_work"], vars["_checklists"] = false, 0.0, []string{}
 	for name, v := range values {
 		vars[name] = v
 	}
@@ -319,6 +320,17 @@ func rewrite(src string) string {
 			if word == "changed" && k < len(src) && src[k] == '(' {
 				b.WriteString("_ch(_changed, ")
 				i = k + 1
+				continue
+			}
+			// A checklist is complete when its id is in the guard's list.
+			// The empty id stands for all checklists on this record.
+			if word == "checklist_done" && k < len(src) && src[k] == '(' {
+				i = k + 1
+				if rest := strings.TrimLeft(src[i:], " \t\r\n"); strings.HasPrefix(rest, ")") {
+					b.WriteString(`_ch(_checklists, ""`)
+				} else {
+					b.WriteString("_ch(_checklists, ")
+				}
 				continue
 			}
 			// signed() and open_work() read what a guard is given beside the

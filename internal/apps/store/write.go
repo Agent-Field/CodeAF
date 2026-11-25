@@ -208,7 +208,7 @@ func (s *Store) Delete(id string) (Meta, error) {
 	return s.setArchived(id, true)
 }
 
-func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
+func (s *Store) setArchived(id string, deleted bool) (_ Meta, resultErr error) {
 	unlock, err := s.lockExisting(id, true)
 	if err != nil {
 		return Meta{}, err
@@ -236,6 +236,13 @@ func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
 	if err := writeJSON(next, m); err != nil {
 		return Meta{}, err
 	}
+	if deleted {
+		restore, err := s.changeData(m, nil)
+		if err != nil {
+			return Meta{}, err
+		}
+		defer func() { resultErr = restore(resultErr) }()
+	}
 	if err := fsreplace.Rename(next, filepath.Join(dir, "meta.json")); err != nil {
 		return Meta{}, err
 	}
@@ -243,7 +250,7 @@ func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
 	return m, nil
 }
 
-func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet) (Meta, error) {
+func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet) (_ Meta, resultErr error) {
 	if m.Version == math.MaxInt {
 		return Meta{}, ErrCorrupt
 	}
@@ -306,6 +313,13 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return Meta{}, err
 		}
+	}
+	restore, err := s.changeData(m, f[appFile])
+	if err != nil {
+		return Meta{}, err
+	}
+	defer func() { resultErr = restore(resultErr) }()
+	if m.Version == 0 {
 		if err := fsreplace.Rename(tx, app); err != nil {
 			return Meta{}, err
 		}
