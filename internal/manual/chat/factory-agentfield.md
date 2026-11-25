@@ -479,7 +479,7 @@ steps:
   build:
     label: Build on AgentField
     kind: agentfield
-    target: swe-planner.build_issue
+    target: planner.build_issue
     input:
       title: "{title}"
       body: "{body}"
@@ -521,7 +521,7 @@ pipeline:
 steps:
   build:
     kind: agentfield
-    target: swe-planner.build_issue
+    target: planner.build_issue
     input:
       title: "{title}"
       repo_url: "{repo_url}"
