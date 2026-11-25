@@ -93,6 +93,8 @@ func LiveSaid(reason, host string) string {
 		return LiveRemoved
 	case "permit-changed":
 		return name + " changed what this computer may do in its chats."
+	case "remote-control-off":
+		return name + " turned remote control off."
 	case "lagging":
 		return "Catching up with " + name + "."
 	case "frame-too-large":

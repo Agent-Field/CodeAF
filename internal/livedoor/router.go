@@ -51,6 +51,15 @@ type ServeConfig struct {
 	// signals. A nil Direct means this host takes no offers, and an offer that
 	// arrives anyway is refused before anything is allocated.
 	Direct DirectHost
+	// Off, when set, says whether the person has turned remote control off on
+	// this computer. The permit func already answers "no watching" for every
+	// device while it is off, which is all a viewer can be refused with, but a
+	// viewer that is told its permit CHANGED reads a different computer than the
+	// one that went quiet: the host did not change what it may do, it stopped
+	// doing it. So while Off says true, a view ended for want of a watch permit
+	// is ended with [ReasonRemoteControlOff], and every other no-watch permit
+	// keeps [ReasonPermitChanged]. Nil keeps the permit reasons everywhere.
+	Off func() bool
 }
 
 type tunnelRWC struct {
@@ -305,6 +314,7 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 			Drive:  false,
 			Road:   road,
 			Limits: lim,
+			Off:    st.noWatchReason() == ReasonRemoteControlOff,
 		})
 		st.flushAndClose()
 		return nil
@@ -341,6 +351,7 @@ func Serve(ctx context.Context, tun io.ReadWriteCloser, peer Peer, cfg ServeConf
 			Drive:  false,
 			Road:   road,
 			Limits: lim,
+			Off:    st.noWatchReason() == ReasonRemoteControlOff,
 		})
 		st.flushAndClose()
 		return nil
@@ -648,10 +659,20 @@ func (st *serverTunnel) CloseWithReason(reason string) {
 	st.flushAndClose()
 }
 
+// noWatchReason is the reason a view is ended with when the permit read just now
+// no longer lets its computer watch: remote control being off, when it is, else
+// the permit having changed.
+func (st *serverTunnel) noWatchReason() string {
+	if st.cfg.Off != nil && st.cfg.Off() {
+		return ReasonRemoteControlOff
+	}
+	return ReasonPermitChanged
+}
+
 func (st *serverTunnel) PermitsChanged() {
 	cur := st.readPermit()
 	if !cur.Watch {
-		st.CloseWithReason(ReasonPermitChanged)
+		st.CloseWithReason(st.noWatchReason())
 		return
 	}
 	st.mu.Lock()
@@ -788,7 +809,7 @@ func (st *serverTunnel) serveChannel(ctx context.Context, ch *Channel, req OpenR
 	// claim over Session, Workspace, Join, New, Watch, Back, or Remote.
 	curPermit = st.readPermit()
 	if !curPermit.Watch {
-		_ = ch.Reset(ReasonPermitChanged)
+		_ = ch.Reset(st.noWatchReason())
 		return
 	}
 	exhausted := st.cfg.Budget != nil && st.cfg.Budget.Exhausted()

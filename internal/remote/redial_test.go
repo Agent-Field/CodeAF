@@ -918,14 +918,29 @@ func (endedOnPurpose) PlannedRedial() bool { return true }
 type swappable struct {
 	io.ReadWriteCloser
 	planned atomic.Bool
+	// said is what the far end ended the link with, when it ended it by saying
+	// something: the error [swappable.endWith] stored.
+	said atomic.Pointer[error]
 }
 
 func (s *swappable) Read(p []byte) (int, error) {
 	n, err := s.ReadWriteCloser.Read(p)
-	if err != nil && s.planned.Load() {
-		return n, endedOnPurpose{}
+	if err != nil {
+		if said := s.said.Load(); said != nil {
+			return n, *said
+		}
+		if s.planned.Load() {
+			return n, endedOnPurpose{}
+		}
 	}
 	return n, err
+}
+
+// endWith closes the link the way a far end that ANSWERED does: the reader gets
+// the error the far end's own words are carried by, not a bare end of file.
+func (s *swappable) endWith(err error) {
+	s.said.Store(&err)
+	_ = s.ReadWriteCloser.Close()
 }
 
 func (s *swappable) endOnPurpose() {
@@ -1174,3 +1189,59 @@ func TestAPlannedRedialSaysNothingUntilItTakesLongerThanAMoment(t *testing.T) {
 		waitFor(t, "the link to come back", func() bool { return !client.isReconnecting() && client.LinkNote() == "" })
 	})
 }
+
+// farEndSaid is the error livedoor's channel returns when the host ended a view
+// on purpose and said why (`remote-control-off`). It lives here for the reason
+// [endedOnPurpose] does: the contract between the two packages is only the
+// EndsView and Reason methods.
+type farEndSaid struct{ reason string }
+
+func (e farEndSaid) Error() string  { return "livedoor: channel reset: " + e.reason }
+func (e farEndSaid) EndsView() bool { return true }
+func (e farEndSaid) Reason() string { return e.reason }
+
+// TestAViewTheFarEndEndedOnPurposeIsNotRedialled is the viewer half of the
+// contract for turning remote control off on the computer being watched: a link
+// that ended because the far end said so ends the client at once, with the far
+// end's one sentence, and neither pauses nor dials nor says `reconnecting`. A
+// link that merely DROPPED still redials (the tests above), which is the default
+// this change keeps.
+func TestAViewTheFarEndEndedOnPurposeIsNotRedialled(t *testing.T) {
+	client, first, tl := redialRig(t, Roaming{SpreadReturns: true}, 0)
+	first.endWith(farEndSaid{reason: "remote-control-off"})
+
+	waitFor(t, "the client to end", func() bool { return client.Err() != nil })
+	if got, want := client.Err().Error(), "devbox turned remote control off."; got != want {
+		t.Fatalf("the ended view says %q, want exactly %q", got, want)
+	}
+	if note := client.LinkNote(); note != "" {
+		t.Fatalf("nothing is reconnecting, so the note is empty, not %q", note)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if events, _ := tl.snapshot(); len(events) != 0 {
+		t.Fatalf("the client paused or dialled after the far end ended the view: %v", events)
+	}
+}
+
+// A far end that ended the view with a reason that is NOT the final one is still
+// redialled, and a reason the viewer has no sentence for does not end it either:
+// the set that ends a view for good is closed.
+func TestAViewEndedWithAnyOtherReasonIsStillRedialled(t *testing.T) {
+	for _, reason := range []string{"permit-changed", "lagging", "host-closing", "a-reason-from-a-newer-build"} {
+		t.Run(reason, func(t *testing.T) {
+			client, first, tl := redialRig(t, Roaming{SpreadReturns: true}, 0)
+			first.endWith(notFinal{reason: reason})
+			settled(t, client, tl, 1)
+			if events, _ := tl.snapshot(); len(events) == 0 {
+				t.Fatalf("a %q end was not redialled", reason)
+			}
+		})
+	}
+}
+
+// notFinal is a reason-bearing channel error that does not end the view for good.
+type notFinal struct{ reason string }
+
+func (e notFinal) Error() string  { return "livedoor: channel reset: " + e.reason }
+func (e notFinal) EndsView() bool { return false }
+func (e notFinal) Reason() string { return e.reason }

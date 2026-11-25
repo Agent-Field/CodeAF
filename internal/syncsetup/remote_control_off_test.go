@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/filesdoor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/livedoor"
@@ -150,7 +151,8 @@ func liveViewOnHost(t *testing.T, r *liveRig) (*remote.Session, *livedoor.Link, 
 
 // TestC1TurningRemoteControlOffRefusesANewLiveViewAtOnce is C1: with a live view
 // open, remote control goes off and NO tick runs; a second viewer's attempt is
-// refused as the host not allowing it, before the host attaches it to the chat.
+// refused as the host having remote control off, before the host attaches it to
+// the chat.
 func TestC1TurningRemoteControlOffRefusesANewLiveViewAtOnce(t *testing.T) {
 	t.Setenv("CODEAF_REMOTE_CONTROL", "on")
 	r := newLiveRig(t)
@@ -169,14 +171,17 @@ func TestC1TurningRemoteControlOffRefusesANewLiveViewAtOnce(t *testing.T) {
 		_ = rwc.Close()
 		t.Fatal("a new live view opened with remote control off")
 	}
-	if reason, ok := livedoor.ReasonOf(err); !ok || reason != livedoor.ReasonNotAllowed {
-		t.Fatalf("the refused viewer read %v (reason %q), want the host's not-allowed", err, reason)
+	// THE REFUSAL SAYS THE SWITCH IS OFF, not that this computer's permit is empty
+	// (which would send the person to /devices): the host's answer to the dial
+	// carries it, and the view that follows once it is back on is not refused.
+	if reason, ok := livedoor.ReasonOf(err); !ok || reason != livedoor.ReasonRemoteControlOff {
+		t.Fatalf("the refused viewer read %v (reason %q), want the host's %q", err, reason, livedoor.ReasonRemoteControlOff)
 	}
 	if got := sess.Attached(); got != attachedBefore {
 		t.Fatalf("the host's chat has %d viewers after a refused attempt, want %d: the refused viewer was attached", got, attachedBefore)
 	}
-	if st := second.State(); st.Kind != livedoor.Revoked || st.Reason != livedoor.ReasonNotAllowed {
-		t.Fatalf("the refused viewer's link is %v/%q, want revoked/not-allowed", st.Kind, st.Reason)
+	if st := second.State(); st.Kind != livedoor.Revoked || st.Reason != livedoor.ReasonRemoteControlOff {
+		t.Fatalf("the refused viewer's link is %v/%q, want revoked/%s", st.Kind, st.Reason, livedoor.ReasonRemoteControlOff)
 	}
 }
 
@@ -303,5 +308,97 @@ func TestC3ARunThatNeverServedRemoteControlIsNeverTouchedByATick(t *testing.T) {
 	}
 	if got := r.wire.registrations(); got != registrations {
 		t.Fatalf("relay registrations went from %d to %d with remote control never on", registrations, got)
+	}
+}
+
+// requireNoSignOfAnOfflineHost fails if, over the next stretch of real time, the
+// link says anything that claims the host went away or that it is being
+// redialled: the host is up and said no, so neither is true.
+func requireNoSignOfAnOfflineHost(t *testing.T, link *livedoor.Link, dials func() int, atRest int, over time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(over)
+	for time.Now().Before(deadline) {
+		if st := link.State(); st.Kind == livedoor.WentOffline || st.Kind == livedoor.Reconnecting {
+			t.Fatalf("the link says %v although the host is up and said no (reason %q)", st.Kind, st.Reason)
+		}
+		if got := dials(); got != atRest {
+			t.Fatalf("the viewer dialled again by itself: %d dials, want %d", got, atRest)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+// TestC1TheViewEndsWithTheSentenceThatRemoteControlWasTurnedOffAndDoesNotRedial
+// is the contract of the two-computer hand test: B has a live view of A's chat,
+// the person turns remote control OFF on A, and within one tick B's view ends
+// saying exactly that. It never says A went offline, the link never redials, and
+// the relay sees no further dial from B. The same holds when A's door goes away
+// with the switch and when live transfer keeps it up.
+func TestC1TheViewEndsWithTheSentenceThatRemoteControlWasTurnedOffAndDoesNotRedial(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		liveTransfer string
+	}{
+		{"the door goes with it", "off"},
+		{"the door stays up for live transfer", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CODEAF_REMOTE_CONTROL", "on")
+			r := newLiveRig(t)
+			t.Setenv(LiveTransferVar, tc.liveTransfer)
+			_, link, view := liveViewOnHost(t, r)
+			dialedBefore := r.wire.dials()
+
+			t.Setenv("CODEAF_REMOTE_CONTROL", "off")
+			r.a.ensureFilesDoor()
+
+			select {
+			case err := <-view.ended:
+				if reason, ok := livedoor.ReasonOf(err); !ok || reason != livedoor.ReasonRemoteControlOff {
+					t.Fatalf("the view ended with %v (reason %q), want %q", err, reason, livedoor.ReasonRemoteControlOff)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the live view did not end")
+			}
+			waitFor(t, "the link to rest with the host's reason", func() bool {
+				st := link.State()
+				return st.Kind == livedoor.Revoked && st.Reason == livedoor.ReasonRemoteControlOff
+			})
+			if said := chatlist.LiveSaid(link.State().Reason, nameA); said != nameA+" turned remote control off." {
+				t.Fatalf("the sentence reads %q", said)
+			}
+			requireNoSignOfAnOfflineHost(t, link, r.wire.dials, dialedBefore, 1500*time.Millisecond)
+		})
+	}
+}
+
+// TestC2AHostNobodyServesIsNeverSaidToHaveTurnedRemoteControlOff keeps the
+// default: a viewer that dials a computer with nobody serving, and has never
+// been told why, still reads it as a computer it cannot reach and keeps trying.
+// It is not given the host's switch as a reason it never heard, and its link is
+// not left resting.
+func TestC2AHostNobodyServesIsNeverSaidToHaveTurnedRemoteControlOff(t *testing.T) {
+	t.Setenv("CODEAF_REMOTE_CONTROL", "on")
+	t.Setenv(LiveTransferVar, "off")
+	r := newLiveRig(t)
+	_, _, _ = liveViewOnHost(t, r)
+	t.Setenv("CODEAF_REMOTE_CONTROL", "off")
+	r.a.ensureFilesDoor()
+	dialLiveUntil(t, r, "the relay to say nobody serves this computer", func(err error) bool {
+		return errors.Is(err, relaypkg.ErrNoMachine)
+	})
+
+	fresh := r.b.LiveLink(r.a.Device.ID(), nameA, func() bool { return true }, nil)
+	t.Cleanup(fresh.Close)
+	rwc, err := fresh.Opener(r.cell.ID)()
+	if err == nil {
+		_ = rwc.Close()
+		t.Fatal("a view opened on a computer nobody serves")
+	}
+	if reason, ok := livedoor.ReasonOf(err); ok && reason == livedoor.ReasonRemoteControlOff {
+		t.Fatalf("a viewer that was never told why was handed the host's switch as the reason: %v", err)
+	}
+	if st := fresh.State(); st.Kind != livedoor.WentOffline && st.Kind != livedoor.Reconnecting {
+		t.Fatalf("a viewer that cannot reach the computer reads %v (reason %q), want it still trying", st.Kind, st.Reason)
 	}
 }
