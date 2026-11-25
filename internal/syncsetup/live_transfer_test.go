@@ -660,6 +660,18 @@ func TestLiveTransferC13ACutAfterTheChatOpened(t *testing.T) {
 		}
 		return true
 	})
+	// THE FILES ARE IN PLACE BEFORE THE ARRIVAL IS OVER. The tree above is whole
+	// once the files are written, and the restarted stage still has its hooks (the
+	// vault pull and the index rebuild, which open the vault's lock and the chat's
+	// stores) and its look at the folder to finish, a second or more behind it.
+	// A test that returns on the tree leaves that stage writing into folders the
+	// temporary-directory cleanup is removing, which failed this test on the full
+	// suite with "directory not empty". The arrival is complete only after all of
+	// that is done, and it leaves the record of arrivals when it is.
+	waitFor(t, "the restarted arrival to finish", func() bool {
+		a := cell.LookupWorkspaceArrival(got.Taken.Cell.Root)
+		return a == nil || a.Ready()
+	})
 }
 
 // C6: after B writes turns, A takes the chat back while B runs and fetches only
