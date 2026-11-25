@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+// Data-plane migration also removes redundant values from old outbox rows.
+// Scoped record values remain available in the existing history table.
 const dataPlaneMigration = `
 	ALTER TABLE outbox ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
 	ALTER TABLE outbox ADD COLUMN cause_chain TEXT NOT NULL DEFAULT '[]';

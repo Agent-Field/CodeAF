@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -198,5 +199,69 @@ func TestAppDataSubscribeWireResetHasNoRowPayload(t *testing.T) {
 	if err := json.Unmarshal(event["data"], &fields); err != nil || len(fields) != 2 ||
 		reset.Sub != "total" || reset.Cursor <= receipt.Cursor {
 		t.Fatalf("unexpected reset: %s (%v)", event["data"], err)
+	}
+}
+
+type pausedDataWire struct {
+	started chan struct{}
+	reset   chan struct{}
+	release chan struct{}
+}
+
+func (w *pausedDataWire) Emit(event string, body any) {
+	w.EmitContext(context.Background(), event, body)
+}
+
+func (w *pausedDataWire) EmitContext(ctx context.Context, event string, _ any) {
+	if event == appwire.EventDataReset {
+		close(w.reset)
+		return
+	}
+	if event == appwire.EventDataChanged {
+		select {
+		case w.started <- struct{}{}:
+		default:
+		}
+		select {
+		case <-ctx.Done():
+		case <-w.release:
+		}
+	}
+}
+
+func TestAppDataSlowWireDoesNotBlockPolicyCommit(t *testing.T) {
+	b, _ := dataBackend(t)
+	wire := &pausedDataWire{started: make(chan struct{}, 1), reset: make(chan struct{}), release: make(chan struct{})}
+	defer close(wire.release)
+	b.emit = wire
+	if _, err := b.DataSubscribe(appwire.DataSubscribeParams{Sub: "deals", Type: "deal"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.DataCreate(appwire.DataCreateParams{Type: "deal", Set: map[string]any{"name": "Ari"}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-wire.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the data event never reached the wire")
+	}
+	db, err := b.dataStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- db.InvalidatePolicy("") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the paused wire blocked the policy commit")
+	}
+	select {
+	case <-wire.reset:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the policy reset did not replace the blocked event")
 	}
 }

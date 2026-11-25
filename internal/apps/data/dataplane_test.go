@@ -16,6 +16,7 @@ func TestDataPlaneReopensBStoreWithoutReplacingIDs(t *testing.T) {
 	const typeID = "01K00000000000000000000002"
 	const fieldID = "01K00000000000000000000003"
 	const recordID = "01K00000000000000000000004"
+	const batchID = "01K00000000000000000000005"
 	if _, err := db.Exec(migrations[0] + `
 		PRAGMA user_version=1;
 		INSERT INTO space VALUES('person', '` + personID + `');
@@ -63,6 +64,14 @@ func TestDataPlaneReopensBStoreWithoutReplacingIDs(t *testing.T) {
 	events, err := s.Outbox(0, 1)
 	if err != nil || len(events) != 1 || events[0].TypeID != typeID || events[0].Version != 1 {
 		t.Fatalf("original event: %+v, %v", events, err)
+	}
+	e := events[0]
+	if e.Batch != batchID || string(e.Payload) != "{}" {
+		t.Fatalf("receipt did not retain its batch or remove payload values: %+v", e)
+	}
+	_, historical, err := s.RecordEventValues(sc, e.TypeID, e.Record, e.Batch)
+	if err != nil || historical["name"] != "Ari" {
+		t.Fatalf("receipt could not reopen its B-era history: %v, %v", historical, err)
 	}
 }
 

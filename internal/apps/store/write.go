@@ -360,14 +360,11 @@ func (s *Store) commitPublication(before, next Meta, raw []byte, app, tx, snapsh
 		return err
 	}
 	if before.Version == 0 {
-		if _, err := s.readMeta(before.ID); !errors.Is(err, ErrNotFound) {
-			if err == nil {
-				return ErrConflict
-			}
-			// A prepared first version can leave an app directory without metadata.
-			if !errors.Is(err, fs.ErrNotExist) {
-				return err
-			}
+		// A prepared first version may leave a directory without metadata.
+		if _, err := s.readMeta(before.ID); err == nil {
+			return ErrConflict
+		} else if !errors.Is(err, ErrNotFound) && !errors.Is(err, fs.ErrNotExist) {
+			return err
 		}
 		if err := os.Mkdir(app, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
 			return err

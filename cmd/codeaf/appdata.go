@@ -12,6 +12,7 @@ package main
 // definitions that have no publication pointer in the data file.
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -380,11 +381,99 @@ type appDataSubscription struct {
 	gate  *appDataDelivery
 }
 
+// appDataDelivery coalesces a slow connection's pending events without
+// holding the store's policy lock while the wire waits for buffer space.
 type appDataDelivery struct {
+	ctx      context.Context
+	stop     context.CancelFunc
+	wake     chan struct{}
 	mu       sync.Mutex
 	deferred bool
-	stopped  bool
 	pending  *data.Diff
+	sending  context.CancelFunc
+}
+
+func newAppDataDelivery(deferred bool) *appDataDelivery {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &appDataDelivery{ctx: ctx, stop: cancel, wake: make(chan struct{}, 1), deferred: deferred}
+}
+
+func (d *appDataDelivery) queue(diff data.Diff) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.ctx.Err() != nil {
+		return
+	}
+	// Pending deltas are only useful in order. An early or superseded
+	// delta becomes a payload-free reset at the latest observed cursor.
+	if d.deferred || d.pending != nil {
+		diff = data.Diff{Sub: diff.Sub, Cursor: diff.Cursor, Reset: true}
+	}
+	if diff.Reset && d.sending != nil {
+		d.sending()
+	}
+	d.pending = &diff
+	if !d.deferred {
+		d.signal()
+	}
+}
+
+func (d *appDataDelivery) release() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.deferred = false
+	if d.pending != nil {
+		d.signal()
+	}
+}
+
+func (d *appDataDelivery) signal() {
+	select {
+	case d.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (d *appDataDelivery) run(emit appwire.Emitter) {
+	for {
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-d.wake:
+			d.mu.Lock()
+			diff := d.pending
+			d.pending = nil
+			if diff == nil || d.ctx.Err() != nil {
+				d.mu.Unlock()
+				continue
+			}
+			ctx, cancel := context.WithCancel(d.ctx)
+			d.sending = cancel
+			d.mu.Unlock()
+
+			event, body := appDataEvent(*diff)
+			if sink, ok := emit.(interface {
+				EmitContext(context.Context, string, any)
+			}); ok {
+				sink.EmitContext(ctx, event, body)
+			} else if emit != nil && ctx.Err() == nil {
+				emit.Emit(event, body)
+			}
+			cancel()
+			d.mu.Lock()
+			d.sending = nil
+			d.mu.Unlock()
+		}
+	}
+}
+
+func appDataEvent(d data.Diff) (string, any) {
+	if d.Reset {
+		return appwire.EventDataReset, appwire.DataReset{Sub: d.Sub, Cursor: d.Cursor}
+	}
+	return appwire.EventDataChanged, appwire.DataChanged{
+		Sub: d.Sub, Upserts: wireRows(d.Upserts), Removes: nonNilStrings(d.Removes), Total: d.Total, Cursor: d.Cursor,
+	}
 }
 
 func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.DataSubscribeResult, error) {
@@ -397,37 +486,21 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 	if p.Cursor != nil {
 		spec.Resume, spec.After = true, *p.Cursor
 	}
-	emit := func(d data.Diff) {
-		if b.emit == nil {
-			return
-		}
-		if d.Reset {
-			b.emit.Emit(appwire.EventDataReset, appwire.DataReset{Sub: d.Sub, Cursor: d.Cursor})
-			return
-		}
-		b.emit.Emit(appwire.EventDataChanged, appwire.DataChanged{
-			Sub: d.Sub, Upserts: wireRows(d.Upserts), Removes: nonNilStrings(d.Removes), Total: d.Total, Cursor: d.Cursor,
-		})
+	emit := b.emit
+	if tap, ok := emit.(*appInboxTap); ok {
+		// Subscription events travel to the wire without Inbox processing.
+		emit = tap.next
 	}
 	b.data.subsMu.Lock()
 	defer b.data.subsMu.Unlock()
 	b.stopDataSubscription(p.Sub)
-	gate := &appDataDelivery{deferred: p.DeferEvents}
-	snapshot, err := s.Watch(&b.data.owner, dataScope(p.DataScope), spec, func(d data.Diff) {
-		gate.mu.Lock()
-		defer gate.mu.Unlock()
-		if gate.stopped {
-			return
-		}
-		if gate.deferred {
-			gate.pending = &data.Diff{Sub: d.Sub, Cursor: d.Cursor, Reset: true}
-			return
-		}
-		emit(d)
-	})
+	gate := newAppDataDelivery(p.DeferEvents)
+	snapshot, err := s.Watch(&b.data.owner, dataScope(p.DataScope), spec, gate.queue)
 	if err != nil {
+		gate.stop()
 		return nil, appDataError(err)
 	}
+	go gate.run(emit)
 	if b.data.subs == nil {
 		b.data.subs = map[string]appDataSubscription{}
 	}
@@ -437,15 +510,7 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 		result.Snapshot = &appwire.DataQueryResult{Rows: wireRows(snapshot.Rows), Next: snapshot.Next, Total: snapshot.Total}
 	}
 	if p.DeferEvents {
-		result.ReleaseEvents = func() {
-			gate.mu.Lock()
-			defer gate.mu.Unlock()
-			gate.deferred = false
-			if !gate.stopped && gate.pending != nil {
-				emit(*gate.pending)
-			}
-			gate.pending = nil
-		}
+		result.ReleaseEvents = gate.release
 	}
 	return result, nil
 }
@@ -453,10 +518,7 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 // stopDataSubscription must run under the connection's subscription lock.
 func (b *appBackend) stopDataSubscription(id string) {
 	if sub, ok := b.data.subs[id]; ok {
-		sub.gate.mu.Lock()
-		sub.gate.stopped = true
-		sub.gate.pending = nil
-		sub.gate.mu.Unlock()
+		sub.gate.stop()
 		sub.store.Unwatch(&b.data.owner, id)
 		delete(b.data.subs, id)
 	}
