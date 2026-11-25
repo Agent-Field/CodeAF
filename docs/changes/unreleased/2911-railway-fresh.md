@@ -1,6 +1,6 @@
 ---
 kind: changed
-title: A fresh Railway install follows the docs, and the model door's key and the claim link are told straight
+title: A fresh Railway install follows the docs, and the model door's key and claim link are told straight
 pr: 2911
 surface: [docs, build, chat]
 invalidates:
