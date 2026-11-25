@@ -3984,6 +3984,13 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Joining, living in and hosting an organization, in the words of the
 		// person who joins one and of the person who runs one.
 		{"can my admin read my chats", "organization-hosted-sessions"},
+		{"can a hosted chat reach the cloud metadata address", "organization-hosted-sessions"},
+		{"can a chat on the organization's server connect to other services on my network", "organization-hosted-sessions"},
+		{"can a hosted chat reach other machines on my company network", "organization-hosted-sessions"},
+		{"is there a disk or memory limit for each hosted chat", "organization-hosted-sessions"},
+		{"what happens to a person's chats when I remove them while the chat machine is down", "organization-hosted-sessions"},
+		{"why does my chat say it is already making as many requests as it may at once", "organization-hosted-sessions"},
+		{"can a bot with view scope start a hosted chat", "organization-hosted-sessions"},
 		{"can my company's IT see my conversations in the organization", "organization-hosted-sessions"},
 		{"who pays for a shared chat", "organization-hosted-sessions"},
 		{"who pays for a chat I shared with a teammate", "organization-hosted-sessions"},

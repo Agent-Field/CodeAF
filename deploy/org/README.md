@@ -120,6 +120,13 @@ For example Caddy, on the same host: `org.example.com { reverse_proxy 127.0.0.1:
 then name `https://org.example.com`. Without `CODEAF_TRUSTED_PROXIES` the server sees every request as plain HTTP
 and refuses passwords with "Passwords are only sent to this server over https".
 
+- **Browser chat connections.** A WebSocket upgrade with an `Origin` header is accepted only if the header names the host
+  the request was sent to or the public name set with `CODEAF_PUBLIC_DOMAIN`. Otherwise the server returns `403` with
+  `This page is from another site, so it cannot open a chat connection here.` Connections with no `Origin` header are accepted
+  because the codeaf command line, the desktop app's engine and other non-browser clients send none. The sign-in cookie is
+  `SameSite=Strict`. The origin check also protects against pages on sibling names of the same site. There is no setting to
+  allow another origin because no client needs one.
+
 ## Real work
 
 Put your keys in `.env` and `docker compose up -d`. `ORG_MODEL`, `SWE_DEFAULT_MODEL` and `PR_AF_MODEL` choose the
@@ -185,11 +192,14 @@ because it has to become a different Linux user for every chat. It is built from
   exact setting (`codeaf sessionhost probe` prints the same reason); with it the chats run on the user switch alone, with
   no limit on what their commands reach, the port limit below included. Chats also start with `umask 077`, because
   `/tmp` and `/dev/shm` are shared by every chat on the machine; a chat can still open its own files up.
+  Every mode of `codeaf sessionhost reap` (stop, delete and the cleanup before a chat starts) also sweeps `/tmp`, `/dev/shm`,
+  `/var/tmp` and the System V shared memory, message queues and semaphores of the chat's Linux user. It runs as that user
+  without following links, so the next chat given that Linux user cannot read what the previous chat left there.
 - **A port limit on the network** (`CODEAF_SESSIONHOST_CONNECT_PORTS`, default `443,80,22,9418`). A private network
   with no policies of its own (Railway's, and any Compose stack that puts a chat's machine beside other services)
   lets a chat's command connect to the node APIs, the model stub and anything else listening there. The fence
-  therefore carries a Landlock TCP-connect allowlist: a command may connect to those ports and to the port of the
-  organization server's own address (the model door and git, taken from the chat's credentials), and every other
+  therefore carries a Landlock TCP-connect allowlist: a command may connect to those ports and the ports used for the
+  organization server's own address (the model door and git, taken from the chat's credentials), and every other TCP
   port is refused by the kernel with `permission denied` and one plain line saying so. `none` allows the organization
   server's port alone. **It filters by port, not by address**: a hostile service listening on an allowed port is still
   reachable, a service of the chat's own on another port (a dev server on 3000) is not, and AgentField, the nodes and the
@@ -199,12 +209,17 @@ because it has to become a different Linux user for every chat. It is built from
 - **No keys.** The sessionhost holds no organization secret except the one it shares with the organization
   server, no AgentField key, no GitHub token and no model key, and a chat holds none of a person's keys either. A
   chat reaches a model only through the organization server's `/v1/model/` door with a bearer the server minted for
-  that chat (seven days, ended at once on stop or delete, kept as a hash in the organization's data so a restart of
-  the server does not end it); the door adds the real key itself, metered into the person's spend. Git goes the same
+  that chat (seven days, ended at once on stop, delete or removal of the person from the organization, kept as a hash
+  in the organization's data across restarts). The door adds the real key and meters calls into the person's spend. Git goes the same
   way: the chat's `git clone`/`push` of an allowed host is rewritten to the organization server's
   `/v1/hosted/git/` door, which adds the person's own GitHub access to each request, so the chat never holds a GitHub
   token (a credential helper, `codeaf git-credential`, hands git only the chat's own bearer, and only to that one
   address).
+- **Removing a person.** The server first ends the person's chats' model and git access, so any chat still running can no
+  longer spend the organization's key or reach git as that person. It clears their stored keys and GitHub access and deletes
+  their chats on the machine that runs them. If that machine does not answer, removal still succeeds. The server ends the
+  shares of each chat it could not delete and makes it private, so every route answers `There is no such chat.` Those chats
+  stay on the machine until the operator repeats the removal once the machine answers. Removal never retries on its own.
 - **Limits.** `CODEAF_SESSIONHOST_MAX_RUNNING` chats at once (default 20) and `CODEAF_SESSIONHOST_MAX_PER_PERSON`
   per person (default 3). A chat counts while it has a process; a person at their limit can still make a
   chat but cannot start another and reads "You already have N chats running; stop one first."
@@ -322,9 +337,9 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   the owner's own attach puts it back to the owner. Each message a guest sends writes one `kind: "prompt"` line in
   the owner's `GET /v1/hosted/audit` (who, never what), and every `git` line carries `asker` when it was not the owner.
 - **Bots.** A bot token may use `/v1/hosted/sessions` (and not `/v1/hosted/keys` or `/v1/hosted/git`, which answer
-  `a bot cannot use this yet`): it makes, lists, opens, stops and deletes exactly what its creator may, narrowed by
-  its scope, decided again at every request. A bot's chat is owned by the person who made the bot, and `created_by`
-  records the bot, as for any other thing a bot makes.
+  `a bot cannot use this yet`). It lists, opens, stops and deletes chats within its creator's access, narrowed by its scope
+  on every request. It can start a hosted chat only when the organization's policy lets agents create things and its scope
+  holds `run`. A bot's chat is owned by the person who made the bot, and `created_by` records the bot.
 - **Who may move a chat.** `PUT /v1/org/policy` takes `"chats": {"move_by": "owner"}` or `"chats": {"move_by": "manage"}`. Absent or
   empty means `owner`: only the person who owns a chat moves it, which is what the server always did, and a policy stored before the
   field existed reads that way. `manage` lets anyone who holds the `manage` verb on the chat move it, so a person it is shared with at
@@ -365,9 +380,8 @@ is a change to the wire's own protocol and not made here.
    published image (`--env-file images.env`, see "Published images"). `codeaf`, `runner` and `sessionhost` all run that one image. Do not build
    from a binary of your own machine: the image should be this commit's source, which is what `codeaf version` inside it reports.
 
-The sessionhost sits on a network of its own, shared only with `codeaf`, so a chat's commands cannot reach
-AgentField, the nodes, the runner or the model stub. On a platform with no such network (Railway), the port limit above
-is what keeps them out. Its API (`/v1/sessions` ...) wants the shared secret and a
+Compose puts the sessionhost on a network shared only with `codeaf`. See [Known limits](#known-limits) for what the port
+fence allows and how to isolate other services. The sessionhost API (`/v1/sessions` ...) wants the shared secret and a
 person's name from the organization server, and answers anything else with an empty `401`.
 
 `SMOKE_HOSTED=1 ./smoke.sh` runs everything above against the scripted stub (so it spends nothing). It needs an image
@@ -608,9 +622,9 @@ What a first install needs that the table does not show:
 
 Two things differ from Compose. Railway's edge is an HTTPS proxy in front of `codeaf`, so
 `CODEAF_TRUSTED_PROXIES=100.64.0.0/10` (the edge's range) is required: without it every password sign-in is
-refused as plain HTTP. `/v1/about` on the public name says `"scheme": "https"` when it is right. And Railway's private network has no
-policies of its own: any service can connect to any other, so a chat's commands are kept off the other services by the sessionhost's port
-limit (see "Hosted chats"), and each service must keep its own sign-in.
+refused as plain HTTP. `/v1/about` on the public name says `"scheme": "https"` when it is right. Railway's private network lets
+services in the same environment connect to one another. A chat's commands can reach services on allowed TCP ports, and UDP is
+unfiltered. See [Known limits](#known-limits) for how to isolate other services.
 
 ### Claim the organization
 
@@ -663,3 +677,58 @@ kernel, and the public name serves over HTTPS. None of them makes a model call o
   no variable here, such as `loopback_trust` (always off for this team server; see "Claim the organization"), cannot be
   changed in this stack, and a hand edit of the file is replaced.
 - One replica of each service; no high availability.
+- **The network fence filters TCP by port.** A chat's commands may connect only to ports 443, 80, 22 and 9418 by default
+  (`CODEAF_SESSIONHOST_CONNECT_PORTS`) and the ports used for the organization server's own address. Landlock has no rule
+  for a destination address. Ports 80 and 443 can reach any host accessible from the chats' machine, including the internet,
+  internal services, the Docker host at the container network's gateway, cloud instance metadata at `169.254.169.254` and
+  AWS ECS task credentials at `169.254.170.2`. UDP is unfiltered. A command that reaches cloud metadata can read that
+  machine's cloud credentials. A chat's environment is built from a short fixed list, which leaves out the container's own
+  cloud credential variables. Text in a repository or web page can make the chat's agent run a command, so access to the
+  network is relevant to anyone who can put text in front of a chat. The port fence worked on a flat test network, where
+  the metadata address did not answer. Whether it is reachable on a cloud machine remains untested. At start the sessionhost
+  connects to `169.254.169.254:80`, `169.254.170.2:80` and `[fd00:ec2::254]:80`, sends nothing, and logs one `WARNING` line
+  naming any that answer; it never refuses to start over it, because closing the gap is the network's job.
+
+  The operator sets these guardrails outside codeaf.
+
+  - Block the whole link-local range `169.254.0.0/16` for traffic from the machine that runs chats, at the host or VPC
+    firewall. It includes metadata addresses on AWS, Google Cloud and Azure and the ECS task credentials address. On AWS
+    also block the IPv6 metadata address `fd00:ec2::254`. On a Docker host, use the `DOCKER-USER` chain for traffic from
+    containers. These firewall rules were not tested.
+  - On AWS require IMDSv2 (`HttpTokens=required`) and set the hop limit to 1. The hop limit helps only when IMDSv2 is required.
+    Google Cloud and Azure have no equivalent hop limit. Use the firewall rule and give the instance identity (a service
+    account or managed identity) only permissions you would give a chat.
+  - Keep other internal services off ports 80 and 443 on the chats' network or give each its own sign-in. The container
+    network's gateway is the Docker host itself. A chat can reach a host service on an allowed port, so firewall the Docker
+    bridge from the host's own services.
+  - Give the stack a network of its own, using a dedicated VPC or subnet, a separate security group, or a Docker network
+    with no route to other internal services.
+  - Railway's documentation says services in one environment can reach each other on the private network and services in
+    different projects or environments cannot. Run codeaf in a project of its own and keep all other services out of that
+    environment. Railway's documentation does not say whether the metadata address answers from a service container, and
+    this was not checked.
+  - An egress proxy that refuses private and link-local addresses is a possible next step. Address filtering is absent today,
+    and the sessionhost has no network capability.
+- **There is no per-chat disk or memory quota.** Each chat's Linux user is limited to 512 processes, which stopped a fork
+  burst in testing. Commands are limited to 4096 open files and 10 GiB per file, with no core dumps. A 200 MB write
+  and a 256 MB allocation both succeeded. One chat can fill the sessions volume or the machine's memory and slow or stop
+  other chats. `CODEAF_SESSIONHOST_MAX_RUNNING` and `CODEAF_SESSIONHOST_MAX_PER_PERSON` cap the number of running chats at
+  20 and 3 by default. Bound the whole `sessionhost` service with Compose `mem_limit`, `pids_limit` and `cpus`, a fixed-size
+  volume and a disk alert to limit the impact to that service.
+- **Removing someone while the chat machine is down.** Removal succeeds, ends the person's chats' model and git access
+  immediately and clears stored keys and GitHub access. The chats the machine could not delete are closed to everyone.
+  Their Linux users and folders stay on the machine. Check that the chats are gone and repeat the removal once the machine
+  answers if any remain. Removal never retries on its own.
+- **The container runtime supplies the seccomp profile.** The sessionhost relies on the runtime's default profile to
+  block user namespaces and calls such as `mount` and `chroot`. It sets no filter of its own for those calls. It sets
+  no-new-privileges, drops every capability from the chat's processes and uses a separate Linux user for each chat.
+  Never use `seccomp=unconfined` or a profile looser than Docker's default. Docker applies its default unless Compose or the
+  platform specifies another profile. Check that your platform's profile applies equivalent restrictions. In testing
+  with a profile that allowed everything but Landlock, `unshare` worked and chat commands could write a user ID map.
+  That exposes more of the kernel to a chat's unprivileged user, increasing the risk of an escape. By design, Landlock and
+  the chat's Linux user still apply inside those namespaces. That behavior was not tested.
+- `local_sessions: refuse` is enforced on the server side only. No client acts on it yet.
+- Request framing and WebSocket upgrades through a front proxy such as Railway's edge, nginx or a load balancer were untested
+  end to end. The test stack used no proxy.
+- The model door's reservation path for a priced model was read in the code and remains untested end to end. The test stub's
+  model has no price.

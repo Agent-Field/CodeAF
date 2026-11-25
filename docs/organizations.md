@@ -67,19 +67,25 @@ Who sees what, and what holds that to be true:
 | **Everyone else** | Nothing: asking for a private chat answers `There is no such chat.`, the same as for a chat that never existed. | The same access rules; the chat is left out of their lists and live updates. |
 | **The organization's operator** (the person who claimed the organization) | People, roles, policy, totals of spend. Not a private chat: no title, no history, no files. | `operator.sees_private` in the policy is off by default. |
 | **A bot** | At most what the person who made it holds, narrowed by its scope, decided again on every request. | The server; a bot is default-deny and may only use the routes on its allow-list. |
-| **A chat's own commands** | Their own folder and the internet on four ports (443, 80, 22, 9418 unless changed). Not another chat's files, processes or sockets, and no key or token of anyone's. | Each chat is its own Linux user inside a Landlock fence. The model is reached only through the server's model door with a bearer minted for that one chat; git goes through the server's git door. |
+| **A chat's own commands** | Their own folder, and any address the machine can reach on the allowed TCP ports (443, 80, 22 and 9418 by default, plus the ports of the organization server's own address); UDP is not filtered. Not another chat's files, processes or sockets, and no key or token of anyone's. | Each chat is its own Linux user inside a Landlock fence. The chat uses its own bearer for the server's model and git doors. |
 | **Whoever is root on the host** | Everything on the disk, including every chat. | Nothing: that is the honest limit (below). |
 
 Keys and git:
 
 - **The organization's model key never enters a chat.** The chat calls the organization server's model door with a
-  bearer minted for that chat (it ends when the chat is stopped or deleted, and after seven days). The door adds the real key
-  itself and meters every call to the cent into the owner's account.
+  bearer minted for that chat. It ends after seven days or at once when the chat is stopped or deleted or the operator
+  removes its owner. The door adds the real key and meters every call to the cent into the owner's account.
 - **People may add their own OpenRouter key and GitHub access.** They are sealed on disk with a key per person, which is
   itself sealed by `CODEAF_SERVER_KEY`. Back that key up with `.env`.
 - **Git goes through the server.** A chat's `git clone` and `git push` to an allowed host (GitHub unless changed) are
   rewritten to the organization server, which adds the owner's GitHub access to each request. No token is ever in the
   chat.
+- **Browser chat connections.** A WebSocket upgrade with an `Origin` header is accepted only if the header names the host
+  the request was sent to or the public name set with `CODEAF_PUBLIC_DOMAIN`. Otherwise the server returns `403` with
+  `This page is from another site, so it cannot open a chat connection here.` Connections with no `Origin` header are accepted
+  because the codeaf command line, the desktop app's engine and other non-browser clients send none. The sign-in cookie is
+  `SameSite=Strict`. The origin check also protects against pages on sibling names of the same site. There is no setting to
+  allow another origin because no client needs one.
 
 ## Sharing a chat
 
@@ -113,6 +119,8 @@ A person can make a **bot**: a named identity with its own token (`cbt_...`, sho
 script or integration. A bot is owned by its creator and never holds more than the creator does right now. What it
 makes (a hosted chat, for example) belongs to the creator and is recorded as made by the bot. It cannot make bots, mint
 tokens, use the operator's routes, or touch a person's stored keys.
+Starting a hosted chat requires the organization's policy to allow agents to create things and the bot's scope to hold
+`run`, which the default `edit` and `full` roles include and `view` and `comment` leave out.
 
 ## The hosting policy
 
@@ -239,11 +247,27 @@ needs an image that has `codeaf sessionhost`; the operator README says how to po
 - By default only the owner moves a chat between My space and a workstream; the policy's `chats.move_by` set to `manage` lets
   people with the `manage` verb on the chat move it too (never into their own My space, never a bot).
 - `local_sessions` `allow` and `warn` are reported and stored; nothing in a client acts on them yet.
-- The sandbox filters outbound network by port, not by address.
+- The sandbox filters TCP by port. Through allowed ports, a chat can reach internal services, the Docker host gateway and
+  cloud metadata such as `169.254.169.254` if those addresses answer. Cloud metadata can expose the machine's cloud
+  credentials. UDP is unfiltered. The port fence worked on a flat test network, where the metadata address did not answer.
+  Reachability on a cloud machine remains untested. The sessionhost logs a warning at start when this machine answers on one.
+- A hosted chat has no total disk or memory quota and can fill the sessions volume or the machine's memory. The operator can
+  bound the whole `sessionhost` service.
+- Removing someone while the chat machine is down still ends the person's model and git access, clears their stored keys and
+  GitHub access and closes their chats to everyone. The chats stay on the machine. Check that the chats are gone and repeat
+  the removal once the machine answers if any remain. Removal never retries on its own.
+- The sessionhost relies on the container runtime's default seccomp profile to block user namespaces and calls such as
+  `mount` and `chroot`. Use Docker's default profile or one with equivalent restrictions.
+- `local_sessions: refuse` is enforced on the server side only. No client acts on it yet.
+- Request framing and WebSocket upgrades through a front proxy were untested end to end. The test stack used no proxy.
+- The priced-model reservation path was read in the code and remains untested end to end. The test stub has no model price.
 - The Railway template is made from the published images, which are not on Docker Hub yet, so the script that makes it has only
   been dry-run. The by-hand Railway install in the operator README is the tested configuration, and it includes the sessionhost.
 - GitHub sign-in and invitation mail are optional and untested in the stack; a username and password is the default way in.
 - One replica of each service; no high availability.
+
+See the [operator guardrails in Known limits](../deploy/org/README.md#known-limits) for firewall and cloud identity rules,
+resource limits, cleanup after removal and seccomp profiles.
 
 ## Where to read next
 
