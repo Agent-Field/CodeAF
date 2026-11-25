@@ -85,9 +85,8 @@ func (c *checker) checkRecordExpression(file, at, typ, expr string) {
 		cel.Function("changed", cel.Overload("changed_string", []*cel.Type{cel.StringType}, cel.BoolType)),
 		cel.Function("days_since", cel.Overload("days_since_dyn", []*cel.Type{cel.DynType}, cel.DoubleType)),
 		cel.Function("count", cel.Overload("count_dyn", []*cel.Type{cel.DynType}, cel.DoubleType)),
-		cel.Function("checklist_done", cel.Overload("checklist_done_id", []*cel.Type{cel.StringType}, cel.BoolType)),
 		cel.Function("signed", cel.Overload("signed_id", []*cel.Type{cel.StringType}, cel.BoolType), cel.Overload("signed_void", nil, cel.BoolType)),
-		cel.Function("open_work", cel.Overload("open_work_void", nil, cel.DynType)),
+		cel.Function("open_work", cel.Overload("open_work_void", nil, cel.DoubleType)),
 	}
 	fields, _ := c.typeFields(typ)
 	names := map[string]bool{}

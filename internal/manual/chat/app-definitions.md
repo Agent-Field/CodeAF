@@ -52,8 +52,9 @@ query so the desk requests a view by ID.
 
 A lifecycle declares the states of a record and which transitions people,
 agents or runs may request. A board grouped by that lifecycle moves cards
-through those transitions. Guards can read the record fields and refer to
-checklist completion and sign-off. The engine can check declarations for work
+through those transitions. Guards can read record fields, check for a current
+sign-off with `signed()` or `signed("review")`, and count open work with
+`open_work()`. The engine can check declarations for work
 items, multistep forms, due timers and process templates. Executing a declared
 process depends on the corresponding data and run support.
 

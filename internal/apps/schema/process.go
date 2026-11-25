@@ -36,8 +36,8 @@ type RecordTransition struct {
 }
 
 type Transition struct {
-	Label   string   `json:"label"`
-	From    []string `json:"from"`
+	Label   string   `json:"label,omitempty"`
+	From    []string `json:"from,omitempty"`
 	To      string   `json:"to"`
 	Actors  []string `json:"actors,omitempty"`
 	Guard   string   `json:"guard,omitempty"`

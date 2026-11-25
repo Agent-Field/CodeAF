@@ -128,7 +128,7 @@
             "actors": [
               "person"
             ],
-            "guard": "open_work() == 0 && signed(\"review\")"
+            "guard": "open_work() == 0.0 && signed(\"review\")"
           }
         }
       }

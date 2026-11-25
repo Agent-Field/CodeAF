@@ -84,11 +84,33 @@ func TestGalleryAcceptsStoreDeclarations(t *testing.T) {
 		at(app, "records", "sku")["lifecycle"] = map[string]any{
 			"field": "stage", "transitions": []any{map[string]any{
 				"id": "close", "from": []string{"*"}, "to": "closed", "by": []string{"person"},
-				"guard": "open_work() == 0 && signed()",
+				"guard": "open_work() == 0.0 && signed()",
 			}},
 		}
 	})(t, def.Files)
 	if r := Validate(def, nil); !r.OK() {
 		t.Fatal(r)
 	}
+	transition := &Transition{To: "open", Actors: []string{"agent"}}
+	result, err := CompileRecipe(def, nil, Recipe{Kind: "add-transition", ID: "reopen", Record: "sku", Transition: transition})
+	if err != nil {
+		t.Fatalf("optional transition fields must survive a recipe: %v", err)
+	}
+	app, err := ParseApp(result.App)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := app.Records["sku"].Lifecycle.Transitions[1]
+	if next.Label != "" || next.From != nil || len(next.By) != 1 || next.By[0] != "ai" {
+		t.Fatalf("wrong native transition: %+v", next)
+	}
+	for _, guard := range []string{`checklist_done("close")`, `open_work() && signed()`} {
+		jsonEdit(AppFile, func(app map[string]any) {
+			at(app, "records", "sku", "lifecycle", "transitions", 0)["guard"] = guard
+		})(t, def.Files)
+		if r := Validate(def, nil); !hasCode(r, CodeExpression) {
+			t.Fatalf("unsupported guard %s accepted: %s", guard, r)
+		}
+	}
+
 }
