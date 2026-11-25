@@ -2490,9 +2490,11 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 // admitBeltLanding makes the last quiet check and wake admission one step
 // against page Stop. Receipt construction and persistence happen outside it.
 //
-// A CONVERSATION THE PERSON PAUSED IS NOT STARTED BY A LANDING. The result is
-// kept as the quiet record a late stop keeps, with the sentence that says why
-// it started no turn, and the next turn reads it (team_pause.go).
+// A CONVERSATION THE PERSON PAUSED IS NOT STARTED BY A LANDING, NOR IS ONE IN A
+// TEAM WHOSE TURN WAS STOPPED, until a turn next begins. The result is kept as
+// the quiet record a late stop of the task keeps, with the sentence that says
+// why it started no turn, and the next turn reads it (team_pause.go,
+// team_stophold.go).
 func (a *Agent) admitBeltLanding(run *beltRun, summary RunSummary, line string, landing RunLanding, note userMessage) {
 	run.deliveryMu.Lock()
 	if a.beltRunQuiet(run) {

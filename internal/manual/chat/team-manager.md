@@ -361,8 +361,8 @@ Stopping a turn leaves a command it started in the background running, as it doe
 conversation. In a crew, that command's ending does not start the conversation again. From
 a stop of a running turn (yours, or the manager's `team_stop`, with or without a window on
 the member) until a turn next begins, the
-ending of a background command, or a watch firing, is written into the conversation as a
-record and starts no turn. This holds for a member and for the manager.
+ending of a background command, a watch firing, or a background task landing is written into
+the conversation as a record and starts no turn. This holds for a member and for the manager.
 
 A member often starts a long command, ends its turn and waits to be told how it ended. It
 reads idle, and a stop still reaches it: **Stop** on a crew's row stops such a member too,
@@ -370,11 +370,11 @@ the command's ending starts no turn, and its manager is told the work it handed 
 stopped, as for a stopped turn. That is said only for a command the member asked to hear the
 end of, or a watch that has not fired. A command left running for its own sake, such as a dev
 server, is held the same way and the manager is told nothing: the work before it was finished.
+The manager's `team_stop` holds such a member the same way, and the manager is told nothing.
 
-Only a background command's ending and a watch firing are held. Whatever else starts a
-conversation still does: your own message to it, the manager's next hand-off, a background
-task landing. That turn ends the hold and reads the record, which says it arrived after the
-stop and is no reason to take the stopped work up again.
+Your own message to the conversation and the manager's next hand-off still start it. That
+turn ends the hold and reads the record, which says it arrived after the stop and is no reason
+to take the stopped work up again.
 
 To end the command itself, use **Stop all** on the conversation's Processes tab. A
 conversation in no crew is unchanged: there a command's ending still starts its turn.

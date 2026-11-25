@@ -303,9 +303,7 @@ func (a *Agent) teamStoppedByPerson(door StopDoor, handed map[string]time.Time) 
 		}
 		managers := false
 		for _, entry := range tail {
-			if entry.Kind == teams.KindStop && entry.From == teams.FromManager &&
-				(entry.Member == role.key || entry.Member == "" && entry.To == role.handle) &&
-				!entry.At.Before(since) {
+			if teamManagerStops(role, entry) && !entry.At.Before(since) {
 				managers = true
 			}
 		}

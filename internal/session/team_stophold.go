@@ -12,17 +12,23 @@ package session
 // that ended such wakes (cmd/codeaf's appwakes.go); it no longer pauses.
 //
 // So in a team, from a stop of a running turn until a turn next begins, the
-// ending of a background command and a watch's firing are kept as a record and
-// start no turn. The hold is one row of the table that decides every wake
+// ending of a background command, a watch's firing and a background task's
+// landing are kept as a record and start no turn. The hold is one row of the table that decides every wake
 // ([wakeStanding]) and is read where the ending would be queued, under the
 // lock a stop takes ([Agent.enqueueNote]), so no ending slips between a stop
 // and its hold. The stop is the person's own or a manager's team_stop, whoever
 // performs the latter: an interface, through the person's door (teamevent.go),
-// or the member's own session, through the manager's ([Agent.interruptTeamTurn]).
+// or the member's own session, through the manager's ([Agent.interruptTeamTurn]
+// for a turn, [Agent.teamStopWaiting] for a member with none).
 // The command itself is left running, as an interrupt always leaves it. Only
-// those two lanes are held: the person's own words, the manager's next
-// hand-off and a background task landing still start a turn, which ends the
-// hold.
+// those three lanes are held: the person's own words and the manager's next
+// hand-off still start a turn, which ends the hold.
+//
+// A landing was let through at first, as news of work the stop had not been
+// about. It was the same fault one lane over: the stopped member's task came
+// back, started its turn, and the turn took the stopped work up again on the
+// result. The person's word on it was to keep it quiet, so it is kept as the
+// receipt a late stop of the task keeps ([Agent.admitBeltLanding]).
 //
 // A conversation in no team is untouched: there the ending of a command the
 // person asked to hear about still starts its turn.
@@ -34,6 +40,13 @@ package session
 // but a command or a watch still running begins the hold too, and withdraws
 // the wake a failed command's ending had armed ([Agent.deferJobWakeLocked]).
 // A command left running for its own sake (a dev server) is held the same.
+//
+// A manager's team_stop of such a member holds the same way. The member's own
+// session used to look for its manager's stop only while a turn ran, so a
+// headless member that waited on a command never read the stop and reported
+// the stopped work done when the command ended. Its idle watch reads the stop
+// now and begins the hold through the manager's door; the manager is told
+// nothing of its own stop, and nothing is written.
 //
 // No handed-out work stalls unsaid. What a manager handed this conversation
 // lasts as long as the work does ([Agent.teamHandedCarried]): through a turn
@@ -72,9 +85,10 @@ type teamStopHold struct {
 // teamStopHoldLocked begins the hold when the stop is the person's or a
 // manager's and there is something to hold: a turn running, or a command or
 // watch whose ending would be news. It reports whether it began with no turn
-// running, which is the stop a manager may have yet to be told of
-// ([Agent.teamStopHoldSaid]), and whether it withdrew a wake already armed.
-// The caller holds a.mu.
+// running, and whether it withdrew a wake already armed. Through the person's
+// door that is the stop a manager may have yet to be told of
+// ([Agent.teamStopHoldSaid]); the manager's own door tells nobody
+// ([Agent.teamStopWaiting]). The caller holds a.mu.
 func (a *Agent) teamStopHoldLocked(door StopDoor) (waiting, withdrew bool) {
 	hold := &a.team.stopHold
 	if (door != StopByPerson && door != StopByManager) || !hold.seated.Load() {
@@ -82,10 +96,6 @@ func (a *Agent) teamStopHoldLocked(door StopDoor) (waiting, withdrew bool) {
 	}
 	if a.running {
 		hold.held.Store(true)
-		return false, false
-	}
-	// The manager's own door ends a running turn and nothing else.
-	if door != StopByPerson {
 		return false, false
 	}
 	// A command that failed moments ago has its wake on a clock, and that turn
@@ -97,6 +107,36 @@ func (a *Agent) teamStopHoldLocked(door StopDoor) (waiting, withdrew bool) {
 	}
 	a.stopJobWakeLocked()
 	return !hold.held.Swap(true), withdrew
+}
+
+// teamStopWaiting is a manager's stop that found this member with no turn
+// running: the hold begins if a command or a watch is still running here, as
+// it does for the person's stop of such a member. A turn that began since the
+// look is left alone; a stop written before it began is not addressed to it.
+//
+// IT SAYS NOTHING. The person's door tells the member's manager that work it
+// handed out was stopped ([Agent.teamStopHoldSaid]); this stop is the
+// manager's own, which it does not need to be woken to hear of, and
+// `stopped by the person` is the person's door's line alone.
+func (a *Agent) teamStopWaiting() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.running {
+		a.teamStopHoldLocked(StopByManager)
+	}
+}
+
+// teamManagerStops reports whether entry is role's manager stopping this
+// membership: a stop line from the manager that names the conversation by its
+// key or, carrying none, by its handle. Only a membership that takes this
+// team's orders is stopped by it: not the manager's own, and not a shared one,
+// whose manager here is a link and whose stops do not reach it.
+func teamManagerStops(role teamRole, entry teams.Entry) bool {
+	if !role.managed || role.manager || role.shared || role.handle == "" {
+		return false
+	}
+	return entry.Kind == teams.KindStop && entry.From == teams.FromManager &&
+		(entry.Member == role.key || entry.Member == "" && entry.To == role.handle)
 }
 
 // teamStopHoldOver ends the hold: a turn has begun.

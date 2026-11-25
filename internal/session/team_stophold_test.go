@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -462,5 +463,178 @@ func TestTeamStopHoldIsReadWhereTheEndingIsQueued(t *testing.T) {
 	}
 	if !strings.Contains(string(journal), "job 8 exited 0") || strings.Count(string(journal), teamStopHeldRule) != 1 {
 		t.Fatalf("the ending was not kept as one record that says why it started no turn:\n%s", journal)
+	}
+}
+
+// owedLanding is a background task of agent's whose landing owes the
+// conversation an answer, which is the landing that starts a turn.
+func owedLanding(t *testing.T, agent *Agent, row uint64) *beltRun {
+	t.Helper()
+	store := askStore(t, "repair parser")
+	t.Cleanup(func() { store.Close() })
+	question := "What did the repair find?"
+	if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{store: store, root: store.RootID(), row: row, title: "Parser", bringingHome: true}
+	agent.beltMu.Lock()
+	agent.beltRun = run
+	agent.beltMu.Unlock()
+	t.Cleanup(func() { agent.beltMu.Lock(); agent.beltRun = nil; agent.beltMu.Unlock() })
+	return run
+}
+
+// A STOP KEEPS A TASK LANDING QUIET TOO. The stop held a command's ending and
+// a watch's firing and let a background task's landing start the stopped
+// conversation, which then took the stopped work up again on the task's
+// result. The landing is kept as its receipt, with the sentence that says why
+// it started no turn; the person's next message reads it, and from that turn
+// on a landing starts its turn again.
+func TestTeamStopKeepsATaskLandingFromStartingATurn(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(8), nil)
+	streaming := make(chan struct{})
+	calls := &scriptedCompleter{steps: []step{thinkingStep(streaming), okStep(), okStep(), okStep()}}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	sendDirective(t, manager, "web")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start on the directive")
+	}
+	web.Interrupt()
+	waitQuiet(t, web)
+
+	web.deliverBeltRunLanding(owedLanding(t, web, 98), RunSummary{Outcome: beltRunOutcomeDone, Result: "Preserved result."}, RunLanding{})
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the stopped member was asked %d times, want only the turn the person stopped", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), "Preserved result.") || strings.Count(string(journal), teamStopHeldRule) != 1 {
+		t.Fatalf("the landing was not kept as one record that says why it started no turn:\n%s", journal)
+	}
+
+	collect(t, mustSubmit(t, web, "what came back?"))
+	asked := userTextIn(calls.request(1))
+	if !strings.Contains(asked, "Preserved result.") || !strings.Contains(asked, teamStopHeldRule) {
+		t.Fatalf("the person's next turn did not read the landing and why it was held:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	web.deliverBeltRunLanding(owedLanding(t, web, 99), RunSummary{Outcome: beltRunOutcomeDone, Result: "Second result."}, RunLanding{})
+	waitRequests(t, calls, 3)
+}
+
+// A LANDING IN A MEMBER NOBODY STOPPED STILL STARTS ITS TURN.
+func TestTeamTaskLandingWithNoStopStillStartsATurn(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	calls := oneAnswer(2)
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	if roles := web.teamRoles(); len(roles) == 0 {
+		t.Fatal("the member has no seat in its team")
+	}
+	web.deliverBeltRunLanding(owedLanding(t, web, 98), RunSummary{Outcome: beltRunOutcomeDone, Result: "Preserved result."}, RunLanding{})
+	waitRequests(t, calls, 1)
+	if asked := userTextIn(calls.request(0)); !strings.Contains(asked, "Preserved result.") || strings.Contains(asked, teamStopHeldRule) {
+		t.Fatalf("the landing's own turn does not carry the result as news:\n%s", asked)
+	}
+}
+
+// AND A CONVERSATION IN NO TEAM IS UNTOUCHED: a landing after the person
+// stopped its turn still starts the next one.
+func TestPersonStopOutsideATeamStillHearsATaskLanding(t *testing.T) {
+	a, client, _, wakes, _ := jobWakeFixture(t)
+	streaming := make(chan struct{})
+	client.steps = []step{thinkingStep(streaming), okStep()}
+	events := mustSubmit(t, a, "think about this for a while")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the turn did not start")
+	}
+	a.Interrupt()
+	collect(t, events)
+	a.deliverBeltRunLanding(owedLanding(t, a, 98), RunSummary{Outcome: beltRunOutcomeDone, Result: "Preserved result."}, RunLanding{})
+	select {
+	case stream := <-wakes:
+		collect(t, stream)
+	case <-time.After(5 * time.Second):
+		t.Fatal("a task landing started no turn in a conversation that is in no team")
+	}
+}
+
+// A MANAGER'S STOP OF A MEMBER THAT ONLY WAITS ON A COMMAND HOLDS TOO. The
+// member's own session looked for its manager's stop only while a turn ran, so
+// one that had started a command, ended its turn and waited never read the
+// stop: the command ended, woke it, and it reported the stopped work done. No
+// interface holds the member here. The stop begins the hold, the command's
+// ending is a record that starts no turn, the stop is not said to be the
+// person's, and the manager is not woken to hear of its own stop.
+func TestTeamManagerStopOfAMemberWaitingOnACommandHolds(t *testing.T) {
+	fixture, managerCalls, web, calls, clock, started := waitingMember(t, okStep())
+	web.settleTeamEvents()
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Text: "stop"})
+	waitFor(t, "the member to read its manager's stop", func() bool { return web.team.stopHold.held.Load() })
+
+	web.jobs.settleExit(<-started, 0)
+	clock.advance(jobWakeDelay)
+	web.enqueueJobNote("job 8 exited 0")
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the member its manager stopped was asked %d times, want only its first turn", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), "job 8 exited 0") || !strings.Contains(string(journal), teamStopHeldRule) {
+		t.Fatalf("the command's ending was not kept as a record:\n%s", journal)
+	}
+	if said := trafficEvents(t, fixture, "stopped"); len(said) != 0 {
+		t.Fatalf("the manager's stop of a waiting member wrote to the traffic: %+v", said)
+	}
+	for i := 0; i < managerCalls.requests(); i++ {
+		if strings.Contains(userTextIn(managerCalls.request(i)), teamStoppedByPersonLine) {
+			t.Fatal("the manager was told its own stop was the person's")
+		}
+	}
+}
+
+// AND IN A TEAM WHOSE AUTO-WAKE IS OFF. Such a team's log is not read for
+// wakes, so a member there never saw a stop while it sat idle. It reads the
+// log for its manager's stop while a command of its own is running, and for
+// nothing else: the directive beside the stop still wakes nobody.
+func TestTeamManagerStopOfAWaitingMemberHoldsWithAutoWakeOff(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newTeamFixture(t, true)
+	var web *Agent
+	started := make(chan *job, 1)
+	calls := &scriptedCompleter{steps: []step{waitedStep(func() *Agent { return web }, started), okStep()}}
+	web = teamAgent(t, fixture, fixture.web, calls, nil)
+	clock := &jobWakeClock{}
+	web.jobWakeAfter = clock.after
+	collect(t, mustSubmit(t, web, "start the build and wait for it"))
+	waitQuiet(t, web)
+
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Text: "stop"})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	waitFor(t, "the member to read its manager's stop", func() bool { return web.team.stopHold.held.Load() })
+	web.jobs.settleExit(<-started, 0)
+	clock.advance(jobWakeDelay)
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the member was asked %d times, want only the person's turn: the stop holds and wake is off", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), teamStopHeldRule) {
+		t.Fatalf("the command's ending was not kept as a record:\n%s", journal)
 	}
 }

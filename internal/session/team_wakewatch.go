@@ -52,7 +52,9 @@ import (
 //     ([sharedTeamsStamp]) while it is idle, which is how a conversation made a
 //     member while it sat idle is noticed;
 //   - one stat of each team's log only while it is idle AND in a managed team
-//     with wake on, and a page read only when that stat moved.
+//     with wake on, and a page read only when that stat moved. With wake off
+//     a member's log is looked at the same way only while it has a command or
+//     a watch running, for its manager's stop and nothing else.
 //
 // A CONVERSATION NOBODY HAS OPEN IS OPENED. A directive to a member no window
 // and no host holds, and a reply to a manager in the same state, would wake
@@ -223,19 +225,38 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		roles = a.teamRolesLocked(profile)
 	}
 	var wakeMembers []teamRole
+	stopped := false
 	for _, role := range roles {
-		if !role.managed || !role.wakes || (!role.manager && role.handle == "") {
+		if !role.managed || (!role.manager && role.handle == "") {
+			continue
+		}
+		// WITH THE TEAM'S AUTO-WAKE OFF THE LOG IS READ ONLY FOR A STOP, and only
+		// while this member has a command or a watch running whose ending the
+		// stop would hold (team_stophold.go). Nothing it reads there wakes, and
+		// a team with wake on never asks what is running.
+		if !role.wakes && (role.manager || !a.teamWaitsOnNews()) {
 			continue
 		}
 		arrived := a.teamWatchReadLocked(profile, role)
 		var waking []teams.Entry
 		for _, entry := range arrived {
+			// A MANAGER'S STOP THAT FINDS NO TURN STILL HOLDS what the member
+			// waits on. One written before this session began is history.
+			if teamManagerStops(role, entry) && !entry.At.Before(a.startedAt) {
+				stopped = true
+			}
+			if !role.wakes {
+				continue
+			}
 			// Membership can arrive after the fresh-session watch expires.
 			// Its own start still owes this member its first turn.
 			if wakes, _ := teamEntryWakes(profile, role, entry, a.teamOwnStart(role, entry)); wakes {
 				waking = append(waking, entry)
 				a.teamAskedLocked(role, entry)
 			}
+		}
+		if !role.wakes {
+			continue
 		}
 		// A PAUSED MEMBER IS NOT WOKEN, and what would have woken it is not
 		// consumed: the hold is remembered, and the turn starts on the tick
@@ -263,6 +284,11 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		batch, w.pending, w.due = w.pending, nil, time.Time{}
 	}
 	a.team.mu.Unlock()
+	if stopped {
+		// Before anything is woken: a directive sent after the stop starts a
+		// turn, and that turn ends the hold as any turn does.
+		a.teamStopWaiting()
+	}
 	if len(wakeMembers) > 0 {
 		a.teamWakeMember(profile, wakeMembers, now)
 	}
@@ -270,6 +296,12 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		a.teamWakeManager(profile, roles, batch, now)
 	}
 	return true
+}
+
+// teamWaitsOnNews reports whether this conversation has a background command
+// or a watch still running: something whose ending a stop would hold.
+func (a *Agent) teamWaitsOnNews() bool {
+	return a.jobs != nil && a.jobs.newsPending()
 }
 
 // teamStopTick is a running member performing its manager's stop itself.
@@ -312,9 +344,7 @@ func (a *Agent) teamStopTick(profile string, turnAt time.Time, serial uint64) {
 		}
 		for _, entry := range entries {
 			w.stopCursors[role.id] = entry.ID
-			if entry.Kind == teams.KindStop && entry.From == teams.FromManager &&
-				(entry.Member == role.key || entry.Member == "" && entry.To == role.handle) &&
-				!entry.At.Before(turnAt) {
+			if teamManagerStops(role, entry) && !entry.At.Before(turnAt) {
 				stop = true
 			}
 		}

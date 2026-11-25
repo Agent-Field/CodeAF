@@ -130,7 +130,7 @@ type wakeRule func(a *Agent, profile string, c *wakeCause, now time.Time) wakeDe
 // wakeRules is which team rules bind which cause, in the order they are asked.
 // The engine's gates bind every cause and are not listed ([Agent.decideWakeLocked]).
 //
-// THE PAUSE IS ASKED LAST, AND FRESH. The look that chose a member's roles read
+// A DIRECTIVE'S PAUSE IS ASKED LAST, AND FRESH. The look that chose a member's roles read
 // the teams file through a memo up to a tick old ([sharedTeamsStamp]), so a
 // directive sent in the second after the person pressed Pause reached the wake
 // as if nothing held it, and the turn it started consumed the directive the
@@ -154,9 +154,11 @@ func init() {
 // queued, and what it holds is kept in the conversation as a record that
 // starts no turn: the record is its line, and the traffic is told nothing.
 //
-// A STOP HOLDS ONLY A COMMAND'S ENDING AND A WATCH'S FIRING. The person's own
-// words, a manager's next hand-off and a task landing still start a turn,
-// which ends that hold (team_stophold.go).
+// A STOP HOLDS WHAT THE STOPPED WORK LEFT BEHIND: a command's ending, a watch's
+// firing and a background task's landing. The person's own words and a
+// manager's next hand-off still start a turn, which ends that hold
+// (team_stophold.go). News a turn's end recorded is not held by it: a stopped
+// turn starts none, and a turn that completed began after the hold was over.
 //
 // A PAUSE HOLDS EVERY TURN NOBODY TYPED, these four and the team's traffic
 // ([wakePauseRule]): the person paused the conversation, not one of the ways
@@ -164,7 +166,7 @@ func init() {
 var wakeStanding = map[wakeKind]struct{ stop, pause bool }{
 	wakeCommand: {stop: true, pause: true},
 	wakeWatch:   {stop: true, pause: true},
-	wakeLanding: {pause: true},
+	wakeLanding: {stop: true, pause: true},
 	wakeAnswer:  {pause: true},
 }
 
