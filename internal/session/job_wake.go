@@ -37,6 +37,13 @@ func (a *Agent) deferJobWakeLocked() {
 			return
 		}
 		a.jobWake = nil
+		// A HOLD THAT BEGAN INSIDE THE WINDOW STILL HOLDS. The endings were
+		// queued before the person paused the conversation, and the turn this
+		// clock would start is the one the pause is there to keep from
+		// starting; they stay queued for the next turn (team_wakedecide.go).
+		if a.standingHoldLocked(wakeCommand).verdict == wakeHolds {
+			return
+		}
 		a.wakeLocked()
 	})
 }

@@ -686,10 +686,10 @@ between. With the team's auto-wake off, a resumed member reads it at its next tu
 other message.
 
 Your own words are not held: typing into a paused member's conversation starts its turn, and
-that turn reads what was waiting, so Resume starts nothing more on it. Any other wake, such as
-a background process ending, reads none of the crew's lines and is stopped at once in the
-desktop app. A pause made by an earlier version of the app is carried onto the team's record
-the first time the updated app opens.
+that turn reads what was waiting, so Resume starts nothing more on it. Nothing else starts a
+paused member: a background command ending, a watch firing or a task landing is written into
+its conversation as a record, and its next turn reads it. A pause made by an earlier version
+of the app is carried onto the team's record the first time the updated app opens.
 
 ## A new crew's members wait on standby — why nobody started after Make the crew
 

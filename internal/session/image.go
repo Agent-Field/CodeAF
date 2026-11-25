@@ -514,7 +514,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 				// An ordinary turn, on the chat model: the follow-up is words,
 				// and words are what that model can read.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && drained.owed {
+			} else if completed && drained.owed && !a.turnEndHeldLocked(drained) {
 				// Vision reads only the image message. News recorded at its end
 				// still needs an ordinary turn, even if its wake clock fired.
 				a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer)

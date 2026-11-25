@@ -18,12 +18,24 @@ package session
 // for it to be opened. Something else may still open it (a question's answer,
 // a wake the retry queue kept); it is then open and held, which costs nothing.
 //
-// AND WHERE THE TRAFFIC IS DELIVERED. A turn something else starts in a paused
-// member (a sub-task landing, a command ending) reads none of its teams' lines
-// and moves no cursor ([Agent.teamNewsLocked]): its first request used to carry
-// the held directive, and the resume then had nothing to start on. A turn that
-// does deliver them, the person's own, ends the hold, so the resume starts no
-// second turn on lines already read.
+// AND WHERE THE TRAFFIC IS DELIVERED. A turn that is not the person's own reads
+// none of a paused member's teams' lines and moves no cursor
+// ([Agent.teamNewsLocked]): its first request used to carry the held directive,
+// and the resume then had nothing to start on. A turn that does deliver them,
+// the person's own, ends the hold, so the resume starts no second turn on
+// lines already read.
+//
+// AND NOTHING ELSE STARTS A TURN EITHER. The pause was decided for traffic and
+// for nothing else: a background command ending, a watch firing, a task landing
+// and news recorded as a turn ended each started the paused member's turn, and
+// only an interface that happened to hold the member ended it again
+// (cmd/codeaf's appwakes.go), after it had begun and where no interface held
+// it, not at all. The engine decides those too now, by the cause of the news
+// ([wakeStanding]): what arrived is kept in the conversation as a record that
+// starts no turn, with [teamPauseHeldRule] saying why, exactly as a stop keeps
+// a command's ending (team_stophold.go). The next turn reads it: the person's
+// own words, or the turn Resume starts on a directive that waited. The
+// interface's stop stays as it was, for a wake this file does not decide.
 //
 // A PAUSE IS THE PERSON'S WORD ABOUT THE CONVERSATION, so it holds in every
 // team the conversation is a member of ([teams.File.PausedAnywhere]), not only
@@ -43,6 +55,7 @@ package session
 
 import (
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -52,6 +65,39 @@ import (
 // teamPausedWhy is why a paused member did not start, in the words the manager
 // and the traffic are both given.
 const teamPausedWhy = "the person paused it; it starts on this when they resume it"
+
+// teamPauseHeldRule is said with news that started no turn because the person
+// had the conversation paused.
+const teamPauseHeldRule = "This arrived while the person had this conversation paused, so it started no turn. It is a record of what happened."
+
+// teamPauseHold is one conversation's pause, for the wakes that are decided
+// under the agent's lock and may read neither the teams file nor the seat's
+// lock there.
+type teamPauseHold struct {
+	// paused is whether the person has this conversation paused in any of its
+	// teams, as of the last time its roles were read. Read without a lock or a
+	// disk.
+	paused atomic.Bool
+}
+
+// pausedRoles reports whether any of roles is paused. A pause holds the
+// conversation in every team it is a member of ([rolesFor]), so one is all.
+func pausedRoles(roles []teamRole) bool {
+	for _, role := range roles {
+		if role.paused {
+			return true
+		}
+	}
+	return false
+}
+
+// teamPauseFresh reads this conversation's roles again when the teams store has
+// moved, so the pause a wake is about to be decided on is the one on the
+// record now and not the one the last boundary read. It costs one look at the
+// store's stamp for each piece of news a pause could hold, and nothing for a
+// conversation that can be in no team. It takes the seat's lock and must not
+// be called under a.mu.
+func (a *Agent) teamPauseFresh() { a.teamRoles() }
 
 // teamHeldPausedText is the traffic line for a directive a paused member was
 // sent: "held @mac-dev: the person paused it; …".

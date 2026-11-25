@@ -1,10 +1,15 @@
 package session
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -600,10 +605,15 @@ func sendTeamNote(t *testing.T, manager *Agent, to string) {
 	}
 }
 
-// A TURN SOMETHING ELSE STARTS IN A PAUSED MEMBER READS NONE OF ITS TEAM'S
-// LINES. A command's ending woke the member, that turn's first request carried
-// the held directive, and the resume then started nothing: the manager had been
-// told the directive waited for it.
+// NOTHING BUT THE PERSON STARTS A PAUSED MEMBER, AND THE ENGINE DECIDES IT.
+// A command's ending woke the paused member, and only the desktop app, where
+// it held the member, ended that turn after it began; an earlier fault had the
+// turn's first request carry the held directive, so the resume started
+// nothing. Here no interface is in the loop: a command's ending and a watch's
+// firing start no turn, each is kept in the conversation as a record that says
+// why, the held directive stays held, and the turn Resume starts reads the
+// directive and the records together. After that a command's ending starts a
+// turn again.
 func TestTeamPausedMembersOtherWakeLeavesTheDirectiveHeld(t *testing.T) {
 	fastTeamWake(t)
 	fixture := newWakingTeamFixture(t)
@@ -615,21 +625,110 @@ func TestTeamPausedMembersOtherWakeLeavesTheDirectiveHeld(t *testing.T) {
 	quietFor()
 
 	web.enqueueJobNote("job 8 exited 0")
-	waitRequests(t, webCalls, 1)
-	waitQuiet(t, web)
-	if asked := userTextIn(webCalls.request(0)); strings.Contains(asked, "Fix the header.") {
-		t.Fatalf("a paused member's turn on a command's ending was handed the held directive:\n%s", asked)
-	}
+	web.enqueueWatchNote("checks", "the checks settled", true)
 	quietFor()
-	if got := webCalls.requests(); got != 1 {
-		t.Fatalf("the paused member made %d model calls, want only the command's turn", got)
+	if got := webCalls.requests(); got != 0 {
+		t.Fatalf("a paused member was started %d times by a command's ending and a watch", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"job 8 exited 0", "the checks settled"} {
+		if !strings.Contains(string(journal), want) {
+			t.Fatalf("%q was not kept as a record:\n%s", want, journal)
+		}
+	}
+	if got := strings.Count(string(journal), teamPauseHeldRule); got != 2 {
+		t.Fatalf("the record said why it started no turn %d times, want 2", got)
 	}
 
 	setPaused(t, fixture, fixture.web, false)
-	waitRequests(t, webCalls, 2)
-	asked := userTextIn(webCalls.request(1))
+	waitRequests(t, webCalls, 1)
+	asked := userTextIn(webCalls.request(0))
 	if strings.Count(asked, "Fix the header.") != 1 || !strings.Contains(asked, teamWakeMemberLead) {
 		t.Fatalf("the resumed member was not started on the directive that waited, once:\n%s", asked)
+	}
+	for _, want := range []string{"job 8 exited 0", "the checks settled", teamPauseHeldRule} {
+		if !strings.Contains(asked, want) {
+			t.Fatalf("the turn Resume started did not read %q:\n%s", want, asked)
+		}
+	}
+	waitQuiet(t, web)
+	web.enqueueJobNote("job 9 exited 0")
+	waitRequests(t, webCalls, 2)
+}
+
+// NEWS A PAUSED MEMBER'S OWN TURN LEFT UNREAD STARTS NO TURN AT ITS END. The
+// person typed into a paused member, which is theirs to do, and a command
+// ended after that turn's last request had gone out. The turn's end records
+// the ending and would start one more turn to answer it, a turn nobody typed
+// in a conversation the person paused. It is kept as a record instead.
+func TestTeamPausedMembersTurnEndStartsNoTurnOnACommandsEnding(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	setPaused(t, fixture, fixture.web, true)
+	var web *Agent
+	calls := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			web.enqueueJobNote("job 8 exited 0")
+			return textResponse("started"), nil
+		},
+		okStep(),
+	}}
+	web = teamAgent(t, fixture, fixture.web, calls, nil)
+	collect(t, mustSubmit(t, web, "start the build"))
+	waitQuiet(t, web)
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the paused member made %d model calls, want only the person's turn", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), "job 8 exited 0") || strings.Count(string(journal), teamPauseHeldRule) != 1 {
+		t.Fatalf("the ending was not kept as one record that says why it started no turn:\n%s", journal)
+	}
+}
+
+// A TASK LANDING IN A PAUSED MEMBER IS KEPT AS ITS RECEIPT. The landing would
+// start the turn that answers it; the person paused the conversation, so the
+// result is recorded with its task's identity, as a late stop records it, and
+// says why no turn began.
+func TestTeamPausedMembersTaskLandingIsKeptAsARecord(t *testing.T) {
+	fixture := newWakingTeamFixture(t)
+	setPaused(t, fixture, fixture.web, true)
+	calls := oneAnswer(1)
+	web := teamAgent(t, fixture, fixture.web, calls, func(config *Config) { config.teamWatchManual = true })
+	store := askStore(t, "repair parser")
+	defer store.Close()
+	question := "What did the repair find?"
+	if _, err := store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{store: store, root: store.RootID(), row: 98, title: "Parser", bringingHome: true}
+	web.beltMu.Lock()
+	web.beltRun = run
+	web.beltMu.Unlock()
+	t.Cleanup(func() { web.beltMu.Lock(); web.beltRun = nil; web.beltMu.Unlock() })
+	web.deliverBeltRunLanding(run, RunSummary{Outcome: beltRunOutcomeDone, Result: "Preserved result."}, RunLanding{})
+	web.mu.Lock()
+	woke := web.running || len(web.steering) != 0
+	web.mu.Unlock()
+	if woke || calls.requests() != 0 {
+		t.Fatal("a task landing started a paused member's turn")
+	}
+	entries := web.Transcript()
+	if len(entries) != 1 || !entries[0].RoutineCompletion || len(entries[0].CompletionTasks) != 1 || entries[0].CompletionTasks[0].ID != run.row {
+		t.Fatalf("the held landing lost its task's identity: %+v", entries)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), "Preserved result.") || strings.Count(string(journal), teamPauseHeldRule) != 1 {
+		t.Fatalf("the landing was not kept with why it started no turn:\n%s", journal)
 	}
 }
 

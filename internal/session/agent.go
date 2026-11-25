@@ -2371,7 +2371,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
-			} else if completed && unanswered && a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer) {
+			} else if completed && unanswered && !a.turnEndHeldLocked(drained) && a.wakeAnsweringLocked(drained.heard, drained.only, drained.answer) {
 				// SOMETHING LANDED IN THE LAST SECONDS OF THIS TURN. A task's
 				// note, or the person typing while the answer was still
 				// streaming: steering lands at a STEP boundary, and a turn whose
@@ -4424,6 +4424,11 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 	// person steered in is neither, which is what [steerNote] says.
 	if !note.steered {
 		note.authored = true
+	}
+	if wakeStanding[note.cause].pause {
+		// The pause this note may be held by is read now, off the lock: it is
+		// the person's word in a file another process writes (team_pause.go).
+		a.teamPauseFresh()
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()

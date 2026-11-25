@@ -13,10 +13,6 @@ package session
 // said why; and each caller wrote its own line, so `woke` was written for a
 // turn that had been running all along.
 //
-// A hold that stands on the conversation itself, a stop until a turn next
-// begins, is the same table's second half ([wakeStanding]): it binds the news
-// that arrives through the session's own queue, and is read there.
-//
 // SO ONE FUNCTION DECIDES AND ONE WRITES. A caller says what is asking for the
 // turn (a [wakeCause]); [Agent.decideWake] answers start, queue, hold or
 // nothing (a [wakeDecision]) from one table of which rule binds which cause;
@@ -28,6 +24,13 @@ package session
 // off the agent's ([wakeRules]). The engine's gates are the agent's own state
 // and are read under a.mu ([Agent.decideWakeLocked]), where the turn is then
 // started in the same hold, so the answer is the wake's own.
+//
+// AND SOME HOLDS STAND ON THE CONVERSATION ITSELF: a stop, until a turn next
+// begins, and the person's pause. They bind the news that arrives through the
+// session's own queue (a command's ending, a watch's firing, a task landing,
+// what a turn's end recorded), and are read where that news is queued
+// ([wakeStanding], [Agent.standingHoldLocked]). What they hold is kept in the
+// conversation as a record that starts no turn, and that record is its line.
 
 import (
 	"fmt"
@@ -52,6 +55,11 @@ const (
 	wakeCommand
 	// wakeWatch is a watch firing ([Agent.enqueueWatchNote]).
 	wakeWatch
+	// wakeLanding is a background task landing ([Agent.admitBeltLanding]).
+	wakeLanding
+	// wakeAnswer is news a turn's end recorded with no request left to read it,
+	// which is owed one more turn ([Agent.turnEndHeldLocked]).
+	wakeAnswer
 )
 
 // wakeVerdict is what becomes of the turn that was asked for.
@@ -146,23 +154,68 @@ func init() {
 // queued, and what it holds is kept in the conversation as a record that
 // starts no turn: the record is its line, and the traffic is told nothing.
 //
-// Only a command's ending and a watch's firing are held by a stop. The
-// person's own words, a manager's next hand-off and a task landing still start
-// a turn, which ends that hold (team_stophold.go).
-var wakeStanding = map[wakeKind]struct{ stop bool }{
-	wakeCommand: {stop: true},
-	wakeWatch:   {stop: true},
+// A STOP HOLDS ONLY A COMMAND'S ENDING AND A WATCH'S FIRING. The person's own
+// words, a manager's next hand-off and a task landing still start a turn,
+// which ends that hold (team_stophold.go).
+//
+// A PAUSE HOLDS EVERY TURN NOBODY TYPED, these four and the team's traffic
+// ([wakePauseRule]): the person paused the conversation, not one of the ways
+// it starts. Their own words are no row here, because they are never held.
+var wakeStanding = map[wakeKind]struct{ stop, pause bool }{
+	wakeCommand: {stop: true, pause: true},
+	wakeWatch:   {stop: true, pause: true},
+	wakeLanding: {pause: true},
+	wakeAnswer:  {pause: true},
 }
 
 // standingHoldLocked is the standing hold that keeps news of this kind from
 // starting a turn, with the sentence its record is given as why; the zero
 // decision when none does. The caller holds a.mu.
+//
+// A PAUSE HOLDS NOTHING FROM A TURN IN FLIGHT. The only turn that runs in a
+// paused conversation is one the person's own words opened, and news that
+// arrives while it runs is that turn's to read at its next step, as anywhere.
+// What it leaves unread at its end is asked about again there
+// ([Agent.turnEndHeldLocked]). A stop holds through the turn it stopped, which
+// is still winding down when a command it left behind ends.
 func (a *Agent) standingHoldLocked(kind wakeKind) wakeDecision {
 	binds := wakeStanding[kind]
 	if binds.stop && a.team.stopHold.held.Load() {
 		return wakeDecision{verdict: wakeHolds, by: heldByStop, why: teamStopHeldRule}
 	}
+	if binds.pause && !a.running && a.team.pauseHold.paused.Load() {
+		return wakeDecision{verdict: wakeHolds, by: heldByPause, why: teamPauseHeldRule}
+	}
 	return wakeDecision{}
+}
+
+// standingHold is [Agent.standingHoldLocked] for a caller that holds no lock
+// and records the news itself, with the pause read afresh first.
+func (a *Agent) standingHold(kind wakeKind) wakeDecision {
+	a.teamPauseFresh()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.standingHoldLocked(kind)
+}
+
+// turnEndHeldLocked reports whether a standing hold keeps the turn that would
+// answer what a turn's end just recorded from starting, and says why in the
+// conversation when it does. The caller holds a.mu, with the ended turn no
+// longer running.
+//
+// The news is already in the transcript, recorded by the drain, so only the
+// sentence is added: the next turn reads both. A line the person typed, and a
+// question's answer, are owed their turn whatever is paused.
+func (a *Agent) turnEndHeldLocked(drained queueDrain) bool {
+	if drained.heard || drained.answer {
+		return false
+	}
+	held := a.standingHoldLocked(wakeAnswer)
+	if held.verdict != wakeHolds {
+		return false
+	}
+	a.quietNoteLocked(held.why)
+	return true
 }
 
 // decideTeamWake asks the team's rules for this cause, and answers the first
