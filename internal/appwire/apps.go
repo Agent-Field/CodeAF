@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 )
@@ -14,6 +15,12 @@ type AppDefinitions interface {
 	AppDefinitions() *store.Store
 }
 
+// AppDefinitionRegistry keeps a reverted app's record shape in step with its
+// published definition.
+type AppDefinitionRegistry interface {
+	RegisterAppDefinition(id string) error
+}
+
 type (
 	appParams struct {
 		App string `json:"app"`
@@ -21,13 +28,15 @@ type (
 	appScreenParams struct {
 		App    string `json:"app"`
 		Screen string `json:"screen"`
+		Draft  string `json:"draft,omitempty"`
 	}
 	appRevertParams struct {
 		App string `json:"app"`
 		N   int    `json:"n"`
 	}
 	appListResult struct {
-		Apps []store.Summary `json:"apps"`
+		Apps   []store.Summary   `json:"apps"`
+		Builds []builder.Summary `json:"builds"`
 	}
 	appScreenResult struct {
 		Screen json.RawMessage `json:"screen"`
@@ -47,25 +56,64 @@ func init() {
 }
 
 var appMethods = map[string]method{
-	"apps.list": appCall(func(s *store.Store, _ Empty) (*appListResult, error) {
-		apps, err := s.List()
-		return &appListResult{Apps: apps}, err
+	"apps.list": typed(func(e Engine, _ Empty) (*appListResult, error) {
+		defs, ok := e.(AppDefinitions)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app definitions.")
+		}
+		apps, err := defs.AppDefinitions().List()
+		if err != nil {
+			return nil, buildError(err)
+		}
+		result := &appListResult{Apps: apps, Builds: []builder.Summary{}}
+		if _, ok := e.(AppBuilds); ok {
+			b, err := openBuilds(e)
+			if err != nil {
+				return nil, err
+			}
+			result.Builds, err = b.List()
+			if err != nil {
+				return nil, buildError(err)
+			}
+		}
+		return result, nil
 	}),
 	"apps.get": appCall(func(s *store.Store, p appParams) (*store.Definition, error) {
 		d, err := s.Get(p.App)
 		return &d, err
 	}),
-	"apps.screen": appCall(func(s *store.Store, p appScreenParams) (*appScreenResult, error) {
-		raw, err := s.Screen(p.App, p.Screen)
-		return &appScreenResult{Screen: raw}, err
+	"apps.screen": typed(func(e Engine, p appScreenParams) (*appScreenResult, error) {
+		if p.Draft != "" {
+			b, err := openBuilds(e)
+			if err != nil {
+				return nil, err
+			}
+			raw, err := b.Screen(p.Draft, p.Screen)
+			return &appScreenResult{Screen: raw}, buildError(err)
+		}
+		defs, ok := e.(AppDefinitions)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app definitions.")
+		}
+		raw, err := defs.AppDefinitions().Screen(p.App, p.Screen)
+		return &appScreenResult{Screen: raw}, buildError(err)
 	}),
 	"apps.versions": appCall(func(s *store.Store, p appParams) (*appVersionsResult, error) {
 		versions, err := s.Versions(p.App)
 		return &appVersionsResult{Versions: versions}, err
 	}),
-	"apps.revert": appCall(func(s *store.Store, p appRevertParams) (*appMetaResult, error) {
-		m, err := s.Revert(p.App, p.N)
-		return &appMetaResult{Meta: m}, err
+	"apps.revert": typed(func(e Engine, p appRevertParams) (*appMetaResult, error) {
+		defs, ok := e.(AppDefinitions)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "This engine does not serve app definitions.")
+		}
+		m, err := defs.AppDefinitions().Revert(p.App, p.N)
+		if err == nil {
+			if registry, ok := e.(AppDefinitionRegistry); ok {
+				err = registry.RegisterAppDefinition(p.App)
+			}
+		}
+		return &appMetaResult{Meta: m}, buildError(err)
 	}),
 	"apps.archive": appCall(func(s *store.Store, p appParams) (*appMetaResult, error) {
 		m, err := s.Archive(p.App)

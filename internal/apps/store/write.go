@@ -152,6 +152,31 @@ func (s *Store) Promote(d Draft, request string) (Meta, error) {
 	return meta, nil
 }
 
+// PublishBuild publishes the exact checked snapshot a durable editing job
+// holds. The job keeps its directory and uses the resulting version as its
+// next base. Callers use the draft ID as the prospective ID of a new app.
+func (s *Store) PublishBuild(id, app string, base int, def schema.Definition, request string) (Meta, error) {
+	if !cell.ValidID(id) || (app != "" && !cell.ValidID(app)) {
+		return Meta{}, ErrBadInput
+	}
+	unlock, err := s.lock(true, true)
+	if err != nil {
+		return Meta{}, err
+	}
+	defer unlock()
+	m := Meta{ID: id, CreatedAt: time.Now().UTC()}
+	if app != "" {
+		m, err = s.liveMeta(app)
+		if err != nil {
+			return Meta{}, err
+		}
+		if m.Version != base {
+			return Meta{}, ErrConflict
+		}
+	}
+	return s.publish(m, files(def.Files), request, requestSummary(request), nil)
+}
+
 // updatedAt keeps metadata ordered even if the machine clock moves backwards.
 func updatedAt(m Meta, now time.Time) time.Time {
 	if now.Before(m.CreatedAt) {

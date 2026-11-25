@@ -96,6 +96,12 @@ func (b *appBackend) DismissInbox(id string) error {
 // dismissAsk closes one ask through the door its kind closes by.
 func (b *appBackend) dismissAsk(id, agent, ask string) error {
 	switch {
+	case strings.HasPrefix(agent, appwire.AppDraftInboxPrefix) && ask == appBuildInboxAsk:
+		b.inbox.locked(func() {
+			b.inbox.closing[id] = appwire.AskClosed{ID: ask, Option: appwire.ResolvedDismissed, At: b.now()}
+		})
+		b.inboxResolved(id, appwire.Entry{})
+		return nil
 	case strings.HasPrefix(ask, "service:"):
 		return b.dismissServiceLine(id)
 	case strings.HasPrefix(ask, appwire.OrderAskPrefix):

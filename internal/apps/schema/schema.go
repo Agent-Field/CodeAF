@@ -119,8 +119,8 @@ func schemas() compiled {
 
 func compileAll() compiled {
 	var out compiled
-	if err := json.Unmarshal(kitV0, &out.kit); err != nil {
-		out.err = fmt.Errorf("kit-v0.json: %w", err)
+	if err := json.Unmarshal(KitJSON(), &out.kit); err != nil {
+		out.err = fmt.Errorf("app kit: %w", err)
 		return out
 	}
 	c := jsonschema.NewCompiler()
@@ -143,7 +143,7 @@ func compileAll() compiled {
 	}
 	out.props = map[string]*jsonschema.Schema{}
 	for _, p := range out.kit.Parts {
-		url := "https://codeaf.dev/schema/kit/0/" + p.Name + ".json"
+		url := fmt.Sprintf("https://codeaf.dev/schema/kit/%d/%s.json", out.kit.Kit, p.Name)
 		if err := c.AddResource(url, bytes.NewReader(p.Props)); err != nil {
 			out.err = fmt.Errorf("kit part %s: %w", p.Name, err)
 			return out
@@ -167,7 +167,7 @@ func compileAll() compiled {
 		return out
 	}
 	for _, p := range out.kit.Parts {
-		s, err := c.Compile("https://codeaf.dev/schema/kit/0/" + p.Name + ".json")
+		s, err := c.Compile(fmt.Sprintf("https://codeaf.dev/schema/kit/%d/%s.json", out.kit.Kit, p.Name))
 		if err != nil {
 			out.err = fmt.Errorf("kit part %s: %w", p.Name, err)
 			return out
