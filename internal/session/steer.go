@@ -669,7 +669,7 @@ func (a *Agent) steerMarked(words string, person *messagePresentation, fromPerso
 	a.mixCreationLocked(queued)
 	a.steering = append(a.steering, queued)
 	if fromPerson {
-		a.personWords = words
+		a.keepPersonWordsLocked(words)
 	}
 	// A stage parked on a check must still answer a person or runner correction.
 	if a.config.mayStage() {

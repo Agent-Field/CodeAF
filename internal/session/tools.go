@@ -181,7 +181,12 @@ func (a *Agent) belt() []bare.Tool {
 		// reader service, never a request from the server itself to an address
 		// the model chose. Nothing that writes, runs or signs in rides with
 		// them.
-		return append(belt, a.searchTools()...)
+		//
+		// ON A LEASH (tools_web_leash.go): web_fetch reads only an address
+		// that appeared in the person's or task's words or in one of this
+		// run's web_search results, so a page cannot steer the agent into
+		// carrying the workstream out in an address of its making.
+		return append(belt, a.leashedSearchTools()...)
 	}
 	// AN ORGANIZATION'S SETUP CONVERSATION CARRIES ITS ONE VERB AND NO OTHER
 	// (tools_org_setup.go): there is no workstream yet to read or write.

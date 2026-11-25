@@ -323,8 +323,7 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 		l.letGo.Stop()
 		l.adoptable = false
 	} else {
-		events = make(chan claudeagent.Event, 256)
-		l.sink = events
+		events = l.newTurnLocked()
 	}
 	l.mu.Unlock()
 	if prompt != "" {
@@ -340,6 +339,17 @@ func (t transport) agentTurn(request *http.Request, chat chatRequest, conversati
 		StatusCode: http.StatusOK, Status: "200 OK", Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
 		Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: reader, ContentLength: -1, Request: request,
 	}, nil
+}
+
+// newTurnLocked opens a fresh (not adopted) turn's event sink. A NEW TURN
+// STARTS ITS WEIGHT AFRESH: the last turn's newest call is not this turn's,
+// and a turn whose stream sees no call of its own (an API error is the result
+// alone) would otherwise report the previous turn's input. Runs with l.mu
+// held.
+func (l *live) newTurnLocked() chan claudeagent.Event {
+	events := make(chan claudeagent.Event, 256)
+	l.sink, l.weight = events, 0
+	return events
 }
 
 // resume continues a turn that handed codeaf tool calls out: the results in

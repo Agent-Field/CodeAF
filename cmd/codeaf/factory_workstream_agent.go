@@ -437,11 +437,12 @@ func factoryWorkstreamAgentWebLine(web factoryAgentWeb) string {
 	var hands string
 	switch {
 	case web.Search && web.Fetch:
-		hands = "You can look things up on the web: web_search finds pages (each with its title, address and a short extract) and web_fetch reads one page whole. "
+		hands = "You can look things up on the web: web_search finds pages (each with its title, address and a short extract) and web_fetch reads one page whole, " +
+			"at an address from the person's or the task's words or from a web_search result, exactly as it appeared there. "
 	case web.Search:
 		hands = "You can search the web with web_search: it finds pages, each with its title, address and a short extract; you cannot open a page whole. "
 	case web.Fetch:
-		hands = "You can read one web page whole with web_fetch, at an address the person gives you or one you already have; you cannot search the web. "
+		hands = "You can read one web page whole with web_fetch, at an address from the person's or the task's words, exactly as it appeared there; you cannot search the web. "
 	default:
 		return "You cannot use the web here: when a person asks you to look something up, say so, and ask them to paste what they found."
 	}

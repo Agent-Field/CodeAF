@@ -26,7 +26,14 @@ type doorServer struct {
 	reads      int
 	created    map[string]any
 	answered   map[string]string
+	answers    int
 	token      string
+	// refuseSignIn, when set, is the status every password sign-in answers,
+	// with refuseSentence as the server's sentence.
+	refuseSignIn   int
+	refuseSentence string
+	// answerFails is how many answers are refused (500) before one is taken.
+	answerFails int
 }
 
 func (d *doorServer) handler() http.Handler {
@@ -49,6 +56,10 @@ func (d *doorServer) handler() http.Handler {
 	mux.HandleFunc("POST /v1/auth/password", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{ Username, Password string }
 		_ = json.NewDecoder(r.Body).Decode(&in)
+		if d.refuseSignIn != 0 {
+			writeJSON(w, d.refuseSignIn, map[string]string{"error": d.refuseSentence})
+			return
+		}
 		if in.Username != "bob" || in.Password != "correct horse battery" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "no"})
 			return
@@ -98,9 +109,16 @@ func (d *doorServer) handler() http.Handler {
 		}
 		d.mu.Lock()
 		defer d.mu.Unlock()
+		if d.answerFails > 0 {
+			d.answerFails--
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "the store blinked"})
+			return
+		}
 		_ = json.NewDecoder(r.Body).Decode(&d.answered)
-		t := d.states[len(d.states)-1]
-		writeJSON(w, 200, t)
+		d.answers++
+		at := min(d.reads, len(d.states)-1)
+		d.reads++
+		writeJSON(w, 200, d.states[at])
 	})
 	mux.HandleFunc("GET /v1/workstreams/{ws}/files", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"files": []map[string]string{{"id": "fl_1", "name": "Release notes"}}})
@@ -345,6 +363,7 @@ func TestDoorPointsADecisionAtWorkAFAndKeepsFollowing(t *testing.T) {
 		Decider: &factory.PersonRef{ID: "ann", Name: "Ann"},
 		Options: []factory.TaskAskOption{{ID: "o1", Label: "Yes", Recommended: true}}}
 	words := factory.TaskAsk{ID: "ask_3", Title: "Which dates?", Reversible: true,
+		Decider: &factory.PersonRef{ID: "@Bob", Name: "Bob Lee"},
 		Options: []factory.TaskAskOption{{ID: "o1", Label: "These", Recommended: true, Words: true}}}
 	d, srv := newDoorServer(t,
 		doorTask("tk_1", factory.TaskRunning),

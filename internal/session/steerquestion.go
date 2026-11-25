@@ -181,8 +181,16 @@ func (a *Agent) personClosesQuestionsLocked(user userMessage) []Question {
 // as that turn's latest words from them ([Agent.personWords]).
 func (a *Agent) notePersonWordsLocked(user userMessage) {
 	if user.fromPerson {
-		a.personWords = user.text()
+		a.keepPersonWordsLocked(user.text())
 	}
+}
+
+// keepPersonWordsLocked makes words the running turn's latest words from the
+// person, and lets a server workstream agent's web_fetch read the pages they
+// name (tools_web_leash.go).
+func (a *Agent) keepPersonWordsLocked(words string) {
+	a.personWords = words
+	a.webLeash.note(words)
 }
 
 // turnPersonWords is the person's latest own words in the running turn, and

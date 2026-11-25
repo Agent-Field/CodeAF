@@ -1689,6 +1689,12 @@ func checkAsk(a *TaskAsk, stamp string) error {
 	if a.Options == nil {
 		a.Options = []TaskAskOption{}
 	}
+	// An answer in the person's own words cannot be undone by a click: an Ask
+	// that offers one is never reversible, whoever raised it (the server's
+	// agent, a person, the app), so no door treats it as a quick Ask.
+	if NeedsWords(*a) {
+		a.Reversible = false
+	}
 	return nil
 }
 
@@ -1758,6 +1764,9 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 		}
 		opt = &ask.Options[k]
 		chose = opt.Label
+		if opt.Words && words == "" {
+			return TaskChange{}, taskInvalidf("%q needs your own words with it", opt.Label)
+		}
 	}
 	if chose == "" && words == "" {
 		return TaskChange{}, TaskInvalid("an answer is one of the question's answers, or words")

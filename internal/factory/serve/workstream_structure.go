@@ -391,7 +391,7 @@ func sameWorkstreamRules(a, b factory.WorkstreamRules) bool {
 	return a.DefaultOwner.Kind == b.DefaultOwner.Kind && a.DefaultOwner.ID == b.DefaultOwner.ID && fa == fb &&
 		a.StartWithoutAskingUSD == b.StartWithoutAskingUSD && a.KeepsRunning.Factory == b.KeepsRunning.Factory &&
 		slices.Equal(a.KeepsRunning.Orders, b.KeepsRunning.Orders) && a.PublishesWithoutAsking == b.PublishesWithoutAsking &&
-		a.AsksBefore == b.AsksBefore && a.FallbackAfterHours == b.FallbackAfterHours &&
+		a.AsksBefore == b.AsksBefore && a.FallbackAfterHours == b.FallbackAfterHours && slices.Equal(a.Said, b.Said) &&
 		slices.EqualFunc(a.Exceptions, b.Exceptions, func(x, y factory.AskException) bool { return x.Kind == y.Kind }) &&
 		slices.EqualFunc(a.NotNow, b.NotNow, func(x, y factory.AskNotNow) bool { return x.Kind == y.Kind && x.At == y.At })
 }

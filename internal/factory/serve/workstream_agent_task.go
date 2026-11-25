@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
@@ -329,6 +330,118 @@ func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTa
 	if err := h.startTaskRun(ws, cur, starter, words, 0, true); err != nil && !errors.Is(err, errTaskBusy) && !errors.Is(err, errTaskNoRunner) {
 		log.Printf("factory: workstream %s: task %s was answered but Afi could not go on: %v", ws.ID, t.ID, err)
 	}
+}
+
+// AN ANSWER KEPT WHILE NOTHING COULD RUN AFI IS CARRIED ON ONCE SOMETHING CAN
+// (review fix, 2026-11-25). The answer route parks Afi's task Up next with
+// NoRunnerAnsweredLine on a server without a model key; when the operator sets
+// one, every task parked that way is set running again and resumed with the
+// answer it was given, the same words a normal answered resume tells Afi.
+
+// taskResumedWithKeyLine is the thread's line when a parked answer is taken up.
+const taskResumedWithKeyLine = "Afi carries on with the answer, now that this organization has a model key"
+
+// resumeParkedAnswers starts Afi again on every task an answer parked while
+// this server could not run Afi. It is called once a model key is set.
+func (h *Handler) resumeParkedAnswers() {
+	st := h.config.Store
+	if st == nil || !h.serverAgentServed() {
+		return
+	}
+	wss, err := st.Workstreams()
+	if err != nil {
+		return
+	}
+	for _, ws := range wss {
+		tasks, err := st.WorkstreamTasks(ws.ID)
+		if err != nil {
+			continue
+		}
+		for _, t := range tasks {
+			if t.State != factory.TaskUpNext || t.DoneBy.Kind != factory.TaskByAfi || h.taskTurnRunning(ws.ID, t.ID) {
+				continue
+			}
+			if _, job := factory.IsJobTask(t.ID); job {
+				continue
+			}
+			events, err := st.WorkstreamTaskEvents(ws.ID, t.ID)
+			if err != nil {
+				continue
+			}
+			answered, ok := parkedAnswer(events)
+			if !ok {
+				continue
+			}
+			h.resumeParkedAnswer(ws, t, answered)
+		}
+	}
+}
+
+// parkedAnswer is the answer a task's thread says was kept while nothing could
+// run Afi: the task's last state line is NoRunnerAnsweredLine, and the answer
+// is the last one given before it.
+func parkedAnswer(events []factory.WorkstreamTaskEvent) (factory.WorkstreamTaskEvent, bool) {
+	for i := len(events) - 1; i >= 0; i-- {
+		e := events[i]
+		if e.Kind != factory.TaskEventState {
+			continue
+		}
+		if e.Text != NoRunnerAnsweredLine {
+			return factory.WorkstreamTaskEvent{}, false
+		}
+		for j := i - 1; j >= 0; j-- {
+			if events[j].Kind == factory.TaskEventAnswered {
+				return events[j], true
+			}
+		}
+		return factory.WorkstreamTaskEvent{}, false
+	}
+	return factory.WorkstreamTaskEvent{}, false
+}
+
+// resumeParkedAnswer sets seen running and starts Afi on it with the answer,
+// as whoever answered, in one write: a start Afi cannot take keeps nothing,
+// and the task stays Up next with its line.
+func (h *Handler) resumeParkedAnswer(ws factory.OrgWorkstream, seen factory.WorkstreamTask, answered factory.WorkstreamTaskEvent) {
+	starter := ""
+	if answered.By.Kind == factory.TaskByPerson {
+		starter = answered.By.ID
+	}
+	if starter == "" {
+		starter = seen.CreatedBy.ID
+		if seen.Owner.Kind == factory.TaskOwnerPerson && seen.Owner.ID != "" {
+			starter = seen.Owner.ID
+		}
+	}
+	var resumed factory.WorkstreamTask
+	err := h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
+		t, ok := keptTask(tw, ws.ID, seen.ID)
+		if !ok || t.State != factory.TaskUpNext || t.Rev != seen.Rev {
+			return errSettledElsewhere
+		}
+		stamp := h.clock().UTC().Format(time.RFC3339Nano)
+		t.State, t.StateReason = factory.TaskRunning, ""
+		t.Rev++
+		t.UpdatedAt = stamp
+		if err := keepTask(tw, t, seen.Rev); err != nil {
+			return err
+		}
+		if err := tw.Append(ws.ID, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: t.ID, At: stamp, By: afiBy,
+			Kind: factory.TaskEventState, Text: taskResumedWithKeyLine}); err != nil {
+			return err
+		}
+		resumed = t
+		words := answeredWords(t, factory.TaskAsk{Title: answered.Question}, answered.Answer, answered.By.Name)
+		return h.startTaskRun(ws, t, starter, words, 0, true)
+	})
+	if err != nil {
+		if !errors.Is(err, errSettledElsewhere) && !wakeRefused(err) {
+			h.stopTaskTurn(ws.ID, seen.ID)
+			log.Printf("factory: workstream %s: task %s kept an answer but Afi could not go on with it: %v", ws.ID, seen.ID, err)
+		}
+		return
+	}
+	h.publishTasks(ws, afiBy.Name, resumed)
 }
 
 // answeredWords is what Afi is told when an answer puts it back to work.

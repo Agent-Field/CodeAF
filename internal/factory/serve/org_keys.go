@@ -74,6 +74,9 @@ func (h *Handler) putOrgKey(w http.ResponseWriter, r *http.Request) {
 		h.drivers.dropAll()
 	}
 	h.machineEvents()
+	// An answer kept while nothing could run Afi is carried on now
+	// (NoRunnerAnsweredLine).
+	h.resumeParkedAnswers()
 	h.write(w, http.StatusOK, api.OrgKey(saved))
 }
 

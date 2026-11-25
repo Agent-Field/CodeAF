@@ -292,3 +292,42 @@ func TestRemovingSomeoneOffersTheirTasksToTheAdmin(t *testing.T) {
 		}
 	}
 }
+
+// Joining moves who-added-whom too: a person the invite (the joiner, before
+// they joined) added reads as added by the person who joined, even in a
+// workstream the joiner was never shared on.
+func TestJoiningRewritesWhoTheInviteAdded(t *testing.T) {
+	o := newInviteOrg(t)
+	f := o.f
+	made, gate := o.invite(t, o.priya, api.InviteNew{Email: "marco@agentfield.example", Name: "Marco",
+		Workstreams: []string{o.product.ID}}, 201)
+	ref := made.Invite.Ref
+	if _, err := f.h.config.Store.EditWorkstreams(func(all factory.OrgWorkstreams) ([]string, error) {
+		var changed []string
+		for _, id := range []string{o.product.ID, o.marketing.ID} {
+			ws := all[id]
+			ws.PeopleAddedBy = maps1(ws.PeopleAddedBy)
+			ws.PeopleAddedBy[factory.ShareToPerson+":lena"] = ref
+			all[id] = ws
+			changed = append(changed, id)
+		}
+		return changed, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	signInHandle(t, f.h, o.g, &f.now, "marco", gate)
+	all, err := f.h.config.Store.Workstreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{o.product.ID, o.marketing.ID} {
+		if got := all[id].PeopleAddedBy[factory.ShareToPerson+":lena"]; got != "marco" {
+			t.Errorf("%s: lena reads as added by %q after the join, want marco", all[id].Name, got)
+		}
+		for k, v := range all[id].PeopleAddedBy {
+			if v == ref {
+				t.Errorf("%s: %s still reads as added by the invite", all[id].Name, k)
+			}
+		}
+	}
+}

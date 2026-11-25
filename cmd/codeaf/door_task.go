@@ -31,9 +31,11 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -109,17 +111,17 @@ func runTask(args []string) error {
 	if made.ID == "" {
 		return errors.New("the organization answered without the task; look for it in WorkAF before trying again")
 	}
-	s.remember(doorTaskRef{Org: o.URL, WS: ws.ID, Task: made.ID, Title: made.Title})
-	if err := writeDoorState(s); err != nil {
+	ref := doorTaskRef{Org: o.URL, WS: ws.ID, Task: made.ID, Title: made.Title}
+	if err := updateDoorState(func(s *doorState) { s.remember(ref) }); err != nil {
 		fmt.Fprintln(usageErr, "the task was started, but this terminal could not remember it:", err)
 	}
 	who := "yours, for you to do"
 	if byAfi {
 		who = factory.DoerWords(made.DoneBy) + " does it"
 	}
-	fmt.Fprintf(doorOut, "Started in %s: %s (%s) · %s\n", ws.Name, doorShort(made.Title, 80), made.ID, who)
+	fmt.Fprintf(doorOut, "Started in %s: %s (%s) · %s\n", doorText(ws.Name), doorShort(doorText(made.Title), 80), doorText(made.ID), doorText(who))
 	if !byAfi || *noFollow {
-		fmt.Fprintf(doorOut, "Follow it with codeaf task follow %s, or open it in WorkAF.\n%s\n", made.ID, doorMadeWith)
+		fmt.Fprintf(doorOut, "Follow it with codeaf task follow %s, or open it in WorkAF.\n%s\n", doorText(made.ID), doorMadeWith)
 		return nil
 	}
 	return doorFollow(ctx, o, ws, made)
@@ -149,7 +151,7 @@ func runTaskFollow(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(doorOut, "Following in %s: %s (%s)\n", ws.Name, doorShort(t.Title, 80), t.ID)
+	fmt.Fprintf(doorOut, "Following in %s: %s (%s)\n", doorText(ws.Name), doorShort(doorText(t.Title), 80), doorText(t.ID))
 	return doorFollow(ctx, o, ws, t)
 }
 
@@ -236,7 +238,7 @@ func doorWorkstream(ctx context.Context, o doorOrg, want string) (appwire.OrgWor
 	}
 	fmt.Fprintln(doorOut, "Which workstream?")
 	for i, ws := range list {
-		fmt.Fprintf(doorOut, "  %d. %s\n", i+1, ws.Name)
+		fmt.Fprintf(doorOut, "  %d. %s\n", i+1, doorText(ws.Name))
 	}
 	fmt.Fprint(doorOut, "Number: ")
 	line, err := doorReadLine()
@@ -254,7 +256,7 @@ func doorWorkstream(ctx context.Context, o doorOrg, want string) (appwire.OrgWor
 func doorNames(list []appwire.OrgWorkstreamSummary) string {
 	names := make([]string, len(list))
 	for i, ws := range list {
-		names[i] = strconv.Quote(ws.Name)
+		names[i] = strconv.Quote(doorText(ws.Name))
 	}
 	return strings.Join(names, ", ")
 }
@@ -293,7 +295,7 @@ func doorFindTask(ctx context.Context, o doorOrg, s doorState, ref string) (appw
 			return ws, t, nil
 		}
 		if wsID != "" {
-			return ws, none, fmt.Errorf("no task %s in %s: %v", taskID, ws.Name, err)
+			return ws, none, fmt.Errorf("no task %s in %s: %v", taskID, doorText(ws.Name), err)
 		}
 	}
 	return appwire.OrgWorkstreamSummary{}, none, fmt.Errorf("no task %s in any workstream you can see on %s", taskID, o.label())
@@ -301,13 +303,16 @@ func doorFindTask(ctx context.Context, o doorOrg, s doorState, ref string) (appw
 
 // doorFollower follows one task on one line.
 type doorFollower struct {
-	org      doorOrg
-	ws       appwire.OrgWorkstreamSummary
-	task     factory.WorkstreamTask
-	redraw   bool // the line is redrawn in place (a terminal)
-	answer   bool // a quick Ask can be answered here (someone is at the keys)
-	drawn    string
-	said     string
+	org    doorOrg
+	ws     appwire.OrgWorkstreamSummary
+	task   factory.WorkstreamTask
+	redraw bool // the line is redrawn in place (a terminal)
+	answer bool // a quick Ask can be answered here (someone is at the keys)
+	drawn  string
+	said   string
+	// settled are the open Asks the door is done with: said (one that is not
+	// answered here), answered, or left for WorkAF by the person. An Ask that
+	// closes is forgotten, so one reopened (an answer undone) is asked again.
 	settled  map[string]bool
 	stop     chan os.Signal // ^C, while following
 	interval time.Duration
@@ -341,7 +346,7 @@ func (f *doorFollower) run(ctx context.Context) error {
 		select {
 		case <-f.stop:
 			f.clear()
-			fmt.Fprintf(doorOut, "Stopped following; the task goes on in %s. Follow it again with codeaf task follow %s\n%s\n", f.ws.Name, f.task.ID, doorMadeWith)
+			fmt.Fprintf(doorOut, "Stopped following; the task goes on in %s. Follow it again with codeaf task follow %s\n%s\n", doorText(f.ws.Name), doorText(f.task.ID), doorMadeWith)
 			return exitStatus(130)
 		case <-time.After(f.interval):
 		}
@@ -406,24 +411,40 @@ func (f *doorFollower) clear() {
 // asks says each open Ask once: a quick one of yours is answered here, any
 // other is pointed at WorkAF. It reports whether an answer was sent.
 func (f *doorFollower) asks(ctx context.Context) bool {
-	for _, ask := range factory.OpenAsks(f.task) {
+	open := factory.OpenAsks(f.task)
+	// An Ask no longer open is forgotten: if it opens again (its answer was
+	// undone), it is put to the person again.
+	for id := range f.settled {
+		if !slices.ContainsFunc(open, func(a factory.TaskAsk) bool { return a.ID == id }) {
+			delete(f.settled, id)
+		}
+	}
+	for _, ask := range open {
 		if f.settled[ask.ID] {
 			continue
 		}
-		f.settled[ask.ID] = true
 		f.clear()
 		decider := factory.AskDecider(f.task, ask)
-		mine := decider.ID != "" && decider.ID == f.org.Handle
 		where := f.where()
+		title := doorText(ask.Title)
 		switch {
-		case !mine:
-			fmt.Fprintf(doorOut, "Waiting on %s to answer: %s\n", firstNonEmptyString(decider.Name, decider.ID, "its owner"), ask.Title)
+		case !f.mayAnswer(ask):
+			f.settled[ask.ID] = true
+			fmt.Fprintf(doorOut, "Waiting on %s to answer: %s\n", doorText(firstNonEmptyString(decider.Name, decider.ID, "its owner")), title)
 		case !doorQuickAsk(ask):
-			fmt.Fprintf(doorOut, "%s asks: %s\nThis one is a decision: open WorkAF to answer it (%s).\n", doorAsker(ask), ask.Title, where)
+			f.settled[ask.ID] = true
+			fmt.Fprintf(doorOut, "%s asks: %s\nThis one is a decision: open WorkAF to answer it (%s).\n", doorAsker(ask), title, where)
 		case !f.answer:
-			fmt.Fprintf(doorOut, "%s asks: %s\nAnswer it in WorkAF (%s), or here with codeaf task follow %s at a terminal.\n", doorAsker(ask), ask.Title, where, f.task.ID)
+			f.settled[ask.ID] = true
+			fmt.Fprintf(doorOut, "%s asks: %s\nAnswer it in WorkAF (%s), or here with codeaf task follow %s at a terminal.\n", doorAsker(ask), title, where, doorText(f.task.ID))
 		default:
-			if f.ask(ctx, ask) {
+			// Settled only once it is answered or the person leaves it: an
+			// answer the server did not take is asked again at the next read.
+			answered, done := f.ask(ctx, ask)
+			if done {
+				f.settled[ask.ID] = true
+			}
+			if answered {
 				return true
 			}
 		}
@@ -431,10 +452,35 @@ func (f *doorFollower) asks(ctx context.Context) bool {
 	return false
 }
 
-// ask puts one quick Ask to the person and sends their answer.
-func (f *doorFollower) ask(ctx context.Context, ask factory.TaskAsk) bool {
-	fmt.Fprintf(doorOut, "%s asks: %s\n", doorAsker(ask), ask.Title)
-	if d := strings.TrimSpace(ask.Detail); d != "" {
+// mayAnswer is whether the person at this door may answer ask, by the server's
+// own rule (factory.MayAnswerAsk): they decide it (handles compared the way
+// the server compares them), they may answer for an owner of Everyone, or they
+// are the workstream's fallback and the server says the Ask has waited long
+// enough for them to cover it.
+func (f *doorFollower) mayAnswer(ask factory.TaskAsk) bool {
+	actor := factory.TaskActor{
+		Handle: factory.NormalizeHandle(f.org.Handle),
+		Edit:   f.ws.MyRole == "edit" || f.ws.MyRole == "full",
+	}
+	if actor.Handle == "" {
+		return false
+	}
+	// The door is not told the workstream's rules; the server names who covers
+	// an Ask that has waited past the wait (CoveredBy, filled when the task is
+	// read), and that person stands in from the moment it was asked.
+	var standin factory.Standin
+	if ask.CoveredBy != nil {
+		standin = factory.Standin{ID: ask.CoveredBy.ID, After: time.Nanosecond}
+	}
+	return factory.MayAnswerAsk(f.task, ask.ID, actor, standin, doorNow())
+}
+
+// ask puts one quick Ask to the person and sends their answer. answered is
+// whether the server took an answer; done is whether the door is finished with
+// the Ask (answered, or left for WorkAF by the person).
+func (f *doorFollower) ask(ctx context.Context, ask factory.TaskAsk) (answered, done bool) {
+	fmt.Fprintf(doorOut, "%s asks: %s\n", doorAsker(ask), doorText(ask.Title))
+	if d := strings.TrimSpace(doorBlock(ask.Detail)); d != "" {
 		fmt.Fprintf(doorOut, "  %s\n", strings.ReplaceAll(d, "\n", "\n  "))
 	}
 	recommended := 0
@@ -443,7 +489,7 @@ func (f *doorFollower) ask(ctx context.Context, ask factory.TaskAsk) bool {
 		if opt.Recommended && recommended == 0 {
 			recommended, mark = i+1, " (recommended)"
 		}
-		fmt.Fprintf(doorOut, "  %d. %s%s\n", i+1, opt.Label, mark)
+		fmt.Fprintf(doorOut, "  %d. %s%s\n", i+1, doorText(opt.Label), mark)
 	}
 	fmt.Fprintf(doorOut, "Enter takes %d, a number picks another, s leaves it for WorkAF: ", recommended)
 	// While the person reads, ^C does what it always does: it leaves.
@@ -453,33 +499,33 @@ func (f *doorFollower) ask(ctx context.Context, ask factory.TaskAsk) bool {
 	line = strings.TrimSpace(line)
 	if err != nil || strings.EqualFold(line, "s") {
 		fmt.Fprintf(doorOut, "\nLeft for later: answer it in WorkAF (%s).\n", f.where())
-		return false
+		return false, true
 	}
 	pick := recommended
 	if line != "" {
 		n, err := strconv.Atoi(line)
 		if err != nil || n < 1 || n > len(ask.Options) {
 			fmt.Fprintf(doorOut, "That is not one of the numbers; it is left for WorkAF (%s).\n", f.where())
-			return false
+			return false, true
 		}
 		pick = n
 	}
 	opt := ask.Options[pick-1]
 	if opt.Words {
 		fmt.Fprintf(doorOut, "That answer needs your own words: give it in WorkAF (%s).\n", f.where())
-		return false
+		return false, true
 	}
 	body := map[string]string{"option": opt.ID, "ask": ask.ID}
-	var answered factory.WorkstreamTask
-	if err := doorCall(ctx, f.org, http.MethodPost, doorTaskPath(f.ws.ID, f.task.ID)+"/answer", body, &answered); err != nil {
-		fmt.Fprintf(doorOut, "The answer was not taken: %v\n", err)
-		return false
+	var reply factory.WorkstreamTask
+	if err := doorCall(ctx, f.org, http.MethodPost, doorTaskPath(f.ws.ID, f.task.ID)+"/answer", body, &reply); err != nil {
+		fmt.Fprintf(doorOut, "The answer was not taken: %s\nIt will be asked again.\n", doorText(err.Error()))
+		return false, false
 	}
-	fmt.Fprintf(doorOut, "Answered: %s. It can be undone in WorkAF.\n", opt.Label)
-	if answered.ID != "" {
-		f.task = answered
+	fmt.Fprintf(doorOut, "Answered: %s. It can be undone in WorkAF.\n", doorText(opt.Label))
+	if reply.ID != "" {
+		f.task = reply
 	}
-	return true
+	return true, true
 }
 
 // finish ends the line and says what the task came to: what it made when it
@@ -493,12 +539,12 @@ func (f *doorFollower) finish(ctx context.Context) error {
 	for _, r := range t.Results {
 		switch {
 		case r.URL != "":
-			fmt.Fprintf(doorOut, "  %s  %s\n", firstNonEmptyString(r.Label, "Link"), r.URL)
+			fmt.Fprintf(doorOut, "  %s  %s\n", doorText(firstNonEmptyString(r.Label, "Link")), doorText(r.URL))
 		case r.FileID != "":
 			if names == nil {
 				names = doorFileNames(ctx, f.org, f.ws.ID)
 			}
-			fmt.Fprintf(doorOut, "  %s (in the workstream's Files)\n", firstNonEmptyString(r.Label, names[r.FileID], "A file"))
+			fmt.Fprintf(doorOut, "  %s (in the workstream's Files)\n", doorText(firstNonEmptyString(r.Label, names[r.FileID], "A file")))
 		}
 	}
 	if note := strings.TrimSpace(t.Handoff); note != "" && t.State == factory.TaskDone {
@@ -506,7 +552,7 @@ func (f *doorFollower) finish(ctx context.Context) error {
 		if r := []rune(first); len(r) > 200 {
 			first = string(r[:200]) + "…"
 		}
-		fmt.Fprintf(doorOut, "  %s: %s\n", factory.DoerWords(t.DoneBy), first)
+		fmt.Fprintf(doorOut, "  %s: %s\n", doorText(factory.DoerWords(t.DoneBy)), doorText(first))
 	}
 	fmt.Fprintf(doorOut, "Open it in WorkAF: %s\n%s\n", f.where(), doorMadeWith)
 	if t.State == factory.TaskDone {
@@ -518,7 +564,7 @@ func (f *doorFollower) finish(ctx context.Context) error {
 // where names the task the way WorkAF shows it: workstream › task, with a long
 // title cut so the sentence stays on a line or two.
 func (f *doorFollower) where() string {
-	return f.ws.Name + " › " + doorShort(f.task.Title, 60)
+	return doorText(f.ws.Name) + " › " + doorShort(doorText(f.task.Title), 60)
 }
 
 // doorShort is s cut to most characters, with an ellipsis when it was cut.
@@ -579,8 +625,8 @@ func doorAsker(ask factory.TaskAsk) string {
 		case factory.TaskByFactory:
 			return "The Factory"
 		}
-		if ask.By.Name != "" {
-			return ask.By.Name
+		if name := doorText(ask.By.Name); name != "" {
+			return name
 		}
 	}
 	return "Afi"
@@ -616,7 +662,7 @@ func doorLineWithout(t factory.WorkstreamTask, me string) string {
 			parts = append(parts, r)
 		}
 	}
-	line := strings.Join(parts, " · ")
+	line := doorText(strings.Join(parts, " · "))
 	return strings.Join(strings.Fields(line), " ")
 }
 
@@ -643,13 +689,13 @@ func doorStateWords(t factory.WorkstreamTask, me string) string {
 			if t.StoppedBy.ID == me {
 				return "Stopped by you"
 			}
-			return "Stopped by " + firstNonEmptyString(t.StoppedBy.Name, t.StoppedBy.ID)
+			return "Stopped by " + doorText(firstNonEmptyString(t.StoppedBy.Name, t.StoppedBy.ID))
 		}
 		return "Stopped"
 	case factory.TaskNoReport:
 		return "Didn't report back"
 	}
-	return t.State
+	return doorText(t.State)
 }
 
 // doorElapsed is how long the task has been going: from when it was made to
@@ -698,4 +744,34 @@ func doorOrdinal(n int) string {
 		}
 	}
 	return strconv.Itoa(n) + suffix
+}
+
+// doorText is text from the organization's server (an agent's words, a title,
+// a name) made safe to print on one terminal line: control characters (C0, DEL,
+// C1) and invisible format characters (Unicode Cf, which can reorder what a
+// line shows) are dropped, and tabs and line breaks become spaces. A task's
+// words must never move the cursor, recolour the terminal or set its title.
+func doorText(s string) string { return doorClean(s, false) }
+
+// doorBlock is doorText for text printed over several lines: line breaks are
+// kept (a lone carriage return is not, it would draw over the line).
+func doorBlock(s string) string { return doorClean(s, true) }
+
+func doorClean(s string, lines bool) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\n' && lines:
+			b.WriteByte('\n')
+		case r == '\t' || r == '\n':
+			b.WriteByte(' ')
+		case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f, unicode.Is(unicode.Cf, r):
+			// dropped
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

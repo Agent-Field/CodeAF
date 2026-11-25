@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -31,6 +33,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -125,9 +128,37 @@ func readDoorState() (doorState, error) {
 		return s, err
 	}
 	if err := json.Unmarshal(body, &s); err != nil {
-		return doorState{}, fmt.Errorf("the door's sign-ins in %s cannot be read; sign in again with codeaf org login <url>", doorStatePath())
+		return doorState{}, fmt.Errorf("the door's sign-ins in %s cannot be read; move that file aside, then sign in again with codeaf org login <url>", doorStatePath())
 	}
 	return s, nil
+}
+
+// updateDoorState changes the door's sign-ins under the door's lock: it reads
+// them again, applies change, and writes them back, so two door commands that
+// finish at once (a task remembered while another terminal signs in) do not
+// write over each other. A sign-ins file that cannot be read is refused, never
+// replaced: it may hold every other sign-in this person has.
+func updateDoorState(change func(*doorState)) error {
+	// The door's lock file (doors/orgs.json.lock) holds one read-modify-write
+	// of the sign-ins at a time, across every codeaf process.
+	if err := os.MkdirAll(home.Join("doors"), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(doorStatePath()+".lock", os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := filelock.Lock(f, true, false); err != nil {
+		return fmt.Errorf("the door's sign-ins are busy: %v", err)
+	}
+	defer filelock.Unlock(f)
+	s, err := readDoorState()
+	if err != nil {
+		return err
+	}
+	change(&s)
+	return writeDoorState(s)
 }
 
 // writeDoorState keeps s readable by this person only: it holds their tokens.
@@ -302,6 +333,14 @@ func runOrgLogin(args []string) error {
 	if err != nil {
 		return wrongCall(err.Error())
 	}
+	if err := doorPlainHTTPRefused(base); err != nil {
+		return err
+	}
+	// The sign-ins already kept are read before anything is asked: a file that
+	// cannot be read would otherwise be replaced by this one sign-in.
+	if _, err := readDoorState(); err != nil {
+		return err
+	}
 	ctx := context.Background()
 	// The address answers as an organization, and says how its people sign in,
 	// before anybody types a password at it.
@@ -361,8 +400,11 @@ func runOrgLogin(args []string) error {
 	if err != nil {
 		var refused client.Refusal
 		if errors.As(err, &refused) {
+			// Only 401 is a wrong password. A 403 is the server refusing the
+			// sign-in for its own reason (a password over plain http from
+			// another machine, say), and its sentence says which.
 			switch {
-			case refused.SignedOut || refused.Forbidden:
+			case refused.SignedOut:
 				return errors.New("that username and password don't match")
 			case refused.Missing:
 				return errors.New("this organization does not take passwords")
@@ -387,12 +429,7 @@ func runOrgLogin(args []string) error {
 	} else if signed.ExpiresIn > 0 {
 		o.ExpiresAt = time.Now().Add(time.Duration(signed.ExpiresIn) * time.Second)
 	}
-	s, err := readDoorState()
-	if err != nil {
-		s = doorState{}
-	}
-	s.keep(o)
-	if err := writeDoorState(s); err != nil {
+	if err := updateDoorState(func(s *doorState) { s.keep(o) }); err != nil {
 		return err
 	}
 	who := o.Handle
@@ -429,10 +466,30 @@ func runOrgLogout(args []string) error {
 		// Best effort: a server that is down still loses the token here.
 		_ = doorCall(context.Background(), o, http.MethodDelete, "/v1/me/sessions/"+o.Session, nil, nil)
 	}
-	s.drop(o.URL)
-	if err := writeDoorState(s); err != nil {
+	if err := updateDoorState(func(s *doorState) { s.drop(o.URL) }); err != nil {
 		return err
 	}
 	fmt.Fprintf(doorOut, "Signed out of %s on this terminal.\n", o.label())
 	return nil
+}
+
+// doorPlainHTTPRefused refuses an http:// address on another machine before a
+// password is typed at it: the password would cross the network in the clear
+// (and the server refuses it anyway). Loopback is this machine, where plain
+// http is fine.
+func doorPlainHTTPRefused(base string) error {
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme != "http" || doorLoopback(u.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("%s is plain http on another machine, so a password would cross the network unprotected; use its https:// address", base)
+}
+
+// doorLoopback is whether host names this machine.
+func doorLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

@@ -186,3 +186,22 @@ func TestRemovingAPersonHandsTheirWorkToTheRemover(t *testing.T) {
 		t.Fatalf("removed = %+v", got)
 	}
 }
+
+// A change to the rules in words alone is a change of the rules: the "rules"
+// part is published, so every open copy rereads them.
+func TestASaidOnlyRulesChangeIsAChange(t *testing.T) {
+	before := factory.WorkstreamRules{Said: []string{"No new dependencies without asking"}}
+	same := factory.WorkstreamRules{Said: []string{"No new dependencies without asking"}}
+	if !sameWorkstreamRules(before, same) {
+		t.Fatal("the same rules in words read as a change")
+	}
+	for _, next := range [][]string{
+		{"No new dependencies without asking", "Ship on Fridays only"},
+		{"No dependencies at all"},
+		nil,
+	} {
+		if sameWorkstreamRules(before, factory.WorkstreamRules{Said: next}) {
+			t.Errorf("rules in words %q → %q read as unchanged", before.Said, next)
+		}
+	}
+}

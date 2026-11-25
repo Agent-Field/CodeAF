@@ -39,7 +39,13 @@ func TestAnAgentThatCannotDoATaskAsksTheOwnerInsteadOfFailing(t *testing.T) {
 	answer := func(id, option string) factory.WorkstreamTask {
 		t.Helper()
 		cur, _ := d.task(ctx, id)
-		ch, err := factory.AnswerTask(cur, "", option, "", factory.TaskActor{Handle: "mia", Edit: true}, factory.TaskEventBy{Kind: factory.TaskByPerson, ID: "mia", Name: "Priya"}, factory.Standin{}, func() string { return "e1" }, o.h.clock())
+		// Paste what it needs is an answer in the owner's own words, and is
+		// never taken without them.
+		words := ""
+		if option == factory.CantDoPaste {
+			words = "Notes app: v4.2 adds widgets."
+		}
+		ch, err := factory.AnswerTask(cur, "", option, words, factory.TaskActor{Handle: "mia", Edit: true}, factory.TaskEventBy{Kind: factory.TaskByPerson, ID: "mia", Name: "Priya"}, factory.Standin{}, func() string { return "e1" }, o.h.clock())
 		if err != nil {
 			t.Fatal(err)
 		}

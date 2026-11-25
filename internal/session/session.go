@@ -3898,6 +3898,10 @@ type Agent struct {
 	// A manager's action that only the person may ask for reads it
 	// ([Agent.turnPersonWords]), so the model cannot take one on its own.
 	personWords string
+	// webLeash is which pages a server workstream agent's web_fetch may read
+	// (tools_web_leash.go): addresses in the person's or task's words, and in
+	// this run's web_search results. It has its own lock.
+	webLeash webLeash
 	// turnSpend is what the RUNNING turn has cost so far, moved by [Agent.bank]
 	// on the same call that moves the session's meter and reset when a turn
 	// opens. It is the "last known spend" an abandoned turn is journaled with:

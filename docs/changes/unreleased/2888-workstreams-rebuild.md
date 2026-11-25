@@ -12,3 +12,9 @@ invalidates:
 
 The terminal door keeps its sign-in in the codeaf home under doors/, readable by the person only, and a decision Ask is
 never answered there: the door says to open WorkAF.
+
+Review fixes: the server agent's web_fetch reads only an address from the person's or task's words or from that run's
+web_search results; an answer kept while the organization had no model key is carried on once a key is set. The terminal
+door refuses a password over plain http to another machine, passes a server's 403 sentence through, never replaces an
+unreadable sign-ins file, locks its sign-ins while writing them, strips control characters from what the server sends,
+asks a quick Ask again after a failed answer or an undo, and lets the workstream's fallback answer as the server allows.

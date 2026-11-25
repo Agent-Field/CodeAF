@@ -102,3 +102,25 @@ func TestAResultWithNoCallEverSeenReportsItsOwnInput(t *testing.T) {
 		t.Fatalf("prompt_tokens = %d, want %d", got, want)
 	}
 }
+
+// A NEW TURN DOES NOT REPORT THE LAST TURN'S WEIGHT: a turn whose only stream
+// sees no call of its own reports its result's input, not what the previous
+// turn's newest call read.
+func TestANewTurnStartsItsWeightAfresh(t *testing.T) {
+	l := &live{
+		session:  &claudeagent.Session{},
+		calls:    make(chan *pendingCall, 1),
+		awaiting: map[string]*pendingCall{},
+		started:  map[string]startedStep{},
+		weight:   58412, // the previous turn's last call
+	}
+	l.mu.Lock()
+	l.newTurnLocked()
+	l.mu.Unlock()
+	result := streamOnce(t, l, func(events chan<- claudeagent.Event) {
+		events <- claudeagent.Event{Type: "result", Raw: json.RawMessage(`{"type":"result","result":"done","usage":{"input_tokens":10,"cache_read_input_tokens":2000,"output_tokens":5}}`)}
+	})
+	if got, want := promptTokensOf(t, result), 2010; got != want {
+		t.Fatalf("prompt_tokens = %d, want %d: the new turn reported the last turn's weight", got, want)
+	}
+}

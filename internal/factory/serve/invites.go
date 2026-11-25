@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"net/mail"
 	"slices"
@@ -490,32 +491,45 @@ func (h *Handler) rebindPerson(r *http.Request, from, to, by string, keep bool) 
 		var changed []string
 		for id, ws := range all {
 			at := slices.IndexFunc(ws.Shares, func(s factory.Share) bool { return s.Kind == factory.ShareToPerson && s.ID == from })
-			if at < 0 {
+			// Whoever `from` added reads as added by `to` from now on: the
+			// people list never names a person (or an invite) that is gone.
+			addedSome := slices.Contains(slices.Collect(maps.Values(ws.PeopleAddedBy)), from)
+			if at < 0 && !addedSome {
 				continue
 			}
 			befores[id] = ws
-			role := ws.Shares[at].Role
-			shares := slices.Delete(slices.Clone(ws.Shares), at, at+1)
-			if keep {
-				if j := slices.IndexFunc(shares, func(s factory.Share) bool { return s.Kind == factory.ShareToPerson && s.ID == to }); j >= 0 {
-					shares[j].Role = factory.HigherRole(shares[j].Role, role)
-				} else if !(ws.Owner.Kind == api.OwnerPerson && ws.Owner.ID == to) {
-					shares = append(shares, factory.Share{Kind: factory.ShareToPerson, ID: to, Role: role})
-				}
-			}
-			ws.Shares = shares
-			ws.PeopleAdded = maps1(ws.PeopleAdded)
-			if added, ok := ws.PeopleAdded[factory.ShareToPerson+":"+from]; ok {
-				delete(ws.PeopleAdded, factory.ShareToPerson+":"+from)
+			if at >= 0 {
+				role := ws.Shares[at].Role
+				shares := slices.Delete(slices.Clone(ws.Shares), at, at+1)
 				if keep {
-					ws.PeopleAdded[factory.ShareToPerson+":"+to] = added
+					if j := slices.IndexFunc(shares, func(s factory.Share) bool { return s.Kind == factory.ShareToPerson && s.ID == to }); j >= 0 {
+						shares[j].Role = factory.HigherRole(shares[j].Role, role)
+					} else if !(ws.Owner.Kind == api.OwnerPerson && ws.Owner.ID == to) {
+						shares = append(shares, factory.Share{Kind: factory.ShareToPerson, ID: to, Role: role})
+					}
+				}
+				ws.Shares = shares
+				ws.PeopleAdded = maps1(ws.PeopleAdded)
+				if added, ok := ws.PeopleAdded[factory.ShareToPerson+":"+from]; ok {
+					delete(ws.PeopleAdded, factory.ShareToPerson+":"+from)
+					if keep {
+						ws.PeopleAdded[factory.ShareToPerson+":"+to] = added
+					}
+				}
+				if addedBy, ok := ws.PeopleAddedBy[factory.ShareToPerson+":"+from]; ok {
+					ws.PeopleAddedBy = maps1(ws.PeopleAddedBy)
+					delete(ws.PeopleAddedBy, factory.ShareToPerson+":"+from)
+					if keep {
+						ws.PeopleAddedBy[factory.ShareToPerson+":"+to] = addedBy
+					}
 				}
 			}
-			if addedBy, ok := ws.PeopleAddedBy[factory.ShareToPerson+":"+from]; ok {
+			if addedSome {
 				ws.PeopleAddedBy = maps1(ws.PeopleAddedBy)
-				delete(ws.PeopleAddedBy, factory.ShareToPerson+":"+from)
-				if keep {
-					ws.PeopleAddedBy[factory.ShareToPerson+":"+to] = addedBy
+				for k, v := range ws.PeopleAddedBy {
+					if v == from {
+						ws.PeopleAddedBy[k] = to
+					}
 				}
 			}
 			ws.UpdatedAt = now
