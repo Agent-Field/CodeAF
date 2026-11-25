@@ -53,8 +53,9 @@ but the `sessionhost` is on, and `hosted`, which only `codeaf` and the `sessionh
 
 - Docker with Compose v2.24 or newer (`docker compose version`), `git`, about 4 GB of free memory and 5 GB of disk, and
   ports 8787 and 8080 free on the host (see "What it runs").
-- For anyone who is not on the same machine: **HTTPS**. An organization server takes a password only over
-  HTTPS (or from its own machine), so put a proxy that serves HTTPS in front of port 8787 (see "Other people").
+- For anyone to sign in with a password, **you on the machine running Compose included**: **HTTPS**. An organization server
+  takes a password only over HTTPS or from its own machine, and a request through Docker's published port does not count as
+  its own machine, so put a proxy that serves HTTPS in front of port 8787 (see "Other people", and "Trying it on one machine").
 - For real work: an OpenRouter key (`OPENROUTER_API_KEY`) and, to let the nodes clone private repositories and
   open pull requests, a GitHub token (`GH_TOKEN`). The smoke test needs neither.
 
@@ -82,7 +83,8 @@ and PR-AF from pinned commits of their public repositories. codeaf is built from
 
 To see the whole organization work before you spend anything, point every model call at the scripted model (profile `stub`),
 which answers a message with `STUB noted: <your message>`. Add these to `.env` (they are the values of `.env.stub`, plus the
-hosted ones of `.env.stub.hosted` that matter for a first chat), then `docker compose up -d --build`:
+hosted ones of `.env.stub.hosted` that matter for a first chat). Add them at the end of `.env` (the last line for a key wins),
+then `docker compose up -d --build`:
 
 ```sh
 COMPOSE_PROFILES=hosted,stub
