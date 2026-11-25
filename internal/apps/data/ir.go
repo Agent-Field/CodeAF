@@ -374,6 +374,11 @@ func (c *compiled) groupColumn(sc Scope, name string) (string, *Field, error) {
 		if f.Type == TypeEnums || f.Type == TypeRefs {
 			return "", nil, fieldErr(name, "%s holds a list; count its values with data.count", name)
 		}
+		if f.Type == TypeRef {
+			if _, err := c.sch.allow(sc, f.To, false); err != nil {
+				return "", nil, err
+			}
+		}
 		return c.col(f), f, nil
 	}
 	if f.Type != TypeRef {

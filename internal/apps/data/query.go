@@ -259,6 +259,16 @@ func (c *compiled) cond(cond Cond, sc Scope, now time.Time) error {
 	if cond.Field == "" {
 		return c.words(cond.Value, cond.Neg, sc)
 	}
+	// AN OP REACHES THE SQL ONLY AS ONE OF THESE SPELLINGS: a structured
+	// condition comes straight from the wire, so anything else is refused
+	// here, before a field is even looked up.
+	switch cond.Op {
+	case ":", "=", ">", ">=", "<", "<=", "is", "has":
+	case "":
+		return fieldErr(cond.Field, "a condition on %s needs an op: one of : = > >= < <= is has", cond.Field)
+	default:
+		return fieldErr(cond.Field, "%q is not an op; use one of : = > >= < <= is has", cond.Op)
+	}
 	if head, tail, ok := strings.Cut(cond.Field, "."); ok {
 		return c.relate(head, tail, cond, sc, now)
 	}
@@ -435,7 +445,20 @@ func (c *compiled) compare(f *Field, col, op, value string, neg bool, now time.T
 	if op == ":" {
 		return c.match(f, col, value, neg, now)
 	}
-	sqlOp := op
+	// The SQL operator is chosen by a switch, never copied from the caller.
+	var sqlOp string
+	switch op {
+	case ">":
+		sqlOp = ">"
+	case ">=":
+		sqlOp = ">="
+	case "<":
+		sqlOp = "<"
+	case "<=":
+		sqlOp = "<="
+	default:
+		return fieldErr(f.Name, "%q is not an op; use one of : = > >= < <= is has", op)
+	}
 	var v any
 	switch f.Type {
 	case TypeNumber, TypeMoney:
@@ -748,6 +771,13 @@ func (s *Store) Count(sc Scope, typ, query, group string) ([]Group, int, error) 
 	f, err := c.usable(group, sc, "group by")
 	if err != nil {
 		return nil, 0, err
+	}
+	// Grouping by a link answers the ids it points to, which are only for
+	// a scope that may read that type.
+	if f.Type == TypeRef || f.Type == TypeRefs {
+		if _, err := c.sch.allow(sc, f.To, false); err != nil {
+			return nil, 0, err
+		}
 	}
 	var stmt string
 	if f.Type == TypeEnums || f.Type == TypeRefs {

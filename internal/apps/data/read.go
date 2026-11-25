@@ -154,7 +154,9 @@ const refreshChunk = 500
 func (s *Store) Refresh() error {
 	sch := s.schema.Load()
 	for _, t := range sch.sortedTypes() {
-		if !t.clocked {
+		// A ledger entry is never rewritten, not even by the clock: what it
+		// says is what was booked.
+		if !t.clocked || t.Ledger {
 			continue
 		}
 		after := ""
@@ -195,6 +197,11 @@ func (s *Store) Refresh() error {
 					if canonicalJSON(next.Data) == canonicalJSON(before.Data) {
 						continue
 					}
+					// A new version, so a sign-off or an edit made against the
+					// one before it is told it is stale.
+					// updated_at stays: the clock is not an edit, and a formula
+					// reading it would otherwise never settle.
+					next.Rev++
 					if err := w.save(t, next, false); err != nil {
 						return err
 					}

@@ -1,7 +1,9 @@
 package data
 
 import (
+	"math"
 	"strings"
+	"sync/atomic"
 )
 
 // LIVE QUERIES SEND ROW DIFFS, NEVER PAGES. After every committed change, each
@@ -67,10 +69,10 @@ type subscription struct {
 	spec SubSpec
 	sc   Scope
 	fn   func(Diff)
-	// from is the cursor the subscription was answered with. A change at or
-	// before it was committed before the subscription began, so the caller
-	// has it already (or its resume brings it), and it is not told again.
-	from int64
+	// from is, for a resuming subscription, the cursor it was answered
+	// with: a change at or before it is brought by the resume, so it is not
+	// told live as well. It is zero for any other subscription.
+	from atomic.Int64
 }
 
 // resumeOp is a subscription asking to be brought up to date, which the
@@ -118,11 +120,15 @@ func (s *Store) Subscribe(sc Scope, spec SubSpec, fn func(Diff)) (int64, error) 
 	default:
 		return 0, errorf(CodeInvalid, "%q is not a table a live query can watch", spec.Table)
 	}
-	cursor, err := s.Cursor()
-	if err != nil {
-		return 0, err
+	// The subscription is held BEFORE the cursor is read, so no change can
+	// commit in between and be told to nobody.
+	sub := &subscription{spec: spec, sc: sc, fn: fn}
+	if spec.Resume {
+		// Until its cursor is known, a resuming subscription is told
+		// nothing live: the resume, which runs after every change already
+		// queued, brings all of it.
+		sub.from.Store(math.MaxInt64)
 	}
-	sub := &subscription{spec: spec, sc: sc, fn: fn, from: cursor}
 	s.subsMu.Lock()
 	if _, held := s.subs[spec.ID]; !held && len(s.subs) >= SubsMax {
 		s.subsMu.Unlock()
@@ -130,7 +136,21 @@ func (s *Store) Subscribe(sc Scope, spec SubSpec, fn func(Diff)) (int64, error) 
 	}
 	s.subs[spec.ID] = sub
 	s.subsMu.Unlock()
-	if spec.Resume && spec.After < cursor {
+	cursor, err := s.Cursor()
+	if err != nil {
+		s.Unsubscribe(spec.ID)
+		return 0, err
+	}
+	if spec.Resume {
+		// A resume brings everything up to the moment it runs, which is
+		// after this cursor, so a change at or before it is not told live
+		// as well.
+		sub.from.Store(cursor)
+	}
+	// Always queued, even from the current cursor: a change that landed
+	// while the cursor was unknown was held back from live delivery, and the
+	// resume is what brings it.
+	if spec.Resume {
 		s.closeMu.RLock()
 		defer s.closeMu.RUnlock()
 		if s.closed.Load() {
@@ -173,7 +193,7 @@ func (s *Store) deliver(c *Change) {
 	s.subsMu.Lock()
 	var subs []*subscription
 	for _, sub := range s.subs {
-		if c.Cursor > 0 && c.Cursor <= sub.from {
+		if c.Cursor > 0 && c.Cursor <= sub.from.Load() {
 			continue
 		}
 		if sub.spec.Table == "" && sub.spec.Type == c.Type && len(c.Records) > 0 || sub.spec.Table != "" && len(c.Items) > 0 {
@@ -212,7 +232,9 @@ func (s *Store) resume(op *resumeOp) {
 		return
 	}
 	reset := Diff{Sub: sub.spec.ID, Upserts: []Row{}, Removes: []string{}, Cursor: cursor, Reset: true}
-	if op.after < s.trimmed() {
+	// A cursor past where the store stands came from some other store (a
+	// draft made again, a copy restored): nothing it says can be trusted.
+	if op.after > cursor || op.after < s.trimmed() {
 		tell(sub, reset)
 		return
 	}

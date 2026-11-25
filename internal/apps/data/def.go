@@ -329,6 +329,9 @@ func (d *AppDef) check() error {
 				return err
 			}
 		}
+		if t.Ledger.On && t.Lifecycle != nil {
+			return errorf(CodeInvalid, "%s cannot be both a ledger and have a lifecycle: a ledger entry never changes state", name)
+		}
 		if field := t.Ledger.Reversal; field != "" {
 			if f, ok := t.Fields[field]; !ok || f.Type != TypeRef || f.To != name {
 				return errorf(CodeInvalid, "%s's ledger reversal %q needs to be a ref to %s that the type declares", name, field, name)

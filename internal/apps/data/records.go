@@ -1167,9 +1167,9 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 	var undo string
 	err := s.write(func(w *writeTx) error {
 		rows, removes, undo = nil, nil, ""
-		var typeID string
+		var typeID, byKind string
 		var undone sql.NullString
-		err := w.tx.QueryRow(`SELECT type_id, undone_by FROM batches WHERE batch = ?`, batch).Scan(&typeID, &undone)
+		err := w.tx.QueryRow(`SELECT type_id, undone_by, by_kind FROM batches WHERE batch = ?`, batch).Scan(&typeID, &undone, &byKind)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorf(CodeNotFound, "there is no batch %s", batch)
 		}
@@ -1188,6 +1188,11 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 		}
 		if t.Ledger {
 			return &Error{Code: CodeLedger, Message: fmt.Sprintf("%s entries are never undone; reverse the entry instead", t.Name)}
+		}
+		// AN AI DOES NOT UNDO WHAT A PERSON DID: that would be an AI write
+		// over a person's values by another door.
+		if sc.below() && (byKind == ByPerson || byKind == ByImport) {
+			return &Error{Code: CodeNotAllowed, Need: "undo." + byKind, Message: "an agent cannot undo a change a person made"}
 		}
 		type step struct {
 			id            string
@@ -1238,6 +1243,14 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 			if current == nil || st.after == nil || current.key(t) != expected.key(t) {
 				stale++
 				continue
+			}
+			// UNDO DOES NOT MOVE A LIFECYCLE: a state changes only by a
+			// transition, with its guard, its writers and its effects, so a
+			// change that moved one is walked back by another transition.
+			if lc := t.Lifecycle; lc != nil && st.before != nil && !st.before.Deleted && !st.after.Deleted {
+				if fmt.Sprint(st.before.Data[lc.Field]) != fmt.Sprint(st.after.Data[lc.Field]) {
+					return &Error{Code: CodeLifecycle, Field: lc.Field, Message: fmt.Sprintf("undoing this would move %s without a transition; fire a transition back instead", lc.Field)}
+				}
 			}
 			// UNDO DOES NOT WRITE THROUGH A FREEZE someone else's change made.
 			// Undoing the very batch that froze the record ("Mark won", then

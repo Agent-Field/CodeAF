@@ -604,3 +604,71 @@ func TestSchemaSpellingsOfProcessRegister(t *testing.T) {
 	err = s.RegisterApp([]byte(both))
 	wantCode(t, err, CodeInvalid)
 }
+
+// A STRUCTURED CONDITION'S OP NEVER REACHES THE SQL AS WRITTEN.
+func TestConditionOpIsNotSQL(t *testing.T) {
+	s, _ := openCRM(t)
+	seedDeals(t, s)
+	for _, op := range []string{"= -12345) OR (1=1) OR (0 >", "", "LIKE", "!="} {
+		_, err := s.QueryRows(Scope{App: "crm"}, &QueryIR{Type: "deal", Where: []Cond{{Field: "amount", Op: op, Value: "1"}}}, "", 0)
+		wantCode(t, err, CodeInvalid)
+		_, err = s.Aggregate(Scope{App: "crm"}, &QueryIR{Type: "deal", Where: []Cond{{Field: "company.name", Op: op, Value: "x"}}, Aggregate: []Agg{{Fn: "count"}}})
+		wantCode(t, err, CodeInvalid)
+	}
+}
+
+// UNDO DOES NOT MOVE A LIFECYCLE, AND AN AI DOES NOT UNDO A PERSON.
+func TestUndoKeepsLifecycleAndPerson(t *testing.T) {
+	s, _ := openOps(t)
+	id := mustCreate(t, s, person, "case", map[string]any{"name": "C1", "amount": 5})[0].ID()
+	moved, err := s.Transition(person, "case", id, "submit", TransitionOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Undo(person, moved.Batch)
+	wantCode(t, err, CodeLifecycle)
+	edit, _ := s.Update(person, "case", []string{id}, map[string]any{"notes": "mine"}, UpdateOptions{})
+	_, err = s.Undo(Scope{App: "ops", Agent: true}, edit.Batch)
+	wantCode(t, err, CodeNotAllowed)
+	if _, err := s.Undo(person, edit.Batch); err != nil {
+		t.Fatal(err)
+	}
+	both := strings.Replace(opsApp, `"ledger": true,`, `"ledger": true, "lifecycle": {"field": "name", "transitions": []},`, 1)
+	err = s.RegisterApp([]byte(both))
+	wantCode(t, err, CodeInvalid)
+}
+
+// THE CLOCK MAKES A NEW VERSION, and a group by a link needs the linked type.
+func TestRefreshBumpsTheRevision(t *testing.T) {
+	s, c := openCRM(t)
+	row := mustCreate(t, s, person, "deal", map[string]any{"name": "N"})[0]
+	c.advance(72 * time.Hour)
+	if err := s.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	now, _ := s.Get(person, "deal", row.ID(), false)
+	if now["_rev"].(int64) <= row["_rev"].(int64) {
+		t.Fatalf("refresh kept rev %v: %v", row["_rev"], now)
+	}
+	narrow := []byte(`{"id":"narrow","records":{"deal":{"uses":true,"fields":{}}},"capabilities":{"records":{"deal":"r"}}}`)
+	if err := s.RegisterApp(narrow); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := s.Count(Scope{App: "narrow"}, "deal", "", "company")
+	wantCode(t, err, CodeNotAllowed)
+	_, err = s.Aggregate(Scope{App: "narrow"}, &QueryIR{Type: "deal", Group: []string{"company"}, Aggregate: []Agg{{Fn: "count"}}})
+	wantCode(t, err, CodeNotAllowed)
+}
+
+// A CURSOR FROM SOMEWHERE ELSE, past where the store stands, is a reset.
+func TestResumeFromAFutureCursorResets(t *testing.T) {
+	s, _ := openCRM(t)
+	seedDeals(t, s)
+	rec := newRecorder()
+	if _, err := s.Subscribe(person, SubSpec{ID: "x", Type: "deal", Resume: true, After: 9999}, rec.take); err != nil {
+		t.Fatal(err)
+	}
+	if d := rec.next(t); !d.Reset {
+		t.Fatalf("future cursor: %+v", d)
+	}
+}

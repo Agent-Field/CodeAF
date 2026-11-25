@@ -158,13 +158,19 @@ func (w *writeTx) savepoint(fn func() (*record, error)) (*record, error) {
 	if _, err := w.tx.Exec(`SAVEPOINT row`); err != nil {
 		return nil, err
 	}
-	records, items, cursor := len(w.change.Records), len(w.change.Items), w.change.Cursor
+	records, items, cursor, txCursor := len(w.change.Records), len(w.change.Items), w.change.Cursor, w.cursor
 	r, err := fn()
 	if err != nil {
 		if _, rerr := w.tx.Exec(`ROLLBACK TO row`); rerr != nil {
 			return nil, rerr
 		}
+		// A row a create refused never happened: it leaves no before for a
+		// live query and no event under the cursor.
+		for _, rc := range w.change.Records[records:] {
+			delete(w.change.befores, rc.ID)
+		}
 		w.change.Records, w.change.Items, w.change.Cursor = w.change.Records[:records], w.change.Items[:items], cursor
+		w.cursor = txCursor
 		_, _ = w.tx.Exec(`RELEASE row`)
 		return nil, err
 	}
