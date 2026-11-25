@@ -27,8 +27,11 @@ func TestDataPlaneReopensBStoreWithoutReplacingIDs(t *testing.T) {
 		INSERT INTO type_fields VALUES('` + fieldID + `', 'crm', '{"type":"text"}', 0, 0);
 		INSERT INTO records(id, type_id, data_json, created_at, updated_at)
 			VALUES('` + recordID + `', '` + typeID + `', '{"` + fieldID + `":"Ari"}', '', '');
-		INSERT INTO outbox(event, type_id, record, by_kind, payload_json, at)
-			VALUES('record.created', '` + typeID + `', '` + recordID + `', 'person', '{}', '');
+		INSERT INTO history(batch, type_id, record, app, actor, by_kind, op, after_json, at)
+			VALUES('` + batchID + `', '` + typeID + `', '` + recordID + `', 'crm', '` + personID + `', 'person', 'create',
+				'{"data":{"` + fieldID + `":"Ari"},"meta":{}}', '');
+		INSERT INTO outbox(event, type_id, record, batch, by_kind, payload_json, at)
+			VALUES('record.created', '` + typeID + `', '` + recordID + `', '` + batchID + `', 'person', '{"after":{"name":"Ari"}}', '');
 	`); err != nil {
 		t.Fatal(err)
 	}
