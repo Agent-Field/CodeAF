@@ -1,0 +1,151 @@
+- name: founder-crm
+  prompt: Build a founder CRM for companies, contacts, and deals. Show deals by stage, with their value and company.
+  max_rounds: 3
+  record:
+    type: contact
+    value: {name: Eval Contact}
+    edit: {name: Updated Contact}
+  looks: [{screen: deals, recipe: add-view/board}]
+  steps:
+    - method: app.get
+      params: {app: $app}
+      expect:
+        - {path: /app/records/company, exists: true}
+        - {path: /app/records/contact, exists: true}
+        - {path: /app/records/deal, exists: true}
+    - method: app.screen
+      params: {app: $app, screen: deals}
+      expect: [{path: /screen, exists: true}]
+- name: hiring-reuses-contacts
+  prompt: Make a hiring tracker for candidates and interview stages, using my existing contacts if possible.
+  max_rounds: 3
+  plan:
+    - {path: /offers/0/type, equals: contact}
+    - {path: /offers/0/count, equals: 1}
+  record:
+    type: contact
+    value: {name: Eval Candidate}
+    edit: {name: Updated Candidate}
+  looks: [{screen: candidates, recipe: add-view/board}]
+  steps:
+    - method: app.get
+      params: {app: $app}
+      expect:
+        - {path: /app/records/contact/uses, equals: true}
+        - {path: /app/records/candidate, exists: true}
+- name: personal-finance-csv
+  prompt: Make a personal finance app for importing a CSV with date, description, category and amount. Show spending totals by category.
+  max_rounds: 2
+  record:
+    type: transaction
+    value: {date: "2026-01-01", description: Eval Entry, category: Food, amount: 2.50}
+    edit: {description: Updated Entry}
+  looks: [{screen: transactions, recipe: add-view/table}]
+  steps:
+    - method: app.get
+      params: {app: $app}
+      expect: [{path: /app/records/transaction/fields/amount/type, equals: money}]
+    - method: data.import_csv
+      params:
+        app: $app
+        type: transaction
+        path: $csv
+        mapping: {date: date, description: description, category: category, amount: amount}
+      expect: [{path: /created, equals: 3}]
+    - method: data.aggregate
+      params:
+        app: $app
+        type: transaction
+        group: [category]
+        query: "category:Food"
+        aggregate: [{fn: sum, field: amount, as: amount_cents}]
+      expect: [{path: /groups/0/values/amount_cents, equals: 1525}]
+- name: release-tracker
+  prompt: Build a release tracker for version, status and target date. Let me move a release from Planned to Shipped.
+  max_rounds: 3
+  record:
+    type: release
+    value: {version: "1.2.3", status: Planned, date: "2026-01-01"}
+    edit: {version: "1.2.4"}
+  looks: [{screen: releases, recipe: add-view/board}]
+  steps:
+    - method: data.create
+      params: {app: $app, type: release, set: {version: "3.1.0", status: Planned, date: "2026-01-02"}}
+      capture: {release: /rows/0/id, rev: /rows/0/_rev}
+    - method: data.transition
+      params: {app: $app, type: release, id: $release, expected_rev: $rev, transition: ship}
+      expect: [{path: /rows/0/status, equals: Shipped}]
+      capture: {shipped_batch: /batch}
+    - method: data.undo
+      params: {app: $app, batch: $shipped_batch}
+      error: lifecycle
+    - method: data.get
+      params: {app: $app, type: release, id: $release}
+      expect: [{path: /row/status, equals: Shipped}]
+- name: change-and-revert
+  prompt: Make a reading list of books, with a title and reading status.
+  max_rounds: 3
+  record:
+    type: book
+    value: {title: Eval Book}
+    edit: {title: Updated Book}
+  looks: [{screen: books, recipe: add-view/list}]
+  steps:
+    - method: app.get
+      params: {app: $app}
+      capture: {original: /app, version: /meta/version}
+      expect: [{path: /app/records/book/fields/rating, exists: false}]
+    - method: app.change
+      params: {app: $app, request: Add a numeric rating field to books.}
+      capture: {draft: /draft}
+    - method: wait-and-apply
+      params: {draft: $draft}
+    - method: app.get
+      params: {app: $app}
+      expect: [{path: /app/records/book/fields/rating/type, equals: number}]
+    - method: apps.revert
+      params: {app: $app, n: $version}
+    - method: app.get
+      params: {app: $app}
+      expect: [{path: /app, equals: $original}]
+- name: deterministic-no-model
+  prompt: Make a simple pantry list with items and quantities. No AI or external services.
+  no_model: true
+  max_rounds: 1
+  record:
+    type: item
+    value: {name: Eval Rice, quantity: 2}
+    edit: {quantity: 3}
+  looks: [{screen: items, recipe: add-view/list}]
+  steps:
+    - method: app.get
+      params: {app: $app}
+      expect:
+        - {path: /app/capabilities/ai, exists: false}
+        - {path: /app/capabilities/connectors, exists: false}
+    - method: data.create
+      params: {app: $app, type: item, set: {name: Rice, quantity: 2}}
+      capture: {item: /rows/0/id}
+    - method: data.get
+      params: {app: $app, type: item, id: $item}
+      expect: [{path: /row/quantity, equals: 2}]
+- name: marketing-desk
+  prompt: Make my marketing desk. Import posts and mentions, use AI for topic and sentiment, launch a research agent from a post, and fan out three thread drafts for review. Ask for my exact-text approval before posting. Each morning surface posts worth replying to. Keep AI spend under ten cents for a run.
+  max_rounds: 3
+  record:
+    type: post
+    value: {text: Eval Post}
+    edit: {text: Updated Post}
+  looks: [{screen: posts, recipe: add-agent-button}]
+  steps:
+    - method: app.get
+      params: {app: $app}
+      expect:
+        - {path: /app/records/post/fields/topic, exists: true}
+        - {path: /app/records/post/fields/sentiment, exists: true}
+    - method: runs.start
+      params: {app: $app, run: draft-thread}
+      capture: {run: /id}
+    - method: runs.get
+      params: {app: $app, id: $run}
+      expect: [{path: /state, equals: your_call}]
