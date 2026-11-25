@@ -183,6 +183,11 @@ func (s *Sync) attachRemoteControl(cfg *filesdoor.ServeConfig) {
 			Road:     road,
 			Direct:   direct,
 			Clock:    livedoor.RealClock(),
+			// A VIEW THAT ENDS BECAUSE THE SWITCH IS OFF SAYS SO. The permit read
+			// above answers "no watching" for it, and a viewer told that its permit
+			// changed would read a computer that changed what it allows, not one
+			// that stopped serving.
+			Off: func() bool { return !config.RemoteControlOn() },
 		})
 	}
 	// THE DIRECT ROAD EXISTS ONLY WHEN ALL THREE HOLD: remote control is on (the
