@@ -3967,6 +3967,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is moving a chat the same as sharing it", "organization-sharing"},
 		{"move my chat from my space into a workstream", "organization-sharing"},
 		{"why can't I move a chat that is answering me", "organization-sharing"},
+		{"can someone I shared my chat with move it to another workstream", "organization-sharing"},
+		{"how do I let people with manage permission move chats in the organization policy", "organization-sharing"},
 		{"can I give someone access until a date, and what happens when it ends", "organization-sharing"},
 		{"can I share my Afi pane with someone in the organization", "organization-sharing"},
 		{"what is a grant on a workstream and who may add one", "organization-sharing"},
@@ -3979,6 +3981,25 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does loopback_trust do", "factory"},
 		{"is a request through a reverse proxy on the same machine treated as local", "factory"},
 		{"can a runner on the same machine as my team server attach without a token", "factory"},
+		// Joining, living in and hosting an organization, in the words of the
+		// person who joins one and of the person who runs one.
+		{"can my admin read my chats", "organization-hosted-sessions"},
+		{"can my company's IT see my conversations in the organization", "organization-hosted-sessions"},
+		{"who pays for a shared chat", "organization-hosted-sessions"},
+		{"who pays for a chat I shared with a teammate", "organization-hosted-sessions"},
+		{"how do I join my company's codeaf", "organization-start"},
+		{"I got an invite link from my company, what do I do with it", "organization-start"},
+		{"how do I switch between my personal account and my company's organization", "organization-hosted-sessions"},
+		{"does a chat I start in the organization's window run on my laptop", "organization-hosted-sessions"},
+		{"what happens to my chat if the organization's server is down", "organization-hosted-sessions"},
+		{"can the organization see the chats in my personal account", "organization-hosted-sessions"},
+		{"how do I host my own codeaf organization with docker compose", "organization-start"},
+		{"can I run the organization's server on Railway", "organization-start"},
+		{"where is the operator's guide for running an organization", "organization-start"},
+		{"how do I give a teammate read-only access to my hosted chat", "organization-hosted-sessions"},
+		{"can a teammate send messages in my chat while I am using it", "organization-hosted-sessions"},
+		{"what is the sandbox around a hosted chat", "organization-hosted-sessions"},
+		{"can I add my own API key to the organization's chats", "organization-hosted-sessions"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

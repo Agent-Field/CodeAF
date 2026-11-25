@@ -49,7 +49,7 @@ After joining through the link and signing in, a person lands on their organizat
 
 ## remove someone from the organization — Remove from, sign-ins ended, work offered to the admin
 
-In the People table, a joined person's menu has **Remove from <organization>…**. Removing someone takes them off the People table, ends their sign-ins, takes them out of every team and every workstream, and gives the workstreams they owned to you. The tasks they owned are **offered to you to hand over**: they arrive in your **Handed to you**, marked as handed over by them, so nothing is left without an owner.
+In the People table, a joined person's menu has **Remove from <organization>…**. Removing someone takes them off the People table, ends their sign-ins and stops their bots, takes them out of every team and every workstream, and gives the workstreams they owned to you. The tasks they owned are **offered to you to hand over**: they arrive in your **Handed to you**, marked as handed over by them, so nothing is left without an owner.
 
 ## Teams — a group you add to a workstream in one step
 

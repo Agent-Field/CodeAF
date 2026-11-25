@@ -462,7 +462,7 @@ func TestP2_7_HostedStopAndDeleteRequireManage(t *testing.T) {
 	before := rg.host.count()
 	for _, step := range []struct{ method, suffix string }{{http.MethodPost, "/stop"}, {http.MethodDelete, ""}} {
 		w := rg.send("abir", step.method, path+step.suffix, nil, nil)
-		if w.Code != http.StatusForbidden || errorOf(t, w.Body.Bytes()) != "Only the owner of this chat can stop or delete it." {
+		if w.Code != http.StatusForbidden || errorOf(t, w.Body.Bytes()) != "Only this chat's owner, or someone it is shared with in full, can stop or delete it." {
 			t.Fatalf("%s as a grantee without manage = %d %s", step.method, w.Code, w.Body)
 		}
 	}

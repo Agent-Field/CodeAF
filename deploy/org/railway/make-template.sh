@@ -2,7 +2,7 @@
 # Makes a DRAFT Railway template of the org stack from the PUBLISHED IMAGES (README.md "Published images").
 #
 #     ./make-template.sh                 dry run: prints every Railway call it would make, changes nothing (the default)
-#     ./make-template.sh --apply         makes a fresh source project, adds the five services from their images, and turns
+#     ./make-template.sh --apply         makes a fresh source project, adds the six services from their images, and turns
 #                                        the project into an UNPUBLISHED template draft in your workspace
 #
 #     ORG_REGISTRY=agentfield ORG_TAG=dev    which images (the same two variables as images.env); a 12-character commit id
@@ -13,23 +13,25 @@
 # WHAT THE TEMPLATE IS, AND IS NOT
 #   * Every service is an IMAGE SOURCE. No GitHub repository, no GitHub App, no deployment trigger: the call that stopped
 #     the first attempt ("Cannot create deployment trigger ... no one in the project has access to it") is not made.
-#   * No real value is ever in it. The two keys that must exist (the AgentField API key and the server key that seals
-#     people's own keys) are Railway template functions, `${{secret(64, ...)}}`, which Railway fills with a NEW random value
+#   * No real value is ever in it. The AgentField API key, the server key that seals people's own keys, and the hosted-chat
+#     secret are Railway template functions, `${{secret(64, ...)}}`, which Railway fills with a NEW random value
 #     for every deploy. The other services reference the AgentField key as `${{agentfield.AGENTFIELD_API_KEY}}`. The model
 #     key and GitHub token are references to empty inputs on the `codeaf` service. This script contains no secret and
-#     refuses (see var()) to carry any variable named like a secret whose value is not empty or a `${{...}}` expression.
+#     refuses (see check_var()) to carry any variable named like a secret whose value is not empty or a `${{...}}` expression.
 #   * The smoke-test switches (RUNNER_SELFTEST, SMOKE_FIXTURE_REPO, the model stub and git stub) are not in it.
 #   * It is never published. This script has no `railway templates publish` call and never will; the draft opens in the
 #     dashboard's template editor, where the person who owns it decides.
-#   * Hosted chats (the sessionhost service) are NOT in it yet. They do run on Railway (a by-hand install with the sessionhost
-#     service passes `codeaf sessionhost probe` with mode uid+fence; README.md "Railway" has its variables), but this script has
-#     not been extended to add the service and the codeaf variables that name it, and nothing here could be run against the
-#     images before they exist.
+#   * Hosted chats are included through the private sessionhost service. It uses the user switch and Landlock on Railway
+#     (`codeaf sessionhost probe` in that service reports `uid+fence`). The person using the template still needs to supply
+#     the model key input.
 #
 # NOT YET RUN AGAINST RAILWAY: the images did not exist on Docker Hub when this was written. The calls are the Railway CLI's
 # documented ones (`railway add --image`, `railway volume add`, `railway environment edit --service-config`, `railway
 # templates create`); the first --apply is the first real test, and a service-by-service failure leaves a project you can
 # delete (it is only the SOURCE of the draft; delete it once the draft exists).
+# The deploy.limitOverride and deploy.healthcheckPath paths were read back from a live Railway project. Run --apply from
+# a terminal. `railway environment edit --service-config ...` reads its patch from the command line only when stdin is a
+# terminal. With non-terminal stdin, such as in CI or an agent, it reads a JSON patch from stdin and ignores those flags.
 # shellcheck disable=SC2016  # the ${{...}} in single quotes are Railway expressions, not shell expansions
 set -euo pipefail
 
@@ -43,6 +45,7 @@ esac
 REGISTRY="${ORG_REGISTRY:-agentfield}"
 TAG="${ORG_TAG:-dev}"
 PROJECT="${TEMPLATE_PROJECT:-codeaf-org-template}"
+MODEL=deepseek/deepseek-v4-flash-0731
 CODEAF_IMAGE="${REGISTRY}/codeaf-org:${TAG}"
 AGENTFIELD_IMAGE="${REGISTRY}/codeaf-org-agentfield:${TAG}"
 SWE_AF_IMAGE="${REGISTRY}/codeaf-org-swe-af:${TAG}"
@@ -137,17 +140,38 @@ service codeaf "$CODEAF_IMAGE" \
   'CODEAF_PUBLIC_DOMAIN=${{RAILWAY_PUBLIC_DOMAIN}}' \
   CODEAF_TRUSTED_PROXIES=100.64.0.0/10 \
   "CODEAF_SERVER_KEY=$KEY64" \
+  "CODEAF_HOSTED_SECRET=$KEY64" \
+  'CODEAF_HOSTED_MODEL_URL=http://${{RAILWAY_PRIVATE_DOMAIN}}:8787/v1/model' \
+  'CODEAF_HOSTED_MODEL_KEY=${{OPENROUTER_API_KEY}}' \
   OPENROUTER_API_KEY= \
   GH_TOKEN=
 rail volume add --service codeaf --mount-path /data --json
+rail environment edit --service-config codeaf deploy.healthcheckPath /v1/about --message "codeaf health check"
 rail domain --service codeaf --port 8787 --json
+
+# --- sessionhost: hosted chats, with private networking and their own volume. ------------------------------------------------------
+service sessionhost "$CODEAF_IMAGE" \
+  CODEAF_ROLE=sessionhost \
+  CODEAF_SESSIONHOST_DATA=/chats \
+  'CODEAF_SESSIONHOST_SECRET=${{codeaf.CODEAF_HOSTED_SECRET}}' \
+  "CODEAF_SESSIONHOST_MODEL=$MODEL" \
+  CODEAF_SESSIONHOST_MAX_RUNNING=4 \
+  CODEAF_SESSIONHOST_MAX_PER_PERSON=2
+rail volume add --service sessionhost --mount-path /chats --json
+rail environment edit --service-config sessionhost deploy.limitOverride.containers.cpu 1 \
+  --service-config sessionhost deploy.limitOverride.containers.memoryBytes 1000000000
+
+# Railway can resolve this reference once the sessionhost service exists.
+hosted_url='http://${{sessionhost.RAILWAY_PRIVATE_DOMAIN}}:8790'
+check_var CODEAF_HOSTED_URL "$hosted_url"
+rail variable set "CODEAF_HOSTED_URL=$hosted_url" --service codeaf --skip-deploys
 
 # --- runner: the factory runner, the same image in its runner role. --------------------------------------------------------------------
 service runner "$CODEAF_IMAGE" \
   CODEAF_ROLE=runner \
   'AGENTFIELD_URL=http://${{agentfield.RAILWAY_PRIVATE_DOMAIN}}:8080' \
   'AGENTFIELD_API_KEY=${{agentfield.AGENTFIELD_API_KEY}}' \
-  ORG_MODEL=deepseek/deepseek-v4-flash-0731 \
+  "ORG_MODEL=$MODEL" \
   'OPENROUTER_API_KEY=${{codeaf.OPENROUTER_API_KEY}}' \
   'GH_TOKEN=${{codeaf.GH_TOKEN}}'
 rail volume add --service runner --mount-path /data --json
