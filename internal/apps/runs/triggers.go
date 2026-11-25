@@ -23,30 +23,33 @@ type Trigger struct {
 }
 
 type Change struct {
-	Seq         int64
-	Type        string
-	TypeID      string
-	Batch       string
-	ID          string
-	Version     int
-	CauseChain  []string
-	SourceEvent string
-	Before      map[string]any
-	After       map[string]any
+	Seq           int64
+	Type          string
+	TypeID        string
+	Batch         string
+	ID            string
+	OutboxVersion int
+	CauseChain    []string
+	SourceEvent   string
+	Before        map[string]any
+	After         map[string]any
 }
+
+// Keep a bound on stored provenance when runs trigger other runs.
+const maxRunCauseChain = 64
 
 // triggerReceipt preserves the event provenance in the same checkpoint that
 // owns the unique sequence and trigger claim. Run expressions see only the
 // separately scoped record input.
 type triggerReceipt struct {
-	Seq         int64    `json:"seq"`
-	TriggerID   string   `json:"trigger_id"`
-	TypeID      string   `json:"type_id,omitempty"`
-	Batch       string   `json:"batch,omitempty"`
-	Record      string   `json:"record,omitempty"`
-	Version     int      `json:"version,omitempty"`
-	CauseChain  []string `json:"cause_chain,omitempty"`
-	SourceEvent string   `json:"source_event,omitempty"`
+	Seq           int64    `json:"seq"`
+	TriggerID     string   `json:"trigger_id"`
+	TypeID        string   `json:"type_id,omitempty"`
+	Batch         string   `json:"batch,omitempty"`
+	Record        string   `json:"record,omitempty"`
+	OutboxVersion int      `json:"outbox_version,omitempty"`
+	CauseChain    []string `json:"cause_chain,omitempty"`
+	SourceEvent   string   `json:"source_event,omitempty"`
 }
 
 type scheduleClock struct {
@@ -150,7 +153,8 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		}
 		receipt := triggerReceipt{
 			Seq: change.Seq, TriggerID: t.App + "/" + t.ID, TypeID: change.TypeID, Batch: change.Batch,
-			Record: change.ID, Version: change.Version, CauseChain: change.CauseChain, SourceEvent: change.SourceEvent,
+			Record: change.ID, OutboxVersion: change.OutboxVersion, SourceEvent: change.SourceEvent,
+			CauseChain: change.CauseChain[max(0, len(change.CauseChain)-maxRunCauseChain):],
 		}
 		if receipt.Seq > 0 {
 			claimed, claimErr := e.journal.AppRunClaimed(receipt.Seq, receipt.TriggerID)

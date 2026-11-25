@@ -373,7 +373,9 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		} else {
 			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args}
 			if c.TriggerReceipt != nil {
-				call.causeChain = slices.Concat(c.TriggerReceipt.CauseChain, []string{"run:" + c.ID})
+				causes := c.TriggerReceipt.CauseChain
+				start := max(0, len(causes)-(maxRunCauseChain-1))
+				call.causeChain = append(slices.Clone(causes[start:]), "run:"+c.ID)
 			}
 			reply, err = e.cfg.Records(ctx, call)
 		}

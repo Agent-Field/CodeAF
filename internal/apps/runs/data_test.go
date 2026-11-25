@@ -59,8 +59,12 @@ steps:
 	if err := adapter.ConsumeOutbox(t.Context(), e); err != nil {
 		t.Fatal(err)
 	}
+	// An observation with no native contribution must still advance the cursor.
+	if _, err := db.ObserveSource(data.SourceObservation{Key: key, Event: "freshness-only", Revision: "0"}); err != nil {
+		t.Fatal(err)
+	}
 	observation := data.SourceObservation{Key: key, Event: "source-event-1", Revision: "1", NativeValues: true,
-		CauseChain: []string{"refresh", "crm-sync"},
+		CauseChain: append(slices.Repeat([]string{"earlier"}, 64), "refresh", "crm-sync"),
 		Claims:     map[string]data.SourceFieldClaim{"stage": {Path: "stage", Value: "Won"}}}
 	for range 2 {
 		if _, err := db.ObserveSource(observation); err != nil {
@@ -97,9 +101,9 @@ steps:
 	if err != nil || len(events) != 1 {
 		t.Fatalf("run write events = %+v, %v", events, err)
 	}
-	want := []string{"refresh", "crm-sync", "run:" + list[0].ID}
+	want := append(slices.Repeat([]string{"earlier"}, 61), "refresh", "crm-sync", "run:"+list[0].ID)
 	if !slices.Equal(events[0].CauseChain, want) || events[0].SourceEvent != "" {
-		t.Fatalf("run write causation = %+v, want %v and a native event", events[0], want)
+		t.Fatalf("run write causation = %+v, want %v and an empty source event ID", events[0], want)
 	}
 }
 
