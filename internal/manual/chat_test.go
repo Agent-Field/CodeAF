@@ -3967,6 +3967,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is moving a chat the same as sharing it", "organization-sharing"},
 		{"move my chat from my space into a workstream", "organization-sharing"},
 		{"why can't I move a chat that is answering me", "organization-sharing"},
+		{"can someone I shared my chat with move it to another workstream", "organization-sharing"},
+		{"how do I let people with manage permission move chats in the organization policy", "organization-sharing"},
 		{"can I give someone access until a date, and what happens when it ends", "organization-sharing"},
 		{"can I share my Afi pane with someone in the organization", "organization-sharing"},
 		{"what is a grant on a workstream and who may add one", "organization-sharing"},

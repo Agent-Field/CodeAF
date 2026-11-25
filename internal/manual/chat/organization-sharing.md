@@ -37,7 +37,7 @@ What a bot makes belongs to its creator: a chat, a task or a file it creates is 
 
 ## Who sets the sharing rules — the operator's organization policy
 
-The operator holds the organization's **policy**: which roles exist and the verbs in each, whether new chats start private, shared with the owner's workstream, or visible to every member, who may share (anyone holding share, or only the owner), and what agents may do. Everyone in the organization can read the policy; only the operator can change it, and a stale edit is refused with "412" so two edits never overwrite each other.
+The operator holds the organization's **policy**: which roles exist and the verbs in each, whether new chats start private, shared with the owner's workstream, or visible to every member, who may share (anyone holding share, or only the owner), who may move a chat (only its owner, or anyone holding manage on it), and what agents may do. Everyone in the organization can read the policy; only the operator can change it, and a stale edit is refused with "412" so two edits never overwrite each other.
 
 An organization starts on the default policy, which behaves as the server always did: the four roles above, chats private, the operator seeing what is not private and nothing that is. A role can be added or its bundle changed, and the four starting names can never be removed or renamed, because old shares and clients use them. A change to the policy changes who can see things, so every person who gains or loses access to something hears about it at once. A policy that makes new chats visible to every member applies to chats made after the change only; it never opens an existing chat.
 
@@ -54,6 +54,14 @@ A **move** changes where a chat lives, and so who can reach it; a **share** only
 Only the person whose chat it is can move it, to a workstream they can edit or to their own My space; another person's space is never an option. Moving a chat to where it already is is refused with "it is already there". A chat that is answering a message cannot move: "stop it or wait for it to finish, then move it". Moving into My space makes it private again and drops the grants that were on it; the move says which ones. Moving into a workstream keeps its privacy and its grants. From then on the destination's rules apply: its budget pays for the chat's next messages, and a chat whose named agent the destination does not list still reads but takes no more messages ("start a new chat"). A move tells everyone who could see the chat before or after it, once. In a workstream shared with other people the server's chat list has always carried each member's chats' title, owner and state, so a chat moved in appears there for the workstream's people; only what was said stays its owner's.
 
 Pages and files do not move this way: they keep **Move to workstream…** (see "Moving a document from My space into a workstream"). Afi's pane and a task's working conversation belong to their workstream and cannot be moved.
+
+## Who may move a chat — the owner by default, and the policy setting that lets people with manage do it too
+
+By default only the person whose chat it is can move it, and they need permission to manage it. Someone a chat is shared with cannot move it, whatever role they hold, and a bot never can. They read "Only the person who owns this chat can move it, and they need permission to manage it."
+
+The operator can change that in the organization's policy. `PUT /v1/org/policy` takes `"chats": {"move_by": "owner"}`, which is the default and what an organization with no setting has, or `"chats": {"move_by": "manage"}`. With `manage`, anyone who holds the manage permission on the chat can move it. Under the starting roles that is a person it is shared with at `full`; a person with `edit` still cannot, and reads "Only the person who owns this chat, or someone with permission to manage it, can move it." Any other word is refused when the policy is saved.
+
+The chat stays its owner's wherever it goes. Someone who is not the owner can move it into a workstream they can edit, and never into their own My space: "Only the person who owns this chat can move it into their My space." Nothing else about a move changes: a chat that is answering a message still cannot move, a destination the person cannot edit is still refused, and everyone who could see the chat before or after is told once. The desktop app has no screen for this setting yet; the operator changes it through the policy.
 
 ## A share that runs out — give someone access until a date, what happens when it ends, and who hears about it
 

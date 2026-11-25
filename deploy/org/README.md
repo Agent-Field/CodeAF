@@ -277,6 +277,13 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   `a bot cannot use this yet`): it makes, lists, opens, stops and deletes exactly what its creator may, narrowed by
   its scope, decided again at every request. A bot's chat is owned by the person who made the bot, and `created_by`
   records the bot, as for any other thing a bot makes.
+- **Who may move a chat.** `PUT /v1/org/policy` takes `"chats": {"move_by": "owner"}` or `"chats": {"move_by": "manage"}`. Absent or
+  empty means `owner`: only the person who owns a chat moves it, which is what the server always did, and a policy stored before the
+  field existed reads that way. `manage` lets anyone who holds the `manage` verb on the chat move it, so a person it is shared with at
+  `full`; `edit` still cannot and a bot never can, and a person who is not the owner can move it into a workstream they can edit, never
+  into their own My space. The refusals read `Only the person who owns this chat can move it, and they need permission to manage it.`
+  (the default) and `Only the person who owns this chat, or someone with permission to manage it, can move it.` Any other word is
+  refused with a 422.
 - **The hosting policy.** `PUT /v1/org/policy` takes `"hosting": {"local_sessions": "allow|warn|refuse",
   "max_session_cost_usd": 0}`. Empty `local_sessions` means `refuse` for an organization that has chats' machine and
   `allow` for one that does not; the list reports the value that applies, with `words` to show for `refuse` (that
