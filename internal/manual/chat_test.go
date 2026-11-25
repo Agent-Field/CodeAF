@@ -3990,7 +3990,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is there a disk or memory limit for each hosted chat", "organization-hosted-sessions"},
 		{"why can't my hosted chat run pytest or pip install", "organization-hosted-sessions"},
 		{"what tools does a hosted chat have installed", "organization-hosted-sessions"},
-		{"does a swe-af job count toward the organization's spending limit", "organization-hosted-sessions"},
+		{"does a factory job count toward the organization's spending limit", "organization-hosted-sessions"},
 		{"why is the spend table lower than my openrouter bill", "organization-hosted-sessions"},
 		{"what happens to the shares someone holds when I remove them from the organization", "inviting-people"},
 		{"what happens to a person's chats when I remove them while the chat machine is down", "organization-hosted-sessions"},

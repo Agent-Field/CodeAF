@@ -208,9 +208,9 @@ A hosted chat's machine has `python3` (3.11 in the one organization this was che
 
 There is no setting that adds tools. The list is the packages installed in the runtime stage of `deploy/org/codeaf.Dockerfile`, so an operator who wants more builds the organization's own image from that file; that was not tried. If you need to run a project's tests, run them on your own computer in a personal chat, outside the organization's window.
 
-## do the background jobs count toward the organization's spend and limits — SWE-AF, PR-AF and the runner call the model provider directly
+## do the background jobs count toward the organization's spend and limits — factory jobs call the model provider directly
 
-No. Hosted chats are metered because they call their model through the organization's server, which counts each call to the cent in My space and stops a chat or a person at their limit. The organization's background jobs do not go that way. SWE-AF, PR-AF and the runner that hosts them each call the model provider directly with their own copy of the provider key. Their spend is not in the spend table, in anyone's My space or in any chat's or person's limit, and those limits do not stop them. In one run, a job's own view showed a cost of `0.00027` while the provider billed about $0.56 for it.
+No. Hosted chats are metered because they call their model through the organization's server, which counts each call to the cent in My space and stops a chat or a person at their limit. The organization's background jobs do not go that way. The factory's code-writing service, its pull-request review service and the runner that hosts them each call the model provider directly with their own copy of the provider key. Their spend is not in the spend table, in anyone's My space or in any chat's or person's limit, and those limits do not stop them. In one run, a job's own view showed a cost of `0.00027` while the provider billed about $0.56 for it.
 
 To bound that spend, put a credit limit on the key at the provider, and give those services a key of their own if you want their bill apart from the chats'. Hosted chats are counted exactly as described in *what does a hosted chat cost and who pays*.
 
