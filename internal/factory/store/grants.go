@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS resources (
 	created_at TEXT NOT NULL,
 	PRIMARY KEY (kind, id)
 );
+CREATE INDEX IF NOT EXISTS resources_parent ON resources (kind, parent_kind, parent_id);
 CREATE TABLE IF NOT EXISTS resource_move_cleanup (
 	kind TEXT NOT NULL,
 	id TEXT NOT NULL,
@@ -69,7 +70,7 @@ CREATE TABLE IF NOT EXISTS org_policy (
 	updated_at TEXT NOT NULL,
 	updated_by TEXT NOT NULL
 );
-`
+` + botsSchema
 
 // grantColumns is the column list every grant read and write uses.
 const grantColumns = `id, subject_kind, subject_id, resource_kind, resource_id, role,
@@ -214,6 +215,25 @@ func (st *Store) RemoveGrant(id string) error {
 // RemoveGrantAtPolicy deletes a grant only while the policy is still at rev.
 func (st *Store) RemoveGrantAtPolicy(id string, rev int) error {
 	return st.removeGrant(id, &rev)
+}
+
+// RemoveGrantsOfSubject deletes every grant that names one subject, lapsed ones
+// included, in one transaction, and answers how many it deleted. It is what
+// removing a person from the organization does to what others gave them: a
+// grant left behind would apply again to anyone who later joins under the same
+// handle. Like RemoveGrant it keeps nothing; the serve layer writes the record.
+func (st *Store) RemoveGrantsOfSubject(kind, id string) (int, error) {
+	removed := 0
+	err := st.wsTx(func(tx *sql.Tx) error {
+		res, err := tx.Exec(`DELETE FROM grants WHERE subject_kind = ? AND subject_id = ?`, kind, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		removed = int(n)
+		return err
+	})
+	return removed, err
 }
 
 // removeGrant deletes the row inside one transaction, first checking the
@@ -444,6 +464,30 @@ func (st *Store) Resources(kind string) ([]Resource, error) {
 		args = append(args, kind)
 	}
 	rows, err := db.Query(q+` ORDER BY kind, id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Resource{}
+	for rows.Next() {
+		r, err := scanResource(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ResourcesIn lists the registrations of one kind that sit directly under
+// parent, so a list of one workstream's chats reads only that workstream's rows.
+func (st *Store) ResourcesIn(kind string, parent acl.Resource) ([]Resource, error) {
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return nil, err
+	}
+	rows, err := db.Query(`SELECT `+resourceColumns+` FROM resources WHERE kind = ? AND parent_kind = ? AND parent_id = ? ORDER BY id`,
+		kind, parent.Kind, parent.ID)
 	if err != nil {
 		return nil, err
 	}

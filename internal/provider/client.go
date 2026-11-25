@@ -2825,6 +2825,10 @@ type APIError struct {
 	Payment         bool
 	PlanPaused      bool
 	PlanUnavailable bool
+	// OrgDoor says THE ORGANIZATION'S MODEL DOOR wrote this refusal, in its own
+	// sentence, for a person to read (orgdoor.go). It is read off the error
+	// envelope's [DoorKey] field, never off the sentence.
+	OrgDoor bool
 }
 
 // Error keeps the SDK's exact error phrasing, and names the upstream when the
@@ -3003,6 +3007,10 @@ type errorBody struct {
 	Error struct {
 		Message string          `json:"message"`
 		Code    json.RawMessage `json:"code,omitempty"`
+		// Door is who wrote this error when it was not a provider: the
+		// organization's model door writes [OrganizationDoor] here (orgdoor.go).
+		// A provider never sends it, so its absence is the ordinary case.
+		Door string `json:"door,omitempty"`
 		// Metadata is the router's own dialect and is decoded leniently, for
 		// [pacedProviderName]'s reason: a provider that shapes its errors
 		// differently simply leaves these empty and behaves exactly as it did
@@ -3056,6 +3064,7 @@ func apiError(status int, payload []byte) error {
 		failure.Provider = strings.TrimSpace(decoded.Error.Metadata.ProviderName)
 		failure.Raw = clipRaw(decoded.Error.Metadata.Raw)
 		failure.Code = envelopeCode(decoded.Error.Code)
+		failure.OrgDoor = decoded.Error.Door == OrganizationDoor
 	}
 	// THE ONE SHAPE THAT NEEDS NO DOOR. Every other structural fact on this error
 	// depends on what the CLIENT knows — whether this base routes, whether the

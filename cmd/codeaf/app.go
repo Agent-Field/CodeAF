@@ -315,6 +315,7 @@ type appConversation interface {
 // new one in a workspace. Minted is a folder this process minted a moment ago
 // for agents.create: nobody else can be holding it, so it is never joined.
 type appOpenAsk struct {
+	Hosted             *appHostedOpen
 	IntentSiblingNames func() []string
 	Models             *session.ConversationModels
 	AutomaticModels    *bool
@@ -335,6 +336,7 @@ type appOpenAsk struct {
 
 // appConn is an opened conversation and the one way to give it back.
 type appConn struct {
+	hosted      *appHostedLink
 	Note        string
 	Interrupted []string
 	// UserMessages comes from the opener's replay, including compacted history.
@@ -373,13 +375,17 @@ const appHostDialTimeout = 500 * time.Millisecond
 // appHostJoinWait is one budget for discovering and joining an existing host.
 var appHostJoinWait = 5 * time.Second
 
+func appLaunchShape(ask appOpenAsk) *remote.LaunchShape {
+	clock := ask.ClockS
+	return &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
+}
+
 // appOpenInProcess opens a conversation for the app. A saved conversation that
 // a window's host already holds is JOINED there, as a second view of the same
 // conversation, because opening it here as well would be a second writer on its
 // journal. Everything else is built in this process.
 func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
-	clock := ask.ClockS
-	launch := &remote.LaunchShape{TeamListeningSince: ask.TeamListeningSince, Interactive: true, IntentNames: true, HandOverOnAsk: true, ProposalClockS: &clock, ChoiceClockS: clock, QuitGraceS: appQuitGraceS, LiveToolOutput: true, StandingOrders: true, QuickTasks: true}
+	launch := appLaunchShape(ask)
 	if conn, err := appJoinExisting(ask, launch); conn != nil || err != nil {
 		if err == nil {
 			err = enableAppConversationModels(conn.Conv)
@@ -598,6 +604,9 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
+	// Hosted views go straight to the wire and stay out of local inventory.
+	hostedAgents   map[string]*appAgent
+	hostedEmit     appwire.Emitter
 	clientTools    appClientTools
 	libraryWatch   sync.Once
 	libraryInboxMu sync.Mutex
@@ -850,6 +859,7 @@ type appBackend struct {
 // appAgent is every agent this process has heard of: listed off the disk,
 // created or opened. live is nil while no conversation is held for it.
 type appAgent struct {
+	hosted *appHostedRef
 	// syncGate keeps startup facts ahead of later live drive notices.
 	syncGate      sync.Mutex
 	syncOutage    bool   // guarded by syncGate
@@ -1140,14 +1150,20 @@ func newAppBackend(emit appwire.Emitter, open appOpener) *appBackend {
 		keys = config.NewAppCredentials()
 	}
 	b := &appBackend{
-		keys:      keys,
-		state:     &appState{},
-		chats:     appChats{publicationWake: make(chan struct{}, 1)},
-		turnLong:  appTurnLong,
-		toolQuiet: appToolQuiet,
-		follows:   map[string]*appFollow{},
-		open:      open,
-		now:       time.Now,
+		keys:       keys,
+		state:      &appState{},
+		chats:      appChats{publicationWake: make(chan struct{}, 1)},
+		turnLong:   appTurnLong,
+		toolQuiet:  appToolQuiet,
+		follows:    map[string]*appFollow{},
+		hostedEmit: emit,
+		open: func(ask appOpenAsk) (*appConn, error) {
+			if ask.Hosted != nil {
+				return ask.Hosted.dial(ask)
+			}
+			return open(ask)
+		},
+		now: time.Now,
 		after: func(d time.Duration, fn func()) func() {
 			t := time.AfterFunc(d, fn)
 			return func() { t.Stop() }
@@ -1328,6 +1344,13 @@ func (b *appBackend) rememberRowLocked(a *appAgent, row session.SessionRow, loca
 // find answers the agent for id, reading the disk for one this process has not
 // heard of yet.
 func (b *appBackend) find(id string) (*appAgent, error) {
+	if session, org, ok := appwire.ParseHostedAgentID(id); ok {
+		return b.findHosted(id, appHostedRef{org: org, session: session})
+	}
+	return b.findLocal(id)
+}
+
+func (b *appBackend) findLocal(id string) (*appAgent, error) {
 	var a *appAgent
 	held := false
 	b.locked(func() {
@@ -1486,6 +1509,9 @@ func (b *appBackend) listedView(row session.SessionRow, stale time.Time) appwire
 // agent is named by them. A conversation that cannot be opened says so as a
 // failed turn and a stopped agent.
 func (b *appBackend) CreateAgent(ask appwire.CreateAsk) (appwire.Agent, error) {
+	if ask.Org != "" {
+		return b.createHostedAgent(ask)
+	}
 	prep, err := b.prepareCreate(ask)
 	if err != nil {
 		return appwire.Agent{}, err
@@ -1843,6 +1869,9 @@ func appSendUnsure(err error) bool {
 
 // OpenAgent attaches a conversation to a saved agent and answers it.
 func (b *appBackend) OpenAgent(id string) (appwire.Agent, error) {
+	if _, _, hosted := appwire.ParseHostedAgentID(id); hosted {
+		return b.openHostedAgent(id, false)
+	}
 	// Only a row already read for this paired identity can enable automatic
 	// pull. Ordinary local opens and single-device homes add no relay request.
 	if b.idleHandoffEnabled() {
@@ -1881,7 +1910,10 @@ func (c *appChats) rowFor(id string) (appwire.ChatRow, bool) {
 func (b *appBackend) WarmAgent(id string) (appwire.Agent, error) { return b.openAgent(id, true) }
 
 func (b *appBackend) openAgent(id string, warm bool) (appwire.Agent, error) {
-	a, err := b.find(id)
+	if _, _, hosted := appwire.ParseHostedAgentID(id); hosted {
+		return b.openHostedAgent(id, warm)
+	}
+	a, err := b.findLocal(id)
 	if err != nil {
 		return appwire.Agent{}, err
 	}
@@ -1928,6 +1960,9 @@ func (b *appBackend) ensure(a *appAgent) (appwire.Agent, bool, error) {
 
 // ensureLocked is [appBackend.ensure] for a caller already holding a.gate.
 func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
+	if a.hosted != nil {
+		return appwire.Agent{}, false, b.RefuseHostedAction(a.hosted.org)
+	}
 	// Opening includes initialization after b.open returns. Readers must not
 	// queue on the gate in the gap before the live owner is ready.
 	defer b.locked(func() {
@@ -2053,13 +2088,9 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 	return b.hold(a, conn, workspace), true, nil
 }
 
-// hold makes conn the agent's live conversation. Callers hold a.gate.
-func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.Agent {
-	if conn.Assembled {
-		b.markAssembled()
-	}
-	live := &appLive{
-		conn: conn, box: appwire.NewOutbox(b.emit), lastUse: b.now(),
+func (b *appBackend) newLive(conn *appConn, emit appwire.Emitter) *appLive {
+	return &appLive{
+		conn: conn, box: appwire.NewOutbox(emit), lastUse: b.now(),
 		tasks: map[string]appwire.Task{}, lanesDone: make(chan struct{}), asksDone: make(chan struct{}),
 		questions: map[string]session.Question{}, answered: map[string]string{},
 		consents: map[uint64]appConsentCall{}, money: map[string]appMoneyAsk{},
@@ -2067,6 +2098,14 @@ func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.
 		processes: map[string]appwire.Process{}, logs: map[string]string{},
 		said: map[string]string{}, calls: map[string]string{}, pilots: map[string]func(){},
 	}
+}
+
+// hold makes conn the agent's live conversation. Callers hold a.gate.
+func (b *appBackend) hold(a *appAgent, conn *appConn, workspace string) appwire.Agent {
+	if conn.Assembled {
+		b.markAssembled()
+	}
+	live := b.newLive(conn, b.emit)
 	replayTranscript := conn.Transcript
 	if replayTranscript == "" {
 		b.locked(func() { replayTranscript = a.transcript })
@@ -2556,6 +2595,9 @@ func (b *appBackend) liveOf(a *appAgent) *appLive {
 // in its turn was made in no crew. Words the app writes itself go through
 // [appBackend.send] with nothing stated, and stay unknown.
 func (b *appBackend) Send(id, text, clientID string) (uint64, error) {
+	if _, _, hosted := appwire.ParseHostedAgentID(id); hosted {
+		return b.sendHosted(id, appwire.AgentMessage{Text: text, ClientID: clientID})
+	}
 	b.resetCloseResumes(id)
 	return b.send(id, text, clientID, appStated(text, appNoTeam()))
 }
@@ -2677,8 +2719,10 @@ func (b *appBackend) startLocked(a *appAgent, text, clientID string, shown *appS
 type appTurnStarter func(*appLive, string) (<-chan session.Event, error)
 
 func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *appSending, start appTurnStarter) (uint64, error) {
-	if err := b.workAllowed(a); err != nil {
-		return 0, err
+	if a.hosted == nil {
+		if err := b.workAllowed(a); err != nil {
+			return 0, err
+		}
 	}
 	var id string
 	var live *appLive
@@ -2750,29 +2794,31 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 	}
 	// THE DAY CAP IS CHECKED BEFORE THE ENGINE HEARS OF THE TURN: a refused
 	// turn sends nothing and costs nothing, and its words wait for a raise.
-	now := b.now()
-	// A LIMIT NOBODY CAN READ REFUSES THE TURN: not the default, not none.
-	limit, limitErr := b.dayCap(now)
-	if limitErr != nil {
-		return 0, appEngineError(limitErr)
-	}
-	if limit > 0 {
-		spent, err := b.spentTodayChecked(now)
-		if err != nil {
+	if a.hosted == nil {
+		now := b.now()
+		// A LIMIT NOBODY CAN READ REFUSES THE TURN: not the default, not none.
+		limit, limitErr := b.dayCap(now)
+		if limitErr != nil {
+			return 0, appEngineError(limitErr)
+		}
+		if limit > 0 {
+			spent, err := b.spentTodayChecked(now)
+			if err != nil {
+				return 0, appEngineError(err)
+			}
+			if spent >= limit {
+				if err := b.knownWorkRefusal(a); err != nil {
+					return 0, err
+				}
+				turn := b.dayRefused(a, live, text, clientID, spent, limit)
+				b.locked(func() { a.failedShown = shown })
+				return turn, nil
+			}
+		}
+		// The agent's budget is bound again, so a raise for today ends at midnight.
+		if err := b.bindBudgetConn(id, live.conn); err != nil {
 			return 0, appEngineError(err)
 		}
-		if spent >= limit {
-			if err := b.knownWorkRefusal(a); err != nil {
-				return 0, err
-			}
-			turn := b.dayRefused(a, live, text, clientID, spent, limit)
-			b.locked(func() { a.failedShown = shown })
-			return turn, nil
-		}
-	}
-	// The agent's budget is bound again, so a raise for today ends at midnight.
-	if err := b.bindBudgetConn(id, live.conn); err != nil {
-		return 0, appEngineError(err)
 	}
 	var turn uint64
 	var n int
@@ -2838,10 +2884,13 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 		refusedWork := errors.As(err, &workRefusal)
 		b.locked(func() {
 			live.running = false
-			if start != nil || refusedWork {
+			if start != nil || refusedWork || live.conn.hosted != nil {
 				delete(a.marks, n)
 			}
 		})
+		if live.conn.hosted != nil {
+			return 0, live.conn.hosted.wireError(err)
+		}
 		if start != nil || refusedWork {
 			return 0, appEngineError(err)
 		}
@@ -2888,10 +2937,14 @@ func (b *appBackend) startTurnLocked(a *appAgent, text, clientID string, shown *
 		defer long.Stop()
 		defer tails()
 		b.pump(a, id, live, turn, n, text, shown, events)
-		b.sendQueued(a, live)
+		if a.hosted == nil {
+			b.sendQueued(a, live)
+		}
 	})
-	if err := b.touchJobConversation(a.transcript); err != nil {
-		return turn, &appUnsureSend{err: appEngineError(err)}
+	if a.hosted == nil {
+		if err := b.touchJobConversation(a.transcript); err != nil {
+			return turn, &appUnsureSend{err: appEngineError(err)}
+		}
 	}
 	return turn, nil
 }
@@ -2931,7 +2984,10 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	defer func() {
 		b.locked(func() { live.lastN, live.lastMsgs, live.lastNotices = n, msg, notices })
 	}()
-	turnKey := b.openRouterTurnKey(live.conn.Conv.Model())
+	var turnKey string
+	if a.hosted == nil {
+		turnKey = b.openRouterTurnKey(live.conn.Conv.Model())
+	}
 	var reply strings.Builder
 	// replyRun is the run that streamed the reply so far, or empty once two
 	// runs have streamed into it.
@@ -3003,7 +3059,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 				}
 			}
 		case session.EventCloseContinued:
-			b.closeWakeStarted(id, live, event.Text)
+			if a.hosted == nil {
+				b.closeWakeStarted(id, live, event.Text)
+			}
 		case session.EventTextDelta:
 			if reply.Len() == 0 {
 				replyRun = event.RunID
@@ -3076,7 +3134,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			sayReply(appwire.EntryUpdate)
 			title := redact.Secrets(tui3.ToolTitle(event.Tool, event.Args, event.Hint))
 			titles[event.CallID] = title
-			b.stepMoved(a, live, title)
+			if a.hosted == nil {
+				b.stepMoved(a, live, title)
+			}
 			row := b.callBegan(a, id, turn, event, title)
 			row.Summary = event.Hint
 			live.sayTool(row)
@@ -3155,9 +3215,13 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		case session.EventError:
 			ok = false
 			kind, status, failure = appTurnFailure(event)
-			keyFailure, _ := provider.RouteFailureOf(&provider.APIError{Status: status})
-			if keyFailure == provider.RouteAuth {
-				b.keyHealth.invalid(turnKey)
+			if a.hosted == nil {
+				keyFailure, _ := provider.RouteFailureOf(&provider.APIError{Status: status})
+				if keyFailure == provider.RouteAuth {
+					b.keyHealth.invalid(turnKey)
+				}
+			} else if strings.Contains(failure, live.conn.hosted.door.token) {
+				failure = live.conn.hosted.door.clean(failure)
 			}
 			retryable = !provider.ReasoningUnsupported(status, failure)
 		case session.EventTurnDone:
@@ -3194,7 +3258,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		}
 		a.failed, a.failedKind, a.failedShown, a.failedClient = "", "", nil, ""
 		a.view.Retryable = false
-		if !ok && retryable {
+		if !ok && retryable && a.hosted == nil {
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
 			a.view.Retryable = text != ""
 		}
@@ -3224,7 +3288,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		_ = b.keepAppFailure(a, errEntry, keptWords)
 		entry(errEntry)
 	}
-	if ok {
+	if ok && a.hosted == nil {
 		b.resetCloseAfterReply(id)
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
@@ -3246,7 +3310,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	if held {
 		live.box.Event(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
 	}
-	b.spendMoved(func(spend appwire.Spend) { b.moneyAfter(a, live, spend.TodayUSD) })
+	if a.hosted == nil {
+		b.spendMoved(func(spend appwire.Spend) { b.moneyAfter(a, live, spend.TodayUSD) })
+	}
 }
 
 // ── entry ids ───────────────────────────────────────────────────────────────
@@ -3440,6 +3506,9 @@ func appTaskState(state string) string {
 // workEvent is one task, phase or process event, from the turn's stream or
 // the task lane: both carry the same news and each change is said once.
 func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
+	if live.conn.hosted != nil {
+		return
+	}
 	switch event.Kind {
 	case session.EventTakeover, session.EventMoved:
 		b.windowMoved(id, live, event.Kind == session.EventTakeover, event.Text)
@@ -3476,6 +3545,9 @@ func (b *appBackend) workEvent(id string, live *appLive, event session.Event) {
 // started, or is interrupted the moment it is ([appBackend.bootSettle]). No
 // stop waits on the gate an open holds.
 func (b *appBackend) Stop(id string) error {
+	if _, _, hosted := appwire.ParseHostedAgentID(id); hosted {
+		return b.stopHosted(id)
+	}
 	a, endRead, err := b.findCrewOwner(id)
 	if err != nil {
 		return err
@@ -3522,6 +3594,13 @@ func (b *appBackend) CloseAgent(id string) error {
 	a, err := b.find(id)
 	if err != nil {
 		return err
+	}
+	if a.hosted != nil {
+		a.gate.Lock()
+		defer a.gate.Unlock()
+		view := b.closeAgentLocked(a)
+		b.hostedEmit.Emit(appwire.EventAgentChanged, appwire.AgentChanged{Agent: view})
+		return nil
 	}
 	// CLOSING AN AGENT STOPS WHAT IT KEPT RUNNING, and waits for it to be
 	// gone; letting it go idle does not. A process that would not stop leaves
@@ -3575,7 +3654,9 @@ func (b *appBackend) release(a *appAgent) {
 		return
 	}
 	b.finish(live)
-	b.forgetAsksOf(id, live)
+	if a.hosted == nil {
+		b.forgetAsksOf(id, live)
+	}
 }
 
 func (b *appBackend) releaseIdle(a *appAgent) bool {
@@ -3644,6 +3725,9 @@ func (b *appBackend) finish(live *appLive) {
 // ListAsks answers the agent's open asks. An agent with no conversation held
 // has none this process can answer.
 func (b *appBackend) ListAsks(id string) ([]appwire.Ask, error) {
+	if _, _, hosted := appwire.ParseHostedAgentID(id); hosted {
+		return b.listHostedAsks(id)
+	}
 	// A member at rest has no question a held conversation would add: one
 	// waiting on the person says so in its presence and is not at rest.
 	a, endRead, err := b.findCrewReader(id)
@@ -3685,6 +3769,9 @@ func (b *appBackend) answerAskScope(id, askID, option, text, scope string) error
 // app's UI2_WIRE_LOG). Refused here, every ordinary door refuses them at once:
 // asks.answer, its scoped and batched forms, and anything added beside them.
 func (b *appBackend) answerAskThrough(id, askID, option, text, scope string, secretDoor bool) error {
+	if _, _, hosted := appwire.ParseHostedAgentID(id); hosted {
+		return b.answerHostedAsk(id, askID, option, text, scope, secretDoor)
+	}
 	b.resetCloseResumes(id)
 	if handled, err := b.answerOrderAsk(askID, option); handled {
 		return err
@@ -3859,6 +3946,9 @@ func (b *appBackend) EntriesWithFallback(id, before string, limit int) (appwire.
 	a, err := b.find(id)
 	if err != nil {
 		return appwire.EntriesResult{}, err
+	}
+	if a.hosted != nil {
+		return b.hostedEntries(a, before, limit)
 	}
 	page, more, head, remoteErr := b.remoteEntries(a, before, limit)
 	if head != "" {
@@ -4901,7 +4991,7 @@ func (b *appBackend) Close() error {
 	already := false
 	var waitClosed chan struct{}
 	var crews *appCrewRun
-	var agents []*appAgent
+	var agents, hosted []*appAgent
 	var warmed chan struct{}
 	var balances *appBalances
 	var stopModelNotices func()
@@ -4942,6 +5032,9 @@ func (b *appBackend) Close() error {
 		}
 		for _, a := range b.agents {
 			agents = append(agents, a)
+		}
+		for _, a := range b.hostedAgents {
+			hosted = append(hosted, a)
 		}
 	})
 	if already {
@@ -5041,6 +5134,13 @@ func (b *appBackend) Close() error {
 				appInterruptFor(live.conn.Conv, session.StopByClosing)
 			}
 			b.letGoTimed(a, os.Stderr)
+		})
+	}
+	for _, a := range hosted {
+		wg.Add(1)
+		guard.Go("app/hosted close", func() {
+			defer wg.Done()
+			b.letGo(a)
 		})
 	}
 	wg.Wait()

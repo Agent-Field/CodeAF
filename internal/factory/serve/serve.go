@@ -84,6 +84,8 @@ type Config struct {
 
 	// Mode is solo or team; an unset mode follows the host access configuration.
 	Mode string
+	// LoopbackTrust is optional because solo hosts and team hosts have different defaults.
+	LoopbackTrust *bool
 	// DefaultModel answers the model a job's steps run on when it names none,
 	// for the queue's `model`. Nil when this factory does not know it: a
 	// runner elsewhere decides with its own settings.
@@ -219,6 +221,11 @@ type Config struct {
 	// Canvas runs canvas-core for the organization's canvases (`canvas
 	// rpc`). Nil keeps no canvases: the /v1/canvases routes are left off.
 	Canvas *canvasrpc.Sidecar
+	// Hosted turns on chats that run on the organization's own machine, with
+	// the /v1/hosted routes and the /v1/model address a hosted chat reaches
+	// its model through (hosted_proxy.go). Nil, the default, registers
+	// nothing and changes no path's answer.
+	Hosted *HostedConfig
 }
 
 // Handler keeps the seam and host identity together for every response.
@@ -254,6 +261,7 @@ type Handler struct {
 	setupDone       chan struct{}
 	setupTimer      *time.Timer
 	accessMu        sync.Mutex
+	botCreateMu     sync.Mutex
 	accessFlows     map[string]accessLinkFlow
 	// commentFlights holds the jobs with a comment on their issue being
 	// posted by this handler (issue_comment.go).
@@ -426,6 +434,8 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.orgSetupRoutes()
 	h.chatRoutes()
 	h.accessRoutes()
+	h.hostedRoutes()
+	h.botRoutes()
 	h.reconcileChatFolders()
 	h.backfillChats()
 	h.backfillSessions()
@@ -473,6 +483,9 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // a change after Close is not delivered.
 func (h *Handler) Close() {
 	if h != nil {
+		h.closeHostedGuests()
+		h.closeHostedModels()
+		h.closeHostedRemovals()
 		h.closeGrantSweep()
 		h.closeOrders()
 		h.closeAgents()
@@ -541,7 +554,25 @@ func (h *Handler) Close() {
 // floor to a remote caller without the host's access token or a live session.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = authRequest(h.withClient(r))
+	worker := workerPath(r.URL.Path)
 	w.Header().Set("Cache-Control", "no-store")
+	// A page from another site cannot open a WebSocket here, whatever it
+	// carries: asked before anything reads a credential (upgrade_origin.go).
+	if h.crossSiteUpgrade(r) {
+		h.fail(w, http.StatusForbidden, crossSiteUpgradeWords)
+		return
+	}
+	// A hosted chat's model call proves itself with the bearer minted for it
+	// and has no sign-in, so it is answered before the sign-in below. False
+	// unless hosted chats are turned on, which leaves every path as it was.
+	if h.modelPath(r) {
+		h.modelProxy(w, r)
+		return
+	}
+	if h.gitPath(r) {
+		h.hostedGit(w, r)
+		return
+	}
 	if markPreMutation(r) {
 		w.Header().Set(api.PhaseHeader, api.PhasePreMutation)
 	}
@@ -550,12 +581,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if secureRequest(r) {
 		w.Header().Set("Strict-Transport-Security", h.hsts())
 	}
-	if h.config.ServedBy == "app" && !workerPath(r.URL.Path) && !h.floorToken(bearer(r)) {
+	if secret := bearer(r); !worker && strings.HasPrefix(secret, botTokenPrefix) {
+		var ok bool
+		r, ok = h.withBot(w, r, secret)
+		if !ok {
+			return
+		}
+	}
+	if h.config.ServedBy == "app" && !worker && !h.floorToken(bearer(r)) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
 		h.fail(w, http.StatusUnauthorized, "the app bearer token is required")
 		return
 	}
-	if workerPath(r.URL.Path) {
+	if worker {
 		var ok bool
 		r, ok = h.authorizeWorker(w, r)
 		if !ok {
@@ -578,7 +616,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
-	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) {
+	if !worker && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" && r.URL.Path != "/v1/auth/password" && !passkeyOpenPath(r.URL.Path) {
 		if session, ok := h.credential(r); ok && session.tokenID != "" {
 			for _, tok := range h.tokenRows() {
 				if tok.ID == session.tokenID && (tok.AccessLink || tok.InvitedBy != "") {
@@ -591,7 +629,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if session, ok := h.credential(r); ok && session.profile != nil && !h.teamAllows(session.profile.Handle) {
-		h.fail(w, http.StatusForbidden, "this GitHub handle is not on the factory team")
+		h.fail(w, http.StatusForbidden, teamHandleRefusal)
 		return
 	}
 	// Noncanonical paths are refused here so ServeMux cannot replace the JSON
@@ -600,7 +638,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, api.EndpointNotFound)
 		return
 	}
-	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {
+	if worker || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {
 		defer h.machineEvents()
 	}
 	// Settle missing or expired holds before reading job state.
@@ -608,7 +646,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	if !workerPath(r.URL.Path) || h.workerSettleDue(workerSettleWindow(r.URL.Path)) {
+	if !worker || h.workerSettleDue(workerSettleWindow(r.URL.Path)) {
 		h.settleJobs(r.Method == http.MethodPost, held)
 	}
 	h.idempotent(w, r)

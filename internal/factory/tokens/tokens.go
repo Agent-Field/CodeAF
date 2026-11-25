@@ -154,6 +154,31 @@ func Change(path, id string, change func(*Token) error) error {
 type Joiner struct {
 	Profile Profile   `json:"profile"`
 	Joined  time.Time `json:"joined"`
+	// Removed is when the operator removed this person from the organization.
+	// THE USE STAYS SPENT, so the link never reopens and the handle stays
+	// reserved, but the person no longer counts as a member. A person already
+	// counted who signs in through the same link again, as joinHuman has
+	// always let them, is back in and the mark is cleared. Zero for everyone
+	// who is still in.
+	Removed time.Time `json:"removed,omitzero"`
+}
+
+// EndMember marks every use of this row that handle consumed as removed at
+// now, and says whether anything changed. A row from before Joiners existed
+// names its one person only through Profile, so that person is written down
+// first, as joinHuman does before it adds the next. It serves a person who
+// joined by an anonymous link, which carries no handle of its own to find.
+func (t *Token) EndMember(handle string, now time.Time) bool {
+	members, ended := t.Members(), false
+	for i := range members {
+		if strings.EqualFold(members[i].Profile.Handle, handle) && members[i].Removed.IsZero() {
+			members[i].Removed, ended = now.UTC(), true
+		}
+	}
+	if ended {
+		t.Joiners = members
+	}
+	return ended
 }
 
 // MaxLinkPeople bounds an up-to-N human link.
@@ -510,6 +535,8 @@ func joinHuman(row *Token, profile Profile, now time.Time) (Joined, error) {
 		for k := range row.Joiners {
 			if row.Joiners[k].Profile.Handle == profile.Handle {
 				row.Joiners[k].Profile = profile
+				// Back in through the same link: removed no longer.
+				row.Joiners[k].Removed = time.Time{}
 			}
 		}
 		return Joined{}, nil

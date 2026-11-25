@@ -1,0 +1,49 @@
+# The build context of codeaf.Dockerfile is DENIED BY DEFAULT: everything is out unless it is named below, so a file
+# somebody left in the tree (an .env, a profile folder, a key, a notes file) cannot enter the build by being there.
+# BuildKit reads this file instead of .dockerignore for this Dockerfile, whichever folder is the context.
+# `docker buildx build --target context-probe` lists what is in (deploy/org/gate/context-check.sh asserts it).
+*
+
+# The source build: the repository root is the context (CODEAF_BINARY_FROM=source). `make build` needs exactly these.
+!go.mod
+!go.sum
+!Makefile
+!cmd
+!internal
+!third_party/raft
+!deploy/org/scripts
+
+# The fetch and local builds by hand: this folder is the context.
+!scripts
+!codeaf-local
+# The same files when Compose builds from the repository root (compose.yaml), whichever mode it is asked for.
+!deploy/org/codeaf-local
+
+# LAST, so that it wins inside the folders allowed above: what never enters an image, wherever it sits.
+**/.env
+**/.env.*
+**/*.env
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.jks
+**/id_rsa*
+**/id_ed25519*
+**/id_ecdsa*
+**/.netrc
+**/.npmrc
+**/.pypirc
+**/.git-credentials
+**/.ssh
+**/.aws
+**/.gnupg
+**/.docker
+**/.codeaf
+**/.claude
+**/.git
+**/__pycache__
+**/*.pyc
+# The furrow the build fetches and the manuals it packs are produced inside the build, never taken from a working tree.
+internal/furrowbin/cache/*.gz
+internal/manual/*.pack.gz

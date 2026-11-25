@@ -693,6 +693,13 @@ func (b *appBackend) restateBatch(live *appLive, q session.Question) {
 // them, one call of a batch or all of them, putting it aside for later, or
 // handing the choice back to the agent's own suggestion.
 func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) error {
+	if _, org, hosted := appwire.ParseHostedAgentID(agent); hosted {
+		if answer.Later || answer.BatchItem != "" || answer.YouDecide {
+			return b.RefuseHostedAction(org)
+		}
+		words := strings.TrimSpace(strings.TrimSpace(answer.Text) + "\n" + strings.TrimSpace(answer.Why))
+		return b.answerHostedAsk(agent, id, answer.Option, words, answer.Scope, false)
+	}
 	b.resetCloseResumes(agent)
 	if handled, err := b.answerOrderAsk(id, answer.Option); handled {
 		return err
@@ -1438,6 +1445,10 @@ func (b *appBackend) sendMessage(agent string, message appwire.AgentMessage) (ui
 // sendMessageFor is [appBackend.sendMessage] stating creation, the context the
 // accepting door knows, on the submission it builds. It is never inferred.
 func (b *appBackend) sendMessageFor(agent string, message appwire.AgentMessage, creation *session.CreationContext) (uint64, *appSending, error) {
+	if _, _, hosted := appwire.ParseHostedAgentID(agent); hosted {
+		turn, err := b.sendHosted(agent, message)
+		return turn, nil, err
+	}
 	b.resetCloseResumes(agent)
 	ids := message.Attachments
 	if err := appwire.CheckAttachIDs(ids); err != nil {

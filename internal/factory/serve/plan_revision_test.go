@@ -135,7 +135,7 @@ func TestRejectPlanInSoloAndWithoutAStore(t *testing.T) {
 	}
 	checkJSON(t, verbRequest(solo, "POST", fmt.Sprintf("/v1/jobs/%d/reject_plan", plan.ID), rejectBody(j.Version, "redo")), 200)
 
-	bare := serve.New(f.seam, serve.Config{Mode: api.FactoryTeam, Address: config.Address, Version: config.Version, Now: f.cfg.Now})
+	bare := serve.New(f.seam, serve.Config{Mode: api.FactoryTeam, LoopbackTrust: boolPtr(true), Address: config.Address, Version: config.Version, Now: f.cfg.Now})
 	t.Cleanup(func() { bare.Close() })
 	other := f.create(t, revisablePlan("sam", false))
 	checkJSON(t, verbRequest(bare, "POST", fmt.Sprintf("/v1/jobs/%d/reject_plan", other.ID), rejectBody(1, "redo")), 501)

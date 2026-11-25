@@ -1,0 +1,18 @@
+---
+kind: added
+title: Hosted chats are private until shared, and a shared chat can be watched, steered and written in
+pr: 2900
+surface: [chat, engine, factory, build, docs]
+invalidates:
+  - "A hosted chat was known to the organization server only by its owner's handle: every person's chats were found by asking the chats' machine for that person, there was no way to give anyone else a view, and the operator was not told how to treat a chat it did not own. Now a hosted chat is a private session resource of the organization's access core: it is left out of every other person's list and live event stream (the operator's too), every door answers `There is no such chat.` for someone who may not see it, and sharing it by the ordinary grants path puts it in the other person's `shared` list. A chat made before this change is registered the first time its owner touches it."
+  - "Attaching to a hosted chat copied the owner's bytes both ways and nobody but the owner could attach. A person a chat is shared with now gets a wire the organization server ends itself and checks frame by frame: view watches and reads, steer also interrupts and steers, answer also answers a question, and run also sends messages, files, images and commands that execute as the chat's owner, with the owner's folder, GitHub identity, model key and spending caps. Everything else on the chat's wire (approving a command, settings, files) stays the owner's whatever the role, and `edit` and `full` hold `run`. Stopping or deleting the chat is a separate door that needs the `manage` permission, which the owner and the `full` role hold, so a person the chat is shared with at `full` can stop and delete it and one at `edit` cannot. Taking a share away, or changing the policy so it no longer applies, ends an open window within five seconds (CODEAF_HOSTED_HEARTBEAT, from one second to one minute)."
+  - "Who was in a chat was not written down: a spend row, a git credential and a message carried only the owner. Each message a guest sends now leaves an owner-visible audit line naming who sent it and never what it said, each git-credential line names who was asking, and the spend row has an `asker` that is approximate (whoever last sent a message, steered or answered through the server)."
+  - "A bot could not use hosted chats. It now starts, lists, opens, stops and deletes them as the person who made it, holds what that person holds on each chat right now narrowed by its scope, and loses a chat on its next request when that person loses it; a bot still cannot touch stored keys or the git door. A chat a bot starts belongs to its creator and is recorded as made by the bot."
+  - "The organization's policy had no say about where chats run. It has an additive `hosting` section: `local_sessions` (allow, warn or refuse; empty means refuse when the organization runs a chat host and allow when it does not) and `max_session_cost_usd` (a positive value replaces CODEAF_HOSTED_SESSION_CAP_USD). `GET /v1/hosted/sessions` reports the effective value with plain words that point at switching to the personal account. No client acts on `local_sessions` yet: `codeaf` on a computer still starts local chats."
+---
+
+A hosted chat can now be shared on purpose. It starts private; its owner shares it with a person, a team or the
+whole organization at a role, and what that role allows is checked at the wire: watching, steering, answering, or
+sending messages that run as the owner. A person you let send messages acts with your GitHub identity, your files and
+your spending limits, and the server notes who asked. One known limit: the chat lets one window type at a time, so a
+guest's message waits while the owner's own window holds the keyboard.

@@ -96,8 +96,12 @@ func (h *Handler) itemViewer(r *http.Request) (Viewer, error) {
 	v.Operator = v.Solo || h.isOperator(r)
 	v.Member = v.Solo || v.Member && !h.profileless(r)
 	if call, ok := agentCallOf(r); ok && call.agent != "" {
-		v.Agent = &acl.Agent{ID: call.agent, Sponsor: v.Handle}
-		v.Operator = v.Solo || v.Handle != "" && v.Handle == factory.NormalizeHandle(h.operatorLogin(r))
+		v.Agent = &acl.Agent{ID: call.agent, Sponsor: v.Handle, Only: call.only}
+		if call.bot == "" {
+			v.Operator = v.Solo || v.Handle != "" && v.Handle == factory.NormalizeHandle(h.operatorLogin(r))
+		} else {
+			v.Operator = false
+		}
 	}
 	return v, nil
 }
@@ -284,15 +288,27 @@ func (acc *Access) tuplesFor(it Item) acl.Item {
 }
 
 // policyItem requires a private registration to have its own grant before sharing it.
-// The parent's relationships alone cannot open it.
+// The parent's relationships alone cannot open it, and neither can its own first
+// grant: a private registration that has been shared stays private and is its
+// owner's and its grantees' alone (Closed), so the space's shares, the space's
+// grants, the space's owner and the operator stay out of it. Otherwise sharing a
+// chat with one person would open it, title and all, to everyone who can see the
+// workstream.
 func (acc *Access) policyItem(it Item, tuples acl.Item) acl.Item {
 	if it.registered && it.Visibility == acl.Private && tuples.Private {
 		now, p := acc.time(), acc.rules()
-		tuples.Private = !slices.ContainsFunc(tuples.Grants, func(g acl.Grant) bool {
+		own := func(g acl.Grant) bool { return g.Resource.Kind == it.Kind && g.Resource.ID == it.ID }
+		shared := slices.ContainsFunc(tuples.Grants, func(g acl.Grant) bool {
 			_, exists := p.Role(g.Role)
-			return g.Resource.Kind == it.Kind && g.Resource.ID == it.ID && exists && g.Live(now) &&
+			return own(g) && exists && g.Live(now) &&
 				g.Subject.Kind != "agent" && (g.Subject.Kind != tuples.OwnerKind || g.Subject.ID != tuples.OwnerID)
 		})
+		if shared {
+			tuples.Closed = true
+			tuples.Shares = nil
+			tuples.Grants = slices.DeleteFunc(slices.Clone(tuples.Grants), func(g acl.Grant) bool { return !own(g) })
+			return tuples
+		}
 	}
 	if !tuples.Private && it.parentOwner.Kind != "" {
 		parent := accessSubject(it.parentOwner.Kind, it.parentOwner.ID)

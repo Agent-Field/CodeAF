@@ -1,0 +1,13 @@
+# A codeaf built on this machine and copied here for `CODEAF_BINARY_FROM=local` image builds (codeaf.Dockerfile).
+codeaf-local
+
+# The operator's own settings and secrets: the server key, the hosted-chats secret, the AgentField key and the model
+# keys. ./setup.sh writes `.env` from `.env.example`, so a stack that has been started has this file in the tree, and a
+# `git add` of the folder would publish every secret in it. The templates stay tracked; a copy of the file under any
+# other `.env.*` name (a backup, a second environment) is kept out too. A new template has to be named below on
+# purpose, which is the point.
+.env
+.env.*
+!.env.example
+!.env.stub
+!.env.stub.hosted

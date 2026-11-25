@@ -845,6 +845,15 @@ type spokenError struct{ reason string }
 
 func (e spokenError) Error() string { return e.reason }
 
+// RefusalSentence gives a handshake's spoken refusal without transport details.
+func RefusalSentence(err error) (string, bool) {
+	var refused spokenError
+	if errors.As(err, &refused) {
+		return refused.reason, true
+	}
+	return "", false
+}
+
 // write puts one frame on the wire, whole, under the writer's lock. The pipe is
 // read fresh every time because a roaming client replaces it, and a writer
 // holding the one it was born with would be writing into a link that is gone.
@@ -2154,8 +2163,12 @@ func (a *Agent) InterruptFor(door session.StopDoor) {
 // InterruptWithin is a person's stop with its bound on it: the engine abandons
 // a turn that has not let go by then ([InterruptArgs]). Like every stop it
 // does not wait and reports nothing.
-func (a *Agent) InterruptWithin(grace time.Duration) {
-	_, _ = a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(session.StopByPerson), Within: grace.Milliseconds()})
+func (a *Agent) InterruptWithin(grace time.Duration) { _ = a.InterruptWithinErr(grace) }
+
+// InterruptWithinErr carries back the engine's refusal when the caller needs to show it.
+func (a *Agent) InterruptWithinErr(grace time.Duration) error {
+	_, err := a.c.call(nil, MethodInterrupt, InterruptArgs{Door: string(session.StopByPerson), Within: grace.Milliseconds()})
+	return err
 }
 
 // AnswerLaneOffer answers the question a stalled PINNED lane raises: the
@@ -2539,6 +2552,27 @@ func (a *Agent) EarlierHistory() session.EarlierHistory {
 	var history session.EarlierHistory
 	_ = json.Unmarshal(payload, &history)
 	return history
+}
+
+// ReadHistory reads the display record and preserves any refusal from the server.
+func (a *Agent) ReadHistory() (session.Record, error) {
+	var earlier session.EarlierHistory
+	if err := a.readHistoryPart(MethodEarlier, &earlier); err != nil {
+		return session.Record{}, err
+	}
+	var entries []session.DisplayEntry
+	if err := a.readHistoryPart(MethodTranscript, &entries); err != nil {
+		return session.Record{}, err
+	}
+	return session.Record{Earlier: earlier.Entries, Floor: earlier.Floor, Entries: entries}, nil
+}
+
+func (a *Agent) readHistoryPart(method string, out any) error {
+	payload, err := a.c.call(nil, method, nil)
+	if err != nil || len(payload) == 0 {
+		return err
+	}
+	return json.Unmarshal(payload, out)
 }
 
 // RewindPoints is every place the conversation can be cut. It is half of the

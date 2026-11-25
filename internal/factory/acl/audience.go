@@ -38,13 +38,15 @@ func (p Policy) Audience(now time.Time, items ...Item) Audience {
 			a.include(Subject{Kind: it.OwnerKind, ID: it.OwnerID})
 		}
 		a.Operator = a.Operator || !it.Private || p.Operator.SeesPrivate
-		if it.Private {
+		if it.Private && !it.Closed {
 			continue
 		}
-		a.Org = a.Org || it.Visibility == Org
-		for _, s := range it.Shares {
-			if s.Kind == "person" || s.Kind == "team" {
-				a.include(Subject{Kind: s.Kind, ID: s.ID})
+		if !it.Private {
+			a.Org = a.Org || it.Visibility == Org
+			for _, s := range it.Shares {
+				if s.Kind == "person" || s.Kind == "team" {
+					a.include(Subject{Kind: s.Kind, ID: s.ID})
+				}
 			}
 		}
 		for _, g := range it.Grants {

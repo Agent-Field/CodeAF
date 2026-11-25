@@ -77,6 +77,9 @@ func (h *Handler) now() time.Time {
 }
 
 func (h *Handler) allowed(r *http.Request) bool {
+	if isBotCall(r) {
+		return true
+	}
 	if _, ok := h.credential(r); ok {
 		return true
 	}
@@ -92,11 +95,21 @@ func (h *Handler) allowed(r *http.Request) bool {
 
 // The app host token is the only person credential on its private listener.
 func (h *Handler) loopbackOwner(r *http.Request) bool {
-	return h.config.ServedBy != "app" && loopbackRequest(r)
+	return h.config.ServedBy != "app" && h.loopbackTrusted() && loopbackRequest(r)
+}
+
+func (h *Handler) loopbackTrusted() bool {
+	if h.config.LoopbackTrust != nil {
+		return *h.config.LoopbackTrust
+	}
+	return h.mode() == api.FactorySolo
 }
 
 // credential gives explicit credentials precedence over an open loopback peer.
 func (h *Handler) credential(r *http.Request) (accessSession, bool) {
+	if isBotCall(r) {
+		return accessSession{}, false
+	}
 	if token := bearer(r); token != "" {
 		if id, ok := h.identifyToken(token); ok {
 			session := accessSession{tokenID: id, id: id}
@@ -268,7 +281,7 @@ func (h *Handler) sameSecret(secret string, got [sha256.Size]byte) bool {
 // floorToken is the host config secret. Other access-token rows do not get
 // this door: revoking every session stays with the host.
 func (h *Handler) floorToken(token string) bool {
-	if token == "" {
+	if token == "" || strings.HasPrefix(token, botTokenPrefix) {
 		return false
 	}
 	got := sha256.Sum256([]byte(token))
@@ -453,7 +466,7 @@ func (h *Handler) revokeSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for handle := range handles {
-		if h.failed(w, h.revokePerson(r, handle)) {
+		if h.failed(w, h.revokePerson(handle, false)) {
 			return
 		}
 	}

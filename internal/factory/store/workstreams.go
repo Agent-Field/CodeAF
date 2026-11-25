@@ -111,7 +111,8 @@ CREATE TABLE IF NOT EXISTS spend (
 	usd  REAL NOT NULL,
 	job  INTEGER NOT NULL DEFAULT 0,
 	chat TEXT NOT NULL DEFAULT '',
-	key  TEXT NOT NULL DEFAULT ''
+	key  TEXT NOT NULL DEFAULT '',
+	asker TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS spend_ws ON spend (ws);
 CREATE UNIQUE INDEX IF NOT EXISTS spend_key ON spend (ws, key) WHERE key <> '';
@@ -174,6 +175,10 @@ func (st *Store) wsDB(create bool) (*sql.DB, error) {
 		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
 	}
 	if err := addTaskRunsAnswered(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
+	}
+	if err := addSpendAsker(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("the organization's workstreams cannot be opened: %w", err)
 	}
@@ -720,6 +725,25 @@ func (st *Store) PutPart(ws, part, id string, rev int, who string, now time.Time
 
 // ── spend ──
 
+// addSpendAsker migrates a P1 ledger in one write transaction so concurrent opens agree on the schema.
+func addSpendAsker(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM pragma_table_info('spend') WHERE name = 'asker')`).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := tx.Exec(`ALTER TABLE spend ADD COLUMN asker TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // Spend is one spend someone posted against a workstream.
 type Spend struct {
 	At   string
@@ -727,6 +751,8 @@ type Spend struct {
 	USD  float64
 	Job  int
 	Chat string
+	// Asker records a guest who prompted a hosted charge billed to By.
+	Asker string
 	// Key is the poster's idempotency key: the same key posted twice is kept
 	// once.
 	Key string
@@ -737,12 +763,24 @@ type Spend struct {
 func (st *Store) AddSpend(ws string, s Spend) (float64, error) {
 	var total float64
 	err := st.wsTx(func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO spend (ws, at, by, usd, job, chat, key) VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT DO NOTHING`, ws, s.At, s.By, s.USD, s.Job, s.Chat, s.Key); err != nil {
+		if _, err := tx.Exec(`INSERT INTO spend (ws, at, by, usd, job, chat, key, asker) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT DO NOTHING`, ws, s.At, s.By, s.USD, s.Job, s.Chat, s.Key, s.Asker); err != nil {
 			return err
 		}
 		return tx.QueryRow(`SELECT coalesce(sum(usd), 0) FROM spend WHERE ws = ?`, ws).Scan(&total)
 	})
+	return total, err
+}
+
+// ChatSpend counts both ways of paying for the same hosted chat.
+func (st *Store) ChatSpend(ws, chat string) (float64, error) {
+	db, err := st.wsDB(false)
+	if err != nil || db == nil {
+		return 0, err
+	}
+	var total float64
+	err = db.QueryRow(`SELECT coalesce(sum(usd), 0) FROM spend
+		WHERE ws = ? AND (chat = ? OR chat = ? || ':own')`, ws, chat, chat).Scan(&total)
 	return total, err
 }
 

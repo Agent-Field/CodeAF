@@ -142,7 +142,7 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 		}
 		return
 	}
-	if elsewhere.said != "" {
+	if a.hosted == nil && elsewhere.said != "" {
 		// A person speaking in another window breaks the same automatic-resume
 		// streak as a send through this app; a private wake never does.
 		b.resetCloseResumes(id)
@@ -171,8 +171,9 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 			live.msgBase, live.noteBase = msgs, notes
 		})
 	}
-	if elsewhere.said == "" && b.crewPaused(id) {
-		// The person paused this member, and nothing they said opened this
+	if a.hosted == nil && elsewhere.said == "" && b.crewPaused(id) {
+		// The person paused this member (a hosted chat runs on the org server and
+		// is not the app's to stop), and nothing they said opened this
 		// turn. The engine holds team traffic for a paused member before a
 		// turn starts (internal/session's team_pause.go), so what reaches here
 		// is another wake: a background process ending, a task landing. It ends
@@ -195,7 +196,9 @@ func (b *appBackend) wokenTurn(a *appAgent, live *appLive, elsewhere appTurnElse
 	defer long.Stop()
 	defer tails()
 	b.pump(a, id, live, turn, n, elsewhere.said, nil, events)
-	b.sendQueued(a, live)
+	if a.hosted == nil {
+		b.sendQueued(a, live)
+	}
 }
 
 // appAnswersUnder counts the answers the transcript already holds under the

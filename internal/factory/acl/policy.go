@@ -2,6 +2,7 @@ package acl
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 )
@@ -88,6 +89,109 @@ type Agents struct {
 	Scopes       map[string]string `json:"scopes,omitempty"`
 }
 
+// Hosting holds optional organization settings for where chats run and how much they may spend.
+type Hosting struct {
+	LocalSessions     string  `json:"local_sessions,omitempty"`
+	MaxSessionCostUSD float64 `json:"max_session_cost_usd,omitempty"`
+}
+
+const (
+	HostingRefuseWords = "This organization runs your chats on its own server, so they do not start on this computer. To work here instead, switch to your personal account, which does not see the organization's chats or files."
+	HostingWarnWords   = "This organization keeps your chats on its own server. A chat started on this computer is not part of the organization's account."
+)
+
+// LocalSessionsFor keeps the existing local-chat behavior when the organization has no preference.
+func (h Hosting) LocalSessionsFor(hasChatHost bool) string {
+	if h.LocalSessions != "" {
+		return h.LocalSessions
+	}
+	if hasChatHost {
+		return "refuse"
+	}
+	return "allow"
+}
+
+// Words explains the effective local-chat policy where it affects the caller.
+func (h Hosting) Words(hasChatHost bool) string {
+	switch h.LocalSessionsFor(hasChatHost) {
+	case "refuse":
+		return HostingRefuseWords
+	case "warn":
+		return HostingWarnWords
+	default:
+		return ""
+	}
+}
+
+// Chats holds the organization's rules for the chats its people keep: who may move a chat to another workstream or into
+// My space, and, for a chat that runs on the organization's own server and is shared with other people, who may approve
+// one of its tool calls and who may start it when it is not running. Every field is optional, and an empty one means the
+// rule the server had before the field existed, so a policy that never mentions a rule is unchanged by it.
+type Chats struct {
+	// MoveBy is MoveByOwner or MoveByManage. Empty means MoveByOwner, so a policy stored before this field existed, and
+	// a policy that never mentions it, keep the rule the server always had.
+	MoveBy string `json:"move_by,omitempty"`
+	// ApprovalsBy is ApprovalsByOwner or ApprovalsByAnswer. Empty means ApprovalsByOwner: a tool call a shared chat wants
+	// to make waits for its owner, whatever role anyone else holds.
+	ApprovalsBy string `json:"approvals_by,omitempty"`
+	// WakeBy is WakeByView, WakeByRun or WakeByOwner. Empty means WakeByView: anyone who can see a shared chat opens it
+	// when it is not running, and it starts for its owner.
+	WakeBy string `json:"wake_by,omitempty"`
+}
+
+const (
+	// MoveByOwner lets only the person who owns a chat move it, as long as they still hold manage on it. It is the
+	// default, and what the server did before the rule was a setting.
+	MoveByOwner = "owner"
+	// MoveByManage lets anyone who holds the manage verb on a chat move it, its owner included. Under the starting
+	// roles that is whoever the chat is shared with at `full`.
+	MoveByManage = "manage"
+)
+
+const (
+	// ApprovalsByOwner keeps every approval of a tool call with the chat's owner. It is the default.
+	ApprovalsByOwner = "owner"
+	// ApprovalsByAnswer lets anyone who holds the answer verb on a shared chat allow one tool call once, or refuse it.
+	// Allowing a tool for the rest of the chat, and every other setting of the chat, stays with the owner. Under the
+	// starting roles that is whoever the chat is shared with at `edit` or `full`.
+	ApprovalsByAnswer = "answer"
+)
+
+const (
+	// WakeByView lets anyone who can see a shared chat open it when it is not running, which starts it for its owner.
+	// It is the default, and what the server did before the rule was a setting.
+	WakeByView = "view"
+	// WakeByRun lets only a person who may send messages in the chat (the run verb) open it when it is not running.
+	// Someone who can only watch it sees a running chat, and is told to ask its owner for one that is not.
+	WakeByRun = "run"
+	// WakeByOwner lets only the chat's owner start it. Everyone else sees it while it is running.
+	WakeByOwner = "owner"
+)
+
+// MoveByFor is the rule that applies, with an empty setting read as the default.
+func (c Chats) MoveByFor() string {
+	if c.MoveBy == "" {
+		return MoveByOwner
+	}
+	return c.MoveBy
+}
+
+// ApprovalsByFor is the rule that applies, with an empty setting read as the default.
+func (c Chats) ApprovalsByFor() string {
+	if c.ApprovalsBy == "" {
+		return ApprovalsByOwner
+	}
+	return c.ApprovalsBy
+}
+
+// WakeByFor is the rule that applies, with an empty setting read as the default.
+func (c Chats) WakeByFor() string {
+	if c.WakeBy == "" {
+		return WakeByView
+	}
+	return c.WakeBy
+}
+
 // Policy is the organization's access document: the roles, what each kind of
 // resource starts as, who may share, what the operator and agents may do. It
 // is stored as one row with a revision and changes only through a PUT by the
@@ -103,6 +207,8 @@ type Policy struct {
 	Sharing   Sharing                `json:"sharing"`
 	Operator  Operator               `json:"operator"`
 	Agents    Agents                 `json:"agents"`
+	Hosting   Hosting                `json:"hosting,omitzero"`
+	Chats     Chats                  `json:"chats,omitzero"`
 }
 
 // legacyRoles are the four names old shares and clients already use, so a
@@ -214,6 +320,29 @@ func (p Policy) Validate(prev Policy, inUse func(role string) bool) error {
 	}
 	if p.Sharing.Who != ShareVerb && p.Sharing.Who != OwnerOnly {
 		return invalid("sharing must be set to people with sharing permission or to owners only")
+	}
+	switch p.Hosting.LocalSessions {
+	case "", "allow", "warn", "refuse":
+	default:
+		return invalid("hosting local sessions must be allow, warn or refuse")
+	}
+	switch p.Chats.MoveBy {
+	case "", MoveByOwner, MoveByManage:
+	default:
+		return invalid("who may move a chat must be the owner or people with manage permission")
+	}
+	switch p.Chats.ApprovalsBy {
+	case "", ApprovalsByOwner, ApprovalsByAnswer:
+	default:
+		return invalid("who may approve a tool call in a shared chat must be owner (only its owner) or answer (anyone who may answer its questions)")
+	}
+	switch p.Chats.WakeBy {
+	case "", WakeByView, WakeByRun, WakeByOwner:
+	default:
+		return invalid("who may start a chat that is not running must be view (anyone who can see it), run (anyone who may send messages in it) or owner (only its owner)")
+	}
+	if cost := p.Hosting.MaxSessionCostUSD; math.IsNaN(cost) || cost < 0 || cost > 1_000_000 {
+		return invalid("hosting chat cost must be between 0 and 1,000,000 dollars")
 	}
 	for _, r := range prev.Roles {
 		if !roles[r.Name] && inUse != nil && inUse(r.Name) {

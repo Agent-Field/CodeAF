@@ -299,8 +299,11 @@ func TestAccessChatRegistry(t *testing.T) {
 	o.do(t, "mia", "GET", oldPath, -1, nil, 200, nil)
 	var list api.ResourceList
 	o.do(t, "owner", "GET", "/v1/resources/chat", -1, nil, 200, &list)
-	if len(list.Resources) != 2 || slices.ContainsFunc(list.Resources, func(res api.OrgResource) bool {
-		return res.ID == newer.ID || res.ID == agentChat.ID
+	// CONTRACT CHANGE (org-follow A4): oldChat is private and shared with mia alone, so
+	// it stays private and the operator does not list it; before, its first grant
+	// un-privated it and the operator saw it. Only the org-visible chat remains.
+	if len(list.Resources) != 1 || list.Resources[0].ID != orgChat.ID || slices.ContainsFunc(list.Resources, func(res api.OrgResource) bool {
+		return res.ID == newer.ID || res.ID == agentChat.ID || res.ID == oldChat.ID
 	}) {
 		t.Fatalf("operator list includes private chats: %+v", list)
 	}

@@ -47,7 +47,7 @@ func (h *Handler) orgRepos(r *http.Request, handle string) map[string]bool {
 	for _, name := range watched {
 		addRepoKey(out, name)
 	}
-	if handle != h.operatorLogin(r) {
+	if isBotCall(r) || handle != h.operatorLogin(r) {
 		return out
 	}
 	// The operator chooses from what the server's grant reached at its last
