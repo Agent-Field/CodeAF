@@ -103,7 +103,7 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	e, err := runs.Open(runs.Config{
 		Root: home.Join("apps", "_runs"), Load: files.Load, Triggers: files.Triggers,
 		Connector: tools, CheckTool: tools.Check, Agent: b.appRunAgent(files),
-		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
+		Render: b.renderRunOutput, Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
 		Changed: func(event runs.ChangeEvent) { b.emit.Emit(appwire.EventRunsChanged, event) },
 		Ask:     b.openRunApproval,
 	})

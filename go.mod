@@ -25,6 +25,7 @@ require (
 	github.com/int128/oauth2cli v1.18.0
 	github.com/invopop/jsonschema v0.14.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/phpdave11/gofpdf v1.4.3
 	github.com/rivo/uniseg v0.4.7
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/segmentio/encoding v0.5.4

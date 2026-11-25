@@ -77,7 +77,7 @@ func validateStep(s Step, targets map[string]bool) error {
 		return errors.New("shell and workspace steps are unavailable in app runs")
 	}
 	kinds := 0
-	for _, present := range []bool{s.RecordsCreate != nil, s.RecordsUpdate != nil, s.Agent != "", s.Tool != "", s.Wait != nil, s.Loop != nil} {
+	for _, present := range []bool{s.RecordsCreate != nil, s.RecordsUpdate != nil, s.Render != nil, s.Agent != "", s.Tool != "", s.Wait != nil, s.Loop != nil} {
 		if present {
 			kinds++
 		}
@@ -88,6 +88,9 @@ func validateStep(s Step, targets map[string]bool) error {
 	if (s.RecordsCreate != nil && s.RecordsCreate.Set == nil) ||
 		(s.RecordsUpdate != nil && len(s.RecordsUpdate.Set) == 0) {
 		return errors.New("record writes need a set of fields")
+	}
+	if s.Render != nil && !validID(s.Render.Output) {
+		return errors.New("a render step needs a declared output id")
 	}
 	if s.Gate != nil {
 		switch s.Gate.Approval {

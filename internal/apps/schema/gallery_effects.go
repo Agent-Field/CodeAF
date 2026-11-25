@@ -134,6 +134,8 @@ func (c *checker) checkRules(ctx actionCtx, at string, rules []ManifestRule, val
 				if !inRepo {
 					c.add(ctx.file, where, CodeShellRefused, "This step needs a repository workspace.")
 				}
+			case "output-ref":
+				c.checkRender(ctx, where, body)
 			case "record-write":
 				c.checkRecordWrite(ctx, where, body)
 			case "tool-call":

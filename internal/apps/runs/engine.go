@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -63,6 +64,7 @@ type Config struct {
 	Load          func(app, run string) (Definition, error)
 	Triggers      func() ([]Trigger, error)
 	Records       func(context.Context, RecordCall) (Reply, error)
+	Render        func(context.Context, Call, schema.RenderAction) (Reply, error)
 	Agent         func(context.Context, AgentCall) (Reply, error)
 	Connector     Connector
 	// CheckTool authorizes a tool against the current app capabilities on

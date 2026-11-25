@@ -14,10 +14,11 @@ import (
 
 type action struct {
 	Call
-	RecordType string   `json:"record_type,omitempty"`
-	IDs        []string `json:"ids,omitempty"`
-	Prompt     string   `json:"prompt,omitempty"`
-	Outbound   bool     `json:"outbound,omitempty"`
+	Render     *schema.RenderAction `json:"render,omitempty"`
+	RecordType string               `json:"record_type,omitempty"`
+	IDs        []string             `json:"ids,omitempty"`
+	Prompt     string               `json:"prompt,omitempty"`
+	Outbound   bool                 `json:"outbound,omitempty"`
 }
 
 const maxTransitions = 10_000
@@ -141,7 +142,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if c.State != Running {
 				return nil
 			}
-		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "":
+		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "" || step.Render != nil:
 			if err := e.execute(ctx, c, step); err != nil {
 				return err
 			}
@@ -192,6 +193,23 @@ func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 			return a, err
 		}
 		a.Args = args.(map[string]any)
+	}
+	if render := step.Render; render != nil {
+		resolved := *render
+		if render.Record != "" {
+			value, err := resolve(render.Record, vars)
+			if err != nil {
+				return a, err
+			}
+			id, ok := value.(string)
+			if !ok || id == "" {
+				return a, errors.New("render record must resolve to one record id")
+			}
+			resolved.Record = id
+		}
+		a.Render = &resolved
+		a.Name = "render"
+		return a, nil
 	}
 	w := step.RecordsCreate
 	if step.RecordsUpdate != nil {
@@ -367,6 +385,12 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	var reply Reply
 	var err error
 	switch {
+	case a.Render != nil:
+		if e.cfg.Render == nil {
+			err = errors.New("rendering outputs is unavailable in this run")
+		} else {
+			reply, err = e.cfg.Render(ctx, a.Call, *a.Render)
+		}
 	case step.RecordsCreate != nil || step.RecordsUpdate != nil:
 		if e.cfg.Records == nil {
 			err = errors.New("record writes are unavailable")

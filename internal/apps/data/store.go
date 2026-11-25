@@ -228,6 +228,7 @@ var migrations = []string{
 	CREATE INDEX comments_node ON comments(app, node, at);
 	`,
 	dataPlaneMigration,
+	outputMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.
