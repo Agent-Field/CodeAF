@@ -1,0 +1,337 @@
+{
+  "$schema": "https://codeaf.dev/schema/sample/1.json",
+  "records": {
+    "company": [
+      {
+        "id": "01KAV9FTZ80MWF2SBY7KW3K21J",
+        "name": "Northwind",
+        "domain": "https://northwind.example",
+        "size": "201+",
+        "owner": "me"
+      },
+      {
+        "id": "01KAV9FVYGB5FHVMFQQHM1MWSX",
+        "name": "Globex",
+        "domain": "https://globex.example",
+        "size": "51-200",
+        "owner": "me"
+      },
+      {
+        "id": "01KAV9FWXR7W9ETWCW3CKZ477S",
+        "name": "Initech",
+        "domain": "https://initech.example",
+        "size": "51-200",
+        "owner": "me"
+      },
+      {
+        "id": "01KAV9FXX0BMWCXJ11B4M7GQHT",
+        "name": "Umbrella",
+        "domain": "https://umbrella.example",
+        "size": "201+",
+        "owner": "me"
+      },
+      {
+        "id": "01KAV9FYW8T4FFPTWY337AEYHM",
+        "name": "Hooli",
+        "domain": "https://hooli.example",
+        "size": "11-50",
+        "owner": "me"
+      },
+      {
+        "id": "01KAV9FZVG60VFFC3M3210YZ62",
+        "name": "Stark Labs",
+        "domain": "https://starklabs.example",
+        "size": "11-50",
+        "owner": "me"
+      },
+      {
+        "id": "01KAV9G0TR2KCHPQN62CXRADMT",
+        "name": "Vandelay",
+        "domain": "https://vandelay.example",
+        "size": "1-10",
+        "owner": "me"
+      },
+      {
+        "id": "01KAV9G1T0RTYZTXM07Q71P3SW",
+        "name": "Acme",
+        "domain": "https://acme.example",
+        "size": "201+",
+        "owner": "me"
+      }
+    ],
+    "contact": [
+      {
+        "id": "01KAV9G2S8ATARGPBF8ZGM3SFZ",
+        "name": "Ana Ruiz",
+        "title": "Head of Ops",
+        "email": "ana@northwind.example",
+        "phone": "+1 555 0100",
+        "company": "01KAV9FTZ80MWF2SBY7KW3K21J"
+      },
+      {
+        "id": "01KAV9G3RGWRMWDM1MX179GYJ5",
+        "name": "Priya Shah",
+        "title": "VP Finance",
+        "email": "priya@northwind.example",
+        "phone": "+1 555 0101",
+        "company": "01KAV9FTZ80MWF2SBY7KW3K21J"
+      },
+      {
+        "id": "01KAV9G4QRS390KYQN35QNCGZ8",
+        "name": "Ben Okafor",
+        "title": "CTO",
+        "email": "ben@globex.example",
+        "phone": "+1 555 0102",
+        "company": "01KAV9FVYGB5FHVMFQQHM1MWSX"
+      },
+      {
+        "id": "01KAV9G5Q0CT4R86ZYDS49EENC",
+        "name": "Mei Lin",
+        "title": "Procurement",
+        "email": "mei@globex.example",
+        "phone": "+1 555 0103",
+        "company": "01KAV9FVYGB5FHVMFQQHM1MWSX"
+      },
+      {
+        "id": "01KAV9G6P865DNYH7KTXQC5HNQ",
+        "name": "Tom Hale",
+        "title": "Ops lead",
+        "email": "tom@initech.example",
+        "phone": "+1 555 0104",
+        "company": "01KAV9FWXR7W9ETWCW3CKZ477S"
+      },
+      {
+        "id": "01KAV9G7NGV9653ND0EQ3G0KDW",
+        "name": "Sara Kim",
+        "title": "COO",
+        "email": "sara@umbrella.example",
+        "phone": "+1 555 0105",
+        "company": "01KAV9FXX0BMWCXJ11B4M7GQHT"
+      },
+      {
+        "id": "01KAV9G8MRZQ0A3P6N52P6VDNX",
+        "name": "Raj Patel",
+        "title": "Engineering manager",
+        "email": "raj@hooli.example",
+        "phone": "+1 555 0106",
+        "company": "01KAV9FYW8T4FFPTWY337AEYHM"
+      },
+      {
+        "id": "01KAV9G9M0AFR9YE3RPQB3VBZH",
+        "name": "Lena Novak",
+        "title": "Founder",
+        "email": "lena@starklabs.example",
+        "phone": "+1 555 0107",
+        "company": "01KAV9FZVG60VFFC3M3210YZ62"
+      },
+      {
+        "id": "01KAV9GAK83GJ8YFFAZRWJFTPY",
+        "name": "Art Vandelay",
+        "title": "Owner",
+        "email": "art@vandelay.example",
+        "phone": "+1 555 0108",
+        "company": "01KAV9G0TR2KCHPQN62CXRADMT"
+      },
+      {
+        "id": "01KAV9GBJG70GN7ZKYKH0QSKZB",
+        "name": "Jo March",
+        "title": "IT director",
+        "email": "jo@acme.example",
+        "phone": "+1 555 0109",
+        "company": "01KAV9G1T0RTYZTXM07Q71P3SW"
+      }
+    ],
+    "deal": [
+      {
+        "id": "01KAV9GCHRX8N1PRAPNAC4THSS",
+        "name": "Northwind · renewal",
+        "company": "01KAV9FTZ80MWF2SBY7KW3K21J",
+        "contacts": [
+          "01KAV9G2S8ATARGPBF8ZGM3SFZ",
+          "01KAV9G3RGWRMWDM1MX179GYJ5"
+        ],
+        "stage": "Proposal",
+        "amount": 48000,
+        "close_on": "2026-11-28",
+        "owner": "me",
+        "last_touch": "2026-11-01T15:00:00Z",
+        "likely": "Likely"
+      },
+      {
+        "id": "01KAV9GDH0WQYNFVK72QG2JFDK",
+        "name": "Globex · platform",
+        "company": "01KAV9FVYGB5FHVMFQQHM1MWSX",
+        "contacts": [
+          "01KAV9G4QRS390KYQN35QNCGZ8"
+        ],
+        "stage": "Negotiation",
+        "amount": 36500,
+        "close_on": "2026-12-12",
+        "owner": "me",
+        "last_touch": "2026-11-02T15:00:00Z",
+        "likely": "Maybe"
+      },
+      {
+        "id": "01KAV9GEG8W2QA6KDFVWQ3224J",
+        "name": "Initech · pilot",
+        "company": "01KAV9FWXR7W9ETWCW3CKZ477S",
+        "contacts": [
+          "01KAV9G6P865DNYH7KTXQC5HNQ"
+        ],
+        "stage": "Qualified",
+        "amount": 12000,
+        "close_on": "2026-12-20",
+        "owner": "me",
+        "last_touch": "2026-11-03T15:00:00Z",
+        "likely": "Likely"
+      },
+      {
+        "id": "01KAV9GFFGG9S8GACKYRPCRS41",
+        "name": "Umbrella · expansion",
+        "company": "01KAV9FXX0BMWCXJ11B4M7GQHT",
+        "contacts": [
+          "01KAV9G7NGV9653ND0EQ3G0KDW"
+        ],
+        "stage": "Proposal",
+        "amount": 9800,
+        "close_on": "2027-01-15",
+        "owner": "me",
+        "last_touch": "2026-11-04T15:00:00Z",
+        "likely": "Unlikely"
+      },
+      {
+        "id": "01KAV9GGERQN5PER8089T313CB",
+        "name": "Hooli · first order",
+        "company": "01KAV9FYW8T4FFPTWY337AEYHM",
+        "contacts": [
+          "01KAV9G8MRZQ0A3P6N52P6VDNX"
+        ],
+        "stage": "Lead",
+        "amount": 4200,
+        "close_on": "2027-01-30",
+        "owner": "me",
+        "last_touch": "2026-11-05T15:00:00Z",
+        "likely": "Maybe"
+      },
+      {
+        "id": "01KAV9GHE0MVKXYK97BTQB1T4Z",
+        "name": "Stark Labs · team plan",
+        "company": "01KAV9FZVG60VFFC3M3210YZ62",
+        "contacts": [
+          "01KAV9G9M0AFR9YE3RPQB3VBZH"
+        ],
+        "stage": "Lead",
+        "amount": 5400,
+        "close_on": "2027-02-10",
+        "owner": "me",
+        "last_touch": "2026-11-06T15:00:00Z"
+      },
+      {
+        "id": "01KAV9GJD8T1T7HV2GXPHQCD0G",
+        "name": "Vandelay · imports",
+        "company": "01KAV9G0TR2KCHPQN62CXRADMT",
+        "contacts": [
+          "01KAV9GAK83GJ8YFFAZRWJFTPY"
+        ],
+        "stage": "Won",
+        "amount": 6800,
+        "close_on": "2026-10-30",
+        "owner": "me",
+        "last_touch": "2026-11-07T15:00:00Z"
+      },
+      {
+        "id": "01KAV9GKCG81R33SDZYNKPAGQZ",
+        "name": "Acme · seats",
+        "company": "01KAV9G1T0RTYZTXM07Q71P3SW",
+        "contacts": [
+          "01KAV9GBJG70GN7ZKYKH0QSKZB"
+        ],
+        "stage": "Qualified",
+        "amount": 22500,
+        "close_on": "2026-12-05",
+        "owner": "me",
+        "last_touch": "2026-11-08T15:00:00Z",
+        "likely": "Maybe"
+      },
+      {
+        "id": "01KAV9GMBR18KGPH35TCTG6QYH",
+        "name": "Globex · security add-on",
+        "company": "01KAV9FVYGB5FHVMFQQHM1MWSX",
+        "contacts": [
+          "01KAV9G5Q0CT4R86ZYDS49EENC"
+        ],
+        "stage": "Won",
+        "amount": 8000,
+        "close_on": "2026-10-12",
+        "owner": "me",
+        "last_touch": "2026-11-09T15:00:00Z"
+      },
+      {
+        "id": "01KAV9GNB02EE93XV3ABEZ74NY",
+        "name": "Northwind · EU rollout",
+        "company": "01KAV9FTZ80MWF2SBY7KW3K21J",
+        "contacts": [
+          "01KAV9G2S8ATARGPBF8ZGM3SFZ"
+        ],
+        "stage": "Lead",
+        "amount": 30000,
+        "close_on": "2027-03-01",
+        "owner": "me",
+        "last_touch": "2026-11-10T15:00:00Z"
+      },
+      {
+        "id": "01KAV9GPA8M9724SG620SWG8GA",
+        "name": "Initech · support",
+        "company": "01KAV9FWXR7W9ETWCW3CKZ477S",
+        "contacts": [
+          "01KAV9G6P865DNYH7KTXQC5HNQ"
+        ],
+        "stage": "Lost",
+        "amount": 3000,
+        "close_on": "2026-09-30",
+        "owner": "me",
+        "last_touch": "2026-11-11T15:00:00Z"
+      },
+      {
+        "id": "01KAV9GQ9GPFT41T4YKCW7CTMH",
+        "name": "Umbrella · audit",
+        "company": "01KAV9FXX0BMWCXJ11B4M7GQHT",
+        "contacts": [
+          "01KAV9G7NGV9653ND0EQ3G0KDW"
+        ],
+        "stage": "Negotiation",
+        "amount": 15500,
+        "close_on": "2026-12-18",
+        "owner": "me",
+        "last_touch": "2026-11-12T15:00:00Z",
+        "likely": "Likely"
+      },
+      {
+        "id": "01KAV9GR8RJ6EBTK58YR7KQ99J",
+        "name": "Acme · analytics",
+        "company": "01KAV9G1T0RTYZTXM07Q71P3SW",
+        "contacts": [
+          "01KAV9GBJG70GN7ZKYKH0QSKZB"
+        ],
+        "stage": "Proposal",
+        "amount": 11000,
+        "close_on": "2027-01-08",
+        "owner": "me",
+        "last_touch": "2026-11-13T15:00:00Z"
+      },
+      {
+        "id": "01KAV9GS80SV938VCHN89DGRTM",
+        "name": "Hooli · EU",
+        "company": "01KAV9FYW8T4FFPTWY337AEYHM",
+        "contacts": [
+          "01KAV9G8MRZQ0A3P6N52P6VDNX"
+        ],
+        "stage": "Qualified",
+        "amount": 14400,
+        "close_on": "2027-02-01",
+        "owner": "me",
+        "last_touch": "2026-11-14T15:00:00Z"
+      }
+    ]
+  }
+}

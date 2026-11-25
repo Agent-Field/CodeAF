@@ -1,0 +1,26 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "candidates",
+  "title": "Candidates",
+  "body": {
+    "part": "Row",
+    "props": { "gap": 3, "align": "start" },
+    "children": [
+      {
+        "part": "RecordList",
+        "id": "candidates",
+        "label": "Candidates",
+        "bind": { "records": "candidate", "query": "-stage:Declined" },
+        "props": { "views": ["board", "list"], "board_by": "stage", "meter": "stage", "columns": ["name", "role", "stage", "applied_on"], "select": "one" }
+      },
+      {
+        "part": "Panel",
+        "when": "$selection.candidates.count == 1",
+        "props": { "title": "Candidate" },
+        "children": [
+          { "part": "RecordPage", "label": "Candidate", "bind": { "record": "$selection.candidates.id" }, "props": { "fields": ["name", "role", "stage", "contact", "applied_on"] } }
+        ]
+      }
+    ]
+  }
+}

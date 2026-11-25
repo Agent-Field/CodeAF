@@ -1,0 +1,26 @@
+{
+  "$schema": "https://codeaf.dev/schema/app/1.json",
+  "id": "hiring",
+  "name": "Hiring",
+  "icon": "person",
+  "version": 1,
+  "kit": 0,
+  "agent": { "name": "Hiring agent", "file": "agent.md" },
+  "records": {
+    "candidate": {
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "role": { "type": "text" },
+        "stage": { "type": "enum", "default": "Applied", "values": ["Applied", "Screen", "Interview", "Offer", "Hired", "Declined"] },
+        "contact": { "type": "ref", "to": "contact" },
+        "applied_on": { "type": "date" }
+      }
+    },
+    "contact": { "uses": true, "fields": { "role_applied": { "type": "text" } } }
+  },
+  "capabilities": { "records": { "candidate": "rw", "contact": "r" }, "connectors": {}, "ai": [], "tools": [] },
+  "triggers": [],
+  "commands": [],
+  "budget": { "month": 5, "per_run": 0.5, "at_cap": "ask" }
+}

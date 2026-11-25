@@ -1,0 +1,363 @@
+{
+  "$schema": "https://codeaf.dev/schema/kit/0.json",
+  "kit": 0,
+  "about": "The parts a screen in a codeaf app may name, kit version 0. Each part lists the JSON Schema of its props, whether it takes child nodes, whether it is interactive (and so needs a label), which bindings it accepts and which events its `on` may name. The engine and the desk each carry a verbatim copy of this file and test it.",
+  "parts": [
+    {
+      "name": "Stack",
+      "summary": "Children one above the other.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": ["params"],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "gap": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "align": { "enum": ["start", "center", "end", "stretch"] }
+        }
+      }
+    },
+    {
+      "name": "Row",
+      "summary": "Children side by side.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": ["params"],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "gap": { "type": "integer", "minimum": 1, "maximum": 6 },
+          "align": { "enum": ["start", "center", "end", "stretch"] },
+          "wrap": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "name": "Panel",
+      "summary": "The right-hand panel for the selected item. Bound to a list's selection, its children read that selection's record type.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": ["selection"],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "SectionTabs",
+      "summary": "The app's one navigation row; each item opens a screen.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "screen"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1 },
+                "screen": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Heading",
+      "summary": "A title line.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string" },
+          "level": { "type": "integer", "minimum": 1, "maximum": 3 }
+        }
+      }
+    },
+    {
+      "name": "Text",
+      "summary": "A line or paragraph of words in a type role.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string" },
+          "role": { "enum": ["body", "secondary", "meta", "mono"] },
+          "ink": { "enum": ["ink", "ink-2", "ink-3", "accent", "danger"] }
+        }
+      }
+    },
+    {
+      "name": "Badge",
+      "summary": "A small count or word beside something.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "count": { "type": ["integer", "string"] },
+          "text": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "Button",
+      "summary": "A verb. Its words are the node's label.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": ["click"],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["primary", "secondary", "quiet", "danger"] },
+          "icon": { "type": "string" },
+          "confirm": { "type": "string" },
+          "key": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "Divider",
+      "summary": "A hairline between groups.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "inset": { "type": "boolean" },
+          "vertical": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "name": "Empty",
+      "summary": "What a place shows when it has nothing: an optional title and one quiet line.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "title": { "type": "string" },
+          "text": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "RecordList",
+      "summary": "A live, paginated list of records with its QueryField, optional StateMeter, selection and keys; can show as a board by an enum field.",
+      "children": "none",
+      "interactive": true,
+      "bindings": ["records"],
+      "events": ["open", "select"],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "columns": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "views": { "type": "array", "items": { "enum": ["list", "board"] }, "minItems": 1, "uniqueItems": true },
+          "board_by": { "type": "string" },
+          "meter": { "type": "string" },
+          "search": { "type": "boolean" },
+          "select": { "enum": ["none", "one", "many"] },
+          "empty": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "RecordPage",
+      "summary": "One record: its fields (editable where the app may write), its links and its history, with command buttons.",
+      "children": "none",
+      "interactive": true,
+      "bindings": ["record"],
+      "events": ["change"],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "actions": { "type": "array", "items": { "type": "string" } },
+          "history": { "type": "boolean" }
+        }
+      }
+    },
+    {
+      "name": "RecordForm",
+      "summary": "Create a record of `type`, or edit the bound record, from the type's own field definitions.",
+      "children": "none",
+      "interactive": true,
+      "bindings": ["record"],
+      "events": ["submit", "cancel"],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": { "type": "string" },
+          "fields": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "submit": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "BulkBar",
+      "summary": "Verbs for the checked rows of the list named by `for`; its children are Buttons.",
+      "children": "nodes",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["for"],
+        "properties": {
+          "for": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "QueryField",
+      "summary": "A standalone query line that edits the query of the RecordList named by `for`.",
+      "children": "none",
+      "interactive": true,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["for"],
+        "properties": {
+          "for": { "type": "string" },
+          "placeholder": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "StateMeter",
+      "summary": "Counts per value of an enum field over the bound records; a segment click filters.",
+      "children": "none",
+      "interactive": true,
+      "bindings": ["records"],
+      "events": ["pick"],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field"],
+        "properties": {
+          "field": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "StatTile",
+      "summary": "One number worked out on the server over the bound records.",
+      "children": "none",
+      "interactive": false,
+      "bindings": ["records"],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "metric"],
+        "properties": {
+          "title": { "type": "string" },
+          "metric": { "enum": ["count", "sum", "avg", "min", "max"] },
+          "field": { "type": "string" },
+          "format": { "enum": ["number", "money", "percent"] }
+        }
+      }
+    },
+    {
+      "name": "Chart",
+      "summary": "A bar, line, area or metric chart from one query.",
+      "children": "none",
+      "interactive": false,
+      "bindings": ["records"],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "x"],
+        "properties": {
+          "kind": { "enum": ["bar", "line", "area", "metric"] },
+          "title": { "type": "string" },
+          "x": { "type": "string" },
+          "y": { "type": "string" },
+          "metric": { "enum": ["count", "sum", "avg"] },
+          "bucket": { "enum": ["day", "week", "month", "quarter"] }
+        }
+      }
+    },
+    {
+      "name": "Sheet",
+      "summary": "A sheet over the screen with a title and one primary verb; shown while its `when` is true.",
+      "children": "nodes",
+      "interactive": true,
+      "bindings": [],
+      "events": ["submit", "close"],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "primary": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "Toast",
+      "summary": "A short notice at the bottom of the screen.",
+      "children": "none",
+      "interactive": false,
+      "bindings": [],
+      "events": [],
+      "props": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string" },
+          "tone": { "enum": ["neutral", "danger"] }
+        }
+      }
+    }
+  ]
+}
