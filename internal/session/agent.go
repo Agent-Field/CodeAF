@@ -2648,7 +2648,7 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 	a.interrupt.begin()
 	a.mu.Lock()
 	cancel := a.cancel
-	waiting := a.teamStopHoldLocked(door)
+	waiting, withdrew := a.teamStopHoldLocked(door)
 	cutPass := a.cutManualPassLocked()
 	a.dropFollowUpsLocked()
 	// AND THE SECOND LOOK AT A YOUNG COMMAND IS RELEASED BEFORE THIS LOCK IS,
@@ -2667,7 +2667,7 @@ func (a *Agent) interruptNamed(door StopDoor, name string) {
 		cancel(stopAs(door, name))
 	}
 	if waiting {
-		a.teamStopHoldSaid()
+		a.teamStopHoldSaid(withdrew)
 	}
 }
 

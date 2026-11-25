@@ -209,8 +209,9 @@ func (a *Agent) teamHandedLocked(role teamRole, entry teams.Entry) {
 	}
 }
 
-// teamHandedTake is the teams that handed this conversation work since its
-// last turn ended, with when, taken: the turn now ending is the one that had it.
+// teamHandedTake is the teams whose handed-out work this conversation is on,
+// with when it was handed, taken: the work ends here, stopped or finished with
+// nothing left to wait for ([Agent.teamHandedCarried]).
 func (a *Agent) teamHandedTake() map[string]time.Time {
 	a.team.mu.Lock()
 	defer a.team.mu.Unlock()
@@ -226,10 +227,11 @@ func (a *Agent) teamHandedTake() map[string]time.Time {
 //
 // THREE THINGS MUST HOLD, PER TEAM. The cancel came through the person's door;
 // the app's own stops (quitting, a paused member's stray wake) name another.
-// The turn was handed that manager's work, whoever opened it: a directive read
-// at a step of a turn the person had started is as undone by their stop as one
-// that woke the member, and a turn that carried only the person's own request
-// is theirs alone. And no manager's stop is on that team's log since the work
+// The conversation was on that manager's work, whoever opened the turn: a
+// directive read at a step of a turn the person had started is as undone by
+// their stop as one that woke the member, and so is work that waits on a
+// command while the person's own turn is stopped. A turn with no handed work
+// alive is theirs alone. And no manager's stop is on that team's log since the work
 // was handed over: an interface holding the member performs the manager's
 // `team_stop` through the same door as the person's stop key (the app, the
 // terminal, a remote window), usually before the member's own session reads
