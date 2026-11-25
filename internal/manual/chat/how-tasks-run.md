@@ -113,16 +113,19 @@ row carry the ground and how the task stood on it.
 A task whose whole contract names no file to make or change is treated as reading its
 repository: it gets an empty folder of its own and the repository is left alone. Naming a
 project in words is not naming a file, so a brief such as "build the app in the MacStats
-repo" reads this way.
+repo" reads this way. So does a relative path such as `Sources/App/main.swift` when
+neither the file nor the folder that would hold it is there yet.
 
 Such a task says so three times. Its receipt reads `It reads <folder> and writes only in a
 folder of its own, so nothing in <folder> changes`, and says to stop it and propose it again
-naming the files under that folder it makes or changes. Its worker is told the folder is to
-read, not to change, and never to report the work as being there. Its landing ends `it
-changed nothing in <folder>: what it made is in <its own folder>`.
+naming the files it makes or changes by their full path under that folder. Its worker is
+told the folder is to read, not to change, and never to report the work as being there. A
+task run as a run ends its landing `it changed nothing in <folder>: what it made is in <its
+own folder>`; the older single-task road lands without that line. A task that joins a run
+already underway is told what is true of that run instead, since it shares the run's copy.
 
-To have the work done in the repository, name a file under it in the brief, in what to
-produce or in the done-when, as a path such as `Sources/App/main.swift`, or say "work here".
+To have the work done in the repository, name a file under it by full path in the brief, in
+what to produce or in the done-when, such as `~/MacStats/Sources/App/main.swift`.
 
 ## Does a task touch my working copy? — where does my task work, what the card calls the task's directory
 

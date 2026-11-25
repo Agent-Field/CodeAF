@@ -1606,7 +1606,7 @@ func (a *Agent) retryRestoredPark(n uint64, parked *parkedHandoff) error {
 	question := questionAtTaskHandoff(a.owedAsks)
 	a.mu.Unlock()
 	ctx := withCrewWish(context.Background(), a.proposalCrewWish(n, crewWish{effort: rec.Effort, worker: rec.Worker}))
-	_, err := a.startOrJoinTaskRunVia(ctx, n, parked.title, rec.Brief, rec.DependsOn, taskStand{dir: rec.Dir, mode: rec.StandMode}, question, nil, rec.Asked...)
+	_, _, err := a.startOrJoinTaskRunVia(ctx, n, parked.title, rec.Brief, rec.DependsOn, taskStand{dir: rec.Dir, mode: rec.StandMode}, question, nil, rec.Asked...)
 	var none *crewroute.NoEligibleError
 	switch {
 	case err == nil:

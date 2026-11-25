@@ -100,10 +100,10 @@ func homeTaskRedirect(dir string) string {
 	return "The task reads " + dir + " and keeps what it makes in its own folder; nothing in " + dir + " changes."
 }
 
-// withHomeReadingNote is [taskCopy.ownFolderNote] for a run, whose workers learn
+// withTaskReadsNote is [taskCopy.ownFolderNote] for a run, whose workers learn
 // their folder as the assigned working directory and read the run's words. It
 // is said over every ground a run only reads, the home folder or not.
-func withHomeReadingNote(place Place, brief string, stand taskStand) string {
+func withTaskReadsNote(place Place, brief string, stand taskStand) string {
 	ground := canonicalPath(strings.TrimSpace(stand.dir))
 	if stand.workspaceSet != nil || ground == "" || preparedTaskMode(place, ground, stand.mode) != TaskModeReference {
 		return brief

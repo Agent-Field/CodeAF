@@ -1091,14 +1091,18 @@ func (a *Agent) startApprovedHandoff(ctx context.Context, p *stagedProposal, spe
 		ctx = withProgramWish(ctx, programWish{thinking: spec.thinking, carry: a.programCarryOf(prior, via.Name)})
 	}
 	a.expectRunSource(p.id, spec.source)
-	joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalRunDescription(spec, via, placement), spec.dependsOn, stand, question, via, asked...)
+	mode, joined, err := a.startOrJoinTaskRunVia(context.WithoutCancel(ctx), p.id, spec.title, proposalRunDescription(spec, via, placement), spec.dependsOn, stand, question, via, asked...)
 	a.rollbackFailedProgramStart(via, p.id, prior, err)
+	if joined {
+		stand.mode = mode
+	}
 	return handoffStart{joined: joined, stand: stand, asked: asked, placed: placement.sentence}, err
 }
 
 // handoffStart is what starting an approved hand-off settled: whether it
-// joined a run already underway, the stand it runs on, the programs asked
-// for, and the sentence that says which computer it was placed on.
+// joined a run already underway, the stand it runs on (in the joined run's
+// mode when it joined one), the programs asked for, and the sentence that says
+// which computer it was placed on.
 type handoffStart struct {
 	joined bool
 	stand  taskStand
@@ -1143,7 +1147,14 @@ func (a *Agent) handoffAnswer(p *stagedProposal, spec taskSpec, elsewhere string
 		return refusal.Error(), true, true
 	}
 	if err == nil {
-		receipt := taskReceipt(p.id, spec, TaskRunning, p.stand, elsewhere)
+		said := p.stand
+		if joined {
+			// A TASK THAT JOINED A RUN IS SAID AS THAT RUN STANDS. It shares the
+			// run's copy, so a receipt read off its own stand told a reference
+			// that joined a worktree that nothing in the ground would change.
+			said.mode = stand.mode
+		}
+		receipt := taskReceipt(p.id, spec, TaskRunning, said, elsewhere)
 		switch {
 		case via != nil:
 			receipt = delegateStartedReceipt(p.id, spec.title, strings.Join(asked, ", "), delegateReceipt(canonicalPath(stand.dir), *via, a.runRowCopy(p.id)), elsewhere)
@@ -1211,10 +1222,10 @@ func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, els
 	}
 	if state == TaskQueued {
 		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
-		return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
+		return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), taskStandRedirect(stand)), elsewhere)
 	}
 	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
-	return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), stand.redirect), elsewhere)
+	return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), taskStandRedirect(stand)), elsewhere)
 }
 
 // taskStandSentence says WHERE the task works whenever that was read from the
@@ -1227,13 +1238,19 @@ func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, els
 // offered is accepted (it is somebody saying where the work is), and this line
 // is what makes a wrong one visible in the same breath rather than when the
 // work lands somewhere nobody looked. The rungs that read the conversation
-// instead are silent here, as they always were: the work went where the
-// conversation already is.
+// instead are silent here when the task works in its ground: the work went
+// where the conversation already is. A task that only reads its ground speaks
+// on every rung, because its work goes somewhere else.
 func taskStandSentence(stand taskStand) string {
 	switch {
 	case stand.dir == "":
 		return ""
-	case stand.mode == TaskModeReference && !HoldsHomeFolder(stand.dir):
+	case stand.mode == TaskModeReference && HoldsHomeFolder(stand.dir):
+		// The home folder has its own sentence, said here whichever door named
+		// it: only the `where` doors leave it on the stand as a redirect, and a
+		// home folder given as `ground` read "It works in <home>".
+		return homeTaskRedirect(stand.dir)
+	case stand.mode == TaskModeReference:
 		// A REFERENCE IS SAID AS ONE, in the same breath as the start. "It
 		// works in <ground>" was true of where the task looks and false of
 		// where its work goes, and the proposer told the person the work was
@@ -1247,14 +1264,32 @@ func taskStandSentence(stand taskStand) string {
 	return ""
 }
 
+// taskStandRedirect is the stand's redirect as a receipt prints it. A reference
+// has said where its work goes ([taskStandSentence]) and cuts no branch, so the
+// redirect a declined `in place` leaves on its stand
+// ([groundModeAfterPlacement]) would contradict the sentence before it, and the
+// home folder's redirect would say that sentence twice.
+func taskStandRedirect(stand taskStand) string {
+	if stand.mode == TaskModeReference {
+		return ""
+	}
+	return stand.redirect
+}
+
 // taskReadsSentence is what a proposer reads when its task only reads the
 // ground: where the work will be, that the ground does not change, and what to
 // do when that is not what was meant. The home folder has its own sentence
 // ([homeTaskRedirect]).
+//
+// THE REMEDY IS A FULL PATH, because that is the one spelling that always
+// counts: a relative path is read as work under the ground only when the file
+// or its folder is already there ([groundHolds]), so "create
+// Sources/App/main.swift" in a repository with no Sources folder was proposed
+// again and was a reference again.
 func taskReadsSentence(dir string) string {
 	dir = cleanFolder(dir)
-	return "It reads " + dir + " and writes only in a folder of its own, so nothing in " + dir + " changes: this proposal named no file to make or change there. " +
-		"If the work is meant to change " + dir + ", stop this task and propose it again naming the files under " + dir + " it makes or changes."
+	return "It reads " + dir + " and writes only in a folder of its own, so nothing in " + dir + " changes: this proposal named no file there by full path. " +
+		"If the work is meant to change " + dir + ", stop this task and propose it again naming the files it makes or changes by their full path under " + dir + "."
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one
