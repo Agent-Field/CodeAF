@@ -55,7 +55,13 @@ func (b *appBackend) renderRunOutput(ctx context.Context, call runs.Call, action
 		Scope:  data.Scope{App: call.App, Flow: true, Actor: "run:" + call.ID},
 		Render: action, Run: call.ID, Step: call.Step, Key: call.Key,
 	})
-	return runs.Reply{Output: result}, err
+	if err != nil {
+		return runs.Reply{}, err
+	}
+	// Return a projected file object so a later step can use its fields.
+	return runs.Reply{Output: map[string]any{
+		"id": result.ID, "name": result.Name, "mime": result.MIME, "blob": result.Blob,
+	}}, nil
 }
 
 func (b *appBackend) AppOutputFile(p appwire.AppOutputFileParams) (*appwire.AppOutputFileResult, error) {

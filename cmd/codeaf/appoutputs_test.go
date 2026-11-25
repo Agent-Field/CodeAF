@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -44,6 +45,11 @@ func TestAppOutputActionParity(t *testing.T) {
 	rendered := artifacts.Items[0]
 	if rendered.ID == person.ID || rendered.Blob != person.Blob || rendered.ActorKind != data.ByFlow || rendered.Step != "render" || rendered.Run != run.ID {
 		t.Fatalf("run receipt: %+v, direct: %+v", rendered, person)
+	}
+	var saved appwire.DataRowResult
+	w.must("data.get", map[string]string{"app": id, "type": "contact", "id": record}, &saved)
+	if saved.Row["title"] != "contact-card.csv" {
+		t.Fatalf("the next step could not read the saved file's name: %+v", saved)
 	}
 	var file appwire.AppOutputFileResult
 	w.must("apps.output_file", appwire.AppOutputFileParams{App: id, ID: rendered.ID}, &file)
@@ -106,7 +112,7 @@ func keepOutputApp(t *testing.T, root string) string {
 		"app.json":                string(raw),
 		"plan.json":               `{"ask":"Export CRM contacts","data":[{"id":"contact","line":"CRM contact"}],"screens":[{"id":"home","line":"Contacts"}],"automation":[{"id":"contact-card","line":"Render contact"},{"id":"weekly-digest","line":"Weekly digest"}],"needs":"computed"}`,
 		"screens/home.json":       `{"screen":"home","title":"Contacts","body":{"part":"Button","id":"export","label":"Weekly contacts","on":{"click":[{"render":{"output":"weekly-digest"}}]}}}`,
-		"runs/contact-card.yaml":  "run: contact-card\nparams:\n  contact: {type: ref, to: contact}\nsteps:\n  - id: render\n    render: {output: contact-card, record: $params.contact.id}\n",
+		"runs/contact-card.yaml":  "run: contact-card\nparams:\n  contact: {type: ref, to: contact}\nsteps:\n  - id: render\n    render: {output: contact-card, record: $params.contact.id}\n  - id: remember\n    records.update: {type: contact, id: $params.contact.id, set: {title: $steps.render.name}}\n",
 		"runs/weekly-digest.yaml": "run: weekly-digest\nsteps:\n  - id: deliver\n    render: {output: weekly-digest, inbox: true}\n",
 	}
 	for name, content := range files {
@@ -244,7 +250,42 @@ func TestAppOutputScheduleDeliversOnceAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	page, err := db.Outputs(data.Scope{App: id}, "", "", true)
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != replayed.Output.(data.Output).ID || page.Items[0].Run != instance {
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != replayed.Output.(map[string]any)["id"] || page.Items[0].Run != instance {
 		t.Fatalf("scheduled digest inbox: %+v, %v", page, err)
+	}
+}
+
+func TestAppOutputUsesEngineBoundAgentPrincipal(t *testing.T) {
+	root := resolvedTempDir(t)
+	id := keepOutputApp(t, root)
+	t.Setenv("CODEAF_HOME", root)
+	backend := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { backend.Close() })
+	db, err := backend.dataStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := db.Create(data.Scope{App: id}, "contact", []map[string]any{{"name": "Sam", "phone": "+1 555 6500"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	action := schema.RenderAction{Output: "contact-card", Record: created.Rows[0].ID()}
+	person, err := backend.RenderAppOutput(t.Context(), appwire.AppRenderParams{App: id, RenderAction: action})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := backend.invokeOutput(t.Context(), outputs.Invocation{
+		Scope:  data.Scope{App: id, Agent: true, Actor: "contact assistant"},
+		Render: action,
+	})
+	if err != nil || agent.Blob != person.Blob || agent.ActorKind != data.ByAI || agent.Actor != "contact assistant" {
+		t.Fatalf("engine-bound agent receipt: %+v, %v", agent, err)
+	}
+	_, bytes, err := db.OutputFile(data.Scope{App: id}, agent.ID)
+	if err != nil || string(bytes) != "Contact\nSam\n" {
+		t.Fatalf("agent file: %q, %v", bytes, err)
+	}
+	if _, _, err := db.OutputFile(data.Scope{App: "another-app"}, agent.ID); err == nil {
+		t.Fatal("another app read the output by id")
 	}
 }
