@@ -19,6 +19,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // appDataState is the backend's data place and the live queries this
@@ -87,13 +88,17 @@ func (b *appBackend) dataStore(draft string) (*data.Store, error) {
 // closeData stops this connection's live queries and closes the data files.
 func (b *appBackend) closeData() {
 	place := b.data.takePlace()
-	b.data.subsMu.Lock()
-	for id := range b.data.subs {
-		b.stopDataSubscription(id)
-	}
-	b.data.subsMu.Unlock()
+	b.stopDataSubscriptions()
 	if place != nil {
 		_ = place.Close()
+	}
+}
+
+func (b *appBackend) stopDataSubscriptions() {
+	b.data.subsMu.Lock()
+	defer b.data.subsMu.Unlock()
+	for id := range b.data.subs {
+		b.stopDataSubscription(id)
 	}
 }
 
@@ -440,16 +445,10 @@ func (d *appDataDelivery) run(emit appwire.Emitter) {
 		case <-d.ctx.Done():
 			return
 		case <-d.wake:
-			d.mu.Lock()
-			diff := d.pending
-			d.pending = nil
-			if diff == nil || d.ctx.Err() != nil {
-				d.mu.Unlock()
+			diff, ctx, cancel := d.take()
+			if diff == nil {
 				continue
 			}
-			ctx, cancel := context.WithCancel(d.ctx)
-			d.sending = cancel
-			d.mu.Unlock()
 
 			event, body := appDataEvent(*diff)
 			if sink, ok := emit.(interface {
@@ -460,11 +459,28 @@ func (d *appDataDelivery) run(emit appwire.Emitter) {
 				emit.Emit(event, body)
 			}
 			cancel()
-			d.mu.Lock()
-			d.sending = nil
-			d.mu.Unlock()
+			d.finishSend()
 		}
 	}
+}
+
+func (d *appDataDelivery) take() (*data.Diff, context.Context, context.CancelFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	diff := d.pending
+	d.pending = nil
+	if diff == nil || d.ctx.Err() != nil {
+		return nil, nil, nil
+	}
+	ctx, cancel := context.WithCancel(d.ctx)
+	d.sending = cancel
+	return diff, ctx, cancel
+}
+
+func (d *appDataDelivery) finishSend() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.sending = nil
 }
 
 func appDataEvent(d data.Diff) (string, any) {
@@ -500,7 +516,7 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.Data
 		gate.stop()
 		return nil, appDataError(err)
 	}
-	go gate.run(emit)
+	guard.Go("app/data-subscription", func() { gate.run(emit) })
 	if b.data.subs == nil {
 		b.data.subs = map[string]appDataSubscription{}
 	}
