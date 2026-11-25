@@ -593,15 +593,16 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	appRuns        *runs.Engine
-	stopAppRuns    func()
-	clientTools    appClientTools
-	libraryWatch   sync.Once
-	libraryInboxMu sync.Mutex
-	pluginPauses   map[string]appPluginPause
-	pluginOllama   appPluginOllama
-	pluginAuth     map[string]*appPluginAttempt
-	chats          appChats
+	appRuns          atomic.Pointer[runs.Engine]
+	startAppRunsOnce func()
+	stopAppRuns      func()
+	clientTools      appClientTools
+	libraryWatch     sync.Once
+	libraryInboxMu   sync.Mutex
+	pluginPauses     map[string]appPluginPause
+	pluginOllama     appPluginOllama
+	pluginAuth       map[string]*appPluginAttempt
+	chats            appChats
 	// credentials is what a door gave this launch to keep, waiting for the
 	// app to take it (appkept_credentials.go).
 	credentials appKeptCredentials

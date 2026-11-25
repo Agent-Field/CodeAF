@@ -23,7 +23,7 @@ func TestAppRunsUsesInboxApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	backend.appRuns = e
+	backend.appRuns.Store(e)
 	r, err := backend.StartRun("app", "example", nil)
 	if err != nil {
 		t.Fatal(err)

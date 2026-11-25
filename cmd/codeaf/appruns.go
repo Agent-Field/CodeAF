@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
@@ -26,6 +27,66 @@ const appRunAskAgent = "app-runs"
 const appRunAskPrefix = "run:"
 
 func (b *appBackend) openAppRuns(ctx context.Context) func() {
+	ctx, cancel := context.WithCancel(ctx)
+	var once sync.Once
+	stop := func() {}
+	start := func() {
+		once.Do(func() {
+			if ctx.Err() == nil {
+				stop = b.startAppRuns(ctx)
+			}
+		})
+	}
+	b.startAppRunsOnce = start
+	if hasAppRunWork() {
+		start()
+	}
+	// A fresh desktop home must remain joinable. Check for a kept app
+	// without opening the data store or creating a run journal.
+	done := make(chan struct{})
+	guard.Go("app/run-startup", func() {
+		defer close(done)
+		tick := time.NewTicker(2 * time.Second)
+		defer tick.Stop()
+		for b.appRuns.Load() == nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				if hasAppRunWork() {
+					start()
+					return
+				}
+			}
+		}
+	})
+	return func() {
+		cancel()
+		once.Do(func() {})
+		<-done
+		stop()
+	}
+}
+
+func hasAppRunWork() bool {
+	if info, err := os.Stat(home.Join("apps", "_runs", "runs.db")); err == nil && info.Mode().IsRegular() {
+		return true
+	}
+	entries, err := os.ReadDir(home.Join("apps"))
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), "_") {
+			if info, err := os.Stat(home.Join("apps", entry.Name(), "current", "app.json")); err == nil && info.Mode().IsRegular() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	files := runs.Files(home.Join("apps"))
 	_, err := b.appData()
 	if err != nil {
@@ -50,7 +111,6 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 		fmt.Fprintln(os.Stderr, "app runs:", err)
 		return func() {}
 	}
-	b.appRuns = e
 	past, err := e.List("", "")
 	if err == nil {
 		for _, run := range past {
@@ -63,6 +123,7 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 	if err := records.ConsumeOutbox(ctx, e); err != nil {
 		fmt.Fprintln(os.Stderr, "app run outbox:", err)
 	}
+	b.appRuns.Store(e)
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	guard.Go("app/runs", func() {
@@ -104,25 +165,34 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 }
 
 func (b *appBackend) StartRun(app, run string, params map[string]any) (runs.Run, error) {
-	if b.appRuns == nil {
+	if b.appRuns.Load() == nil && b.startAppRunsOnce != nil {
+		if _, err := (runs.Files(home.Join("apps"))).App(app); err != nil {
+			return runs.Run{}, appRunError(err)
+		}
+		b.startAppRunsOnce()
+	}
+	e := b.appRuns.Load()
+	if e == nil {
 		return runs.Run{}, appwire.Errorf(appwire.CodeEngine, "app runs are unavailable")
 	}
-	r, err := b.appRuns.Start(app, run, params)
+	r, err := e.Start(app, run, params)
 	return r, appRunError(err)
 }
 
 func (b *appBackend) ListRuns(app, run string) ([]runs.Run, error) {
-	if b.appRuns == nil {
-		return nil, appwire.Errorf(appwire.CodeEngine, "app runs are unavailable")
+	e := b.appRuns.Load()
+	if e == nil {
+		return []runs.Run{}, nil
 	}
-	return b.appRuns.List(app, run)
+	return e.List(app, run)
 }
 
 func (b *appBackend) GetRun(app, id string) (runs.Run, error) {
-	if b.appRuns == nil {
-		return runs.Run{}, appwire.Errorf(appwire.CodeEngine, "app runs are unavailable")
+	e := b.appRuns.Load()
+	if e == nil {
+		return runs.Run{}, appRunError(runs.ErrNotFound)
 	}
-	r, err := b.appRuns.Get(id)
+	r, err := e.Get(id)
 	if err == nil && app != "" && app != r.App {
 		err = runs.ErrNotFound
 		r = runs.Run{}
@@ -220,12 +290,12 @@ func (b *appBackend) openRunApproval(r runs.Run) {
 }
 
 func (b *appBackend) checkRunAnswer(agent, ask, option, text string) error {
-	if agent != appRunAskAgent || b.appRuns == nil {
+	if agent != appRunAskAgent || b.appRuns.Load() == nil {
 		return appwire.Errorf(appwire.CodeNotFound, "run approval not found")
 	}
 	approval := strings.TrimPrefix(ask, appRunAskPrefix)
 	runID, _, _ := strings.Cut(approval, "-")
-	r, err := b.appRuns.Get(runID)
+	r, err := b.appRuns.Load().Get(runID)
 	if err != nil || r.Approval == nil || r.Approval.ID != approval {
 		return appwire.Errorf(appwire.CodeNotFound, "run approval not found")
 	}
@@ -258,9 +328,9 @@ func (b *appBackend) answerRunApproval(agent, ask, option, text string) error {
 	var err error
 	if option == appwire.OptionRaise {
 		dollars, _ := strconv.ParseFloat(strings.TrimSpace(text), 64)
-		err = b.appRuns.RaiseBudget(runID, approval, dollars)
+		err = b.appRuns.Load().RaiseBudget(runID, approval, dollars)
 	} else {
-		err = b.appRuns.Answer(runID, approval, option == appwire.OptionAllowOnce)
+		err = b.appRuns.Load().Answer(runID, approval, option == appwire.OptionAllowOnce)
 	}
 	if err != nil {
 		return appRunError(err)
