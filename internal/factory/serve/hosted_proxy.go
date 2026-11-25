@@ -524,11 +524,15 @@ func (h *Handler) hostedCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	answer := hostedWithID(data, id)
 	if st != nil {
 		item := h.resourceItem(row, factory.OrgWorkstream{})
 		h.publishAccessEvent(row.Resource, person, h.audienceOf(item))
+		// The person who made the chat learns their verbs on it from this answer, as a list row
+		// tells them for every other chat, so no client has to work them out from a role table.
+		answer = append(hostedWithVerbs(answer, hostedVerbsOn(v, item)), '\n')
 	}
-	hostedRelay(w, status, header, hostedWithID(data, id))
+	hostedRelay(w, status, header, answer)
 }
 
 // hostedWithID adds the id to a created chat's answer when the chats' host

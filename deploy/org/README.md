@@ -229,7 +229,11 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   client's `--org` pick is unchanged), `shared` (chats of other people the caller may open: `id`, `owner`, `role`,
   `access`, `state`, `created`, `last_active`, and nothing about the model access or warnings; the operator's rows,
   only for a chat the policy keeps from being private, hold the same without `role` and have `access: operator`) and
-  `hosting` (`local_sessions`, below).
+  `hosting` (`local_sessions`, below). Every row of `sessions` and `shared` also carries `verbs`: what the policy
+  gives the caller in that chat right now, in the order of the policy's verbs, decided the way the guest's wire
+  decides it (an operator-only row holds none, and the answer to `POST /v1/hosted/sessions` carries the same field
+  for the chat just made). A client shows its controls from `verbs` and works nothing out from a role's name, since
+  the roles are the organization's to change; the wire still refuses what the caller does not hold.
 - **Sharing** is the generic route: `POST /v1/resources/session/<chat>/grants` with a person, a team or the
   organization and a role, and `DELETE .../grants/<grant>`. Share, revoke and a change of the policy publish
   `resource.changed` events to the audience as it stood before and as it stands after.

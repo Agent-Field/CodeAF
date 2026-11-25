@@ -157,15 +157,42 @@ type hostedSharedRow struct {
 	Owner  string  `json:"owner"`
 	Role   *string `json:"role,omitempty"`
 	Access string  `json:"access"`
+	// Verbs is what the asker may do in the chat under the policy as it stands now.
+	Verbs []string `json:"verbs"`
+}
+
+// hostedVerbsOn lists in the order of acl.Verbs what v may do in a hosted chat now. It is the
+// guest wire's own decision (hostedGuestVerbs, which the wire re-reads every heartbeat), so a
+// list row and the wire cannot come from two readings of the policy, and a client that shows
+// controls from the row never shows one the wire's table would refuse. An owner whose policy
+// still holds run is attached by the byte-for-byte proxy, which has no table; the row still
+// names only what the policy gives that owner, so a row never claims more than the policy does.
+func hostedVerbsOn(v Viewer, item Item) []string {
+	return hostedGuestVerbs(v, item).List()
+}
+
+// hostedWithVerbs sets the verbs of one chat row the chats' host wrote and leaves every other
+// field as it was. The host never decides access, so a verbs field of its own is overwritten.
+func hostedWithVerbs(row []byte, verbs []string) []byte {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(row, &fields) != nil || fields == nil {
+		return row
+	}
+	fields["verbs"], _ = json.Marshal(verbs)
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return row
+	}
+	return out
 }
 
 // hostedMetadata shows an operator-only row without a role because an operator's metadata access does not open the chat.
 func hostedMetadata(v Viewer, item Item) hostedSharedRow {
 	v = hostedWithoutOperator(v)
-	row := hostedSharedRow{Owner: item.Owner.ID, Access: "operator"}
-	if can(v, item, acl.VerbView) {
+	row := hostedSharedRow{Owner: item.Owner.ID, Access: "operator", Verbs: []string{}}
+	if verbs := hostedGuestVerbs(v, item); verbs.Has(acl.VerbView) {
 		role := roleOf(v, item)
-		row.Role, row.Access = &role, "shared"
+		row.Role, row.Access, row.Verbs = &role, "shared", verbs.List()
 	}
 	return row
 }
@@ -184,6 +211,9 @@ func (h *Handler) hostedOwnList(w http.ResponseWriter, r *http.Request, v Viewer
 		return own, nil, false
 	}
 	st := h.config.Store
+	// The server that runs chats is always started with its store, which holds the policy. A
+	// handler built without one has no policy to read and relays the host's rows as they came,
+	// and a client reads a row with no verbs as view only.
 	if st == nil || status != http.StatusOK {
 		hostedRelay(w, status, header, body)
 		return own, nil, false
@@ -219,13 +249,14 @@ func (h *Handler) hostedOwnList(w http.ResponseWriter, r *http.Request, v Viewer
 				return own, nil, false
 			}
 		}
-		if hostedRegistration(row) && row.Owner.ID == v.Handle && can(v, h.resourceItem(row, factory.OrgWorkstream{}), acl.VerbView) {
-			kept = append(kept, raw)
+		if !hostedRegistration(row) || row.Owner.ID != v.Handle {
+			continue
+		}
+		if item := h.resourceItem(row, factory.OrgWorkstream{}); can(v, item, acl.VerbView) {
+			kept = append(kept, hostedWithVerbs(raw, hostedVerbsOn(v, item)))
 		}
 	}
-	if len(kept) != len(rows) {
-		own.Sessions, _ = json.Marshal(kept)
-	}
+	own.Sessions, _ = json.Marshal(kept)
 	return own, others, true
 }
 

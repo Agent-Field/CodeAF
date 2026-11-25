@@ -27,6 +27,15 @@ func hostedGrant(t *testing.T, rg *hostedRig, owner, chat, guest, role string) a
 	return grant
 }
 
+// verbsJSON is a list of verbs as a JSON decoder reads it back into an untyped row.
+func verbsJSON(verbs ...string) []any {
+	out := make([]any, 0, len(verbs))
+	for _, verb := range verbs {
+		out = append(out, verb)
+	}
+	return out
+}
+
 // P2-1
 // A private chat appears only to its owner and its current grantees.
 func TestP2_1_PrivateHostedChatsAndEvents(t *testing.T) {
@@ -108,9 +117,9 @@ func TestP2_2_HostedListKeepsOwnRowsAndLimitsSharedMetadata(t *testing.T) {
 	operatorRow := rg.create(t, "santosh")
 
 	type listing struct {
-		Sessions []map[string]string `json:"sessions"`
-		Shared   []map[string]string `json:"shared"`
-		Hosting  map[string]string   `json:"hosting"`
+		Sessions []map[string]any  `json:"sessions"`
+		Shared   []map[string]any  `json:"shared"`
+		Hosting  map[string]string `json:"hosting"`
 	}
 	read := func(who string) listing {
 		t.Helper()
@@ -142,39 +151,49 @@ func TestP2_2_HostedListKeepsOwnRowsAndLimitsSharedMetadata(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &original); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Sessions, original.Sessions) || len(got.Sessions) != 1 || got.Sessions[0]["id"] != mine {
+	// The caller's own rows are the host's rows with the caller's verbs added, and nothing else changed.
+	if len(got.Sessions) != 1 || got.Sessions[0]["id"] != mine || !reflect.DeepEqual(got.Sessions[0]["verbs"], verbsJSON(acl.Verbs...)) {
 		t.Fatalf("own list = %+v, host list = %+v", got.Sessions, original.Sessions)
 	}
-	metadata := func(id, owner, access, role string) map[string]string {
-		row := map[string]string{"id": id, "owner": owner, "access": access, "state": "suspended",
-			"created": "2026-11-24T00:00:00Z", "last_active": "2026-11-24T00:01:00Z"}
+	delete(got.Sessions[0], "verbs")
+	if !reflect.DeepEqual(got.Sessions, original.Sessions) {
+		t.Fatalf("own list = %+v, host list = %+v", got.Sessions, original.Sessions)
+	}
+	editVerbs := []string{"view", "comment", "edit", "run", "steer", "answer"}
+	metadata := func(id, owner, access, role string, verbs ...string) map[string]any {
+		row := map[string]any{"id": id, "owner": owner, "access": access, "state": "suspended",
+			"created": "2026-11-24T00:00:00Z", "last_active": "2026-11-24T00:01:00Z", "verbs": verbsJSON(verbs...)}
 		if role != "" {
 			row["role"] = role
 		}
 		return row
 	}
-	want := map[string]map[string]string{
-		first: metadata(first, "santosh", "shared", "edit"), second: metadata(second, "santosh", "shared", "view"),
-		third: metadata(third, "mia", "shared", "view"),
+	want := map[string]map[string]any{
+		first: metadata(first, "santosh", "shared", "edit", editVerbs...), second: metadata(second, "santosh", "shared", "view", "view"),
+		third: metadata(third, "mia", "shared", "view", "view"),
 	}
 	for _, row := range got.Shared {
-		if !reflect.DeepEqual(row, want[row["id"]]) {
-			t.Errorf("shared row = %+v, want %+v", row, want[row["id"]])
+		id, _ := row["id"].(string)
+		if !reflect.DeepEqual(row, want[id]) {
+			t.Errorf("shared row = %+v, want %+v", row, want[id])
 		}
-		delete(want, row["id"])
+		delete(want, id)
 	}
 	if len(want) != 0 {
 		t.Errorf("shared rows missing: %+v", want)
 	}
 	got = read("owner")
-	if len(got.Sessions) != 0 || !reflect.DeepEqual(got.Shared, []map[string]string{metadata(operatorRow, "santosh", "operator", "")}) {
+	if len(got.Sessions) != 0 || !reflect.DeepEqual(got.Shared, []map[string]any{metadata(operatorRow, "santosh", "operator", "")}) {
 		t.Fatalf("operator list = %+v", got)
 	}
-	for _, tc := range []struct{ who, id, access, role string }{{"abir", first, "shared", "edit"}, {"owner", operatorRow, "operator", ""}} {
-		var meta map[string]string
+	for _, tc := range []struct {
+		who, id, access, role string
+		verbs                 []string
+	}{{"abir", first, "shared", "edit", editVerbs}, {"owner", operatorRow, "operator", "", nil}} {
+		var meta map[string]any
 		before := rg.host.count()
 		rg.do(t, tc.who, http.MethodGet, hostedSessionsPath+"/"+tc.id, -1, nil, http.StatusOK, &meta)
-		want := metadata(tc.id, "santosh", tc.access, tc.role)
+		want := metadata(tc.id, "santosh", tc.access, tc.role, tc.verbs...)
 		want["created"], want["last_active"] = "", ""
 		if !reflect.DeepEqual(meta, want) {
 			t.Errorf("get as %s = %+v, want %+v", tc.who, meta, want)
@@ -198,7 +217,7 @@ func TestP2_2_HostedListKeepsOwnRowsAndLimitsSharedMetadata(t *testing.T) {
 	}
 	got = read("owner")
 	for _, row := range got.Shared {
-		if row["id"] == orgChat && reflect.DeepEqual(row, metadata(orgChat, "mia", "shared", "view")) {
+		if row["id"] == orgChat && reflect.DeepEqual(row, metadata(orgChat, "mia", "shared", "view", "view")) {
 			return
 		}
 	}
