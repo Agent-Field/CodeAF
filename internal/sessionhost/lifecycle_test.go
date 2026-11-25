@@ -118,3 +118,60 @@ func TestC7_StopClearsTemporaryFilesAndKeepsWork(t *testing.T) {
 		t.Fatal("delete did not quarantine the process identity")
 	}
 }
+
+// VALIDATION CONTRACT for what deleting a chat leaves of the person's folder (found on a production run, where
+// removing a person left an empty p_<hash> folder behind):
+//   - Deleting a person's last chat takes the folder that held their chats with it, so their name is not left on the volume.
+//   - Deleting one of two chats leaves the folder, and the other chat, untouched.
+//   - A folder with anything else in it is never removed, and the delete still succeeds.
+//   - Another person's folder is never touched, and a person whose folder went can start a new chat.
+func TestDeletingAPersonsLastChatRemovesTheirEmptyFolder(t *testing.T) {
+	cfg := testConfig(t)
+	s, _, _ := testSupervisor(t, cfg, healthyReport())
+	createChat(t, s, "alice", chatA)
+	createChat(t, s, "alice", chatB)
+	createChat(t, s, "bob", chatC)
+	alice, _ := layoutFor(cfg.Data, "alice", chatA)
+	bob, _ := layoutFor(cfg.Data, "bob", chatC)
+	aliceFolder, bobFolder := filepath.Dir(alice.dir), filepath.Dir(bob.dir)
+
+	if w := request(s, "DELETE", "/v1/sessions/"+chatA, cfg.Secret, "alice", ""); w.Code != 204 {
+		t.Fatalf("delete the first chat: %d %s", w.Code, w.Body)
+	}
+	if _, err := os.Lstat(aliceFolder); err != nil {
+		t.Fatalf("deleting one of two chats took the person's folder: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(aliceFolder, chatB)); err != nil {
+		t.Fatalf("deleting one of two chats took the other: %v", err)
+	}
+	if w := request(s, "DELETE", "/v1/sessions/"+chatB, cfg.Secret, "alice", ""); w.Code != 204 {
+		t.Fatalf("delete the last chat: %d %s", w.Code, w.Body)
+	}
+	if _, err := os.Lstat(aliceFolder); !os.IsNotExist(err) {
+		t.Errorf("deleting the person's last chat left their folder: %v", err)
+	}
+	if _, err := os.Lstat(bobFolder); err != nil {
+		t.Errorf("another person's folder was touched: %v", err)
+	}
+	createChat(t, s, "alice", chatA)
+	if _, err := os.Lstat(alice.dir); err != nil {
+		t.Errorf("a person whose folder went could not start a new chat: %v", err)
+	}
+}
+
+func TestAPersonFolderWithSomethingElseInItIsNotRemoved(t *testing.T) {
+	cfg := testConfig(t)
+	s, _, _ := testSupervisor(t, cfg, healthyReport())
+	createChat(t, s, "alice", chatA)
+	l, _ := layoutFor(cfg.Data, "alice", chatA)
+	stray := filepath.Join(filepath.Dir(l.dir), "not-a-chat")
+	if err := os.WriteFile(stray, []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if w := request(s, "DELETE", "/v1/sessions/"+chatA, cfg.Secret, "alice", ""); w.Code != 204 {
+		t.Fatalf("delete beside a stray file: %d %s", w.Code, w.Body)
+	}
+	if data, err := os.ReadFile(stray); err != nil || string(data) != "kept" {
+		t.Errorf("the folder with a stray file in it was removed: %q, %v", data, err)
+	}
+}

@@ -13,10 +13,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 type refusal int
@@ -413,5 +416,27 @@ func (s *supervisor) deleteSession(row sessionRow) bool {
 		s.registry.sessions[row.ID] = row
 		return false
 	}
-	return s.removeLayout(row) == nil && s.registry.remove(row.ID, s.now().UTC()) == nil
+	if s.removeLayout(row) != nil || s.registry.remove(row.ID, s.now().UTC()) != nil {
+		return false
+	}
+	s.removeEmptyPersonFolder(row)
+	return true
+}
+
+// removeEmptyPersonFolder takes away the folder that held a person's chats once the
+// last of them is gone, so removing someone from the organization leaves no trace of
+// their name on the volume (found on a production run: an empty p_<hash> folder stayed
+// behind). THE EMPTINESS TEST IS THE KERNEL'S: rmdir refuses a folder with anything in
+// it, so a person's other chats, and anything this code does not know about, stay put.
+// This runs under the supervisor's lock, as does every create, so a chat being made
+// for the same person cannot find its parent folder gone halfway through.
+func (s *supervisor) removeEmptyPersonFolder(row sessionRow) {
+	folders, err := layoutFor(s.cfg.Data, row.Person, row.ID)
+	if err != nil {
+		return
+	}
+	err = unix.Rmdir(filepath.Dir(folders.dir))
+	if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, unix.ENOTEMPTY) && !errors.Is(err, unix.EEXIST) {
+		s.log.Warn("could not remove a person's empty chat folder", "error", err)
+	}
 }
