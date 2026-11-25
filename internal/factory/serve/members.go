@@ -38,7 +38,8 @@ func (h *Handler) memberList() []api.Member {
 			continue
 		}
 		for _, joiner := range tok.Members() {
-			if joiner.Profile.Handle == "" {
+			// A joiner the operator removed (closeInvitesOf) keeps their spent use but is no longer a member.
+			if joiner.Profile.Handle == "" || !joiner.Removed.IsZero() {
 				continue
 			}
 			m := take(joiner.Profile.Handle)

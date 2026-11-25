@@ -207,6 +207,12 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, closeInvitesOf(h.config.TokensPath, handle, h.now())) {
 		return
 	}
+	// WHAT OTHERS GAVE THEM GOES TOO, whichever door they came in by: a grant left on someone's chat would apply again
+	// to anyone who later joins under the same handle (found on a production run, 2026-11-25).
+	ended, err := h.endGrantsOf(handle)
+	if h.failed(w, err) {
+		return
+	}
 	// A person the operator removes leaves every team with their sign-ins,
 	// and their workstreams go to an heir rather than keep a gone owner.
 	if h.failed(w, h.leaveEveryTeam(r, handle)) {
@@ -229,7 +235,18 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if given > 0 {
 		detail += fmt.Sprintf("; %d workstreams given to @%s", given, heir)
 	}
+	if ended > 0 {
+		detail += fmt.Sprintf("; %d grants ended", ended)
+	}
 	h.finish(w, h.operatorEvent(r, record.SessionsRevoked, "person:"+handle, detail))
+}
+
+// endGrantsOf deletes every grant that names a removed person and answers how many it deleted.
+func (h *Handler) endGrantsOf(handle string) (int, error) {
+	if h.config.Store == nil {
+		return 0, nil
+	}
+	return h.config.Store.RemoveGrantsOfSubject("person", factory.NormalizeHandle(handle))
 }
 
 // revokePerson ends sign-ins and runner credentials. Leaving the

@@ -217,6 +217,25 @@ func (st *Store) RemoveGrantAtPolicy(id string, rev int) error {
 	return st.removeGrant(id, &rev)
 }
 
+// RemoveGrantsOfSubject deletes every grant that names one subject, lapsed ones
+// included, in one transaction, and answers how many it deleted. It is what
+// removing a person from the organization does to what others gave them: a
+// grant left behind would apply again to anyone who later joins under the same
+// handle. Like RemoveGrant it keeps nothing; the serve layer writes the record.
+func (st *Store) RemoveGrantsOfSubject(kind, id string) (int, error) {
+	removed := 0
+	err := st.wsTx(func(tx *sql.Tx) error {
+		res, err := tx.Exec(`DELETE FROM grants WHERE subject_kind = ? AND subject_id = ?`, kind, id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		removed = int(n)
+		return err
+	})
+	return removed, err
+}
+
 // removeGrant deletes the row inside one transaction, first checking the
 // policy revision when one is given.
 func (st *Store) removeGrant(id string, rev *int) error {
