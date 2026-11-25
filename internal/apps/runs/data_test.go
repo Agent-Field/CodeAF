@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
@@ -57,10 +58,10 @@ func TestAppRunsDataAdapterScopesRefsAndCommittedRows(t *testing.T) {
 	}
 	select {
 	case got := <-commit:
-		if len(got.Records) != 1 || got.Records[0].After["stage"] != "Won" {
+		if got.ByKind != data.ByFlow || len(got.Records) != 1 || got.Records[0].After["stage"] != "Won" {
 			t.Fatalf("commit = %+v", got)
 		}
-	case <-t.Context().Done():
+	case <-time.After(2 * time.Second):
 		t.Fatal("record commit hook did not fire")
 	}
 }

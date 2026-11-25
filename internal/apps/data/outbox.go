@@ -9,10 +9,9 @@ import (
 // record committed, a transition fired, a timer come due: each writes one
 // outbox row beside its own rows, so the engine (runs, triggers, effects)
 // can never miss a change that committed or act on one that did not. A
-// consumer reads the outbox in order from its own place and takes each event
-// once per trigger with [Store.Claim], whose receipt is a unique row: a crash
-// between acting and recording can only ever repeat the claim, which the
-// unique row refuses, never the action.
+// consumer reads the outbox in sequence order. A consumer that creates a
+// durable run records its receipt with the run checkpoint, because an
+// independently committed [Store.Claim] leaves a crash gap before the work.
 //
 // The outbox is also the store's change log: its sequence is the cursor a
 // live query resumes from (subs.go).
@@ -110,8 +109,8 @@ func (s *Store) Outbox(after int64, limit int) ([]Event, error) {
 }
 
 // Claim takes one event for one trigger, once: true the first time, false
-// for every later claim of the same pair. The receipt commits on its own, so
-// a consumer claims before it acts and acts only on true.
+// for every later claim of the same pair. This receipt commits independently
+// and is suitable only when the caller does not need atomic run creation.
 func (s *Store) Claim(seq int64, trigger string) (bool, error) {
 	if seq <= 0 || trigger == "" || len(trigger) > 200 {
 		return false, errorf(CodeInvalid, "a claim names an event and a trigger")
