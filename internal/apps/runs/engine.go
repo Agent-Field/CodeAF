@@ -97,19 +97,20 @@ type Engine struct {
 
 type checkpoint struct {
 	Run
-	Definition   Definition     `json:"definition"`
-	Params       map[string]any `json:"params"`
-	Input        map[string]any `json:"input,omitempty"`
-	Outputs      map[string]any `json:"outputs"`
-	Frames       []frame        `json:"frames"`
-	Visit        int            `json:"visit"`
-	Attempt      int            `json:"attempt"`
-	Prepared     bool           `json:"prepared"`
-	Action       *action        `json:"action,omitempty"`
-	Approved     string         `json:"approved,omitempty"`
-	Declined     string         `json:"declined,omitempty"`
-	RaisedBudget float64        `json:"raised_budget,omitempty"`
-	ApprovalSeq  int            `json:"approval_seq"`
+	TriggerReceipt *triggerReceipt `json:"trigger_receipt,omitempty"`
+	Definition     Definition      `json:"definition"`
+	Params         map[string]any  `json:"params"`
+	Input          map[string]any  `json:"input,omitempty"`
+	Outputs        map[string]any  `json:"outputs"`
+	Frames         []frame         `json:"frames"`
+	Visit          int             `json:"visit"`
+	Attempt        int             `json:"attempt"`
+	Prepared       bool            `json:"prepared"`
+	Action         *action         `json:"action,omitempty"`
+	Approved       string          `json:"approved,omitempty"`
+	Declined       string          `json:"declined,omitempty"`
+	RaisedBudget   float64         `json:"raised_budget,omitempty"`
+	ApprovalSeq    int             `json:"approval_seq"`
 }
 
 type frame struct {

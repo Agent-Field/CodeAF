@@ -36,9 +36,10 @@ type Connector interface {
 
 type RecordCall struct {
 	Call
-	Type string
-	IDs  []string
-	Set  map[string]any
+	Type       string
+	IDs        []string
+	Set        map[string]any
+	causeChain []string
 }
 
 type AgentCall struct {

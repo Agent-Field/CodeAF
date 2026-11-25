@@ -23,13 +23,30 @@ type Trigger struct {
 }
 
 type Change struct {
-	Seq    int64
-	Type   string
-	TypeID string
-	Batch  string
-	ID     string
-	Before map[string]any
-	After  map[string]any
+	Seq         int64
+	Type        string
+	TypeID      string
+	Batch       string
+	ID          string
+	Version     int
+	CauseChain  []string
+	SourceEvent string
+	Before      map[string]any
+	After       map[string]any
+}
+
+// triggerReceipt preserves the event provenance in the same checkpoint that
+// owns the unique sequence and trigger claim. Run expressions see only the
+// separately scoped record input.
+type triggerReceipt struct {
+	Seq         int64    `json:"seq"`
+	TriggerID   string   `json:"trigger_id"`
+	TypeID      string   `json:"type_id,omitempty"`
+	Batch       string   `json:"batch,omitempty"`
+	Record      string   `json:"record,omitempty"`
+	Version     int      `json:"version,omitempty"`
+	CauseChain  []string `json:"cause_chain,omitempty"`
+	SourceEvent string   `json:"source_event,omitempty"`
 }
 
 type scheduleClock struct {
@@ -131,9 +148,12 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		if t.On != "record.changed" || (change.TypeID == "" || e.cfg.RecordInput == nil) && t.Type != change.Type {
 			continue
 		}
-		receipt := t.App + "/" + t.ID
-		if change.Seq > 0 {
-			claimed, claimErr := e.journal.AppRunClaimed(change.Seq, receipt)
+		receipt := triggerReceipt{
+			Seq: change.Seq, TriggerID: t.App + "/" + t.ID, TypeID: change.TypeID, Batch: change.Batch,
+			Record: change.ID, Version: change.Version, CauseChain: change.CauseChain, SourceEvent: change.SourceEvent,
+		}
+		if receipt.Seq > 0 {
+			claimed, claimErr := e.journal.AppRunClaimed(receipt.Seq, receipt.TriggerID)
 			if claimErr != nil {
 				err = errors.Join(err, claimErr)
 				continue
@@ -172,11 +192,11 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		e.addRecordReader(t.App, vars)
 		ok, conditionErr := condition(t.When, vars, scoped.changed)
 		if conditionErr != nil {
-			err = errors.Join(err, e.failTriggered(t, change.Seq, receipt, "trigger condition could not be evaluated: "+conditionErr.Error()))
+			err = errors.Join(err, e.failTriggered(t, receipt, "trigger condition could not be evaluated: "+conditionErr.Error()))
 			continue
 		}
 		if ok {
-			startErr := e.startTriggered(t, change.Seq, receipt, input)
+			startErr := e.startTriggered(t, receipt, input)
 			err = errors.Join(err, startErr)
 		}
 	}
@@ -184,22 +204,22 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 }
 
 // startTriggered commits the run before publishing it to workers or clients.
-func (e *Engine) startTriggered(t Trigger, seq int64, receipt string, input map[string]any) error {
-	if seq == 0 {
+func (e *Engine) startTriggered(t Trigger, receipt triggerReceipt, input map[string]any) error {
+	if receipt.Seq == 0 {
 		_, err := e.start(t.App, t.Run, nil, input, false, "", nil)
 		return err
 	}
 	c, err := e.newCheckpoint(t.App, t.Run, nil, input, false)
 	if err != nil {
-		return e.failTriggered(t, seq, receipt, "trigger run could not be prepared: "+err.Error())
+		return e.failTriggered(t, receipt, "trigger run could not be prepared: "+err.Error())
 	}
-	return e.publishTriggered(seq, receipt, c)
+	return e.publishTriggered(receipt, c)
 }
 
 // Invalid definitions and conditions leave a visible receipt instead of
 // blocking later events. Journal errors still hold the cursor for a retry.
-func (e *Engine) failTriggered(t Trigger, seq int64, receipt, reason string) error {
-	if seq == 0 {
+func (e *Engine) failTriggered(t Trigger, receipt triggerReceipt, reason string) error {
+	if receipt.Seq == 0 {
 		return fmt.Errorf("%s trigger %s: %s", t.App, t.ID, reason)
 	}
 	now := e.cfg.Now()
@@ -207,32 +227,33 @@ func (e *Engine) failTriggered(t Trigger, seq int64, receipt, reason string) err
 	if err != nil {
 		return err
 	}
-	return e.publishTriggered(seq, receipt, checkpoint{Run: Run{
+	return e.publishTriggered(receipt, checkpoint{Run: Run{
 		App: t.App, DefinitionID: t.Run, ID: id, State: Incomplete, Error: reason, StartedAt: now, EndedAt: now,
 	}})
 }
 
-func (e *Engine) publishTriggered(seq int64, receipt string, c checkpoint) error {
+func (e *Engine) publishTriggered(receipt triggerReceipt, c checkpoint) error {
+	c.TriggerReceipt = &receipt
 	c.UpdatedAt = e.cfg.Now()
 	raw, err := json.Marshal(c)
 	if err != nil {
 		return err
 	}
-	claimed, err := e.commitTriggered(seq, receipt, c.Run, raw)
+	claimed, err := e.commitTriggered(receipt, c.Run, raw)
 	if claimed {
 		e.changed(c.Run)
 	}
 	return err
 }
 
-func (e *Engine) commitTriggered(seq int64, receipt string, run Run, raw json.RawMessage) (bool, error) {
+func (e *Engine) commitTriggered(receipt triggerReceipt, run Run, raw json.RawMessage) (bool, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.closed {
 		return false, errors.New("app runs are closed")
 	}
 	key := runPrefix + run.ID
-	claimed, err := e.journal.ClaimAppRun(seq, receipt, key, raw)
+	claimed, err := e.journal.ClaimAppRun(receipt.Seq, receipt.TriggerID, key, raw)
 	if claimed {
 		e.checkpoints[key] = raw
 		e.track(run)

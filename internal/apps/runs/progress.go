@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -370,7 +371,11 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		if e.cfg.Records == nil {
 			err = errors.New("record writes are unavailable")
 		} else {
-			reply, err = e.cfg.Records(ctx, RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args})
+			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args}
+			if c.TriggerReceipt != nil {
+				call.causeChain = slices.Concat(c.TriggerReceipt.CauseChain, []string{"run:" + c.ID})
+			}
+			reply, err = e.cfg.Records(ctx, call)
 		}
 	case step.Agent != "":
 		if e.cfg.Agent == nil {

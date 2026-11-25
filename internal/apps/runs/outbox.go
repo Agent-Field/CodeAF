@@ -62,13 +62,21 @@ func (d Data) ConsumeOutbox(ctx context.Context, engine *Engine) error {
 		if event.Seq != cursor+1 {
 			return fmt.Errorf("app run outbox history after %d is missing", cursor)
 		}
+		cursor = event.Seq
 		switch event.Event {
+		case data.EventFreshnessChanged:
+			// A native source observation can commit a record revision.
+			// Refresh-only invalidations have no record history batch.
+			if event.SourceEvent == "" || event.Batch == "" || event.Record == "" {
+				continue
+			}
+			fallthrough
 		case data.EventRecordCreated, data.EventRecordUpdated, data.EventRecordDeleted:
 			changes = append(changes, Change{
 				Seq: event.Seq, Type: event.Type, TypeID: event.TypeID, ID: event.Record, Batch: event.Batch,
+				Version: event.Version, CauseChain: event.CauseChain, SourceEvent: event.SourceEvent,
 			})
 		}
-		cursor = event.Seq
 	}
 	if err := engine.RecordChanges(changes); err != nil {
 		return err
