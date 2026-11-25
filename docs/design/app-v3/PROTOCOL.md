@@ -315,6 +315,42 @@ keeps the value in a private file the agent's commands read (the model's own
 | `collections.remove` | `{id, refs}` | `CollectionRemoveResult` |
 | `collections.rename` | `in.collectionNameParams` | `CollectionResult` |
 
+## data methods
+
+The person's data for fluid apps: one store of records per person, every
+type any app made (`internal/apps/data`). Every call may carry `app` (checked
+against that app's record capabilities; none is the person in the Data place)
+and `draft` (a Builder draft's sample file). A row is a flat object: `id`, the
+field values by name, `type`, `created_at`, `updated_at`, and `_meta`
+(`{ai, masked, frozen, writable}`). A capability refusal is `not_allowed` with
+`detail.need` (`records.contact.rw`); a refused value is `bad_params` with
+`detail.field`; a frozen record is `frozen`; a repeated unique value is
+`duplicate`; an undo of a batch whose records changed since is `stale`.
+Queries are QueryField tokens; values are always bound, never spliced.
+Hello carries `data` when the engine serves these.
+
+| method | params | result |
+|---|---|---|
+| `data.count` | `in.DataCountParams` | `DataCountResult` |
+| `data.create` | `in.DataCreateParams` | `DataWriteResult` |
+| `data.delete` | `in.DataDeleteParams` | `DataWriteResult` |
+| `data.get` | `in.DataRecordParams` | `DataRowResult` |
+| `data.history` | `in.DataRecordParams` | `DataHistoryResult` |
+| `data.import_csv` | `in.DataImportParams` | `DataImportResult` |
+| `data.query` | `in.DataQueryParams` | `DataQueryResult` |
+| `data.subscribe` | `in.DataSubscribeParams` | `Empty` |
+| `data.types` | `in.DataScope` | `DataTypesResult` |
+| `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
+| `data.unsubscribe` | `{sub}` | `Empty` |
+| `data.update` | `in.DataUpdateParams` | `DataWriteResult` |
+
+`data.subscribe` starts a live query (`query`) or a one-record watch (`id`)
+under the caller's `sub`; after every committed write the engine sends
+`data.changed` `{sub, upserts, removes, total}` with the rows of the change
+that match now and the ids that matched before and no longer do — row
+diffs, never pages. Subscriptions end with `data.unsubscribe` or the
+connection.
+
 ## competence methods
 
 | method | params | result |
@@ -2209,6 +2245,7 @@ and the reply is empty.
 | `chat.removed` | `ChatRemoved` |
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
+| `data.changed` | `DataChanged` |
 | `compaction.ended` | `CompactionEnded` |
 | `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |

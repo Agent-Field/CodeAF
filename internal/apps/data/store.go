@@ -1,0 +1,532 @@
+package data
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/sqlitefile"
+	_ "modernc.org/sqlite"
+)
+
+// The store's bounds and clocks.
+const (
+	// busyWait is SQLite's own patience. The writer is the only writer, so a
+	// wait is only ever another process holding the file (a backup, a second
+	// codeaf on the same home), and it should not be long.
+	busyWait = 5 * time.Second
+	// readers is the most connections reading at once.
+	readers = 8
+	// writeQueue is how many writes may wait for the writer.
+	writeQueue = 256
+	// dispatchQueue is how many committed changes may wait to be told to
+	// subscribers and hooks before a write waits for them.
+	dispatchQueue = 4096
+	// refreshEvery is how often computed fields that read the clock are
+	// computed again. days_since() changes once a day; an hour keeps it right
+	// to the hour without walking the table every minute.
+	refreshEvery = time.Hour
+)
+
+// migrations are the schema's versions, in order; PRAGMA user_version is how
+// many have run. A version once shipped is never edited: a change is a new
+// entry.
+var migrations = []string{
+	// 1: the first store.
+	`
+	CREATE TABLE apps(
+		app TEXT PRIMARY KEY,
+		def_json TEXT NOT NULL,
+		registered_at TEXT NOT NULL
+	);
+	CREATE TABLE types(
+		name TEXT PRIMARY KEY,
+		owner_app TEXT NOT NULL,
+		def_json TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	);
+	CREATE TABLE app_types(
+		app TEXT NOT NULL,
+		type TEXT NOT NULL,
+		uses INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY(app, type)
+	);
+	CREATE TABLE type_fields(
+		type TEXT NOT NULL,
+		field TEXT NOT NULL,
+		app TEXT NOT NULL,
+		def_json TEXT NOT NULL,
+		pos INTEGER NOT NULL,
+		hidden INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY(type, field, app)
+	);
+	CREATE TABLE records(
+		id TEXT PRIMARY KEY,
+		type TEXT NOT NULL,
+		data_json TEXT NOT NULL,
+		meta_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		deleted_at TEXT
+	);
+	CREATE INDEX records_type_created ON records(type, created_at, id) WHERE deleted_at IS NULL;
+	CREATE INDEX records_type_updated ON records(type, updated_at, id) WHERE deleted_at IS NULL;
+	CREATE TABLE batches(
+		batch TEXT PRIMARY KEY,
+		app TEXT NOT NULL,
+		actor TEXT NOT NULL,
+		op TEXT NOT NULL,
+		type TEXT NOT NULL,
+		at TEXT NOT NULL,
+		undoes TEXT,
+		undone_by TEXT
+	);
+	CREATE TABLE history(
+		seq INTEGER PRIMARY KEY AUTOINCREMENT,
+		batch TEXT NOT NULL,
+		type TEXT NOT NULL,
+		id TEXT NOT NULL,
+		app TEXT NOT NULL,
+		actor TEXT NOT NULL,
+		op TEXT NOT NULL,
+		note TEXT NOT NULL DEFAULT '',
+		before_json TEXT,
+		after_json TEXT,
+		at TEXT NOT NULL
+	);
+	CREATE INDEX history_record ON history(type, id, seq);
+	CREATE INDEX history_batch ON history(batch, seq);
+	CREATE TABLE reveals(
+		seq INTEGER PRIMARY KEY AUTOINCREMENT,
+		type TEXT NOT NULL,
+		id TEXT NOT NULL,
+		field TEXT NOT NULL,
+		app TEXT NOT NULL,
+		actor TEXT NOT NULL,
+		at TEXT NOT NULL
+	);
+	`,
+}
+
+// querier is what reads take: the reader pool or the writer's transaction.
+type querier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// Store is one person's data file (or a draft's sample file).
+type Store struct {
+	path  string
+	draft string
+	now   func() time.Time
+
+	wdb *sql.DB
+	rdb *sql.DB
+
+	schema atomic.Pointer[schema]
+
+	writes chan writeOp
+	notify chan *Change
+	quit   chan struct{}
+	done   sync.WaitGroup
+	closed atomic.Bool
+	// closeMu orders Close against a write being queued, so nothing is sent
+	// on a closed queue.
+	closeMu sync.RWMutex
+
+	// ids is the writer goroutine's own.
+	ids idGen
+
+	subsMu sync.Mutex
+	subs   map[string]*subscription
+
+	hooksMu  sync.RWMutex
+	hooks    map[int]func(Change)
+	nextHook int
+
+	// matches are compiled conditions, by schema, type and text.
+	matches sync.Map
+}
+
+// Options are an [Open]'s choices; the zero value is the real clock.
+type Options struct {
+	Now func() time.Time
+	// Draft names the draft a sample store belongs to; it is carried on
+	// every [Change] the store reports.
+	Draft string
+	// NoRefresh leaves the hourly recompute of clocked fields off, for a test
+	// that drives it with [Store.Refresh].
+	NoRefresh bool
+}
+
+// Open opens (making it if need be) the data file at path, runs the
+// migrations it lacks, and starts its writer.
+func Open(path string, opts Options) (*Store, error) {
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
+		return nil, fmt.Errorf("could not make the data folder: %w", err)
+	}
+	q := url.Values{}
+	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyWait.Milliseconds()))
+	q.Add("_pragma", "synchronous(NORMAL)")
+	q.Set("_txlock", "immediate")
+	wdb, err := sql.Open("sqlite", sqlitefile.URI(abs, q.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	// The writer is one connection: the one writer goroutine is the only
+	// user of it.
+	wdb.SetMaxOpenConns(1)
+	fail := func(err error) (*Store, error) {
+		_ = wdb.Close()
+		return nil, fmt.Errorf("could not open %s: %w", abs, err)
+	}
+	var mode string
+	if err := wdb.QueryRow(`PRAGMA journal_mode=WAL`).Scan(&mode); err != nil {
+		return fail(err)
+	}
+	if !strings.EqualFold(mode, "wal") {
+		return fail(fmt.Errorf("SQLite chose journal mode %q", mode))
+	}
+	if err := migrate(wdb); err != nil {
+		return fail(err)
+	}
+	rq := url.Values{}
+	rq.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyWait.Milliseconds()))
+	// A reader connection refuses to write, so nothing can reach the file
+	// except through the writer.
+	rq.Add("_pragma", "query_only(1)")
+	rdb, err := sql.Open("sqlite", sqlitefile.URI(abs, rq.Encode()))
+	if err != nil {
+		return fail(err)
+	}
+	rdb.SetMaxOpenConns(readers)
+	rdb.SetMaxIdleConns(readers)
+
+	s := &Store{
+		path: abs, draft: opts.Draft, now: opts.Now, wdb: wdb, rdb: rdb,
+		writes: make(chan writeOp, writeQueue), notify: make(chan *Change, dispatchQueue),
+		quit: make(chan struct{}), subs: map[string]*subscription{}, hooks: map[int]func(Change){},
+	}
+	sch, _, err := loadSchema(wdb, s.now)
+	if err != nil {
+		_ = rdb.Close()
+		return fail(err)
+	}
+	s.schema.Store(sch)
+	s.done.Add(2)
+	go s.writer()
+	go s.dispatcher()
+	if !opts.NoRefresh {
+		s.done.Add(1)
+		go s.refresher()
+	}
+	return s, nil
+}
+
+// migrate runs every migration the file has not had, each in its own
+// transaction with the version bump, so a crash leaves a whole version.
+func migrate(db *sql.DB) error {
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	if version > len(migrations) {
+		return fmt.Errorf("the data file is version %d, newer than this codeaf (%d); update codeaf", version, len(migrations))
+	}
+	for v := version; v < len(migrations); v++ {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(migrations[v]); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("migration %d: %w", v+1, err)
+		}
+		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, v+1)); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Path is the file the store keeps.
+func (s *Store) Path() string { return s.path }
+
+// Close stops the writer after the writes already queued, tells subscribers
+// and hooks what those committed, and closes the file.
+func (s *Store) Close() error {
+	s.closeMu.Lock()
+	if s.closed.Swap(true) {
+		s.closeMu.Unlock()
+		return nil
+	}
+	close(s.quit)
+	s.closeMu.Unlock()
+	s.done.Wait()
+	return errors.Join(s.rdb.Close(), s.wdb.Close())
+}
+
+// writeOp is one write for the writer: fn runs inside a transaction and
+// answers the change it made (nil for none) and, for a registration, the new
+// schema.
+type writeOp struct {
+	fn    func(w *writeTx) error
+	reply chan error
+}
+
+// writeTx is what a write's closure works with: the transaction, the schema
+// as it is at this write, the write's clock, and the change it is making.
+type writeTx struct {
+	s      *Store
+	tx     *sql.Tx
+	schema *schema
+	now    time.Time
+	change *Change
+	// next is the schema a registration made, swapped in after the commit.
+	next *schema
+}
+
+// write hands fn to the writer and waits for it to commit or fail.
+func (s *Store) write(fn func(w *writeTx) error) error {
+	op := writeOp{fn: fn, reply: make(chan error, 1)}
+	s.closeMu.RLock()
+	if s.closed.Load() {
+		s.closeMu.RUnlock()
+		return errorf(CodeClosed, "the data store is closed")
+	}
+	select {
+	case s.writes <- op:
+	case <-s.quit:
+		s.closeMu.RUnlock()
+		return errorf(CodeClosed, "the data store is closed")
+	}
+	s.closeMu.RUnlock()
+	return <-op.reply
+}
+
+// writer is the one goroutine that writes. It runs each write in its own
+// transaction; a panic in a write rolls that write back and fails it, and the
+// writer carries on.
+func (s *Store) writer() {
+	defer s.done.Done()
+	defer close(s.notify)
+	for {
+		select {
+		case op := <-s.writes:
+			op.reply <- s.run(op.fn)
+		case <-s.quit:
+			// Finish what was queued before Close, then stop.
+			for {
+				select {
+				case op := <-s.writes:
+					op.reply <- s.run(op.fn)
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+// run is one write in one transaction.
+func (s *Store) run(fn func(w *writeTx) error) (err error) {
+	tx, err := s.wdb.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	w := &writeTx{s: s, tx: tx, schema: s.schema.Load(), now: s.now()}
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tx.Rollback()
+			err = fmt.Errorf("the write failed: %v", r)
+		}
+	}()
+	if err := fn(w); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if w.next != nil {
+		s.schema.Store(w.next)
+	}
+	if w.change != nil && len(w.change.Records) > 0 {
+		w.change.Draft = s.draft
+		s.notify <- w.change
+	}
+	return nil
+}
+
+// RegisterApp merges one app's record types, fields and capabilities into
+// the store. It is what makes an app's data exist: lane C calls it when a
+// version goes live (Keep, change, revert) and on start for every app. It is
+// safe to call again with the same file, and a field the new file no longer
+// declares is hidden, never deleted.
+func (s *Store) RegisterApp(appJSON []byte) error {
+	def, err := ParseApp(appJSON)
+	if err != nil {
+		return err
+	}
+	caps := canonicalJSON(def.Capabilities.Records)
+	return s.write(func(w *writeTx) error {
+		next, err := registerApp(w.tx, w.schema, def, caps, s.now)
+		if err != nil {
+			return err
+		}
+		w.next = next
+		return nil
+	})
+}
+
+// ForgetApp removes an app's capabilities and its claim on its types; every
+// record and value stays (apps.delete and apps.archive keep data).
+func (s *Store) ForgetApp(app string) error {
+	return s.write(func(w *writeTx) error {
+		next, err := forgetApp(w.tx, app, s.now)
+		if err != nil {
+			return err
+		}
+		w.next = next
+		return nil
+	})
+}
+
+// HasApp reports whether app is registered on this store.
+func (s *Store) HasApp(app string) bool {
+	_, ok := s.schema.Load().caps[app]
+	return ok
+}
+
+// Types lists every type with its owner, users, fields and live count. An
+// app sees only the types its capabilities name, and no hidden field.
+func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
+	sch := s.schema.Load()
+	counts := map[string]int{}
+	rows, err := s.rdb.Query(`SELECT type, count(*) FROM records WHERE deleted_at IS NULL GROUP BY type`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var typ string
+		var n int
+		if err := rows.Scan(&typ, &n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		counts[typ] = n
+	}
+	rows.Close()
+	var out []TypeInfo
+	for _, t := range sch.sortedTypes() {
+		if sc.App != "" {
+			if _, err := sch.allow(sc, t.Name, false); err != nil {
+				continue
+			}
+		}
+		info := TypeInfo{Name: t.Name, Title: t.titleField(), Label: t.Label, OwnerApp: t.Owner, UsedBy: append([]string(nil), t.UsedBy...), Hidden: t.Hidden, Count: counts[t.Name]}
+		for _, name := range t.Order {
+			f := t.Fields[name]
+			if f.Hidden && sc.App != "" {
+				continue
+			}
+			info.Fields = append(info.Fields, FieldInfo{Name: name, FieldDef: f.FieldDef, App: f.App, Hidden: f.Hidden})
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// Type answers the merged definition of one type a scope may read.
+func (s *Store) Type(sc Scope, typ string) (*Type, error) {
+	return s.schema.Load().allow(sc, typ, false)
+}
+
+// OnCommit registers fn to be told of every committed change, in commit
+// order, and answers the function that stops it. fn runs on the store's one
+// dispatch goroutine, after subscribers are told: it must return quickly and
+// hand any real work elsewhere, or every later change waits for it. The rows
+// it is given are whole, masked values included; it is for the engine's own
+// use (record.changed triggers), never for a client.
+func (s *Store) OnCommit(fn func(Change)) (stop func()) {
+	s.hooksMu.Lock()
+	defer s.hooksMu.Unlock()
+	id := s.nextHook
+	s.nextHook++
+	s.hooks[id] = fn
+	return func() {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		delete(s.hooks, id)
+	}
+}
+
+// dispatcher tells subscribers and hooks of each committed change, one at a
+// time and in commit order.
+func (s *Store) dispatcher() {
+	defer s.done.Done()
+	for c := range s.notify {
+		s.deliver(c)
+		s.hooksMu.RLock()
+		hooks := make([]func(Change), 0, len(s.hooks))
+		for _, id := range sortedHookIDs(s.hooks) {
+			hooks = append(hooks, s.hooks[id])
+		}
+		s.hooksMu.RUnlock()
+		for _, fn := range hooks {
+			func() {
+				defer func() { _ = recover() }()
+				fn(*c)
+			}()
+		}
+	}
+}
+
+func sortedHookIDs(m map[int]func(Change)) []int {
+	ids := make([]int, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	for i := 1; i < len(ids); i++ {
+		for j := i; j > 0 && ids[j] < ids[j-1]; j-- {
+			ids[j], ids[j-1] = ids[j-1], ids[j]
+		}
+	}
+	return ids
+}
+
+// refresher recomputes clocked fields every [refreshEvery], and once at the
+// start, since the store may have been closed for days.
+func (s *Store) refresher() {
+	defer s.done.Done()
+	_ = s.Refresh()
+	tick := time.NewTicker(refreshEvery)
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+			_ = s.Refresh()
+		case <-s.quit:
+			return
+		}
+	}
+}
