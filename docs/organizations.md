@@ -113,6 +113,9 @@ read along without acting as you.
 
 The server sends each person's verbs with every chat row, and the client only hides the controls it was not given.
 Taking a share away ends the guest's open window within a few seconds (`CODEAF_HOSTED_HEARTBEAT`, five by default).
+When the operator removes a person from the organization, every share they hold on anyone's chat ends with them, whichever way
+they joined (a named invitation or an anonymous access link), and they leave People. If they join again later, by a new link or
+the old one, none of those shares comes back.
 
 **From a terminal.** The desktop app has no sharing buttons for chats yet, so the owner shares one with a request. The
 chat's name, `hs_...`, is in the owner's list; the share names a person by username and a role:
@@ -340,8 +343,18 @@ It answers with an `access_token` the same way.
 - `local_sessions: refuse` is enforced on the server side only. No client acts on it yet.
 - Request framing and WebSocket upgrades through a front proxy were untested end to end. The test stack used no proxy.
 - The priced-model reservation path was read in the code and remains untested end to end. The test stub has no model price.
-- The Railway template is made from the published images, which are not on Docker Hub yet, so the script that makes it has only
-  been dry-run. The by-hand Railway install in the operator README is the tested configuration, and it includes the sessionhost.
+- The script that makes the Railway template (`deploy/org/railway/make-template.sh`) ran end to end against the published
+  images on Railway CLI 5.71.0, except its last call, `railway templates create`, which makes a draft that the owner still has
+  to finish in the dashboard and that was not looked at. Its volumes come out at Railway's default 50 GB because the CLI has no
+  size option. The operator README, "Railway", has the resize step, the draft and a backup recipe for Railway that was run once
+  and restored only into a scratch folder.
+- A hosted chat's sandbox has `python3`, `git`, `curl` and `openssh-client`, and no `pip`, `pytest`, `go`, `node`, `make` or
+  `gcc`; a chat's user is not root and cannot install them. A project that needs more than the standard library cannot run its
+  tests in a hosted chat today, and there is no setting that changes it.
+- SWE-AF, PR-AF and the runner call the model provider directly with their own copy of the key, not through the organization's model
+  door. Their spend is not in the spend table, in anyone's My space, or in any chat's or person's limit, and those limits do
+  not stop them. In one production-style run a factory job's own view said it cost `0.00027` while OpenRouter billed about $0.56 for
+  it. Put a credit limit on the key at the provider.
 - GitHub sign-in and invitation mail are optional and untested in the stack; a username and password is the default way in.
 - One replica of each service; no high availability.
 

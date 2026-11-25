@@ -298,6 +298,10 @@ because it has to become a different Linux user for every chat. It is built from
   until the machine confirms every delete. The log says so when it starts waiting (again after the 10th, 100th ... failed
   try) and once when it finishes. It deletes only the chats the person had when they were removed, so a chat made later by
   someone who joined again under the same handle is left alone. The operator does not repeat the removal.
+  The person also leaves People, whichever way they joined (a named invitation or an anonymous access link), and every share
+  others gave them on chats or workstreams is deleted, so none comes back if they join again. The link they came in by does
+  not reopen for someone else. Once their last chat is deleted the machine removes the person's own folder under `/chats/people`
+  if nothing else is in it.
 - **Limits.** `CODEAF_SESSIONHOST_MAX_RUNNING` chats at once (default 20) and `CODEAF_SESSIONHOST_MAX_PER_PERSON`
   per person (default 3). A chat counts while it has a process; a person at their limit can still make a
   chat but cannot start another and reads "You already have N chats running; stop one first."
@@ -550,6 +554,43 @@ docker compose up -d codeaf sessionhost
 
 The people, their sign-ins, the invitations and the chats come back as they were.
 
+**On Railway** the volumes are Railway's, so the `docker run` lines above do not apply. This is the recipe that was run, once, on an
+idle organization: the two volumes that matter, `codeaf`'s `/data` and `sessionhost`'s `/chats`, were archived over `railway ssh`, and the
+copy was restored into a scratch folder on a laptop. Nothing was ever restored over the live install. The archives hold password
+hashes and sign-in sessions, so they are as private as `.env`: `umask 077` makes the files readable by you alone, and any folder you
+unpack them into should be mode 700.
+
+```sh
+umask 077
+railway ssh -s codeaf -- 'tar czf - -C /data . | base64 -w0' </dev/null | base64 -d > codeaf-data.tgz
+railway ssh -s sessionhost -- 'tar czf - -C /chats . | base64 -w0' </dev/null | base64 -d > sessions-data.tgz
+```
+
+The `base64` keeps the archive intact through the ssh stream, and `</dev/null` stops `railway ssh` waiting on stdin (see "Looking
+inside"). The run's archives were 58 KB (`codeaf`) and 15 MB (`sessionhost`). `CODEAF_SERVER_KEY`, which seals people's own keys, is
+a variable of the `codeaf` service and is not in the archive: copy it from the service's variables (`railway variable list
+--service codeaf` prints it, so keep that output off shared screens and logs) and keep it apart from the archives, because a
+restore without it refuses to start.
+
+How the copy was checked: it was unpacked into a new mode-700 folder and served locally from there, never from the real home
+folder (`HOME` and `CODEAF_HOME` pointed into the scratch folder, `CODEAF_SERVER_KEY` set, and `codeaf factory serve --config
+<scratch>/codeaf/factory/config.yaml --listen 127.0.0.1:18787`, stopped again afterwards). The restored server signed in the operator and
+a person by password, refused a person who had been removed, showed the same people, bots, shares and policy revision as the live one,
+had the same spend total, and its SQLite store passed `integrity_check`. Of the 579 files in the `sessionhost` archive, 576 had the
+same sha256 as the live ones; the other three are mode-000 placeholders that the non-root checker could not read, and they are in the
+archive.
+
+What was not done, so it is not claimed:
+
+- **The services were not stopped first.** `railway ssh` needs a running container, so the Compose recipe's "stop the writers"
+  step has no equivalent here. The copy was taken while nobody was working, with the SQLite and WAL files live. A copy taken while
+  people are working may not be consistent.
+- **A restore onto a Railway volume.** Only the scratch restore above was run; how to put an archive back into a service's volume is
+  unproven.
+- **Railway's own volume backups** were not used.
+- Hosted chats were not served from the restored copy (the scratch server had no hosting settings), so only the files of
+  `sessionhost`'s archive were compared, not running chats.
+
 Everything outside this checkout is pinned: the codeaf release that `CODEAF_BINARY_FROM=fetch` downloads (`CODEAF_RELEASE` and
 its two sha256 values at the top of `codeaf.Dockerfile`), the SWE-AF and PR-AF commits (`SWEAF_REF`, `PRAF_REF`) and the AgentField
 image (`AGENTFIELD_IMAGE`, tag and digest together in `agentfield.Dockerfile`). The default build does not download a codeaf at all:
@@ -658,8 +699,8 @@ The same Dockerfiles run on Railway as one project: six services (seven with the
 the model stub, private networking between them, and a public domain on `codeaf` only. Nothing needs Compose there; each
 service builds from this repository's source, on Railway's builders. The table below is the configuration by hand. It was followed from
 an empty project, with the keyless stub, and every service came up: see "Check it" below. (A Railway template needs images, not a
-repository: `railway/make-template.sh` makes a draft one from the published images above, sessionhost included, and is a dry run
-until those images exist.)
+repository: `railway/make-template.sh` makes a draft one from the published images above, sessionhost included; see "The template
+script, and the draft it makes" below for what it does and what is left for you.)
 
 **What you need:** a Railway account and the workspace that should own the project, and the Railway CLI (`railway`, version 5.x,
 signed in with `railway login`). The dashboard can do every step of the table, but "Check it" and the operator link below use the CLI.
@@ -705,10 +746,17 @@ For real work, also set `GH_TOKEN=...` on `runner`, `swe-af` and `pr-af` (it let
 requests, as in "What you need"; the keyless test needs none). People's own GitHub access for hosted chats is not a variable: each
 person stores theirs on the server (see "Keys, spend and git").
 
-Volumes: Railway's default size is large (50 GB on the plan this was tried on), the dashboard and the CLI's `railway volume add` take the
-default unless you size it, and **a volume can grow but never shrink**. Size it when you create it: 1 GB is plenty for `codeaf`, `agentfield`
-and `sessionhost`, 512 MB for `runner` and `pr-af`. Reference variables (`${{agentfield.RAILWAY_PRIVATE_DOMAIN}}`) are Railway's way of
-naming another service; keep them as written.
+Volumes: **Railway makes every volume 50 GB unless it is sized, and the CLI cannot size one.** `railway volume add` takes a mount
+path and nothing else, and `railway volume update` takes only a mount path and a name, so six volumes made with the CLI (which is
+what `make-template.sh` does) are 300 GB of billed storage. **A volume can grow but never shrink**, so start small: 1 GB is plenty for
+`codeaf`, `agentfield`, `sessionhost` and `swe-af`, 512 MB for `runner` and `pr-af` (the sizes the production run used).
+
+The resize step, for a volume that is still empty: delete it (`railway volume delete --volume <volume> --yes`) and make it again
+with a size through Railway's API, which takes `sizeMB`. The production run did exactly that, with Railway's MCP server
+(`create-volume` with `sizeMB`), for all six volumes before anything was written to them. A volume that already holds data can only
+grow: Railway's volumes documentation describes a live resize from the volume's settings in the dashboard (growth only, no downtime
+unless the volume is full). That dashboard resize was not tried here. Reference variables (`${{agentfield.RAILWAY_PRIVATE_DOMAIN}}`)
+are Railway's way of naming another service; keep them as written.
 
 What a first install needs that the table does not show:
 
@@ -785,6 +833,26 @@ curl -s "https://<the codeaf domain>/v1/about"                                  
 The first three answer for the whole stack's wiring: AgentField refuses an anonymous call, the sessionhost can keep chats apart on this
 kernel, and the public name serves over HTTPS. None of them makes a model call or a chat; those start once the organization is claimed.
 
+### The template script, and the draft it makes
+
+`railway/make-template.sh` builds the same six services from the published images (it checks that they exist first) and turns the
+project into a Railway template draft. With no argument it is a dry run that prints every Railway call; `--apply`, with
+`RAILWAY_WORKSPACE` set to the workspace's id or name, makes them. Run `--apply` from a terminal: with no terminal on stdin the
+Railway CLI reads a JSON patch from stdin and ignores the flags the script passes. `--apply` ran end to end on 2026-11-25 against
+Railway CLI 5.71.0, except for its last call, `railway templates create`, which that run skipped on purpose. `railway/railway_scripts_test.sh`
+runs it against a stub CLI that records its arguments, so the volume and environment calls are pinned.
+
+What it leaves for you:
+
+- **Every volume is 50 GB.** The CLI has no size option; see "Volumes" above for the resize step, and do it before first use.
+- **`railway templates create` makes a DRAFT, not a published template.** Railway describes it as cloning the project into an
+  unpublished template that opens in the dashboard's template editor for cleanup before publishing. The script has no publish
+  call and never will. After it runs: open the draft in your workspace's template editor, mark `OPENROUTER_API_KEY` and `GH_TOKEN`
+  on the `codeaf` service as inputs people fill in, check the services and variables against the table above, and press Publish
+  only if you mean to put it in Railway's marketplace; otherwise leave it a draft. The project the script made only fed the draft,
+  so delete it once the draft exists (the script's closing note says the same). The production run skipped this call, so the
+  draft's contents were not looked at.
+
 ## Known limits
 
 - The runner is a small Python host of the codeaf engine (`scripts/runner.py`), because `codeaf factory serve`
@@ -800,6 +868,18 @@ kernel, and the public name serves over HTTPS. None of them makes a model call o
   no variable here, such as `loopback_trust` (always off for this team server; see "Claim the organization"), cannot be
   changed in this stack, and a hand edit of the file is replaced.
 - One replica of each service; no high availability.
+- **A hosted chat's sandbox has a small toolbox.** The chats' machine is the `codeaf` image's runtime, which carries `python3`
+  (3.11 in the production run), `git`, `curl` and `openssh-client` and nothing else a project is likely to need: no `pip`, no
+  `pytest`, no `go`, no `node`, no `make`, no `gcc`, and a chat's Linux user is not root, so it cannot install them. A chat can work on
+  a project that needs only the standard library; the production run's first test project needed one third-party Python
+  package and its tests could not run at all. There is no setting for this. The tools come from the `apt-get install` line in the
+  runtime stage of `codeaf.Dockerfile`, and a different set means building your own image from it, which was not tried.
+- **The factory services' model calls are not counted.** SWE-AF, PR-AF and the runner call OpenRouter directly with their own copy
+  of the key (`OPENROUTER_API_KEY` on each service), not through the organization's model door. Their spend is not in the
+  spend table, in anyone's My space or in a chat's or a person's limit, and the limits above do not stop them. In the production run
+  one SWE-AF job's own view said it cost `0.00027` while OpenRouter billed about $0.56 for it. To bound that spend, set a credit
+  limit on the key at OpenRouter (the run's key had one of $50), and give these services a key of their own if you want their
+  bill apart from the chats'.
 - **The network fence filters TCP by port.** A chat's commands may connect only to ports 443, 80, 22 and 9418 by default
   (`CODEAF_SESSIONHOST_CONNECT_PORTS`) and the ports used for the organization server's own address. Landlock has no rule
   for a destination address. Ports 80 and 443 can reach any host accessible from the chats' machine, including the internet,

@@ -250,6 +250,9 @@ if [ "$APPLY" = 1 ]; then
 The draft template is in your workspace, unpublished. Open it in the dashboard's template editor and mark OPENROUTER_API_KEY and
 GH_TOKEN (on the codeaf service) as inputs people fill in. The source project "$PROJECT" only fed the draft: delete it.
 Never press Publish unless you mean to put this in the marketplace.
+
+Every volume came out at Railway's default size, 50 GB, because the CLI has no size option: resize them before first use
+(deploy/org/README.md, "Railway", Volumes).
 NOTE
 else
   echo "# $calls calls. Variables checked: no literal secret, no smoke-only switch. Nothing was run."
