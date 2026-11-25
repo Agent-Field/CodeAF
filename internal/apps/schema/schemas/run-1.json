@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/run/1.json",
+  "title": "runs/<id>.yaml",
+  "description": "One automation of a codeaf app, parsed from YAML to JSON before it is checked. Steps that v0 refuses (shell, workspace) are still accepted by this schema so the semantic check can say why in plain words.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run", "steps"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "run": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
+    "title": { "type": "string" },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "per_run": { "type": "number", "minimum": 0 } }
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string" },
+          "to": { "type": "string" },
+          "default": {}
+        }
+      }
+    },
+    "steps": { "$ref": "#/$defs/steps" }
+  },
+  "$defs": {
+    "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
+        "title": { "type": "string" },
+        "if": { "type": "string" },
+        "on_error": { "type": "string" },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "backoff": { "type": "string" }
+          }
+        },
+        "agent": { "type": "string" },
+        "prompt": { "type": "string" },
+        "tool": { "type": "string" },
+        "as": { "type": "string" },
+        "args": { "type": "object" },
+        "gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["approval"],
+          "properties": {
+            "approval": { "enum": ["plan", "proof", "start", "send"] },
+            "who": { "type": "string" }
+          }
+        },
+        "wait": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "for": { "type": "string" },
+            "until": { "type": "string" },
+            "thread": { "type": "string" },
+            "timeout": { "type": "string" }
+          }
+        },
+        "on_timeout": { "enum": ["fail", "continue"] },
+        "loop": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "over": { "type": "string" },
+            "as": { "type": "string" },
+            "until": { "type": "string" },
+            "max": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "steps": { "$ref": "#/$defs/steps" },
+        "records.update": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["set"],
+          "properties": {
+            "type": { "type": "string" },
+            "id": { "type": "string" },
+            "ids": { "type": "string" },
+            "set": { "type": "object", "minProperties": 1 }
+          }
+        },
+        "records.create": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "set"],
+          "properties": {
+            "type": { "type": "string" },
+            "set": { "type": "object" }
+          }
+        },
+        "shell": { "type": "string" },
+        "workspace": { "type": "string" },
+        "repo": { "type": "string" },
+        "branch": { "type": "string" }
+      }
+    }
+  }
+}

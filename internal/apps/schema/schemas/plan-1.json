@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/plan/1.json",
+  "title": "plan.json",
+  "description": "What the plan card draws. Each line names the id of the record type, run or screen it describes; codeaf fills Needs from app.json, so the Builder writes it as the word computed or leaves it out.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ask", "data", "screens"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "ask": { "type": "string", "minLength": 1 },
+    "data": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/line" } },
+    "automation": { "type": "array", "items": { "$ref": "#/$defs/line" } },
+    "screens": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/line" } },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line"],
+      "properties": { "line": { "type": "string", "minLength": 1 } }
+    },
+    "needs": { "const": "computed" }
+  },
+  "$defs": {
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "line"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "line": { "type": "string", "minLength": 1 },
+        "uses": { "type": "boolean" }
+      }
+    }
+  }
+}
