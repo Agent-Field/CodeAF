@@ -7,6 +7,8 @@ definition, plan, screen and run names, and agent instructions. `apps.screen`
 opens one screen from the same checked definition. `apps.kit` returns the
 version 2 registry, with descriptions, schemas and examples for parts, fields,
 views, content, actions, run steps, triggers, policies and connectors.
+A client rendering an older app can request its original catalog with
+`apps.kit {"kit":0}`.
 
 ## Which kit version checks my app and its custom parts?
 
@@ -54,3 +56,6 @@ through those transitions. Guards can read the record fields and refer to
 checklist completion and sign-off. The engine can check declarations for work
 items, multistep forms, due timers and process templates. Executing a declared
 process depends on the corresponding data and run support.
+
+For kit 2, put connector operations that leave the machine in an approved
+run step. A screen can start the run and show its approval card.

@@ -77,6 +77,9 @@ func CompileRecipe(def Definition, existing TypeSet, r Recipe) (RecipeResult, er
 	}
 
 	if screen != nil {
+		if c.screens[screen.Screen] {
+			return RecipeResult{}, fmt.Errorf("screen %q already exists", screen.Screen)
+		}
 		c.screens[screen.Screen] = true
 	}
 	var result RecipeResult
@@ -127,6 +130,7 @@ func compilerFor(def Definition, existing TypeSet) (*checker, error) {
 		c.commands[command.ID] = command
 	}
 	c.loadCustomParts()
+	c.indexSample()
 	return c, nil
 }
 

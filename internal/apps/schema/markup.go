@@ -13,10 +13,12 @@ import (
 // such as false become their JSON types, and bare words become strings.
 type ScreenMarkup struct {
 	Screen string
-	Title  string
-	Params []string
-	Views  map[string]QueryIR
-	Markup string
+	// Replace permits set-screen to target an existing screen explicitly.
+	Replace bool
+	Title   string
+	Params  []string
+	Views   map[string]QueryIR
+	Markup  string
 }
 
 // CompileScreenMarkup compiles markup to the same checked tree as a recipe.
@@ -27,6 +29,9 @@ func CompileScreenMarkup(def Definition, existing TypeSet, input ScreenMarkup) (
 	}
 	if !fileIDPattern.MatchString(input.Screen) {
 		return nil, fmt.Errorf("screen %q must be a slug", input.Screen)
+	}
+	if c.screens[input.Screen] && !input.Replace {
+		return nil, fmt.Errorf("screen %q already exists; request replacement explicitly", input.Screen)
 	}
 	s := Screen{Screen: input.Screen, Title: input.Title, Params: input.Params, Views: map[string]QueryIR{}}
 	for id, query := range input.Views {

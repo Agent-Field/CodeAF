@@ -48,7 +48,19 @@ var kitV0Descriptors []byte
 // KitJSON returns the kit catalog exactly as it is embedded, for the `apps.kit`
 // wire method and for anything that must hand the desk the same bytes it tests.
 func KitJSON() []byte {
-	return bytes.Clone(kitV2)
+	return KitJSONFor(2)
+}
+
+// KitJSONFor returns the wire catalog for the version declared by an app.
+func KitJSONFor(version int) []byte {
+	switch version {
+	case 0:
+		return bytes.Clone(kitV0)
+	case 2:
+		return bytes.Clone(kitV2)
+	default:
+		return nil
+	}
 }
 
 // SchemaJSON returns an embedded schema by its file name so the Builder can

@@ -206,3 +206,26 @@ func TestGalleryDeclaredQueryResolvesStableTypeAndFieldIDs(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
+func TestGalleryCompilerReadsLinkedSamples(t *testing.T) {
+	def := load(t, "testdata/ncr")
+	result, err := CompileRecipe(def, nil, Recipe{Kind: "add-lifecycle", ID: "ncr-states", Record: "ncr", States: []string{"open", "closed"}})
+	if err != nil || len(result.App) == 0 {
+		t.Fatalf("a linked sample must compile: %v", err)
+	}
+}
+
+func TestGalleryCompilerRequiresExplicitScreenReplacement(t *testing.T) {
+	def := load(t, "testdata/inventory-po")
+	if _, err := CompileRecipe(def, nil, Recipe{Kind: "add-view", ID: "stock", Record: "sku", As: "table"}); err == nil {
+		t.Fatal("add-view should refuse an existing screen")
+	}
+	markup := ScreenMarkup{Screen: "stock", Title: "Stock", Markup: `<Text id="stock" prop-text="In stock"/>`}
+	if _, err := CompileScreenMarkup(def, nil, markup); err == nil {
+		t.Fatal("markup should require explicit replacement for an existing screen")
+	}
+	markup.Replace = true
+	if _, err := CompileScreenMarkup(def, nil, markup); err != nil {
+		t.Fatalf("set-screen should accept an explicit replacement: %v", err)
+	}
+}

@@ -261,8 +261,12 @@ func (c *checker) checkOperation(file, at, tool string, args map[string]any, gat
 		c.add(file, at, CodeToolNotAllowed, "This app cannot call %q.", tool)
 		return
 	}
-	if kind := approvalKind(op); kind != "" && (!contains(need.Approve, verb) || screen || gate != kind) {
-		c.add(file, at, CodeSendGateMissing, "%s needs a %s approval.", tool, kind)
+	if kind := approvalKind(op); kind != "" {
+		if screen {
+			c.add(file, at, CodeSendGateMissing, "Move %s to a run step with a %s approval gate.", tool, kind)
+		} else if !contains(need.Approve, verb) || gate != kind {
+			c.add(file, at, CodeSendGateMissing, "%s needs a %s approval.", tool, kind)
+		}
 	}
 	if args == nil {
 		args = map[string]any{}
