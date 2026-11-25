@@ -63,6 +63,16 @@ Check the work the way the request will use it before you call `submit`:
   format with each thing the request asks for.
 - When the project has no tests, write a short check of your own under
   `.senior-dev/` and run it.
+- Take a check's expected values from the request and its inputs, never from
+  your own output, and match literal forms the request names exactly. A check
+  that can only agree with your work proves nothing.
+
+Solve the request yourself. Do not look up this task's answer, its tests or a
+reference solution, and do not copy them from elsewhere.
+
+Reproduce provided code, models and formats exactly as given; do not add steps
+or changes the request did not ask for. A requirement you measured failing is
+unmet: fix it or report it as unmet, never as out of scope.
 
 Add no credentials, keys, accounts or access paths the request did not ask for,
 and check the deliverable through the same user, login method and port the
