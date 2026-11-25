@@ -520,3 +520,26 @@ steps:
 		t.Fatalf("run did not reach recovery: %+v", calls)
 	}
 }
+
+func TestRecordChangesLoadsTriggerDefinitionsOncePerBatch(t *testing.T) {
+	scans := 0
+	e := newEngine(t, "run: example\nsteps:\n  - id: pause\n    wait: {for: 1h}", runs.Config{
+		Triggers: func() ([]runs.Trigger, error) {
+			scans++
+			return []runs.Trigger{{App: "crm", ID: "won", On: "record.changed", Type: "deal", Run: "example",
+				When: "changed('stage') && stage == 'Won'"}}, nil
+		},
+	})
+	err := e.RecordChanges([]runs.Change{
+		{Type: "deal", ID: "first", Before: map[string]any{"stage": "Lead"}, After: map[string]any{"stage": "Won"}},
+		{Type: "deal", ID: "second", Before: map[string]any{"stage": "Won"}, After: map[string]any{"stage": "Won"}},
+		{Type: "deal", ID: "third", Before: map[string]any{"stage": "Lead"}, After: map[string]any{"stage": "Won"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := e.List("crm", "example")
+	if err != nil || len(list) != 2 || scans != 1 {
+		t.Fatalf("runs = %+v, scans = %d, error = %v", list, scans, err)
+	}
+}
