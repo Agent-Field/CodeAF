@@ -186,7 +186,7 @@ func (s *Store) planWatch(sch *schema, sub *subscription) error {
 			return err
 		}
 		sub.typeID = t.ID
-		if sp.Record == "" && !sp.InvalidateOnly {
+		if sp.Record == "" {
 			q, err := compileQuery(sch, t, sub.sc, sp.Query, s.now())
 			if err != nil {
 				return err

@@ -31,7 +31,7 @@ func TestDataPlaneReopensBStoreWithoutReplacingIDs(t *testing.T) {
 			VALUES('` + batchID + `', '` + typeID + `', '` + recordID + `', 'crm', '` + personID + `', 'person', 'create',
 				'{"data":{"` + fieldID + `":"Ari"},"meta":{}}', '');
 		INSERT INTO outbox(event, type_id, record, batch, by_kind, payload_json, at)
-			VALUES('record.created', '` + typeID + `', '` + recordID + `', '` + batchID + `', 'person', '{"after":{"name":"Ari"}}', '');
+			VALUES('record.created', '` + typeID + `', '` + recordID + `', '` + batchID + `', 'person', '{"after":{"name":"Ari","created_at":"then","updated_at":"later"}}', '');
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestDataPlaneReopensBStoreWithoutReplacingIDs(t *testing.T) {
 		t.Fatalf("receipt did not retain its batch or remove payload values: %+v", e)
 	}
 	_, historical, err := s.RecordEventValues(sc, e.TypeID, e.Record, e.Batch)
-	if err != nil || historical["name"] != "Ari" {
+	if err != nil || historical["name"] != "Ari" || historical["created_at"] != "then" || historical["updated_at"] != "later" {
 		t.Fatalf("receipt could not reopen its B-era history: %v, %v", historical, err)
 	}
 }
@@ -255,5 +255,23 @@ func TestDataPlaneKeepsACLClaimsPrivateAndFencesOldEvidence(t *testing.T) {
 	visible, err := s.Get(person, "contact", row.ID(), false)
 	if err != nil || visible["name"] != "Ari" || visible["_rev"] != row["_rev"] {
 		t.Fatalf("unprojected claim changed a native record: %v, %v", visible, err)
+	}
+}
+
+func TestDataPlaneDerivedWatchResetsOnRelatedType(t *testing.T) {
+	s, _ := openCRM(t)
+	co := mustCreate(t, s, person, "company", map[string]any{"name": "Acme"})[0]
+	mustCreate(t, s, person, "deal", map[string]any{"name": "Renewal", "company": co.ID()})
+	rec := newRecorder()
+	spec := SubSpec{ID: "derived", Type: "deal", Query: "company.name:Acme", InvalidateOnly: true}
+	snapshot, err := s.Watch(new(SubscriptionOwner), Scope{App: "crm"}, spec, rec.take)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(person, "company", []string{co.ID()}, map[string]any{"name": "Other"}, UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if diff := rec.next(t); !diff.Reset || diff.Cursor <= snapshot.Cursor || len(diff.Upserts) != 0 || len(diff.Removes) != 0 {
+		t.Fatalf("related type reset: %+v", diff)
 	}
 }

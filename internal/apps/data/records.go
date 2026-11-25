@@ -147,9 +147,11 @@ type recordMeta struct {
 
 // state is a record as a history row keeps it.
 type state struct {
-	Data    map[string]any `json:"data"`
-	Meta    recordMeta     `json:"meta"`
-	Deleted bool           `json:"deleted,omitempty"`
+	Data      map[string]any `json:"data"`
+	Meta      recordMeta     `json:"meta"`
+	Deleted   bool           `json:"deleted,omitempty"`
+	CreatedAt string         `json:"created_at,omitempty"`
+	UpdatedAt string         `json:"updated_at,omitempty"`
 }
 
 func (r *record) state() state {
@@ -218,7 +220,10 @@ func (t *Type) decodeMeta(m recordMeta) recordMeta {
 
 // encodeState is a record's state as a history row stores it, by id.
 func (t *Type) encodeState(r *record) string {
-	return canonicalJSON(state{Data: t.encode(r.Data, r.unknown), Meta: t.encodeMeta(r.Meta), Deleted: r.DeletedAt != ""})
+	return canonicalJSON(state{
+		Data: t.encode(r.Data, r.unknown), Meta: t.encodeMeta(r.Meta), Deleted: r.DeletedAt != "",
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	})
 }
 
 // decodeState reads a stored history state back by name.

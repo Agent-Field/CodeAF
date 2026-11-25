@@ -242,6 +242,12 @@ func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (befor
 			return nil
 		}
 		out := Row{"id": record, "type": t.Name}
+		if r.CreatedAt != "" {
+			out["created_at"] = r.CreatedAt
+		}
+		if r.UpdatedAt != "" {
+			out["updated_at"] = r.UpdatedAt
+		}
 		for name, value := range r.Data {
 			if f := t.Fields[name]; f != nil && !f.Hidden && !f.Masked {
 				out[name] = value

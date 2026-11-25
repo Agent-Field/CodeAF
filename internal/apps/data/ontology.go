@@ -15,6 +15,16 @@ const dataPlaneMigration = `
 	ALTER TABLE outbox ADD COLUMN binding TEXT NOT NULL DEFAULT '';
 	UPDATE outbox SET event = 'freshness.changed', payload_json = 'null'
 		WHERE event = 'record.updated' AND batch = '' AND cause = 'clock';
+	UPDATE history AS h
+		SET before_json = json_set(h.before_json,
+				'$.created_at', json_extract(o.payload_json, '$.before.created_at'),
+				'$.updated_at', json_extract(o.payload_json, '$.before.updated_at')),
+			after_json = json_set(h.after_json,
+				'$.created_at', json_extract(o.payload_json, '$.after.created_at'),
+				'$.updated_at', json_extract(o.payload_json, '$.after.updated_at'))
+		FROM outbox AS o
+		WHERE o.event IN ('record.created', 'record.updated', 'record.deleted')
+			AND o.batch = h.batch AND o.record = h.record AND o.type_id = h.type_id;
 	UPDATE outbox SET payload_json = '{}' WHERE event IN ('record.created', 'record.updated', 'record.deleted');
 	UPDATE outbox SET payload_json = json_object('id', json_extract(payload_json, '$.id'))
 		WHERE event LIKE 'work_item.%' OR event LIKE 'timer.%' OR event LIKE 'signoff.%' OR event LIKE 'comment.%';
