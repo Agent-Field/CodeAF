@@ -1263,7 +1263,7 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 		// wears `here` instead of an age (place_home.go).
 		bucket: homeBucketOf(a.file),
 		here:   homeSessionDirOf(a.file),
-		launch: a.workspace,
+		launch: a.ownWorkspace(),
 		// AND THE CONVERSATION THIS WINDOW HAS ASKED FOR, if there is one.
 		// Raising home builds a fresh [homeView], and a claim that survived
 		// somebody walking to another page and back must survive with it —

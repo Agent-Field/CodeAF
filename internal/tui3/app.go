@@ -2403,7 +2403,12 @@ type app struct {
 	// machinesRetaken replaces a listing begun before a completed take, so
 	// its late answer cannot put the previous holder back on screen.
 	machinesRetaken bool
-	machinePoll     machinePoll
+	// workspaceBeforeLive is this computer's own folder as it stood the moment a
+	// live view of another computer's chat came to the front, which overwrites
+	// [app.workspace] with that computer's folder. [app.ownWorkspace] answers it
+	// for Home while a live view is in front, and nothing else reads it.
+	workspaceBeforeLive string
+	machinePoll         machinePoll
 	// fleet counts this person's devices and addMachine is the home card that
 	// uses the count (homeband_addmachine.go).
 	fleet      Fleet
@@ -3163,12 +3168,12 @@ func newApp(ctx context.Context, opts Options) *app {
 		machines:            opts.Machines,
 		taker:               opts.Takeover,
 		openLive:            opts.OpenLive,
+		remoteControl:       opts.RemoteControl,
 		permitAsk:           opts.PermitAsk,
 		pairing:             opts.Pairing,
 		teamsPaired:         opts.TeamsPaired,
 		syncService:         opts.SyncService,
 		syncStats:           opts.SyncStats,
-		remoteControl:       opts.RemoteControl,
 		cellsUnavailable:    opts.CellsUnavailable,
 		approvals:           opts.Approvals,
 		taskComputers:       opts.TaskComputers,
@@ -8981,6 +8986,15 @@ func (a *app) takeUp(conv Conversation, whole bool) {
 	// own composer, wherever it now is (recipient.go's [app.atOwnedComposer]).
 	if !whole {
 		return
+	}
+	// A LIVE VIEW'S FOLDER IS ON ANOTHER COMPUTER, and it is written over
+	// [app.workspace] because everything inside that conversation (its paths, its
+	// place, its files) is about that folder. Home is about this computer, so the
+	// folder this window stood in is kept for [app.ownWorkspace] at the moment a
+	// live view first takes the front. Leaving a live view for a local
+	// conversation writes that conversation's own folder back as usual.
+	if conv.Live != nil && a.liveView == nil {
+		a.workspaceBeforeLive = a.workspace
 	}
 	if workspace := strings.TrimSpace(conv.Workspace); workspace != "" {
 		a.workspace = workspace
