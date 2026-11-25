@@ -26,10 +26,6 @@ func TestCommonTypeWireAdoptsExistingType(t *testing.T) {
 	if _, err := apps.Promote(draft, "Keep the CRM"); err != nil {
 		t.Fatal(err)
 	}
-	backend := newFakeBackend(newAppRecorder(), nil)
-	t.Cleanup(func() { backend.Close() })
-	wire := wireOver(t, backend)
-
 	cli := func(args []string, out any) {
 		t.Helper()
 		// The complete kit is larger than a pipe buffer.
@@ -52,6 +48,16 @@ func TestCommonTypeWireAdoptsExistingType(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	var cliKit map[string]any
+	var cliLib schema.CommonTypeLibrary
+	cli([]string{"parts"}, &cliKit)
+	cli([]string{"common-types"}, &cliLib)
+	var fromCLI appwire.BindCommonTypeResult
+	cli([]string{"--home", root, "bind-common-type", `{"common":"person","type":"contact"}`}, &fromCLI)
+	backend := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { backend.Close() })
+	wire := wireOver(t, backend)
+
 	var kit schema.Kit
 	var lib schema.CommonTypeLibrary
 	wire.must("apps.kit", appwire.Empty{}, &kit)
@@ -59,25 +65,19 @@ func TestCommonTypeWireAdoptsExistingType(t *testing.T) {
 	if kit.CommonTypes.Version != lib.Version || lib.Types["person"].Fields["email"].Role != "email" {
 		t.Fatalf("wire catalog: %+v", lib)
 	}
-	var cliKit map[string]any
-	var cliLib schema.CommonTypeLibrary
-	cli([]string{"parts"}, &cliKit)
-	cli([]string{"common-types"}, &cliLib)
 	var wireKit map[string]any
 	wire.must("apps.kit", appwire.Empty{}, &wireKit)
 	if !reflect.DeepEqual(wireKit, cliKit) || !reflect.DeepEqual(lib, cliLib) {
 		t.Fatal("the CLI and wire served different catalogs")
 	}
-	closeSocket, err := backend.serveAppCommands()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(closeSocket)
 	var before appwire.DataTypesResult
 	wire.must("data.types", appwire.DataScope{}, &before)
 	var contactID string
 	for _, typ := range before.Types {
 		if typ.Name == "contact" {
+			if typ.Common != "person" {
+				t.Fatalf("CLI binding was not persisted: %+v", typ)
+			}
 			contactID = typ.ID
 		}
 	}
@@ -90,8 +90,6 @@ func TestCommonTypeWireAdoptsExistingType(t *testing.T) {
 	if receipt.TypeID != contactID || receipt.Type != p.Type || receipt.Common != p.Common {
 		t.Fatalf("binding receipt: %+v", receipt)
 	}
-	var fromCLI appwire.BindCommonTypeResult
-	cli([]string{"bind-common-type", `{"common":"person","type":"contact"}`}, &fromCLI)
 	if fromCLI != receipt {
 		t.Fatalf("CLI and wire binding receipts differ: %+v, %+v", fromCLI, receipt)
 	}

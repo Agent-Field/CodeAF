@@ -1,6 +1,10 @@
 package appwire
 
-import "github.com/Agent-Field/codeaf/internal/apps/schema"
+import (
+	"encoding/json"
+
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
+)
 
 type BindCommonTypeParams struct {
 	Common string `json:"common"`
@@ -32,4 +36,15 @@ func init() {
 		}
 		return binder.BindCommonAppType(p)
 	})
+}
+
+// RunCommonTypeCommand gives the local CLI the app wire's argument decoder,
+// validation, and result shape.
+func RunCommonTypeCommand(e Engine, verb string, raw json.RawMessage) (any, error) {
+	switch verb {
+	case "common_types", "bind_common_type":
+		return methods["apps."+verb].call(e, raw)
+	default:
+		return nil, Errorf(CodeUnknownMethod, "Unknown common type command %q.", verb)
+	}
 }

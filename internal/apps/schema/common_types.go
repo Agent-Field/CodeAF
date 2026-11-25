@@ -3,6 +3,7 @@ package schema
 import (
 	"maps"
 	"slices"
+	"strings"
 )
 
 // CommonTypeLibrary is the versioned data vocabulary shipped in kit 2.
@@ -47,10 +48,8 @@ func HasCommonType(key string) bool {
 // accidentally give an app access to a different kind of record.
 func (types TypeSet) ForRecord(name string, record RecordType) (ExistingType, bool) {
 	if record.Common != "" {
-		for _, typ := range types {
-			if typ.Common == record.Common {
-				return typ, true
-			}
+		if _, typ, ok := types.boundCommonType(record.Common); ok {
+			return typ, true
 		}
 		if record.Uses {
 			return ExistingType{}, false
@@ -58,4 +57,49 @@ func (types TypeSet) ForRecord(name string, record RecordType) (ExistingType, bo
 	}
 	typ, ok := types[name]
 	return typ, ok
+}
+
+// CommonTypeOffer carries the portable key and the space's existing type
+// name, when the person has already bound one.
+type CommonTypeOffer struct {
+	Key      string
+	Existing string
+}
+
+// OfferCommonType recognizes a proposed record type through the catalog's
+// vocabulary. Only a writer-backed binding qualifies as existing data.
+func (types TypeSet) OfferCommonType(name string, record RecordType) (CommonTypeOffer, bool) {
+	lib := schemas().kits[2].CommonTypes
+	key := record.Common
+	if key == "" {
+		for _, candidate := range slices.Sorted(maps.Keys(lib.Types)) {
+			if matchesTypeWord(name, candidate) || slices.ContainsFunc(lib.Types[candidate].Terms, func(term string) bool {
+				return matchesTypeWord(name, term)
+			}) {
+				key = candidate
+				break
+			}
+		}
+	}
+	if _, ok := lib.Types[key]; !ok {
+		return CommonTypeOffer{}, false
+	}
+	existing, _, _ := types.boundCommonType(key)
+	return CommonTypeOffer{Key: key, Existing: existing}, true
+}
+
+func (types TypeSet) boundCommonType(key string) (string, ExistingType, bool) {
+	for name, typ := range types {
+		if typ.Common == key {
+			return name, typ, true
+		}
+	}
+	return "", ExistingType{}, false
+}
+
+func matchesTypeWord(name, term string) bool {
+	name = strings.ToLower(strings.NewReplacer("_", " ", "-", " ").Replace(name))
+	term = strings.ReplaceAll(term, "_", " ")
+	return name == term || name == term+"s" || name == term+"es" ||
+		strings.HasSuffix(term, "y") && name == strings.TrimSuffix(term, "y")+"ies"
 }

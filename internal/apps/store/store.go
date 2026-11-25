@@ -81,16 +81,6 @@ type Definition struct {
 	types schema.TypeSet
 }
 
-// Files returns a copy of the definition so an editing job can capture its
-// base without reading anything from the personal record store.
-func (d Definition) Files() map[string]string {
-	out := make(map[string]string, len(d.files))
-	for path, raw := range d.files {
-		out[path] = string(raw)
-	}
-	return out
-}
-
 // Screen returns a screen from the same version as App and Plan.
 func (d Definition) Screen(id string) (json.RawMessage, bool) {
 	screen, ok := d.files["screens/"+id+".json"]

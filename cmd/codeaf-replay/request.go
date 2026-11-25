@@ -273,7 +273,6 @@ var callSiteRoles = map[string]lane.Role{
 	// cmd/codeaf/factory_scout.go: a look closer\'s turns, on the same low
 	// seat as the read. Nobody reads its stream; the answer arrives whole.
 	"factory scout": lane.RoleAuxiliary,
-	"app builder":   lane.RoleLeafUnattended,
 	// cmd/codeaf/factory_judge.go: an AI filter's one yes/no question about
 	// one arriving item, on the read's model unless the factory names one.
 	"factory filter": lane.RoleAuxiliary,

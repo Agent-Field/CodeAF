@@ -49,7 +49,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
@@ -114,10 +113,13 @@ func runApp(args []string) error {
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
-	if *schema {
-		if flags.NArg() > 0 {
+	if flags.NArg() > 0 {
+		if *schema {
 			return fmt.Errorf("usage: codeaf app [--home dir] --schema")
 		}
+		return runAppCommonCommand(*homeFlag, flags.Args())
+	}
+	if *schema {
 		out, err := appwire.SchemaJSON()
 		if err != nil {
 			return err
@@ -133,9 +135,6 @@ func runApp(args []string) error {
 		if err := os.Setenv(home.EnvVar, abs); err != nil {
 			return err
 		}
-	}
-	if flags.NArg() > 0 {
-		return runAppCommand(flags.Args())
 	}
 	if err := holdAppHome(); err != nil {
 		return err
@@ -168,16 +167,6 @@ func runApp(args []string) error {
 	server := appwire.NewServer(wire)
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
-	if login, err := home.Login(); err == nil {
-		if err := builder.InstallSkill(login); err != nil {
-			fmt.Fprintln(os.Stderr, "app skill:", err)
-		}
-	}
-	if closeCommands, err := backend.serveAppCommands(); err == nil {
-		defer closeCommands()
-	} else {
-		fmt.Fprintln(os.Stderr, "app commands:", err)
-	}
 	backend.startKeyHealth()
 	// A QUIT DOES NOT WAIT OUT A RECEIPT'S SCHEDULE (internal/provider's
 	// receipt_hurry.go): Close hurries them, and the process half's close waits
@@ -261,7 +250,6 @@ func runApp(args []string) error {
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()
-	guard.Go("app/builds", func() { _, _ = backend.AppBuilds() })
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
 	if backend.assembled.Load() {
 		// The process half every conversation shared, closed the way the pipe
@@ -618,7 +606,6 @@ type appBackend struct {
 	pluginOllama     appPluginOllama
 	pluginAuth       map[string]*appPluginAttempt
 	chats            appChats
-	builds           appBuildState
 	// credentials is what a door gave this launch to keep, waiting for the
 	// app to take it (appkept_credentials.go).
 	credentials appKeptCredentials
@@ -4937,7 +4924,6 @@ func (b *appBackend) Close() error {
 		balances.stop()
 	}
 	b.closeFactories()
-	b.closeAppBuilds()
 	lap("factories")
 	// What was mid-reply and what was running is written down before anything
 	// stops, so the next start can carry on (appquit.go).

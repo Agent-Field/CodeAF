@@ -22,7 +22,7 @@ Organization, Address, Money, Document, Product, Location, Team, Event
 
 To adopt an existing Contacts type as Person, use
 `codeaf app bind-common-type '{"common":"person","type":"contact"}'`
-with the desktop engine open for the same profile. The receipt includes the
+with the desktop engine closed for that profile. The receipt includes the
 unchanged type ID. A common key can point to one type in your space. If a
 different type already uses the key, the command refuses the change.
 

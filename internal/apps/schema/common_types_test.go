@@ -41,3 +41,27 @@ func TestKitShipsVersionedCommonTypes(t *testing.T) {
 		t.Fatalf("person.organization = %+v", f)
 	}
 }
+
+func TestOffersCommonTypeAndAlreadyBoundSpaceType(t *testing.T) {
+	types := TypeSet{
+		"contact": {Common: "person", Owner: "crm"},
+		"company": {Common: "organization", Owner: "crm"},
+	}
+	for _, tc := range []struct {
+		name, explicit, key, existing string
+	}{
+		{"customer", "", "person", "contact"},
+		{"companies", "", "organization", "company"},
+		{"price", "", "money", ""},
+		{"meeting", "", "event", ""},
+		{"sponsor", "organization", "organization", "company"},
+	} {
+		offer, ok := types.OfferCommonType(tc.name, RecordType{Common: tc.explicit})
+		if !ok || offer.Key != tc.key || offer.Existing != tc.existing {
+			t.Errorf("%s: got %+v (%t), want %s and %s", tc.name, offer, ok, tc.key, tc.existing)
+		}
+	}
+	if offer, ok := types.OfferCommonType("contact_notes", RecordType{}); ok {
+		t.Fatalf("an unrelated type got a common offer: %+v", offer)
+	}
+}
