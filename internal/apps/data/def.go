@@ -152,13 +152,14 @@ type FreezeRule = appschema.Freeze
 // TypeDef is one record type as an app declares it. Uses says the app uses a
 // type another app owns; its Fields are then the fields it adds.
 type TypeDef struct {
-	Uses      bool                `json:"uses,omitempty"`
-	Title     string              `json:"title,omitempty"`
-	Label     string              `json:"label,omitempty"`
-	Fields    map[string]FieldDef `json:"fields,omitempty"`
-	Constants map[string]any      `json:"constants,omitempty"`
-	Freeze    []FreezeRule        `json:"freeze,omitempty"`
-	Lifecycle *LifecycleDef       `json:"lifecycle,omitempty"`
+	Uses       bool                `json:"uses,omitempty"`
+	Title      string              `json:"title,omitempty"`
+	Label      string              `json:"label,omitempty"`
+	Fields     map[string]FieldDef `json:"fields,omitempty"`
+	Constants  map[string]any      `json:"constants,omitempty"`
+	Freeze     []FreezeRule        `json:"freeze,omitempty"`
+	Lifecycle  *LifecycleDef       `json:"lifecycle,omitempty"`
+	Checklists []checklistDef      `json:"checklists,omitempty"`
 	// Ledger makes records append-only: never changed or deleted, only
 	// reversed by a new entry.
 	Ledger LedgerOption `json:"ledger"`
@@ -211,6 +212,9 @@ func ParseApp(raw []byte) (*AppDef, error) {
 		def.Records[name] = t
 	}
 	if err := def.readProcess(raw); err != nil {
+		return nil, err
+	}
+	if err := def.readChecklists(raw); err != nil {
 		return nil, err
 	}
 	if err := def.check(); err != nil {

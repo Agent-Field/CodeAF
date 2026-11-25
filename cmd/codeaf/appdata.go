@@ -16,13 +16,11 @@ package main
 // moment it goes live, through [appBackend.appData].
 
 import (
-	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/appwire"
-	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // appDataState is the backend's data place and the live queries this
@@ -33,7 +31,8 @@ type appDataState struct {
 	closed bool
 	// sync registers the kept apps once; a second first call waits for it,
 	// so no call ever sees the store before its apps are registered.
-	sync sync.Once
+	sync    sync.Once
+	syncErr error
 	// subs is each subscription's store, so it is stopped where it lives.
 	subs map[string]*data.Store
 	// home replaces the codeaf home in a test.
@@ -49,11 +48,16 @@ func (b *appBackend) appData() (*data.Place, error) {
 		return nil, appwire.Errorf(appwire.CodeClosed, "codeaf is shutting down")
 	}
 	if d.place == nil {
-		root := d.home
-		if root == "" {
-			root = home.Dir()
+		d.place = data.NewPlace(b.dataRoot(), data.Options{})
+		if emit := b.emit; emit != nil {
+			d.place.OnCommit(func(change data.Change) {
+				for _, item := range change.Items {
+					if item.Table == data.TableWorkItems {
+						emit.Emit(appwire.EventWorkItemsChanged, appwire.WorkItemsChanged{ID: item.ID})
+					}
+				}
+			})
 		}
-		d.place = data.NewPlace(root, data.Options{})
 	}
 	return d.place, nil
 }
@@ -70,44 +74,12 @@ func (b *appBackend) dataStore(draft string) (*data.Store, error) {
 		return nil, appDataError(err)
 	}
 	if draft == "" {
-		b.data.sync.Do(func() { b.syncAppDefinitions(s) })
+		b.data.sync.Do(func() { b.data.syncErr = b.AppDefinitions().SyncData(s) })
+		if b.data.syncErr != nil {
+			return nil, appDataError(b.data.syncErr)
+		}
 	}
 	return s, nil
-}
-
-// syncAppDefinitions registers every kept app's definition once per process.
-// An app that uses another's type can only register after it, and the
-// folders do not say which comes first, so the apps are tried in passes until
-// a pass registers none. One app whose file never registers (a hand edit, a
-// newer format) is left out and the rest go on: its screens are refused,
-// nobody else's are.
-func (b *appBackend) syncAppDefinitions(s *data.Store) {
-	root := b.data.home
-	if root == "" {
-		root = home.Dir()
-	}
-	matches, _ := filepath.Glob(filepath.Join(root, "apps", "*", "current", "app.json"))
-	var pending [][]byte
-	for _, path := range matches {
-		if filepath.Base(filepath.Dir(filepath.Dir(path)))[0] == '_' {
-			continue
-		}
-		if raw, err := os.ReadFile(path); err == nil {
-			pending = append(pending, raw)
-		}
-	}
-	for len(pending) > 0 {
-		var left [][]byte
-		for _, raw := range pending {
-			if err := s.RegisterApp(raw); err != nil {
-				left = append(left, raw)
-			}
-		}
-		if len(left) == len(pending) {
-			return
-		}
-		pending = left
-	}
 }
 
 // closeData stops this connection's live queries and closes the data files.

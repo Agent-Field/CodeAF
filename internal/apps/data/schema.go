@@ -65,7 +65,8 @@ type Type struct {
 	Constants map[string]any
 	Freeze    []*freezeRule
 	// Lifecycle is the type's states and transitions, when it has them.
-	Lifecycle *lifecycle
+	Lifecycle  *lifecycle
+	checklists []checklistDef
 	// Ledger says records of the type are never changed or deleted, only
 	// reversed by a new entry; LedgerReversal is the ref field a reversing
 	// entry fills with the entry it reverses, when the type names one.
@@ -248,7 +249,7 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 		t := &Type{
 			ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
 			Hidden: len(declared[id]) == 0, UsedBy: uses[id], declaredBy: declared[id], Fields: map[string]*Field{},
-			Constants: def.Constants, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
+			Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
 		}
 		for _, rule := range def.Freeze {
 			t.Freeze = append(t.Freeze, &freezeRule{FreezeRule: rule})
@@ -499,7 +500,7 @@ func registerApp(w *writeTx, def *AppDef, capsJSON string) (*schema, error) {
 			return nil, err
 		}
 		if !t.Uses {
-			typeDef := canonicalJSON(TypeDef{Title: t.Title, Label: t.Label, Constants: t.Constants, Freeze: t.Freeze, Lifecycle: t.Lifecycle, Ledger: t.Ledger})
+			typeDef := canonicalJSON(TypeDef{Title: t.Title, Label: t.Label, Constants: t.Constants, Freeze: t.Freeze, Lifecycle: t.Lifecycle, Checklists: t.Checklists, Ledger: t.Ledger})
 			if _, err := tx.Exec(`UPDATE types SET def_app = ?, def_json = ? WHERE id = ?`, app, typeDef, id); err != nil {
 				return nil, err
 			}
