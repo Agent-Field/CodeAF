@@ -126,7 +126,7 @@ Stopping a chat ends every process it started, including ones that detached them
 
 Deleting a chat does the same and then removes its folder. Afterwards it is gone: `There is no such chat.`
 
-Both are done through the organization's server by its owner, or by someone who holds the `manage` permission on the chat (the `full` role). Anyone else who can see the chat reads `Only the owner of this chat can stop or delete it.`, and anyone who cannot reads `There is no such chat.` Neither affects another chat.
+Both are done through the organization's server by its owner, or by someone who holds the `manage` permission on the chat (the `full` role). Anyone else who can see the chat reads `Only this chat's owner, or someone it is shared with in full, can stop or delete it.`, and anyone who cannot reads `There is no such chat.` Neither affects another chat.
 
 ## the server says it cannot keep my chat apart — hosted chat refusals
 

@@ -12,7 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
-const hostedOwnerManage = "Only the owner of this chat can stop or delete it."
+const hostedOwnerManage = "Only this chat's owner, or someone it is shared with in full, can stop or delete it."
 
 type hostedWireClass uint8
 
