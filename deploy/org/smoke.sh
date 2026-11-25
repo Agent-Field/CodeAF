@@ -37,7 +37,7 @@ FULL=1
 if [ "${SMOKE_HOSTED_ONLY:-0}" = 1 ]; then HOSTED=1; FULL=0; SERVICES="codeaf sessionhost modelstub gitstub"; fi
 HOSTED_FLAGS=
 if [ "$HOSTED" = 1 ]; then
-  HOSTED_FLAGS="--env-file .env.stub.hosted --profile hosted"
+  HOSTED_FLAGS="--env-file .env.stub.hosted --profile hosted --profile gitstub"
   # The stub git host wants this as the person's GitHub access; it is made for this run and is worth nothing.
   GITSTUB_TOKEN="${GITSTUB_TOKEN:-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
   export GITSTUB_TOKEN

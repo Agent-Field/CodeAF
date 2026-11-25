@@ -241,9 +241,11 @@ services:
       STUB_COST_USD: ${STUB_COST_USD:-}
 
   # --- Keyless smoke test only: a git host that wants the person's access and records who asked ---
+  # Its own profile, `gitstub`, because it refuses to start without GITSTUB_TOKEN (smoke.sh makes one for each run). In
+  # the `stub` profile it crash-looped for anyone who turned the scripted model on by hand and had no such token.
   gitstub:
     <<: *defaults
-    profiles: ["stub"]
+    profiles: ["gitstub"]
     image: ${GITSTUB_ORG_IMAGE:-codeaf-org/gitstub:local}
     build: { context: ., dockerfile: gitstub.Dockerfile }
     environment:

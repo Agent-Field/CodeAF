@@ -72,6 +72,8 @@ jobs:
         run: deploy/org/railway/railway_scripts_test.sh
       - name: The operator link script passes offline tests
         run: deploy/org/operator_link_test.sh
+      - name: Compose profiles turn on the services they should
+        run: deploy/org/compose_profiles_test.sh
       - name: Planted fake secrets must fail the gate
         run: deploy/org/gate/selftest.sh
       - name: Planted files must not enter the build context
