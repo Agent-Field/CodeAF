@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// FLUID APPS: THE PERSON'S DATA (SPEC §6, lane B). Every record of every type
+// FLUID APPS: THE PERSON'S DATA. Every record of every type
 // any app made lives in one store per person, and these methods are its
 // door: the Data place reads and writes it with no app (the person may do
 // everything), and a screen, the app's agent or a run calls with its app,

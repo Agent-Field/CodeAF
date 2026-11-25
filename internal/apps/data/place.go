@@ -23,10 +23,13 @@ type Place struct {
 	// removing and reopening one draft's file.
 	seedMu sync.Mutex
 
-	mu     sync.Mutex
-	main   *Store
-	drafts map[string]*Store
-	closed bool
+	mu sync.Mutex
+	// seeding is the drafts a SeedSample is remaking; Store refuses them
+	// until it is done, so nothing opens a file about to be removed.
+	seeding map[string]bool
+	main    *Store
+	drafts  map[string]*Store
+	closed  bool
 
 	hooksMu  sync.RWMutex
 	hooks    map[int]func(Change)
@@ -84,6 +87,9 @@ func (p *Place) Store(draft string) (*Store, error) {
 	if s := p.drafts[draft]; s != nil {
 		return s, nil
 	}
+	if p.seeding[draft] {
+		return nil, errorf(CodeNotFound, "draft %s's sample data is being made", draft)
+	}
 	path := filepath.Join(p.DraftDir(draft), "sample.db")
 	if _, err := os.Stat(path); err != nil {
 		return nil, errorf(CodeNotFound, "draft %s has no sample data", draft)
@@ -119,35 +125,48 @@ func (p *Place) SeedSample(draft string, appJSON []byte, rows map[string][]map[s
 	}
 	p.seedMu.Lock()
 	defer p.seedMu.Unlock()
-	// Closing, removing and opening happen under one hold of p.mu, so a
-	// Store(draft) in between can neither open the old file nor leave a
-	// second store on the new one.
+	// The draft is marked as being made, and its store taken out of the map,
+	// under p.mu; the old store is closed outside it (its dispatcher may be
+	// running a hook that asks this place for a store), and Store refuses the
+	// draft until the new file is open.
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
 		return errorf(CodeClosed, "the data store is closed")
 	}
-	if old := p.drafts[draft]; old != nil {
-		delete(p.drafts, draft)
+	if p.seeding == nil {
+		p.seeding = map[string]bool{}
+	}
+	p.seeding[draft] = true
+	old := p.drafts[draft]
+	delete(p.drafts, draft)
+	p.mu.Unlock()
+	defer func() {
+		p.mu.Lock()
+		delete(p.seeding, draft)
+		p.mu.Unlock()
+	}()
+	if old != nil {
 		if err := old.Close(); err != nil {
-			p.mu.Unlock()
 			return err
 		}
 	}
 	dir := p.DraftDir(draft)
 	path := filepath.Join(dir, "sample.db")
-	err = os.MkdirAll(dir, 0o700)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
 	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if err == nil {
-			if rerr := os.Remove(path + suffix); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
-				err = rerr
-			}
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	}
-	var s *Store
-	if err == nil {
-		s, err = p.openDraft(draft, path)
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return errorf(CodeClosed, "the data store is closed")
 	}
+	s, err := p.openDraft(draft, path)
 	p.mu.Unlock()
 	if err != nil {
 		return err
