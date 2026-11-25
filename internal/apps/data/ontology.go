@@ -105,10 +105,6 @@ type CommonTypeKey string
 const (
 	CommonPerson       CommonTypeKey = "person"
 	CommonOrganization CommonTypeKey = "organization"
-	CommonAddress      CommonTypeKey = "address"
-	CommonMoney        CommonTypeKey = "money"
-	CommonTeam         CommonTypeKey = "team"
-	CommonTask         CommonTypeKey = "task"
 	CommonWorkItem     CommonTypeKey = "work_item"
 	CommonEvent        CommonTypeKey = "event"
 	CommonDocument     CommonTypeKey = "document"

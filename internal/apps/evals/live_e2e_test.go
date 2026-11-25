@@ -23,7 +23,6 @@ import (
 )
 
 const builderModel = "deepseek/deepseek-v4.1-flash"
-const commonTypesBuilderModel = "deepseek/deepseek-v4.1-flash-1017"
 const judgeModel = "openai/gpt-5.4"
 
 func evalKey() string {
@@ -76,11 +75,7 @@ func runGallery(t *testing.T, key string, noModel bool) {
 			if c.Fixture == "crm-contact" {
 				crm = seedCRM(t, scratch)
 			}
-			model := builderModel
-			if c.Name == "support-shares-crm-identity" {
-				model = commonTypesBuilderModel
-			}
-			engine, err := launch(ctx, binary, scratch, key, model)
+			engine, err := launch(ctx, binary, scratch, key, builderModel)
 			if err != nil {
 				results = append(results, Result{Case: c.Name, Failures: []string{err.Error()}, Adversarial: skippedProbes("engine could not start")})
 				t.Fatal(err)

@@ -51,6 +51,7 @@ func TestOffersCommonTypeAndAlreadyBoundSpaceType(t *testing.T) {
 		name, explicit, key, existing string
 	}{
 		{"customer", "", "person", "contact"},
+		{"people", "", "person", "contact"},
 		{"companies", "", "organization", "company"},
 		{"price", "", "money", ""},
 		{"meeting", "", "event", ""},
@@ -64,4 +65,38 @@ func TestOffersCommonTypeAndAlreadyBoundSpaceType(t *testing.T) {
 	if offer, ok := types.OfferCommonType("contact_notes", RecordType{}); ok {
 		t.Fatalf("an unrelated type got a common offer: %+v", offer)
 	}
+}
+
+func TestCheckRefusesConflictingCommonKeys(t *testing.T) {
+	def, err := Load("testdata/support-inbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := ParseApp(def.Files[AppFile])
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket := app.Records["ticket"]
+	ticket.Common = "task"
+	app.Records["ticket"] = ticket
+
+	check := func(types TypeSet, path string) {
+		t.Helper()
+		raw, err := json.Marshal(app)
+		if err != nil {
+			t.Fatal(err)
+		}
+		def.Files[AppFile] = raw
+		report := Validate(def, types)
+		for _, problem := range report.Problems {
+			if problem.Code == CodeTypeTaken && problem.Path == path {
+				return
+			}
+		}
+		t.Fatalf("expected common key conflict at %s: %s", path, report.String())
+	}
+
+	check(TypeSet{"ticket": {Owner: app.ID, Common: "event"}}, "/records/ticket/common")
+	app.Records["work"] = RecordType{Common: "task", Fields: map[string]Field{"name": {Type: "text"}}}
+	check(nil, "/records/work/common")
 }

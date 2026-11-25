@@ -521,7 +521,7 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			var other string
 			err := tx.QueryRow(`SELECT app FROM app_types WHERE type_id = ? AND uses = 0 AND app != ? LIMIT 1`, existing.ID, app).Scan(&other)
 			if err == nil {
-				return nil, errorf(CodeInvalid, "%s already defines %s records; %s can use them with \"uses\": true", other, name, app)
+				return nil, errorf(CodeInvalid, "%s already defines %s records; %s can use them with \"uses\": true", other, existing.Name, app)
 			}
 			if !errors.Is(err, sql.ErrNoRows) {
 				return nil, err

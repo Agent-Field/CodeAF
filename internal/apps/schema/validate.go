@@ -364,12 +364,21 @@ func (c *checker) knownType(name string) bool {
 
 func (c *checker) checkApp() {
 	a := c.app
+	claimed := map[string]string{}
 	for _, name := range sortedKeys(a.Records) {
 		t := a.Records[name]
 		at := "/records/" + name
 		ex, exists := c.existing.ForRecord(name, t)
-		if t.Common != "" && !HasCommonType(t.Common) {
-			c.add(AppFile, at+"/common", CodeSchema, "The kit has no common type %q.", t.Common)
+		if t.Common != "" {
+			switch {
+			case !HasCommonType(t.Common):
+				c.add(AppFile, at+"/common", CodeSchema, "The kit has no common type %q.", t.Common)
+			case ex.Common != "" && ex.Common != t.Common:
+				c.add(AppFile, at+"/common", CodeTypeTaken, "%s records already use the common key %q.", name, ex.Common)
+			case claimed[t.Common] != "":
+				c.add(AppFile, at+"/common", CodeTypeTaken, "%s and %s both name common type %q.", claimed[t.Common], name, t.Common)
+			}
+			claimed[t.Common] = name
 		}
 		if t.Uses {
 			if !exists {
