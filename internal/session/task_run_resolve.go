@@ -99,6 +99,19 @@ func (a *Agent) acceptCompletedRun(ctx context.Context, g *TaskGraph, kept TaskN
 	if err != nil {
 		return "", true, err
 	}
+	// A RUN THAT ONLY READ ITS GROUND IS ACCEPTED WITH THE LANDING IT WOULD HAVE
+	// HAD ([Agent.landReferenceRun]). Its folder is no repository, so the git
+	// landing below failed in it with `fatal: not a git repository` and the
+	// run could never be accepted; there is no branch to restore, commit or
+	// merge, and the homecoming is the one line.
+	if line := referenceLandingLine(tree); line != "" && kept.WorkspaceSet == nil {
+		if err := a.admitCompletedRunHomecoming(ctx, epoch); err != nil {
+			return "", true, err
+		}
+		kept.State = TaskDone
+		kept.Report = withReport(acceptedLine(strings.TrimSpace(why), by), withReport(root.Result, line))
+		return a.saveCompletedRunOutcome(g, kept, path, root.ID)
+	}
 	// A refused landing releases Git's registration while retaining its files.
 	// Restore that registration before checking or committing the saved branch.
 	if reopened, back, problem := tree.reopenReleased(); problem != "" {

@@ -1231,7 +1231,13 @@ func taskReceipt(id uint64, spec taskSpec, state TaskState, stand taskStand, els
 		result := fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. %s", id, on, spec.title, taskHandoffWakeSentence)
 		return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), taskStandRedirect(stand)), elsewhere)
 	}
-	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a copy of its own. %s", id, on, spec.title, taskHandoffWakeSentence)
+	// A reference has no copy: the sentence after this one says it writes only
+	// in a folder of its own, and the opener may not say otherwise first.
+	own := "copy"
+	if stand.mode == TaskModeReference {
+		own = "folder"
+	}
+	result := fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in a %s of its own. %s", id, on, spec.title, own, taskHandoffWakeSentence)
 	return withElsewhere(withReport(withReport(result, taskStandSentence(stand)), taskStandRedirect(stand)), elsewhere)
 }
 

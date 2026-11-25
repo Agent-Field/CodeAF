@@ -711,7 +711,9 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 			PlanTask: planStoreID(storeID),
 		})
 		a.publishJoinedRunRows(g, live)
-		return preparedTaskMode(a.config.Place, live.ground, live.stand.mode), true, nil
+		// The stand is fixed when the run is made; the run's ground is written
+		// again under beltMu once a held run's copy is ready.
+		return preparedTaskMode(a.config.Place, canonicalPath(strings.TrimSpace(live.stand.dir)), live.stand.mode), true, nil
 	}
 
 	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds

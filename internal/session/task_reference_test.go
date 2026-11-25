@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // A TASK THAT ONLY READS ITS GROUND SAYS SO AT ALL THREE ENDS: the proposer's
@@ -96,8 +97,15 @@ func TestAReferenceReceiptSaysNoBranchAndTheHomeFolderOnce(t *testing.T) {
 	if !strings.Contains(reads, "It reads "+ground) || strings.Contains(reads, "branch cut from it") {
 		t.Errorf("a reference asked for in place is told about a branch:\n%s", reads)
 	}
-	if works := taskReceipt(7, spec, TaskRunning, taskStand{dir: ground, mode: TaskModeWorktree, rung: taskGroundSaid, redirect: branch}, ""); !strings.Contains(works, branch) {
+	if !strings.Contains(reads, "It works from the brief alone, in a folder of its own. ") || strings.Contains(reads, "in a copy of its own") {
+		t.Errorf("a reference's receipt opens on a copy it does not have:\n%s", reads)
+	}
+	works := taskReceipt(7, spec, TaskRunning, taskStand{dir: ground, mode: TaskModeWorktree, rung: taskGroundSaid, redirect: branch}, "")
+	if !strings.Contains(works, branch) {
 		t.Errorf("a task on a branch lost its redirect:\n%s", works)
+	}
+	if !strings.Contains(works, "It works from the brief alone, in a copy of its own. ") {
+		t.Errorf("a task on a branch lost its opener:\n%s", works)
 	}
 
 	for _, stand := range []taskStand{
@@ -331,4 +339,282 @@ func TestARerunOfAReferenceRunIsStillAReference(t *testing.T) {
 		t.Errorf("the rerun of a run that only read %s stands as %+v", ground, stand)
 	}
 	endBeltRun(t, agent, second)
+}
+
+// A PLAIN REFERENCE PROPOSAL IS TOLD SO THROUGH THE PROPOSAL'S OWN ROAD. The
+// sentence is tested above as a function; this is the receipt the model that
+// proposed the task is handed, with no run underway to join.
+func TestAProposedReferenceTaskIsToldItOnlyReads(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the parser reads tokens")
+	registerBeltRunEngine(t, double)
+	sessionDir := t.TempDir()
+	ground := newTestRepo(t)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the parser reads tokens"}, func(config *Config) {
+		config.Workspace = ground
+		config.Place = Place{Dir: sessionDir}
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	args, _ := json.Marshal(taskArguments{
+		Title: "Explain the parser", Summary: "the proposed work", Brief: "say how the parser reads its input",
+		Deliverable: "a concise answer", Acceptance: "the question is answered", Ground: ground,
+	})
+	proposal, ok := agent.stageTask(context.Background(), args).(*stagedProposal)
+	if !ok || proposal.stand.mode != TaskModeReference {
+		t.Fatalf("the proposal did not stage as a reference: %+v", proposal)
+	}
+	agent.ResolveTask(proposal.id, TaskAnswer{Approved: true})
+	answer, failed, err := proposal.Commit(context.Background())
+	if err != nil || failed {
+		t.Fatalf("propose_task: failed=%v err=%v answer=%q", failed, err, answer)
+	}
+	<-double.entered
+	dir := canonicalPath(ground)
+	for _, want := range []string{
+		"It works from the brief alone, in a folder of its own. ",
+		"It reads " + dir + " and writes only in a folder of its own, so nothing in " + dir + " changes: this proposal named no file there by full path.",
+		"stop this task and propose it again naming the files it makes or changes by their full path under " + dir + ".",
+	} {
+		if !strings.Contains(answer, want) {
+			t.Errorf("the receipt of a proposed reference lacks %q:\n%s", want, answer)
+		}
+	}
+	for _, untrue := range []string{"It works in", "in a copy of its own", "It joined the work already underway"} {
+		if strings.Contains(answer, untrue) {
+			t.Errorf("the receipt of a proposed reference says %q:\n%s", untrue, answer)
+		}
+	}
+	endBeltRun(t, agent, double)
+}
+
+// A REFERENCE RUN THAT FAILED IS GIVEN THE LANDING LINE AND ONE THAT WAS
+// STOPPED IS GIVEN NONE. What a failed run made is still in its folder and its
+// ground is still untouched; a stopped run has its own ending and no landing.
+func TestAFailedReferenceRunHasItsLandingLineAndAStoppedOneHasNone(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		stop bool
+	}{{name: "failed"}, {name: "stopped", stop: true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CODEAF_TASK_BELT", "bash")
+			double := newBeltRunDouble("the parser was not read")
+			// The engine's own ending of a run that did not finish: its word for
+			// it, and the store's root left for the door to end.
+			double.summary.Outcome, double.leaveOpen = "ran and did not finish", true
+			double.real, double.honoursStop = true, tc.stop
+			registerBeltRunEngine(t, double)
+			ground := newTestRepo(t)
+			sessionDir := t.TempDir()
+			agent, _ := newTestAgent(t, beltRunCompleter{text: "the parser was not read"}, func(config *Config) {
+				config.Workspace = ground
+				config.Place = Place{Dir: sessionDir}
+				config.SessionFile = filepath.Join(sessionDir, placeTranscript)
+				config.AskConsent = false
+			})
+			if err := agent.startKnownTaskRun(context.Background(), 41, "explain the parser", "brief", nil, taskStand{dir: ground, mode: TaskModeReference, rung: taskGroundSaid}, ""); err != nil {
+				t.Fatalf("start the reference run: %v", err)
+			}
+			<-double.entered
+			if tc.stop {
+				if _, err := agent.Cancel(CancelTask + ":41"); err != nil {
+					t.Fatalf("stop the run: %v", err)
+				}
+				beltRunWaitFor(t, "the stopped run to end", func() bool {
+					agent.beltMu.Lock()
+					defer agent.beltMu.Unlock()
+					return agent.beltRun == nil
+				})
+			} else {
+				endBeltRun(t, agent, double)
+			}
+			rows := agent.graph().runRows(41)
+			if len(rows) != 1 || rows[0].State != TaskFailed || rows[0].Stopped != tc.stop {
+				t.Fatalf("the run did not end %s: %+v", tc.name, rows)
+			}
+			said := rows[0].Report + "\n" + strings.Join(beltRunNotes(t, sessionDir, "41"), "\n")
+			line := "it changed nothing in " + canonicalPath(ground) + ": what it made is in "
+			if got := strings.Contains(rows[0].Report, line); got == tc.stop {
+				t.Errorf("a %s reference run's row carries the landing line: %v\n%s", tc.name, got, rows[0].Report)
+			}
+			if tc.stop && strings.Contains(said, "it changed nothing in") {
+				t.Errorf("a stopped reference run was given a landing:\n%s", said)
+			}
+			if double.lands() != 0 {
+				t.Errorf("the engine was asked to land a folder that is no repository %d times", double.lands())
+			}
+		})
+	}
+}
+
+// A REFERENCE RUN THAT IS HELD AND ADMITTED LATER STILL TELLS ITS WORKERS. The
+// held road keeps the workers' words itself (the store's root, the run's own
+// brief and the record a reopened conversation reads the run back from), and
+// the crew's kept brief stays the brief as it was handed in.
+func TestAHeldReferenceRunStillTellsItsWorkersTheGroundIsReadOnly(t *testing.T) {
+	littleMemoryHost(t)
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	engine := newBeltRunDouble("the parser reads tokens")
+	registerBeltRunEngine(t, engine)
+	ground := canonicalPath(newTestRepo(t))
+	// The conversation stands in a plain folder and is about the repository.
+	sessionDir, workspace, profile := t.TempDir(), t.TempDir(), t.TempDir()
+	open := func() *Agent {
+		agent, _ := newTestAgent(t, beltRunCompleter{text: "the parser reads tokens"}, func(c *Config) {
+			c.Workspace = workspace
+			c.Place = Place{Dir: sessionDir}
+			c.SessionFile = filepath.Join(sessionDir, placeTranscript)
+			c.ProfileDir = profile
+			c.AskConsent, c.TaskMaxLoad, c.TaskMinFreeMB = false, 0, 1<<40
+			c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) { return flashDecision(), nil }
+		})
+		return agent
+	}
+	note := ground + " is yours to read, not to change"
+	keptBrief := func(agent *Agent, id uint64) {
+		t.Helper()
+		crew := agent.crews.get(id)
+		if crew == nil || strings.Contains(crew.brief, "yours to read") || strings.Contains(crew.brief, ground) {
+			t.Fatalf("the brief a rerun reads again carries the read-only note: %+v", crew)
+		}
+	}
+
+	first := open()
+	first.refer(PlaceRef{Path: ground, Arrival: PlaceSaid, Referred: time.Now()})
+	id, _, _, err := first.StartTask(context.Background(), "say how the parser reads its input", false)
+	if err != nil {
+		t.Fatalf("start the held reference run: %v", err)
+	}
+	beltRunWaitFor(t, "the held row", func() bool {
+		rows := first.graph().runRows(id)
+		return len(rows) == 1 && rows[0].State == TaskQueued && rows[0].Waiting == waitingMachineBusy
+	})
+	first.beltMu.Lock()
+	held := first.beltRun
+	stand, brief := taskStand{}, ""
+	if held != nil {
+		stand, brief = held.stand, held.brief
+	}
+	first.beltMu.Unlock()
+	if held == nil || stand.dir != ground || stand.mode != TaskModeReference {
+		t.Fatalf("the held run does not only read %s: %+v", ground, stand)
+	}
+	if !strings.Contains(brief, note) {
+		t.Errorf("the brief a held run keeps for its workers lacks the read-only note:\n%s", brief)
+	}
+	storeID := strconv.FormatUint(id, 10)
+	if root := beltRunTaskAt(t, sessionDir, storeID); root == nil || !strings.Contains(root.Description, note) {
+		t.Errorf("the held run's root does not tell its workers the ground is read-only: %+v", root)
+	}
+	if row, found := runRowOf(first.graph(), id); !found || row.PendingRun == nil || !strings.Contains(row.PendingRun.Brief, note) {
+		t.Errorf("the record a reopened conversation reads the run from lacks the read-only note: %+v", row.PendingRun)
+	}
+	keptBrief(first, id)
+	if engine.didRun() {
+		t.Fatal("a held run reached the engine")
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-held.over:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the held driver did not leave")
+	}
+
+	// The machine has room now, and the reopened conversation admits the run
+	// it kept: a host that says nothing holds nothing.
+	little := readHost
+	readHost = func() (machineReading, bool) { return machineReading{}, false }
+	t.Cleanup(func() { readHost = little })
+	second := open()
+	select {
+	case <-engine.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the admitted run did not reach its engine")
+	}
+	engine.mu.Lock()
+	given, own := engine.spec.Brief, engine.spec.Workspace
+	engine.mu.Unlock()
+	if !strings.Contains(given, note) || !strings.Contains(given, "your assigned working directory") {
+		t.Errorf("the workers of a run admitted later are not told their ground is read-only:\n%s", given)
+	}
+	if own == "" || canonicalPath(own) == ground {
+		t.Errorf("the admitted run works in %q, not a folder of its own", own)
+	}
+	keptBrief(second, id)
+	endBeltRun(t, second, engine)
+	if rows := second.graph().runRows(id); len(rows) != 1 || !strings.Contains(rows[0].Report, "it changed nothing in "+ground) {
+		t.Errorf("the run admitted later did not land as a reference: %+v", rows)
+	}
+}
+
+// A REFERENCE RUN RECOVERED AFTER ITS PLAN FINISHED IS ACCEPTED WITH THE SAME
+// LANDING. The process ended between the root's `done` and the landing, so the
+// row waits for the person; accepting it took the git landing in a folder that
+// is no repository and failed, and the run never got its line.
+func TestARecoveredReferenceRunIsAcceptedWithItsLandingLine(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	engine := newBeltRunDouble("must not run")
+	registerBeltRunEngine(t, engine)
+	place, repo := t.TempDir(), newTestRepo(t)
+	open := func() *Agent {
+		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+			c.Place, c.Workspace, c.SessionFile = Place{Dir: place}, repo, filepath.Join(place, placeTranscript)
+			c.AskConsent = false
+		})
+		return agent
+	}
+	first := open()
+	g := first.graph()
+	id := g.reserve()
+	tree, err := prepareTaskTreeOn(context.Background(), first.config.Place, repo, "1111dddd1111dddd", id, "explain the parser",
+		taskStand{dir: repo, mode: TaskModeReference, rung: taskGroundSaid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := referenceLandingLine(tree)
+	if line == "" {
+		t.Fatalf("the prepared tree is no reference: %+v", tree)
+	}
+	made := filepath.Join(tree.dir, "parser.md")
+	if err := os.WriteFile(made, []byte("the parser reads tokens\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	storeID := strconv.FormatUint(id, 10)
+	store, err := plandb.Open(g.planPath(), "mock", storeID, "explain the parser", "say how the parser reads its input", g.planChat())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteRoot("the parser reads tokens; see parser.md"); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+	first.publishRunRow(g, TaskNotice{ID: id, Title: "explain the parser", State: TaskRunning, Copy: runCopyOf(tree), CrewState: first.unroutedCrewRecord(), StartedAt: time.Now().Add(-time.Minute), PlanTask: planStoreID(storeID)})
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	second := open()
+	if kept, found := runRowOf(second.graph(), id); !found || kept.State != TaskUnverified || !kept.RecoveredCompletion {
+		t.Fatalf("the recovered reference run does not wait for the person: %+v", kept)
+	}
+	before := runTreeHead(repo)
+	if err := second.ResolveUnverified(id, TaskAccept, "read parser.md"); err != nil {
+		t.Fatalf("accepting a recovered reference run: %v", err)
+	}
+	landed, _ := runRowOf(second.graph(), id)
+	if landed.State != TaskDone || !strings.Contains(landed.Report, line) || !strings.Contains(landed.Report, "the parser reads tokens; see parser.md") {
+		t.Errorf("the accepted run did not land with its line %q: %+v", line, landed)
+	}
+	if landed.Branch != "" || landed.Merge != "" || runTreeHead(repo) != before {
+		t.Errorf("accepting a run that only read %s touched it: %+v", repo, landed)
+	}
+	if _, err := os.Stat(made); err != nil {
+		t.Errorf("what the run made is gone from its folder: %v", err)
+	}
+	if notes := strings.Join(beltRunNotes(t, place, storeID), "\n"); strings.Count(notes, line) != 1 {
+		t.Errorf("the run's page does not say the landing line once:\n%s", notes)
+	}
+	nothingStarted(t, second, engine)
 }
