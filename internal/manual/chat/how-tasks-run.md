@@ -934,6 +934,37 @@ named, and went around it three ways — plumbing commands, then `GIT_DIR=`, the
 own API. Two commits landed on a branch of the person's repository from work nobody had
 approved landing there.
 
+## Can a task search my whole computer? No — find / or a search of your home is refused, and a quiet search is stopped
+
+**A task may read anything it is pointed at, but it may not search everywhere.** A search
+rooted at the top of the disk, at a folder one level under it (`/home`, `/usr`, `/tmp`,
+`/Users`), at your home (`~`, `$HOME`) or at the folder your home sits in is refused before
+it runs. That covers `find`, `fd`, `rg`, `ag`, `ack`, `grep -r`, `du`, `tree` and `ls -R`,
+after a `cd` too (`cd / && find . -name x`), and the belt's own `find` and `grep` tools. The
+task reads:
+
+> find / searches far beyond this task, so it was not run: a search that wide takes many
+> minutes and passes through the person's own folders. This task works in …/work — search
+> there, or in a folder your brief names, or keep a wide search shallow with a depth limit
+> of 3 or less.
+
+**What still runs:** a search of the task's own folder or of any folder the brief names
+(`grep -rn TODO ~/code/yours`), a shallow one (`find / -maxdepth 2 -name bin`), and every
+plain read (`cat /etc/hosts`, `ls ~`).
+
+**A search that prints nothing for 30 seconds is stopped**, with whatever it had printed and
+`Search stopped: it printed nothing for 30 seconds, so it was walking far more than it was
+finding. This task works in …` naming its folder. A search that keeps finding things keeps
+printing and is never cut by this; a quiet command that is not a search — a build, `sleep`,
+a test suite that prints at the end — is not on this clock at all. A task's search is not
+handed to a job either, because a task waits for its own commands.
+
+**Your conversation is not held to this.** A search you ask for in the chat runs as asked.
+
+**Why it exists.** A canvas finished its sheet in 90 seconds and handed a doc to a task. The
+task's worker ran `find / -iname '*reports*research*' 2>/dev/null | head`, which printed
+nothing and held it for the full ten-minute limit, and the turn ran past fifteen minutes.
+
 ## Can a task push, or open a pull request? No — its work comes home through its landing
 
 **`git push` is refused**, wherever the task is standing, and so is anything that changes a
@@ -1193,10 +1224,33 @@ request, the line shows its identity mark and name alone rather than an empty qu
 If several tasks arrive before one answer, their lines are stacked in arrival order above
 that answer.
 
-**That reply is priced exactly like one you typed.** It climbs the same ladder, has the
+**That reply is priced exactly like one you typed**, once it is past its short start (a reply
+to work the chat owed you starts short, see *The chat said it would finish once the tasks
+landed*). It climbs the same ladder, has the
 same ceiling, and is handed to a task the same way — see *When a reply is taken out of your
 hands* in *Tasks*. It used to be exempt, and a measured run had one such reply grind for 46
 minutes with nobody watching and then leave the session idle for seven and a half hours.
+
+## The chat said it would finish once the tasks landed, and the reply stopped partway — my brief was never written after the tasks finished, the reply to a landed task went quiet, carrying on
+
+When the chat hands out work you asked for and says it will put the pieces together once they
+land, that report starts a **short reply**. It runs on the cheaper model and is told to answer
+from the report. It may make at most **6 model calls**, and most replies need one or two.
+
+Putting the pieces together needs more than that. When the short reply reaches its 6 calls
+before it has answered, it does not stop with nothing said. A dim line
+`the report needs more than a short reply · carrying on` shows, and the work carries on in an
+ordinary turn on the conversation's own model, with no call limit of its own. That turn keeps
+everything the short reply already read, finishes what you asked (the write-up it promised,
+for example), and ends with the answer. The dim line goes when the turn ends.
+
+Until this changed, the short reply could stop after its sixth call in the middle of reading.
+Nothing was said, the card kept showing `Working` with its actions, and the promised work
+waited until you typed again.
+
+A reply you stop yourself is not carried on. A reply that answers within its 6 calls costs what
+it always did. The ordinary turn is priced like one you typed (see *Why did the chat reply on
+its own*).
 
 ## Which task is this answer about
 
@@ -2089,7 +2143,8 @@ do at all, which stops the task's worker and lands this way (*A task that landed
 your look without doing anything*). The task is neither done nor incomplete: nothing merges,
 the branch is kept, and nothing waiting on it fails. The reason beside the word is one of
 the six questions on the tasks page, and two of those questions have more than one sentence —
-`nobody could check it` or `the check ran out of time`, `the check did not pass it: <gaps>`,
+`nobody could check it`, `the check ran out of time` or `the check stopped at its spend
+ceiling`, `the check did not pass it: <gaps>`,
 `conflicts with your branch: <files>`, `your branch changed the same files while it worked:
 <files>`, `design ready to approve`, `starts on your word`, `paused at the <amount> cap` —
 and each carries its own two answers.
@@ -2098,7 +2153,11 @@ The report under a landing nobody could judge leads with **the same question the
 asking** and then what was said — `nobody could check it — ` and the checker's own
 sentence, or `nobody could check it — the checker never answered` when nothing was said.
 When the clock is what stopped the check, it leads `the check ran out of time — ` instead,
-and the row says the same.
+and the row says the same. When the checker's own spend ceiling stopped it, the report
+leads with that stop — `the check stopped at its spend ceiling of $0.37 before it
+finished` — and the row reads `your call · the check stopped at its spend ceiling`. When
+the check's model could not be reached or served, the report leads `the check could not
+finish: ` and the provider's own words, and the row reads `your call · nobody could check it`.
 A landing whose branch would not merge leads `conflicts with your branch — ` the same way,
 and one whose files moved under it leads `your branch changed the same files while it
 worked — `.
@@ -2223,6 +2282,53 @@ nothing about whether the work is right, and the work waits for your answer like
 its own — measured at 183 seconds on one call, with no refusal and no error — and the check
 was then never asked a second time at all, while the task landed saying nobody could check
 it in five minutes.
+
+## Says failed, but it finished — the check stopped at its spend ceiling
+
+A task whose worker finished the work, but whose check ran out of budget before it could
+say whether the work is right, is **not failed**. The check has a spend ceiling of its own
+(*models-and-cost*: three times its estimate, grown with the work up to three times more),
+and on reaching that ceiling the check halts mid-read. That is a fact about the checker, not
+about your work: the work is already in place, and nobody has said it is wrong.
+
+So the task reads `your call · the check stopped at its spend ceiling`, and its report
+leads with the stop, then the worker's own account:
+
+```
+the check stopped at its spend ceiling of $0.37 before it finished
+Built the vector-DB research brief on canvas …
+```
+
+The two answers are the check's: `accept` takes the work as done, and `not right` marks the
+task incomplete with your reason. Either way nothing is landed a second time — the work
+came home when the task ended — and the check is not run again, because asking it again
+would spend its ceiling a second time on the same reading. Look at the work, then answer.
+
+Earlier builds marked this task `failed` even though its work was finished.
+
+## Says failed, but it finished — the check could not reach its model, a provider error during the check
+
+A task whose worker finished, but whose **check's model could not answer** — the provider
+refused the request, no machine would serve it, the reply stalled, the connection was down —
+is **not failed** either. Like a check that met its spend ceiling, that is news about the
+checker. The work is in place and nobody has said it is wrong.
+
+The task reads `your call · nobody could check it`. Its report leads with the real stop,
+quoting the provider, then the worker's own account:
+
+```
+the check could not finish: the provider would not serve its model google/gemini-4-carbon and said "…"
+Rota sheet tabs Rota Coverage Hours built …
+```
+
+`accept` takes the work as done and `not right` marks it incomplete with your reason. The
+check is not run again from the task; look at the work, then answer.
+
+When codeaf tells the conversation a task ended, it says that same recorded stop — never a
+guess about the work. A task that did not finish says the stop its failed step recorded. If
+nothing recorded a reason, none is given.
+
+Earlier builds marked this task `failed`, and the reply could name a cause nobody recorded.
 
 ## A task that landed needing your look without doing anything — task did nothing, only I can approve this, my task stopped straight away and says it needs a person
 
@@ -2902,7 +3008,9 @@ task's card. They are three kinds of news:
   round's finding — rather than proposing a new one. It only works in the
   conversation that still holds the graph. A task from another window, an unknown
   id, or a task that is still running cannot be continued here: the tool says
-  there is no graph, and names the branch or working copy so it can be read.
+  the task is not one this conversation holds, and names the branch or working copy so it
+  can be read. A finished hand-off this conversation ran is answered as `done, so there is
+  nothing to continue`, and the follow-up is made directly or handed off as a new task.
   Start a new task that builds on that branch only if the objective itself
   changed.
   - `lost the connection`: the connection to the model dropped (a reset, a
@@ -3328,6 +3436,24 @@ A task handed to a program such as senior-dev cannot wait at all, because it sta
 moment it is approved: its `depends_on` may name only work that has already landed. A
 program's run that ended done may be named by any task; one still going may not.
 
+## Waiting on the task that is already running — depends_on names task 1, which is still running, the second task did not start, has hard dependency across its containment lineage
+
+**A task cannot wait on the task already running in this conversation.** New tasks join the
+work already underway as parts of it, and a part cannot wait on the work it belongs to. So
+a proposal whose `depends_on` names that task is refused before any card:
+`depends_on names task 1, which is still running, and work that must wait for it cannot be
+added beside it. Propose this again when task 1's report arrives — it starts a turn here on
+its own — or with depends_on left out if it can start now.` Before this, the proposal was
+approved and then did not start, with
+`has hard dependency "1" across its containment lineage`, and the reply went on to promise
+the work anyway. A task that joined beside it may still be waited on.
+
+**Once that task has ended, its id still works.** A task that ended done counts as a
+dependency met. One that ended any other way — failed, incomplete, interrupted — is refused:
+`depends_on names task 1, which ended without finishing, so nothing would ever start this
+after it.` Before this, any task from work that had ended was refused as
+`no task in this session has that id`.
+
 ## Choosing a task's model and tool-call checkpoints — propose_task model and max_steps
 
 These optional arguments choose the task's model and checkpoint size. Bad values return a refusal the model can correct.
@@ -3622,6 +3748,12 @@ tasks that join shared work too; a part the work split off under a task acts
 as that task. The desktop app reads the DID in the agent list as `did`, and
 each task's own name as `worker`, so it can release whatever that task held
 once the task ends.
+
+Beside the DID, each command sees `CODEAF_AGENT_WORKSPACE`: the conversation's
+folder, spelled as the agent list's `workspace`. A task's commands see the
+conversation's folder too, not the task's own copy. It names the agent's folder
+even after a command runs `cd /tmp`, so a tool that admits an agent by its folder
+(a canvas member the app added before it knew the DID) still knows it.
 
 New conversations retain an Ed25519 signing key and a separate X25519 encryption
 key in encrypted custody inside their cell. The versioned identity document

@@ -45,14 +45,16 @@ func (b *appBackend) titleChanged(a *appAgent, live *appLive, title string) {
 	if title == "" {
 		return
 	}
+	// The remote replica takes versioned facts before delivering a title.
+	// Read its latest name so an older queued notification cannot restore it —
+	// BEFORE the backend's lock, because it takes the conversation's own
+	// (appSessionLocks).
+	if current := strings.TrimSpace(live.conn.Conv.Title()); current != "" {
+		title = current
+	}
 	b.locked(func() {
 		if a.live != live || live.closed {
 			return
-		}
-		// The remote replica takes versioned facts before delivering a title.
-		// Read its latest name so an older queued notification cannot restore it.
-		if current := strings.TrimSpace(live.conn.Conv.Title()); current != "" {
-			title = current
 		}
 		if a.view.Title == title {
 			return

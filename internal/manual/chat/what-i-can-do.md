@@ -354,6 +354,30 @@ truly enormous amounts before it was kept as a job, the log begins where codeaf'
 rolling tail begins — the last few hundred kilobytes — rather than at the very
 first line.
 
+## A command hangs, stalls or prints nothing — is the turn stuck forever?
+
+No. A shell call always comes back, and the turn goes on to a reply.
+
+- **A call that never answers is answered for.** codeaf keeps a clock of its
+  own outside the command: a `bash` call that has not come back 30 seconds after
+  the first limit it was going to meet (the `background after` clock, or its own
+  timeout when that clock is off) is ended — its process group is killed — and
+  the model is told `Command stopped: it did not finish or answer within N
+  seconds, so it was ended and its result is lost.` The step shows as failed with
+  the same words, and the model carries on and replies.
+- **A stop always stops.** If you press Stop and the command does not end on its
+  own within five seconds, it is ended and the answer is `Command aborted: the
+  turn was stopped and the command did not end on its own, so it was ended.`
+- **In the desktop app, a command that prints nothing is stopped.** A foreground
+  command there that prints nothing for 120 seconds ends with what it had printed
+  and `Command stopped: it printed nothing for 120 seconds. Split it into smaller
+  commands, or run a long one with background:true.` A command kept as a
+  background job first is not affected. The terminal chat has no such clock.
+
+When codeaf has to end a call this way it also writes what every part of the
+program was doing at that moment to `logs/stuck/<call>.txt` in the
+conversation's folder, so the hang can be found and fixed.
+
 ## Does codeaf poll a background job with repeated sleep and tail commands, or get told when it finishes?
 
 **It gets told, and it never has to poll.** Two things arrive without anybody

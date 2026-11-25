@@ -302,6 +302,12 @@ secret ask (`bad_params`) and so never carries the value. `keeps_for_s` is how l
 keeps the value in a private file the agent's commands read (the model's own
 `request_secret`); absent, the value goes to its lane (a connection's key).
 
+A question that asks for several things at once carries `fields: [{label, kind?,
+default?, choices?}]`, the asker's own named blanks in order (`kind` is `text`,
+`path`, `number`, `choice` or `time`), and `fields_prompt`, its one line over them. The app draws one labelled box per field
+and answers with `asks.answer` `text`, one `label: value` line per field, so the
+answer reads the same to an engine that never sent fields.
+
 ## attachments methods
 
 | method | params | result |
@@ -2926,6 +2932,38 @@ $0.10 goes out as `0.1`.
 |---|---|---|
 | `ping` | `{}` | `Empty` |
 
+## pictures methods
+
+| method | params | result |
+|---|---|---|
+| `pictures.makers` | `in.PictureMakersParams` | `PictureMakers` |
+| `pictures.maker.set` | `in.PictureMakerSetParams` | `PictureMakers` |
+
+The picture maker is the model that makes pictures, chosen at two reaches;
+an engine that serves it says `pictures.makers` in the hello.
+`pictures.makers {workspace?}` lists every model the catalogue says draws —
+`price_per_picture_usd` (null when unpublished; `price_estimated` when it was
+priced per megapixel or token and converted at a 1K picture), `reads_photos`,
+`masks_edits`, `max_pictures`, `max_photos`, `shapes`, `transparent`,
+`automatic` (Automatic may pick it) and `unavailable` with
+`unavailable_reason` — and answers `everywhere` (the image slot; `variable`
+names an environment variable that outranks it), `canvas` (only when
+`workspace` was sent: the choice for the canvas whose working folder holds
+it) and `resolved`, the model a picture made there would use now with its
+`scope` and `reason`, or no model and a `message` a person can act on
+(`no_provider`, `none_advertised`, `unconfirmed`, `model_required`).
+`pictures.maker.set {scope: everywhere|canvas, workspace, model}` chooses; an
+empty model is Automatic. A canvas is named by its working folder, the folder
+its agents run in.
+
+A picture's render (`render.get`, `render.list`) says `picked`: `chosen` or
+`automatic`. Automatic falls through a model that does not answer and lists
+it in `passed_over` (`busy`, `unreachable`, `gone`); a chosen model is never
+swapped: the render fails with `refusal: chosen_not_answering` and `options`
+holds the one model the person may switch to. A chosen model that cannot read
+a photo, asked to change one, is refused before anything is paid with
+`refusal: cannot_read_photos`.
+
 ## ports methods
 
 | method | params | result |
@@ -3979,6 +4017,7 @@ The optional `plugins` hello feature enables these methods. They use
 | `plugins.connect_local` | `in.PluginID` | `PluginKeyResult` |
 | `plugins.set_capability` | `in.PluginCapabilityParams` | `Empty` |
 | `plugins.disconnect` | `in.PluginDisconnectParams` | `Empty` |
+| `plugins.read_csv` | `in.PluginReadCSVParams` | `PluginReadCSVResult` |
 
 `plugins.list` returns `{plugins, providers, featured, featured_words}`.
 Each plugin has `id, name, kind, category, blurb, connected, key_checkable`, and optionally
@@ -4053,6 +4092,22 @@ answers in `connect_key`'s shape: `{checked: true, account}`, or
 `{checked: false, error, words}`.
 `plugins.disconnect {id, account?}` uses the existing disconnect path.
 The optional account must match the stored account.
+
+`plugins.read_csv {id, query?, max_bytes?}` answers `{csv}`: one read of a
+connected plugin as CSV text, header row first, for a sheet tab's pull from a
+connector. An engine that serves it announces the feature `plugins.read_csv`.
+The read is a model with that one plugin's read-only tools and no others: a
+served tool only when the server marks it read-only, Google's and Slack's
+reading tools, and a key account's raw call for `get` alone, judged again on
+every call. A capability the person turned off stays off. `query` is the
+source's own words for what to read; empty reads the account's main records.
+`max_bytes` (default and most 64 MB) bounds the answer, which is refused rather
+than cut. The answer must parse as a CSV with every row as wide as the header.
+Errors carry a reason for the person as their message: `refused` (nothing that
+only reads, a query that needs more than reading, an answer that is not a CSV),
+`too_large`, `signed_out`, and `bad_params` for a missing `id` or a negative `max_bytes`.
+The engine logs neither the rows nor the reason. The whole read is bounded at
+85 seconds and 12 model rounds.
 
 ### GitHub
 

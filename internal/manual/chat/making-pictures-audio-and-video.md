@@ -19,8 +19,8 @@ in this conversation — see "Can a task or a harness make media?" below.
 
 Yes, with `generate_image`, when a drawing model is available.
 
-Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`,
-`model`, `n`.
+Arguments: `prompt` (required), `reference_paths`, `mask_path`, `aspect_ratio`,
+`size`, `path`, `model`, `n`.
 
 The picture is written to a file, and the result codeaf reads is one line naming
 it — **the whole path, absolute, from the root** — like:
@@ -46,28 +46,173 @@ Leave `path` out and the name is a timestamp plus a few words of your prompt,
 saved where this session keeps its pictures. Give `path` and you choose the name
 and folder; an existing file there is overwritten, exactly as `write` would.
 
-`aspect_ratio` (for example `16:9`) and `size` (for example `1024x1024`) are
-passed to the image model untouched. Leave them out for its own default.
+`aspect_ratio` (for example `16:9`) is the frame's shape; a shape the drawing
+model does not take is drawn at the nearest one it does and cropped back (see
+*Can you keep my picture's shape*, below). `size` (for example `1024x1024`) is
+the pixel size; without `aspect_ratio` it carries the shape too and is fitted
+the same way. Leave either out for its own default.
+
+## Which image model draws if I never chose one, and why was a picture refused with "no default image model"?
+
+**Nothing to set up: with no image model chosen, codeaf picks one.** It tries,
+in order, `google/gemini-3.1-flash-image`, `bytedance-seed/seedream-5-0-pro`,
+`black-forest-labs/flux.2-pro` and `krea/krea-2-medium-turbo` — strongest first,
+then cheaper — and takes the first your model list advertises **with a
+published price**. The price it reads is the picture's own: per output-image
+token, per image or per megapixel. A model that publishes only zero prompt and
+completion prices has not said what a picture costs, and is never a default.
+
+If none of those four is listed and priced, it takes the best priced drawing
+model the list does have: the one with the highest published Design Arena
+score, then the lowest name. Never the first, newest or cheapest-looking row,
+so the same list always gives the same model.
+
+A refusal is left for a list that genuinely cannot pay for a picture:
+
+- `No picture maker has a published price, so Automatic won't choose one for you. Choose a picture maker in Settings → Models.` — drawing models are listed but none has a price. Name one (`draw it with flux`) or choose one in Settings → Models.
+- `No connected provider makes pictures. Connect one in Settings → Models.` — the current list has no drawing model.
+- `The list of picture makers couldn't be read just now, so none was chosen. …` — the list has not been read yet, or is out of date. Try again in a moment.
+
+Older builds said `there is no default image model with a published price`
+for the first of these.
+
+**A model you chose always wins**, listed or not, and is never swapped: this
+canvas's picture maker, the Everywhere one, a pinned role, or one named in the
+request.
+
+Until 2026-11-19 every picture on a fresh profile was refused with the first of
+those sentences, because codeaf dropped the per-token picture price that is the
+only one the model list publishes when it loads.
+
+## Which model makes my pictures — the picture maker, Automatic, Everywhere or just this canvas?
+
+The model that makes pictures is the **picture maker**, and you can choose it
+at two reaches:
+
+- **Everywhere** — every picture, in every conversation and canvas. On the
+  desk it is Settings → Models → Pictures; in the terminal it is `/settings` →
+  Models → drawing. `CODEAF_IMAGE_MODEL`, when set, outranks it, and the desk
+  shows it locked with that variable's name.
+- **This canvas** — only pictures made on one canvas, chosen from the canvas's
+  own picture chip. It outranks Everywhere. Clearing it makes the canvas follow
+  Everywhere again.
+
+Leaving either empty is **Automatic**, never a blank: codeaf picks the model
+as *Which image model draws if I never chose one* describes, and the desk says
+which one it picked, e.g. `Automatic · Seedream 5.0 Pro`. Only one case has no
+model: `No connected provider makes pictures`.
+
+The order a picture follows is: a model named for that one picture, then this
+canvas, then Everywhere, then the operator's pinned role, then Automatic. A
+canvas is known by its working folder, so a task working in a copy of that
+folder still uses the canvas's choice.
+
+The picker lists every model the catalogue says draws, with its price per
+picture (estimated at one 1K picture when the catalogue prices megapixels or
+tokens), whether it reads a photo, how many pictures one request returns, the
+shapes it draws and whether it offers a transparent background. A capability
+the catalogue does not publish is shown as absent. codeaf does not ask any
+model for a transparent background yet; that line only says which models offer
+one.
+
+## A picture failed because the model was busy — does codeaf switch to another model?
+
+**Only when nobody chose the model.**
+
+On **Automatic**, a model that is busy (429, 503), not answering (a 5xx or a
+timeout) or no longer offered (404) is passed over for the next model on the
+same list, at most three in all. The picture then says so, e.g.
+`Made with Gemini 3 Pro Image · Automatic · Seedream 5.0 Pro was busy.` If none
+answers: `Automatic tried 3 picture makers and none answered. Nothing was made;
+try again in a moment.`
+
+A model that **you chose** — for this canvas, Everywhere, or by name — is never
+swapped. When it does not answer, nothing is made and the answer is a question:
+`Seedream 5.0 Pro isn't answering (was busy). Nothing was made, and no other
+picture maker was used, because Seedream 5.0 Pro was chosen for this canvas.
+Gemini 3 Pro Image can make these 4 instead.` codeaf asks you before using it,
+and the desk offers it as one button.
+
+Any other failure — a refused prompt, an expired key, no credit — is reported
+as it is and never sent to another model, because the next one would refuse it
+too. A connection that is down is not passed on either.
+
+## Why was changing a photo refused with "can't read a photo"?
+
+Changing, restyling or starting from a picture needs a model that takes a
+picture in. When the picture maker you chose does not, codeaf refuses before
+anything is paid for, and names one that can:
+`Krea 2 Medium can't read a photo, and you're changing one. Gemini 3 Pro Image
+can; choose it for this, or start from words.` On Automatic it simply picks a
+model that reads photos; with none connected it says `No connected picture
+maker can read a photo, so this picture can't be changed. Start from words
+instead.` Making a picture from words alone still uses your choice.
+
+## Can you keep my picture's shape — an 8:5 photo, an odd or unusual aspect ratio?
+
+**Yes.** Every drawing model publishes the shapes it draws, and they differ:
+`google/gemini-3.1-flash-image` takes fourteen, from `1:8` to `8:1`, and not
+`8:5`. When `aspect_ratio` asks for a shape the model does not take, codeaf asks
+it for the **nearest** shape it does take (an `8:5` photo is drawn at `3:2`),
+then crops the result from the centre back to the shape you asked for. When the
+call edits a picture of that shape, the result is also scaled to that picture's
+own size, so "make the photo brighter" on a 1600×1000 photo comes back
+1600×1000.
+
+The result says so beside the file, e.g. `google/gemini-3.1-flash-image does not
+draw 8:5, so it drew at 3:2 and the result was cropped to 8:5 and scaled to
+1600×1000, the size of the picture it edits.` The crop takes a thin strip off
+two edges: a model that keeps your whole photo in its own frame may lose a
+little of it at the border.
+
+**The shape may come in `size` instead.** With no `aspect_ratio`, a `size` of
+`8:5` is read as that shape, and a pixel size such as `1280x800` whose shape the
+model does not take is drawn at the nearest one and comes back cropped and
+scaled to exactly 1280×800. Until 2026-11-19 a `size` went to the model as it
+was, and Gemini refused an `8:5` canvas edit with `Gemini does not support
+aspect_ratio "8:5" on this endpoint.`
+
+A shape the model takes is sent exactly as asked (`16:10` goes in the model's
+own spelling, `8:5`). A word such as `auto` or `2K`, a `size` beside an
+`aspect_ratio`, and any shape for a model whose shapes were never published,
+are passed through untouched and never cropped.
 
 ## Can you make several versions, variants or a contact sheet of one picture?
 
-Yes: give `generate_image` an `n` from 1 to 10 (default 1). It asks the drawing
-model for that many pictures in **one** request and saves each as its own file —
-with `path: "sheet.png"` they are `sheet-1.png`, `sheet-2.png` and so on, and an
-existing file with one of those names is never overwritten (the next free name is
-used). The result says how many were asked for, how many the model sent and how
-many were saved, lists one path per line in the order the model sent them, and
-does not rank them — you choose.
+Yes: give `generate_image` an `n` from 1 to 10 (default 1). Each picture is saved
+as its own file — with `path: "sheet.png"` they are `sheet-1.png`, `sheet-2.png`
+and so on, and an existing file with one of those names is never overwritten
+(the next free name is used). The result says how many were asked for, how many
+came back and how many were saved, lists one path per line, and does not rank
+them — you choose.
 
-Limits: more than 10 is refused before anything is spent. If the drawing model
-cannot return several pictures in one request it says so and the call fails;
-codeaf does not quietly make several single requests instead, and it never
-retries a paid request. If the model sends fewer than you asked for, only those
-are saved and the count is stated. If one picture will not decode or write, the
-others stay saved and the failure is named. The cost is for the whole request;
-codeaf does not split it per picture. A reply whose pictures together are over
-64MB (or any one over 32MB) is refused after being paid for, with a suggestion to
-ask for fewer or a smaller size.
+A model that can return several pictures at once is asked in **one** request,
+and its cost is for that whole request. A model that returns fewer per request
+— every Gemini image model returns exactly one — is asked in several requests
+at the same time, and the result ends with a line such as
+`google/gemini-3.1-flash-image returns fewer pictures per request than were asked for, so they were asked as 4 separate requests at once; together they were charged $0.1560.`
+Each of those requests is billed on its own, so each picture carries its own
+cost.
+
+Limits: more than 10 is refused before anything is spent. If some requests fail
+the pictures that came back are kept, the call still counts as made, and each
+failure is named (`One request for one picture was not made: …`). If the model
+sends fewer than you asked for, only those are saved and the count is stated. A
+reply whose pictures together are over 64MB (or any one over 32MB) is refused
+after being paid for, with a suggestion to ask for fewer or a smaller size.
+
+## Asking for four pictures failed with "n: must be exactly 1" — can I get four?
+
+Yes, and you no longer have to do anything for it. When the model list says how
+many pictures a model returns per request, a request for more is split before
+anything is sent. When the list says nothing and the provider refuses the
+request **because of the count** (`n: must be exactly 1`, `n must be 1`), codeaf
+asks again **once**, as that many single-picture requests at the same time, and
+the result says
+`<model> refused several pictures in one request, so they were asked as 4 separate requests at once`.
+A refusal about anything else — a shape, a size, the prompt — is reported as it
+came and never retried, because asking again for a reason nobody can name would
+spend money you did not approve.
 
 ## Do I only get a file path, or can I see the image you made?
 
@@ -130,6 +275,29 @@ gif, up to 10MB each** — and anything else is refused by name, e.g.
 The useful part: **the path `generate_image` just returned is itself a valid
 reference**, so codeaf can pass its own last render back in and iterate — a
 diagram redrawn until it is right, a character kept the same across pictures.
+
+## Can you change just one part of a picture, with a mask or a selected region?
+
+Yes — `generate_image` with `mask_path` beside `reference_paths`. The mask is a
+picture **the same size as the first reference**: white where the picture may
+change, black where it must stay. The prompt says what to put there ("a red
+sofa", "clear sky"). `n` still asks for several variants of the same edit.
+
+How faithfully the rest is kept depends on the model, and **the result says
+which happened** on a line after the path:
+
+- A model whose catalog entry publishes a mask setting gets a real mask:
+  `The mask was sent as a real mask: only its white area was open to change.`
+- Every other model gets the mask as one more reference picture, with words
+  saying what it is: `This model takes no real mask, so the mask was sent as a
+  guide picture beside the source: the change may reach past the white area.
+  Look at the result before you build on it.`
+
+Refused before anything is paid for: a mask with no `reference_paths`
+(`mask_path needs the picture it masks, given as the first of reference_paths`),
+a mask that cannot be read, and a mask of another size
+(`the mask is 8×8 and the picture it masks (art/room.png) is 4×3`). A mask is
+png, jpeg, webp or gif, up to 10MB, like any reference.
 
 ## Can you use a different model for one picture, sound or video?
 
@@ -198,7 +366,7 @@ until it finishes.
 
 A call that **failed** has no file and no model beside it on the row — there was
 no picture to attribute. The model it tried is named inside the failure the
-expansion shows, e.g. `Image generation failed (bytedance-seed/seedream-5-0-pro):
+expansion shows, e.g. `Image generation failed (google/gemini-3.1-flash-image):
 …`.
 
 To change which model draws, just say so: "draw this one with gemini", "use the
@@ -705,7 +873,11 @@ In the terminal, stopping the turn stops it. The desktop app's render stop
 already been accepted for saving and will land) or `already_ended`. After
 `cancelled` the call says `Image generation was stopped (<model>); nothing was saved.
 Only waiting stopped here — the provider was not told to cancel, so whether it
-charged is unknown.` Nothing is retried after a stop or a failure.
+charged is unknown.` Nothing is retried after a stop or a failure, with one
+exception: a request for several pictures refused only because of the count is
+asked again once as single pictures. A call sent as several requests keeps ONE
+record, and its charge is what all of them reported together (`unknown` if any
+one of them said nothing).
 
 **What it was charged** is the provider's own figure: `charged` with the amount,
 `not_charged` when it said zero, and `unknown` when it said nothing — never a

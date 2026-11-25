@@ -32,13 +32,14 @@ import (
 // about in a setup turn like any other.
 
 // setupGranted reports whether the person's `set up` already consented to this
-// call, given what the gate decided.
-func setupGranted(ctx context.Context, call ai.ToolCall, decision approval.Decision) bool {
+// call, given what the gate decided. workspace is the folder the bash tool runs
+// in, so the floor it never reaches past is the same floor the gate applied.
+func setupGranted(ctx context.Context, call ai.ToolCall, decision approval.Decision, workspace string) bool {
 	if !inSetup(ctx) || decision.Action == approval.ActionDeny || call.Function.Name != approval.ToolBash {
 		return false
 	}
 	args := json.RawMessage(call.Function.Arguments)
-	if approval.AlwaysAsks(call.Function.Name, args) {
+	if approval.AlwaysAsksIn(call.Function.Name, args, workspace) {
 		return false
 	}
 	var parsed struct {

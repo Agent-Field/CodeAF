@@ -323,6 +323,12 @@ type RunSummary struct {
 	// FINISHED — senior-dev's `pass` or `pass-unverified` — and empty for
 	// every other ending and every other run.
 	ProgramVerdict string
+	// Unchecked is the sentence a review check stopped on when it could not
+	// answer — its checker met its own spend ceiling, or its model could not be
+	// served — while the work it was reading had landed. Empty when every
+	// check answered. A done run with this set is asked about (your call),
+	// never drawn done and never failed.
+	Unchecked string
 	// Cut is every task the run's own ending cut mid-flight, by store id: the
 	// same typed fact as the limit, read where the run recorded it. A joined
 	// row in this set is drawn with the run's own ending and never as a fault.
@@ -2416,7 +2422,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 		note.replyTags = tags
 		note.landingQuestion, note.landingOutcome = document.landingQuestion, document.landingOutcome
 		note.batch = false
-		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
+		note.settle, note.settleCeiling, note.settleOwed = true, owedLandingCallCeiling(), true
 		note.settlePrompt = landingAnswerPrompt
 		note.settleModel, _ = readerFor(a.config, a.model).TierModel(owedLandingTier())
 		a.admitBeltLanding(run, summary, line, landing, note)
@@ -2641,6 +2647,10 @@ func (a *Agent) settleJoinedRows(g *TaskGraph, run *beltRun, ended time.Time, ru
 			if notice.Report == "" && task.Status != plandb.StatusDone {
 				notice.Report = strings.TrimSpace(task.Error)
 			}
+			// WHAT ITS OWN WORK COST, checks included, read off the run's store
+			// rather than left at nothing while the run's row carried it
+			// (task_run_joined_spend.go).
+			notice.CostUSD = runSubtreeSpend(run.store, task.ID)
 		}
 		if notice.State != TaskDone && runEnding != "" && (cutRows[id] || cancelledByRunEnding(run.store, id)) {
 			notice.Ending = runEnding
@@ -2683,9 +2693,21 @@ func (a *Agent) beltRunNotice(run *beltRun, summary RunSummary, landing RunLandi
 		// picked under, for the card's crew line.
 		Crew: run.crewDecision(), Model: run.crewWorker(), CostUSD: run.crew.taskSpent(summary.USD),
 	}
+	// AND A HAND-OFF THAT JOINED THIS RUN CARRIES ITS OWN SPEND ON ITS OWN ROW
+	// ([Agent.settleJoinedRows]), so this row says what is left of the run's
+	// figure rather than the whole of it (task_run_joined_spend.go).
+	a.beltMu.Lock()
+	joined := append([]uint64(nil), run.joined...)
+	a.beltMu.Unlock()
+	if notice.CostUSD > 0 {
+		notice.CostUSD = rootRowShare(run.store, notice.CostUSD, joined)
+	}
 	if run.remoteEngine != nil {
 		run.fillRemoteLandingNotice(&notice, summary)
 	}
+	// The row that asks the check's question about landed work says so, which
+	// is what lets the completed-run door answer it ([Agent.resolveCompletedRun]).
+	notice.Unchecked = state == TaskUnverified && landing.Home != mergeConflicted && uncheckedRunLanding(run, summary, TaskDone)
 	if state == TaskFailed && run.crew != nil {
 		decision := run.crew.stoppedIfCutOff()
 		notice.Crew = &decision
@@ -2723,7 +2745,25 @@ func (run *beltRun) noticeResultWords(summary RunSummary, landing RunLanding) (T
 	if run.remoteEngine != nil && summary.Outcome == "interrupted" {
 		state = TaskInterrupted
 	}
+	if uncheckedRunLanding(run, summary, state) {
+		// FINISHED WORK WHOSE CHECK COULD NOT FINISH IS YOUR CALL, NEVER FAILED
+		// AND NEVER DONE. The check's own checker met its spend ceiling, or its
+		// model could not be served — a fact about the checker either way — and
+		// nobody said whether the work is right, so it is asked about with the
+		// check's two answers, led by the stop itself.
+		state = TaskUnverified
+		report = withReport(strings.TrimSpace(summary.Unchecked), report)
+	}
 	return state, report
+}
+
+// uncheckedRunLanding is whether a run that answered done did so over a check
+// that could not finish ([RunSummary.Unchecked]). A landing that already asks
+// the conflict's question keeps it: two versions of somebody's files outrank
+// a check that ran out of budget, and the card asks one question at a time.
+func uncheckedRunLanding(run *beltRun, summary RunSummary, state TaskState) bool {
+	return run.remoteEngine == nil && run.delegate == nil && state == TaskDone &&
+		summary.Outcome == beltRunOutcomeDone && strings.TrimSpace(summary.Unchecked) != ""
 }
 
 // A remote landing keeps the executor with its final reading, since this
@@ -2802,6 +2842,15 @@ func beltRunLimitEnding(limit RunLimit) TaskEnding {
 // had taken when it was asked.
 func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, landing RunLanding, span time.Duration) string {
 	outcome, result := runEndingWords(summary)
+	unchecked := strings.TrimSpace(summary.Unchecked)
+	if unchecked != "" && summary.Outcome == beltRunOutcomeDone {
+		// FINISHED WORK NOBODY FINISHED CHECKING IS ANNOUNCED AS WHAT THE ROW
+		// SAYS IT IS — your call — and never as `done`, which would tell the
+		// conversation's model the question was settled.
+		outcome = taskWordYourCall
+	} else {
+		unchecked = ""
+	}
 	parts := []string{outcome}
 	if ran := runSpanWord(span); ran != "" {
 		parts = append(parts, "ran "+ran)
@@ -2809,15 +2858,69 @@ func beltRunOutcomeNote(store *plandb.Store, rootID string, summary RunSummary, 
 	if result != "" {
 		parts = append(parts, result)
 	}
+	// AND THE RECORDED REASON IS SAID HERE, IN THE RUN'S OWN WORDS, BEFORE ANY
+	// MODEL-WRITTEN LINE. This note is what the conversation's model is handed
+	// when a run ends, and the one line after it ([RunPlanSummary.Now]) is a
+	// model's reading of the rows. Run21's note said only "ran and did not
+	// finish" and then the reading's guess — "role cells are left reading
+	// Open" — about a check whose provider had refused it, and the manager
+	// told the person that guess as the cause. A stop the run recorded is a
+	// fact, so it travels as one: the check's own stop when the work stands
+	// unchecked, or the first ended task's stop when the run did not finish
+	// and nothing above has already said why.
+	recorded := unchecked
+	if recorded == "" {
+		recorded = runRecordedStop(store, rootID, summary)
+	}
+	if recorded != "" {
+		parts = append(parts, recorded)
+	}
 	if line := beltLandingLine(landing); line != "" {
 		parts = append(parts, line)
 	}
+	// A RECORDED ENDING NEEDS NO READING OF IT. The reading's `now` line is,
+	// for a run that has ended, how it ended — the very fact the line above
+	// already states from the record, and the one place a reading can still
+	// contradict it.
+	if recorded == "" {
+		parts = appendRunReadingNow(parts, store, rootID)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// appendRunReadingNow adds the last stored reading's `now` sentence, when
+// there is one.
+func appendRunReadingNow(parts []string, store *plandb.Store, rootID string) []string {
 	if stored, ok := readRunSummary(store, rootID); ok {
 		if now := strings.TrimSpace(stored.Summary.Now); now != "" {
 			parts = append(parts, now)
 		}
 	}
-	return strings.Join(parts, " · ")
+	return parts
+}
+
+// runRecordedStop is the stop a run that did not finish recorded on the task
+// that ended it — the first task of the run, in the store's order, that ended
+// failed with a reason written on it — said as "<title>: <reason>". It is
+// empty for a run that finished, for an ending that already says why
+// ([runEndingWords] leads with a program's reason or the run's own failure),
+// and for a run with no store or no recorded reason, because a reason nobody
+// recorded is never supplied.
+func runRecordedStop(store *plandb.Store, rootID string, summary RunSummary) string {
+	if store == nil || rootID == "" || summary.Outcome == beltRunOutcomeDone || summary.Program != nil || strings.TrimSpace(summary.Failure) != "" {
+		return ""
+	}
+	for _, task := range runSummaryFamily(store, rootID) {
+		reason := summaryFirstLine(task.Error, 280)
+		if task.Status != plandb.StatusFailed || reason == "" {
+			continue
+		}
+		if task.ID == rootID {
+			return reason
+		}
+		return cutChars(strings.TrimSpace(task.Title), 120) + ": " + reason
+	}
+	return ""
 }
 
 // beltLandingLine is what a landing is in one line: where the work went and how

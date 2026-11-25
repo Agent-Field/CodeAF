@@ -1116,6 +1116,9 @@ thinking. A model's reasoning is its own — the router encrypts it and refuses 
 to any other model — so the new model reads what was said and continues from there. If a
 switch mid-conversation is ever refused with "encrypted reasoning … produced under a
 different model", the request is repaired and sent again on its own; nothing is lost.
+The same holds on one model: thinking a provider encrypted can be read only by that
+provider, so a request steered away from it (the provider was struck as slow or failing)
+goes out without that thinking rather than being refused.
 
 Moving in the picker: type to filter; ↑ / ctrl+p and ↓ / ctrl+n move; pgup/pgdown move
 12; left, right, home, end, ctrl+u and ctrl+w edit the filter. **ctrl+t** walks the
@@ -2102,19 +2105,23 @@ the names at the head of each list — what an `automatic` row actually gets:
 
 | kind | default |
 | --- | --- |
-| draws | `bytedance-seed/seedream-5-0-pro` |
+| draws | `google/gemini-3.1-flash-image` |
 | speaks | `fish-audio/s2.1-pro` |
 | composes | `google/lyria-3-clip-preview` |
 | films | `bytedance/seedance-2.5` |
 
-Each list has older names under its leader — `krea/krea-2-medium-turbo` under drawing,
+Each list has older names under its leader — `bytedance-seed/seedream-5-0-pro`,
+`black-forest-labs/flux.2-pro` and `krea/krea-2-medium-turbo` under drawing,
 `fish-audio/s1`, `openai/gpt-4o-mini-tts` and `hexgrad/kokoro-82m` under speech,
 `google/lyria-3-pro-preview` under music, `bytedance/seedance-2.0-mini` under video — used when
 your catalog does not advertise the leader. When the whole list misses, the catalog's own
 rows are used — settled ones first: a row whose name marks it experimental (`-exp`,
 `-preview`, `:free`, alpha, beta, a stealth vendor) is passed over while any ordinary row
 can do the job, because those rows often sit behind a data-policy opt-in your provider
-account may not have made. **These are defaults, not choices made for you**: a row you set, or the matching
+account may not have made. Drawing and filming spend money, so their defaults
+must also carry a published price; when drawing's list misses, the priced drawing
+model with the best published Design Arena score is used, and filming is refused
+rather than guessed. **These are defaults, not choices made for you**: a row you set, or the matching
 environment variable, wins over every one of them and is never overwritten.
 
 **Every step is checked against what the catalog says the model can do.** A row or a pin

@@ -1051,6 +1051,16 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) (o
 			return t.finishResult(errorf("arguments were not valid JSON: %v", err))
 		}
 	}
+	// THE CREDENTIAL FLOOR STANDS ON THIS DOOR TOO (internal/approval's
+	// credentials.go). It was on the chat's and the resident's doors and not on
+	// this one, so `codeaf exec` — the leaf every unattended run, harness and
+	// benchmark drives — ran `cat` on a profile's config.json and handed its
+	// api_key to the model. It is asked before the switch so a tool added to the
+	// switch later is covered without being listed, and it is a refusal and not
+	// a question, because nobody is watching a leaf to answer one.
+	if read, hit := approval.DefaultCredentialScope(t.workspaceRoot()).Read(name, json.RawMessage(arguments)); hit {
+		return t.finishResult(errorf("%s", read.Message()))
+	}
 	var result Result
 	switch name {
 	case "sh":
@@ -2091,4 +2101,13 @@ func stringsArg(args map[string]any, key string) []string {
 		}
 	}
 	return values
+}
+
+// workspaceRoot is the folder a relative path in a call means, or empty for a
+// toolbox built with no workspace, which the floor reads as "relative".
+func (t *Toolbox) workspaceRoot() string {
+	if t == nil || t.workspace == nil {
+		return ""
+	}
+	return t.workspace.Root()
 }

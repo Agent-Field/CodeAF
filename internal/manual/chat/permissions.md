@@ -30,7 +30,7 @@ when the countdown is off. Silence is never a no.
 and where it opens depends on how much the call can cost you. On an **ordinary
 call** it opens on `1 allow once`, so `enter` runs that one call and nothing
 else. On a **grave one** — a call codeaf will always stop you for, such as a
-critical command (`rm -rf /`, `rm -rf /*`, `rm -rf *`, `mkfs*`), a force-push,
+critical command (`rm -rf /`, `rm -r /tmp/x`, `rm -rf *`, `mkfs*`), a force-push,
 or anything sent out in your name — the pointer opens on `3 deny` instead,
 whether the model asked for the command or you typed it after `!`. So `enter`
 you have not aimed means "allow it once" when the call can be lived with and
@@ -313,7 +313,7 @@ rules' own words. It can read:
 - `default (unset)`
 - `tool "edit"`
 - `bash pattern "rm -rf *"`
-- `critical command "rm -rf /"`
+- `critical command "rm -rf /tmp/site_check"` (the command it caught, as written)
 - `<tool> acts in your name outside this machine`
 - `you said yes to "<phrase>"`
 - `"<phrase>" is set to ask first`
@@ -805,12 +805,14 @@ The entries, verbatim:
 removed and reported to you as `:(){:|:&};:`.
 
 **A recursive delete asks in any spelling.** An `rm` with `-r`, `-R` or
-`--recursive` — clustered as `-rf` or `-fR`, split as `-r -f`, with or without
-`-f`, after `sudo` or as `/bin/rm`, with the path quoted or after `--` — is asked
-about when it is aimed at an absolute path, `~`, `$HOME` or a bare `*`. The first
-three are reported as `critical command "rm -rf /*"`, a bare `*` as
-`critical command "rm -rf *"`. A relative target such as `rm -rf build` or
-`rm -r ./tmp` is not.
+`--recursive` (or a shortening of it such as `--recurs`) — clustered as `-rf` or
+`-fR`, split as `-r -f`, with or without `-f`, after `sudo` or as `/bin/rm`, with
+the path quoted or after `--` — is asked about when it is aimed outside the
+agent's own folder (an absolute path elsewhere, `~`, `$HOME`; see the next
+section) or at a bare `*` (or `./*`), which empties the folder it runs in. A
+refused `rm -rf /tmp/x` cannot come back as `rm -r /tmp/x` unasked. A relative
+target such as `rm -rf build`, `rm -rf dist/*` or `rm -r ./tmp` is not asked
+about.
 
 Before matching, the line is normalised: runs of whitespace collapse to one
 space, the gap after `>` closes (so `> /dev/sda` and `>/dev/sda` are the same
@@ -819,13 +821,57 @@ thing), and a leading `sudo` or `doas` is dropped (so `sudo reboot` reads as
 
 The `/*` entries deliberately over-fire: they catch
 `rm -rf / --no-preserve-root`, and they also catch plain `rm -rf /var/tmp/x`.
+When the agent's own folder is known (it is, for the agent's own bash calls),
+the four `rm` entries stand aside for the folder check below, which still asks
+about `rm -rf /` and every other delete outside that folder.
+
+**The question names the command it caught, not the table entry.** A cleanup
+line `rm -rf _brand && rm -rf /tmp/site_check` is asked about as
+`critical command "rm -rf /tmp/site_check"`: the part of the line that matched,
+as written (with a leading `sudo` kept), cut at 120 characters with `…`. A
+plain `rm -rf /tmp/x` is still asked about; only the wording names the real path.
 
 **The table is a floor under allow only.** It turns an allow into a **prompt**,
-with the rule `critical command "rm -rf /"`. It is never a refusal of its own:
+with a rule such as `critical command "rm -rf /"`. It is never a refusal of its own:
 an explicit deny still denies, and an existing prompt still prompts.
 
 This is a floor, not a sandbox. It is not an attempt to enumerate every way a
 shell can ruin a machine.
+
+## Deleting a folder outside the agent's own folder always asks
+
+A command that deletes a whole folder **outside the agent's own folder** is on
+the same floor as the table above: it is asked about under a blanket `allow`,
+under `--yolo` and after "stop asking me", with the rule
+`critical command "<the command as written>"`.
+
+It is read for what it does, not matched as a spelling, so every way of saying
+it asks: `rm -r /tmp/site_check` (no `-f`), `rm -R`, `rm --recursive`, split or
+combined flags (`rm -r -f`, `rm -Rfv`), `sudo`, `env` or `command` in front,
+`find /tmp -name x -delete`, `find /tmp -exec rm -rf {} \;`,
+`find /tmp | xargs rm -r`, and `sh -c "rm -r /tmp/x"`.
+
+**Outside** means: an absolute path (`/tmp/…`, `/var/…`), a home path (`~/…`),
+a path built from a variable or `$(…)`, a `..` that climbs out, and any relative
+path after a `cd` that left the folder (`cd /tmp && rm -r site_check`). An
+`xargs rm -r` whose paths do not come straight from a `find` inside the folder
+asks too, because its paths cannot be read off the line. A folder that only
+shares the start of the name (`/tmp/a/work2` when the folder is `/tmp/a/work`)
+is outside.
+
+**The agent's own folder** is the folder its bash tool runs in. An absolute path
+at or under it is inside, and so is everything after a `cd` to it:
+`cd /tmp/a/work && rm -rf site-check` and `rm -rf /tmp/a/work/dist` run without
+a question. The folder's own link is followed once, so `/private/tmp/…` for a
+folder opened as `/tmp/…` is inside; a link inside a target path is not followed.
+A check that is given only the command line, with no folder, treats every
+absolute path as outside.
+
+**Inside stays ask-free.** `rm -r build`, `rm -rf dist/*`,
+`find . -name '*.tmp' -delete` and `cd site && rm -r old` run without a question
+under an allow. The one exception is a bare `rm -rf *` (or `rm -r ./*`): it
+empties the whole folder it runs in, usually your project, so it asks. Deleting one file (`rm /tmp/a.txt`, `rm -f /tmp/a.txt`) and
+`rmdir` are not recursive deletes and are not on this floor.
 
 ## The floor nothing lifts: anything acting in your name
 
@@ -875,7 +921,8 @@ list is on how-tasks-run.
 
 Before any session memo is consulted, codeaf asks whether the call is one of the
 two floors. It returns true for anything acting in your name, and for a bash
-call matching the critical-command table.
+call matching the critical-command table or deleting a folder outside the
+agent's own folder.
 
 Both bypass the memo entirely and put the question to you **every time**. One
 approved `git status` plus "stop asking me about bash" cannot quietly run
@@ -1223,6 +1270,24 @@ plain `env`, which is not refused.
 script reached through a Makefile, or a path built at run time can still reach what your user
 account can reach. Treat it as stopping an agent from taking the obvious routes, and do not
 run an agent you do not trust on a machine holding credentials you care about.
+
+## Is a profile in a temp folder protected too — CODEAF_HOME, CODEAF_PROFILE_DIR, exec runs
+
+Yes. The credential refusal covers the profile codeaf is actually using, wherever it lives:
+the default `~/.codeaf`, a folder `CODEAF_HOME` points at (a temporary test home included),
+a `CODEAF_PROFILE_DIR` profile, a home reached through a symlink, and a relative read such as
+`cat config.json` from inside that folder. A command line that sets `CODEAF_HOME` or
+`CODEAF_PROFILE_DIR` itself, as in `CODEAF_HOME=/tmp/h cat /tmp/h/config.json`, has that folder
+treated as a profile too.
+
+Any file named `config.json` whose top level holds a non-empty `api_key` is refused in any
+folder, so a profile copied into a test folder codeaf was never told about is still a key file.
+A project's own `config.json` with no key in it reads normally.
+
+This holds on every door an agent uses: the chat, `codeaf exec` and the unattended runs built
+on it, and a saved harness. The agent reads back
+`Blocked: this call reaches for a credential (a login, key or token): <what>.` and never the
+file's contents.
 
 ## What a refused call looks like to the model
 

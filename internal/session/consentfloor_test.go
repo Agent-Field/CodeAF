@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -198,5 +199,42 @@ func TestAConsentRequestNamesTheCallItIsAbout(t *testing.T) {
 	}
 	if asked[0].CallID != "call-a" {
 		t.Fatalf("the question names call %q, want the one it is about", asked[0].CallID)
+	}
+}
+
+// THE FLOOR KNOWS WHERE THE AGENT'S BASH RUNS. A canvas agent's `cd` to its own
+// folder by absolute path, then a relative `rm -rf`, was asked as critical and
+// irreversible and blocked the turn (2026-11-19). The gate now places the line
+// against the session's folder, so that cleanup runs, and the same shape aimed
+// at the folder's parent still stops and asks.
+func TestARecursiveDeleteInTheAgentsOwnFolderDoesNotAsk(t *testing.T) {
+	completer := &scriptedCompleter{}
+	runs := make(chan string, 8)
+	agent, workspace := newTestAgent(t, completer, func(config *Config) {
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.AskConsent = true
+	})
+	for index := range agent.tools {
+		if agent.tools[index].Name == "bash" {
+			agent.tools[index] = countingTool("bash", runs, nil)
+		}
+	}
+	inside := "cd " + workspace + " && rm -rf site-check/site-check"
+	outside := "cd " + filepath.Dir(workspace) + " && rm -rf site-check"
+	completer.steps = bashCallTurn(inside, outside)
+
+	var asked []Event
+	drainAnswering(t, mustSubmit(t, agent, "tidy up"), func(request Event) {
+		asked = append(asked, request)
+		agent.ResolveConsent(request.ID, false)
+	})
+	if len(asked) != 1 {
+		t.Fatalf("the person was asked %d times, want 1: only the delete in the parent folder", len(asked))
+	}
+	if got := asked[0].Rule; got != `critical command "rm -rf site-check"` {
+		t.Fatalf("the question is about %q, want the delete in the parent folder", got)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("%d calls ran, want 1: the cleanup in the agent's own folder", len(runs))
 	}
 }

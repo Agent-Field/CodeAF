@@ -131,6 +131,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -792,22 +793,37 @@ const checkpointCarryOnNote = "the ask is not finished · carrying on rather tha
 
 // IsCarryOnNotice says whether a notice's words are the line the harness says
 // as it sends a stopped turn back to work: the completion check's carry-on
-// ([checkpointCarryOnNote]) or one of the two nudges ([checkpointLoadNudgeNote],
-// [checkpointAskNudgeNote]). It is the ONE reading of those three lines, for
-// [IsNoChangeReply]'s reason.
+// ([checkpointCarryOnNote]), one of the nudges ([checkpointLoadNudgeNote],
+// [checkpointAskNudgeNote], [checkpointUpdateNudgeNote],
+// [checkpointNotesNudgeNote]), or one of the checks on a finished reply
+// ([replyStaleLookNote], [replyCheckNote], [replyUnshownNote], [failureCheckNote],
+// [handoffCheckNote], [handoffPromiseNote]). It is the ONE reading of those
+// lines, for [IsNoChangeReply]'s reason.
+//
+// THE CHECKS ON A FINISHED REPLY WERE LEFT OFF THIS LIST WHEN THEY LANDED
+// (#2836), and the app drew each as a standing notice row under the reply —
+// "it changed the work after its last look · asking it to look again before
+// it replies", once even after the final answer, which the model then kept
+// with [NoChangeReply]. That is the engine talking about its own machinery in
+// the person's chat. Their record is the continuation in the transcript and a
+// rule line in the session journal ([Agent.journalSentBack]).
 //
 // THEY ARE SAID FOR THE MOMENT THEY ARE SAID IN. None is written into the
 // transcript, and the turn they announce goes on working, so what each tells
 // the person is only that it has not stopped yet. A surface that folds a
 // settled turn's machinery away draws them while the turn runs and folds them
-// with the rest (tui3's workfold.go); a surface with no such fold leaves them
-// out, rather than keep a standing line that a reopened conversation would not
-// have and that names nothing the person can act on (codeaf app's pump).
+// with the rest (tui3's workfold.go). The app leaves the completion check's
+// carry-on and the nudges out, but NOT the checks on a finished reply: those
+// arrive typed [NoticeKindSentBack] and the app keeps them as a quiet line of
+// the turn, because the reply they send back is one the person has already
+// read as an answer, and without the line a second answer follows it for no
+// reason the chat gives (qloop run 26: 15 send-backs, no line anywhere).
 // The lines that END a turn — stopping, finishing, moving to a task — are not
 // these, and every surface keeps them.
 func IsCarryOnNotice(text string) bool {
 	switch strings.TrimSpace(text) {
-	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote:
+	case checkpointCarryOnNote, checkpointLoadNudgeNote, checkpointAskNudgeNote, checkpointUpdateNudgeNote, checkpointNotesNudgeNote,
+		replyStaleLookNote, replyCheckNote, replyUnshownNote, failureCheckNote, handoffCheckNote, handoffPromiseNote, owedLandingCarryOnNote:
 		return true
 	}
 	return false
@@ -899,6 +915,217 @@ const checkpointLoadNudgeNote = "it loaded a tool and stopped before using it ·
 // checkpointAskNudgeNote is the line a person reads when a turn is sent back
 // for an `ask` the gate refused and the model never made again.
 const checkpointAskNudgeNote = "its question was refused and it stopped without asking again · asking it to go on"
+
+// checkpointUpdateNudgeNote is the line a person reads when a turn is sent back
+// for stopping on an interim update ([UserUpdatePrefix]). The update itself
+// stays on screen; this says only that the work it announced is still coming.
+const checkpointUpdateNudgeNote = "it sent a progress update and stopped · asking it to go on"
+
+// checkpointUpdateNudgeLead is that continuation. It is one fixed sentence,
+// matched whole by [isContinuationContext], because it names nothing that
+// varies: the update the model wrote is already the message right before it.
+const checkpointUpdateNudgeLead = "[carry on] Your last reply began with `" + UserUpdatePrefix + "`, which marks an interim " +
+	"note between tool calls, and it made no tool call, so the work it describes has not been done. " +
+	"Continue in this same turn with the next tool call. If the work is in fact finished, give the final answer without the marker."
+
+// checkpointUpdateNudgeCap is how many times one turn is sent back for ending
+// on an update. TWO, and not the load nudge's once, because the second stop is
+// the model declaring AGAIN that it is not finished — but a third is a model
+// that answers every nudge with another promise, and the turn ends on it
+// rather than spending a request per sentence of it.
+const checkpointUpdateNudgeCap = 2
+
+// checkpointNotesNudgeNote is the line a person reads when a turn is sent back
+// for stopping on the note the harness itself asked for between tool calls
+// ([answeredNotesAdvice]). The note stays on screen; this says the work it
+// described is still coming.
+const checkpointNotesNudgeNote = "it wrote down where it was and stopped · asking it to go on"
+
+// checkpointNotesNudgeLead is that continuation, one fixed sentence matched
+// whole by [isContinuationContext] for the update nudge's reason. IT OFFERS
+// [NoChangeReply] BECAUSE THE SHAPE IS READ AND NOT THE WORDS: a reply written
+// right after a note was asked for may really be the finished answer, and then
+// the cheapest honest move is the token that keeps it, not a second copy of it.
+const checkpointNotesNudgeLead = "[carry on] codeaf asked you for a note between tool calls, and your last reply was " +
+	"that note with no tool call, so the turn would have ended on it and the work it names as next is not done. " +
+	"Continue in this same turn with the next tool call. If that reply was already your complete final answer, " +
+	"reply with exactly " + NoChangeReply + " and nothing else."
+
+// answeredNotesAdvice reads the transcript for the shape
+// [checkpointNotesNudgeLead] answers: the newest message is a reply in words
+// with no tool call, and what it answers is the harness's own request for a
+// note — the silent ladder's `[silent]` note (looped.go's [nudgeNote]) or the
+// write-your-notes rule's `[held]` demand standing in for every tool result of
+// the batch before it (processrule.go).
+//
+// THE WALK STEPS BACK OVER THE HARNESS'S OTHER NOTES, which may land in the
+// same boundary, and stops at the first message that is anything else: a reply
+// after the person's own words, after a real tool result or after a carry-on
+// answers that, not the request for a note. A reply that is only
+// [NoChangeReply] answers a carry-on and is never this shape.
+//
+// AND THE REPLY MUST HAVE THE SHAPE THAT WAS ASKED FOR ([readsAsAShortNote]):
+// a short note, not an answer laid out for the person. Position alone sent
+// back every finished summary that happened to land right after the request.
+func answeredNotesAdvice(messages []ai.Message) bool {
+	last := len(messages) - 1
+	if last < 1 || messages[last].Role != "assistant" || len(messages[last].ToolCalls) > 0 {
+		return false
+	}
+	said := strings.TrimSpace(partsText(messages[last]))
+	if said == "" || IsNoChangeReply(said) || !readsAsAShortNote(said) {
+		return false
+	}
+	for index := last - 1; index >= 0; index-- {
+		message := messages[index]
+		text := strings.TrimSpace(partsText(message))
+		switch message.Role {
+		case "user":
+			if strings.HasPrefix(text, silentNoteOpening) {
+				return true
+			}
+			if isVolatileNote(text) {
+				continue
+			}
+			return false
+		case "tool":
+			return strings.HasPrefix(text, heldDemandOpening)
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// checkedWhatItChanged reports whether this turn, since the person spoke,
+// asked a question of a picture of its work after a step that may have changed
+// the work succeeded, and has not stumbled since: no step failed or was held,
+// and the belt's own writers wrote nothing after that look.
+//
+// IT IS THE STRUCTURAL MARK OF A FINISHED TURN, read off the calls, their
+// outcomes and their results, never off what the reply says. Measured on the
+// connected-canvas qloop, deepseek-v4.1-flash, baseline to run 16: five short
+// replies came straight after a request for a note. The two finished ones
+// (flyer t2, runs 14 and 15) had patched the flyer and then put a question to
+// a look of it. The three stalls had not: baseline's built a Summary tab and
+// never looked, run 3's only read, and run 5's looked at a picture with `read`,
+// which describes and asks nothing. The cafe stall of run 2 had checked, and
+// then its next steps failed, so it was mid-repair when it stopped.
+//
+// A LOOK COUNTS ONLY WHEN IT ASKED SOMETHING. `view_image` carries the model's
+// question ("Read the date line verbatim. Is it Saturday 14 March?"), so it is
+// a check of a result. A `read` of an image only describes it, which is also
+// how a turn learns about the inputs it was handed.
+//
+// WHAT MAY CHANGE THE WORK IS WHATEVER THE APPROVAL FLOOR CANNOT CALL
+// READ-ONLY ([approval.ReadOnly]), because the canvas is reached through a
+// shell line and a shell line cannot be told apart by its name. AFTER the
+// check, such a step does not undo it: run 14 read the flyer's text twice with
+// `canvas show` after its look, and reading after a check is how a turn makes
+// sure nothing else needs changing. Only the belt's own writers, which are
+// known to change files, undo it. THE PRICE is a turn that checked one piece,
+// then changed another through the shell, then stopped on a short note: it
+// ends there, as every reply did before #2831.
+func (a *Agent) checkedWhatItChanged() bool {
+	messages := a.snapshot()
+	a.mu.Lock()
+	marks := a.presentation
+	a.mu.Unlock()
+	from := personTurnOpenedAt(messages)
+	results := map[string]ai.Message{}
+	for _, message := range messages[from:] {
+		if message.Role == "tool" {
+			results[strings.TrimSpace(message.ToolCallID)] = message
+		}
+	}
+	changed, checked := false, false
+	for _, message := range messages[from:] {
+		if message.Role != "assistant" {
+			continue
+		}
+		for _, call := range message.ToolCalls {
+			name := strings.TrimSpace(call.Function.Name)
+			result, ran := results[strings.TrimSpace(call.ID)]
+			text := strings.TrimSpace(partsText(result))
+			switch mark := marks.of(result); {
+			case !ran || strings.HasPrefix(text, heldDemandOpening) || (mark != nil && mark.ToolOutcome == "failed"):
+				checked = false
+			case name == "view_image" || lookWords(text) != "":
+				if changed && checkpointArgumentNamed(call.Function.Arguments, "question") != "" {
+					checked = true
+				}
+			case checkpointWriters[name]:
+				changed, checked = true, false
+			case !approval.ReadOnly(name, json.RawMessage(call.Function.Arguments)):
+				changed = true
+			}
+		}
+	}
+	return checked
+}
+
+// noteParagraphLimit is how many paragraphs a reply may run to and still be
+// read as the short note the harness asked for ([readsAsAShortNote]).
+const noteParagraphLimit = 2
+
+// readsAsAShortNote reports whether a reply has the shape of the note the
+// silent ladder and the `[held]` demand ask for — "a short visible note" — and
+// not the shape of an answer composed for the person.
+//
+// IT IS READ OFF THE LAYOUT AND NOT OFF THE WORDS, so it holds in every
+// language the person writes in: a reply of more than [noteParagraphLimit]
+// paragraphs, or one with a list item, a heading or a table row, is laid out
+// for somebody to read, and that is an answer, not a note between tool calls.
+//
+// Measured on the connected-canvas qloop, deepseek-v4.1-flash, baseline to run
+// 9: each of the sixteen finished answers written right after a request for a
+// note had three or more paragraphs or a list, and position alone sent back
+// every one of them that ran after #2831 (six, all answered [NoChangeReply]).
+// Three of the four unmarked stalls were one or two plain paragraphs ("Where I
+// am: … Next: make two charts") and are still sent back. THE FOURTH IS THE
+// PRICE: a stall that set out its plan as a numbered list reads as an answer
+// and ends the turn, as every reply did before #2831. A short finished answer
+// still reads as a note and costs the one short call [NoChangeReply] keeps.
+func readsAsAShortNote(said string) bool {
+	paragraphs, inParagraph := 0, false
+	for _, line := range strings.Split(said, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			inParagraph = false
+			continue
+		}
+		if laidOutLine(line) {
+			return false
+		}
+		if !inParagraph {
+			paragraphs++
+			inParagraph = true
+		}
+	}
+	return paragraphs <= noteParagraphLimit
+}
+
+// laidOutLine reports whether one trimmed line is Markdown structure — a list
+// item, a heading or a table row — rather than running prose.
+func laidOutLine(line string) bool {
+	switch {
+	case strings.HasPrefix(line, "|"):
+		return true
+	case strings.HasPrefix(line, "#"):
+		return strings.HasPrefix(strings.TrimLeft(line, "#"), " ")
+	case strings.HasPrefix(line, "- "), strings.HasPrefix(line, "* "),
+		strings.HasPrefix(line, "+ "), strings.HasPrefix(line, "• "):
+		return true
+	}
+	digits := 0
+	for digits < len(line) && line[digits] >= '0' && line[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 || digits+1 >= len(line) {
+		return false
+	}
+	return (line[digits] == '.' || line[digits] == ')') && line[digits+1] == ' '
+}
 
 // checkpointAskNudgeLead is that continuation, carrying the refusal itself so
 // the model has the fix in front of it rather than in its history.
@@ -1030,7 +1257,8 @@ const checkpointCarryOnLead = "[carry on] codeaf's completion check read a clipp
 // answeredNoteUnchanged reads the transcript for the one shape [NoChangeReply]
 // is an answer to: the newest message is a tool-less reply that is only the
 // token, and the message it answers is the reader's continuation
-// ([checkpointCarryOnLead]). A volatile note that landed between the two is the
+// ([checkpointCarryOnLead]) or the notes nudge ([checkpointNotesNudgeLead]),
+// the two continuations that offer the token. A volatile note that landed between the two is the
 // harness's own context and is walked through; anything else is not.
 func answeredNoteUnchanged(messages []ai.Message) bool {
 	last := len(messages) - 1
@@ -1043,7 +1271,9 @@ func answeredNoteUnchanged(messages []ai.Message) bool {
 		if messages[index].Role == "user" && isVolatileNote(text) {
 			continue
 		}
-		return messages[index].Role == "user" && strings.HasPrefix(text, checkpointCarryOnLead)
+		return messages[index].Role == "user" &&
+			(strings.HasPrefix(text, checkpointCarryOnLead) || text == checkpointNotesNudgeLead ||
+				isReplyCheckLead(text) || isFailureCheckLead(text) || isHandoffCheckLead(text))
 	}
 	return false
 }
@@ -1144,6 +1374,15 @@ type checkpointMeter struct {
 	// [loadedAndNeverUsed], [askRefusedAndNotRetried]). ONCE: a model that ignores the nudge too is a model
 	// that has decided, and a second nudge would be an argument.
 	loadNudged bool
+	// updateNudges is how many times this turn has been sent back for ending
+	// on a reply its own model marked as interim ([UserUpdatePrefix]), bounded
+	// by [checkpointUpdateNudgeCap].
+	updateNudges int
+	// lookedBack says this turn's reply has already been read against the
+	// turn's own looks at the work, by either arm of [Agent.replyLooksBack].
+	// ONCE: the reply written after it is the reply the turn ends on, which is
+	// what keeps the guard from becoming a loop.
+	lookedBack bool
 	// claimedDone is the REQUEST a completion claim has already been believed
 	// about, and empty on a turn that has made none ([Agent.handOverRunningTurn]).
 	//
@@ -3464,6 +3703,117 @@ func (a *Agent) checkpointReopen(ctx context.Context, hub *eventHub, user userMe
 			return true, false
 		}
 	}
+	// A TURN THAT ENDS ON A REPLY ITS OWN MODEL MARKED AS INTERIM IS SENT BACK,
+	// AND THIS COSTS NO READER EITHER.
+	//
+	// The system prompt gives the model one marker, [UserUpdatePrefix], for a
+	// note to the person BETWEEN tool calls, and says a final answer carries
+	// none. A reply that opens with it and calls nothing has therefore said, in
+	// the protocol and not in prose, that it is not the end — and the loop used
+	// to end the turn on it anyway, because the only stop condition is "no tool
+	// call". Measured on 2026-11-18 (connected-canvas eval run 5, board-deck):
+	// deepseek-v4.1-flash set a deck's tokens, added five empty slide frames,
+	// wrote "[update] … Next I write each slide's HTML in one pass" and the turn
+	// sealed with every slide blank. It had happened in runs 3 and 4 too.
+	//
+	// The reader below could not catch it: a turn the person typed is never
+	// read ([Agent.checkpoints]), which is right for a reply in words and wrong
+	// for one the model has itself declared unfinished. So this sits beside the
+	// load nudge, above that gate, and reads the marker exactly as the display
+	// does ([UserFacingUpdate]: a LEADING marker only, never a mention) — no
+	// guessing at what "next I will" means in any language. An update that ends
+	// by asking the person something is waiting, as everywhere in this file.
+	//
+	// AND AN UPDATE THAT SAYS IT IS WAITING ON SOMETHING ALREADY OUT IS WAITING.
+	// "[update] I've started the render and will report when it lands" is the
+	// marker used truthfully: the render's exit starts a turn by itself, and a
+	// nudge here would buy the poll of it that [checkpointCarryOnCap] was
+	// written against. So the four endings the reader below already honours —
+	// background work still running, the request handed to a live task, a
+	// task of this conversation still out, a landing that came home settled —
+	// are asked FIRST ([Agent.turnEndsWaiting]), and only when none holds is
+	// the update read as a stop. They are asked only once the marker is
+	// there, so an ordinary reply pays for none of them here.
+	//
+	// AT THE CAP THE UPDATE IS AN ORDINARY REPLY. It falls through to
+	// everything below exactly as any reply in words does: a typed turn ends
+	// on it, and a woken turn may still be read for what remains.
+	if meter != nil && ctx.Err() == nil && meter.updateNudges < checkpointUpdateNudgeCap && !endsAskingThePerson(said) {
+		if _, interim := UserFacingUpdate(said); interim && !a.turnEndsWaiting() {
+			meter.updateNudges++
+			hub.send(Event{Kind: EventNotice, Text: checkpointUpdateNudgeNote})
+			a.record(textMessage("user", checkpointUpdateNudgeLead))
+			return true, false
+		}
+		// AND A REPLY WRITTEN IN ANSWER TO THE HARNESS'S OWN REQUEST FOR A NOTE
+		// IS THAT NOTE, WHETHER OR NOT IT CARRIES THE MARKER.
+		//
+		// The silent ladder (looped.go) and the rule it arms (processrule.go)
+		// ask a model that has worked quietly for a while to write down what it
+		// has learned and what it checks next. That is a request for a note
+		// BETWEEN tool calls, and a weaker model obeys it to the letter: it
+		// sends the note and nothing else, and the loop, whose only stop is
+		// "no tool call", sealed the turn on the harness's own interruption.
+		// Measured on the connected-canvas qloop, deepseek-v4.1-flash, in nine
+		// of nine stalled turns across five runs: "Where I am: … Next: make two
+		// charts", "Learned: … Next I'm checking whether the logo PNG has a
+		// transparent background" — each the very next reply after a `[silent]`
+		// note or a `[held]` answer, with nothing built.
+		//
+		// IT IS READ OFF THE TRANSCRIPT AND THE LAYOUT, NOT OFF THE WORDS
+		// ([answeredNotesAdvice]), which is this block's law: no guessing at what
+		// "next I will" means. An answer laid out for the person — paragraphs,
+		// a list — is not the short note that was asked for and is never sent
+		// back ([readsAsAShortNote]). The price is a SHORT reply that really was
+		// the final answer, written right after a note was asked for, being
+		// asked once more — so the continuation offers [NoChangeReply], which
+		// ends the turn on the answer already given and draws nothing
+		// ([answeredNoteUnchanged]). One short call on a narrow shape, against a
+		// turn that otherwise built nothing.
+		//
+		// IT SHARES THE UPDATE'S BUDGET, so the two together send one reply back
+		// at most [checkpointUpdateNudgeCap] times: both are the same stop — an
+		// interim note taken for an answer — spelled two ways.
+		//
+		// AND A TURN THAT CHECKED WHAT IT CHANGED HAS FINISHED, HOWEVER SHORT ITS
+		// ANSWER ([Agent.checkedWhatItChanged]). Layout alone let a two-paragraph
+		// finished reply through on flyer t2 in qloop runs 14 and 15: the date
+		// was patched, the flyer looked at with a question, the look said it
+		// was right, and the reply that followed the request for a note was
+		// sent back and answered [NoChangeReply]. The stalls this block was
+		// written for had not checked anything they changed.
+		if answeredNotesAdvice(a.snapshot()) && !a.checkedWhatItChanged() && !a.turnEndsWaiting() {
+			meter.updateNudges++
+			hub.send(Event{Kind: EventNotice, Text: checkpointNotesNudgeNote})
+			a.record(textMessage("user", checkpointNotesNudgeLead))
+			return true, false
+		}
+	}
+	// A REPLY ABOUT THE WORK IS READ AGAINST THE TURN'S OWN LOOKS AT IT, AND A
+	// QUESTION AFTER FAILED STEPS SAYS WHAT FAILED (replycheck.go,
+	// failurecheck.go). Both sit above the price gate for the update nudge's
+	// reason: a turn the person typed is never read below, and these are the
+	// turns that need it — the person is about to read the reply. Neither is
+	// excused by a closing question: "no layer overlaps the cup. Want the
+	// subline larger?" is wrong about the cup whatever it offers after.
+	//
+	// A TURN THAT HANDED WORK OUT ENDS HONESTLY ABOUT IT (handoffcheck.go), and
+	// that is asked FIRST: work that did not start is started again or said,
+	// and a promise of a later report needs something still running to keep
+	// it. It goes ahead of the look because a [NoChangeReply] to any of these
+	// ends the turn ([answeredNoteUnchanged]) — measured on qloop run 16, where
+	// the stale-look arm fired first, the model kept its reply, and the brief
+	// that never started was never raised. A missing piece of work is the
+	// larger wrong; a reply rewritten for it is still read against the look.
+	if a.replyHandoffsBack(ctx, hub, meter, said) {
+		return true, false
+	}
+	if a.replyLooksBack(ctx, hub, meter, said) {
+		return true, false
+	}
+	if a.replyFailuresBack(ctx, hub, meter, said) {
+		return true, false
+	}
 	if !a.checkpoints(ctx, user) {
 		return false, false
 	}
@@ -4120,7 +4470,11 @@ type readerLine struct {
 // file is held to: a list of openers — "shall I", "would you like", "do you want"
 // — is a rule about English, and this harness answers in whatever language it was
 // asked in. A question mark at the end of the last thing said is the one mark
-// every written language that has questions actually uses for them.
+// every written language that has questions actually uses for them — and it is
+// not one character. Chinese and Japanese end a question on the full-width
+// `？` (U+FF1F) and Arabic, Persian and Urdu on the reversed `؟` (U+061F), so a
+// check that knew only the ASCII mark would read "你想用哪个主题？" as a turn
+// that stopped and send it back to work while it waited on the person.
 //
 // THE TRAILING DECORATION COMES OFF FIRST, because a model that ends on a
 // question ends on `**…?**` and on `"…?"` about as often as it ends on the bare
@@ -4132,8 +4486,17 @@ type readerLine struct {
 // without explaining themselves.
 func endsAskingThePerson(said string) bool {
 	said = strings.TrimRight(strings.TrimSpace(said), "`*_\"'”’) \t\n")
-	return strings.HasSuffix(said, "?")
+	for _, mark := range questionMarks {
+		if strings.HasSuffix(said, mark) {
+			return true
+		}
+	}
+	return false
 }
+
+// questionMarks are the marks [endsAskingThePerson] reads as the end of a
+// question: ASCII, full-width (U+FF1F) and Arabic (U+061F).
+var questionMarks = []string{"?", "\uFF1F", "\u061F"}
 
 // turnIsWaitingOnItsOwnWork reports that this conversation started background
 // work that is still running at the moment the turn ended.
@@ -4152,6 +4515,26 @@ func endsAskingThePerson(said string) bool {
 // turn it was written for.
 func (a *Agent) turnIsWaitingOnItsOwnWork() bool {
 	return len(a.jobsWorkingNow()) > 0
+}
+
+// turnEndsWaiting reports that a turn ending now is waiting on something that
+// will start the next turn by itself: background work still running
+// ([Agent.turnIsWaitingOnItsOwnWork]), this request handed to a live task
+// ([Agent.turnHandedItsAskOff]), a task of this conversation still out
+// ([Agent.turnIsWaitingOnItsOwnTasks]), or a landing that came home settled
+// ([Agent.turnSettledItsAsk]).
+//
+// IT IS THOSE FOUR GATES AND NOT A FIFTH OPINION. [Agent.checkpointReopen]
+// asks them one by one below its price gate, journalling the task it waits
+// on; the update nudge sits ABOVE that gate, so it asks them here, together
+// and silently, and a turn that is waiting falls through to everything below
+// exactly as it did before the nudge existed.
+func (a *Agent) turnEndsWaiting() bool {
+	if a.turnIsWaitingOnItsOwnWork() || a.turnHandedItsAskOff() || a.turnSettledItsAsk() {
+		return true
+	}
+	_, waiting := a.turnIsWaitingOnItsOwnTasks()
+	return waiting
 }
 
 // checkpointCeiling ends the turn and moves what is left of it onto the one

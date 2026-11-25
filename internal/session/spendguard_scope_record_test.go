@@ -103,7 +103,7 @@ func TestOlderCrewRecordWithoutScopesStillHoldsItsSeatCeiling(t *testing.T) {
 	check := SeatCompleter(crewroute.Checker, guard.Wrap("vendor/shared", calls))
 	_, err = check.CompleteWithMessages(t.Context(), nil)
 	var stopped ErrSpendStopped
-	if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12, three times its estimate, before it finished" || calls.calls != 0 {
+	if !errors.As(err, &stopped) || stopped.TaskLimit || stopped.Action != "the check stopped at its spend ceiling of $0.12 before it finished" || calls.calls != 0 {
 		t.Fatalf("older checker ceiling reset: %v, calls=%d", err, calls.calls)
 	}
 	work := SeatCompleter(crewroute.Worker, guard.Wrap("vendor/shared", calls))

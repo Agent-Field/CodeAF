@@ -69,14 +69,15 @@ const imageDirectory = ".codeaf/images"
 // itself a valid reference can edit, restyle, combine, and iterate on its own
 // last render until the thing is right. That is the whole difference between one
 // picture and a working loop, and it costs three clauses to say.
-const generateImageDescription = "Generate an image from a text prompt and save it. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give reference_paths to work from pictures instead of from words alone — one reference edits or restyles it, several combine them — and remember that the path this tool just returned is itself a valid reference, so you can pass your own last render back in and iterate on it until the diagram, the character or the layout is right. Set n (1 to 10) to get that many variants of one prompt from a single request; you choose among them yourself. A first render is a draft: look at the file before you build on it or hand it over, judge it against what was asked, and iterate when it fell short. Give a path to choose the name and the folder; leave it out and the image is saved under a timestamped name derived from the prompt, and the result says where it went."
+const generateImageDescription = "Generate an image from a text prompt and save it. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give reference_paths to work from pictures instead of from words alone — one reference edits or restyles it, several combine them — and remember that the path this tool just returned is itself a valid reference, so you can pass your own last render back in and iterate on it until the diagram, the character or the layout is right. To change one region and keep the rest, add mask_path: a picture the size of the first reference, white where it may change and black where it must stay; the result says whether this model took it as a real mask or only as a guide. Set n (1 to 10) to get that many variants of one prompt; you choose among them yourself. A model that draws fewer pictures per request than n (every Gemini image model draws one) is asked in several requests at once, each billed on its own, and the result says so. A first render is a draft: look at the file before you build on it or hand it over, judge it against what was asked, and iterate when it fell short. Give a path to choose the name and the folder; leave it out and the image is saved under a timestamped name derived from the prompt, and the result says where it went."
 
 const generateImageSchemaJSON = `{"type":"object","properties":{` +
 	`"prompt":{"type":"string","description":"What to draw, as a full description: subject, composition, style, lighting. The whole prompt reaches the image model, so detail is worth writing — every dimension the prompt leaves open, the model fills with its statistical average, and that average is what generic AI imagery looks like. Decide the medium, the light, the palette and the mood yourself and write them down; specificity is the difference between the picture you meant and a generic one. A prompt assembled from the genre's usual clichés lands on that same average by choice — escape a genre by naming a real medium (a print process, a photographic setup, a drafting tradition), not by recoloring it. And specify positively: image models barely read negation, so describe the surface, material and light that ARE there until the default has no room. With reference_paths it is the instruction — what to change about the pictures you gave."},` +
 	`"reference_paths":{"type":"array","items":{"type":"string"},"description":"Pictures to work from, as paths in the workspace (png, jpeg, webp or gif, each up to 10MB). One is an edit or a restyle of it; several are combined. A path this tool returned earlier is a valid reference, which is how you iterate on your own output."},` +
-	`"aspect_ratio":{"type":"string","description":"Shape of the frame, as the image model spells it (for example 16:9 or 1:1). Passed through untouched; leave it out for the model's own default."},` +
-	`"size":{"type":"string","description":"Exact pixel size as WIDTHxHEIGHT (for example 1024x1024). Passed through untouched; leave it out for the model's own default."},` +
-	`"n":{"type":"integer","minimum":1,"maximum":10,"default":1,"description":"How many pictures ONE request should return, for a contact sheet of variants of the same prompt. Default 1. Each is saved as its own file and the cost is that of the whole request. If the model cannot return several, the call fails and nothing is retried."},` +
+	`"mask_path":{"type":"string","description":"A mask for the first of reference_paths, as a path in the workspace: the same size as that picture, white where it may change, black where it must stay. Needs reference_paths. A model that takes masks edits only the white area; any other model is sent the mask as a guide picture beside the source, the change may reach past it, and the result says which happened."},` +
+	`"aspect_ratio":{"type":"string","description":"Shape of the frame as width:height (for example 16:9, 1:1, or the shape of the picture you are editing). A shape this model does not draw is drawn at the nearest one it does and cropped back, and the result says so; leave it out for the model's own default."},` +
+	`"size":{"type":"string","description":"Exact pixel size as WIDTHxHEIGHT (for example 1024x1024). Without aspect_ratio, a size whose shape this model does not draw is drawn at the nearest shape it does and cropped and scaled back to this size, and a width:height here is read as aspect_ratio; leave it out for the model's own default."},` +
+	`"n":{"type":"integer","minimum":1,"maximum":10,"default":1,"description":"How many pictures to make from this one prompt, for a contact sheet of variants. Default 1. Each is saved as its own file. A model that returns fewer per request is asked in several requests at once, each billed on its own; if some of them fail, the pictures that came back are kept and the failures are listed."},` +
 	`"path":{"type":"string","description":"Where to save it, relative to the workspace. Leave it out for a timestamped name derived from the prompt, saved where this session keeps its pictures. An existing file at this path is overwritten, as with the write tool; with n above 1 the files are numbered from it (name-1.png, name-2.png) and no existing file is overwritten."}` +
 	`},"required":["prompt"],"additionalProperties":false}`
 
@@ -106,9 +107,12 @@ type GenerateImageArgs struct {
 	Size           string   `json:"size"`
 	Path           string   `json:"path"`
 	Model          string   `json:"model"`
-	// N is how many pictures ONE request asks for, 1 to [ImageVariantsMax]; zero
-	// means one.
+	// N is how many pictures the CALL asks for, 1 to [ImageVariantsMax]; zero
+	// means one. A model that draws fewer per request is asked several times
+	// (tools_image_split.go).
 	N int `json:"n"`
+	// MaskPath is a mask for the first of ReferencePaths (tools_image_mask.go).
+	MaskPath string `json:"mask_path"`
 }
 
 // ImageGen is everything one generation needs from the surface it runs in:
@@ -127,11 +131,30 @@ type ImageGen struct {
 	// RecordMedia is Record with the structured fact of the file (mediafact.go);
 	// it wins over Record when both are set.
 	RecordMedia func(path, prompt string, fact MediaFact)
+	// TakesMask says whether a model takes a real mask. Nil, or false for the
+	// model that draws, sends a mask_path as a guide picture instead
+	// (tools_image_mask.go) — the honest default when nobody can vouch.
+	TakesMask func(model string) bool
+	// AspectRatios answers the frame shapes a model publishes, nil when it
+	// published none. A shape the model does not take is sent as its nearest
+	// published one and the result cropped back (tools_image_aspect.go); nil,
+	// or a nil answer, passes every shape through untouched.
+	AspectRatios func(model string) []string
+	// MaxOutputs answers how many pictures one request to a model may return,
+	// zero when the model published no maximum. A call for more than that is
+	// sent as several requests at once (tools_image_split.go); nil, or zero,
+	// sends one request and splits it only when the provider refuses the count.
+	MaxOutputs func(model string) int
 	// attempt writes the call's render record before the provider is asked
 	// (render_attempt.go). A conversation's belt sets it; the command line's
 	// door and a saved harness's belt have no ledger by construction, so they
 	// leave it nil and record nothing ([Agent.imageAttemptDoor]).
 	attempt func(ctx context.Context, model string) (*renderAttempt, error)
+	// routing is the picture maker's route for this call when the surface
+	// wired one (tools_image_route.go): how the model was picked, which
+	// Automatic models were passed over, and what to say when this one does
+	// not answer. Nil for every other door, which keeps its old words.
+	routing *pictureRouting
 }
 
 // generateImageTool wraps the shared road ([generateImage]) in the belt's
@@ -146,6 +169,10 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return rejectToolArguments(ctx, "Invalid arguments: "+err.Error()), true, nil
 			}
+			if strings.TrimSpace(parsed.Prompt) != "" && a.config.PictureRoute != nil {
+				text, failed := a.generateRoutedPicture(ctx, client, parsed)
+				return text, failed, nil
+			}
 			resolvedDefault := defaultModel
 			if strings.TrimSpace(parsed.Prompt) != "" && a.config.MediaAdmission != nil {
 				admission := a.config.MediaAdmission(modalityImage, parsed.Model)
@@ -155,19 +182,29 @@ func (a *Agent) generateImageTool(client MediaGenerator, defaultModel string) ba
 				resolvedDefault = admission.Model
 				parsed.Model = "" // The invocation's exact choice was already resolved.
 			}
-			text, failed := GenerateImage(ctx, ImageGen{
-				Client:       client,
-				DefaultModel: resolvedDefault,
-				Pick:         a.config.MediaPick,
-				Workspace:    a.config.Workspace,
-				Directory:    ImagesDir(a.config.Place, a.config.Workspace),
-				Account:      a.accountImageRung,
-				attempt:      a.imageAttemptDoor(),
-				RecordMedia: func(path, prompt string, fact MediaFact) {
-					a.recordImageMedia(path, prompt, fact.WithMade(madeBy(ctx, nil)))
-				},
-			}, parsed)
+			text, failed := GenerateImage(ctx, a.imageGen(ctx, client, resolvedDefault), parsed)
 			return text, failed, nil
+		},
+	}
+}
+
+// imageGen is the belt's road for one model: every hook the conversation's
+// generate_image wires, so the routed call and the plain one cannot differ in
+// anything but the model.
+func (a *Agent) imageGen(ctx context.Context, client MediaGenerator, model string) ImageGen {
+	return ImageGen{
+		Client:       client,
+		DefaultModel: model,
+		Pick:         a.config.MediaPick,
+		Workspace:    a.config.Workspace,
+		Directory:    ImagesDir(a.config.Place, a.config.Workspace),
+		TakesMask:    a.config.MediaMasks,
+		AspectRatios: a.config.MediaAspects,
+		MaxOutputs:   a.config.MediaOutputs,
+		Account:      a.accountImageRung,
+		attempt:      a.imageAttemptDoor(),
+		RecordMedia: func(path, prompt string, fact MediaFact) {
+			a.recordImageMedia(path, prompt, fact.WithMade(madeBy(ctx, nil)))
 		},
 	}
 }
@@ -243,6 +280,28 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	if refusal != "" {
 		return rejectToolArguments(ctx, "Invalid arguments: reference "+refusal), true
 	}
+	// The mask is read and measured with the references, for their reason.
+	mask, refusal := readImageMask(gen.Workspace, parsed.MaskPath, parsed.ReferencePaths)
+	if refusal != "" {
+		return rejectToolArguments(ctx, "Invalid arguments: "+refusal), true
+	}
+	// The shape is fitted to what this model draws before anything is paid
+	// for, so a shape it does not take is not a refused call.
+	var published []string
+	if gen.AspectRatios != nil {
+		published = gen.AspectRatios(model)
+	}
+	aspect, size := fitShape(parsed.AspectRatio, parsed.Size, published)
+	request := provider.ImageRequest{
+		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
+		AspectRatio:     aspect.sent,
+		Size:            size,
+		InputReferences: references,
+	}
+	maskNote := ""
+	if mask != nil {
+		maskNote = mask.note(mask.apply(&request, gen.TakesMask != nil && gen.TakesMask(model)))
+	}
 
 	// THE ATTEMPT IS RECORDED BEFORE ANYTHING IS PAID FOR, and one that cannot
 	// be recorded is never sent: a paid request with no record of having been
@@ -264,77 +323,155 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		attempt, requestCtx = started, started.ctx
 		defer attempt.close()
 	}
-	// end reports false only when a Stop already wrote the ending.
-	end := func(patch renderPatch) bool {
-		return attempt == nil || attempt.end(patch)
-	}
 	stoppedText := "Image generation was stopped (" + model + "); nothing was saved. Only waiting stopped here — the provider was not told to cancel, so whether it charged is unknown."
 	// After the provider answered, what it reported charging is already on the
 	// record, so the stop says that rather than "unknown".
 	stoppedAfterReply := "Image generation was stopped (" + model + ") after the provider answered; nothing was saved, and whatever it reported charging is recorded."
 
-	response, err := gen.Client.GenerateImage(requestCtx, provider.ImageRequest{
-		Model: model, Prompt: prompt, N: requested, OutputFormat: "png",
-		AspectRatio:     strings.TrimSpace(parsed.AspectRatio),
-		Size:            strings.TrimSpace(parsed.Size),
-		InputReferences: references,
-	})
-	// A provider may return a usage receipt alongside an error. Account the
-	// actual receipt once, before any failure or unusable-output branch.
-	if response != nil && gen.Account != nil {
-		gen.Account(model, response.Usage)
+	// THE REQUESTS ARE SIZED TO WHAT THIS MODEL DRAWS PER CALL (tools_image_split.go).
+	// A model whose catalog row publishes a smaller maximum than n is asked in
+	// several requests at once; one that publishes nothing is asked once, and
+	// asked again as single pictures only when that one request was refused
+	// about the count and nothing else.
+	maxOutputs := 0
+	if gen.MaxOutputs != nil {
+		maxOutputs = gen.MaxOutputs(model)
 	}
-	// And the same receipt goes to the attempt's record the moment the call
-	// returns, whatever became of it meanwhile: before an ending it rides into
-	// the ending, after a Stop it is a receipt on the cancelled record.
-	if response != nil && attempt != nil {
-		attempt.charge(response.Usage)
+	sizes := imageRequestSizes(requested, maxOutputs)
+	split := len(sizes) > 1
+	replies := sendImageRequests(requestCtx, gen.Client, request, sizes)
+	retried := false
+	if !split && requested > 1 && replies[0].response == nil && imageCountRefused(replies[0].err) &&
+		requestCtx.Err() == nil && (attempt == nil || !attempt.stopped()) {
+		sizes, split, retried = imageSingles(requested), true, true
+		replies = sendImageRequests(requestCtx, gen.Client, request, sizes)
+	}
+	// A provider may return a usage receipt alongside an error. Account every
+	// actual receipt once, each as its own request, before any failure or
+	// unusable-output branch.
+	answered := false
+	for _, reply := range replies {
+		if reply.response == nil {
+			continue
+		}
+		answered = true
+		if gen.Account != nil {
+			gen.Account(model, reply.response.Usage)
+		}
+	}
+	// And the call's one total goes to the attempt's record the moment the
+	// requests return, whatever became of it meanwhile: before an ending it rides
+	// into the ending, after a Stop it is a receipt on the cancelled record.
+	total := sumImageUsage(replies)
+	if answered && attempt != nil {
+		attempt.charge(total)
 	}
 	if attempt != nil && attempt.stopped() {
-		if response != nil {
+		if answered {
 			return stoppedAfterReply, true
 		}
 		return stoppedText, true
 	}
-	if err != nil {
-		text := "Image generation failed (" + model + "): " + err.Error()
-		patch := renderPatch{state: RenderFailed, err: text}
-		if requestCtx.Err() != nil {
-			// The turn ended under the call: only waiting stopped.
-			patch = renderPatch{state: RenderCancelled}
+	return finishImageCall(gen, parsed, model, requested, aspect, maskNote, attempt, requestCtx, sizes, replies, retried, total)
+}
+
+// finishImageCall is everything after the provider answered: the failure
+// strings, the bounds, the point of no return, the crop, the files and their
+// facts, and the result. It reads one reply exactly as the road always did, and
+// several replies (a split call, tools_image_split.go) as one batch whose
+// requests each answered for themselves.
+func finishImageCall(gen ImageGen, parsed GenerateImageArgs, model string, requested int, aspect aspectFit, maskNote string,
+	attempt *renderAttempt, requestCtx context.Context, sizes []int, replies []imageReply, retried bool, total *ai.Usage) (string, bool) {
+	// end reports false only when a Stop already wrote the ending.
+	end := func(patch renderPatch) bool {
+		if gen.routing != nil {
+			patch.picked = gen.routing.picked
+			patch.passedOver = gen.routing.passedOver
 		}
-		if !end(patch) {
-			// A Stop landed after the provider returned and before the ending.
-			return stoppedText, true
-		}
-		if requested > 1 {
-			// A provider that cannot give n pictures says so; the answer is the
-			// caller's to act on, and asking again as several calls would spend
-			// money nobody approved.
-			text += fmt.Sprintf(" — asked for %d images in one request; nothing was retried", requested)
-		}
-		return text, true
+		return attempt == nil || attempt.end(patch)
 	}
-	if response == nil {
+	stoppedText := "Image generation was stopped (" + model + "); nothing was saved. Only waiting stopped here — the provider was not told to cancel, so whether it charged is unknown."
+	stoppedAfterReply := "Image generation was stopped (" + model + ") after the provider answered; nothing was saved, and whatever it reported charging is recorded."
+	split := len(sizes) > 1
+
+	// The pictures, in request order, each remembering the request it came
+	// from, and one sentence per request that brought nothing back.
+	var items []provider.GeneratedImage
+	// origins and positions say which request each picture came from and where
+	// it stood in that reply (1-based, so a picture that cannot be saved leaves
+	// a gap); held says how many pictures each reply carried.
+	var origins, positions []int
+	held := make([]int, len(replies))
+	var unanswered []string
+	var firstErr error
+	returned := 0
+	for r, reply := range replies {
+		switch {
+		case reply.err != nil:
+			if firstErr == nil {
+				firstErr = reply.err
+			}
+			unanswered = append(unanswered, fmt.Sprintf("One request for %s was not made: %s", pictureCount(sizes[r]), reply.err.Error()))
+			continue
+		case reply.response == nil || len(reply.response.Data) == 0:
+			unanswered = append(unanswered, fmt.Sprintf("One request for %s returned no image.", pictureCount(sizes[r])))
+			continue
+		}
+		returned += len(reply.response.Data)
+		held[r] = len(reply.response.Data)
+		// Only the pictures that were asked for are kept: a provider that
+		// returns more than n is not obeyed, and the one-picture call keeps its
+		// old reading of the first.
+		data := reply.response.Data
+		if len(data) > sizes[r] {
+			data = data[:sizes[r]]
+		}
+		for j, item := range data {
+			items = append(items, item)
+			origins = append(origins, r)
+			positions = append(positions, j+1)
+		}
+		// The encoded copies now live in items alone, so a large reply does not
+		// stay in memory twice while the pictures are written.
+		reply.response.Data = nil
+	}
+
+	if len(items) == 0 {
+		if firstErr != nil {
+			text := "Image generation failed (" + model + "): " + firstErr.Error()
+			patch := renderPatch{state: RenderFailed, err: text}
+			note := ""
+			if requestCtx.Err() != nil {
+				// The turn ended under the call: only waiting stopped.
+				patch = renderPatch{state: RenderCancelled}
+			} else if gen.routing != nil {
+				// Not answering is the one failure another model can repair;
+				// the route decides whether one may (tools_image_route.go).
+				note, patch.refusal, patch.options = gen.routing.notAnswering(model, firstErr)
+			}
+			if !end(patch) {
+				// A Stop landed after the provider returned and before the ending.
+				return stoppedText, true
+			}
+			switch {
+			case split:
+				text += fmt.Sprintf(" — asked for %d images as %d separate requests; none of them returned a picture", requested, len(sizes))
+			case requested > 1:
+				// A refusal that was not about the count is the caller's to act
+				// on; asking again for a reason nobody can name would spend money
+				// nobody approved.
+				text += fmt.Sprintf(" — asked for %d images in one request; the refusal was not about the count, so nothing was retried", requested)
+			}
+			return joinNotes(text, note), true
+		}
 		end(renderPatch{state: RenderFailed, err: "the provider returned no image"})
 		return "Image generation returned no image (" + model + ")", true
 	}
-	// THE BILL IS PAID ONCE PER PROVIDER RESPONSE, BEFORE ANYTHING CAN REFUSE IT.
-	// A reply that charged and then carried no picture, a picture that will not
-	// decode or one too large to keep is still a charge, and the figure the
-	// provider reported is the only one there is to record (see
-	// [ImageGen.Account]). It is never once per picture.
-	if len(response.Data) == 0 {
-		end(renderPatch{state: RenderFailed, err: "the provider returned no image"})
-		return "Image generation returned no image (" + model + ")", true
-	}
-	// Only the pictures that were asked for are kept: a provider that returns
-	// more than n is not obeyed, and the one-picture call keeps its old reading
-	// of the first.
-	items := response.Data
-	if len(items) > requested {
-		items = items[:requested]
-	}
+	// THE BILL WAS PAID ONCE PER PROVIDER RESPONSE, BEFORE ANYTHING COULD REFUSE
+	// IT (the caller accounted every reply). A reply that charged and then
+	// carried no picture, a picture that will not decode or one too large to keep
+	// is still a charge, and the figure the provider reported is the only one
+	// there is to record (see [ImageGen.Account]). It is never once per picture.
 	if why := imageReplyRefusal(items); why != "" {
 		end(renderPatch{state: RenderFailed, err: "the reply was more than can be kept: " + why})
 		return fmt.Sprintf("Image generation returned more than can be kept (%s): %s, so none were saved. "+
@@ -347,15 +484,28 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		return stoppedAfterReply, true
 	}
 
+	// A shape the model was sent in place of the asked one is cropped back
+	// before anything is written, so the file on disk has the asked shape.
+	targetW, targetH := aspect.editTarget(gen.Workspace, parsed.ReferencePaths)
+	if note := aspect.fitItems(items, model, targetW, targetH); note != "" {
+		maskNote = joinNotes(note, maskNote)
+	}
+
 	numbered := requested > 1
-	batch := newBatchID()
+	// One batch id per provider REQUEST, because that is what a batch names
+	// ([MediaFact.Batch]): files asked for together by one call share its tool
+	// id, and files from one reply share a batch.
+	batches := make([]string, len(sizes))
+	for r := range batches {
+		batches[r] = newBatchID()
+	}
 	var saved []string
 	var failures []string
 	for i, item := range items {
 		path, data, saveErr := saveImageVariant(gen, parsed, numbered, i+1, item)
 		// The encoded copy is dropped as soon as it is decoded, so a large reply
 		// does not stay in memory beside the pictures already written.
-		response.Data[i].Base64 = ""
+		items[i].Base64 = ""
 		if saveErr != nil {
 			if !numbered {
 				// The record names no path and quotes no file-system error: a
@@ -376,12 +526,21 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 		}
 		// The facts are the ones the road itself holds: the bytes it wrote, the
 		// usage the provider reported, and the reference paths exactly as given.
+		r := origins[i]
+		usage := replies[r].response.Usage
 		fact := GeneratedMedia(path, data, model).WithReferences(parsed.ReferencePaths).WithRequested(requested)
-		if numbered {
-			// One request, one total: the charge is the call's, never a picture's.
-			fact = fact.WithBatch(batch, i+1, len(response.Data)).WithCallUsage(response.Usage)
-		} else {
-			fact = fact.WithUsage(response.Usage)
+		if gen.routing != nil {
+			fact = fact.WithPicked(gen.routing.picked, gen.routing.passedOver)
+		}
+		switch {
+		case !numbered:
+			fact = fact.WithUsage(usage)
+		case sizes[r] > 1:
+			// One request, one total: the charge is the request's, never a picture's.
+			fact = fact.WithBatch(batches[r], positions[i], held[r]).WithCallUsage(usage)
+		default:
+			// A request for one picture: its charge IS this picture's.
+			fact = fact.WithBatch(batches[r], positions[i], held[r]).WithUsage(usage)
 		}
 		if gen.RecordMedia != nil {
 			gen.RecordMedia(path, parsed.Prompt, fact)
@@ -397,19 +556,62 @@ func GenerateImage(ctx context.Context, gen ImageGen, parsed GenerateImageArgs) 
 	} else {
 		end(renderPatch{state: RenderFinished, committed: true})
 	}
-	if !numbered {
-		return saved[0], false
+	if gen.routing != nil {
+		maskNote = joinNotes(maskNote, gen.routing.madeNote(model))
 	}
-	return describeImageBatch(model, requested, len(response.Data), saved, failures)
+	if !numbered {
+		return withMaskNote(saved[0], maskNote), false
+	}
+	text, failed := describeImageBatch(model, requested, returned, len(sizes), saved, append(unanswered, failures...))
+	if split {
+		text += "\n" + describeImageSplit(model, len(sizes), retried, total)
+	}
+	if !failed {
+		text = withMaskNote(text, maskNote)
+	}
+	return text, failed
 }
 
-// describeImageBatch is the result of a request for several pictures: how many
-// were asked for, how many the provider sent, how many are on disk, then one
+// pictureCount is "one picture" or "3 pictures".
+func pictureCount(n int) string {
+	if n == 1 {
+		return "one picture"
+	}
+	return fmt.Sprintf("%d pictures", n)
+}
+
+// joinNotes puts two closing lines together, either of which may be empty.
+func joinNotes(first, second string) string {
+	switch {
+	case first == "":
+		return second
+	case second == "":
+		return first
+	}
+	return first + "\n" + second
+}
+
+// withMaskNote closes a result with the mask's line, when there was a mask.
+// The path stays the first thing on the first line, which the command line's
+// door and every caller that reads the path back rely on.
+func withMaskNote(text, note string) string {
+	if note == "" {
+		return text
+	}
+	return text + "\n" + note
+}
+
+// describeImageBatch is the result of a call for several pictures: how many
+// were asked for, in how many requests, how many the providers sent, how many are on disk, then one
 // line per file and one per failure. It claims no more than happened, and it
 // does not rank — the order is the provider's.
-func describeImageBatch(model string, requested, returned int, saved, failures []string) (string, bool) {
+func describeImageBatch(model string, requested, returned, requests int, saved, failures []string) (string, bool) {
 	var out strings.Builder
-	fmt.Fprintf(&out, "Saved %d of %d requested images on %s from one request", len(saved), requested, model)
+	if requests > 1 {
+		fmt.Fprintf(&out, "Saved %d of %d requested images on %s from %d requests", len(saved), requested, model, requests)
+	} else {
+		fmt.Fprintf(&out, "Saved %d of %d requested images on %s from one request", len(saved), requested, model)
+	}
 	if returned != requested {
 		fmt.Fprintf(&out, " (the provider returned %d)", returned)
 	}

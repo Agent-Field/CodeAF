@@ -25,6 +25,16 @@ import (
 // the shapes that hold under a blanket allow — and a floor that a keystroke
 // elsewhere could lift is not a floor.
 func AlwaysAsks(tool string, args json.RawMessage) bool {
+	return AlwaysAsksIn(tool, args, "")
+}
+
+// AlwaysAsksIn is [AlwaysAsks] for a call whose folder is known: workspace is
+// the directory the bash tool runs the command in. A recursive delete at or
+// under that folder, however its path is spelled, is the agent cleaning up its
+// own work and not the floor. Every caller that holds a session asks this one
+// with the session's folder, so the question, its grade and the memo's
+// exception all agree about the same call.
+func AlwaysAsksIn(tool string, args json.RawMessage, workspace string) bool {
 	tool = strings.TrimSpace(tool)
 	if ActsInThePersonsName(tool, args) {
 		return true
@@ -41,7 +51,7 @@ func AlwaysAsks(tool string, args json.RawMessage) bool {
 		return false
 	}
 	segments, _ := splitSegments(command)
-	_, hit := criticalHit(command, segments)
+	_, hit := criticalHit(command, segments, workspace)
 	return hit
 }
 

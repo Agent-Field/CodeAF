@@ -170,6 +170,11 @@ type MediaFact struct {
 	Batch        string `json:"batch,omitempty"`
 	VariantIndex int    `json:"variant_index,omitempty"`
 	Returned     int    `json:"returned_count,omitempty"`
+	// Picked and PassedOver are how a picture's model was chosen ("chosen" or
+	// "automatic") and the Automatic picture makers that did not answer
+	// before it, as the render record says them ([RenderRecord.Picked]).
+	Picked     string             `json:"picked,omitempty"`
+	PassedOver []RenderPassedOver `json:"passed_over,omitempty"`
 	// Declared and Change are set only on a file a shell command declared as an
 	// output (origin published): the path as the model spelled it, and what the
 	// engine observed around that one command (see shell_outputs.go).
@@ -415,6 +420,14 @@ func (f *MediaFact) stampFile(path string) {
 // WithUsage sets the charge from the provider's reported usage.
 func (f MediaFact) WithUsage(usage *ai.Usage) MediaFact {
 	f.Charge, f.CostUSD = ChargeFromUsage(usage)
+	return f
+}
+
+// WithPicked records how a picture's model was chosen and what Automatic
+// passed over to reach it.
+func (f MediaFact) WithPicked(picked string, passed []RenderPassedOver) MediaFact {
+	f.Picked = picked
+	f.PassedOver = append([]RenderPassedOver(nil), passed...)
 	return f
 }
 

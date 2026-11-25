@@ -81,7 +81,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/agentdid"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
@@ -739,8 +738,8 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 	ctx = provider.WithStreamObserver(ctx, turnObserver)
 	// A MODEL WHOSE OWN PROGRAM RUNS COMMANDS (internal/claudemodel) is handed the
 	// conversation's identity for them, as the commands codeaf runs are.
-	if a.config.actorDID != "" {
-		ctx = claudemodel.WithEnv(ctx, []string{agentdid.AgentDIDEnv + "=" + a.config.actorDID})
+	if env := a.config.identityEnv(); len(env) > 0 {
+		ctx = claudemodel.WithEnv(ctx, env)
 	}
 	// ONE MECHANISM ANSWERS ONE SILENCE, AND IT IS NOT THIS ONE. This loop used
 	// to keep a hedge of its own here: an eight-second timer that, on a request
@@ -1016,6 +1015,15 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) (f
 		// lives, and the hand-back is the end-of-turn floor's ([Agent.handBackUnsettled]),
 		// asked here only for the sentence it carries ([Agent.markSettleBound]).
 		if count, tripped := a.settleBoundTripped(ctx, &turn, settleCalls); tripped {
+			// AN OWED LANDING'S BOUND ENDS THE CHEAP REPLY, NOT THE WORK. Its run
+			// was started to answer the person, it holds no decision to hand back,
+			// and sealing it here was a turn that ended mid-read with nothing said
+			// (qloop run23, vector-db t1). The rest goes to an ordinary turn.
+			if wake, _ := settleWakeFrom(ctx); wake.owed {
+				a.carryOwedLandingOn(hub, count)
+				hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started, model)})
+				return true
+			}
 			a.markSettleBound(count)
 			// Keep the step spend without duration or ordinary turn-ending acts;
 			// abandonment can displace this turn while the bound is marked.
@@ -3999,7 +4007,12 @@ func (a *Agent) dispatchTool(ctx context.Context, ep *episode, hub *eventHub, ca
 		recorded.Execute = func(runCtx context.Context, runArgs json.RawMessage) (string, bool, error) {
 			return a.executeTaskTool(runCtx, observedTool, running, runArgs)
 		}
-		text, isError, err := a.executeRecorded(callCtx, recorded, args)
+		// A BASH CALL ALWAYS COMES BACK (bash_backstop.go): the dispatcher holds
+		// a clock of its own outside the tool, so a call wedged anywhere on its
+		// way back is answered for rather than holding the turn.
+		text, isError, err := a.executeBashBackstopped(callCtx, call.ID, tool, args, func() (string, bool, error) {
+			return a.executeRecorded(callCtx, recorded, args)
+		})
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is

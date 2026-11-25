@@ -174,6 +174,19 @@ const (
 	// work. What it costs is bounded hard: at most two calls, and only on a turn
 	// that is being handed over at all, which most turns never are.
 	RoleHandoff Role = "handoff"
+	// RoleReplyCheck READS A REPLY AGAINST THE TURN'S OWN LOOKS AT THE WORK
+	// before it goes out, and names the statements the newest look contradicts
+	// (internal/session/replycheck.go, which owns the call).
+	//
+	// IT IS ITS OWN ROLE BECAUSE IT ASKS ITS OWN QUESTION, for the mark reader's
+	// reason: this compares two texts it is handed and answers "- " lines or
+	// NONE; the mark reader judges what is left of an ask.
+	//
+	// IT SITS ON THE SMALL-WORK TIER BECAUSE THE WORDS IT COMPARES ARE ALREADY
+	// WRITTEN. A second model described the picture; this only has to find where
+	// the reply says otherwise. Bounded hard: once a turn, a few thousand tokens
+	// in, and only on a turn that looked at its work.
+	RoleReplyCheck Role = "replycheck"
 	// RoleTaskName is the two or three words a piece of work is CALLED on the
 	// rail, the home card and the task list — made from the node's own gloss and
 	// brief when whoever started it left a raw sentence there instead of a name.
@@ -586,7 +599,7 @@ var vocabulary = []Role{
 	RoleInsightFactoryScout, RoleInsightNotes, RoleInsightPipeline,
 	RoleInsightThemes, RoleInsightViews, RoleIntake, RoleJobName, RoleMarkReader,
 	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
-	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
+	RoleReplyCheck, RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
 	RoleVision, RoleWorker,
 }

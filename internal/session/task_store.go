@@ -782,6 +782,7 @@ type runRecord struct {
 	Unreachable         bool              `json:"unreachable,omitempty"`
 	RanElsewhere        bool              `json:"ran_elsewhere,omitempty"`
 	RecoveredCompletion bool              `json:"recoveredCompletion,omitempty"`
+	Unchecked           bool              `json:"unchecked,omitempty"`
 	CrewState           *TaskCrewRecord   `json:"crewState,omitempty"`
 
 	ID     uint64 `json:"id"`
@@ -1270,6 +1271,7 @@ func runRowRecord(notice TaskNotice) runRecord {
 		GroundHeld:          notice.GroundHeld,
 		PlanTask:            notice.PlanTask,
 		RecoveredCompletion: notice.RecoveredCompletion,
+		Unchecked:           notice.Unchecked,
 	}
 }
 
@@ -1324,6 +1326,7 @@ func runRowNotice(record runRecord) TaskNotice {
 		GroundHeld:          record.GroundHeld,
 		PlanTask:            record.PlanTask,
 		RecoveredCompletion: record.RecoveredCompletion,
+		Unchecked:           record.Unchecked,
 	}
 	if record.CrewState != nil && record.CrewState.Routed {
 		decision := record.CrewState.Decision

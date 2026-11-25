@@ -8081,7 +8081,11 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		Media:          parent.Media,
 		MediaModel:     parent.MediaModel,
 		MediaAdmission: parent.MediaAdmission,
-		MediaPick:      parent.MediaPick,
+		// The picture maker follows the conversation's folder, not the
+		// worktree's: a canvas's choice belongs to the canvas, and a node
+		// working in a copy of it is still working for that canvas.
+		PictureRoute: pictureRouteFrom(parent.PictureRoute, parent.Workspace),
+		MediaPick:    parent.MediaPick,
 		// A node reads documents on the rung the person chose, like the
 		// conversation does (tools_doc.go): the same worker, working somewhere
 		// quieter, must not silently drop to a different engine — or to a paid

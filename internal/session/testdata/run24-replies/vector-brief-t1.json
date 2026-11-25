@@ -1,0 +1,621 @@
+[
+ {
+  "role": "user",
+  "content": "deep research brief on vector dbs w/ a comparison table and charts"
+ },
+ {
+  "role": "assistant",
+  "content": "I'll start by reading the canvas skill, then check the current canvas state.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a7303b792083583dc7",
+    "type": "function",
+    "function": {
+     "name": "read",
+     "arguments": "{\"path\":\"/tmp/connected-e2e.o45aUqRf/home/.codeaf/.codeaf/skills/workaf-canvas/SKILL.md\"}"
+    }
+   },
+   {
+    "id": "call_01a1f4a7309e7823a3fe4c6e",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work && canvas --help 2>&1 | head -50\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "(the canvas skill page this step read is left out of the fixture: the reply check never offers it)",
+  "tool_call_id": "call_01a1f4a7303b792083583dc7"
+ },
+ {
+  "role": "tool",
+  "content": "(canvas --help output left out of the fixture)",
+  "tool_call_id": "call_01a1f4a7309e7823a3fe4c6e"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a735027500b7a447e5",
+    "type": "function",
+    "function": {
+     "name": "read",
+     "arguments": "{\"path\":\"/tmp/connected-e2e.o45aUqRf/home/.codeaf/.codeaf/skills/workaf-canvas/SKILL.md\",\"offset\":720,\"limit\":600}"
+    }
+   },
+   {
+    "id": "call_01a1f4a735807402ad80923f",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work && canvas show cv_leztya3v7wrx 2>&1 | head -60; echo \\\"---BRAND---\\\"; canvas brand list 2>&1 | head -20\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "(the canvas skill page this step read is left out of the fixture: the reply check never offers it)",
+  "tool_call_id": "call_01a1f4a735027500b7a447e5"
+ },
+ {
+  "role": "tool",
+  "content": "{\"budget\":null,\"id\":\"cv_leztya3v7wrx\",\"seq\":17,\"sheets\":{\"f_7q2zpbbbpq2x\":{\"cells\":37,\"more\":\"3 more row(s), 0 more column(s); `canvas cells get ID f_7q2zpbbbpq2x` reads every cell\",\"rows\":[[\"Store\",\"p95 latency (ms)\",\"Recall@10\",\"Index build (min)\",\"Monthly cost ($)\",\"Ops effort (1-5)\"],[\"pgvector\",48.0,0.95,95.0,2100.0,2.0],[\"Pinecone\",22.0,0.97,0.0,3900.0,1.0],[\"Weaviate\",27.0,0.96,41.0,2600.0,3.0],[\"Qdrant\",19.0,0.97,33.0,2300.0,3.0]],\"used\":\"A1:F8\"}},\"spent\":null,\"stale\":{},\"title\":\"Vector DB research\",\"tree\":[{\"children\":[{\"id\":\"n_rpfk4rihuzvf\",\"ord\":\"a0\",\"props\":{\"text\":\"Notes for the search re-platform. We need a store for about 40M embeddings (768-d), filtered by tenant, with hybrid keyword search.\"},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_oy5wbadaucbo\",\"ord\":\"a1\",\"props\":{\"text\":\"pgvector: Postgres extension, PostgreSQL licence. HNSW and IVFFlat indexes. Runs in our existing RDS. Filtering is plain SQL.\"},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_k5x4r6mwueig\",\"ord\":\"a2\",\"props\":{\"text\":\"Pinecone: managed service only, proprietary. Serverless tier bills by reads, writes and storage. Namespaces per tenant.\"},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_cruq4laizons\",\"ord\":\"a3\",\"props\":{\"text\":\"Weaviate: open source (BSD-3), HNSW index, built-in hybrid search (BM25 + vectors). Self-host or their cloud.\"},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_4zudsuy6jnxz\",\"ord\":\"a4\",\"props\":{\"text\":\"Qdrant: open source (Apache 2.0), written in Rust, HNSW with payload filtering. Self-host or Qdrant Cloud.\"},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_wydg3lvvdmt4\",\"ord\":\"a5\",\"props\":{\"text\":\"Milvus: open source (Apache 2.0), LF AI & Data project. Many index types (IVF, HNSW, DiskANN). Heavier to run: several services.\"},\"rev\":1,\"type\":\"text\"}],\"id\":\"f_7wtm4ou3zj5b\",\"ord\":\"a0\",\"props\":{\"kind\":\"doc\",\"name\":\"Vector DB notes\",\"part\":\"Vector DB notes\",\"x\":0.0,\"y\":0.0},\"rev\":1,\"type\":\"frame\"},{\"id\":\"f_7q2zpbbbpq2x\",\"ord\":\"a1\",\"props\":{\"kind\":\"sheet\",\"name\":\"Our benchmark\",\"part\":\"Our benchmark\",\"x\":0.0,\"y\":1480.0},\"rev\":1,\"type\":\"frame\"}]}\n---BRAND---\n[]\n",
+  "tool_call_id": "call_01a1f4a735807402ad80923f"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a739c67072a96e0ebb",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work && canvas cells get cv_leztya3v7wrx f_7q2zpbbbpq2x; echo \\\"---TOKENS---\\\"; canvas token list cv_leztya3v7wrx\"}"
+    }
+   },
+   {
+    "id": "call_01a1f4a73a4879f2b8d8166c",
+    "type": "function",
+    "function": {
+     "name": "read",
+     "arguments": "{\"limit\":565,\"offset\":1320,\"path\":\"/tmp/connected-e2e.o45aUqRf/home/.codeaf/.codeaf/skills/workaf-canvas/SKILL.md\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "{\"A1\":{\"input\":\"Store\",\"value\":{\"s\":\"Store\"}},\"A2\":{\"input\":\"pgvector\",\"value\":{\"s\":\"pgvector\"}},\"A3\":{\"input\":\"Pinecone\",\"value\":{\"s\":\"Pinecone\"}},\"A4\":{\"input\":\"Weaviate\",\"value\":{\"s\":\"Weaviate\"}},\"A5\":{\"input\":\"Qdrant\",\"value\":{\"s\":\"Qdrant\"}},\"A6\":{\"input\":\"Milvus\",\"value\":{\"s\":\"Milvus\"}},\"A8\":{\"input\":\"Our test, 2026-11-02: 10M sample vectors, 768-d, tenant filter on, same 4-node budget.\",\"value\":{\"s\":\"Our test, 2026-11-02: 10M sample vectors, 768-d, tenant filter on, same 4-node budget.\"}},\"B1\":{\"input\":\"p95 latency (ms)\",\"value\":{\"s\":\"p95 latency (ms)\"}},\"B2\":{\"input\":\"48\",\"value\":{\"n\":48.0}},\"B3\":{\"input\":\"22\",\"value\":{\"n\":22.0}},\"B4\":{\"input\":\"27\",\"value\":{\"n\":27.0}},\"B5\":{\"input\":\"19\",\"value\":{\"n\":19.0}},\"B6\":{\"input\":\"24\",\"value\":{\"n\":24.0}},\"C1\":{\"input\":\"Recall@10\",\"value\":{\"s\":\"Recall@10\"}},\"C2\":{\"input\":\"0.95\",\"value\":{\"n\":0.95}},\"C3\":{\"input\":\"0.97\",\"value\":{\"n\":0.97}},\"C4\":{\"input\":\"0.96\",\"value\":{\"n\":0.96}},\"C5\":{\"input\":\"0.97\",\"value\":{\"n\":0.97}},\"C6\":{\"input\":\"0.98\",\"value\":{\"n\":0.98}},\"D1\":{\"input\":\"Index build (min)\",\"value\":{\"s\":\"Index build (min)\"}},\"D2\":{\"input\":\"95\",\"value\":{\"n\":95.0}},\"D3\":{\"input\":\"0\",\"value\":{\"n\":0.0}},\"D4\":{\"input\":\"41\",\"value\":{\"n\":41.0}},\"D5\":{\"input\":\"33\",\"value\":{\"n\":33.0}},\"D6\":{\"input\":\"52\",\"value\":{\"n\":52.0}},\"E1\":{\"input\":\"Monthly cost ($)\",\"value\":{\"s\":\"Monthly cost ($)\"}},\"E2\":{\"input\":\"2100\",\"value\":{\"n\":2100.0}},\"E3\":{\"input\":\"3900\",\"value\":{\"n\":3900.0}},\"E4\":{\"input\":\"2600\",\"value\":{\"n\":2600.0}},\"E5\":{\"input\":\"2300\",\"value\":{\"n\":2300.0}},\"E6\":{\"input\":\"2800\",\"value\":{\"n\":2800.0}},\"F1\":{\"input\":\"Ops effort (1-5)\",\"value\":{\"s\":\"Ops effort (1-5)\"}},\"F2\":{\"input\":\"2\",\"value\":{\"n\":2.0}},\"F3\":{\"input\":\"1\",\"value\":{\"n\":1.0}},\"F4\":{\"input\":\"3\",\"value\":{\"n\":3.0}},\"F5\":{\"input\":\"3\",\"value\":{\"n\":3.0}},\"F6\":{\"input\":\"5\",\"value\":{\"n\":5.0}},\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_7q2zpbbbpq2x\"}\n---TOKENS---\n[{\"kind\":\"color\",\"name\":\"$bg-card\",\"value\":\"#101010\"},{\"kind\":\"color\",\"name\":\"$field\",\"value\":\"rgba(255, 255, 255, 0.055)\"},{\"kind\":\"color\",\"name\":\"$frame\",\"value\":\"#1a1a1a\"},{\"kind\":\"color\",\"name\":\"$gold\",\"value\":\"#D4A24C\"},{\"kind\":\"color\",\"name\":\"$ink\",\"value\":\"rgba(236, 236, 236, 0.94)\"},{\"kind\":\"color\",\"name\":\"$ink-2\",\"value\":\"rgba(236, 236, 236, 0.66)\"},{\"kind\":\"color\",\"name\":\"$ink-3\",\"value\":\"rgba(236, 236, 236, 0.56)\"},{\"kind\":\"color\",\"name\":\"$ivory\",\"value\":\"#F0EDE6\"},{\"kind\":\"color\",\"name\":\"$line\",\"value\":\"rgba(255, 255, 255, 0.06)\"},{\"kind\":\"color\",\"name\":\"$on-gold\",\"value\":\"#1A1408\"},{\"kind\":\"color\",\"name\":\"$on-ivory\",\"value\":\"#141414\"},{\"kind\":\"color\",\"name\":\"$surface\",\"value\":\"#282828\"},{\"kind\":\"font\",\"name\":\"$font-mono\",\"value\":\"\\\"SF Mono\\\", ui-monospace, \\\"Cascadia Mono\\\", Menlo, Consolas, monospace\"},{\"kind\":\"font\",\"name\":\"$font-ui\",\"value\":\"-apple-system, BlinkMacSystemFont, \\\"SF Pro Text\\\", \\\"Segoe UI Variable Text\\\", \\\"Segoe UI\\\", \\\"Inter\\\", system-ui, sans-serif\"},{\"kind\":\"radius\",\"name\":\"$r-bubble\",\"value\":\"14px\"},{\"kind\":\"radius\",\"name\":\"$r-card\",\"value\":\"10px\"},{\"kind\":\"radius\",\"name\":\"$r-chip\",\"value\":\"6px\"},{\"kind\":\"radius\",\"name\":\"$r-composer\",\"value\":\"12px\"},{\"kind\":\"radius\",\"name\":\"$r-control\",\"value\":\"8px\"},{\"kind\":\"shadow\",\"name\":\"$shadow-card\",\"value\":\"0 0 0 .5px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 3px rgba(0, 0, 0, 0.3)\"},{\"kind\":\"size\",\"name\":\"$slide-body\",\"value\":\"24px\"},{\"kind\":\"size\",\"name\":\"$slide-sub\",\"value\":\"32px\"},{\"kind\":\"size\",\"name\":\"$slide-title\",\"value\":\"64px\"},{\"kind\":\"size\",\"name\":\"$space-2xl\",\"value\":\"16px\"},{\"kind\":\"size\",\"name\":\"$space-2xs\",\"value\":\"2px\"},{\"kind\":\"size\",\"name\":\"$space-4xl\",\"value\":\"24px\"},{\"kind\":\"size\",\"name\":\"$space-5xl\",\"value\":\"28px\"},{\"kind\":\"size\",\"name\":\"$space-6xl\",\"value\":\"40px\"},{\"kind\":\"size\",\"name\":\"$space-7xl\",\"value\":\"64px\"},{\"kind\":\"size\",\"name\":\"$space-l\",\"value\":\"12px\"},{\"kind\":\"size\",\"name\":\"$space-m\",\"value\":\"8px\"},{\"kind\":\"size\",\"name\":\"$space-s\",\"value\":\"6px\"},{\"kind\":\"size\",\"name\":\"$space-xl\",\"value\":\"14px\"},{\"kind\":\"size\",\"name\":\"$space-xs\",\"value\":\"4px\"},{\"kind\":\"size\",\"name\":\"$text-body\",\"value\":\"15px\"},{\"kind\":\"size\",\"name\":\"$text-display\",\"value\":\"48px\"},{\"kind\":\"size\",\"name\":\"$text-head\",\"value\":\"15px\"},{\"kind\":\"size\",\"name\":\"$text-meta\",\"value\":\"12px\"},{\"kind\":\"size\",\"name\":\"$text-title\",\"value\":\"20px\"},{\"kind\":\"size\",\"name\":\"$text-ui\",\"value\":\"13.5px\"}]\n",
+  "tool_call_id": "call_01a1f4a739c67072a96e0ebb"
+ },
+ {
+  "role": "tool",
+  "content": "(the canvas skill page this step read is left out of the fixture: the reply check never offers it)",
+  "tool_call_id": "call_01a1f4a73a4879f2b8d8166c"
+ },
+ {
+  "role": "assistant",
+  "content": "I have the canvas context: a notes doc and a benchmark sheet covering pgvector, Pinecone, Weaviate, Qdrant and Milvus. Now I'll research to ground the brief, then build it.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a746fb7801a0cf1747",
+    "type": "function",
+    "function": {
+     "name": "web_search",
+     "arguments": "{\"query\":\"vector database comparison 2025 pgvector Pinecone Weaviate Qdrant Milvus\",\"count\":8}"
+    }
+   },
+   {
+    "id": "call_01a1f4a7476e7a11bd630bde",
+    "type": "function",
+    "function": {
+     "name": "web_search",
+     "arguments": "{\"query\":\"pgvector vs dedicated vector database performance scale limitations\",\"count\":6}"
+    }
+   },
+   {
+    "id": "call_01a1f4a7481776a0a664e7bb",
+    "type": "function",
+    "function": {
+     "name": "web_search",
+     "arguments": "{\"query\":\"Qdrant vs Milvus vs Weaviate hybrid search filtering benchmark\",\"count\":6}"
+    }
+   },
+   {
+    "id": "call_01a1f4a7488a7081bc3a3425",
+    "type": "function",
+    "function": {
+     "name": "web_search",
+     "arguments": "{\"query\":\"Pinecone serverless pricing model cost per read write storage\",\"count\":6}"
+    }
+   },
+   {
+    "id": "call_01a1f4a748f37da1817a3217",
+    "type": "function",
+    "function": {
+     "name": "web_search",
+     "arguments": "{\"query\":\"vector database market size growth 2025 forecast\",\"count\":6}"
+    }
+   },
+   {
+    "id": "call_01a1f4a7495e7b12972d4df1",
+    "type": "function",
+    "function": {
+     "name": "web_search",
+     "arguments": "{\"query\":\"HNSW DiskANN IVF index types vector search tradeoffs recall latency\",\"count\":6}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "Search failed (firecrawl): firecrawl: decode search result: invalid character 'F' looking for beginning of value",
+  "tool_call_id": "call_01a1f4a746fb7801a0cf1747"
+ },
+ {
+  "role": "tool",
+  "content": "Search failed (firecrawl): firecrawl: decode search result: invalid character 'F' looking for beginning of value",
+  "tool_call_id": "call_01a1f4a7476e7a11bd630bde"
+ },
+ {
+  "role": "tool",
+  "content": "Search failed (firecrawl): firecrawl: decode search result: invalid character 'F' looking for beginning of value",
+  "tool_call_id": "call_01a1f4a7481776a0a664e7bb"
+ },
+ {
+  "role": "tool",
+  "content": "Search failed (firecrawl): firecrawl: decode search result: invalid character 'F' looking for beginning of value",
+  "tool_call_id": "call_01a1f4a7488a7081bc3a3425"
+ },
+ {
+  "role": "tool",
+  "content": "Search failed (firecrawl): firecrawl: decode search result: invalid character 'F' looking for beginning of value",
+  "tool_call_id": "call_01a1f4a748f37da1817a3217"
+ },
+ {
+  "role": "tool",
+  "content": "Search failed (firecrawl): firecrawl: decode search result: invalid character 'F' looking for beginning of value",
+  "tool_call_id": "call_01a1f4a7495e7b12972d4df1"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a74bc47e81b9a70bb2",
+    "type": "function",
+    "function": {
+     "name": "web_search",
+     "arguments": "{\"count\":5,\"query\":\"vector database comparison 2025\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "Search failed (firecrawl): firecrawl: decode search result: invalid character 'F' looking for beginning of value",
+  "tool_call_id": "call_01a1f4a74bc47e81b9a70bb2"
+ },
+ {
+  "role": "assistant",
+  "content": "Web search is down (provider error) — I'll note that as a gap and build the brief from the canvas's notes and benchmark. First, formats and a chart-data tab, verifying the cross-tab reference works.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a7af5e72219600533b",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nMAIN=f_7q2zpbbbpq2x\\necho \\\"== patch formats on main ==\\\"\\ncanvas patch $CV $MAIN --json '{\\\"formats\\\":{\\\"B2:B6\\\":\\\"thousands\\\",\\\"C2:C6\\\":\\\"percent\\\",\\\"D2:D6\\\":\\\"thousands\\\",\\\"E2:E6\\\":{\\\"kind\\\":\\\"currency\\\",\\\"currency\\\":\\\"USD\\\",\\\"decimals\\\":0,\\\"order\\\":1},\\\"F2:F6\\\":\\\"thousands\\\"}}'\\necho \\\"== new helper tab ==\\\"\\nCOST=$(canvas sheet new $CV --name \\\"Cost by store\\\" --part \\\"Our benchmark\\\" | jq -er .frame)\\necho \\\"COST=$COST\\\"\\ncanvas cells set $CV $COST --json - <<'EOF'\\n{\\\"A1\\\":\\\"Store\\\",\\\"B1\\\":\\\"Monthly cost ($)\\\",\\n \\\"A2\\\":\\\"='Our benchmark'!A2\\\",\\\"B2\\\":\\\"='Our benchmark'!E2\\\",\\n \\\"A3\\\":\\\"='Our benchmark'!A3\\\",\\\"B3\\\":\\\"='Our benchmark'!E3\\\",\\n \\\"A4\\\":\\\"='Our benchmark'!A4\\\",\\\"B4\\\":\\\"='Our benchmark'!E4\\\",\\n \\\"A5\\\":\\\"='Our benchmark'!A5\\\",\\\"B5\\\":\\\"='Our benchmark'!E5\\\",\\n \\\"A6\\\":\\\"='Our benchmark'!A6\\\",\\\"B6\\\":\\\"='Our benchmark'!E6\\\"}\\nEOF\\necho \\\"== read back ==\\\"\\ncanvas cells get $CV $COST --range A1:B6\\ncanvas cells get $CV $MAIN --range C2:E6\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "== patch formats on main ==\n{\"id\":\"f_7q2zpbbbpq2x\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_7q2zpbbbpq2x\",\"seq\":20,\"suggested\":false}\n== new helper tab ==\nCOST=f_muew3octtsyd\n{\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_muew3octtsyd\",\"seq\":24,\"values\":{\"A1\":{\"s\":\"Store\"},\"A2\":{\"s\":\"pgvector\"},\"A3\":{\"s\":\"Pinecone\"},\"A4\":{\"s\":\"Weaviate\"},\"A5\":{\"s\":\"Qdrant\"},\"A6\":{\"s\":\"Milvus\"},\"B1\":{\"s\":\"Monthly cost ($)\"},\"B2\":{\"n\":2100.0},\"B3\":{\"n\":3900.0},\"B4\":{\"n\":2600.0},\"B5\":{\"n\":2300.0},\"B6\":{\"n\":2800.0}}}\n== read back ==\n{\"A1\":{\"input\":\"Store\",\"value\":{\"s\":\"Store\"}},\"A2\":{\"input\":\"='Our benchmark'!A2\",\"value\":{\"s\":\"pgvector\"}},\"A3\":{\"input\":\"='Our benchmark'!A3\",\"value\":{\"s\":\"Pinecone\"}},\"A4\":{\"input\":\"='Our benchmark'!A4\",\"value\":{\"s\":\"Weaviate\"}},\"A5\":{\"input\":\"='Our benchmark'!A5\",\"value\":{\"s\":\"Qdrant\"}},\"A6\":{\"input\":\"='Our benchmark'!A6\",\"value\":{\"s\":\"Milvus\"}},\"B1\":{\"input\":\"Monthly cost ($)\",\"value\":{\"s\":\"Monthly cost ($)\"}},\"B2\":{\"input\":\"='Our benchmark'!E2\",\"value\":{\"n\":2100.0}},\"B3\":{\"input\":\"='Our benchmark'!E3\",\"value\":{\"n\":3900.0}},\"B4\":{\"input\":\"='Our benchmark'!E4\",\"value\":{\"n\":2600.0}},\"B5\":{\"input\":\"='Our benchmark'!E5\",\"value\":{\"n\":2300.0}},\"B6\":{\"input\":\"='Our benchmark'!E6\",\"value\":{\"n\":2800.0}},\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_muew3octtsyd\"}\n{\"C2\":{\"input\":\"0.95\",\"value\":{\"n\":0.95}},\"C3\":{\"input\":\"0.97\",\"value\":{\"n\":0.97}},\"C4\":{\"input\":\"0.96\",\"value\":{\"n\":0.96}},\"C5\":{\"input\":\"0.97\",\"value\":{\"n\":0.97}},\"C6\":{\"input\":\"0.98\",\"value\":{\"n\":0.98}},\"D2\":{\"input\":\"95\",\"value\":{\"n\":95.0}},\"D3\":{\"input\":\"0\",\"value\":{\"n\":0.0}},\"D4\":{\"input\":\"41\",\"value\":{\"n\":41.0}},\"D5\":{\"input\":\"33\",\"value\":{\"n\":33.0}},\"D6\":{\"input\":\"52\",\"value\":{\"n\":52.0}},\"E2\":{\"input\":\"2100\",\"value\":{\"n\":2100.0}},\"E3\":{\"input\":\"3900\",\"value\":{\"n\":3900.0}},\"E4\":{\"input\":\"2600\",\"value\":{\"n\":2600.0}},\"E5\":{\"input\":\"2300\",\"value\":{\"n\":2300.0}},\"E6\":{\"input\":\"2800\",\"value\":{\"n\":2800.0}},\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_7q2zpbbbpq2x\"}\n",
+  "tool_call_id": "call_01a1f4a7af5e72219600533b"
+ },
+ {
+  "role": "assistant",
+  "content": "Cross-tab references resolve correctly. Now the feature tab and the two charts.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a7d3647393aefe51cb",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nMAIN=f_7q2zpbbbpq2x\\nCOST=f_muew3octtsyd\\n\\necho \\\"== feature fit tab ==\\\"\\nFEAT=$(canvas sheet new $CV --name \\\"Feature fit\\\" --part \\\"Our benchmark\\\" | jq -er .frame)\\necho \\\"FEAT=$FEAT\\\"\\ncanvas cells set $CV $FEAT --json - <<'EOF'\\n{\\\"A1\\\":\\\"Store\\\",\\\"B1\\\":\\\"License\\\",\\\"C1\\\":\\\"Deployment\\\",\\\"D1\\\":\\\"Hybrid search\\\",\\n \\\"A2\\\":\\\"pgvector\\\",\\\"B2\\\":\\\"PostgreSQL\\\",\\\"C2\\\":\\\"In our RDS\\\",\\\"D2\\\":\\\"— (not in our notes)\\\",\\n \\\"A3\\\":\\\"Pinecone\\\",\\\"B3\\\":\\\"Proprietary\\\",\\\"C3\\\":\\\"Managed only\\\",\\\"D3\\\":\\\"— (not in our notes)\\\",\\n \\\"A4\\\":\\\"Weaviate\\\",\\\"B4\\\":\\\"BSD-3\\\",\\\"C4\\\":\\\"Self-host or cloud\\\",\\\"D4\\\":\\\"Built-in (BM25 + vectors)\\\",\\n \\\"A5\\\":\\\"Qdrant\\\",\\\"B5\\\":\\\"Apache 2.0\\\",\\\"C5\\\":\\\"Self-host or cloud\\\",\\\"D5\\\":\\\"— (not in our notes)\\\",\\n \\\"A6\\\":\\\"Milvus\\\",\\\"B6\\\":\\\"Apache 2.0\\\",\\\"C6\\\":\\\"Self-host or cloud\\\",\\\"D6\\\":\\\"— (not in our notes)\\\"}\\nEOF\\n\\necho \\\"== chart 1 latency ==\\\"\\ncanvas chart new $CV --range 'Our benchmark!A1:B6' --type bar --name \\\"p95 latency by store\\\"\\n\\necho \\\"== chart 2 cost ==\\\"\\ncanvas chart new $CV --range 'Cost by store!A1:B6' --type bar --name \\\"Monthly cost by store\\\"\\n\\necho \\\"== read back ==\\\"\\ncanvas cells get $CV $FEAT --range A1:D6\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "== feature fit tab ==\nFEAT=f_zfkqig6dlqas\n{\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_zfkqig6dlqas\",\"seq\":27,\"values\":{\"A1\":{\"s\":\"Store\"},\"A2\":{\"s\":\"pgvector\"},\"A3\":{\"s\":\"Pinecone\"},\"A4\":{\"s\":\"Weaviate\"},\"A5\":{\"s\":\"Qdrant\"},\"A6\":{\"s\":\"Milvus\"},\"B1\":{\"s\":\"License\"},\"B2\":{\"s\":\"PostgreSQL\"},\"B3\":{\"s\":\"Proprietary\"},\"B4\":{\"s\":\"BSD-3\"},\"B5\":{\"s\":\"Apache 2.0\"},\"B6\":{\"s\":\"Apache 2.0\"},\"C1\":{\"s\":\"Deployment\"},\"C2\":{\"s\":\"In our RDS\"},\"C3\":{\"s\":\"Managed only\"},\"C4\":{\"s\":\"Self-host or cloud\"},\"C5\":{\"s\":\"Self-host or cloud\"},\"C6\":{\"s\":\"Self-host or cloud\"},\"D1\":{\"s\":\"Hybrid search\"},\"D2\":{\"s\":\"— (not in our notes)\"},\"D3\":{\"s\":\"— (not in our notes)\"},\"D4\":{\"s\":\"Built-in (BM25 + vectors)\"},\"D5\":{\"s\":\"— (not in our notes)\"},\"D6\":{\"s\":\"— (not in our notes)\"}}}\n== chart 1 latency ==\n{\"frame\":\"f_xkqj3d6ln5yc\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_xkqj3d6ln5yc\"}\n== chart 2 cost ==\n{\"frame\":\"f_fnukjapqwowq\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_fnukjapqwowq\"}\n== read back ==\n{\"A1\":{\"input\":\"Store\",\"value\":{\"s\":\"Store\"}},\"A2\":{\"input\":\"pgvector\",\"value\":{\"s\":\"pgvector\"}},\"A3\":{\"input\":\"Pinecone\",\"value\":{\"s\":\"Pinecone\"}},\"A4\":{\"input\":\"Weaviate\",\"value\":{\"s\":\"Weaviate\"}},\"A5\":{\"input\":\"Qdrant\",\"value\":{\"s\":\"Qdrant\"}},\"A6\":{\"input\":\"Milvus\",\"value\":{\"s\":\"Milvus\"}},\"B1\":{\"input\":\"License\",\"value\":{\"s\":\"License\"}},\"B2\":{\"input\":\"PostgreSQL\",\"value\":{\"s\":\"PostgreSQL\"}},\"B3\":{\"input\":\"Proprietary\",\"value\":{\"s\":\"Proprietary\"}},\"B4\":{\"input\":\"BSD-3\",\"value\":{\"s\":\"BSD-3\"}},\"B5\":{\"input\":\"Apache 2.0\",\"value\":{\"s\":\"Apache 2.0\"}},\"B6\":{\"input\":\"Apache 2.0\",\"value\":{\"s\":\"Apache 2.0\"}},\"C1\":{\"input\":\"Deployment\",\"value\":{\"s\":\"Deployment\"}},\"C2\":{\"input\":\"In our RDS\",\"value\":{\"s\":\"In our RDS\"}},\"C3\":{\"input\":\"Managed only\",\"value\":{\"s\":\"Managed only\"}},\"C4\":{\"input\":\"Self-host or cloud\",\"value\":{\"s\":\"Self-host or cloud\"}},\"C5\":{\"input\":\"Self-host or cloud\",\"value\":{\"s\":\"Self-host or cloud\"}},\"C6\":{\"input\":\"Self-host or cloud\",\"value\":{\"s\":\"Self-host or cloud\"}},\"D1\":{\"input\":\"Hybrid search\",\"value\":{\"s\":\"Hybrid search\"}},\"D2\":{\"input\":\"— (not in our notes)\",\"value\":{\"s\":\"— (not in our notes)\"}},\"D3\":{\"input\":\"— (not in our notes)\",\"value\":{\"s\":\"— (not in our notes)\"}},\"D4\":{\"input\":\"Built-in (BM25 + vectors)\",\"value\":{\"s\":\"Built-in (BM25 + vectors)\"}},\"D5\":{\"input\":\"— (not in our notes)\",\"value\":{\"s\":\"— (not in our notes)\"}},\"D6\":{\"input\":\"— (not in our notes)\",\"value\":{\"s\":\"— (not in our notes)\"}},\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_zfkqig6dlqas\"}\n",
+  "tool_call_id": "call_01a1f4a7d3647393aefe51cb"
+ },
+ {
+  "role": "assistant",
+  "content": "Charts and tabs are in place. Now I'll build the brief as one doc.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a92f2a75319a33eb12",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nMAIN='Our benchmark'\\nFEAT=f_zfkqig6dlqas\\nCH1=f_xkqj3d6ln5yc\\nCH2=f_fnukjapqwowq\\n\\nDOC=$(canvas frame add $CV --kind doc --name \\\"Vector database brief\\\" --json '{\\\"part\\\":\\\"Vector database brief\\\"}' | jq -er .id)\\necho \\\"DOC=$DOC\\\"\\n\\nCOVER=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\":::cover {status=\\\\\\\"Draft\\\\\\\"}\\\\n# Vector database brief\\\\n\\\\nFive stores shortlisted for the search re-platform: about 40M embeddings at 768 dimensions, filtered by tenant, with hybrid keyword search.\\\\n\\\\nEvidence: our own benchmark, 2 Nov 2026.\\\\n:::\\\"}' | jq -er .id)\\necho \\\"COVER=$COVER\\\"\\n\\nS1=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"# What we compared\\\"}' | jq -er .id)\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"The shortlist is five stores. Three are open source — Qdrant and Milvus under Apache 2.0, Weaviate under BSD-3 — one is a Postgres extension under the PostgreSQL licence, and one, Pinecone, is proprietary and managed only.[^1] They differ most in how much we run ourselves and what we pay for it.\\\"}'\\necho \\\"S1=$S1\\\"\\n\\nS2=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"# How they compare\\\"}' | jq -er .id)\\necho \\\"S2=$S2\\\"\\nLEAD=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"Our benchmark is the only side-by-side evidence we have: 10M sample vectors at 768 dimensions, tenant filter on, one four-node budget. On it Qdrant is fastest at {='\\\\''Our benchmark'\\\\''!B5} ms p95 latency, Milvus recalls most at {='\\\\''Our benchmark'\\\\''!C6}, and Pinecone — fully managed, no index build — costs the most at {='\\\\''Cost by store'\\\\''!B3} a month. pgvector is the cheapest at {='\\\\''Cost by store'\\\\''!B2} and the easiest to run, but is last on both latency ({='\\\\''Our benchmark'\\\\''!B2} ms) and recall ({='\\\\''Our benchmark'\\\\''!C2}).\\\"}' | jq -er .id)\\necho \\\"LEAD=$LEAD\\\"\\n\\nT1=$(canvas embed $CV --into $DOC --of \\\"$MAIN!A1:F6\\\" | jq -er .id)\\ncanvas patch $CV $T1 --json '{\\\"caption\\\":\\\"Our benchmark, 2 Nov 2026 — 10M vectors, 768-d, tenant filter on, one four-node budget\\\",\\\"figureSource\\\":\\\"Our benchmark!A1:F6\\\"}'\\necho \\\"T1=$T1\\\"\\n\\nE1=$(canvas embed $CV --into $DOC --of $CH1 | jq -er .id)\\ncanvas patch $CV $E1 --json '{\\\"caption\\\":\\\"p95 latency by store (ms, lower is better)\\\",\\\"figureSource\\\":\\\"Our benchmark!A1:B6\\\"}'\\nE2=$(canvas embed $CV --into $DOC --of $CH2 | jq -er .id)\\ncanvas patch $CV $E2 --json '{\\\"caption\\\":\\\"Monthly cost by store (lower is better)\\\",\\\"figureSource\\\":\\\"Cost by store!A1:B6\\\"}'\\necho \\\"E1=$E1 E2=$E2\\\"\\n\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"Latency and recall move together and mostly rule nothing out: four of the five sit within 8 ms of each other and within two points of recall, so none is disqualified on quality. Cost separates them more sharply — Pinecone is roughly twice pgvector — and operating effort separates them most: Pinecone needs nothing from us, Milvus carries the most moving parts.\\\"}'\\n\\nS3=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"# Feature fit\\\"}' | jq -er .id)\\necho \\\"S3=$S3\\\"\\nT2=$(canvas embed $CV --into $DOC --of \\\"Feature fit!A1:D6\\\" | jq -er .id)\\ncanvas patch $CV $T2 --json '{\\\"caption\\\":\\\"Feature fit, recorded from our notes\\\",\\\"figureSource\\\":\\\"Feature fit!A1:D6\\\"}'\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"Licensing and deployment are settled: Qdrant and Milvus are Apache 2.0, Weaviate BSD-3, pgvector keeps the PostgreSQL licence, and Pinecone is proprietary. Hybrid search is the gap. Our notes record it as built in for Weaviate alone (BM25 plus vectors); for the other four they say nothing, so hybrid support is unverified and must be proven in a pilot rather than assumed.[^3]\\\"}'\\n\\nS4=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"# Recommendation\\\"}' | jq -er .id)\\necho \\\"S4=$S4\\\"\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"Choose Qdrant. It is the only store that leads a measure that matters — the best p95 latency at {='\\\\''Our benchmark'\\\\''!B5} ms — while sitting at the second-lowest monthly cost ({='\\\\''Cost by store'\\\\''!B5}) and at the top of the recall band ({='\\\\''Our benchmark'\\\\''!C5}). Its payload filtering maps cleanly onto the per-tenant filter, and its Apache-2.0 core keeps the exit open. What would change this: if operating effort is the binding constraint, pgvector wins on the lowest ops score ({='\\\\''Our benchmark'\\\\''!F2}) and the lowest cost while staying inside our existing RDS; if we would rather run nothing at all, Pinecone is the lowest-ops option ({='\\\\''Our benchmark'\\\\''!F3}) at the highest price. If the pilot shows Weaviate is the only one whose hybrid search passes our acceptance tests, reconsider it at {='\\\\''Cost by store'\\\\''!B4} a month.\\\"}')\\n\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\":::callout {kind=\\\\\\\"risk\\\\\\\"}\\\\nThe evidence is one internal benchmark (10M vectors, 768-d, tenant filter on, one budget) rather than the 40M production shape, and no independent source was reachable to check it this week — the vendor pages could not be read. Hybrid-search support is stated for Weaviate alone and unverified for the rest. Treat this as a shortlist for a paid pilot, not a final decision: run the same acceptance queries, at 40M documents and with the tenant filter on, before committing.\\\\n:::\\\"}'\\n\\nS5=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"# References\\\"}' | jq -er .id)\\necho \\\"S5=$S5\\\"\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"[^1]: [Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — our notes on the five candidates and their licences.\\\"}'\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"[^2]: [Our benchmark](canvas-cite:f_7q2zpbbbpq2x#A1:F6) — our test, 2 Nov 2026.\\\"}'\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"[^3]: [Feature fit](canvas-cite:f_zfkqig6dlqas#A1:D6) — features recorded from our notes.\\\"}'\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\":::references\\\\n:::\\\"}'\\n\\nKF=$(canvas put $CV --parent $DOC --type text --after $COVER --json '{\\\"text\\\":\\\":::key-findings {sections=\\\\\\\"'\\\\''$S1,$S2,$S3,$S4'\\\\''\\\\\\\"}\\\\n1. Qdrant is fastest on our benchmark, at {='\\\\''Our benchmark'\\\\''!B5} ms p95 latency, with {='\\\\''Our benchmark'\\\\''!C5} recall.\\\\n2. Cost runs from {='\\\\''Cost by store'\\\\''!B2} (pgvector) to {='\\\\''Cost by store'\\\\''!B3} (Pinecone) a month — a roughly two-times spread.\\\\n3. Operating effort is the widest gap: Pinecone scores {='\\\\''Our benchmark'\\\\''!F3}, Milvus {='\\\\''Our benchmark'\\\\''!F6}, on a 1-to-5 scale.\\\\n4. Hybrid search is unverified for four of the five; only Weaviate states it in our notes.\\\\n:::\\\"}' | jq -er .id)\\necho \\\"KF=$KF\\\"\\necho \\\"DONE DOC=$DOC\\\"\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "DOC=f_q2jacrpf7bgh\nCOVER=n_otcy3jjyoije\n{\"id\":\"n_wjjhxhluvnxo\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":35}\nS1=n_wndgjdcfhcbt\nS2=n_ywklzwwe7z3m\nLEAD=n_e66yo6xad62l\n{\"id\":\"n_qta4zthatlaf\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":41,\"suggested\":false}\nT1=n_qta4zthatlaf\n{\"id\":\"n_2bl3hpfuzcfi\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":44,\"suggested\":false}\n{\"id\":\"n_cubosoqz3brw\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":47,\"suggested\":false}\nE1=n_2bl3hpfuzcfi E2=n_cubosoqz3brw\n{\"id\":\"n_c3l7foxq3fwc\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":48}\nS3=n_nke325xbeamo\n{\"id\":\"n_od74h5vrrwqw\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":52,\"suggested\":false}\n{\"id\":\"n_2tehq7a5t7wb\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":53}\nS4=n_fbjcpz2bvzc5\n/bin/bash: -c: line 43: syntax error near unexpected token `)'\n/bin/bash: -c: line 43: `canvas put $CV --parent $DOC --type text --json '{\"text\":\"Choose Qdrant. It is the only store that leads a measure that matters — the best p95 latency at {='\\''Our benchmark'\\''!B5} ms — while sitting at the second-lowest monthly cost ({='\\''Cost by store'\\''!B5}) and at the top of the recall band ({='\\''Our benchmark'\\''!C5}). Its payload filtering maps cleanly onto the per-tenant filter, and its Apache-2.0 core keeps the exit open. What would change this: if operating effort is the binding constraint, pgvector wins on the lowest ops score ({='\\''Our benchmark'\\''!F2}) and the lowest cost while staying inside our existing RDS; if we would rather run nothing at all, Pinecone is the lowest-ops option ({='\\''Our benchmark'\\''!F3}) at the highest price. If the pilot shows Weaviate is the only one whose hybrid search passes our acceptance tests, reconsider it at {='\\''Cost by store'\\''!B4} a month.\"}')'\n\n\nCommand exited with code 2",
+  "tool_call_id": "call_01a1f4a92f2a75319a33eb12"
+ },
+ {
+  "role": "assistant",
+  "content": "The recommendation block hit a shell-quoting issue with spaced tab names. Let me check whether JSON can come from stdin.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a96aef7d42bbf0f74c",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nDOC=f_q2jacrpf7bgh\\necho '{\\\"text\\\":\\\"probe stdin {='\\\"'\\\"'Our benchmark'\\\"'\\\"'!B5} ms\\\"}' | canvas put $CV --parent $DOC --type text --json - 2>&1 | head -5\\necho \\\"---try2---\\\"\\nprintf '%s' '{\\\"text\\\":\\\"probe2\\\"}' | canvas put $CV --parent $DOC --type text --json - 2>&1 | head -5\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "{\"id\":\"n_iv6zj6obnvul\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":56}\n---try2---\n{\"id\":\"n_7ndbtnjn7zlv\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":57}\n",
+  "tool_call_id": "call_01a1f4a96aef7d42bbf0f74c"
+ },
+ {
+  "role": "assistant",
+  "content": "`--json -` works. Let me remove the probes and check how the live reference renders.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a9703a7501a18de216",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nDOC=f_q2jacrpf7bgh\\ncanvas del $CV n_iv6zj6obnvul >/dev/null 2>&1; echo \\\"del1=$?\\\"\\ncanvas del $CV n_7ndbtnjn7zlv >/dev/null 2>&1; echo \\\"del2=$?\\\"\\necho \\\"=== doc-check ===\\\"\\ncanvas doc-check $CV $DOC\\necho \\\"=== try look ===\\\"\\ncanvas look $CV $DOC 2>&1 | head -30\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "del1=0\ndel2=0\n=== doc-check ===\n{\"count\":5,\"issues\":[{\"block\":\"n_wjjhxhluvnxo\",\"text\":\"Three are open source — Qdrant and Milvus under Apache 2.0, Weaviate under BSD-3 — one is a Postgres extension under the PostgreSQL licence, and one, Pinecone, is proprietary and managed only. They differ most in how much we run ourselves and what we pay for it.\"},{\"block\":\"n_e66yo6xad62l\",\"text\":\"Our benchmark is the only side-by-side evidence we have: 10M sample vectors at 768 dimensions, tenant filter on, one four-node budget.\"},{\"block\":\"n_c3l7foxq3fwc\",\"text\":\"Latency and recall move together and mostly rule nothing out: four of the five sit within 8 ms of each other and within two points of recall, so none is disqualified on quality.\"},{\"block\":\"n_2tehq7a5t7wb\",\"text\":\"Licensing and deployment are settled: Qdrant and Milvus are Apache 2.0, Weaviate BSD-3, pgvector keeps the PostgreSQL licence, and Pinecone is proprietary.\"},{\"block\":\"n_2tehq7a5t7wb\",\"text\":\"Our notes record it as built in for Weaviate alone (BM25 plus vectors); for the other four they say nothing, so hybrid support is unverified and must be proven in a pilot rather than assumed.\"}]}\n=== try look ===\n{\"frame\":\"f_q2jacrpf7bgh\",\"id\":\"cv_leztya3v7wrx\",\"next\":\"view the PNG as an image; do not build your own screenshot harness\",\"png\":\"/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_yeuuxoxvphei.png\",\"view\":{\"from\":\"pane\",\"full\":true,\"height\":2466,\"width\":865}}\n",
+  "tool_call_id": "call_01a1f4a9703a7501a18de216"
+ },
+ {
+  "role": "assistant",
+  "content": "WorkAF is running and drew the doc. Let me look at it before finishing.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a980f17a21bdb3e626",
+    "type": "function",
+    "function": {
+     "name": "view_image",
+     "arguments": "{\"path\":\"/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_yeuuxoxvphei.png\",\"question\":\"Does the document render? Do the live numbers show as values (e.g. \\\"19 ms\\\", \\\"98%\\\", \\\"$3,900\\\") or as broken references? Is there a comparison table and do two bar charts appear? Report any layout problems.\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "seen by google/gemini-3.7-flash: Based on the provided document, here is the assessment:\n\n1. **Document Rendering:** \n   - Yes, the document renders cleanly with its dark-theme styling, headings, text, data tables, and figures intact.\n\n2. **Live Numbers:** \n   - All live numbers render correctly as formatted values (e.g., `\"19 ms\"`, `\"98%\"`, `\"3,900\"`, `\"$2,100\"`, `\"$3,900\"`, `\"48 ms\"`, `\"95%\"`). There are no broken reference errors (such as `#REF!`, missing placeholders, or raw code tags).\n\n3. **Comparison Tables & Bar Charts:** \n   - **Tables:** Yes, there are two comparison tables:\n     - **Figure 1:** Performance & cost benchmark comparison (`pgvector`, `Pinecone`, `Weaviate`, `Qdrant`, `Milvus`).\n     - **Figure 4:** Feature fit / licensing / deployment comparison.\n   - **Charts:** Yes, two bar charts are present:\n     - **Figure 2:** *p95 latency by store (ms, lower is better)*\n     - **Figure 3:** *Monthly cost by store (lower is better)*\n\n4. **Layout Problems:**\n   - **Table Column Text Wrapping (Figure 1):** The first column (`Store`) is too narrow, causing word breaks across lines mid-word (e.g., `pgvect` / `or`, `Pineco` / `ne`, and `Weavia` / `te`).\n   - **Trailing Heading:** The \"Recommendation\" section header appears at the very bottom with no content beneath it (cut off at page end).",
+  "tool_call_id": "call_01a1f4a980f17a21bdb3e626"
+ },
+ {
+  "role": "assistant",
+  "content": "Rendering and live numbers work. Two fixes needed: the Store column is too narrow, and the Recommendation body failed to write. Let me inspect.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a9ade37561b68182d6",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nDOC=f_q2jacrpf7bgh\\ncanvas show $CV --frame $DOC 2>&1 | head -c 3000\\necho\\necho \\\"=== main sheet props ===\\\"\\ncanvas show $CV --frame f_7q2zpbbbpq2x 2>&1 | head -c 800\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "{\"budget\":null,\"id\":\"cv_leztya3v7wrx\",\"seq\":60,\"sheets\":{},\"spent\":null,\"stale\":{},\"title\":\"Vector DB research\",\"tree\":[{\"children\":[{\"id\":\"n_otcy3jjyoije\",\"ord\":\"a0\",\"props\":{\"text\":\":::cover {status=\\\"Draft\\\"}\\n# Vector database brief\\n\\nFive stores shortlisted for the search re-platform: about 40M embeddings at 768 dimensions, filtered by tenant, with hybrid keyword search.\\n\\nEvidence: our own benchmark, 2 Nov 2026.\\n:::\",\"written\":{\"at\":\"2026-11-19T16:34:56.237Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4clsXw4q_eAXOjdFqAaCcJLAFOouvdzA\"}},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_wndgjdcfhcbt\",\"ord\":\"a1\",\"props\":{\"text\":\"# What we compared\",\"written\":{\"at\":\"2026-11-19T16:34:56.248Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4clsXw4q_eAXOjdFqAaCcJLAFOouvdzA\"}},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_wjjhxhluvnxo\",\"ord\":\"a2\",\"props\":{\"text\":\"The shortlist is five stores. Three are open source — Qdrant and Milvus under Apache 2.0, Weaviate under BSD-3 — one is a Postgres extension under the PostgreSQL licence, and one, Pinecone, is proprietary and managed only.[^1] They differ most in how much we run ourselves and what we pay for it.\",\"written\":{\"at\":\"2026-11-19T16:34:56.257Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4clsXw4q_eAXOjdFqAaCcJLAFOouvdzA\"}},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_ywklzwwe7z3m\",\"ord\":\"a3\",\"props\":{\"text\":\"# How they compare\",\"written\":{\"at\":\"2026-11-19T16:34:56.268Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4clsXw4q_eAXOjdFqAaCcJLAFOouvdzA\"}},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_e66yo6xad62l\",\"ord\":\"a4\",\"props\":{\"text\":\"Our benchmark is the only side-by-side evidence we have: 10M sample vectors at 768 dimensions, tenant filter on, one four-node budget. On it Qdrant is fastest at {='Our benchmark'!B5} ms p95 latency, Milvus recalls most at {='Our benchmark'!C6}, and Pinecone — fully managed, no index build — costs the most at {='Cost by store'!B3} a month. pgvector is the cheapest at {='Cost by store'!B2} and the easiest to run, but is last on both latency ({='Our benchmark'!B2} ms) and recall ({='Our benchmark'!C2}).\",\"written\":{\"at\":\"2026-11-19T16:34:56.280Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4clsXw4q_eAXOjdFqAaCcJLAFOouvdzA\"}},\"rev\":1,\"type\":\"text\"},{\"id\":\"n_qta4zthatlaf\",\"ord\":\"a5\",\"props\":{\"caption\":\"Our benchmark, 2 Nov 2026 — 10M vectors, 768-d, tenant filter on, one four-node budget\",\"figureSource\":\"Our benchmark!A1:F6\",\"of\":\"Our benchmark!A1:F6\",\"written\":{\"at\":\"2026-11-19T16:34:56.294Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4clsXw4q_eAXOjdFqAaCcJLAFOouvdzA\"}},\"rev\":2,\"type\":\"embed\"},{\"id\":\"n_2bl3hpfuzcfi\",\"ord\":\"a6\",\"props\":{\"caption\":\"p95 latency by store (ms, lower is better)\",\"figureSource\":\"Our benchmark!A1:B6\",\"of\":\"f_xkqj3d6ln5yc\",\"written\":{\"at\":\"2026-11-19T16:34:56.318Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4clsXw4q_eAXOjdFqAaCcJLAFOouvdzA\"}},\"rev\":2,\"type\":\"embed\"},{\"id\":\"n_cubosoqz3brw\",\"ord\":\"a7\",\"props\":{\"caption\":\"Monthly cost by store (lower is better)\",\"figureSource\":\"Cost by store!A1:B6\",\"of\":\"f_fnukjapqwowq\",\"written\":{\"at\":\"2026-11-19T16:34:56.344Z\",\"by\":\"did:key:z7QH45Fvyc2js2G4c\n=== main sheet props ===\n{\"budget\":null,\"id\":\"cv_leztya3v7wrx\",\"seq\":60,\"sheets\":{\"f_7q2zpbbbpq2x\":{\"cells\":37,\"rows\":[[\"Store\",\"p95 latency (ms)\",\"Recall@10\",\"Index build (min)\",\"Monthly cost ($)\",\"Ops effort (1-5)\"],[\"pgvector\",48.0,0.95,95.0,2100.0,2.0],[\"Pinecone\",22.0,0.97,0.0,3900.0,1.0],[\"Weaviate\",27.0,0.96,41.0,2600.0,3.0],[\"Qdrant\",19.0,0.97,33.0,2300.0,3.0],[\"Milvus\",24.0,0.98,52.0,2800.0,5.0],[null,null,null,null,null,null],[\"Our test, 2026-11-02: 10M sample vectors, 768-d, tenant filter on, same 4-node budget.\",null,null,null,null,null]],\"used\":\"A1:F8\"}},\"spent\":null,\"stale\":{},\"title\":\"Vector DB research\",\"tree\":[{\"id\":\"f_7q2zpbbbpq2x\",\"ord\":\"a1\",\"props\":{\"formats\":{\"B2:B6\":\"thousands\",\"C2:C6\":\"percent\",\"D2:D6\":\"thousands\",\"E2:E6\":{\"currency\":\"USD\",\"decimals\":0,\"kind\":\"currency\",\"order\":1},\"F2:F6\":\"t",
+  "tool_call_id": "call_01a1f4a9ade37561b68182d6"
+ },
+ {
+  "role": "assistant",
+  "content": "Live refs resolve; the doc-check flags are only missing footnote definitions. Let me finish the doc, add the missing markers, and widen the Store column.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a9bf1679229b072bc2",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nDOC=f_q2jacrpf7bgh\\nCOVER=n_otcy3jjyoije\\nS1=n_wndgjdcfhcbt; S2=n_ywklzwwe7z3m; S3=n_nke325xbeamo; S4=n_fbjcpz2bvzc5\\n\\necho \\\"== widen Store column ==\\\"\\ncanvas patch $CV f_7q2zpbbbpq2x --json '{\\\"widths\\\":{\\\"A\\\":150,\\\"B\\\":120,\\\"C\\\":100,\\\"D\\\":120,\\\"E\\\":120,\\\"F\\\":110}}' 2>&1 | head -c 300; echo\\n\\necho \\\"== add [^2] to lead ==\\\"\\ncanvas patch $CV n_e66yo6xad62l --json - <<'EOF' | head -c 200; echo\\n{\\\"text\\\":\\\"Our benchmark is the only side-by-side evidence we have: 10M sample vectors at 768 dimensions, tenant filter on, one four-node budget.[^2] On it Qdrant is fastest at {='Our benchmark'!B5} ms p95 latency, Milvus recalls most at {='Our benchmark'!C6}, and Pinecone — fully managed, no index build — costs the most at {='Cost by store'!B3} a month. pgvector is the cheapest at {='Cost by store'!B2} and the easiest to run, but is last on both latency ({='Our benchmark'!B2} ms) and recall ({='Our benchmark'!C2}).\\\"}\\nEOF\\n\\necho \\\"== add [^2] to prose ==\\\"\\ncanvas patch $CV n_c3l7foxq3fwc --json - <<'EOF' | head -c 200; echo\\n{\\\"text\\\":\\\"Latency and recall move together and mostly rule nothing out: four of the five sit within 8 ms of each other and within two points of recall, so none is disqualified on quality.[^2] Cost separates them more sharply — Pinecone is roughly twice pgvector — and operating effort separates them most: Pinecone needs nothing from us, Milvus carries the most moving parts.\\\"}\\nEOF\\n\\necho \\\"== recommendation body ==\\\"\\ncanvas put $CV --parent $DOC --type text --json - <<'EOF' | head -c 200; echo\\n{\\\"text\\\":\\\"Choose Qdrant. It is the only store that leads a measure that matters — the best p95 latency at {='Our benchmark'!B5} ms — while sitting at the second-lowest monthly cost ({='Cost by store'!B5}) and at the top of the recall band ({='Our benchmark'!C5}). Its payload filtering maps cleanly onto the per-tenant filter, and its Apache-2.0 core keeps the exit open. What would change this: if operating effort is the binding constraint, pgvector wins on the lowest ops score ({='Our benchmark'!F2}) and the lowest cost while staying inside our existing RDS; if we would rather run nothing at all, Pinecone is the lowest-ops option ({='Our benchmark'!F3}) at the highest price. If the pilot shows Weaviate is the only store whose hybrid search passes our acceptance tests, reconsider it at {='Cost by store'!B4} a month.\\\"}\\nEOF\\n\\necho \\\"== risk callout ==\\\"\\ncanvas put $CV --parent $DOC --type text --json - <<'EOF' | head -c 200; echo\\n{\\\"text\\\":\\\":::callout {kind=\\\\\\\"risk\\\\\\\"}\\\\nThe evidence is one internal benchmark (10M vectors, 768-d, tenant filter on, one budget), not the 40M production shape, and no independent source was reachable to check it this week — the vendor pages could not be read. Hybrid-search support is stated for Weaviate alone and unverified for the rest. Treat this as a shortlist for a paid pilot, not a final decision: run the same acceptance queries, at 40M documents and with the tenant filter on, before committing.\\\\n:::\\\"}\\nEOF\\n\\necho \\\"== references ==\\\"\\nS5=$(canvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"# References\\\"}' | jq -er .id); echo \\\"S5=$S5\\\"\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"[^1]: [Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — our notes on the five candidates and their licences.\\\"}' >/dev/null\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"[^2]: [Our benchmark](canvas-cite:f_7q2zpbbbpq2x#A1:F6) — our test, 2 Nov 2026.\\\"}' >/dev/null\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\"[^3]: [Feature fit](canvas-cite:f_zfkqig6dlqas#A1:D6) — features recorded from our notes.\\\"}' >/dev/null\\ncanvas put $CV --parent $DOC --type text --json '{\\\"text\\\":\\\":::references\\\\n:::\\\"}' >/dev/null\\n\\necho \\\"== key findings ==\\\"\\nKF=$(canvas put $CV --parent $DOC --type text --after $COVER --json - <<EOF | jq -er .id\\n{\\\"text\\\":\\\":::key-findings {sections=\\\\\\\"$S1,$S2,$S3,$S4\\\\\\\"}\\\\n1. Qdrant is fastest on our benchmark, at {='Our benchmark'!B5} ms p95 latency, with {='Our benchmark'!C5} recall.\\\\n2. Cost runs from {='Cost by store'!B2} (pgvector) to {='Cost by store'!B3} (Pinecone) a month — a roughly two-times spread.\\\\n3. Operating effort is the widest gap: Pinecone scores {='Our benchmark'!F3}, Milvus {='Our benchmark'!F6}, on a 1-to-5 scale.\\\\n4. Hybrid search is unverified for four of the five; only Weaviate states it in our notes.\\\\n:::\\\"}\\nEOF\\n)\\necho \\\"KF=$KF\\\"\\necho \\\"== doc-check ==\\\"\\ncanvas doc-check $CV $DOC\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "== widen Store column ==\n{\"id\":\"f_7q2zpbbbpq2x\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_7q2zpbbbpq2x\",\"seq\":61,\"suggested\":false}\n\n== add [^2] to lead ==\n{\"id\":\"n_e66yo6xad62l\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":62,\"suggested\":false}\n\n== add [^2] to prose ==\n{\"id\":\"n_c3l7foxq3fwc\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":63,\"suggested\":false}\n\n== recommendation body ==\n{\"id\":\"n_sqm77jgqgtir\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":65}\n\n== risk callout ==\n{\"id\":\"n_3poc24ta32xl\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":66}\n\n== references ==\nS5=n_2imp7tvv3h4k\n== key findings ==\nKF=n_6ltmoulryuw4\n== doc-check ==\n{\"count\":4,\"issues\":[{\"block\":\"n_2tehq7a5t7wb\",\"text\":\"Licensing and deployment are settled: Qdrant and Milvus are Apache 2.0, Weaviate BSD-3, pgvector keeps the PostgreSQL licence, and Pinecone is proprietary.\"},{\"block\":\"n_sqm77jgqgtir\",\"text\":\"Its payload filtering maps cleanly onto the per-tenant filter, and its Apache-2.0 core keeps the exit open.\"},{\"block\":\"n_3poc24ta32xl\",\"text\":\"The evidence is one internal benchmark (10M vectors, 768-d, tenant filter on, one budget), not the 40M production shape, and no independent source was reachable to check it this week — the vendor pages could not be read.\"},{\"block\":\"n_3poc24ta32xl\",\"text\":\"Treat this as a shortlist for a paid pilot, not a final decision: run the same acceptance queries, at 40M documents and with the tenant filter on, before committing.\"}]}\n",
+  "tool_call_id": "call_01a1f4a9bf1679229b072bc2"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a9d3607071b7d30872",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx; DOC=f_q2jacrpf7bgh\\n\\ncanvas patch $CV n_2tehq7a5t7wb --json - <<'EOF' >/dev/null\\n{\\\"text\\\":\\\"Licensing and deployment are settled: Qdrant and Milvus are Apache 2.0, Weaviate BSD-3, pgvector keeps the PostgreSQL licence, and Pinecone is proprietary.[^1] Hybrid search is the gap. Our notes record it as built in for Weaviate alone (BM25 plus vectors); for the other four they say nothing, so hybrid support is unverified and must be proven in a pilot rather than assumed.[^3]\\\"}\\nEOF\\n\\ncanvas patch $CV n_sqm77jgqgtir --json - <<'EOF' >/dev/null\\n{\\\"text\\\":\\\"Choose Qdrant. It is the only store that leads a measure that matters — the best p95 latency at {='Our benchmark'!B5} ms — while sitting at the second-lowest monthly cost ({='Cost by store'!B5}) and at the top of the recall band ({='Our benchmark'!C5}). Its payload filtering maps cleanly onto the per-tenant filter, and its Apache-2.0 core keeps the exit open.[^3] What would change this: if operating effort is the binding constraint, pgvector wins on the lowest ops score ({='Our benchmark'!F2}) and the lowest cost while staying inside our existing RDS; if we would rather run nothing at all, Pinecone is the lowest-ops option ({='Our benchmark'!F3}) at the highest price. If the pilot shows Weaviate is the only store whose hybrid search passes our acceptance tests, reconsider it at {='Cost by store'!B4} a month.\\\"}\\nEOF\\n\\ncanvas patch $CV n_3poc24ta32xl --json - <<'EOF' >/dev/null\\n{\\\"text\\\":\\\":::callout {kind=\\\\\\\"risk\\\\\\\"}\\\\nThe evidence is one internal benchmark (10M vectors, 768-d, tenant filter on, one budget), not the 40M production shape, and no independent source was reachable to check it this week — the vendor pages could not be read.[^2] Hybrid-search support is stated for Weaviate alone and unverified for the rest.[^3] Treat this as a shortlist for a paid pilot, not a final decision: run the same acceptance queries, at 40M documents and with the tenant filter on, before committing.[^1]\\\\n:::\\\"}\\nEOF\\n\\necho \\\"== doc-check ==\\\"\\ncanvas doc-check $CV $DOC\\necho \\\"== look ==\\\"\\ncanvas look $CV $DOC 2>&1 | tail -c 1200\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "== doc-check ==\n{\"count\":0,\"issues\":[]}\n== look ==\n{\"frame\":\"f_q2jacrpf7bgh\",\"id\":\"cv_leztya3v7wrx\",\"next\":\"view the PNG as an image; do not build your own screenshot harness\",\"png\":\"/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_lfg6vngfrpvx.png\",\"view\":{\"from\":\"pane\",\"full\":true,\"height\":3711,\"width\":865}}\n",
+  "tool_call_id": "call_01a1f4a9d3607071b7d30872"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4a9dfc07cf1aa17b7ef",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\ncanvas look cv_leztya3v7wrx f_q2jacrpf7bgh 2>&1 | python3 -c 'import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get(\\\"layout\\\"),indent=1))'\"}"
+    }
+   },
+   {
+    "id": "call_01a1f4a9e091754181408e54",
+    "type": "function",
+    "function": {
+     "name": "view_image",
+     "arguments": "{\"path\":\"/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_lfg6vngfrpvx.png\",\"question\":\"Review this document top to bottom. Is the Store column in the first table now readable (no mid-word breaks)? Do both bar charts render with labels? Is every section filled (no empty headings)? Report any overlap, cut-off text, or awkward layout.\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "null\n",
+  "tool_call_id": "call_01a1f4a9dfc07cf1aa17b7ef"
+ },
+ {
+  "role": "tool",
+  "content": "seen by google/gemini-3.7-flash: Here is the top-to-bottom review of your document based on your criteria:\n\n---\n\n### 1. Direct Answers to Your Questions\n\n* **Is the Store column in the first table now readable (no mid-word breaks)?**\n  * **No.** The first column in Table 1 (Figure 1) is still too narrow and suffers from severe mid-word line breaks:\n    * `pgvect` / `or`\n    * `Pineco` / `ne`\n    * `Weavia` / `te`\n  *(Note: Table 2 under \"Feature fit\" does not have this issue, but Table 1 does).*\n\n* **Do both bar charts render with labels?**\n  * **Yes.** Both charts render completely with:\n    * Y-axis scale values (0–50 and 0–4K).\n    * X-axis store names (pgvector, Pinecone, Weaviate, Qdrant, Milvus).\n    * Legend labels below the charts (`p95 latency (ms)` and `Monthly cost ($)`).\n    * Captions and data source lines.\n\n* **Is every section filled (no empty headings)?**\n  * **Yes.** All sections (*What we compared*, *How they compare*, *Feature fit*, *Recommendation*, and *References*) have complete body text and data.\n\n---\n\n### 2. Layout, Formatting, and Text Issues Found\n\n1. **Table 1 Column Width / Wrapping (Figure 1):**\n   * Increase the width of the `Store` column to prevent `pgvector`, `Pinecone`, and `Weaviate` from wrapping across two lines.\n\n2. **Duplicate Heading in \"References\":**\n   * The heading **\"References\"** is duplicated immediately below itself (appears as an `H2` followed directly by an identical `H3/bold text`).\n\n3. **Unrendered / Raw Citation Links in References:**\n   * The list items under References display raw Markdown/internal URI syntax rather than rendered hyperlinks:\n     * `[Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — our notes...`\n     * `[Our benchmark](canvas-cite:f_7q2zpbbbpq2x#A1:F6) — our test...`\n     * `[Feature fit](canvas-cite:f_zfkqig6dlqas#A1:D6) — features...`\n   * These should be formatted cleanly as clickable link text (e.g., just *\"Vector DB notes\"*).",
+  "tool_call_id": "call_01a1f4a9e091754181408e54"
+ },
+ {
+  "role": "assistant",
+  "content": "doc-check is clean. Two cosmetic fixes: the first table's Store column, and a duplicated References heading. Let me inspect the sheet props.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4aa398d7081bb9c7316",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx\\nfor F in f_7q2zpbbbpq2x f_zfkqig6dlqas f_muew3octtsyd; do\\necho \\\"=== $F ===\\\"\\ncanvas show $CV --frame $F 2>&1 | python3 -c 'import sys,json; d=json.load(sys.stdin); t=d[\\\"tree\\\"][0]; print(json.dumps(t[\\\"props\\\"],indent=1)[:600])'\\ndone\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "=== f_7q2zpbbbpq2x ===\n{\n \"formats\": {\n  \"B2:B6\": \"thousands\",\n  \"C2:C6\": \"percent\",\n  \"D2:D6\": \"thousands\",\n  \"E2:E6\": {\n   \"currency\": \"USD\",\n   \"decimals\": 0,\n   \"kind\": \"currency\",\n   \"order\": 1\n  },\n  \"F2:F6\": \"thousands\"\n },\n \"kind\": \"sheet\",\n \"name\": \"Our benchmark\",\n \"part\": \"Our benchmark\",\n \"widths\": {\n  \"A\": 150,\n  \"B\": 120,\n  \"C\": 100,\n  \"D\": 120,\n  \"E\": 120,\n  \"F\": 110\n },\n \"x\": 0.0,\n \"y\": 1480.0\n}\n=== f_zfkqig6dlqas ===\n{\n \"kind\": \"sheet\",\n \"name\": \"Feature fit\",\n \"part\": \"Our benchmark\",\n \"x\": 3200.0,\n \"y\": 1480.0\n}\n=== f_muew3octtsyd ===\n{\n \"kind\": \"sheet\",\n \"name\": \"Cost by store\",\n \"part\": \"Our benchmark\",\n \"x\": 1600.0,\n \"y\": 1480.0\n}\n",
+  "tool_call_id": "call_01a1f4aa398d7081bb9c7316"
+ },
+ {
+  "role": "assistant",
+  "content": "Widths are set, so the embed likely renders at pane width. Let me widen the page and dedupe the References heading, then re-check.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4aa51e774b1a39fc789",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx; DOC=f_q2jacrpf7bgh\\ncanvas page set $CV $DOC --width wide 2>&1 | head -c 200; echo\\ncanvas del $CV n_2imp7tvv3h4k 2>&1 | head -c 200; echo\\ncanvas look $CV $DOC 2>&1 | python3 -c 'import sys,json;d=json.load(sys.stdin);print(\\\"png\\\",d[\\\"png\\\"]);print(\\\"layout\\\",json.dumps(d.get(\\\"layout\\\")))'\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "{\"id\":\"f_q2jacrpf7bgh\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":77}\n\n{\"id\":\"n_2imp7tvv3h4k\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":78}\n\npng /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_v6tqb35z5oeo.png\nlayout null\n",
+  "tool_call_id": "call_01a1f4aa51e774b1a39fc789"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4aa59f37a8398652dc6",
+    "type": "function",
+    "function": {
+     "name": "view_image",
+     "arguments": "{\"path\":\"/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_v6tqb35z5oeo.png\",\"question\":\"Two questions. (1) In the first table (the benchmark, Figure 1), does the Store column now show 'pgvector', 'Pinecone', 'Weaviate' on one line each, or are words still broken mid-word? (2) Near the end, how does the References area look — is there one 'References' heading, and do the three source lines render as clean links or as raw bracketed markdown like '[Vector DB notes](canvas-cite:...)'?\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "seen by google/gemini-3.7-flash: Based on the image:\n\n1. **First table (Figure 1 - Benchmark):** The words are **still broken mid-word**. In the Store column, they wrap awkwardly as:\n   * `pgvect` / `or`\n   * `Pineco` / `ne`\n   * `Weavia` / `te`\n   *(Only `Qdrant` and `Milvus` fit on a single line).*\n\n2. **References area:** \n   * Yes, there is **one single 'References' heading**.\n   * The three lines **render as raw bracketed markdown** (e.g., `[Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — ...`) rather than clickable, clean hyperlink text.",
+  "tool_call_id": "call_01a1f4aa59f37a8398652dc6"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4aa917574729cb774e4",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx; DOC=f_q2jacrpf7bgh; LEAD=n_e66yo6xad62l\\n\\necho \\\"== recreate benchmark embed after widths set ==\\\"\\ncanvas del $CV n_qta4zthatlaf 2>&1 | head -c 120; echo\\nT1=$(canvas embed $CV --into $DOC --of 'Our benchmark!A1:F6' --after $LEAD | jq -er .id); echo \\\"T1=$T1\\\"\\ncanvas patch $CV $T1 --json '{\\\"caption\\\":\\\"Our benchmark, 2 Nov 2026 — 10M vectors, 768-d, tenant filter on, one four-node budget\\\",\\\"figureSource\\\":\\\"Our benchmark!A1:F6\\\"}' >/dev/null\\n\\necho \\\"== references: fold defs into the block ==\\\"\\n# find current ref def block ids\\ncanvas show $CV --frame $DOC 2>&1 | python3 -c '\\nimport sys,json\\nd=json.load(sys.stdin)\\nfor c in d[\\\"tree\\\"][0][\\\"children\\\"]:\\n    t=c.get(\\\"props\\\",{}).get(\\\"text\\\",\\\"\\\")\\n    if t.startswith(\\\"[^\\\") or t.startswith(\\\":::references\\\"):\\n        print(c[\\\"id\\\"], repr(t[:40]))\\n'\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "== recreate benchmark embed after widths set ==\n{\"id\":\"n_qta4zthatlaf\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":80}\n\nT1=n_y2bo7rynvrud\n== references: fold defs into the block ==\nn_a7m6du2a2qky '[^1]: [Vector DB notes](canvas-cite:f_7w'\nn_42yg2o4fvjxx '[^2]: [Our benchmark](canvas-cite:f_7q2z'\nn_6yic4bqpbqjv '[^3]: [Feature fit](canvas-cite:f_zfkqig'\nn_k4fspynhdacq ':::references\\n:::'\n",
+  "tool_call_id": "call_01a1f4aa917574729cb774e4"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4aa9c3d7981b187cb7b",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\ncanvas look cv_leztya3v7wrx f_q2jacrpf7bgh 2>&1 | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[\\\"png\\\"])'\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_qgdalbq2lpny.png\n",
+  "tool_call_id": "call_01a1f4aa9c3d7981b187cb7b"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4aaa32a7e608bc3cbf0",
+    "type": "function",
+    "function": {
+     "name": "view_image",
+     "arguments": "{\"path\":\"/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_qgdalbq2lpny.png\",\"question\":\"(1) In the benchmark table, list the Store column exactly as it appears — is 'pgvector' on one line or split? (2) At the very bottom under References, transcribe the three source lines character by character, including any brackets, parentheses or angle characters you see.\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "seen by google/gemini-3.7-flash: Based on the provided image:\n\n### (1) Store Column in the Benchmark Table (Figure 1)\nIn the benchmark table, **`pgvector` is split across two lines**. Several other names are also wrapped/split due to column width. The column appears exactly as follows:\n\n* **pgvect**  \n  **or**\n* **Pineco**  \n  **ne**\n* **Weavia**  \n  **te**\n* **Qdrant**\n* **Milvus**\n\n---\n\n### (2) Transcription of References\n\n1. [Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — our notes on the five candidates and their licences.\n2. [Our benchmark](canvas-cite:f_7q2zpbbbpq2x#A1:F6) — our test, 2 Nov 2026.\n3. [Feature fit](canvas-cite:f_zfkqig6dlqas#A1:D6) — features recorded from our notes.",
+  "tool_call_id": "call_01a1f4aaa32a7e608bc3cbf0"
+ },
+ {
+  "role": "assistant",
+  "content": "The table's first column ignores sheet widths, and the canvas-cite links render as raw text. Let me fix both.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4aadfb27ca0a89a0401",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx; DOC=f_q2jacrpf7bgh\\necho \\\"== page show ==\\\"\\ncanvas page show $CV $DOC 2>&1 | head -c 500; echo\\necho \\\"== try embed widths ==\\\"\\ncanvas patch $CV n_y2bo7rynvrud --json '{\\\"widths\\\":{\\\"A\\\":170}}' 2>&1 | head -c 300; echo\\ncanvas page set $CV $DOC --width full 2>&1 | head -c 150; echo\\necho \\\"== plain-text reference lines ==\\\"\\ncanvas patch $CV n_a7m6du2a2qky --json '{\\\"text\\\":\\\"[^1]: Vector DB notes — our canvas notes on the five candidates and their licences.\\\"}' >/dev/null\\ncanvas patch $CV n_42yg2o4fvjxx --json '{\\\"text\\\":\\\"[^2]: Our benchmark — our test, 2 Nov 2026.\\\"}' >/dev/null\\ncanvas patch $CV n_6yic4bqpbqjv --json '{\\\"text\\\":\\\"[^3]: Feature fit — features recorded from our notes.\\\"}' >/dev/null\\necho \\\"== doc-check ==\\\"\\ncanvas doc-check $CV $DOC\\necho \\\"== look ==\\\"\\ncanvas look $CV $DOC 2>&1 | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[\\\"png\\\"]);print(\\\"layout\\\",json.dumps(d.get(\\\"layout\\\")))'\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "== page show ==\n{\"blocks\":[{\"id\":\"n_otcy3jjyoije\",\"kind\":\"text\",\"rev\":1,\"text\":\":::cover {status=\\\"Draft\\\"} # Vector database brief Five stores shortlisted for the search re-platform: about 40M embeddi…\"},{\"id\":\"n_6ltmoulryuw4\",\"kind\":\"text\",\"rev\":1,\"text\":\":::key-findings {sections=\\\"n_wndgjdcfhcbt,n_ywklzwwe7z3m,n_nke325xbeamo,n_fbjcpz2bvzc5\\\"} 1. Qdrant is fastest on our be…\"},{\"id\":\"n_wndgjdcfhcbt\",\"kind\":\"text\",\"rev\":1,\"text\":\"# What we compared\"},{\"id\":\"n_wjjhxhluvnxo\",\"kind\":\"text\",\"rev\":1,\"text\":\"Th\n== try embed widths ==\n{\"error\":{\"code\":\"invalid\",\"message\":\"embed has no prop \\\"widths\\\"; embed props: excerpt, boardRegion, statement, caption, figureSource, figureWidth, of, title, tone, x, y, w, h, frozen, docSlot, gridTile, view, crop, alt, version\"}}\n\n{\"id\":\"f_q2jacrpf7bgh\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":84}\n\n== plain-text reference lines ==\n== doc-check ==\n{\"count\":6,\"issues\":[{\"block\":\"n_wjjhxhluvnxo\",\"text\":\"Three are open source — Qdrant and Milvus under Apache 2.0, Weaviate under BSD-3 — one is a Postgres extension under the PostgreSQL licence, and one, Pinecone, is proprietary and managed only. They differ most in how much we run ourselves and what we pay for it.\"},{\"block\":\"n_c3l7foxq3fwc\",\"text\":\"Latency and recall move together and mostly rule nothing out: four of the five sit within 8 ms of each other and within two points of recall, so none is disqualified on quality. Cost separates them more sharply — Pinecone is roughly twice pgvector — and operating effort separates them most: Pinecone needs nothing from us, Milvus carries the most moving parts.\"},{\"block\":\"n_2tehq7a5t7wb\",\"text\":\"Licensing and deployment are settled: Qdrant and Milvus are Apache 2.0, Weaviate BSD-3, pgvector keeps the PostgreSQL licence, and Pinecone is proprietary. Hybrid search is the gap.\"},{\"block\":\"n_2tehq7a5t7wb\",\"text\":\"Our notes record it as built in for Weaviate alone (BM25 plus vectors); for the other four they say nothing, so hybrid support is unverified and must be proven in a pilot rather than assumed.\"},{\"block\":\"n_3poc24ta32xl\",\"text\":\"The evidence is one internal benchmark (10M vectors, 768-d, tenant filter on, one budget), not the 40M production shape, and no independent source was reachable to check it this week — the vendor pages could not be read. Hybrid-search support is stated for Weaviate alone and unverified for the rest. Treat this as a shortlist for a paid pilot, not a final decision: run the same acceptance queries, at 40M documents and with the tenant filter on, before committing.\"},{\"block\":\"n_42yg2o4fvjxx\",\"text\":\": Our benchmark — our test, 2 Nov 2026.\"}]}\n== look ==\n/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_t22jdrtuovsk.png\nlayout null\n",
+  "tool_call_id": "call_01a1f4aadfb27ca0a89a0401"
+ },
+ {
+  "role": "assistant",
+  "content": "Plain-text references broke doc-check — the citation link is what registers the source. Let me restore links but fold them into the references block, and try widening the table.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4ab03cf7c6091921ae0",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx; DOC=f_q2jacrpf7bgh\\n# fold defs into references block\\ncanvas del $CV n_a7m6du2a2qky >/dev/null 2>&1\\ncanvas del $CV n_42yg2o4fvjxx >/dev/null 2>&1\\ncanvas del $CV n_6yic4bqpbqjv >/dev/null 2>&1\\ncanvas patch $CV n_k4fspynhdacq --json - <<'EOF' >/dev/null\\n{\\\"text\\\":\\\":::references\\\\n[^1]: [Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — our notes on the five candidates and their licences.\\\\n[^2]: [Our benchmark](canvas-cite:f_7q2zpbbbpq2x#A1:F6) — our test, 2 Nov 2026.\\\\n[^3]: [Feature fit](canvas-cite:f_zfkqig6dlqas#A1:D6) — features recorded from our notes.\\\\n:::\\\"}\\nEOF\\necho \\\"== doc-check ==\\\"\\ncanvas doc-check $CV $DOC\\necho \\\"== try figureWidth on embed ==\\\"\\ncanvas patch $CV n_y2bo7rynvrud --json '{\\\"figureWidth\\\":820}' 2>&1 | head -c 200; echo\\ncanvas look $CV $DOC 2>&1 | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[\\\"png\\\"])'\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "== doc-check ==\n{\"count\":0,\"issues\":[]}\n== try figureWidth on embed ==\n{\"error\":{\"code\":\"invalid\",\"message\":\"embed.figureWidth must be one of column, wide, full, got 820\"}}\n\n/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_364mcjiagf7d.png\n",
+  "tool_call_id": "call_01a1f4ab03cf7c6091921ae0"
+ },
+ {
+  "role": "assistant",
+  "content": "`figureWidth` takes `full` — that should widen the table. Let me set it and check both fixes.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4ab0f41741194fe8987",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx; DOC=f_q2jacrpf7bgh\\ncanvas patch $CV n_y2bo7rynvrud --json '{\\\"figureWidth\\\":\\\"full\\\"}' 2>&1 | head -c 150; echo\\ncanvas look $CV $DOC 2>&1 | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d[\\\"png\\\"]);print(json.dumps(d.get(\\\"layout\\\")))'\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "{\"id\":\"n_y2bo7rynvrud\",\"link\":\"workaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh\",\"seq\":92,\"suggested\":false}\n\n/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_pxa4tm3b2pns.png\nnull\n",
+  "tool_call_id": "call_01a1f4ab0f41741194fe8987"
+ },
+ {
+  "role": "assistant",
+  "content": "",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4ab179b7ad092a01bc3",
+    "type": "function",
+    "function": {
+     "name": "view_image",
+     "arguments": "{\"path\":\"/tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/looks/lk_pxa4tm3b2pns.png\",\"question\":\"(1) In the benchmark table, is 'pgvector' now on one line (not split as 'pgvect'/'or')? (2) At the bottom, the References section: transcribe exactly what the three source lines show. (3) Any overlap or cut-off text anywhere?\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "seen by google/gemini-3.7-flash: Based on the image provided:\n\n---\n\n### **(1) Is 'pgvector' on one line in the benchmark table?**\n**Yes**, `pgvector` appears cleanly on a single line in the benchmark table (under *How they compare*, as well as in the *Feature fit* table below it), with no awkward line breaks or splitting.\n\n---\n\n### **(2) References Section Transcription**\n\n1. `[Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — our notes on the five candidates and their licences.`\n2. `[Our benchmark](canvas-cite:f_7q2zpbbbpq2x#A1:F6) — our test, 2 Nov 2026.`\n3. `[Feature fit](canvas-cite:f_zfkqig6dlqas#A1:D6) — features recorded from our notes.`\n\n---\n\n### **(3) Any overlap or cut-off text?**\n**No**, there is no overlapping or cut-off text anywhere. All table cells, chart axes/labels, callout containers, and body text wrap properly with clean spacing and full readability.",
+  "tool_call_id": "call_01a1f4ab179b7ad092a01bc3"
+ },
+ {
+  "role": "assistant",
+  "content": "Table fixed. Let me verify the document's structure and order before finishing.",
+  "tool_calls": [
+   {
+    "id": "call_01a1f4ab58d476938856fd75",
+    "type": "function",
+    "function": {
+     "name": "bash",
+     "arguments": "{\"command\":\"cd /tmp/connected-e2e.o45aUqRf/home/canvases/cv_leztya3v7wrx/work\\nCV=cv_leztya3v7wrx; DOC=f_q2jacrpf7bgh\\ncanvas show $CV --frame $DOC 2>&1 | python3 -c '\\nimport sys,json\\nd=json.load(sys.stdin)\\nfor c in d[\\\"tree\\\"][0][\\\"children\\\"]:\\n    p=c.get(\\\"props\\\",{})\\n    t=p.get(\\\"text\\\", p.get(\\\"of\\\",\\\"\\\"))\\n    print(f'\\\"'\\\"'{c[\\\"ord\\\"]:>4} {c[\\\"type\\\"]:6} {t[:70]!r}'\\\"'\\\"')\\n'\"}"
+    }
+   }
+  ]
+ },
+ {
+  "role": "tool",
+  "content": "  a0 text   ':::cover {status=\"Draft\"}\\n# Vector database brief\\n\\nFive stores shortli'\n a0V text   ':::key-findings {sections=\"n_wndgjdcfhcbt,n_ywklzwwe7z3m,n_nke325xbeam'\n  a1 text   '# What we compared'\n  a2 text   'The shortlist is five stores. Three are open source — Qdrant and Milvu'\n  a3 text   '# How they compare'\n  a4 text   'Our benchmark is the only side-by-side evidence we have: 10M sample ve'\n  a5 embed  'Our benchmark!A1:F6'\n  a6 embed  'f_xkqj3d6ln5yc'\n  a7 embed  'f_fnukjapqwowq'\n  a8 text   'Latency and recall move together and mostly rule nothing out: four of '\n  a9 text   '# Feature fit'\n  aA embed  'Feature fit!A1:D6'\n  aB text   'Licensing and deployment are settled: Qdrant and Milvus are Apache 2.0'\n  aC text   '# Recommendation'\n  aD text   'Choose Qdrant. It is the only store that leads a measure that matters '\n  aE text   ':::callout {kind=\"risk\"}\\nThe evidence is one internal benchmark (10M v'\n  aJ text   ':::references\\n[^1]: [Vector DB notes](canvas-cite:f_7wtm4ou3zj5b#) — o'\n",
+  "tool_call_id": "call_01a1f4ab58d476938856fd75"
+ },
+ {
+  "role": "assistant",
+  "content": "Done. The brief renders clean, `doc-check` is at zero, and the two charts and both comparison tables show live values.\n\n**Vector DB brief** — a new Doc on the canvas, built from your notes and the benchmark already there (one line: web search was down this session, so every figure is our own data and external vendor facts are marked as unverified).\n\n- Structure: cover → key findings → *What we compared* → *How they compare* → *Feature fit* → *Recommendation*, with a risk callout and references.\n- Comparison: the live benchmark table (10M vectors, 768-d, tenant filter) plus a **Feature fit** table (licence, deployment, hybrid search) I added as a tab on the same sheet.\n- Charts: **p95 latency by store** and **Monthly cost by store**, both drawn from the sheet, so they follow any number you change.\n- Recommendation: **Qdrant** — best measured p95 latency (19 ms) at the second-lowest monthly cost ($2,300) and top-band recall (97%), with payload filtering for tenant filters and an Apache-2.0 core. It flips to pgvector if ops effort is the binding constraint, or Pinecone to run nothing.\n- Gap named, not papered over: hybrid search is recorded for Weaviate alone; the benchmark is 10M vectors, not the 40M production shape — so it reads as a shortlist for a paid pilot.\n\nTwo things to know: the three source lines at the foot show as raw citation text in the rendered page (the cite links are what keeps every figure sourced), and the benchmark sheet gained two extra tabs (Cost by store, Feature fit) that the brief reads.\n\nworkaf://canvas/cv_leztya3v7wrx#f_q2jacrpf7bgh"
+ }
+]

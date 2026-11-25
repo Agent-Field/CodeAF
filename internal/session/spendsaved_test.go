@@ -183,15 +183,18 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 	}
 	// Bank a late charge while A is between capture and write. The channel
 	// handoff above guarantees A has released a.mu, so banking can proceed.
+	//
+	// THE BANK OWES THE LATE STAMP ITSELF ([Agent.bank] stamps every bill
+	// outside a live turn), so the test owes no second one. It once called
+	// stampSpend here as well, and whether the deferred writer coalesced the two
+	// owes was the scheduler's choice: under -race about two runs in three
+	// wrote .375 twice. [TestAnUnchangedSpendIsNotSavedOrSaidTwice] pins the
+	// product half of that.
 	agent.bank(bankedCall{
 		used:  Usage{Input: 4, Output: 1, CostUSD: .125, Calls: 1},
 		model: "test/model", generationID: "late-concurrent", late: true, ledger: true,
 	})
-	// The late charge already owes its own stamp: bank stamps every bill
-	// outside a live turn ([Agent.bank]). Owing a second one here queued a
-	// second write whenever the first was already waiting on the stamp lock,
-	// and the same .375 was announced twice (4 of 60 on dev). So this waits for
-	// the bank's stamp rather than adding one.
+	// So this waits for the bank's own stamp rather than adding one.
 	lateStarted, lateDone := make(chan struct{}), make(chan struct{})
 	go func() {
 		close(lateStarted)
@@ -218,7 +221,6 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 		t.Fatal("newer stamp did not capture after releasing the older stamp")
 	}
 	waitMetaPatch(t, done)
-	waitMetaPatch(t, lateDone)
 	meta := stampedMeta(t, agent, dir)
 	mu.Lock()
 	defer mu.Unlock()
@@ -244,5 +246,37 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 		if extra := <-captured; extra.spent != .375 || !extra.locked {
 			t.Fatalf("extra capture = %+v; want .375 with the stamp lock held", extra)
 		}
+	}
+}
+
+// Contract (c): two owed stamps that the deferred writer did not coalesce
+// capture the same meter. The second must neither rewrite the folder nor say
+// the figure again; a new bill afterwards is still saved and said. The stamps
+// run on this goroutine, so no schedule decides the outcome.
+func TestAnUnchangedSpendIsNotSavedOrSaidTwice(t *testing.T) {
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: dir, Workspace: config.Workspace}
+	})
+	agent.mu.Lock()
+	agent.usage = Usage{Input: 10, Output: 2, CostUSD: .25, Calls: 1}
+	agent.mu.Unlock()
+	var figures []float64
+	t.Cleanup(OnSpendSaved(func(saved SpendSaved) {
+		if saved.Dir == dir {
+			figures = append(figures, saved.SpentUSD)
+		}
+	}))
+	agent.stampTurnEnd(false)
+	agent.stampTurnEnd(false)
+	if len(figures) != 1 || figures[0] != .25 {
+		t.Fatalf("one unchanged total said %v, want .25 once", figures)
+	}
+	agent.mu.Lock()
+	agent.usage.CostUSD, agent.usage.Output = .375, 3
+	agent.mu.Unlock()
+	agent.stampTurnEnd(false)
+	if meta := metaOnDisk(t, dir); len(figures) != 2 || figures[1] != .375 || meta.SpentUSD != .375 || meta.Tokens != 13 {
+		t.Fatalf("a new bill after an unchanged one saved %+v and said %v, want .375", meta, figures)
 	}
 }

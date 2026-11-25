@@ -159,7 +159,7 @@ func testContinueSameTask(t *testing.T, retry bool) {
 // R1: "continue task 1" against a number from another window, or a number
 // this conversation never ran, used to be answered as a search miss
 // ("No task 1 in this project") and then narrated as progress. The tool
-// must say there is no graph, point at the work if the row still names
+// must say the task is not held here, point at the work if the row still names
 // it, and never return a sentence that reads as if the node was re-armed.
 func TestContinueOnATaskThisSessionDoesNotHoldSaysSo(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
@@ -167,8 +167,8 @@ func TestContinueOnATaskThisSessionDoesNotHoldSaysSo(t *testing.T) {
 	if !isError {
 		t.Fatalf("continue on an unknown id succeeded:\n%s", unknown)
 	}
-	if !strings.Contains(unknown, "no graph") {
-		t.Fatalf("unknown continue did not name the missing graph:\n%s", unknown)
+	if !strings.Contains(unknown, "not one this conversation holds") {
+		t.Fatalf("unknown continue did not say the task is not held here:\n%s", unknown)
 	}
 	if strings.Contains(unknown, "continuing task") {
 		t.Fatalf("unknown continue read as a resume:\n%s", unknown)
@@ -188,8 +188,8 @@ func TestContinueOnATaskThisSessionDoesNotHoldSaysSo(t *testing.T) {
 	if !isError {
 		t.Fatalf("continue on another conversation's task succeeded:\n%s", away)
 	}
-	if !strings.Contains(away, "no graph") {
-		t.Fatalf("cross-session continue did not name the missing graph:\n%s", away)
+	if !strings.Contains(away, "not one this conversation holds") {
+		t.Fatalf("cross-session continue did not say the task is not held here:\n%s", away)
 	}
 	if !strings.Contains(away, branch) {
 		t.Fatalf("cross-session continue did not point at the work:\n%s", away)

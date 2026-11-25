@@ -313,15 +313,9 @@ func globMatch(pattern, text string) bool {
 // and not being asked costs the machine. Everything else is the policy's job.
 //
 // Matched against the whole line and each segment, after normalizeCritical.
+// A recursive delete outside the agent's folder is on the floor too, but it is
+// read rather than matched, in recursivedelete.go.
 var criticalCommands = []string{
-	// Recursive force-remove of a root path. The '/*' glob deliberately
-	// over-fires: it catches "rm -rf / --no-preserve-root" and also plain
-	// "rm -rf /var/tmp/x". Prompting on an absolute recursive delete under an
-	// allow-all policy is the trade this table exists to make.
-	"rm -rf /",
-	"rm -rf /*",
-	"rm -fr /",
-	"rm -fr /*",
 	// Making a filesystem — mkfs, mkfs.ext4, mkfs.xfs …
 	"mkfs*",
 	// dd with a device as its output.
@@ -336,39 +330,87 @@ var criticalCommands = []string{
 	"poweroff", "poweroff *",
 }
 
+// rootDeletes is the table's recursive force-remove of a root path. The '/*'
+// glob deliberately over-fires: it catches "rm -rf / --no-preserve-root" and
+// also plain "rm -rf /var/tmp/x". Prompting on an absolute recursive delete
+// under an allow-all policy is the trade these rows exist to make.
+//
+// THEY STAND ASIDE WHEN THE AGENT'S FOLDER IS KNOWN. Then the reader in
+// recursivedelete.go can place an absolute path, and it already asks about
+// every recursive delete it cannot place inside that folder, `rm -rf /`
+// included; these rows would only add a question about `rm -rf
+// /path/to/the/agents/own/folder/build`, which is the cleanup the reader lets
+// through. With no folder they stand exactly as they always have.
+var rootDeletes = []string{
+	"rm -rf /",
+	"rm -rf /*",
+	"rm -fr /",
+	"rm -fr /*",
+}
+
 // forkBomb is the classic shape, matched against the line with ALL whitespace
 // removed so the usual spacings — ":(){ :|:& };:" and ":(){:|:&};:" — are one
 // string. Renaming the function defeats it; that is fine. The table is a floor.
 const forkBomb = "*:(){:|:&};:*"
 
-// criticalHit reports the first critical shape found in the line, and the
-// table entry that found it, for display.
-func criticalHit(command string, segments []string) (string, bool) {
+// criticalHit reports whether the line holds a critical shape, and the words
+// to name it by: the segment of the line that matched, as the agent wrote it
+// with its whitespace collapsed, and never the table pattern behind it.
+//
+// THE QUESTION NAMES WHAT WILL RUN. The pattern used to be the name, so a
+// canvas manager's `rm -rf /tmp/site_check` reached the person as
+// `critical command "rm -rf /*"`, which reads as a request to wipe the disk
+// and leaves them nothing true to answer. The segments are tried before the
+// whole line so a compound cleanup names the one deletion that tripped the
+// floor, and the whole line is tried last for a shape no one segment holds.
+//
+// workspace is the folder the line runs in, the bash tool's own working
+// directory, or empty when the caller does not know it.
+func criticalHit(command string, segments []string, workspace string) (string, bool) {
 	if globMatch(forkBomb, stripSpace(command)) {
 		return ":(){:|:&};:", true
 	}
-	// THE PERSON'S NO HOLDS FOR THE ACT, NOT FOR ONE SPELLING OF IT. The table
-	// below matches text, and every `rm` entry in it spells `rm -rf /`, so a
-	// model refused that line ran `rm -r /tmp/victim` one call later and was
-	// never asked (#2813). The table still answers first, so a line it already
-	// catches keeps the rule it has always been reported under (`rm -rf /` is
-	// `rm -rf /`). Only what it misses is then read the way the shell reads it —
-	// quotes stripped, flags in any spelling, a path-qualified `rm`.
+	table := criticalCommands
+	if len(knownFolder(workspace).roots) == 0 {
+		table = append(append([]string(nil), rootDeletes...), criticalCommands...)
+	}
+	// THE PERSON'S NO HOLDS FOR THE ACT, NOT FOR ONE SPELLING OF IT (#2813).
+	// The table below matches text, so a model refused `rm -rf /tmp/victim`
+	// once ran `rm -r /tmp/victim` one call later and was never asked. The
+	// table still answers first; what it misses is then read the way the shell
+	// reads it, by recursiveDeleteOutside below.
 	candidates := make([]string, 0, len(segments)+1)
-	candidates = append(candidates, command)
 	candidates = append(candidates, segments...)
+	candidates = append(candidates, command)
 	for _, candidate := range candidates {
 		normalized := normalizeCritical(candidate)
 		if normalized == "" {
 			continue
 		}
-		for _, pattern := range criticalCommands {
+		for _, pattern := range table {
 			if globMatch(pattern, normalized) {
-				return pattern, true
+				return criticalName(candidate), true
 			}
 		}
 	}
-	return recursiveRemoveHit(command)
+	// The table names spellings; a recursive delete is read for what it does
+	// and where it lands (recursivedelete.go), so `rm -r /tmp/x` asks the way
+	// `rm -rf /tmp/x` always has.
+	return recursiveDeleteOutside(command, workspace)
+}
+
+// criticalNameLimit bounds the command a question quotes. A long line is cut
+// at the end, because its start is the verb and the path the person judges.
+const criticalNameLimit = 120
+
+// criticalName is a matched segment as the person reads it: whitespace runs
+// collapsed, cut at criticalNameLimit runes with an ellipsis.
+func criticalName(segment string) string {
+	name := []rune(strings.Join(strings.Fields(segment), " "))
+	if len(name) <= criticalNameLimit {
+		return string(name)
+	}
+	return strings.TrimSpace(string(name[:criticalNameLimit-1])) + "…"
 }
 
 // normalizeCritical flattens the spellings that would otherwise let a critical
@@ -388,85 +430,6 @@ func normalizeCritical(command string) string {
 		}
 		normalized = strings.TrimSpace(rest)
 	}
-}
-
-// The two names a recursive delete is reported under. They are the table's
-// own spellings, so the rule a person reads on the card is a line they can find
-// in the manual: an absolute or home path is the `rm -rf /*` they were already
-// asked about, and a bare `*` is the `rm -rf *` the manual has always promised.
-const (
-	criticalRemoveRoot = "rm -rf /*"
-	criticalRemoveAll  = "rm -rf *"
-)
-
-// recursiveRemoveHit reports a recursive `rm` aimed at a target whose loss
-// cannot be taken back: an absolute path, the home folder (`~`, `$HOME`,
-// `${HOME}`), or a bare `*` that empties the folder it runs in.
-//
-// IT GRADES THE ACT AND NOT THE FLAGS. `-r`, `-R` and `--recursive` are one
-// flag, clustered (`-rf`, `-fR`) or split (`-r -f`), with or without `-f`, and
-// after `--` every word is a target. The words come from [CommandWords], so a
-// quoted path is the path, and a leading `sudo`, `env` or `/bin/rm` reads as the
-// `rm` it runs ([unwrap], [commandBase]).
-//
-// A RELATIVE TARGET IS NOT GRADED. `rm -rf build` and `rm -r ./tmp/x` are the
-// ordinary cleanup of a project, and a floor that asked about them would be
-// pressed through without reading. The table is a floor and not a sandbox:
-// `find -delete` and a script that removes a tree are the policy's job, and the
-// sentence the model reads after a no is what covers those ([consent.go]).
-func recursiveRemoveHit(command string) (string, bool) {
-	for _, words := range CommandWords(command) {
-		words = unwrap(words, map[string]string{}, CredentialScope{})
-		if len(words) == 0 || commandBase(words[0]) != "rm" {
-			continue
-		}
-		recursive, options := false, true
-		var targets []string
-		for _, word := range words[1:] {
-			switch {
-			case !options:
-				targets = append(targets, word)
-			case word == "--":
-				options = false
-			case len(word) > 2 && strings.HasPrefix("--recursive", word):
-				// GNU rm takes any unambiguous prefix of a long option, and
-				// `--r` is only ever --recursive, so `--rec` and `--recurs`
-				// are the same flag.
-				recursive = true
-			case strings.HasPrefix(word, "--"):
-			case strings.HasPrefix(word, "-") && len(word) > 1:
-				if strings.ContainsAny(word[1:], "rR") {
-					recursive = true
-				}
-			default:
-				targets = append(targets, word)
-			}
-		}
-		if !recursive {
-			continue
-		}
-		for _, target := range targets {
-			if hit := removeTargetHit(target); hit != "" {
-				return hit, true
-			}
-		}
-	}
-	return "", false
-}
-
-// removeTargetHit names the table entry one delete target falls under, or ""
-// for a target this floor leaves to the policy.
-func removeTargetHit(target string) string {
-	switch {
-	case target == "*":
-		return criticalRemoveAll
-	case strings.HasPrefix(target, "/"),
-		target == "~", strings.HasPrefix(target, "~/"),
-		target == "$HOME", strings.HasPrefix(target, "$HOME/"),
-		target == "${HOME}", strings.HasPrefix(target, "${HOME}/"):
-		return criticalRemoveRoot
-	}
-	return ""
 }
 
 func stripSpace(text string) string {

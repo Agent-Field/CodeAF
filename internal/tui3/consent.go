@@ -115,7 +115,7 @@ func (a *app) consentQuestion(ev session.Event) session.Question {
 			}
 		}
 	}
-	irreversible := approval.AlwaysAsks(ev.Tool, json.RawMessage(args)) || approval.AlwaysAsksRule(ev.Rule)
+	irreversible := approval.AlwaysAsksIn(ev.Tool, json.RawMessage(args), a.workspace) || approval.AlwaysAsksRule(ev.Rule)
 	stakes := session.StakesCostly
 	if irreversible {
 		stakes = session.StakesIrreversible

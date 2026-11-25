@@ -233,3 +233,68 @@ func TestTaskUpdatesNameTheWorkerTheTaskActsAs(t *testing.T) {
 		t.Fatal("no task update")
 	}
 }
+
+// bashWritesAgentWorkspace writes the folder the command was told is the
+// agent's, after a `cd` away from it when away is set (a task worker's write
+// guard refuses a redirect it cannot place, so its command stays put).
+func bashWritesAgentWorkspace(file string, away bool) *scriptedCompleter {
+	command := `printf '%s' \"$CODEAF_AGENT_WORKSPACE\" > ` + file
+	if away {
+		command = `(cd / && printf '%s' \"$CODEAF_AGENT_WORKSPACE\") > ` + file
+	}
+	return &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("ws", "bash", `{"command":"`+command+`"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+	}}
+}
+
+// THE FOLDER TRAVELS WITH THE DID. The app makes an agent a canvas member by
+// the folder it lists the agent in before it has seen the agent's DID, and the
+// `canvas` command admits the DID by that folder. It used to read the folder
+// from the command's own directory, so a Claude model that ran `cd /tmp`
+// before its write was refused on every one (connected-canvas, 2026-11-18).
+// The engine now says which folder is the agent's, whatever the command does.
+func TestToolCommandsSeeTheAgentsFolderWhereverTheyRun(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	place := identityPlace(t, "7777777777777778")
+	agent, workspace := newTestAgent(t, bashWritesAgentWorkspace("ws.txt", true), func(config *Config) { config.Place = place })
+	drainTurn(t, agent, "Write your folder")
+	raw, err := os.ReadFile(filepath.Join(workspace, "ws.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != workspace {
+		t.Fatalf("the command saw folder %q, the agent works in %q", raw, workspace)
+	}
+	if env := agent.config.identityEnv(); len(env) != 2 || env[1] != agentdid.AgentWorkspaceEnv+"="+workspace {
+		t.Fatalf("the identity a Claude Code session is handed must carry the same folder: %q", env)
+	}
+}
+
+// A task worker acts as the agent, so it carries the conversation's folder,
+// not the directory the task happens to work in.
+func TestTaskWorkerCommandsSeeTheConversationsFolder(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	place := identityPlace(t, "9999999999999998")
+	agent := openIdentityAgent(t, place, bashWritesAgentWorkspace("worker-ws.txt", false))
+	graph := stubbedGraph(agent, func(*TaskNode) {})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Identity", brief: "Write your folder", acceptance: "folder written", model: "test/model", depth: 1})
+	node := graph.node(id)
+	dir := t.TempDir()
+	worker, err := agent.newTaskAgent(context.Background(), dir, node, "")
+	if err != nil {
+		t.Fatalf("worker construction: %v", err)
+	}
+	defer worker.Close()
+	drainTurn(t, worker, "Write your folder")
+	raw, err := os.ReadFile(filepath.Join(dir, "worker-ws.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := agent.config.Workspace; string(raw) != want || want == dir {
+		t.Fatalf("the worker's command saw folder %q, want the conversation's %q", raw, want)
+	}
+}

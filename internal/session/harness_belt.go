@@ -43,6 +43,7 @@ package session
 // which is the whole point of this file.
 
 import (
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 )
 
@@ -71,11 +72,23 @@ type HarnessBeltSeams struct {
 	Media          MediaGenerator
 	MediaModel     func(modality string) string
 	MediaAdmission func(modality, word string) MediaAdmission
+	// PictureRoute is [Config.PictureRoute]: the picture maker's route, so a
+	// saved procedure's picture follows the same choice the conversation's does.
+	PictureRoute func(config.PictureAsk) config.PictureRoute
 
 	// MediaPick is [Config.MediaPick]: the just-in-time model choice on the
 	// four making verbs. Nil keeps the `model` argument off their schemas,
 	// exactly as it does on the conversation's belt.
 	MediaPick func(modality, word string) (string, error)
+
+	// MediaMasks is [Config.MediaMasks]: which image models take a real mask.
+	MediaMasks func(model string) bool
+
+	// MediaAspects is [Config.MediaAspects]: which frame shapes a model draws.
+	MediaAspects func(model string) []string
+
+	// MediaOutputs is [Config.MediaOutputs]: how many pictures one request draws.
+	MediaOutputs func(model string) int
 
 	// Seer is the completer view_image asks to look. It is separate from Media
 	// because looking is a CHAT call to a vision model and not a media-endpoint
@@ -147,7 +160,11 @@ func HarnessBelt(workspace string, seams HarnessBeltSeams) []bare.Tool {
 			Media:          seams.Media,
 			MediaModel:     seams.MediaModel,
 			MediaAdmission: seams.MediaAdmission,
+			PictureRoute:   seams.PictureRoute,
 			MediaPick:      seams.MediaPick,
+			MediaMasks:     seams.MediaMasks,
+			MediaAspects:   seams.MediaAspects,
+			MediaOutputs:   seams.MediaOutputs,
 			Place:          seams.Place,
 			ArtifactsIndex: seams.ArtifactsIndex,
 		},
@@ -189,7 +206,11 @@ func (a *Agent) harnessSeams() HarnessBeltSeams {
 		Media:          a.config.Media,
 		MediaModel:     a.config.MediaModel,
 		MediaAdmission: a.config.MediaAdmission,
+		PictureRoute:   a.config.PictureRoute,
 		MediaPick:      a.config.MediaPick,
+		MediaMasks:     a.config.MediaMasks,
+		MediaAspects:   a.config.MediaAspects,
+		MediaOutputs:   a.config.MediaOutputs,
 		Seer:           a.routedCompleter(),
 		Place:          a.config.Place,
 		ArtifactsIndex: a.config.ArtifactsIndex,

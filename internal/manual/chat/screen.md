@@ -4399,3 +4399,18 @@ and its messages remain intact.
 
 When reading is handed to a quick task, its tool rows finish as soon as the answer
 returns. Their elapsed time stays fixed while the conversation is idle.
+
+## Why it handed its reading to a quick task — and why a long file is never handed off
+
+When one reply reads, searches or lists a **third different file or folder** in a
+row, codeaf hands the rest of that reading to a quick task, and only its distilled
+answer comes back; the tool rows say `handed to quick task N`. One file stays the
+reply's own reading however many times it is read: a long file read a window at a
+time (the same path at different lines) counts as one file, so instructions the
+reply is following are never read for it by somebody else.
+
+The quick task can only read files and list folders. It cannot run a command, so
+what only a program shows — the rows in a database file, what is on a canvas, what
+a running service holds — is something it never saw. It is told to say so rather
+than call such a thing empty, and the reply is told that any claim of that kind in
+the answer is unchecked until it runs the command itself.

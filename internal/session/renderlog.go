@@ -83,19 +83,36 @@ type RenderRecord struct {
 	Error    string   `json:"error,omitempty"`
 	Refusal  string   `json:"refusal,omitempty"`
 	Options  []string `json:"options,omitempty"`
+	// Picked says how a picture's model was chosen: "chosen" when somebody
+	// named it (the call, this canvas, Everywhere, or the operator's pin) and
+	// "automatic" when nobody did. Empty on a record from before it existed.
+	Picked string `json:"picked,omitempty"`
+	// PassedOver are the Automatic picture makers tried before this one that
+	// did not answer, in the order they were tried: what "made with X · Y was
+	// busy" is read from.
+	PassedOver []RenderPassedOver `json:"passed_over,omitempty"`
 	// Persistence is unavailable when the latest fact is retained in memory because its journal write failed.
 	Persistence string `json:"persistence,omitempty"`
 }
 
 // renderPatch is what a terminal row adds to the started one.
 type renderPatch struct {
-	state     RenderState
-	committed bool
-	path      string
-	usage     *ai.Usage
-	err       string
-	refusal   string
-	options   []string
+	state      RenderState
+	committed  bool
+	path       string
+	usage      *ai.Usage
+	err        string
+	refusal    string
+	options    []string
+	picked     string
+	passedOver []RenderPassedOver
+}
+
+// RenderPassedOver is one Automatic picture maker that did not answer before
+// the one that drew: the model and why ("busy", "unreachable" or "gone").
+type RenderPassedOver struct {
+	Model  string `json:"model"`
+	Reason string `json:"reason"`
 }
 
 const (
@@ -689,6 +706,13 @@ func (l *renderLedger) applyEnd(rec *RenderRecord, patch renderPatch, now time.T
 	for _, option := range patch.options[:min(len(patch.options), 8)] {
 		if option != "" && len(option) <= 1024 {
 			rec.Options = append(rec.Options, strings.Clone(option))
+		}
+	}
+	rec.Picked = patch.picked
+	rec.PassedOver = nil
+	for _, passed := range patch.passedOver[:min(len(patch.passedOver), 8)] {
+		if passed.Model != "" && len(passed.Model) <= 1024 && len(passed.Reason) <= 64 {
+			rec.PassedOver = append(rec.PassedOver, RenderPassedOver{Model: strings.Clone(passed.Model), Reason: strings.Clone(passed.Reason)})
 		}
 	}
 	rec.Error = strings.Join(strings.Fields(patch.err), " ")

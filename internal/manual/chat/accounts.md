@@ -639,3 +639,24 @@ Not now saves no refusal, so a later need can ask again.
 
 The account store currently holds one account per connector, including Slack.
 It does not record connection dates or recent connector calls.
+
+## Pulling a connector into a desktop sheet — is it read-only?
+
+Yes. A sheet tab on the desktop whose source is a connector can be pulled
+again with one click, and the desktop asks this engine to read that account as
+a CSV (`plugins.read_csv`, announced in the feature list). Older engines that do
+not announce it get no pull button.
+
+The read is done by a model holding that one account's tools that only look,
+and nothing else: no shell, no files, no other account. A tool server's tool
+arrives only when the server marks it read-only; Google and Slack bring their
+search and read tools; a key account's raw call runs `get` and refuses every
+other verb on each call. A capability you turned off stays off, and the pull
+does not ask again for a read you left on Ask, because pressing Pull asked for it.
+
+The answer must be a whole CSV, header row first, every row as wide as the
+header, up to 64 MB. Anything else is refused and nothing lands; the sheet shows
+the reason as the last pull's failure, for example `Notion is signed out; sign
+in again in Settings › Connectors` or `Notion has nothing turned on that only
+reads, so it cannot be read into a sheet`. The rows are never written to a log.
+One pull may take up to 85 seconds and costs the model calls it makes.

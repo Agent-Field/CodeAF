@@ -8,7 +8,7 @@ import (
 )
 
 func TestPluginsMethodsOptional(t *testing.T) {
-	for _, name := range []string{"plugins.list", "plugins.describe", "plugins.connect_browser", "plugins.cancel", "plugins.connect_key", "plugins.set_capability", "plugins.disconnect"} {
+	for _, name := range []string{"plugins.list", "plugins.describe", "plugins.connect_browser", "plugins.cancel", "plugins.connect_key", "plugins.set_capability", "plugins.disconnect", "plugins.read_csv"} {
 		m, ok := methods[name]
 		if !ok {
 			t.Errorf("missing %s", name)
@@ -115,6 +115,60 @@ func TestPluginsDispatchValidationAndFeature(t *testing.T) {
 		if !strings.Contains(string(raw), word) {
 			t.Errorf("schema lacks %s", word)
 		}
+	}
+}
+
+type csvPluginsEngine struct {
+	pluginsEngine
+	asked  []PluginReadCSVParams
+	answer string
+	err    error
+}
+
+func (e *csvPluginsEngine) ReadPluginCSV(p PluginReadCSVParams) (PluginReadCSVResult, error) {
+	e.asked = append(e.asked, p)
+	return PluginReadCSVResult{CSV: e.answer}, e.err
+}
+
+// plugins.read_csv is announced only by an engine that can answer it, clamps
+// the ceiling to the most it serves, and refuses an answer over the ceiling
+// rather than cutting it.
+func TestPluginsReadCSVFeatureParamsAndCeiling(t *testing.T) {
+	if h := withPluginsFeature(Hello{}, &pluginsEngine{}); len(h.Features) != 1 || h.Features[0] != FeaturePlugins {
+		t.Fatalf("an engine that cannot read a CSV announced %v", h.Features)
+	}
+	e := &csvPluginsEngine{answer: "Deal ID,Amount\nD-2,300\n"}
+	h := withPluginsFeature(Hello{}, e)
+	if len(h.Features) != 2 || h.Features[1] != FeaturePluginsReadCSV || FeaturePluginsReadCSV != "plugins.read_csv" {
+		t.Fatalf("features = %v", h.Features)
+	}
+
+	out, err := methods["plugins.read_csv"].call(e, json.RawMessage(`{"id":"linear","query":" deals ","max_bytes":67108864}`))
+	if err != nil || out.(*PluginReadCSVResult).CSV != e.answer {
+		t.Fatalf("read = %v, %v", out, err)
+	}
+	if got := e.asked[0]; got.ID != "linear" || got.Query != "deals" || got.MaxBytes != PluginReadCSVMaxBytes {
+		t.Fatalf("forwarded %+v", got)
+	}
+	if _, err := methods["plugins.read_csv"].call(e, json.RawMessage(`{"id":"linear","query":null,"max_bytes":999999999999}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.asked[1]; got.Query != "" || got.MaxBytes != PluginReadCSVMaxBytes {
+		t.Fatalf("a null query or an oversize ceiling was not normalized: %+v", got)
+	}
+
+	for _, raw := range []string{`{}`, `{"id":"linear","max_bytes":-1}`} {
+		if _, err := methods["plugins.read_csv"].call(e, json.RawMessage(raw)); wireCode(t, err) != CodeBadParams {
+			t.Fatalf("accepted %s: %v", raw, err)
+		}
+	}
+	if len(e.asked) != 2 {
+		t.Fatal("an invalid request reached the engine")
+	}
+
+	e.answer = strings.Repeat("x", 40)
+	if _, err := methods["plugins.read_csv"].call(e, json.RawMessage(`{"id":"linear","max_bytes":10}`)); wireCode(t, err) != CodeTooLarge {
+		t.Fatalf("an answer over the ceiling was not refused: %v", err)
 	}
 }
 

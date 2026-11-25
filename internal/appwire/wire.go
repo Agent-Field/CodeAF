@@ -383,6 +383,23 @@ type AskSecret struct {
 	KeepsForS   int    `json:"keeps_for_s,omitempty"`
 }
 
+// AskField is one named blank of a question that asks for several things at
+// once ("monthly spend", "savings so far", "age"): the asker's own label, what
+// goes in it, what it holds before anybody types, and the words a choice
+// offers. The app draws one labelled box per field, in this order, and sends
+// the filled form back as the answer's text, one "label: value" line each, so
+// an older engine that never sent fields and a newer one read the same answer.
+//
+// THE FIELDS ARE THE ASKER'S, NOT THE APP'S GUESS. A question that says only
+// "give me your numbers" leaves the person guessing which numbers; the model
+// names them in the ask tool's blanks and they arrive here, or there are none.
+type AskField struct {
+	Label   string   `json:"label"`
+	Kind    string   `json:"kind,omitempty" enum:"text,path,number,choice,time"`
+	Default string   `json:"default,omitempty"`
+	Choices []string `json:"choices,omitempty"`
+}
+
 // Ask is one thing an agent is waiting on the person for: a tool call waiting
 // to be allowed, or a question the agent put. Options are the engine's own
 // choices, keyed by the id an answer names.
@@ -430,8 +447,15 @@ type Ask struct {
 	// sends what was typed as the answer's text, and never shows it back. Nil
 	// on every other ask.
 	Secret *AskSecret `json:"secret,omitempty"`
-	SayWhy bool       `json:"say_why,omitempty"`
-	Later  bool       `json:"later,omitempty"`
+	// Fields are the named blanks of a question that asks for several things
+	// at once, in the asker's order ([AskField]). Nil on every other ask.
+	Fields []AskField `json:"fields,omitempty"`
+	// FieldsPrompt is the asker's one line over those fields ("Rough numbers
+	// are fine; skip what you don't know"), and "" when it wrote none or there
+	// are no fields.
+	FieldsPrompt string `json:"fields_prompt,omitempty"`
+	SayWhy       bool   `json:"say_why,omitempty"`
+	Later        bool   `json:"later,omitempty"`
 	// Path is the crews a crew's decision climbed through to the person,
 	// "Backend → Release → you".
 	Path []string `json:"path,omitempty"`
@@ -554,10 +578,13 @@ type Entry struct {
 	Status    int    `json:"status,omitempty"`
 	// NoticeKind, Skills and Unrecorded are typed facts the engine attached to a
 	// notice at its producer: "skills" (the skills a turn carried, named in
-	// Skills), "memory" (a memory line), "factory_status", or a local "sync",
-	// "moved" or "interrupted" sentence. Unrecorded says no transcript record
-	// redraws it. A consumer never derives these facts from Text.
-	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,sync,moved,interrupted"`
+	// Skills), "memory" (a memory line), "factory_status", "sent_back" (a check
+	// on the turn's finished reply sent it back to work: the answer just before
+	// it in the turn is followed by more work and usually by an answer that
+	// replaces it), or a local "sync", "moved" or "interrupted" sentence.
+	// Unrecorded says no transcript record redraws it. A consumer never derives
+	// these facts from Text.
+	NoticeKind string   `json:"notice_kind,omitempty" enum:"skills,memory,factory_status,sent_back,sync,moved,interrupted"`
 	Skills     []string `json:"skills,omitempty"`
 	Unrecorded bool     `json:"unrecorded,omitempty"`
 	// A steer's and a note's state, the step a steer landed at and the step a

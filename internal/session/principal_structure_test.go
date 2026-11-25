@@ -43,6 +43,10 @@ var wakeRoads = map[string]string{
 		"to the person's own last message, and it only exists because that person had the app " +
 		"open, was answered part-way, and has opened it again",
 	"wakeNote": "the constructor itself; it addresses nobody and carries no words of its own",
+	"carryOwedLandingOn": "the rest of an owed landing's reply, when its short turn reached its bound " +
+		"(owedlanding_carry.go). It is addressed to THE CONVERSATION'S OWN MODEL, to finish the answer " +
+		"the landing already owed, and it is queued only from inside that running turn, so it never " +
+		"opens a wake on its own: the turn's end drains it and starts the one ordinary turn that answers",
 	"jobNote": "the registry's background-job ending; the model started this work and its tool " +
 		"contract promised the ending would return instead of being polled",
 	"enqueueWatchNote": "a watch FIRING, which is the last thing that watch will ever say. " +

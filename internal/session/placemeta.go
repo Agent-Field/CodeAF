@@ -538,6 +538,15 @@ func (a *Agent) stampTurnEnd(sealed bool) {
 		if spent <= 0 && tokens <= 0 {
 			return
 		}
+		// A FIGURE ALREADY SAVED IS NOT SAVED OR SAID AGAIN. Owed stamps
+		// coalesce only when the second arrives before the writer starts, so
+		// whether a late bill plus another owe became one write or two was
+		// the scheduler's choice; the second wrote the same total and
+		// announced it twice. The answer to "was this said?" is kept here, not
+		// left to timing.
+		if a.spendSaved == (savedSpend{dir: dir, spent: spent, tokens: tokens}) {
+			return
+		}
 		a.writeSpendSnapshot(dir, snapshot, spent, tokens)
 		return
 	}
@@ -548,8 +557,16 @@ func (a *Agent) stampTurnEnd(sealed bool) {
 		}
 		meta.LastReplyAt = at
 	}) && (spent > 0 || tokens > 0) {
+		a.spendSaved = savedSpend{dir: dir, spent: spent, tokens: tokens}
 		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
 	}
+}
+
+// savedSpend is one total as it was written to one conversation's folder.
+type savedSpend struct {
+	dir    string
+	spent  float64
+	tokens int
 }
 
 // captureSpendStamp keeps the capture and its test seam together, so moving
@@ -627,10 +644,12 @@ func (a *Agent) writeSpend(dir string, spent float64, tokens int) {
 }
 
 // The snapshot can predate a title commit; only the spend belongs to this patch.
+// Callers hold spendStampMu, which also guards the record of what was saved.
 func (a *Agent) writeSpendSnapshot(dir string, snapshot Meta, spent float64, tokens int) {
 	if a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.SpentUSD, meta.Tokens = spent, tokens
 	}) {
+		a.spendSaved = savedSpend{dir: dir, spent: spent, tokens: tokens}
 		announceSpendSaved(SpendSaved{Dir: dir, SpentUSD: spent})
 	}
 }

@@ -56,6 +56,14 @@ type intentNameState struct {
 	Pending bool   `json:"pending"`
 	Claim   string `json:"claim,omitempty"`
 	Literal bool   `json:"literal,omitempty"`
+	// Person is a name the person gave the conversation themselves, which
+	// nothing the engine does replaces (topicname.go).
+	Person bool `json:"person,omitempty"`
+	// Engine is a name the engine chose — a model's or the opening words kept
+	// as the fallback — and so one a later change of subject may replace. A
+	// journal written before this field existed says neither, and its literal
+	// name is read as possibly the person's.
+	Engine bool `json:"engine,omitempty"`
 }
 
 func boundedIntentFiles(files []string) []string {
@@ -252,7 +260,7 @@ func (a *Agent) startIntentNameLocked(user userMessage) {
 		return
 	}
 	a.title, a.titleProvisional, a.titleLiteral = fallback, fallback, true
-	a.intentName = &intentNameState{Pending: true, Vague: len(strings.Fields(intent.said)) < 4 || emptyIntentOpener(intent.said)}
+	a.intentName = &intentNameState{Pending: true, Engine: true, Vague: len(strings.Fields(intent.said)) < 4 || emptyIntentOpener(intent.said)}
 	a.file.appendNamedTitleWithIntent(fallback, true, a.intentNameSnapshotLocked())
 	a.intentNaming = true
 	a.titleJobs.Add(1)

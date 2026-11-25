@@ -1073,6 +1073,12 @@ for the question, so a sentence that only queued behind the question would be
 waiting for itself: you would type, and the screen would sit there. Your words
 end the wait instead.
 
+The desktop app works the same way. A message typed into the chat's box while
+the reply waits on your question is taken as your reply to it; it is never
+turned away with `Not sent · this agent is already working on a turn`. That
+refusal is kept only for a reply that is working with nothing asked of you, and
+there the box steers or queues the words instead of sending them.
+
 If you meant to say something *beside* the question and keep it open, `?` is the
 key for that. On a question the model itself asked you get an answer back while
 the question stays open; on a permission or a task proposal the ask-back reaches

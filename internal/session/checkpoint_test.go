@@ -3092,12 +3092,12 @@ func TestATurnThatEndsOnAQuestionToThePersonIsNotReopened(t *testing.T) {
 		t.Errorf("a turn waiting on an answer was carried on: %q", noticeTexts(collected))
 	}
 	// AND THE STRUCTURE IS THE WHOLE OF THE RULE, decoration and all.
-	for _, waiting := range []string{"which one?", "**which one?**", `"which one?"`, "which one? "} {
+	for _, waiting := range []string{"which one?", "**which one?**", `"which one?"`, "which one? ", "你想用哪个主题？", "**哪一个？**", "أي سمة تريد؟"} {
 		if !endsAskingThePerson(waiting) {
 			t.Errorf("%q was not read as a question to the person", waiting)
 		}
 	}
-	for _, stopping := range []string{"", "I've finished the parser.", "next: the handlers"} {
+	for _, stopping := range []string{"", "I've finished the parser.", "next: the handlers", "幻灯片已建好。", "？ 幻灯片已建好。"} {
 		if endsAskingThePerson(stopping) {
 			t.Errorf("%q was read as a question to the person", stopping)
 		}
@@ -3842,6 +3842,16 @@ func TestATurnSpentWatchingItsOwnWorkIsNeverCheckpointed(t *testing.T) {
 	completer := &scriptedCompleter{steps: steps}
 	agent := checkpointAgent(t, completer)
 	graph := stubbedGraph(agent, func(node *TaskNode) {})
+	// THE FOUR PIECES ARE REALLY OUT: the answer promises to say when they
+	// land, and a promise of a later report with nothing running is sent back
+	// (handoffcheck.go). The pieces are this conversation's, still running.
+	const out = 4
+	graph.mu.Lock()
+	for id := uint64(1); id <= out; id++ {
+		graph.nodes[id] = &TaskNode{id: id, state: TaskRunning, admitBy: agent}
+		graph.order = append(graph.order, id)
+	}
+	graph.mu.Unlock()
 
 	events, err := agent.Submit(watchedContext(agent), "keep an eye on the four pieces I have out")
 	if err != nil {
@@ -3852,7 +3862,7 @@ func TestATurnSpentWatchingItsOwnWorkIsNeverCheckpointed(t *testing.T) {
 	if read := marksRead(completer); read != 0 {
 		t.Errorf("the sidecar was asked %d times about a turn that only watched", read)
 	}
-	if count := admitted(graph); count != 0 {
+	if count := admitted(graph) - out; count != 0 {
 		t.Fatalf("%d tasks were started off a turn that only watched", count)
 	}
 	if said := noticeTexts(collected); saidSomething(said, checkpointCeilingNote) ||

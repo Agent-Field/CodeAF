@@ -181,3 +181,45 @@ func TestAnchoringAnOwnedSessionPersistsAndReloadsProjectInstructions(t *testing
 		t.Fatalf("cleanup merge = %q: %s", merge, detail)
 	}
 }
+
+// The doorstep drains from the presence goroutine while an anchor can land from
+// the turn, so the session folder both of them read must not be written by the
+// anchor. Run under -race this test is the proof; without it, it still checks
+// that the folder survived the anchor unchanged.
+func TestAnchoringDoesNotRewriteTheFolderTheDoorstepReads(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "0123456789abcdef")
+	place := Place{Dir: dir, Owned: true}
+	place.Workspace = place.Work()
+	if err := os.MkdirAll(place.Work(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := newAgent(Config{
+		Workspace: place.Work(), Place: place, SessionFile: place.Transcript(), Model: "test/model",
+	}, &scriptedCompleter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agent.Close() })
+
+	stop, drained := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(drained)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				agent.drainAnswers()
+			}
+		}
+	}()
+	_, err = agent.AnchorWorkspace(t.TempDir())
+	close(stop)
+	<-drained
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.requestDir() != dir {
+		t.Fatalf("anchor moved the session folder: %q, want %q", agent.requestDir(), dir)
+	}
+}

@@ -236,6 +236,55 @@ func v3MediaPick(models *catalog.Catalog) func(string, string) (string, error) {
 	}
 }
 
+// v3MediaMasks is session.Config.MediaMasks: an image model takes a real mask
+// only when its catalog row publishes a `mask` knob. Published facts and nothing
+// else, for v3MediaCapable's reason: a guess that a model takes masks sends a
+// field it may silently drop, and the result would then claim an edit it did
+// not make.
+func v3MediaMasks(models *catalog.Catalog) func(string) bool {
+	if models == nil {
+		return nil
+	}
+	return func(id string) bool {
+		row, known := models.Model(id)
+		return known && row.Media != nil && row.Media.Mask
+	}
+}
+
+// v3MediaAspects is session.Config.MediaAspects: the frame shapes an image
+// model's catalog row publishes, and nil when it published none, so an
+// unknown model's shapes are passed through rather than guessed at.
+func v3MediaAspects(models *catalog.Catalog) func(string) []string {
+	if models == nil {
+		return nil
+	}
+	return func(id string) []string {
+		params, known := models.MediaParams(id)
+		if !known {
+			return nil
+		}
+		return params.AspectRatios
+	}
+}
+
+// v3MediaOutputs is session.Config.MediaOutputs: how many pictures one request
+// to an image model may return, as its catalog row publishes the `n` knob, and
+// zero when it published none. Every Gemini image model publishes a maximum of
+// one, and a "make four" sent to one as a single request was refused outright;
+// with this fact the call goes out as four requests from the start.
+func v3MediaOutputs(models *catalog.Catalog) func(string) int {
+	if models == nil {
+		return nil
+	}
+	return func(id string) int {
+		params, known := models.MediaParams(id)
+		if !known {
+			return 0
+		}
+		return params.MaxOutputs
+	}
+}
+
 // v3MediaClient is session.Config.Media: the one client that reaches every
 // generation endpoint, or nil when this install cannot build one.
 //

@@ -261,7 +261,7 @@ func runSummaryInput(tasks []*plandb.Task, questions []string, rootID string, la
 		tasks = tasks[:40]
 	}
 	for _, task := range tasks {
-		fmt.Fprintf(&b, "%s · %s · %s\n", cutChars(task.Title, 120), task.Status, summaryFirstLine(task.Result, 120))
+		fmt.Fprintf(&b, "%s · %s · %s\n", cutChars(task.Title, 120), task.Status, runSummaryRowAccount(task))
 	}
 	b.WriteString("\nOPEN QUESTIONS\n")
 	for _, q := range questions {
@@ -277,6 +277,26 @@ func runSummaryInput(tasks []*plandb.Task, questions []string, rootID string, la
 	}
 	fmt.Fprintf(&b, "\nLAST LOOK\n%s\n\nLAST LINES\nwhat: %s\nsince: %s\nnow: %s\nnext: %s\n", age, previous.What, previous.Since, previous.Now, previous.Next)
 	return b.String()
+}
+
+// runSummaryRowAccount is what one row says about itself: the first line of
+// its result, or — for a row that ended without one — the stop it recorded,
+// marked as a stop.
+//
+// THE STOP IS THE ONLY CAUSE THE READING MAY NAME. Before it was on the row, a
+// failed task read as its title, the word `failed` and nothing, and the page
+// tells the model to name a failure with its cause; so it found one. Run21's
+// reading said the rota's role cells were "left reading Open" about a check
+// whose provider had refused the request, and the conversation's model passed
+// that on to the person as the reason.
+func runSummaryRowAccount(task *plandb.Task) string {
+	if result := summaryFirstLine(task.Result, 200); result != "" {
+		return result
+	}
+	if stop := summaryFirstLine(task.Error, 200); stop != "" {
+		return "stopped: " + stop
+	}
+	return ""
 }
 
 func parseRunSummary(text string) (RunPlanSummary, bool) {

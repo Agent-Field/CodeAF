@@ -338,6 +338,18 @@ func (a *Agent) tasksTool() bare.Tool {
 					return a.writePlanNote(row, want, strings.TrimSpace(parsed.Say), planSayLead)
 				}
 			}
+			// `continue` ON A ROW OF THE RUN IS ANSWERED HERE TOO, for the reason
+			// `say` is. The reader below leaves this conversation's own hand-off
+			// runs out of the rows it searches ([Agent.withoutOwnRunRows]), so a
+			// `continue` on one used to fall through to [continueNoGraph] and be
+			// refused as a task this conversation does not hold — the very row the
+			// listing had just shown as `#1 · … · done` (qloop run31, hiring t2:
+			// three refusals, then the tool's words copied onto the person's card).
+			if parsed.Continue && !parsed.Forward && !parsed.Stop && strings.TrimSpace(parsed.Resolve) == "" {
+				if row, want, ok := a.planRowNamed(token); ok {
+					return a.continuePlanRow(ctx, row, want)
+				}
+			}
 			// A READ OF A TASK THE RUN'S STORE HOLDS IS ANSWERED FROM THE STORE, by the
 			// number the rail shows for it. Anything else about it (stop,
 			// continue, settle) and any id the store does not hold go on to the
@@ -1066,10 +1078,10 @@ func continueNoGraph(token string, entry TaskIndexEntry) string {
 		id = strings.TrimSpace(token)
 	}
 	if where := taskWhereWord(entry); where != "" && where != taskWhereNowhere {
-		return fmt.Sprintf("There is no graph in this session for task %s, so it cannot be continued here. Its work is at %s — read that branch or working copy; do not narrate progress as if the task resumed. Propose what still needs doing only if the objective itself changed.",
+		return fmt.Sprintf("Task %s is not one this conversation holds, so it cannot be continued here. Its work is at %s — read that branch or working copy; do not narrate progress as if the task resumed. Propose what still needs doing only if the objective itself changed.",
 			id, where)
 	}
-	return fmt.Sprintf("There is no graph in this session for task %s, so it cannot be continued here. Call tasks with no arguments to see what this conversation holds; a number from another window is not this session's to re-arm.",
+	return fmt.Sprintf("Task %s is not one this conversation holds, so it cannot be continued here. Call tasks with no arguments to see what this conversation holds; a number from another window is not this session's to re-arm.",
 		id)
 }
 
@@ -1729,6 +1741,42 @@ func (a *Agent) stopPlanRow(token, why string) (string, bool) {
 			want, cutChars(row.Title, runAskLineChars), stopReasonClause(why)), true
 	}
 	return "", false
+}
+
+// continuePlanRow is `continue` on a row of this conversation's own run, named
+// the way the listing named it.
+//
+// ONLY WORK NOTHING IS DRIVING CAN BE PICKED UP, and that is the run road's own
+// law ([Agent.ContinueRun]): an interrupted hand-off goes back through that door,
+// and every other row is answered with what it IS, in the rail's word for it,
+// and the move that is actually open. A finished run is never re-armed — the
+// follow-up the person asked for is this conversation's to make, or a new
+// hand-off's — so the answer says exactly that rather than a refusal that
+// leaves the model retrying the same call.
+func (a *Agent) continuePlanRow(ctx context.Context, row PlanTaskRow, want string) (string, bool, error) {
+	name := want + " · " + cutChars(row.Title, runAskLineChars)
+	id, err := strconv.ParseUint(planTaskID(row.ID), 10, 64)
+	if err != nil {
+		return fmt.Sprintf("%s is one part of a run, and a part cannot be continued on its own. Read it with tasks and its number, then make what is left of the change yourself or hand off a new task for it.", name), true, nil
+	}
+	switch word := row.StateWord(); word {
+	case taskWordInterrupted:
+		line, err := a.ContinueRun(ctx, id)
+		if err != nil {
+			return capitalized(err.Error()) + ".", true, nil
+		}
+		return line + ". " + taskHandoffWakeSentence, false, nil
+	case planWordRunning, taskWordQueued:
+		return fmt.Sprintf("%s is still %s, so there is nothing to continue. Send it a line with say if it needs to know something.", name, word), true, nil
+	case taskWordDone:
+		return fmt.Sprintf("%s is done, so there is nothing to continue. If the person wants more changed, make that change yourself in this turn or hand off a new task for it.", name), true, nil
+	default:
+		state := word
+		if state == "" {
+			state = "finished"
+		}
+		return fmt.Sprintf("%s is %s, and a run that has ended cannot be picked up again. Read what it left with tasks and its number, then make what is left of the change yourself or hand off a new task for it.", name, state), true, nil
+	}
 }
 
 // stopReasonClause is the reason a stop carried, said the way the answer reads

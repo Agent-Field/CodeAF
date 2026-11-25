@@ -17,6 +17,14 @@ func localRunConflict(notice TaskNotice) bool {
 	return notice.Remote == nil && notice.Program == "" && notice.Copy != nil && notice.Merge == mergeConflicted
 }
 
+// completedRunAsks is whether a run's row is completed work waiting on an
+// explicit answer at this door: a plan recovered without its landing receipt,
+// a local landing that conflicted, or landed work whose check could not finish
+// ([TaskNotice.Unchecked]).
+func completedRunAsks(notice TaskNotice) bool {
+	return notice.RecoveredCompletion || localRunConflict(notice) || notice.Unchecked
+}
+
 // resolveCompletedRun is the existing explicit decision door for completed
 // work whose landing still needs a decision. It never starts workers, and a
 // completed store alone never supplies a successful check receipt.
@@ -45,9 +53,20 @@ func (a *Agent) resolveCompletedRun(ctx context.Context, id uint64, resolution T
 	if err != nil {
 		return "", true, err
 	}
+	return a.answerCompletedRun(ctx, g, kept, path, root, epoch, resolution, why, by)
+}
+
+// answerCompletedRun is the answer phase of [Agent.resolveCompletedRun]: the
+// row and its saved plan are already found and admitted, and what is left is
+// which road the answer takes — landed work whose check could not finish
+// ([Agent.resolveUncheckedRun]), or saved work that lands on accept.
+func (a *Agent) answerCompletedRun(ctx context.Context, g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, epoch uint64, resolution TaskResolution, why string, by TaskAskOwner) (string, bool, error) {
+	if kept.Unchecked && !kept.RecoveredCompletion && !localRunConflict(kept) {
+		return a.resolveUncheckedRun(g, kept, path, root, resolution, why, by)
+	}
 	switch resolution {
 	case TaskReaudit:
-		return "", true, fmt.Errorf("task %d finished before the restart without a final check receipt; inspect its saved work, then accept or refute it", id)
+		return "", true, fmt.Errorf("task %d finished before the restart without a final check receipt; inspect its saved work, then accept or refute it", kept.ID)
 	case TaskAccept:
 		return a.acceptCompletedRun(ctx, g, kept, path, root, epoch, why, by)
 	case TaskRefute:
@@ -57,6 +76,42 @@ func (a *Agent) resolveCompletedRun(ctx context.Context, id uint64, resolution T
 	default:
 		return "", true, fmt.Errorf("%q is not a resolution: say %s, %s or %s", resolution, TaskAccept, TaskReaudit, TaskRefute)
 	}
+}
+
+// resolveUncheckedRun answers the check's question about work that finished
+// and LANDED while its check could not finish ([TaskNotice.Unchecked]).
+//
+// NOTHING IS LANDED AGAIN. The run brought its work home at its end, as every
+// run does, so `accept` is the person taking it as done and `not right` is the
+// person saying it is not; the work stays exactly where it is either way. And
+// the check is not asked again from here: the run that held its checker has
+// ended, and a check that stopped at its own spend ceiling would spend that
+// ceiling a second time on the same reading.
+func (a *Agent) resolveUncheckedRun(g *TaskGraph, kept TaskNotice, path string, root *plandb.Task, resolution TaskResolution, why string, by TaskAskOwner) (string, bool, error) {
+	why = strings.TrimSpace(why)
+	switch resolution {
+	case TaskAccept:
+		kept.State, kept.Unchecked = TaskDone, false
+		kept.Report = withReport(acceptedLine(why, by), root.Result)
+	case TaskRefute:
+		kept.State, kept.Ending, kept.Unchecked = TaskFailed, TaskEndingRefused, false
+		kept.Report = withReport(refutedLine(why, by), root.Result)
+	case TaskReaudit:
+		return "", true, fmt.Errorf("task %d's check %s and is not asked again; read its work, then accept or refute it", kept.ID, uncheckedStopWords(kept.Report))
+	default:
+		return "", true, fmt.Errorf("%q is not a resolution: say %s, %s or %s", resolution, TaskAccept, TaskReaudit, TaskRefute)
+	}
+	return a.saveCompletedRunOutcome(g, kept, path, root.ID)
+}
+
+// uncheckedStopWords is the refusal's account of why the check is not asked
+// again, read off the row's own lead: the ceiling's words for a check that met
+// its ceiling, and the general words for one whose model could not be served.
+func uncheckedStopWords(report string) string {
+	if taskCheckReason(report) == taskAskCeilingReason {
+		return "stopped at its spend ceiling"
+	}
+	return "could not finish"
 }
 
 // completedRunOwner keeps the fallback inside this conversation. A worker's
@@ -69,7 +124,7 @@ func (a *Agent) completedRunOwner(id uint64) (*TaskGraph, bool) {
 	if g == nil {
 		return nil, false
 	}
-	if kept, found := runRowOf(g, id); !found || (!kept.RecoveredCompletion && !localRunConflict(kept)) {
+	if kept, found := runRowOf(g, id); !found || !completedRunAsks(kept) {
 		return nil, false
 	}
 	return g, true

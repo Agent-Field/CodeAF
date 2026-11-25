@@ -27,9 +27,13 @@ How to write them:
 - EVERY STATEMENT IS ABOUT A TASK IN THE LIST. Never infer progress no row
   shows, never guess at what a vague result meant. When the rows say little,
   write little. A short true line beats a full invented one.
-- A FAILURE IS NAMED WITH ITS CAUSE, in the words of its own result, and never
-  softened. "The first middleware pass failed on empty claims", not "one task
-  hit an issue".
+- A FAILURE IS NAMED WITH ITS CAUSE, in the words of its own result or of the
+  stop its row records, and never softened. "The first middleware pass failed
+  on empty claims", not "one task hit an issue". A row that records no cause is
+  named without one: never supply a cause from what the work looks like.
+- A CHECK THAT COULD NOT FINISH IS NEWS ABOUT THE CHECK, NOT THE WORK. Say what
+  stopped it, in its row's words, and that the finished work is waiting for
+  their call.
 - A QUESTION HELD FOR THEM LEADS `next`, in the question's own words.
 - LEAVE OUT WHAT THE SCREEN ALREADY SHOWS: no counts of tasks, no task ids, no
   model names, no dollar figures, no times. The dots and the tree beside your

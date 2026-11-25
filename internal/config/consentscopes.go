@@ -9,10 +9,17 @@ import (
 // ApprovalScopes offers only rules the gate can honour on a later call.
 // The floor is checked before bash shapes so a critical compound stays critical.
 func ApprovalScopes(tool string, args json.RawMessage) ([]string, string) {
+	return ApprovalScopesIn(tool, args, "")
+}
+
+// ApprovalScopesIn is [ApprovalScopes] for a call whose folder is known, so a
+// recursive delete inside the agent's own folder is offered the ordinary
+// scopes rather than graded critical ([approval.AlwaysAsksIn]).
+func ApprovalScopesIn(tool string, args json.RawMessage, workspace string) ([]string, string) {
 	if approval.ActsInThePersonsName(tool, args) {
 		return nil, "acts_as_you"
 	}
-	if approval.AlwaysAsks(tool, args) {
+	if approval.AlwaysAsksIn(tool, args, workspace) {
 		return nil, "critical"
 	}
 	if tool == "" {

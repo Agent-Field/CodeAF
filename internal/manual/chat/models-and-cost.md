@@ -860,9 +860,18 @@ free pool, a local model, a subscription plan — is never stopped by the cap, t
 limit or the checker's ceiling.
 
 **A checker has a ceiling of its own on each task**: three times its estimate, and never
-less than $0.05. A check that reaches it stops there, on `the check stopped at its spend
-ceiling of $0.26, three times its estimate, before it finished`, and the task ends
-unchecked rather than on a bill ten times its estimate.
+less than $0.05. The estimate is an ordinary task's check, so **the ceiling grows with the
+work**: when the worker's own spend runs past the worker's estimate, the checker's ceiling
+is raised by the same factor, up to three times more — work that cost six times what it was
+expected to gets a check ceiling three times higher, never more. A check that reaches its
+ceiling stops there, on `the check stopped at its spend ceiling of $0.26 before it
+finished`, rather than on a bill ten times its estimate.
+
+**Work whose check stopped at the ceiling is not failed.** The work had finished and is in
+place; only the check did not finish. The task reads `your call · the check stopped at its
+spend ceiling`, with the stop and the work's own account under it, and offers the check's
+two answers: `accept` takes it as done, `not right` marks it incomplete. Nothing is landed a
+second time either way, and the check is not run again — that would spend its ceiling twice.
 Only the checker's own calls count toward that ceiling, whatever model the worker or
 planner runs, including a crew whose three seats use one model. The ceiling follows
 the checker when it moves to another model.
@@ -1097,6 +1106,7 @@ role**, grouped under the row answering it, saying which model comes out:
 | `worker` | worker | one node of an adaptive run, and the worker of every task |
 | `guardian` | small work | is this one tool call plainly safe |
 | `router` | small work | whether a turn should have been work |
+| `replycheck` | small work | whether a reply about the work says what the turn's own looks and steps showed |
 | `taskname` | small work | the two or three words a task is called |
 | `insight` | small work | the model every page AI writes with (the desktop app's repository notes, answers and themes) |
 | `insight_notes` | small work | a repository's notes since you last looked; unpinned, it follows `insight` |
@@ -2255,6 +2265,27 @@ another one. And a refusal your router made **on its own account** — a `400` t
 machine — is your request being read and rejected, which every model would do, so it stops
 at once with no retry and no move (see *"Provider returned error"* below).
 
+## "Encrypted reasoning … can only be processed by the provider that created it" — thinking that belongs to one provider
+
+Some models' thinking comes back **encrypted by the provider that served it**. codeaf sends
+that thinking back with each later request, so the model continues from its own reasoning.
+Only that provider can read it.
+
+codeaf also steers requests away from a provider that has just been slow or failing. When
+it steers a conversation away from the provider that holds its thinking, the router refuses
+the request: `Your request contains encrypted reasoning or compaction content that can only
+be processed by the provider that created it … but your request's provider.ignore preference
+excludes that provider`.
+
+**codeaf answers that refusal by itself.** The request goes again **once**, without the
+encrypted thinking, to a provider that can serve it. The conversation's words, the readable
+part of the thinking and the choice to avoid the struggling provider all stay. The model
+continues from what was said, as it does after `/model`. You read no error, and nothing is
+remembered against the model.
+
+Earlier builds sent the same request through every retry, so the turn failed. A task's check
+that ended that way was marked `failed` over finished work (*how-tasks-run*).
+
 ## "Provider returned error" — a 400, what the error actually was, and why my reply just stopped
 
 `Provider returned error` is your router saying that **somebody else refused** — it handed
@@ -2705,6 +2736,22 @@ Two things follow that are worth knowing:
   reads the conversation's books, which each task's tally lands in as it closes.
 
 To see the halves, ask `/cost`. To see one task's own bill, open its card.
+
+## One card shows the price of two jobs — my charts card shows what the research spent, the second job joined the first one's work, the research card shows nothing
+
+When the chat starts two tasks in one go, the second can join the work the first has already
+started. Its start line then says `It joined the work already underway and shares its copy.`
+The two run as one piece of work, and the second is listed under the first.
+
+**Each card shows what its own work cost.** The card of a task that joined shows what its own
+workers and its own checks spent. The first task's card shows the rest of what the shared work
+spent. Together the two cards add up to the whole. They are labels: nothing is charged twice,
+and `/cost` and the status line are counted from the calls themselves, as before.
+
+Until this changed, the first card showed the price of all the shared work and the joined
+card showed none. In one measured run, a charts task whose own worker spent $0.13 showed
+$1.43, because a research task had joined it. That research split into five parts, and each
+part was checked by the careful model on its own, which cost $0.82 of the total.
 
 ## Why does the row show the wrong cost after I switch conversations — the money jumped when I switched chats, the figure came from the chat I left
 

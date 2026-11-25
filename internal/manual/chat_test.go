@@ -33,7 +33,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"why did my chat's name change", "conversation-names"},
+		{"the chat title still shows the old topic after I switched subject", "conversation-names"},
+		{"will my own conversation name get overwritten", "conversation-names"},
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
+		{"the chat said it would write the brief when the tasks landed but the reply stopped partway", "how-tasks-run"},
+		{"why does my charts task show the cost of the research task that joined it", "models-and-cost"},
 		{"what is My space", "my-space"},
 		{"is there a private place for me inside the organization", "my-space"},
 		{"can the org admin see what is in my space", "my-space"},
@@ -360,6 +365,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can a python chart you made show up in your answer without me editing markdown", "making-pictures-audio-and-video"},
 		{"can I stop an image while it is still generating", "making-pictures-audio-and-video"},
 		{"was the picture that failed still charged", "making-pictures-audio-and-video"},
+		{"change only the sky in this photo and keep the rest", "making-pictures-audio-and-video"},
+		{"edit one region of my picture with a mask", "making-pictures-audio-and-video"},
+		{"make four pictures failed saying n must be exactly 1", "making-pictures-audio-and-video"},
+		{"why does it say there is no default image model with a published price", "making-pictures-audio-and-video"},
+		{"which image model draws if I never picked one", "making-pictures-audio-and-video"},
+		{"use a different picture maker just for this canvas", "making-pictures-audio-and-video"},
+		{"what does automatic mean for the picture model", "making-pictures-audio-and-video"},
+		{"seedream was busy did you switch to another model", "making-pictures-audio-and-video"},
+		{"why did it refuse to change my photo saying it can't read a photo", "making-pictures-audio-and-video"},
+		{"make this 8:5 photo brighter and keep its shape", "making-pictures-audio-and-video"},
+		{"can pulling a connector into a sheet change anything in my account", "accounts"},
 		{"what can you do", "what-i-can-do"},
 		{"my task had uncommitted edits when I moved the chat to another machine, are they lost", "home"},
 		{"does a task's working copy come along when I continue a chat here", "home"},
@@ -593,6 +609,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it asked me three questions as tabs", "questions"},
 		{"how do I send all my answers", "questions"},
 		{"approve all of these", "permissions"},
+		{"why did it ask before deleting a folder in tmp", "permissions"},
+		{"will the agent ask before it runs rm -r on something outside its folder", "permissions"},
 		{"allow all the reads at once", "permissions"},
 		{"deny all of them", "permissions"},
 		{"the question disappeared", "questions"},
@@ -775,6 +793,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// answer is that it is the same rule on the same clock, and it lives
 		// beside the model sentence because that is where they will be looking.
 		{"I typed continue into a task and nothing happened", "tasks"},
+		{"it said the worksheet fits one page but the pdf has two pages", "tasks"},
+		{"does the reply check read the shell output or only the picture", "tasks"},
+		{"it said there was no signage on the photo but the picture has a cafe sign", "tasks"},
+		{"it told me the headline was clear of the cup but it covers it", "tasks"},
+		{"it wrote where I am, next I make the charts, and then just stopped", "tasks"},
+		{"it stopped after writing down what it learned and never built the dashboard", "tasks"},
+		{"it said the flyer was fixed and then got asked to go on anyway", "tasks"},
+		{"it said the brief would follow but that task never started", "tasks"},
+		{"it said it would report back when the table lands and nothing ever came", "tasks"},
+		{"why did the reply show twice with a line saying it said more than it checked", "tasks"},
+		{"why did my second task say has hard dependency across its containment lineage", "how-tasks-run"},
 		{"does typing into a running task reach it straight away", "tasks"},
 		// And the one the code's own comment used to get wrong: thinking on the
 		// screen is something you have read.
@@ -857,6 +886,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you search the web", "what-i-can-do"},
 		{"which search engine answered?", "what-i-can-do"},
 		{"I set a search key and nothing changed", "what-i-can-do"},
+		{"the command hangs and the chat is stuck forever", "what-i-can-do"},
 		{"do you remember me between conversations", "what-i-can-do"},
 		// A finished task's room after codeaf was closed and opened again: the
 		// blank page people met, asked the three ways they meet it.
@@ -1196,6 +1226,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I open my tasks on a phone", "tasks"},
 		{"how do I get back from a task on my phone", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		{"can a task search my whole computer", "how-tasks-run"},
+		{"why was my task's find / refused", "how-tasks-run"},
+		{"my task's search was stopped because it printed nothing", "how-tasks-run"},
 		// The run's checker is told the work is in its own copy; a person who
 		// saw it read their checkout asks in these words.
 		{"did the checker read my checkout instead of the task's copy", "how-tasks-run"},
@@ -2345,6 +2378,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// never held that graph.
 		{"continue task 1", "tasks"},
 		{"keep going on task 4", "tasks"},
+		{"why does it say the hand-off is done so there is nothing to continue", "tasks"},
 		{"can I continue a task from another conversation", "tasks"},
 		{"No task 1 in this project", "tasks"},
 
@@ -5443,6 +5477,54 @@ func TestKnowledgeSpendingAndAutomaticCaptureManual(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("knowledge question missed its settings/cost answer: %q", query)
+		}
+	}
+}
+
+// run19: a research brief's worker built the brief, its check met its own
+// spend ceiling, and the person read the task as failed. Asked in their own
+// words, the question reaches the one section that says the work is not
+// failed and what the two answers do.
+func TestTheFinishedButFailedTaskQuestionReachesTheCheckCeilingAnswer(t *testing.T) {
+	const says = "is **not failed**"
+	for _, asked := range []string{
+		"my task says failed but the work is done",
+		"why did my task fail when it finished the brief",
+		"the check stopped at its spend ceiling what does that mean",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "how-tasks-run" && strings.Contains(section.Body, says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the section that says a check's ceiling does not fail finished work", asked)
+		}
+	}
+}
+
+// run21: the rota's worker finished, its check's provider refused the request,
+// the chat drew the task failed, and the reply named a cause nobody recorded.
+// Asked in a person's own words, each question reaches the section that says
+// what really happened.
+func TestTheCheckCouldNotReachItsModelQuestionsReachTheirAnswers(t *testing.T) {
+	for _, probe := range []struct{ asked, page, says string }{
+		{"my task finished but the check failed with a provider error", "how-tasks-run", "check's model could not answer"},
+		{"why does my finished task say nobody could check it", "how-tasks-run", "check's model could not answer"},
+		{"encrypted reasoning can only be processed by the provider that created it", "models-and-cost", "codeaf answers that refusal by itself"},
+		{"provider.ignore preference excludes that provider", "models-and-cost", "codeaf answers that refusal by itself"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach %s's section saying %q", probe.asked, probe.page, probe.says)
 		}
 	}
 }

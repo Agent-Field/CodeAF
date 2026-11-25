@@ -813,6 +813,12 @@ func errorSignature(text string) string {
 	return fmt.Sprintf("error:%x", digest.Sum64())
 }
 
+// silentNoteOpening opens the silent ladder's note, and it is the one spelling
+// every reader of that note matches: the summary's list of the harness's own
+// notes ([codeafNoteOpenings]) and the end of a turn that answered it
+// ([answeredNotesAdvice]).
+const silentNoteOpening = "[silent] You have made "
+
 // nudgeNote is what the model reads. It states the fact, then asks the two
 // questions a stuck model has stopped asking itself.
 func nudgeNote(n nudge) string {
@@ -828,9 +834,17 @@ func nudgeNote(n nudge) string {
 		return note + " Send the corrected call, or say what you needed and stop — sending this one again cannot work."
 	}
 	if n.silent {
-		note := fmt.Sprintf("[silent] You have made %d tool calls without writing anything down. "+
-			"Before your next tool call, write a short visible note: what you've learned so far, "+
-			"what you're checking next, and why. Your reasoning between steps is not saved — "+
+		// THE NOTE GOES BESIDE THE NEXT CALL, AND THE SENTENCE SAYS SO. It used
+		// to say "before your next tool call, write a short visible note", and a
+		// model that obeys to the letter sends the note alone — a reply with no
+		// tool call, which the loop takes for the final answer. Nine stalled
+		// canvas turns on deepseek-v4.1-flash were exactly that (checkpoint.go's
+		// [answeredNotesAdvice] is the net; this is the cause). The marker is
+		// the system prompt's own word for a note between tools.
+		note := fmt.Sprintf(silentNoteOpening+"%d tool calls without writing anything down. "+
+			"Write a short visible note, starting with `"+UserUpdatePrefix+"`, in the same reply as your next tool call: "+
+			"what you've learned so far, what you're checking next, and why. Keep working after it — "+
+			"a reply with no tool call ends your turn. Your reasoning between steps is not saved — "+
 			"if it isn't in your visible reply, it's gone.", n.count)
 		// AND THE SECOND RUNG SAYS WHAT IS ABOUT TO HAPPEN, because from here it
 		// is true: the loop holds the next tool-calls-only submission rather than

@@ -72,7 +72,9 @@ func (a *Agent) mediaHand(modality string) (MediaGenerator, string, bool) {
 	if a.config.MediaModel != nil {
 		model = strings.TrimSpace(a.config.MediaModel(modality))
 	}
-	if model == "" && (a.config.MediaAdmission == nil || (modality != modalityImage && modality != modalityVideo)) {
+	explainable := (a.config.MediaAdmission != nil && (modality == modalityImage || modality == modalityVideo)) ||
+		(a.config.PictureRoute != nil && modality == modalityImage)
+	if model == "" && !explainable {
 		return nil, "", false
 	}
 	return client, model, true
