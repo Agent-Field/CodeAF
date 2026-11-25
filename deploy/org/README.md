@@ -162,8 +162,10 @@ CODEAF_BIND=127.0.0.1                         # the proxy runs on this machine; 
 For example Caddy, on the same host: `org.example.com { reverse_proxy 127.0.0.1:8787 }`. Links the server prints
 then name `https://org.example.com`. Without `CODEAF_TRUSTED_PROXIES` the server sees every request as plain HTTP
 and refuses passwords with "Passwords are only sent to this server over https". Check it from outside:
-`curl https://org.example.com/v1/about` must say `"scheme": "https"`. The server logs `warning: serving plain HTTP on
-[::]:8787` at every start, behind a proxy too: it speaks plain HTTP to the proxy, and that is expected.
+`curl https://org.example.com/v1/about` must say `"scheme": "https"`. With `CODEAF_TRUSTED_PROXIES` set the server
+says nothing about plain HTTP at start: it speaks plain HTTP to the proxy, and you told it so. Without it, a server
+listening on a non-loopback address logs `warning: serving plain HTTP on [::]:8787 ...` at every start, because then
+nothing in front of it is known to serve HTTPS.
 
 ### Trying it on one machine
 
