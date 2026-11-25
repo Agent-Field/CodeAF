@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -26,10 +27,22 @@ const appRunAskPrefix = "run:"
 
 func (b *appBackend) openAppRuns(ctx context.Context) func() {
 	files := runs.Files(home.Join("apps"))
+	place, err := b.appData()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "app runs:", err)
+		return func() {}
+	}
+	// Register kept definitions before a scheduled run and the first data
+	// request can both reach the store.
+	if _, err := b.dataStore(""); err != nil {
+		fmt.Fprintln(os.Stderr, "app runs data:", err)
+	}
+	records := runs.Data{Store: func() (*data.Store, error) { return b.dataStore("") }}
 	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager}
 	e, err := runs.Open(runs.Config{
 		Root: home.Join("apps", "_runs"), Load: files.Load, Triggers: files.Triggers,
 		Connector: tools, CheckTool: tools.Check, Agent: b.appRunAgent(files),
+		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
 		Changed: func(event runs.ChangeEvent) { b.emit.Emit(appwire.EventRunsChanged, event) },
 		Ask:     b.openRunApproval,
 	})
@@ -47,6 +60,7 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 		}
 	}
 	ctx, cancel := context.WithCancel(ctx)
+	unsubscribe, commitsDone := watchAppRunCommits(ctx, place, e)
 	done := make(chan struct{})
 	guard.Go("app/runs", func() {
 		defer close(done)
@@ -71,6 +85,8 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 	})
 	return func() {
 		cancel()
+		unsubscribe()
+		<-commitsDone
 		<-done
 		if err := e.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, "app runs:", err)
