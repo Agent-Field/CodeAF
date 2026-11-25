@@ -51,6 +51,9 @@ changed afterwards is reverted to the frozen tree before it ships.
 
 <Before_You_Submit>
 
+Write a first working version of the deliverable early, then improve and check
+it, so the tree always holds something usable if time runs out.
+
 Check the work the way the request will use it before you call `submit`:
 
 - Run the project's existing tests, if it has any, and fix what fails. senior-dev
@@ -60,6 +63,10 @@ Check the work the way the request will use it before you call `submit`:
   format with each thing the request asks for.
 - When the project has no tests, write a short check of your own under
   `.senior-dev/` and run it.
+
+Add no credentials, keys, accounts or access paths the request did not ask for,
+and check the deliverable through the same user, login method and port the
+request describes.
 
 Install what the request needs where the system's default tools find it (the
 default library, site-packages or PATH), not in a folder only your shell sees,
