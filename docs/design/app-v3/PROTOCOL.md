@@ -2369,6 +2369,7 @@ and the reply is empty.
 | `provider.changed` | `ProviderChanged` |
 | `queue.changed` | `QueueChanged` |
 | `runs.changed` | `{app, run, id, state, step}` |
+| `apps.output_added` | `AppOutputAdded` with `{app,id,inbox?}` |
 | `quick.changed` | `QuickChangedEvent` |
 | `render.changed` | `RenderChanged` |
 | `settings.changed` | `SettingsChanged` |
@@ -3164,3 +3165,17 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
 | `apps.delete` | `{app}` | `{}`. The app is marked deleted. Saved definitions and the person's data stay on disk. |
 | `apps.kit` | `{}` | The embedded kit catalog object, including its version and parts. |
+
+## Personal app outputs
+
+| method | params | result |
+|---|---|---|
+| `apps.render` | `{app,output,record?,inbox?}` | A saved file receipt. The engine uses the kept app's named output template and reads its declared record or query under the app's data grants. |
+| `apps.outputs` | `{app,inbox?,run?,before?}` | `{items,next?}`. Use `inbox:true` to list digest deliveries. Pass `next` as `before` to continue. |
+| `apps.output_file` | `{app,id}` | `{file,content}`. Content is the saved file as base64, up to 8 MiB before encoding. The ID is the saved receipt's ID. |
+
+A receipt carries `id`, `app`, `action`, `version`, `name`, `mime`, `blob`,
+`source_type`, `matched`, `actor`, `actor_kind`, and `at`. Record output receipts
+also carry `sources:[{id,rev}]` when rows were rendered. Run receipts add `run`
+and `step`. An inbox delivery has `inbox:true`. Refresh the receipt list on
+`apps.output_added` for the displayed app.
