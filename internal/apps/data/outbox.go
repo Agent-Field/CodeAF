@@ -1,6 +1,7 @@
 package data
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 )
@@ -18,18 +19,23 @@ import (
 
 // The events the outbox carries.
 const (
-	EventRecordCreated   = "record.created"
-	EventRecordUpdated   = "record.updated"
-	EventRecordDeleted   = "record.deleted"
-	EventTransition      = "transition.fired"
-	EventWorkItemCreated = "work_item.created"
-	EventWorkItemUpdated = "work_item.updated"
-	EventTimerCreated    = "timer.created"
-	EventTimerFired      = "timer.fired"
-	EventTimerCancelled  = "timer.cancelled"
-	EventSignoff         = "signoff.created"
-	EventComment         = "comment.created"
+	EventRecordCreated    = "record.created"
+	EventRecordUpdated    = "record.updated"
+	EventRecordDeleted    = "record.deleted"
+	EventTransition       = "transition.fired"
+	EventWorkItemCreated  = "work_item.created"
+	EventWorkItemUpdated  = "work_item.updated"
+	EventTimerCreated     = "timer.created"
+	EventTimerFired       = "timer.fired"
+	EventTimerCancelled   = "timer.cancelled"
+	EventSignoff          = "signoff.created"
+	EventComment          = "comment.created"
+	EventPolicyChanged    = "policy.changed"
+	EventMappingChanged   = "mapping.changed"
+	EventFreshnessChanged = "freshness.changed"
 )
+
+const outboxVersion = 2
 
 // OutboxMax is the most events one read of the outbox answers.
 const OutboxMax = 1000
@@ -37,16 +43,20 @@ const OutboxMax = 1000
 // Event is one outbox row: what happened, to which record, in which batch,
 // by what kind of writer and why, with the event's own payload.
 type Event struct {
-	Seq     int64
-	Event   string
-	Type    string
-	Record  string
-	Batch   string
-	App     string
-	ByKind  string
-	Cause   string
-	Payload json.RawMessage
-	At      string
+	Seq         int64
+	Event       string
+	Type        string
+	TypeID      string
+	Version     int
+	CauseChain  []string
+	SourceEvent string
+	Record      string
+	Batch       string
+	App         string
+	ByKind      string
+	Cause       string
+	Payload     json.RawMessage
+	At          string
 }
 
 // outboxRow is one event a write is about to commit.
@@ -55,20 +65,25 @@ type outboxRow struct {
 	typeID  string
 	record  string
 	payload any
+	binding string
 }
 
 // emit writes one outbox row in w's transaction and moves the change's
 // cursor to it.
 func (w *writeTx) emit(o outboxRow) error {
-	var batch, app, kind, cause string
+	var batch, app, kind, cause, sourceEvent string
+	chain := []string{}
 	if c := w.change; c != nil {
-		batch, app, kind, cause = c.Batch, c.App, c.ByKind, c.Cause
+		batch, app, kind, cause, sourceEvent = c.Batch, c.App, c.ByKind, c.Cause, c.SourceEvent
+		if len(c.CauseChain) > 0 {
+			chain = c.CauseChain
+		}
 	}
 	if kind == "" {
 		kind = ByFlow
 	}
-	res, err := w.tx.Exec(`INSERT INTO outbox(event, type_id, record, batch, app, by_kind, cause, payload_json, at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		o.event, o.typeID, o.record, batch, app, kind, cause, canonicalJSON(o.payload), w.now.UTC().Format(stamp))
+	res, err := w.tx.Exec(`INSERT INTO outbox(event, type_id, record, batch, app, by_kind, cause, payload_json, at, version, cause_chain, source_event, binding) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		o.event, o.typeID, o.record, batch, app, kind, cause, canonicalJSON(o.payload), w.now.UTC().Format(stamp), outboxVersion, canonicalJSON(chain), sourceEvent, o.binding)
 	if err != nil {
 		return err
 	}
@@ -91,15 +106,18 @@ func (s *Store) Outbox(after int64, limit int) ([]Event, error) {
 	}
 	sch := s.schema.Load()
 	out := []Event{}
-	err := eachRow(s.rdb, `SELECT seq, event, type_id, record, batch, app, by_kind, cause, payload_json, at FROM outbox WHERE seq > ? ORDER BY seq LIMIT ?`,
+	err := eachRow(s.rdb, `SELECT seq, event, type_id, record, batch, app, by_kind, cause, payload_json, at, version, cause_chain, source_event FROM outbox WHERE seq > ? ORDER BY seq LIMIT ?`,
 		[]any{after, limit}, func(scan func(...any) error) error {
 			var e Event
-			var typeID, payload string
-			if err := scan(&e.Seq, &e.Event, &typeID, &e.Record, &e.Batch, &e.App, &e.ByKind, &e.Cause, &payload, &e.At); err != nil {
+			var payload, chain string
+			if err := scan(&e.Seq, &e.Event, &e.TypeID, &e.Record, &e.Batch, &e.App, &e.ByKind, &e.Cause, &payload, &e.At, &e.Version, &chain, &e.SourceEvent); err != nil {
 				return err
 			}
-			if t := sch.byID[typeID]; t != nil {
+			if t := sch.byID[e.TypeID]; t != nil {
 				e.Type = t.Name
+			}
+			if err := json.Unmarshal([]byte(chain), &e.CauseChain); err != nil {
+				return err
 			}
 			e.Payload = json.RawMessage(payload)
 			out = append(out, e)
@@ -169,4 +187,73 @@ func (s *Store) trimmed() int64 {
 	var seq int64
 	_ = s.rdb.QueryRow(`SELECT COALESCE(CAST(value AS INTEGER), 0) FROM space WHERE key = 'trimmed'`).Scan(&seq)
 	return seq
+}
+
+// invalidation names the dependencies of a payload-free change.
+type invalidation struct {
+	typeID  string
+	binding string
+}
+
+func (w *writeTx) invalidate(event, typeID, binding string) error {
+	if w.change == nil {
+		w.change = &Change{At: w.now}
+	}
+	w.change.invalidation = &invalidation{typeID: typeID, binding: binding}
+	return w.emit(outboxRow{event: event, typeID: typeID, binding: binding})
+}
+
+// InvalidatePolicy commits a reset when policy changes without rewriting a
+// record. A blank type ID names all types.
+func (s *Store) InvalidatePolicy(typeID string) error {
+	return s.write(func(w *writeTx) error {
+		if typeID != "" && w.schema.byID[typeID] == nil {
+			return errorf(CodeNotFound, "there is no such record type")
+		}
+		return w.invalidate(EventPolicyChanged, typeID, "")
+	})
+}
+
+// RecordEventValues resolves an outbox receipt through current type grants.
+// Record values stay in history; masked and hidden fields never reach a run.
+func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (before, after Row, err error) {
+	s.visibility.RLock()
+	defer s.visibility.RUnlock()
+	t, err := s.schema.Load().allow(sc, typeID, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	var rawBefore, rawAfter sql.NullString
+	err = s.rdb.QueryRow(`SELECT before_json, after_json FROM history
+		WHERE batch = ? AND record = ? AND type_id = ? ORDER BY seq DESC LIMIT 1`, batch, record, t.ID).
+		Scan(&rawBefore, &rawAfter)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, errorf(CodeNotFound, "the event has no record history")
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	project := func(raw sql.NullString) Row {
+		if !raw.Valid {
+			return nil
+		}
+		r := recordFromState(t, record, raw.String)
+		if r.DeletedAt != "" {
+			return nil
+		}
+		out := Row{"id": record, "type": t.Name}
+		if r.CreatedAt != "" {
+			out["created_at"] = r.CreatedAt
+		}
+		if r.UpdatedAt != "" {
+			out["updated_at"] = r.UpdatedAt
+		}
+		for name, value := range r.Data {
+			if f := t.Fields[name]; f != nil && !f.Hidden && !f.Masked {
+				out[name] = value
+			}
+		}
+		return out
+	}
+	return project(rawBefore), project(rawAfter), nil
 }

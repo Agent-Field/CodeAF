@@ -63,19 +63,22 @@ steps:
 	if list, err := e.List("", ""); err != nil || len(list) != 0 {
 		t.Fatalf("first attach replayed historical events: %+v, %v", list, err)
 	}
+	after, err := db.Cursor()
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = db.Update(data.Scope{}, "deal", []string{id}, map[string]any{"stage": "Won"}, data.UpdateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, err := db.Outbox(0, data.OutboxMax)
-	if err != nil || len(events) != 2 {
+	events, err := db.Outbox(after, data.OutboxMax)
+	if err != nil || len(events) != 1 {
 		t.Fatalf("outbox = %+v, %v", events, err)
 	}
 	// Commit the run while the cursor still lags, as it would after an
 	// interruption between committing the receipt and advancing the cursor.
 	if err := e.RecordChanged(runs.Change{
-		Seq: events[1].Seq, Type: "deal", ID: id,
-		Before: map[string]any{"stage": "Lead"}, After: map[string]any{"stage": "Won"},
+		Seq: events[0].Seq, Type: "deal", TypeID: events[0].TypeID, ID: id, Batch: events[0].Batch,
 	}); err != nil {
 		t.Fatal(err)
 	}

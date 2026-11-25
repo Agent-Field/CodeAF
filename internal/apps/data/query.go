@@ -59,6 +59,7 @@ type compiled struct {
 	alias string
 	// refTitle answers the title field of a type a ref points to.
 	refTitle func(string) string
+	related  map[string]bool
 	where    []string
 	args     []any
 	sort     sortSpec
@@ -106,7 +107,7 @@ func compileQuery(sch *schema, t *Type, sc Scope, text string, now time.Time) (*
 
 // compileIR compiles a query's IR against t for scope sc.
 func compileIR(sch *schema, t *Type, sc Scope, ir *QueryIR, now time.Time) (*compiled, error) {
-	c := &compiled{t: t, sch: sch, alias: "r", refTitle: refTitles(sch, sc), sort: sortSpec{field: "created_at", desc: true, expr: "r.created_at"}}
+	c := &compiled{t: t, sch: sch, alias: "r", refTitle: refTitles(sch, sc), related: map[string]bool{}, sort: sortSpec{field: "created_at", desc: true, expr: "r.created_at"}}
 	if len(ir.Where) > tokensMax {
 		return nil, errorf(CodeInvalid, "the query has more than %d parts", tokensMax)
 	}
@@ -306,7 +307,10 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 	if err != nil {
 		return err
 	}
-	inner := &compiled{t: target, sch: c.sch, alias: "x", refTitle: c.refTitle}
+	if c.related != nil {
+		c.related[target.ID] = true
+	}
+	inner := &compiled{t: target, sch: c.sch, alias: "x", refTitle: c.refTitle, related: c.related}
 	if err := inner.cond(Cond{Field: tail, Op: cond.Op, Value: cond.Value}, sc, now); err != nil {
 		return err
 	}
@@ -594,6 +598,9 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 	var byTitle string
 	target := c.sch.typeNamed(f.To)
 	if title != "" && target != nil {
+		if c.related != nil {
+			c.related[target.ID] = true
+		}
 		byTitle = titles + "COALESCE(" + jsonPath("t.data_json", target.Fields[title].ID) + ", '') LIKE ? ESCAPE '\\'"
 	}
 	pattern := wildcard(v)

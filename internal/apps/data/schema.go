@@ -26,6 +26,7 @@ const (
 	ByAI     = "ai"
 	ByFlow   = "flow"
 	ByImport = "import"
+	BySync   = "sync"
 )
 
 // Field is one field of a merged type: its id, the declaration that wins
@@ -99,8 +100,9 @@ type freezeRule struct {
 // builds a new one and the writer swaps it in after the commit, so a reader
 // always sees one whole schema.
 type schema struct {
-	types map[string]*Type
-	byID  map[string]*Type
+	bindings map[string]map[string]TypeBinding
+	types    map[string]*Type
+	byID     map[string]*Type
 	// typeAliases is every name a type was once known by, to its name now.
 	typeAliases map[string]string
 	// caps is app → type → "r" or "rw", for every registered app.
@@ -139,6 +141,9 @@ func (t *Type) titleField() string {
 
 // typeNamed answers a type by its name or a name it once had.
 func (s *schema) typeNamed(name string) *Type {
+	if t := s.byID[name]; t != nil {
+		return t
+	}
 	if t := s.types[name]; t != nil {
 		return t
 	}
@@ -156,17 +161,23 @@ func (s *schema) typeNamed(name string) *Type {
 // writing on its own grant. Cause names what led to the write (a run step,
 // a transition, a timer), kept on every history row.
 type Scope struct {
-	App   string
-	Actor string
-	Agent bool
-	AI    bool
-	Flow  bool
-	Cause string
+	App        string
+	Actor      string
+	Agent      bool
+	AI         bool
+	Flow       bool
+	Cause      string
+	CauseChain []string
+
+	sync        bool
+	sourceEvent string
 }
 
 // kind is the writer kind a write of op by sc is recorded as.
 func (sc Scope) kind(op string) string {
 	switch {
+	case sc.sync:
+		return BySync
 	case sc.AI || sc.Agent:
 		return ByAI
 	case sc.Flow:
@@ -197,21 +208,28 @@ func (s *schema) actor(sc Scope) string {
 // refusal. An app's capability is checked before the type's existence, so an
 // app learns nothing about types it was not given.
 func (s *schema) allow(sc Scope, typ string, write bool) (*Type, error) {
-	if now, ok := s.typeAliases[typ]; ok && s.types[typ] == nil {
-		typ = now
-	}
+	t := s.appType(sc.App, typ)
 	if sc.App != "" {
-		caps, ok := s.caps[sc.App]
-		access := caps[typ]
-		if !ok || access == "" || write && access != "rw" {
+		access := ""
+		if t != nil {
+			access = s.caps[sc.App][t.Name]
+		}
+		if access == "" || write && access != "rw" {
 			return nil, notAllowed(sc.App, typ, write)
 		}
 	}
-	t := s.types[typ]
 	if t == nil {
 		return nil, errorf(CodeNotFound, "there is no record type named %q", typ)
 	}
 	return t, nil
+}
+
+// appType resolves the app alias only within the catalog that owns the grant.
+func (s *schema) appType(app, alias string) *Type {
+	if binding, ok := s.bindings[app][alias]; ok {
+		return s.byID[binding.TypeID]
+	}
+	return s.typeNamed(alias)
 }
 
 // loadSchema reads the whole schema from q and compiles it. A field whose
@@ -277,6 +295,23 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 	if err != nil {
 		return nil, nil, err
 	}
+	s.bindings = map[string]map[string]TypeBinding{}
+	err = eachRow(q, `SELECT b.app, b.alias, b.type_id, COALESCE(c.key, b.common_key)
+		FROM app_type_bindings b LEFT JOIN common_types c ON c.type_id = b.type_id`, nil, func(scan func(...any) error) error {
+		var app string
+		var b TypeBinding
+		if err := scan(&app, &b.Alias, &b.TypeID, &b.Common); err != nil {
+			return err
+		}
+		if s.bindings[app] == nil {
+			s.bindings[app] = map[string]TypeBinding{}
+		}
+		s.bindings[app][b.Alias] = b
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
 	err = eachRow(q, `SELECT app, def_json FROM apps`, nil, func(scan func(...any) error) error {
 		var app, raw string
 		if err := scan(&app, &raw); err != nil {
@@ -288,10 +323,12 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 		// since is found by the name the app knew.
 		caps := map[string]string{}
 		for typ, access := range declaredCaps {
-			if t := s.typeNamed(typ); t != nil {
+			if t := s.appType(app, typ); t != nil {
 				typ = t.Name
 			}
-			caps[typ] = access
+			if caps[typ] != "rw" {
+				caps[typ] = access
+			}
 		}
 		s.caps[app] = caps
 		return nil
@@ -445,14 +482,18 @@ func (t *Type) compile(now func() time.Time, person string) []error {
 // deleted: a field the app stopped declaring is hidden, a type it stopped
 // declaring loses it as a declarer, and every value stays where it was. A
 // type or field met for the first time is given its id here, once.
-func registerApp(w *writeTx, def *AppDef, capsJSON string) (*schema, error) {
+func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*schema, error) {
 	tx, current := w.tx, w.schema
 	at := w.now.UTC().Format(stamp)
 	app := def.ID
+	resolved, err := w.resolveBindings(def, bindings)
+	if err != nil {
+		return nil, err
+	}
 	typeIDs := map[string]string{}
 	for _, name := range def.typeOrder {
 		t := def.Records[name]
-		existing := current.typeNamed(name)
+		existing := current.byID[resolved[name].TypeID]
 		if t.Uses {
 			if existing == nil {
 				return nil, errorf(CodeInvalid, "%s uses %s records, and there is no %s type yet", app, name, name)
@@ -496,6 +537,9 @@ func registerApp(w *writeTx, def *AppDef, capsJSON string) (*schema, error) {
 				return nil, err
 			}
 		}
+		binding := resolved[name]
+		binding.TypeID = id
+		resolved[name] = binding
 		if _, err := tx.Exec(`INSERT INTO app_types(app, type_id, uses) VALUES(?, ?, ?)`, app, id, t.Uses); err != nil {
 			return nil, err
 		}
@@ -527,7 +571,7 @@ func registerApp(w *writeTx, def *AppDef, capsJSON string) (*schema, error) {
 			if _, err := tx.Exec(`
 				INSERT INTO type_fields(field_id, app, def_json, pos, hidden) VALUES(?, ?, ?, ?, 0)
 				ON CONFLICT(field_id, app) DO UPDATE SET def_json = excluded.def_json, pos = excluded.pos, hidden = 0`,
-				fieldID, app, canonicalJSON(t.Fields[fname]), pos); err != nil {
+				fieldID, app, canonicalJSON(boundField(t.Fields[fname], resolved, current)), pos); err != nil {
 				return nil, err
 			}
 		}
@@ -535,8 +579,18 @@ func registerApp(w *writeTx, def *AppDef, capsJSON string) (*schema, error) {
 	if _, err := tx.Exec(`
 		INSERT INTO apps(app, def_json, registered_at) VALUES(?, ?, ?)
 		ON CONFLICT(app) DO UPDATE SET def_json = excluded.def_json, registered_at = excluded.registered_at`,
-		app, capsJSON, at); err != nil {
+		app, canonicalJSON(def.Capabilities.Records), at); err != nil {
 		return nil, err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM app_type_bindings WHERE app = ?`, app); err != nil {
+		return nil, err
+	}
+	for _, alias := range sortedKeys(resolved) {
+		b := resolved[alias]
+		if _, err := tx.Exec(`INSERT INTO app_type_bindings VALUES(?, ?, ?, ?)`, app, alias, b.TypeID, b.Common); err != nil {
+			return nil, err
+		}
 	}
 
 	next, problems, err := loadSchema(tx, w.s.now)
@@ -547,7 +601,7 @@ func registerApp(w *writeTx, def *AppDef, capsJSON string) (*schema, error) {
 	// app's fields have (a copy of a field since masked) is that app's to
 	// fix, and must not block every other app's registration.
 	for _, name := range def.typeOrder {
-		t := next.typeNamed(name)
+		t := next.appType(app, name)
 		if t == nil {
 			continue
 		}
@@ -570,7 +624,7 @@ func registerApp(w *writeTx, def *AppDef, capsJSON string) (*schema, error) {
 // made unique holds no value twice, and the indexes the fields ask for exist.
 func checkRegistered(tx *sql.Tx, s, before *schema, def *AppDef) error {
 	for _, name := range def.typeOrder {
-		t := s.typeNamed(name)
+		t := s.appType(def.ID, name)
 		for _, fname := range def.Records[name].order {
 			f := t.field(fname)
 			if f == nil {
@@ -590,7 +644,7 @@ func checkRegistered(tx *sql.Tx, s, before *schema, def *AppDef) error {
 			// A FIELD MADE UNIQUE OVER DATA THAT REPEATS IS REFUSED, naming how
 			// many values repeat, rather than declared unique and false.
 			wasUnique := false
-			if bt := before.typeNamed(name); bt != nil {
+			if bt := before.byID[t.ID]; bt != nil {
 				if bf := bt.field(fname); bf != nil {
 					wasUnique = bf.unique()
 				}
@@ -615,7 +669,7 @@ func checkRegistered(tx *sql.Tx, s, before *schema, def *AppDef) error {
 		}
 	}
 	for typ := range def.Capabilities.Records {
-		if s.typeNamed(typ) == nil {
+		if s.appType(def.ID, typ) == nil {
 			return errorf(CodeInvalid, "%s's capabilities name %s records, and there is no %s type", def.ID, typ, typ)
 		}
 	}
@@ -670,6 +724,7 @@ func ensureIndexes(tx *sql.Tx, s *schema) error {
 func forgetApp(tx *sql.Tx, app string, now func() time.Time) (*schema, error) {
 	for _, stmt := range []string{
 		`DELETE FROM app_types WHERE app = ?`,
+		`DELETE FROM app_type_bindings WHERE app = ?`,
 		`UPDATE type_fields SET hidden = 1 WHERE app = ?`,
 		`DELETE FROM apps WHERE app = ?`,
 	} {
@@ -712,8 +767,11 @@ func (s *Store) RenameType(typ, name string) error {
 			}
 		}
 		next, _, err := loadSchema(w.tx, w.s.now)
+		if err != nil {
+			return err
+		}
 		w.next = next
-		return err
+		return w.invalidate(EventMappingChanged, t.ID, "")
 	})
 }
 
@@ -757,8 +815,11 @@ func (s *Store) RenameField(typ, field, name string) error {
 			}
 		}
 		next, _, err := loadSchema(w.tx, w.s.now)
+		if err != nil {
+			return err
+		}
 		w.next = next
-		return err
+		return w.invalidate(EventMappingChanged, t.ID, "")
 	})
 }
 

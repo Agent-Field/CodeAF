@@ -64,6 +64,7 @@ type Meta struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Archived  bool      `json:"archived"`
 	Deleted   bool      `json:"deleted,omitempty"`
+	digest    string
 }
 
 // Definition is one validated live version. Meta describes the served version
@@ -154,6 +155,16 @@ func (s *Store) lock(write, create bool) (func(), error) {
 }
 
 func (s *Store) readMeta(id string) (Meta, error) {
+	if !cell.ValidID(id) {
+		return Meta{}, ErrBadInput
+	}
+	if m, ok, err := s.publishedMeta(id); ok || err != nil {
+		return m, err
+	}
+	return s.readFileMeta(id)
+}
+
+func (s *Store) readFileMeta(id string) (Meta, error) {
 	if !cell.ValidID(id) {
 		return Meta{}, ErrBadInput
 	}

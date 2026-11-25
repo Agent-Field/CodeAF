@@ -1,6 +1,7 @@
 package store
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -41,6 +42,12 @@ type appHeader struct {
 // files holds only definition files by their slash-separated names. The
 // draft's sample database and store-owned version metadata stay separate.
 type files map[string][]byte
+
+func (f files) digest() string {
+	// JSON orders map keys and frames the file names and bytes.
+	raw, _ := json.Marshal(f)
+	return fmt.Sprintf("%x", sha256.Sum256(raw))
+}
 
 func checkDir(dir string) error {
 	fi, err := os.Lstat(dir)
@@ -268,6 +275,11 @@ func validateDefinition(f files, existing schema.TypeSet) error {
 }
 
 func (s *Store) loadCurrent(m Meta) (Definition, error) {
+	if _, ok, err := s.publishedMeta(m.ID); err != nil {
+		return Definition{}, err
+	} else if ok {
+		return s.loadSnapshot(m, m.Version)
+	}
 	v, err := s.readReceipt(m.ID, m.Version)
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -279,6 +291,9 @@ func (s *Store) loadLive(m Meta) (Definition, error) {
 	d, err := s.loadCurrent(m)
 	if err == nil {
 		return d, nil
+	}
+	if _, ok, readErr := s.publishedMeta(m.ID); ok || readErr != nil {
+		return Definition{}, err
 	}
 	nums, listErr := s.versionNumbers(m)
 	if listErr != nil {
@@ -297,6 +312,9 @@ func (s *Store) loadSnapshot(m Meta, n int) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	if m.Version != n {
+		m.digest = ""
+	}
 	m.Version = n
 	m.UpdatedAt = v.At
 	return load(s.snapshot(m.ID, n), m, v.Types, versionFile)
@@ -310,6 +328,9 @@ func load(dir string, m Meta, existing schema.TypeSet, extra ...string) (Definit
 	a, err := f.header()
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	if m.digest != "" && m.digest != f.digest() {
+		return Definition{}, fmt.Errorf("%w: files differ from the published snapshot", ErrCorrupt)
 	}
 	if a.ID != m.ID || a.Version != m.Version {
 		return Definition{}, fmt.Errorf("%w: app.json does not match the app ID and version", ErrInvalid)

@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -121,4 +122,44 @@ func TestAppCanRepublishItsOwnSharedFields(t *testing.T) {
 	republish(first, strings.Replace(raw, `"memo":{"type":"text"}`, "", 1))
 	adopted := makeShared()
 	republish(adopted, raw)
+}
+
+func TestPublishedAppUsesCommittedSnapshotAndGrantsAfterReopen(t *testing.T) {
+	s, home := testStore(t)
+	path := filepath.Join(home, "records.db")
+	d, err := data.Open(path, data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = d.Close() }()
+	s = s.WithData(func() (*data.Store, error) { return d, nil })
+	m := makeApp(t, s)
+	// A filesystem edit with the same version must not replace the committed definition.
+	dir := filepath.Join(home, "apps", m.ID, "current")
+	kept, err := os.ReadFile(filepath.Join(dir, "app.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := strings.ReplaceAll(string(kept), `"rw"`, `"r"`)
+	if tampered == string(kept) {
+		t.Fatal("fixture has no write grant")
+	}
+	write(t, dir, "app.json", tampered)
+	if err := d.Close(); err != nil {
+		t.Fatal(err)
+	}
+	d, err = data.Open(path, data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SyncData(d); err != nil {
+		t.Fatal(err)
+	}
+	def, err := s.Get(m.ID)
+	if err != nil || !strings.Contains(string(def.App), `"rw"`) {
+		t.Fatalf("public snapshot was replaced by current: %s, %v", def.App, err)
+	}
+	if _, err := d.Create(data.Scope{App: m.ID}, "contact", []map[string]any{{"name": "Ari"}}); err != nil {
+		t.Fatalf("committed grant disappeared: %v", err)
+	}
 }

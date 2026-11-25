@@ -30,6 +30,7 @@ const (
 	OpChecklist  = "checklist"
 	OpReverse    = "reverse"
 	OpSeed       = "seed"
+	OpSync       = "sync"
 )
 
 // The sources of an ai field's value, as a row's _meta.ai shows them.
@@ -70,29 +71,33 @@ func (r Row) ID() string { s, _ := r["id"].(string); return s }
 // whole, never masked. Cursor is the change's place in the outbox, which a
 // subscription resumes from.
 type Change struct {
-	Draft   string
-	Batch   string
-	App     string
-	Actor   string
-	ByKind  string
-	Cause   string
-	Op      string
-	Type    string // Empty for a batch containing several types.
-	At      time.Time
-	Records []RecordChange
-	Items   []ItemChange
-	Cursor  int64
+	Draft       string
+	Batch       string
+	App         string
+	Actor       string
+	ByKind      string
+	Cause       string
+	CauseChain  []string
+	SourceEvent string
+	Op          string
+	Type        string // Empty for a batch containing several types.
+	At          time.Time
+	Records     []RecordChange
+	Items       []ItemChange
+	Cursor      int64
 
 	// befores are the live records as they were, for subscriptions to know
 	// which of them a query matched before the change.
 	befores map[string]*record
 	// resume is set on the one change that is a subscription resuming, which
 	// the dispatcher answers in commit order.
-	resume *resumeOp
+	resume       *resumeOp
+	invalidation *invalidation
 }
 
 // RecordChange is one record of a [Change], and the fields that changed.
 type RecordChange struct {
+	TypeID  string
 	Type    string
 	ID      string
 	Before  Row
@@ -142,9 +147,11 @@ type recordMeta struct {
 
 // state is a record as a history row keeps it.
 type state struct {
-	Data    map[string]any `json:"data"`
-	Meta    recordMeta     `json:"meta"`
-	Deleted bool           `json:"deleted,omitempty"`
+	Data      map[string]any `json:"data"`
+	Meta      recordMeta     `json:"meta"`
+	Deleted   bool           `json:"deleted,omitempty"`
+	CreatedAt string         `json:"created_at,omitempty"`
+	UpdatedAt string         `json:"updated_at,omitempty"`
 }
 
 func (r *record) state() state {
@@ -213,7 +220,10 @@ func (t *Type) decodeMeta(m recordMeta) recordMeta {
 
 // encodeState is a record's state as a history row stores it, by id.
 func (t *Type) encodeState(r *record) string {
-	return canonicalJSON(state{Data: t.encode(r.Data, r.unknown), Meta: t.encodeMeta(r.Meta), Deleted: r.DeletedAt != ""})
+	return canonicalJSON(state{
+		Data: t.encode(r.Data, r.unknown), Meta: t.encodeMeta(r.Meta), Deleted: r.DeletedAt != "",
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	})
 }
 
 // decodeState reads a stored history state back by name.
@@ -318,7 +328,7 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 		if !ok {
 			continue
 		}
-		if f.AI != "" {
+		if f.AI != "" && r.Meta.By[name] != BySync {
 			if meta.AI == nil {
 				meta.AI = map[string]string{}
 			}
@@ -361,7 +371,7 @@ func whole(t *Type, r *record) Row {
 		meta.By = map[string]string{}
 		for k, v := range r.Meta.By {
 			meta.By[k] = v
-			if f := t.Fields[k]; f != nil && f.AI != "" {
+			if f := t.Fields[k]; f != nil && f.AI != "" && v != BySync {
 				if _, has := r.Data[k]; has {
 					if meta.AI == nil {
 						meta.AI = map[string]string{}
@@ -456,7 +466,7 @@ func (w *writeTx) newBatch(sc Scope, op string, t *Type) (string, error) {
 		id, sc.App, actor, kind, sc.Cause, op, typeID, w.now.UTC().Format(stamp)); err != nil {
 		return "", err
 	}
-	w.change = &Change{Batch: id, App: sc.App, Actor: actor, ByKind: kind, Cause: sc.Cause, Op: op, Type: typ, At: w.now}
+	w.change = &Change{Batch: id, App: sc.App, Actor: actor, ByKind: kind, Cause: sc.Cause, CauseChain: sc.CauseChain, SourceEvent: sc.sourceEvent, Op: op, Type: typ, At: w.now}
 	return id, nil
 }
 
@@ -496,7 +506,7 @@ func (w *writeTx) note(t *Type, before, after *record) error {
 	if after != nil {
 		id = after.ID
 	}
-	rc := RecordChange{Type: t.Name, ID: id, Before: whole(t, before), After: whole(t, after), Changed: changedFields(before, after)}
+	rc := RecordChange{TypeID: t.ID, Type: t.Name, ID: id, Before: whole(t, before), After: whole(t, after), Changed: changedFields(before, after)}
 	if after != nil && after.DeletedAt != "" {
 		rc.After = nil
 	}
@@ -511,6 +521,9 @@ func (w *writeTx) note(t *Type, before, after *record) error {
 		}
 		w.change.befores[id] = before
 	}
+	if w.change.ByKind == BySync || w.change.Op == OpRefresh {
+		return w.emit(outboxRow{event: EventFreshnessChanged, typeID: t.ID, record: id})
+	}
 	event := EventRecordUpdated
 	switch {
 	case rc.Before == nil:
@@ -520,7 +533,7 @@ func (w *writeTx) note(t *Type, before, after *record) error {
 	}
 	return w.emit(outboxRow{
 		event: event, typeID: t.ID, record: id,
-		payload: map[string]any{"type": t.Name, "id": id, "op": w.change.Op, "changed": nonNil(rc.Changed), "before": rc.Before, "after": rc.After},
+		payload: map[string]string{"op": w.change.Op},
 	})
 }
 
@@ -588,7 +601,7 @@ func (w *writeTx) save(t *Type, r *record, insert bool) error {
 func applySet(r *record, set map[string]any, sc Scope, op string) (held []string) {
 	kind := sc.kind(op)
 	for _, name := range sortedKeys(set) {
-		if sc.below() {
+		if sc.below() || sc.sync {
 			if by := r.Meta.By[name]; by == ByPerson || by == ByImport {
 				held = append(held, name)
 				continue

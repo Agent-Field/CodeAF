@@ -82,8 +82,8 @@ func (d Data) ReadRecords(app string, recordType string) ([]any, error) {
 	return reader.many(recordType, "")
 }
 
-// RecordInput projects the data hook's unmasked rows into the receiving app's
-// view before the run journal, condition or agent can see them.
+// RecordInput resolves a durable event's scoped history before evaluating the
+// trigger or saving its input. Live callers may still supply their own rows.
 func (d Data) RecordInput(app string, change Change) (Change, error) {
 	store, err := d.Store()
 	if err != nil {
@@ -97,6 +97,18 @@ func (d Data) RecordInput(app string, change Change) (Change, error) {
 			return Change{}, ErrNotFound
 		}
 		return Change{}, err
+	}
+	if change.TypeID != "" {
+		if typ.ID != change.TypeID {
+			return Change{}, ErrNotFound
+		}
+		change.Before, change.After, err = store.RecordEventValues(scope, change.TypeID, change.ID, change.Batch)
+		if err != nil {
+			if e, ok := data.AsError(err); ok && (e.Code == data.CodeNotAllowed || e.Code == data.CodeNotFound) {
+				return Change{}, ErrNotFound
+			}
+			return Change{}, err
+		}
 	}
 	filter := func(row map[string]any) (map[string]any, error) {
 		if row == nil {

@@ -68,7 +68,7 @@ type ItemChange struct {
 // itemChange starts (or joins) the change w reports for a table write.
 func (w *writeTx) itemChange(sc Scope, op string) {
 	if w.change == nil {
-		w.change = &Change{App: sc.App, Actor: w.schema.actor(sc), ByKind: sc.kind(op), Cause: sc.Cause, Op: op, At: w.now}
+		w.change = &Change{App: sc.App, Actor: w.schema.actor(sc), ByKind: sc.kind(op), Cause: sc.Cause, CauseChain: sc.CauseChain, Op: op, At: w.now}
 	}
 }
 
@@ -79,7 +79,7 @@ func (w *writeTx) item(table, event string, t *Type, record, app, id string, row
 		typeID, typ = t.ID, t.Name
 	}
 	w.change.Items = append(w.change.Items, ItemChange{Table: table, ID: id, Type: typ, Record: record, App: app, Row: row})
-	return w.emit(outboxRow{event: event, typeID: typeID, record: record, payload: row})
+	return w.emit(outboxRow{event: event, typeID: typeID, record: record, payload: map[string]string{"id": id}})
 }
 
 // subject checks a record a work item, timer, sign-off or comment is about:
