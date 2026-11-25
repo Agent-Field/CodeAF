@@ -33,8 +33,9 @@ var (
 	// a message, a curl line in a tool result — with the token after it.
 	bearerLike = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._\-]{8,}`)
 	// keyLike catches the shape the keys this program uses are written in:
-	// OpenRouter's `sk-or-v1-…` and every other `sk-…` any provider mints.
-	keyLike = regexp.MustCompile(`\bsk-[A-Za-z0-9._\-]{8,}`)
+	// OpenRouter's `sk-or-v1-…`, every other `sk-…` any provider mints, and
+	// the Go plan's `oc_sk_…`.
+	keyLike = regexp.MustCompile(`\b(?:sk-|oc_sk_)[A-Za-z0-9._\-]{8,}`)
 )
 
 // secrets are the exact values this process knows to be credentials — the
@@ -42,8 +43,34 @@ var (
 // literally, which is the only way to catch a key whose shape this file has
 // never seen.
 var secrets struct {
-	mutex sync.Mutex
-	list  []string
+	mutex   sync.Mutex
+	list    []string
+	passing []string
+}
+
+// passingMost is how many passing secrets stay covered (SecretPassing).
+const passingMost = 64
+
+// SecretPassing registers a value typed for one request, such as a password,
+// under the same eight-character floor as Secret. Only the latest passingMost
+// stay covered, so a process that signs many people in does not keep every
+// password it was handed.
+func SecretPassing(value string) {
+	if len(value) < 8 {
+		return
+	}
+	secrets.mutex.Lock()
+	defer secrets.mutex.Unlock()
+	for i, known := range secrets.passing {
+		if known == value {
+			secrets.passing = append(secrets.passing[:i], secrets.passing[i+1:]...)
+			break
+		}
+	}
+	if len(secrets.passing) >= passingMost {
+		secrets.passing = secrets.passing[1:]
+	}
+	secrets.passing = append(secrets.passing, value)
 }
 
 // Secret registers a value that must never appear in the record. Every door
@@ -95,11 +122,11 @@ func ScrubRegistered(body []byte) []byte {
 		return body
 	}
 	secrets.mutex.Lock()
-	if len(secrets.list) == 0 {
+	if len(secrets.list) == 0 && len(secrets.passing) == 0 {
 		secrets.mutex.Unlock()
 		return body
 	}
-	known := append([]string(nil), secrets.list...)
+	known := append(append([]string(nil), secrets.list...), secrets.passing...)
 	secrets.mutex.Unlock()
 	out := body
 	for _, secret := range known {

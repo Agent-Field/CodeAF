@@ -1726,9 +1726,9 @@ the next cycle starts at its first project. With just one destination already se
 is how hard the next conversation will think — with nothing pinned, the `thinking` row in
 `/settings` folded with any level set on the model — and `alt+e`, or a press on the cell,
 walks it one rung: home says `thinking · high · for the next conversation you start here`.
-`◇ asks` is what it will run without asking — with nothing pinned, the `ask before running`
+`◇ asks` is what it will run without asking — with nothing pinned, the `tool approvals`
 row, or `YOLO` under `--yolo` — and `alt+a`, or a press, walks asks → guardian → YOLO →
-asks, never onto `refuses`: home says `approvals · YOLO · tools run without asking, including overwrites ·
+asks, never onto `blocks`: home says `approvals · YOLO · tools run without asking, including overwrites ·
 critical commands still ask · for the next conversation you start here`, and the cell
 wears the warning hue while the gate is open. Both are carried onto the conversation
 `enter` opens. **The rung lasts as long as this window does, like the model; the gate is

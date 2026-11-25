@@ -446,21 +446,34 @@ func (a *app) questionPanelContext(q questionShown, room int) []string {
 	if reason == "" || a.questionSubjectAt(q.question) >= 0 {
 		return nil
 	}
-	out := make([]string, 0, 2)
-	for i, line := range wrap(reason, room) {
-		if i >= questionPanelReasonRows {
-			break
-		}
+	lines := wrap(reason, room)
+	// A SENTENCE THAT DOES NOT FIT THE BOUND SAYS SO. Two rows used to be kept and
+	// the rest dropped without a mark, so a hand test (2026-11-19) read a refusal
+	// that ended at `switch it back on` and a continue card that ended at `copies
+	// that folder too: 174`: half a sentence with nothing to say it was half. The
+	// bound still holds, because the answers are what the card is for, but its last
+	// row carries the ellipsis.
+	if len(lines) > questionPanelReasonRows {
+		lines = lines[:questionPanelReasonRows]
+		last := questionPanelReasonRows - 1
+		lines[last] = fit(strings.TrimRight(lines[last], " ")+glyphMore, room)
+	}
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
 		out = append(out, questionPanelGap+a.pal.dim(line))
 	}
 	return out
 }
 
-// questionPanelReasonRows is how many rows the asker's sentence may take. Two,
-// because it is the one thing a person has to READ before they answer and half
-// a sentence is worse than two rows of one — and no more, because the answers
-// are what the panel is for.
-const questionPanelReasonRows = 2
+// questionPanelReasonRows is how many rows the asker's sentence may take.
+// Six, because it is the one thing a person has to READ before they answer and
+// half a sentence is worse than a few rows of one: the longest sentences a card
+// carries (the continue card for a big folder, the refusal for blind
+// pass-through switched off) are about thirty words, which is four rows on the
+// narrowest card and one or two on a wide one. Not more, because the answers
+// are what the panel is for, and a sentence longer than this ends in an
+// ellipsis rather than silently.
+const questionPanelReasonRows = 6
 
 // questionPanelTool is the name of the tool a permission is about, read off the
 // transcript's own row for the call so the panel and the row cannot name it two

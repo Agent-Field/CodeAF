@@ -162,14 +162,18 @@ func (a *app) refreshCreditWarnings() {
 	// first conversation from the record as it stood — low — a moment before the
 	// launch read says otherwise. A conversation that has sent anything keeps its
 	// model either way, and nothing here writes a talk row.
-	want := config.ChatDefaultAt(a.profileDir)
-	if a.readCredits != nil && !a.creditsExpired && !a.creditSwitching && a.implicitTalk && a.model != want &&
+	//
+	// The default is resolved only once the cheap conditions hold: this runs on
+	// every Home beat, and the default reads the profile's services.
+	if a.readCredits != nil && !a.creditsExpired && !a.creditSwitching && a.implicitTalk &&
 		(a.model == config.DefaultModel || a.model == config.FreeChatModel) &&
-		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" &&
-		(!a.requireListedModel || a.isAvailableModel(want)) {
-		a.creditSwitching = true
-		a.switchModel(want, 0)
-		a.creditSwitching = false
+		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" {
+		if want := config.ChatDefaultAt(a.profileDir); want != "" && a.model != want &&
+			(!a.requireListedModel || a.isAvailableModel(want)) {
+			a.creditSwitching = true
+			a.switchModel(want, 0)
+			a.creditSwitching = false
+		}
 	}
 	a.chatCreditWarning, a.homeCreditWarning = "", ""
 	if a.readCredits == nil {

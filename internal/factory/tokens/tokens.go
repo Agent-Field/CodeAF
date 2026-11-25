@@ -33,6 +33,10 @@ type Profile struct {
 	Name      string   `json:"name"`
 	AvatarURL string   `json:"avatar_url"`
 	Scopes    []string `json:"scopes"`
+	// Kind is "password" for a person who signs in with a username and a
+	// password (accounts.go); empty is a GitHub person, which every profile
+	// written before password accounts is.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Token is one access token row. Expires is set when the row should stop
@@ -66,6 +70,84 @@ type Token struct {
 	// RevokedAt is when the operator ended the link. Rows revoked before the
 	// field existed leave it empty.
 	RevokedAt time.Time `json:"revoked_at,omitempty"`
+	// Invite is set on a link made for one named person through People ›
+	// Invite someone (POST /v1/invites): who they are before they join, the
+	// team and workstreams they join, and what happened when they did. A plain
+	// access link leaves it nil, and a build older than invites ignores it and
+	// still reads the row as an ordinary one-person link.
+	Invite *Invite `json:"invite,omitempty"`
+}
+
+// Invite is what an invitation carries beyond its link.
+type Invite struct {
+	Email       string   `json:"email,omitempty"`
+	Name        string   `json:"name,omitempty"`
+	Team        string   `json:"team,omitempty"`
+	Workstreams []string `json:"workstreams,omitempty"`
+	// Emailed is when the link was last mailed; zero when it never was,
+	// because the server has no mailer or the invite has no address.
+	Emailed time.Time `json:"emailed,omitempty"`
+	// Settled is when the join was carried out: the person put in the team,
+	// the workstreams and the tasks given to them before they joined. Handle
+	// is who that was. Zero until someone has joined through the link.
+	Settled time.Time `json:"settled,omitempty"`
+	Handle  string    `json:"handle,omitempty"`
+	// WelcomeSeen is when the joiner pressed Got it on the line that says who
+	// added them, which is then never shown again.
+	WelcomeSeen time.Time `json:"welcome_seen,omitempty"`
+}
+
+// InviteRefPrefix starts the id an invited person goes by before they join:
+// "invite:<row id>". A workstream's people, a task's owner and the person who
+// does it may name them this way, and joining rewrites every one of them to
+// the handle they joined as.
+const InviteRefPrefix = "invite:"
+
+// InviteRef is the id row's invited person goes by until they join.
+func InviteRef(id string) string { return InviteRefPrefix + id }
+
+// Edit reads every row, lets edit change them, and saves the result, all
+// under the cross-process row lock Join takes, so an invite's change cannot
+// overwrite a join that raced it. An error from edit writes nothing. THE
+// CALLER MUST NOT ALREADY HOLD THAT LOCK (the service's mutateLink takes the
+// same file): flock is per open file, and a second take waits on the first.
+func Edit(path string, edit func(rows []Token) ([]Token, error)) error {
+	unlock, err := lockRows(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	rows, err := Load(path)
+	if err != nil {
+		return err
+	}
+	rows, err = edit(rows)
+	if err != nil {
+		return err
+	}
+	ids := map[string]bool{}
+	for _, row := range rows {
+		if err := row.valid(); err != nil {
+			return err
+		}
+		if ids[row.ID] {
+			return ErrExists
+		}
+		ids[row.ID] = true
+	}
+	return Save(path, rows)
+}
+
+// Change is Edit of the one row id; ErrNotFound when it is not there.
+func Change(path, id string, change func(*Token) error) error {
+	return Edit(path, func(rows []Token) ([]Token, error) {
+		for i := range rows {
+			if rows[i].ID == id {
+				return rows, change(&rows[i])
+			}
+		}
+		return nil, ErrNotFound
+	})
 }
 
 // Joiner is one person who used a link: public GitHub facts and the instant.

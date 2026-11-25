@@ -151,7 +151,8 @@ func (b *appBackend) memberAdd(t teamstore.Team, agent string, ask appwire.Membe
 func (b *appBackend) memberStart(t teamstore.Team, ask appwire.MemberAsk) (string, error) {
 	handle, brief := strings.TrimSpace(ask.Handle), strings.TrimSpace(ask.Brief)
 	if err := teamstore.ValidHandle(handle); err != nil {
-		return "", appwire.Errorf(appwire.CodeBadParams, "a handle is 2 to 12 lowercase letters or digits")
+		// The store's own reason: the length, the characters, or a reserved word.
+		return "", appwire.Errorf(appwire.CodeBadParams, "%v", err)
 	}
 	if _, taken := t.ByHandle(handle); taken {
 		return "", appwire.Errorf(appwire.CodeBadParams, "@%s is already in %s", handle, t.Name)
@@ -462,7 +463,7 @@ var appProposalAsk = fmt.Sprintf("Propose a crew for the work in this conversati
 	`{"t":"team","id":"stream-id","name":"team name","lead":"lead-handle"}`+" (only for an org with 2+ teams).\n"+
 	`{"t":"member","handle":"role-word","role":"short role name","brief":"whole assignment","team":"stream-id","reports_to":"manager"}`+"\n"+
 	"Write members top-down, breadth first. reports_to is manager or an earlier team lead's handle; omit team for a single crew. "+
-	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleMax, teamstore.HandleMax)
+	"Do not start anyone yet; the person decides.", teamstore.HandleMin, teamstore.HandleWordMax, teamstore.HandleWordMax)
 
 // appNoProposal is the quiet line a conversation carries when what came back
 // could not be read as a proposal, and appNoAnswer leads the line when nothing
@@ -692,10 +693,18 @@ func appParseProposal(answer string) (appwire.Proposal, bool) {
 	}
 	p.Name = strings.TrimSpace(p.Name)
 	var helpers []appwire.ProposalHelper
+	// A model's handle is engine-picked: it stays within HandleWordMax,
+	// shortened and numbered for clashes the way the streamed proposal does it.
+	names := &appProposalStream{handles: map[string]string{}}
 	for _, h := range p.Helpers {
-		h.Handle = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h.Handle), "@"))
+		raw := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(h.Handle), "@"))
+		if _, repeated := names.handles[raw]; repeated {
+			continue // a handle proposed twice keeps its first helper
+		}
 		h.Brief = strings.TrimSpace(h.Brief)
+		h.Handle = names.handle(raw)
 		if teamstore.ValidHandle(h.Handle) == nil && h.Brief != "" {
+			names.handles[raw] = h.Handle
 			helpers = append(helpers, h)
 		}
 	}

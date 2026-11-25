@@ -80,8 +80,8 @@ func (p ClientToolsSetParams) Validate() error {
 	if p.Agent == "" || !clientToolSetName.MatchString(p.Set) {
 		return Errorf(CodeBadParams, "agent and a valid set id are required")
 	}
-	if len(p.Tools) > session.ClientToolMaxPerSet || len(p.Instructions) > session.ClientToolInstructionsMax {
-		return Errorf(CodeBadParams, "a set allows at most %d tools and %d instruction bytes", session.ClientToolMaxPerSet, session.ClientToolInstructionsMax)
+	if err := session.ClientToolSetSizeError(len(p.Tools), len(p.Instructions)); err != "" {
+		return Errorf(CodeBadParams, "%s", err)
 	}
 	if p.DeadlineMS != 0 && (p.DeadlineMS < session.ClientToolMinDeadlineMS || p.DeadlineMS > session.ClientToolMaxDeadlineMS) {
 		return Errorf(CodeBadParams, "deadline_ms must be 0 or %d–%d", session.ClientToolMinDeadlineMS, session.ClientToolMaxDeadlineMS)

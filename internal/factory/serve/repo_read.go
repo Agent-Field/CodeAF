@@ -81,7 +81,7 @@ func (h *Handler) repoJob(r *http.Request, repo string, id int) (factory.Item, b
 	}
 	for _, it := range s.Items {
 		if it.ID == id && itemRepo(it) == strings.ToLower(repo) {
-			return it, h.repoVisible(r, repo)
+			return it, h.repoVisible(r, repo) && h.jobVisible(r, it)
 		}
 	}
 	return factory.Item{}, false

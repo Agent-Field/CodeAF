@@ -239,6 +239,35 @@ func TestC9SourceBuildRefusesBeforeTheNetwork(t *testing.T) {
 	}
 }
 
+// TestSourceBuildInsideAnAppBundleIsLeftToItsApp proves the engine a desktop app
+// carries, which is always built from a bare commit, is told to update the app
+// rather than to rebuild with make build, and never reaches the network.
+func TestSourceBuildInsideAnAppBundleIsLeftToItsApp(t *testing.T) {
+	target := filepath.Join(filepath.Dir(updateTarget(t)), "WorkAF.app", "Contents", "MacOS", "codeaf")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("bundled"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	client := &codeupdate.Client{HTTP: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("a bundled engine's update reached the network")
+		return nil, nil
+	})}}
+	_, stderr := withUpdateDoor(t, "2097ee7", client, target)
+	if code := updateExit(runUpdate(nil)); code != 2 {
+		t.Fatalf("exit = %d, want 2", code)
+	}
+	for _, want := range []string{"this codeaf is part of WorkAF.app", "update the app"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr does not contain %q: %q", want, stderr.String())
+		}
+	}
+	if strings.Contains(stderr.String(), "built from source") {
+		t.Fatalf("a bundled engine was answered as a source build: %q", stderr.String())
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }

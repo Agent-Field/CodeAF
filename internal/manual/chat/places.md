@@ -286,7 +286,7 @@ alt+p project · alt+e effort · alt+a approvals · / commands        project: ~
 ```
 
 At the left it says **what model** answers, then a colon and **how hard it thinks**
-(the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `refuses` — the same words the
+(the rung or `auto`, without a badge), and **what it runs without asking** (`◇` and `asks`, `guardian`, `YOLO` or `blocks` — the same words the
 approvals chip uses inside a conversation). The model is always bold and bright cyan,
 on home and in conversations. On both boxes `project: <path>` is at the right end of the
 **keys row under the box** (it left the rule on 2026-09-22): home's names where the next
@@ -317,7 +317,7 @@ project stays selected when a conversation starts and when you return home. Only
 is **spent** by the conversation that uses it — back to `asks` (or whatever the settings
 rows say) — so an open gate is never quietly the default for the conversation after
 the one you opened it for. With nothing pinned the rung and the gate are what a fresh conversation on this install
-would run at: the `thinking` and `ask before running` rows in `/settings`, or `--yolo` if
+would run at: the `thinking` and `tool approvals` rows in `/settings`, or `--yolo` if
 this process was started with it.
 
 **The `here ~/codeaf` chip that sat next to the box is gone**, and so are the rules that the other places used to
@@ -823,7 +823,7 @@ incomplete status remains visible. The Knowledge view over `--host` is not
 supported.
 
 Settings → Models → **knowledge** (`knowledge.model`) selects the OpenRouter
-model for the next compilation. The default is `deepseek/deepseek-v4.1-flash`.
+model for the next compilation. Left empty, it follows the model you chose to talk to.
 The compiler checks the returned model ID and rejects substitutions. Each
 paid call appears in Spend, including empty and unusable answers. At the daily
 limit the job line says `Knowledge build paused: daily limit reached · $1 spent

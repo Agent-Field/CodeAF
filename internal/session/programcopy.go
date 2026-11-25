@@ -56,6 +56,8 @@ package session
 //     grace to stop, and its copy is finished only once the program is gone.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -76,22 +78,57 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-// programCopyRoot is the folder every program's copy is made under: this
-// account's cache folder (`~/Library/Caches/codeaf/worktrees` on a Mac,
-// `~/.cache/codeaf/worktrees` on Linux), which is private to it, out of the
-// way, and — unlike the system's temporary folder — neither shared with other
+// programCopyShared is the folder every codeaf install of this account makes
+// its copies under: the account's cache folder (`~/Library/Caches/codeaf/worktrees`
+// on a Mac, `~/.cache/codeaf/worktrees` on Linux), which is private to it, out of
+// the way, and — unlike the system's temporary folder — neither shared with other
 // accounts nor emptied by a restart, so a copy a crash left behind is still
-// there to finish. A state root CODEAF_HOME moved takes the copies with it, to
-// `worktrees` inside it ([home.Moved]), so a disposable home leaves nothing in
-// the person's cache. A variable so a test can put copies in a folder of its
-// own.
-var programCopyRoot = func() string {
-	if !home.Moved() {
-		if cache, err := os.UserCacheDir(); err == nil && filepath.IsAbs(cache) {
-			return filepath.Join(cache, "codeaf", "worktrees")
-		}
+// there to finish. "" when the account has no cache folder. A variable so a
+// test can put copies in a folder of its own.
+var programCopyShared = func() string {
+	if cache, err := os.UserCacheDir(); err == nil && filepath.IsAbs(cache) {
+		return filepath.Join(cache, "codeaf", "worktrees")
+	}
+	return ""
+}
+
+// programCopyRoot is the folder this install's program copies are made under.
+//
+//   - For the person's own home it is [programCopyShared] itself.
+//   - A state root CODEAF_HOME moved takes the copies with it, to `worktrees`
+//     inside it ([home.Moved]), so a disposable home leaves nothing in the
+//     person's cache.
+//   - A home the person keeps, the desktop app's `--home` ([home.Kept]), is
+//     backed up and opened by a person, so throwaway copies of their
+//     repositories do not belong in it either. Its copies go to the cache
+//     folder, in a folder of their own named for the state home, so no install
+//     makes, finds or finishes another's: the records that say which copies are
+//     owed are each home's own, and so is this folder.
+//
+// A variable so a test can put copies in a folder of its own.
+var programCopyRoot = defaultProgramCopyRoot
+
+func defaultProgramCopyRoot() string {
+	shared := programCopyShared()
+	switch {
+	case shared != "" && !home.Moved():
+		return shared
+	case shared != "" && home.Kept():
+		return filepath.Join(shared, programCopyHomeName(home.Dir()))
 	}
 	return home.Join("worktrees")
+}
+
+// programCopyHomeName names the folder one kept home's copies are made in: the
+// home's own folder name, so a person who does come across it can tell whose it
+// is, and a digest of its whole path, so two homes of one name stay apart.
+func programCopyHomeName(dir string) string {
+	sum := sha256.Sum256([]byte(canonicalPath(dir)))
+	name := strings.Trim(programCopyName.ReplaceAllString(filepath.Base(dir), "-"), "-.")
+	if name == "" {
+		name = "home"
+	}
+	return name + "-" + hex.EncodeToString(sum[:6])
 }
 
 // programCopyLinked is the ignored names a copy links in from the person's
@@ -986,22 +1023,32 @@ func writeProgramExclude(exclude, outside string, ours []string, created bool) {
 }
 
 // programCopiesOnDisk says a worktree of repo is still on disk under
-// [programCopyRoot]: a copy of it some run is working in, or one left for a
-// sweep.
+// [programCopyRoot] or [programCopyShared]: a copy of it some run is working in,
+// or one left for a sweep.
 func programCopiesOnDisk(repo string) bool {
 	out, err := git(repo, "worktree", "list", "--porcelain")
 	if err != nil {
 		return true
 	}
-	root := canonicalPath(programCopyRoot())
+	// EVERY INSTALL'S COPIES COUNT, not only this one's. The exclude file
+	// is the repository's, shared by every install that works in it, so lines
+	// another install's live copy still needs must not be taken out because this
+	// install has none ([dropProgramExclude]).
+	roots := []string{canonicalPath(programCopyRoot())}
+	if shared := programCopyShared(); shared != "" {
+		roots = append(roots, canonicalPath(shared))
+	}
 	for _, line := range strings.Split(out, "\n") {
 		dir, ok := strings.CutPrefix(line, "worktree ")
 		if !ok {
 			continue
 		}
-		if dir = canonicalPath(dir); strictlyInside(dir, root) {
-			if _, err := os.Stat(dir); err == nil {
-				return true
+		dir = canonicalPath(dir)
+		for _, root := range roots {
+			if strictlyInside(dir, root) {
+				if _, err := os.Stat(dir); err == nil {
+					return true
+				}
 			}
 		}
 	}

@@ -1,6 +1,9 @@
 package approval
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -186,9 +189,42 @@ func TestCriticalHit(t *testing.T) {
 		{"fork bomb tight", ":(){:|:&};:", true},
 		{"fork bomb spaced", ":(){ :|:& };:", true},
 
+		// #2813: THE PERSON'S NO HOLDS FOR THE ACT, NOT FOR ONE SPELLING. A model
+		// refused `rm -rf /tmp/victim` ran `rm -r /tmp/victim` one call later and
+		// was never asked. Every spelling of a recursive delete of an absolute or
+		// home path, or of a bare `*`, asks.
+		{"recursive short flag", "rm -r /tmp/victim", true},
+		{"recursive capital flag", "rm -R /tmp/victim", true},
+		{"recursive long flag", "rm --recursive /tmp/victim", true},
+		{"recursive abbreviated long flag", "rm --recurs /tmp/victim", true},
+		{"recursive shortest long flag", "rm --r --force /tmp/victim", true},
+		{"recursive split flags", "rm -r -f /tmp/victim", true},
+		{"recursive clustered capital", "rm -fR /tmp/victim", true},
+		{"force recursive star", "rm -rf *", true},
+		{"recursive star", "rm -r *", true},
+		{"recursive home", "rm -rf ~", true},
+		{"recursive home subpath", "rm -rf ~/projects", true},
+		{"recursive home variable", "rm -rf $HOME/x", true},
+		{"recursive braced home variable", "rm -rf ${HOME}/x", true},
+		{"path-qualified rm", "/bin/rm -rf /tmp/victim", true},
+		{"end of options", "rm -rf -- /tmp/victim", true},
+		{"quoted absolute path", `rm -rf "/tmp/victim"`, true},
+		{"single-quoted absolute path", `rm -r '/tmp/victim'`, true},
+		{"sudo recursive", "sudo rm -r /tmp/victim", true},
+		{"recursive in a compound line", "cd /tmp && rm -r /tmp/victim", true},
+		{"second target absolute", "rm -r build /tmp/victim", true},
+
 		{"ordinary build", "make build", false},
 		{"local delete", "rm -rf build", false},
 		{"relative delete", "rm -rf ./tmp/x", false},
+		{"relative recursive delete", "rm -r ./build", false},
+		{"relative glob delete", "rm -rf build/*", false},
+		{"single absolute file", "rm /tmp/one.log", false},
+		{"force single absolute file", "rm -f /tmp/one.log", false},
+		{"long flags that are not recursive", "rm --force --preserve-root /tmp/one.log", false},
+		{"a file named after the flag", "rm -- -r", false},
+		{"the word rm in an argument", "echo rm -r /tmp/victim", false},
+		{"rm as part of another name", "rmdir /tmp/empty", false},
 		{"halting name", "halting-script.sh", false},
 		{"dd to a file", "dd if=/dev/zero of=disk.img bs=1M", false},
 		{"read from a device", "dd if=/dev/sda of=backup.img", false},
@@ -232,6 +268,40 @@ func TestCriticalHitNamesTheCommandThatMatched(t *testing.T) {
 	decision := Policy{Default: ActionAllow}.CheckBash("rm -rf _brand && rm -rf /tmp/site_check")
 	if decision.Action != ActionPrompt || decision.Rule != `critical command "rm -rf /tmp/site_check"` {
 		t.Fatalf("CheckBash = %+v, want a prompt naming the real path", decision)
+	}
+}
+
+// THE MANUAL'S CRITICAL COMMANDS ARE ASKED ABOUT (#2813). The permissions page
+// told people `rm -rf *` asks while no entry in the table matched it, so a
+// person trusted a floor that was not there. This reads the commands the page
+// lists as critical and grades each one, so the page and the gate cannot drift
+// apart again. The page is read from disk, as written, because it is the
+// promise a person reads.
+func TestEveryCriticalCommandTheManualNamesIsAskedAbout(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "manual", "chat", "permissions.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := strings.Join(strings.Fields(string(raw)), " ")
+	listed := regexp.MustCompile("a critical command \\(([^)]*)\\)").FindStringSubmatch(page)
+	if listed == nil {
+		t.Fatal("permissions.md no longer lists critical commands as `a critical command (...)`; update this law with it")
+	}
+	commands := regexp.MustCompile("`([^`]+)`").FindAllStringSubmatch(listed[1], -1)
+	if len(commands) == 0 {
+		t.Fatalf("no command found in %q", listed[1])
+	}
+	for _, command := range commands {
+		line := strings.TrimSuffix(command[1], "*")
+		if strings.HasPrefix(command[1], "mkfs") {
+			line = "mkfs.ext4 /dev/sda1"
+		} else if command[1] == "rm -rf *" || command[1] == "rm -rf /*" {
+			line = command[1]
+		}
+		segments, _ := splitSegments(line)
+		if hit, ok := criticalHit(line, segments, ""); !ok {
+			t.Errorf("the manual names %q as a critical command, but %q is not asked about (%q)", command[1], line, hit)
+		}
 	}
 }
 

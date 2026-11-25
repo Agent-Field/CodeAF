@@ -90,6 +90,8 @@ func TestAccessFormAndInvalidTokens(t *testing.T) {
 	}
 }
 
+// A SESSION IDLES OUT AFTER THIRTY DAYS UNUSED; use moves that forward, never
+// past ninety days from when it was made (password.go's accessSessionLife).
 func TestAccessSessionExpiresAtThirtyDays(t *testing.T) {
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 	h := New(factory.FixtureSeam(now), Config{AccessToken: "test-secret"})
@@ -103,7 +105,7 @@ func TestAccessSessionExpiresAtThirtyDays(t *testing.T) {
 	if w := accessRequest(h, "GET", "/v1/queue", "", cookie, false); w.Code != http.StatusOK {
 		t.Fatalf("live cookie = %d", w.Code)
 	}
-	now = now.Add(time.Second)
+	now = now.Add(accessSessionTTL)
 	if w := accessRequest(h, "GET", "/v1/queue", "", cookie, false); w.Code != http.StatusUnauthorized || len(h.sessions.ids) != 0 {
 		t.Fatalf("expired cookie = %d with sessions %v", w.Code, h.sessions.ids)
 	}

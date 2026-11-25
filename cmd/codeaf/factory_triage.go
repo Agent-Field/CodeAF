@@ -199,9 +199,11 @@ func factoryTriageModel(settings config.Config) (string, error) {
 }
 
 // factoryRoleModel is the model one factory AI call runs on: the launch's or
-// the profile's one model when there is one, else the call's page-AI role
-// (insight_factory_read or insight_factory_scout, then the insight family's
-// pin and the engine's default for it), else the small-work seat.
+// the profile's one model when there is one, else the one roles ladder for the
+// call's page-AI role (insight_factory_read or insight_factory_scout, then the
+// insight family's pin, then a small-work row the person wrote), whose floor is
+// the factory's own model. These calls are background seats
+// (internal/roles' background.go): nothing here names a model of its own.
 func factoryRoleModel(settings config.Config, role roles.Role) (string, error) {
 	if parent := factoryWorkerParent(); parent.OneModel {
 		return strings.TrimSpace(parent.Model), nil
@@ -212,12 +214,9 @@ func factoryRoleModel(settings config.Config, role roles.Role) (string, error) {
 		return send, nil
 	}
 	if source, err := v3RolesSource("", settings.ProfileDir); err == nil {
-		if m, err := roles.Resolve(source, role, ""); err == nil && strings.TrimSpace(m) != "" {
+		if m, err := roles.Resolve(source, role, settings.Model); err == nil && strings.TrimSpace(m) != "" {
 			return strings.TrimSpace(m), nil
 		}
-	}
-	if m := strings.TrimSpace(config.TierSeatAt(settings.ProfileDir, config.ModelTierLow).Model); m != "" {
-		return m, nil
 	}
 	return strings.TrimSpace(settings.Model), nil
 }

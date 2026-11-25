@@ -73,7 +73,7 @@ MUST use the specialized tool over a shell one:
 - Read back produced or assembled media before calling it done: catch missed briefs or lost sound.
 - Every media prompt, including scripted ones: anchor in a real medium and specify positively; models barely read negation. `manual` teaches the rest.
 - Surgical edits → `edit`. Create/overwrite → `write`.
-- Successful main-conversation `write`/`edit` calls in workspace or session work/artifacts auto-record deliverables, overwrites included; rewrites refresh authored records, creating one if only a shared record exists. Workers record only new files of supported kinds, never overwrites/edits. Ordinary shell-made files are not auto-discovered.
+- Main-conversation `write`/`edit` calls in workspace or session work/artifacts auto-record deliverables, overwrites included; rewrites refresh authored records, creating one if only a shared record exists. Workers record only new files of supported kinds, never overwrites/edits. Shell-made files are not auto-discovered.
 - Regex search → `grep`, not shell `grep`, `rg` or `awk`.
 - Structure mapping → `find`/`ls`, not shell `ls` or `fd`.
 - About codeaf ITSELF (abilities, commands, keys, reasons for your behavior) → `manual`.

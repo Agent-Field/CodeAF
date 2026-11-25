@@ -87,9 +87,15 @@ type Flow struct {
 	manager *Manager
 	plug    Plug
 	url     string
-	cancel  context.CancelFunc
-	ctx     context.Context
-	done    chan flowResult
+	// code is what the person types on url, for a device sign-in (GitHub's),
+	// and empty for every sign-in that comes back to this machine by itself.
+	code   string
+	cancel context.CancelFunc
+	ctx    context.Context
+	done   chan flowResult
+	// keep replaces the store-file write in settle, for a connection kept
+	// somewhere else (GitHub's, github.go). Nil is the ordinary case.
+	keep func(ctx context.Context, keys *oauth2.Token) (Status, error)
 
 	mu        sync.Mutex
 	settled   bool
@@ -125,6 +131,12 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 		return nil, err
 	}
 	service := plug.Service()
+	if service.ID == GitHubID {
+		if !m.offered(service) {
+			return nil, fmt.Errorf("%s is not available in this build", service.Name)
+		}
+		return m.beginGitHub(ctx, plug)
+	}
 	// SEAM(mcp): a service that brings its own tools is signed in to by asking
 	// it where its sign-in is, rather than from addresses written down here.
 	// The trip that follows is the same trip. See mcp_auth.go.
@@ -233,6 +245,10 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 // be printed in a terminal or retyped by hand.
 func (f *Flow) URL() string { return f.url }
 
+// Code is the one-time code the person types on [Flow.URL], for a device
+// sign-in, and "" for a sign-in that needs none.
+func (f *Flow) Code() string { return f.code }
+
 // Wait blocks until the person finishes in their browser, ctx ends, or the
 // round-trip fails, then saves the connection and answers with its status.
 //
@@ -307,7 +323,12 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 	if err == nil && result.keys == nil {
 		err = fmt.Errorf("connect %s: the service granted nothing", service.Name)
 	}
-	if err == nil {
+	if err == nil && f.keep != nil {
+		status, err = f.keep(ctx, result.keys)
+		if err != nil {
+			status = Status{Service: service}
+		}
+	} else if err == nil {
 		entry := stored{Keys: result.keys, Scopes: granted(result.keys, service.Scopes)}
 		// The identity probe may fail without failing the connection; only its label is lost.
 		if account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys)); probeErr == nil {

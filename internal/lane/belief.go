@@ -568,15 +568,25 @@ func Flush() {
 	}
 }
 
-// snapshot is everything this ledger would have written down.
+// snapshot is everything this ledger would have written down, as a value
+// nothing else can reach.
+//
+// IT IS CALLED WITH THE LOCK HELD AND ENCODED AFTER THE LOCK IS RELEASED
+// ([ledger.compact] returns it to the store, which writes it with the file's lock
+// and the journal's held), so every map in it is a copy. The slices are built
+// fresh by their own accessors; the four hierarchies are copied here. Sharing
+// them is what killed an engine mid-turn with `concurrent map iteration and map
+// write` (snapshot_race_test.go), and holding this mutex across the encode would
+// have hidden that by putting a filesystem wait inside it, which is the failure
+// issue #264 is about.
 func (l *ledger) snapshot() storeState {
 	return storeState{
 		Beliefs:   l.held(),
 		Priors:    l.spreads(),
-		Wait:      l.wait,
-		Rate:      l.rate,
-		Think:     l.think,
-		Judged:    l.judged,
+		Wait:      l.wait.copied(),
+		Rate:      l.rate.copied(),
+		Think:     l.think.copied(),
+		Judged:    l.judged.copied(),
 		Workloads: l.heldWorkloads(),
 	}
 }

@@ -72,8 +72,9 @@ instead of silently discarding the pending work.
 | `codeaf chat --host devbox` | the chat here, the work on another machine |
 
 **The very first launch on a machine with nothing configured** begins with **choose a
-model provider**. One flat list shows every built-in provider.
-On a short terminal the key hint yields before any provider row.
+model provider**. The chooser puts the built-in providers in one list.
+On a short terminal the key hint yields first, and the list scrolls as you move
+the selection.
 The chosen provider's connection screen follows, then the chat model and daily limit.
 Ollama asks for no key. OpenRouter and Codex say `enter connects in browser` on their
 connection screens and wait for Enter before opening sign-in. `alt+left` returns to provider choice; `esc` skips an idle setup
@@ -774,7 +775,7 @@ second terminal while codeaf is running.
 the screen.** That is on purpose: codeaf takes over the whole terminal, so a warning
 printed to it would land spliced into the middle of what you are typing and be gone with
 the next redraw. It holds internal warnings, recovered internal faults with their stacks,
-and notes about things codeaf fell back from — the kind of thing to send along if you are
+notes about things codeaf fell back from, and the cause of a save that failed at quit — the kind of thing to send along if you are
 reporting something odd. The redirect lasts exactly as long as the conversation is up, and
 ordinary output goes back to the terminal when you quit.
 

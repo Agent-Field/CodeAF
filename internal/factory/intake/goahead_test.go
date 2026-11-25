@@ -230,3 +230,16 @@ func TestARefusedLaunchIsTriedAgain(t *testing.T) {
 		t.Fatalf("the next pass: started %v, %+v", f.started, got)
 	}
 }
+
+// A PER-JOB CAP HOLDS EACH JOB TO IT: a workstream's "start without asking,
+// up to $2 a task" starts every covered job, each with at most $2.
+func TestAPerJobCapHoldsEachJobToIt(t *testing.T) {
+	f := newGoAheadFloor(t)
+	budget := func(it *factory.Item) { it.Cap = 3 }
+	a, b := f.job(budget), f.job(budget)
+	f.policy(false, factory.Allowance{ID: factory.RuleAllowanceID, Jobs: []int{a, b}, CapUSD: 4, PerJobUSD: 2, EndsAt: ends})
+	f.pass()
+	if len(f.started) != 2 || f.get(a).Cap != 2 || f.get(b).Cap != 2 {
+		t.Fatalf("started %v with budgets %v and %v", f.started, f.get(a).Cap, f.get(b).Cap)
+	}
+}

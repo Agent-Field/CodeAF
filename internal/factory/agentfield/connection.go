@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -51,6 +52,21 @@ const settingsFile = "agentfield.json"
 
 // DefaultNodeID is the node a factory registers as unless told otherwise.
 const DefaultNodeID = "codeaf-factory"
+
+// NodeIDEnv names this machine's default node in place of DefaultNodeID. A
+// connect that names its node still wins. It exists because two computers on
+// one control plane must not both register as codeaf-factory (the second takes
+// the first one's node over), and an app whose Connect sheet sends no node id
+// can still give each computer its own by setting this in its environment.
+const NodeIDEnv = "CODEAF_FACTORY_NODE_ID"
+
+// defaultNodeID is NodeIDEnv when set, else DefaultNodeID.
+func defaultNodeID() string {
+	if id := strings.ToLower(strings.TrimSpace(env.Get(NodeIDEnv))); id != "" {
+		return id
+	}
+	return DefaultNodeID
+}
 
 // ErrNotKept is what a connect or disconnect is (errors.Is) when the control
 // plane said yes but this machine could not keep or forget the answer.
@@ -114,7 +130,7 @@ func Clean(s Settings) (Settings, error) {
 		s.BaseURL = ""
 	}
 	if s.NodeID = strings.ToLower(strings.TrimSpace(s.NodeID)); s.NodeID == "" {
-		s.NodeID = DefaultNodeID
+		s.NodeID = defaultNodeID()
 	}
 	if !reNodeID.MatchString(s.NodeID) {
 		return s, errors.New("the node id is a lowercase word, such as codeaf-factory")

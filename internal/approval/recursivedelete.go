@@ -73,7 +73,7 @@ func recursiveDeleteIn(command string, home folder, depth int) (string, bool) {
 			case "cd", "pushd":
 				here, away = home.moveTo(here, away, words[1:])
 			case "rm":
-				if targets, recursive := rmTargets(words[1:]); recursive && !home.allInside(here, away, targets) {
+				if targets, recursive := rmTargets(words[1:]); recursive && (emptiesHere(targets) || !home.allInside(here, away, targets)) {
 					return criticalName(part.Command), true
 				}
 			case "find":
@@ -209,7 +209,10 @@ func rmTargets(args []string) (targets []string, recursive bool) {
 		switch {
 		case options && arg == "--":
 			options = false
-		case options && arg == "--recursive":
+		case options && len(arg) > 2 && strings.HasPrefix("--recursive", arg):
+			// GNU rm takes any unambiguous prefix of a long option, and `--r`
+			// is only ever --recursive, so `--rec` and `--recurs` are the
+			// same flag.
 			recursive = true
 		case options && strings.HasPrefix(arg, "--"):
 		case options && strings.HasPrefix(arg, "-") && arg != "-":
@@ -221,6 +224,22 @@ func rmTargets(args []string) (targets []string, recursive bool) {
 		}
 	}
 	return targets, recursive
+}
+
+// emptiesHere reports a bare `*` (or `./*`) among a recursive rm's targets.
+//
+// A BARE STAR EMPTIES THE FOLDER IT RUNS IN, AND THAT FOLDER IS USUALLY THE
+// PERSON'S PROJECT. It is inside the agent's folder by every other measure, but
+// it is not a cleanup of the agent's own work: it is the whole of it, and the
+// manual has promised `rm -rf *` asks since before the folder check existed
+// (#2813). A star under a named folder (`rm -rf dist/*`) is still a cleanup.
+func emptiesHere(targets []string) bool {
+	for _, target := range targets {
+		if path.Clean(target) == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 // findDeletes reads a find's arguments: the roots it walks, and whether its

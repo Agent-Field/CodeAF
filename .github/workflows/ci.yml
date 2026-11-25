@@ -30,18 +30,25 @@ name: PR gate
 # only a person on a cluster could answer, and for a while the answer was no.
 # That is the same failure the note above records for #372, one level up: not a
 # filter nobody remembered, but a branch nobody listed.
+#
+# `santosh/work` is the integration line of the WorkAF wave (2026-11). Unlisted,
+# every pull request into it was proven by one serial laptop-side `pr-ready`
+# lock, which queued forty lanes deep; listing it hands that proof to the
+# concurrent touched legs below, the same bar `dev` gets.
 on:
   pull_request:
     branches:
       - dev
       - app/v3
       - santos/dev2
+      - santosh/work
   # Also on the push, because a merge of two individually-green branches can
   # still be red, and the merge is exactly the moment nobody is watching.
   push:
     branches:
       - dev
       - santos/dev2
+      - santosh/work
   workflow_dispatch:
 
 permissions:
@@ -306,6 +313,7 @@ jobs:
         run: |
           set -euo pipefail
           case "${BASE:-}" in ''|0000000000000000000000000000000000000000) BASE="$(git rev-parse HEAD~1)";; esac
+          BASE="$(git merge-base "$BASE" HEAD)"
           export BASE
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
           ./scripts/touched-packages.sh | python3 scripts/touched-matrix.py >> "$GITHUB_OUTPUT"

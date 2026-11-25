@@ -71,6 +71,8 @@ type paceCompleter struct {
 	taken int
 	// slow is what every reading costs.
 	slow time.Duration
+	// markStepStarted makes the mark wait for the step it must interrupt.
+	markStepStarted <-chan struct{}
 	// sketch is what a mark's reader draws.
 	sketch string
 	// readings counts what was asked beside the work, by kind.
@@ -91,6 +93,14 @@ func (p *paceCompleter) CompleteWithMessages(ctx context.Context, messages []ai.
 		p.readings[kind]++
 		slow := p.slow
 		p.mu.Unlock()
+		if kind == "mark" && p.markStepStarted != nil {
+			select {
+			case <-p.markStepStarted:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return textResponse(answer), nil
+		}
 		select {
 		case <-time.After(slow):
 		case <-ctx.Done():
@@ -310,37 +320,34 @@ func namesAside(list []string, want string) bool {
 
 // THE NET'S READING RUNS BESIDE THE NEXT STEP AND INTERRUPTS IT.
 //
-// The reading takes three seconds. The next step goes out at once — the law
-// above — and the drawing then cuts it where it stands rather than waiting for
-// it to end. The reading is the runaway net's now and the only one there is: the
-// rungs under it tell the turn and buy nothing (inherit.go).
+// The reading waits until the next step starts, then cuts it where it stands
+// rather than waiting for it to end. The reading is the runaway net's now
+// and the only one there is: the rungs under it tell the turn and buy nothing
+// (inherit.go).
 func TestAMarksReadingRidesBesideTheStepAndCutsItOnIndependentParts(t *testing.T) {
+	stepStarted := make(chan struct{})
 	rounds := checkpointMarkAt(checkpointMarks)
 	// The mark falls once `rounds` tool rounds have FINISHED, so the step that
 	// rides beside the reading is the one after them. It waits for its own
 	// context, which makes the cut the only thing that can end it.
 	steps := paceRounds(rounds, "never reached")
 	steps[len(steps)-1] = func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+		close(stepStarted)
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
 	completer := &paceCompleter{
-		steps:  append(steps, func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil }),
-		slow:   500 * time.Millisecond,
-		sketch: checkpointSplitSketch,
+		steps:           append(steps, func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil }),
+		markStepStarted: stepStarted,
+		sketch:          checkpointSplitSketch,
 	}
-	agent, _, journal := paceAgent(t, completer)
+	agent, _, _ := paceAgent(t, completer)
 	started := make(ranNodes, 2)
 	stubbedGraph(agent, func(node *TaskNode) { started <- node })
 
 	collect(t, mustSubmit(t, agent,
 		"work through every file under internal and tell me what you find in each one"))
 
-	pace := pacedTurn(t, journal)
-	if pace.StepGapMS > paceLawBudget.Milliseconds() {
-		t.Fatalf("a tool result waited %dms for the next request while the mark was being read, "+
-			"want at most %dms", pace.StepGapMS, paceLawBudget.Milliseconds())
-	}
 	if completer.count("mark") == 0 {
 		t.Fatal("the mark's reader was never asked")
 	}

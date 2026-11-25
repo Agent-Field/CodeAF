@@ -4207,6 +4207,8 @@ var glossField = map[string]string{
 	// A manager's look at one member, and the member a stop is aimed at.
 	"team_read": "handle",
 	"team_stop": "handle",
+	// A link is what was linked.
+	"team_link": "ref",
 }
 
 // glossFields is [glossField] for the calls where ONE argument is not enough to

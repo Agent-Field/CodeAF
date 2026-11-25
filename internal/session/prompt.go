@@ -344,6 +344,9 @@ func renderSystemAt(config Config, now time.Time) string {
 	// AND WHAT IT SAYS ABOUT OTHER WINDOWS FOLLOWS THE CONVERSATION'S SCOPE
 	// (scope.go); a project page is unchanged byte for byte.
 	page = config.scopedElsewhereFact(page)
+	// AND A CONVERSATION IN A WORKSTREAM IS TOLD WHERE WHAT IT MAKES GOES
+	// (workstream_mark.go); every other page is unchanged byte for byte.
+	page = config.workstreamFact(page)
 	if _, err := shell.Bash(); err != nil {
 		// Unix keeps its exact prompt bytes. On Windows an absent command
 		// tool cannot inherit instructions that promise shell execution.
@@ -618,6 +621,7 @@ func (a *Agent) liveModelConfigLocked() Config {
 	}
 	// The page names the scope the tasks description was given (scope.go).
 	config.ownWork = a.ownWorkTold.Load()
+	config.inWorkstream = a.workstreamTold.Load()
 	return config
 }
 

@@ -127,9 +127,14 @@ func (a *Agent) askModel(ctx context.Context, question toolAsk) (string, error) 
 	// NO OUTPUT CEILING TRAVELS WITH IT ([toolAskSendsNoOutputCeiling]).
 	// THE TOOL IS THE PURPOSE, carried to the door rather than stamped here, so
 	// that this package has one place that spells a tag (clientdoor.go).
+	// A question with nothing attached (the decision check) sends its words alone.
+	content := []ai.ContentPart{{Type: "text", Text: question.prompt}}
+	if question.part.Type != "" {
+		content = append(content, question.part)
+	}
 	response, err := a.completeWithModel(asked, callPurpose(toolCallTag(question.tool)), []ai.Message{{
 		Role:    "user",
-		Content: []ai.ContentPart{{Type: "text", Text: question.prompt}, question.part},
+		Content: content,
 	}}, question.model)
 	// Accounted BEFORE the answer is judged: the ask was paid for whether or not
 	// it said anything useful.

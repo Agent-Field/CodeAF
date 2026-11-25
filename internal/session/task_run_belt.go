@@ -2058,6 +2058,11 @@ func (a *Agent) startPendingBeltRun(ctx context.Context, run *beltRun) (RunSpec,
 // the row the run was published under settles. The store is closed and the run
 // cleared once the work is home, so the next `/task` seeds a fresh plan.
 func (a *Agent) driveBeltRun(ctx context.Context, engine RunEngine, run *beltRun, spec RunSpec) {
+	// EVERY RUN DRIVES ON THE SESSION'S SEAT, whichever door started it
+	// ([Agent.seatedRun]): this is the one road every start, carry-on and
+	// recovery takes, so a door that forgot to seat its context cannot leave a
+	// program's launch with no seat to run on.
+	ctx = a.seatedRun(ctx)
 	if run.pending {
 		var ok bool
 		spec, ok = a.startPendingBeltRun(ctx, run)

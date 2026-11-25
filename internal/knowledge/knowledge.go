@@ -5,6 +5,7 @@ package knowledge
 import (
 	"context"
 	"crypto/sha256"
+	"time"
 
 	"encoding/hex"
 	"encoding/json"
@@ -16,7 +17,10 @@ import (
 	"path/filepath"
 )
 
-const Model = config.DefaultKnowledgeModel
+// Model is what a profile that chose nothing compiles on: the conversation's
+// own default, because the Library follows the model the person chose
+// (config.KnowledgeModelAt) and a fresh profile has chosen the default.
+const Model = config.DefaultModel
 
 var ErrDisabled = errors.New("knowledge is not enabled for this profile")
 
@@ -106,10 +110,16 @@ type Vault struct {
 	root, profile string
 	calls         func(context.Context) (context.Context, error)
 	repeats       *compilerRepeats
+	// chosen is the model the person (or organization) is on, read for each
+	// compilation; nil reads the profile's own choice.
+	chosen func() string
 	// passSeen is what the last build pass found, written and read only by
 	// the one goroutine running [Vault.Run], which backs off while it is the
 	// same from pass to pass.
 	passSeen string
+	// passQuietAt is when the first chat the last pass held back goes quiet
+	// (build_idle.go); zero when it held none. Owned like passSeen.
+	passQuietAt time.Time
 }
 
 func hash(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }
@@ -117,6 +127,24 @@ func Open(profile string) *Vault {
 	return &Vault{root: filepath.Join(profile, "knowledge"), profile: profile, repeats: &compilerRepeats{failed: make(map[string]compilerRepeat)}}
 }
 func (v *Vault) Directory() string { return v.root }
+
+// WithChosenModel tells the vault which model the person is on, for a vault
+// that runs beside a conversation whose model the profile does not record — an
+// organization's job session answers on the organization's model.
+func (v *Vault) WithChosenModel(chosen func() string) *Vault {
+	v.chosen = chosen
+	return v
+}
+
+// model is the one model this vault's compilations run on
+// ([config.KnowledgeModelAt]).
+func (v *Vault) model() string {
+	chosen := ""
+	if v.chosen != nil {
+		chosen = v.chosen()
+	}
+	return config.KnowledgeModelAt(v.profile, chosen)
+}
 func materializePages(vault document) ([]Page, error) {
 	b, err := json.Marshal(vault)
 	if err != nil {

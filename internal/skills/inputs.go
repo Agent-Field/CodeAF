@@ -11,11 +11,22 @@ import (
 // and names marketplace catalogs without walking marketplace repositories.
 func InputPaths(opts Options) []string {
 	var paths []string
-	for _, base := range []string{opts.ProjectDir, opts.HomeDir} {
+	// codeaf's own user folder is the one root Discover reads from somewhere
+	// other than HomeDir when OwnHomeDir moves it, so only that folder is named
+	// in its place, and the one under HomeDir, which is not read, is left out.
+	ownDir := strings.TrimSpace(opts.OwnHomeDir)
+	if ownDir == "" {
+		ownDir = opts.HomeDir
+	}
+	ownMoved := strings.TrimSpace(opts.HomeDir) != "" && absolute(ownDir) != absolute(opts.HomeDir)
+	for i, base := range []string{opts.ProjectDir, opts.HomeDir} {
 		if strings.TrimSpace(base) == "" {
 			continue
 		}
 		for _, root := range append(append([]string(nil), skillRoots...), RootCodexSystem) {
+			if ownMoved && i == 1 && root == RootCodeaf {
+				continue
+			}
 			paths = appendNew(paths, filepath.Join(absolute(base), root))
 		}
 		for _, file := range claudeSettingsFiles {
@@ -24,6 +35,9 @@ func InputPaths(opts Options) []string {
 	}
 	if strings.TrimSpace(opts.HomeDir) == "" {
 		return paths
+	}
+	if ownMoved {
+		paths = appendNew(paths, filepath.Join(absolute(ownDir), RootCodeaf))
 	}
 	home := absolute(opts.HomeDir)
 	for _, root := range homeSkillRoots {

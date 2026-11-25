@@ -1,6 +1,8 @@
 package factory
 
 import (
+	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -167,8 +169,41 @@ type Acts struct {
 }
 
 // JobBudgetSteps are the standard absolute job budgets, in ascending US dollars.
+// They are SUGGESTIONS — the chips a picker offers and the ladder [NextJobCap]
+// climbs — never the only amounts a person may choose: [CheckJobBudget] takes
+// any amount from [MinJobBudget] up.
 func JobBudgetSteps() []float64 {
 	return []float64{5, 10, 20, 30}
+}
+
+// MinJobBudget is the smallest budget a job may be given, in US dollars. It is
+// THE ONE SOURCE of that figure: every door that checks a job's budget, and
+// every refusal that names the floor, reads it from here.
+const MinJobBudget = 1.0
+
+// ErrJobBudgetTooSmall is the plain refusal for an amount under [MinJobBudget],
+// a negative one, or one that is not a number at all.
+var ErrJobBudgetTooSmall = errors.New("A job's budget is at least " + budgetDollars(MinJobBudget) + ".")
+
+// budgetDollars spells an amount the way the budget refusals do: whole dollars
+// without cents ("$1"), anything else to the cent ("$1.50").
+func budgetDollars(usd float64) string {
+	if usd == math.Trunc(usd) {
+		return "$" + strconv.FormatFloat(usd, 'f', 0, 64)
+	}
+	return "$" + strconv.FormatFloat(usd, 'f', 2, 64)
+}
+
+// CheckJobBudget accepts any amount from [MinJobBudget] up, to the cent, and
+// answers it rounded to whole cents. The owner's call (2026-11-17) is that a
+// job's budget is any amount from $1 as well as the presets, so the presets
+// are not checked here. NaN and infinities are refused with the same words,
+// because a person who typed one meant no amount a job can be held to.
+func CheckJobBudget(usd float64) (float64, error) {
+	if math.IsNaN(usd) || math.IsInf(usd, 0) || usd < MinJobBudget {
+		return 0, ErrJobBudgetTooSmall
+	}
+	return math.Round(usd*100) / 100, nil
 }
 
 // NextJobCap chooses the smallest standard budget above recorded spending,

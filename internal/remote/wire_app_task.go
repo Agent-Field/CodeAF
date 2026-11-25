@@ -24,6 +24,9 @@ const (
 	MethodAppResumeAfterQuit = "App.ResumeAfterQuit"
 	// MethodAppResumeAfterClose carries the unexpected-close wake to its owner.
 	MethodAppResumeAfterClose = "App.ResumeAfterClose"
+	// MethodAppContinueInterrupted carries on the task work a held open kept
+	// back ([session.Agent.ContinueInterruptedWork]): the person's Continue.
+	MethodAppContinueInterrupted = "App.ContinueInterrupted"
 	// MethodAppRename gives the conversation the name a person typed
 	// ([session.Agent.RenameByPerson]).
 	MethodAppRename = "App.Rename"
@@ -89,6 +92,9 @@ type appQuitDoor interface{ ResumeAfterQuit() bool }
 
 // appCloseDoor is deliberately separate so older engines keep their quit door.
 type appCloseDoor interface{ ResumeAfterCloseKey(string) bool }
+
+// appContinueDoor is the conversation that can carry on its held recovery.
+type appContinueDoor interface{ ContinueInterruptedWork() bool }
 
 // appCloseArgs carries the private continuation identity through the engine.
 type appCloseArgs struct{ Key string }
@@ -174,6 +180,12 @@ func dispatchAppTask(agent any, call Frame) (json.RawMessage, error) {
 			return nil, errors.New("engine: this conversation cannot carry on by itself")
 		}
 		return json.Marshal(quit.ResumeAfterQuit())
+	case MethodAppContinueInterrupted:
+		door, ok := agent.(appContinueDoor)
+		if !ok {
+			return nil, errors.New("engine: this conversation cannot carry on its interrupted work")
+		}
+		return json.Marshal(door.ContinueInterruptedWork())
 	case MethodAppResumeAfterClose:
 		closed, ok := agent.(appCloseDoor)
 		if !ok {
@@ -418,6 +430,19 @@ func (a *Agent) ResumeAfterQuit() (bool, error) {
 	var queued bool
 	err = json.Unmarshal(raw, &queued)
 	return queued, err
+}
+
+// ContinueInterruptedWork asks the engine to carry on the task work it held
+// back when the conversation was opened after an interrupted quit, and answers
+// whether anything was held.
+func (a *Agent) ContinueInterruptedWork() (bool, error) {
+	raw, err := a.c.call(nil, MethodAppContinueInterrupted, nil)
+	if err != nil {
+		return false, err
+	}
+	var held bool
+	err = json.Unmarshal(raw, &held)
+	return held, err
 }
 
 // ResumeAfterClose asks for the private wake after an unexpected app close.

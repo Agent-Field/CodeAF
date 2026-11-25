@@ -1,0 +1,7 @@
+# HTTPS for the codeaf teams demo server. {HOST} is <static-ip>.sslip.io,
+# filled in by install.sh. Event streams stay open, so nothing buffers them.
+{HOST} {
+	reverse_proxy 127.0.0.1:8787 {
+		flush_interval -1
+	}
+}

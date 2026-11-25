@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // reasoningKnob is OpenRouter's unified reasoning control. Three of its fields
@@ -61,6 +63,43 @@ func reasoningFor(level Effort, budget int) *reasoningKnob {
 			return &reasoningKnob{MaxTokens: budget}
 		}
 		return &reasoningKnob{Effort: level}
+	}
+}
+
+// reasoningEffortFor is the other dialect of the same decision: the level the
+// unified object would have carried, spelled as the one top-level word an
+// endpoint declaring [modelsource.ReasoningEffortLowHighMax] reads. Empty sends
+// nothing, which is what an unset level sent before and still sends.
+//
+// THE WORD IS CHOSEN FROM THE RUNG, NOT FROM THE BUDGET THAT TRAVELLED. The two
+// rungs above high are the only requests that state a budget of their own
+// (effortladder.go's [effortRequestFor]), and they are what `max` is for; a
+// budget a wall derived for a high pass is a ceiling on that pass, not a
+// request for a deeper one, so stated is the rung's own budget and nothing
+// else.
+//
+// There is no word for medium, so it rounds up to high — DeepSeek's own default
+// — rather than down, because a person who asked for medium asked for more than
+// the least. There is no word for off either, and the object a disable rides in
+// is the object this endpoint ignores, so off travels as low: the nearest
+// request it honours, and the same answer the unstoppable-model path gives.
+func reasoningEffortFor(level Effort, stated bool) string {
+	switch level {
+	case EffortNone:
+		return ""
+	case EffortOff, EffortMinimal, EffortLow:
+		return "low"
+	case EffortMedium, EffortHigh:
+		if stated {
+			return "max"
+		}
+		return "high"
+	case "xhigh", "max":
+		// A level the catalog or the running-effort floor named above high
+		// reaches here only as a word, and the endpoint's top word is max.
+		return "max"
+	default:
+		return "high"
 	}
 }
 
@@ -321,6 +360,12 @@ type wireRequest struct {
 	// every optional economy is a worse failure than a model thinking too hard.
 	Reasoning *reasoningKnob `json:"reasoning,omitempty"`
 
+	// ReasoningEffort is the same level in the dialect an endpoint that ignores
+	// the unified object reads instead ([reasoningEffortFor]). AT MOST ONE OF
+	// THE TWO IS EVER SET: the client's declared dialect picks which, and an
+	// empty string is omitted, so a router-bound body carries no trace of it.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+
 	// Provider is the routing preference object: how to choose among the
 	// endpoints serving this model, and which of them this process has already
 	// measured as slow (velocity.go). Nil on every non-router endpoint and
@@ -374,8 +419,11 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 
 	// OpenRouter only reports cache reads, cache writes, and native cost when
 	// the request opts into usage accounting. Without it the single largest
-	// lever on a long run's bill is invisible, so it is never optional here.
-	if scrubbed.Usage == nil {
+	// lever on a long run's bill is invisible. Direct services use the
+	// streaming opt-in below and may reject the router field.
+	if c.directUsageEndpoint(knobs) {
+		scrubbed.Usage = nil
+	} else if scrubbed.Usage == nil {
 		scrubbed.Usage = &ai.RequestUsage{Include: true}
 	}
 
@@ -466,7 +514,15 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		return nil, err
 	}
 	if !knobs.relaxed.has(relaxReasoning) {
-		wire.Reasoning = reasoningFor(sentEffort, thinking)
+		if c.config.ReasoningDialect == modelsource.ReasoningEffortLowHighMax {
+			// The endpoint reads its own word and drops the object unread, so
+			// the object is not sent beside it: a field the endpoint ignores is
+			// a level the person chose and never got.
+			stated := c.effortAsked(knobs.effort).budget > 0
+			wire.ReasoningEffort = reasoningEffortFor(sentEffort, stated)
+		} else {
+			wire.Reasoning = reasoningFor(sentEffort, thinking)
+		}
 	}
 	if hasCeiling {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 // goAheadRoutes are the doors of group policies and of waits-on
@@ -28,6 +29,11 @@ func (h *Handler) features(w http.ResponseWriter, r *http.Request) {
 	out := api.Features{Features: []string{api.FeatureKeyedCreate}}
 	if h.config.Store != nil {
 		out.Features = append(out.Features, api.FeatureGroupPolicy, api.FeatureWaitsOn)
+	}
+	// A FOLDER ON THIS COMPUTER IS PERSONAL'S DOOR ALONE (folder.go): an
+	// organization's factory never lists it, so no app offers it there.
+	if h.folderDoor() {
+		out.Features = append(out.Features, factory.FeatureLocalFolder)
 	}
 	h.write(w, http.StatusOK, out)
 }
@@ -54,6 +60,15 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 			h.fail(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
+		// An organization workstream's go-aheads are read only by those who
+		// can see the workstream; anyone else is answered as though it did
+		// not exist, the same 404 its own route gives.
+		if known, see, _, err := h.orgWorkstreamAccess(r, group); h.failed(w, err) {
+			return
+		} else if known && !see {
+			h.fail(w, http.StatusNotFound, errWorkstreamGone.Error())
+			return
+		}
 		p, ok, err := st.Policy(group)
 		if h.failed(w, err) {
 			return
@@ -76,6 +91,19 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
+	// A go-ahead for an organization workstream spends that workstream's
+	// budget, so approving one needs edit on it, the operator's included.
+	// WHO KEEPS IT IS THE WORKSTREAM'S ACCESS, NOT WHOEVER SAVED FIRST: on a
+	// team's workstream the first teammate to approve must not lock out the
+	// rest, so the first-writer rule below is for other groups only.
+	orgWorkstream, allowed, err := h.orgWorkstreamWrite(r, group)
+	if h.failed(w, err) {
+		return
+	}
+	if orgWorkstream && !allowed {
+		h.fail(w, http.StatusForbidden, "only its owner and those it is shared with for edit can approve this workstream's go-aheads")
+		return
+	}
 	who, err := h.callerHandle(r)
 	if h.failed(w, err) {
 		return
@@ -83,7 +111,7 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 	who = factory.NormalizeHandle(who)
 	operator := h.mode() == api.FactorySolo || h.isOperator(r)
 	saved, err := st.ChangePolicy(group, func(cur *factory.GroupPolicy) error {
-		if cur.Owner != "" && who != cur.Owner && !operator {
+		if !orgWorkstream && cur.Owner != "" && who != cur.Owner && !operator {
 			return errPolicyNotYours
 		}
 		cur.Stopped, cur.Allowances, cur.UpdatedAt = body.Stopped, body.Allowances, h.clock().UTC()
@@ -100,6 +128,11 @@ func (h *Handler) policy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = st.NudgePoll()
+	detail := fmt.Sprintf("%d allowed", len(saved.Allowances))
+	if saved.Stopped {
+		detail = "stopped"
+	}
+	h.recordOrg(r, record.PolicyChanged, "changed go-aheads", orgObjectPolicy+group, detail)
 	h.writePolicy(w, saved)
 }
 

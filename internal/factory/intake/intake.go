@@ -124,6 +124,10 @@ func (in *Intake) Once(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	governed, err := in.workstreamGoverned()
+	if err != nil {
+		return err
+	}
 	var errs []error
 	for _, it := range items {
 		if err := ctx.Err(); err != nil {
@@ -133,7 +137,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if err != nil {
 			errs = append(errs, err)
 		}
-		if !ok {
+		if !ok || (routed == nil && governed(it)) {
 			continue
 		}
 		if err := in.decide(ctx, it, book, routed); err != nil {
@@ -193,6 +197,31 @@ func (in *Intake) admit(ctx context.Context, it factory.Item, rules []route.Rule
 		return nil, false, nil
 	}
 	return routed, true, nil
+}
+
+// workstreamGoverned says whether a job's start is its workstream's to make:
+// it is in an organization's workstream, or the Factory switch of one takes
+// it in ([factory.FactoryWorkstreamFor]). SUCH A JOB IS NEVER STARTED BY ITS
+// LABELS; a routing rule a person wrote still applies to it. The workstream's "start without asking" rule
+// starts it through the go-ahead pass, within that limit, or it waits for its
+// owner; a label start would run it under the repository's own budget
+// instead. A floor that keeps no workstreams governs nothing.
+func (in *Intake) workstreamGoverned() (func(factory.Item) bool, error) {
+	member, err := in.st.JobWorkstreams()
+	if err != nil {
+		return nil, err
+	}
+	all, err := in.st.Workstreams()
+	if err != nil {
+		return nil, err
+	}
+	return func(it factory.Item) bool {
+		if _, ok := member[it.ID]; ok {
+			return true
+		}
+		_, ok := factory.FactoryWorkstreamFor(all, it)
+		return ok
+	}, nil
 }
 
 // labelsStart is [Options.LabelStarts], on when it is not set.

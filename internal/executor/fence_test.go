@@ -209,3 +209,37 @@ func TestTheRefusalIsOneSentenceAddedOnce(t *testing.T) {
 		}
 	}
 }
+
+// A run whose state is in one codeaf folder can still be started by a person
+// whose own codeaf folder holds the command line's keys; that folder's secrets
+// are hidden from the run too, and its ordinary files are not.
+func TestAFenceHidesAnotherCodeafHomesSecretsToo(t *testing.T) {
+	base := t.TempDir()
+	home, mine, theirs := filepath.Join(base, "home"), filepath.Join(base, "app-state"), filepath.Join(base, "home", ".codeaf")
+	work := filepath.Join(base, "work")
+	for _, d := range []string{home, mine, theirs, work} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(mine, "config.json"), filepath.Join(theirs, "config.json"),
+		filepath.Join(theirs, "credentials.json"), filepath.Join(theirs, "chat.log"),
+	} {
+		if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f, err := NewFence(FenceOptions{Root: work, Home: home, CodeafHome: mine, OtherCodeafHomes: []string{theirs, ""}, StateDir: filepath.Join(base, "state")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{filepath.Join(mine, "config.json"), filepath.Join(theirs, "config.json"), filepath.Join(theirs, "credentials.json")} {
+		if !contains(f.Hidden, canon(t, want)) {
+			t.Errorf("%s is not hidden: %q", want, f.Hidden)
+		}
+	}
+	if contains(f.Hidden, canon(t, filepath.Join(theirs, "chat.log"))) {
+		t.Error("an ordinary file in the other codeaf folder is hidden")
+	}
+}

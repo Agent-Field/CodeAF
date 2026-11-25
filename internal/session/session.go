@@ -1207,7 +1207,9 @@ type Event struct {
 	// ConnectID names one EventConnectAsk and is the token handed back to
 	// [Agent.ResolveConnect]. Service is the account's id — "google" — on all
 	// three kinds; ServiceName is the word a person reads — "Google" — on the
-	// ask. AuthURL is the page to open, on EventConnectAuth only. Account and
+	// ask. AuthURL is the page to open, on EventConnectAuth only, and AuthCode
+	// the one-time code a device sign-in (GitHub's) is approved with there,
+	// empty for every other sign-in. Account and
 	// Failed are the outcome, on EventConnectDone only. Service and
 	// ServiceName also name the account an EventToolBegin's call acts through,
 	// and are empty on a call that reaches no account.
@@ -1215,6 +1217,7 @@ type Event struct {
 	Service     string
 	ServiceName string
 	AuthURL     string
+	AuthCode    string
 	Account     string
 	Failed      bool
 	// NeedsKey rides on EventConnectAsk alone and says that this account needs
@@ -1955,6 +1958,13 @@ type Config struct {
 	// instead, through NearestModels.
 	ModelFallbacks []string
 
+	// ModelFallbacksNow, when set, answers ModelFallbacks again each time a
+	// model client is built, which includes a live switch to another service.
+	// A terminal chat that starts with nothing connected reads the built-in
+	// fallback at launch; once the person connects a provider and moves onto
+	// it, the new client asks again and gets a fallback that provider can serve.
+	ModelFallbacksNow func() []string
+
 	// NearestModels names the models closest to one that just refused
 	// everything. It is consulted ONLY when ModelFallbacks is empty, and it never
 	// waits: a catalog that has not resolved answers nil, and a chain with no
@@ -2328,6 +2338,13 @@ type Config struct {
 	// tasks are runs in the plan store ([Config.mayQuickTask]). The desktop
 	// app sets it.
 	QuickTasks bool
+	// HoldInterruptedWork opens a conversation WITHOUT carrying on the work the
+	// last process left in the middle: an interrupted task run is not resumed and
+	// the task frontier is not turned until [Agent.ContinueInterruptedWork] is
+	// called. The desktop app sets it for a chat the app's quit or close stopped
+	// mid-turn, so opening that chat to look at it spends nothing; the person's
+	// Continue is what carries it on (resume_quit.go).
+	HoldInterruptedWork bool
 
 	// BashBackgroundAfterSeconds is how long a foreground command stays in the
 	// turn before the same running process is kept as a job (promote.go,
@@ -2615,6 +2632,23 @@ type Config struct {
 	// so the page and the tasks description cannot disagree.
 	ownWork bool
 
+	// inWorkstream says the page is composed for a conversation that belongs to
+	// a workstream (workstream_mark.go). Only the agent sets it, from the mark it
+	// last read, so the page and the belt cannot disagree.
+	inWorkstream bool
+
+	// Workstream is an organization server's door onto the ONE workstream
+	// this conversation is the agent of (tools_workstream.go). NIL IS NO
+	// DOOR. When it is set the belt is `workstream_pages` and nothing else:
+	// the server's agent touches no shell, file or machine.
+	Workstream WorkstreamDoor
+
+	// OrgSetup is an organization server's door for its setup conversation
+	// (tools_org_setup.go). NIL IS NO DOOR. When it is set the belt is
+	// `org_propose_setup` and nothing else: the conversation that sets an
+	// empty organization up touches no shell, file or machine.
+	OrgSetup OrgSetupDoor
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
@@ -2851,6 +2885,8 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// heldWork is the recovery [Config.HoldInterruptedWork] kept back (resume_quit.go).
+	heldWork           heldRecovery
 	settingError       atomic.Pointer[settingResult]
 	settingsWrites     atomic.Int64
 	modelChanges       sync.Mutex
@@ -2890,7 +2926,12 @@ type Agent struct {
 	taskComputerPrompt bool
 	// ownWorkTold is the scope the page and the tasks description last told the
 	// model (scope.go). It is atomic because belts are built outside a.mu.
-	ownWorkTold   atomic.Bool
+	ownWorkTold atomic.Bool
+	// workstreamTold is the workstream mark the page and the belt last followed.
+	workstreamTold atomic.Bool
+	// canvasGuided says this conversation has been answered the canvas guide
+	// (tools_workstream_canvas.go), so ws_canvas runs its changes.
+	canvasGuided  atomic.Bool
 	remoteAckJobs sync.WaitGroup
 	// knowledgeWake is signalled after each journal line reaches the file.
 	// initKnowledge creates it once before the agent is reachable and never
@@ -4360,6 +4401,23 @@ func (c Config) seatFor(ctx context.Context) procexec.Seat {
 // says and never falls back to the host by accident.
 func (a *Agent) rootContext() context.Context {
 	return procexec.With(context.Background(), a.config.seat())
+}
+
+// seatedRun is ctx carrying this session's seat when it carries none of its own.
+//
+// A RUN BELONGS TO THE SESSION EVEN WHEN ITS DOOR DOES NOT SAY SO. A run keeps
+// the context it was started under, and a person's own door — a typed
+// `/senior-dev <brief>`, the app's start action, the engine wire — hands one that
+// no turn ever seated. Every call beneath the run must still run where the
+// session says: a program's launch asks [procexec.For] for its seat, and from a
+// seatless context it was refused with [procexec.ErrNoSeat] before the program
+// started. A context a turn or [Agent.rootContext] already seated keeps the
+// seat it has.
+func (a *Agent) seatedRun(ctx context.Context) context.Context {
+	if procexec.Seated(ctx) {
+		return ctx
+	}
+	return procexec.With(ctx, a.config.seatFor(ctx))
 }
 
 // rootContext is the graph's own: its owner's, and the host's only for a graph

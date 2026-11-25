@@ -1414,7 +1414,7 @@ Only a note the model marked as an update counts. An ordinary answer that happen
 what it might do next ends the reply as it always did, and the reader described above is
 what decides whether that kind of reply is carried on — with one exception, below.
 
-## A note codeaf asked for is not where a reply stops — it wrote "where I am … next I make the charts" and stopped, the dashboard was never built, it stopped after writing down what it learned
+## A note codeaf asked for is not where a reply stops — it wrote "where I am … next I make the charts" and stopped, the dashboard was never built, it stopped after writing down what it learned, it said the fix was done and then got asked to go on anyway
 
 **When the model has worked quietly for a while, codeaf asks it to write down what it has
 learned and what it checks next,** so the reasoning reaches the record. That note is asked
@@ -2970,10 +2970,12 @@ the one fact it was opened to report.
 The list is as long as the record is — internal to codeaf each project's record keeps the
 most recent 2000 tasks — and the page scrolls rather than cutting it.
 
-## Work running in another codeaf window — a task started in my other terminal, I cannot click into a running task, open a task another window is running, why is that task page read only, the task page says it cannot ask what the work is doing, can I read another conversation's task over ssh
+## Work running in another codeaf window — a task started in my other terminal, I cannot click into a running task, open a task another window is running, why is that task page read only, the task page says it cannot ask what the work is doing
 
 Two codeaf windows open on one directory can see each other's running work, and `/history`
 is where they see it.
+Work started over ssh on another machine is a different case: see *I started a task over ssh
+and the sidebar stayed empty*.
 
 **A conversation *this* terminal is holding is never one of them.** One terminal can have
 several conversations open at once with `codeaf chat --no-host`, in this project or others,
@@ -3046,10 +3048,13 @@ owns the work:
 could not open that conversation · engine: that conversation is not open here any more
 ```
 
-**And it works where the engine is local.** `--host` and `--at` do not draw rows for other
+## Can I read another conversation's task over ssh
+
+Live pages for another window work only where the engine is local. `--host` and `--at` do not draw rows for other
 conversations at all — the presence those rows are minted from is on the engine's machine and
-is not carried across the connection — so over a remote session there is no such row and no
-such page. What you get there is the ordinary record card.
+is not carried across the connection — so over a remote session (`--host` over ssh, or `--at`)
+you cannot read another conversation's task: there is no such row and no such page. What you
+get there is the ordinary record card.
 
 **`enter where it is running`** — nothing on this machine can reach that conversation. What
 opens is a card saying where the work is and the one thing to do about it:
@@ -3078,6 +3083,10 @@ opens is a card saying where the work is and the one thing to do about it:
 If a task you started in another terminal is on **no** row here, that window has closed.
 Its work stopped with it, and the project's record will say `incomplete` against whatever
 it had started.
+
+## Can I read another conversation's task over ssh — --host and --at draw no rows for other conversations
+
+No. The rows for work running in another conversation, and the read-only page they open, exist only where the engine is local. Over `--host` or `--at` codeaf does not draw rows for other conversations at all: the presence those rows are made from stays on the engine's machine and is not carried across the connection. So over a remote session there is no such row and no such page; what you get there is the ordinary record card.
 
 ## Does it know what my other windows are doing — will it notice work from another terminal
 
@@ -4546,7 +4555,7 @@ was added.` It tells the worker to do that work in its own hands, or name differ
 work for what is different. The shared tree money limit is described above under
 *The per-task limit covers the whole task tree*.
 
-## How the bash belt run splits work instead of nesting node tasks
+## Bash belt work splitting instead of nested node tasks
 
 With the switch unset, or `CODEAF_TASK_BELT=bash`, a task uses the run engine instead of the node tree.
 Run workers have neither `quick_task` nor `propose_task`; they split with `plandb split`.
@@ -6050,6 +6059,9 @@ no four lines.
 ## A task waiting on a busy machine after restarting the engine
 
 An ordinary task backed by its plan resumes when its conversation opens again.
+In the desktop app, a task whose chat the app's quit or crash stopped mid-turn
+does not: it stays interrupted until you press Continue on that chat's
+"Interrupted" line (see "Quitting the desktop app mid-reply").
 A task waiting for machine capacity keeps its accepted brief and exact folder,
 and waits at the same admission gate. It takes no folder lock or branch while
 waiting. A task that had already started uses its recorded working copy and plan;

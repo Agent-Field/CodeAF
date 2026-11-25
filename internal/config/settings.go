@@ -990,25 +990,17 @@ const (
 // [tierKeyFor] is total over it.
 var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierWorker, ModelTierHigh, ModelTierMastermind}
 
-// THE TWO ROWS THAT ARE NOT CREW SEATS arrive pointed at a model. The reflex
-// and small-work tiers carry the calls a conversation makes on its own behalf —
-// twice a turn for the reflex — so a person who never opened the sheet gets a
-// model that costs near nothing rather than the one they are talking to. The
-// three crew seats have no shipped model at all: an unpinned seat is routed per
-// task (crew.go), and a build-chosen worker, planner or checker would be the
-// implicit fallback the router exists to remove.
-//
-// Each is a bare OpenRouter id, spelled ONCE here and read by every caller
-// through [TierModelAt]. Blank is still an answer on both: a row a person
-// emptied on purpose reads empty and follows the model the person is talking
-// to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
-// here ([TierModelAt] says how). The low row is pinned to a DATED build on
-// purpose: the bare `deepseek/deepseek-v4-flash` id resolves to the April
-// build, and the July build costs the same.
-const (
-	DefaultReflexModel = "google/gemini-2.5-flash"
-	DefaultLowModel    = "deepseek/deepseek-v4-flash-0731"
-)
+// THE TWO ROWS THAT ARE NOT CREW SEATS — reflex and small work — SHIP EMPTY.
+// They carry the calls a conversation makes on its own behalf (a title, the
+// reflex twice a turn, the router, a suggested reply), and the owner's rule is
+// that every one of those answers on the model the person chose
+// (internal/roles' background.go): a person who picks one model is billed for
+// one model. A row a person WRITES is theirs and is honoured exactly — that is
+// how somebody who wants the cheap calls cheaper says so — but this build no
+// longer chooses a model for anybody. Until 2026-11-16 these rows arrived
+// pointed at `google/gemini-2.5-flash` and `deepseek/deepseek-v4-flash-0731`,
+// and the workstreams-v5 live run (F-20) found a person on one model billed
+// for three.
 
 // DocumentEngines are the four rungs CODEAF_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
@@ -1064,6 +1056,17 @@ var OperatorEnvPins = []string{
 	// it back as a preference.
 	"CODEAF_FENCED",
 	"CODEAF_FACTORY_NO_WORKER",
+	// How an organization's server mails its invitations (cmd/codeaf's
+	// factory_command.go): the mail server's address, which can carry its
+	// password, and the sender. Server plumbing, never a profile preference;
+	// without them an invite is a link to copy.
+	"CODEAF_SMTP_URL",
+	"CODEAF_SMTP_FROM",
+	// The id this computer's factory registers under on an AgentField control
+	// plane (internal/factory/agentfield), so two computers on one control
+	// plane each keep their own node. Launch plumbing: the node's name, not a
+	// preference the sheet edits.
+	"CODEAF_FACTORY_NODE_ID",
 	"CODEAF_BASE_URL",
 	// These two addresses make the real Codex browser and backend roads
 	// reproducible against a local fixture. They are plumbing, not preferences.
@@ -1077,6 +1080,11 @@ var OperatorEnvPins = []string{
 	// for the plainest reason there is: it decides which store the sheet
 	// itself is being read out of.
 	"CODEAF_HOME",
+	// CODEAF_LOGIN_HOME is the person's real login home, recorded by
+	// `codeaf app --home` beside the CODEAF_HOME it sets, so the folders other
+	// programs keep there are still read (internal/home). The app writes it and
+	// its child processes inherit it; nobody sets it as a preference.
+	"CODEAF_LOGIN_HOME",
 	// The harness supplies the admitted working-root identity to each execution.
 	// This runtime association is not an editable placement preference.
 	"CODEAF_WORKSPACE_URI",
@@ -1267,6 +1275,9 @@ var OperatorEnvPins = []string{
 	// CODEAF_GITHUB_LOGIN_URL points that same sign-in at a stand-in GitHub for
 	// tests. It is test plumbing, never a preference.
 	"CODEAF_GITHUB_LOGIN_URL",
+	// CODEAF_GITHUB_MCP_URL points GitHub's hosted tool server at a stand-in
+	// for tests (internal/connect's github.go). It is test plumbing too.
+	"CODEAF_GITHUB_MCP_URL",
 	// Opt-in developer profiling output and its bounded capture controls. These
 	// are process instrumentation, not persisted model or user preferences.
 	"CODEAF_DIAGNOSTIC_PROFILE_DIR",
@@ -1409,6 +1420,20 @@ var OperatorEnvPins = []string{
 	// case. A path to a program is plumbing, for the reason CODEAF_FURROW is,
 	// and it shares CODEAF_TASK_BELT's lifetime.
 	"CODEAF_PLANDB_BIN",
+	// CODEAF_CANVAS_BIN names canvas-core's `canvas` program for an
+	// organization's server (internal/factory/canvasrpc), when it is neither
+	// beside codeaf nor on PATH. Without one the server keeps no canvases and
+	// leaves the canvas routes off. A path to a program the server's operator
+	// installs is plumbing, for the reason CODEAF_PLANDB_BIN is: a sheet row a
+	// project file could write would let a repository name what a server execs.
+	"CODEAF_CANVAS_BIN",
+	// CODEAF_FACTORY_RUNTIME_DIR moves the directory that holds the factory
+	// runner's control sockets (cmd/codeaf's factory_runner_control.go), /tmp
+	// by default; it must be absolute, and a path too long for a Unix socket
+	// falls back to the default with one line on stderr. The sockets stay out
+	// of the state home on purpose, so a socket's place is plumbing, like the
+	// workspace host's, and never a row a project file could move.
+	"CODEAF_FACTORY_RUNTIME_DIR",
 	// The four pool names that stay plumbing (internal/pool/poolcfg, which
 	// names them and reads none of them: the environment reaches that package
 	// as a function the caller hands in). The relay is the base the two URLs
@@ -2026,7 +2051,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyVisionModel, Category: CategoryModels, Kind: SettingText,
 			Label: "looking", Env: "CODEAF_VISION_MODEL", EmptyLabel: "automatic",
-			Hint: "the model that looks at images. Leave it blank and codeaf picks one that can see. " +
+			Hint: "the model that looks at images. Leave it blank and codeaf looks with the model you chose when it can see, and never picks another one for you. " +
 				"A change lands the next time codeaf starts.",
 			read:  func() string { return VisionModelAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },
@@ -2207,16 +2232,16 @@ func (s *Settings) build() []Setting {
 		// stopping to ask you. The dollars are above; the actions are here.
 		Setting{
 			Key: KeyToolApprovalMode, Category: CategorySafety, Kind: SettingChoice,
-			Label: "ask before running", Choices: ToolApprovalModes,
-			Hint: "what happens when the model asks to run a tool: prompt asks you, allow runs it, " +
-				"deny refuses it. Dangerous shell commands are asked about whichever way this is set. " +
+			Label: "tool approvals", Choices: ToolApprovalModes,
+			Hint: "what happens when the model asks to run a tool: ask by default asks you, allow by default runs it, " +
+				"block by default refuses it. Dangerous shell commands are asked about whichever way this is set. " +
 				"A change reaches this conversation straight away, unless the panel says it lands on the next session.",
 			read:  func() string { return ToolApprovalModeAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyToolApprovalMode, raw, ToolApprovalModes) },
 		},
 		Setting{
 			Key: KeyToolApprovals, Category: CategorySafety, Kind: SettingText,
-			Label: "tool approvals", EmptyLabel: "none",
+			Label: "tool exceptions", EmptyLabel: "none",
 			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
 				"What you write here changes only the tools you name. Reading files and " +
 				"codeaf's own notes are allowed unless you name them, and everything else " +
@@ -2541,7 +2566,7 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
 			Label: "reflex", EmptyLabel: "follows the conversation",
-			Hint: "the near-free model that reads every turn — it decides which remembered " +
+			Hint: "the model that reads every turn — it decides which remembered " +
 				"lines this turn needs and whether the exchange is worth keeping. Routing and " +
 				"extraction, never reasoning. Blank makes it follow the model you are talking to.",
 			read:  func() string { return TierModelAt(dir, ModelTierReflex) },
@@ -2585,9 +2610,9 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyKnowledgeModel, Category: CategoryModels, Kind: SettingText,
-			Label: "knowledge", EmptyLabel: DefaultKnowledgeModel,
-			Hint: "the OpenRouter model that learns and organizes project knowledge in the background. Changes apply to the next compilation; your conversation model stays separate. Blank restores the default.",
-			read: func() string { return KnowledgeModelAt(dir) },
+			Label: "knowledge", EmptyLabel: "follows your model",
+			Hint: "the model that builds your Library in the background. Blank makes it follow the model you chose; changes apply to the next compilation.",
+			read: func() string { return KnowledgeModelRowAt(dir) },
 			write: func(raw string) error {
 				return writeText(dir, KeyKnowledgeModel, strings.TrimSpace(raw))
 			},
@@ -2609,12 +2634,13 @@ func (s *Settings) build() []Setting {
 		},
 		Setting{
 			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
-			Label: "fallback models", EmptyLabel: "DeepSeek V4.1 Flash",
+			Label: "fallback models", EmptyLabel: "codeaf's default",
 			Hint: "where a conversation goes when your model cannot answer — nothing serving " +
 				"it will take the request, it keeps going quiet mid-reply, or it is being " +
 				"rate limited and will not stop. One or more slugs, comma-separated, first " +
 				"tried first: `openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank " +
-				"to use DeepSeek V4.1 Flash by default. The turn says which " +
+				"for codeaf's default: DeepSeek V4.1 Flash with OpenRouter or nothing connected, " +
+				"otherwise a model your connected providers offer. The turn says which " +
 				"one it moved to.",
 			read:  func() string { return ModelFallbacksAt(dir) },
 			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
@@ -4137,12 +4163,9 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // so the calls that ride those tiers outside a task follow the crew without a
 // second place to set it.
 //
-// THE OTHER TWO ROWS KEEP THE RULE THEY HAVE ALWAYS HAD: UNSET AND CLEARED ARE
-// DIFFERENT ANSWERS. A profile that has never held the key gets this build's
-// own near-free model ([DefaultReflexModel], [DefaultLowModel]), because a call
-// made twice a turn is a bill nobody agreed to; a row somebody emptied ON
-// PURPOSE reads empty and follows the conversation, because refusing to let
-// them turn it off would make a default into a rule.
+// THE OTHER TWO ROWS ARE THE PERSON'S OR NOBODY'S. A row somebody wrote is
+// returned as written; a row never written, or emptied, is empty, and every
+// call on it follows the model the person chose ([roles.Resolve]'s floor).
 //
 // The value may carry a level (`moonshotai/kimi-k3:low`) and IS RETURNED WHOLE.
 // Splitting is [roles.SplitEffort]'s job at the point of resolution, because a
@@ -4165,16 +4188,6 @@ func tierKeyFor(tier string) string {
 		return KeyTierMastermindModel
 	}
 	return KeyTierLowModel
-}
-
-// builtinTierModel is the build's own model for the two rows that are not crew
-// seats. A crew seat's tier has none — it is routed — and reads the small-work
-// model only if a caller asks for a tier word this build does not know.
-func builtinTierModel(tier string) string {
-	if tier == ModelTierReflex {
-		return DefaultReflexModel
-	}
-	return DefaultLowModel
 }
 
 // ModelRolesAt resolves the per-role pins as the person wrote them.
@@ -4280,11 +4293,15 @@ func RetiredPinNote(raw string) string {
 const DefaultFallbackModel = "deepseek/deepseek-v4.1-flash"
 
 // ModelFallbacksAt resolves an explicit chain, or the shared default when blank.
+// The shared default is kept while OpenRouter is connected or a connected
+// service lists it; a profile without OpenRouter falls back to another model its
+// own providers offer, or names the conversation's model when they offer only
+// that one, which keeps a failed reply on it ([ReachableDefaultAt]).
 func ModelFallbacksAt(profileDir string) string {
 	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok && strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "nearest in the catalog" {
 		return strings.TrimSpace(value)
 	}
-	return DefaultFallbackModel
+	return DefaultFallbackAt(profileDir)
 }
 
 // ParseModelFallbacks reads the row into an ordered list of model slugs.

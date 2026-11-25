@@ -104,6 +104,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
@@ -285,15 +286,17 @@ func (b *appBackend) FactoryLocalRun(ctx context.Context, _ string) (appwire.Fac
 	if err != nil {
 		return appwire.FactoryLocalStatus{}, err
 	}
-	// THE FACTORY REFUSES A WORKER WITH NO HANDLE, and a runner that is refused
-	// retries in silence for as long as the engine lives, so a person who has
-	// not connected GitHub is told so here instead of waiting on a job that
-	// can never start.
+	// A TEAM FACTORY REFUSES A WORKER WITH NO HANDLE, and a runner that is
+	// refused retries in silence for as long as the engine lives, so a person
+	// who has not connected GitHub is told so here instead of waiting on a job
+	// that can never start. A Personal (solo) factory never refuses for that:
+	// its runner on this machine attaches under factory.LocalRunnerHandle, so
+	// a folder job runs with no GitHub at all.
 	var me api.Me
 	if err := b.factoryHub().read(ctx, id, "/v1/me", appFactorySmall, &me); err != nil {
 		return appwire.FactoryLocalStatus{}, err
 	}
-	if strings.TrimSpace(me.Handle) == "" {
+	if strings.TrimSpace(me.Handle) == "" && me.Mode != api.FactorySolo {
 		return appwire.FactoryLocalStatus{}, appwire.Errorf(appwire.CodeConflict, "connect GitHub before turning the runner on: the factory needs to know whose jobs these are")
 	}
 	return b.startLocalRunner()
@@ -755,6 +758,11 @@ func (b *appBackend) FactorySetupAct(ctx context.Context, _ string, act appwire.
 	// A STEP MAY HAVE JUST TOLD THE FACTORY WHOSE GITHUB THIS IS, which is all
 	// its runner was waiting for.
 	b.ensureLocalRunner(ctx)
+	if act.Verb == appwire.SetupVerbConnect && b.emit != nil {
+		// THE FACTORY'S GITHUB IS THE CONNECTORS PAGE'S GITHUB (connect_github.go):
+		// a connection made here is announced there too.
+		b.emit.Emit(appwire.EventPluginsChanged, appwire.PluginsChanged{ID: connect.GitHubID})
+	}
 	return b.setupView(out), nil
 }
 

@@ -3,10 +3,14 @@ package serve
 import (
 	"errors"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
@@ -18,7 +22,7 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		if h.failed(w, err) {
 			return
 		}
-		h.write(w, 200, settings)
+		h.write(w, 200, h.settingsView(settings))
 		return
 	}
 	if !h.requireOperator(w, r) {
@@ -29,7 +33,7 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	settings, err := h.config.Store.ChangeRunnerSettings(func(out *api.FactorySettings) error {
-		if body.RunnerTimeoutSeconds == nil && body.KeepOutputDays == nil && body.KeepOutputMB == nil && body.ReadOnArrival == nil {
+		if body.RunnerTimeoutSeconds == nil && body.KeepOutputDays == nil && body.KeepOutputMB == nil && body.ReadOnArrival == nil && body.AgentRunner == nil {
 			return errors.New("needs at least one runner setting")
 		}
 		if body.RunnerTimeoutSeconds != nil {
@@ -44,14 +48,76 @@ func (h *Handler) runnerPolicy(w http.ResponseWriter, r *http.Request) {
 		if body.ReadOnArrival != nil {
 			out.ReadOnArrival = *body.ReadOnArrival
 		}
+		if body.AgentRunner != nil {
+			choice := strings.TrimSpace(*body.AgentRunner)
+			if !slices.Contains(h.agentRunners(), choice) {
+				if choice == factory.AgentRunnerServer && h.config.WorkstreamAgent != nil {
+					return errors.New("the server runs agents with the organization's model key; add one first")
+				}
+				if choice == factory.AgentRunnerServer {
+					return errors.New("this organization's server cannot run agents; they run on the laptop of whoever drives the workstream")
+				}
+				return errors.New(`agent_runner is "driver" or "server"`)
+			}
+			out.AgentRunner = choice
+		}
 		return nil
 	})
 	if err != nil {
 		h.fail(w, 422, err.Error())
 		return
 	}
+	h.recordOrg(r, record.SettingsChanged, "changed settings", orgObjectFactory, "")
+	if h.runnerOf(settings.AgentRunner) == factory.AgentRunnerServer {
+		// The server runs every workstream's agent now; nobody drives one.
+		h.drivers.dropAll()
+	}
 	h.machineEvents()
-	h.write(w, 200, settings)
+	h.write(w, 200, h.settingsView(settings))
+}
+
+// agentRunners is where this server can run an organization workstream's
+// agent. Every organization can run it on its driver's laptop. Running it on
+// the server needs the server runner (workstream_agent.go) AND a model key
+// the operator handed it (org_keys.go); without both the choice is ABSENT
+// rather than offered and failing.
+func (h *Handler) agentRunners() []string {
+	if h.serverAgentServed() {
+		return []string{factory.AgentRunnerDriver, factory.AgentRunnerServer}
+	}
+	return []string{factory.AgentRunnerDriver}
+}
+
+func (h *Handler) settingsView(s api.FactorySettings) api.FactorySettingsView {
+	s.AgentRunner = h.runnerOf(s.AgentRunner)
+	return api.FactorySettingsView{FactorySettings: s, AgentRunners: h.agentRunners()}
+}
+
+// agentRunner is the operator's saved choice; a store that cannot be read
+// answers driver, the one every organization can run.
+func (h *Handler) agentRunner() string {
+	if h.config.Store == nil {
+		return factory.AgentRunnerDriver
+	}
+	s, err := h.config.Store.RunnerSettings()
+	if err != nil {
+		return factory.AgentRunnerDriver
+	}
+	return h.runnerOf(s.AgentRunner)
+}
+
+// runnerOf is where agents run under the saved choice. AN OPERATOR WHO HAS
+// MADE NO CHOICE GETS THE SERVER AS SOON AS IT CAN RUN AGENTS: a workstream's
+// agent on a driver's laptop has none of the workstream's tools (it cannot
+// read or write its tasks, files or pages), so on a fresh organization Afi
+// worked in the driver's home folder where nobody else could see it (final
+// run E2 #3, E3 F3). Before the operator hands the server a model key there
+// is nowhere else to run, and the laptop says what it cannot do.
+func (h *Handler) runnerOf(saved string) string {
+	if strings.TrimSpace(saved) == "" && h.serverAgentServed() {
+		return factory.AgentRunnerServer
+	}
+	return factory.AgentRunnerOf(saved)
 }
 
 // Every presence door reads the same saved silence deadline as lease renewal.

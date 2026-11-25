@@ -116,8 +116,9 @@ func TestAppClosePersonAfterCompactedWindowRewind(t *testing.T) {
 				if n, _ := r.conv.counts(); n != 0 || f.ClosePending[r.id] != "" || f.CloseResumes[r.id] != 0 || len(f.CloseStarts) != 0 || len(closeFooters(r.entries(t))) != 0 {
 					t.Fatalf("rewind hid the person's cancellation: resumes=%d state=%+v", n, f)
 				}
-			} else if n, _ := r.conv.counts(); n != 1 || f.CloseResumes[r.id] != 1 {
-				t.Fatalf("rewind hid the person's streak reset: resumes=%d state=%+v", n, f)
+			} else if n, _ := r.conv.counts(); n != 0 || !r.b.interrupted(r.id) {
+				// A death is never carried on by itself; it waits for Continue.
+				t.Fatalf("the death was not left for Continue: resumes=%d state=%+v", n, f)
 			}
 		})
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -45,10 +46,44 @@ func TestK2StreamUsageOptInFollowsTheActualRoad(t *testing.T) {
 			if got := string(body["stream_options"]); (got != "") != tc.want || tc.want && got != `{"include_usage":true}` {
 				t.Fatalf("stream_options=%s, want present=%t", got, tc.want)
 			}
-			if !tc.direct && tc.base == "" && string(body["usage"]) != `{"include":true}` {
-				t.Fatalf("router usage=%s", body["usage"])
+			wantUsage := `{"include":true}`
+			if tc.want {
+				wantUsage = ""
+			}
+			if got := string(body["usage"]); got != wantUsage {
+				t.Fatalf("usage=%q, want %q", got, wantUsage)
 			}
 		})
+	}
+}
+
+func TestDirectCompletionOmitsRouterUsage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if _, sent := body["usage"]; sent {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"message":"unrecognized request argument supplied: usage"}}`)
+			return
+		}
+		var options streamOptions
+		if err := json.Unmarshal(body["stream_options"], &options); err != nil || !options.IncludeUsage {
+			http.Error(w, "missing stream_options.include_usage", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	t.Cleanup(server.Close)
+	client, err := NewClient(Config{BaseURL: server.URL, Model: "stub/model", Direct: true, KeyOptional: true, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CompleteWithMessages(t.Context(), userMessages("hello")); err != nil {
+		t.Fatal(err)
 	}
 }
 

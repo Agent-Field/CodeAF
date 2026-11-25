@@ -65,12 +65,54 @@ func Register(value string) {
 	sort.SliceStable(registered.values, func(i, j int) bool { return len(registered.values[i]) > len(registered.values[j]) })
 }
 
+// Passing secrets are ones a person typed for a single request, such as a
+// password: each is covered for the next PassingMost registrations, so a
+// process that signs many people in does not keep every password it was ever
+// handed. One shorter than PassingLeast bytes is not registered at all, for
+// the reason trace.Secret gives: a literal that short would redact ordinary
+// words.
+const (
+	PassingMost  = 64
+	PassingLeast = 8
+)
+
+var passing struct {
+	sync.RWMutex
+	values []string
+}
+
+// RegisterPassing covers a secret typed for one request (see PassingMost).
+func RegisterPassing(value string) {
+	if len(value) < PassingLeast {
+		return
+	}
+	passing.Lock()
+	defer passing.Unlock()
+	for i, known := range passing.values {
+		if known == value {
+			passing.values = append(passing.values[:i], passing.values[i+1:]...)
+			break
+		}
+	}
+	if len(passing.values) >= PassingMost {
+		passing.values = passing.values[1:]
+	}
+	passing.values = append(passing.values, value)
+}
+
 // registeredOut takes every registered value out of text, longest first, so a
 // key that contains a shorter one is never left half covered.
 func registeredOut(text string) string {
 	registered.RLock()
-	defer registered.RUnlock()
 	for _, secret := range registered.values {
+		text = strings.ReplaceAll(text, secret, "[redacted]")
+	}
+	registered.RUnlock()
+	passing.RLock()
+	values := append([]string(nil), passing.values...)
+	passing.RUnlock()
+	sort.SliceStable(values, func(i, j int) bool { return len(values[i]) > len(values[j]) })
+	for _, secret := range values {
 		text = strings.ReplaceAll(text, secret, "[redacted]")
 	}
 	return text
@@ -146,6 +188,16 @@ var shapes = []shape{
 		name: "token",
 		re:   regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{20,}`),
 		lead: 3,
+	},
+	{
+		// The Go plan's keys: `oc_sk_` and then the key. The `sk-` row above reads
+		// a hyphen after `sk`, and this prefix has an underscore and a word
+		// character before it, so it needs its own row. A saved key is also
+		// registered by value, but a launch that reads one without registering
+		// it is covered here.
+		name: "token",
+		re:   regexp.MustCompile(`\boc_sk_[A-Za-z0-9_-]{16,}`),
+		lead: 6,
 	},
 	{
 		// AWS access key ids: `AKIA` for a long-lived one, `ASIA` for the

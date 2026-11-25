@@ -374,6 +374,11 @@ func criticalHit(command string, segments []string, workspace string) (string, b
 	if len(knownFolder(workspace).roots) == 0 {
 		table = append(append([]string(nil), rootDeletes...), criticalCommands...)
 	}
+	// THE PERSON'S NO HOLDS FOR THE ACT, NOT FOR ONE SPELLING OF IT (#2813).
+	// The table below matches text, so a model refused `rm -rf /tmp/victim`
+	// once ran `rm -r /tmp/victim` one call later and was never asked. The
+	// table still answers first; what it misses is then read the way the shell
+	// reads it, by recursiveDeleteOutside below.
 	candidates := make([]string, 0, len(segments)+1)
 	candidates = append(candidates, segments...)
 	candidates = append(candidates, command)

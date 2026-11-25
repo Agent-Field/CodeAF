@@ -191,6 +191,28 @@ func KeepAppSource(profileDir string, row PersistedSource) error {
 	return persistConnectedSource(profileDir, row)
 }
 
+// AddAppSource keeps a new app connection only if its checked identity is
+// still free under the profile lock. A different process adding that identity
+// cannot be overwritten between the app's network proof and its final write.
+func AddAppSource(profileDir string, row PersistedSource) error {
+	row.Key, row.KeyEnv = "", ""
+	if row.ID == "" || row.Written == "" {
+		return errors.New("a service row needs an id and name")
+	}
+	return crewCredentialWrite(profileDir, func() error {
+		return editProfile(profileDir, keyModelSources, func(held map[string]json.RawMessage) (profileChange, error) {
+			rows := persistedSourcesFrom(held)
+			for _, existing := range rows {
+				if sameServiceID(existing.ID, row.ID) {
+					return profileChange{}, errors.New("the connection changed; check the address again")
+				}
+				row.Order = max(row.Order, existing.Order+1)
+			}
+			return encodeChange(map[string]any{keyModelSources: cleanSources(append(rows, row))})
+		})
+	})
+}
+
 // SourceKeyAt is APIKeyAt's generalisation. The default service keeps its
 // existing three-rung implementation; another service reads its conventional
 // variable, its stored key, then the variable a person named.
@@ -415,6 +437,7 @@ func ConnectClaudeCode(ctx context.Context, profileDir string) (modelsource.Outc
 		_ = DisconnectService(profileDir, claudemodel.ID)
 		return modelsource.Outcome{}, err
 	}
+	bumpSettingsGeneration()
 	// A PROFILE WITH NOTHING ELSE TO TALK WITH TALKS WITH CLAUDE. Connecting
 	// Claude Code as the first service moves new conversations onto it, the way
 	// a first connection of any service does; one that already has a key or a
@@ -470,7 +493,10 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 	for _, model := range models {
 		if id := strings.TrimSpace(model.ID); id != "" {
 			outcome.ModelIDs = append(outcome.ModelIDs, id)
-			remembered = append(remembered, catalog.Model{ID: id, ContextLength: model.ContextLength, PriceUnknown: true})
+			// The thinking levels are kept too: they are the one strength signal
+			// the account's listing gives, and the default seats rank by them
+			// ([ReachableDefaultAt]).
+			remembered = append(remembered, codexCatalogRow(codexauth.Model{ID: id, ContextLength: model.ContextLength, ReasoningLevels: model.ReasoningLevels}))
 		}
 	}
 	outcome.Models = len(outcome.ModelIDs)
@@ -483,6 +509,9 @@ func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Token
 		_ = DisconnectService(profileDir, "codex")
 		return modelsource.Outcome{}, err
 	}
+	// The defaults read this list; a snapshot built while it was still being
+	// fetched is built again.
+	bumpSettingsGeneration()
 	return outcome, nil
 }
 
@@ -614,7 +643,14 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, row, false
 	}
 	if src.KeyShape != nil && !src.KeyShape(key) {
-		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape}, row, false
+		return modelsource.Outcome{Kind: modelsource.OutcomeWrongShape, KeyStartsWith: src.KeyStartsWith}, row, false
+	}
+	// A ONE-DOOR ROW STILL PERSISTS ITS DOOR. The one-token probe and the
+	// model listing do not need an ID to choose between roads, but the crew
+	// reads the saved door to know the account bills as a plan rather than
+	// metered, and the provider row reads it to name what was connected.
+	if len(src.Doors) == 1 && strings.TrimSpace(row.Door) == "" {
+		row.Door = src.Doors[0].ID
 	}
 	if len(src.Doors) > 1 {
 		return proveServiceDoors(ctx, row, src, key)
@@ -623,6 +659,16 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 	listing := src.Probe
 	if listing.Method == "" && listing.Address == "" {
 		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, row, true
+	}
+	// A LISTING THAT ANSWERS FOR ANY BEARER PROVES NO PLAN, and one that is
+	// absent or refuses for payment proves none either. Where the row names a
+	// plan proof, the key is asked it first, so a key the subscription does not
+	// cover is refused in the vendor's own words instead of being bound to a door
+	// it cannot use, whichever way the listing then answers.
+	if proof := src.PlanProof; proof.Method != "" || proof.Address != "" {
+		if outcome, covered := provePlanCoverage(ctx, address, key, proof); !covered {
+			return outcome, row, false
+		}
 	}
 	status, body, answered := runServiceProbe(ctx, address, key, listing)
 	if !answered {
@@ -661,6 +707,38 @@ func ProveService(ctx context.Context, row PersistedSource, src modelsource.Sour
 		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key), Status: status}, row, false
 	}
 	return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, row, true
+}
+
+// provePlanCoverage runs a row's plan proof and says whether the key's
+// subscription covers the service. A refusal is the vendor's own verdict and is
+// reported in its words. A meter that is throttled, down or answering with
+// something that is not a usage reading gives no verdict, so nothing is saved
+// on it. A meter that is not at the address at all cannot prove a plan, and the
+// connection then rests on the listing alone, as it did before the proof.
+func provePlanCoverage(ctx context.Context, address, key string, proof modelsource.Probe) (modelsource.Outcome, bool) {
+	status, body, answered := runServiceProbe(ctx, address, key, proof)
+	switch {
+	case !answered || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError:
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, false
+	case status == http.StatusNotFound || status == http.StatusMethodNotAllowed:
+		return modelsource.Outcome{}, true
+	case !acceptsStatus(proof.Accepts, status):
+		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key), Status: status}, false
+	case !isUsageReading(body):
+		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, false
+	}
+	return modelsource.Outcome{}, true
+}
+
+// isUsageReading answers whether a plan proof's accepted reply is a reading
+// rather than a page or an error envelope an intermediary answered with 200.
+func isUsageReading(body []byte) bool {
+	var reading map[string]json.RawMessage
+	if json.Unmarshal(body, &reading) != nil || len(reading) == 0 {
+		return false
+	}
+	_, failed := reading["error"]
+	return !failed
 }
 
 func proveServiceDoors(ctx context.Context, row PersistedSource, src modelsource.Source, key string) (modelsource.Outcome, PersistedSource, bool) {

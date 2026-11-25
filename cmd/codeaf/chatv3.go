@@ -1799,12 +1799,18 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// picked, by being cloned. Which models a person's questions may go to is
 	// theirs to say.
 	cfg.ModelFallbacks = config.ParseModelFallbacks(config.ModelFallbacksAt(profileDir))
+	// The default chain follows the providers connected since launch: a client
+	// built for a provider connected mid-session asks for it again.
+	cfg.ModelFallbacksNow = func() []string {
+		return config.ParseModelFallbacks(config.ModelFallbacksAt(profileDir))
+	}
 	if oneModel {
 		// A chain that hops to a second model on a failure is the one remaining
 		// way a single-model run stops being one, and it fires exactly when
 		// nobody is watching. Empty is "no hop", which is what this build has
 		// always done for a person who set no chain.
 		cfg.ModelFallbacks = nil
+		cfg.ModelFallbacksNow = nil
 		// AND THE CATALOG'S GUESS WITH IT. Nilling the row alone was not enough
 		// and quietly never had been: the chain falls through to NearestModels
 		// when no row is written (internal/provider's fallbackChain), so a
@@ -2024,6 +2030,9 @@ func v3Connect(profileDir string) *connect.Manager {
 	if err != nil {
 		return nil
 	}
+	// GitHub is the factory's own connection, hung here once so every door
+	// that opens accounts — chat, the app, a task — reads the same one.
+	manager.UseGitHub(v3GitHubDoors(profileDir))
 	return manager
 }
 
@@ -2569,12 +2578,6 @@ func (c *v3Crew) snapshot() (map[string]string, error) {
 			values[roles.PinKey(roles.Role(role))] = model
 		}
 	}
-	// THE PAGE AI's DEFAULT IS ANSWERED, NEVER WRITTEN ([config.InsightDefault]):
-	// it rides the snapshot while its provider is connected and the model is
-	// allowed, below every pin, and a one-model profile drops it with the pins.
-	if send, ok := config.InsightDefaultAt(c.profileDir); ok {
-		values[roles.DefaultKey(roles.RoleInsight)] = send
-	}
 	return v3SettleOneModel(values, c.profileDir), nil
 }
 
@@ -2610,6 +2613,14 @@ func v3SettleOneModel(values map[string]string, profileDir string) map[string]st
 	}
 	for _, tier := range roles.Tiers {
 		settled[roles.TierKey(tier)] = send
+	}
+	// A BACKGROUND ROLE ON A CREW TIER DOES NOT READ ITS TIER (internal/roles'
+	// background.go) — it falls to the conversation's model — so the one model
+	// is written as its pin too, and one model stays one model at every rung.
+	for _, role := range roles.Vocabulary() {
+		if roles.Background(role) {
+			settled[roles.PinKey(role)] = send
+		}
 	}
 	return settled
 }

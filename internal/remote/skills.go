@@ -202,7 +202,7 @@ func (a *Agent) SkillFolders() ([]skills.Skill, error) {
 // serveSkillFolders omits folder weights because neither picker draws them.
 func serveSkillFolders(workspace string) (json.RawMessage, error) {
 	homeDir, _ := home.Login()
-	found, err := skills.Discover(skills.Options{ProjectDir: workspace, HomeDir: homeDir, OmitSize: true})
+	found, err := skills.Discover(skills.Options{ProjectDir: workspace, HomeDir: homeDir, OwnHomeDir: home.OwnLogin(homeDir), OmitSize: true})
 	if err != nil {
 		return nil, err
 	}

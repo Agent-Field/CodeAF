@@ -96,7 +96,17 @@ type Queue struct {
 	// default of the machine running them, absent when this factory does not
 	// know it (a runner elsewhere decides).
 	Model string `json:"model,omitempty"`
+	// GitHub is `not_connected` on a factory on the person's own machine
+	// whose computer has no GitHub connection: its runner runs folder jobs and
+	// repositories it already has a checkout of, but no issue is read and a
+	// repository with no checkout cannot be cloned until GitHub is connected.
+	// Absent when GitHub is connected, on a team server, or when the factory
+	// cannot tell.
+	GitHub string `json:"github,omitempty" jsonschema:"enum=not_connected"`
 }
+
+// GitHubNotConnected is [Queue.GitHub]'s one value.
+const GitHubNotConnected = "not_connected"
 
 // QueueDesk is what the TUI page reads off the floor that the dashboard does
 // not draw. It is one block so a reader of the wire sees at a glance which
@@ -271,6 +281,12 @@ type Repo struct {
 	Habits        []string  `json:"habits,omitempty"` // desk
 	Hue           int       `json:"hue,omitempty"`    // desk
 	CIRed         bool      `json:"ci_red,omitempty"` // desk
+	// NeedsWorkstream says the caller reads this repository only through the
+	// organization, so a job on it is made in a workstream they can edit: the
+	// desk's New job sheet offers a Workstream field for it (Factory film D22).
+	// Absent for the operator, a GitHub member whose own sign-in reads it, and
+	// a solo factory.
+	NeedsWorkstream bool `json:"needs_workstream,omitempty"`
 }
 
 // Pipeline is a repository's steps in order, per kind of job, and the policy
@@ -474,6 +490,13 @@ type Job struct {
 	// is carrying out, and the last few that are over, each with its result.
 	Acts      []factory.PublicAct `json:"acts,omitempty"`
 	SetupHeld bool                `json:"setup_held,omitempty"`
+	// Hold is why a job that never ran waits in Backlog when nothing else on it
+	// says so: `import` (it was already open when the factory was set up or
+	// its repository was turned on, [factory.Item.SetupHeld]) or
+	// `pick_up_off` (a factory on the person's own machine whose Pick up
+	// issues is off starts no issue by itself). Absent otherwise. The state's
+	// title and detail say the same in words, with what releases it.
+	Hold string `json:"hold,omitempty" jsonschema:"enum=import,enum=pick_up_off"`
 	// Held is a queued job its person keeps from starting: no worker takes it
 	// until it is resumed. OverLimit is a queued job its person said to start
 	// now, which may take one slot above its computer's Jobs at once.
@@ -493,7 +516,10 @@ type Job struct {
 	// and only a factory that knows its machine's checkouts; absent is
 	// nothing to say (no repository, or a factory whose runners keep their
 	// own).
-	Checkout          string            `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	Checkout string `json:"checkout,omitempty" jsonschema:"enum=here,enum=will_clone,enum=missing"`
+	// Folder is the folder on the factory's computer a Personal job works in
+	// ([factory.FolderOf]), absent for a job on a repository.
+	Folder            *JobFolder        `json:"folder,omitempty"`
 	Display           JobDisplay        `json:"display"`
 	StatePresentation StatePresentation `json:"state_presentation"`
 	Controls          JobControls       `json:"controls"`
@@ -854,6 +880,18 @@ type Can struct {
 	// from before Hold never sends either, which reads as false.
 	Hold   bool `json:"hold"`
 	Resume bool `json:"resume"`
+	// OpenPR is POST /v1/jobs/{id}/open_pr for this caller now: a finished
+	// folder job whose folder has a GitHub remote, on a factory with GitHub
+	// connected ([factory.FolderPROffered]). Absent everywhere else.
+	OpenPR bool `json:"open_pr,omitempty"`
+}
+
+// JobFolder is where a folder job's work is: the folder, the branch its work
+// is on there, and the pull request a person opened from it, if one was.
+type JobFolder struct {
+	Path   string               `json:"path"`
+	Branch string               `json:"branch,omitempty"`
+	PR     *factory.PublishedPR `json:"pr,omitempty"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.

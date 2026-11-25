@@ -105,10 +105,8 @@ const appQuitReceiptWait = 3 * time.Second
 
 func runApp(args []string) error {
 	localGUI := consumeAppLocalGUI()
-	flags := commandFlags("app")
-	homeFlag := flags.String("home", "", "codeaf's state folder for this app, instead of CODEAF_HOME or ~/.codeaf")
-	turnLong := flags.Duration("turn-long", appTurnLong, "how long a reply runs before the app is told it is running long")
-	schema := flags.Bool("schema", false, "print the wire's JSON Schema, generated from its Go types, and exit")
+	names := newAppFlags()
+	flags, homeFlag, turnLong, schema := names.set, names.home, names.turnLong, names.schema
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
@@ -123,15 +121,11 @@ func runApp(args []string) error {
 		_, err = os.Stdout.Write(out)
 		return err
 	}
-	if dir := strings.TrimSpace(*homeFlag); dir != "" {
-		abs, err := filepath.Abs(dir)
-		if err != nil {
-			return err
-		}
-		if err := os.Setenv(home.EnvVar, abs); err != nil {
-			return err
-		}
+	restoreHome, homeErr := useAppHome(*homeFlag)
+	if homeErr != nil {
+		return homeErr
 	}
+	defer restoreHome()
 	if err := holdAppHome(); err != nil {
 		return err
 	}
@@ -164,6 +158,11 @@ func runApp(args []string) error {
 	backend := newAppBackend(server, appOpenInProcess)
 	backend.leaving = leaving
 	backend.startKeyHealth()
+	// A CREW MANAGER THAT MOVED OUT OF THE APP IS STILL WOKEN by its members'
+	// replies (appteamresume.go).
+	defer backend.armAppTeamResume()()
+	// And its manager can link what the crew made (appteamlink.go).
+	defer backend.armAppTeamLink()()
 	// A QUIT DOES NOT WAIT OUT A RECEIPT'S SCHEDULE (internal/provider's
 	// receipt_hurry.go): Close hurries them, and the process half's close waits
 	// at most [appQuitReceiptWait] for what is still owed.
@@ -242,8 +241,9 @@ func runApp(args []string) error {
 		defer keepAutomationsWindow("app")()
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
-	// And what the last quit stopped in the middle of a reply carries on.
-	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
+	// And what the last quit stopped in the middle of a reply waits for the
+	// person's Continue; it never carries on by itself (appinterrupted.go).
+	backend.interruptAfterQuit()
 	backend.startCloseWatch()
 	err := server.Serve(ctx, os.Stdin, appwire.Hello{Version: resolvedVersion(), PID: os.Getpid(), Home: home.Dir(), Features: []string{"agents.create.attachments", "crews.message.attachments"}}, backend)
 	if backend.assembled.Load() {
@@ -327,6 +327,9 @@ type appOpenAsk struct {
 	// ClockS is how many seconds a proposed task waits before it starts on
 	// its own: the app's own setting, never the terminal's.
 	ClockS int
+	// HoldInterruptedWork opens a chat waiting for Continue without carrying
+	// on its recovered work ([session.Config.HoldInterruptedWork]).
+	HoldInterruptedWork bool
 }
 
 // appConn is an opened conversation and the one way to give it back.
@@ -400,6 +403,9 @@ func appOpenInProcess(ask appOpenAsk) (*appConn, error) {
 		// And only the person moves a running reply to a task, and a proposed
 		// task's clock is the app's, as is a suggested choice's.
 		Launch: launch,
+		// A chat waiting for Continue is opened to be looked at, never to
+		// carry on by itself (appinterrupted.go).
+		HoldInterruptedWork: ask.HoldInterruptedWork,
 	}
 	// The agent this boot built, kept so the app can tell when somebody else
 	// closes it (below). Boot runs once, before Loopback returns.
@@ -770,6 +776,7 @@ type appBackend struct {
 	keyHealth        keyHealthCache
 	monitorKeyHealth bool
 	keys             *config.AppCredentials
+	providerSave     sync.Mutex
 	keyClient        *http.Client
 	keyAddress       func(provider string) string
 	vendored         func() []modelsource.Source
@@ -879,6 +886,9 @@ type appAgent struct {
 	// failedShown is what that turn's entry showed, when it carried
 	// attachments: a retry sends the same words and shows the same message.
 	failedShown *appSending
+	// failedRead says the footer sidecar was already asked, once in this
+	// process, for a failed turn an earlier run left behind ([appRecoverFailed]).
+	failedRead bool
 	// failedClient is the client id of a first message that failed before it
 	// was handed to its conversation (bootFailed), which a retry carries: that
 	// message never reached the accepted line, so its id is still unused.
@@ -1241,6 +1251,7 @@ func appRowView(row session.SessionRow) appwire.Agent {
 // process is holding: a held conversation's own facts are newer than the disk's.
 func (b *appBackend) remember(row session.SessionRow) appwire.Agent {
 	b.watchCloseClaim(row.Dir)
+	b.recoverFailed(row)
 	createdBy := b.createdBy(row.ID)
 	// Read freshness against this backend's clock, including in deterministic
 	// tests, rather than trusting a row another reader dated earlier.
@@ -1974,6 +1985,7 @@ func (b *appBackend) ensureLocked(a *appAgent) (appwire.Agent, bool, error) {
 		return names
 	}
 	_ = b.state.read(func(f *appStateFile) { ask.ClockS = f.clock() })
+	ask.HoldInterruptedWork = b.holdOpen(view.ID, transcript)
 	if boot != nil {
 		ask.Model, ask.Minted = boot.model, true
 		ask.AutomaticModels = boot.automatic
@@ -3231,6 +3243,9 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	endThought()
 	sayReply(appwire.EntryAnswer)
 	byPerson := false
+	// keptWords are the failed turn's words, written beside its error entry so
+	// Retry message outlives a restart ([appRecoverFailed]).
+	keptWords := ""
 	b.locked(func() {
 		byPerson = live.stopping
 		// A STOPPED TURN ENDS CLEANLY ON THE ENGINE'S SIDE — an interrupt is
@@ -3244,6 +3259,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 			a.failed, a.failedKind, a.failedShown = text, kind, shown
 			a.view.Retryable = text != ""
 		}
+		keptWords = a.failed
 	})
 	switch {
 	case !ok && kind == appwire.ErrorStopped:
@@ -3262,11 +3278,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 	case !ok && kind == appwire.ErrorProvider:
 		footer := appFooter(appErrorEntryID(n), id, turn, appwire.FooterProviderFailed, failure, b.now())
 		footer.ErrorKind, footer.Status = kind, status
-		_ = b.keepAppEntry(a, footer, "")
+		_ = b.keepAppFailure(a, footer, keptWords)
 		entry(footer)
 	case !ok:
 		errEntry := appwire.Entry{ID: appErrorEntryID(n), Agent: id, Turn: turn, At: b.now(), Kind: appwire.EntryError, Text: failure, ErrorKind: kind, Status: status}
-		_ = b.keepAppEntry(a, errEntry, "")
+		_ = b.keepAppFailure(a, errEntry, keptWords)
 		entry(errEntry)
 	}
 	if ok {
@@ -3444,6 +3460,10 @@ func appTurnFailure(event session.Event) (kind string, status int, words string)
 	}
 	switch kind {
 	case session.TurnErrorProvider, session.TurnErrorBudget, session.TurnErrorStopped:
+	case session.TurnErrorOffline:
+		// OFFLINE SAYS ITS OWN SENTENCE, never the transport's ladder of
+		// retries and attempts: the work is paused, not broken.
+		return appwire.ErrorOffline, 0, session.TurnOfflineWords
 	default:
 		kind = appwire.ErrorOther
 	}
@@ -4583,6 +4603,7 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 	_, sources := proc.currentAccount()
 	rows := tui3.PickerModels(proc.ProfileDir, sources, proc.Shelf.pickerModels, proc.Shelf.modelsForService)
 	names := map[string]string{}
+	customIDs := map[string]string{}
 	for _, service := range sources.All() {
 		group := strings.ToLower(strings.TrimSpace(service.Source.Written))
 		if group == "" {
@@ -4593,6 +4614,9 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			name = strings.TrimSpace(service.Source.Written)
 		}
 		names[group] = name
+		if modelsource.IsCustomID(service.Source.ID) {
+			customIDs[group] = service.Source.ID
+		}
 	}
 	chosen := appDefaultModel()
 	models := make([]appwire.Model, 0, len(rows)+1)
@@ -4642,12 +4666,24 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 		offered[group] = true
 		models = append(models, model)
 	}
-	if !seen && chosen != "" {
+	// The engine's default is offered as an extra row only when a connected
+	// service can send it. With a provider connected whose list has not landed
+	// yet, the default can still be the built-in OpenRouter model, and a row for
+	// it would let first-run setup save a model nobody can reach.
+	if !seen && chosen != "" && appCanSend(sources, chosen) {
 		provider := modelsource.DefaultID
 		if service, bare := sources.For(chosen); bare != chosen && service.Source.Written != "" {
 			provider = strings.ToLower(service.Source.Written)
 		}
 		models = append(models, appwire.Model{ID: chosen, Name: chosen, Provider: provider, ProviderName: names[provider], Default: true})
+	}
+	// The picker groups by the routing name, but the app joins models to
+	// providers by persisted identity. Keep qualified model IDs untouched: their
+	// prefixes still select the same server when a conversation sends a turn.
+	for i := range models {
+		if id := customIDs[models[i].Provider]; id != "" {
+			models[i].Provider = id
+		}
 	}
 	return models, nil
 }
@@ -5331,4 +5367,10 @@ func appModelFacts(model *appwire.Model, row tui3.Model) {
 // never goes out.
 func appPerMillion(perToken float64) float64 {
 	return math.Round(perToken*1e6*1e9) / 1e9
+}
+
+// appCanSend reports whether model routes to a service that can authenticate.
+func appCanSend(sources modelsource.Set, model string) bool {
+	service, _ := sources.For(model)
+	return service.HasCredentials()
 }

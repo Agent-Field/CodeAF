@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -24,6 +25,19 @@ type Plugin struct {
 	Expired      bool           `json:"expired,omitempty"`
 	Ask          *PluginAsk     `json:"ask,omitempty"`
 	KeyHint      *PluginKeyHint `json:"key_hint,omitempty"`
+	// AlsoKey says a browser plugin ALSO takes plugins.connect_key: GitHub
+	// signs in in the browser or takes a pasted token.
+	AlsoKey bool `json:"also_key,omitempty"`
+	// LocalLogin is a login already on this computer that plugins.connect_local
+	// adopts — for GitHub, gh's own. Absent when there is none.
+	LocalLogin *PluginLocalLogin `json:"local_login,omitempty"`
+}
+
+// PluginLocalLogin names a login already on this computer and the program
+// that holds it.
+type PluginLocalLogin struct {
+	Account string `json:"account"`
+	Source  string `json:"source" enum:"gh"`
 }
 type PluginAsk struct {
 	Label   string   `json:"label"`
@@ -98,6 +112,11 @@ func (m *Manager) Plugins() []Plugin {
 		if s.KeyHint != "" {
 			p.KeyHint = &PluginKeyHint{Words: "Where's my key?", URL: s.KeyHint}
 		}
+		if s.ID == GitHubID {
+			m.githubPlugin(&p)
+			out = append(out, p)
+			continue
+		}
 		if record, ok, _ := m.store.get(s.ID); ok {
 			p.ConnectedAt, p.KeySavedAt = record.ConnectedAt, record.KeySavedAt
 			if record.Keys != nil && !record.Keys.Valid() && record.Keys.RefreshToken == "" {
@@ -155,6 +174,15 @@ func (m *Manager) DescribePlugin(ctx context.Context, id string) (PluginDescript
 		sort.Strings(names)
 		d.Capabilities = append(d.Capabilities, PluginCapability{ID: cap.ID, Phrase: cap.Phrase, Covers: strings.Join(names, " · "), Acts: cap.Acts, State: m.CapabilityState(id, cap.ID), Tools: names})
 	}
+	if s.ID == GitHubID {
+		d.ScopesWords = []string{githubScopesWords}
+		if token, _ := m.githubToken(ctx); token != "" {
+			if login := m.githubAccount(token, githubDescribeWait); login != "" {
+				d.Accounts = []string{login}
+			}
+		}
+		return d, nil
+	}
 	if record, ok, _ := m.store.get(s.ID); ok {
 		if record.Account != "" {
 			d.Accounts = []string{record.Account}
@@ -164,4 +192,34 @@ func (m *Manager) DescribePlugin(ctx context.Context, id string) (PluginDescript
 		}
 	}
 	return d, nil
+}
+
+// How long a list and a description wait for GitHub to say whose token it is.
+// The list is drawn often and waits little; the description is opened on
+// purpose and can wait for the answer.
+const (
+	githubListWait     = 1500 * time.Millisecond
+	githubDescribeWait = 10 * time.Second
+)
+
+// githubPlugin fills GitHub's row: browser when this build can sign in in the
+// browser (and a pasted token besides), key when it cannot, and gh's login
+// when there is one to adopt.
+func (m *Manager) githubPlugin(p *Plugin) {
+	p.KeyCheckable = true
+	p.KeyHint = &PluginKeyHint{Words: "Create a token", URL: GitHubTokenLink}
+	if m.GitHubDeviceFlow() {
+		p.Kind, p.AlsoKey = AuthBrowser, true
+	} else {
+		p.Kind = AuthKey
+	}
+	if p.Connected {
+		token, _ := m.githubToken(context.Background())
+		p.Account = m.githubAccount(token, githubListWait)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), githubListWait)
+	defer cancel()
+	if login := m.GitHubLocalLogin(ctx); login != "" {
+		p.LocalLogin = &PluginLocalLogin{Account: login, Source: "gh"}
+	}
 }

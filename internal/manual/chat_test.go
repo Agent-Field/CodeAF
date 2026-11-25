@@ -39,6 +39,187 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
 		{"the chat said it would write the brief when the tasks landed but the reply stopped partway", "how-tasks-run"},
 		{"why does my charts task show the cost of the research task that joined it", "models-and-cost"},
+		{"what is My space", "my-space"},
+		{"is there a private place for me inside the organization", "my-space"},
+		{"can the org admin see what is in my space", "my-space"},
+		{"who pays for my chats in the organization", "my-space"},
+		{"my space chat says this month's limit is reached", "my-space"},
+		{"does a chat in the organization keep going if I close my laptop", "my-space"},
+		{"can I make a task in My space", "my-space"},
+		{"how do I move a document from my space into a workstream", "my-space"},
+		{"undo moving a file out of my space into a workstream", "my-space"},
+		{"how do I make my own agent in the organization", "organization-agents"},
+		{"share my agent into a workstream so the team can use it", "organization-agents"},
+		{"can the operator see my agents", "organization-agents"},
+		{"can my shared agent do a task in the workstream", "organization-agents"},
+		{"is there a shared library in my organization", "organization-library"},
+		{"how do I add a document to the org library", "organization-library"},
+		{"can everyone in the organization read the library pages", "organization-library"},
+		{"can the chat look things up in the organization library", "organization-library"},
+		{"remove a page from the organization library", "organization-library"},
+		{"upload our brand voice file to the organization library", "organization-library"},
+		{"how does an agent get on the organization's list", "organization-agents"},
+		{"does the factory prove to AgentField that a run is its own", "factory-agentfield"},
+		{"my job says AgentField did not accept this factory's proof that the run is its own", "factory-agentfield"},
+		{"AgentField needs this factory to show the run is its own and the link is not up", "factory-agentfield"},
+		{"the proof that the run is its own had run out, what do I do", "factory-agentfield"},
+		{"approve an agent for everyone in the organization", "organization-agents"},
+		{"chat with my Copywriter agent instead of Afi", "organization-agents"},
+		{"which agents can a task in this workstream be given to", "organization-agents"},
+		{"run the workstream agent on the organization's server instead of a laptop", "organization-workstream-agent"},
+		{"does the server's Afi know what today's date is in my time zone", "organization-workstream-agent"},
+		{"where do I put the organization's model key for the server", "organization-workstream-agent"},
+		{"what can't the agent do on the driver's laptop", "organization-workstream-agent"},
+		{"can Afi draw a canvas in an organization workstream", "organization-workstream-agent"},
+		{"ask the server's Afi for a social launch card set on a canvas", "organization-workstream-agent"},
+		{"where does a canvas Afi made in the organization show up", "organization-workstream-agent"},
+		{"who can change a workstream's people and rules", "workstream-people-and-rules"},
+		{"how do I start a new workstream", "workstream-new-setup"},
+		{"Afi proposed a card for my workstream, what does Create workstream do", "workstream-new-setup"},
+		{"can I set up a workstream myself without Afi", "workstream-new-setup"},
+		{"who is told when I create a workstream", "workstream-new-setup"},
+		{"do workstream tasks start automatically when what they depend on is done", "organization-workstream-tasks"},
+		{"hold a workstream task for my Start instead of starting automatically", "organization-workstream-tasks"},
+		{"I answered the question on a task that still waits on other work, why did it not start", "organization-workstream-tasks"},
+		{"how do I invite someone to my organization by email", "inviting-people"},
+		{"how do I start a new organization", "organization-start"},
+		{"can Afi set up my whole organization for me", "organization-start"},
+		{"the set-up button failed halfway, what now", "organization-start"},
+		{"I want to set up the organization by hand without Afi", "organization-start"},
+		{"what is still to set up on Work", "organization-start"},
+		{"what does org_propose_setup do", "organization-start"},
+		{"can I give a task to someone who hasn't joined yet", "inviting-people"},
+		{"the invite link expired, how do I send it again", "inviting-people"},
+		{"does the server send the invite email", "inviting-people"},
+		{"what happens to someone's tasks when I remove them from the organization", "inviting-people"},
+		{"I invited someone and they never joined, what happens to their task", "inviting-people"},
+		{"who answers my questions when I'm on holiday", "workstream-people-and-rules"},
+		{"how do I get fewer asks, can Afi stop asking me about wording", "workstream-people-and-rules"},
+		{"Afi suggests loosening the rule, what does Not now do", "workstream-people-and-rules"},
+		{"who is doing this task, Afi or an agent?", "organization-workstream-tasks"},
+		{"delete a workstream task and undo it", "organization-workstream-tasks"},
+		{"do files stay when I delete a workstream task", "organization-workstream-tasks"},
+		{"how do I change who does a task", "organization-workstream-tasks"},
+		{"afi gave marco's review to me instead of him", "organization-workstream-tasks"},
+		{"give a task to afi and take it back", "organization-workstream-tasks"},
+		{"what does Your chat mean on a task", "organization-workstream-tasks"},
+		{"why does Afi's task say asks you and not running", "organization-workstream-tasks"},
+		{"control click to select several tasks with the Afi pane open", "organization-workstream-tasks"},
+		{"hand a task from Afi to Lena", "organization-workstream-tasks"},
+		{"what does for Marco mean on a task row", "organization-workstream-tasks"},
+		{"can Afi see my chats in a workstream", "workstream-chats-and-tools"},
+		{"does leaving a chat stop what it is doing", "workstream-chats-and-tools"},
+		{"can I start a chat in my organization's workstream", "workstream-chats-and-tools"},
+		{"can I put a workstream inside another workstream", "workstream-people-and-rules"},
+		{"how much can an agent spend before it asks me in a workstream", "workstream-people-and-rules"},
+		{"what happens to someone's tasks when I remove them from a workstream", "workstream-people-and-rules"},
+		{"what does the orange dot with a number next to a workstream mean", "workstream-people-and-rules"},
+		{"how many things are waiting on me in each workstream", "workstream-people-and-rules"},
+		{"add a standing order to my workstream every Monday", "workstream-people-and-rules"},
+		{"why does this workstream task say it came from a standing order", "workstream-people-and-rules"},
+		{"can a workstream standing order run when a release ships", "workstream-people-and-rules"},
+		{"does my organization standing order run on my laptop with a shell", "workstream-people-and-rules"},
+		{"can my teammates see the standing orders in our organization workstream", "workstream-people-and-rules"},
+		{"what happens to running tasks when I archive a workstream", "workstream-people-and-rules"},
+		{"keep files in the parent when I archive a workstream inside it", "workstream-people-and-rules"},
+		{"my mac went to sleep, is my workstream work lost", "workstream-people-and-rules"},
+		{"can the server's workstream agent run commands or change the repository", "organization-workstream-agent"},
+		{"where did my workstream pages and sources go", "workstream-files"},
+		{"how do I restore a file I deleted from a workstream", "workstream-files"},
+		{"can Afi edit my document directly or only suggest", "workstream-files"},
+		{"who can see my chats inside a workstream", "workstream-chats-and-tools"},
+		{"can my teammates see the name of my chat in the workstream", "workstream-chats-and-tools"},
+		{"why did the agent not do what the comment asked", "workstream-chats-and-tools"},
+		{"does every chat in a workstream turn into a task", "workstream-chats-and-tools"},
+		{"why did Afi make so many tiny tasks", "workstream-chats-and-tools"},
+		{"how many tasks does Afi break big work into", "workstream-chats-and-tools"},
+		{"where do the steps of a task go", "workstream-chats-and-tools"},
+		{"how do I steer the agent on a workstream task", "organization-workstream-tasks"},
+		{"where did the Tell Afi box under Working go", "organization-workstream-tasks"},
+		{"how do I switch the task box from comment to tell afi", "organization-workstream-tasks"},
+		{"Afi proposed tasks as cards, how do I add them", "organization-workstream-agent"},
+		{"nothing happened after Afi planned the tasks, where are they", "organization-workstream-agent"},
+		{"who is told when I add Afi's tasks", "organization-workstream-agent"},
+		{"how do I change a task afi already finished without reopening it", "organization-workstream-tasks"},
+		{"what does Revise with this do", "organization-workstream-tasks"},
+		{"will afi make a chat to coordinate the plan on the org server", "organization-workstream-tasks"},
+		{"see what the agent is doing on a task in my workstream", "organization-workstream-tasks"},
+		{"who can see the working conversation of a task", "organization-workstream-tasks"},
+		{"what does a good task brief need goal deliverable acceptance", "organization-workstream-tasks"},
+		{"does the next agent get the release notes the earlier task wrote", "organization-workstream-tasks"},
+		{"what is the hand-off note when a task is done", "organization-workstream-tasks"},
+		{"the agent can't do the task because it has no web access", "organization-workstream-tasks"},
+		{"which tasks will ask me before they post or send something", "workstream-people-and-rules"},
+		{"how do I let Afi publish without asking me", "workstream-people-and-rules"},
+		{"what does asks first mean on a plan", "workstream-people-and-rules"},
+		{"what was the result checked against, how many decisions", "organization-workstream-tasks"},
+		{"why did my task ask me to paste their text instead of failing", "organization-workstream-tasks"},
+		{"open a workstream chat as its own tab", "workstream-chats-and-tools"},
+		{"did Afi save the brief to my Library", "workstream-chats-and-tools"},
+		{"where is the Decisions panel", "workstream-chats-and-tools"},
+		{"why does Afi show me a task id", "workstream-chats-and-tools"},
+		{"I told Afi you coordinate it, where did the work go", "workstream-chats-and-tools"},
+		{"what does Change the plan do on a batch of tasks", "workstream-chats-and-tools"},
+		{"who decides an Ask on a task", "workstream-asks-and-decisions"},
+		{"add my view to Marco's question", "workstream-asks-and-decisions"},
+		{"how do I ask Marco a question on a task", "workstream-asks-and-decisions"},
+		{"accept Afi's answer on all the quick asks", "inbox"},
+		{"take a task back from the agent running it", "inbox"},
+		{"hand an ask to someone else to decide", "inbox"},
+		{"what does can be undone mean on an ask", "workstream-asks-and-decisions"},
+		{"ask a teammate to decide something before the task goes on", "workstream-asks-and-decisions"},
+		{"Priya asked me something, can I answer in my own words", "workstream-asks-and-decisions"},
+		{"where is the list of decisions", "workstream-asks-and-decisions"},
+		{"withdraw a decision I made", "workstream-asks-and-decisions"},
+		{"why was my task paused against a decision", "workstream-asks-and-decisions"},
+		{"what did the agent decide without asking", "workstream-asks-and-decisions"},
+		{"the agent is still answering someone else, how do I stop it", "organization-workstream-agent"},
+		{"can my colleagues read what I ask Afi in our organization workstream", "organization-workstream-agent"},
+		{"Afi on the server wrote pages titled Task instead of making tasks", "organization-workstream-agent"},
+		{"who can answer a task's question in a workstream", "organization-workstream-tasks"},
+		{"someone left the workstream, who gets their tasks", "organization-workstream-tasks"},
+		{"a file changed while my task was running", "organization-workstream-tasks"},
+		{"my task says interrupted after codeaf restarted", "organization-workstream-tasks"},
+		{"my task is stuck on running after the server restarted", "organization-workstream-tasks"},
+		{"my task says queued 2nd, why is it not running", "organization-workstream-tasks"},
+		{"how many tasks can run at once in a workstream", "organization-workstream-tasks"},
+		{"Afi paused my task and asks whether to continue", "organization-workstream-tasks"},
+		{"is there a spending cap on a task Afi runs", "organization-workstream-tasks"},
+		{"pressed start on a running task and nothing happened", "organization-workstream-tasks"},
+		{"I pressed Start but the chat was busy", "organization-workstream-tasks"},
+		{"how do I attach a file to a task", "organization-workstream-tasks"},
+		{"drag a file onto a task", "organization-workstream-tasks"},
+		{"which files does this task use", "organization-workstream-tasks"},
+		{"open a canvas inside the task", "organization-workstream-tasks"},
+		{"can a task have a checklist", "organization-workstream-tasks"},
+		{"how do I add sub-tasks to a task", "organization-workstream-tasks"},
+		{"does Afi attach the files it reads to the task", "organization-workstream-tasks"},
+		{"attach a file to a comment on a task", "organization-workstream-tasks"},
+		{"save what Afi wrote to the task", "organization-workstream-tasks"},
+		{"what are the acceptance criteria of this task", "organization-workstream-tasks"},
+		{"Afi said press keep on the decision but there is no keep button", "workstream-files"},
+		{"can I get an earlier version of my document back", "workstream-files"},
+		{"undo a change to my canvas and restore how it was yesterday", "workstream-files"},
+		{"does add to library work when learning from chats is off", "workstream-files"},
+		{"what does From your chats mean on a Library guide", "what-i-remember"},
+		{"remove something the Library learned by itself from my chats", "what-i-remember"},
+		{"why can't I stop someone else's task", "organization-workstream-tasks"},
+		{"the task's owner is Everyone, who decides", "organization-workstream-tasks"},
+		{"how do I tick a person task and what happens to tasks waiting on it", "organization-workstream-tasks"},
+		{"how do I mention someone in a comment so they see it", "organization-workstream-tasks"},
+		{"who handed this task to me", "organization-workstream-tasks"},
+		{"ask another team's workstream to do something for me", "organization-workstream-tasks"},
+		{"hand a task to someone else or move it to another workstream", "organization-workstream-tasks"},
+		{"is a factory job a task in the workstream", "organization-workstream-tasks"},
+		{"what does Start all do", "organization-workstream-tasks"},
+		{"how do I go back to the task list after opening a task", "organization-workstream-tasks"},
+		{"open a task in its own tab", "organization-workstream-tasks"},
+		{"select several tasks with shift click and give them to Afi", "organization-workstream-tasks"},
+		{"read tasks side by side with the arrow keys", "organization-workstream-tasks"},
+		{"I sent a task back, what happens to the tasks waiting on it", "organization-workstream-tasks"},
+		{"can afi act on my comment on a task", "organization-workstream-tasks"},
+		{"where is the result of a task, can I read it without opening it", "organization-workstream-tasks"},
+		{"what does checked against the request and 2 decisions mean", "organization-workstream-tasks"},
 		{"can Claude Code make a canvas", "claude-code-provider"},
 		{"does Claude Code see my codeaf skills", "claude-code-provider"},
 		{"Claude Code's edits don't show as rows in the chat", "claude-code-provider"},
@@ -46,10 +227,27 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"use my Claude plan with no API key", "claude-code-provider"},
 		{"where is the token I pasted kept and for how long", "giving-a-password-or-token"},
 		{"can the model see my password", "giving-a-password-or-token"},
+		{"how do I sign in to the organization with Touch ID", "factory"},
+		{"can I join the org with a passkey instead of a password", "factory"},
+		{"how do I join an organization", "factory"},
+		{"how do I join a factory from the desktop app", "factory"},
+		{"where did Settings Factory go", "factory"},
+		{"remove a passkey from my account", "factory"},
+		{"can I make a job without a GitHub account", "factory"},
+		{"can a factory job work on a repo on my laptop that isn't on GitHub", "factory"},
+		{"how do I open a pull request from a job that ran on a local folder", "factory"},
+		{"why does my local folder job wait in the queue without GitHub", "factory"},
+		{"can the factory run a job on a folder without connecting GitHub", "factory"},
+		{"I can't add a job to Backlog on the organization's repository", "factory"},
+		{"which workstream does my new factory job go in", "factory"},
+		{"what does Ask someone to give you edit on a workstream mean", "factory"},
+		{"why is there no repository to pick when I add a job", "factory"},
 		{"can I send a message to the chat running on my other computer", "desktop-sync"},
 		{"queue a message for my other computer while its turn is working", "desktop-sync"},
 		{"my message to the other computer was never delivered because it is offline", "desktop-sync"},
 		{"message to my other computer didn't send, can't reach relay", "desktop-sync"},
+		{"my crew from the other computer shows as loose chats in the desktop", "desktop-sync"},
+		{"can I continue a crew made on another computer here", "desktop-sync"},
 		// C9: Windows shell questions must reach the self-contained Git Bash section.
 		{"are factory steps sandboxed", "unattended-run-limits"},
 		{"why did brew install fail in a factory step", "unattended-run-limits"},
@@ -121,6 +319,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can a worker do", "coordination-and-workers"},
 		{"can a worker approve pairing", "coordination-and-workers"},
 		{"can a worker read all my chats", "coordination-and-workers"},
+		// X11c: a chat stopped mid-turn by a quit waits for Continue; the page
+		// that says so must be what these questions reach.
+		{"my chat resumed by itself after I reopened the app and spent money", "running-from-the-terminal"},
+		{"what does Interrupted Continue mean in a chat after quitting the app", "running-from-the-terminal"},
+		{"the app closed unexpectedly mid reply, does it carry on", "running-from-the-terminal"},
 		// R25/R29 keep older-client refusals and failed quit saves reachable.
 		{"why can an older computer list chats but not continue a chat that is still running", "continuing-a-chat-on-another-computer"},
 		{"what happens if the final save fails during quit", "continuing-a-chat-on-another-computer"},
@@ -476,6 +679,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"is my code sent anywhere that logs it?", "models-and-cost"},
 		{"why does my openrouter activity say codeaf dev instead of agentfield ai", "models-and-cost"},
 		{"which model are you using and what does a task cost?", "models-and-cost"},
+		// F-20 (workstreams-v5 live run): background seats follow the chosen
+		// model, and a person billed for models they never picked asks this.
+		{"which model names my chats and builds the library in the background?", "models-and-cost"},
+		{"why do memory calls keep running after I stop chatting?", "models-and-cost"},
+		{"when does the library build from my chats?", "models-and-cost"},
+		{"why is my spending showing gemini when I picked deepseek", "models-and-cost"},
 		{"how do I say no to a task it wants to start", "tasks"},
 		{"I typed no to the task and it started anyway", "tasks"},
 		{"where did the model chips on the proposal go", "tasks"},
@@ -929,6 +1138,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I connect my google account", "accounts"},
 		{"how do I connect my Slack workspace", "accounts"},
 		{"which services can you connect to", "accounts"},
+		{"how do I give my agents GitHub tools", "accounts"},
+		{"connect github as a connector for agents", "accounts"},
+		{"does disconnecting GitHub on the connectors page stop the factory", "accounts"},
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
 		{"can I make a hosted conversation think harder", "running-on-another-machine"},
 		{"why is the task roster empty over host", "running-on-another-machine"},
@@ -3476,6 +3688,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"use my codex plan", "models-and-cost"},
 		// #1383 and #1391: what a Codex model holds, and who answered it.
 		{"what context window does a codex model have", "models-and-cost"},
+		// DeepSeek's own API reads its own thinking field, and the page that
+		// says which word each rung sends is the one a person asking must reach.
+		{"does max thinking work on deepseek direct", "models-and-cost"},
 		{"which server answered my codex request in the call lines", "sessions-and-rewind"},
 		{"connect from the terminal without opening the chat", "running-from-the-terminal"},
 		{"how do I read a plan file back as a table", "running-from-the-terminal"},
@@ -3660,6 +3875,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"the factory says my repository isn't checked out on this machine", "factory"},
 		{"does the factory clone a private repository it has no checkout of", "factory"},
 		{"factory start refused, not checked out, connect GitHub so the factory can clone it", "factory"},
+		// A HOLD SAYS ITS REASON, and the runner without GitHub says what waits.
+		{"why is my agent-ready issue held and not starting", "factory"},
+		{"what does Held at import mean on an issue", "factory"},
+		{"the issue says Held: pick-up is off", "factory"},
+		{"the Computers page says GitHub isn't connected", "factory"},
+		{"does the runner work before I connect GitHub", "factory"},
 		// WHAT A STEP FOUND REACHES THE STEPS AFTER IT: the plan whole, the
 		// files it names, every claim so far.
 		// JIRA TICKETS ARE WORK: connected with an API token and a JQL, polled,
@@ -3731,6 +3952,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the factory write step see the whole plan", "factory-stage-conversations"},
 		{"does the proof step know what earlier steps claimed", "factory-stage-conversations"},
 		{"ask the manager for changes to a waiting plan", "factory-stage-conversations"},
+		{"how do I search my tasks or filter them by state", "organization-workstream-tasks"},
+		{"where did Add a step go on a task", "organization-workstream-tasks"},
+		{"what is in a task's more menu", "organization-workstream-tasks"},
+		{"how do I add a task by hand in a workstream", "organization-workstream-tasks"},
+		{"Afi's draft came out as one line with Open instead of a comment", "organization-workstream-tasks"},
 		// BLIND PASS-THROUGH: with hosted sync storage off a chat still moves between
 		// paired computers while both are running codeaf. The words are the wish
 		// (move it without storage), the worry (does the other one have to be on),
@@ -3764,6 +3990,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
 		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
 		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
+		// Sharing and moving inside an organization: roles, grants, the
+		// operator's policy, a shared chat read-only, move against share, an
+		// expiry, and Afi's pane and a task's conversation as sessions.
+		{"can I share a chat with a teammate so they can read it", "organization-sharing"},
+		{"what is the difference between the view comment edit and full roles", "organization-sharing"},
+		{"who can change the organization's sharing rules", "organization-sharing"},
+		{"does the operator see a chat I shared with only one person", "organization-sharing"},
+		{"can the person I shared my chat with type into it", "organization-sharing"},
+		{"is moving a chat the same as sharing it", "organization-sharing"},
+		{"move my chat from my space into a workstream", "organization-sharing"},
+		{"why can't I move a chat that is answering me", "organization-sharing"},
+		{"can I give someone access until a date, and what happens when it ends", "organization-sharing"},
+		{"can I share my Afi pane with someone in the organization", "organization-sharing"},
+		{"what is a grant on a workstream and who may add one", "organization-sharing"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
@@ -3784,6 +4024,55 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 				pages = append(pages, section.Page)
 			}
 			t.Errorf("%q should reach %s; it reached %v", ask.question, ask.page, pages)
+		}
+	}
+}
+
+// #1351: a worker given a repository deleted its `.git` and the folder guard let
+// it, because `.git` is inside the folder it was given. The guard now refuses
+// replacing the folder's own git metadata, and the questions a person asks
+// after seeing that, or before trusting `--dir`, must reach the sections that
+// say so: in their words, with the refusal quoted and the shapes named.
+func TestTheGitMetadataQuestionsReachTheSectionsThatRefuseIt(t *testing.T) {
+	asked := []struct {
+		question string
+		page     string
+		title    string
+		says     []string
+	}{
+		{
+			question: "can a task delete my repository's .git",
+			page:     "permissions",
+			title:    "Can a task delete my repository's .git or its history",
+			says:     []string{"is outside your copy", "rm -rf .git", "codeaf do --dir", "git commit", "exits\n**incomplete** (status 2)"},
+		},
+		{
+			question: "can work in a folder delete its .git history",
+			page:     "choosing-a-folder",
+			title:    "Can work in a folder delete its .git",
+			says:     []string{"is outside your copy", "codeaf do --dir", "rm -rf ."},
+		},
+	}
+	for _, ask := range asked {
+		reached := false
+		for _, section := range Chat().Search(ask.question, DefaultResults) {
+			if section.Page != ask.page || !strings.Contains(section.Title, ask.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range ask.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", ask.question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			found := Chat().Search(ask.question, DefaultResults)
+			where := make([]string, 0, len(found))
+			for _, section := range found {
+				where = append(where, section.Page+" · "+section.Title)
+			}
+			t.Errorf("%q does not reach %s · %q; it reached %v", ask.question, ask.page, ask.title, where)
 		}
 	}
 }

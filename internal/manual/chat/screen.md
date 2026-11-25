@@ -2035,7 +2035,7 @@ field gets no link.
 ## Click a file path to open it — open a file from the chat, why is this file path not clickable?
 
 **Every file path on this screen that names a file that really exists is a real
-hyperlink.** Click it and the file opens the way your desktop would open it. In most
+hyperlink.** Click it and the file opens the way your desktop would open it: that is how you open a file from the chat. In most
 terminals that is **cmd+click** on a Mac and **ctrl+click** on Linux; a few open on a
 plain click, and most will offer it on the right-click menu as well.
 

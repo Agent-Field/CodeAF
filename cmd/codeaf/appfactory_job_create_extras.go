@@ -25,7 +25,7 @@ func factoryCreateBody(p appwire.FactoryJobCreateParams) api.NewJob {
 		Repo: p.Repo, Title: p.Title, Text: p.Text, Source: factory.AskApp,
 		Assignee: p.Assignee, Pipeline: p.Pipeline, Issue: p.OpenIssue,
 		Group: p.Group, Milestone: p.Milestone, Budget: p.Budget,
-		SplitFrom: p.SplitFrom,
+		SplitFrom: p.SplitFrom, Workstream: p.Workstream, Folder: p.Folder,
 	}
 	if p.Start == "now" {
 		body.Start = "now"

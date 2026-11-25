@@ -1040,7 +1040,11 @@ func (a *Agent) recordPlanSpend(used Usage, model string) {
 	if children {
 		role = "plan"
 	}
-	go g.planRecordSpend(planID, model, role, used.CostUSD, used.Input, used.Output)
+	g.planSpend.Add(1)
+	go func() {
+		defer g.planSpend.Done()
+		g.planRecordSpend(planID, model, role, used.CostUSD, used.Input, used.Output)
+	}()
 }
 
 // planRunSpend answers the dollars the run's ledger holds in the store — the

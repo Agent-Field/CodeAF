@@ -58,13 +58,34 @@ func PipefailArgs(program string, flags []string, command string) []string {
 // it), and raw is the status the shell is really leaving with. Each
 // return names its status, because a bare return inside a trap hands back the
 // command's own status and would fire the command's ERR trap a second time.
+//
+// A BASH OLDER THAN 4.2 DOES NOT RESTORE PIPESTATUS AFTER A TRAP, and macOS
+// ships 3.2 as /bin/bash. There the EXIT trap read the ERR trap's own
+// assignment (one 0) instead of the pipeline, every check above declined, and
+// `git log | head` read as failed on every Mac. So the ERR trap ends on a
+// function that returns 213, which a trap does not leak into $? while errexit
+// is off (it is called only then; under errexit the check declines anyway),
+// and on such a
+// shell an EXIT trap that sees PIPESTATUS of exactly that one status knows
+// the ERR trap ran last: the marked statuses are the last pipeline's, and they
+// are judged by the same rules. A newer bash restores PIPESTATUS and never
+// takes this road: it is handed the ERR trap it always had, with no helper and
+// no extra command, so its behaviour is unchanged. The mark is read back only
+// under the default IFS, because the shell joined it with the first character
+// of whatever IFS was then, and a digit there cannot be split apart again.
 const earlyReaderPrefix = `__codeaf_early_reader() { ` +
 	`local -a s=("$@"); local n=$((${#s[@]} - 1)) raw=0 eased=0 i; ` +
+	`((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] < 402 && n == 1 && s[0] == 213)) && [[ -n "$__codeaf_marked" && ${IFS-} == $' \t\n' ]] && ` +
+	`{ s=($__codeaf_marked "${s[n]}"); n=$((${#s[@]} - 1)); }; ` +
 	`[[ $- == *e* || "${s[*]:0:n}" != "$__codeaf_marked" ]] && return 0; ` +
 	`for ((i = 0; i < n; i++)); do ` +
 	`((s[i])) && raw=${s[i]}; ` +
 	`((s[i] && (s[i] != 141 || i == n - 1))) && eased=${s[i]}; ` +
 	`done; ` +
 	`((raw == s[n] && eased != raw)) && exit "$eased"; return 0; ` +
-	`}; __codeaf_marked=; trap '{ __codeaf_marked="${PIPESTATUS[*]}"; } 2>/dev/null' ERR; ` +
+	`}; __codeaf_marked=; ` +
+	`if ((BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] < 402)); then ` +
+	`__codeaf_left() { return 213; }; ` +
+	`trap '{ __codeaf_marked="${PIPESTATUS[*]}"; [[ $- == *e* ]] || __codeaf_left; } 2>/dev/null' ERR; ` +
+	`else trap '{ __codeaf_marked="${PIPESTATUS[*]}"; } 2>/dev/null' ERR; fi; ` +
 	`trap '{ __codeaf_early_reader "${PIPESTATUS[@]}" "$?"; } 2>/dev/null' EXIT; `

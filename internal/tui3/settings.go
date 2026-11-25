@@ -157,7 +157,7 @@ var settingUI = map[string]settingMeta{
 	},
 	// ── Session ─────────────────────────────────────────────────────────────
 	config.KeyToolApprovalMode: {
-		tab: tabSafety, label: "ask before running", widget: widgetCycle,
+		tab: tabSafety, label: "tool approvals", widget: widgetCycle,
 		about: "what happens when the model asks to run a tool. Dangerous shell " +
 			"commands are asked about whichever way this is set.",
 	},
@@ -1919,8 +1919,15 @@ func (s *sheet) changed(item sheetItem) bool {
 		return false
 	}
 	value := item.row.Value()
-	if raw, ok := s.farTeamValue(item.row.Key); ok {
+	raw, far := s.farTeamValue(item.row.Key)
+	if far {
 		value = raw
+	}
+	// A row whose blank default follows the connected providers reads
+	// differently on this profile than on the untouched one, so it is changed
+	// only when the profile holds a value of its own.
+	if !far && config.FollowsProviders(item.row.Key) {
+		return config.WrittenAt(s.profileDir, item.row.Key)
 	}
 	was, known := s.defaults[item.row.Key]
 	return known && was != value

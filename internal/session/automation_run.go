@@ -511,7 +511,7 @@ func (r *automationRunner) judgeClient(cfg Config, model string) (Completer, str
 	defer r.mu.Unlock()
 	settings := cfg.clientConfig(model, providerTimeout)
 	settings.Routing = provider.StaticRouting(cfg.Routing)
-	settings.Fallbacks = cfg.ModelFallbacks
+	settings.Fallbacks = cfg.fallbacksNow()
 	settings.NearestModels = cfg.NearestModels
 	// THE CLIENT IS KEPT FOR ONE MODEL ON ONE ACCOUNT, not one model: the base
 	// is assembled again before every run with the keys as they are on disk

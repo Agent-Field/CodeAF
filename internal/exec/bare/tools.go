@@ -190,11 +190,11 @@ func grepDescription(caps Caps) string {
 }
 
 func findDescription(caps Caps) string {
-	return fmt.Sprintf("Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to 1000 results or %s (whichever is hit first).", sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("Search file paths by glob. Respects .gitignore. Returns relative paths, capped at 1000 results or %s.", sizeWord(caps.MaxBytes))
 }
 
 func lsDescription(caps Caps) string {
-	return fmt.Sprintf("List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or %s (whichever is hit first).", sizeWord(caps.MaxBytes))
+	return fmt.Sprintf("List directory contents, sorted alphabetically, with '/' after directories and dotfiles included. Capped at 500 entries or %s.", sizeWord(caps.MaxBytes))
 }
 
 // ── path resolution ────────────────────────────────────────────────────────

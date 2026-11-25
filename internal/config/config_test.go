@@ -107,15 +107,16 @@ func TestVisionModelResolutionOrder(t *testing.T) {
 	if got := configured.ResolveVisionModel(models, "text/only", "work/vision"); got != "work/vision" {
 		t.Fatalf("vision work preference = %q", got)
 	}
-	if got := configured.ResolveVisionModel(models, "text/only", "missing/work"); got != preferredVisionModel {
-		t.Fatalf("vision advertised preference = %q", got)
+	// solo-sheets F17: with neither chosen model able to see, no other vendor's
+	// eyes are elected — not the remembered one, not the catalog's first.
+	if got := configured.ResolveVisionModel(models, "text/only", "missing/work"); got != "" {
+		t.Fatalf("a blind choice elected %q to look", got)
 	}
-
 	firstOnly := runtimeCatalog(t, `
 		{"id":"first/vision","architecture":{"input_modalities":["image"],"output_modalities":["text"]}},
 		{"id":"second/vision","architecture":{"input_modalities":["image"],"output_modalities":["text"]}}`)
-	if got := configured.ResolveVisionModel(firstOnly, "text/only", "missing/work"); got != "first/vision" {
-		t.Fatalf("vision catalog fallback = %q", got)
+	if got := configured.ResolveVisionModel(firstOnly, "text/only", "missing/work"); got != "" {
+		t.Fatalf("the catalog's first sighted row %q was elected to look", got)
 	}
 	noVision := runtimeCatalog(t, `{"id":"text/only","architecture":{"input_modalities":["text"],"output_modalities":["text"]}}`)
 	if got := configured.ResolveVisionModel(noVision, "text/only", "missing/work"); got != "" {
@@ -137,8 +138,11 @@ func TestVisionModelResolutionNeverPicksAPainterAsEyes(t *testing.T) {
 		{"id":"paint/captioning-edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image","text"]}},
 		{"id":"eyes/real","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]}}`)
 	// A painter chosen as the live talk or work model is passed over too.
-	if got := configured.ResolveVisionModel(models, "paint/edit", "paint/captioning-edit"); got != "eyes/real" {
-		t.Fatalf("vision = %q, want the first model that answers in text only", got)
+	if got := configured.ResolveVisionModel(models, "paint/edit", "paint/captioning-edit"); got != "" {
+		t.Fatalf("vision = %q, want nothing: neither choice sees, and nothing else is elected", got)
+	}
+	if got := configured.ResolveVisionModel(models, "paint/edit", "eyes/real"); got != "eyes/real" {
+		t.Fatalf("vision = %q, want the chosen work model that answers in text", got)
 	}
 	onlyPainters := runtimeCatalog(t, `
 		{"id":"paint/edit","architecture":{"input_modalities":["text","image"],"output_modalities":["image"]}}`)

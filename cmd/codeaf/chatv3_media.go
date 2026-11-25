@@ -204,6 +204,16 @@ func v3AutomaticMediaModel(models *catalog.Catalog, profileDir string, source ro
 				}
 			}
 		}
+		if modality == "vision" {
+			// LOOKING NEVER ELECTS A MODEL NOBODY CHOSE (solo-sheets F17). A
+			// person on one model for everything was billed for another
+			// vendor's eyes that the catalog rung picked, and nothing said so.
+			// Past the looking row and the pin, the session looks with the
+			// model the person chose when that model can see
+			// (session.Agent.visionSeer); when it cannot, looking is absent
+			// and the refusal says so, rather than a switch nobody asked for.
+			return ""
+		}
 		if id := able("catalog", config.CandidateMediaModel(available, modality)); id != "" {
 			return id
 		}

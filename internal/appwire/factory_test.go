@@ -107,6 +107,7 @@ var factoryGood = map[string]string{
 	"factory.sign_in_cancel":  `{"flow":"f1","caller":"w1"}`,
 	"factory.sessions_take":   `{}`,
 	"factory.session_restore": `{"factory":"f","url":"https://f.example","token":"t"}`,
+	"factory.sessions_store":  `{"can_keep":true}`,
 }
 
 func TestEveryFactoryMethodHasAValidRequestHere(t *testing.T) {
@@ -364,16 +365,19 @@ func TestFactoryMeReplyHasNoPrivateFields(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"factory", "codeaf_version", "contract", "handle", "name", "avatar_url", "scopes", "mode", "operator", "access", "github_signed_in", "can_sign_out", "github_sign_in_available", "invite_available"} {
+	for _, key := range []string{"factory", "codeaf_version", "contract", "handle", "name", "avatar_url", "scopes", "mode", "operator", "access", "github_signed_in", "can_sign_out", "github_sign_in_available", "invite_available", "teams"} {
 		if _, ok := got[key]; !ok {
 			t.Errorf("reply lacks %q: %s", key, raw)
 		}
 	}
-	if len(got) != 14 {
-		t.Errorf("reply has %d keys, want 14: %s", len(got), raw)
+	if len(got) != 15 {
+		t.Errorf("reply has %d keys, want 15: %s", len(got), raw)
 	}
 	if string(got["scopes"]) != "[]" {
 		t.Errorf("scopes = %s, want []", got["scopes"])
+	}
+	if string(got["teams"]) != "[]" {
+		t.Errorf("teams = %s, want []", got["teams"])
 	}
 	for _, leak := range []string{"session", "runner", "machine", "takes_unassigned", "served_by", "polling", "/home/", "secret"} {
 		if strings.Contains(string(raw), leak) {

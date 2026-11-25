@@ -852,10 +852,14 @@ func (h *Handler) raiseBudget(w http.ResponseWriter, r *http.Request, it factory
 	if !h.decode(w, r, &body, false) {
 		return
 	}
-	if !slices.Contains(factory.JobBudgetSteps(), body.Budget) && body.Budget != factory.NextJobCap(it) {
-		h.fail(w, 422, "choose a budget: 5, 10, 20, 30 USD or the job's next budget")
+	// Any amount from factory.MinJobBudget up is a budget; the steps and the
+	// job's next cap are only what a picker suggests.
+	budget, budgetErr := factory.CheckJobBudget(body.Budget)
+	if budgetErr != nil {
+		h.fail(w, 422, budgetErr.Error())
 		return
 	}
+	body.Budget = budget
 	var revision *int
 	if body.Expect != nil {
 		revision = body.Expect.Version
@@ -1006,7 +1010,9 @@ func (h *Handler) undoJob(w http.ResponseWriter, r *http.Request, it factory.Ite
 			cur.Merging = nil
 			return nil
 		}
-		if u := cur.StopUndo; u != nil && now.Before(u.Until) && u.By == who && cur.State == factory.StateNew {
+		// A stop is undone by whoever stopped it or by the job's own person, so
+		// an editor who stopped someone's job never leaves it stuck for them.
+		if u := cur.StopUndo; u != nil && now.Before(u.Until) && (u.By == who || (who != "" && factory.NormalizeHandle(who) == cur.Person())) && cur.State == factory.StateNew {
 			// Undo restores the work snapshot, but receipts may have arrived
 			// since Stop. Keep those dollars on the same run.
 			restored := u.Stream

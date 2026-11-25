@@ -122,6 +122,29 @@ type Probe struct {
 	Timeout time.Duration
 }
 
+// ReasoningDialect names the request field a service reads its thinking level
+// from. It is a fact about the endpoint, declared on the row that describes it,
+// because two endpoints serving the same model can read the same request
+// differently: OpenRouter translates its unified `reasoning` object for every
+// machine behind it, while DeepSeek's own API ignores that object and reads a
+// top-level word of its own. Reading the address to tell them apart would be a
+// guess, and this package does not guess (see [Source]).
+type ReasoningDialect string
+
+const (
+	// ReasoningUnified is OpenRouter's `reasoning` object, an effort word or a
+	// thinking budget. It is the zero value so every row that has not declared
+	// otherwise keeps sending exactly the bytes it always sent.
+	ReasoningUnified ReasoningDialect = ""
+
+	// ReasoningEffortLowHighMax is a top-level `reasoning_effort` that takes
+	// exactly the three words `low`, `high` and `max`. DeepSeek's first-party
+	// API speaks it and advertises it per model on its listing
+	// (`"effort":{"supported_levels":["low","high","max"]}`); it has no budget
+	// form and no word between low and high.
+	ReasoningEffortLowHighMax ReasoningDialect = "reasoning_effort:low,high,max"
+)
+
 // Source is one place models come from: an address, a key description, and the
 // facts about what lives there. IT IS CONFIGURATION AND NEVER A GUESS — nothing
 // here reads a hostname to decide anything, because a router is recognised by
@@ -149,6 +172,15 @@ type Source struct {
 	Probe        Probe
 	Listing      Listing
 	ProbeModel   string
+	// PlanProof is the request that proves the key is covered by the plan this
+	// row's one door names, for a service whose listing answers for any bearer
+	// and so proves nothing about billing. A key it refuses is not saved: the
+	// door would claim a subscription the key does not hold, and the calls would
+	// bill whatever balance the account has instead.
+	PlanProof Probe
+	// KeyStartsWith is how the service's keys begin, for the sentence a wrong
+	// paste is answered with. Empty means the OpenAI-shaped `sk-`.
+	KeyStartsWith string
 	// A ROW'S PREFERRED MUST BE ANSWERABLE ON EVERY DOOR IT CAN BIND. The door
 	// is chosen by what the key proves, so this is the vendor's best model both
 	// its subscription and metered roads serve, not simply its flagship.
@@ -165,6 +197,11 @@ type Source struct {
 	// here and written only into the call row (internal/session's
 	// [Agent.attributedEndpoint]), never put on the answer (#1391).
 	ServedAs string
+	// Reasoning is the dialect this service reads a thinking level in. Zero is
+	// OpenRouter's unified object, which every router-shaped row speaks; a row
+	// whose endpoint reads a field of its own declares it here, and the
+	// provider adapter writes that field instead ([ReasoningDialect]).
+	Reasoning ReasoningDialect
 }
 
 // Connected is one service with the two facts only a caller that may read the
@@ -442,10 +479,19 @@ func LooksLikeAPIKey(key string) bool {
 	return strings.HasPrefix(key, "sk-") && len(key) >= 20 && !strings.ContainsAny(key, " \t\r\n")
 }
 
+// LooksLikeOpenCodeKey is the Go subscription's key rule. Its keys carry an
+// oc_sk_ prefix, which the OpenAI-shaped rule refuses before any request.
+func LooksLikeOpenCodeKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return strings.HasPrefix(key, "oc_sk_") && len(key) > len("oc_sk_") && !strings.ContainsAny(key, " \t\r\n")
+}
+
 const (
 	zaiPreferredModel      = "glm-5.3"
 	moonshotPreferredModel = "kimi-k2.7-code"
 	minimaxPreferredModel  = "MiniMax-M3"
+	opencodeGoAddress      = "https://opencode.ai/inference/go/v1"
+	opencodeGoPreferred    = "glm-5.3"
 )
 
 // Vendored returns the service descriptions shipped by this phase.
@@ -456,6 +502,10 @@ func Vendored() []Source {
 			Address: "https://api.deepseek.com/v1", KeyEnv: "DEEPSEEK_API_KEY",
 			KeyShape: LooksLikeAPIKey, Listing: ListingModels, Probe: listingProbe(),
 			Preferred: "deepseek-v4-pro",
+			// OBSERVED 2026-11-22: api.deepseek.com ignores OpenRouter's
+			// `reasoning` object, so every level ran at DeepSeek's default and
+			// max was unreachable. Its listing names the field it does read.
+			Reasoning: ReasoningEffortLowHighMax,
 		},
 		{
 			ID: "z-ai", Written: "z-ai", Name: "Z.ai", KeyEnv: "ZHIPU_API_KEY",
@@ -571,6 +621,21 @@ func Vendored() []Source {
 			Address:  "http://claude-code.local/v1",
 			KeyShape: func(key string) bool { return strings.TrimSpace(key) == "claude-code" },
 			Listing:  ListingNone, Probe: Probe{}, Preferred: "sonnet",
+		},
+		{
+			// The Go plan has one endpoint and one door. Its /models answers
+			// for any bearer, so the door is proved by the usage meter instead:
+			// GET /usage answers 200 for a key a Go subscription covers and 403
+			// "Go subscription required" for one it does not, whose
+			// calls would draw from the workspace balance. Extra Usage, an
+			// opt-in on the service's console, can still spend credits past a
+			// spent window on this same endpoint; nothing on the wire says so.
+			ID: "opencode-go", Written: "opencode-go", Name: "OpenCode Go",
+			Address: opencodeGoAddress, KeyEnv: "OPENCODE_API_KEY", KeyShape: LooksLikeOpenCodeKey,
+			KeyStartsWith: "oc_sk_",
+			Doors:         []Door{{ID: "go", Name: "Go", Address: opencodeGoAddress}},
+			Listing:       ListingModels, Probe: listingProbe(), Preferred: opencodeGoPreferred,
+			PlanProof: Probe{Address: "/usage", Method: "GET", Accepts: []int{200}, Timeout: ProbeTimeout},
 		},
 	}
 }
@@ -714,6 +779,9 @@ type Outcome struct {
 	// It is meaningful only when Listed is true.
 	Refreshed bool
 	Door      Door
+	// KeyStartsWith is carried on a wrong-shape outcome: how the service's keys
+	// begin, when it is not the OpenAI-shaped `sk-`.
+	KeyStartsWith string
 	// PlanPaused records that the selected door proved the plan exists but its
 	// current usage window is spent. PlanReset is the vendor's readable reset
 	// time when it supplied one, and Overflow is the separately billed road the

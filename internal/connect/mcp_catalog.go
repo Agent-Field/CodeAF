@@ -17,16 +17,17 @@ package connect
 // for. Each entry carries the page it was read from and the date it was read.
 // An address nobody could confirm from the vendor is not shipped.
 //
-// ── AND WHY GITHUB IS NOT HERE ──
+// ── AND WHY GITHUB IS NOT ON THIS LIST ──
 //
-// GitHub runs one of these too, and it is deliberately left out of this wave:
-// its sign-in does not let a program introduce itself, so connecting it would
-// need an application registered by hand in a console first — which is the one
-// thing this half of the package exists to avoid. On 2026-05-27 a maintainer
-// closed github/github-mcp-server issue #2532, "Support Dynamic Client
-// Registration", saying this introduction will never be implemented on
-// GitHub's sign-in server. GitHub therefore comes back only with an application
-// registered by hand in a console, in a later wave.
+// GitHub runs one of these too, and its sign-in does not let a program
+// introduce itself: on 2026-05-27 a maintainer closed github/github-mcp-server
+// issue #2532, "Support Dynamic Client Registration", saying this introduction
+// will never be implemented on GitHub's sign-in server. So GitHub cannot be an
+// entry here, where every service introduces itself. It is connected instead
+// with the application the owner registered by hand for the Factory (the
+// device flow in internal/factory/github), and its tool server takes the token
+// that comes back as it is. github.go is that plug, and it keeps no token of
+// its own: it reads and writes the Factory's.
 //
 // Slack is not a tool server because its hosted tools refuse applications
 // outside its Marketplace and it offers no self-registration. It arrives as a

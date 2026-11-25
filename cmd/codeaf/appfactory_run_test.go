@@ -271,26 +271,6 @@ func TestTheLocalRunnerIsOnFromTheStartAndStartsNothing(t *testing.T) {
 	s.mustFail("factory.local_run", map[string]any{"caller": "w1"}, appwire.CodeClosed)
 }
 
-// A RUNNER THE FACTORY WOULD REFUSE IS NOT STARTED. With no GitHub login the
-// factory takes no worker (it needs a handle), so the start brings none on, and
-// a run asked for says so and starts nothing, instead of retrying in silence
-// for as long as the engine lives.
-func TestLocalRunNeedsGitHubConnectedAndStartsNothingWithout(t *testing.T) {
-	useLocalHome(t)
-	w := newFactoryWire(t, testFactoryHub(t))
-	w.must("factory.local_start", map[string]any{"caller": "w1"}, &appwire.FactoryLocalStatus{})
-	msg := w.mustFail("factory.local_run", map[string]any{"caller": "w1"}, appwire.CodeConflict)
-	if !strings.Contains(msg, "connect GitHub") {
-		t.Fatalf("the refusal does not say what to do: %q", msg)
-	}
-	l := &w.backend.local
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.runner || l.runnerDone != nil {
-		t.Fatal("a refused run left a runner")
-	}
-}
-
 // ANOTHER CODEAF THAT SERVES THE FACTORY KEEPS ITS OWN RUNNER: this engine
 // opens no second authority and is refused a runner of its own.
 func TestLocalRunIsRefusedWhenAnotherCodeafServes(t *testing.T) {

@@ -3,8 +3,9 @@
 ## How do I see what happened — turning the record on with /debug, --debug or CODEAF_DEBUG
 
 When a turn goes wrong and the answer is not in what you can see, you can ask codeaf to
-keep the **debug record** of a run: everything that run did, in a folder of its own. There
-is one switch and three ways to say it, and they all mean the same thing.
+keep the **debug record** of a run: everything that run did, in a folder of its own, so
+that what happened is there to read afterwards. There is one switch and three ways to say
+it, and they all mean the same thing.
 
 ```
 /debug                            in a conversation, from here to the end of it

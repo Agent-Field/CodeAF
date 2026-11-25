@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -758,6 +759,10 @@ var crewVendors = map[string][]string{
 	// missing from it is a model this connection no longer serves, not a claim
 	// that it never could.
 	"aiand": {"deepseek", "z-ai", "moonshotai", "qwen", "openai", "google"},
+	// The Go plan serves bare ids from many vendors. The catalog vendor words
+	// come from OpenRouter's spelling, not from the listing's canonical_id
+	// spelling, because the crew weighs catalog rows.
+	"opencode-go": {"anthropic", "deepseek", "google", "meituan", "minimax", "moonshotai", "openai", "qwen", "reflection", "stepfun", "tencent", "x-ai", "xiaomi", "z-ai"},
 }
 
 // crewVendorWire spells the catalog's vendor segment the way a connection's OWN
@@ -812,7 +817,7 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 			}
 		case strings.EqualFold(source.ID, "codex"):
 			p.Kind = crewroute.Plan
-			p.Serves = []string{source.Preferred}
+			p.Serves = codexServes(service, profileDir, openRouterConnected(set))
 		case strings.EqualFold(source.ID, "claude-code"):
 			p.Kind = crewroute.Plan
 		case strings.EqualFold(source.ID, "ollama"):
@@ -823,6 +828,14 @@ func CrewProvidersAt(profileDir string) []CrewProvider {
 		case service.Door.ID != "" && !service.Door.Metered:
 			p.Kind = crewroute.Plan
 			p.Serves = append([]string(nil), service.Door.Models...)
+			if p.ID == "opencode-go" && len(p.Serves) == 0 {
+				for _, model := range catalog.Recall(CatalogOptionsFor(service, profileDir)).ModelsNow() {
+					p.Serves = append(p.Serves, model.ID)
+				}
+				if len(p.Serves) == 0 {
+					p.Serves = []string{source.Preferred}
+				}
+			}
 		}
 		if !strings.EqualFold(source.ID, modelsource.DefaultID) && !modelsource.IsCustomID(source.ID) && !strings.EqualFold(source.ID, "ollama") {
 			p.vendors = append([]string{strings.ToLower(source.Written)}, crewVendors[strings.ToLower(source.ID)]...)
@@ -879,7 +892,13 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 	if !served {
 		return crewroute.Route{}, false
 	}
-	if len(p.Serves) > 0 {
+	if p.ID == "opencode-go" {
+		// The Go plan needs the exact ID. Lineage can equate a listed
+		// snapshot with an alias the endpoint never listed.
+		if !slices.Contains(p.Serves, tail) {
+			return crewroute.Route{}, false
+		}
+	} else if len(p.Serves) > 0 {
 		ok := false
 		for _, s := range p.Serves {
 			if strings.EqualFold(crewroute.Lineage(s), crewroute.Lineage(tail)) {
@@ -892,6 +911,32 @@ func (p CrewProvider) route(id string, model crewroute.Model, known bool) (crewr
 		}
 	}
 	return crewroute.Route{Provider: p.ID, Send: p.send(vendor, tail), Kind: p.Kind}, true
+}
+
+// codexServes is the models a ChatGPT sign-in can be sent: the account's own
+// remembered listing, and the vendored preferred model only while nothing is
+// remembered. The preferred id alone was a model the account may not list — on
+// 2026-11-23 a ChatGPT account answered `gpt-5.5` with "not supported when
+// using Codex with a ChatGPT account", and the crew's second router look sent
+// it there anyway.
+//
+// With OpenRouter connected it stays the preferred id alone, as it always was:
+// that profile's crew is routed among OpenRouter's models, and widening what the
+// plan serves would move seats off OpenRouter.
+func codexServes(service modelsource.Connected, profileDir string, openRouter bool) []string {
+	if openRouter {
+		return []string{service.Source.Preferred}
+	}
+	var ids []string
+	for _, row := range recallCached(CatalogOptionsFor(service, profileDir)) {
+		if id := strings.TrimSpace(row.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 && strings.TrimSpace(service.Source.Preferred) != "" {
+		ids = []string{service.Source.Preferred}
+	}
+	return ids
 }
 
 // send is the id a call to this connection carries, which is not always its

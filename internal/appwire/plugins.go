@@ -8,7 +8,10 @@ import (
 )
 
 const (
-	FeaturePlugins         = "plugins"
+	FeaturePlugins = "plugins"
+	// FeaturePluginsGitHub says this engine lists GitHub as a connector and
+	// serves plugins.connect_local; an older engine simply does not list it.
+	FeaturePluginsGitHub   = "plugins_github"
 	EventPluginsChanged    = "plugins.changed"
 	EventPluginsNeeded     = "plugins.needed"
 	EventPluginsNeededDone = "plugins.needed_done"
@@ -56,6 +59,9 @@ type PluginBrowserParams struct {
 type PluginBrowserResult struct {
 	State string `json:"state" enum:"waiting"`
 	Link  string `json:"link"`
+	// Code is the one-time code the person types on Link, for a device
+	// sign-in (GitHub's). The sheet shows it before anything opens Link.
+	Code string `json:"code,omitempty"`
 }
 type PluginKeyParams struct {
 	ID     string `json:"id"`
@@ -110,6 +116,13 @@ type Plugins interface {
 	SetPluginCapability(PluginCapabilityParams) error
 	DisconnectPlugin(PluginDisconnectParams) error
 }
+
+// PluginsLocal is the engine's half of plugins.connect_local: adopt a login
+// already on this computer (GitHub: gh's). Its answer is connect_key's shape.
+type PluginsLocal interface {
+	ConnectPluginLocal(PluginID) (PluginKeyResult, error)
+}
+
 type PluginsChanged struct {
 	ID    string `json:"id"`
 	Error string `json:"error,omitempty"`
@@ -149,6 +162,17 @@ func init() {
 			return PluginKeyResult{}, Errorf(CodeBadParams, "supply key or key_env, not both")
 		}
 		return e.ConnectPluginKey(p)
+	})
+	methods["plugins.connect_local"] = typed(func(e Engine, p PluginID) (*PluginKeyResult, error) {
+		local, ok := e.(PluginsLocal)
+		if _, plugins := e.(Plugins); !ok || !plugins {
+			return nil, Errorf(CodeUnknownMethod, "plugins are unavailable")
+		}
+		if _, err := required("id", p.ID); err != nil {
+			return nil, err
+		}
+		out, err := local.ConnectPluginLocal(p)
+		return &out, err
 	})
 	methods["plugins.set_capability"] = pluginMethod(func(p PluginCapabilityParams) string { return p.ID }, func(e Plugins, p PluginCapabilityParams) (Empty, error) {
 		if _, err := required("capability", p.Capability); err != nil {
@@ -194,6 +218,9 @@ func init() {
 func withPluginsFeature(h Hello, e Engine) Hello {
 	if _, ok := e.(Plugins); ok {
 		h = withFeature(h, FeaturePlugins)
+		if _, local := e.(PluginsLocal); local {
+			h = withFeature(h, FeaturePluginsGitHub)
+		}
 	}
 	if _, ok := e.(PluginCSVReader); ok {
 		h = withFeature(h, FeaturePluginsReadCSV)

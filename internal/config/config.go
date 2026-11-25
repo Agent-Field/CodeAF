@@ -469,11 +469,17 @@ func load(requireKey bool) (Config, error) {
 	unreadProfileKeys := warnUnreadProfileKeys(profileDir, profileValues)
 	apiKey := apiKeyFrom(profileValues)
 	baseURL := firstNonEmpty(env.Get("CODEAF_BASE_URL"), DefaultBaseURL)
+	// The profile's default is resolved only when no model variable names one,
+	// because it reads the profile's services ([ReachableDefaultAt]).
+	model := strings.TrimSpace(env.Get(ModelEnv))
+	if model == "" {
+		model = ChatDefaultAt(profileDir)
+	}
 	config := Config{
 		APIKey:            apiKey,
 		BaseURL:           baseURL,
 		UnreadProfileKeys: unreadProfileKeys,
-		Model:             firstNonEmpty(env.Get(ModelEnv), ChatDefaultAt(profileDir)),
+		Model:             model,
 		PlanModel:         strings.TrimSpace(env.Get(PlanModelEnv)),
 		Timeout:           DefaultTimeout,
 		Reasoning:         DefaultReasoning,
@@ -743,10 +749,10 @@ func (c Config) ResolveVideoModel(models *catalog.Catalog) string {
 }
 
 // ResolveVisionModel applies the inspection-proxy order at the moment a leaf
-// starts: an explicit environment slot, the live talk and work choices when
-// each advertises image input, Qwen VL when advertised, then the first model
-// with image input. Unlike generation slots, an unadvertised default is never
-// invented: no result means view_image can preserve its calm refusal.
+// starts: an explicit environment slot, then the live talk and work choices
+// when each advertises image input. Nothing else: a model nobody chose is never
+// elected to look (solo-sheets F17), and no result means view_image can
+// preserve its calm refusal.
 //
 // EVERY CANDIDATE MUST BE A PAIR OF EYES, NOT A PAINTER. Image input is also
 // what an image editor takes, and its answer is a picture: handed a photograph
@@ -761,18 +767,17 @@ func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel
 	if models == nil {
 		return ""
 	}
-	for _, candidate := range []string{talkModel, workModel, preferredVisionModel} {
+	// ONLY A MODEL SOMEBODY CHOSE LOOKS (solo-sheets F17): the talk and work
+	// models, when one can see. A remembered vendor or the catalog's first
+	// sighted row used to be elected here, and a person on one model for
+	// everything was billed for another vendor's eyes with nothing said.
+	for _, candidate := range []string{talkModel, workModel} {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
 			continue
 		}
 		if row, ok := models.Model(candidate); ok && seesAndAnswersInText(row) {
 			return candidate
-		}
-	}
-	for _, candidate := range models.ModelsWithInput("image") {
-		if seesAndAnswersInText(candidate) {
-			return candidate.ID
 		}
 	}
 	return ""
@@ -1012,6 +1017,11 @@ func ClientConfigFor(sources modelsource.Set, model string) provider.Config {
 		BillingDoor: service.Door.Name,
 		Billing:     billingFactOf(service),
 		Effort:      effort,
+		// The dialect travels from the service row rather than being inferred
+		// from the address, so a router that happens to serve DeepSeek's
+		// models keeps the unified object and only the vendor's own API gets
+		// the field it reads.
+		ReasoningDialect: service.Source.Reasoning,
 	}
 	if strings.EqualFold(strings.TrimSpace(service.Source.ID), "codex") {
 		configured.APIKey = codexauth.Sentinel

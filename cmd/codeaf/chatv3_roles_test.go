@@ -24,14 +24,15 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 		t.Fatalf("v3RolesSource: %v", err)
 	}
 
-	// An untouched profile: every class ships pointed at a model (the crew, in
-	// internal/config's crew.go), so nothing here resolves to the conversation.
+	// An untouched profile: the reflex is a background seat and the reflex row
+	// ships empty, so it follows the conversation (internal/roles'
+	// background.go).
 	reflex, err := roles.Resolve(roles.Source(source), roles.RoleReflex, "vendor/conversation")
 	if err != nil {
 		t.Fatalf("resolving the reflex role: %v", err)
 	}
-	if reflex != config.DefaultReflexModel {
-		t.Fatalf("the reflex role resolves to %q, want the reflex tier's own %q", reflex, config.DefaultReflexModel)
+	if reflex != "vendor/conversation" {
+		t.Fatalf("the reflex role resolves to %q, want the conversation's model", reflex)
 	}
 
 	// And a person who pinned the tier is obeyed.
@@ -60,8 +61,8 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 		t.Fatalf("the reflex role resolves to %q after the tier was pinned to vendor/tiny", reflex)
 	}
 
-	// EVERY CLASS IS WIRED. The two small rows ship pointed at a model; the
-	// three crew seats are the crew's — a pin when one is written, the
+	// EVERY CLASS IS WIRED. The two small rows ship empty and the title (a
+	// background seat) follows the conversation; the three crew seats are the crew's — a pin when one is written, the
 	// router's pick otherwise — so pinning them here makes every class answer
 	// with its own model and none with the conversation's. The planner's value
 	// may carry a level, and Resolve hands back the id alone.
@@ -80,7 +81,8 @@ func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 		role roles.Role
 		want string
 	}{
-		{roles.RoleTitle, config.DefaultLowModel},
+		{roles.RoleTitle, "vendor/conversation"},
+		{roles.RoleRouterConfirm, "vendor/conversation"},
 		{roles.RoleWorker, "vendor/worker"},
 		{roles.RoleAuditor, "vendor/checker"},
 		{roles.RolePlanner, "vendor/planner"},

@@ -88,6 +88,9 @@ type Order struct {
 	Does      string `json:"does"`
 	Wont      string `json:"wont,omitempty"`
 	AnswersIn string `json:"answers_in" enum:"chat,crew,everywhere,not_here"`
+	// Workstream is the workstream it keeps running for, absent for one that
+	// belongs to none: its results land there as a group named after it.
+	Workstream string `json:"workstream,omitempty"`
 	// Trust is the ladder's rung, ApprovedRuns how many go's it has had, and
 	// TrustAfter how many make it trusted.
 	Trust           string     `json:"trust" enum:"asks_first,earning,trusted"`
@@ -97,7 +100,11 @@ type Order struct {
 	TimePerRunS     int        `json:"time_per_run_s"`
 	State           string     `json:"state" enum:"proposed,active,paused,stopped,done"`
 	FiresAt         *time.Time `json:"fires_at,omitempty"`
-	LastRun         *OrderRun  `json:"last_run,omitempty"`
+	// NextRuns is when a repeating order would run next, up to
+	// [OrderNextRunsMost], whether or not it is switched on: the preview a
+	// workstream's People and rules sheet shows before the switch.
+	NextRuns []time.Time `json:"next_runs,omitempty"`
+	LastRun  *OrderRun   `json:"last_run,omitempty"`
 	// Asking is the run waiting for the person's go, when one is.
 	Asking    *OrderRun `json:"asking,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -113,10 +120,15 @@ type OrderRun struct {
 	At *time.Time `json:"at,omitempty"`
 	// Result is set once it is over; Late says it started late, after a slot
 	// missed while the Mac was asleep or codeaf was closed.
-	Result string  `json:"result,omitempty" enum:"ok,quiet,incomplete,skipped,not_right"`
-	Late   bool    `json:"late,omitempty"`
-	Line   string  `json:"line,omitempty"`
-	USD    float64 `json:"usd,omitempty"`
+	Result string `json:"result,omitempty" enum:"ok,quiet,incomplete,skipped,not_right"`
+	Late   bool   `json:"late,omitempty"`
+	Line   string `json:"line,omitempty"`
+	// Outcome is the run's own word once it is over: done, your-call,
+	// incomplete, stopped, skipped, quiet or unchecked. Result folds several of
+	// them into incomplete; a workstream task needs to tell "your call" (it
+	// needs its owner) and "stopped" apart from a run that did not finish.
+	Outcome string  `json:"outcome,omitempty"`
+	USD     float64 `json:"usd,omitempty"`
 	// Transcript is the folder of the conversation a piece of work ran in.
 	Transcript string `json:"transcript,omitempty"`
 }
@@ -132,6 +144,8 @@ type OrderEdits struct {
 	BudgetPerRunUSD *float64 `json:"budget_per_run_usd,omitempty"`
 	TimePerRunS     *int     `json:"time_per_run_s,omitempty"`
 	Trust           *string  `json:"trust,omitempty"`
+	// Workstream scopes it to a workstream, or "" to none.
+	Workstream *string `json:"workstream,omitempty"`
 }
 
 // OrderChanged is order.changed and order.missed.

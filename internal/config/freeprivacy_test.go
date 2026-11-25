@@ -22,8 +22,8 @@ func TestLowBalanceDoesNotGrantFreeRouteConsent(t *testing.T) {
 	if CrewFreeRoutesAt(dir) || ChatDefaultAt(dir) != DefaultModel {
 		t.Fatal("low balance changed the free-route choice")
 	}
-	for tier := range freeHelperModels {
-		if got := TierModelAt(dir, tier); got != builtinTierModel(tier) {
+	for _, tier := range []string{ModelTierReflex, ModelTierLow} {
+		if got := TierModelAt(dir, tier); got != "" {
 			t.Fatalf("%s automatically changed to %s", tier, got)
 		}
 	}
@@ -36,9 +36,11 @@ func TestLowBalanceDoesNotGrantFreeRouteConsent(t *testing.T) {
 	if ChatDefaultAt(dir) != FreeChatModel {
 		t.Fatal("explicit opt-in did not enable free defaults")
 	}
-	for tier, want := range freeHelperModels {
-		if got := TierModelAt(dir, tier); got != want {
-			t.Fatalf("opted-in %s=%s want%s", tier, got, want)
+	// Opted in, the helper rows still have no model of their own: they follow
+	// the conversation, which is now on the free rung.
+	for _, tier := range []string{ModelTierReflex, ModelTierLow} {
+		if got := TierModelAt(dir, tier); got != "" {
+			t.Fatalf("opted-in %s=%s, want it to follow the conversation", tier, got)
 		}
 	}
 	if err := SetCrewFreeRoutes(dir, false); err != nil {

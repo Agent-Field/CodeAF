@@ -49,15 +49,46 @@ which can be different from the PR created for the job.
 
 ## what is the factory — jobs, runners and a pull request at the end
 
-The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself. Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own unless you gave it a go-ahead.
+The factory takes work that is already written down, such as a GitHub issue or a brief handed over from a chat, and runs it through the steps of its repository's pipeline on a runner. A person is asked at fixed points, and a job that changes code ends as a pull request, which its assignee can merge from the job itself (in Personal, a job on a folder on this computer ends on a local branch instead; see "a job on a folder on this computer"). Nothing starts by surprise: a job a rule does not allow asks first, and a repository without `.codeaf/factory.yaml` runs on the defaults, under which nothing starts on its own unless you gave it a go-ahead.
 
 Three things make one factory:
 
 - the **service**, started with `codeaf factory serve`, which holds the jobs and the people;
 - one or more **runners**, machines that pull a job and run it with their owner's keys;
-- the **people**, each signed in with their own GitHub.
+- the **people**, each signed in with a username and password, a passkey, or their GitHub.
 
 A machine with no factory set up has none of this: the chat's factory tools are absent from its belt rather than present and failing.
+
+## a job on a folder on this computer — a local repository, a repo that isn't on GitHub, "A folder on this computer…", Open a pull request
+
+On the factory that runs on this computer (Personal), Factory › New job can point a job at a folder instead of a repository: open the Repo field, pick **A folder on this computer…** and choose a folder that holds a git repository (a folder inside one works on the whole repository). The job runs the same steps in its own worktree on its own branch, so your checkout and its uncommitted changes are never touched.
+
+- **It finishes on a local branch.** After its proof the job is done and says "Finished on branch <branch> in <folder>. Nothing was pushed." There is no publish approval: nothing leaves the computer.
+- **Open a pull request** is offered on the finished job only when the folder's `origin` is on GitHub and GitHub is connected. It pushes the job's branch (never forced, your checkout untouched) and opens a draft pull request. Otherwise the button is absent; asked anyway: "A pull request needs the folder to have a GitHub remote and GitHub to be connected."
+- **Refusals**: "<folder> isn't a git repository · pick the folder that holds one." A folder that later moved or lost its repository: "the folder is gone or no longer holds a git repository."
+- **No GitHub needed.** A folder job runs with GitHub not connected: the runner on this computer attaches under the local name `this-computer`, used only while GitHub is not connected, and takes the job. GitHub is needed only for jobs on GitHub repositories and for Open a pull request. Factory setup's first step has **Skip GitHub for now**, which opens the Factory on this computer without connecting.
+- **Not in an organization.** Its server cannot reach your laptop, so the folder choice is absent there; a create that sends one is refused: "A folder on this computer can only be used in Personal. An organization's jobs run on the repositories it turned on."
+- Protocol: a create takes `folder` (a full path) in place of `repo`; Personal lists `local_folder` in `factory.features`; `factory.job_open_pr` opens the pull request.
+
+## make a job without a GitHub account — the organization's repositories, no repository to pick, "An admin turns repositories on in Repos"
+
+On an organization server you do not need a GitHub account of your own to make a job. The organization's repositories are the ones turned on in Repos. Only the operator turns a repository on or off, and only from the list the server's own GitHub connection can read.
+
+- **Everyone signed in reads the organization's repositories**, with a password, a passkey or GitHub. A GitHub member also keeps every repository their own GitHub sign-in reads; nothing they had before is taken away.
+- **A job on one of the organization's repositories is made in a workstream you can edit.** Factory › New job asks for it with a Workstream field (see "the Workstream field in New job"). Someone who can only view a workstream sees its jobs and makes none there. The operator, and a GitHub member whose own sign-in reads the repository, may still make one in no workstream at all.
+- **When the organization has none on**, Add job says so: someone who is not the operator reads "An admin turns repositories on in Repos"; the operator gets a link straight to Repos.
+
+Turning a repository on is the operator's choice of what every member may read through the server: its jobs, their steps and their pull requests.
+
+## the Workstream field in New job — can't add a job to Backlog, "Choose a workstream you can edit", "Ask someone to give you edit on a workstream"
+
+In Factory › New job, picking one of the organization's repositories that you read only through the organization (you are not the operator, and no GitHub sign-in of your own reads it) adds a **Workstream** field under Repository. It lists only the workstreams you can edit, by name; archived ones and ones you can only view are not offered. Add to Backlog makes the job in the workstream you chose, and anyone who can see that workstream sees the job.
+
+- **You can edit no workstream.** Under Workstream the sheet says "Ask someone to give you edit on a workstream, or ask the operator to make this job." in place of a list, and Add to Backlog stays off. Someone with full access to a workstream, or its steward, can give you edit from its People.
+- **Several to choose from.** Nothing is picked for you and Add to Backlog stays off until you choose; with exactly one, it is already chosen. The list says "Only workstreams you can edit. Everyone in it sees the job."
+- **The server refuses a job with no workstream** on such a repository. A tool or script that names none is refused with "Choose a workstream you can edit for this job: this repository is the organization's." when you can edit one, and with the "Ask someone…" sentence above when you can edit none.
+- **Workstreams have no Jobs tab.** A job is made from Factory › New job, never from inside a workstream.
+- The operator, and a GitHub member whose own sign-in reads the repository, see no Workstream field: their jobs need none.
 
 ## job numbers and GitHub issue numbers — a job with no GitHub issue
 
@@ -157,7 +188,7 @@ changed is not decoded again.
 
 **Jobs at once** is the one number that limits how many jobs a computer runs
 together. A newly attached computer defaults to **15 jobs at once**. Change it
-in **Settings → Factory → Your computers**, with the stepper beside each of
+in **Settings → Organizations → Your computers**, with the stepper beside each of
 your computers; it is owner-only. The supported range is 1–100. An existing
 saved limit is kept on restart and upgrade, including a previously chosen limit
 of two. A change applies within about five seconds without restarting.
@@ -168,7 +199,7 @@ memory limits per job: the computer's own system shares them.
 Jobs over the limit wait in the queue in priority order, then oldest first (see "priority orders the queue"). When the owner's eligible
 computers are full, queued jobs say **Waiting for capacity** and show the
 number of occupied execution slots and the configured limit. The notice points
-to Settings → Factory → Your computers and offers **Change jobs at once**. An
+to Settings → Organizations → Your computers and offers **Change jobs at once**. An
 offline or unknown runner is reported as waiting for a runner, without
 inventing a full-capacity count. A restarted codeaf lists each of its computers
 once: the rows the process before it left go once they have been quiet past
@@ -212,13 +243,29 @@ conflict queues a bounded maintenance pass. Only the worker executing that pass
 holds a slot; completing it releases capacity and resumes background monitoring.
 Budgets, ownership, publication consent and duplicate-repair protection still apply.
 
-The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/name`), `github_client_id` (an OAuth app with device flow on), `team` (GitHub handles), `mode` (`solo` or `team`) and the HTTPS keys `tls`, `domain`, `cert_file`, `key_file`, `cache_dir` and `trusted_proxies`. Unknown keys are refused. Serving plain HTTP on a non-loopback address prints a warning, because access tokens and sign-in sessions would cross the network unencrypted. `--model slug` and `--one-model` pin the model its triage reads use. `--new-operator-link` prints a fresh one-time operator recovery link. Only one service runs per codeaf home (`serve.lock`); a second one says so.
+The config keys are `name`, `listen`, `access_token`, `repos` (a list of `owner/name`), `github_client_id` (an OAuth app with device flow on), `team` (GitHub handles), `mode` (`solo` or `team`) and the HTTPS keys `tls`, `domain`, `cert_file`, `key_file`, `cache_dir`, `trusted_proxies` and `hsts_include_subdomains` (`true` adds `includeSubDomains` to HSTS; off by default; only for a domain you own whose every name is HTTPS). Unknown keys are refused. `domain: localhost` is taken only with `tls: files` and a certificate of your own (no certificate authority issues one for it); it is how passkeys are tried on one machine. Serving plain HTTP on a non-loopback address prints a warning, because access tokens and sign-in sessions would cross the network unencrypted. `--model slug` and `--one-model` pin the model its triage reads use. `--new-operator-link` prints a fresh one-time operator recovery link. Only one service runs per codeaf home (`serve.lock`); a second one says so.
 
 ## GitHub rate limit on a team factory — "GitHub is rate-limited until", github_limited, operator access link after the reset
 
 When the GitHub rate limit for a team factory's token is spent, `codeaf factory serve` still answers its address at once; only its GitHub reads pause. The factory logs one line when it meets the limit, `GitHub is rate-limited until HH:MM; the factory keeps serving and reads GitHub again then`, and one line when a GitHub read succeeds again, `GitHub's rate limit has cleared; the factory reads GitHub again`. While the limit is spent, the factory's `/v1/about` carries that sentence as `github_limited` and the reset time as `github_resumes_at`.
 
-The operator access link of a fresh team factory is printed once GitHub names the host's login, after the reset if the limit is spent. A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
+The operator access link of a fresh team factory is printed at once: it is not named for any GitHub login, so it never waits on GitHub's limit (see "claim the organization with a password"). A GitHub read whose limit resets more than ninety seconds later is not retried in a loop; the factory's next poll after the reset reads it.
+
+## join an organization — an invite link, joining a factory, where Factory settings went in the desktop app
+
+A person joins an **organization**, never Factory on its own. An organization is one server (`codeaf factory serve`), and joining it brings everything it holds at once: its workstreams, canvases, chats, teams and Factory's jobs and pipelines. There is no separate step to connect or join Factory; in an organization, Factory is just there, as one of its places.
+
+In the desktop app there are three ways in, and all three open the same **Join an organization** page:
+
+- first run's **Where do you want to work?**: **Just me** (Personal, on this computer), **Join an organization**, or **Set up the Factory** (run it on this computer, in Personal, where the engine offers it);
+- the switcher at the foot of the strip: **Join an organization…**;
+- **Settings › Organizations**: **Join an organization…** under the organizations you are already in.
+
+The page is headed **Sign in to WorkAF**. Paste your organization's link (the one `codeaf factory serve` printed) or the invite link someone sent you. Signing in creates your account. Once it is read, the page says **You're invited to** and the organization's name, then offers a passkey, a username and password, or GitHub, in the order the server prefers; a way the server does not take is named in one line ("Acme does not take passkeys yet."). The operator of an organization nobody has set up lands on **Start your organization** next (see the page on starting an organization). **Or join by your organization's address** takes the address (and an access token, if you were given one) instead.
+
+**Settings › Organizations** has one section per organization you are in: your account there (password, passkeys, sign out, **Leave organization…**), its invite links, **People in** the organization (invite someone by email with a team and workstreams; see the page on inviting people), the model key and where agents run, then **Teams in** the organization, then **Factory** for that organization (repositories, AI notes, and the line to its rules, limits and computers). It was called Settings › Factory before.
+
+Invite links keep their old spelling, `codeaf://factory/join?url=…#token=…`, so every link already sent still works.
 
 ## give someone access — codeaf factory token, revoke, revoke-sessions and name
 
@@ -229,7 +276,68 @@ The service is joined with an access link, which the operator creates for one pe
 - `codeaf factory name` shows or changes the name the factory goes by.
 - `codeaf factory steps` prints the built-in step prompts; `codeaf factory convert` turns a Markdown pipeline into `.codeaf/factory.yaml`.
 
-An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and the person's GitHub can see at least one of its repositories. Each failure is one plain sentence.
+An access link looks like `codeaf://factory/join?url=https://factory.example#token=…`. The secret is in the part after `#`, so it is never sent as part of an address. A link checks, in this order: the factory answers, it is not revoked, not expired, not used up, and, for a person who signs in with GitHub, their GitHub can see at least one of its repositories. Each failure is one plain sentence.
+
+## sign in to an organization with a username and password — sign up, sign in again, change password, wrong password
+
+An organization server (`codeaf factory serve`) takes a username and password; a passkey comes first where the server can offer one (see "sign in with a passkey"), and GitHub is the last way. Its `/v1/about` lists them in `sign_in`, preferred first: `["passkey","password","github"]` on an https server with a name, `["password","github"]` otherwise. You make an account by opening the operator link or an invitation link and choosing a username and a password; the link is used up in the same step that makes the account, so two people can never both join on one single-use link.
+
+- A username is 2 to 39 lowercase letters, digits or hyphens. It must be new to the server: not a GitHub login that ever signed in, nor a name already given a share, a team place or a job. "That name belongs to someone who signs in here with a password." refuses a GitHub sign-in with a password person's name. An invitation made for one GitHub login takes no password: "This link is for a GitHub account; sign in with GitHub."
+- A password is 12 characters to 256 bytes, any characters, with no other composition rules and no expiry. One on the embedded list of about 486,000 common passwords, compared by its letters and digits only (so "P.a.s.s.w.o.r.d-1234" counts), or one that contains your username, is refused with a sentence naming the rule.
+- A wrong username and a wrong password get the same sentence: "That username and password don't match."
+- "Too many tries. Wait a few minutes." comes after 10 wrong tries for a username from one address, 100 for a username from everywhere, or 50 from one address; the wait grows with more tries and goes away on its own. A machine you have signed in on before is not held up by other people's guesses (see the next section).
+- Changing your password, or a reset, ends every session made with the old one. Signing out ends that session on the server.
+- A session lasts 30 days after you last used it, and 90 days at most.
+- Password sign-in works only over HTTPS, or on the server's own machine, or behind a trusted proxy that says HTTPS.
+
+## claim the organization with a password — operator link only offers GitHub, GH_TOKEN, "This link is for a GitHub account"
+
+The operator link that `codeaf factory serve` prints on a fresh team server is not tied to anyone's GitHub account, even when the server already holds a GitHub token (`GH_TOKEN`, or a GitHub grant in its home). Whoever opens it first chooses how to claim the server: a username and password ("Create operator account"), a passkey where the server offers one, or "Sign in with GitHub instead". The secret in the link is the proof, so share it only with the person who should run the organization.
+
+Until 2026-11-16 a server that already had a GitHub token named its operator link for that token's GitHub login. Its landing then offered only GitHub, and a person who signs in with a password could not claim the server. That is gone.
+
+A recovery link (`codeaf factory serve --new-operator-link`, after someone has claimed the server) is still for the operator who claimed it. An invitation an operator makes for one GitHub login still takes no password: "This link is for a GitHub account".
+
+## a trusted machine — someone guessing my username, "Too many tries" on a new laptop, device token
+
+When the desktop app can keep secrets in the system keychain, each sign-up, reset, password change or sign-in on that machine gets a device token from the organization, kept beside the sign-in. A client that cannot keep it gets none. Later sign-ins on that machine present it. While a stranger guesses at your username from many addresses, the 100-tries limit for the username holds them up but not your machines: a machine with its token is counted by itself (10 wrong tries from one address, 100 from everywhere) and its address (50); past 100 its tries count like any other. Signing out keeps the token; disconnecting the factory removes it.
+
+The server keeps only a hash of each token. A token lasts 180 days after it was last used and is not replaced on use; a restart of the server keeps them. A person holds at most 16: past that a sign-in still works but gets no new token, and no token in use is ever pushed out. Changing your password, removing a passkey, a reset, or being removed ends every token made before, so the machine you changed it on gets a new one and your other machines count as new until they sign in again.
+
+A new machine during such an attack reads "Too many tries. Wait a few minutes." until the attack slows. To get in at once, ask the operator for a reset link: a reset link, like an unused invitation, is never held up by tries, and the reset trusts that machine from then on.
+
+## sign in with a passkey — Touch ID, Face ID, Windows Hello, your phone, a security key
+
+A passkey is the first way into an organization when its server is reached over HTTPS at a DNS name (not a bare IP address, not plain HTTP). Nothing secret is sent to the server: the passkey stays in your iCloud Keychain, Google Password Manager, 1Password, Windows Hello or security key, and signing in is one Touch ID or unlock.
+
+- **It opens your browser.** codeaf opens a page on the organization's own server in your default browser, because a passkey only works on that server's own page. You confirm with Touch ID (or your phone, or your security key) there, codeaf on this computer shows "Done", and codeaf is signed in. The page never shows your session to anyone.
+- **Join with a passkey**: open an invitation or the operator link, choose **Continue with a passkey**, pick a username in the browser. The link is used up in the same step that makes your account.
+- **Sign in again**: **Sign in with a passkey**; no username to type.
+- **No built-in passkey (most Linux machines)**: the browser offers your phone (scan a QR code) or a security key; the page says "Use your phone or a security key."
+- **A browser with no passkey support** is told: "This browser can't use passkeys. Go back to codeaf and use your password instead."
+- **Several passkeys**: in Settings, add another ("MacBook Touch ID", "YubiKey"), see when each was last used, or remove one. Removing a passkey ends your other sessions. The last way in cannot be removed: "This is your only way to sign in. Add a password or another passkey first." Someone who joined with a passkey can set a password there too.
+- A passkey sign-in that is never finished ends after ten minutes; one try's challenge lasts five.
+- A GitHub person has no passkeys on the server.
+
+## finish on the same computer — passkey page on another device, Copy address, "Confirm it's you"
+
+A passkey page finishes only on the computer whose codeaf started it. When the passkey is accepted, the page says "Done. Returning to codeaf on the computer that started this…" and, a second later, hands over to codeaf on that computer (an address on 127.0.0.1 that only codeaf there listens on), which shows "Done" and signs codeaf in. **Copy address** works in another browser on the same computer if you use the page there from the start: a page belongs to the first browser that presses its button, and any other reads "This sign-in is open in another browser. Start again in codeaf." Opened on a phone or another computer, the passkey can be accepted but nothing is signed in: the browser says it can't connect, the page said why just before ("you opened this page on a different computer or browser"), and going back to it reads "Finish on the computer that started this". A sign-in address someone else sends you never signs them in as you.
+
+**Limit:** another person signed in to the same computer can see which port codeaf listens on while a passkey page is open; without the page's secret path and key they cannot finish it, but on a shared computer sign in only on your own account. An organization at an address under a shared wildcard name (sslip.io, nip.io) is for demos only: anyone can serve a neighbouring name there. `localhost` (and any `*.localhost` name) is for trying passkeys on one machine only: browsers let a plain-HTTP page on a localhost name set its cookies. While someone floods the server with passkey sign-ins from hundreds of networks, a new passkey sign-in can be refused ("too many tries") for as long as the flood lasts; signing in with a password is not affected, and nobody already signed in is signed out.
+
+## confirm it's you — adding a passkey, removing a passkey, setting a first password
+
+Adding a passkey, removing a passkey and setting a first password each need a confirmation made for that one change: codeaf says "Confirm it's you first: use one of your passkeys, or enter your current password." and asks. Your current password, or one of your passkeys on a short page of its own that names the change and the computer asking, for example "Remove passkey “MacBook” — requested by a computer named “santosh-mac”, signed in 16 Nov 2026 from 203.0.113.7". The name is what that computer calls itself; the date and address are what the server saw. Read it: confirm only a change you asked for, on your own computer.
+
+A confirmation lets that one change happen once, within five minutes; it allows nothing else, and signing in is never one, even a minute ago. A session holds at most three at a time; a fourth replaces the oldest. Setting a first password ends your other sessions, as a change does.
+
+After a passkey page finishes on this computer, the browser shows a plain "Done" page on 127.0.0.1; the one-time code it carried is gone from the address, and stops working a minute after the passkey was used either way.
+
+Too many passkey pages waiting from one network are turned away ("Too many passkey sign-ins are waiting. Try again in a minute."); a flood from elsewhere cannot crowd out an invitation or a signed-in person, and a sign-in page nobody opens ends after two minutes.
+
+## forgot password — operator reset link, one hour, password people only
+
+There is no email recovery. The operator makes a reset link for one person with an account on the server (in the app, or `factory.link_create` with `kind: "reset"`); it works once, lasts one hour, and makes any older reset link for that person stop working. Opening it lets the person set a new password or create a new passkey; either one replaces every way in they had (the old password and every old passkey stop working), ends all their sessions and signs them in. A GitHub person has no password to reset. Every sign-up, sign-in, refused burst of sign-ins, change, reset link and reset is written to the organization's record.
 
 ## codeaf attach and codeaf detach — use another machine's factory
 
@@ -237,7 +345,7 @@ An access link looks like `codeaf://factory/join?url=https://factory.example#tok
 
 ## the app keeps a factory sign-in — signed out after a restart, keychain, sign out removes it
 
-In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
+In the desktop app, a sign-in to a team factory (GitHub sign-in, an access link, or a pasted token) is kept in the system keychain, one item per factory, and handed back when the app next opens, so a restart does not sign you out. It is never written to the app's saved factory list or to a log. Signing out, ending every session, and disconnecting the factory each remove the kept sign-in. An organization's device token is kept in the same item; only disconnecting removes it. A kept sign-in the factory no longer accepts reads **Signed out** once and is removed; sign in again. The factory on your own machine keeps no sign-in: the app makes its key again at each start.
 
 ## codeaf runner join — run a factory's jobs on this machine, sign in with GitHub
 
@@ -542,9 +650,35 @@ Ask-first paths and never paths are one kind of rule, **protected paths**. When 
 
 The job keeps what each check found: on its Steps panel, **Before it starts** and **Before publishing** show a green ◆ and "passed" when nothing a rule guards was touched, and stay amber with "asked" when a rule made the job wait for you. A job a person started was not checked at its start, so that row shows no finding. Ask-first sentences, which nothing can check against files, are told on their own line, "ask before you: …", and hold a job before it starts with "ask first ·" and the sentence.
 
+## turning a repository on runs nothing already open — open issues land in Backlog, agent-ready issues held
+
+Turning a repository on, in Repos or by its first pick, never starts an issue that was already open on it. Every issue opened before that moment lands in Backlog and waits until someone starts it, even when it carries a start label (`agent-ready`, say) from the repository's own `.codeaf/factory.yaml` or from Pick up issues. Only an issue opened after the repository was turned on can start by its label. The repository keeps the time it was turned on while it stays on; turning it off and on again sets a new one, so the issues opened while it was off wait in Backlog too. A job already on the floor before the repository was turned off comes back exactly as it was.
+
+## why is this issue held — "Held at import", "Held: pick-up is off", an issue that sits in Backlog and never starts
+
+A GitHub issue that waits in Backlog for one of two holds says which, on its row and on its job page, with what releases it:
+
+- **Held at import**: "It was already open when the factory started watching its repository, so it waits for you. Start runs it." Every issue open when the factory was set up, or when its repository was turned on, is held this way (see "turning a repository on runs nothing already open"). Only Start releases it; turning on Pick up issues does not.
+- **Held: pick-up is off**: "Pick up issues is off, so the factory starts no issue by itself. Start runs this one, or turn on Pick up issues on the Jobs tab." Pick up issues is off until you turn it on, so a new `agent-ready` issue on a factory on your own machine waits like this. Turning it on releases every issue that carries one of its labels.
+
+A team server never says the second: it runs its repositories' own start labels whether the switch is on or off. An issue a routing rule, a go-ahead, an ask-first rule or an AgentField reasoner holds keeps that reason's own words. The job's read carries the reason as `hold` (`import` or `pick_up_off`) beside its state's title and detail.
+
+## the runner without GitHub — "GitHub isn't connected", what waits until it is, the Computers page
+
+The runner on this computer runs with GitHub not connected (as `this-computer`), so folder jobs and jobs on a repository this computer already has a checkout of run as usual. What waits is everything that needs GitHub: no issue is read, so nothing new arrives from GitHub; a job on a repository with no checkout here cannot be cloned; and no pull request is opened. The app says so where you look. The Computers page says, under This Mac, "GitHub isn't connected. This Mac runs folder jobs and repositories it has checked out; issues aren't read and other repositories can't be cloned." with **Connect GitHub**, which opens Settings › Connectors › GitHub. A job row on such a repository says "needs GitHub to clone". Connecting GitHub takes both away at the next read. The factory's queue read carries this as `github: not_connected`, on a factory on your own machine only.
+
+## publishing failed: Connect GitHub to publish — the pull request was not opened, "Ask for write access", signed in with a password
+
+A job's pull request is opened from its person's own GitHub account, through the GitHub connection on the computer that ran it. When that is missing, publishing stops before anything is pushed and the job and its workstream task say **Connect GitHub to publish**, with what is needed and where:
+
+- no GitHub on that computer: "Connect GitHub in Settings › Connectors on that computer, then Retry publishing."
+- that computer is connected as someone else: it names both accounts, and says to connect GitHub as the job's person in Settings › Connectors there, or to have a teammate who signs in to the organization with GitHub take the job.
+
+Someone who signs in to an organization only with a password has no GitHub account there, so their jobs reach proof but cannot open a pull request until a teammate who signs in with GitHub takes the job. Retry publishing (the task's "Retry publishing", the job's "Retry publish") publishes the same approved commit once the connection is right. "Ask for write access to this repo" is said only when GitHub itself refused the push.
+
 ## pick up issues — labelled work starts by itself, its labels, who owns those jobs
 
-**Pick up issues** is the factory's switch for starting new issues by itself. It is not a job's Auto: Auto lets one running job pass its routine approvals, while Pick up issues lets the factory start jobs nobody started. It is off until you turn it on, from the yellow switch on the factory's Jobs tab; Labels beside it lists the labels it picks up. While it is on, the factory starts an issue by itself when it carries one of those labels, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. A job started this way belongs to the factory's owner (its operator) unless the issue is assigned to someone, so Auto can carry it and its approvals come to the owner. While it is off, no label starts or holds a job on a factory on your own machine, though a go-ahead still starts the jobs it covers (below); a team server always runs its repositories' own start labels, and adds the factory's only while it is on. Turning it off stops the next label start at once. **The switch never turns routing off**: routing rules are read for every new job either way, and a rule with `start: auto`, `ask` or `backlog` still starts, holds or files its jobs (see "routing rules").
+**Pick up issues** is the factory's switch for starting new issues by itself. It is not a job's Auto: Auto lets one running job pass its routine approvals, while Pick up issues lets the factory start jobs nobody started. It is off until you turn it on, from the yellow switch on the factory's Jobs tab; Labels beside it lists the labels it picks up. While it is on, the factory starts an issue by itself when it carries one of those labels, or its repository's own `start.labels`, and clears every rule (size, cost, ask first, never). An issue a rule flags waits with "Approval needed: start ·" and the rule. A job started this way belongs to the factory's owner (its operator) unless the issue is assigned to someone, so Auto can carry it and its approvals come to the owner. While it is off, no label starts or holds a job on a factory on your own machine, though a go-ahead still starts the jobs it covers (below); a team server always runs its repositories' own start labels, and adds the factory's only while it is on. No label ever starts an issue that was open before its repository was turned on (see "turning a repository on runs nothing already open"), nor one a workstream's Factory switch takes (see "the Factory switch and standing orders in a workstream"). Turning it off stops the next label start at once. **The switch never turns routing off**: routing rules are read for every new job either way, and a rule with `start: auto`, `ask` or `backlog` still starts, holds or files its jobs (see "routing rules").
 
 ## routing rules — send Jira tickets and inbox work to a repository, a pipeline, a priority, start by itself, ask first or Backlog
 
@@ -599,7 +733,7 @@ Ending a go-ahead, stopping it (Mark done) or taking a job out of it starts noth
 
 A team factory (`codeaf factory serve`) follows its go-aheads by itself, after each of its own polls (about once a minute), with every app closed and your laptop shut. It needs no GitHub grant for that: the pass reads only the factory's own jobs.
 
-The factory the desktop app runs on your own machine is different. It follows go-aheads only while the app is open and its runner is on, and the runner turns on only once GitHub is connected; before that the app says "connect GitHub before turning the runner on: the factory needs to know whose jobs these are". With the runner off, a covered job stays in Backlog. Quitting the app stops the factory with it, so nothing a go-ahead covers starts until the app is open with the runner on again. For go-aheads that keep going while you are away, give them on a team factory.
+The factory the desktop app runs on your own machine is different. It follows go-aheads only while the app is open and its runner is on. The runner runs without GitHub (see "the runner without GitHub"), but a covered job on a GitHub repository this computer has no checkout of cannot start until GitHub is connected. With the runner off, a covered job stays in Backlog. Quitting the app stops the factory with it, so nothing a go-ahead covers starts until the app is open with the runner on again. For go-aheads that keep going while you are away, give them on a team factory.
 
 It is the factory's `factory.policy_set`, `factory.policy_get` and `factory.waits_set`, served when `factory.features` lists `group_policy`; an older factory lists nothing, and the app then says "This codeaf can't apply go-aheads yet." A team factory lets only the go-ahead's giver or its operator change it.
 
@@ -945,6 +1079,9 @@ To address a step, type **@Test Check the base version** or select a recipient
 from the @ menu. Click the receipt or open the step's chat to read its reply.
 
 ## stop a job and start it again — Stop, Undo a stop, Run again, stopped by you, what a stopped job keeps
+
+A conversation newly assigned to a stopped job sees that Stop at its next
+automatic check. Moving the conversation does not restart the job.
 
 **Stop** ends a running, queued or waiting job at once. The job says `Stopped by you`, including when no step began or a question was pending. Its work, conversations and spending stay. Stop survives restarting codeaf: queued questions, managers, automatic retries and PR maintenance cannot restart or publish it. A person presses **Start**, **Carry on**, **Run again** or **Run again from here** to run it again. **Undo** and the person’s **Resume pipeline** control also grant work again. Resume only continues a paused job, so a stopped job does not offer it; after Stop it refuses with `is not paused`. Carry on reruns the stopped step. Reading the chat does not start work; you can still ask the manager questions without starting the job. Stop also withdraws proof awaiting sign-off and draft-PR maintenance. An already stopped or closed job refuses with `#12 is not running`. A stopped job asks nothing of you, so it is not in Needs you and not in its count: it waits in Backlog with `Stopped by you` on it until you carry on, run it again or close it.
 
@@ -1324,7 +1461,7 @@ and details:
 | --- | --- |
 | `open_issue` | Boolean, default false: create a job without opening an issue. True opens one GitHub issue using only the title and details, then ties the job to its number. |
 | `group`, `milestone` | Opaque labels, trimmed, at most 200 characters each, with no control characters. Omitted or empty means none; labels stay outside the description and appear on job and queue reads. |
-| `budget` | Initial USD limit: 5, 10, 20 or 30. Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
+| `budget` | Initial USD limit: any amount from $1 up, to the cent ($5, $10, $20 and $30 are the suggested presets); less is refused with "A job's budget is at least $1." Recorded before starting and kept on an immediate or later start. Omission keeps the usual pipeline/Factory default ($5 when neither sets one). |
 | `key` | Retry key: 1–128 characters from `[A-Za-z0-9._:-]`, sent as the create's `Idempotency-Key` header, only to a Factory that lists `keyed_create` (next section). Omitted or `key: ""` sends no header. |
 
 `factory.capabilities` flags are `create_issue`, `create_group` (both labels),
@@ -1482,6 +1619,24 @@ cost at most $0.03, and the kept versions plus one more at that cost must fit
 within 5% of the job's actual spend. Correcting a duplicate charge can therefore
 hold back an automatic write sooner. A requested retry still bypasses this guard.
 
+## Setting a job's budget to any amount — custom budget, $1 minimum, not only $5 $10 $20 $30
+
+A Factory job's budget can be any amount from $1 up, to the cent: $2, $7.50
+and $45 are all budgets. $5, $10, $20 and $30 are only the suggested presets.
+`factory.job_set_budget` (and `budget` on `factory.job_create`) takes the
+amount in US dollars and rounds it to whole cents. Less than $1, zero, a
+negative amount or one that is not a number is refused with "A job's budget is
+at least $1." and nothing changes.
+
+In the desktop each Budget menu (the sidebar value, the Spend fact in the
+job's header and Actions) lists the presets and **Other…**, which opens one
+field for the amount; an amount under $1 is refused under the field before
+anything is sent.
+
+A budget is still never set below what the job has already spent: that is
+refused with the job total, whatever the amount. Finished and dropped jobs
+refuse budget changes.
+
 ## budget reached — yes, raise the cap, next budget and stop
 
 When a job reaches its budget across all its runs, the question names its
@@ -1500,15 +1655,16 @@ so a raise can continue them. Approved publication and merge writes can finish
 at the cap because they make no model calls; a new paid pipeline step still
 requires budget. Stop remains available during publication and merge.
 
-The next budget is the smallest of $5, $10, $20 or $30 strictly above recorded
+The next budget offered is the smallest of $5, $10, $20 or $30 strictly above recorded
 spending. If the job has spent $5.25, the next budget is $10 even when the old cap
 was $0.01. Once spending reaches $30, double the current cap, repeatedly if
 needed, until it is above spend. A $30 cap with $31 spent offers $60.
 Saved questions on older jobs can keep their old words, but yes now
 uses this same rule.
 
-The raise button accepts $5, $10, $20, $30 or exactly the job's next budget.
-Other amounts are refused. A raise in Auto or Manual must exceed the job total
+The raise accepts any amount from $1 up, to the cent, not only the $5, $10,
+$20 and $30 presets or the job's next budget: a $2 or $7.50 budget is fine.
+Less than $1 is refused with "A job's budget is at least $1." A raise in Auto or Manual must exceed the job total
 to resume work. A budget at or below that total keeps work held and names the
 total and budget in the question or refusal. No automatic decision raises it;
 your yes or continue chooses the next budget. Stop keeps recorded spend and work.
@@ -1610,3 +1766,7 @@ closed-issue handling. A dropped job still refuses its conversations.
 
 Jobs already marked by earlier page views keep their marks. codeaf cannot safely
 infer which old marks came only from viewing, so this fix does not migrate them.
+
+## A selected task's side panel follows its current step
+
+The All jobs side panel reads the selected job's live details through the same source as its own job page. Its current step and round change while work continues. A publication pause keeps the publishing failure's remedy once; it does not repeat “retry publishing” after a remedy that already says it.

@@ -18,8 +18,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/canvasrpc"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -186,13 +188,17 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	startFactoryTriage(ctx, st, func(st *store.Store) *intake.Intake { return factoryIntakeOwned(st, operator) })
 	// A GO-AHEAD ON A TEAM SERVER IS FOLLOWED BY THE SERVER ITSELF, after every
 	// poll tick, so the jobs it covers start with no app attached.
+	// A NEW ISSUE A WORKSTREAM'S FACTORY SWITCH TAKES joins that workstream
+	// first ([serve.Handler.ClaimFactoryJobs]), so the go-ahead pass starts it
+	// within the workstream's "start without asking" rule.
 	stopPoll := startFactoryServerPoll(ctx, st, factoryTokensPath(configPath), limit, func(ctx context.Context) error {
-		return factoryIntakeOwned(st, operator).GoAheads(ctx)
+		return errors.Join(service.handler.ClaimFactoryJobs(ctx), factoryIntakeOwned(st, operator).GoAheads(ctx))
 	})
 	defer stopPoll()
 	server, done := service.server, service.done
 	// READY MEANS USABLE: the operator link's row is written before the
-	// address is printed; only naming its GitHub login waits on GitHub.
+	// address is printed. A server that takes passwords never names it for a
+	// GitHub login (film D14), so only a server that takes none waits on GitHub.
 	operatorRow, err := service.handler.MintOperatorLink(cfg.operatorRecovery)
 	if err != nil {
 		return err
@@ -298,9 +304,12 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// A drop deletes the job's local branch and folder on this machine,
 		// and the conversations and crew kept on this machine, never anything
 		// on GitHub, so the team server does it too.
-		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, HSTSSubdomains: host.HSTSIncludeSubdomains, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
+		// The organization's workstream agents, when the operator runs them
+		// on this server with the organization's own key.
+		WorkstreamAgent: factoryWorkstreamAgent(st, config.Load),
 		// A `manager when …` approval's condition is judged by the floor's AI
 		// filter, as a routing rule's question is.
 		PassJudge:     factoryJudge(st, config.Load),
@@ -312,9 +321,27 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			return factoryJobRead(ctx, st, it, dir)
 		},
 	}
+	// An organization's canvases are kept by canvas-core, run as the
+	// `canvas` program beside this one (canvasrpc.Find). A server without it
+	// keeps none and says so once; the routes are left off rather than
+	// failing every request.
+	if bin := canvasrpc.Find(); bin != "" {
+		handlerConfig.Canvas = canvasrpc.New(bin, st.CanvasRoot())
+	} else if servedBy == "factory" {
+		fmt.Fprintf(os.Stderr, "codeaf factory serve: no `canvas` program beside codeaf, on PATH or in $%s; this organization keeps no canvases\n", canvasrpc.BinEnv)
+	}
 	if servedBy == "factory" && mode == api.FactoryTeam {
 		// THE TEAM SERVER NEVER WRITES TO GITHUB, even with a host override.
 		handlerConfig.ChangeAssignee = nil
+	}
+	// An organization's server mails its invites only when told how to send
+	// mail; without it an invite is a link to copy, and People says so.
+	if servedBy == "factory" && mode == api.FactoryTeam {
+		send, err := serve.SMTPMailer(env.Get("CODEAF_SMTP_URL"), env.Get("CODEAF_SMTP_FROM"))
+		if err != nil {
+			return nil, fmt.Errorf("CODEAF_SMTP_URL: %w", err)
+		}
+		handlerConfig.SendMail = send
 	}
 	handler := serve.New(seam, handlerConfig)
 	server := &http.Server{

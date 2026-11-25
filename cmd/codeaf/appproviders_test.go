@@ -122,10 +122,8 @@ func assertNoKeyOnDisk(t *testing.T, profile string, keys ...string) {
 	}
 }
 
-// EVERY PROVIDER THE TERMINAL OFFERS, IN ITS ORDER. Setup listed four of the
-// terminal's ten: the ChatGPT sign-in, Ollama and a custom endpoint were never
-// offered at all. Each now says what connecting it asks for, which is what the
-// terminal's own connect flow asks.
+// The app lists every provider the terminal offers, in the same order and with
+// the same connection requirements.
 func TestAppListsEveryProviderTheTerminalOffers(t *testing.T) {
 	backend, _, _ := appProviderTest(t)
 	providers, err := backend.ListProviders()
@@ -139,8 +137,7 @@ func TestAppListsEveryProviderTheTerminalOffers(t *testing.T) {
 	for _, p := range providers {
 		got = append(got, p.ID)
 	}
-	// Eleven since Claude Code joined as the last row.
-	if strings.Join(got, ",") != strings.Join(want, ",") || len(got) != 11 {
+	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("providers = %v, want the terminal's %v", got, want)
 	}
 	byID := appProvidersByID(t, backend)
@@ -149,6 +146,7 @@ func TestAppListsEveryProviderTheTerminalOffers(t *testing.T) {
 		"moonshot": appwire.ProviderKey, "minimax": appwire.ProviderKey, "qwen": appwire.ProviderKey,
 		"aiand": appwire.ProviderKey, "codex": appwire.ProviderBrowser,
 		"ollama": appwire.ProviderAddress, "custom": appwire.ProviderAddress,
+		"claude-code": appwire.ProviderAgent, "opencode-go": appwire.ProviderKey,
 	} {
 		if p := byID[id]; p.Kind != kind || p.SignedIn || p.Name == "" {
 			t.Errorf("%s = %+v, want an unconnected %s provider", id, p, kind)
@@ -171,7 +169,7 @@ func TestAppListsEveryProviderTheTerminalOffers(t *testing.T) {
 			t.Errorf("%s regions = %+v", id, p.Regions)
 		}
 	}
-	for _, id := range []string{"deepseek", "minimax", "aiand", "openrouter"} {
+	for _, id := range []string{"deepseek", "minimax", "aiand", "openrouter", "opencode-go"} {
 		if p := byID[id]; len(p.Regions) != 0 {
 			t.Errorf("%s has regions %+v", id, p.Regions)
 		}
@@ -296,7 +294,7 @@ func TestAppConnectsAnAddressWithAndWithoutAKey(t *testing.T) {
 	if err != nil || !check.OK || check.Connection == nil || check.Connection.Address != endpoint.URL() {
 		t.Fatalf("check = %+v, %v", check, err)
 	}
-	if len(check.Models) != 1 || check.Models[0].ID != "127-0-0-1/local-model" || check.Models[0].Provider != "127-0-0-1" {
+	if len(check.Models) != 1 || check.Models[0].ID != "127-0-0-1/local-model" || check.Models[0].Provider != "custom" {
 		t.Fatalf("models = %+v", check.Models)
 	}
 	if bearer := endpoint.Requests()[0].Bearer; bearer != "" {
@@ -498,7 +496,7 @@ func TestAppModelsListOffersANewlyConnectedProvidersModels(t *testing.T) {
 			byID[m.ID] = m
 		}
 		local, moon := byID["127-0-0-1/local-model"], byID["moonshot/kimi-k2.7-code"]
-		if local.Provider == "127-0-0-1" && moon.Provider == "moonshot" && moon.ProviderName == "Moonshot" {
+		if local.Provider == "custom" && moon.Provider == "moonshot" && moon.ProviderName == "Moonshot" {
 			return
 		}
 		if time.Now().After(deadline) {

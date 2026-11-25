@@ -325,5 +325,12 @@ func (h *Handler) machineViewer(r *http.Request) string {
 	if handle == "" && h.isOperator(r) {
 		handle = h.operatorLogin(r)
 	}
+	// A PERSONAL FACTORY WITH NO GITHUB SEES ITS OWN RUNNER: that runner
+	// attached under factory.LocalRunnerHandle (workers.go), so the person on
+	// this machine, who has no forge login either, sees the machines as that
+	// name. Without it the Computers list was empty while jobs ran.
+	if handle == "" && h.mode() == api.FactorySolo && (loopbackRequest(r) || h.isOperator(r)) {
+		handle = factory.LocalRunnerHandle
+	}
 	return factory.NormalizeHandle(handle)
 }
