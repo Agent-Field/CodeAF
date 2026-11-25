@@ -68,7 +68,11 @@ type Drive struct {
 	// earlyNoted is set once the startup head has been handed to the batcher
 	// for an early record, so the turns after the first do not read the journal
 	// again to decide the same thing.
-	earlyNoted    atomic.Bool
+	earlyNoted atomic.Bool
+	// earlyAsked is set the one time the drive has said the first spoken turn
+	// began on a chat with no sealed head ([Drive.EarlyHeadOwed]), so a failed
+	// save is not asked for again at every later turn.
+	earlyAsked    atomic.Bool
 	workMu        sync.Mutex // Admission and voluntary release cannot cross each other.
 	activity      atomic.Uint64
 	released      atomic.Bool
@@ -938,6 +942,42 @@ func (d *Drive) recordEarly() {
 	}
 	d.earlyNoted.Store(true)
 	d.batcher.Note(head.Turn)
+}
+
+// EarlyHeadOwed says the first spoken turn has begun on a chat that has never
+// been sealed, so [Drive.recordEarly] had no head to stand on and the record
+// would wait for the turn to end. It answers true at most once per drive, and
+// only when every one of these holds: the option is on now, a turn is running,
+// the chat has no record yet, no head exists, and the journal holds a spoken
+// message. The caller then has the chat sealed through its own recorder, the
+// road every other seal takes, and that seal reaches [Drive.note] and makes
+// the record exactly as a sealed turn does.
+//
+// A CHAT OPENED WITH /new HAS NO HEAD WHEN ITS FIRST TURN STARTS. The warm
+// capture opens the folder without sealing an empty turn, and the trailing seal
+// treats a journal that holds only its header as not grown. So the head the
+// early record was written to stand on is there only when something else had
+// sealed the chat, and for a new chat that waited for the first message the
+// record appeared when the turn ended, as it did before the option existed.
+//
+// The head this asks for is the chat as it stands when the turn starts, which
+// holds the person's first message. Nothing about that travels in the record,
+// and the frames behind it go where every sealed turn's frames go: nowhere
+// while blind pass-through is the road, the relay's store otherwise.
+func (d *Drive) EarlyHeadOwed() bool {
+	if d.batcher == nil || !d.working.Load() || d.opt.EarlyRecord == nil || d.earlyNoted.Load() || d.earlyAsked.Load() || d.batcher.Fence() != 0 || d.sync.isRemoved() {
+		return false
+	}
+	if !d.opt.EarlyRecord() {
+		return false
+	}
+	if head, err := cellstore.Head(d.cell); err != nil || head != nil {
+		return false
+	}
+	if spoken, _ := session.ConversationIn(session.Place{Dir: d.cell.Root}.Transcript(), -1); !spoken {
+		return false
+	}
+	return d.earlyAsked.CompareAndSwap(false, true)
 }
 
 func (d *Drive) Idle() {
