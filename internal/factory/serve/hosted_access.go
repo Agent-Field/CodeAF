@@ -157,6 +157,10 @@ func (h *Handler) lookupHostedChat(w http.ResponseWriter, r *http.Request, id st
 	return chat, true
 }
 
+// hostedStateRunning is the state the chats' host reports for a chat with a live process. Anything else it says (it says
+// suspended) means opening the chat starts it.
+const hostedStateRunning = "running"
+
 type hostedStatusFields struct {
 	ID         string `json:"id"`
 	State      string `json:"state"`

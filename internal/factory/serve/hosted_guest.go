@@ -35,6 +35,10 @@ const (
 	// A guest opening a chat that is not running starts it for its owner, and either the owner's own limit or the machine's can say no.
 	// The sentence is the guest's, never the owner's ("You already have ... chats running"), and names no number or person.
 	hostedGuestNoRoom = "This chat is not running, and there is no room to start it right now. Try again later."
+	// The two sentences a guest reads when the organization keeps them from starting a chat that is not running
+	// (chats.wake_by). Neither says how the chat comes to be stopped, because the guest has no use for the word.
+	hostedGuestWakeOwner = "This chat is not running. Only its owner can start it. Ask them to open it."
+	hostedGuestWakeRun   = "This chat is not running. Starting it takes permission to send messages in it. Ask its owner."
 )
 
 var errHostedGuestLineCap = errors.New(hostedGuestLongLine)
@@ -127,6 +131,10 @@ func (h *Handler) hostedGuestWire(w http.ResponseWriter, r *http.Request, item I
 		})
 	})
 
+	if words := h.hostedGuestWakeRefusal(ctx, hs, item.ID, owner, v, p.rights.Load().(hostedGuestRights)); words != "" {
+		p.fatal(words)
+		return
+	}
 	host, status := hs.dialGuestHost(ctx, item.ID, owner)
 	if host == nil {
 		switch status {
@@ -153,6 +161,43 @@ func (h *Handler) hostedGuestWire(w http.ResponseWriter, r *http.Request, item I
 		h.noteHostedGuestCall(item.ID, owner, v.Handle, method, class)
 	})
 	cancel()
+}
+
+// hostedGuestWakeRefusal is the sentence a guest is refused with when the organization's rule (chats.wake_by) keeps them
+// from starting a chat that is not running, and "" when the wire may go on. Opening a chat that is not running starts it
+// for its owner, in its owner's place among the chats they may have running, and the rule is the only thing that says
+// whether a guest may do that. The default rule asks for nothing and reads nothing, so an organization that never set it
+// sees no extra request. A chat that stops between this read and the connection below it can still be started by the
+// guest: the rule is checked when the window opens, not held for the life of the wire.
+func (h *Handler) hostedGuestWakeRefusal(ctx context.Context, hs *hostedState, id, owner string, v Viewer, rights hostedGuestRights) string {
+	rule := v.acc.rules().Chats.WakeByFor()
+	if rule == acl.WakeByView {
+		return ""
+	}
+	// An owner is the person, never a bot acting for them, because a bot's scope is a limit on what it may start.
+	words, may := hostedGuestWakeOwner, v.Handle == owner && v.Agent == nil
+	if rule == acl.WakeByRun {
+		words, may = hostedGuestWakeRun, rights.verbs.Has(acl.VerbRun)
+	}
+	if may {
+		return ""
+	}
+	status, _, body, err := hs.call(ctx, http.MethodGet, "/v1/sessions/"+id, owner, nil)
+	if err != nil || (status != http.StatusOK && status != http.StatusNotFound) {
+		// Without the chat's state the rule cannot be applied, and starting it would be the one thing it forbids.
+		return hostedUnreachable
+	}
+	if status == http.StatusNotFound {
+		return hostedGuestRemoved
+	}
+	var row hostedStatusFields
+	if json.Unmarshal(body, &row) != nil {
+		return hostedUnreachable
+	}
+	if row.State == hostedStateRunning {
+		return ""
+	}
+	return words
 }
 
 func (hs *hostedState) dialGuestHost(ctx context.Context, id, owner string) (*websocket.Conn, int) {

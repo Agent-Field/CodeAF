@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -308,5 +309,156 @@ func TestChatsSettingsAreValidatedAndShownByThePolicy(t *testing.T) {
 	raw = o.raw(t, "mia", "GET", policyPath, nil).Body.String()
 	if !strings.Contains(raw, `"approvals_by":"answer"`) || !strings.Contains(raw, `"wake_by":"run"`) {
 		t.Fatalf("GET of the policy does not show the settings: %s", raw)
+	}
+}
+
+// wakeRig is santosh's chat that is NOT running, shared with abir at `view`, mia at `edit` and noor at `full`.
+type wakeRig struct {
+	rg     *hostedRig
+	chat   string
+	srv    *httptest.Server
+	opened <-chan guestHostWire
+}
+
+func newWakeRig(t *testing.T) *wakeRig {
+	t.Helper()
+	rg := newHostedRig(t)
+	chat := rg.create(t, "santosh")
+	hostedGrant(t, rg, "santosh", chat, "abir", "view")
+	hostedGrant(t, rg, "santosh", chat, "mia", "edit")
+	opened := recordGuestHostWires(rg)
+	srv := httptest.NewServer(rg.h)
+	t.Cleanup(srv.Close)
+	return &wakeRig{rg: rg, chat: chat, srv: srv, opened: opened}
+}
+
+// open attaches as who and says the sentence the window was refused with, or "" when the host's wire was reached.
+func (w *wakeRig) open(t *testing.T, who string) string {
+	t.Helper()
+	client := guestDial(t, w.srv, w.rg.tokens[who], w.chat)
+	guestWrite(t, client, guestTestHello)
+	frames := make(chan string, 1)
+	go func() {
+		if _, raw, err := client.Read(t.Context()); err == nil {
+			frames <- string(raw)
+		}
+	}()
+	select {
+	case host := <-w.opened:
+		var hello remote.Frame
+		if err := json.Unmarshal([]byte(guestHostLine(t, host)), &hello); err != nil || hello.Kind != "hello" {
+			t.Fatalf("the chat did not receive a hello: %v", err)
+		}
+		return ""
+	case raw := <-frames:
+		frame := guestFrame(t, raw)
+		if frame.Kind != "fatal" || frame.Error == "" {
+			t.Fatalf("a refused window was sent %+v", frame)
+		}
+		return frame.Error
+	case <-time.After(5 * time.Second):
+		t.Fatal("the window was neither let through nor refused")
+		return ""
+	}
+}
+
+const (
+	wakeOwnerWords = "This chat is not running. Only its owner can start it. Ask them to open it."
+	wakeRunWords   = "This chat is not running. Starting it takes permission to send messages in it. Ask its owner."
+)
+
+// Contract W1: with no setting, or `view` said out loud, anyone who can see a chat that is not running opens it, which
+// starts it for its owner, exactly as before. The organization server asks the host nothing more than it always did.
+func TestWakeByViewIsTodaysBehaviourAndAsksTheHostNothingExtra(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(*acl.Policy)
+	}{
+		{"absent", nil},
+		{"view", func(p *acl.Policy) { p.Chats.WakeBy = acl.WakeByView }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newWakeRig(t)
+			if tc.edit != nil {
+				w.rg.setAccessPolicy(t, tc.edit)
+			}
+			before := w.rg.host.rowReads(w.chat)
+			if got := w.open(t, "abir"); got != "" {
+				t.Fatalf("a view guest was refused with %q", got)
+			}
+			if w.rg.host.wireRequests(w.chat) != 1 {
+				t.Fatalf("the host's wire door was reached %d times", w.rg.host.wireRequests(w.chat))
+			}
+			// One read is the model-access check every attach has always made.
+			if reads := w.rg.host.rowReads(w.chat) - before; reads != 1 {
+				t.Fatalf("an attach read the chat's row %d times, want the one it always made", reads)
+			}
+		})
+	}
+}
+
+// Contract W2: under `wake_by: run`, a person who can only watch a chat that is not running is told to ask its owner and
+// the chat is not started (the host's wire door is never reached); a person who may send messages starts it; and a chat
+// that is already running opens for both.
+func TestWakeByRunKeepsAWatcherFromStartingAChatThatIsNotRunning(t *testing.T) {
+	w := newWakeRig(t)
+	w.rg.setAccessPolicy(t, func(p *acl.Policy) { p.Chats.WakeBy = acl.WakeByRun })
+	if got := w.open(t, "abir"); got != wakeRunWords {
+		t.Fatalf("a view guest on a chat that is not running reads %q, want %q", got, wakeRunWords)
+	}
+	if n := w.rg.host.wireRequests(w.chat); n != 0 {
+		t.Fatalf("the refused guest still started the chat: %d wire requests", n)
+	}
+	if got := w.open(t, "mia"); got != "" {
+		t.Fatalf("an edit guest was refused with %q", got)
+	}
+	if n := w.rg.host.wireRequests(w.chat); n != 1 {
+		t.Fatalf("the edit guest's attach reached the wire door %d times", n)
+	}
+	w.rg.host.setRunning(w.chat, true)
+	if got := w.open(t, "abir"); got != "" {
+		t.Fatalf("a view guest was refused on a running chat: %q", got)
+	}
+	if n := w.rg.host.wireRequests(w.chat); n != 2 {
+		t.Fatalf("the running chat's attach reached the wire door %d times in all", n)
+	}
+}
+
+// Contract W3: under `wake_by: owner`, only the chat's owner starts it. A guest with `edit` is told to ask the owner, a
+// running chat still opens for them, and the owner's own window is the unchanged proxy, which no setting touches.
+func TestWakeByOwnerLeavesStartingAChatToItsOwner(t *testing.T) {
+	w := newWakeRig(t)
+	w.rg.setAccessPolicy(t, func(p *acl.Policy) { p.Chats.WakeBy = acl.WakeByOwner })
+	for _, who := range []string{"abir", "mia"} {
+		if got := w.open(t, who); got != wakeOwnerWords {
+			t.Fatalf("%s on a chat that is not running reads %q, want %q", who, got, wakeOwnerWords)
+		}
+	}
+	if n := w.rg.host.wireRequests(w.chat); n != 0 {
+		t.Fatalf("a refused guest started the chat: %d wire requests", n)
+	}
+	if got := w.open(t, "santosh"); got != "" {
+		t.Fatalf("the owner was refused with %q", got)
+	}
+	if n := w.rg.host.wireRequests(w.chat); n != 1 {
+		t.Fatalf("the owner's attach reached the wire door %d times", n)
+	}
+	w.rg.host.setRunning(w.chat, true)
+	if got := w.open(t, "mia"); got != "" {
+		t.Fatalf("an edit guest was refused on a running chat: %q", got)
+	}
+}
+
+// Contract W5: the setting reads the organization's policy afresh on each attach, so turning it back to `view` (or
+// taking it out) lets a watcher open a chat that is not running again.
+func TestWakeByTurnsBackToViewAndOpensTheChatAgain(t *testing.T) {
+	w := newWakeRig(t)
+	w.rg.setAccessPolicy(t, func(p *acl.Policy) { p.Chats.WakeBy = acl.WakeByOwner })
+	if got := w.open(t, "abir"); got != wakeOwnerWords {
+		t.Fatalf("under owner a view guest reads %q", got)
+	}
+	w.rg.setAccessPolicy(t, func(p *acl.Policy) { p.Chats = acl.Chats{} })
+	if got := w.open(t, "abir"); got != "" {
+		t.Fatalf("after taking the setting out a view guest reads %q", got)
 	}
 }

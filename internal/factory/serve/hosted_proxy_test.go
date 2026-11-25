@@ -35,6 +35,9 @@ type fakeChatHost struct {
 	wire func(*websocket.Conn, *http.Request)
 	// A wire refusal makes the host answer the wire with this status and its own sentence instead of upgrading.
 	wireRefusal int
+	// running names the chats whose row says "running". Every other chat is suspended, which is what a chat is until
+	// somebody opens it.
+	running map[string]bool
 }
 
 type hostSeen struct {
@@ -65,6 +68,38 @@ func (f *fakeChatHost) adopt(id, person string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.owners[id], f.tokens[id] = person, ""
+}
+
+// setRunning makes a chat's row say it has a live process (or not).
+func (f *fakeChatHost) setRunning(id string, running bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.running == nil {
+		f.running = map[string]bool{}
+	}
+	f.running[id] = running
+}
+
+// wireRequests counts the attaches that reached the host's wire door, each of which starts a chat that is not running.
+func (f *fakeChatHost) wireRequests(id string) int {
+	n := 0
+	for _, seen := range f.requests() {
+		if seen.method == http.MethodGet && seen.path == "/v1/sessions/"+id+"/wire" {
+			n++
+		}
+	}
+	return n
+}
+
+// rowReads counts the reads of one chat's row.
+func (f *fakeChatHost) rowReads(id string) int {
+	n := 0
+	for _, seen := range f.requests() {
+		if seen.method == http.MethodGet && seen.path == "/v1/sessions/"+id {
+			n++
+		}
+	}
+	return n
 }
 
 func (f *fakeChatHost) ownerOf(id string) string {
@@ -161,9 +196,13 @@ func (f *fakeChatHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if lie, ok := f.rowBearer[id]; ok {
 			fingerprint = lie
 		}
+		state := "suspended"
+		if f.running[id] {
+			state = "running"
+		}
 		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"id":"`+id+`","state":"suspended","model_bearer":"`+fingerprint+`"}`+"\n")
+		_, _ = io.WriteString(w, `{"id":"`+id+`","state":"`+state+`","model_bearer":"`+fingerprint+`"}`+"\n")
 	case len(parts) == 1 && r.Method == http.MethodDelete:
 		f.mu.Lock()
 		delete(f.owners, id)
