@@ -547,7 +547,7 @@ Pick one; the table's Root Directory and Dockerfile Path are the same for all th
 
 ### The order that worked
 
-1. Create the project in the workspace, then every service empty (a variable that names another service needs that service to exist).
+1. Create the project in the workspace, then every service empty, `modelstub` too if you will use it (a variable that names another service needs that service to exist, and a service deployed before its target existed can be left with an empty host name: see "Looking inside").
 2. On each service: its variables, Root Directory, Dockerfile Path, a volume of the size in the row, and (`codeaf`) the health check path and
    the public domain. Give the domain first (`CODEAF_PUBLIC_DOMAIN` is read at start), target port 8787.
 3. Connect or upload the source of each service. The three codeaf-image services compile codeaf (about four minutes each); the other
@@ -600,7 +600,11 @@ What a first install needs that the table does not show:
 - **Looking inside.** There is no `docker exec`. `railway ssh` (it needs an SSH key registered on your Railway account; pass it with
   `-i`) runs a command in a service, with stdin from `</dev/null` or the command hangs. It sometimes answers
   `{"status":"no_ssh_key"...}` or nothing on the first try: run it again. A Railway container has no `/sys/kernel/security/lsm`, so the
-  sessionhost's own `codeaf sessionhost probe` is the check that the fence works.
+  sessionhost's own `codeaf sessionhost probe` is the check that the fence works. The same command shows what a service really
+  received from a reference variable: `railway ssh -s swe-af -- printenv CODEAF_BASE_URL </dev/null` must print the stub's host name.
+  A service deployed before the service it names existed can receive `http://:8890/api/v1` (empty host) while the variables page
+  shows the right value, and every model call from it then fails with no useful message (in the self-test, SWE-AF's plan step ends
+  with "the output file was NOT created"). Redeploy that service (`railway redeploy --service swe-af`) and check again.
 
 Two things differ from Compose. Railway's edge is an HTTPS proxy in front of `codeaf`, so
 `CODEAF_TRUSTED_PROXIES=100.64.0.0/10` (the edge's range) is required: without it every password sign-in is

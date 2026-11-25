@@ -14,4 +14,5 @@ invalidates:
 A stranger followed the Railway section from an empty project: every service came up, the sign-in page answered over HTTPS, the sessionhost probe said
 `uid+fence` with Landlock, and the organization was left unclaimed. The section now says how the source gets onto Railway (connect the public repository,
 a fork, or `railway up` from a fresh clone), the order that worked, the health check path for `codeaf` (`/v1/about`), `GH_TOKEN` for real work, that a volume cannot
-shrink, and how to check it. `docs/organizations.md` points a Railway reader at that section.
+shrink, how to check it, and what a service shows when it was deployed before the service it names existed (an empty host name
+in the stub's address, fixed by a redeploy). `docs/organizations.md` points a Railway reader at that section.
