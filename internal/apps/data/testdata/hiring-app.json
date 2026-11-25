@@ -1,0 +1,12 @@
+{
+  "id": "hiring", "name": "Hiring", "version": 1, "kit": 0,
+  "records": {
+    "candidate": { "title": "name", "fields": {
+      "name": { "type": "text", "required": true },
+      "contact": { "type": "ref", "to": "contact" },
+      "stage": { "type": "enum", "values": ["Applied", "Interview", "Offer", "Hired"], "default": "Applied" }
+    } },
+    "contact": { "uses": true, "fields": { "role_applied": { "type": "text" } } }
+  },
+  "capabilities": { "records": { "candidate": "rw", "contact": "r" }, "connectors": {}, "ai": [], "tools": [] }
+}

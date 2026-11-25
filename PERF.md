@@ -231,6 +231,12 @@ other platforms can have different absolute sizes. Reduce unnecessary code, data
 or dependencies first. A justified cap adjustment belongs in the same change as
 the feature and its measurements; keep `SIZE-BUDGET` explicit and reviewable.
 
+Fluid apps' data store (`internal/apps/data`) evaluates computed fields, freeze
+rules and trigger conditions with cel-go, the expression engine the apps design
+names. Measured on 2026-11-25 as stripped darwin/amd64 builds of
+`origin/apps/fluid-apps` and the lane's head, it adds 5,035,856 bytes (cel-go,
+its ANTLR parser and the CEL protos); the cap rose by exactly that.
+
 ## Factory execution capacity
 
 New runners default to **15 concurrent jobs**, with a configurable **1–100**
