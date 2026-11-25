@@ -850,7 +850,7 @@ func (s *Store) TypeSetFor(app string) appschema.TypeSet {
 		}
 		fields := map[string]appschema.Field{}
 		for fname, f := range t.Fields {
-			if !f.Hidden && (app == "" || f.App != app) {
+			if !f.Hidden && !slices.Contains(f.Apps, app) {
 				fields[fname] = f.FieldDef.Field
 			}
 		}

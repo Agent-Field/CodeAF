@@ -29,10 +29,10 @@ type appDataState struct {
 	mu     sync.Mutex
 	place  *data.Place
 	closed bool
-	// sync registers the kept apps once; a second first call waits for it,
-	// so no call ever sees the store before its apps are registered.
-	sync    sync.Once
-	syncErr error
+	// syncMu serializes startup registration. If it fails, the next main
+	// data call can retry it.
+	syncMu sync.Mutex
+	synced bool
 	// subs is each subscription's store, so it is stopped where it lives.
 	subs map[string]*data.Store
 	// home replaces the codeaf home in a test.
@@ -74,9 +74,13 @@ func (b *appBackend) dataStore(draft string) (*data.Store, error) {
 		return nil, appDataError(err)
 	}
 	if draft == "" {
-		b.data.sync.Do(func() { b.data.syncErr = b.AppDefinitions().SyncData(s) })
-		if b.data.syncErr != nil {
-			return nil, appDataError(b.data.syncErr)
+		b.data.syncMu.Lock()
+		defer b.data.syncMu.Unlock()
+		if !b.data.synced {
+			if err := b.AppDefinitions().SyncData(s); err != nil {
+				return nil, appDataError(err)
+			}
+			b.data.synced = true
 		}
 	}
 	return s, nil

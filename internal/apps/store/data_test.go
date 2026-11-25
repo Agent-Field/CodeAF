@@ -87,25 +87,38 @@ func TestAppCanRepublishItsOwnSharedFields(t *testing.T) {
 	t.Cleanup(func() { _ = d.Close() })
 	s = s.WithData(func() (*data.Store, error) { return d, nil })
 	makeApp(t, s)
-	draft, err := s.NewDraft("")
-	if err != nil {
-		t.Fatal(err)
-	}
 	raw := strings.Replace(appJSON, `"title":"name","fields":{"name":{"type":"text"}}`, `"uses":true,"title":"name","fields":{"memo":{"type":"text"}}`, 1)
-	write(t, draft.Dir(), "app.json", raw)
-	write(t, draft.Dir(), "plan.json", planJSON)
-	write(t, draft.Dir(), "agent.md", "Manage shared contacts.")
-	write(t, draft.Dir(), "screens/main.json", mainScreen)
-	meta, err := s.Promote(draft, "Use contacts")
-	if err != nil {
-		t.Fatal(err)
+	makeShared := func() store.Meta {
+		t.Helper()
+		draft, err := s.NewDraft("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, draft.Dir(), "app.json", raw)
+		write(t, draft.Dir(), "plan.json", planJSON)
+		write(t, draft.Dir(), "agent.md", "Manage shared contacts.")
+		write(t, draft.Dir(), "screens/main.json", mainScreen)
+		meta, err := s.Promote(draft, "Use contacts")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return meta
 	}
-	edit, err := s.NewDraft(meta.ID)
-	if err != nil {
-		t.Fatal(err)
+	republish := func(app store.Meta, definition string) store.Meta {
+		t.Helper()
+		edit, err := s.NewDraft(app.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, edit.Dir(), "app.json", definition)
+		next, err := s.Promote(edit, "Keep shared contacts")
+		if err != nil || next.Version != app.Version+1 {
+			t.Fatalf("Keep of shared contribution = %+v, %v", next, err)
+		}
+		return next
 	}
-	meta, err = s.Promote(edit, "Keep the app and its added field")
-	if err != nil || meta.Version != 2 {
-		t.Fatalf("Keep of shared contribution = %+v, %v", meta, err)
-	}
+	first := republish(makeShared(), raw)
+	republish(first, strings.Replace(raw, `"memo":{"type":"text"}`, "", 1))
+	adopted := makeShared()
+	republish(adopted, raw)
 }
