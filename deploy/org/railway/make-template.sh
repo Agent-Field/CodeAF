@@ -25,13 +25,16 @@
 #     (`codeaf sessionhost probe` in that service reports `uid+fence`). The person using the template still needs to supply
 #     the model key input.
 #
-# NOT YET RUN AGAINST RAILWAY: the images did not exist on Docker Hub when this was written. The calls are the Railway CLI's
-# documented ones (`railway add --image`, `railway volume add`, `railway environment edit --service-config`, `railway
-# templates create`); the first --apply is the first real test, and a service-by-service failure leaves a project you can
-# delete (it is only the SOURCE of the draft; delete it once the draft exists).
-# The deploy.limitOverride and deploy.healthcheckPath paths were read back from a live Railway project. Run --apply from
-# a terminal. `railway environment edit --service-config ...` reads its patch from the command line only when stdin is a
-# terminal. With non-terminal stdin, such as in CI or an agent, it reads a JSON patch from stdin and ignores those flags.
+# RUN AGAINST RAILWAY: --apply ran end to end on 2026-11-25 against Railway CLI 5.71.0, and two calls had to change for
+# the current CLI: `railway volume` takes the service as `railway volume --service <service ID> add ...` (the ID, from the
+# JSON `railway add` printed, never the name; `volume add --service` is an error and a name panics the CLI), and every
+# `railway environment edit` needs `--message` (without it a terminal run stops at "Apply changes now? (Y/n)" and waits).
+# railway_scripts_test.sh pins both calls against a stub CLI that records its arguments. Run --apply from a terminal:
+# `railway environment edit --service-config ...` reads its patch from the command line only when stdin is a terminal. With
+# non-terminal stdin, such as in CI or an agent, it reads a JSON patch from stdin and ignores those flags.
+# Two things the CLI cannot do: it has no volume SIZE option (every volume comes out at Railway's default, 50 GB; resize each
+# one in the dashboard, see README.md "On Railway"), and `railway templates create` makes a draft the owner still has to
+# finish by hand.
 # shellcheck disable=SC2016  # the ${{...}} in single quotes are Railway expressions, not shell expansions
 set -euo pipefail
 
@@ -71,7 +74,37 @@ rail() {
   local arg
   for arg in "$@"; do printf ' '; quote "$arg"; done
   printf '\n'
-  if [ "$APPLY" = 1 ]; then railway "$@"; fi
+  if [ "$APPLY" = 1 ]; then
+    if [ "$capture" = 1 ]; then
+      # Keep the JSON Railway prints on stdout (its prompts and progress stay on the terminal) to read an ID from it.
+      railway_out=$(railway "$@")
+      printf '%s\n' "$railway_out"
+    else
+      railway "$@"
+    fi
+  fi
+}
+capture=0
+railway_out=""
+
+# service_id is the ID Railway gave the service added last. `railway volume` needs the ID, not the name.
+service_id=""
+
+# volume_add NAME MOUNT: a volume on the service added last. The current CLI wants the service ID before `add`
+# (`railway volume --service <ID> add`); an older one took `railway volume add --service <name>`, and is used when its help
+# still lists that option. A dry run always prints the current form, so the plan does not depend on which CLI is installed.
+volume_style=""
+volume_add() {
+  local name="$1" mount="$2" help
+  if [ "$APPLY" = 1 ] && [ -z "$volume_style" ]; then
+    help=$(railway volume add --help 2>&1 || true)
+    case "$help" in *--service*) volume_style=old ;; *) volume_style=current ;; esac
+  fi
+  if [ "$volume_style" = old ]; then
+    rail volume add --service "$name" --mount-path "$mount" --json
+  else
+    rail volume --service "${service_id:-<$name service id>}" add --mount-path "$mount" --json
+  fi
 }
 
 # check_var NAME VALUE: refuses anything that would put a real value, or a smoke-test switch, in the template.
@@ -97,7 +130,15 @@ service() {
     check_var "${pair%%=*}" "${pair#*=}"
     args+=(--variables "$pair")
   done
+  capture=1
   rail add --service "$name" --image "$image" "${args[@]}" --json
+  capture=0
+  if [ "$APPLY" = 1 ]; then
+    service_id=$(printf '%s\n' "$railway_out" | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p' | head -n 1)
+    [ -n "$service_id" ] || { echo "could not read the ID of service $name from the output of 'railway add --json'" >&2; exit 4; }
+  else
+    service_id=""
+  fi
 }
 
 if [ "$APPLY" = 1 ]; then
@@ -128,7 +169,7 @@ service agentfield "$AGENTFIELD_IMAGE" \
   AGENTFIELD_STORAGE_LOCAL_KV_STORE_PATH=/data/agentfield.bolt \
   AGENTFIELD_RUN_OWNER_REQUIRE_PROOF=true \
   AGENTFIELD_TELEMETRY_ENABLED=false
-rail volume add --service agentfield --mount-path /data --json
+volume_add agentfield /data
 rail environment edit --service-config agentfield deploy.healthcheckPath /api/v1/health --message "agentfield health check"
 
 # --- codeaf: the organization server, the one service with a public domain. Holds the template's two inputs. --------------------------
@@ -145,7 +186,7 @@ service codeaf "$CODEAF_IMAGE" \
   'CODEAF_HOSTED_MODEL_KEY=${{OPENROUTER_API_KEY}}' \
   OPENROUTER_API_KEY= \
   GH_TOKEN=
-rail volume add --service codeaf --mount-path /data --json
+volume_add codeaf /data
 rail environment edit --service-config codeaf deploy.healthcheckPath /v1/about --message "codeaf health check"
 rail domain --service codeaf --port 8787 --json
 
@@ -157,9 +198,9 @@ service sessionhost "$CODEAF_IMAGE" \
   "CODEAF_SESSIONHOST_MODEL=$MODEL" \
   CODEAF_SESSIONHOST_MAX_RUNNING=4 \
   CODEAF_SESSIONHOST_MAX_PER_PERSON=2
-rail volume add --service sessionhost --mount-path /chats --json
+volume_add sessionhost /chats
 rail environment edit --service-config sessionhost deploy.limitOverride.containers.cpu 1 \
-  --service-config sessionhost deploy.limitOverride.containers.memoryBytes 1000000000
+  --service-config sessionhost deploy.limitOverride.containers.memoryBytes 1000000000 --message "sessionhost limits"
 
 # Railway can resolve this reference once the sessionhost service exists.
 hosted_url='http://${{sessionhost.RAILWAY_PRIVATE_DOMAIN}}:8790'
@@ -174,7 +215,7 @@ service runner "$CODEAF_IMAGE" \
   "ORG_MODEL=$MODEL" \
   'OPENROUTER_API_KEY=${{codeaf.OPENROUTER_API_KEY}}' \
   'GH_TOKEN=${{codeaf.GH_TOKEN}}'
-rail volume add --service runner --mount-path /data --json
+volume_add runner /data
 
 # --- the reasoner nodes ----------------------------------------------------------------------------------------------------------------------
 service swe-af "$SWE_AF_IMAGE" \
@@ -187,7 +228,7 @@ service swe-af "$SWE_AF_IMAGE" \
   SWE_DEFAULT_MODEL=openrouter/deepseek/deepseek-v4-flash-0731 \
   'OPENROUTER_API_KEY=${{codeaf.OPENROUTER_API_KEY}}' \
   'GH_TOKEN=${{codeaf.GH_TOKEN}}'
-rail volume add --service swe-af --mount-path /workspaces --json
+volume_add swe-af /workspaces
 
 service pr-af "$PR_AF_IMAGE" \
   NODE_ID=pr-af \
@@ -198,7 +239,7 @@ service pr-af "$PR_AF_IMAGE" \
   PR_AF_MODEL=deepseek/deepseek-v4-flash-0731 \
   'OPENROUTER_API_KEY=${{codeaf.OPENROUTER_API_KEY}}' \
   'GH_TOKEN=${{codeaf.GH_TOKEN}}'
-rail volume add --service pr-af --mount-path /workspaces --json
+volume_add pr-af /workspaces
 
 # --- the draft. `templates create` clones the project into an UNPUBLISHED template; there is no publish call here. -----------------
 rail templates create --json

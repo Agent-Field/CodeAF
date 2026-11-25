@@ -57,7 +57,7 @@ sessionhost_variables() {
 }
 row 'make-template 2: sessionhost gets its role, data, shared secret, model and limits' sessionhost_variables
 row 'make-template 2: sessionhost mounts /chats' \
-  grep -qE '^\+ railway volume add --service sessionhost --mount-path /chats( |$)' "$plan"
+  grep -qxF "+ railway volume --service '<sessionhost service id>' add --mount-path /chats --json" "$plan"
 private_sessionhost() {
   [ -n "$sessionhost" ] && ! grep -Eq '^\+ railway domain .*--service sessionhost( |$)' "$plan"
 }
@@ -84,6 +84,118 @@ template_excludes_smoke_switches() {
   ! grep -Eq -- '--variables (RUNNER_SELFTEST|SMOKE_FIXTURE_REPO|SWE_SMOKE_FIXTURE_REPO|CODEAF_BASE_URL|STUB_DELAY|STUB_COST_USD|GITSTUB_TOKEN)=' "$plan"
 }
 row 'make-template 5: no smoke-only switches enter the plan' template_excludes_smoke_switches
+
+# --apply against a stub of the Railway CLI (5.7x) that records every call's arguments, one line per call with each argument
+# in brackets, and refuses what that CLI refuses: `volume add --service` is an unknown option, `volume --service <name>` panics
+# (only an ID works), and `environment edit` without --message stops at "Apply changes now? (Y/n)", where a terminal run waits
+# forever. FAKE_RAILWAY_STYLE=old makes `volume add` take --service itself, as an older CLI did; FAKE_RAILWAY_NO_ID=1 makes
+# `add` print no ID.
+mkdir "$work/apply-bin"
+cat >"$work/apply-bin/railway" <<'STUB'
+#!/usr/bin/env bash
+set -u
+line=""
+for a in "$@"; do line+="[$a]"; done
+printf '%s\n' "$line" >>"$FAKE_RAILWAY_LOG"
+case "${1:-}" in
+  whoami) exit 0 ;;
+  init) echo '{"id":"project-id","name":"stub"}' ;;
+  add)
+    name="" prev=""
+    for a in "$@"; do [ "$prev" = --service ] && name=$a; prev=$a; done
+    echo '> What do you need? Docker Image' >&2
+    if [ "${FAKE_RAILWAY_NO_ID:-}" = 1 ]; then echo '{}'; else printf '{"id":"id-%s","name":"%s"}\n' "$name" "$name"; fi ;;
+  volume)
+    shift
+    parent=""
+    if [ "${1:-}" = --service ]; then parent=${2:-}; shift 2; fi
+    [ "${1:-}" = add ] || exit 64
+    shift
+    for a in "$@"; do
+      if [ "$a" = --help ]; then
+        if [ "${FAKE_RAILWAY_STYLE:-current}" = old ]; then echo '  -s, --service <SERVICE>  Service'; fi
+        echo '  -m, --mount-path <MOUNT_PATH>  The mount path of the volume'
+        exit 0
+      fi
+    done
+    if [ "${FAKE_RAILWAY_STYLE:-current}" != old ]; then
+      for a in "$@"; do
+        [ "$a" = --service ] && { echo "error: unexpected argument '--service' found" >&2; exit 2; }
+      done
+      case "$parent" in id-*) ;; *) echo "thread 'main' panicked: called Option::unwrap() on a None value" >&2; exit 101 ;; esac
+    fi
+    echo '{"id":"volume"}' ;;
+  environment)
+    shift
+    [ "${1:-}" = edit ] || exit 64
+    shift
+    seen=0
+    for a in "$@"; do if [ "$a" = --message ] || [ "$a" = -m ]; then seen=1; fi; done
+    [ "$seen" = 1 ] || { echo '? Apply changes now? (Y/n)' >&2; exit 99; } ;;
+  domain) echo '{"domain":"https://stub.example"}' ;;
+  *) echo '{}' ;;
+esac
+STUB
+cat >"$work/apply-bin/docker" <<'STUB'
+#!/bin/sh
+exit 0
+STUB
+chmod +x "$work/apply-bin/railway" "$work/apply-bin/docker"
+mkdir "$work/tmp"
+
+apply_with() {
+  FAKE_RAILWAY_LOG=$work/calls
+  : >"$FAKE_RAILWAY_LOG"
+  status=0
+  env "$@" FAKE_RAILWAY_LOG="$FAKE_RAILWAY_LOG" TMPDIR="$work/tmp" RAILWAY_WORKSPACE=stub-workspace \
+    PATH="$work/apply-bin:$PATH" "$template" --apply >"$work/apply-out" 2>"$work/apply-err" || status=$?
+}
+apply_ok() { apply_with FAKE_RAILWAY_STYLE=current; [ "$status" = 0 ] && ! grep -q "ID of service" "$work/apply-err"; }
+row 'make-template 6: --apply runs to the end against the current CLI' apply_ok
+
+volumes_by_id() {
+  apply_ok || return 1
+  local want
+  for want in agentfield:/data codeaf:/data sessionhost:/chats runner:/data swe-af:/workspaces pr-af:/workspaces; do
+    local name=${want%%:*} mount=${want#*:} add vol
+    add=$(grep -nF "[add][--service][$name][--image]" "$FAKE_RAILWAY_LOG" | head -n 1 | cut -d: -f1) &&
+      vol=$(grep -nxF "[volume][--service][id-$name][add][--mount-path][$mount][--json]" "$FAKE_RAILWAY_LOG" | head -n 1 | cut -d: -f1) &&
+      [ "$add" -lt "$vol" ] || return 1
+  done
+  [ "$(grep '^\[volume\]' "$FAKE_RAILWAY_LOG" | grep -vc '\[--help\]')" = 6 ]
+}
+row 'make-template 6: each volume is added with its service ID, after the service exists, and never as volume add --service' volumes_by_id
+
+limits_have_a_message() {
+  apply_ok &&
+    grep -qxF '[environment][edit][--service-config][sessionhost][deploy.limitOverride.containers.cpu][1][--service-config][sessionhost][deploy.limitOverride.containers.memoryBytes][1000000000][--message][sessionhost limits]' "$FAKE_RAILWAY_LOG"
+}
+row 'make-template 6: the sessionhost limits edit carries --message, so a terminal run does not wait for a key' limits_have_a_message
+
+every_edit_has_a_message() {
+  apply_ok || return 1
+  local edits messages
+  edits=$(grep -c '^\[environment\]\[edit\]' "$FAKE_RAILWAY_LOG")
+  messages=$(grep '^\[environment\]\[edit\]' "$FAKE_RAILWAY_LOG" | grep -c '\[--message\]')
+  [ "$edits" = 3 ] && [ "$messages" = 3 ]
+}
+row 'make-template 6: all three environment edits carry --message' every_edit_has_a_message
+
+older_cli_keeps_working() {
+  apply_with FAKE_RAILWAY_STYLE=old
+  [ "$status" = 0 ] &&
+    [ "$(grep -c '^\[volume\]\[add\]\[--service\]' "$FAKE_RAILWAY_LOG")" = 6 ] &&
+    grep -qxF '[volume][add][--service][sessionhost][--mount-path][/chats][--json]' "$FAKE_RAILWAY_LOG" &&
+    ! grep -q '^\[volume\]\[--service\]' "$FAKE_RAILWAY_LOG"
+}
+row 'make-template 6: an older CLI whose volume add takes --service still gets that form' older_cli_keeps_working
+
+stops_without_an_id() {
+  apply_with FAKE_RAILWAY_NO_ID=1
+  [ "$status" = 4 ] && grep -qF 'could not read the ID of service agentfield' "$work/apply-err" &&
+    ! grep -q '^\[volume\]' "$FAKE_RAILWAY_LOG"
+}
+row 'make-template 6: an add that prints no service ID stops the script before any volume' stops_without_an_id
 
 mkdir "$work/bin"
 cat >"$work/bin/railway" <<'FAKE'
