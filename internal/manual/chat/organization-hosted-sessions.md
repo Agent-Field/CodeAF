@@ -40,7 +40,7 @@ The organization's operator keeps the machine and its disk. See *what can the op
 
 ## can other people on the server see my hosted chats — private by default, shared only when you share it, and anyone else gets `There is no such chat.`
 
-A hosted chat is private to the person who made it, unless the organization's policy makes chats of this kind start otherwise (the policy's default for `session`). A private chat is left out of every other person's list and out of the organization's live updates: nobody else is told it exists, who owns it or what state it is in, and that includes the operator. Someone else who asks for it, to open it, list it, stop it or delete it, gets the same answer as for a chat that was never made, `There is no such chat.`
+A hosted chat is private to the person who made it, unless the organization's policy makes chats of this kind start otherwise (the policy's default for `session`). A private chat is left out of every other person's list and out of the organization's live updates: nobody else is told it exists, who owns it or what state it is in, and that includes the operator unless the policy says the operator sees private things (see *can the operator open my hosted chat*). Someone else who asks for it, to open it, list it, stop it or delete it, gets the same answer as for a chat that was never made, `There is no such chat.`
 
 You can share a chat with a person, a team or the whole organization the way you share anything else (`POST /v1/resources/session/<chat>/grants` with who and a role; see *Sharing*). Once you do, it shows up in that person's `shared` list. Taking the access away takes it off their list again, and cuts them off if they are watching it at that moment: see *what can someone I shared my hosted chat with do*.
 
@@ -63,11 +63,11 @@ A chat shared with you opens with `codeaf chat --org <server> --session hs_...`,
 - **answer**: also answer a question the chat is waiting on.
 - **run** (the `edit` and `full` roles have it): also send messages, files and images, and run a command the chat's own way, as the chat's owner would.
 
-Everything else stays with the owner whatever role a person holds: approving a command, changing a setting, opening the chat's files, stopping the chat. A command that needs approval waits for the owner.
+Everything else on the chat's wire stays with the owner whatever role a person holds: approving a command, changing a setting, opening the chat's files, stopping its work. A command that needs approval waits for the owner. Stopping or deleting the chat itself is a separate door that needs the `manage` permission, which the `full` role holds: see *stop or delete a chat on the server*.
 
 ## what happens when I give someone run access to my hosted chat — they act with my GitHub identity, files and spending limits
 
-**A person you let send messages acts with your GitHub identity, your files and your spending limits.** The chat is yours: its commands run in your folder on the server, as your user, with your model access, and its git goes through your GitHub access, whoever typed the message. What it costs is yours too (see *who pays*), against your chat limit and month. The server notes who asked on each message, on each charge and on each use of your GitHub access, so you can read it afterwards. If you would rather nobody else sends messages, share at view or steer, or ask the operator to take `run` out of the roles in the organization's policy: nothing else needs to change.
+**A person you let send messages acts with your GitHub identity, your files and your spending limits.** The chat is yours: its commands run in your folder on the server, as your user, with your model access, and its git goes through your GitHub access, whoever typed the message. What it costs is yours too (see *who pays*), against your chat limit and month. The server notes who asked on each message, on each charge and on each use of your GitHub access, so you can read it afterwards. If you would rather nobody else sends messages, share at `view` or `comment`, which do not hold `run`, or ask the operator to take `run` out of the roles in the organization's policy: nothing else needs to change.
 
 ## why was I refused in a shared hosted chat — the sentences, the keyboard and a removed share
 
@@ -85,11 +85,11 @@ A shared chat always runs in the owner's folder on the machine, with the owner's
 
 ## can the operator open my hosted chat — only metadata, and only if the policy makes the chat visible
 
-The operator holds no right on a private chat: it is refused with `There is no such chat.` and is not told the chat exists. When the policy makes new chats not private, the operator's list shows the chat's identifier, owner, state and times and nothing else, and the operator still cannot open it, read its history or see its folder. Whoever runs the machine itself is another matter: see *what can the operator of the server see*.
+By default the operator holds no right on a private chat: it is refused with `There is no such chat.` and is not told the chat exists. When the policy makes new chats not private, or says the operator sees private things, the operator's list shows the chat's identifier, owner, state and times and nothing else, and the operator still cannot open it, read its history or see its folder. Whoever runs the machine itself is another matter: see *what can the operator of the server see*.
 
 ## bots and hosted chats — what a bot may do with a chat, and what it may not
 
-A bot (see *Bots*) can start, list, open, stop and delete hosted chats, and it holds exactly what the person who made it holds on each chat right now, narrowed by its scope. If that person loses access to someone else's chat, the bot loses it on its very next request, and an open window of the bot's is ended within a heartbeat. A chat the bot starts is owned by that person and recorded as made by the bot. A bot cannot touch a person's stored keys (`/v1/hosted/keys`): that answers `a bot cannot use this yet`. A bot that holds the `run` verb on its creator's own chat can type into it, as its creator would; a bot whose scope leaves `run` out is treated like a guest. On someone else's chat a bot gets what its creator's role gives, and no more.
+A bot (see *Bots*) can start (when the organization's policy lets agents create things), list, open, stop and delete hosted chats, and it holds exactly what the person who made it holds on each chat right now, narrowed by its scope. If that person loses access to someone else's chat, the bot loses it on its very next request, and an open window of the bot's is ended within a heartbeat. A chat the bot starts is owned by that person and recorded as made by the bot. A bot cannot touch a person's stored keys (`/v1/hosted/keys`): that answers `a bot cannot use this yet`. A bot that holds the `run` verb on its creator's own chat can type into it, as its creator would; a bot whose scope leaves `run` out is treated like a guest. On someone else's chat a bot gets what its creator's role gives, and no more.
 
 ## may I still start a chat on my own computer after joining an organization — the hosting policy
 
@@ -126,7 +126,7 @@ Stopping a chat ends every process it started, including ones that detached them
 
 Deleting a chat does the same and then removes its folder. Afterwards it is gone: `There is no such chat.`
 
-Both are done through the organization's server by its owner, and only its owner. Neither affects another chat.
+Both are done through the organization's server by its owner, or by someone who holds the `manage` permission on the chat (the `full` role). Anyone else who can see the chat reads `Only the owner of this chat can stop or delete it.`, and anyone who cannot reads `There is no such chat.` Neither affects another chat.
 
 ## the server says it cannot keep my chat apart — hosted chat refusals
 

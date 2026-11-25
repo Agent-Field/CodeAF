@@ -14,7 +14,7 @@ The name and the line are kept on the organization's server. Every Afi in the or
 
 ## start or open a chat in your organization's desktop window
 
-When the organization has enabled hosted chats, open its window in the desktop app to start a chat there or reopen one from the window's chat list. Your conversation and the work it runs stay on the organization's server. Closing the window leaves the chat running there. See [Chats that run on the organization's server](organization-hosted-sessions.md) for sharing, sign-in and limits.
+When the organization has enabled hosted chats, open its window in the desktop app to start a chat there or reopen one from the window's chat list, which also lists chats the server has shared with you. Your conversation and the work it runs stay on the organization's server. Closing the window leaves the chat running there. Personal shows the chats on your computer. See [Chats that run on the organization's server](organization-hosted-sessions.md) for sharing, sign-in and limits.
 
 ## Afi sets up the organization — one card, workstreams, teams and invites in one press
 
