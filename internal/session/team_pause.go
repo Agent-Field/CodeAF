@@ -33,7 +33,9 @@ package session
 // THE SENDER SAYS SO, ONCE, AT THE SEND. `team_send` reads the same record and
 // answers that the member is paused, and writes the one traffic line that says
 // the directive is held ([teamHeldPausedText]). The paused member writes
-// nothing, so the log carries one account whether or not anything has it open.
+// nothing for a directive, so the log carries one account whether or not
+// anything has it open. A start has no send behind it: a member paused before
+// its first turn writes that line itself, once ([Agent.teamWakeStart]).
 //
 // THE PERSON'S OWN WORDS ARE NOT HELD, as with the daily cap (team_cap.go): a
 // person typing into a paused member's conversation starts its turn, and that
@@ -93,37 +95,34 @@ func (a *Agent) teamPauseReleasedLocked(role teamRole) bool {
 	return true
 }
 
-// teamOwnStartWakes reports whether entry is the start line that owes this
-// member its first turn: its own start, unless the membership was made on
-// standby, whose start line is a role to read and not work to begin.
-func (a *Agent) teamOwnStartWakes(role teamRole, entry teams.Entry) bool {
-	return !role.standby && a.teamOwnStart(role, entry)
-}
-
 // teamStandbyText is the traffic line a member opened on standby writes, once:
 // "opened @mac-dev on standby; …".
 func teamStandbyText(handle string) string {
 	return "opened @" + handle + " on standby; it starts on its manager's first directive"
 }
 
-// teamStandbySay writes that line unless the team's recent traffic already
-// carries it: a conversation with nothing in it yet is fresh every time it is
-// opened, and the line is said once.
-func (a *Agent) teamStandbySay(profile string, role teamRole) {
-	text := teamStandbyText(role.handle)
-	tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
+// teamAutoWakeOffText is the traffic line a member started into a team whose
+// auto-wake is off writes: it is open, and nothing started its turn.
+func teamAutoWakeOffText(handle string) string {
+	return "opened @" + handle + "; this team's auto-wake is off, so no turn was started. It reads the brief when it next runs."
+}
+
+// teamSaidAlready reports whether team's recent traffic already carries this
+// line about this member, answering the same entry. A conversation with
+// nothing in it yet is fresh every time it is opened, and both watches may
+// meet the same hold, so a hold is said once for what it holds. A log that
+// cannot be read is not written to either.
+func teamSaidAlready(profile, team string, line teams.Entry) bool {
+	tail, err := teams.ReadTraffic(profile, team, "", teamFirstLook)
 	if err != nil {
-		return
+		return true
 	}
 	for _, entry := range tail {
-		if entry.Kind == teams.KindEvent && entry.Member == role.key && entry.Text == text {
-			return
+		if entry.Kind == teams.KindEvent && entry.Member == line.Member && entry.Text == line.Text && entry.Answers == line.Answers {
+			return true
 		}
 	}
-	a.teamSay(profile, role.id, teams.Entry{
-		Kind: teams.KindEvent, From: teams.FromSystem, To: role.handle, Member: role.key,
-		State: teams.StateIdle, Text: text,
-	})
+	return false
 }
 
 // teamStandbyOver clears a member's standby once its start line is handed to
@@ -168,27 +167,28 @@ func teamAt(members []teams.Member) string {
 // handle, when the person stopped a turn the manager's traffic had started.
 const teamStoppedByPersonLine = "'s turn on what you handed it was " + teams.StoppedByPerson + " before it finished, so that work is not done. The person chose to stop it: tell them where it stands, and do not hand it out again unless they ask."
 
-// teamPausedSince reads the teams file afresh and returns the roles among
-// roles that are still not paused, remembering a hold for each that now is.
-func (a *Agent) teamPausedSince(profile string, roles []teamRole) []teamRole {
+// teamPausedSplit reads the teams file afresh and divides roles into those
+// still not paused and those that now are, remembering a hold for each of the
+// latter. A role this conversation no longer has is in neither.
+func (a *Agent) teamPausedSplit(profile string, roles []teamRole) (kept, paused []teamRole) {
 	a.team.mu.Lock()
 	defer a.team.mu.Unlock()
 	fresh := map[string]teamRole{}
 	for _, role := range a.teamRolesLocked(profile) {
 		fresh[role.id] = role
 	}
-	kept := roles[:0:0]
 	for _, role := range roles {
 		now, still := fresh[role.id]
 		if !still {
 			continue
 		}
 		if a.teamPauseHoldLocked(now, true) {
+			paused = append(paused, now)
 			continue
 		}
 		kept = append(kept, now)
 	}
-	return kept
+	return kept, paused
 }
 
 // teamHandedLocked notes that role's manager handed this conversation work:

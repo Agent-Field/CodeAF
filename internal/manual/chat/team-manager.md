@@ -673,6 +673,7 @@ Resume from any of those crews lifts it:
 
 - A directive waits on the crew's log, unread. The traffic says
   `held @web: the person paused it; it starts on this when they resume it`, once per directive.
+  A member paused before its first turn says it once for the brief it was started with.
 - `team_send` tells the manager `@web did NOT start` with the same reason, and that only you
   can resume it. The manager cannot lift a pause.
 - `team_status` shows the member as `paused by the person; it starts nothing until they

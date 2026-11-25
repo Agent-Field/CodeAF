@@ -65,7 +65,8 @@ two teams can each spend up to the default without sharing one company-wide allo
 When the pool reaches its cap:
 
 - nothing new starts in it: a directive no longer wakes a member, replies no longer wake the
-  manager, a new member's brief waits, and `team_start` is refused. A turn already running is
+  manager, a new member's brief waits unread with the same held row, and `team_start` is
+  refused. A turn already running is
   never cut off; it finishes, and what was held is delivered at each conversation's next turn;
 - you are asked once, with a card `harbor reached its $5 cap today`: **Raise to $10** (the
   team goes on until $10 today) or **Stop for today** (members finish their current turn and

@@ -41,6 +41,9 @@ const (
 	wakeDirective wakeKind = iota + 1
 	// wakeReplies is a manager's team: its members' posts and events.
 	wakeReplies
+	// wakeStart is a fresh member's own start: the brief its manager started
+	// it with (team_wake.go).
+	wakeStart
 )
 
 // wakeVerdict is what becomes of the turn that was asked for.
@@ -72,6 +75,10 @@ const (
 	heldByLoop
 	// heldByGate is one of the engine's own gates ([Agent.wakeRefusalLocked]).
 	heldByGate
+	// heldByStandby is a membership made with no work to start on.
+	heldByStandby
+	// heldByAutoWakeOff is a team whose traffic starts no turn.
+	heldByAutoWakeOff
 )
 
 // wakeCause is one request for a turn nobody typed.
@@ -82,6 +89,10 @@ type wakeCause struct {
 	roles []teamRole
 	// batch is, for a manager, the entries that ask in each team.
 	batch map[string][]teams.Entry
+	// pools are the roles whose caps bind this wake, when they are more than
+	// the roles that ask: a first turn is held by a cap on any team the
+	// conversation is in.
+	pools []teamRole
 }
 
 // wakeDecision is the answer, and why when it is not a start.
@@ -105,7 +116,8 @@ type wakeRule func(a *Agent, profile string, c *wakeCause, now time.Time) wakeDe
 // directive sent in the second after the person pressed Pause reached the wake
 // as if nothing held it, and the turn it started consumed the directive the
 // pause was meant to keep. A manager is never paused, so its row has no pause;
-// a member has no loop to break.
+// a member has no loop to break. A first turn is not counted against the hour:
+// it is the one turn its manager asked for by starting the member.
 var wakeRules map[wakeKind][]wakeRule
 
 // The table is filled at init because the rules reach, through the turn they
@@ -114,6 +126,7 @@ func init() {
 	wakeRules = map[wakeKind][]wakeRule{
 		wakeDirective: {wakeLimitRule, wakeCapRule, wakePauseRule},
 		wakeReplies:   {wakeLoopRule, wakeLimitRule, wakeCapRule},
+		wakeStart:     {wakeStandbyRule, wakePauseRule, wakeAutoWakeOffRule, wakeCapRule},
 	}
 }
 
@@ -164,7 +177,11 @@ func wakeLimitRule(a *Agent, _ string, _ *wakeCause, now time.Time) wakeDecision
 }
 
 func wakeCapRule(a *Agent, profile string, c *wakeCause, _ time.Time) wakeDecision {
-	if why := a.teamCapHold(profile, c.roles); why != "" {
+	pools := c.pools
+	if pools == nil {
+		pools = c.roles
+	}
+	if why := a.teamCapHold(profile, pools); why != "" {
 		return wakeDecision{verdict: wakeHolds, by: heldByCap, why: why}
 	}
 	return wakeDecision{}
@@ -172,10 +189,52 @@ func wakeCapRule(a *Agent, profile string, c *wakeCause, _ time.Time) wakeDecisi
 
 // wakePauseRule keeps the roles the person has not paused, remembering a hold
 // for each they have, and holds the wake when none is left.
-func wakePauseRule(a *Agent, profile string, c *wakeCause, _ time.Time) wakeDecision {
-	if c.roles = a.teamPausedSince(profile, c.roles); len(c.roles) == 0 {
-		return wakeDecision{verdict: wakeHolds, by: heldByPause, why: teamPausedWhy}
+func wakePauseRule(a *Agent, profile string, c *wakeCause, now time.Time) wakeDecision {
+	kept, paused := a.teamPausedSplit(profile, c.roles)
+	return a.wakeSetAside(profile, c, now, wakeDecision{verdict: wakeHolds, by: heldByPause, why: teamPausedWhy}, kept, paused)
+}
+
+// wakeStandbyRule sets aside the memberships made on standby: the start line
+// is the member's role, read at its first turn, and the manager's first
+// directive is what begins that turn (team_pause.go).
+func wakeStandbyRule(a *Agent, profile string, c *wakeCause, now time.Time) wakeDecision {
+	return a.wakeSetAsideWhere(profile, c, now, heldByStandby, func(role teamRole) bool { return role.standby })
+}
+
+// wakeAutoWakeOffRule honours the team's switch. The conversation is already
+// open, which is what "opened" means in its line, and the brief stays unread
+// until a turn something else starts: consuming it now would hand it over with
+// nobody to read it.
+func wakeAutoWakeOffRule(a *Agent, profile string, c *wakeCause, now time.Time) wakeDecision {
+	return a.wakeSetAsideWhere(profile, c, now, heldByAutoWakeOff, func(role teamRole) bool { return !role.wakes })
+}
+
+// wakeSetAsideWhere is [Agent.wakeSetAside] for a rule that reads the role.
+func (a *Agent) wakeSetAsideWhere(profile string, c *wakeCause, now time.Time, by wakeHolder, holds func(teamRole) bool) wakeDecision {
+	var kept, aside []teamRole
+	for _, role := range c.roles {
+		if holds(role) {
+			aside = append(aside, role)
+		} else {
+			kept = append(kept, role)
+		}
 	}
+	return a.wakeSetAside(profile, c, now, wakeDecision{verdict: wakeHolds, by: by}, kept, aside)
+}
+
+// wakeSetAside is a rule that holds a wake in some of its teams and not in
+// others. The teams it holds are taken out of the cause and told so here; the
+// wake goes on for the rest, and is held outright when none is left, which its
+// caller then says of the teams that are.
+func (a *Agent) wakeSetAside(profile string, c *wakeCause, now time.Time, held wakeDecision, kept, aside []teamRole) wakeDecision {
+	if len(kept) == 0 {
+		c.roles = aside
+		return held
+	}
+	if len(aside) > 0 {
+		a.sayWake(profile, wakeCause{kind: c.kind, roles: aside}, held, now)
+	}
+	c.roles = kept
 	return wakeDecision{}
 }
 
@@ -198,9 +257,9 @@ func wakeLoopRule(a *Agent, _ string, _ *wakeCause, _ time.Time) wakeDecision {
 
 // sayWake writes what became of a wake to the traffic of each team that asked
 // for it, and is the only place a wake's line is written. Most decisions have
-// a line and some have none: a pause is said by the send that met it
-// (team_sendoutcome.go), a loop already tripped has been said, and a turn that
-// was already running was not woken.
+// a line and some have none: a directive's pause is said by the send that met
+// it (team_sendoutcome.go), a loop already tripped has been said, a turn that
+// was already running was not woken, and a first turn on a brief says nothing.
 //
 // THE WORDS ARE READ BACK BY MACHINES. `team_send` answers its manager from
 // these lines ([Agent.teamSendOutcome]), the rail and the digest parse `woke `,
@@ -211,10 +270,20 @@ func (a *Agent) sayWake(profile string, c wakeCause, d wakeDecision, now time.Ti
 		return
 	}
 	for _, role := range c.roles {
-		if entry, ok := a.wakeLine(c, role, d); ok {
-			a.teamSay(profile, role.id, entry)
+		entry, ok := a.wakeLine(c, role, d)
+		if !ok || (wakeSaidPerEntry(d) && teamSaidAlready(profile, role.id, entry)) {
+			continue
 		}
+		a.teamSay(profile, role.id, entry)
 	}
+}
+
+// wakeSaidPerEntry reports whether a decision's line is said once for the entry
+// it answers, by looking at the log. A member's first turn is looked at by two
+// watches (team_wake.go, team_wakewatch.go) and a fresh conversation is fresh
+// every time it is opened, so these holds would otherwise be said again.
+func wakeSaidPerEntry(d wakeDecision) bool {
+	return d.by == heldByStandby || d.by == heldByPause || d.by == heldByGate
 }
 
 // wakeSayOnce reports whether this decision's line is still to be said. A cap
@@ -254,6 +323,10 @@ func (a *Agent) wakeLine(c wakeCause, role teamRole, d wakeDecision) (teams.Entr
 		// directive. The turn takes the lines at its next step and the traffic
 		// says nothing: the send reads a running member off its journal.
 		return teams.Entry{}, false
+	case d.verdict == wakeStarts && c.kind == wakeStart:
+		// A first turn on a brief has never had a line: the start above it is
+		// the manager's own, and the member's turn says the rest.
+		return teams.Entry{}, false
 	case d.verdict == wakeStarts:
 		entry.State = teams.StateRunning
 		if role.manager {
@@ -274,6 +347,14 @@ func (a *Agent) wakeLine(c wakeCause, role teamRole, d wakeDecision) (teams.Entr
 		if !role.manager {
 			entry.Answers = a.teamAsked(role.id)
 		}
+	case d.by == heldByPause && c.kind == wakeStart:
+		// A directive's pause is said by the send that met it. A start has no
+		// send behind it, so the member says the same line, answering its start.
+		entry.Text, entry.Answers = teamHeldPausedText(role.handle), a.teamAsked(role.id)
+	case d.by == heldByStandby:
+		entry.Text = teamStandbyText(role.handle)
+	case d.by == heldByAutoWakeOff:
+		entry.Text = teamAutoWakeOffText(role.handle)
 	case d.by == heldByLoop && d.why != "":
 		// The manager asks the room: the rail draws it in the needs-you colour
 		// and a digest reads it as the manager waiting.

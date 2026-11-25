@@ -34,7 +34,9 @@ import (
 // A TEAM WHOSE AUTO-WAKE IS OFF IS THE EXCEPTION. The member is still opened,
 // and the brief is still waiting in the Traffic for its first turn, but no
 // turn is started for it. The Traffic says so, in the same voice as a wake
-// that could not run.
+// that could not run. So is a member on standby, one the person paused, and
+// one whose team is at its cap: each is a row of the one table that decides
+// every wake ([wakeRules]), and each says its own line.
 //
 // A conversation that is never started by a manager pays one stat of the teams
 // file at open and, where a team has a manager, one stat every
@@ -104,50 +106,32 @@ func (a *Agent) awaitTeamStart(profile string, base int) {
 		if grown, busy := a.teamWakeState(); busy || grown > base {
 			return
 		}
-		started := a.teamStarts(profile)
-		if len(started) == 0 {
-			continue
-		}
-		var waking []teamRole
-		for _, role := range started {
-			if role.standby {
-				// ON STANDBY NOTHING STARTS. The start line is this member's
-				// role, read at its first turn, and the manager's first
-				// directive is what begins that turn (team_pause.go).
-				a.teamStandbySay(profile, role)
-				continue
-			}
-			if role.paused {
-				// The watch holds it and starts the turn on resume.
-				a.team.mu.Lock()
-				a.teamPauseHoldLocked(role, true)
-				a.team.mu.Unlock()
-				continue
-			}
-			if role.wakes {
-				waking = append(waking, role)
-				continue
-			}
-			// WAKE OFF HONOURS THE SWITCH. The conversation is already open,
-			// which is what "opened" means here, and the brief stays unread
-			// until a turn something else starts. Consuming it now would hand
-			// it over with nobody to read it.
-			a.teamSay(profile, role.id, teams.Entry{
-				Kind: teams.KindEvent, From: teams.FromSystem, To: role.handle, Member: role.key,
-				State: teams.StateIdle,
-				Text:  "opened @" + role.handle + "; this team's auto-wake is off, so no turn was started. It reads the brief when it next runs.",
-			})
-		}
-		if len(waking) == 0 {
+		if started := a.teamStarts(profile); len(started) > 0 {
+			a.teamWakeStart(profile, started, time.Now())
 			return
 		}
-		if news := a.teamBoundary(); news != "" {
-			// AT THE CAP THE BRIEF WAITS: it is queued without the wake, and
-			// the member reads it at its first turn (team_cap.go).
-			held := a.teamCapHold(profile, a.teamRoles()) != ""
-			a.enqueueNote(userMessage{message: textMessage("user", news), wake: !held})
-		}
+	}
+}
+
+// teamWakeStart starts a fresh member's first turn on the brief it was started
+// with, when the one decision says it may (team_wakedecide.go).
+//
+// IT IS DECIDED WHERE THE TRAFFIC WATCH'S WAKES ARE. This wake had rules of its
+// own, in an order of its own, and said less: a member held at its team's cap
+// or by the person's pause wrote nothing, so its manager read a helper it had
+// just started as silent, and the brief was read off the log before the cap
+// was asked. Now a held first turn writes the line the watch writes for the
+// same hold, and the brief stays on the log until a turn may read it. What
+// starts the turn is unchanged: the brief as the session's note, with the wake
+// bit, and no line in the traffic.
+func (a *Agent) teamWakeStart(profile string, started []teamRole, now time.Time) {
+	cause := wakeCause{kind: wakeStart, roles: started, pools: a.teamRoles()}
+	if d := a.decideWake(profile, &cause, now); d.verdict != wakeStarts {
+		a.teamWakeDeclined(profile, cause, d, now)
 		return
+	}
+	if news := a.teamBoundary(); news != "" {
+		a.enqueueNote(userMessage{message: textMessage("user", news), wake: true})
 	}
 }
 
@@ -167,6 +151,10 @@ func (a *Agent) teamStarts(profile string) []teamRole {
 		for _, entry := range tail {
 			if a.teamOwnStart(role, entry) {
 				started = append(started, role)
+				// A first turn that is held answers this start.
+				a.team.mu.Lock()
+				a.teamAskedLocked(role, entry)
+				a.team.mu.Unlock()
 				break
 			}
 		}

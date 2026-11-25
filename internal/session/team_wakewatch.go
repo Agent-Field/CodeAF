@@ -230,13 +230,9 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		arrived := a.teamWatchReadLocked(profile, role)
 		var waking []teams.Entry
 		for _, entry := range arrived {
-			if role.manager && entry.Kind == teams.KindEvent && entry.State == teams.StateFinished &&
-				teamFinishedAfterReply(profile, role.id, entry) {
-				continue
-			}
 			// Membership can arrive after the fresh-session watch expires.
 			// Its own start still owes this member its first turn.
-			if a.teamOwnStartWakes(role, entry) || teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
+			if wakes, _ := teamEntryWakes(profile, role, entry, a.teamOwnStart(role, entry)); wakes {
 				waking = append(waking, entry)
 				a.teamAskedLocked(role, entry)
 			}
@@ -497,6 +493,33 @@ func topManager(file *teams.File, key string) bool {
 		}
 	}
 	return false
+}
+
+// teamEntryWakes is the one answer to whether an entry on a team's log starts
+// role's turn, asked by the watch of an open conversation and by the look that
+// decides whether a closed one needs opening ([TeamOpenPending]). They each had
+// their own, and differed on a member's own start.
+//
+// own says the entry is the start that made this membership. Only the caller
+// can tell: an open conversation knows when it was born ([Agent.teamOwnStart]),
+// and the look at a closed one has only the log.
+//
+// quiet says the rule has decided the entry is no reason to run at all, which
+// is also no reason to open the conversation for the line it carries:
+//
+//   - a manager's member finishing a turn that already replied
+//     ([teamFinishedAfterReply]): one reply is one wake;
+//   - a member's own start while it is on standby: the line is its role, read
+//     at its first turn, and not work to begin (team_pause.go).
+func teamEntryWakes(profile string, role teamRole, entry teams.Entry, own bool) (wakes, quiet bool) {
+	if role.manager && entry.Kind == teams.KindEvent && entry.State == teams.StateFinished &&
+		teamFinishedAfterReply(profile, role.id, entry) {
+		return false, true
+	}
+	if own {
+		return !role.standby, role.standby
+	}
+	return teamWakes(role, entry) || teamPacketWakes(profile, role, entry), false
 }
 
 // teamWakes reports whether an entry starts this conversation's turn when it
