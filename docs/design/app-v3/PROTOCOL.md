@@ -2911,25 +2911,33 @@ one: on each `models.list` the engine asks that server's own API, at the
 service's address without its `/v1`, what it runs now (`GET /api/ps`) and what
 it says about each of its listed models (`POST /api/show`). Each question waits
 at most 300 ms, all of them 600 ms, inside the list's three seconds; a server
-that is absent, slow or answers in an unknown shape reports no limit.
+that is absent, refuses or answers in an unknown shape reports no limit.
 
 | `kind` | sent when | other fields |
 |---|---|---|
-| `small_window` | the window the server gives the model is under `needs`, or the server has not said what it will give | `needs`, `source`, and `window` and `most` when known |
+| `small_window` | a window the server is known to give the model is under `needs` | `window`, `needs`, `source`, and `most` when known |
 | `no_tools` | the server lists the model's capabilities and `tools` is not among them | none |
 
 `needs` is the window the app's prompts ask for, 32000 tokens (the engine's lean
 threshold). `source` says how `window` is known: `loaded` (the server is running
 the model with this window), `modelfile` (the model is not loaded and its
-Modelfile sets `num_ctx`) or `default` (not loaded and nothing sets it, so the
-server's default will apply; `window` is then absent, because the server does
-not say what its default is). A `loaded` or `modelfile` window of `needs` or
-more is no limit. `most` is the most the model itself can hold, when the server
-says. A model the server only forwards to another machine has no
-`small_window`. A server that sends no capability list has no `no_tools`.
+Modelfile sets `num_ctx`, which overrides the server's own setting) or
+`last_loaded` (not loaded, nothing sets it, and `window` is what the server gave
+the model when this engine last saw it running in `GET /api/ps`). A window of
+`needs` or more is no limit. A model that is not loaded, sets no `num_ctx` and
+has not been seen running has no `small_window`: the server decides its default
+window when it loads a model, from the machine's memory or the person's
+setting, and its API does not say what that will be. The engine remembers each
+model's last window per service address for as long as it runs, not on disk.
+`most` is the most the model itself can hold, when the server says. A model the
+server only forwards to another machine has no `small_window`. A server that
+sends no capability list has no `no_tools`. A list that runs out of time before
+it can ask about a model repeats that model's limits from the last list that
+could. Engines before `last_loaded` could send `source` `default` with no
+`window`; an app reads it as nothing measured and shows no warning for it.
 
-When a turn ends on an Ollama model the last `models.list` reported with
-`source` `default`, the app emits `models.changed` once: the turn loaded the
+When a turn ends on an Ollama model the server was not running at the last
+`models.list`, the engine emits `models.changed` once: the turn loaded the
 model, so the next list reads the window the server really gave it.
 
 ## orders methods

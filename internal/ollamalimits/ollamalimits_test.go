@@ -72,7 +72,8 @@ func (s *stubServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// limitsFrom asks a stub for the named models the way models.list does.
+// limitsFrom asks a stub for the named models the way models.list does, and
+// answers the limits of the models that have some.
 func limitsFrom(t *testing.T, stub *stubServer, names ...string) map[string][]appwire.ModelLimit {
 	t.Helper()
 	server := httptest.NewServer(stub)
@@ -82,7 +83,18 @@ func limitsFrom(t *testing.T, stub *stubServer, names ...string) map[string][]ap
 		t.Fatalf("no probe for %s", server.URL)
 	}
 	probe.Client = server.Client()
-	return probe.Limits(context.Background(), names, needs)
+	return limitsOf(probe.Read(context.Background(), names, needs))
+}
+
+// limitsOf is the limits of the readings that have some.
+func limitsOf(readings map[string]Reading) map[string][]appwire.ModelLimit {
+	limits := map[string][]appwire.ModelLimit{}
+	for name, reading := range readings {
+		if len(reading.Limits) > 0 {
+			limits[name] = reading.Limits
+		}
+	}
+	return limits
 }
 
 const (
@@ -145,14 +157,111 @@ func TestAModelfileWindowIsReportedOnlyWhenSmall(t *testing.T) {
 	}
 }
 
-// Not loaded and nothing set: the server's default applies and the API does
-// not say what it is, so the limit is reported with no window.
-func TestAnUnsetWindowIsReportedAsTheServersDefault(t *testing.T) {
+// Not loaded and nothing set: the server decides the window when it loads the
+// model, from the machine's memory or a setting the person may have raised, and
+// its API does not say what that will be. A model never seen running has no
+// window limit, and its reading says the server is not running it.
+func TestAnUnsetWindowNeverSeenRunningIsNoLimit(t *testing.T) {
 	stub := &stubServer{ps: nothingRunning, show: map[string]string{"qwen3:8b": plainModel}}
-	got := limitsFrom(t, stub, "qwen3:8b")
-	want := map[string][]appwire.ModelLimit{"qwen3:8b": {{Kind: appwire.LimitSmallWindow, Needs: needs, Most: 40960, Source: appwire.WindowDefault}}}
+	server := httptest.NewServer(stub)
+	defer server.Close()
+	probe, _ := At(server.URL+"/v1", "")
+	probe.Memory = &Memory{}
+	got := probe.Read(context.Background(), []string{"qwen3:8b"}, needs)
+	if want := map[string]Reading{"qwen3:8b": {Unloaded: true}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("readings = %+v, want %+v", got, want)
+	}
+}
+
+// The window a model was last running with is remembered per server, and once
+// the server unloads it the model is reported with that window, said to be the
+// last load's. A Modelfile's num_ctx still wins, as it does in the server: it
+// overrides the server's own setting. Another server's memory is its own.
+func TestALastLoadedWindowIsRememberedPerServer(t *testing.T) {
+	stub := &stubServer{
+		ps: `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096},{"name":"pinned:latest","model":"pinned:latest","context_length":4096}]}`,
+		show: map[string]string{
+			"qwen3:8b": plainModel,
+			"pinned":   `{"capabilities":["tools"],"parameters":"num_ctx 8192"}`,
+		},
+	}
+	server := httptest.NewServer(stub)
+	defer server.Close()
+	seen := &Memory{}
+	probe, _ := At(server.URL+"/v1", "")
+	probe.Memory = seen
+	loaded := probe.Read(context.Background(), []string{"qwen3:8b", "pinned"}, needs)
+	if r := loaded["qwen3:8b"]; r.Unloaded || len(r.Limits) != 1 || r.Limits[0].Source != appwire.WindowLoaded || r.Limits[0].Window != 4096 {
+		t.Fatalf("loaded reading = %+v", r)
+	}
+
+	stub.ps = nothingRunning
+	got := limitsOf(probe.Read(context.Background(), []string{"qwen3:8b", "pinned"}, needs))
+	want := map[string][]appwire.ModelLimit{
+		"qwen3:8b": {{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowLastLoaded}},
+		"pinned":   {{Kind: appwire.LimitSmallWindow, Window: 8192, Needs: needs, Source: appwire.WindowModelfile}},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("limits = %+v, want %+v", got, want)
+	}
+
+	// A larger window seen later replaces the remembered one, and a window
+	// large enough is no limit once unloaded either.
+	stub.ps = `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":32768}]}`
+	probe.Read(context.Background(), []string{"qwen3:8b"}, needs)
+	stub.ps = nothingRunning
+	if got := limitsOf(probe.Read(context.Background(), []string{"qwen3:8b"}, needs)); len(got) != 0 {
+		t.Fatalf("limits after a large load = %+v, want none", got)
+	}
+
+	other := httptest.NewServer(&stubServer{ps: nothingRunning, show: map[string]string{"qwen3:8b": plainModel}})
+	defer other.Close()
+	elsewhere, _ := At(other.URL+"/v1", "")
+	elsewhere.Memory = seen
+	stub.ps = `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096}]}`
+	probe.Read(context.Background(), []string{"qwen3:8b"}, needs)
+	if got := limitsOf(elsewhere.Read(context.Background(), []string{"qwen3:8b"}, needs)); len(got) != 0 {
+		t.Fatalf("another server reported this one's window: %+v", got)
+	}
+}
+
+// A list that runs out of time has learnt nothing about the models it could not
+// ask about, so it answers the last finished list's reading, marked stale: the
+// warning does not blink away, and whether the server was running the model is
+// not forgotten. Without such a list, a late model has nothing.
+func TestALateListAnswersTheLastFinishedReading(t *testing.T) {
+	stub := &stubServer{ps: `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096}]}`, show: map[string]string{"qwen3:8b": plainModel, "chat": `{"capabilities":["completion"]}`}}
+	server := httptest.NewServer(stub)
+	defer server.Close()
+	probe, _ := At(server.URL+"/v1", "")
+	probe.Memory = &Memory{}
+	first := probe.Read(context.Background(), []string{"qwen3:8b", "chat"}, needs)
+	if first["qwen3:8b"].Stale || first["chat"].Stale || !first["chat"].Unloaded {
+		t.Fatalf("first readings = %+v", first)
+	}
+
+	spent, cancel := context.WithCancel(context.Background())
+	cancel()
+	asked := len(stub.auth)
+	again := probe.Read(spent, []string{"qwen3:8b", "chat", "new"}, needs)
+	if len(stub.auth) != asked {
+		t.Fatal("a spent list asked the server")
+	}
+	for _, name := range []string{"qwen3:8b", "chat"} {
+		want := first[name]
+		want.Stale = true
+		if !reflect.DeepEqual(again[name], want) {
+			t.Fatalf("%s spent reading = %+v, want %+v", name, again[name], want)
+		}
+	}
+	if r := again["new"]; !r.Stale || r.Limits != nil || r.Unloaded {
+		t.Fatalf("a model no list finished = %+v", r)
+	}
+
+	stub.slow = 5 * time.Second
+	slow := probe.Read(context.Background(), []string{"qwen3:8b"}, needs)
+	if r := slow["qwen3:8b"]; !r.Stale || !reflect.DeepEqual(r.Limits, first["qwen3:8b"].Limits) {
+		t.Fatalf("a slow server's reading = %+v", r)
 	}
 }
 
@@ -226,7 +335,7 @@ func TestAFailedRunningListReportsNoWindow(t *testing.T) {
 // A model the server will not describe, or describes in a shape nobody knows,
 // has no limit: an error is never a warning.
 func TestAFailedOrOddAnswerReportsNothingForThatModel(t *testing.T) {
-	stub := &stubServer{ps: nothingRunning, show: map[string]string{
+	stub := &stubServer{ps: `{"models":[{"name":"plain:latest","context_length":4096}]}`, show: map[string]string{
 		"garbled": `{"capabilities":`,
 		"shapes":  `{"capabilities":"tools","parameters":7}`,
 		"plain":   plainModel,
@@ -241,12 +350,13 @@ func TestAFailedOrOddAnswerReportsNothingForThatModel(t *testing.T) {
 // either still reports the window, with no most.
 func TestMostIsAbsentWhenTheServerDoesNotSayIt(t *testing.T) {
 	stub := &stubServer{ps: nothingRunning, show: map[string]string{
-		"bare":  `{"capabilities":["tools"],"model_info":{"general.architecture":"llama"}}`,
-		"words": `{"capabilities":["tools"],"model_info":{"general.architecture":"llama","llama.context_length":"many"}}`,
+		"bare":  `{"capabilities":["tools"],"parameters":"num_ctx 4096","model_info":{"general.architecture":"llama"}}`,
+		"words": `{"capabilities":["tools"],"parameters":"num_ctx 4096","model_info":{"general.architecture":"llama","llama.context_length":"many"}}`,
 	}}
-	for name, limits := range limitsFrom(t, stub, "bare", "words") {
-		if len(limits) != 1 || limits[0].Most != 0 || limits[0].Source != appwire.WindowDefault {
-			t.Fatalf("%s: limits = %+v, want the default window with no most", name, limits)
+	got := limitsFrom(t, stub, "bare", "words")
+	for _, name := range []string{"bare", "words"} {
+		if limits := got[name]; len(limits) != 1 || limits[0].Most != 0 || limits[0].Window != 4096 {
+			t.Fatalf("%s: limits = %+v, want the window with no most", name, limits)
 		}
 	}
 }
@@ -267,7 +377,7 @@ func TestASlowServerReportsNothingWithinTheBound(t *testing.T) {
 	probe, _ := At(server.URL+"/v1", "")
 	spent, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got := probe.Limits(spent, []string{"qwen3:8b"}, needs); len(got) != 0 || len(quick.auth) != 0 {
+	if got := limitsOf(probe.Read(spent, []string{"qwen3:8b"}, needs)); len(got) != 0 || len(quick.auth) != 0 {
 		t.Fatalf("a spent list asked %d questions and reported %+v", len(quick.auth), got)
 	}
 }
@@ -281,8 +391,18 @@ func TestEveryModelOfALongListIsAnswered(t *testing.T) {
 		names = append(names, name)
 		stub.show[name] = plainModel
 	}
-	if got := limitsFrom(t, stub, names...); len(got) != len(names) {
-		t.Fatalf("%d of %d models answered", len(got), len(names))
+	server := httptest.NewServer(stub)
+	defer server.Close()
+	probe, _ := At(server.URL+"/v1", "")
+	got := probe.Read(context.Background(), names, needs)
+	answered := 0
+	for _, reading := range got {
+		if !reading.Stale && reading.Unloaded {
+			answered++
+		}
+	}
+	if len(got) != len(names) || answered != len(names) {
+		t.Fatalf("%d of %d models answered", answered, len(names))
 	}
 }
 
@@ -295,7 +415,7 @@ func TestAnAbsentServerReportsNothing(t *testing.T) {
 	if !ok {
 		t.Fatal("no probe for a closed server's address")
 	}
-	if got := probe.Limits(context.Background(), []string{"qwen3:8b"}, needs); len(got) != 0 {
+	if got := limitsOf(probe.Read(context.Background(), []string{"qwen3:8b"}, needs)); len(got) != 0 {
 		t.Fatalf("limits = %+v, want none", got)
 	}
 }
@@ -323,13 +443,13 @@ func TestTheProbeIsBesideTheChatAddress(t *testing.T) {
 	server := httptest.NewServer(stub)
 	defer server.Close()
 	probe, _ := At(server.URL+"/v1", " secret ")
-	probe.Limits(context.Background(), []string{"qwen3:8b"}, needs)
+	probe.Read(context.Background(), []string{"qwen3:8b"}, needs)
 	if len(stub.auth) != 2 || stub.auth[0] != "Bearer secret" || stub.auth[1] != "Bearer secret" {
 		t.Fatalf("authorization sent = %q", stub.auth)
 	}
 	stub.auth = nil
 	probe, _ = At(server.URL+"/v1", "")
-	probe.Limits(context.Background(), []string{"qwen3:8b"}, needs)
+	probe.Read(context.Background(), []string{"qwen3:8b"}, needs)
 	if len(stub.auth) != 2 || stub.auth[0] != "" || stub.auth[1] != "" {
 		t.Fatalf("a keyless probe sent authorization %q", stub.auth)
 	}

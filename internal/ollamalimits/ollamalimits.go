@@ -49,11 +49,13 @@ const (
 )
 
 // Probe asks one Ollama server. Client is the test's door; nil is a client of
-// its own that follows no redirect off the server's origin.
+// its own that follows no redirect off the server's origin. Memory is what
+// earlier lists saw ([Memory]); nil remembers nothing.
 type Probe struct {
 	base   string
 	key    string
 	Client *http.Client
+	Memory *Memory
 }
 
 // At is the probe for the server whose OpenAI-shaped address is given, and
@@ -69,10 +71,103 @@ func At(address, key string) (Probe, bool) {
 	return Probe{base: base, key: strings.TrimSpace(key)}, true
 }
 
+// Memory is what this process has seen of its Ollama servers, by server address
+// and model: the window each model was last running with in /api/ps, and each
+// model's last reading that a list could finish.
+//
+// IT IS KEPT IN MEMORY ONLY, FOR THE LIFE OF THE PROCESS. A remembered window
+// is what the server gave the model when it last loaded it, and a restart of
+// the app is commonly a restart of Ollama too, or comes after its setting was
+// changed: a figure carried across that from disk would be one nobody has
+// measured since. Forgetting costs only the warning until the model next loads.
+type Memory struct {
+	mu       sync.Mutex
+	windows  map[string]int
+	readings map[string]Reading
+}
+
+// remembered is the key of one model of one server.
+func remembered(base, name string) string { return base + "\x00" + tagged(name) }
+
+// sawRunning remembers the window of every model the server is running now.
+func (m *Memory) sawRunning(base string, running map[string]int) {
+	if m == nil || len(running) == 0 {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.windows == nil {
+		m.windows = map[string]int{}
+	}
+	for name, window := range running {
+		m.windows[remembered(base, name)] = window
+	}
+}
+
+// lastWindow is the window the model was last seen running with, or 0.
+func (m *Memory) lastWindow(base, name string) int {
+	if m == nil {
+		return 0
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.windows[remembered(base, name)]
+}
+
+// keep remembers a reading a list finished, and recall answers it again for a
+// list that could not ask, marked stale.
+func (m *Memory) keep(base, name string, reading Reading) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.readings == nil {
+		m.readings = map[string]Reading{}
+	}
+	m.readings[remembered(base, name)] = reading
+}
+
+func (m *Memory) recall(base, name string) Reading {
+	if m == nil {
+		return Reading{Stale: true}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	reading := m.readings[remembered(base, name)]
+	reading.Stale = true
+	return reading
+}
+
+// Reading is what one list learnt about one model.
+type Reading struct {
+	// Limits is where the model falls short, empty when nothing is known
+	// against it.
+	Limits []appwire.ModelLimit
+	// Unloaded says the server answered that it is not running the model.
+	Unloaded bool
+	// Stale says this list ran out of time before the server could answer
+	// about the model, so Limits and Unloaded are those of the last list that
+	// could (nothing, when none could).
+	Stale bool
+}
+
+// outcome is how one question went. Late is the list's time running out
+// before the answer came, which says nothing about the model; refused is an
+// answer, however unusable.
+type outcome int
+
+const (
+	answered outcome = iota
+	refused
+	late
+)
+
 // shown is what the server says about one model, whether or not it is loaded.
 type shown struct {
-	// ok says the server answered. Every other field is nothing without it.
-	ok bool
+	// asked is how the question went. Every other field is nothing unless it
+	// was answered.
+	asked outcome
 	// numCtx is the window the model's Modelfile sets, or 0 when it sets none.
 	numCtx int
 	// most is the most the model itself can hold, or 0 when the answer has none.
@@ -85,23 +180,32 @@ type shown struct {
 	remote bool
 }
 
-// Limits answers where each named model falls short, keyed by the name asked
-// with; a model nothing is known against is not in the answer. needs is the
-// window the app's prompts ask for.
+// Read answers, for each named model by the name asked with, where it falls
+// short and whether the server is running it. needs is the window the app's
+// prompts ask for.
 //
-// EVERY FAILURE IS SILENCE. A server that is not running, one that answers
-// slowly, an answer in a shape this does not know: each reports nothing for
-// the models it concerned, because a limit is shown to a person as a warning
-// and a warning nobody measured is worse than none.
-func (p Probe) Limits(ctx context.Context, names []string, needs int) map[string][]appwire.ModelLimit {
-	if len(names) == 0 || ctx.Err() != nil {
+// EVERY FAILURE IS SILENCE. A server that is not running, one that refuses, an
+// answer in a shape this does not know: each reports nothing for the models it
+// concerned, because a limit is shown to a person as a warning and a warning
+// nobody measured is worse than none. A list that runs out of time is the one
+// exception: it has learnt nothing, so it answers what the last list that
+// finished learnt (Reading.Stale) rather than take a warning away for a moment.
+func (p Probe) Read(ctx context.Context, names []string, needs int) map[string]Reading {
+	if len(names) == 0 {
 		return nil
+	}
+	readings := make(map[string]Reading, len(names))
+	if ctx.Err() != nil {
+		for _, name := range names {
+			readings[name] = p.Memory.recall(p.base, name)
+		}
+		return readings
 	}
 	ctx, cancel := context.WithTimeout(ctx, Whole)
 	defer cancel()
 	var (
 		running map[string]int
-		listed  bool
+		listed  outcome
 		wait    sync.WaitGroup
 	)
 	shows := make([]shown, len(names))
@@ -119,56 +223,68 @@ func (p Probe) Limits(ctx context.Context, names []string, needs int) map[string
 				defer func() { <-gate }()
 				shows[i] = p.show(ctx, name)
 			case <-ctx.Done():
+				shows[i] = shown{asked: late}
 			}
 		})
 	}
 	wait.Wait()
-	limits := map[string][]appwire.ModelLimit{}
+	p.Memory.sawRunning(p.base, running)
 	for i, name := range names {
-		var found []appwire.ModelLimit
-		if limit, small := smallWindow(running[tagged(name)], listed, shows[i], needs); small {
-			found = append(found, limit)
+		if listed == late || shows[i].asked == late {
+			readings[name] = p.Memory.recall(p.base, name)
+			continue
+		}
+		var reading Reading
+		if listed == answered {
+			loaded := running[tagged(name)]
+			reading.Unloaded = loaded == 0
+			if limit, small := smallWindow(loaded, p.Memory.lastWindow(p.base, name), shows[i], needs); small {
+				reading.Limits = append(reading.Limits, limit)
+			}
 		}
 		// A SERVER THAT SENDS NO LIST HAS NOT SAID THE MODEL LACKS TOOLS. Older
 		// servers send none at all, and reading that as "no tools" would warn
 		// about every model they hold.
 		if len(shows[i].capabilities) > 0 && !slices.Contains(shows[i].capabilities, "tools") {
-			found = append(found, appwire.ModelLimit{Kind: appwire.LimitNoTools})
+			reading.Limits = append(reading.Limits, appwire.ModelLimit{Kind: appwire.LimitNoTools})
 		}
-		if len(found) > 0 {
-			limits[name] = found
-		}
+		p.Memory.keep(p.base, name, reading)
+		readings[name] = reading
 	}
-	return limits
+	return readings
 }
 
-// smallWindow is the model's window limit and whether it has one. A window the
-// server is running now is believed over the Modelfile's, which only says what
-// the next load would ask for; and a model that is not loaded and sets nothing
-// is reported with no figure, because the server's default applies and its API
-// does not say what that is.
-func smallWindow(loaded int, listed bool, model shown, needs int) (appwire.ModelLimit, bool) {
+// smallWindow is the model's window limit and whether it has one, from the
+// window the server runs it with now (loaded) and the one it last ran it with
+// (last), either 0 when there is none. Whether the server answered /api/ps at
+// all is the caller's: without that nobody knows which window counts.
+//
+// A window running now is believed over the Modelfile's, which only says what
+// the next load would ask for; the Modelfile's over the last load's, because
+// it overrides the server's own setting; and a model with none of the three
+// has no window limit. The server decides its default when it loads a model,
+// from the machine's memory or a setting the person may have raised, and no
+// API says what it is, so a warning without a figure would be a guess.
+func smallWindow(loaded, last int, model shown, needs int) (appwire.ModelLimit, bool) {
 	limit := appwire.ModelLimit{Kind: appwire.LimitSmallWindow, Needs: needs, Most: model.most}
 	switch {
-	case !listed:
-		// Whether it is loaded is not known, so neither is which window counts.
-		return limit, false
 	case loaded > 0:
 		limit.Window, limit.Source = loaded, appwire.WindowLoaded
-	case !model.ok || model.remote:
+	case model.asked != answered || model.remote:
 		return limit, false
 	case model.numCtx > 0:
 		limit.Window, limit.Source = model.numCtx, appwire.WindowModelfile
+	case last > 0:
+		limit.Window, limit.Source = last, appwire.WindowLastLoaded
 	default:
-		limit.Source = appwire.WindowDefault
-		return limit, true
+		return limit, false
 	}
 	return limit, limit.Window < needs
 }
 
 // loaded is the window of every model the server is running now, by name, and
-// whether the server answered at all.
-func (p Probe) loaded(ctx context.Context) (map[string]int, bool) {
+// how the question went.
+func (p Probe) loaded(ctx context.Context) (map[string]int, outcome) {
 	var answer struct {
 		Models *[]struct {
 			Name          string `json:"name"`
@@ -176,8 +292,11 @@ func (p Probe) loaded(ctx context.Context) (map[string]int, bool) {
 			ContextLength int    `json:"context_length"`
 		} `json:"models"`
 	}
-	if !p.ask(ctx, http.MethodGet, "/api/ps", nil, &answer) || answer.Models == nil {
-		return nil, false
+	if asked := p.ask(ctx, http.MethodGet, "/api/ps", nil, &answer); asked != answered {
+		return nil, asked
+	}
+	if answer.Models == nil {
+		return nil, refused
 	}
 	running := map[string]int{}
 	for _, model := range *answer.Models {
@@ -189,7 +308,7 @@ func (p Probe) loaded(ctx context.Context) (map[string]int, bool) {
 		running[tagged(model.Name)] = model.ContextLength
 		running[tagged(model.Model)] = model.ContextLength
 	}
-	return running, true
+	return running, answered
 }
 
 // show is what the server says about one model.
@@ -202,11 +321,14 @@ func (p Probe) show(ctx context.Context, name string) shown {
 		RemoteModel  string                     `json:"remote_model"`
 	}
 	body, err := json.Marshal(map[string]string{"model": name})
-	if err != nil || !p.ask(ctx, http.MethodPost, "/api/show", body, &answer) {
-		return shown{}
+	if err != nil {
+		return shown{asked: refused}
+	}
+	if asked := p.ask(ctx, http.MethodPost, "/api/show", body, &answer); asked != answered {
+		return shown{asked: asked}
 	}
 	return shown{
-		ok:           true,
+		asked:        answered,
 		numCtx:       numCtx(answer.Parameters),
 		most:         mostOf(answer.ModelInfo),
 		capabilities: answer.Capabilities,
@@ -214,13 +336,20 @@ func (p Probe) show(ctx context.Context, name string) shown {
 	}
 }
 
-// ask sends one question and decodes its answer, and says whether both worked.
-func (p Probe) ask(ctx context.Context, method, path string, body []byte, into any) bool {
+// ask sends one question and decodes its answer, and says how that went: any
+// failure once this question's time or the list's has run out is late.
+func (p Probe) ask(ctx context.Context, method, path string, body []byte, into any) outcome {
 	ctx, cancel := context.WithTimeout(ctx, Each)
 	defer cancel()
+	failed := func() outcome {
+		if ctx.Err() != nil {
+			return late
+		}
+		return refused
+	}
 	request, err := http.NewRequestWithContext(ctx, method, p.base+path, bytes.NewReader(body))
 	if err != nil {
-		return false
+		return refused
 	}
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -230,13 +359,16 @@ func (p Probe) ask(ctx context.Context, method, path string, body []byte, into a
 	}
 	response, err := providerhttp.Clone(p.Client).Do(request)
 	if err != nil {
-		return false
+		return failed()
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return false
+		return refused
 	}
-	return json.NewDecoder(io.LimitReader(response.Body, answerLimit)).Decode(into) == nil
+	if json.NewDecoder(io.LimitReader(response.Body, answerLimit)).Decode(into) != nil {
+		return failed()
+	}
+	return answered
 }
 
 // numCtx reads the window out of a model's parameters, which the server sends

@@ -731,9 +731,9 @@ const (
 	LimitSmallWindow = "small_window"
 	LimitNoTools     = "no_tools"
 
-	WindowLoaded    = "loaded"
-	WindowModelfile = "modelfile"
-	WindowDefault   = "default"
+	WindowLoaded     = "loaded"
+	WindowModelfile  = "modelfile"
+	WindowLastLoaded = "last_loaded"
 )
 
 // ModelLimit is one way a model falls short, as its server reports it.
@@ -745,14 +745,14 @@ const (
 type ModelLimit struct {
 	// Kind is "small_window" or "no_tools".
 	Kind string `json:"kind" enum:"small_window,no_tools"`
-	// Window is the tokens the server gives the model now. Absent (0) when Source is "default": the server has not said.
+	// Window is the tokens the model has, as Source says it is known. Always sent with small_window: a window nobody measured is no limit.
 	Window int `json:"window,omitempty"`
 	// Needs is the window the app's prompts ask for (the lean threshold, 32000). Only with small_window.
 	Needs int `json:"needs,omitempty"`
 	// Most is the most the model itself can hold, when the server says. Only with small_window.
 	Most int `json:"most,omitempty"`
-	// Source says how Window is known: "loaded" (the server is running it with this window), "modelfile" (its Modelfile sets num_ctx), or "default" (not loaded and nothing sets it, so the server's default will apply). Only with small_window.
-	Source string `json:"source,omitempty" enum:"loaded,modelfile,default"`
+	// Source says how Window is known: "loaded" (the server is running it with this window), "modelfile" (not loaded, and its Modelfile sets num_ctx, which overrides the server's own setting) or "last_loaded" (not loaded, nothing sets it, and this window is what the server gave it when this engine last saw it running). Only with small_window. Engines before last_loaded could send "default", with no window; an app reads that as nothing measured.
+	Source string `json:"source,omitempty" enum:"loaded,modelfile,last_loaded"`
 }
 
 // FeatureAgentEffortRungs announces the terminal's full conversation effort dial.

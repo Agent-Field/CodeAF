@@ -41,8 +41,8 @@ func TestModelFactsWireIsOptionalAndUnknownPriceStaysAbsent(t *testing.T) {
 }
 
 // A model's limits are optional on the wire, under the names the desktop app
-// reads: a model nothing is known against sends no limits at all, a window the
-// server has not put a figure to sends no window, and a limit that is not about
+// reads: a model nothing is known against sends no limits at all, every small
+// window carries its figure and how it is known, and a limit that is not about
 // the window sends its kind alone.
 func TestModelLimitsWireIsAbsentUnlessTheServerSaidSo(t *testing.T) {
 	data, err := json.Marshal(Model{ID: "plain"})
@@ -52,14 +52,14 @@ func TestModelLimitsWireIsAbsentUnlessTheServerSaidSo(t *testing.T) {
 	limited := Model{ID: "ollama/qwen3:8b", Limits: []ModelLimit{
 		{Kind: LimitSmallWindow, Window: 4096, Needs: 32000, Most: 40960, Source: WindowLoaded},
 		{Kind: LimitSmallWindow, Window: 8192, Needs: 32000, Source: WindowModelfile},
-		{Kind: LimitSmallWindow, Needs: 32000, Most: 40960, Source: WindowDefault},
+		{Kind: LimitSmallWindow, Window: 4096, Needs: 32000, Most: 40960, Source: WindowLastLoaded},
 		{Kind: LimitNoTools},
 	}}
 	data, err = json.Marshal(limited)
 	want := `"limits":[` +
 		`{"kind":"small_window","window":4096,"needs":32000,"most":40960,"source":"loaded"},` +
 		`{"kind":"small_window","window":8192,"needs":32000,"source":"modelfile"},` +
-		`{"kind":"small_window","needs":32000,"most":40960,"source":"default"},` +
+		`{"kind":"small_window","window":4096,"needs":32000,"most":40960,"source":"last_loaded"},` +
 		`{"kind":"no_tools"}]`
 	if err != nil || !strings.Contains(string(data), want) {
 		t.Fatalf("limits wire = %s %v, want %s", data, err, want)
@@ -70,7 +70,7 @@ func TestModelLimitsWireIsAbsentUnlessTheServerSaidSo(t *testing.T) {
 	}
 	// The schema names the words a kind and a source may be.
 	schema, err := SchemaJSON()
-	if err != nil || !strings.Contains(string(schema), `"small_window"`) || !strings.Contains(string(schema), `"modelfile"`) {
+	if err != nil || !strings.Contains(string(schema), `"small_window"`) || !strings.Contains(string(schema), `"last_loaded"`) {
 		t.Fatalf("the schema does not describe a model's limits: %v", err)
 	}
 }

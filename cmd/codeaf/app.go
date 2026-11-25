@@ -62,6 +62,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/ollamalimits"
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -796,11 +797,13 @@ type appBackend struct {
 	// stopModelNotices removes the model completion subscription and joins
 	// the initial catalog waiter and cancellable sender when this app closes.
 	stopModelNotices func()
-	// tellModels says models.changed through that subscription's queue, and
-	// ollamaUnloaded is the models the last list reported on the server's
-	// default window ([appBackend.addModelLimits]).
+	// tellModels says models.changed through that subscription's queue;
+	// ollamaUnloaded is the models the Ollama service was not running at the
+	// last list, and ollamaSeen what this app has seen of that service's
+	// models, for the lists after ([appBackend.addModelLimits]).
 	tellModels     func()
 	ollamaUnloaded map[string]bool
+	ollamaSeen     *ollamalimits.Memory
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
 	// dayAuth is the daily limit's one-time hand-over from this file's old cap.
