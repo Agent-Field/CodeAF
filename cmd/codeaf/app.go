@@ -819,6 +819,9 @@ type appBackend struct {
 	collections       *workspace.Store
 	collectionsClosed bool
 	collectionsPath   string
+	// data is the person's data for fluid apps (appdata.go), opened by the
+	// first data call and closed with the backend.
+	data appDataState
 	// services is the app's one supervisor of kept-running processes
 	// (appservices.go); nil is the capability absent.
 	services *appServices
@@ -4990,6 +4993,7 @@ func (b *appBackend) Close() error {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
+	b.closeData()
 	lap("references")
 	// Kept-running processes stay up through a quit; services.stop_all is
 	// how a quit stops them (appservices.go).
