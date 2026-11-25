@@ -206,10 +206,12 @@ func itThey(n int) string {
 
 // teamSendWakesSentence is what a send's answer says comes back on its own.
 // The global manager is not woken by a top-level manager's turn ending
-// ([teamEventWakesManagerOf]), so its answer does not promise that.
+// ([teamEventWakesManagerOf]), so its answer does not promise that, and says
+// what closes a directive instead. The root can hold ordinary members too, so
+// the sentence names whose ending it is.
 func teamSendWakesSentence(root bool) string {
 	if root {
-		return "Their replies, questions and failures wake you when they arrive, so there is no need to wait or poll. A manager's turn ending on its own does not wake you: team_status says where it stands."
+		return "Their replies, questions and failures wake you when they arrive, so there is no need to wait or poll. A top-level team's manager answers a directive with team_post: its turn ending alone does not wake you, and team_status says where it stands."
 	}
 	return "Replies and endings wake you when they arrive, so there is no need to wait or poll."
 }
