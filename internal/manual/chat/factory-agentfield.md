@@ -799,12 +799,11 @@ does every question of a job in Manual.
 
 - Only the factory on this machine connects; a team factory (`codeaf factory
   serve`) does not run the node.
-- The runner still needs GitHub, even when every job comes from AgentField.
-  Turning it on without a GitHub sign-in is refused with "connect GitHub
-  before turning the runner on: the factory needs to know whose jobs these
-  are": every job the runner takes is held under a person's GitHub login.
-  AgentField entries are still filed while the runner is off, and are routed
-  and started once it is on.
+- The runner on this machine starts without GitHub, as `this-computer`, but
+  what needs GitHub waits: reading issues, cloning a repository it has no
+  checkout of and opening a pull request (see "the runner without GitHub"). A
+  runner of a team factory still runs as a named person. AgentField entries are
+  still filed while the runner is off, and are routed and started once it is on.
 - No DID or verifiable-credential signing: the node does not sign or check
   AgentField DIDs; the link's key and the HTTP bearer are its protection, and
   both are the control plane's global values, not one per node.

@@ -14,7 +14,7 @@ The name and the line are kept on the organization's server. Every Afi in the or
 
 ## start or open a chat in your organization's desktop window
 
-When the organization has enabled hosted chats, open its window in the desktop app to start a chat there or reopen one from the window's chat list. Your conversation and the work it runs stay on the organization's server. Closing the window leaves the chat running there. See [Chats that run on the organization's server](organization-hosted-sessions.md) for sharing, sign-in and limits.
+When the organization has enabled hosted chats, open its window in the desktop app to start a chat there or reopen one from the window's chat list, which also lists chats the server has shared with you. Your conversation and the work it runs stay on the organization's server. Closing the window leaves the chat running there. Personal shows the chats on your computer. See [Chats that run on the organization's server](organization-hosted-sessions.md) for sharing, sign-in and limits.
 
 ## Afi sets up the organization — one card, workstreams, teams and invites in one press
 
@@ -55,3 +55,15 @@ Each row goes when it is done, or when you press "Not now", which puts it away o
 ## The first account starts the organization
 
 The first-account link opens “Start your organization”, with “Create account” to create the organization's first account. It is not an invitation to an existing organization and does not ask you to create an operator account. The organization's sidebar has no GitHub-star promotion.
+
+## join my company's codeaf — paste the invite link, sign in, then switch to the organization
+
+You join an organization with the invite link its operator sent you; there is no account to make with anyone else. Open the link in the desktop app, or choose **Join an organization…** (File menu, the switcher at the foot of the strip, or Settings › Organizations) and paste it. The page is headed **Sign in to WorkAF**, or **You're invited to** and the organization's name, and it offers the ways the organization's server takes: **Continue with a passkey**, **Use a password** (a username, a password of at least 12 characters and your name, then **Join**) and **Continue with GitHub**. Signing in creates your account.
+
+After that the organization has its own window: switch to it with the switcher, where **Personal** stays your own computer's account. Everything you make in the organization belongs to the organization, its chats run on its server, and a chat is private to you until you share it. The invite link works once, for one person, and an expired or used one says so in a sentence: ask the operator for a new one. See [Chats that run on the organization's server](organization-hosted-sessions.md) for what runs where and who can see it.
+
+## host an organization for my team — Docker Compose, Railway, and where the operator's guide is
+
+An organization is a server someone runs, and the public repository has everything to run one yourself. `deploy/org/` holds one Docker Compose file that starts the organization server, the AgentField control plane and the two agents that build an issue into a pull request and review one, plus an optional machine for hosted chats. `docs/organizations.md` says what an organization is, what runs where and who can see what, with a ten-minute path from nothing to a first hosted chat, and `deploy/org/README.md` is the operator's walkthrough: HTTPS, backups, upgrades, the published images and Railway.
+
+In short: `./setup.sh` writes `.env` with fresh secrets, `docker compose up -d` starts everything, and `./operator-link.sh` prints the operator link. That link is a secret and works once; whoever opens it first becomes the operator, who then invites people from People. Anyone connecting from another computer needs HTTPS in front of the server. The same Dockerfiles run on Railway as separate services in one project, hosted chats' machine included, when set up by hand; the draft Railway template made from the published images does not carry that machine yet.

@@ -9,6 +9,7 @@ contributor rules and historical records serve different readers.
 | --- | --- |
 | Install and start using codeaf | [Guide](GUIDE.md) |
 | Find the exact behavior codeaf explains about itself | [Shipped manual map](../internal/manual/README.md) — separate chat and resident corpora |
+| Host an organization for a team, or join one | [Organizations](organizations.md), then [the operator's walkthrough](../deploy/org/README.md) |
 | Learn the current chat's features | [Chat manual](../internal/manual/chat/what-i-can-do.md), [getting started](../internal/manual/chat/getting-started.md) |
 | Understand Memory and knowledge from saved chats | [Memory](../internal/manual/chat/what-i-remember.md), [knowledge from saved chats](../internal/manual/chat/places.md#knowledge-from-saved-chats-inside-memory) |
 
