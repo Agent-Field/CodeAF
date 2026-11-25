@@ -57,6 +57,8 @@ jobs:
           persist-credentials: false
       - name: Every base image is pinned by digest
         run: deploy/org/gate/pins-check.sh
+      - name: Tracked symlinks resolve for Railway uploads
+        run: deploy/org/gate/upload-check.sh
       - name: Planted fake secrets must fail the gate
         run: deploy/org/gate/selftest.sh
       - name: Planted files must not enter the build context
