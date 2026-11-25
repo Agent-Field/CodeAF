@@ -9344,6 +9344,14 @@ func (a *app) interruptTurn() {
 		return
 	}
 	a.agent.Interrupt()
+	a.turnInterrupted()
+}
+
+// turnInterrupted is what the screen does once the turn in front has been told
+// to stop: by the person's own key ([app.interruptTurn]), or by a pause of the
+// member in front (teamtraffic.go's [app.trafficPause]), which ends the turn
+// the same way on screen.
+func (a *app) turnInterrupted() {
 	a.flushUpdatePrefix()
 	a.finishResponse(true)
 	a.state = stateInterrupted

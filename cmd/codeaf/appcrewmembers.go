@@ -8,8 +8,8 @@ package main
 // has to make a field true it does so through doors the engine already has:
 // a role's instructions are a message in the member's own conversation, its
 // model the conversation's model, a member's budget the agent's own spending
-// limit, and a pause the crew's own stop with every turn the conversation
-// starts by itself stopped until the person resumes it (appwakes.go).
+// limit, and a pause the team's own record with the running turn ended
+// through the pause's door, which Resume takes up again (pauseStop).
 //
 // A PROPOSAL is the agent's own: the app asks its model, beside its chat and
 // never in it, for complete JSON lines naming the crew and the helpers it would
@@ -61,9 +61,10 @@ func (b *appBackend) Member(verb string, ask appwire.MemberAsk) (appwire.CrewMem
 			// before the running turn is stopped: the member's own session reads
 			// it and starts nothing on the crew's traffic until the person
 			// resumes it, the manager's view of its crew says "paused", and a
-			// directive sent meanwhile waits on the log.
+			// directive sent meanwhile waits on the log. The turn is ended
+			// through the pause's own door ([appBackend.pauseStop]).
 			if err = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, true) }); err == nil {
-				err = b.memberStop(t, m, agent, "paused")
+				err = b.memberStop(t, m, agent, teamstore.PausedStopText)
 			}
 		case "resume":
 			// THE RESUME IS SAID WHEREVER THE PAUSE HELD. A pause holds the
@@ -262,7 +263,37 @@ func (b *appBackend) memberStop(t teamstore.Team, m teamstore.Member, agent, rea
 		return appEngineError(err)
 	}
 	if b.isHeld(agent) {
+		if reason == teamstore.PausedStopText {
+			return b.pauseStop(agent)
+		}
 		return b.Stop(agent)
+	}
+	return nil
+}
+
+// pauseStop ends the running turn of a member the person paused, through the
+// pause's own door ([session.StopByPause]).
+//
+// A PAUSE IS NOT A STOP. Through the person's Stop it began the stop hold: a
+// command's ending was kept with the stop's words, the manager was told the
+// work was "stopped by the person" and not to hand it out again, and Resume
+// started nothing. A pause is temporary, so the turn it ends is taken up again
+// when the person resumes the member. A conversation still being opened is
+// left to its engine, which starts nothing on its own for a paused member.
+func (b *appBackend) pauseStop(id string) error {
+	a, endRead, err := b.findCrewOwner(id)
+	if err != nil {
+		return err
+	}
+	defer endRead()
+	starting := false
+	b.locked(func() { starting = a.starting })
+	if starting {
+		return nil
+	}
+	if live := b.liveOf(a); live != nil {
+		b.locked(func() { live.stopping = live.running })
+		appInterruptFor(live.conn.Conv, session.StopByPause)
 	}
 	return nil
 }

@@ -335,8 +335,8 @@ would never write in a message:
 
 - `finished` when a turn ends, `stopped by the person` when you stopped a member that was on
   its manager's work (a directive, or the brief it was started on), `stopped` for every
-  other stop (its manager's, codeaf ending it, or your stop when none of the manager's work
-  was under way), and `failed: ` with the error's first line when a turn ends on one;
+  other stop (its manager's, codeaf ending it, your pause, or your stop when none of the
+  manager's work was under way), and `failed: ` with the error's first line when a turn ends on one;
 - when it starts waiting on you: the permission line for a permission prompt (`needs your ok
   to run bash`), or `asks: ` and the question for anything else;
 - `no longer waiting` when the last of those questions comes down.
@@ -351,8 +351,8 @@ the work is not done, that you chose to stop it, and not to hand it out again un
 The work is under way from the hand-off until a turn finishes with no background command
 left that the member waits on. So a turn such a command's ending starts is still on it, and
 so is a turn you opened by typing to the member while it waits on one. Stopping a member
-with none of the manager's work under way tells the manager nothing, and neither does codeaf
-quitting or a paused member's stray wake being ended. The global
+with none of the manager's work under way tells the manager nothing, and neither does pausing
+a member, codeaf quitting or a paused member's stray wake being ended. The global
 manager is not woken by a member of `All teams` being stopped (see **The global manager**).
 
 ## A stopped member's command is still running — why it did not start again when the command ended
@@ -663,10 +663,12 @@ leaves the directive unread in the traffic for that turn.
 ## Pausing a crew member — pause, resume, why a directive did not start, held
 
 You can pause a member of a crew in the desktop app: **Pause** on its row in the Members tab
-or in the member's menu, and **Resume** to lift it. A pause stops the member's current turn
-and is kept on the team's own record, so the member's session, its manager and every window
-read the same answer. A crew's manager, and a member that manages a crew of its own, cannot
-be paused; stop its turn instead.
+or in the member's menu, and **Resume** to lift it. A pause ends the member's current turn,
+which ends `stopped` and wakes nobody: a pause is not a stop, so the manager is not told
+`stopped by the person` and the work is kept for Resume. The pause is kept on the team's own
+record, so the member's session, its manager and every window read the same answer. A
+crew's manager, and a member that manages a crew of its own, cannot be paused; stop its turn
+instead.
 
 While a member is paused, team traffic starts no turn for it, in any crew it belongs to, and
 Resume from any of those crews lifts it:
@@ -679,15 +681,27 @@ Resume from any of those crews lifts it:
 - `team_status` shows the member as `paused by the person; it starts nothing until they
   resume it`, with `has not started on #22` when a directive is waiting.
 - codeaf does not open the member's conversation for traffic it would only hold.
+- A command ending, a watch firing, a task landing and news at its last turn's end start no
+  turn either: each is written into the conversation as a record that says it arrived while
+  the conversation was paused.
+
+## Resume after a pause — what starts again, the paused work carried on, a stop while paused
 
 **Resume** writes `resumed` to the log of each crew the member is in, and a directive that
 waited starts the member's turn within a second or two, including after codeaf was closed in
 between. With the team's auto-wake off, a resumed member reads it at its next turn like any
 other message.
 
-A command ending, a watch firing, a task landing and news at its last turn's end start no
-turn either: each is written into the conversation as a record. Resume starts one turn that
-reads them (with a waiting directive), unless a stop since holds them.
+With no directive waiting, Resume starts one turn when the pause ended a turn on the
+manager's work or held a record. That turn opens with "The person paused this conversation
+and has now resumed it, which started this turn. Carry on with the work you were on; anything
+above that arrived while it was paused is a record of what happened meanwhile." A member
+paused while it waited on a command for that work starts again when the command ends, or at
+Resume if it ended meanwhile.
+
+A pause is temporary and a stop is final. **Stop** on a paused member, or a stop before the
+pause, ends the work as any stop does: its manager is told `stopped by the person` when the
+work was the manager's, and Resume starts nothing.
 
 Not held: your own words (that turn reads what was waiting, so Resume starts nothing more),
 your answer to its question, a decision you hand it, and codeaf continuing a reply it was

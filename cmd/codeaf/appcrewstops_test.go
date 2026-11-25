@@ -185,3 +185,79 @@ func TestAppMovePausesToStoreKeepsAPauseItCouldNotCarry(t *testing.T) {
 		t.Fatalf("a settled pause is still in the app's file: crew=%v gone=%v", flag(crew), flag(gone))
 	}
 }
+
+// A PAUSE ENDS THE TURN THROUGH THE PAUSE'S OWN DOOR, never the person's Stop.
+// Through the person's door the engine began the stop hold: a command's ending
+// was kept as stopped work, the manager was told "stopped by the person" and
+// not to hand the work out again, and Resume started nothing. The stop line the
+// pause writes is read back the same way, and a real Stop still uses the
+// person's door.
+func TestAppPauseEndsTheTurnThroughThePausesDoor(t *testing.T) {
+	backend, conv, agent := dooredBackend(t, false)
+	crew := teamstore.NewID()
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: crew, Name: "crew"})
+		lead := filepath.Join(t.TempDir(), "lead", "transcript.jsonl")
+		if err := f.AddMember(crew, teamstore.Member{Key: lead, File: lead, Handle: "lead"}); err != nil {
+			return err
+		}
+		if err := f.AddMember(crew, teamstore.Member{Key: appFakeTranscript, File: appFakeTranscript, Handle: "scout", Started: true}); err != nil {
+			return err
+		}
+		return f.SetManager(crew, lead)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	only := func(want session.StopDoor) {
+		t.Helper()
+		got := conv.stops()
+		if len(got) == 0 {
+			t.Fatalf("nothing was stopped, want %q", want)
+		}
+		for _, door := range got {
+			if door != want {
+				t.Fatalf("the member was stopped through %v, want only %q", got, want)
+			}
+		}
+	}
+
+	if _, err := backend.Member("pause", appwire.MemberAsk{Crew: crew, Agent: agent.ID}); err != nil {
+		t.Fatal(err)
+	}
+	only(session.StopByPause)
+
+	entries, err := teamstore.ReadTraffic(backend.profileDir, crew, "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := teamstore.Load(backend.profileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	team, _ := file.Team(crew)
+	conv.doorMu.Lock()
+	conv.doors = nil
+	conv.doorMu.Unlock()
+	pauses := 0
+	for _, entry := range entries {
+		if entry.PauseStop() {
+			pauses++
+			backend.crewAct(&appCrewRun{acted: map[string]bool{}}, appCrewRead{file: file}, team, entry)
+		}
+	}
+	if pauses != 1 {
+		t.Fatalf("the pause wrote %d stop lines, want one", pauses)
+	}
+	only(session.StopByPause)
+
+	if _, err := backend.Member("resume", appwire.MemberAsk{Crew: crew, Agent: agent.ID}); err != nil {
+		t.Fatal(err)
+	}
+	conv.doorMu.Lock()
+	conv.doors = nil
+	conv.doorMu.Unlock()
+	if _, err := backend.Member("stop", appwire.MemberAsk{Crew: crew, Agent: agent.ID}); err != nil {
+		t.Fatal(err)
+	}
+	only(session.StopByPerson)
+}

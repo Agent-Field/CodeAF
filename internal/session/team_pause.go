@@ -50,6 +50,16 @@ package session
 // anything has it open. A start has no send behind it: a member paused before
 // its first turn writes that line itself, once ([Agent.teamWakeStart]).
 //
+// A PAUSE IS TEMPORARY AND A STOP IS FINAL. The interface ends a paused
+// member's running turn through the pause's own door ([StopByPause]), not the
+// person's Stop: through that door the pause began the stop hold, so what
+// arrived next was kept as stopped work, the manager was told the person had
+// stopped what it handed out, and Resume started nothing. The pause's door
+// begins no hold and tells no manager anything; a turn it cuts on handed work
+// keeps that work, and Resume starts one turn that carries on with it
+// ([Agent.teamPauseCut]). A stop of the paused member still ends the work, and
+// withdraws that turn ([Agent.teamStopHoldLocked]).
+//
 // THE PERSON'S OWN WORDS ARE NOT HELD, as with the daily cap (team_cap.go): a
 // person typing into a paused member's conversation starts its turn, and that
 // turn reads what was waiting.
@@ -70,6 +80,10 @@ const teamPausedWhy = "the person paused it; it starts on this when they resume 
 // teamPauseHeldRule is said with news that started no turn because the person
 // had the conversation paused.
 const teamPauseHeldRule = "This arrived while the person had this conversation paused, so it started no turn. It is a record of what happened."
+
+// teamPauseResumedRule opens the turn Resume starts on what a pause kept: the
+// work a pause cut, the news it held, or both ([Agent.teamPauseOwedWake]).
+const teamPauseResumedRule = "The person paused this conversation and has now resumed it, which started this turn. Carry on with the work you were on; anything above that arrived while it was paused is a record of what happened meanwhile."
 
 // teamPauseHold is one conversation's pause, for the wakes that are decided
 // under the agent's lock and may read neither the teams file nor the seat's
@@ -100,6 +114,25 @@ func (a *Agent) teamPauseFreshSeated() {
 // reads what the pause kept.
 func (a *Agent) teamPauseOwedOver() { a.team.pauseHold.owed.Store(false) }
 
+// teamPauseCut is a turn the person's Pause ended ([StopByPause]). Work a
+// manager handed this conversation is kept, not ended: the turn Resume starts
+// carries on with it, and a stop of the paused member is the stop of that work
+// ([Agent.teamStopHoldLocked]). A turn on none of a manager's work owes nothing
+// for its own sake.
+func (a *Agent) teamPauseCut(origin turnOrigin) {
+	a.team.mu.Lock()
+	handed := len(a.team.handed) > 0
+	a.team.mu.Unlock()
+	if !handed {
+		return
+	}
+	hold := &a.team.stopHold
+	hold.mu.Lock()
+	hold.origin = origin
+	hold.mu.Unlock()
+	a.team.pauseHold.owed.Store(true)
+}
+
 // teamPauseOwedWake starts the turn a lifted pause owes the news it held.
 //
 // A PAUSE IS TEMPORARY. What the pause kept from starting a turn is in the
@@ -120,6 +153,13 @@ func (a *Agent) teamPauseOwedWake() {
 	if a.running || hold.paused.Load() || !hold.owed.Swap(false) || a.team.stopHold.held.Load() {
 		return
 	}
+	if gate, _ := a.wakeRefusalLocked(false, false); gate != wakeGateOpen {
+		return
+	}
+	// THE TURN IS TOLD WHY IT BEGAN, in one sentence ahead of anything the
+	// pause kept: a turn the pause cut ended mid-work with no word of why, and
+	// without this one it reads its own unfinished reply and nothing after it.
+	a.steering = append(a.steering, userMessage{message: textMessage("user", teamPauseResumedRule), wake: true, authored: true})
 	a.wakeLocked()
 }
 

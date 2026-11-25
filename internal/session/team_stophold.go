@@ -100,8 +100,13 @@ func (a *Agent) teamStopHoldLocked(door StopDoor) (waiting, withdrew bool) {
 	}
 	// A command that failed moments ago has its wake on a clock, and that turn
 	// would end the hold: the clock is withdrawn and its notes stay queued
-	// for the next turn.
+	// for the next turn. So is the turn a pause owes Resume: a pause is
+	// temporary and a stop is final, so the stop of a paused member is the stop
+	// of the work the pause cut and of what it held ([Agent.teamPauseOwedWake]).
 	withdrew = a.jobWake != nil
+	if a.team.pauseHold.owed.Swap(false) {
+		withdrew = true
+	}
 	if !withdrew && (a.jobs == nil || !a.jobs.newsPending()) {
 		return false, false
 	}
@@ -177,7 +182,8 @@ func (a *Agent) teamWorkGoesOn() bool {
 
 // teamStopHoldSaid tells the managers whose work this conversation is still on
 // that it was stopped while it waited on a command or a watch, or on the wake
-// the hold withdrew. It ends that work: the stop is reported. A member waiting
+// the hold withdrew, the turn Resume would have started among them. It ends
+// that work: the stop is reported. A member waiting
 // on nothing finished its work, however long ago, and its managers are told
 // nothing. It reads the jobs and the teams' logs, so it runs away from the
 // stop's own path and outside a.mu.

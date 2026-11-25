@@ -855,3 +855,225 @@ func TestTeamResumeStartsATurnOnNewsThePauseHeld(t *testing.T) {
 		t.Fatalf("Resume started %d turns, want one", got-1)
 	}
 }
+
+// pauseLikeTheApp is the desktop app's Pause: the pause on the team's record,
+// then the member's turn ended through the pause's own door
+// (cmd/codeaf's appcrewmembers.go). It used to end it through the person's.
+func pauseLikeTheApp(t *testing.T, fixture teamFixture, web *Agent) {
+	t.Helper()
+	setPaused(t, fixture, fixture.web, true)
+	web.InterruptFor(StopByPause)
+}
+
+// A PAUSE IS NOT A STOP: RESUME CARRIES ON WITH THE WORK THE PAUSE CUT. The
+// member was in a turn on its manager's directive and the person paused it.
+// The turn ends "stopped", which wakes nobody, the manager is not told the
+// person stopped its work, and nothing starts while the member is paused.
+// Resume starts one turn, which is told why it began.
+func TestTeamPauseMidTurnOnHandedWorkResumesIt(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	managerCalls := oneAnswer(8)
+	manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+	streaming := make(chan struct{})
+	calls := &scriptedCompleter{steps: []step{thinkingStep(streaming), okStep(), okStep()}}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	sendDirective(t, manager, "web")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start on the directive")
+	}
+
+	pauseLikeTheApp(t, fixture, web)
+	waitQuiet(t, web)
+	waitTeamEvents(t, fixture, "stopped", 1)
+	quietFor()
+	web.settleTeamEvents()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the paused member was asked %d times, want only the turn the pause cut", got)
+	}
+	if web.team.stopHold.held.Load() {
+		t.Fatal("the pause began the stop hold")
+	}
+	if said := trafficEvents(t, fixture, teams.StoppedByPerson); len(said) != 0 {
+		t.Fatalf("a pause was told to the manager as the person's stop: %v", said)
+	}
+	for i := 0; i < managerCalls.requests(); i++ {
+		if strings.Contains(userTextIn(managerCalls.request(i)), teamStoppedByPersonLine) {
+			t.Fatal("the manager was told the person stopped work that was only paused")
+		}
+	}
+
+	setPaused(t, fixture, fixture.web, false)
+	waitRequests(t, calls, 2)
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, teamPauseResumedRule) {
+		t.Fatalf("the turn Resume started was not told why it began:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	quietFor()
+	if got := calls.requests(); got != 2 {
+		t.Fatalf("Resume started %d turns, want one", got-1)
+	}
+}
+
+// A PAUSE OF A MEMBER WAITING ON A COMMAND HOLDS ITS ENDING AS THE PAUSE'S. The
+// member's turn on the directive finished waiting on a command; the person
+// paused it the way the app does and the command ended. No turn starts, the
+// ending is a record in the pause's words (not the stop's "do not take the
+// stopped work up again"), the manager is told nothing, and Resume starts one
+// turn that reads it.
+func TestTeamPauseOfAMemberWaitingOnACommandResumesOnItsEnding(t *testing.T) {
+	fixture, managerCalls, web, calls, clock, started := waitingMember(t, okStep(), okStep())
+	pauseLikeTheApp(t, fixture, web)
+	web.jobs.settleExit(<-started, 7)
+	clock.advance(jobWakeDelay)
+	quietFor()
+	web.settleTeamEvents()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the paused member was asked %d times, want only its first turn", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), teamPauseHeldRule) || strings.Contains(string(journal), teamStopHeldRule) {
+		t.Fatalf("the command's ending was not kept in the pause's words:\n%s", journal)
+	}
+	if said := trafficEvents(t, fixture, teams.StoppedByPerson); len(said) != 0 {
+		t.Fatalf("a pause was told to the manager as the person's stop: %v", said)
+	}
+	for i := 0; i < managerCalls.requests(); i++ {
+		if strings.Contains(userTextIn(managerCalls.request(i)), teamStoppedByPersonLine) {
+			t.Fatal("the manager was told the person stopped work that was only paused")
+		}
+	}
+
+	setPaused(t, fixture, fixture.web, false)
+	waitRequests(t, calls, 2)
+	asked := userTextIn(calls.request(1))
+	for _, want := range []string{"job 1 exited 7", teamPauseHeldRule, teamPauseResumedRule} {
+		if !strings.Contains(asked, want) {
+			t.Fatalf("the turn Resume started did not read %q:\n%s", want, asked)
+		}
+	}
+	waitQuiet(t, web)
+	quietFor()
+	if got := calls.requests(); got != 2 {
+		t.Fatalf("Resume started %d turns, want one", got-1)
+	}
+}
+
+// A STOP WINS OVER A PAUSE. The person paused a member mid-turn on handed work
+// and then stopped it: the stop is final, so Resume starts nothing, the
+// manager is told the person stopped the work, and a command's ending after it
+// is kept in the stop's words.
+func TestTeamPersonStopOfAPausedMemberHoldsThroughResume(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	managerCalls := oneAnswer(8)
+	manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+	streaming := make(chan struct{})
+	calls := &scriptedCompleter{steps: []step{thinkingStep(streaming), okStep(), okStep()}}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	sendDirective(t, manager, "web")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start on the directive")
+	}
+	pauseLikeTheApp(t, fixture, web)
+	waitQuiet(t, web)
+	waitTeamEvents(t, fixture, "stopped", 1)
+
+	web.Interrupt()
+	waitTeamEvents(t, fixture, teams.StoppedByPerson, 1)
+	waitManagerToldOfStop(t, managerCalls)
+	if !web.team.stopHold.held.Load() {
+		t.Fatal("the person's stop of a paused member began no hold")
+	}
+	setPaused(t, fixture, fixture.web, false)
+	web.enqueueJobNote("job 8 exited 0")
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the stopped member was asked %d times after Resume, want only the turn the pause cut", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), teamStopHeldRule) {
+		t.Fatalf("a command's ending after the stop was not kept in the stop's words:\n%s", journal)
+	}
+	web.settleTeamEvents()
+	if said := trafficEvents(t, fixture, teams.StoppedByPerson); len(said) != 1 {
+		t.Fatalf("the stop was logged %d times, want once", len(said))
+	}
+}
+
+// A PROGRAM'S LANDING A HOLD KEEPS IS RECORDED ONCE. The landing said the
+// program's limit, then its held receipt said it again with a second notice,
+// and rebuilt the program's note around the hold's sentence, so the record read
+// as if the sentence were the program's own account. The limit is said once,
+// and the hold's sentence follows the program's note.
+func TestTeamHeldProgramLandingIsRecordedOnce(t *testing.T) {
+	fixture := newWakingTeamFixture(t)
+	setPaused(t, fixture, fixture.web, true)
+	calls := oneAnswer(1)
+	web := teamAgent(t, fixture, fixture.web, calls, func(config *Config) { config.teamWatchManual = true })
+	store := askStore(t, "repair parser")
+	defer store.Close()
+	program := testPrograms("senior-dev")[0]
+	run := &beltRun{store: store, root: store.RootID(), row: 7, delegate: &program, ground: "/project", costCeiling: 1}
+	web.beltMu.Lock()
+	web.beltRun = run
+	web.beltMu.Unlock()
+	t.Cleanup(func() { web.beltMu.Lock(); web.beltRun = nil; web.beltMu.Unlock() })
+	updates, stop := web.WatchTaskUpdates()
+	defer stop()
+	summary, landing := RunSummary{Outcome: "a limit you set stopped it", Limit: RunLimitCost, USD: 1.2}, RunLanding{Branch: "task/repair"}
+	limit := programLimitLine(run, summary, landing)
+	if limit == "" {
+		t.Fatal("the fixture's landing names no limit")
+	}
+	web.deliverBeltRunLanding(run, summary, landing)
+	if calls.requests() != 0 {
+		t.Fatal("a program's landing started a paused member's turn")
+	}
+
+	web.mu.Lock()
+	var texts []string
+	for _, message := range web.messages {
+		texts = append(texts, messageContentText(message))
+	}
+	web.mu.Unlock()
+	all := strings.Join(texts, "\n")
+	if got := strings.Count(all, limit); got != 1 {
+		t.Fatalf("the program's limit was recorded %d times, want once:\n%s", got, all)
+	}
+	held := ""
+	for _, text := range texts {
+		if strings.Contains(text, teamPauseHeldRule) {
+			held = text
+		}
+	}
+	marker := "ended — for you to act on]"
+	if !strings.HasSuffix(held, "\n"+teamPauseHeldRule) || !strings.Contains(held, marker) || strings.Index(held, marker) > strings.Index(held, teamPauseHeldRule) {
+		t.Fatalf("the hold's sentence is not after the program's note:\n%s", held)
+	}
+	notices := 0
+	deadline := time.After(300 * time.Millisecond)
+	for done := false; !done; {
+		select {
+		case event := <-updates:
+			if event.Kind == EventNotice && strings.Contains(event.Text, limit) {
+				notices++
+			}
+		case <-deadline:
+			done = true
+		}
+	}
+	if notices != 1 {
+		t.Fatalf("the open surface was sent the limit %d times, want once", notices)
+	}
+}

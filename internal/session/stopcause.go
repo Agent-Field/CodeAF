@@ -45,6 +45,11 @@ const (
 	// session (team_wakewatch.go): the person's Stop in every respect but who
 	// asked, so the member's conversation says the manager did it.
 	StopByManager StopDoor = "stopped by its manager"
+	// StopByPause is the person pausing a team member (team_pause.go): their
+	// act, but a temporary one. It begins no stop hold and tells no manager
+	// the work was stopped, and the turn it cuts on handed work is taken up
+	// again when they resume the member ([Agent.teamPauseOwedWake]).
+	StopByPause StopDoor = "person paused"
 	// StopByTakeover is another window taking this conversation over
 	// (takeover.go). The turn dies where it stands, mid-reply or not.
 	StopByTakeover StopDoor = "taken over"
@@ -163,6 +168,8 @@ func stopSentence(door StopDoor, name string) string {
 		return ""
 	case StopByManager:
 		return "the manager stopped this turn"
+	case StopByPause:
+		return "you paused this conversation, so the reply stopped here"
 	case StopByTakeover:
 		return "this conversation was opened in another window, so the reply stopped here — ask again to pick it up"
 	case StopByLeaving:

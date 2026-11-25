@@ -2449,17 +2449,22 @@ var beltLandingAdmissionWaits func()
 
 func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing RunLanding) {
 	line := run.outcomeNote(summary, landing, a.beltRunSpan(run))
+	// A PROGRAM'S LIMIT IS SAID ONCE, here, whatever becomes of the landing: a
+	// quiet receipt, a wake, or a receipt a hold keeps. Each of those used to
+	// say it again, and a landing a hold kept was told twice with two notices.
+	if run.delegate != nil {
+		if limit := programLimitLine(run, summary, landing); limit != "" {
+			a.recordProgramLimit(limit)
+		}
+	}
 	if a.beltRunQuiet(run) {
-		a.recordQuietBeltLanding(run, summary, line, landing)
+		a.recordQuietBeltLanding(run, summary, line, "")
 		return
 	}
 	if beltLandingAdmissionWaits != nil {
 		beltLandingAdmissionWaits()
 	}
 	if run.delegate != nil {
-		if limit := programLimitLine(run, summary, landing); limit != "" {
-			a.recordProgramLimit(limit)
-		}
 		a.admitBeltLanding(run, summary, line, landing, a.programLandingNote(run, summary, line))
 		return
 	}
@@ -2501,26 +2506,35 @@ func (a *Agent) admitBeltLanding(run *beltRun, summary RunSummary, line string, 
 	run.deliveryMu.Lock()
 	if a.beltRunQuiet(run) {
 		run.deliveryMu.Unlock()
-		a.recordQuietBeltLanding(run, summary, line, landing)
+		a.recordQuietBeltLanding(run, summary, line, "")
 		return
 	}
 	// The receipt is written under deliveryMu, which is the order page Stop
 	// takes its locks in (stoprun.go): deliveryMu, then beltMu and a.mu.
+	//
+	// A LANDING THE PERSON STILL OWED AN ANSWER LOSES ITS BOUNDED SETTLE TURN
+	// when a hold keeps it: the turn that later reads the receipt is the
+	// person's own, a manager's hand-off, or the one Resume starts on whatever
+	// else the pause cut and held, and the settle's ceiling and model would cut
+	// any of those short. It reads the receipt as an ordinary turn does.
 	note.cause = wakeLanding
-	note.heldReceipt = func(why string) { a.recordQuietBeltLanding(run, summary, line+"\n"+why, landing) }
+	note.heldReceipt = func(why string) { a.recordQuietBeltLanding(run, summary, line, why) }
 	a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
 	run.deliveryMu.Unlock()
 }
 
 // recordQuietBeltLanding preserves the actual result and its operational
-// attribution after a late stop, without admitting another model turn.
-func (a *Agent) recordQuietBeltLanding(run *beltRun, summary RunSummary, line string, landing RunLanding) {
+// attribution after a late stop, without admitting another model turn. why is
+// the sentence a standing hold gives for keeping it, "" for a late stop: it
+// follows the whole receipt, a program's outcome note included, and is never
+// read as part of the program's account.
+func (a *Agent) recordQuietBeltLanding(run *beltRun, summary RunSummary, line, why string) {
 	note := userText(line)
 	if run.delegate != nil {
-		if limit := programLimitLine(run, summary, landing); limit != "" {
-			a.recordProgramLimit(limit)
-		}
 		note = a.programLandingNote(run, summary, line)
+	}
+	if why = strings.TrimSpace(why); why != "" {
+		note.message = textMessage("user", strings.TrimSpace(note.text())+"\n"+why)
 	}
 	note.wake = false
 	note.completionOnly = true

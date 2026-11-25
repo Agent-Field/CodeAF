@@ -243,6 +243,14 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 		a.teamEventOwedFor(origin, teams.StateIdle, "stopped", a.teamStoppedByPerson(door, a.teamHandedTake()))
 		return
 	}
+	if stopped && door == StopByPause {
+		// A PAUSE IS TEMPORARY: the handed work is not over, only waiting on
+		// the person (team_pause.go). Its ending is the plain "stopped", which
+		// wakes nobody, and Resume takes the work up again.
+		a.teamPauseCut(origin)
+		a.teamEventOwed(origin, teams.StateIdle, "stopped")
+		return
+	}
 	a.teamHandedCarried(origin)
 	if stopped {
 		a.teamEventOwed(origin, teams.StateIdle, "stopped")

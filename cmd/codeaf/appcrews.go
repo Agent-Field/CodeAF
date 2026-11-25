@@ -864,9 +864,17 @@ func (b *appBackend) crewAct(run *appCrewRun, read appCrewRead, t teamstore.Team
 			return
 		}
 		agent := appMemberAgent(m)
-		if b.isHeld(agent) {
-			_ = b.Stop(agent)
+		if !b.isHeld(agent) {
+			return
 		}
+		// The app's own Pause writes a stop line too, and it is read back
+		// here: it ends the turn through the pause's door, never the
+		// person's Stop, which would end the work the pause keeps.
+		if e.PauseStop() {
+			_ = b.pauseStop(agent)
+			return
+		}
+		_ = b.Stop(agent)
 	case teamstore.KindStart:
 		manager, ok := t.Member(t.Manager)
 		if !ok || !b.isHeld(appMemberAgent(manager)) {
