@@ -667,7 +667,10 @@ func tokenHash(secret string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// closeInvitesOf ends every invite that admitted handle; the list skips an ended invite.
+// closeInvitesOf ends the standing of a removed person on every link that admitted them, in one save. A named
+// invite carries the handle it admitted and is revoked, which the list skips. An anonymous access link carries
+// none, so it cannot be found by handle and cannot be revoked (that would turn away the others who joined by it):
+// the person's own use is marked removed instead. Either way the use stays spent, so no link reopens.
 func closeInvitesOf(path, handle string, now time.Time) error {
 	if path == "" {
 		return nil
@@ -678,6 +681,7 @@ func closeInvitesOf(path, handle string, now time.Time) error {
 			if t.Invite != nil && !t.Revoked && t.Invite.Handle != "" && factory.NormalizeHandle(t.Invite.Handle) == handle {
 				t.TokenHash, t.Token, t.Revoked, t.RevokedAt = tokenHash(t.Token), "", true, now.UTC()
 			}
+			t.EndMember(handle, now)
 		}
 		return rows, nil
 	})

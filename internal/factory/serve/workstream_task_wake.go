@@ -2,10 +2,22 @@ package serve
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
+
+var errBotRun = errors.New(botRunRefused)
+
+// wakeRequestedTaskDoer keeps a bot's scope from being dropped by a new run
+// while allowing it to start work that has a person as its doer.
+func (h *Handler) wakeRequestedTaskDoer(r *http.Request, ws factory.OrgWorkstream, t factory.WorkstreamTask, starter string) error {
+	if isBotCall(r) && factory.AgentDoes(t) {
+		return errBotRun
+	}
+	return h.wakeTaskDoer(ws, t, starter)
+}
 
 // RUNNING MEANS A DOER IS AT WORK, ON THE SERVER TOO. A person who starts an
 // Afi task here does not mark it running and hope: the server starts Afi on
@@ -51,5 +63,5 @@ func (h *Handler) wakeTaskDoer(ws factory.OrgWorkstream, t factory.WorkstreamTas
 
 // wakeRefused reports whether err is a start the doer could not take.
 func wakeRefused(err error) bool {
-	return errors.Is(err, errTaskBusy) || errors.Is(err, errTaskNoRunner) || errors.Is(err, errAgentNotHere)
+	return errors.Is(err, errTaskBusy) || errors.Is(err, errTaskNoRunner) || errors.Is(err, errAgentNotHere) || errors.Is(err, errBotRun)
 }

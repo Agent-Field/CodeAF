@@ -100,6 +100,17 @@ var ErrNoHostAnswered = errors.New("engine host: no host answered")
 // ssh control sockets and engine-host sockets from drifting across platforms.
 func SocketPathFits(path string) bool { return len(path) <= SocketLimit }
 
+// SocketPathUnder is the longest socket path any workspace's host can have when
+// the codeaf home is root: the directory is named by a sixteen-digit hash
+// ([where]), so every workspace's socket is exactly this long. A supervisor that
+// chooses the folders other people's homes will live in asks it BEFORE it
+// creates one, because a home that leaves no room for the socket is not a fault
+// the engine reports: it quietly takes the pipe, and its conversations die with
+// the connection that started them.
+func SocketPathUnder(root string) string {
+	return filepath.Join(root, "v3", "hosts", strings.Repeat("0", 2*8), socketName)
+}
+
 // Dir is where the host for one workspace keeps its socket: a directory under
 // ~/.codeaf/v3/hosts, resolved through internal/home so CODEAF_HOME moves it
 // with everything else.

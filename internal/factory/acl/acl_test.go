@@ -228,3 +228,31 @@ func TestAudienceAndSharingPolicy(t *testing.T) {
 		t.Fatal("sharing exceeded the owner-only rule")
 	}
 }
+
+// A private item that grants on itself have opened (Closed) is reached by its
+// owner and by the people those grants name, and by nobody else: not by the
+// people its space is shared with, not by the organization, not by the operator.
+// This is the same contract as org-follow item A4.
+func TestAClosedPrivateItemIsReachedByItsGranteesAlone(t *testing.T) {
+	p, now := DefaultPolicy(), time.Now()
+	it := Item{
+		OwnerKind: "person", OwnerID: "writer", Private: true, Closed: true, Visibility: Org,
+		Shares: []Share{{Kind: "person", ID: "sharer", Role: "full"}},
+		Grants: []Grant{{Subject: Subject{Kind: "person", ID: "grantee"}, Role: "view"}},
+	}
+	for who, want := range map[string]bool{"writer": true, "grantee": true, "sharer": false, "member": false} {
+		if got := p.Allowed(Caller{Handle: who, Member: true}, it, VerbView, now); got != want {
+			t.Errorf("%s may view = %v, want %v", who, got, want)
+		}
+	}
+	if p.Allowed(Caller{Operator: true}, it, VerbView, now) {
+		t.Error("the operator reaches a private item its grants opened")
+	}
+	if got := p.Audience(now, it); got.Operator || got.Org || !slices.Equal(got.Persons, []string{"grantee", "writer"}) {
+		t.Errorf("the audience of a closed private item = %+v", got)
+	}
+	p.Operator.SeesPrivate = true
+	if !p.Allowed(Caller{Operator: true}, it, VerbView, now) {
+		t.Error("the operator cannot see a private item the policy lets it see")
+	}
+}

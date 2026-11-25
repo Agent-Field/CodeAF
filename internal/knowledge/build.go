@@ -62,10 +62,19 @@ type History interface {
 	Read(context.Context, Journal, JournalCursor) (JournalBatch, error)
 }
 
+// StartBuild is the opt-in, and it is two writes: the vault's record of when
+// Memory began and the profile switch that says it is on. THE RECORD COMES
+// FIRST. The capture scanner looks on its own clock, and a look between the two
+// writes must find the switch still off. With the switch first, that look found
+// it on and no record yet, which reads as "on since the beginning of time"
+// (consent), and it admitted every turn the chat had already finished: the full
+// suite failed with the earlier turn pending as well as the new one. With the
+// record first, the same look finds Memory off, and a look after the switch
+// finds the record and its time.
+//
+// A failure between the two leaves the record and the switch off, which is
+// Memory off with an opt-in time that a retry keeps (INSERT OR IGNORE).
 func (v *Vault) StartBuild() error {
-	if err := config.WriteMemoryEnabled(v.profile, true); err != nil {
-		return err
-	}
 	db, err := v.database()
 	if err != nil {
 		return err
@@ -92,6 +101,9 @@ func (v *Vault) StartBuild() error {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if err = config.WriteMemoryEnabled(v.profile, true); err != nil {
 		return err
 	}
 	v.forgetConsent()

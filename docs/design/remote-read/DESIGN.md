@@ -1,18 +1,19 @@
 # Reading a chat that lives on another computer
 
-**Status (2026-11-23): the `chats.read` METHOD described below is not in the tree.**
-It was built on 2026-11-15 (#2650) and, when the organization server's branch landed on
-`dev`, folded into what `dev` already had for the same ask: `agents.entries` on a chat
-held elsewhere reads its saved head into private scratch and pages it with `before` and
-`limit`, and the hello word `chats.read` says that works. That reader never leases a
-chat, never restores a folder and removes what it staged before it returns, and it asks
-nothing when hosted storage is off. What it does not do is what this page measured: it
-fetches the whole saved transcript, not just the chunks under one page, and keeps nothing
-a later take could reuse. The design and its numbers are kept below as the record of that
-alternative. The code (`cellsync.Reader` and `Pager`, `cellstore` path reads, furrow
-v0.3.7's `want --path`, `peek` and `read`) is in the history of commit `cf6a4d23b`; the
-embedded furrow is back on v0.3.6, which has none of those verbs. The section on crews at
-the end is unaffected.
+**Status (2026-11-24): built, and in the tree beside dev's reader.** The
+`chats.read` method described below was built on 2026-11-15 (#2650). When the
+organization server's branch landed on `dev` it was dropped as a duplicate of what
+`dev` already had for the same ask, which is a different thing: `agents.entries`
+on a chat held elsewhere reads its saved head into private scratch and pages it
+with `before` and `limit`, and the hello word `chats.read` says that works. That
+reader fetches the whole saved transcript and keeps nothing a later take could
+reuse. Nothing Santosh built is dropped, so the chunk-paged reader is back,
+additively: the `chats.read` method is advertised under its own hello word,
+`chats.read.paged`, and `chats.read` keeps the meaning it has on `dev`, so a
+client can tell which of the two abilities an engine has. `agents.entries` and
+its tests are unchanged. The embedded furrow is v0.3.7 again, because the method
+needs the path-read verbs that v0.3.6 does not have; with an older furrow the word
+is absent from hello, not present and failing.
 
 ## The ask
 

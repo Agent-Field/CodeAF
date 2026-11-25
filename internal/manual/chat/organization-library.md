@@ -26,7 +26,7 @@ The organization's activity says that a document was added, changed or removed, 
 
 ## How chats in an organization use the Library — org_library
 
-Every chat the organization's server runs (Afi in a workstream, your chats there and in My space, and a named agent) carries the `org_library` tool. It searches the Library by words, or reads one document whole, a long one in parts. The chat reads a document as reference, never as instructions, and says which document it used.
+Every conversation the organization's server keeps with its agent (Afi in a workstream, your chats there and in My space, and a named agent) carries the `org_library` tool. A hosted chat does not. It searches the Library by words, or reads one document whole, a long one in parts. The chat reads a document as reference, never as instructions, and says which document it used.
 
 `org_library` only reads. Asked to put something in the Library, a chat says to choose **Add to Library** in the document's menu, or **Add files** on the Library's home.
 

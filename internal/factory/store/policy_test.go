@@ -82,3 +82,82 @@ func TestOrgPolicyRejectsRemovingRolesInUse(t *testing.T) {
 		t.Fatalf("removing an in-use role = %v", err)
 	}
 }
+
+// Contract: who may move a chat is owner-only until the organization says otherwise. A policy document stored before the
+// policy had a `chats` section reads as owner-only; one that sets the rule reads as set; and a stored word that is not one
+// of the two is not trusted, so the default applies.
+func TestOrgPolicyStoredWithoutChatRulesReadsAsOwnerOnlyMove(t *testing.T) {
+	const roles = `"roles":[{"name":"view","verbs":["view"]},{"name":"comment","verbs":["view","comment"]},` +
+		`{"name":"edit","verbs":["view","comment","edit","run","steer","answer"]},` +
+		`{"name":"full","verbs":["view","comment","edit","run","steer","answer","share","manage"]}],` +
+		`"owner_role":"full","org_role":"view","defaults":{"chat":{"visibility":"private"}},"sharing":{"who":"share_verb"},` +
+		`"operator":{"role":"view","may_govern":true},"agents":{"may_create":true,"default_scope":"full"}`
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SavePolicy(acl.DefaultPolicy(), 0); err != nil {
+		t.Fatal(err)
+	}
+	db, err := st.wsDB(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, tc := range []struct{ name, doc, want string }{
+		{"stored before the section existed", `{` + roles + `}`, acl.MoveByOwner},
+		{"set to manage", `{` + roles + `,"chats":{"move_by":"manage"}}`, acl.MoveByManage},
+		{"set to owner", `{` + roles + `,"chats":{"move_by":"owner"}}`, acl.MoveByOwner},
+		{"set to a word nobody defined", `{` + roles + `,"chats":{"move_by":"anyone"}}`, acl.MoveByOwner},
+	} {
+		if _, err := db.Exec(`UPDATE org_policy SET doc = ?, rev = ?`, tc.doc, 10+i); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.OrgPolicy()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got.Rev != 10+i || got.Chats.MoveByFor() != tc.want {
+			t.Errorf("%s: revision %d, who moves a chat = %q, want %q", tc.name, got.Rev, got.Chats.MoveByFor(), tc.want)
+		}
+	}
+}
+
+// Contract: who approves a tool call and who starts a chat that is not running keep today's behaviour until the
+// organization says otherwise. A policy stored before the settings existed reads as owner approves and anyone who can see
+// the chat starts it; one that sets them reads as set; and a stored word that is not one of the allowed words is not
+// trusted, so the defaults apply.
+func TestOrgPolicyStoredWithoutApprovalAndWakeRulesReadsAsToday(t *testing.T) {
+	const roles = `"roles":[{"name":"view","verbs":["view"]},{"name":"comment","verbs":["view","comment"]},` +
+		`{"name":"edit","verbs":["view","comment","edit","run","steer","answer"]},` +
+		`{"name":"full","verbs":["view","comment","edit","run","steer","answer","share","manage"]}],` +
+		`"owner_role":"full","org_role":"view","defaults":{"chat":{"visibility":"private"}},"sharing":{"who":"share_verb"},` +
+		`"operator":{"role":"view","may_govern":true},"agents":{"may_create":true,"default_scope":"full"}`
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SavePolicy(acl.DefaultPolicy(), 0); err != nil {
+		t.Fatal(err)
+	}
+	db, err := st.wsDB(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, tc := range []struct{ name, doc, wantApproval, wantWake string }{
+		{"stored before the settings existed", `{` + roles + `,"chats":{"move_by":"manage"}}`, acl.ApprovalsByOwner, acl.WakeByView},
+		{"set", `{` + roles + `,"chats":{"approvals_by":"answer","wake_by":"run"}}`, acl.ApprovalsByAnswer, acl.WakeByRun},
+		{"wake set to owner", `{` + roles + `,"chats":{"wake_by":"owner"}}`, acl.ApprovalsByOwner, acl.WakeByOwner},
+		{"set to words nobody defined", `{` + roles + `,"chats":{"approvals_by":"anyone","wake_by":"anyone"}}`, acl.ApprovalsByOwner, acl.WakeByView},
+	} {
+		if _, err := db.Exec(`UPDATE org_policy SET doc = ?, rev = ?`, tc.doc, 20+i); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.OrgPolicy()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got.Rev != 20+i || got.Chats.ApprovalsByFor() != tc.wantApproval || got.Chats.WakeByFor() != tc.wantWake {
+			t.Errorf("%s: revision %d, approvals %q, wake %q, want %q and %q", tc.name, got.Rev, got.Chats.ApprovalsByFor(), got.Chats.WakeByFor(), tc.wantApproval, tc.wantWake)
+		}
+	}
+}

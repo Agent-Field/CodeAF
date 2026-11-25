@@ -329,7 +329,7 @@ func (h *Handler) machineViewer(r *http.Request) string {
 	// attached under factory.LocalRunnerHandle (workers.go), so the person on
 	// this machine, who has no forge login either, sees the machines as that
 	// name. Without it the Computers list was empty while jobs ran.
-	if handle == "" && h.mode() == api.FactorySolo && (loopbackRequest(r) || h.isOperator(r)) {
+	if handle == "" && h.mode() == api.FactorySolo && (h.loopbackOwner(r) || h.isOperator(r)) {
 		handle = factory.LocalRunnerHandle
 	}
 	return factory.NormalizeHandle(handle)

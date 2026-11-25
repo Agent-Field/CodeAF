@@ -147,8 +147,16 @@ func TestMySpaceChatsRunOnTheServerAndStayPrivate(t *testing.T) {
 	if len(abirs.Chats) != 0 {
 		t.Fatalf("abir lists santosh's chat: %+v", abirs.Chats)
 	}
-	// v2 ruling C10: abir sees that santosh has a chat called Side, its state
-	// and when it last moved, and nothing that was said in it.
+	// CONTRACT CHANGE (org-follow A2, A4, Abir 2026-11-24): a chat is private by
+	// default, so abir is told nothing of santosh's chat called Side (v2 ruling C10
+	// once listed its title, state and last activity to the whole workstream) until
+	// santosh shares it. Shared, abir sees that it exists, its state and when it
+	// last moved, and nothing that was said in it.
+	if len(abirs.Others) != 0 {
+		t.Fatalf("abir is shown santosh's private chat: %+v", abirs.Others)
+	}
+	o.do(t, "santosh", "POST", "/v1/resources/chat/"+side.ID+"/grants", -1, personGrant("abir", "view"), 201, nil)
+	o.do(t, "abir", "GET", "/v1/workstreams/"+ws.ID+"/chats", -1, nil, 200, &abirs)
 	if len(abirs.Others) != 1 || abirs.Others[0].ID != side.ID || abirs.Others[0].Title != "Side" || abirs.Others[0].Owner != "santosh" ||
 		abirs.Others[0].Workstream != ws.ID || abirs.Others[0].LastActivity == "" || abirs.Others[0].State == "" {
 		t.Fatalf("abir's view of others' chats = %+v", abirs.Others)

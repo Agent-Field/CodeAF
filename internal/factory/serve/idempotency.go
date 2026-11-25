@@ -38,7 +38,10 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request) {
 	// written to a replay row, on disk or in memory.
 	// A preview reads the current audience on every request.
 	grantPreview := strings.HasPrefix(r.URL.Path, "/v1/resources/") && strings.HasSuffix(r.URL.Path, "/grants/preview")
-	if r.Method != http.MethodPost || key == "" || grantPreview || r.URL.Path == "/v1/factory-access" || r.URL.Path == "/v1/auth/password" || r.URL.Path == "/v1/me/password" {
+	// Bot minting returns a secret once, so it cannot use the reply cache.
+	botMint := r.URL.Path == botsPath || strings.HasPrefix(r.URL.Path, botsPath+"/")
+	// A bot must reach the item evaluator again even after it has made the same request.
+	if r.Method != http.MethodPost || key == "" || grantPreview || botMint || isBotCall(r) || r.URL.Path == "/v1/factory-access" || r.URL.Path == "/v1/auth/password" || r.URL.Path == "/v1/me/password" {
 		h.mux.ServeHTTP(w, r)
 		return
 	}
