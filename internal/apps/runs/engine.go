@@ -3,7 +3,6 @@ package runs
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/store"
-	"github.com/oklog/ulid/v2"
 )
 
 const (
@@ -244,7 +243,7 @@ func (e *Engine) start(app, run string, params, input map[string]any, caughtUp b
 		return Run{}, err
 	}
 	now := e.cfg.Now()
-	id, err := ulid.New(ulid.Timestamp(now), rand.Reader)
+	id, err := cell.NewID(now)
 	if err != nil {
 		return Run{}, err
 	}
@@ -266,7 +265,7 @@ func (e *Engine) start(app, run string, params, input map[string]any, caughtUp b
 		}
 	}
 	c := checkpoint{
-		Run:        Run{App: app, Run: run, ID: id.String(), State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
+		Run:        Run{App: app, Run: run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
 		Definition: def, Params: p, Input: input, Outputs: make(map[string]any), Frames: []frame{{}},
 		Visit: 1,
 	}
