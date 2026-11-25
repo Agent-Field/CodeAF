@@ -5,8 +5,10 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -16,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
 const fluidBuilderModel = "deepseek/deepseek-v4.1-flash"
@@ -50,6 +53,17 @@ func TestFluidAppScopedPlanLive(t *testing.T) {
 	}, binary(t), "app", "--home", home, "plan", string(args))
 	raw, err := command.Output()
 	if err != nil {
+		var jobs struct{ Builds []builder.Summary }
+		fluidCall(t, engine, "apps.list", nil, &jobs)
+		for _, summary := range jobs.Builds {
+			var state builder.State
+			fluidCall(t, engine, "apps.build_state", map[string]string{"draft": summary.Draft}, &state)
+			t.Logf("job %s: %s (%v)", state.State, state.Problem, state.Progress)
+		}
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			t.Log(redact.Secrets(string(exit.Stderr)))
+		}
 		t.Fatalf("the app command did not return a plan: %v", err)
 	}
 	var plan builder.PlanResult

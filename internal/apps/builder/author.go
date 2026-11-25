@@ -15,14 +15,15 @@ import (
 // Compiler is supplied by the manifest lane. It accepts intent or markup and
 // returns a native screen compiled against the requested app's vocabulary.
 type Compiler interface {
-	Compile(context.Context, string, schema.Definition, json.RawMessage) (CompiledScreen, error)
+	Compile(context.Context, string, schema.Definition, schema.TypeSet, json.RawMessage) (CompiledChange, error)
 }
 
 var errCompilerUnavailable = errors.New("compiler_unavailable: the engine has no recipe or markup compiler for this kit")
 
-type CompiledScreen struct {
-	ID   string
-	JSON json.RawMessage
+type CompiledChange struct {
+	ScreenID string
+	Screen   json.RawMessage
+	App      json.RawMessage
 }
 
 type authoring struct {
@@ -35,7 +36,7 @@ type fileCommand struct {
 	Text string `json:"text"`
 }
 
-func (a authoring) edit(ctx context.Context, verb string, files map[string]string, raw json.RawMessage) (map[string]string, error) {
+func (a authoring) edit(ctx context.Context, verb string, files map[string]string, types schema.TypeSet, raw json.RawMessage) (map[string]string, error) {
 	var edit DefinitionEdit
 	switch verb {
 	case "plan":
@@ -80,15 +81,26 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		if a.compiler == nil {
 			return nil, errCompilerUnavailable
 		}
-		scr, err := a.compiler.Compile(ctx, verb, definition(files), raw)
+		result, err := a.compiler.Compile(ctx, verb, definition(files), types, raw)
 		if err != nil {
 			return nil, err
 		}
-		if !json.Valid(scr.JSON) {
-			return nil, errors.New("the compiler did not return a screen")
+		edits := []DefinitionEdit{}
+		if len(result.App) > 0 {
+			if !json.Valid(result.App) {
+				return nil, errors.New("the compiler returned an invalid app change")
+			}
+			text := string(result.App)
+			edits = append(edits, DefinitionEdit{Path: schema.AppFile, Text: &text})
 		}
-		text := string(scr.JSON)
-		edit = DefinitionEdit{Path: "screens/" + scr.ID + ".json", Text: &text}
+		if len(result.Screen) > 0 {
+			if !json.Valid(result.Screen) {
+				return nil, errors.New("the compiler returned an invalid screen")
+			}
+			text := string(result.Screen)
+			edits = append(edits, DefinitionEdit{Path: "screens/" + result.ScreenID + ".json", Text: &text})
+		}
+		return applyEdits(files, edits)
 	case "set_run", "set_agent", "set_sample":
 		var args fileCommand
 		if json.Unmarshal(raw, &args) != nil {
@@ -159,6 +171,9 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 	}
 	if verb == "add_type" {
 		records[args.Name] = args.Definition
+		if err := declareRead(manifest, args.Name); err != nil {
+			return err
+		}
 	} else {
 		var record map[string]json.RawMessage
 		if json.Unmarshal(records[args.Type], &record) != nil || record == nil {
@@ -178,4 +193,34 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 
 func validTypeWord(name string) bool {
 	return len(name) > 0 && len(name) < 129 && strings.Trim(name, "abcdefghijklmnopqrstuvwxyz0123456789_-") == ""
+}
+
+// A declared type can be displayed in a plan and in screens. An explicit
+// configuration is still required for editing or connector permissions.
+func declareRead(manifest map[string]json.RawMessage, name string) error {
+	caps := map[string]json.RawMessage{}
+	if raw := manifest["capabilities"]; len(raw) > 0 {
+		if err := json.Unmarshal(raw, &caps); err != nil {
+			return err
+		}
+	}
+	records := map[string]string{}
+	if raw := caps["records"]; len(raw) > 0 {
+		if err := json.Unmarshal(raw, &records); err != nil {
+			return err
+		}
+	}
+	if records[name] != "" {
+		return nil
+	}
+	if records == nil {
+		records = map[string]string{}
+	}
+	if caps == nil {
+		caps = map[string]json.RawMessage{}
+	}
+	records[name] = "r"
+	caps["records"], _ = json.Marshal(records)
+	manifest["capabilities"], _ = json.Marshal(caps)
+	return nil
 }

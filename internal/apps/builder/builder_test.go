@@ -29,12 +29,12 @@ func (s script) CompleteWithMessages(ctx context.Context, messages []ai.Message,
 
 type fixtureCompiler struct{ def schema.Definition }
 
-func (f fixtureCompiler) Compile(_ context.Context, _ string, _ schema.Definition, raw json.RawMessage) (builder.CompiledScreen, error) {
+func (f fixtureCompiler) Compile(_ context.Context, _ string, _ schema.Definition, _ schema.TypeSet, raw json.RawMessage) (builder.CompiledChange, error) {
 	var params struct{ Screen string }
 	if err := json.Unmarshal(raw, &params); err != nil {
-		return builder.CompiledScreen{}, err
+		return builder.CompiledChange{}, err
 	}
-	return builder.CompiledScreen{ID: params.Screen, JSON: f.def.Files["screens/"+params.Screen+".json"]}, nil
+	return builder.CompiledChange{ScreenID: params.Screen, Screen: f.def.Files["screens/"+params.Screen+".json"]}, nil
 }
 
 func scriptedApp(t *testing.T, home string) builder.Options {

@@ -83,18 +83,8 @@ func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) 
 	}
 
 	state := &b.builds.look
-	state.mu.Lock()
-	if state.pending == nil {
-		state.pending = map[string]chan appwire.AppLookCapture{}
-	}
-	reply := make(chan appwire.AppLookCapture, 1)
-	state.pending[id] = reply
-	state.mu.Unlock()
-	defer func() {
-		state.mu.Lock()
-		delete(state.pending, id)
-		state.mu.Unlock()
-	}()
+	reply := state.addLook(id)
+	defer state.removeLook(id)
 	b.emit.Emit(appwire.EventAppLookRequested, appwire.AppLookRequest{ID: id, Scope: preview.Scope, App: app.ID, Screen: params.Screen})
 	select {
 	case capture := <-reply:
@@ -102,6 +92,23 @@ func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) 
 	case <-ctx.Done():
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeDeskUnavailable, "The desktop didn't draw this screen in time.")
 	}
+}
+
+func (state *appLookState) addLook(id string) <-chan appwire.AppLookCapture {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.pending == nil {
+		state.pending = map[string]chan appwire.AppLookCapture{}
+	}
+	reply := make(chan appwire.AppLookCapture, 1)
+	state.pending[id] = reply
+	return reply
+}
+
+func (state *appLookState) removeLook(id string) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	delete(state.pending, id)
 }
 
 // A headless engine can check files and behavior without a desktop. When

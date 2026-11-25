@@ -58,14 +58,16 @@ func (b *appBackend) AppBuilds() (*builder.Jobs, error) {
 }
 
 func (b *appBackend) closeAppBuilds() {
-	door := &b.builds
-	door.mu.Lock()
-	door.closed = true
-	jobs := door.jobs
-	door.mu.Unlock()
-	if jobs != nil {
+	if jobs := b.builds.takeJobs(); jobs != nil {
 		jobs.Close()
 	}
+}
+
+func (door *appBuildState) takeJobs() *builder.Jobs {
+	door.mu.Lock()
+	defer door.mu.Unlock()
+	door.closed = true
+	return door.jobs
 }
 
 // The worker seat and credentials come from the same profile as other

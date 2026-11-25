@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -411,8 +411,12 @@ func (s *Jobs) classify(j *job, active turn, id, text string) {
 			return
 		}
 		instruction := "Classify whether the new request directly contradicts or cancels the work in progress. Additions and small refinements can wait. Reply REDIRECT or QUEUE only."
-		response, err := model.CompleteWithMessages(ctx, []ai.Message{message("system", instruction), message("user", string(input))}, ai.WithMaxTokens(128))
-		if err != nil || response == nil || !strings.EqualFold(strings.TrimSpace(response.Text()), "REDIRECT") {
+		modelID := builderModelID(model)
+		response, err := session.ScopedCommandTurn(ctx, filepath.Join(s.root, draft), modelID, instruction, string(input), model,
+			func(context.Context, string) (string, error) {
+				return "", errors.New("This turn only classifies the request.")
+			})
+		if err != nil || !strings.EqualFold(strings.TrimSpace(response), "REDIRECT") {
 			return
 		}
 		s.mu.Lock()

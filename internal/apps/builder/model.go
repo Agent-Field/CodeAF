@@ -33,7 +33,11 @@ plan {"name":"CRM","plan":{...}} writes the outline and starts the manifest.
 add-type {"name":"deal","definition":{...}} declares a record type.
 add-field {"type":"deal","name":"stage","definition":{...}} declares a field.
 configure {"capabilities":{...},"agent":{...},"triggers":[...]} updates app settings.
-recipe and markup compile screens through the engine's active vocabulary.
+recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage"}
+compiles a collection view. The served catalog describes its recipe kinds
+and options. For a composed screen, use markup {"screen":"deals","title":"Deals",
+"markup":"<...>"} with the catalog parts as elements. Use label, id, prop-name,
+bind-name and on-event attributes. The compiler assigns missing node ids.
 set-run {"id":"follow-up","text":"..."} writes one automation.
 set-agent {"text":"..."} supplies the app agent's instructions.
 set-sample {"text":"..."} supplies fictional rows for preview and tests.
@@ -95,10 +99,6 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 	return next, nil
 }
 
-func message(role, text string) ai.Message {
-	return ai.Message{Role: role, Content: []ai.ContentPart{{Type: "text", Text: text}}}
-}
-
 type modelInput struct {
 	Marks      []Mark            `json:"marks"`
 	Stage      string            `json:"stage"`
@@ -130,6 +130,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		if in.Stage == Planning && (verb == "recipe" || verb == "markup" || verb == "look") {
+			return "", errors.New("This turn is for the plan. Save the outline and record types, then finish the turn so the person can review it.")
+		}
 		switch verb {
 		case "context":
 			view := in
@@ -174,7 +177,7 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			raw, err := json.Marshal(claim)
 			return string(raw), err
 		default:
-			next, err := author.edit(ctx, verb, files, args)
+			next, err := author.edit(ctx, verb, files, types, args)
 			if err != nil {
 				if errors.Is(err, errCompilerUnavailable) {
 					compilerErr = err
@@ -188,12 +191,19 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			return "Saved the definition change.", nil
 		}
 	}
-	modelID := "app-worker"
-	if named, ok := model.(interface{ ModelID() string }); ok {
-		modelID = named.ModelID()
+	prompt := systemPrompt() + "\n\nCURRENT PHASE: " + in.Stage + "\n"
+	if in.Stage == Planning {
+		prompt += "This turn ends with a reviewable plan and type shapes. Do not compile screens in this turn."
 	}
-	reply, err := session.ScopedCommandTurn(ctx, workspace, modelID, systemPrompt(), string(raw), &boundedModel{model: model}, execute)
+	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), &boundedModel{model: model}, execute)
 	return files, reply, errors.Join(err, compilerErr)
+}
+
+func builderModelID(model Completer) string {
+	if named, ok := model.(interface{ ModelID() string }); ok {
+		return named.ModelID()
+	}
+	return "app-worker"
 }
 
 type boundedModel struct {

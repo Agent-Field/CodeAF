@@ -4,6 +4,7 @@ package appcmd
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 )
 
@@ -23,6 +24,17 @@ func Parse(command string) (string, json.RawMessage, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		raw = "{}"
+	}
+	// A model often quotes JSON as it would on a command line. Unwrap a
+	// single literal without expanding variables or evaluating shell syntax.
+	if len(raw) > 1 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
+		raw = raw[1 : len(raw)-1]
+	} else if strings.HasPrefix(raw, "\"") {
+		literal, err := strconv.Unquote(raw)
+		if err != nil {
+			return "", nil, errors.New("app command arguments must be one JSON object")
+		}
+		raw = literal
 	}
 	if !strings.HasPrefix(raw, "{") || !json.Valid([]byte(raw)) {
 		return "", nil, errors.New("app command arguments must be one JSON object")
