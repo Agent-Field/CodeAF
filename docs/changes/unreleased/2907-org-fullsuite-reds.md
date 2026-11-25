@@ -1,6 +1,6 @@
 ---
 kind: internal
-title: the hosted-chat environment variables are registered operator plumbing, and the real-engine read test uses EngineDir
+title: hosted-chat environment variables are registered as operator plumbing
 pr: 2907
 surface: [factory, build]
 invalidates:
