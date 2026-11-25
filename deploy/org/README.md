@@ -37,8 +37,11 @@ docker compose up -d --build    # the first build takes several minutes; later s
 docker compose ps               # every service says "healthy"
 ```
 
-The first build downloads the pinned codeaf release (checked against its sha256) and builds SWE-AF and PR-AF
-from pinned commits of their public repositories.
+The first build compiles codeaf from this checkout (several minutes; the repository root is the build context) and builds SWE-AF
+and PR-AF from pinned commits of their public repositories. codeaf is built from source because hosted chats need
+`codeaf sessionhost` and no release has it yet. If you leave hosted chats off and want to skip the compile,
+`CODEAF_BINARY_FROM=fetch docker compose up -d --build` downloads the pinned release instead (checked against its sha256);
+`compose.yaml` says how to tell when `fetch` can be the default again.
 
 ## Claim the organization, invite a second person
 
@@ -300,12 +303,11 @@ is a change to the wire's own protocol and not made here.
    `./setup.sh` also writes `CODEAF_SERVER_KEY`, which seals people's own keys: keep a copy.
    `CODEAF_HOSTED_MODEL_URL` is the address chats use to reach the organization server's model door
    (`http://codeaf:8787/v1/model` by default).
-3. `docker compose up -d`. The image must hold a codeaf that has `codeaf sessionhost`, and the pinned release (what a plain
-   `--build` fetches) does not until one ships it. Use the published image (`--env-file images.env`, see "Published images"), or
-   build the codeaf image from this repository's source (the `docker build` under "Published images", run from the repository root,
-   which tags `codeaf-org/codeaf:local`) and start with `docker compose up -d --no-build`. `codeaf`, `runner` and `sessionhost` all
-   run that one image. Do not build from a binary of your own machine: the image should be this commit's source, which is what `codeaf version`
-   inside it reports.
+3. `docker compose up -d --build`. The image must hold a codeaf that has `codeaf sessionhost`, and a plain build gives it one: Compose
+   builds codeaf from this checkout by default (`CODEAF_BINARY_FROM=source`, see "Start it"). Do not set `CODEAF_BINARY_FROM=fetch` for
+   hosted chats: the pinned release it downloads does not have the sessionhost until one ships it. To skip the compile, use the
+   published image (`--env-file images.env`, see "Published images"). `codeaf`, `runner` and `sessionhost` all run that one image. Do not build
+   from a binary of your own machine: the image should be this commit's source, which is what `codeaf version` inside it reports.
 
 The sessionhost sits on a network of its own, shared only with `codeaf`, so a chat's commands cannot reach
 AgentField, the nodes, the runner or the model stub. On a platform with no such network (Railway), the port limit above
@@ -471,7 +473,8 @@ What a first install needs that the table does not show:
 
 - **Why `codeaf`, `runner` and `sessionhost` build from the repository root.** They are one image, and the pinned release a plain
   build fetches has no `codeaf sessionhost`, so the image is built from this repository's source (`CODEAF_BINARY_FROM=source`, and
-  `ORG_DIR` says where `deploy/org` is inside that context). Railway hands every service variable to the build as a build argument,
+  `ORG_DIR` says where `deploy/org` is inside that context; Compose passes the same two by default, but the Dockerfile's own default
+  stays `fetch`, so Railway has to set them). Railway hands every service variable to the build as a build argument,
   which is how those two reach it; they stay in the running service's environment too, where nothing reads them. Never use
   `CODEAF_BINARY_FROM=local`: it expects a binary beside the Dockerfile that a repository build does not have. Each of the three
   compiles codeaf (about four minutes each); the other four take about a minute. `codeaf version` in the running service names the
