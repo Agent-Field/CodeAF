@@ -349,7 +349,8 @@ holds that conversation's transcript and the wait is under 30 minutes.
 When you stop a member's turn that had been handed the manager's work, its manager is woken
 and told the work is not done, that you chose to stop it, and not to hand it out again unless
 you ask. Stopping a turn that carried only what you typed to the member tells the manager
-nothing, and neither does codeaf quitting or a paused member's stray wake being ended.
+nothing, and neither does codeaf quitting or a paused member's stray wake being ended. The global
+manager is not woken by a top-level team's manager being stopped (see **The global manager**).
 
 ## A stopped member's command is still running — why it did not start again when the command ended
 
@@ -537,7 +538,8 @@ those managers directly and each answer ends a turn, so the endings stay in `All
 traffic, where `team_status` reads them. The global manager is woken by what a manager posts
 to it with `team_post`, by a manager's question or a permission it is held on, and by a
 manager's turn failing. It is told never to send a manager your own request to that manager
-back as a directive.
+back as a directive. A member of `All teams` that manages no team is an ordinary member
+there: its turn ending wakes the global manager as in any team.
 
 ## Conflicts between members and teams
 
@@ -597,7 +599,9 @@ working, that is straight away. When it is idle, it depends on the kind of messa
   without a reply, failing, starting to wait on you, or having a turn that carried the
   manager's work stopped by you, start an idle manager's turn. A reply
   and the end of the same turn are one wake, even if the ending arrives after the manager
-  already ran. Replies arriving within a few seconds are gathered into one turn.
+  already ran. Replies arriving within a few seconds are gathered into one turn. The global
+  manager is the exception: a top-level team's manager finishing or being stopped does not
+  start its turn (see **The global manager**).
 
 A member no window has open is opened by codeaf in the background so it can run, and a window
 that opens it later joins the running conversation. A manager that moved to another window, and

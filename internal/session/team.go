@@ -124,6 +124,12 @@ type teamRole struct {
 	// manager is the global manager, and its other members are the top-level
 	// teams' managers.
 	root bool
+	// tops is, for the root, the keys of the members that manage a top-level
+	// team now ([teams.File.TopManagers]). The root can hold others, a manager
+	// that stopped being one or a conversation the person put there, and the
+	// rule that keeps a manager's turn ending from waking the global manager is
+	// about these members alone ([teamRole.quietEnding]).
+	tops map[string]bool
 	// dissolvable says this conversation manages the team and the team has
 	// never held anyone but it ([teams.File.Dissolvable]), which is when its
 	// manager is given team_dissolve (team_dissolve.go).
@@ -454,6 +460,7 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			boss:        boss,
 			bossName:    bossName,
 			root:        team.Root,
+			tops:        topManagerKeys(file, team),
 			key:         member.Key,
 			wakes:       effective.Wake,
 			questionsUp: effective.QuestionsUp,
