@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -104,23 +105,59 @@ const (
 	plainModel = `{"capabilities":["completion","tools","thinking"],"parameters":"temperature                    0.6\nstop                           \"<|im_end|>\"","model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`
 )
 
-// The window the server is running a model with is the figure reported, over
-// whatever the Modelfile asks for. Where it comes from follows the server's own
-// order: a Modelfile's num_ctx overrides the server's setting, so a loaded
-// model whose Modelfile sets one is said to have its window from the Modelfile,
-// and only a model that sets none is said to be running with the server's.
-func TestALoadedWindowIsBelievedOverTheModelfile(t *testing.T) {
+// A model loaded with a window of the server's own setting is said to be
+// running with it: only a model whose Modelfile sets no num_ctx is.
+func TestALoadedWindowIsTheServersWhenTheModelfileSetsNone(t *testing.T) {
 	stub := &stubServer{
-		ps: `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":4096},{"name":"plain:latest","model":"plain:latest","context_length":4096}]}`,
+		ps:   `{"models":[{"name":"plain:latest","model":"plain:latest","context_length":4096}]}`,
+		show: map[string]string{"plain": plainModel},
+	}
+	got := limitsFrom(t, stub, "plain")
+	want := map[string][]appwire.ModelLimit{"plain": {{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowLoaded}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("limits = %+v, want %+v", got, want)
+	}
+}
+
+// A model whose Modelfile sets num_ctx is judged by that figure, loaded or not:
+// the app's requests set no window, so its next turn loads the model with the
+// Modelfile's, and a running window that differs is another client's, asked
+// for with options of its own. A Modelfile of room enough is no limit however
+// small the window the model happens to run with, and a small one is reported
+// as the Modelfile's figure however large the window running now.
+func TestAModelfileWindowIsJudgedOverARunningOne(t *testing.T) {
+	stub := &stubServer{
+		ps: `{"models":[{"name":"roomy:latest","model":"roomy:latest","context_length":4096},{"name":"tight:latest","model":"tight:latest","context_length":32768}]}`,
 		show: map[string]string{
-			"qwen3:8b": `{"capabilities":["completion","tools"],"parameters":"num_ctx                        65536","model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`,
-			"plain":    plainModel,
+			"roomy": `{"capabilities":["completion","tools"],"parameters":"num_ctx                        65536","model_info":{"general.architecture":"qwen3","qwen3.context_length":131072}}`,
+			"tight": `{"capabilities":["completion","tools"],"parameters":"num_ctx 2048","model_info":{"general.architecture":"qwen3","qwen3.context_length":40960}}`,
 		},
 	}
-	got := limitsFrom(t, stub, "qwen3:8b", "plain")
+	got := limitsFrom(t, stub, "roomy", "tight")
+	want := map[string][]appwire.ModelLimit{"tight": {{Kind: appwire.LimitSmallWindow, Window: 2048, Needs: needs, Most: 40960, Source: appwire.WindowModelfile}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("limits = %+v, want %+v", got, want)
+	}
+}
+
+// The server clamps a window to the most the model can hold. A Modelfile asking
+// for more than that is reported with its own figure and the most beside it,
+// both true, and judged by what the server gives: a model that holds 8192 has a
+// small window whatever its Modelfile asks for, and one asking for more than a
+// model that holds enough has none.
+func TestAModelfileWindowIsJudgedClampedToTheMost(t *testing.T) {
+	stub := &stubServer{
+		ps: `{"models":[{"name":"short:latest","model":"short:latest","context_length":8192}]}`,
+		show: map[string]string{
+			"short":  `{"capabilities":["completion","tools"],"parameters":"num_ctx 16384","model_info":{"general.architecture":"llama","llama.context_length":8192}}`,
+			"greedy": `{"capabilities":["completion","tools"],"parameters":"num_ctx 65536","model_info":{"general.architecture":"llama","llama.context_length":8192}}`,
+			"ample":  `{"capabilities":["completion","tools"],"parameters":"num_ctx 65536","model_info":{"general.architecture":"llama","llama.context_length":40960}}`,
+		},
+	}
+	got := limitsFrom(t, stub, "short", "greedy", "ample")
 	want := map[string][]appwire.ModelLimit{
-		"qwen3:8b": {{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowModelfile}},
-		"plain":    {{Kind: appwire.LimitSmallWindow, Window: 4096, Needs: needs, Most: 40960, Source: appwire.WindowLoaded}},
+		"short":  {{Kind: appwire.LimitSmallWindow, Window: 16384, Needs: needs, Most: 8192, Source: appwire.WindowModelfile}},
+		"greedy": {{Kind: appwire.LimitSmallWindow, Window: 65536, Needs: needs, Most: 8192, Source: appwire.WindowModelfile}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("limits = %+v, want %+v", got, want)
@@ -148,18 +185,6 @@ func TestALoadedModelWithASmallModelfileWindowIsTheModelfiles(t *testing.T) {
 	unloaded := probe.Read(context.Background(), []string{"pinned"}, needs)["pinned"]
 	if unloaded.Loaded || !unloaded.Unloaded || !reflect.DeepEqual(unloaded.Limits, want) {
 		t.Fatalf("unloaded reading = %+v, want unloaded with %+v", unloaded, want)
-	}
-}
-
-// A model loaded with room enough has no window limit, however small its
-// Modelfile's own figure is.
-func TestALoadedWindowLargeEnoughReportsNothing(t *testing.T) {
-	stub := &stubServer{
-		ps:   `{"models":[{"name":"qwen3:8b","model":"qwen3:8b","context_length":32000}]}`,
-		show: map[string]string{"qwen3:8b": `{"capabilities":["completion","tools"],"parameters":"num_ctx 2048"}`},
-	}
-	if got := limitsFrom(t, stub, "qwen3:8b"); len(got) != 0 {
-		t.Fatalf("limits = %+v, want none", got)
 	}
 }
 
@@ -518,5 +543,38 @@ func TestTheLimitsTravelUnderTheirWireNames(t *testing.T) {
 	want := `[{"kind":"small_window","window":2048,"needs":32000,"most":8192,"source":"modelfile"},{"kind":"no_tools"}]`
 	if err != nil || string(data) != want {
 		t.Fatalf("wire = %s %v, want %s", data, err, want)
+	}
+}
+
+// An odd server answering with ever-changing names cannot grow what this
+// process remembers without end: each table keeps the models written most
+// recently, and a model seen again is not the oldest however early it was
+// first seen.
+func TestTheMemoryKeepsOnlyTheLatestModels(t *testing.T) {
+	seen := &Memory{}
+	seen.sawRunning("http://a", map[string]int{"mine": 4096})
+	seen.keep("http://a", "mine", Reading{Loaded: true})
+	for i := range remembers {
+		name := "odd-" + strconv.Itoa(i)
+		seen.sawRunning("http://a", map[string]int{name: 2048})
+		seen.keep("http://a", name, Reading{Loaded: true})
+		if i == remembers/2 {
+			seen.sawRunning("http://a", map[string]int{"mine": 4096})
+			seen.keep("http://a", "mine", Reading{Loaded: true})
+		}
+	}
+	seen.sawRunning("http://a", map[string]int{"one-more": 2048})
+	seen.keep("http://a", "one-more", Reading{Loaded: true})
+	if len(seen.windows.at) != remembers || len(seen.windows.order) != remembers || len(seen.readings.at) != remembers || len(seen.readings.order) != remembers {
+		t.Fatalf("kept %d/%d windows and %d/%d readings, want %d of each", len(seen.windows.at), len(seen.windows.order), len(seen.readings.at), len(seen.readings.order), remembers)
+	}
+	if seen.lastWindow("http://a", "odd-1") != 0 || seen.recall("http://a", "odd-1").Loaded {
+		t.Fatal("the oldest models are still remembered")
+	}
+	if seen.lastWindow("http://a", "mine") != 4096 || !seen.recall("http://a", "mine").Loaded {
+		t.Fatal("a model seen again was dropped as the oldest")
+	}
+	if seen.lastWindow("http://a", "one-more") != 2048 || seen.lastWindow("http://a", "odd-2") != 2048 {
+		t.Fatal("a recent model was dropped")
 	}
 }

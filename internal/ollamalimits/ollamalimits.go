@@ -76,14 +76,44 @@ func At(address, key string) (Probe, bool) {
 // model's last reading that a list could finish.
 //
 // IT IS KEPT IN MEMORY ONLY, FOR THE LIFE OF THE PROCESS. A remembered window
-// is what the server gave the model when it last loaded it, and a restart of
+// is what a list last saw the server running the model with, and a restart of
 // the app is commonly a restart of Ollama too, or comes after its setting was
 // changed: a figure carried across that from disk would be one nobody has
 // measured since. Forgetting costs only the warning until the model next loads.
+//
+// IT IS BOUNDED. The names come from the server, and an odd one that answers
+// with ever-changing names would otherwise grow it for the life of the process:
+// each table keeps at most remembers entries and drops the one written longest
+// ago, which a person's own models, written at every list, never are.
 type Memory struct {
 	mu       sync.Mutex
-	windows  map[string]int
-	readings map[string]Reading
+	windows  latest[int]
+	readings latest[Reading]
+}
+
+// remembers is how many models of all servers each table of [Memory] keeps:
+// far more than anyone keeps, few enough to cost nothing.
+const remembers = 512
+
+// latest is a table that keeps the remembers entries written most recently.
+type latest[V any] struct {
+	at    map[string]V
+	order []string
+}
+
+func (l *latest[V]) set(key string, value V) {
+	if l.at == nil {
+		l.at = map[string]V{}
+	}
+	if _, known := l.at[key]; known {
+		l.order = slices.DeleteFunc(l.order, func(k string) bool { return k == key })
+	}
+	l.at[key] = value
+	l.order = append(l.order, key)
+	for len(l.order) > remembers {
+		delete(l.at, l.order[0])
+		l.order = slices.Delete(l.order, 0, 1)
+	}
 }
 
 // remembered is the key of one model of one server.
@@ -96,11 +126,8 @@ func (m *Memory) sawRunning(base string, running map[string]int) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.windows == nil {
-		m.windows = map[string]int{}
-	}
 	for name, window := range running {
-		m.windows[remembered(base, name)] = window
+		m.windows.set(remembered(base, name), window)
 	}
 }
 
@@ -111,7 +138,7 @@ func (m *Memory) lastWindow(base, name string) int {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.windows[remembered(base, name)]
+	return m.windows.at[remembered(base, name)]
 }
 
 // keep remembers a reading a list finished, and recall answers it again for a
@@ -122,10 +149,7 @@ func (m *Memory) keep(base, name string, reading Reading) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.readings == nil {
-		m.readings = map[string]Reading{}
-	}
-	m.readings[remembered(base, name)] = reading
+	m.readings.set(remembered(base, name), reading)
 }
 
 func (m *Memory) recall(base, name string) Reading {
@@ -134,7 +158,7 @@ func (m *Memory) recall(base, name string) Reading {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	reading := m.readings[remembered(base, name)]
+	reading := m.readings.at[remembered(base, name)]
 	reading.Stale = true
 	return reading
 }
@@ -273,29 +297,37 @@ func (p Probe) Read(ctx context.Context, names []string, needs int) map[string]R
 // (last), either 0 when there is none. Whether the server answered /api/ps at
 // all is the caller's: without that nobody knows which window counts.
 //
-// A window running now is the figure believed over the Modelfile's, which only
-// says what the next load would ask for, and over the last load's. What is
-// said of where it comes from follows the server's own order: its setting
-// first, then a Modelfile's num_ctx over it. So a model whose Modelfile sets
-// num_ctx is said to have its window from the Modelfile whether or not it is
-// loaded, because raising the server's setting would not change it; with
-// nothing loaded its figure is the Modelfile's, and only a model that sets
-// none is read by the window it last ran with. A model with none of the three
-// has no window limit. The server decides its default when it loads a model,
-// from the machine's memory or a setting the person may have raised, and no
-// API says what it is, so a warning without a figure would be a guess.
+// The server's own order decides which figure counts: its setting first, then
+// a Modelfile's num_ctx over it, then a request's options over both, and a
+// request whose options differ from the loaded model's reloads it. So a model
+// whose Modelfile sets num_ctx is judged by that figure, loaded or not: it is
+// what the app's own next turn loads the model with, because the app's requests
+// set no window. A window running now may be another client's, asked for with
+// options of its own, and says nothing about the app's next turn on the model.
+// The server also clamps a window to the most the model can hold, so the
+// Modelfile's figure is judged clamped, though the figure reported is the
+// Modelfile's own: the app says what the Modelfile sets, and the most beside it.
+//
+// A model that sets none is judged by the window it is running with now, and
+// when it is not running by the window it last ran with. A model with none of
+// these has no window limit. The server decides its default when it loads a
+// model, from the machine's memory or a setting the person may have raised,
+// and no API says what it is, so a warning without a figure would be a guess.
 func smallWindow(loaded, last int, model shown, needs int) (appwire.ModelLimit, bool) {
 	limit := appwire.ModelLimit{Kind: appwire.LimitSmallWindow, Needs: needs, Most: model.most}
-	modelfile := model.asked == answered && !model.remote && model.numCtx > 0
+	if model.asked == answered && !model.remote && model.numCtx > 0 {
+		gets := model.numCtx
+		if model.most > 0 && model.most < gets {
+			gets = model.most
+		}
+		limit.Window, limit.Source = model.numCtx, appwire.WindowModelfile
+		return limit, gets < needs
+	}
 	switch {
-	case loaded > 0 && modelfile:
-		limit.Window, limit.Source = loaded, appwire.WindowModelfile
 	case loaded > 0:
 		limit.Window, limit.Source = loaded, appwire.WindowLoaded
 	case model.asked != answered || model.remote:
 		return limit, false
-	case modelfile:
-		limit.Window, limit.Source = model.numCtx, appwire.WindowModelfile
 	case last > 0:
 		limit.Window, limit.Source = last, appwire.WindowLastLoaded
 	default:

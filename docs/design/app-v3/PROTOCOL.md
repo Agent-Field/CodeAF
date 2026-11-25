@@ -2990,15 +2990,20 @@ that is absent, refuses or answers in an unknown shape reports no limit.
 `needs` is the window the app's prompts ask for, 32000 tokens (the engine's lean
 threshold). `source` says how `window` is known: `loaded` (the server is running
 the model with this window and its Modelfile sets no `num_ctx`), `modelfile`
-(its Modelfile sets `num_ctx`, which overrides the server's own setting;
-`window` is the window it runs with when it is loaded, else the Modelfile's) or
-`last_loaded` (not loaded, nothing sets it, and `window` is what the server gave
-the model when this engine last saw it running in `GET /api/ps`). A window of
-`needs` or more is no limit. A model that is not loaded, sets no `num_ctx` and
-has not been seen running has no `small_window`: the server decides its default
-window when it loads a model, from the machine's memory or the person's
-setting, and its API does not say what that will be. The engine remembers each
-model's last window per service address for as long as it runs, not on disk.
+(its Modelfile sets `num_ctx`, which overrides the server's own setting and is
+what the app's next turn loads the model with, since the engine's requests set
+no window; `window` is the Modelfile's figure whether or not the model is
+loaded, because a running window may be another client's) or `last_loaded` (not
+loaded, nothing sets it, and `window` is what this engine last saw the server
+running the model with in `GET /api/ps`, at a list). A window of `needs` or more
+is no limit; a Modelfile's figure is judged clamped to `most`, as the server
+clamps it, so a Modelfile asking for more than the model can hold still has a
+`small_window` when `most` is under `needs`. A model that is not loaded, sets no
+`num_ctx` and has not been seen running has no `small_window`: the server
+decides its default window when it loads a model, from the machine's memory or
+the person's setting, and its API does not say what that will be. The engine
+remembers each model's last window per service address for as long as it runs,
+not on disk, and at most a few hundred models' windows, dropping the oldest.
 `most` is the most the model itself can hold, when the server says. A model the
 server only forwards to another machine has no `small_window`. A server that
 sends no capability list has no `no_tools`, and a model whose capability list
@@ -3008,13 +3013,16 @@ could. Engines before `last_loaded` could send `source` `default` with no
 `window`; an app reads it as nothing measured and shows no warning for it.
 
 When a turn ends on an Ollama model the server was not running at the last
-`models.list`, or one that list gave a `small_window`, the engine emits
+`models.list`, or one that list gave a `small_window` of a size other than the
+one it had when a turn last raised such a notice, the engine emits
 `models.changed` once for that turn: the turn loaded the model, or may have
 reloaded it with a larger window after the person raised Ollama's setting, so
-the next list reads the window the server really gave it. A model the server
-lists as running without a window is not counted as not running, and a model
-the list after such a notice still finds not running raises no further notice
-for not running until a list sees it running.
+the next list reads the window the server really gave it. A small window that
+stays the same raises one notice, not one per turn. A model the server lists as
+running without a window is not counted as not running, and a model the list
+after such a notice still finds not running raises no further notice for not
+running until a list sees it running. A turn of a hosted chat, which runs on
+its organisation's server, raises none.
 
 ## orders methods
 

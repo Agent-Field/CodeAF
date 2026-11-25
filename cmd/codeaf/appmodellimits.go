@@ -25,6 +25,13 @@ import (
 // last list remembered of it, so a slow answer neither hides a warning for one
 // list nor loses that request.
 //
+// A SMALL WINDOW THAT STAYS THE SAME IS ASKED ABOUT ONCE. The first list after
+// a turn's notice has read the window that turn left the model with, and each
+// list costs a question per model to the server and a redraw in the app: so a
+// small window is marked again only when it differs from the one that list
+// read. A person who raised the setting and restarted Ollama finds the model
+// unloaded, or loaded with another window, and either is marked again.
+//
 // A MODEL THE SERVER NEVER KEEPS LOADED IS ASKED ABOUT ONCE. When the list a
 // turn asked for still finds the model unloaded (a server that unloads it at
 // once, keep_alive 0), another turn would find the same, and every list costs
@@ -50,6 +57,16 @@ func (b *appBackend) addModelLimits(until time.Time, models []appwire.Model, sou
 				}
 				continue
 			}
+			small := appSmallWindow(reading.Limits)
+			switch {
+			case small == 0:
+				delete(b.ollamaToldWindow, name)
+			case b.ollamaRelisted[name]:
+				if b.ollamaToldWindow == nil {
+					b.ollamaToldWindow = map[string]int{}
+				}
+				b.ollamaToldWindow[name] = small
+			}
 			switch {
 			case reading.Loaded:
 				delete(b.ollamaRelisted, name)
@@ -61,7 +78,7 @@ func (b *appBackend) addModelLimits(until time.Time, models []appwire.Model, sou
 				}
 				b.ollamaQuiet[name] = true
 			}
-			if (reading.Unloaded && !b.ollamaQuiet[name]) || appSmallWindow(reading.Limits) {
+			if (reading.Unloaded && !b.ollamaQuiet[name]) || (small > 0 && small != b.ollamaToldWindow[name]) {
 				relist[name] = true
 			}
 		}
@@ -69,14 +86,14 @@ func (b *appBackend) addModelLimits(until time.Time, models []appwire.Model, sou
 	})
 }
 
-// appSmallWindow says whether limits carry a small window.
-func appSmallWindow(limits []appwire.ModelLimit) bool {
+// appSmallWindow is the small window limits carry, or 0 when they carry none.
+func appSmallWindow(limits []appwire.ModelLimit) int {
 	for _, limit := range limits {
 		if limit.Kind == appwire.LimitSmallWindow {
-			return true
+			return limit.Window
 		}
 	}
-	return false
+	return 0
 }
 
 // appOllamaLimits fills the limits of the rows an Ollama service serves, and
@@ -122,9 +139,10 @@ func appOllamaLimits(ctx context.Context, models []appwire.Model, sources models
 
 // modelLoadedBy is called when a turn on model has ended. A turn on an Ollama
 // model the server was not running at the last list has loaded it, and one on a
-// model listed with a small window may have reloaded it with a larger one, so
-// the server can now say what it gave the model: the app is told the models
-// changed, once, and its next list reads the window the model really has.
+// model listed with a small window it was not known to have after an earlier
+// notice may have reloaded it with a larger one, so the server can now say what
+// it gave the model: the app is told the models changed, once, and its next list
+// reads the window the model really has. It is not called for a hosted chat.
 func (b *appBackend) modelLoadedBy(model string) {
 	if proc := openedEngineProcess(); proc != nil {
 		_, sources := proc.currentAccount()

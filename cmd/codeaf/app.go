@@ -810,14 +810,16 @@ type appBackend struct {
 	// ollamaRelist is the models of the Ollama service a turn's end should ask
 	// the app to list again (not running, or a small window, at the last list),
 	// ollamaRelisted those a turn has asked that for since, ollamaQuiet those
-	// whose asked-for list still found them unloaded, and ollamaSeen what this
-	// app has seen of that service's models, for the lists after
+	// whose asked-for list still found them unloaded, ollamaToldWindow the
+	// small window the first list after such a notice read, and ollamaSeen
+	// what this app has seen of that service's models, for the lists after
 	// ([appBackend.addModelLimits]).
-	tellModels     func()
-	ollamaRelist   map[string]bool
-	ollamaRelisted map[string]bool
-	ollamaQuiet    map[string]bool
-	ollamaSeen     *ollamalimits.Memory
+	tellModels       func()
+	ollamaRelist     map[string]bool
+	ollamaRelisted   map[string]bool
+	ollamaQuiet      map[string]bool
+	ollamaToldWindow map[string]int
+	ollamaSeen       *ollamalimits.Memory
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
 	// dayAuth is the daily limit's one-time hand-over from this file's old cap.
@@ -3292,7 +3294,11 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		b.resetCloseAfterReply(id)
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
-	b.modelLoadedBy(live.conn.Conv.Model())
+	// A hosted chat's turn ran on its organisation's server, whose models are
+	// not this computer's Ollama ones, however alike their names.
+	if a.hosted == nil {
+		b.modelLoadedBy(live.conn.Conv.Model())
+	}
 	held := false
 	var view appwire.Agent
 	b.locked(func() {

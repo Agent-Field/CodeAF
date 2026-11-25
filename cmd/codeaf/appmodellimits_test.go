@@ -370,7 +370,10 @@ func TestAppATurnOnAnUnloadedOllamaModelBringsItsWindowToTheList(t *testing.T) {
 // A turn on a model listed with a small window asks for one new list, whether
 // the model was loaded at that list or not: the person may have raised Ollama's
 // setting and restarted it, and only a new list reads the window the turn's
-// reload gave. One turn asks once, however the model is marked.
+// reload gave. One turn asks once, however the model is marked, and once that
+// list has read the window, turns on a model whose small window stays the same
+// ask for no more: every list costs a question per model to the server and a
+// redraw in the app. A window that changes is asked about once again.
 func TestAppTurnOnASmallWindowModelAsksForOneNewList(t *testing.T) {
 	var mu sync.Mutex
 	window := 4096
@@ -396,21 +399,57 @@ func TestAppTurnOnASmallWindowModelAsksForOneNewList(t *testing.T) {
 	if small := list(); len(small[0].Limits) != 1 || small[0].Limits[0].Source != appwire.WindowLoaded {
 		t.Fatalf("limits = %+v, want the loaded small window", small[0].Limits)
 	}
-	backend.ollamaLoaded(sources, "ollama/qwen3:8b")
-	backend.ollamaLoaded(sources, "ollama/qwen3:8b")
+	turn := func() { backend.ollamaLoaded(sources, "ollama/qwen3:8b") }
+	setWindow := func(n int) {
+		mu.Lock()
+		window = n
+		mu.Unlock()
+	}
+	turn()
+	turn()
 	if told != 1 {
 		t.Fatalf("turns on a loaded small-window model told the app %d times, want once before a new list", told)
 	}
+	// The asked-for list and the turns and lists after it: the window is the
+	// one that list read, so nothing more is asked for.
+	for i := range 4 {
+		if same := list(); len(same[0].Limits) != 1 || same[0].Limits[0].Window != 4096 {
+			t.Fatalf("list %d: limits = %+v, want the same small window", i, same[0].Limits)
+		}
+		turn()
+	}
+	if told != 1 {
+		t.Fatalf("turns on an unchanged small window told the app %d times, want once in all", told)
+	}
 
-	mu.Lock()
-	window = 32768
-	mu.Unlock()
+	setWindow(8192)
+	if other := list(); len(other[0].Limits) != 1 || other[0].Limits[0].Window != 8192 {
+		t.Fatalf("limits = %+v, want the other small window", other[0].Limits)
+	}
+	turn()
+	turn()
+	for range 3 {
+		list()
+		turn()
+	}
+	if told != 2 {
+		t.Fatalf("a changed small window told the app %d times in all, want 2", told)
+	}
+
+	setWindow(32768)
 	if raised := list(); raised[0].Limits != nil {
 		t.Fatalf("limits after the raise = %+v, want none", raised[0].Limits)
 	}
-	backend.ollamaLoaded(sources, "ollama/qwen3:8b")
-	if told != 1 {
+	turn()
+	if told != 2 {
 		t.Fatalf("a turn on a model loaded with room enough told the app again (%d)", told)
+	}
+	// Small again later, at the window it once had: that is news again.
+	setWindow(4096)
+	list()
+	turn()
+	if told != 3 {
+		t.Fatalf("a window that fell back told the app %d times in all, want 3", told)
 	}
 }
 
