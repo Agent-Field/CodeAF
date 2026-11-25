@@ -3861,7 +3861,7 @@ func (a *Agent) drainSteering(hub *eventHub) int {
 	// turn's opening and at every step after it, which is what makes a line the
 	// manager sends mid-turn land mid-turn. A conversation in no team pays one
 	// stat, and one with no profile or a task node pays nothing.
-	if news := a.teamBoundary(); news != "" {
+	if news := a.teamBoundaryFor(a.team.person.opened.Load()); news != "" {
 		a.enqueueNote(userText(news))
 	}
 	sharing := a.config.teamProfile() != "" && a.teamsSharing()
@@ -4258,16 +4258,18 @@ func (a *Agent) enqueueJobNoteUnowed(text string) {
 // enqueueJobNoteQuiet keeps each successful process ending as context without
 // waking the model. An idle chat journals it now so a handoff can carry it.
 func (a *Agent) enqueueJobNoteQuiet(text string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.quietNoteLocked(text)
+}
+
+// quietNoteLocked is [Agent.enqueueJobNoteQuiet] for a caller holding a.mu.
+func (a *Agent) quietNoteLocked(text string) {
 	text = strings.TrimSpace(text)
-	if text == "" {
+	if text == "" || a.closed {
 		return
 	}
 	note := userMessage{message: textMessage("user", text), batch: true, authored: true}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.closed {
-		return
-	}
 	if a.running || !a.opened {
 		a.ambient = append(a.ambient, note)
 		return
