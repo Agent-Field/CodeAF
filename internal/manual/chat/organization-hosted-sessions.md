@@ -72,7 +72,7 @@ A chat shared with you opens with `codeaf chat --org <server> --session hs_...`,
 - **answer**: also answer a question the chat is waiting on.
 - **run** (the `edit` and `full` roles have it): also send messages, files and images, and run a command the chat's own way, as the chat's owner would.
 
-Everything else on the chat's wire stays with the owner whatever role a person holds: approving a command, changing a setting, opening the chat's files, stopping its work. A command that needs approval waits for the owner. Stopping or deleting the chat itself is a separate door that needs the `manage` permission, which the `full` role holds: see *stop or delete a chat on the server*.
+Everything else on the chat's wire stays with the owner whatever role a person holds: approving a command, changing a setting, opening the chat's files, stopping its work. A command that needs approval waits for the owner, unless the organization's policy says otherwise: see *can someone I shared my hosted chat with approve a command*. Stopping or deleting the chat itself is a separate door that needs the `manage` permission, which the `full` role holds: see *stop or delete a chat on the server*.
 
 ## what happens when I give someone run access to my hosted chat — they act with my GitHub identity, files and spending limits
 
@@ -86,7 +86,19 @@ Only one window types at a time. While the owner has the chat open with the keyb
 
 When the owner takes your access away, or the policy changes so you no longer have it, your window is ended within a few seconds (five unless the operator set another heartbeat) and reads `Your access to this chat was removed.`
 
-Opening a chat that is not running starts it for its owner, which can be refused while its owner or the machine is running as many chats as are allowed. Then you read `This chat is not running, and there is no room to start it right now. Try again later.`
+Opening a chat that is not running starts it for its owner, which can be refused while its owner or the machine is running as many chats as are allowed. Then you read `This chat is not running, and there is no room to start it right now. Try again later.` If the organization's policy keeps you from starting a chat, you read `This chat is not running. Starting it takes permission to send messages in it. Ask its owner.` or `This chat is not running. Only its owner can start it. Ask them to open it.`: see *who may start a hosted chat that is not running*.
+
+## can someone I shared my hosted chat with approve a command — the owner by default, and the policy setting that lets people who answer allow one
+
+By default no. A command that needs approval under your approval mode waits for you, whatever role the person holds, and that is true however their window sends the answer: if they try, they read `This chat is shared with you. Only its owner can do that.` and the chat never hears it. Answering the chat's other questions is not affected: a person with the `answer` permission still answers those.
+
+The operator can change that in the organization's policy. `PUT /v1/org/policy` takes `"chats": {"approvals_by": "owner"}`, which is the default and what an organization with no setting has, or `"chats": {"approvals_by": "answer"}`. With `answer`, a person who holds the `answer` permission (the `edit` and `full` roles do) can allow one command once, or refuse it. Allowing a tool for the rest of the chat, putting the approval away and the chat's own approval setting stay with you, and a person who does not hold `answer` still reads that they were not given permission to answer. What they allow runs as you, in your folder, with your GitHub identity and your limits, and the server notes who answered next to what it charges. A change reaches a window that is already open within a few seconds. Any other word is refused when the policy is saved. The desktop app has no screen for this setting yet.
+
+## who may start a hosted chat that is not running — anyone who can see it by default, and the policy setting that limits it
+
+Opening a shared chat that is not running starts it, for its owner and in the owner's place among the chats they may have running. By default anyone who can see the chat does that, including a person with only `view` who runs `codeaf chat --org <server> --session hs_... --once`: it starts the chat in one-shot mode, their own message is refused, and the owner's window then reads `this conversation is already open in a different interactive or headless mode; close it before retrying` until the chat is stopped or stops itself when idle.
+
+The operator can change that in the organization's policy. `PUT /v1/org/policy` takes `"chats": {"wake_by": "view"}`, which is the default and what an organization with no setting has, `"chats": {"wake_by": "run"}` or `"chats": {"wake_by": "owner"}`. With `run`, only a person who holds the `run` permission starts it; anyone else reads `This chat is not running. Starting it takes permission to send messages in it. Ask its owner.` With `owner`, only its owner does, and everyone else reads `This chat is not running. Only its owner can start it. Ask them to open it.` Nothing is started in either case. A chat that is already running opens for everyone who can see it, under every setting, and the owner's own window is never held back. The rule is checked when a window opens. Any other word is refused when the policy is saved. The desktop app has no screen for this setting yet.
 
 ## who pays for a shared chat — when someone else is in my hosted chat, it runs as the owner, with the owner's access and limits
 
@@ -184,7 +196,7 @@ Personal never sees the organization's chats, files or people, and an organizati
 
 ## can a teammate send messages in my chat while I am using it — one window writes at a time, and the owner's keyboard comes first
 
-Only if you shared the chat with a role that holds `run` (the `edit` and `full` roles do), and even then one window writes at a time. While you have the chat open with the keyboard, a message or a redirect from your teammate is refused by the chat with its own sentence about the keyboard. It goes through once you close your window, or after they take the keyboard (a person who may send can), which tells your window. Interrupting a turn and answering a question are not held up. Whatever they send runs as you: in your folder, with your GitHub identity and your spending limits, and a command that needs approval waits for you.
+Only if you shared the chat with a role that holds `run` (the `edit` and `full` roles do), and even then one window writes at a time. While you have the chat open with the keyboard, a message or a redirect from your teammate is refused by the chat with its own sentence about the keyboard. It goes through once you close your window, or after they take the keyboard (a person who may send can), which tells your window. Interrupting a turn and answering a question are not held up. Whatever they send runs as you: in your folder, with your GitHub identity and your spending limits, and a command that needs approval waits for you, unless the organization's policy lets people who answer allow one (see *can someone I shared my hosted chat with approve a command*).
 
 ## the organization's server is down or my sign-in ended — a hosted chat never runs on my computer instead
 

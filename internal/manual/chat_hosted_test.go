@@ -38,6 +38,11 @@ func TestHostedChatQuestionsReachTheirPage(t *testing.T) {
 		{"can the operator open my hosted chat", []string{"only metadata", "There is no such chat."}},
 		{"can a bot start a hosted chat", []string{"a bot cannot use this yet", "recorded as made by the bot"}},
 		{"may I still start a chat on my own computer after joining an organization", []string{"local_sessions", "switch to your personal account"}},
+		{"can someone I shared my hosted chat with approve a command to run", []string{"approvals_by", "Only its owner can do that"}},
+		{"how do I let people who can answer allow a tool call in a shared chat in the organization policy", []string{"approvals_by", "allow one command once"}},
+		{"can a guest with view start my hosted chat when it is not running with codeaf chat --org --once", []string{"wake_by", "already open in a different interactive or headless mode"}},
+		{"This chat is not running. Only its owner can start it.", []string{"wake_by", "Ask them to open it."}},
+		{"how do I stop other people from starting a hosted chat that is not running in the organization policy", []string{"wake_by", "Starting it takes permission to send messages in it"}},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

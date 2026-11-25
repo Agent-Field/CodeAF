@@ -425,6 +425,24 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
   into their own My space. The refusals read `Only the person who owns this chat can move it, and they need permission to manage it.`
   (the default) and `Only the person who owns this chat, or someone with permission to manage it, can move it.` Any other word is
   refused with a 422.
+- **Who approves a tool call.** `PUT /v1/org/policy` takes `"chats": {"approvals_by": "owner"}` or `"chats": {"approvals_by": "answer"}`.
+  Absent or empty means `owner`: a command a shared chat wants to run, which needs approval under its owner's approval mode,
+  waits for the owner whatever role anyone else holds, on both of the chat's approval doors (`ResolveConsent`, and an answer to
+  the chat's question of kind `consent` sent through `ResolveQuestion`); a guest who tries either reads `This chat is shared with
+  you. Only its owner can do that.` `answer` lets a person who holds the `answer` verb (the `edit` and `full` roles) allow one
+  call once, or refuse it, by either door. Allowing a tool for the rest of the chat, putting the approval away, revising an
+  answer and the chat's own approval setting stay with the owner, and a person who cannot answer is refused as always. The
+  guest's approval is recorded as the chat's latest asker. The setting is re-read on each heartbeat, so it reaches a window
+  that is already open. Any other word is refused with a 422 that names the two.
+- **Who may start a chat that is not running.** `PUT /v1/org/policy` takes `"chats": {"wake_by": "view"}`, `"run"` or `"owner"`.
+  Absent or empty means `view`: opening a shared chat that is not running starts it for its owner, in its owner's place among
+  the chats they may have running, for anyone who can see it (a `view` guest's `--once` included), which is what the server always
+  did. `run` lets only a person who holds `run` start it, and `owner` only its owner; anyone else reads `This chat is not running.
+  Starting it takes permission to send messages in it. Ask its owner.` or `This chat is not running. Only its owner can start it.
+  Ask them to open it.`, and the chats' host is never asked to start it. A chat that is already running opens for everyone who can
+  see it under every setting, and the owner's own window is not affected. The rule is checked when the window opens; if the
+  chat's state cannot be read, `run` and `owner` refuse with the "not answering" sentence. Any other word is refused with a 422
+  that names the three.
 - **The hosting policy.** `PUT /v1/org/policy` takes `"hosting": {"local_sessions": "allow|warn|refuse",
   "max_session_cost_usd": 0}`. Empty `local_sessions` means `refuse` for an organization that has chats' machine and
   `allow` for one that does not; the list reports the value that applies, with `words` to show for `refuse` (that
@@ -438,9 +456,10 @@ right to a private chat than anyone else (the policy's `operator.sees_private` i
 Known limit of this version: a guest's `Steer` or prompt is refused by the chat itself, in the chat's own words about
 the keyboard, while the owner's window holds the keyboard, because the guest's window does not take it on arrival; it
 goes through when the owner has no window open, or after the guest sends `Take` (allowed with `run`, and the owner's
-window is told). `Interrupt` and `ResolveQuestion` are not affected. A tool-use approval stays the owner's, so a
-command that needs one waits for the owner. The proper fix for both is a guest class inside the engine itself, which
-is a change to the wire's own protocol and not made here.
+window is told). `Interrupt` and `ResolveQuestion` are not affected, except that an answer to a tool approval is the
+owner's unless `chats.approvals_by` says `answer`. A tool-use approval stays the owner's by default, so a command that
+needs one waits for the owner. The proper fix for the keyboard is a guest class inside the engine itself, which is a
+change to the wire's own protocol and not made here.
 
 ### Turning it on
 

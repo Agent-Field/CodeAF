@@ -1159,8 +1159,10 @@ An engine whose hello carries `org_access` serves an organization's access polic
 grants on its things. `factory.org_policy` `GET /v1/org/policy` answers the policy to any
 member: `{rev, roles: [{name, verbs}], owner_role, org_role, defaults: {<kind>: {visibility}},
 sharing: {who}, operator: {role, sees_private, may_govern}, agents: {may_create, may_share,
-may_grant, default_scope, scopes?}, chats?: {move_by}}` (`chats` is present only when set, and
-`move_by` is `owner`, the default, or `manage`: who may move a chat), and the default policy when none was ever saved, which
+may_grant, default_scope, scopes?}, chats?: {move_by?, approvals_by?, wake_by?}}` (`chats` is present only when set, and
+each field only when set: `move_by` is `owner`, the default, or `manage`, who may move a chat; `approvals_by` is `owner`, the
+default, or `answer`, who approves a tool call in a shared hosted chat; `wake_by` is `view`, the default, `run` or `owner`, who
+may start a hosted chat that is not running), and the default policy when none was ever saved, which
 is how the server behaved before policies existed. A role is a named bundle of verbs from a
 closed list (`view`, `comment`, `edit`, `run`, `steer`, `answer`, `share`, `manage`), every
 role holds `view`, and the four names `view`, `comment`, `edit` and `full` are kept. Only

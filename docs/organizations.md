@@ -103,7 +103,8 @@ organization starts with (the operator can change their bundles; the names stay)
 What a guest can do in a hosted chat follows from the verbs: `view` watches and reads; `steer` also interrupts a turn
 and redirects it; `answer` also answers a question the chat is waiting on; `run` also sends messages, files and
 commands. `manage` also stops or deletes the chat. Everything else (approving a tool use, settings, opening the
-chat's files) is the owner's whatever the role.
+chat's files) is the owner's whatever the role, with one setting: `chats.approvals_by` set to `answer` lets a person who
+holds `answer` allow one tool use once, or refuse it (never allow a tool for the rest of the chat).
 
 **The owner owns the chat.** It runs on the owner's credentials, spending limits and GitHub identity. A person who may
 send messages acts with the owner's GitHub identity, the owner's files and the owner's limits, and the server records
@@ -146,7 +147,9 @@ The organization's policy (`GET` and `PUT /v1/org/policy`; only the operator cha
   `CODEAF_HOSTED_SESSION_CAP_USD` (five dollars). The monthly limit every person's spend is held to is set by the operator in Settings (twenty dollars by default).
 
 The same policy holds the roles, whether new chats start private (the default for chats and hosted chats), who may share,
-who may move a chat (`chats.move_by`: `owner`, the default, or `manage`) and what bots and agents may do.
+who may move a chat (`chats.move_by`: `owner`, the default, or `manage`), who approves a tool call in a shared chat
+(`chats.approvals_by`: `owner`, the default, or `answer`), who may start a chat that is not running (`chats.wake_by`:
+`view`, the default, `run` or `owner`) and what bots and agents may do.
 
 A **team server does not trust its own computer.** A request from the server's own machine with no sign-in is refused
 like any other (a solo server, a desktop window's own, still trusts it). `loopback_trust` is off for a team server; the
@@ -312,11 +315,13 @@ It answers with an `access_token` the same way.
 - A guest's message or steer waits while the owner's window holds the keyboard: the chat itself refuses it in its own words
   about the keyboard. It goes through when the owner has no window open, or after the guest takes the keyboard (allowed
   with `run`). Interrupting and answering are not affected. A tool-use approval stays with the owner, so a command that
-  needs one waits for the owner.
+  needs one waits for the owner, unless the policy's `chats.approvals_by` is `answer`.
 - A guest who runs `codeaf chat --org ... --session ... --once` on a chat that is not running starts it for its owner in that
   one-shot mode, even when the guest's own message is refused. The owner's window then reads `this conversation is already
   open in a different interactive or headless mode; close it before retrying` until the chat is stopped (the owner's stop, or
-  `POST /v1/hosted/sessions/<chat>/stop`) or stops itself when idle.
+  `POST /v1/hosted/sessions/<chat>/stop`) or stops itself when idle. The policy's `chats.wake_by` set to `run` or `owner`
+  keeps a person who cannot send messages in the chat (or anyone but its owner) from starting it at all: they are told the
+  chat is not running and to ask its owner, and nothing starts. The default, `view`, is the behaviour described here.
 - By default only the owner moves a chat between My space and a workstream; the policy's `chats.move_by` set to `manage` lets
   people with the `manage` verb on the chat move it too (never into their own My space, never a bot).
 - `local_sessions` `allow` and `warn` are reported and stored; nothing in a client acts on them yet.
