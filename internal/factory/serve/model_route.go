@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 const (
@@ -31,8 +33,8 @@ const (
 	hostedModelIdle         = 10 * time.Minute
 	hostedModelInFlight     = 4
 
-	hostedChatLimit  = "This chat has reached its spending limit of $%.2f, so it is paused. Start a new chat to carry on."
-	hostedMonthLimit = "You have reached your monthly limit of $%.2f, so this chat is paused. The organization's operator can raise it in Settings."
+	hostedChatLimit  = "This chat has reached its spending limit of %s, so it is paused. Start a new chat to carry on."
+	hostedMonthLimit = "You have reached your monthly limit of %s, so this chat is paused. The organization's operator can raise it in Settings."
 	hostedModelBusy  = "This chat is already making as many requests as it may at once. Try again in a moment."
 	hostedOwnKey     = "Your own model key could not be opened on this server, so this chat paused instead of using the organization's."
 	// A provider that refuses a key (401 or 403) is a fact about the key, not a
@@ -168,10 +170,10 @@ func (m *modelRegistry) admit(h *Handler, bearer string, row bearerRow, space fa
 		return nil, hostedModelRefusal{http.StatusServiceUnavailable, hostedLimitCheck}
 	}
 	if spent >= capUSD {
-		return nil, hostedModelRefusal{http.StatusPaymentRequired, fmt.Sprintf(hostedChatLimit, capUSD)}
+		return nil, hostedModelRefusal{http.StatusPaymentRequired, fmt.Sprintf(hostedChatLimit, limitMoney(capUSD))}
 	}
 	if limit, spent := h.spaceMonth(space.ID); spent >= limit {
-		return nil, hostedModelRefusal{http.StatusPaymentRequired, fmt.Sprintf(hostedMonthLimit, limit)}
+		return nil, hostedModelRefusal{http.StatusPaymentRequired, fmt.Sprintf(hostedMonthLimit, limitMoney(limit))}
 	}
 	if entry == nil {
 		entry, err = h.openHostedModel(row, space, capUSD-spent)
@@ -443,9 +445,28 @@ func writeHostedModelError(w http.ResponseWriter, status int, message string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+	// THE DOOR SIGNS ITS OWN SENTENCES. A hosted chat's client reads a 402 from
+	// anywhere as "the account cannot pay" and names the vendor, which blamed
+	// OpenRouter and the person for a limit the organization chose. The mark is
+	// how the client tells this server's sentence, which it shows as written, from
+	// a provider's refusal passed through untouched, which keeps its own wording;
+	// it never has to guess from the prose (internal/provider/orgdoor.go).
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]any{"message": message, "type": kind, "code": status},
+		"error": map[string]any{"message": message, "type": kind, "code": status, provider.DoorKey: provider.OrganizationDoor},
 	})
+}
+
+// limitMoney writes a limit the way the person who set it wrote it, and never as
+// a different number. A whole number of cents keeps its two places ($5.00, $0.25,
+// $20.00); a limit finer than a cent is spelled as chosen by the one door that
+// spells a cap (teams.Money: $0.001). The sentence used to round everything to the
+// cent, so a limit of a tenth of a cent read "$0.00" — a refusal quoting a limit
+// of nothing, for a chat that had been given one.
+func limitMoney(usd float64) string {
+	if cents := usd * 100; math.Abs(cents-math.Round(cents)) < 1e-9 {
+		return fmt.Sprintf("$%.2f", usd)
+	}
+	return teams.Money(usd)
 }
 
 // hostedModelWriter keeps the local API's reservation language and dollars
@@ -461,7 +482,7 @@ func (w *hostedModelWriter) WriteHeader(status int) {
 	switch {
 	case status == http.StatusPaymentRequired && !w.call.called.Load():
 		w.replaceBody = true
-		writeHostedModelError(w.ResponseWriter, status, fmt.Sprintf(hostedChatLimit, w.capUSD))
+		writeHostedModelError(w.ResponseWriter, status, fmt.Sprintf(hostedChatLimit, limitMoney(w.capUSD)))
 	case status == http.StatusTooManyRequests && w.Header().Get(modelapi.HeldHeader) != "":
 		w.replaceBody = true
 		w.Header().Del(modelapi.HeldHeader)
