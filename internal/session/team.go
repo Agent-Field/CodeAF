@@ -124,6 +124,12 @@ type teamRole struct {
 	// manager is the global manager, and its other members are the top-level
 	// teams' managers.
 	root bool
+	// tops is, for the root, the keys of the members that manage a top-level
+	// team now ([teams.File.TopManagers]). The root can hold others, a manager
+	// that stopped being one or a conversation the person put there, and the
+	// rule that keeps a manager's turn ending from waking the global manager is
+	// about these members alone ([teamRole.quietEnding]).
+	tops map[string]bool
 	// dissolvable says this conversation manages the team and the team has
 	// never held anyone but it ([teams.File.Dissolvable]), which is when its
 	// manager is given team_dissolve (team_dissolve.go).
@@ -454,6 +460,7 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			boss:        boss,
 			bossName:    bossName,
 			root:        team.Root,
+			tops:        topManagerKeys(file, team),
 			key:         member.Key,
 			wakes:       effective.Wake,
 			questionsUp: effective.QuestionsUp,
@@ -521,7 +528,12 @@ func memberOf(team teams.Team, keys []string) (teams.Member, bool) {
 // costs; but a verb that cannot work must be absent, not broken (CLAUDE.md),
 // and a demotion is rare enough that paying once for it is cheap. A role
 // gained again appends its verbs at the tail as before.
-func (a *Agent) teamBoundary() string {
+func (a *Agent) teamBoundary() string { return a.teamBoundaryFor(false) }
+
+// teamBoundaryFor is [Agent.teamBoundary] for a turn that is running. person
+// says the person's own words opened it, which is the one turn that reads what
+// a paused membership is holding (team_pause.go).
+func (a *Agent) teamBoundaryFor(person bool) string {
 	a.clientToolsBoundary()
 	profile := a.config.teamProfile()
 	if profile == "" {
@@ -531,7 +543,7 @@ func (a *Agent) teamBoundary() string {
 	lead := a.factoryLead()
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
-	news := a.teamNewsLocked(profile, roles)
+	news := a.teamNewsLocked(profile, roles, person)
 	claims := a.team.claims
 	a.team.claims = nil
 	if len(claims) > 0 {
@@ -723,8 +735,9 @@ func (a *Agent) teamRetiredNotice(name string) (string, bool) {
 }
 
 // teamNewsLocked reads each team's Traffic past this conversation's cursor and
-// composes what is addressed to it. The caller holds a.team.mu.
-func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
+// composes what is addressed to it. person says the person's own words opened
+// the turn this is read for. The caller holds a.team.mu.
+func (a *Agent) teamNewsLocked(profile string, roles []teamRole, person bool) string {
 	if len(roles) == 0 {
 		return ""
 	}
@@ -743,6 +756,13 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 	save := false
 	var groups []string
 	for _, role := range roles {
+		// A PAUSED MEMBERSHIP'S TRAFFIC WAITS FOR THE RESUME, whatever started
+		// this turn. A sub-task landing or a command ending is not the person
+		// lifting the pause, and a directive handed over here was gone when
+		// they did. Only a turn the person opened reads it (team_pause.go).
+		if role.paused && !role.manager && !person {
+			continue
+		}
 		path := teams.TrafficPath(profile, role.id)
 		stamp := stampOf(path)
 		cursor, known := a.team.cursors[role.id]
@@ -790,6 +810,8 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		// behind it, so the stamp is left unmatched and the next boundary reads on.
 		if len(entries) < teamPageLimit {
 			a.team.trafficAt[role.id] = stamp
+			// And nothing a pause held is still owed a turn: this one has it.
+			delete(a.team.watch.pausedHeld, role.id)
 		}
 		if len(lines) > 0 {
 			groups = append(groups, teamNewsGroup(role, lines))

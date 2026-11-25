@@ -349,20 +349,24 @@ holds that conversation's transcript and the wait is under 30 minutes.
 When you stop a member's turn that had been handed the manager's work, its manager is woken
 and told the work is not done, that you chose to stop it, and not to hand it out again unless
 you ask. Stopping a turn that carried only what you typed to the member tells the manager
-nothing, and neither does codeaf quitting or a paused member's stray wake being ended.
+nothing, and neither does codeaf quitting or a paused member's stray wake being ended. The global
+manager is not woken by a top-level team's manager being stopped (see **The global manager**).
 
 ## A stopped member's command is still running — why it did not start again when the command ended
 
 Stopping a turn leaves a command it started in the background running, as it does in any
 conversation. In a crew, that command's ending does not start the conversation again. From
-a stop of a running turn (yours, or the manager's `team_stop`) until a turn next begins, the
+a stop of a running turn (yours, or the manager's `team_stop`, with or without a window on
+the member) until a turn next begins, the
 ending of a background command, or a watch firing, is written into the conversation as a
 record and starts no turn. This holds for a member and for the manager.
 
 A member often starts a long command, ends its turn and waits to be told how it ended. It
 reads idle, and a stop still reaches it: **Stop** on a crew's row stops such a member too,
 the command's ending starts no turn, and its manager is told the work it handed out was
-stopped, as for a stopped turn.
+stopped, as for a stopped turn. That is said only for a command the member asked to hear the
+end of, or a watch that has not fired. A command left running for its own sake, such as a dev
+server, is held the same way and the manager is told nothing: the work before it was finished.
 
 The conversation starts again when somebody means it to: your own message to it, or the
 manager's next hand-off. That turn reads the record, which says it arrived after the stop
@@ -542,7 +546,8 @@ those managers directly and each answer ends a turn, so the endings stay in `All
 traffic, where `team_status` reads them. The global manager is woken by what a manager posts
 to it with `team_post`, by a manager's question or a permission it is held on, and by a
 manager's turn failing. It is told never to send a manager your own request to that manager
-back as a directive.
+back as a directive. A member of `All teams` that manages no team is an ordinary member
+there: its turn ending wakes the global manager as in any team.
 
 ## Conflicts between members and teams
 
@@ -602,7 +607,9 @@ working, that is straight away. When it is idle, it depends on the kind of messa
   without a reply, failing, starting to wait on you, or having a turn that carried the
   manager's work stopped by you, start an idle manager's turn. A reply
   and the end of the same turn are one wake, even if the ending arrives after the manager
-  already ran. Replies arriving within a few seconds are gathered into one turn.
+  already ran. Replies arriving within a few seconds are gathered into one turn. The global
+  manager is the exception: a top-level team's manager finishing or being stopped does not
+  start its turn (see **The global manager**).
 
 A member no window has open is opened by codeaf in the background so it can run, and a window
 that opens it later joins the running conversation. A manager that moved to another window, and
@@ -657,14 +664,16 @@ Resume from any of those crews lifts it:
   resume it`, with `has not started on #22` when a directive is waiting.
 - codeaf does not open the member's conversation for traffic it would only hold.
 
-**Resume** writes `resumed` to the crew's log, and a directive that waited starts the member's
-turn within a second or two, including after codeaf was closed in between. With the team's
-auto-wake off, a resumed member reads it at its next turn like any other message.
+**Resume** writes `resumed` to the log of each crew the member is in, and a directive that
+waited starts the member's turn within a second or two, including after codeaf was closed in
+between. With the team's auto-wake off, a resumed member reads it at its next turn like any
+other message.
 
 Your own words are not held: typing into a paused member's conversation starts its turn, and
-that turn reads what was waiting. Anything else that would wake it, such as one of its
-background processes ending, is stopped at once in the desktop app. A pause made by an earlier
-version of the app is carried onto the team's record the first time the updated app opens.
+that turn reads what was waiting, so Resume starts nothing more on it. Any other wake, such as
+a background process ending, reads none of the crew's lines and is stopped at once in the
+desktop app. A pause made by an earlier version of the app is carried onto the team's record
+the first time the updated app opens.
 
 ## A new crew's members wait on standby — why nobody started after Make the crew
 

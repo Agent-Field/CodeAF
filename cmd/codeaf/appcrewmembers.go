@@ -66,12 +66,34 @@ func (b *appBackend) Member(verb string, ask appwire.MemberAsk) (appwire.CrewMem
 				err = b.memberStop(t, m, agent, "paused")
 			}
 		case "resume":
-			pausedSomewhere := m.Paused || b.crewPaused(agent)
-			if err = b.crewEdit(func(f *teamstore.File) error { return f.SetPaused(crew, m.Key, false) }); err == nil && pausedSomewhere {
-				// The resume is said on the crew's log beside the pause. What
-				// waited there starts the member's turn on its session's next look.
-				err = appEngineErrorOrNil(teamstore.AppendTraffic(b.crewProfile(), t.ID, teamstore.Entry{
-					Kind: teamstore.KindEvent, From: teamstore.FromYou, To: m.Handle, ToKey: m.Key, Member: m.Key,
+			// THE RESUME IS SAID WHEREVER THE PAUSE HELD. A pause holds the
+			// member in every crew it is in, whichever one it was pressed in
+			// (teamstore's PausedAnywhere), so any of their logs may carry a
+			// "held" line for a directive sent meanwhile, and each is told the
+			// hold is over. What waited there starts the member's turn on its
+			// session's next look.
+			type seat struct{ crew, handle string }
+			var held []seat
+			err = b.crewEdit(func(f *teamstore.File) error {
+				held = nil
+				if _, paused := f.PausedAnywhere(m.Key); paused {
+					for _, other := range f.Teams {
+						if other.Closed() || other.Manager == m.Key {
+							continue
+						}
+						if in, ok := other.Member(m.Key); ok {
+							held = append(held, seat{other.ID, in.Handle})
+						}
+					}
+				}
+				return f.SetPaused(crew, m.Key, false)
+			})
+			for _, in := range held {
+				if err != nil {
+					break
+				}
+				err = appEngineErrorOrNil(teamstore.AppendTraffic(b.crewProfile(), in.crew, teamstore.Entry{
+					Kind: teamstore.KindEvent, From: teamstore.FromYou, To: in.handle, ToKey: m.Key, Member: m.Key,
 					State: teamstore.StateIdle, Text: appResumedText,
 				}))
 			}
@@ -357,7 +379,7 @@ func (b *appBackend) memberRole(crew, agent, role, instructions, model string) e
 	if t, _, err := b.crewTeam(crew); err == nil {
 		if m, ok := b.crewMemberOf(t, agent); ok && m.Role != given.Name {
 			if err := b.crewEdit(func(f *teamstore.File) error { return f.SetRole(crew, m.Key, given.Name) }); err != nil {
-				return err
+				return appEngineError(err)
 			}
 		}
 	}

@@ -137,7 +137,7 @@ func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.
 		said = append(said, strings.Join(asking, ", ")+" "+isAre(len(asking))+" waiting on the person and "+readsRead(len(asking))+" it once they answer.")
 	}
 	if len(started)+len(busy)+len(asking) > 0 {
-		said = append(said, "Replies and endings wake you when they arrive, so there is no need to wait or poll.")
+		said = append(said, teamSendWakesSentence(team.Root))
 	}
 	for _, member := range paused {
 		said = append(said, fmt.Sprintf("@%s did NOT start: %s. Tell the person it is paused; only they can resume it.", member.Handle, teamPausedWhy))
@@ -202,4 +202,14 @@ func itThey(n int) string {
 		return "it"
 	}
 	return "they"
+}
+
+// teamSendWakesSentence is what a send's answer says comes back on its own.
+// The global manager is not woken by a top-level manager's turn ending
+// ([teamEventWakesManagerOf]), so its answer does not promise that.
+func teamSendWakesSentence(root bool) string {
+	if root {
+		return "Their replies, questions and failures wake you when they arrive, so there is no need to wait or poll. A manager's turn ending on its own does not wake you: team_status says where it stands."
+	}
+	return "Replies and endings wake you when they arrive, so there is no need to wait or poll."
 }

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -539,18 +540,23 @@ func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
 		t.Fatal(err)
 	}
 	gmCalls := oneAnswer(4)
-	teamAgent(t, n.fixture, n.paths["gm"], gmCalls, nil)
+	gm := teamAgent(t, n.fixture, n.paths["gm"], gmCalls, nil)
 	boss := teamAgent(t, n.fixture, n.paths["boss"], oneAnswer(4), nil)
 
 	submitAndWait(t, boss, "plan the release")
 	boss.settleTeamEvents()
-	quietFor()
+	// Past the settle a wake waits out, with room: a wake the ending had armed
+	// would have fired by now.
+	time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
 	all := teamFixture{profile: n.fixture.profile, teamID: root}
 	if ended := trafficEvents(t, all, "finished"); len(ended) != 1 {
 		t.Fatalf("the top-level manager's ending was logged %d times in the team that holds every team, want once", len(ended))
 	}
 	if got := gmCalls.requests(); got != 0 {
 		t.Fatalf("the global manager was woken %d times by a top-level manager's turn ending", got)
+	}
+	if woke := trafficEvents(t, all, teamWokePrefix); len(woke) != 0 {
+		t.Fatalf("the traffic says the global manager was woken by the ending: %+v", woke)
 	}
 
 	if said, failed := callTool(t, boss.teamPostTool, `{"to":"manager","text":"harbor shipped"}`); failed {
@@ -566,12 +572,70 @@ func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
 	if strings.Contains(asked, "their finishing") {
 		t.Fatalf("the global manager is still told a member's finishing starts its turn:\n%s", asked)
 	}
+	if strings.Contains(asked, "finished its turn") || strings.Contains(asked, "What your members in") {
+		t.Fatalf("the ending rode into the global manager's turn as something that woke it:\n%s", asked)
+	}
+	// Its own send's answer does not promise that an ending wakes it.
+	if said := sendDirective(t, gm, "boss"); strings.Contains(said, "endings wake you") || !strings.Contains(said, "A manager's turn ending on its own does not wake you") {
+		t.Fatalf("the global manager's send says endings wake it: %s", said)
+	}
+}
+
+// A GLOBAL MANAGER NOBODY HAS OPEN IS NOT OPENED BY THE ENDING EITHER, and is
+// still opened by a top-level manager's failure. A member of the team that
+// holds every team that manages nothing is an ordinary member there: its
+// ending opens the manager as it does in any team.
+func TestAClosedGlobalManagerIsNotOpenedByATopLevelManagersTurnEnding(t *testing.T) {
+	fastTeamWake(t)
+	n := newTeamTree(t, "gm", "boss", "web", "guest")
+	n.team(t, "harbor", "", "boss", n.member(t, "boss", "boss"), n.member(t, "web", "web"))
+	root := ""
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		root = f.MakeRoot(f.Teams[0].Made)
+		for _, m := range []teams.Member{n.member(t, "gm", "all"), n.member(t, "guest", "guest")} {
+			if err := f.AddMember(root, m); err != nil {
+				return err
+			}
+		}
+		return f.SetManager(root, n.key(t, "gm"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &recordedResume{}
+	withTeamResume(t, recorder.open)
+	opened := func() int {
+		count := 0
+		for _, seen := range recorder.seen() {
+			if strings.HasPrefix(seen, n.paths["gm"]+"|") {
+				count++
+			}
+		}
+		return count
+	}
+	boss := teamAgent(t, n.fixture, n.paths["boss"], oneAnswer(2), nil)
+	submitAndWait(t, boss, "plan the release")
+	boss.settleTeamEvents()
+	time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
+	if got := opened(); got != 0 {
+		t.Fatalf("a closed global manager was opened %d times by a top-level manager's turn ending", got)
+	}
+
+	guest := teamAgent(t, n.fixture, n.paths["guest"], oneAnswer(2), nil)
+	submitAndWait(t, guest, "tidy the notes")
+	guest.settleTeamEvents()
+	deadline := time.Now().Add(5 * time.Second)
+	for opened() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := opened(); got == 0 {
+		t.Fatal("a member of the team that holds every team that manages nothing ended its turn and its manager was not opened")
+	}
 }
 
 func TestTeamEventWakesTheGlobalManager(t *testing.T) {
 	for _, c := range []struct {
 		state, text string
-		root, want  bool
+		top, want   bool
 	}{
 		{teams.StateFinished, "finished", false, true},
 		{teams.StateFinished, "finished", true, false},
@@ -581,8 +645,8 @@ func TestTeamEventWakesTheGlobalManager(t *testing.T) {
 		{teams.StateAsking, "asks: which branch?", true, true},
 		{teams.StateRunning, "no longer waiting", true, false},
 	} {
-		if got := teamEventWakesManagerOf(c.root, c.state, c.text); got != c.want {
-			t.Errorf("root %v, %s %q wakes the manager: %v, want %v", c.root, c.state, c.text, got, c.want)
+		if got := teamEventWakesManagerOf(c.top, c.state, c.text); got != c.want {
+			t.Errorf("top-level manager %v, %s %q wakes the manager: %v, want %v", c.top, c.state, c.text, got, c.want)
 		}
 	}
 }

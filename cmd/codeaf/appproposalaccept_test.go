@@ -434,6 +434,38 @@ func TestAppMemberPauseIsKeptInTheTeamStore(t *testing.T) {
 		t.Fatalf("pausing the manager answered %v", err)
 	}
 
+	// A PAUSE HOLDS THE MEMBER IN EVERY CREW IT IS IN, so the resume is said
+	// on each of their logs, whichever crew it was pressed in.
+	seat, second := stored(), teamstore.NewID()
+	if err := teamstore.Update(backend.profileDir, func(f *teamstore.File) error {
+		f.Teams = append(f.Teams, teamstore.Team{ID: second, Name: "second"})
+		return f.AddMember(second, teamstore.Member{Key: seat.Key, File: seat.File, Handle: "scout"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Member("pause", appwire.MemberAsk{Crew: crew.ID, Agent: scout.Agent}); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := backend.Member("resume", appwire.MemberAsk{Crew: second, Agent: scout.Agent}); err != nil || again.Paused || stored().Paused {
+		t.Fatalf("a resume pressed in another crew answered %+v, %v; the store has paused=%v", again, err, stored().Paused)
+	}
+	if got := texts(teamstore.KindEvent, teamstore.FromYou); len(got) != 2 || got[1] != appResumedText {
+		t.Fatalf("the crew the member was paused in says %v about a resume pressed in another", got)
+	}
+	entries, err := teamstore.ReadTraffic(backend.profileDir, second, "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := 0
+	for _, entry := range entries {
+		if entry.Kind == teamstore.KindEvent && entry.From == teamstore.FromYou && entry.Text == appResumedText && entry.To == "scout" {
+			said++
+		}
+	}
+	if said != 1 {
+		t.Fatalf("the crew the resume was pressed in was told of it %d times, want once", said)
+	}
+
 	// A pause an earlier build kept in the app's own file is carried over once.
 	if err := backend.crewLayer().write(func(f *appCrewLayerFile) error {
 		f.member(crew.ID, scout.Agent).Paused = true

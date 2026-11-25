@@ -592,3 +592,71 @@ func TestTeamPauseIsTheConversations(t *testing.T) {
 		}
 	}
 }
+
+func sendTeamNote(t *testing.T, manager *Agent, to string) {
+	t.Helper()
+	if said, failed := callTool(t, manager.teamSendTool, `{"to":"`+to+`","text":"The header is blue now.","kind":"note"}`); failed {
+		t.Fatalf("team_send refused the note: %s", said)
+	}
+}
+
+// A TURN SOMETHING ELSE STARTS IN A PAUSED MEMBER READS NONE OF ITS TEAM'S
+// LINES. A command's ending woke the member, that turn's first request carried
+// the held directive, and the resume then started nothing: the manager had been
+// told the directive waited for it.
+func TestTeamPausedMembersOtherWakeLeavesTheDirectiveHeld(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	setPaused(t, fixture, fixture.web, true)
+	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
+	webCalls := oneAnswer(4)
+	web := teamAgent(t, fixture, fixture.web, webCalls, nil)
+	sendDirective(t, manager, "web")
+	quietFor()
+
+	web.enqueueJobNote("job 8 exited 0")
+	waitRequests(t, webCalls, 1)
+	waitQuiet(t, web)
+	if asked := userTextIn(webCalls.request(0)); strings.Contains(asked, "Fix the header.") {
+		t.Fatalf("a paused member's turn on a command's ending was handed the held directive:\n%s", asked)
+	}
+	quietFor()
+	if got := webCalls.requests(); got != 1 {
+		t.Fatalf("the paused member made %d model calls, want only the command's turn", got)
+	}
+
+	setPaused(t, fixture, fixture.web, false)
+	waitRequests(t, webCalls, 2)
+	asked := userTextIn(webCalls.request(1))
+	if strings.Count(asked, "Fix the header.") != 1 || !strings.Contains(asked, teamWakeMemberLead) {
+		t.Fatalf("the resumed member was not started on the directive that waited, once:\n%s", asked)
+	}
+}
+
+// A HOLD ENDS WHEN ITS LINES ARE READ. The person typed into the paused member
+// and that turn read the held directive; a note sent afterwards wakes nobody,
+// and the resume used to start a second turn on it because the hold still stood.
+func TestTeamHeldDirectiveThePersonsTurnReadStartsNothingOnResume(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	setPaused(t, fixture, fixture.web, true)
+	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(1), nil)
+	webCalls := oneAnswer(4)
+	web := teamAgent(t, fixture, fixture.web, webCalls, nil)
+	sendDirective(t, manager, "web")
+	quietFor()
+
+	collect(t, mustSubmit(t, web, "what is waiting for you?"))
+	if asked := userTextIn(webCalls.request(0)); strings.Count(asked, "Fix the header.") != 1 {
+		t.Fatalf("the person's own turn in a paused member did not read what was waiting:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	sendTeamNote(t, manager, "web")
+	quietFor()
+
+	setPaused(t, fixture, fixture.web, false)
+	quietFor()
+	if got := webCalls.requests(); got != 1 {
+		t.Fatalf("the resumed member made %d model calls, want only the person's turn: a note wakes nobody", got)
+	}
+}

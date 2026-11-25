@@ -150,21 +150,30 @@ type teamWatch struct {
 	capSaid string
 	// pausedHeld is the teams whose traffic asked for this member's turn while
 	// the person had it paused (team_pause.go). The lines stay undelivered on
-	// the log, and the turn they asked for starts when the pause is lifted.
+	// the log, and the turn they asked for starts when the pause is lifted,
+	// unless a turn the person opened has read them by then.
 	pausedHeld map[string]bool
 }
 
 // personTurns counts turns the person started, for the loop breaker. It is
 // bumped where every turn begins ([Agent.startTurnLocked]) and read by the
 // watch, so it is atomic rather than under either lock.
-type personTurns struct{ n atomic.Int64 }
+type personTurns struct {
+	n atomic.Int64
+	// opened says the person's own words opened the turn now running: one they
+	// typed, or the turn started to answer a line they typed as the last one
+	// ended. It is what lets a paused member's turn read what the pause holds.
+	opened atomic.Bool
+}
 
-// notePersonTurn counts a turn that opens on the person's own words.
+// notePersonTurn counts a turn that opens on the person's own words, and
+// remembers whether this one did.
 func (a *Agent) notePersonTurn(user userMessage) {
-	if user.wake || user.authored || user.empty() {
-		return
+	typed := personTyped(user)
+	a.team.person.opened.Store(typed || user.answersPerson)
+	if typed {
+		a.team.person.n.Add(1)
 	}
-	a.team.person.n.Add(1)
 }
 
 // watchTeamTraffic starts the watch, or does nothing for a conversation that
@@ -330,6 +339,10 @@ func (a *Agent) teamStopTick(profile string, turnAt time.Time, serial uint64) {
 // again under the lock the cancel is taken under, and a turn that has ended
 // is left alone, which is also what keeps a queued follow-up from being dropped
 // by a stop that arrived after its turn was over.
+//
+// AND THE STOP HOLDS, as the person's does (team_stophold.go): a command the
+// stopped turn left running would otherwise end, wake the member and take the
+// stopped directive up again.
 func (a *Agent) interruptTeamTurn(serial uint64) {
 	live := func() bool { return a.running && a.teamTurnSerial == serial && a.cancel != nil }
 	a.mu.Lock()
@@ -346,6 +359,7 @@ func (a *Agent) interruptTeamTurn(serial uint64) {
 		return
 	}
 	cancel := a.cancel
+	a.teamStopHoldLocked(StopByManager)
 	a.dropFollowUpsLocked()
 	a.stopSteerGraceLocked()
 	a.mu.Unlock()
@@ -441,8 +455,9 @@ func teamEventWakesManager(state, text string) bool {
 	return false
 }
 
-// teamEventWakesManagerOf is [teamEventWakesManager] for the manager of one
-// team, root when that team is the one that holds every team.
+// teamEventWakesManagerOf is [teamEventWakesManager] for one member's event,
+// top when that member is a top-level team's manager seated in the team that
+// holds every team ([teamRole.quietEnding]).
 //
 // The global manager is not woken by a top-level manager's turn ending,
 // finished or stopped. Its members are the managers of whole teams, each a
@@ -456,18 +471,39 @@ func teamEventWakesManager(state, text string) bool {
 // needs somebody still wakes: a failure, and a question or a permission it is
 // held on. The ending itself stays in the team's traffic, where team_status
 // reads it.
-func teamEventWakesManagerOf(root bool, state, text string) bool {
-	if root {
+func teamEventWakesManagerOf(top bool, state, text string) bool {
+	if top {
 		return state == teams.StateFailed || state == teams.StateAsking
 	}
 	return teamEventWakesManager(state, text)
+}
+
+// quietEnding reports whether member is a top-level team's manager seated in
+// the root: the one member whose turn ending does not wake the root's manager.
+// Anybody else the root holds is an ordinary member there.
+func (r teamRole) quietEnding(member string) bool {
+	return r.root && r.tops[member]
+}
+
+// topManagerKeys is the keys [teamRole.tops] holds, nil for every team but the
+// root.
+func topManagerKeys(file *teams.File, team teams.Team) map[string]bool {
+	if file == nil || !team.Root {
+		return nil
+	}
+	tops := map[string]bool{}
+	for _, m := range file.TopManagers() {
+		tops[m.Key] = true
+	}
+	return tops
 }
 
 // teamWakes reports whether an entry starts this conversation's turn when it
 // is idle: a directive from the manager to its handle or to everyone, for a
 // member; a member's post to the manager, or a member's finished, failed or
 // asking event, for the manager. The watch suppresses a finished event when
-// the same turn already posted a reply.
+// the same turn already posted a reply, and the global manager is not woken by
+// a top-level manager's turn ending ([teamEventWakesManagerOf]).
 func teamWakes(role teamRole, entry teams.Entry) bool {
 	if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) {
 		return false
@@ -489,7 +525,7 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 		case teams.KindNote:
 			return entry.To == teams.ToManager && strings.TrimSpace(entry.Text) != ""
 		case teams.KindEvent:
-			return teamEventWakesManagerOf(role.root, entry.State, entry.Text)
+			return teamEventWakesManagerOf(role.quietEnding(entry.Member), entry.State, entry.Text)
 		}
 		return false
 	}
