@@ -47,6 +47,12 @@ func (b *appBackend) OpenAppAssistant(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	assigned := false
+	defer func() {
+		if !assigned {
+			b.takeBack(transcript)
+		}
+	}()
 	dir := session.DirOf(transcript)
 	meta, err := session.LoadMeta(dir)
 	if err != nil {
@@ -61,17 +67,18 @@ func (b *appBackend) OpenAppAssistant(id string) (string, error) {
 	if err := session.SaveMeta(dir, meta); err != nil {
 		return "", err
 	}
-	view, _, err := b.createAgentHeld(prep, transcript)
-	if err != nil {
-		return "", err
-	}
 	if err := b.state.write(func(f *appStateFile) error {
 		if f.AppAssistants == nil {
 			f.AppAssistants = map[string]string{}
 		}
-		f.AppAssistants[id] = view.ID
+		f.AppAssistants[id] = appAgentID(transcript)
 		return nil
 	}); err != nil {
+		return "", err
+	}
+	assigned = true
+	view, _, err := b.createAgentHeld(prep, transcript)
+	if err != nil {
 		return "", err
 	}
 	a := b.agent(view.ID)
@@ -177,13 +184,29 @@ func appAssistantPrompt(app schema.App, def store.Definition, scope *session.App
 	types := make(map[string]schema.RecordType)
 	for name, record := range app.Records {
 		if app.Capabilities.Records[name] != "" {
+			fields := make(map[string]schema.Field, len(record.Fields))
+			for id, field := range record.Fields {
+				if field.Masked {
+					field.Default = nil
+				}
+				fields[id] = field
+			}
+			record.Fields = fields
 			types[name] = record
+		}
+	}
+	screens := make(map[string]string, len(def.Screens))
+	for _, id := range def.Screens {
+		raw, _ := def.Screen(id)
+		screen, err := schema.ParseScreen(raw)
+		if err == nil {
+			screens[id] = screen.Title
 		}
 	}
 	description, _ := json.Marshal(struct {
 		Records map[string]schema.RecordType `json:"records"`
-		Screens []string                     `json:"screens"`
-	}{types, def.Screens})
+		Screens map[string]string            `json:"screens"`
+	}{types, screens})
 	change := ""
 	for _, tool := range scope.Tools {
 		if tool.Name == session.AppChangeToolName {

@@ -16,6 +16,8 @@ The assistant can use only the connector actions enabled for the app.
 `gmail_search` and `gmail_read` read mail. `gmail_draft` prepares a draft.
 `gmail_send`, `slack_post`, `slack_send`, `slack_reply`, `calendar_create` and
 `calendar_invite` wait for your approval. `calendar_list` reads events.
+`slack_search`, `slack_read_thread` and `slack_list_channels` read Slack when
+enabled and within the app's channel access.
 `connector_call` requests approval for a listed connector action.
 If the app can send email, a draft can also wait for approval in your Inbox.
 

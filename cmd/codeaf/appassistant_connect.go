@@ -100,6 +100,7 @@ func (b *appAssistantBelt) slackTools(app schema.App, manager *connect.Manager) 
 	if manager == nil || !manager.Connected("slack") {
 		return
 	}
+	b.slackReads(app, manager)
 	request := func(ctx context.Context, client *http.Client, raw json.RawMessage) (any, error) {
 		var args struct {
 			Channel  string `json:"channel"`
@@ -109,20 +110,54 @@ func (b *appAssistantBelt) slackTools(app schema.App, manager *connect.Manager) 
 		if err := appAssistantDecode(raw, &args); err != nil {
 			return nil, err
 		}
-		live, _, err := b.load()
-		if err != nil {
-			return nil, err
-		}
-		channels := live.Capabilities.Connectors["slack"].Channels
-		if len(channels) != 0 && !slices.Contains(channels, args.Channel) {
-			return nil, errors.New("This app cannot post to that channel.")
-		}
 		return connect.SlackSend(ctx, client, args.Channel, args.Text, args.ThreadTS)
 	}
 	const fields = `{"channel":{"type":"string"},"text":{"type":"string"},"thread_ts":{"type":"string"}}`
 	for _, verb := range []string{"post", "send", "reply"} {
 		b.connector(app, manager, "slack", verb, "slack", "slack_"+verb, "Request approval for a Slack message.", true, fields, []string{"channel", "text"}, request)
 	}
+}
+
+func (b *appAssistantBelt) slackReads(app schema.App, manager *connect.Manager) {
+	b.connector(app, manager, "slack", "read_thread", "slack", "slack_read_thread", "Read one Slack thread.", false,
+		`{"channel":{"type":"string"},"ts":{"type":"string"}}`, []string{"channel", "ts"},
+		func(ctx context.Context, client *http.Client, raw json.RawMessage) (any, error) {
+			var args struct {
+				Channel string `json:"channel"`
+				TS      string `json:"ts"`
+			}
+			if err := appAssistantDecode(raw, &args); err != nil {
+				return nil, err
+			}
+			return connect.SlackReadThread(ctx, client, args.Channel, args.TS)
+		})
+	if len(app.Capabilities.Connectors["slack"].Channels) != 0 {
+		return
+	}
+	b.connector(app, manager, "slack", "search", "slack", "slack_search", "Search Slack messages.", false,
+		`{"query":{"type":"string"},"limit":{"type":"integer"}}`, []string{"query"},
+		func(ctx context.Context, client *http.Client, raw json.RawMessage) (any, error) {
+			var args struct {
+				Query string `json:"query"`
+				Limit int    `json:"limit,omitempty"`
+			}
+			if err := appAssistantDecode(raw, &args); err != nil {
+				return nil, err
+			}
+			return connect.SlackSearch(ctx, client, args.Query, args.Limit)
+		})
+	b.connector(app, manager, "slack", "list_channels", "slack", "slack_list_channels", "List Slack channels.", false,
+		`{"filter":{"type":"string"},"limit":{"type":"integer"}}`, nil,
+		func(ctx context.Context, client *http.Client, raw json.RawMessage) (any, error) {
+			var args struct {
+				Filter string `json:"filter,omitempty"`
+				Limit  int    `json:"limit,omitempty"`
+			}
+			if err := appAssistantDecode(raw, &args); err != nil {
+				return nil, err
+			}
+			return connect.SlackListChannels(ctx, client, args.Filter, args.Limit)
+		})
 }
 
 func (b *appAssistantBelt) calendarTools(app schema.App, manager *connect.Manager) {
@@ -196,6 +231,15 @@ func appConnectorCapability(manager *connect.Manager, service, tool string) stri
 func callAppConnector(ctx context.Context, manager *connect.Manager, grant schema.Connector, verb, service, tool string, approved bool, raw json.RawMessage, call appConnectorCall) (any, error) {
 	if !slices.Contains(grant.Can, verb) || (slices.Contains(grant.Approve, verb) && !approved) {
 		return nil, errors.New("This app cannot use that connector action.")
+	}
+	if len(grant.Channels) != 0 {
+		var destination struct {
+			Channel string `json:"channel"`
+		}
+		if service != "slack" || tool == "slack_search" || tool == "slack_list_channels" ||
+			json.Unmarshal(raw, &destination) != nil || !slices.Contains(grant.Channels, destination.Channel) {
+			return nil, errors.New("This app cannot use that connector action in this channel.")
+		}
 	}
 	if manager == nil || !appConnectorAccount(manager, service, grant.Account) {
 		return nil, errors.New("The app's connector account is unavailable.")
@@ -277,6 +321,14 @@ func (b *appAssistantBelt) mcpTools(app schema.App, manager *connect.Manager) {
 			service, verb, _ := strings.Cut(args.Tool, ".")
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
+			tools, err := manager.MCPTools(ctx, service)
+			if err != nil {
+				return nil, err
+			}
+			i := slices.IndexFunc(tools, func(tool connect.MCPTool) bool { return tool.Name == verb })
+			if i < 0 || manager.CapabilityState(service, connect.MCPToolCapability(tools[i])) == connect.StateOff {
+				return nil, errors.New("This connector action is unavailable.")
+			}
 			return manager.MCPCall(ctx, service, verb, args.Arguments)
 		})
 }

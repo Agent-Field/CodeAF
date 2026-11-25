@@ -141,6 +141,7 @@ type appAssistantBuild struct {
 	App         string                `json:"app"`
 	Revision    int                   `json:"revision"`
 	State       string                `json:"state"`
+	Published   bool                  `json:"published"`
 	Transcript  []appAssistantMessage `json:"transcript"`
 	Checkpoints []struct {
 		ID      string `json:"id"`
@@ -204,6 +205,9 @@ func (b *appBackend) followAppChange(card appwire.AppChangeProposed, prior store
 	for {
 		state, err := b.appAssistantBuild("apps.build_state", map[string]any{"draft": card.Draft})
 		if err == nil {
+			if state.Published && state.Revision > before.Revision {
+				return
+			}
 			checkpoint, show := appAssistantChangeCard(&card, state, request, before)
 			if show {
 				if checkpoint != "" {
