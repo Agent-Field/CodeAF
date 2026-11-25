@@ -210,7 +210,12 @@ func (s *supervisor) startWire(id string, attach *wireAttach) *engineChild {
 
 func (s *supervisor) finishWire(id string, attach *wireAttach) {
 	defer s.wireWG.Done()
-	attach.cancel()
+	// THE CANCEL COMES AFTER THE REMOVAL. A cancelled wire that is still in the
+	// chat's group is how reserveWire tells that the chat is being stopped, so a
+	// connection that merely ended must be out of the group before it reads as
+	// cancelled. Cancelling first left a window, as long as the wait for the
+	// lock, in which a reconnect was refused as "unavailable".
+	defer attach.cancel()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	group := s.wires[id]

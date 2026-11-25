@@ -151,3 +151,44 @@ func TestC5_WireCopiesBinaryAndTerminatesOnlyItsChild(t *testing.T) {
 		t.Fatalf("disconnect changed the detached chat: %d %s", w.Code, w.Body)
 	}
 }
+
+// VALIDATION CONTRACT: a chat whose connection has just ended can be attached
+// again at once. The refusal for a chat that is being stopped ("unavailable")
+// must never be given to a person who only reconnected.
+func TestAConnectionThatJustEndedDoesNotRefuseTheNextAttach(t *testing.T) {
+	cfg := testConfig(t)
+	launcher := newWireTestLauncher()
+	procs := &fakeProcesses{live: processTable{}}
+	s := newTestSupervisor(t, cfg, healthyReport(), launcher, procs)
+	createChat(t, s, "alice", chatA)
+	procs.live[cfg.UIDBase] = []int{4321}
+	conn := dialTestWire(t, s)
+	child := launcher.child(t)
+
+	// The test stands in for a reconnect that wins the supervisor's lock just as the old connection ends.
+	s.mu.Lock()
+	released := false
+	release := func() {
+		if !released {
+			released = true
+			s.mu.Unlock()
+		}
+	}
+	defer release()
+	if err := conn.Close(websocket.StatusNormalClosure, ""); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.Fatal(err)
+	}
+	select {
+	case <-child.signals:
+	case <-time.After(3 * time.Second):
+		t.Fatal("disconnect left the bridge child running")
+	}
+	// The ending connection can go no further than the lock. Let it get there.
+	time.Sleep(100 * time.Millisecond)
+
+	w := httptest.NewRecorder()
+	if !s.checkSlot(w, s.registry.sessions[chatA]) {
+		t.Fatalf("a reconnect as the old connection ended was refused: %d %s", w.Code, w.Body)
+	}
+	release()
+}
