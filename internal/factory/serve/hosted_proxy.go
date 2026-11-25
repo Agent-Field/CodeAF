@@ -64,6 +64,13 @@ type HostedConfig struct {
 	// example https://github.com. Empty means github.com alone.
 	GitHosts []string
 
+	// removalAfter and removalLogf are how a test takes the removal retry's
+	// clock and log into its own hands, so the retry is proved without sleeping
+	// and its lines can be counted. Nil in every running server: the retry then
+	// waits on a real timer and writes to the standard log.
+	removalAfter func(d time.Duration, run func()) (stop func() bool)
+	removalLogf  func(format string, args ...any)
+
 	// state is made by hostedRoutes, on the handler's own copy of this
 	// struct, so two handlers built from one Config never share bearers.
 	state *hostedState
@@ -102,6 +109,9 @@ type hostedState struct {
 	attach sync.Mutex
 	// Registry mutations exclude backfill so an earlier host reply cannot restore a deleted chat.
 	registry sync.RWMutex
+	// removals finishes, by itself, the deletion of a removed person's chats
+	// that the chats' host could not do when they were removed.
+	removals hostedRemovalRetry
 	// The model door and wire may record or read the current asker concurrently.
 	askerMu sync.RWMutex
 	askers  map[string]string
@@ -247,6 +257,7 @@ func (h *Handler) hostedRoutes() {
 	h.route("/v1/hosted/keys", map[string]http.HandlerFunc{http.MethodGet: h.hostedKeyList})
 	h.route("/v1/hosted/keys/{provider}", map[string]http.HandlerFunc{http.MethodPut: h.hostedKeyPut, http.MethodDelete: h.hostedKeyDelete})
 	h.hostedGitRoutes()
+	h.startHostedRemovals()
 }
 
 // hostedLoadBearers brings back the model access the chats already hold, from

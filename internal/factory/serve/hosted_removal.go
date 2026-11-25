@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/acl"
@@ -46,11 +49,10 @@ func (t *bearerTable) revokePerson(person string) int {
 // The order is the security order: the bearers go first, in this process, so
 // the model and git doors refuse the person's chats before anything that can
 // fail or wait is tried. Then the person's sealed keys are forgotten, so a
-// provider key or GitHub sign-in they stored is not left behind. Then their
-// chats are deleted on the chats' host, which frees their Linux user and
-// folder, and forgotten in the registry only once the host says so. Last,
-// whatever chat the host did not confirm is closed here, so nobody can wake
-// it. The host being down never stops a removal.
+// provider key or GitHub sign-in they stored is not left behind. The removal
+// is recorded before asking the chats' host to free the Linux users and
+// folders, so it can finish after a restart. Any chat the host did not
+// confirm is closed here so nobody can wake it while it waits to be deleted.
 func (h *Handler) endHostedLifeOf(ctx context.Context, handle string) {
 	cfg := h.config.Hosted
 	if cfg == nil || cfg.state == nil {
@@ -69,36 +71,112 @@ func (h *Handler) endHostedLifeOf(ctx context.Context, handle string) {
 			}
 		}
 	}
-	reachable := true
-	var ids []string
-	status, _, body, err := hs.call(ctx, http.MethodGet, "/v1/sessions", person, nil)
-	if err != nil || status != http.StatusOK {
-		log.Print("hosted chats: a removed person's chats could not be listed on the chats' host")
-		reachable = false
-	} else {
-		ids = hostedChatIDs(body)
+	since := h.clock()
+	st := h.config.Store
+	if st != nil {
+		if err := st.MarkHostedRemoval(person, since); err != nil {
+			log.Print("hosted chats: the removal could not be saved for another try")
+		}
 	}
-	for _, id := range ids {
-		hs.registry.Lock()
-		status, _, _, err := hs.call(ctx, http.MethodDelete, "/v1/sessions/"+id, person, nil)
-		hs.models.forget(id, person)
-		if err == nil && (status/100 == 2 || status == http.StatusNotFound) {
-			hs.noteAsker(id, "")
-			if st := h.config.Store; st != nil {
-				if err := st.DeleteResource(store.SessionKind, id); err != nil {
-					log.Print("hosted chats: a removed person's chat could not be forgotten by the registry")
-				}
-			}
-		} else if err != nil {
-			// The host stopped answering: asking it about every other chat would only wait.
-			reachable = false
-		}
-		hs.registry.Unlock()
-		if !reachable {
-			break
-		}
+	done, listed := h.cleanRemovedChats(ctx, person, since)
+	if !listed {
+		log.Print("hosted chats: a removed person's chats could not be listed on the chats' host")
 	}
 	h.closeRemovedChats(person)
+	if st == nil {
+		return
+	}
+	if done {
+		if err := st.ClearHostedRemoval(person, since); err == nil {
+			return
+		}
+		log.Print("hosted chats: the finished removal could not be cleared")
+	}
+	h.scheduleHostedRemovals()
+}
+
+// cleanRemoved is one try at deleting a removed person's chats on the chats'
+// host, and says whether the host confirmed every one of them gone. It works
+// from the registry first, so a chat the host cannot list is still tried, and
+// from the host's list for chats from before the registry existed. It only
+// touches what existed at since: a chat registered later belongs to a person
+// who joined again under the same handle.
+func (h *Handler) cleanRemoved(ctx context.Context, person string, since time.Time) (done bool) {
+	done, _ = h.cleanRemovedChats(ctx, person, since)
+	return done
+}
+
+// cleanRemovedChats returns the list outcome as well, so the request can
+// report a failed list while background retries can report totals instead.
+func (h *Handler) cleanRemovedChats(ctx context.Context, person string, since time.Time) (done, listed bool) {
+	hs := h.config.Hosted.state
+	registered := map[string]struct{}{}
+	ids := map[string]struct{}{}
+	registryRead := true
+	if st := h.config.Store; st != nil {
+		rows, err := st.Resources(store.SessionKind)
+		registryRead = err == nil
+		for _, row := range rows {
+			registered[row.ID] = struct{}{}
+			if removedHostedChat(row, person, since) {
+				ids[row.ID] = struct{}{}
+			}
+		}
+	}
+	status, _, body, err := hs.call(ctx, http.MethodGet, "/v1/sessions", person, nil)
+	listed = err == nil && status == http.StatusOK
+	if listed {
+		for _, id := range hostedChatIDs(body) {
+			if _, found := registered[id]; !found {
+				ids[id] = struct{}{}
+			}
+		}
+	}
+	done = listed && registryRead
+	for _, id := range slices.Sorted(maps.Keys(ids)) {
+		confirmed, reachable := h.deleteRemovedChat(ctx, id, person, since)
+		if !reachable {
+			// When the host stops answering, asking about each remaining chat would only wait.
+			return false, listed
+		}
+		done = done && confirmed
+	}
+	return done, listed
+}
+
+// removedHostedChat says a registry row is a chat the removal at since owns.
+func removedHostedChat(row store.Resource, person string, since time.Time) bool {
+	return hostedRegistration(row) && factory.NormalizeHandle(row.Owner.ID) == person && !row.CreatedAt.After(since)
+}
+
+// deleteRemovedChat deletes one chat on the host and forgets its registry row
+// once the host confirms (or says it has no such chat). It answers whether the
+// chat is gone and whether the host answered at all.
+func (h *Handler) deleteRemovedChat(ctx context.Context, id, person string, since time.Time) (confirmed, reachable bool) {
+	hs := h.config.Hosted.state
+	hs.registry.Lock()
+	defer hs.registry.Unlock()
+	st := h.config.Store
+	if st != nil {
+		// A chat can be registered between the snapshot and this delete.
+		row, found, err := st.Resource(store.SessionKind, id)
+		if err != nil {
+			return false, true
+		}
+		if found && !removedHostedChat(row, person, since) {
+			return true, true
+		}
+	}
+	status, _, _, err := hs.call(ctx, http.MethodDelete, "/v1/sessions/"+id, person, nil)
+	hs.models.forget(id, person)
+	if err != nil {
+		return false, false
+	}
+	if status/100 != 2 && status != http.StatusNotFound {
+		return false, true
+	}
+	hs.noteAsker(id, "")
+	return st == nil || st.DeleteResource(store.SessionKind, id) == nil, true
 }
 
 // closeRemovedChats shuts every chat the registry still holds for a removed
@@ -106,9 +184,8 @@ func (h *Handler) endHostedLifeOf(ctx context.Context, handle string) {
 // is no such chat." to everyone, the owner included (whose sign-ins are gone).
 // Without this a guest holding steer, run or full on a chat the host could not
 // delete would wake it, and waking a chat mints a fresh model bearer for its
-// owner, which is the access the removal just ended. The row stays, so the
-// chat is still tracked: removing the person again, once the host answers,
-// deletes it for good.
+// owner, which is the access the removal just ended. The row stays so the
+// server can finish the removal when the chats' host answers again.
 func (h *Handler) closeRemovedChats(person string) {
 	st := h.config.Store
 	if st == nil {
@@ -144,7 +221,7 @@ func (h *Handler) closeRemovedChats(person string) {
 		}
 	}
 	if left > 0 {
-		log.Printf("hosted chats: %d chats of a removed person are still on the chats' host and are closed to everyone; removing the person again once the host answers deletes them", left)
+		log.Printf("hosted chats: %d chats of a removed person are still on the chats' host and are closed to everyone; the server deletes them when the host answers again", left)
 	}
 }
 
@@ -159,8 +236,8 @@ func hostedChatIDs(body []byte) []string {
 	}
 	var ids []string
 	for _, row := range list.Sessions {
-		if hostedIDForm.MatchString(strings.TrimSpace(row.ID)) {
-			ids = append(ids, row.ID)
+		if id := strings.TrimSpace(row.ID); hostedIDForm.MatchString(id) {
+			ids = append(ids, id)
 		}
 	}
 	return ids

@@ -485,6 +485,7 @@ func (h *Handler) Close() {
 	if h != nil {
 		h.closeHostedGuests()
 		h.closeHostedModels()
+		h.closeHostedRemovals()
 		h.closeGrantSweep()
 		h.closeOrders()
 		h.closeAgents()
