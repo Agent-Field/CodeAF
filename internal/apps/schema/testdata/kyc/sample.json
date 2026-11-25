@@ -1,0 +1,30 @@
+{
+  "records": {
+    "case": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "Northwind onboarding",
+        "pan": "TEST-PAN-001",
+        "identity": [
+          {
+            "blob": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "name": "identity.pdf",
+            "mime": "application/pdf",
+            "masks": [
+              {
+                "page": 1,
+                "x": 0.15,
+                "y": 0.2,
+                "w": 0.4,
+                "h": 0.1
+              }
+            ]
+          }
+        ],
+        "stage": "review",
+        "maker": "jules",
+        "reviewer": "me"
+      }
+    ]
+  }
+}

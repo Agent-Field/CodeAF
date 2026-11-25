@@ -1,0 +1,9 @@
+run: reply
+params:
+  thread: {type: text}
+  body: {type: longtext}
+steps:
+  - id: send
+    gate: {approval: send, who: me}
+    tool: gmail.reply
+    args: {thread: $params.thread, body: $params.body}

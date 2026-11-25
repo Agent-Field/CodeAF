@@ -1,0 +1,43 @@
+{
+  "id": "recruiting",
+  "name": "Recruiting pipeline",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Recruiting pipeline agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "candidate": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "stage": {
+          "type": "enum",
+          "values": [
+            "applied",
+            "interview",
+            "offer"
+          ]
+        },
+        "score": {
+          "type": "rating",
+          "blind": {
+            "until": "submitted",
+            "per": "stage"
+          }
+        },
+        "interview": {
+          "type": "datetime"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "candidate": "rw"
+    }
+  }
+}

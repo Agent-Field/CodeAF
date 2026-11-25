@@ -1,0 +1,22 @@
+{
+  "records": {
+    "lesson": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "Setting up your machine",
+        "video": {
+          "blob": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "name": "setup.mp4",
+          "mime": "video/mp4"
+        }
+      }
+    ],
+    "attempt": [
+      {
+        "id": "01KAT0000A00000000000000002",
+        "name": "Sample attempt",
+        "format": "json"
+      }
+    ]
+  }
+}

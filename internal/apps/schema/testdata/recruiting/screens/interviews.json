@@ -1,0 +1,16 @@
+{
+  "screen": "interviews",
+  "title": "Interview schedule",
+  "body": {
+    "part": "Timeline",
+    "label": "Interview schedule",
+    "props": {
+      "view": "calendar",
+      "freeBusy": true
+    },
+    "bind": {
+      "content-part": "plan/interviews.json"
+    },
+    "id": "timeline"
+  }
+}

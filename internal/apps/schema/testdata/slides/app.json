@@ -1,0 +1,28 @@
+{
+  "id": "slides",
+  "name": "Slides",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Slides agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "deck": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "quarter": {
+          "type": "text"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "deck": "rw"
+    }
+  }
+}

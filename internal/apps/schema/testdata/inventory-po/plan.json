@@ -1,0 +1,26 @@
+{
+  "ask": "Track low stock and approve supplier purchase orders.",
+  "data": [
+    {
+      "id": "sku",
+      "line": "Title and code, on hand, reorder at"
+    },
+    {
+      "id": "purchase",
+      "line": "Title and sku, qty"
+    }
+  ],
+  "screens": [
+    {
+      "id": "stock",
+      "line": "Stock"
+    },
+    {
+      "id": "orders",
+      "line": "Purchase orders"
+    }
+  ],
+  "agent": {
+    "line": "Flag items below their reorder point and prepare an order for the person to review."
+  }
+}

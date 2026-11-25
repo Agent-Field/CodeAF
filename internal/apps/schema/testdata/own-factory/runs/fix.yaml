@@ -1,0 +1,27 @@
+run: fix
+params:
+  issue: {type: ref, to: job}
+steps:
+  - id: read
+    tool: github.issues.list
+    args: {label: agent}
+  - id: plan
+    agent: Own factory agent
+    prompt: Plan the requested change and describe the test.
+  - id: approve-plan
+    gate: {approval: plan, who: me}
+  - id: fix
+    workspace: repo
+    repo: acme/api
+    branch: fluid/retry-message
+    loop: {until: "$steps.test.exit == 0", max: 3}
+    steps:
+      - id: change
+        agent: Own factory agent
+        prompt: Make the approved change in the checkout.
+      - id: test
+        shell: go test ./...
+  - id: open-pr
+    gate: {approval: proof, who: me}
+    tool: github.pr.create
+    args: {repo: acme/api, branch: fluid/retry-message}

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -33,6 +34,7 @@ type appHeader struct {
 	Name    string           `json:"name"`
 	Icon    string           `json:"icon"`
 	Version int              `json:"version"`
+	Kit     int              `json:"kit"`
 	Agent   *schema.AgentRef `json:"agent"`
 }
 
@@ -103,11 +105,21 @@ func readDefinition(dir string, extra ...string) (files, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	if err := f.readGroup(root, schema.ScreensDir, ".json"); err != nil {
-		return nil, err
+	groups := schema.DefinitionGroups(a.Kit)
+	names := make([]string, 0, len(groups))
+	for name := range groups {
+		names = append(names, name)
 	}
-	if err := f.readGroup(root, schema.RunsDir, ".yaml", ".yml"); err != nil {
-		return nil, err
+	sort.Strings(names)
+	for _, name := range names {
+		if err := f.readGroup(root, name, groups[name]...); err != nil {
+			return nil, err
+		}
+	}
+	if a.Kit == 0 {
+		for _, name := range (schema.Definition{Files: f}).ScreenFiles() {
+			f[name] = schema.WithLegacyNodeIDs(f[name])
+		}
 	}
 	if err := f.checkEntries(root.FS(), extra); err != nil {
 		return nil, err
@@ -160,7 +172,7 @@ func (f files) readGroup(root *os.Root, dir string, exts ...string) error {
 			continue
 		}
 		id := strings.TrimSuffix(entry.Name(), ext)
-		if !fileID(id) || seen[id] {
+		if !fileID(id) || dir == schema.RunsDir && seen[id] {
 			return fmt.Errorf("invalid or duplicate %s filename %q", dir, entry.Name())
 		}
 		seen[id] = true

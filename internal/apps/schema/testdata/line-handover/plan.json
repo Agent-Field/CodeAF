@@ -1,0 +1,26 @@
+{
+  "ask": "Show line downtime, the shift plan and the handover note.",
+  "data": [
+    {
+      "id": "line",
+      "line": "Title and minutes, shift, stage"
+    }
+  ],
+  "screens": [
+    {
+      "id": "lines",
+      "line": "Lines"
+    },
+    {
+      "id": "shifts",
+      "line": "Shifts"
+    },
+    {
+      "id": "handover",
+      "line": "Handover"
+    }
+  ],
+  "agent": {
+    "line": "Summarise downtime and write the next shift’s handover."
+  }
+}

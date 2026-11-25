@@ -1,0 +1,18 @@
+{
+  "ask": "Pull monthly numbers into an update and freeze reported metrics.",
+  "data": [
+    {
+      "id": "metric",
+      "line": "Title and month, arr, published"
+    }
+  ],
+  "screens": [
+    {
+      "id": "update",
+      "line": "Investor update"
+    }
+  ],
+  "agent": {
+    "line": "Draft the update using linked monthly records. Keep published figures frozen."
+  }
+}

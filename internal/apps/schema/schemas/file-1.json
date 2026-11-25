@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/file-1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "blob": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "name": {"type": "string", "minLength": 1},
+    "mime": {"type": "string", "minLength": 1},
+    "revisionOf": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "pins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+          "page": {"type": "integer", "minimum": 1},
+          "x": {"type": "number", "minimum": 0, "maximum": 1},
+          "y": {"type": "number", "minimum": 0, "maximum": 1},
+          "note": {"type": "string", "minLength": 1}
+        },
+        "required": ["id", "page", "x", "y", "note"]
+      }
+    },
+    "masks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "page": {"type": "integer", "minimum": 1},
+          "x": {"type": "number", "minimum": 0, "maximum": 1},
+          "y": {"type": "number", "minimum": 0, "maximum": 1},
+          "w": {"type": "number", "minimum": 0, "maximum": 1, "exclusiveMinimum": 0},
+          "h": {"type": "number", "minimum": 0, "maximum": 1, "exclusiveMinimum": 0}
+        },
+        "required": ["page", "x", "y", "w", "h"]
+      }
+    }
+  },
+  "required": ["blob", "name", "mime"]
+}

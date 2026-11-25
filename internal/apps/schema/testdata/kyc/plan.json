@@ -1,0 +1,18 @@
+{
+  "ask": "Review new customer evidence and require independent sign-off.",
+  "data": [
+    {
+      "id": "case",
+      "line": "Title and pan, identity, stage, maker, reviewer"
+    }
+  ],
+  "screens": [
+    {
+      "id": "queue",
+      "line": "Review queue"
+    }
+  ],
+  "agent": {
+    "line": "Summarise evidence for the reviewer. Ask the person to reveal any masked identifier when they have a reason."
+  }
+}

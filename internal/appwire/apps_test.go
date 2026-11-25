@@ -87,8 +87,11 @@ func TestAppsMethodsServeDefinitions(t *testing.T) {
 	if got := call("apps.revert", fmt.Sprintf(`{"app":%q,"n":1}`, meta.ID))["meta"].(map[string]any); got["version"] != float64(2) {
 		t.Fatalf("revert = %v", got)
 	}
-	if got := call("apps.kit", "{}"); got["kit"] != float64(0) || got["parts"].([]any)[0].(map[string]any)["name"] != "Stack" {
+	if got := call("apps.kit", "{}"); got["kit"] != float64(2) || len(got["parts"].([]any)) != 64 {
 		t.Fatalf("kit = %v", got)
+	}
+	if got := call("apps.kit", `{"kit":0}`); got["kit"] != float64(0) || len(got["parts"].([]any)) != 20 {
+		t.Fatalf("legacy kit = %v", got)
 	}
 	if got := call("apps.archive", params)["meta"].(map[string]any); got["archived"] != true {
 		t.Fatalf("archive = %v", got)

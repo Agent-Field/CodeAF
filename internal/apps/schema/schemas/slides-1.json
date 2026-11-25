@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/slides-1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "frame": {"enum": ["16:9", "4:3", "board"]},
+    "theme": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+    "size": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1}},
+    "boxes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+          "type": {"enum": ["text", "image", "shape", "chart", "record", "media", "table"]},
+          "style": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+          "x": {"type": "number"},
+          "y": {"type": "number"},
+          "w": {"type": "number", "exclusiveMinimum": 0},
+          "h": {"type": "number", "exclusiveMinimum": 0},
+          "text": {"type": "string"},
+          "fit": {"enum": ["contain", "cover"]},
+          "src": {"type": "string", "pattern": "^files/sha256-[0-9a-f]{64}(\\.[a-z0-9]+)?$"},
+          "spec": {"type": "string", "pattern": "^charts/[a-z][a-z0-9_-]*\\.vl\\.json$"},
+          "record": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}/[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"},
+          "fields": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"}},
+          "bind": {"$ref": "https://codeaf.dev/schema/screen-2.json#/$defs/bind"},
+          "shape": {"enum": ["rect", "ellipse", "line"]},
+          "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
+        },
+        "required": ["id", "type", "x", "y", "w", "h"],
+        "allOf": [
+          {"if": {"properties": {"type": {"const": "text"}}}, "then": {"required": ["text"]}},
+          {"if": {"properties": {"type": {"const": "image"}}}, "then": {"required": ["src"]}},
+          {"if": {"properties": {"type": {"const": "media"}}}, "then": {"required": ["src"]}},
+          {"if": {"properties": {"type": {"const": "record"}}}, "then": {"required": ["record"]}},
+          {"if": {"properties": {"type": {"const": "chart"}}}, "then": {"required": ["spec", "bind"]}},
+          {"if": {"properties": {"type": {"const": "shape"}}}, "then": {"required": ["shape"]}},
+          {"if": {"properties": {"type": {"const": "table"}}}, "then": {"required": ["rows"]}}
+        ]
+      }
+    }
+  },
+  "required": ["frame", "size", "boxes"]
+}

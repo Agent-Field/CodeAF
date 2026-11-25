@@ -1,0 +1,10 @@
+{
+  "$schema": "https://codeaf.dev/schema/sample/1.json",
+  "records": {
+    "candidate": [
+      { "id": "01KAT0000A0000000000000001", "name": "Ana Ruiz", "role": "Ops lead", "stage": "Interview", "applied_on": "2026-11-02" },
+      { "id": "01KAT0000A0000000000000002", "name": "Dev Mehta", "role": "Engineer", "stage": "Screen", "applied_on": "2026-11-10" },
+      { "id": "01KAT0000A0000000000000003", "name": "Kim Park", "role": "Designer", "stage": "Applied", "applied_on": "2026-11-20" }
+    ]
+  }
+}

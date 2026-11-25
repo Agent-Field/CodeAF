@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/graph-1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "layout": {"enum": ["elk.layered", "tree", "force"]},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+          "label": {"type": "string", "minLength": 1},
+          "record": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}/[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"}
+        },
+        "required": ["id", "label"]
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "from": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+          "to": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"},
+          "label": {"type": "string", "minLength": 1}
+        },
+        "required": ["from", "to"]
+      }
+    }
+  },
+  "required": ["layout", "nodes", "links"]
+}

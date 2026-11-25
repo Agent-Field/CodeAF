@@ -1,0 +1,10 @@
+run: ingest
+steps:
+  - id: capture
+    records.create:
+      type: ticket
+      set:
+        subject: $event.subject
+        external_id: $event.thread
+        body: $event.body
+        received_at: $event.received_at

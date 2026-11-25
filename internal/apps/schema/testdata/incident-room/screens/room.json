@@ -1,0 +1,74 @@
+{
+  "screen": "room",
+  "title": "Incident room",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Incident queue",
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "incident",
+          "view": "incident-list"
+        },
+        "id": "incident-list"
+      },
+      {
+        "part": "Timer",
+        "props": {
+          "direction": "up",
+          "field": "opened_at"
+        },
+        "bind": {
+          "record": "$selection.incident-list.id",
+          "type": "incident"
+        },
+        "id": "timer"
+      },
+      {
+        "part": "LogStream",
+        "props": {
+          "follow": true
+        },
+        "bind": {
+          "run": "monitor"
+        },
+        "id": "logstream"
+      },
+      {
+        "part": "Chart",
+        "props": {
+          "kind": "live",
+          "series": "latency"
+        },
+        "bind": {
+          "run": "monitor"
+        },
+        "id": "chart"
+      },
+      {
+        "part": "Timeline",
+        "label": "Incident timeline",
+        "props": {
+          "view": "gantt"
+        },
+        "bind": {
+          "content-part": "plan/incident.json"
+        },
+        "id": "timeline"
+      }
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "incident-list": {
+      "type": "incident"
+    }
+  }
+}
