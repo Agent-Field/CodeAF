@@ -208,7 +208,7 @@ func (s *Store) Delete(id string) (Meta, error) {
 	return s.setArchived(id, true)
 }
 
-func (s *Store) setArchived(id string, deleted bool) (_ Meta, resultErr error) {
+func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
 	unlock, err := s.lockExisting(id, true)
 	if err != nil {
 		return Meta{}, err
@@ -236,12 +236,28 @@ func (s *Store) setArchived(id string, deleted bool) (_ Meta, resultErr error) {
 	if err := writeJSON(next, m); err != nil {
 		return Meta{}, err
 	}
-	if deleted {
-		restore, err := s.changeData(m, nil)
+	if s.openData != nil {
+		d, err := s.openData()
 		if err != nil {
 			return Meta{}, err
 		}
-		defer func() { resultErr = restore(resultErr) }()
+		var raw []byte
+		if _, ok, err := d.Publication(id); err != nil {
+			return Meta{}, err
+		} else if !ok && !deleted {
+			def, err := s.loadSnapshot(m, m.Version)
+			if err != nil {
+				return Meta{}, err
+			}
+			raw = def.App
+		}
+		if err := d.PublishApp(publication(m, raw), m.Version); err != nil {
+			return Meta{}, err
+		}
+		// The filesystem metadata is a compatibility copy after the DB commit.
+		_ = fsreplace.Rename(next, filepath.Join(dir, "meta.json"))
+		_ = fsreplace.SyncDir(dir)
+		return m, nil
 	}
 	if err := fsreplace.Rename(next, filepath.Join(dir, "meta.json")); err != nil {
 		return Meta{}, err
@@ -250,7 +266,7 @@ func (s *Store) setArchived(id string, deleted bool) (_ Meta, resultErr error) {
 	return m, nil
 }
 
-func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet) (_ Meta, resultErr error) {
+func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet) (Meta, error) {
 	if m.Version == math.MaxInt {
 		return Meta{}, ErrCorrupt
 	}
@@ -307,6 +323,12 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 		}
 	}
 	app := filepath.Join(s.root, next.ID)
+	if s.openData != nil {
+		if err := s.commitPublication(m, next, f[appFile], app, tx, snapshot); err != nil {
+			return Meta{}, err
+		}
+		return next, nil
+	}
 	if m.Version == 0 {
 		if _, err := os.Lstat(app); err == nil {
 			return Meta{}, ErrConflict
@@ -314,11 +336,6 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 			return Meta{}, err
 		}
 	}
-	restore, err := s.changeData(m, f[appFile])
-	if err != nil {
-		return Meta{}, err
-	}
-	defer func() { resultErr = restore(resultErr) }()
 	if m.Version == 0 {
 		if err := fsreplace.Rename(tx, app); err != nil {
 			return Meta{}, err
@@ -332,10 +349,60 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 	return next, nil
 }
 
+// commitPublication makes the numbered snapshot durable before the data
+// writer points to it. An interrupted or refused write leaves only an
+// uncommitted snapshot, which a later attempt can replace.
+func (s *Store) commitPublication(before, next Meta, raw []byte, app, tx, snapshot string) error {
+	d, err := s.openData()
+	if err != nil {
+		return err
+	}
+	if before.Version == 0 {
+		if _, err := s.readMeta(before.ID); !errors.Is(err, ErrNotFound) {
+			if err == nil {
+				return ErrConflict
+			}
+			// A prepared first version can leave an app directory without metadata.
+			if !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
+		if err := os.Mkdir(app, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		if err := checkDir(app); err != nil {
+			return err
+		}
+		if err := os.Mkdir(filepath.Join(app, "versions"), 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		if err := fsreplace.SyncDir(s.root); err != nil {
+			return err
+		}
+	}
+	if err := stageVersion(app, tx, snapshot); err != nil {
+		return err
+	}
+	if err := d.PublishApp(publication(next, raw), before.Version); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	// Readers of an authoritative publication use the numbered snapshot.
+	// The compatibility copy can lag without changing the published version.
+	_ = installCurrent(app, tx)
+	return nil
+}
+
 // installVersion moves a complete snapshot and definition into place under
 // the filesystem lock. Meta is the commit point. If interrupted before that
 // rename, readers can still load the previous committed snapshot.
-func installVersion(app, tx, snapshot string) (err error) {
+func installVersion(app, tx, snapshot string) error {
+	if err := stageVersion(app, tx, snapshot); err != nil {
+		return err
+	}
+	return installCurrent(app, tx)
+}
+
+func stageVersion(app, tx, snapshot string) error {
 	versions := filepath.Join(app, "versions")
 	if err := checkDir(versions); err != nil {
 		return err
@@ -350,6 +417,13 @@ func installVersion(app, tx, snapshot string) (err error) {
 	if err := fsreplace.Rename(snapshot, next); err != nil {
 		return err
 	}
+	if err := fsreplace.SyncDir(versions); err != nil {
+		return err
+	}
+	return fsreplace.SyncDir(app)
+}
+
+func installCurrent(app, tx string) (err error) {
 	current := filepath.Join(app, "current")
 	previous := filepath.Join(tx, "previous")
 	if err := moveIfPresent(current, previous); err != nil {
@@ -366,10 +440,8 @@ func installVersion(app, tx, snapshot string) (err error) {
 	if err := fsreplace.Rename(filepath.Join(tx, "current"), current); err != nil {
 		return err
 	}
-	for _, dir := range []string{versions, app} {
-		if err := fsreplace.SyncDir(dir); err != nil {
-			return err
-		}
+	if err := fsreplace.SyncDir(app); err != nil {
+		return err
 	}
 	if err := fsreplace.Rename(filepath.Join(tx, "meta.json"), filepath.Join(app, "meta.json")); err != nil {
 		return err

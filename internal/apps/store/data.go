@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -31,16 +32,15 @@ func (s *Store) WithData(open func() (*data.Store, error)) *Store {
 	return &copy
 }
 
-// SyncData reads the committed definitions under the same lock as publish
-// and delete. The data file survives restarts, so a committed deletion also
-// removes grants from data files written by earlier builds.
+// SyncData adopts legacy snapshots once. A committed publication in the
+// data store is never re-registered from the filesystem.
 func (s *Store) SyncData(d *data.Store) error {
 	if err := checkDir(s.root); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	} else if err != nil {
 		return err
 	}
-	unlock, err := s.lock(false, true)
+	unlock, err := s.lock(true, true)
 	if err != nil {
 		return err
 	}
@@ -49,46 +49,45 @@ func (s *Store) SyncData(d *data.Store) error {
 	if err != nil {
 		return err
 	}
-	var pending [][]byte
+	var pending []data.AppPublication
 	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), "_") {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), "_") || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		if !cell.ValidID(e.Name()) {
-			// Early saves used app slugs and had no definition receipt.
-			root, err := os.OpenRoot(filepath.Join(s.root, e.Name()))
-			if err != nil {
-				continue
-			}
-			raw, err := readRegular(root, "current/app.json")
-			_ = root.Close()
-			if err == nil {
-				pending = append(pending, raw)
+			if err := s.adoptSlug(d, e.Name()); err != nil {
+				return err
 			}
 			continue
 		}
-		m, err := s.readMeta(e.Name())
+		if _, ok, err := d.Publication(e.Name()); err != nil {
+			return err
+		} else if ok {
+			continue
+		}
+		m, err := s.readFileMeta(e.Name())
 		if err != nil {
 			continue
 		}
-		if m.Deleted {
-			if d.HasApp(m.ID) {
-				if err := d.ForgetApp(m.ID); err != nil {
-					return err
-				}
+		var raw []byte
+		if !m.Deleted {
+			def, err := s.loadSnapshot(m, m.Version)
+			if err != nil {
+				continue
 			}
-			continue
+			raw = def.App
 		}
-		if def, err := s.loadLive(m); err == nil {
-			pending = append(pending, def.App)
-		}
+		pending = append(pending, publication(m, raw))
 	}
 	// A dependent app can register after the one declaring its types.
-	for len(pending) != 0 {
-		var left [][]byte
-		for _, raw := range pending {
-			if err := d.RegisterApp(raw); err != nil {
-				left = append(left, raw)
+	for len(pending) > 0 {
+		var left []data.AppPublication
+		for _, p := range pending {
+			if err := d.PublishApp(p, 0); err != nil {
+				if e, ok := data.AsError(err); !ok || e.Code != data.CodeInvalid {
+					return err
+				}
+				left = append(left, p)
 			}
 		}
 		if len(left) == len(pending) {
@@ -99,39 +98,53 @@ func (s *Store) SyncData(d *data.Store) error {
 	return nil
 }
 
-// changeData updates the grants before the definition's commit point, so a
-// refused schema never goes live. If the filesystem commit fails, restore
-// the previous grants and declaration.
-func (s *Store) changeData(m Meta, raw []byte) (func(error) error, error) {
+func (s *Store) adoptSlug(d *data.Store, slug string) error {
+	// Early slug saves predate numbered snapshots. Once imported their
+	// data grants also come from the data file.
+	root, err := os.OpenRoot(filepath.Join(s.root, slug))
+	if err != nil {
+		return nil
+	}
+	defer root.Close()
+	raw, err := readRegular(root, "current/app.json")
+	if err != nil {
+		return nil
+	}
+	def, err := data.ParseApp(raw)
+	if err != nil || def.ID != slug || d.HasApp(slug) {
+		return nil
+	}
+	if err := d.RegisterApp(raw); err != nil {
+		if e, ok := data.AsError(err); ok && e.Code == data.CodeInvalid {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func publication(m Meta, raw []byte) data.AppPublication {
+	metadata, _ := json.Marshal(m)
+	return data.AppPublication{App: m.ID, Version: m.Version, Archived: m.Archived, Deleted: m.Deleted,
+		Metadata: metadata, Definition: raw}
+}
+
+func (s *Store) publishedMeta(id string) (Meta, bool, error) {
 	if s.openData == nil {
-		return func(err error) error { return err }, nil
+		return Meta{}, false, nil
 	}
 	d, err := s.openData()
 	if err != nil {
-		return nil, err
+		return Meta{}, false, err
 	}
-	var previous []byte
-	if d.HasApp(m.ID) {
-		before, err := s.loadLive(m)
-		if err != nil {
-			return nil, fmt.Errorf("read previous app data definition: %w", err)
-		}
-		previous = before.App
+	p, ok, err := d.Publication(id)
+	if err != nil || !ok {
+		return Meta{}, ok, err
 	}
-	if raw == nil {
-		if err := d.ForgetApp(m.ID); err != nil {
-			return nil, err
-		}
-	} else if err := d.RegisterApp(raw); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	var m Meta
+	if err := json.Unmarshal(p.Metadata, &m); err != nil || m.ID != id || m.Version != p.Version ||
+		m.Archived != p.Archived || m.Deleted != p.Deleted {
+		return Meta{}, true, fmt.Errorf("%w: invalid publication pointer", ErrCorrupt)
 	}
-	return func(err error) error {
-		if err == nil {
-			return nil
-		}
-		if previous == nil {
-			return errors.Join(err, d.ForgetApp(m.ID))
-		}
-		return errors.Join(err, d.RegisterApp(previous))
-	}, nil
+	return m, true, nil
 }

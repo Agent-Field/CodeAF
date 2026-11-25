@@ -203,12 +203,15 @@ func TestOutboxIsWrittenWithTheChange(t *testing.T) {
 	}
 	e := events[0]
 	var payload struct {
-		ID    string `json:"id"`
-		After Row    `json:"after"`
+		Op string `json:"op"`
 	}
 	_ = json.Unmarshal(e.Payload, &payload)
-	if e.Event != EventRecordCreated || e.Type != "deal" || e.Record != id || e.ByKind != ByPerson || payload.After["name"] != "N" {
+	if e.Event != EventRecordCreated || e.Type != "deal" || e.TypeID == "" || e.Record != id || e.ByKind != ByPerson || payload.Op != OpCreate || strings.Contains(string(e.Payload), "name") {
 		t.Fatalf("event: %+v %s", e, e.Payload)
+	}
+	before, after, err := s.RecordEventValues(person, e.TypeID, e.Record, e.Batch)
+	if err != nil || before != nil || after["name"] != "N" {
+		t.Fatalf("event history: %v %v %v", before, after, err)
 	}
 	first, err := s.Claim(e.Seq, "trigger.follow_up")
 	second, _ := s.Claim(e.Seq, "trigger.follow_up")

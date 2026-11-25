@@ -268,6 +268,11 @@ func validateDefinition(f files, existing schema.TypeSet) error {
 }
 
 func (s *Store) loadCurrent(m Meta) (Definition, error) {
+	if _, ok, err := s.publishedMeta(m.ID); err != nil {
+		return Definition{}, err
+	} else if ok {
+		return s.loadSnapshot(m, m.Version)
+	}
 	v, err := s.readReceipt(m.ID, m.Version)
 	if err != nil {
 		return Definition{}, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -279,6 +284,9 @@ func (s *Store) loadLive(m Meta) (Definition, error) {
 	d, err := s.loadCurrent(m)
 	if err == nil {
 		return d, nil
+	}
+	if _, ok, readErr := s.publishedMeta(m.ID); ok || readErr != nil {
+		return Definition{}, err
 	}
 	nums, listErr := s.versionNumbers(m)
 	if listErr != nil {

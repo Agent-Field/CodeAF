@@ -157,6 +157,16 @@ func (s *Store) readMeta(id string) (Meta, error) {
 	if !cell.ValidID(id) {
 		return Meta{}, ErrBadInput
 	}
+	if m, ok, err := s.publishedMeta(id); ok || err != nil {
+		return m, err
+	}
+	return s.readFileMeta(id)
+}
+
+func (s *Store) readFileMeta(id string) (Meta, error) {
+	if !cell.ValidID(id) {
+		return Meta{}, ErrBadInput
+	}
 	dir := filepath.Join(s.root, id)
 	if err := checkDir(dir); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

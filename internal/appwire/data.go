@@ -150,6 +150,9 @@ type (
 		// Cursor resumes from the last cursor the client saw: one diff of
 		// everything since, or a data.reset.
 		Cursor *int64 `json:"cursor,omitempty"`
+		// InvalidateOnly asks for a reset when a derived view must refetch.
+		InvalidateOnly bool `json:"invalidate_only,omitempty"`
+		DeferEvents    bool `json:"-"`
 	}
 	DataUnsubscribeParams struct {
 		Sub string `json:"sub"`
@@ -270,7 +273,9 @@ type (
 		Values map[string]any `json:"values"`
 	}
 	DataSubscribeResult struct {
-		Cursor int64 `json:"cursor"`
+		Cursor        int64            `json:"cursor"`
+		Snapshot      *DataQueryResult `json:"snapshot,omitempty"`
+		ReleaseEvents func()           `json:"-"`
 	}
 	DataImportResult struct {
 		// Preview is a dry run's account; Created and Batch a real import's.
@@ -468,6 +473,7 @@ var dataMethods = map[string]method{
 		if p.ID != "" && p.Query != "" {
 			return nil, Errorf(CodeBadParams, "data.subscribe watches a query or one id, not both")
 		}
+		p.DeferEvents = true
 		return d.DataSubscribe(p)
 	}),
 	"data.unsubscribe": dataMethod("data.unsubscribe", func(d Dataer, p DataUnsubscribeParams) (*Empty, error) {

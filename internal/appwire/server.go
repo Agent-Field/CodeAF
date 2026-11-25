@@ -418,6 +418,9 @@ func (s *Server) handle(ctx context.Context, line []byte, engine Engine, infligh
 			return
 		}
 		s.send(frame{id: id, result: result})
+		if sub, ok := result.(*DataSubscribeResult); ok && sub != nil && sub.ReleaseEvents != nil {
+			sub.ReleaseEvents()
+		}
 	}()
 	return false
 }

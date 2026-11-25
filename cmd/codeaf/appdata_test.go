@@ -96,3 +96,38 @@ func TestAppDataDoor(t *testing.T) {
 		t.Fatal("a relative path was read")
 	}
 }
+
+func TestAppDataSubscribeWireCarriesSnapshotAndInvalidationCursor(t *testing.T) {
+	b, _ := dataBackend(t)
+	created, err := b.DataCreate(appwire.DataCreateParams{Type: "deal", Set: map[string]any{"name": "Ari"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := newActionWire(t, b)
+	var watched struct {
+		Cursor   int64                    `json:"cursor"`
+		Snapshot *appwire.DataQueryResult `json:"snapshot"`
+	}
+	raw, wireErr := w.call("data.subscribe", map[string]any{"type": "deal", "sub": "deals"})
+	if wireErr != nil {
+		t.Fatal(wireErr)
+	}
+	if err := json.Unmarshal(raw, &watched); err != nil {
+		t.Fatal(err)
+	}
+	if watched.Cursor <= 0 || watched.Snapshot == nil || watched.Snapshot.Total != 1 ||
+		watched.Snapshot.Rows[0]["id"] != created.Rows[0]["id"] {
+		t.Fatalf("subscribe reply: %+v", watched)
+	}
+	watched.Snapshot = nil
+	raw, wireErr = w.call("data.subscribe", map[string]any{"type": "deal", "sub": "count", "invalidate_only": true})
+	if wireErr != nil {
+		t.Fatal(wireErr)
+	}
+	if err := json.Unmarshal(raw, &watched); err != nil {
+		t.Fatal(err)
+	}
+	if watched.Cursor <= 0 || watched.Snapshot != nil {
+		t.Fatalf("invalidate-only reply: %+v", watched)
+	}
+}
