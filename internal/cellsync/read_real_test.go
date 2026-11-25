@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/cell/celltest"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
+	storetest "github.com/Agent-Field/codeaf/internal/cellstore/celltest"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -71,9 +72,9 @@ func TestReadARemoteChatRealEngine(t *testing.T) {
 	for _, daemon := range []bool{false, true} {
 		t.Run(map[bool]string{false: "spawn", true: "daemon"}[daemon], func(t *testing.T) {
 			// The daemon's socket lives under the codeaf home: never the real one.
-			t.Setenv(home.EnvVar, t.TempDir())
+			// EngineDir stops every spawned engine before its folder is removed.
+			t.Setenv(home.EnvVar, storetest.EngineDir(t))
 			t.Setenv("CODEAF_ENGINE_DAEMON", map[bool]string{false: "0", true: "1"}[daemon])
-			t.Cleanup(cellstore.StopSpawned)
 			readARemoteChat(t, bin, daemon)
 		})
 	}
