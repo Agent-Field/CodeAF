@@ -233,16 +233,21 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 	a.dropOwedResume()
 	origin := turnOriginFrom(ctx)
 	if err := hub.turnError(); err != nil {
-		a.teamHandedTake()
+		a.teamHandedCarried(origin)
 		a.teamEventOwed(origin, teams.StateFailed, "failed: "+firstLineTeam(err.Error()))
 		return
 	}
-	handed := a.teamHandedTake()
-	if door, stopped := stopCause(ctx); stopped {
-		a.teamEventOwedFor(origin, teams.StateIdle, "stopped", a.teamStoppedByPerson(door, handed))
+	door, stopped := stopCause(ctx)
+	if stopped && (door == StopByPerson || door == StopByManager) {
+		// The handed work ends here: its manager is told, or stopped it itself.
+		a.teamEventOwedFor(origin, teams.StateIdle, "stopped", a.teamStoppedByPerson(door, a.teamHandedTake()))
 		return
 	}
-	a.teamStopHoldFinished(handed, origin)
+	a.teamHandedCarried(origin)
+	if stopped {
+		a.teamEventOwed(origin, teams.StateIdle, "stopped")
+		return
+	}
 	a.teamEventOwed(origin, teams.StateFinished, "finished")
 }
 

@@ -333,10 +333,10 @@ A deliberate message jump opens the activity and tool-call groups that contain t
 A member of a team that has a manager tells the manager, through the traffic, three things it
 would never write in a message:
 
-- `finished` when a turn ends, `stopped by the person` when you stopped a turn that had been
-  handed its manager's work (a directive, or the brief it was started on), `stopped` for every
-  other stop (its manager's, codeaf ending it, or your stop of a turn that carried only your own
-  request), and `failed: ` with the error's first line when a turn ends on one;
+- `finished` when a turn ends, `stopped by the person` when you stopped a member that was on
+  its manager's work (a directive, or the brief it was started on), `stopped` for every
+  other stop (its manager's, codeaf ending it, or your stop when none of the manager's work
+  was under way), and `failed: ` with the error's first line when a turn ends on one;
 - when it starts waiting on you: the permission line for a permission prompt (`needs your ok
   to run bash`), or `asks: ` and the question for anything else;
 - `no longer waiting` when the last of those questions comes down.
@@ -346,10 +346,13 @@ nothing you type is ever written to the traffic. `team_status` reads them too, s
 on a permission prompt shows as `asking` rather than `running`, for as long as some process
 holds that conversation's transcript and the wait is under 30 minutes.
 
-When you stop a member's turn that had been handed the manager's work, its manager is woken
-and told the work is not done, that you chose to stop it, and not to hand it out again unless
-you ask. Stopping a turn that carried only what you typed to the member tells the manager
-nothing, and neither does codeaf quitting or a paused member's stray wake being ended.
+When you stop a member that is on the manager's work, its manager is woken once and told
+the work is not done, that you chose to stop it, and not to hand it out again unless you ask.
+The work is under way from the hand-off until a turn finishes with no background command
+left that the member waits on. So a turn such a command's ending starts is still on it, and
+so is a turn you opened by typing to the member while it waits on one. Stopping a member
+with none of the manager's work under way tells the manager nothing, and neither does codeaf
+quitting or a paused member's stray wake being ended.
 
 ## A stopped member's command is still running — why it did not start again when the command ended
 
@@ -367,9 +370,10 @@ stopped, as for a stopped turn. That is said only for a command the member asked
 end of, or a watch that has not fired. A command left running for its own sake, such as a dev
 server, is held the same way and the manager is told nothing: the work before it was finished.
 
-The conversation starts again when somebody means it to: your own message to it, or the
-manager's next hand-off. That turn reads the record, which says it arrived after the stop
-and is no reason to take the stopped work up again.
+Only a background command's ending and a watch firing are held. Whatever else starts a
+conversation still does: your own message to it, the manager's next hand-off, a background
+task landing. That turn ends the hold and reads the record, which says it arrived after the
+stop and is no reason to take the stopped work up again.
 
 To end the command itself, use **Stop all** on the conversation's Processes tab. A
 conversation in no crew is unchanged: there a command's ending still starts its turn.
@@ -590,8 +594,8 @@ working, that is straight away. When it is idle, it depends on the kind of messa
   start (see **Pausing a crew member**).
 - A **note** wakes nobody. An idle member reads it when it next runs, for whatever reason.
 - A member's **reply to the manager** (`team_post` to the manager), and a member finishing
-  without a reply, failing, starting to wait on you, or having a turn that carried the
-  manager's work stopped by you, start an idle manager's turn. A reply
+  without a reply, failing, starting to wait on you, or being stopped by you while on the
+  manager's work, start an idle manager's turn. A reply
   and the end of the same turn are one wake, even if the ending arrives after the manager
   already ran. Replies arriving within a few seconds are gathered into one turn.
 

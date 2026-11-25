@@ -5003,7 +5003,7 @@ func (b *appBackend) Close() error {
 			// is only detached from.
 			if live := b.liveOf(a); live != nil && live.conn.Assembled {
 				// The app is leaving; the person did not press stop.
-				appInterruptFor(live.conn.Conv, session.StopByClosing, "")
+				appInterruptFor(live.conn.Conv, session.StopByClosing)
 			}
 			b.letGoTimed(a, os.Stderr)
 		})
