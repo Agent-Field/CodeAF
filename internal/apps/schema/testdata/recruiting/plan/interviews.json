@@ -1,0 +1,12 @@
+{
+  "scale": "day",
+  "items": [
+    {
+      "id": "interview",
+      "label": "Morgan Lee",
+      "start": "2026-11-25T16:00:00Z",
+      "end": "2026-11-25T17:00:00Z",
+      "record": "candidate/01KAT0000A00000000000000001"
+    }
+  ]
+}

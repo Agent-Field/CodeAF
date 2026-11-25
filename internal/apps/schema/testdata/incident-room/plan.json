@@ -1,0 +1,28 @@
+{
+  "ask": "Follow logs, latency and the incident timeline.",
+  "data": [
+    {
+      "id": "incident",
+      "line": "Title and opened at, status"
+    }
+  ],
+  "screens": [
+    {
+      "id": "room",
+      "line": "Incident room"
+    },
+    {
+      "id": "services",
+      "line": "Service dependencies"
+    }
+  ],
+  "agent": {
+    "line": "Summarise the latest logs and draft a status update for approval."
+  },
+  "automation": [
+    {
+      "id": "monitor",
+      "line": "Append live latency to the run"
+    }
+  ]
+}

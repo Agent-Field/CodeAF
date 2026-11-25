@@ -1,0 +1,28 @@
+{
+  "ask": "Plan deliveries on a map and approve customer updates.",
+  "data": [
+    {
+      "id": "delivery",
+      "line": "Title and position, eta, customer"
+    }
+  ],
+  "screens": [
+    {
+      "id": "map",
+      "line": "Dispatch map"
+    },
+    {
+      "id": "schedule",
+      "line": "Delivery schedule"
+    }
+  ],
+  "agent": {
+    "line": "Summarise late deliveries. Prepare a customer update for approval if the ETA changes."
+  },
+  "automation": [
+    {
+      "id": "customer-update",
+      "line": "Approve and send a delivery update"
+    }
+  ]
+}

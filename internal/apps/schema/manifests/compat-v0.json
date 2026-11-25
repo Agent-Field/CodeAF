@@ -1,0 +1,36 @@
+{
+  "RecordList": {
+    "selection": true,
+    "rules": [
+      {"check": "field", "path": "columns/*"},
+      {"check": "enum-field", "path": "meter"},
+      {"check": "enum-field", "path": "board_by"},
+      {"check": "requires-for-value", "path": "views/*", "options": "board/board_by"}
+    ]
+  },
+  "SectionTabs": {
+    "navigation": true,
+    "rules": [{"check": "screen", "path": "items/*/screen"}]
+  },
+  "RecordPage": {
+    "rules": [{"check": "field", "path": "fields/*"}, {"check": "command", "path": "actions/*"}]
+  },
+  "RecordForm": {
+    "rules": [{"check": "create-type", "path": "type"}, {"check": "field", "path": "fields/*"}]
+  },
+  "StateMeter": {
+    "rules": [{"check": "enum-field", "path": "field"}]
+  },
+  "StatTile": {
+    "rules": [{"check": "field", "path": "field"}]
+  },
+  "Chart": {
+    "rules": [{"check": "field", "path": "x"}, {"check": "field", "path": "y"}]
+  },
+  "QueryField": {
+    "rules": [{"check": "list", "path": "for"}]
+  },
+  "BulkBar": {
+    "rules": [{"check": "list", "path": "for"}]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "records": {
+    "ticket": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "subject": "Unable to export invoices",
+        "external_id": "thread-29",
+        "body": "Could you help me export October invoices?",
+        "received_at": "2026-11-25T09:00:00Z"
+      }
+    ]
+  }
+}

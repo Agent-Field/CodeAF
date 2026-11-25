@@ -1,0 +1,12 @@
+{
+  "records": {
+    "incident": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "Checkout latency",
+        "opened_at": "2026-11-25T10:00:00Z",
+        "status": "investigating"
+      }
+    ]
+  }
+}

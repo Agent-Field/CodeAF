@@ -1,0 +1,45 @@
+{
+  "id": "investor-update",
+  "name": "Investor update",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Investor update agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "metric": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "month": {
+          "type": "date"
+        },
+        "arr": {
+          "type": "money",
+          "currency": "USD"
+        },
+        "published": {
+          "type": "bool"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "metric": "rw"
+    }
+  },
+  "policies": [
+    {
+      "id": "reported",
+      "kind": "freeze",
+      "config": {
+        "record": "metric",
+        "when": "published"
+      }
+    }
+  ]
+}

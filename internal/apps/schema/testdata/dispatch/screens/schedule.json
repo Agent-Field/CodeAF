@@ -1,0 +1,16 @@
+{
+  "screen": "schedule",
+  "title": "Delivery schedule",
+  "body": {
+    "part": "Timeline",
+    "label": "Delivery times",
+    "props": {
+      "view": "calendar",
+      "freeBusy": true
+    },
+    "bind": {
+      "content-part": "plan/deliveries.json"
+    },
+    "id": "timeline"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "screen": "candidates",
+  "title": "Candidates",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Candidate queue",
+        "props": {
+          "columns": [
+            "title",
+            "stage"
+          ],
+          "select": "one",
+          "views": [
+            "list",
+            "board"
+          ],
+          "board_by": "stage"
+        },
+        "bind": {
+          "records": "candidate",
+          "view": "candidate-list"
+        },
+        "id": "candidate-list"
+      },
+      {
+        "part": "Form",
+        "label": "Submit interview score",
+        "props": {
+          "fields": [
+            "score"
+          ]
+        },
+        "bind": {
+          "record": "$selection.candidate-list.id",
+          "type": "candidate"
+        },
+        "id": "form"
+      }
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "candidate-list": {
+      "type": "candidate"
+    }
+  }
+}

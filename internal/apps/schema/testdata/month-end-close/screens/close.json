@@ -1,0 +1,83 @@
+{
+  "screen": "close",
+  "title": "Close",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Close queue",
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "close",
+          "view": "close-list"
+        },
+        "id": "close-list"
+      },
+      {
+        "part": "Grid",
+        "label": "Ledger reconciliation",
+        "props": {
+          "mode": "match",
+          "match": {
+            "with": "sheets/bank.csv",
+            "keys": [
+              "account"
+            ]
+          },
+          "export": [
+            "csv"
+          ]
+        },
+        "bind": {
+          "content-part": "sheets/ledger.csv"
+        },
+        "id": "grid"
+      },
+      {
+        "part": "Checklist",
+        "label": "Review checklist",
+        "props": {
+          "checklist": "checks"
+        },
+        "bind": {
+          "record": "$selection.close-list.id",
+          "type": "close"
+        },
+        "id": "checklist"
+      },
+      {
+        "part": "SignOff",
+        "label": "Review signatures",
+        "props": {
+          "chain": "review"
+        },
+        "bind": {
+          "record": "$selection.close-list.id",
+          "type": "close"
+        },
+        "id": "signoff"
+      },
+      {
+        "id": "phase",
+        "part": "StateBar",
+        "label": "Month-end state",
+        "bind": {
+          "record": "$selection.close-list.id",
+          "type": "close"
+        }
+      }
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "close-list": {
+      "type": "close"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/run-2.json",
+  "title": "runs/<id>.yaml",
+  "description": "A run whose step kinds and modifiers resolve through the app registry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run", "steps"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "run": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+    "title": {"type": "string"},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"per_run": {"type": "number", "minimum": 0}}
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type"],
+        "properties": {"type": {"type": "string"}, "to": {"type": "string"}, "default": {}}
+      }
+    },
+    "steps": {"$ref": "#/$defs/steps"}
+  },
+  "$defs": {
+    "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+    "step": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+        "title": {"type": "string"},
+        "if": {"type": "string"},
+        "on_error": {"type": "string", "pattern": "^(stop|continue|goto [a-z][a-z0-9_-]*)$"},
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"max": {"type": "integer", "minimum": 1, "maximum": 5}, "backoff": {"type": "string"}}
+        },
+        "steps": {"$ref": "#/$defs/steps"},
+        "workspace": {"type": "string"},
+        "repo": {"type": "string"},
+        "branch": {"type": "string"}
+      }
+    }
+  }
+}
