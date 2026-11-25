@@ -1,6 +1,7 @@
 package data
 
 import (
+	"database/sql"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -351,5 +352,34 @@ func TestApprovalRulesParallelStepsAreReadyTogether(t *testing.T) {
 	p, err := s.Process(person, "expense", id)
 	if err != nil || len(p.Approval.Steps) != 2 || !p.Approval.Steps[0].Ready || !p.Approval.Steps[1].Ready {
 		t.Fatalf("parallel approval = %+v, %v", p, err)
+	}
+}
+
+func TestAssignmentRulesUpgradeExistingWorkItems(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old-rules.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	// Version 3 had assignment work items without a linked source requirement.
+	if _, err := db.Exec(migrations[0] + dataPlaneMigration + writeRulesMigration + `
+		PRAGMA user_version = 3;
+		INSERT INTO work_items(id,title,status,created_by,created_at,updated_at)
+		VALUES('01K00000000000000000000001','Existing work','open','','','');
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(path, Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	items, err := s.WorkItems(person, WorkFilter{})
+	if err != nil || len(items) != 1 || items[0].Title != "Existing work" {
+		t.Fatalf("upgraded work items = %+v, %v", items, err)
 	}
 }

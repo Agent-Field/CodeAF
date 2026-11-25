@@ -13,11 +13,9 @@ import (
 )
 
 const writeRulesMigration = `
-	ALTER TABLE work_items ADD COLUMN source_type_id TEXT NOT NULL DEFAULT '';
 	CREATE TABLE rule_activity(
 		id TEXT PRIMARY KEY,
 		type_id TEXT NOT NULL,
-		source_type_id TEXT NOT NULL,
 		record TEXT NOT NULL,
 		actor TEXT NOT NULL,
 		by_kind TEXT NOT NULL,
@@ -39,6 +37,11 @@ const writeRulesMigration = `
 		signoff TEXT NOT NULL UNIQUE,
 		PRIMARY KEY(record, revision, route, step)
 	);
+`
+
+const ruleSourceGrantMigration = `
+	ALTER TABLE work_items ADD COLUMN source_type_id TEXT NOT NULL DEFAULT '';
+	ALTER TABLE rule_activity ADD COLUMN source_type_id TEXT NOT NULL DEFAULT '';
 `
 
 // Rule declarations travel with the type that owns the write, so every
