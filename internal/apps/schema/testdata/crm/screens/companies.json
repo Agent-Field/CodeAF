@@ -1,0 +1,59 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "companies",
+  "title": "Companies",
+  "nav": { "part": "SectionTabs", "label": "CRM sections", "props": { "items": [ { "label": "Deals", "screen": "deals" }, { "label": "Companies", "screen": "companies" }, { "label": "Contacts", "screen": "contacts" } ] } },
+  "body": {
+    "part": "Row",
+    "props": { "gap": 3, "align": "start" },
+    "children": [
+      {
+        "part": "RecordList",
+        "id": "companies",
+        "label": "Companies",
+        "bind": { "records": "company", "query": "sort:name" },
+        "props": { "views": ["list"], "columns": ["name", "domain", "size", "owner"], "select": "one", "empty": "No companies yet." }
+      },
+      {
+        "part": "Panel",
+        "when": "$selection.companies.count == 1",
+        "props": { "title": "Company" },
+        "children": [
+          { "part": "RecordPage", "label": "Company", "bind": { "record": "$selection.companies.id" }, "props": { "fields": ["name", "domain", "size", "owner"], "history": true } },
+          { "part": "Divider" },
+          { "part": "Heading", "props": { "text": "Deals", "level": 3 } },
+          {
+            "part": "RecordList",
+            "id": "company-deals",
+            "label": "Deals at this company",
+            "bind": { "records": "deal", "query": "company:$selection.companies.id sort:-amount" },
+            "props": { "views": ["list"], "columns": ["name", "stage", "amount"], "search": false, "select": "none", "empty": "No deals with this company yet." },
+            "on": { "open": [{ "open": "deal", "id": "$row.id" }] }
+          },
+          { "part": "Heading", "props": { "text": "People", "level": 3 } },
+          {
+            "part": "RecordList",
+            "id": "company-contacts",
+            "label": "People at this company",
+            "bind": { "records": "contact", "query": "company:$selection.companies.id" },
+            "props": { "views": ["list"], "columns": ["name", "title", "email"], "search": false, "select": "none", "empty": "No people at this company yet." },
+            "on": { "open": [{ "open": "contact", "id": "$row.id" }] }
+          }
+        ]
+      },
+      {
+        "part": "Panel",
+        "when": "$selection.companies.count == 0",
+        "props": { "title": "New company" },
+        "children": [
+          {
+            "part": "RecordForm",
+            "label": "New company",
+            "props": { "type": "company", "fields": ["name", "domain", "size"], "submit": "Add company" },
+            "on": { "submit": [{ "toast": "Company added" }] }
+          }
+        ]
+      }
+    ]
+  }
+}
