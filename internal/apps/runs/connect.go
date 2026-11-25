@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/connect"
 )
@@ -18,6 +19,7 @@ import (
 type ConnectedTools struct {
 	Apps    func(string) (App, error)
 	Manager func() (*connect.Manager, error)
+	Sources connections.Service
 }
 
 type connectedOperation struct {
@@ -105,11 +107,41 @@ func (c ConnectedTools) check(ctx context.Context, call Call) (connectedOperatio
 }
 
 func (c ConnectedTools) Check(ctx context.Context, call Call) (bool, error) {
+	if strings.HasPrefix(call.Name, schema.SourceToolPrefix) {
+		_, err := c.sourceEffect(call)
+		return true, err
+	}
 	_, _, ask, err := c.check(ctx, call)
 	return ask, err
 }
 
 func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
+	if strings.HasPrefix(call.Name, schema.SourceToolPrefix) {
+		if !call.approved || call.Key == "" {
+			return Reply{}, errors.New("approval is required before writing to a source")
+		}
+		effect, err := c.sourceEffect(call)
+		if err != nil {
+			return Reply{}, err
+		}
+		result, err := effect.Apply(ctx, call.Key)
+		receipt := &EffectReceipt{Step: call.Step, Tool: call.Name, Key: call.Key, Connection: result.Connection, Version: result.Version}
+		switch {
+		case errors.Is(err, connections.ErrUncertain):
+			receipt.Outcome = "unknown"
+			return Reply{Effect: receipt}, ErrOutcomeUnknown
+		case errors.Is(err, connections.ErrConflict):
+			receipt.Outcome = "conflict"
+			return Reply{Effect: receipt}, err
+		case errors.Is(err, connections.ErrRejected):
+			receipt.Outcome = "refused"
+			return Reply{Effect: receipt}, err
+		case err != nil:
+			return Reply{}, err
+		}
+		receipt.Outcome = "committed"
+		return Reply{Effect: receipt, Output: result.Response}, nil
+	}
 	op, manager, ask, err := c.check(ctx, call)
 	if err != nil {
 		return Reply{}, err
@@ -175,6 +207,18 @@ func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 		output, err = connect.SlackSend(ctx, client, arg("channel"), arg("text"), arg("thread_ts"))
 	}
 	return connectorResult(output, err, op.outbound)
+}
+
+func (c ConnectedTools) sourceEffect(call Call) (*connections.Effect, error) {
+	app, err := c.Apps(call.App)
+	if err != nil {
+		return nil, err
+	}
+	if call.As != "me" || !slices.Contains(app.Capabilities.Tools, call.Name) {
+		return nil, errors.New("the app has no grant for this source write")
+	}
+	id, write, _ := strings.Cut(strings.TrimPrefix(call.Name, schema.SourceToolPrefix), ".")
+	return c.Sources.PrepareEffect(call.App, id, write, call.Args)
 }
 
 func connectorResult(output string, err error, mutates bool) (Reply, error) {

@@ -31,19 +31,20 @@ var ErrNotFound = errors.New("run not found")
 var ErrBudget = errors.New("per-run budget reached")
 
 type Run struct {
-	App          string    `json:"app"`
-	DefinitionID string    `json:"run"`
-	ID           string    `json:"id"`
-	State        string    `json:"state"`
-	Step         string    `json:"step"`
-	CaughtUp     bool      `json:"caught_up,omitempty"`
-	Error        string    `json:"error,omitempty"`
-	Cost         float64   `json:"cost,omitempty"`
-	Approval     *Approval `json:"approval,omitempty"`
-	WakeAt       time.Time `json:"wake_at,omitzero"`
-	EndedAt      time.Time `json:"ended_at,omitzero"`
-	StartedAt    time.Time `json:"started_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	App          string          `json:"app"`
+	DefinitionID string          `json:"run"`
+	ID           string          `json:"id"`
+	State        string          `json:"state"`
+	Step         string          `json:"step"`
+	CaughtUp     bool            `json:"caught_up,omitempty"`
+	Error        string          `json:"error,omitempty"`
+	Cost         float64         `json:"cost,omitempty"`
+	Effects      []EffectReceipt `json:"effects,omitempty"`
+	Approval     *Approval       `json:"approval,omitempty"`
+	WakeAt       time.Time       `json:"wake_at,omitzero"`
+	EndedAt      time.Time       `json:"ended_at,omitzero"`
+	StartedAt    time.Time       `json:"started_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
 type ChangeEvent struct {

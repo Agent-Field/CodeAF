@@ -99,7 +99,7 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 		fmt.Fprintln(os.Stderr, "app runs data:", err)
 	}
 	records := runs.Data{Store: func() (*data.Store, error) { return b.dataStore("") }}
-	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager}
+	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager, Sources: b.appConnections()}
 	e, err := runs.Open(runs.Config{
 		Root: home.Join("apps", "_runs"), Load: files.Load, Triggers: files.Triggers,
 		Connector: tools, CheckTool: tools.Check, Agent: b.appRunAgent(files),

@@ -1,0 +1,160 @@
+package connections
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"slices"
+
+	"github.com/Agent-Field/codeaf/internal/apps/data"
+)
+
+// Effect is a validated source mutation handed only to the runs adapter. Its
+// transport, key and credential are unavailable to screens and wire callers.
+type Effect struct {
+	service Service
+	config  Config
+	read    Read
+	write   Write
+	key     any
+	version string
+	values  map[string]any
+}
+
+type Receipt struct {
+	Connection string         `json:"connection"`
+	Version    string         `json:"version,omitempty"`
+	Response   map[string]any `json:"response,omitempty"`
+}
+
+// PrepareEffect resolves the write declaration, current grants and canonical
+// row identity before the broker asks for approval. Callers pass no source key.
+func (s Service) PrepareEffect(app, connection, operation string, args map[string]any) (*Effect, error) {
+	c, err := s.scoped(app, connection)
+	if err != nil {
+		return nil, err
+	}
+	write, ok := c.Writes[operation]
+	if !ok {
+		return nil, errors.New("the connection has no such declared write")
+	}
+	read := c.Reads[write.Read]
+	store, _, typ, err := s.bind(c, read, true)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := args["id"].(string)
+	set, _ := args["set"].(map[string]any)
+	version, _ := args["version"].(string)
+	for name := range args {
+		if name != "id" && name != "version" && name != "set" {
+			return nil, ErrRejected
+		}
+	}
+	if id == "" || len(id) != 26 || len(set) == 0 ||
+		(read.Version != "" && (version == "" || len(version) > 1024)) || (read.Version == "" && version != "") {
+		return nil, errors.New("a source write needs a canonical id, any declared version, and fields to set")
+	}
+	key, err := effectKey(store, c, read, id)
+	if err != nil {
+		return nil, err
+	}
+	values := make(map[string]any, len(set))
+	for name, value := range set {
+		if !slices.Contains(write.Fields, name) || !boundedScalar(value) {
+			return nil, errors.New("the declared write cannot set that field")
+		}
+		field, err := typ.LiveField(name, true)
+		if err != nil {
+			return nil, err
+		}
+		normalized, err := field.LiveValue(value, true)
+		if err != nil {
+			return nil, err
+		}
+		values[read.Fields[name]] = normalized
+	}
+	return &Effect{service: s, config: c, read: read, write: write, key: key, version: version, values: values}, nil
+}
+
+func effectKey(store *data.Store, c Config, read Read, id string) (any, error) {
+	namespace := externalKey(c, read, "")
+	keys, err := store.ExternalKeys(id)
+	if err != nil {
+		return nil, err
+	}
+	var key any
+	for _, candidate := range keys {
+		if candidate.Binding != namespace.Binding || candidate.Object != namespace.Object || candidate.Generation != namespace.Generation {
+			continue
+		}
+		raw, err := base64.RawURLEncoding.DecodeString(candidate.Key)
+		if err != nil || len(raw) == 0 || key != nil || decodeJSON(raw, &key) != nil {
+			return nil, ErrConflict
+		}
+	}
+	if key == nil {
+		return nil, ErrConflict
+	}
+	return key, nil
+}
+
+// Apply dispatches a prepared write with the broker's stable step key.
+func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, error) {
+	if idempotencyKey == "" {
+		return Receipt{}, ErrRejected
+	}
+	c := e.config
+	secret, err := e.service.vault().Credential(c.ID)
+	if err != nil {
+		return Receipt{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	receipt := Receipt{Connection: c.ID}
+	if c.Kind != HTTP {
+		// The version is advanced in the transaction. A repeated effect
+		// carrying the same expected version cannot apply the update twice.
+		sqlKey, ok := e.key.(string)
+		if !ok {
+			return receipt, ErrConflict
+		}
+		receipt.Version, err = sqlWrite(ctx, c.Kind, secret, e.read, sqlKey, e.version, e.values)
+		return receipt, err
+	}
+	body := make(map[string]any, len(e.values)+2)
+	for name, value := range e.values {
+		body[name] = value
+	}
+	body[e.read.Key] = e.key
+	if e.read.Version != "" {
+		body[e.read.Version] = e.version
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil || len(encoded) > maxBytes {
+		return Receipt{}, ErrRejected
+	}
+	raw, err := request(ctx, c, secret, "POST", e.write.Path, nil, encoded, idempotencyKey)
+	if errors.Is(err, ErrTooLarge) {
+		return receipt, ErrUncertain
+	}
+	if err != nil {
+		return receipt, err
+	}
+	if len(e.write.Response) != 0 {
+		var response map[string]any
+		if decodeJSON(raw, &response) != nil {
+			return receipt, ErrUncertain
+		}
+		receipt.Response = make(map[string]any, len(e.write.Response))
+		for name, target := range e.write.Response {
+			value, ok := response[target]
+			if !ok || !boundedScalar(value) || containsCredential(value, secret) {
+				return receipt, ErrUncertain
+			}
+			receipt.Response[name] = value
+		}
+	}
+	return receipt, nil
+}
