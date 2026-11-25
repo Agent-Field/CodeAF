@@ -520,3 +520,69 @@ func TestAnUnmanagedSubTeamsMemberAnswersToTheManagerAbove(t *testing.T) {
 		t.Fatalf("the question's packet: %+v", p)
 	}
 }
+
+// THE GLOBAL MANAGER IS NOT WOKEN BY A TOP-LEVEL MANAGER'S TURN ENDING. The
+// person talks to that manager directly and each answer ends a turn; what the
+// global manager should act on is posted to it, and that still wakes it.
+func TestTheGlobalManagerIsNotWokenByATopLevelManagersTurnEnding(t *testing.T) {
+	fastTeamWake(t)
+	n := newTeamTree(t, "gm", "boss", "web")
+	n.team(t, "harbor", "", "boss", n.member(t, "boss", "boss"), n.member(t, "web", "web"))
+	root := ""
+	if err := teams.Update(n.fixture.profile, func(f *teams.File) error {
+		root = f.MakeRoot(f.Teams[0].Made)
+		if err := f.AddMember(root, n.member(t, "gm", "all")); err != nil {
+			return err
+		}
+		return f.SetManager(root, n.key(t, "gm"))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	gmCalls := oneAnswer(4)
+	teamAgent(t, n.fixture, n.paths["gm"], gmCalls, nil)
+	boss := teamAgent(t, n.fixture, n.paths["boss"], oneAnswer(4), nil)
+
+	submitAndWait(t, boss, "plan the release")
+	boss.settleTeamEvents()
+	quietFor()
+	all := teamFixture{profile: n.fixture.profile, teamID: root}
+	if ended := trafficEvents(t, all, "finished"); len(ended) != 1 {
+		t.Fatalf("the top-level manager's ending was logged %d times in the team that holds every team, want once", len(ended))
+	}
+	if got := gmCalls.requests(); got != 0 {
+		t.Fatalf("the global manager was woken %d times by a top-level manager's turn ending", got)
+	}
+
+	if said, failed := callTool(t, boss.teamPostTool, `{"to":"manager","text":"harbor shipped"}`); failed {
+		t.Fatalf("the report to the global manager was refused: %q", said)
+	}
+	waitRequests(t, gmCalls, 1)
+	asked := userTextIn(gmCalls.request(0))
+	for _, want := range []string{"from @boss: harbor shipped", "A manager's turn ending does not start yours", "and their failing or asking, come back to you"} {
+		if !strings.Contains(asked, want) {
+			t.Fatalf("the global manager's turn lacks %q:\n%s", want, asked)
+		}
+	}
+	if strings.Contains(asked, "their finishing") {
+		t.Fatalf("the global manager is still told a member's finishing starts its turn:\n%s", asked)
+	}
+}
+
+func TestTeamEventWakesTheGlobalManager(t *testing.T) {
+	for _, c := range []struct {
+		state, text string
+		root, want  bool
+	}{
+		{teams.StateFinished, "finished", false, true},
+		{teams.StateFinished, "finished", true, false},
+		{teams.StateIdle, teams.StoppedByPerson, false, true},
+		{teams.StateIdle, teams.StoppedByPerson, true, false},
+		{teams.StateFailed, "failed: no key", true, true},
+		{teams.StateAsking, "asks: which branch?", true, true},
+		{teams.StateRunning, "no longer waiting", true, false},
+	} {
+		if got := teamEventWakesManagerOf(c.root, c.state, c.text); got != c.want {
+			t.Errorf("root %v, %s %q wakes the manager: %v, want %v", c.root, c.state, c.text, got, c.want)
+		}
+	}
+}

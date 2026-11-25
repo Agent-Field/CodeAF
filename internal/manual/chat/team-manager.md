@@ -532,6 +532,13 @@ report to it, so their questions and conflicts between teams come to it before t
 you. It can start a new top-level team with `team_start` of kind `team`. Without a global
 manager, nothing here changes: each top-level manager reports to you.
 
+A top-level manager's turn ending does not start the global manager's turn. You talk to
+those managers directly and each answer ends a turn, so the endings stay in `All teams`'
+traffic, where `team_status` reads them. The global manager is woken by what a manager posts
+to it with `team_post`, by a manager's question or a permission it is held on, and by a
+manager's turn failing. It is told never to send a manager your own request to that manager
+back as a directive.
+
 ## Conflicts between members and teams
 
 When two or more conversations need incompatible things (the form posts JSON, the endpoint

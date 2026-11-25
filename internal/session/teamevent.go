@@ -184,7 +184,7 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 		if err != nil || !role.wakes {
 			continue
 		}
-		if teamEventWakesManager(event.state, text) && !(role.root && event.state == teams.StateIdle) {
+		if teamEventWakesManagerOf(role.root, event.state, text) {
 			// These wake the manager, so a manager nobody has open is opened
 			// (team_wakewatch.go).
 			a.rouseManager(profile, role, event.origin.provenance(role.key))

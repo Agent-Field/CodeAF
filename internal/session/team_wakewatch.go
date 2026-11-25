@@ -441,6 +441,28 @@ func teamEventWakesManager(state, text string) bool {
 	return false
 }
 
+// teamEventWakesManagerOf is [teamEventWakesManager] for the manager of one
+// team, root when that team is the one that holds every team.
+//
+// The global manager is not woken by a top-level manager's turn ending,
+// finished or stopped. Its members are the managers of whole teams, each a
+// conversation the person talks to, and every answer one of them gave the
+// person ended a turn. Measured 2026-11-24 in the desktop app: one afternoon
+// of the person talking to two crew managers woke the global manager 22 times,
+// 803,496 input tokens, and it answered "[no change]" to all 22; the day
+// before, one such wake had it read a manager's conversation and send the
+// person's own request back to that manager as a directive. What a top-level
+// manager wants the global manager to act on it posts (a note wakes), and what
+// needs somebody still wakes: a failure, and a question or a permission it is
+// held on. The ending itself stays in the team's traffic, where team_status
+// reads it.
+func teamEventWakesManagerOf(root bool, state, text string) bool {
+	if root {
+		return state == teams.StateFailed || state == teams.StateAsking
+	}
+	return teamEventWakesManager(state, text)
+}
+
 // teamWakes reports whether an entry starts this conversation's turn when it
 // is idle: a directive from the manager to its handle or to everyone, for a
 // member; a member's post to the manager, or a member's finished, failed or
@@ -467,12 +489,7 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 		case teams.KindNote:
 			return entry.To == teams.ToManager && strings.TrimSpace(entry.Text) != ""
 		case teams.KindEvent:
-			// The global manager is not woken by a stop the person made in a
-			// conversation they were talking to directly.
-			if role.root && entry.State == teams.StateIdle {
-				return false
-			}
-			return teamEventWakesManager(entry.State, entry.Text)
+			return teamEventWakesManagerOf(role.root, entry.State, entry.Text)
 		}
 		return false
 	}
