@@ -15,7 +15,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "delivery"
+          "records": "delivery",
+          "view": "delivery-list"
         },
         "id": "delivery-list"
       },
@@ -27,7 +28,8 @@
         },
         "bind": {
           "content-part": "places/routes.json"
-        }
+        },
+        "id": "map"
       },
       {
         "part": "ApprovalCard",
@@ -37,8 +39,15 @@
         },
         "bind": {
           "run": "customer-update"
-        }
+        },
+        "id": "approvalcard"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "delivery-list": {
+      "type": "delivery"
+    }
   }
 }

@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "deck"
+          "records": "deck",
+          "view": "deck-list"
         },
         "id": "deck-list"
       },
@@ -23,7 +24,8 @@
         "label": "Slides",
         "bind": {
           "content-part": "slides/1.json"
-        }
+        },
+        "id": "pages"
       },
       {
         "part": "Canvas",
@@ -38,8 +40,15 @@
         },
         "bind": {
           "content-part": "slides/1.json"
-        }
+        },
+        "id": "canvas"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "deck-list": {
+      "type": "deck"
+    }
   }
 }

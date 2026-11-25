@@ -4,22 +4,59 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "name": {"type": "string", "pattern": "^custom/[a-z][a-z0-9_-]{0,47}$"},
-    "version": {"type": "integer", "minimum": 1},
-    "summary": {"type": "string", "minLength": 1},
-    "example": {"type": "object"},
-    "props": {"type": "object"},
-    "children": {"enum": ["none", "nodes", "slots"]},
-    "slots": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"}},
-    "interactive": {"type": "boolean"},
+    "name": {
+      "type": "string",
+      "pattern": "^custom/[a-z][a-z0-9_-]{0,47}$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "example": {
+      "type": "object"
+    },
+    "props": {
+      "type": "object"
+    },
+    "children": {
+      "const": "none"
+    },
+    "interactive": {
+      "type": "boolean"
+    },
     "bindings": {
       "type": "array",
-      "items": {"enum": ["records", "record", "selection", "params", "run", "runs", "file", "content-part"]}
+      "items": {
+        "enum": [
+          "records",
+          "params"
+        ]
+      }
     },
-    "events": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"}},
-    "binding_required": {"type": "boolean"},
-    "capabilities": {"enum": ["r", "rw"]},
-    "source": {"type": "string", "pattern": "^custom/[a-z][a-z0-9_-]{0,47}\\.tsx$"}
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+      }
+    },
+    "binding_required": {
+      "type": "boolean"
+    },
+    "capabilities": {
+      "enum": [
+        "r",
+        "rw"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^custom/[a-z][a-z0-9_-]{0,47}\\.tsx$"
+    }
   },
   "required": [
     "name",

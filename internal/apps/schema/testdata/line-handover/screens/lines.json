@@ -16,7 +16,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "line"
+          "records": "line",
+          "view": "line-list"
         },
         "id": "line-list"
       },
@@ -28,9 +29,20 @@
           "y": "minutes"
         },
         "bind": {
-          "records": "line"
-        }
+          "records": "line",
+          "view": "chart"
+        },
+        "id": "chart"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "line-list": {
+      "type": "line"
+    },
+    "chart": {
+      "type": "line"
+    }
   }
 }

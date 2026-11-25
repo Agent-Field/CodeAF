@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "purchase"
+          "records": "purchase",
+          "view": "purchase-list"
         },
         "id": "purchase-list"
       },
@@ -27,8 +28,15 @@
         "bind": {
           "record": "$selection.purchase-list.id",
           "type": "purchase"
-        }
+        },
+        "id": "approvalcard"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "purchase-list": {
+      "type": "purchase"
+    }
   }
 }

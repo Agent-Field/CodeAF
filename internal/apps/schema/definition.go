@@ -197,20 +197,26 @@ func FileID(path string) string {
 
 // App is app.json, typed.
 type App struct {
-	Policies     []Policy              `json:"policies,omitempty"`
-	Relations    map[string]Relation   `json:"relations,omitempty"`
-	Exports      map[string][]string   `json:"exports,omitempty"`
-	ID           string                `json:"id"`
-	Name         string                `json:"name"`
-	Icon         string                `json:"icon,omitempty"`
-	Version      int                   `json:"version"`
-	Kit          int                   `json:"kit"`
-	Agent        *AgentRef             `json:"agent,omitempty"`
-	Records      map[string]RecordType `json:"records"`
-	Capabilities Capabilities          `json:"capabilities"`
-	Triggers     []Trigger             `json:"triggers,omitempty"`
-	Commands     []Command             `json:"commands,omitempty"`
-	Budget       *Budget               `json:"budget,omitempty"`
+	Roles        map[string]Role        `json:"roles,omitempty"`
+	Audiences    map[string]Audience    `json:"audiences,omitempty"`
+	Channels     map[string]Channel     `json:"channels,omitempty"`
+	Rules        map[string]RoutingRule `json:"rules,omitempty"`
+	Resources    map[string]Resource    `json:"resources,omitempty"`
+	Process      *Process               `json:"process,omitempty"`
+	Policies     []Policy               `json:"policies,omitempty"`
+	Relations    map[string]Relation    `json:"relations,omitempty"`
+	Exports      map[string][]string    `json:"exports,omitempty"`
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	Icon         string                 `json:"icon,omitempty"`
+	Version      int                    `json:"version"`
+	Kit          int                    `json:"kit"`
+	Agent        *AgentRef              `json:"agent,omitempty"`
+	Records      map[string]RecordType  `json:"records"`
+	Capabilities Capabilities           `json:"capabilities"`
+	Triggers     []Trigger              `json:"triggers,omitempty"`
+	Commands     []Command              `json:"commands,omitempty"`
+	Budget       *Budget                `json:"budget,omitempty"`
 }
 
 // AgentRef names the app's own agent and the Markdown file that instructs it.
@@ -223,6 +229,8 @@ type AgentRef struct {
 // RecordType is one record type the app owns, or, with Uses set, a type another app
 // owns that this app uses and adds its own fields to.
 type RecordType struct {
+	ID        string           `json:"id,omitempty"`
+	Ledger    *Ledger          `json:"ledger,omitempty"`
 	Title     string           `json:"title,omitempty"`
 	Label     string           `json:"label,omitempty"`
 	Uses      bool             `json:"uses,omitempty"`
@@ -233,6 +241,8 @@ type RecordType struct {
 
 // Field is one field of a record type and its rules.
 type Field struct {
+	ID       string     `json:"id,omitempty"`
+	Sequence *Sequence  `json:"sequence,omitempty"`
 	Type     string     `json:"type"`
 	Timer    *TimerRule `json:"timer,omitempty"`
 	Blind    *BlindRule `json:"blind,omitempty"`
@@ -338,11 +348,12 @@ type PlanAgent struct {
 
 // Screen is one screens/<id>.json.
 type Screen struct {
-	Screen string   `json:"screen"`
-	Title  string   `json:"title"`
-	Params []string `json:"params,omitempty"`
-	Nav    *Node    `json:"nav,omitempty"`
-	Body   *Node    `json:"body"`
+	Views  map[string]QueryIR `json:"views,omitempty"`
+	Screen string             `json:"screen"`
+	Title  string             `json:"title"`
+	Params []string           `json:"params,omitempty"`
+	Nav    *Node              `json:"nav,omitempty"`
+	Body   *Node              `json:"body"`
 }
 
 // Node is one kit part in a screen tree.
@@ -361,20 +372,20 @@ type Node struct {
 // Bind is where a node's data comes from. Exactly one of Records, Record,
 // Selection, Run or Runs is the binding; Query and Type qualify it.
 type Bind struct {
-	File        string      `json:"file,omitempty"`
-	Field       string      `json:"field,omitempty"`
-	ContentPart string      `json:"content-part,omitempty"`
-	PartID      string      `json:"part-id,omitempty"`
-	Trace       *TraceQuery `json:"trace,omitempty"`
-	Records     string      `json:"records,omitempty"`
-	Query       string      `json:"query,omitempty"`
-	Record      string      `json:"record,omitempty"`
-	Type        string      `json:"type,omitempty"`
-	Selection   string      `json:"selection,omitempty"`
-	Run         string      `json:"run,omitempty"`
-	Runs        string      `json:"runs,omitempty"`
-	For         string      `json:"for,omitempty"`
-	Params      []string    `json:"params,omitempty"`
+	File        string   `json:"file,omitempty"`
+	Field       string   `json:"field,omitempty"`
+	ContentPart string   `json:"content-part,omitempty"`
+	PartID      string   `json:"part-id,omitempty"`
+	View        string   `json:"view,omitempty"`
+	Records     string   `json:"records,omitempty"`
+	Query       string   `json:"query,omitempty"`
+	Record      string   `json:"record,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	Selection   string   `json:"selection,omitempty"`
+	Run         string   `json:"run,omitempty"`
+	Runs        string   `json:"runs,omitempty"`
+	For         string   `json:"for,omitempty"`
+	Params      []string `json:"params,omitempty"`
 }
 
 // Run is one runs/<id>.yaml.
@@ -562,6 +573,7 @@ func jsonable(v any) (any, error) {
 // ExistingType is a record type the person already has, owned by some app. The
 // validator resolves `uses` types and cross-app refs against these.
 type ExistingType struct {
+	ID     string
 	Owner  string
 	Fields map[string]Field
 }
@@ -582,7 +594,7 @@ func TypesOf(def Definition) TypeSet {
 		if t.Uses {
 			continue
 		}
-		out[name] = ExistingType{Owner: app.ID, Fields: t.Fields}
+		out[name] = ExistingType{ID: t.ID, Owner: app.ID, Fields: t.Fields}
 	}
 	return out
 }

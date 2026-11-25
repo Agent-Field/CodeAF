@@ -20,7 +20,8 @@
           "board_by": "stage"
         },
         "bind": {
-          "records": "case"
+          "records": "case",
+          "view": "case-list"
         },
         "id": "case-list"
       },
@@ -47,7 +48,8 @@
               }
             }
           ]
-        }
+        },
+        "id": "masked"
       },
       {
         "part": "FileViewer",
@@ -59,7 +61,8 @@
           "file": "$selection.case-list.id",
           "type": "case",
           "field": "identity"
-        }
+        },
+        "id": "fileviewer"
       },
       {
         "part": "Checklist",
@@ -70,7 +73,8 @@
         "bind": {
           "record": "$selection.case-list.id",
           "type": "case"
-        }
+        },
+        "id": "checklist"
       },
       {
         "part": "SignOff",
@@ -81,8 +85,15 @@
         "bind": {
           "record": "$selection.case-list.id",
           "type": "case"
-        }
+        },
+        "id": "signoff"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "case-list": {
+      "type": "case"
+    }
   }
 }

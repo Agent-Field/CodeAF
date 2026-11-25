@@ -1,0 +1,519 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/enterprise-2.json",
+  "$defs": {
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "requester",
+            "worker",
+            "approver",
+            "viewer",
+            "admin",
+            "custom"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "screens": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "uniqueItems": true
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              },
+              "transition": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              }
+            },
+            "required": [
+              "type",
+              "transition"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ]
+    },
+    "audience": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "screens": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "uniqueItems": true
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              },
+              "transition": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              }
+            },
+            "required": [
+              "type",
+              "transition"
+            ]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "label",
+        "roles"
+      ]
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "assignment"
+        },
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "when": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workItem": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "strategy": {
+          "enum": [
+            "field",
+            "round-robin",
+            "load",
+            "skill",
+            "role"
+          ]
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "skill": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "kind",
+        "record",
+        "strategy",
+        "workItem"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "field"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "field"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "const": "skill"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "skill"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "strategy": {
+                "enum": [
+                  "round-robin",
+                  "load",
+                  "role"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "roles"
+            ]
+          }
+        }
+      ]
+    },
+    "approval-routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "approval-routing"
+        },
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "when": {
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "enum": [
+            "serial",
+            "parallel"
+          ]
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "minItems": 1
+        },
+        "delegate": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        }
+      },
+      "required": [
+        "kind",
+        "record",
+        "order",
+        "roles"
+      ]
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "booking": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "resource": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "start": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "overlap": {
+              "const": "reject"
+            }
+          },
+          "required": [
+            "type",
+            "resource",
+            "start",
+            "end",
+            "overlap"
+          ]
+        }
+      },
+      "required": [
+        "record",
+        "label",
+        "booking"
+      ]
+    },
+    "sequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "padding": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 18
+        }
+      },
+      "required": [
+        "prefix",
+        "padding"
+      ]
+    },
+    "ledger": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reversal": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        }
+      },
+      "required": [
+        "reversal"
+      ]
+    },
+    "channel": {
+      "oneOf": [
+        {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/form-link"
+        },
+        {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/email-in"
+        },
+        {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/webhook-in"
+        },
+        {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/file-drop"
+        },
+        {
+          "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/connector-event"
+        }
+      ]
+    },
+    "form-link": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "form-link"
+        },
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "audience": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "form": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        }
+      },
+      "required": [
+        "kind",
+        "record",
+        "form"
+      ]
+    },
+    "email-in": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "email-in"
+        },
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "audience": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "connector": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "record",
+        "connector",
+        "event"
+      ]
+    },
+    "webhook-in": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "webhook-in"
+        },
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "audience": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        }
+      },
+      "required": [
+        "kind",
+        "record",
+        "run"
+      ]
+    },
+    "file-drop": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "file-drop"
+        },
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "audience": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "form": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "accept": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "record",
+        "form"
+      ]
+    },
+    "connector-event": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "connector-event"
+        },
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "audience": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "run": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "connector": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "event": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "record",
+        "connector",
+        "event"
+      ]
+    }
+  }
+}

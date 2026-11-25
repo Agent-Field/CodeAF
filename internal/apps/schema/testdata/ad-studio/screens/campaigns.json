@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "campaign"
+          "records": "campaign",
+          "view": "campaign-list"
         },
         "id": "campaign-list"
       },
@@ -37,7 +38,8 @@
           "file": "$selection.campaign-list.id",
           "type": "campaign",
           "field": "cut"
-        }
+        },
+        "id": "media"
       },
       {
         "part": "Compare",
@@ -46,7 +48,8 @@
           "a": "slides/left.json",
           "b": "slides/right.json",
           "mode": "side-by-side"
-        }
+        },
+        "id": "compare"
       },
       {
         "part": "Canvas",
@@ -56,7 +59,8 @@
         },
         "bind": {
           "content-part": "slides/right.json"
-        }
+        },
+        "id": "canvas"
       },
       {
         "part": "ApprovalCard",
@@ -67,8 +71,15 @@
         "bind": {
           "record": "$selection.campaign-list.id",
           "type": "campaign"
-        }
+        },
+        "id": "approvalcard"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "campaign-list": {
+      "type": "campaign"
+    }
   }
 }

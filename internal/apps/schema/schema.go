@@ -40,8 +40,10 @@ var schemaFiles embed.FS
 //go:embed kit-v0.json
 var kitV0 []byte
 
-//go:embed kit-v2.json
-var kitV2 []byte
+//go:embed manifests/compat-v0.json
+var kitV0Descriptors []byte
+
+//go:generate go run ./cmd/compilecatalog
 
 // KitJSON returns the kit catalog exactly as it is embedded, for the `apps.kit`
 // wire method and for anything that must hand the desk the same bytes it tests.
@@ -150,6 +152,19 @@ func compileAll() compiled {
 			out.err = fmt.Errorf("embedded kit catalog: %w", err)
 			return out
 		}
+		if kit.Kit == 0 {
+			var descriptors map[string]Part
+			if err := json.Unmarshal(kitV0Descriptors, &descriptors); err != nil {
+				out.err = err
+				return out
+			}
+			for i, part := range kit.Parts {
+				d := descriptors[part.Name]
+				kit.Parts[i].Rules = d.Rules
+				kit.Parts[i].Selection = d.Selection
+				kit.Parts[i].Navigation = d.Navigation
+			}
+		}
 		out.kits[kit.Kit] = kit
 	}
 	c := jsonschema.NewCompiler()
@@ -162,7 +177,7 @@ func compileAll() compiled {
 		"screen-1.json": ScreenSchemaURL,
 		"run-1.json":    RunSchemaURL,
 	}
-	for _, name := range []string{"app-2.json", "screen-2.json", "run-2.json", "file-1.json", "records-2.json", "sample-2.json", "part-2.json", "slides-1.json", "timeline-1.json", "graph-1.json", "places-1.json", "formulas-1.json", "run-binding-2.json"} {
+	for _, name := range []string{"app-2.json", "screen-2.json", "run-2.json", "file-1.json", "records-2.json", "process-2.json", "enterprise-2.json", "sample-2.json", "part-2.json", "slides-1.json", "timeline-1.json", "graph-1.json", "places-1.json", "formulas-1.json", "run-binding-2.json"} {
 		urls[name] = schemaURL(name)
 	}
 	for name, url := range urls {

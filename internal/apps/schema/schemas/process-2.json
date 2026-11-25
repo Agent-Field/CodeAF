@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/process-2.json",
+  "$defs": {
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "initial": {
+          "type": "string",
+          "minLength": 1
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "transitions": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "additionalProperties": {
+            "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/transition"
+          }
+        }
+      },
+      "required": [
+        "field",
+        "initial",
+        "states"
+      ]
+    },
+    "transition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guard": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actors": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "person",
+              "agent",
+              "flow"
+            ]
+          },
+          "minItems": 1
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "https://codeaf.dev/schema/screen-2.json#/$defs/action"
+          }
+        }
+      },
+      "required": [
+        "label",
+        "from",
+        "to",
+        "actors"
+      ]
+    },
+    "form": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "when": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                    },
+                    "when": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "field"
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "fields"
+            ]
+          },
+          "minItems": 1
+        },
+        "saveDraft": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "record",
+        "title",
+        "steps"
+      ]
+    },
+    "work_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "$ref": "https://codeaf.dev/schema/records-2.json#/$defs/endpoint"
+        },
+        "assignee": {
+          "type": "string",
+          "minLength": 1
+        },
+        "due": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sla": {
+          "type": "string",
+          "minLength": 1
+        },
+        "form": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "working",
+            "done",
+            "canceled"
+          ]
+        },
+        "outcome": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "title",
+        "subject",
+        "assignee",
+        "form"
+      ]
+    },
+    "timer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "after": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "every": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "https://codeaf.dev/schema/screen-2.json#/$defs/action"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "record",
+        "effects"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "after"
+          ]
+        },
+        {
+          "required": [
+            "at"
+          ]
+        }
+      ]
+    },
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              },
+              "workItem": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              },
+              "after": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "workItem"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "record",
+        "title",
+        "items"
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "lifecycles": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+      },
+      "additionalProperties": {
+        "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/lifecycle"
+      }
+    },
+    "forms": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+      },
+      "additionalProperties": {
+        "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/form"
+      }
+    },
+    "work_items": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+      },
+      "additionalProperties": {
+        "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/work_item"
+      }
+    },
+    "timers": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+      },
+      "additionalProperties": {
+        "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/timer"
+      }
+    },
+    "templates": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+      },
+      "additionalProperties": {
+        "$ref": "https://codeaf.dev/schema/process-2.json#/$defs/template"
+      }
+    }
+  }
+}

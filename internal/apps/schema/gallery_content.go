@@ -202,11 +202,18 @@ func (c *checker) checkTimeline(file, at string, raw any) {
 		}
 		dependencies[id] = stringList(item["after"])
 	}
+	for _, issue := range dependencyProblems(dependencies) {
+		c.add(file, at, CodeContent, "%s", issue)
+	}
+}
+
+func dependencyProblems(dependencies map[string][]string) []string {
+	var problems []string
 	active, visited := map[string]bool{}, map[string]bool{}
 	var visit func(string)
 	visit = func(id string) {
 		if active[id] {
-			c.add(file, at, CodeContent, "Timeline dependencies cycle through %q.", id)
+			problems = append(problems, fmt.Sprintf("Dependencies cycle through %q.", id))
 			return
 		}
 		if visited[id] {
@@ -215,7 +222,7 @@ func (c *checker) checkTimeline(file, at string, raw any) {
 		active[id] = true
 		for _, predecessor := range dependencies[id] {
 			if _, ok := dependencies[predecessor]; !ok {
-				c.add(file, at, CodeContent, "%q depends on missing timeline item %q.", id, predecessor)
+				problems = append(problems, fmt.Sprintf("%q depends on missing item %q.", id, predecessor))
 				continue
 			}
 			visit(predecessor)
@@ -226,6 +233,7 @@ func (c *checker) checkTimeline(file, at string, raw any) {
 	for _, id := range sortedKeys(dependencies) {
 		visit(id)
 	}
+	return problems
 }
 
 type docFrontMatter struct {

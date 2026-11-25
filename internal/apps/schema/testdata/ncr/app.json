@@ -61,7 +61,8 @@
             "label": "Independent reviewer",
             "person": "$record.reviewer"
           }
-        ]
+        ],
+        "statement": "I have reviewed the attached evidence."
       }
     }
   ],

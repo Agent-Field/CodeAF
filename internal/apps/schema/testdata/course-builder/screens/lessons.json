@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "lesson"
+          "records": "lesson",
+          "view": "lesson-list"
         },
         "id": "lesson-list"
       },
@@ -24,7 +25,8 @@
         "props": {},
         "bind": {
           "content-part": "docs/setup.md"
-        }
+        },
+        "id": "text"
       },
       {
         "part": "Media",
@@ -46,8 +48,15 @@
           "file": "$selection.lesson-list.id",
           "type": "lesson",
           "field": "video"
-        }
+        },
+        "id": "media"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "lesson-list": {
+      "type": "lesson"
+    }
   }
 }

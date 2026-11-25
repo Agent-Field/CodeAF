@@ -9,6 +9,7 @@
     },
     "bind": {
       "content-part": "docs/offer.md"
-    }
+    },
+    "id": "text"
   }
 }

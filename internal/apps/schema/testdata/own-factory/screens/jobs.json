@@ -21,7 +21,8 @@
           "board_by": "state"
         },
         "bind": {
-          "records": "job"
+          "records": "job",
+          "view": "job-list"
         },
         "id": "job-list"
       },
@@ -37,8 +38,15 @@
               }
             }
           ]
-        }
+        },
+        "id": "button"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "job-list": {
+      "type": "job"
+    }
   }
 }

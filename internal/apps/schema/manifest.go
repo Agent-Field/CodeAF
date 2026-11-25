@@ -51,12 +51,14 @@ type ContentManifest struct {
 }
 
 type ViewManifest struct {
+	Recipe *ViewRecipeDescriptor `json:"recipe,omitempty"`
 	Manifest
 	Collection string            `json:"collection"`
 	Renderers  map[string]string `json:"renderers"`
 }
 
 type EffectManifest struct {
+	Transition bool `json:"transition,omitempty"`
 	Manifest
 	Modifiers []string `json:"modifiers,omitempty"`
 	Auxiliary bool     `json:"auxiliary,omitempty"`
@@ -76,14 +78,18 @@ type ToolManifest struct {
 
 // Registries holds the first-party entries. Each map key is an entry ID.
 type Registries struct {
-	Fields   map[string]FieldManifest   `json:"field_types"`
-	Content  map[string]ContentManifest `json:"content_types"`
-	Views    map[string]ViewManifest    `json:"view_types"`
-	Actions  map[string]EffectManifest  `json:"action_kinds"`
-	Steps    map[string]EffectManifest  `json:"step_kinds"`
-	Triggers map[string]Manifest        `json:"trigger_sources"`
-	Policies map[string]Manifest        `json:"policy_kinds"`
-	Tools    map[string]ToolManifest    `json:"tools"`
+	AppDeclarations map[string]Manifest        `json:"app_declarations"`
+	ChannelKinds    map[string]Manifest        `json:"channel_kinds"`
+	RuleKinds       map[string]Manifest        `json:"rule_kinds"`
+	Processes       map[string]Manifest        `json:"process_kinds"`
+	Fields          map[string]FieldManifest   `json:"field_types"`
+	Content         map[string]ContentManifest `json:"content_types"`
+	Views           map[string]ViewManifest    `json:"view_types"`
+	Actions         map[string]EffectManifest  `json:"action_kinds"`
+	Steps           map[string]EffectManifest  `json:"step_kinds"`
+	Triggers        map[string]Manifest        `json:"trigger_sources"`
+	Policies        map[string]Manifest        `json:"policy_kinds"`
+	Tools           map[string]ToolManifest    `json:"tools"`
 }
 
 func (r Registries) schemas() map[string]Manifest {
@@ -106,6 +112,18 @@ func (r Registries) schemas() map[string]Manifest {
 	}
 	for key, v := range r.Triggers {
 		add("trigger", key, v)
+	}
+	for key, v := range r.AppDeclarations {
+		add("declaration", key, v)
+	}
+	for key, v := range r.ChannelKinds {
+		add("channel", key, v)
+	}
+	for key, v := range r.RuleKinds {
+		add("rule", key, v)
+	}
+	for key, v := range r.Processes {
+		add("process", key, v)
 	}
 	for key, v := range r.Policies {
 		add("policy", key, v)

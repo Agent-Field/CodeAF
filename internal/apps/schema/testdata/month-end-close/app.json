@@ -26,6 +26,15 @@
         },
         "reviewer": {
           "type": "person"
+        },
+        "phase": {
+          "type": "enum",
+          "values": [
+            "open",
+            "review",
+            "closed"
+          ],
+          "default": "open"
         }
       }
     }
@@ -53,7 +62,8 @@
             "label": "Independent reviewer",
             "person": "$record.reviewer"
           }
-        ]
+        ],
+        "statement": "I have reviewed the attached evidence."
       }
     },
     {
@@ -86,5 +96,42 @@
         "when": "closed"
       }
     }
-  ]
+  ],
+  "process": {
+    "lifecycles": {
+      "close": {
+        "field": "phase",
+        "initial": "open",
+        "states": [
+          "open",
+          "review",
+          "closed"
+        ],
+        "transitions": {
+          "submit": {
+            "label": "Submit for review",
+            "from": [
+              "open"
+            ],
+            "to": "review",
+            "actors": [
+              "person"
+            ],
+            "guard": "amount > 0"
+          },
+          "close": {
+            "label": "Close the month",
+            "from": [
+              "review"
+            ],
+            "to": "closed",
+            "actors": [
+              "person"
+            ],
+            "guard": "checklist_done(\"checks\") && signed(\"review\")"
+          }
+        }
+      }
+    }
+  }
 }

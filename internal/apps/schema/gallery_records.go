@@ -85,11 +85,15 @@ func (c *checker) checkRecordExpression(file, at, typ, expr string) {
 		cel.Function("changed", cel.Overload("changed_string", []*cel.Type{cel.StringType}, cel.BoolType)),
 		cel.Function("days_since", cel.Overload("days_since_dyn", []*cel.Type{cel.DynType}, cel.DoubleType)),
 		cel.Function("count", cel.Overload("count_dyn", []*cel.Type{cel.DynType}, cel.DoubleType)),
+		cel.Function("checklist_done", cel.Overload("checklist_done_id", []*cel.Type{cel.StringType}, cel.BoolType)),
+		cel.Function("signed", cel.Overload("signed_id", []*cel.Type{cel.StringType}, cel.BoolType)),
 	}
 	fields, _ := c.typeFields(typ)
 	names := map[string]bool{}
 	for name := range fields {
 		names[name] = true
+		names["record."+name] = true
+		names["row."+name] = true
 	}
 	for name := range systemFields {
 		names[name] = true
@@ -97,7 +101,7 @@ func (c *checker) checkRecordExpression(file, at, typ, expr string) {
 	for name := range c.app.Records[typ].Constants {
 		names[name] = true
 	}
-	for _, name := range []string{"record", "row", "params", "me", "now"} {
+	for _, name := range []string{"params", "me", "now"} {
 		names[name] = true
 	}
 	for _, name := range sortedKeys(names) {
@@ -176,6 +180,12 @@ func (c *checker) checkGalleryField(typ, name string, field Field) {
 	if field.Default != nil {
 		c.checkGalleryValue(AppFile, at+"/default", field, field.Default, nil)
 	}
+	if field.Sequence != nil && (!contains(entry.Tags, "sequence") || !field.Unique || field.Default != nil || field.Computed != "" || field.AI != "") {
+		c.add(AppFile, at+"/sequence", CodePolicy, "A sequence needs a unique text field managed by the engine.")
+	}
+	if contains(entry.Tags, "currency") != (field.Currency != "") {
+		c.add(AppFile, at+"/currency", CodePolicy, "Only a money field declares a currency, and it must have one.")
+	}
 	if field.AI != "" && !entry.AIFill {
 		c.add(AppFile, at+"/ai", CodeNotAllowed, "This field type does not support AI fill.")
 	}
@@ -238,6 +248,12 @@ func numeric(v any) float64 {
 }
 
 func (c *checker) checkGalleryApp() {
+	c.checkTypeIdentities()
+	c.checkProcess()
+	c.checkEnterprise()
+	for _, typ := range sortedKeys(c.app.Records) {
+		c.checkLedger(typ, c.app.Records[typ].Ledger)
+	}
 	for _, name := range sortedKeys(c.app.Relations) {
 		rel := c.app.Relations[name]
 		at := "/relations/" + name
@@ -303,7 +319,7 @@ func (c *checker) checkSignoff(file, at string, conf map[string]any) {
 		person := asString(values["person"])
 		if i == 0 {
 			maker = person
-		} else if maker == person {
+		} else if conf["makerCannotSign"] == true && maker == person {
 			c.add(file, at+role.path+"/person", CodePolicy, "The maker cannot be a later signer.")
 		}
 		if field, ok := strings.CutPrefix(person, "$record."); ok {
@@ -361,6 +377,27 @@ func (c *checker) checkLink(file, at string, link map[string]any, sample bool) {
 		}
 		if c.checkRecordAccess(file, at+"/"+end.key, typ, end.needs) && sample && !c.sampleIDs[typ][id] {
 			c.add(file, at+"/"+end.key, CodeSampleRefMissing, "No sample %s record has id %q.", typ, id)
+		}
+	}
+}
+
+func (c *checker) checkTypeIdentities() {
+	seen := map[string]bool{}
+	add := func(at, id string) {
+		if id == "" {
+			return
+		}
+		if seen[id] {
+			c.add(AppFile, at, CodeDuplicateID, "Multiple types or fields use id %q.", id)
+		}
+		seen[id] = true
+	}
+	for _, name := range sortedKeys(c.app.Records) {
+		t := c.app.Records[name]
+		at := "/records/" + name
+		add(at+"/id", t.ID)
+		for _, field := range sortedKeys(t.Fields) {
+			add(at+"/fields/"+field+"/id", t.Fields[field].ID)
 		}
 	}
 }

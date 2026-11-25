@@ -9,6 +9,7 @@
     },
     "bind": {
       "content-part": "plan/shifts.json"
-    }
+    },
+    "id": "timeline"
   }
 }

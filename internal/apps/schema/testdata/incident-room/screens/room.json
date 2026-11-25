@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "incident"
+          "records": "incident",
+          "view": "incident-list"
         },
         "id": "incident-list"
       },
@@ -27,7 +28,8 @@
         "bind": {
           "record": "$selection.incident-list.id",
           "type": "incident"
-        }
+        },
+        "id": "timer"
       },
       {
         "part": "LogStream",
@@ -36,7 +38,8 @@
         },
         "bind": {
           "run": "monitor"
-        }
+        },
+        "id": "logstream"
       },
       {
         "part": "Chart",
@@ -46,7 +49,8 @@
         },
         "bind": {
           "run": "monitor"
-        }
+        },
+        "id": "chart"
       },
       {
         "part": "Timeline",
@@ -56,8 +60,15 @@
         },
         "bind": {
           "content-part": "plan/incident.json"
-        }
+        },
+        "id": "timeline"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "incident-list": {
+      "type": "incident"
+    }
   }
 }

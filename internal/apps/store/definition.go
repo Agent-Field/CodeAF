@@ -116,6 +116,11 @@ func readDefinition(dir string, extra ...string) (files, error) {
 			return nil, err
 		}
 	}
+	if a.Kit == 0 {
+		for _, name := range (schema.Definition{Files: f}).ScreenFiles() {
+			f[name] = schema.WithLegacyNodeIDs(f[name])
+		}
+	}
 	if err := f.checkEntries(root.FS(), extra); err != nil {
 		return nil, err
 	}

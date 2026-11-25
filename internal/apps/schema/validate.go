@@ -115,7 +115,7 @@ var outbound = map[string]bool{"send": true, "post": true, "reply": true, "pay":
 var systemFields = map[string]bool{"id": true, "created_at": true, "updated_at": true}
 
 var (
-	selectionRef  = regexp.MustCompile(`\$selection\.([a-z][a-z0-9_-]*)`)
+	selectionRef  = regexp.MustCompile(`\$selection\.([a-z][a-z0-9_-]*|[0-9A-HJKMNP-TV-Z]{26})`)
 	paramsRef     = regexp.MustCompile(`\$params\.([a-z][a-z0-9_]*)`)
 	stepsRef      = regexp.MustCompile(`\$steps\.([a-z][a-z0-9_-]*)`)
 	durationText  = regexp.MustCompile(`^[0-9]+(s|m|h|d|w)$`)
@@ -216,6 +216,9 @@ func Validate(def Definition, existing TypeSet) Report {
 	}
 	for _, f := range c.def.ScreenFiles() {
 		raw := c.def.Files[f]
+		if c.kit.Kit == 0 {
+			raw = WithLegacyNodeIDs(raw)
+		}
 		if !c.schemaCheck(f, raw, screenSchema) {
 			continue
 		}
@@ -512,6 +515,7 @@ func (c *checker) canWrite(typ string) bool { return c.access(typ) == "rw" }
 // type of the row or record around it, the type of the lists on its screen, and,
 // in a command, the type the command is for.
 type actionCtx struct {
+	views         map[string]QueryIR
 	locals        map[string]string
 	file          string
 	rowType       string
@@ -694,7 +698,12 @@ func (c *checker) checkScreen(file string, s Screen) {
 	for _, p := range s.Params {
 		declared[p] = true
 	}
-	ctx := actionCtx{file: file, lists: map[string]string{}}
+	ctx := actionCtx{file: file, lists: map[string]string{}, views: s.Views}
+	if c.kit.Kit == 2 {
+		for _, id := range sortedKeys(s.Views) {
+			c.checkQuery(file, "/views/"+id, s.Views[id])
+		}
+	}
 	ids := map[string]bool{}
 	navs := 0
 
@@ -711,11 +720,11 @@ func (c *checker) checkScreen(file string, s Screen) {
 				c.add(file, at+"/id", CodeDuplicateID, "Two parts on this screen are called %q.", n.ID)
 			}
 			ids[n.ID] = true
-			if (part.Selection || c.kit.Kit == 0 && n.Part == "RecordList") && n.Bind != nil && n.Bind.Records != "" {
+			if part.Selection && n.Bind != nil && n.Bind.Records != "" {
 				ctx.lists[n.ID] = n.Bind.Records
 			}
 		}
-		if part.Navigation || c.kit.Kit == 0 && n.Part == "SectionTabs" {
+		if part.Navigation {
 			navs++
 		}
 		// A params binding on a layout part declares params the same way the
@@ -839,24 +848,10 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 			}
 		}
 	}
-	if c.kit.Kit == 0 && n.Part == "RecordForm" && (n.Bind == nil || n.Bind.Record == "") {
-		t, _ := props["type"].(string)
-		if t == "" {
-			c.add(ctx.file, at, CodeBindTypeUnknown, "This RecordForm neither edits a bound record nor says which type it creates; add props.type.")
-		} else if !c.knownType(t) {
-			c.add(ctx.file, at+"/props/type", CodeTypeUnknown, "This form creates %q records, which is not a record type here.", t)
-		} else {
-			typ = t
-			if !c.canWrite(t) {
-				c.add(ctx.file, at+"/props/type", CodeNotAllowed, "This form creates %s records, which needs \"%s\": \"rw\" in capabilities.records.", t, t)
-			}
-		}
-	}
-
 	if c.kit.Kit == 2 {
 		typ = c.checkGalleryPart(ctx, n, part, at, typ)
 	} else {
-		c.checkPartFields(ctx, n, at, typ, props)
+		typ = c.checkLegacyPart(ctx, n, part, at, typ)
 	}
 
 	actx := ctx
@@ -871,69 +866,40 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 	}
 }
 
-// checkPartFields checks every prop that names a field, a list, a screen or a
-// command against what the app really has.
-func (c *checker) checkPartFields(ctx actionCtx, n *Node, at, typ string, props map[string]any) {
-	fields, haveType := c.typeFields(typ)
-	field := func(prop, name string, wantEnum bool) {
-		if !haveType || name == "" {
-			return
-		}
-		fd, ok := fields[name]
-		if !ok && !systemFields[name] {
-			c.add(ctx.file, at+"/props/"+prop, CodeFieldUnknown, "%s shows %s.%s, but %s has no such field.", n.Part, typ, name, typ)
-			return
-		}
-		if wantEnum && ok && fd.Type != "enum" {
-			c.add(ctx.file, at+"/props/"+prop, CodeFieldNotEnum, "%s groups by %s.%s, which is a %s field; only a field with a fixed list of values can make columns or a meter.", n.Part, typ, name, fd.Type)
-		}
-	}
-	for _, prop := range []string{"columns", "fields"} {
-		for _, f := range stringList(props[prop]) {
-			field(prop, f, false)
-		}
-	}
-	switch n.Part {
-	case "RecordList":
-		meter, _ := props["meter"].(string)
-		field("meter", meter, true)
-		by, _ := props["board_by"].(string)
-		field("board_by", by, true)
-		if contains(stringList(props["views"]), "board") && by == "" {
-			c.add(ctx.file, at+"/props/views", CodeBoardByMissing, "This list offers a board but does not say which field makes its columns; add board_by.")
-		}
-	case "StateMeter":
-		f, _ := props["field"].(string)
-		field("field", f, true)
-	case "StatTile":
-		f, _ := props["field"].(string)
-		field("field", f, false)
-	case "Chart":
-		for _, p := range []string{"x", "y"} {
-			f, _ := props[p].(string)
-			field(p, f, false)
-		}
-	case "BulkBar", "QueryField":
-		list, _ := props["for"].(string)
-		if _, ok := ctx.lists[list]; !ok {
-			c.add(ctx.file, at+"/props/for", CodeListUnknown, "This %s is for the list %q, but the screen has no RecordList with that id.", n.Part, list)
-		}
-	case "SectionTabs":
-		items, _ := props["items"].([]any)
-		for i, it := range items {
-			m, _ := it.(map[string]any)
-			s, _ := m["screen"].(string)
-			if !c.screens[s] {
-				c.add(ctx.file, fmt.Sprintf("%s/props/items/%d/screen", at, i), CodeOpenUnknown, "The tab %v opens the screen %q, but there is no screens/%s.json.", m["label"], s, s)
+// checkLegacyPart interprets the kit 0 descriptors while preserving the original
+// error codes and the kit 0 form's create-versus-edit semantics.
+func (c *checker) checkLegacyPart(ctx actionCtx, n *Node, part Part, at, typ string) string {
+	for _, rule := range part.Rules {
+		if rule.Check == "create-type" && (n.Bind == nil || n.Bind.Record == "") {
+			t := asString(n.Props[rule.Path])
+			if t == "" {
+				c.add(ctx.file, at, CodeBindTypeUnknown, "%s needs a bound record or a type to create.", n.Part)
+			} else if c.checkRecordAccess(ctx.file, at+"/props/"+rule.Path, t, "rw") {
+				typ = t
 			}
 		}
-	case "RecordPage":
-		for _, cmd := range stringList(props["actions"]) {
-			if _, ok := c.commands[cmd]; !ok {
-				c.add(ctx.file, at+"/props/actions", CodeCommandUnknown, "RecordPage shows the command %q, but app.json has no command by that id.", cmd)
+		for _, value := range ruleValues(n.Props, rule.Path) {
+			name, where := asString(value.value), at+"/props"+value.path
+			switch rule.Check {
+			case "field", "enum-field":
+				if fields, haveType := c.typeFields(typ); haveType && name != "" {
+					if f, ok := fields[name]; !ok && !systemFields[name] {
+						c.add(ctx.file, where, CodeFieldUnknown, "%s has no field named %q.", typ, name)
+					} else if ok && rule.Check == "enum-field" && f.Type != "enum" {
+						c.add(ctx.file, where, CodeFieldNotEnum, "%s.%s is not an enum field.", typ, name)
+					}
+				}
+			case "requires-for-value":
+				match, requiredProp, _ := strings.Cut(rule.Options, "/")
+				if name == match && asString(n.Props[requiredProp]) == "" {
+					c.add(ctx.file, where, CodeBoardByMissing, "%s needs %s to show %s.", n.Part, requiredProp, match)
+				}
+			default:
+				c.checkReference(ctx, where, rule.Check, name)
 			}
 		}
 	}
+	return typ
 }
 
 // ---------- runs ----------

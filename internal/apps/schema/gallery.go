@@ -177,6 +177,7 @@ func (c *checker) validateEntry(file, at, code, key string, value any) bool {
 // local manifests.
 func (c *checker) checkGalleryPart(ctx actionCtx, n *Node, p Part, at, typ string) string {
 	b := n.Bind
+	var projection QueryIR
 	if p.BindingRequired && b == nil {
 		c.add(ctx.file, at+"/bind", CodeBindNotAccepted, "%s needs a binding.", p.Name)
 	}
@@ -210,9 +211,7 @@ func (c *checker) checkGalleryPart(ctx actionCtx, n *Node, p Part, at, typ strin
 				c.add(ctx.file, at+"/bind/selection", CodeSelectionUnknown, "The screen has no selection named %q.", b.Selection)
 			}
 		case "records":
-			if b.Trace != nil {
-				c.checkTrace(ctx.file, at+"/bind/trace", *b.Trace)
-			}
+			projection = c.checkViewBinding(ctx, at+"/bind", b)
 		}
 	}
 	if typ == "" && p.Capabilities != "" {
@@ -229,7 +228,22 @@ func (c *checker) checkGalleryPart(ctx actionCtx, n *Node, p Part, at, typ strin
 		for _, value := range ruleValues(props, rule.Path) {
 			switch rule.Check {
 			case "field":
+				output := false
+				for _, aggregate := range projection.Aggregate {
+					output = output || aggregate.As == asString(value.value)
+				}
+				if output {
+					continue
+				}
 				c.checkTaggedField(ctx.file, at+"/props"+value.path, typ, asString(value.value), rule.Options)
+			case "writable-field":
+				name := asString(value.value)
+				c.checkTaggedField(ctx.file, at+"/props"+value.path, typ, name, "")
+				fields, _ := c.typeFields(typ)
+				life, lifecycle := c.lifecycle(typ)
+				if systemFields[name] || fields[name].Computed != "" || lifecycle && life.Field == name {
+					c.add(ctx.file, at+"/props"+value.path, CodeNotAllowed, "This form cannot edit %q.", name)
+				}
 			case "field-value":
 				fieldName := value.path[strings.LastIndex(value.path, "/")+1:]
 				fields, _ := c.typeFields(typ)
@@ -264,6 +278,14 @@ func (c *checker) checkGalleryPart(ctx actionCtx, n *Node, p Part, at, typ strin
 						}
 					}
 				}
+			case "lifecycle":
+				if _, ok := c.lifecycle(typ); !ok {
+					c.add(ctx.file, at, CodePolicy, "%s needs a record with a lifecycle.", p.Name)
+				}
+			case "lifecycle-group":
+				c.checkLifecycleGroup(ctx, at, typ, asString(value.value), rule.Options, n)
+			case "process-ref":
+				c.checkProcessRef(ctx.file, at+"/props"+value.path, rule.Options, asString(value.value), typ)
 			case "content-file":
 				c.checkContentBinding(ctx.file, at+"/props"+value.path, asString(value.value), rule.Options, "")
 			default:

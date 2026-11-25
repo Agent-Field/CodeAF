@@ -10,6 +10,7 @@
     },
     "bind": {
       "content-part": "plan/deliveries.json"
-    }
+    },
+    "id": "timeline"
   }
 }

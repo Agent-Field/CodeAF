@@ -174,6 +174,22 @@ func (c *checker) checkRules(ctx actionCtx, at string, rules []ManifestRule, val
 				} else {
 					c.checkExpression(ctx.file, where, val)
 				}
+			case "transition-effect":
+				c.checkTransitionEffect(ctx.file, where, body)
+			case "ask-work":
+				c.checkProcessRef(ctx.file, where, "work_items", asString(body["item"]), ctx.rowType)
+			case "process-ref":
+				c.checkProcessRef(ctx.file, where, rule.Options, val, ctx.rowType)
+			case "work-effect":
+				c.checkProcessRef(ctx.file, where, "work_items", asString(body["template"]), ctx.rowType)
+			case "timer-effect":
+				c.checkProcessRef(ctx.file, where, "timers", asString(body["timer"]), ctx.rowType)
+			case "template-effect":
+				c.checkProcessRef(ctx.file, where, "templates", asString(body["template"]), ctx.rowType)
+			case "signoff-effect":
+				if _, ok := c.policy(asString(body["policy"])); !ok {
+					c.add(ctx.file, where, CodePolicy, "Choose an existing sign-off policy.")
+				}
 			case "masked-fields":
 				c.checkTaggedField(ctx.file, where, asString(value["record"]), val, "masked")
 			case "signoff":
@@ -210,6 +226,9 @@ func (c *checker) checkRecordWrite(ctx actionCtx, at string, body map[string]any
 		if !ok {
 			c.add(ctx.file, at+"/set/"+key, CodeFieldUnknown, "%s has no field named %q.", typ, key)
 			continue
+		}
+		if life, managed := c.lifecycle(typ); managed && life.Field == key {
+			c.add(ctx.file, at+"/set/"+key, CodeNotAllowed, "Change %s.%s through a lifecycle transition.", typ, key)
 		}
 		if field.Computed != "" || contains(c.kit.Registries.Fields[field.Type].Tags, "policy-write") {
 			c.add(ctx.file, at+"/set/"+key, CodeNotAllowed, "%s.%s is written by a rule.", typ, key)

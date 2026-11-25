@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "contract"
+          "records": "contract",
+          "view": "contract-list"
         },
         "id": "contract-list"
       },
@@ -31,7 +32,8 @@
         },
         "bind": {
           "content-part": "docs/agreement.md"
-        }
+        },
+        "id": "text"
       },
       {
         "part": "ApprovalCard",
@@ -42,8 +44,15 @@
         "bind": {
           "record": "$selection.contract-list.id",
           "type": "contract"
-        }
+        },
+        "id": "approvalcard"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "contract-list": {
+      "type": "contract"
+    }
   }
 }

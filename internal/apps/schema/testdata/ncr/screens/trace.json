@@ -13,7 +13,8 @@
         },
         "bind": {
           "content-part": "graph/affected.json"
-        }
+        },
+        "id": "graph"
       },
       {
         "part": "RecordList",
@@ -26,19 +27,27 @@
         },
         "bind": {
           "records": "drawing",
-          "trace": {
-            "from": {
-              "type": "ncr",
-              "id": "01KAT0000A00000000000000001"
-            },
-            "direction": "out",
-            "depth": 2,
-            "kinds": [
-              "affects"
-            ]
-          }
-        }
+          "view": "recordlist"
+        },
+        "id": "recordlist"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "recordlist": {
+      "type": "drawing",
+      "relate": {
+        "from": {
+          "type": "ncr",
+          "id": "01KAT0000A00000000000000001"
+        },
+        "direction": "out",
+        "depth": 2,
+        "kinds": [
+          "affects"
+        ]
+      }
+    }
   }
 }

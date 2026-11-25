@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "ncr"
+          "records": "ncr",
+          "view": "ncr-list"
         },
         "id": "ncr-list"
       },
@@ -27,7 +28,8 @@
         "bind": {
           "record": "$selection.ncr-list.id",
           "type": "ncr"
-        }
+        },
+        "id": "recordpage"
       },
       {
         "part": "FileViewer",
@@ -40,7 +42,8 @@
           "file": "$selection.ncr-list.id",
           "type": "ncr",
           "field": "drawing"
-        }
+        },
+        "id": "fileviewer"
       },
       {
         "part": "SignOff",
@@ -51,8 +54,15 @@
         "bind": {
           "record": "$selection.ncr-list.id",
           "type": "ncr"
-        }
+        },
+        "id": "signoff"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "ncr-list": {
+      "type": "ncr"
+    }
   }
 }

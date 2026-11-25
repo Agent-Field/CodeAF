@@ -16,7 +16,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "sku"
+          "records": "sku",
+          "view": "sku-list"
         },
         "id": "sku-list"
       },
@@ -30,8 +31,15 @@
             "sku",
             "qty"
           ]
-        }
+        },
+        "id": "form"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "sku-list": {
+      "type": "sku"
+    }
   }
 }

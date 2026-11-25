@@ -14,7 +14,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "close"
+          "records": "close",
+          "view": "close-list"
         },
         "id": "close-list"
       },
@@ -35,7 +36,8 @@
         },
         "bind": {
           "content-part": "sheets/ledger.csv"
-        }
+        },
+        "id": "grid"
       },
       {
         "part": "Checklist",
@@ -46,7 +48,8 @@
         "bind": {
           "record": "$selection.close-list.id",
           "type": "close"
-        }
+        },
+        "id": "checklist"
       },
       {
         "part": "SignOff",
@@ -57,8 +60,24 @@
         "bind": {
           "record": "$selection.close-list.id",
           "type": "close"
+        },
+        "id": "signoff"
+      },
+      {
+        "id": "phase",
+        "part": "StateBar",
+        "label": "Month-end state",
+        "bind": {
+          "record": "$selection.close-list.id",
+          "type": "close"
         }
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "close-list": {
+      "type": "close"
+    }
   }
 }

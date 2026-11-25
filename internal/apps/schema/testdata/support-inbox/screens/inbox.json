@@ -16,7 +16,8 @@
           "select": "one"
         },
         "bind": {
-          "records": "ticket"
+          "records": "ticket",
+          "view": "ticket-list"
         },
         "id": "ticket-list"
       },
@@ -30,7 +31,8 @@
         "bind": {
           "record": "$selection.ticket-list.id",
           "type": "ticket"
-        }
+        },
+        "id": "thread"
       },
       {
         "part": "Timer",
@@ -43,7 +45,8 @@
         "bind": {
           "record": "$selection.ticket-list.id",
           "type": "ticket"
-        }
+        },
+        "id": "timer"
       },
       {
         "part": "ApprovalCard",
@@ -53,8 +56,15 @@
         },
         "bind": {
           "run": "reply"
-        }
+        },
+        "id": "approvalcard"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "ticket-list": {
+      "type": "ticket"
+    }
   }
 }

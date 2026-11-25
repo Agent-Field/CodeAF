@@ -20,7 +20,8 @@
           "board_by": "stage"
         },
         "bind": {
-          "records": "candidate"
+          "records": "candidate",
+          "view": "candidate-list"
         },
         "id": "candidate-list"
       },
@@ -35,8 +36,15 @@
         "bind": {
           "record": "$selection.candidate-list.id",
           "type": "candidate"
-        }
+        },
+        "id": "form"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "candidate-list": {
+      "type": "candidate"
+    }
   }
 }

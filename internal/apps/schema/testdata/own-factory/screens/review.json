@@ -9,7 +9,8 @@
         "label": "Run timeline",
         "bind": {
           "run": "fix"
-        }
+        },
+        "id": "runtimeline"
       },
       {
         "part": "LogStream",
@@ -18,20 +19,23 @@
         },
         "bind": {
           "run": "fix"
-        }
+        },
+        "id": "logstream"
       },
       {
         "part": "DiffViewer",
         "label": "Patch",
         "bind": {
           "run": "fix"
-        }
+        },
+        "id": "diffviewer"
       },
       {
         "part": "ProofList",
         "bind": {
           "run": "fix"
-        }
+        },
+        "id": "prooflist"
       },
       {
         "part": "ApprovalCard",
@@ -41,8 +45,10 @@
         },
         "bind": {
           "run": "fix"
-        }
+        },
+        "id": "approvalcard"
       }
-    ]
+    ],
+    "id": "stack"
   }
 }

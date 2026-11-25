@@ -1,7 +1,11 @@
 package schema
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 )
 
@@ -10,8 +14,8 @@ func TestGalleryKitCatalog(t *testing.T) {
 	if err := json.Unmarshal(KitJSON(), &kit); err != nil {
 		t.Fatal(err)
 	}
-	if kit.Kit != 2 || len(kit.Parts) != 59 {
-		t.Fatalf("catalog has kit %d and %d parts, want kit 2 and 59 parts", kit.Kit, len(kit.Parts))
+	if kit.Kit != 2 || len(kit.Parts) != 64 {
+		t.Fatalf("catalog has kit %d and %d parts, want kit 2 and 64 parts", kit.Kit, len(kit.Parts))
 	}
 }
 
@@ -93,9 +97,9 @@ func TestGalleryCustomManifestUsesTheSamePropsBindingsAndEvents(t *testing.T) {
 		"props":{"type":"object","required":["tone"],"additionalProperties":false,"properties":{"tone":{"enum":["neutral","critical"]}}}
 	}`)
 	def.Files["screens/stock.json"] = []byte(`{
-		"screen":"stock","title":"Stock",
-		"body":{"part":"custom/summary","label":"Low stock","props":{"tone":"critical"},
-			"bind":{"records":"sku"},"on":{"pick":[{"open":"orders"}]}}
+		"screen":"stock","title":"Stock","views":{"stock":{"type":"sku"}},
+		"body":{"part":"custom/summary","id":"summary","label":"Low stock","props":{"tone":"critical"},
+			"bind":{"records":"sku","view":"stock"},"on":{"pick":[{"open":"orders"}]}}
 	}`)
 	if r := Validate(def, nil); !r.OK() {
 		t.Fatal(r.String())
@@ -103,7 +107,7 @@ func TestGalleryCustomManifestUsesTheSamePropsBindingsAndEvents(t *testing.T) {
 
 	textEdit("screens/stock.json", `"critical"`, `"blue"`)(t, def.Files)
 	textEdit("screens/stock.json", `"pick"`, `"hover"`)(t, def.Files)
-	textEdit("screens/stock.json", `"records":"sku"`, `"runs":"missing"`)(t, def.Files)
+	textEdit("screens/stock.json", `"records":"sku","view":"stock"`, `"runs":"missing"`)(t, def.Files)
 	r := Validate(def, nil)
 	for _, code := range []string{CodePartProps, CodeEventUnknown, CodeBindNotAccepted} {
 		if !hasCode(r, code) {
@@ -119,5 +123,19 @@ func TestGalleryCustomManifestUsesTheSamePropsBindingsAndEvents(t *testing.T) {
 	}`)
 	if r := Validate(def, nil); !hasCode(r, CodeManifest) {
 		t.Fatalf("custom schemas must be self-contained:\n%s", r)
+	}
+}
+
+func TestGeneratedDeskRegistryMatchesEngine(t *testing.T) {
+	desk, err := os.ReadFile("kit-v2.json")
+	if err != nil {
+		t.Fatalf("desk catalog missing: %v", err)
+	}
+	engine := KitJSON()
+	if digest := fmt.Sprintf("%x", sha256.Sum256(engine)); digest != kitV2SourceDigest {
+		t.Fatalf("Go catalog is stale: run go generate ./internal/apps/schema")
+	}
+	if !bytes.Equal(engine, desk) {
+		t.Fatal("desk catalog is stale: run go generate ./internal/apps/schema")
 	}
 }

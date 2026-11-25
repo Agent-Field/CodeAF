@@ -12,8 +12,10 @@
           "y": "arr"
         },
         "bind": {
-          "records": "metric"
-        }
+          "records": "metric",
+          "view": "chart"
+        },
+        "id": "chart"
       },
       {
         "part": "Text",
@@ -23,7 +25,8 @@
         },
         "bind": {
           "content-part": "docs/update.md"
-        }
+        },
+        "id": "text"
       },
       {
         "part": "ApprovalCard",
@@ -34,8 +37,15 @@
         "bind": {
           "record": "01KAT0000A00000000000000001",
           "type": "metric"
-        }
+        },
+        "id": "approvalcard"
       }
-    ]
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "chart": {
+      "type": "metric"
+    }
   }
 }

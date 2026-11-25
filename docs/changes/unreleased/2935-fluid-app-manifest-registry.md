@@ -11,3 +11,7 @@ invalidates:
 Kit 2 definitions can reference app content files and describe application
 features such as evidence, sign-off, record links, and deadlines. Keep and
 Revert preserve their content files and custom part manifests.
+
+Intent recipes and markup compile to screens with stable node IDs and declared
+queries. Lifecycle boards use guarded transitions. Kits can also describe work
+items, conditional forms, timers, roles, intake channels and ledger types.
