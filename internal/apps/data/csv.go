@@ -60,13 +60,21 @@ type ImportResult struct {
 var errDryRun = errors.New("dry run")
 
 // ImportCSV copies the rows of a CSV file into typ.
+//
+// AN IMPORT IS THE PERSON'S, IN THE DATA PLACE, NEVER AN APP'S. It reads a
+// file by path, and an app (its screens, its agent) reaching for a path would
+// be a way to read any file on the machine into records it can see. So a call
+// with an app is refused before the path is so much as looked at.
 func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResult, error) {
-	header, lines, err := readCSV(opts.Path)
-	if err != nil {
-		return nil, err
+	if sc.App != "" || sc.Agent {
+		return nil, &Error{Code: CodeNotAllowed, Need: "import", Message: "importing a file is done in the Data place, not by an app"}
 	}
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, true)
+	if err != nil {
+		return nil, err
+	}
+	header, lines, err := readCSV(opts.Path)
 	if err != nil {
 		return nil, err
 	}

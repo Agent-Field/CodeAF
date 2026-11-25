@@ -19,6 +19,10 @@ type Place struct {
 	home string
 	opts Options
 
+	// seedMu makes one SeedSample at a time, so two never interleave closing,
+	// removing and reopening one draft's file.
+	seedMu sync.Mutex
+
 	mu     sync.Mutex
 	main   *Store
 	drafts map[string]*Store
@@ -113,25 +117,37 @@ func (p *Place) SeedSample(draft string, appJSON []byte, rows map[string][]map[s
 	if err != nil {
 		return err
 	}
-	if err := p.CloseDraft(draft); err != nil {
-		return err
-	}
-	dir := p.DraftDir(draft)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	path := filepath.Join(dir, "sample.db")
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
+	p.seedMu.Lock()
+	defer p.seedMu.Unlock()
+	// Closing, removing and opening happen under one hold of p.mu, so a
+	// Store(draft) in between can neither open the old file nor leave a
+	// second store on the new one.
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
 		return errorf(CodeClosed, "the data store is closed")
 	}
-	s, err := p.openDraft(draft, path)
+	if old := p.drafts[draft]; old != nil {
+		delete(p.drafts, draft)
+		if err := old.Close(); err != nil {
+			p.mu.Unlock()
+			return err
+		}
+	}
+	dir := p.DraftDir(draft)
+	path := filepath.Join(dir, "sample.db")
+	err = os.MkdirAll(dir, 0o700)
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err == nil {
+			if rerr := os.Remove(path + suffix); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+				err = rerr
+			}
+		}
+	}
+	var s *Store
+	if err == nil {
+		s, err = p.openDraft(draft, path)
+	}
 	p.mu.Unlock()
 	if err != nil {
 		return err

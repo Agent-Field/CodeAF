@@ -84,7 +84,7 @@ func compileQuery(sch *schema, t *Type, sc Scope, text string, now time.Time) (*
 	if len(text) > queryMax {
 		return nil, errorf(CodeInvalid, "the query is longer than %d characters", queryMax)
 	}
-	c := &compiled{t: t, refTitle: refTitles(sch), sort: sortSpec{field: "created_at", desc: true, expr: "r.created_at"}}
+	c := &compiled{t: t, refTitle: refTitles(sch, sc), sort: sortSpec{field: "created_at", desc: true, expr: "r.created_at"}}
 	tokens, err := tokenize(text)
 	if err != nil {
 		return nil, err
@@ -679,9 +679,14 @@ func normalizeKey(k any) any {
 	return k
 }
 
-// refTitles answers the title field of a type, for matching refs by name.
-func refTitles(sch *schema) func(string) string {
+// refTitles answers the title field of a type, for matching refs by name;
+// none when the scope may not read that type, so a ref query never tells an
+// app whether a record it cannot read has some name.
+func refTitles(sch *schema, sc Scope) func(string) string {
 	return func(typ string) string {
+		if _, err := sch.allow(sc, typ, false); err != nil {
+			return ""
+		}
 		if t := sch.types[typ]; t != nil {
 			return t.titleField()
 		}

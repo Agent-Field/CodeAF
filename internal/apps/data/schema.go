@@ -260,6 +260,16 @@ func (t *Type) compile(now func() time.Time) []error {
 			problems = append(problems, fieldErr(name, "%s.%s: %v", t.Name, name, err))
 			continue
 		}
+		// A COMPUTED FIELD THAT READS A MASKED ONE IS MASKED TOO, or it is
+		// the masked value with the mask taken off: "computed": "ssn" would
+		// show, sort and search what the mask hides.
+		if !f.Masked {
+			for ref := range identifiers(f.Computed) {
+				if src := t.Fields[ref]; src != nil && src.Masked {
+					problems = append(problems, fieldErr(name, "%s.%s reads %s, which is masked; mark %s masked too", t.Name, name, ref, name))
+				}
+			}
+		}
 		f.computed = p
 		t.computedOrder = append(t.computedOrder, name)
 		t.clocked = t.clocked || p.readsAt

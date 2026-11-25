@@ -20,6 +20,9 @@ import (
 // SubsMax is the most subscriptions one store holds.
 const SubsMax = 1000
 
+// beforeChunk is how many records as they were one query lays out.
+const beforeChunk = 500
+
 // SubSpec is what a subscription watches: a query over a type, or (Record
 // set) one record.
 type SubSpec struct {
@@ -146,10 +149,11 @@ func (s *Store) diff(sub *subscription, c *Change, ids []string) (Diff, bool) {
 	}
 	where, args := q.filter()
 
+	// The ids go in as one JSON array: an import of fifty thousand rows is
+	// one change, and that many placeholders is past SQLite's limit.
 	matchedNow := map[string]bool{}
-	marks := placeholders(len(ids))
-	nowArgs := append(append([]any(nil), args...), anys(ids)...)
-	rows, err := s.rdb.Query(`SELECT `+recordColumnsR+` FROM records r WHERE `+where+` AND r.id IN (`+marks+`)`, nowArgs...)
+	nowArgs := append(append([]any(nil), args...), canonicalJSON(ids))
+	rows, err := s.rdb.Query(`SELECT `+recordColumnsR+` FROM records r WHERE `+where+` AND r.id IN (SELECT value FROM json_each(?))`, nowArgs...)
 	if err != nil {
 		return Diff{}, false
 	}
@@ -171,18 +175,24 @@ func (s *Store) diff(sub *subscription, c *Change, ids []string) (Diff, bool) {
 		}
 	}
 
-	if len(c.befores) > 0 {
+	var befores []*record
+	for _, id := range ids {
+		if b := c.befores[id]; b != nil {
+			befores = append(befores, b)
+		}
+	}
+	// The records as they were are asked about a chunk at a time, each chunk
+	// well under SQLite's parameter limit.
+	for len(befores) > 0 {
+		chunk := befores[:min(len(befores), beforeChunk)]
+		befores = befores[len(chunk):]
 		var values []string
 		var beforeArgs []any
-		for _, id := range ids {
-			b := c.befores[id]
-			if b == nil {
-				continue
-			}
+		for _, b := range chunk {
 			values = append(values, "(?, ?, ?, ?, ?, ?, NULL)")
 			beforeArgs = append(beforeArgs, b.ID, b.Type, canonicalJSON(b.Data), canonicalJSON(b.Meta), b.CreatedAt, b.UpdatedAt)
 		}
-		if len(values) > 0 {
+		{
 			stmt := `WITH r(id, type, data_json, meta_json, created_at, updated_at, deleted_at) AS (VALUES ` +
 				strings.Join(values, ", ") + `) SELECT r.id FROM r WHERE ` + where
 			rows, err := s.rdb.Query(stmt, append(beforeArgs, args...)...)
@@ -211,18 +221,3 @@ func (s *Store) diff(sub *subscription, c *Change, ids []string) (Diff, bool) {
 	return d, true
 }
 
-// placeholders is n question marks for an IN list.
-func placeholders(n int) string {
-	if n == 0 {
-		return "NULL"
-	}
-	return strings.TrimSuffix(strings.Repeat("?, ", n), ", ")
-}
-
-func anys(ids []string) []any {
-	out := make([]any, len(ids))
-	for i, id := range ids {
-		out[i] = id
-	}
-	return out
-}

@@ -189,6 +189,44 @@ func native(v ref.Val) any {
 	return v.Value()
 }
 
+// identifiers is every name an expression reads, outside its string
+// literals.
+func identifiers(src string) map[string]bool {
+	out := map[string]bool{}
+	text := rewrite(src)
+	isIdent := func(c byte) bool {
+		return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+	}
+	for i := 0; i < len(text); {
+		c := text[i]
+		switch {
+		case c == '\'' || c == '"':
+			j := i + 1
+			for j < len(text) && text[j] != c {
+				if text[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			i = j + 1
+		case isIdent(c) && !(c >= '0' && c <= '9'):
+			j := i
+			for j < len(text) && isIdent(text[j]) {
+				j++
+			}
+			out[text[i:j]] = true
+			i = j
+		case c >= '0' && c <= '9':
+			for i < len(text) && (isIdent(text[i]) || text[i] == '.') {
+				i++
+			}
+		default:
+			i++
+		}
+	}
+	return out
+}
+
 // rewrite turns the subset's spellings into CEL's: $me and $now become calls,
 // $record. disappears (fields are read by name), changed('x') becomes a look
 // in the fields this write changed, and an integer literal becomes a double.

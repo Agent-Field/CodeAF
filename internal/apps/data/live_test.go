@@ -1,7 +1,6 @@
 package data
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,8 +46,11 @@ func (r *recorder) quiet(t *testing.T, s *Store) {
 	t.Helper()
 	// A write to another type passes through the dispatcher after anything
 	// queued before it, so once its hook has run nothing earlier is pending.
-	done := make(chan struct{})
-	stop := s.OnCommit(func(Change) {
+	done := make(chan struct{}, 1)
+	stop := s.OnCommit(func(c Change) {
+		if c.Type != "company" {
+			return
+		}
 		select {
 		case done <- struct{}{}:
 		default:
@@ -286,6 +288,9 @@ func TestImportCSV(t *testing.T) {
 	wantCode(t, err, CodeInvalid)
 	_, err = s.ImportCSV(Scope{App: "ghost"}, "contact", ImportOptions{Path: path})
 	wantCode(t, err, CodeNotAllowed)
+	// Not even the app that owns the type may read a file into it.
+	_, err = s.ImportCSV(Scope{App: "crm"}, "contact", ImportOptions{Path: "/etc/passwd", DryRun: true})
+	wantCode(t, err, CodeNotAllowed)
 }
 
 // A DRAFT HAS ITS OWN SAMPLE FILE WITH THE SAME API: seeded rows point at
@@ -326,8 +331,13 @@ func TestDraftSample(t *testing.T) {
 	if page.Total != 1 {
 		t.Fatal("the person's records reached a sample")
 	}
-	if c := <-changes; c.Draft != "d1" {
-		t.Fatalf("change draft %q", c.Draft)
+	for c := range changes {
+		if c.Draft == "d1" {
+			break
+		}
+		if c.Draft != "" {
+			t.Fatalf("change draft %q", c.Draft)
+		}
 	}
 	_, err = p.Store("never")
 	wantCode(t, err, CodeNotFound)
@@ -339,8 +349,8 @@ func TestDraftSample(t *testing.T) {
 	if err := os.RemoveAll(p.DraftDir("d1")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := draft.Query(person, "contact", "", "", 0); err == nil && !errors.Is(err, nil) {
-		t.Fatal("a closed draft answered")
+	if _, err := draft.Create(person, "contact", []map[string]any{{"name": "late"}}); err == nil {
+		t.Fatal("a closed draft took a write")
 	}
 	if !strings.HasPrefix(p.MainPath(), home) {
 		t.Fatal("the data file is outside the home")

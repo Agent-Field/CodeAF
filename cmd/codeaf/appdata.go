@@ -30,8 +30,10 @@ import (
 type appDataState struct {
 	mu     sync.Mutex
 	place  *data.Place
-	synced bool
 	closed bool
+	// sync registers the kept apps once; a second first call waits for it,
+	// so no call ever sees the store before its apps are registered.
+	sync sync.Once
 	// subs is each subscription's store, so it is stopped where it lives.
 	subs map[string]*data.Store
 	// home replaces the codeaf home in a test.
@@ -68,37 +70,43 @@ func (b *appBackend) dataStore(draft string) (*data.Store, error) {
 		return nil, appDataError(err)
 	}
 	if draft == "" {
-		b.syncAppDefinitions(place, s)
+		b.data.sync.Do(func() { b.syncAppDefinitions(s) })
 	}
 	return s, nil
 }
 
 // syncAppDefinitions registers every kept app's definition once per process.
-// One app whose file no longer registers (a hand edit, a newer format) is
-// skipped and the rest go on: its screens are refused, nobody else's are.
-func (b *appBackend) syncAppDefinitions(place *data.Place, s *data.Store) {
-	d := &b.data
-	d.mu.Lock()
-	if d.synced {
-		d.mu.Unlock()
-		return
-	}
-	d.synced = true
-	root := d.home
-	d.mu.Unlock()
+// An app that uses another's type can only register after it, and the
+// folders do not say which comes first, so the apps are tried in passes until
+// a pass registers none. One app whose file never registers (a hand edit, a
+// newer format) is left out and the rest go on: its screens are refused,
+// nobody else's are.
+func (b *appBackend) syncAppDefinitions(s *data.Store) {
+	root := b.data.home
 	if root == "" {
 		root = home.Dir()
 	}
 	matches, _ := filepath.Glob(filepath.Join(root, "apps", "*", "current", "app.json"))
+	var pending [][]byte
 	for _, path := range matches {
 		if filepath.Base(filepath.Dir(filepath.Dir(path)))[0] == '_' {
 			continue
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			continue
+		if raw, err := os.ReadFile(path); err == nil {
+			pending = append(pending, raw)
 		}
-		_ = s.RegisterApp(raw)
+	}
+	for len(pending) > 0 {
+		var left [][]byte
+		for _, raw := range pending {
+			if err := s.RegisterApp(raw); err != nil {
+				left = append(left, raw)
+			}
+		}
+		if len(left) == len(pending) {
+			return
+		}
+		pending = left
 	}
 }
 

@@ -467,6 +467,12 @@ func (s *Store) Type(sc Scope, typ string) (*Type, error) {
 // hand any real work elsewhere, or every later change waits for it. The rows
 // it is given are whole, masked values included; it is for the engine's own
 // use (record.changed triggers), never for a client.
+//
+// fn MUST NOT write to this store or close it before it returns: the writer
+// may be waiting for the dispatcher to take the next change, and the
+// dispatcher is the goroutine fn runs on. A trigger that writes hands its
+// write to a goroutine of its own. A change committed before fn was
+// registered may still reach it, since changes are told after the commit.
 func (s *Store) OnCommit(fn func(Change)) (stop func()) {
 	s.hooksMu.Lock()
 	defer s.hooksMu.Unlock()

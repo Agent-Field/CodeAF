@@ -460,6 +460,12 @@ func (w *writeTx) prepareSet(t *Type, set map[string]any, lenient bool) (map[str
 		if f.Computed != "" {
 			return nil, fieldErr(name, "%s is computed; it cannot be written", name)
 		}
+		// A form that saves the row it was shown sends "••••" back for a
+		// masked value. That is the mask, not a new value: writing it would
+		// destroy the real one.
+		if f.Masked && set[name] == masked {
+			continue
+		}
 		v, err := f.coerce(set[name], coercion{now: w.now, lenient: lenient})
 		if err != nil {
 			return nil, fieldErr(name, "%s %v", name, err)
@@ -963,6 +969,24 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 			if current == nil || st.after == nil || current.key(t) != expected.key(t) {
 				stale++
 				continue
+			}
+			// UNDO DOES NOT WRITE THROUGH A FREEZE someone else's change made.
+			// Undoing the very batch that froze the record ("Mark won", then
+			// Undo) is allowed: before it, the record was not frozen. A record
+			// that was already frozen before the batch, or one the batch
+			// created and is frozen now, stays as it is.
+			if frozen, _ := w.s.frozen(t, current); frozen {
+				wasFrozen := st.before == nil
+				if st.before != nil {
+					prior := &record{ID: current.ID, Type: typ, Data: st.before.Data, Meta: st.before.Meta, CreatedAt: current.CreatedAt, UpdatedAt: current.UpdatedAt}
+					if prior.Data == nil {
+						prior.Data = map[string]any{}
+					}
+					wasFrozen, _ = w.s.frozen(t, prior)
+				}
+				if wasFrozen {
+					return &Error{Code: CodeFrozen, Message: fmt.Sprintf("a %s this change touched is frozen; undoing it would change a frozen record", t.Name)}
+				}
 			}
 			restored := current.clone()
 			restored.UpdatedAt = w.now.UTC().Format(stamp)
