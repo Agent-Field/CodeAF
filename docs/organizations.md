@@ -125,7 +125,7 @@ The organization's policy (`GET` and `PUT /v1/org/policy`; only the operator cha
   `CODEAF_HOSTED_SESSION_CAP_USD` (five dollars). The monthly limit every person's spend is held to is set by the operator in Settings (twenty dollars by default).
 
 The same policy holds the roles, whether new chats start private (the default for chats and hosted chats), who may share,
-and what bots and agents may do.
+who may move a chat (`chats.move_by`: `owner`, the default, or `manage`) and what bots and agents may do.
 
 A **team server does not trust its own computer.** A request from the server's own machine with no sign-in is refused
 like any other (a solo server, a desktop window's own, still trusts it). `loopback_trust` is off for a team server; the
@@ -156,20 +156,20 @@ CODEAF_PUBLIC_DOMAIN=codeaf.example.com            # only when a proxy serves HT
 CODEAF_TRUSTED_PROXIES=<the proxy's address or range>
 ```
 
-**2. Start it.** The release that a plain build fetches does not contain `codeaf sessionhost`, so build the codeaf image
-from this repository once, then start everything (published images work too when they exist; see "Published images" in
-the operator README):
+**2. Start it.** Compose builds the codeaf image from this checkout by default (`CODEAF_BINARY_FROM=source`), because no
+published release has `codeaf sessionhost` yet. Do not set `CODEAF_BINARY_FROM=fetch` when hosted chats are on. Published
+images work too, once they exist: see "Published images" in the operator README.
 
 ```sh
-(cd ../.. && docker build -f deploy/org/codeaf.Dockerfile --build-arg ORG_DIR=deploy/org --build-arg CODEAF_BINARY_FROM=source \
-   --build-arg SOURCE_COMMIT=$(git rev-parse HEAD) --label org.opencontainers.image.revision=$(git rev-parse HEAD) \
-   -t codeaf-org/codeaf:local .)
-docker compose up -d
+docker compose up -d --build
 docker compose ps                                       # every service says "healthy"
 docker compose exec sessionhost codeaf sessionhost probe  # "ok": true on a machine that can keep chats apart
 ```
 
-The first build takes several minutes. **Sandbox note:** the full fence needs Linux 6.12 or newer. On an older kernel
+The first build compiles codeaf and takes several minutes; later ones reuse Docker's cache. Set
+`SOURCE_COMMIT=$(git rev-parse HEAD)` in the shell first if you want `codeaf version` inside the image to name the commit.
+
+**Sandbox note:** the full fence needs Linux 6.12 or newer. On an older kernel
 the sessionhost starts no chats and says why; setting `CODEAF_SESSIONHOST_REQUIRE=uid` lets it run on the user switch
 alone, with no limit on what a chat's commands can reach, and it warns in every chat. That is a choice, not a default.
 
@@ -230,7 +230,8 @@ needs an image that has `codeaf sessionhost`; the operator README says how to po
   about the keyboard. It goes through when the owner has no window open, or after the guest takes the keyboard (allowed
   with `run`). Interrupting and answering are not affected. A tool-use approval stays with the owner, so a command that
   needs one waits for the owner.
-- Only the owner moves a chat between My space and a workstream.
+- By default only the owner moves a chat between My space and a workstream; the policy's `chats.move_by` set to `manage` lets
+  people with the `manage` verb on the chat move it too (never into their own My space, never a bot).
 - `local_sessions` `allow` and `warn` are reported and stored; nothing in a client acts on them yet.
 - The sandbox filters outbound network by port, not by address.
 - The Railway template made from the published images does not carry the sessionhost yet; a by-hand Railway install does
