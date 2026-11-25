@@ -335,7 +335,13 @@ func newWakeRig(t *testing.T) *wakeRig {
 // open attaches as who and says the sentence the window was refused with, or "" when the host's wire was reached.
 func (w *wakeRig) open(t *testing.T, who string) string {
 	t.Helper()
-	client := guestDial(t, w.srv, w.rg.tokens[who], w.chat)
+	return w.openWith(t, w.rg.tokens[who])
+}
+
+// openWith is open for a credential that is not a person's, a bot's for one.
+func (w *wakeRig) openWith(t *testing.T, token string) string {
+	t.Helper()
+	client := guestDial(t, w.srv, token, w.chat)
 	guestWrite(t, client, guestTestHello)
 	frames := make(chan string, 1)
 	go func() {
@@ -460,5 +466,35 @@ func TestWakeByTurnsBackToViewAndOpensTheChatAgain(t *testing.T) {
 	w.rg.setAccessPolicy(t, func(p *acl.Policy) { p.Chats = acl.Chats{} })
 	if got := w.open(t, "abir"); got != "" {
 		t.Fatalf("after taking the setting out a view guest reads %q", got)
+	}
+}
+
+// Contract W6: a bot never counts as the owner. Its creator's own chat that is not running stays closed to a bot whose
+// scope does not let it run chats, under `owner` and under `run` alike, while the creator opens it, and a bot whose scope
+// holds `run` starts it under `run`.
+func TestWakeByDoesNotLetABotWithoutRunStartItsCreatorsChat(t *testing.T) {
+	w := newWakeRig(t)
+	w.chat = w.rg.create(t, "abir")
+	view := w.rg.contractBot(t, "abir", "View bot", "view")
+	full := w.rg.contractBot(t, "abir", "Full bot", "full")
+
+	w.rg.setAccessPolicy(t, func(p *acl.Policy) { p.Chats.WakeBy = acl.WakeByOwner })
+	if got := w.openWith(t, view.Token); got != wakeOwnerWords {
+		t.Fatalf("a view bot under owner reads %q, want %q", got, wakeOwnerWords)
+	}
+	if n := w.rg.host.wireRequests(w.chat); n != 0 {
+		t.Fatalf("a refused bot started its creator's chat: %d wire requests", n)
+	}
+	if got := w.open(t, "abir"); got != "" {
+		t.Fatalf("the creator was refused with %q", got)
+	}
+
+	w.rg.host.setRunning(w.chat, false)
+	w.rg.setAccessPolicy(t, func(p *acl.Policy) { p.Chats.WakeBy = acl.WakeByRun })
+	if got := w.openWith(t, view.Token); got != wakeRunWords {
+		t.Fatalf("a view bot under run reads %q, want %q", got, wakeRunWords)
+	}
+	if got := w.openWith(t, full.Token); got != "" {
+		t.Fatalf("a bot that may run chats was refused with %q", got)
 	}
 }
