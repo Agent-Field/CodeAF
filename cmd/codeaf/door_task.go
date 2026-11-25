@@ -518,6 +518,16 @@ func (f *doorFollower) ask(ctx context.Context, ask factory.TaskAsk) (answered, 
 	body := map[string]string{"option": opt.ID, "ask": ask.ID}
 	var reply factory.WorkstreamTask
 	if err := doorCall(ctx, f.org, http.MethodPost, doorTaskPath(f.ws.ID, f.task.ID)+"/answer", body, &reply); err != nil {
+		// A refusal (the Ask was answered meanwhile, the person may not
+		// answer it, the answer is not one it takes) says the same thing the
+		// next time: it is left for WorkAF. Only a server that did not
+		// answer, or failed (5xx), is asked again.
+		var refused client.Refusal
+		var ended doorSignInEnded
+		if errors.As(err, &ended) || errors.As(err, &refused) && !refused.Fault {
+			fmt.Fprintf(doorOut, "The answer was not taken: %s\nAnswer it in WorkAF (%s).\n", doorText(err.Error()), f.where())
+			return false, true
+		}
 		fmt.Fprintf(doorOut, "The answer was not taken: %s\nIt will be asked again.\n", doorText(err.Error()))
 		return false, false
 	}

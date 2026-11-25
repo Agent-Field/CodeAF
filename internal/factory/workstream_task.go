@@ -540,6 +540,12 @@ type WorkstreamTask struct {
 	UpdatedAt  string          `json:"updated_at"`
 	DoneAt     string          `json:"done_at,omitempty"`
 	AnsweredBy *PersonRef      `json:"answered_by,omitempty"`
+	// WordsBy is who last wrote the task's title and request, as the kind
+	// of writer (TaskByPerson, TaskByAfi, …); empty on a task made before it
+	// was kept, which is read as not a person. The server agent's web_fetch
+	// may read an address in those words only when a person wrote them
+	// (session's tools_web_leash.go).
+	WordsBy string `json:"words_by,omitempty"`
 	// Undoable are the answers given to its reversible Asks, oldest first, at
 	// most TaskUndoableMost: each can be undone from the task by whoever gave
 	// it, which opens the Ask again (TaskPatch.UndoAnswer).
@@ -1205,6 +1211,9 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		if p.Request != nil {
 			t.Request = strings.TrimSpace(*p.Request)
 		}
+		if (p.Title != nil && t.Title != before.Title) || (p.Request != nil && t.Request != before.Request) {
+			t.WordsBy = by.Kind
+		}
 		if p.Brief != nil {
 			brief, err := CleanBrief(p.Brief)
 			if err != nil {
@@ -1689,12 +1698,6 @@ func checkAsk(a *TaskAsk, stamp string) error {
 	if a.Options == nil {
 		a.Options = []TaskAskOption{}
 	}
-	// An answer in the person's own words cannot be undone by a click: an Ask
-	// that offers one is never reversible, whoever raised it (the server's
-	// agent, a person, the app), so no door treats it as a quick Ask.
-	if NeedsWords(*a) {
-		a.Reversible = false
-	}
 	return nil
 }
 
@@ -1811,7 +1814,11 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 	if kept {
 		ch.Decisions = append(ch.Decisions, d)
 	}
-	if (ask.Reversible || AskFromPerson(ask)) && t.State != TaskDone {
+	// An answer given in the person's own words (the option that asks for
+	// them) is not taken back by a click, even on a reversible Ask: its plain
+	// buttons stay undoable, it does not.
+	wordsAnswer := opt != nil && opt.Words
+	if (ask.Reversible && !wordsAnswer || AskFromPerson(ask)) && t.State != TaskDone {
 		// A REVERSIBLE ASK'S ANSWER CAN BE UNDONE FROM ITS TASK: kept here
 		// with the decision it made, so the undo withdraws exactly that one.
 		// So can the answer to a person's question: it lets nothing happen by

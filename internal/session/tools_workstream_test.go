@@ -81,9 +81,9 @@ func TestAWorkstreamAgentCarriesTheWebsReadingPair(t *testing.T) {
 				t.Fatalf("door %T: the server agent's belt gained %s: %v", door, name, got)
 			}
 		}
-		// The page's address is in the person's words, so the leashed
+		// The page's address is in words a person wrote, so the leashed
 		// web_fetch may read it (tools_web_leash.go).
-		agent.keepPersonWordsLocked("Compare the halls, starting with https://venues.example/hall-a.")
+		agent.NoteWebLeash("Compare the halls, starting with https://venues.example/hall-a.")
 		for _, tool := range agent.tools {
 			if tool.Name != "web_fetch" {
 				continue

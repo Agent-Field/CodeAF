@@ -73,6 +73,9 @@ func factoryWorkstreamAgent(st *store.Store, load func() (config.Config, error))
 			APIKey:      turn.Key, BaseURL: factoryWorkstreamAgentBaseURL(),
 			DeterministicNames: true, CompactEnabled: true,
 			Workstream: turn.Door,
+			// Only what a person wrote is a leash for web_fetch; turn.Text is
+			// composed and may carry the model's own words.
+			WebLeashWords: turn.LeashWords,
 		}, profile, true, true)
 		// THE GATE IS THE DOOR, NOT AN APPROVAL ASK. Nobody sits in front of
 		// the server to answer one, and the belt's one tool checks on every
@@ -203,6 +206,9 @@ func factoryAgentConsume(events <-chan session.Event, step func(kind, text, tool
 func factoryAgentSteers(ctx context.Context, agent *session.Agent, turn serve.AgentTurn, mainDone <-chan struct{}) error {
 	var failed error
 	answer := func(words string) {
+		// A steer is its owner's or starter's own words: web_fetch may read
+		// an address in them.
+		agent.NoteWebLeash(words)
 		stream, err := agent.Steer(words)
 		after := true
 		if errors.Is(err, session.ErrNothingToSteer) {

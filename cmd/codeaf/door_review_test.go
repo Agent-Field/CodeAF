@@ -209,3 +209,58 @@ func TestDoorAnswersAsTheDeciderByHandleAndAsTheFallback(t *testing.T) {
 		t.Errorf("an Ask the person may answer was said to wait on someone else:\n%s", out)
 	}
 }
+
+// An answer the server refuses (answered meanwhile, not theirs, not taken)
+// says the same thing the next time, so it is left for WorkAF, not asked
+// again at every read.
+func TestDoorLeavesARefusedAnswerForWorkAF(t *testing.T) {
+	out := doorTest(t, "\n\n\n", true, false)
+	ask := &factory.TaskAsk{ID: "ask_1", Title: "Tone?", Reversible: true,
+		Options: []factory.TaskAskOption{{ID: "o1", Label: "Casual", Recommended: true}}}
+	needs := func(t *factory.WorkstreamTask) { t.Ask = ask }
+	d, srv := newDoorServer(t,
+		doorTask("tk_1", factory.TaskRunning),
+		doorTask("tk_1", factory.TaskNeeds, needs),
+		doorTask("tk_1", factory.TaskNeeds, needs),
+		doorTask("tk_1", factory.TaskNeeds, needs),
+		doorTask("tk_1", factory.TaskDone),
+	)
+	d.answerStatus = http.StatusConflict
+	signIn(t, srv)
+	if err := runTask([]string{"Pick a tagline", "--workstream", "ws_1"}); err != nil {
+		t.Fatalf("task: %v\n%s", err, out)
+	}
+	if n := strings.Count(out.String(), "Afi asks: Tone?"); n != 1 {
+		t.Errorf("a refused answer was put %d times, want once:\n%s", n, out)
+	}
+	if !strings.Contains(out.String(), "Answer it in WorkAF") || strings.Contains(out.String(), "\x1b[2J") {
+		t.Errorf("the refusal was not left for WorkAF, or printed raw:\n%q", out)
+	}
+}
+
+// Sign-in, the org listing and sign-out print the server's words cleaned.
+func TestDoorOrgPrintsServerWordsCleaned(t *testing.T) {
+	out := doorTest(t, "correct horse battery\n", false, false)
+	d, srv := newDoorServer(t, doorTask("tk_1", factory.TaskRunning))
+	d.name = "North\x1b]0;pwned\x07wind"
+	if err := runOrgLogin([]string{srv.URL, "--user", "bob"}); err != nil {
+		t.Fatalf("sign-in: %v", err)
+	}
+	if err := runOrg(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := runOrgLogout(nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(out.String(), "\x1b\x07") || !strings.Contains(out.String(), "Signed in to North]0;pwnedwind") {
+		t.Errorf("the organization's name was printed raw:\n%q", out)
+	}
+
+	doorTest(t, "correct horse battery\n", false, false)
+	d, srv = newDoorServer(t, doorTask("tk_1", factory.TaskRunning))
+	d.refuseSignIn, d.refuseSentence = http.StatusForbidden, "use https\x1b[2J"
+	err := runOrgLogin([]string{srv.URL, "--user", "bob"})
+	if err == nil || strings.Contains(err.Error(), "\x1b") || !strings.Contains(err.Error(), "use https") {
+		t.Fatalf("a 403's sentence came back %q", err)
+	}
+}

@@ -34,6 +34,17 @@ type doorServer struct {
 	refuseSentence string
 	// answerFails is how many answers are refused (500) before one is taken.
 	answerFails int
+	// answerStatus, when set, is the status every answer is refused with.
+	answerStatus int
+	// name is the organization's name /v1/about and the sign-in answer.
+	name string
+}
+
+func (d *doorServer) orgName() string {
+	if d.name != "" {
+		return d.name
+	}
+	return "Northwind"
 }
 
 func (d *doorServer) handler() http.Handler {
@@ -51,7 +62,7 @@ func (d *doorServer) handler() http.Handler {
 		return true
 	}
 	mux.HandleFunc("GET /v1/about", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"name": "Northwind", "sign_in": []string{"password"}})
+		writeJSON(w, 200, map[string]any{"name": d.orgName(), "sign_in": []string{"password"}})
 	})
 	mux.HandleFunc("POST /v1/auth/password", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{ Username, Password string }
@@ -65,7 +76,7 @@ func (d *doorServer) handler() http.Handler {
 			return
 		}
 		writeJSON(w, 200, map[string]any{
-			"factory": map[string]string{"name": "Northwind"}, "access_token": d.token, "token_type": "bearer",
+			"factory": map[string]string{"name": d.orgName()}, "access_token": d.token, "token_type": "bearer",
 			"expires_in": 3600, "person": map[string]string{"handle": "bob", "name": "Bob Lee"},
 			"me": map[string]any{"handle": "bob", "session_id": "ses_1"},
 		})
@@ -109,6 +120,10 @@ func (d *doorServer) handler() http.Handler {
 		}
 		d.mu.Lock()
 		defer d.mu.Unlock()
+		if d.answerStatus != 0 {
+			writeJSON(w, d.answerStatus, map[string]string{"error": "that Ask was already answered\x1b[2J"})
+			return
+		}
 		if d.answerFails > 0 {
 			d.answerFails--
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "the store blinked"})

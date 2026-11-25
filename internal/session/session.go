@@ -2608,6 +2608,11 @@ type Config struct {
 	// DOOR. When it is set the belt is `workstream_pages` and nothing else:
 	// the server's agent touches no shell, file or machine.
 	Workstream WorkstreamDoor
+	// WebLeashWords, on a server workstream agent, are the words of this run
+	// a person wrote; web_fetch reads only an address in them or in this
+	// run's web_search results (tools_web_leash.go). The text submitted is
+	// composed and is never read for addresses.
+	WebLeashWords []string
 
 	// OrgSetup is an organization server's door for its setup conversation
 	// (tools_org_setup.go). NIL IS NO DOOR. When it is set the belt is

@@ -91,10 +91,10 @@ type doorOrg struct {
 
 // label is how a sentence names the organization: its name, else its address.
 func (o doorOrg) label() string {
-	if o.Name != "" {
-		return o.Name
+	if name := doorText(o.Name); name != "" {
+		return name
 	}
-	return o.URL
+	return doorText(o.URL)
 }
 
 // doorTaskRef is a task started from this terminal, so `codeaf task follow
@@ -262,7 +262,7 @@ func doorCall(ctx context.Context, o doorOrg, method, path string, in, out any) 
 		if refused.SignedOut {
 			return doorSignInEnded{o}
 		}
-		return refused
+		return doorRefused{refused}
 	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("%s did not answer in time", o.label())
@@ -272,8 +272,16 @@ func doorCall(ctx context.Context, o doorOrg, method, path string, in, out any) 
 	if errors.As(err, &syntax) || errors.As(err, &shape) {
 		return fmt.Errorf("%s sent an answer this terminal cannot read", o.label())
 	}
-	return fmt.Errorf("%s is not answering at %s", o.label(), o.URL)
+	return fmt.Errorf("%s is not answering at %s", o.label(), doorText(o.URL))
 }
+
+// doorRefused is the server's refusal with its sentence made safe to print
+// (doorText); the refusal itself stays readable to errors.As.
+type doorRefused struct{ client.Refusal }
+
+func (e doorRefused) Error() string { return doorText(e.Refusal.Error()) }
+
+func (e doorRefused) Unwrap() error { return e.Refusal }
 
 // doorSignInEnded is a request the server refused because the person's
 // session is no longer good: the follow stops, and the person is told how to
@@ -281,7 +289,7 @@ func doorCall(ctx context.Context, o doorOrg, method, path string, in, out any) 
 type doorSignInEnded struct{ org doorOrg }
 
 func (e doorSignInEnded) Error() string {
-	return fmt.Sprintf("your sign-in to %s has ended; sign in again: codeaf org login %s", e.org.label(), e.org.URL)
+	return fmt.Sprintf("your sign-in to %s has ended; sign in again: codeaf org login %s", e.org.label(), doorText(e.org.URL))
 }
 
 // runOrg is `codeaf org [login|logout]`.
@@ -314,7 +322,7 @@ func runOrg(args []string) error {
 		if o.URL == s.Current {
 			mark = " · used by codeaf task"
 		}
-		fmt.Fprintf(doorOut, "%s (%s) as %s%s\n", o.label(), o.URL, o.Handle, mark)
+		fmt.Fprintf(doorOut, "%s (%s) as %s%s\n", o.label(), doorText(o.URL), doorText(o.Handle), mark)
 	}
 	return nil
 }
@@ -353,7 +361,7 @@ func runOrgLogin(args []string) error {
 		return fmt.Errorf("%s does not answer as an organization: %v", base, err)
 	}
 	if about.SignIn != nil && !containsString(about.SignIn, "password") {
-		return fmt.Errorf("%s does not take a password from a terminal; sign in from WorkAF instead", firstNonEmptyString(about.Name, base))
+		return fmt.Errorf("%s does not take a password from a terminal; sign in from WorkAF instead", doorText(firstNonEmptyString(about.Name, base)))
 	}
 	interactive := doorInIsTerminal()
 	username := strings.TrimSpace(*user)
@@ -409,9 +417,9 @@ func runOrgLogin(args []string) error {
 			case refused.Missing:
 				return errors.New("this organization does not take passwords")
 			}
-			return refused
+			return doorRefused{refused}
 		}
-		return fmt.Errorf("%s did not answer the sign-in", firstNonEmptyString(about.Name, base))
+		return fmt.Errorf("%s did not answer the sign-in", doorText(firstNonEmptyString(about.Name, base)))
 	}
 	if signed.AccessToken == "" {
 		return errors.New("the organization answered the sign-in without a session")
@@ -432,9 +440,9 @@ func runOrgLogin(args []string) error {
 	if err := updateDoorState(func(s *doorState) { s.keep(o) }); err != nil {
 		return err
 	}
-	who := o.Handle
+	who := doorText(o.Handle)
 	if o.Person != "" && o.Person != o.Handle {
-		who = o.Person + " (" + o.Handle + ")"
+		who = doorText(o.Person) + " (" + doorText(o.Handle) + ")"
 	}
 	fmt.Fprintf(doorOut, "Signed in to %s as %s. Start work with codeaf task \"<what to do>\".\n%s\n", o.label(), who, doorMadeWith)
 	return nil

@@ -345,6 +345,10 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		// Who wrote its words: a person, or an agent through its door.
+		if by := h.taskBy(r, v); !isBotCall(r) {
+			made.WordsBy = by.Kind
+		}
 		if made.State != factory.TaskRunning {
 			return tw.Put(made, 0)
 		}
@@ -791,7 +795,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			if isBotCall(r) {
 				return errBotRun
 			}
-			return h.startTaskRun(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name, body.Text), 0, true)
+			return h.startTaskRunTyped(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name, body.Text), personTyped(r, body.Text), 0, true)
 		}
 		return nil
 	})
@@ -810,9 +814,18 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	h.publishTasks(ws, h.orgActor(r), fresh)
 	if _, job := factory.IsJobTask(t.ID); !job && change.Task.DoneBy.Kind == factory.TaskByAfi && change.Task.State == factory.TaskRunning {
 		// The last Ask is answered: Afi goes on with the answer in hand.
-		h.resumeTaskRun(ws, change.Task, v.Handle, answeredWords(change.Task, asked, answerLine(asked, body), by.Name))
+		h.resumeTaskRun(ws, change.Task, v.Handle, answeredWords(change.Task, asked, answerLine(asked, body), by.Name), personTyped(r, body.Text))
 	}
 	h.write(w, http.StatusOK, fresh)
+}
+
+// personTyped is text a person typed into a request, "" when the request came
+// from an agent or a bot: an agent's own call writes words the model chose.
+func personTyped(r *http.Request, text string) string {
+	if _, ok := agentCallOf(r); ok {
+		return ""
+	}
+	return text
 }
 
 // answerLine is the answer in the words the person chose: the option's label,

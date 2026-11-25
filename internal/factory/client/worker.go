@@ -39,6 +39,10 @@ type Refusal struct {
 	// the person may not do this (403); the thing, or the route, is not there
 	// (404). A caller reads these rather than the number.
 	SignedOut, Forbidden, Missing bool
+	// Fault is the server failing (5xx) rather than refusing: the same call
+	// may be taken when it is sent again. Every other refusal says the same
+	// thing the next time.
+	Fault bool
 }
 
 // refusal is the factory's sentence refused at status, with its facts stamped.
@@ -46,7 +50,8 @@ func refusal(err error, status int) Refusal {
 	return Refusal{error: err, Status: status,
 		SignedOut: status == http.StatusUnauthorized,
 		Forbidden: status == http.StatusForbidden,
-		Missing:   status == http.StatusNotFound}
+		Missing:   status == http.StatusNotFound,
+		Fault:     status >= http.StatusInternalServerError}
 }
 
 func (r Refusal) Unwrap() error { return r.error }

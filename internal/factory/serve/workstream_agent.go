@@ -68,6 +68,12 @@ type AgentTurn struct {
 	// Turn names this message; Asker is the handle of who sent it.
 	Turn, Asker string
 	Text        string
+	// LeashWords are words in this turn a person wrote: a chat's message and
+	// the person's earlier messages in it, or a task's title and request when
+	// a person last wrote them and what a person typed for the run. Text is
+	// composed and may hold words the model wrote; only an address in these
+	// may be read by web_fetch (session's tools_web_leash.go).
+	LeashWords []string
 	// Now is when the message arrived, and TZ the asker's time zone (an
 	// IANA name) when their app sent one: the agent is told today's date in
 	// it, so it never takes a date it read for today (L3 F-17).
@@ -583,6 +589,15 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 		d.mu.Unlock()
 		return errAgentBusy
 	}
+	// What the person wrote in this conversation, this message last: the
+	// only words its web_fetch may follow an address in.
+	leash := []string{}
+	for _, e := range a.entries {
+		if e.Kind == api.AgentEntryPerson {
+			leash = append(leash, e.Text)
+		}
+	}
+	leash = append(leash, text)
 	ctx, cancel := context.WithCancel(d.ctx)
 	done := make(chan struct{})
 	a.cancel, a.done = cancel, done
@@ -600,7 +615,7 @@ func (h *Handler) startAgentTurn(ws factory.OrgWorkstream, v wsViewer, asker, ch
 	if persona != nil {
 		door.agent = persona.ID
 	}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space, Agent: persona,
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: asker, Text: text, LeashWords: leash, Now: now, TZ: tz, About: h.orgAbout(), Chat: chat, Space: ws.Space, Agent: persona,
 		Key: h.orgModelKey(), Dir: filepath.Join(h.agentDir(seat), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		Step: func(kind, text, tool string, failed bool) {
 			switch kind {

@@ -2113,7 +2113,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 		a.personWords = ""
 	}
 	if user.fromPerson {
-		a.keepPersonWordsLocked(user.text())
+		a.personWords = user.text()
 	}
 	a.teamTurnAt = time.Now()
 	a.teamTurnSerial++

@@ -38,6 +38,8 @@ type pendingRun struct {
 	task    factory.WorkstreamTask
 	starter string
 	words   string
+	// typed is what a person typed for this run (startTaskRunTyped).
+	typed   string
 	resumes int
 	// answered is a run an answer to the task's Ask started (D1): it goes
 	// on with what the earlier run made, after a wait in the queue too.

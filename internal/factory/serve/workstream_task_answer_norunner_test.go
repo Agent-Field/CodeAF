@@ -96,3 +96,38 @@ func TestAnAnswerKeptWithoutAKeyIsCarriedOnWhenTheKeyIsSet(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+// A KEY ALREADY THERE WHEN THE SERVER STARTS carries the parked answer on
+// too: the start's sweep resumes it, as setting the key would have.
+func TestAParkedAnswerIsCarriedOnAtStartWhenAKeyIsThere(t *testing.T) {
+	o, path := taskOrg(t, "edit")
+	ws := strings.TrimPrefix(path, "/v1/workstreams/")
+	started := make(chan AgentTurn, 2)
+	o.h.config.WorkstreamAgent = func(ctx context.Context, turn AgentTurn) (AgentTurnEnd, error) {
+		started <- turn
+		<-ctx.Done()
+		return AgentTurnEnd{}, nil
+	}
+	task := o.task(t, "santosh", path, api.TaskCreate{Title: "Venue shortlist", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByAfi}})
+	d := &agentDoor{h: o.h, id: ws, asker: "santosh"}
+	if _, err := d.Work(context.Background(), "ws_task_update", json.RawMessage(`{"task":"`+task.ID+`","ask":{"title":"Which city?","options":[{"label":"Austin","recommended":true},{"label":"Denver"}]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	got := o.one(t, path, task.ID)
+	o.do(t, "santosh", "POST", path+"/tasks/"+task.ID+"/answer", -1, api.TaskAnswer{Option: got.Ask.Options[0].ID}, 200, nil)
+	// The key lands in the store without the route, as one kept from before
+	// a restart would be there.
+	if _, err := o.h.config.Store.SetOrgKey("openrouter", testOrgKey, "owner", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	o.h.startTaskSweep()
+	select {
+	case turn := <-started:
+		if turn.Task == nil || !strings.Contains(turn.Text, "answered your question “Which city?”: Austin") {
+			t.Fatalf("the resumed run = %q", turn.Text)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the start did not carry on the parked answer")
+	}
+	o.h.stopTaskTurn(ws, task.ID)
+}

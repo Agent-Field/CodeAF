@@ -140,6 +140,10 @@ func (h *Handler) startTaskSweep() {
 	d.mu.Unlock()
 	guard.Go("factory workstream task sweep", func() {
 		defer close(done)
+		// An answer kept while nothing could run Afi is carried on at start
+		// when the server now has a key (set before a restart, say), as a
+		// key set while it runs carries it on (org_keys.go).
+		h.resumeParkedAnswers()
 		tick := time.NewTicker(taskLeaseBeat)
 		defer tick.Stop()
 		for {

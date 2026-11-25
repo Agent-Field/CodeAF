@@ -193,42 +193,39 @@ func TestCopiesOfOneDecisionAskOnceAndAreKeptOnce(t *testing.T) {
 	}
 }
 
-// An Ask that offers an answer in the person's own words is never reversible,
-// whoever raises it, and that answer is never taken without the words.
-func TestAWordsAnswerIsNeverReversibleOrEmpty(t *testing.T) {
+// An Ask that offers an answer in the person's own words keeps the
+// reversible it was given: its plain buttons can still be undone, the words
+// answer cannot, and the words answer is never taken without the words.
+func TestAWordsAnswerIsNotUndoableAndNeverEmpty(t *testing.T) {
 	task := afiTask("tk_1", "marco")
 	words := TaskAsk{ID: "ask_more", Title: "Which dates?", Reversible: true, Decider: &PersonRef{ID: "priya", Name: "Priya"},
 		Options: []TaskAskOption{{ID: "o1", Label: "These dates", Words: true}, {ID: "o2", Label: "Any"}}}
-	own := words
-	own.ID, own.Decider = "ask_own", nil
-	ch, err := ApplyPatch(task, TaskPatch{Ask: &own}, TaskActor{Handle: "marco", Edit: true}, byMarco, nil, taskIDs(), taskNow)
+	// Afi raises it: an answer to a person's own question is undoable for
+	// another reason (AskFromPerson).
+	byAfi := TaskEventBy{Kind: TaskByAfi, Name: "Afi"}
+	ch, err := ApplyPatch(task, TaskPatch{AddAsk: &words}, TaskActor{Handle: "marco", Edit: true}, byAfi, nil, taskIDs(), taskNow)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ch.Task.Ask == nil || ch.Task.Ask.Reversible {
-		t.Fatalf("the task's own Ask with a words answer kept reversible: %+v", ch.Task.Ask)
+	if len(ch.Task.Asks) != 1 || !ch.Task.Asks[0].Reversible {
+		t.Fatalf("an Ask with a words answer lost the reversible it was given: %+v", ch.Task.Asks)
 	}
-	ch, err = ApplyPatch(ch.Task, TaskPatch{AddAsk: &words}, TaskActor{Handle: "marco", Edit: true}, byMarco, nil, taskIDs(), taskNow)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ch.Task.Asks) != 1 || ch.Task.Asks[0].Reversible {
-		t.Fatalf("an added Ask with a words answer kept reversible: %+v", ch.Task.Asks)
-	}
-	plain := TaskAsk{Title: "Formal?", Reversible: true, Options: []TaskAskOption{{ID: "y", Label: "Yes"}}}
-	if c, err := ApplyPatch(task, TaskPatch{Ask: &plain}, TaskActor{Handle: "marco", Edit: true}, byMarco, nil, taskIDs(), taskNow); err != nil || !c.Task.Ask.Reversible {
-		t.Fatalf("an Ask without a words answer lost reversible: %v %+v", err, c.Task.Ask)
-	}
-
 	priya := TaskActor{Handle: "priya", Edit: true}
-	extra := ch.Task.Asks[0].ID
-	if _, err := AnswerTask(ch.Task, extra, "o1", "  ", priya, byPriya, Standin{}, taskIDs(), taskNow); err == nil {
+	if _, err := AnswerTask(ch.Task, "ask_more", "o1", "  ", priya, byPriya, Standin{}, taskIDs(), taskNow); err == nil {
 		t.Fatal("a words answer was taken without words")
 	}
-	if _, err := AnswerTask(ch.Task, extra, "o1", "June 3 to 5", priya, byPriya, Standin{}, taskIDs(), taskNow); err != nil {
+	given, err := AnswerTask(ch.Task, "ask_more", "o1", "June 3 to 5", priya, byPriya, Standin{}, taskIDs(), taskNow)
+	if err != nil {
 		t.Fatalf("a words answer with its words was refused: %v", err)
 	}
-	if _, err := AnswerTask(ch.Task, extra, "o2", "", priya, byPriya, Standin{}, taskIDs(), taskNow); err != nil {
+	if len(given.Task.Undoable) != 0 {
+		t.Errorf("a words answer can be undone: %+v", given.Task.Undoable)
+	}
+	plain, err := AnswerTask(ch.Task, "ask_more", "o2", "", priya, byPriya, Standin{}, taskIDs(), taskNow)
+	if err != nil {
 		t.Fatalf("a plain answer was refused: %v", err)
+	}
+	if len(plain.Task.Undoable) != 1 || plain.Task.Undoable[0].Option != "o2" {
+		t.Errorf("a plain button answer on a reversible Ask cannot be undone: %+v", plain.Task.Undoable)
 	}
 }
