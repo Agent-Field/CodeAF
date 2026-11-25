@@ -2903,6 +2903,35 @@ per-million figure, so both prices are absent, from a connected service as
 from any other. Prices are rounded to a billionth of a dollar per million, so
 $0.10 goes out as `0.1`.
 
+A `Model` may also carry `limits`, a list of `ModelLimit` saying where the model
+falls short of what the app asks of one. The engine reports the facts and the
+app words the warning. `limits` is absent when nothing is known against the
+model, and today only a model of an Ollama service (provider `ollama`) can carry
+one: on each `models.list` the engine asks that server's own API, at the
+service's address without its `/v1`, what it runs now (`GET /api/ps`) and what
+it says about each of its listed models (`POST /api/show`). Each question waits
+at most 300 ms, all of them 600 ms, inside the list's three seconds; a server
+that is absent, slow or answers in an unknown shape reports no limit.
+
+| `kind` | sent when | other fields |
+|---|---|---|
+| `small_window` | the window the server gives the model is under `needs`, or the server has not said what it will give | `needs`, `source`, and `window` and `most` when known |
+| `no_tools` | the server lists the model's capabilities and `tools` is not among them | none |
+
+`needs` is the window the app's prompts ask for, 32000 tokens (the engine's lean
+threshold). `source` says how `window` is known: `loaded` (the server is running
+the model with this window), `modelfile` (the model is not loaded and its
+Modelfile sets `num_ctx`) or `default` (not loaded and nothing sets it, so the
+server's default will apply; `window` is then absent, because the server does
+not say what its default is). A `loaded` or `modelfile` window of `needs` or
+more is no limit. `most` is the most the model itself can hold, when the server
+says. A model the server only forwards to another machine has no
+`small_window`. A server that sends no capability list has no `no_tools`.
+
+When a turn ends on an Ollama model the last `models.list` reported with
+`source` `default`, the app emits `models.changed` once: the turn loaded the
+model, so the next list reads the window the server really gave it.
+
 ## orders methods
 
 | method | params | result |

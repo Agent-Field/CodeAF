@@ -681,7 +681,7 @@ type appBackend struct {
 	emit       appwire.Emitter
 	open       appOpener
 	// listModels answers models.list for checks that must agree with it (a
-	// factory step's model); nil is [appBackend.ListModels]. Tests set it.
+	// factory step's model); nil is [appBackend.offeredModels]. Tests set it.
 	listModels func() ([]appwire.Model, error)
 	now        func() time.Time
 	// after is the claim-expiry clock, replaceable without sleeping in tests.
@@ -796,6 +796,11 @@ type appBackend struct {
 	// stopModelNotices removes the model completion subscription and joins
 	// the initial catalog waiter and cancellable sender when this app closes.
 	stopModelNotices func()
+	// tellModels says models.changed through that subscription's queue, and
+	// ollamaUnloaded is the models the last list reported on the server's
+	// default window ([appBackend.addModelLimits]).
+	tellModels     func()
+	ollamaUnloaded map[string]bool
 	// state is the app's own file: setup, its settings, budgets and raises.
 	state *appState
 	// dayAuth is the daily limit's one-time hand-over from this file's old cap.
@@ -3215,6 +3220,7 @@ func (b *appBackend) pump(a *appAgent, id string, live *appLive, turn uint64, n 
 		b.resetCloseAfterReply(id)
 	}
 	live.box.Event(appwire.EventTurnDone, appwire.TurnDone{Agent: id, Turn: turn, OK: ok, Error: failure, ErrorKind: kind, Status: status})
+	b.modelLoadedBy(live.conn.Conv.Model())
 	held := false
 	var view appwire.Agent
 	b.locked(func() {
@@ -4494,12 +4500,33 @@ const appModelsWait = 3 * time.Second
 // Connected is the rule providers.list answers signed_in by
 // ([appBackend.providerConnected]), so the two never disagree.
 func (b *appBackend) ListModels() ([]appwire.Model, error) {
+	// What a local server says about its models is asked inside the list's
+	// own wait, so a list that spent the wait on a catalog asks nothing.
+	until := time.Now().Add(appModelsWait)
+	models, sources, err := b.modelRows()
+	if err != nil {
+		return nil, err
+	}
+	b.addModelLimits(until, models, sources)
+	return models, nil
+}
+
+// offeredModels is [appBackend.ListModels] for a check on what a person
+// picked: the same rows, without the limits, which no check reads and which
+// cost a question to a local server.
+func (b *appBackend) offeredModels() ([]appwire.Model, error) {
+	models, _, err := b.modelRows()
+	return models, err
+}
+
+// modelRows is the rows of models.list and the services they were read from.
+func (b *appBackend) modelRows() ([]appwire.Model, modelsource.Set, error) {
 	if !b.providerConnected() {
-		return []appwire.Model{}, nil
+		return []appwire.Model{}, modelsource.Set{}, nil
 	}
 	proc, err := b.process()
 	if err != nil {
-		return nil, appEngineError(err)
+		return nil, modelsource.Set{}, appEngineError(err)
 	}
 	// THE DEFAULT SERVICE'S CATALOG IS WAITED FOR EVEN WHEN ANOTHER SERVICE HAS
 	// ANSWERED: a list read before it lands is every other service's models
@@ -4605,7 +4632,7 @@ func (b *appBackend) ListModels() ([]appwire.Model, error) {
 			models[i].Provider = id
 		}
 	}
-	return models, nil
+	return models, sources, nil
 }
 
 // appDefaultModel is the model a new conversation runs on, by the rule every

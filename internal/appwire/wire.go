@@ -722,6 +722,37 @@ type Model struct {
 	ProviderName string `json:"provider_name,omitempty"`
 	// Default marks the model a new conversation runs on.
 	Default bool `json:"default,omitempty"`
+	// Limits says where this model falls short of what the app asks of a model. Absent when nothing is known to.
+	Limits []ModelLimit `json:"limits,omitempty"`
+}
+
+// The kinds of [ModelLimit], and the ways a small window's size is known.
+const (
+	LimitSmallWindow = "small_window"
+	LimitNoTools     = "no_tools"
+
+	WindowLoaded    = "loaded"
+	WindowModelfile = "modelfile"
+	WindowDefault   = "default"
+)
+
+// ModelLimit is one way a model falls short, as its server reports it.
+//
+// IT IS A FACT AND NEVER A SENTENCE. The engine says what the server answered
+// and the app words the warning, so a limit carries figures and no text; and a
+// limit is sent only where the server said something, because a warning about
+// a model nobody asked about is a guess.
+type ModelLimit struct {
+	// Kind is "small_window" or "no_tools".
+	Kind string `json:"kind" enum:"small_window,no_tools"`
+	// Window is the tokens the server gives the model now. Absent (0) when Source is "default": the server has not said.
+	Window int `json:"window,omitempty"`
+	// Needs is the window the app's prompts ask for (the lean threshold, 32000). Only with small_window.
+	Needs int `json:"needs,omitempty"`
+	// Most is the most the model itself can hold, when the server says. Only with small_window.
+	Most int `json:"most,omitempty"`
+	// Source says how Window is known: "loaded" (the server is running it with this window), "modelfile" (its Modelfile sets num_ctx), or "default" (not loaded and nothing sets it, so the server's default will apply). Only with small_window.
+	Source string `json:"source,omitempty" enum:"loaded,modelfile,default"`
 }
 
 // FeatureAgentEffortRungs announces the terminal's full conversation effort dial.
