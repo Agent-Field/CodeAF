@@ -184,6 +184,7 @@ func (h *Handler) revokeAccessLink(w http.ResponseWriter, r *http.Request) {
 			if h.failed(w, h.revokePerson(member.Profile.Handle, true)) {
 				return
 			}
+			h.endHostedLifeOf(r.Context(), member.Profile.Handle)
 			if h.failed(w, h.leaveEveryTeam(r, member.Profile.Handle)) {
 				return
 			}

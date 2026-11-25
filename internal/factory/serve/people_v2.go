@@ -194,6 +194,8 @@ func (h *Handler) operatorRevokePerson(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, h.revokePerson(handle, true)) {
 		return
 	}
+	// Their hosted chats hold a model bearer of their own, which sign-in revocation does not reach.
+	h.endHostedLifeOf(r.Context(), handle)
 	// A removed password person's password signs nobody in any more.
 	err := tokens.RemoveAccount(h.config.TokensPath, handle)
 	h.forgetAccounts()
