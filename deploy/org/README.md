@@ -292,8 +292,12 @@ because it has to become a different Linux user for every chat. It is built from
 - **Removing a person.** The server first ends the person's chats' model and git access, so any chat still running can no
   longer spend the organization's key or reach git as that person. It clears their stored keys and GitHub access and deletes
   their chats on the machine that runs them. If that machine does not answer, removal still succeeds. The server ends the
-  shares of each chat it could not delete and makes it private, so every route answers `There is no such chat.` Those chats
-  stay on the machine until the operator repeats the removal once the machine answers. Removal never retries on its own.
+  shares of each chat it could not delete and makes it private, so every route answers `There is no such chat.` It keeps
+  the deletion owed in its store (`hosted-removals.json`, beside the saved model access) and retries by itself: the first
+  try five seconds after the removal, then twice as long each time up to five minutes, also after the server restarts,
+  until the machine confirms every delete. The log says so when it starts waiting (again after the 10th, 100th ... failed
+  try) and once when it finishes. It deletes only the chats the person had when they were removed, so a chat made later by
+  someone who joined again under the same handle is left alone. The operator does not repeat the removal.
 - **Limits.** `CODEAF_SESSIONHOST_MAX_RUNNING` chats at once (default 20) and `CODEAF_SESSIONHOST_MAX_PER_PERSON`
   per person (default 3). A chat counts while it has a process; a person at their limit can still make a
   chat but cannot start another and reads "You already have N chats running; stop one first."
@@ -817,8 +821,9 @@ kernel, and the public name serves over HTTPS. None of them makes a model call o
   volume and a disk alert to limit the impact to that service.
 - **Removing someone while the chat machine is down.** Removal succeeds, ends the person's chats' model and git access
   immediately and clears stored keys and GitHub access. The chats the machine could not delete are closed to everyone.
-  Their Linux users and folders stay on the machine. Check that the chats are gone and repeat the removal once the machine
-  answers if any remain. Removal never retries on its own.
+  Their Linux users and folders stay on the machine until it answers, and the server then deletes them by itself (it
+  retries with a longer wait each time up to five minutes, and keeps the removal owed across a restart). Check the server's
+  log for the line that says it finished.
 - **The container runtime supplies the seccomp profile.** The sessionhost relies on the runtime's default profile to
   block user namespaces and calls such as `mount` and `chroot`. It sets no filter of its own for those calls. It sets
   no-new-privileges, drops every capability from the chat's processes and uses a separate Linux user for each chat.

@@ -327,8 +327,9 @@ It answers with an `access_token` the same way.
 - A hosted chat has no total disk or memory quota and can fill the sessions volume or the machine's memory. The operator can
   bound the whole `sessionhost` service.
 - Removing someone while the chat machine is down still ends the person's model and git access, clears their stored keys and
-  GitHub access and closes their chats to everyone. The chats stay on the machine. Check that the chats are gone and repeat
-  the removal once the machine answers if any remain. Removal never retries on its own.
+  GitHub access and closes their chats to everyone. The chats stay on the machine until it answers. The server keeps the
+  deletion owed in its store and retries by itself, with a longer wait each time up to five minutes, also after a restart,
+  and stops once the machine confirms. The operator does not repeat the removal.
 - The sessionhost relies on the container runtime's default seccomp profile to block user namespaces and calls such as
   `mount` and `chroot`. Use Docker's default profile or one with equivalent restrictions.
 - `local_sessions: refuse` is enforced on the server side only. No client acts on it yet.
