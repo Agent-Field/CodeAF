@@ -339,7 +339,7 @@ func (c *checker) typeFields(name string) (map[string]Field, bool) {
 	if own && !t.Uses {
 		return t.Fields, true
 	}
-	ex, has := c.existing[name]
+	ex, has := c.existing.ForRecord(name, t)
 	if !has && !own {
 		return nil, false
 	}
@@ -367,7 +367,10 @@ func (c *checker) checkApp() {
 	for _, name := range sortedKeys(a.Records) {
 		t := a.Records[name]
 		at := "/records/" + name
-		ex, exists := c.existing[name]
+		ex, exists := c.existing.ForRecord(name, t)
+		if t.Common != "" && !HasCommonType(t.Common) {
+			c.add(AppFile, at+"/common", CodeSchema, "The kit has no common type %q.", t.Common)
+		}
 		if t.Uses {
 			if !exists {
 				c.add(AppFile, at, CodeUsesUnknown, "%q uses the record type %q, but you have no %s records from another app. Make the type here instead, without \"uses\".", a.ID, name, name)

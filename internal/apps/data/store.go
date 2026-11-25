@@ -600,7 +600,7 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 			}
 		}
 		info := TypeInfo{
-			ID: t.ID, Name: t.Name, Title: t.titleField(), Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
+			ID: t.ID, Name: t.Name, Common: t.Common, Title: t.titleField(), Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
 			UsedBy: append([]string(nil), t.UsedBy...), Hidden: t.Hidden, Count: counts[t.ID], Ledger: t.Ledger,
 		}
 		if t.Lifecycle != nil {

@@ -9,13 +9,13 @@ CODEAF_APP_EVAL_REPORT=/tmp/app-eval.json \
 go test -tags e2e ./internal/apps/evals -run 'TestLiveGallery/founder-crm' -count=1 -timeout 10m -v
 ```
 
-Use `-run '^TestLiveGallery$'` and a 50-minute timeout for the six model
+Use `-run '^TestLiveGallery$'` and a 50-minute timeout for the seven model
 cases. The key is resolved through the normal profile and the builder is
 pinned to `deepseek/deepseek-v4.1-flash`. Each case creates a disposable engine
 home. `TestDeterministicGallery` uses the same binary with a fresh home and
 no provider credentials. Use a distinct report path when running it separately.
 
-The seven prompts and their expected observations are in
+The eight prompts and their expected observations are in
 `cases/gallery.yaml`. A step can assert a JSON pointer or capture a value and
 use it in a later request as `$name`. `app.*` runs the matching CLI command.
 Other methods go to the person's app wire. `wait-and-apply` waits for the
@@ -38,3 +38,8 @@ captures made with synthetic data. Save each PNG under
 The judge records scores and visible evidence alongside the recipe, theme and
 width. Missing captures and invalid scores fail the rubric run. Both
 model-backed tests skip if the profile has no key.
+
+The `support-shares-crm-identity` case checks the CRM and Support in the same
+space. It accepts existing Contacts and Companies from Support's plan,
+then reads the original type and record IDs through Support. It uses
+`deepseek/deepseek-v4.1-flash-1017`.

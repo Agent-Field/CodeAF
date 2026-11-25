@@ -73,7 +73,7 @@ func TestBuiltinCasesHaveIndependentChecksAndDataFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"founder-crm", "hiring-reuses-contacts", "personal-finance-csv", "release-tracker", "change-and-revert", "deterministic-no-model", "marketing-desk"}
+	want := []string{"founder-crm", "hiring-reuses-contacts", "personal-finance-csv", "release-tracker", "change-and-revert", "deterministic-no-model", "marketing-desk", "support-shares-crm-identity"}
 	if len(cases) != len(want) {
 		t.Fatalf("got %d cases, want %d", len(cases), len(want))
 	}

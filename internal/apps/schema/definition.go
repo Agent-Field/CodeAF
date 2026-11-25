@@ -229,6 +229,7 @@ type AgentRef struct {
 // RecordType is one record type the app owns, or, with Uses set, a type another app
 // owns that this app uses and adds its own fields to.
 type RecordType struct {
+	Common    string           `json:"common,omitempty"`
 	Lifecycle *RecordLifecycle `json:"lifecycle,omitempty"`
 	ID        string           `json:"id,omitempty"`
 	Ledger    *Ledger          `json:"ledger,omitempty"`
@@ -574,6 +575,7 @@ func jsonable(v any) (any, error) {
 // ExistingType is a record type the person already has, owned by some app. The
 // validator resolves `uses` types and cross-app refs against these.
 type ExistingType struct {
+	Common string `json:",omitempty"`
 	ID     string
 	Owner  string
 	Fields map[string]Field
@@ -595,7 +597,7 @@ func TypesOf(def Definition) TypeSet {
 		if t.Uses {
 			continue
 		}
-		out[name] = ExistingType{ID: t.ID, Owner: app.ID, Fields: t.Fields}
+		out[name] = ExistingType{ID: t.ID, Owner: app.ID, Common: t.Common, Fields: t.Fields}
 	}
 	return out
 }

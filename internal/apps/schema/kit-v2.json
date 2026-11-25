@@ -1,5 +1,300 @@
 {
   "kit": 2,
+  "common_types": {
+    "version": 1,
+    "types": {
+      "person": {
+        "label": "Person",
+        "terms": [
+          "contact",
+          "customer",
+          "candidate"
+        ],
+        "fields": {
+          "name": {
+            "type": "text",
+            "role": "name"
+          },
+          "email": {
+            "type": "email",
+            "role": "email"
+          },
+          "phone": {
+            "type": "phone",
+            "role": "phone"
+          },
+          "organization": {
+            "type": "ref",
+            "role": "employer",
+            "to": "organization"
+          },
+          "address": {
+            "type": "ref",
+            "role": "address",
+            "to": "address"
+          }
+        }
+      },
+      "organization": {
+        "label": "Organization",
+        "terms": [
+          "company",
+          "account",
+          "business"
+        ],
+        "fields": {
+          "name": {
+            "type": "text",
+            "role": "name"
+          },
+          "website": {
+            "type": "url",
+            "role": "website"
+          },
+          "address": {
+            "type": "ref",
+            "role": "address",
+            "to": "address"
+          },
+          "owner": {
+            "type": "ref",
+            "role": "owner",
+            "to": "person"
+          }
+        }
+      },
+      "address": {
+        "label": "Address",
+        "terms": [
+          "mailing address",
+          "street address"
+        ],
+        "fields": {
+          "line1": {
+            "type": "text",
+            "role": "street"
+          },
+          "line2": {
+            "type": "text",
+            "role": "unit"
+          },
+          "city": {
+            "type": "text",
+            "role": "locality"
+          },
+          "region": {
+            "type": "text",
+            "role": "region"
+          },
+          "postal_code": {
+            "type": "text",
+            "role": "postal_code"
+          },
+          "country": {
+            "type": "text",
+            "role": "country"
+          }
+        }
+      },
+      "money": {
+        "label": "Money",
+        "terms": [
+          "amount",
+          "price",
+          "cost",
+          "transaction"
+        ],
+        "fields": {
+          "amount": {
+            "type": "money",
+            "role": "amount"
+          },
+          "currency": {
+            "type": "text",
+            "role": "currency"
+          }
+        }
+      },
+      "document": {
+        "label": "Document",
+        "terms": [
+          "file",
+          "attachment"
+        ],
+        "fields": {
+          "title": {
+            "type": "text",
+            "role": "title"
+          },
+          "body": {
+            "type": "longtext",
+            "role": "body"
+          },
+          "url": {
+            "type": "url",
+            "role": "source"
+          },
+          "owner": {
+            "type": "ref",
+            "role": "owner",
+            "to": "person"
+          }
+        }
+      },
+      "product": {
+        "label": "Product",
+        "terms": [
+          "item",
+          "sku"
+        ],
+        "fields": {
+          "name": {
+            "type": "text",
+            "role": "name"
+          },
+          "sku": {
+            "type": "text",
+            "role": "sku"
+          },
+          "price": {
+            "type": "ref",
+            "role": "price",
+            "to": "money"
+          },
+          "supplier": {
+            "type": "ref",
+            "role": "supplier",
+            "to": "organization"
+          }
+        }
+      },
+      "location": {
+        "label": "Location",
+        "terms": [
+          "place",
+          "site"
+        ],
+        "fields": {
+          "name": {
+            "type": "text",
+            "role": "name"
+          },
+          "address": {
+            "type": "ref",
+            "role": "address",
+            "to": "address"
+          },
+          "latitude": {
+            "type": "number",
+            "role": "latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "role": "longitude"
+          }
+        }
+      },
+      "team": {
+        "label": "Team",
+        "terms": [
+          "department",
+          "group"
+        ],
+        "fields": {
+          "name": {
+            "type": "text",
+            "role": "name"
+          },
+          "organization": {
+            "type": "ref",
+            "role": "organization",
+            "to": "organization"
+          },
+          "members": {
+            "type": "refs",
+            "role": "member",
+            "to": "person"
+          },
+          "owner": {
+            "type": "ref",
+            "role": "owner",
+            "to": "person"
+          }
+        }
+      },
+      "event": {
+        "label": "Event",
+        "terms": [
+          "meeting",
+          "appointment"
+        ],
+        "fields": {
+          "title": {
+            "type": "text",
+            "role": "title"
+          },
+          "starts_at": {
+            "type": "datetime",
+            "role": "start"
+          },
+          "ends_at": {
+            "type": "datetime",
+            "role": "end"
+          },
+          "location": {
+            "type": "ref",
+            "role": "location",
+            "to": "location"
+          },
+          "attendees": {
+            "type": "refs",
+            "role": "attendee",
+            "to": "person"
+          },
+          "organizer": {
+            "type": "ref",
+            "role": "organizer",
+            "to": "person"
+          }
+        }
+      },
+      "task": {
+        "label": "Task",
+        "terms": [
+          "work item",
+          "to-do"
+        ],
+        "fields": {
+          "title": {
+            "type": "text",
+            "role": "title"
+          },
+          "description": {
+            "type": "longtext",
+            "role": "description"
+          },
+          "due_at": {
+            "type": "datetime",
+            "role": "due"
+          },
+          "assignee": {
+            "type": "ref",
+            "role": "assignee",
+            "to": "person"
+          },
+          "team": {
+            "type": "ref",
+            "role": "team",
+            "to": "team"
+          },
+          "done": {
+            "type": "bool",
+            "role": "completion"
+          }
+        }
+      }
+    }
+  },
   "hooks": {
     "useRecords": [
       "records"
