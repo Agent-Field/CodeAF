@@ -9,7 +9,8 @@ import (
 )
 
 func TestAppRunsUsesInboxApproval(t *testing.T) {
-	backend := newAppBackend(newAppRecorder(), nil)
+	rec := newAppRecorder()
+	backend := newAppBackend(rec, nil)
 	fake := runs.NewFakeConnector(map[string]runs.Reply{"gmail.send": {Output: "sent"}})
 	e, err := runs.Open(runs.Config{
 		Root: t.TempDir(), Ask: backend.openRunApproval, Connector: fake,
@@ -57,4 +58,15 @@ func TestAppRunsUsesInboxApproval(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].Answered.Option != appwire.OptionAllowOnce {
 		t.Fatalf("done = %+v, %v", items, err)
 	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for _, data := range rec.data {
+		if receipt, ok := data.(appwire.InboxResolvedEvent); ok && receipt.ID == item.ID {
+			if receipt.Receipt == "" {
+				t.Fatal("run approval closed without an Inbox receipt")
+			}
+			return
+		}
+	}
+	t.Fatal("run approval did not publish its Inbox receipt")
 }

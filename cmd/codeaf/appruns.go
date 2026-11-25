@@ -263,5 +263,5 @@ func (b *appBackend) answerRunApproval(agent, ask, option, text string) error {
 func (b *appBackend) closeRunInbox(agent, ask, option string) {
 	now := b.now()
 	b.emit.Emit(appwire.EventAskClosed, appwire.AskClosed{Agent: agent, ID: ask, At: now, Option: option, By: appwire.ClosedByApp})
-	b.inboxResolved(appInboxID(agent, ask), appwire.Entry{ID: "r" + ask})
+	b.inboxResolved(appInboxID(agent, ask), appwire.Entry{ID: "r" + ask, Text: appReceipt(appwire.ClosedByApp, option, nil, now)})
 }

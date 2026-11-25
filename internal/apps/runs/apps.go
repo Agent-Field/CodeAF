@@ -213,5 +213,5 @@ func allowsTool(a App, service, op string, aliases ...string) (allowed, ask bool
 			}
 		}
 	}
-	return allowed || slices.Contains(a.Capabilities.Tools, service+"."+op), ask
+	return allowed || slices.Contains(a.Capabilities.Tools, service) || slices.Contains(a.Capabilities.Tools, service+"."+op), ask
 }
