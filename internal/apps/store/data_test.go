@@ -77,3 +77,35 @@ func TestAppPublicationKeepsDataGrantsInStep(t *testing.T) {
 		t.Fatalf("delete lost personal data: %v, %v", row, err)
 	}
 }
+
+func TestAppCanRepublishItsOwnSharedFields(t *testing.T) {
+	s, home := testStore(t)
+	d, err := data.Open(filepath.Join(home, "records.db"), data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	s = s.WithData(func() (*data.Store, error) { return d, nil })
+	makeApp(t, s)
+	draft, err := s.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := strings.Replace(appJSON, `"title":"name","fields":{"name":{"type":"text"}}`, `"uses":true,"title":"name","fields":{"memo":{"type":"text"}}`, 1)
+	write(t, draft.Dir(), "app.json", raw)
+	write(t, draft.Dir(), "plan.json", planJSON)
+	write(t, draft.Dir(), "agent.md", "Manage shared contacts.")
+	write(t, draft.Dir(), "screens/main.json", mainScreen)
+	meta, err := s.Promote(draft, "Use contacts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit, err := s.NewDraft(meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err = s.Promote(edit, "Keep the app and its added field")
+	if err != nil || meta.Version != 2 {
+		t.Fatalf("Keep of shared contribution = %+v, %v", meta, err)
+	}
+}

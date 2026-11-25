@@ -1,5 +1,5 @@
 // Package store keeps app definitions and their history under the engine home.
-// Personal records belong to a different store and have no path through here.
+// Personal records stay in their data store. Publication updates its grants.
 package store
 
 import (

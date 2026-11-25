@@ -37,17 +37,9 @@ type checkReceipt struct {
 
 // ChecklistEvidence is the evidence supplied when completing a declared step.
 type ChecklistEvidence struct {
-	Kind   string         `json:"kind"`
-	Text   string         `json:"text,omitempty"`
-	File   *ChecklistFile `json:"file,omitempty"`
-	Record *RecordRef     `json:"record,omitempty"`
-}
-
-type ChecklistFile struct {
-	Blob    string `json:"blob"`
-	Name    string `json:"name"`
-	MIME    string `json:"mime"`
-	Content string `json:"content,omitempty"`
+	Kind   string     `json:"kind"`
+	Text   string     `json:"text,omitempty"`
+	Record *RecordRef `json:"record,omitempty"`
 }
 
 // RecordRef names a record independently of the app using it.
@@ -241,6 +233,9 @@ func (w *writeTx) canCheck(sc Scope, t *Type, r *record, signoff *checkSignoff, 
 }
 
 func (w *writeTx) checkEvidence(sc Scope, step checkStepDef, e *ChecklistEvidence) error {
+	if step.Evidence == "file" {
+		return errorf(CodeInvalid, "file evidence for checklists is unavailable in this build")
+	}
 	if step.Evidence == "none" && e == nil {
 		return nil
 	}
@@ -255,10 +250,7 @@ func (w *writeTx) checkEvidence(sc Scope, step checkStepDef, e *ChecklistEvidenc
 				_, _, err := w.subject(sc, e.Record.Type, e.Record.ID, false)
 				return err
 			}
-		case "file":
-			if e.File != nil && e.File.Blob != "" && e.File.Name != "" && e.File.MIME != "" && len(e.File.Content) <= 1<<20 {
-				return nil
-			}
+
 		}
 	}
 	return errorf(CodeInvalid, "%s needs %s evidence", step.Label, step.Evidence)

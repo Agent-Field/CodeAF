@@ -309,7 +309,7 @@ func (s *Store) Transitions(sc Scope, typ, id string) ([]TransitionState, error)
 
 func (w *writeTx) transitionsOn(q querier, sc Scope, t *Type, r *record) ([]TransitionState, error) {
 	out := []TransitionState{}
-	if t.Lifecycle == nil || t.field(t.Lifecycle.Field).Masked {
+	if t.processField() == nil {
 		return out, nil
 	}
 	_, writeErr := w.schema.allow(sc, t.Name, true)
@@ -324,12 +324,16 @@ func (w *writeTx) transitionsOn(q querier, sc Scope, t *Type, r *record) ([]Tran
 		if err != nil {
 			return nil, err
 		}
-		state := TransitionState{ID: tr.ID, Label: label(tr), To: tr.To, Ready: ready, Allowed: writeErr == nil && slices.Contains(tr.By, kind)}
+		state := TransitionState{ID: tr.ID, Label: label(tr), To: tr.To, Ready: ready, Allowed: writeErr == nil && !t.Ledger && slices.Contains(tr.By, kind)}
 		switch {
 		case t.Ledger:
 			state.Blocked = fmt.Sprintf("%s entries can only be reversed", t.Name)
 		case writeErr != nil:
-			state.Blocked = fmt.Sprintf("This app cannot change %s records.", t.Name)
+			if refusal, ok := AsError(writeErr); ok {
+				state.Blocked = refusal.Message
+			} else {
+				return nil, writeErr
+			}
 		case !state.Allowed:
 			state.Blocked = actorBlocked(tr, kind)
 		case !ready:
@@ -346,6 +350,18 @@ func (w *writeTx) transitionsOn(q querier, sc Scope, t *Type, r *record) ([]Tran
 		out = append(out, state)
 	}
 	return out, nil
+}
+
+// processField is the state field when the process can show it.
+func (t *Type) processField() *Field {
+	if t.Lifecycle == nil {
+		return nil
+	}
+	field := t.field(t.Lifecycle.Field)
+	if field == nil || field.Masked {
+		return nil
+	}
+	return field
 }
 
 func actorBlocked(tr *transition, kind string) string {

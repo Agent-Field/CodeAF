@@ -38,7 +38,7 @@ func (b *appBackend) DataChecklistSet(p appwire.ChecklistSetParams) (*appwire.Da
 	var provided *data.ChecklistEvidence
 	if e := p.Evidence; e != nil {
 		provided = &data.ChecklistEvidence{Kind: e.Kind, Text: e.Text,
-			File: (*data.ChecklistFile)(e.File), Record: (*data.RecordRef)(e.Record)}
+			Record: (*data.RecordRef)(e.Record)}
 	}
 	view, err := s.ChecklistSet(dataScope(p.DataScope), p.Record.Type, p.Record.ID,
 		p.Checklist, p.Step, *p.Done, int64(p.ExpectedRev), provided)
@@ -66,7 +66,7 @@ func (b *appBackend) wireProcess(s *data.Store, scope appwire.DataScope, v *data
 			entry := appwire.ProcessChecklistStep{ID: step.ID, Label: step.Label, Done: step.Done, Evidence: step.Evidence}
 			if e := step.Attached; e != nil {
 				entry.Attached = &appwire.ChecklistEvidence{Kind: e.Kind, Text: e.Text,
-					File: (*appwire.ChecklistFile)(e.File), Record: (*appwire.DataRecordRef)(e.Record)}
+					Record: (*appwire.DataRecordRef)(e.Record)}
 			}
 			check.Steps = append(check.Steps, entry)
 		}
@@ -152,13 +152,13 @@ type workApp struct {
 type workForm struct {
 	Record string `json:"record"`
 	Steps  []struct {
-		ID     string `json:"id"`
-		Label  string `json:"label"`
-		When   string `json:"when"`
+		ID     string          `json:"id"`
+		Label  string          `json:"label"`
+		When   json.RawMessage `json:"when"`
 		Fields []struct {
-			Field    string `json:"field"`
-			When     string `json:"when"`
-			Required *bool  `json:"required"`
+			Field    string          `json:"field"`
+			When     json.RawMessage `json:"when"`
+			Required *bool           `json:"required"`
 		} `json:"fields"`
 	} `json:"steps"`
 }
@@ -171,14 +171,16 @@ func (b *appBackend) workRows(s *data.Store, scope appwire.DataScope, list []dat
 		app, ok := apps[wi.App]
 		if !ok && wi.App != "" {
 			if def, err := defs.Get(wi.App); err == nil {
-				_ = json.Unmarshal(def.App, &app)
+				if err := json.Unmarshal(def.App, &app); err != nil {
+					app = workApp{Name: def.Meta.Name}
+				}
 			}
 			apps[wi.App] = app
 		}
 		r := wi.Row()
 		name := wi.Assignee
 		kind := "person"
-		if agent, ok := strings.CutPrefix(name, "agent:"); ok {
+		if agent, ok := strings.CutPrefix(name, data.AgentAssigneePrefix); ok {
 			kind, name = "agent", agent
 		} else if name == s.Person() {
 			name = "me"
@@ -215,7 +217,7 @@ func workFormRow(s *data.Store, sc data.Scope, form workForm) appwire.DataRow {
 					continue
 				}
 				field["id"] = use.Field
-				if use.When != "" {
+				if len(use.When) > 0 {
 					field["when"] = use.When
 				}
 				if use.Required != nil {
@@ -224,7 +226,7 @@ func workFormRow(s *data.Store, sc data.Scope, form workForm) appwire.DataRow {
 				fields = append(fields, field)
 			}
 			entry := appwire.DataRow{"id": step.ID, "label": step.Label, "fields": fields}
-			if step.When != "" {
+			if len(step.When) > 0 {
 				entry["when"] = step.When
 			}
 			steps = append(steps, entry)

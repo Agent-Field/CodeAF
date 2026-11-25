@@ -172,3 +172,15 @@ func TestMyWorkClaimCompleteAndReassign(t *testing.T) {
 		t.Fatalf("my work after complete = %+v, %v", mine, err)
 	}
 }
+
+func TestProcessWithHiddenLifecycleField(t *testing.T) {
+	s, _ := openOps(t)
+	id := mustCreate(t, s, person, "case", map[string]any{"name": "Case"})[0].ID()
+	if err := s.ForgetApp("ops"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := s.Process(person, "case", id)
+	if err != nil || snapshot.State != "" || len(snapshot.Transitions) != 0 {
+		t.Fatalf("process of retained data = %+v, %v", snapshot, err)
+	}
+}

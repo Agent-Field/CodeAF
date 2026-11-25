@@ -63,8 +63,8 @@ func (s *Store) processWrite(sc Scope, typ, id string, write bool, change func(*
 
 func (w *writeTx) process(sc Scope, t *Type, r *record) (*ProcessSnapshot, error) {
 	out := &ProcessSnapshot{Rev: r.Rev, Checklists: []ChecklistState{}}
-	if lc := t.Lifecycle; lc != nil && !t.field(lc.Field).Masked {
-		out.State, _ = r.Data[lc.Field].(string)
+	if field := t.processField(); field != nil {
+		out.State, _ = r.Data[field.Name].(string)
 	}
 	var err error
 	if out.Transitions, err = w.transitionsOn(w.tx, sc, t, r); err != nil {
@@ -90,11 +90,6 @@ func (w *writeTx) process(sc Scope, t *Type, r *record) (*ProcessSnapshot, error
 			state := ChecklistStep{ID: step.ID, Label: step.Label, Evidence: step.Evidence, Done: done}
 			if e := receipt.Evidence; done && e != nil {
 				copy := *e
-				if e.File != nil {
-					file := *e.File
-					file.Content = ""
-					copy.File = &file
-				}
 				state.Attached = &copy
 				if e.Record != nil {
 					if _, err := w.schema.allow(sc, e.Record.Type, false); err != nil {

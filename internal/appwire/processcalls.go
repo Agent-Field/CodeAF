@@ -65,15 +65,7 @@ type ChecklistSetParams struct {
 type ChecklistEvidence struct {
 	Kind   string         `json:"kind"`
 	Text   string         `json:"text,omitempty"`
-	File   *ChecklistFile `json:"file,omitempty"`
 	Record *DataRecordRef `json:"record,omitempty"`
-}
-
-type ChecklistFile struct {
-	Blob    string `json:"blob"`
-	Name    string `json:"name"`
-	MIME    string `json:"mime"`
-	Content string `json:"content,omitempty"`
 }
 
 type DataProcessResult struct {

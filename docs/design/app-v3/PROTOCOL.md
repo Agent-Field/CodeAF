@@ -402,8 +402,11 @@ deleted; `data.reverse` books the reversing entry. Only the person signs
 current revision and state, candidate transitions with guard and actor
 results and a display reason when blocked, checklist progress, open work
 items, timers, sign-offs with their current-version status, and a timeline.
+The process returns `checklists` and a `checklist` shorthand for the first
+declared checklist. The single-transition result also includes `row`.
 `data.checklist_set` adds `{checklist, step, done, expected_rev, evidence?}`
-and returns the updated snapshot. `checklist_done("id")` tests the named
+and returns the updated snapshot. Note and record-reference evidence are
+accepted. File evidence requires the app blob store. `checklist_done("id")` tests the named
 checklist and `checklist_done()` tests all declared checklists. Both are
 false when the requested checklist does not exist.
 

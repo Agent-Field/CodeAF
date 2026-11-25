@@ -41,6 +41,8 @@ const (
 	WorkOpen      = "open"
 	WorkDone      = "done"
 	WorkCancelled = "cancelled"
+	// AgentAssigneePrefix is the stored prefix for an agent's assignment.
+	AgentAssigneePrefix = "agent:"
 )
 
 // The bounds of the work tables.
@@ -296,7 +298,7 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 				}
 				item.Assignee = actor
 			case "complete", "reassign":
-				if item.Assignee != actor && (sc.below() || sc.Flow || (item.Assignee != "" && !strings.HasPrefix(item.Assignee, "agent:"))) {
+				if item.Assignee != actor && (sc.below() || sc.Flow || (item.Assignee != "" && !strings.HasPrefix(item.Assignee, AgentAssigneePrefix))) {
 					return errorf(CodeNotAllowed, "this work item belongs to another assignee")
 				}
 			}
@@ -417,7 +419,7 @@ func workActor(sch *schema, sc Scope) string {
 		if name == "" {
 			name = sc.App
 		}
-		return "agent:" + strings.TrimPrefix(name, "agent:")
+		return AgentAssigneePrefix + strings.TrimPrefix(name, AgentAssigneePrefix)
 	}
 	return sch.person
 }
@@ -426,8 +428,8 @@ func workItemsOn(q querier, sch *schema, sc Scope, f WorkFilter, mine bool) ([]W
 	where := []string{"1"}
 	var args []any
 	if mine {
-		where = append(where, "(assignee = ? OR substr(assignee, 1, 6) = 'agent:')")
-		args = append(args, sch.person)
+		where = append(where, "(assignee = ? OR substr(assignee, 1, ?) = ?)")
+		args = append(args, sch.person, len(AgentAssigneePrefix), AgentAssigneePrefix)
 	}
 	if f.Assignee != "" {
 		a, err := sch.personValue(f.Assignee)

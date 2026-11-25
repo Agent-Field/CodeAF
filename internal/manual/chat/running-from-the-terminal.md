@@ -2207,7 +2207,8 @@ With the desktop engine (`codeaf app`), call `data.process` for a record to
 see its current state and revision, available transitions and why a move is
 blocked, checklist progress, open work items, timers, sign-offs and history.
 Pass the revision you saw to `data.checklist_set` to complete or reopen a
-declared step. A step can require evidence.
+declared step. Steps can require a note or a record reference. Steps that
+require a file stay incomplete until file evidence is available.
 
 Use `data.transition_batch` for one named move across selected records.
 Each type must declare the move. Send each record's revision. If a record

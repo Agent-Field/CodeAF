@@ -837,6 +837,12 @@ func parseSpan(s string) (time.Duration, error) {
 // visible fields: what internal/appschema's validator checks a new or changed app
 // against (its `uses` types, its refs into the person's data).
 func (s *Store) TypeSet() appschema.TypeSet {
+	return s.TypeSetFor("")
+}
+
+// TypeSetFor omits fields this app already contributes so a replacement
+// definition can declare them again.
+func (s *Store) TypeSetFor(app string) appschema.TypeSet {
 	out := appschema.TypeSet{}
 	for name, t := range s.schema.Load().types {
 		if t.Hidden {
@@ -844,7 +850,7 @@ func (s *Store) TypeSet() appschema.TypeSet {
 		}
 		fields := map[string]appschema.Field{}
 		for fname, f := range t.Fields {
-			if !f.Hidden {
+			if !f.Hidden && (app == "" || f.App != app) {
 				fields[fname] = f.FieldDef.Field
 			}
 		}

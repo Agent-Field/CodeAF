@@ -19,12 +19,14 @@ import (
 func (s *Store) WithData(open func() (*data.Store, error)) *Store {
 	copy := *s
 	copy.openData = open
-	copy.types = func(string) (schema.TypeSet, error) {
-		d, err := open()
-		if err != nil {
-			return nil, err
+	if copy.types == nil {
+		copy.types = func(app string) (schema.TypeSet, error) {
+			d, err := open()
+			if err != nil {
+				return nil, err
+			}
+			return d.TypeSetFor(app), nil
 		}
-		return d.TypeSet(), nil
 	}
 	return &copy
 }
