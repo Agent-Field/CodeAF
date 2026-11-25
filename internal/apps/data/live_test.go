@@ -91,7 +91,7 @@ func TestSubscriptionDiffs(t *testing.T) {
 	_, deals := seedDeals(t, s)
 	waitIdle(t, s)
 	rec := newRecorder()
-	if err := s.Subscribe(Scope{App: "crm"}, SubSpec{ID: "open", Type: "deal", Query: "-stage:Lost amount>5000"}, rec.take); err != nil {
+	if _, err := s.Subscribe(Scope{App: "crm"}, SubSpec{ID: "open", Type: "deal", Query: "-stage:Lost amount>5000"}, rec.take); err != nil {
 		t.Fatal(err)
 	}
 
@@ -139,7 +139,7 @@ func TestSubscriptionDiffs(t *testing.T) {
 
 	// A record subscription sees its one record, and its deletion.
 	one := newRecorder()
-	if err := s.Subscribe(person, SubSpec{ID: "one", Type: "deal", Record: deals["Hooli · first order"]}, one.take); err != nil {
+	if _, err := s.Subscribe(person, SubSpec{ID: "one", Type: "deal", Record: deals["Hooli · first order"]}, one.take); err != nil {
 		t.Fatal(err)
 	}
 	_, _ = s.Update(person, "deal", []string{deals["Hooli · first order"]}, map[string]any{"amount": 7000}, UpdateOptions{})
@@ -155,7 +155,7 @@ func TestSubscriptionDiffs(t *testing.T) {
 	rec.quiet(t, s)
 
 	// A subscription an app is not allowed is refused at the start.
-	err := s.Subscribe(Scope{App: "ghost"}, SubSpec{ID: "x", Type: "deal"}, rec.take)
+	_, err := s.Subscribe(Scope{App: "ghost"}, SubSpec{ID: "x", Type: "deal"}, rec.take)
 	wantCode(t, err, CodeNotAllowed)
 }
 

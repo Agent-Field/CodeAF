@@ -13,7 +13,7 @@ func TestCreateFillsDefaultsAndChecksValues(t *testing.T) {
 	s, _ := openCRM(t)
 	co := mustCreate(t, s, person, "company", map[string]any{"name": "Northwind"})[0].ID()
 	row := mustCreate(t, s, person, "deal", map[string]any{"name": "N", "amount": "48,000.004", "company": co})[0]
-	if row["owner"] != Me || row["stage"] != "Lead" {
+	if row["owner"] != s.Person() || row["stage"] != "Lead" {
 		t.Fatalf("defaults: %v", row)
 	}
 	if row["amount"] != 48000.0 || row["weighted"] != 4800.0 {
@@ -254,7 +254,7 @@ func TestMaskedValues(t *testing.T) {
 		t.Fatalf("reveal: %v %v", row, err)
 	}
 	var reveals int
-	_ = s.rdb.QueryRow(`SELECT count(*) FROM reveals WHERE id = ? AND field = 'phone'`, id.ID()).Scan(&reveals)
+	_ = s.rdb.QueryRow(`SELECT count(*) FROM reveals r JOIN fields f ON f.id = r.field_id WHERE r.record = ? AND f.name = 'phone'`, id.ID()).Scan(&reveals)
 	if reveals != 1 {
 		t.Fatalf("%d reveal lines", reveals)
 	}
@@ -319,7 +319,7 @@ func TestTypesMergeAndHideNeverDelete(t *testing.T) {
 			contact = ti
 		}
 	}
-	if contact.OwnerApp != "crm" || !equal(contact.UsedBy, []string{"hiring"}) || contact.Count != 1 {
+	if contact.CreatedByApp != "crm" || !equal(contact.UsedBy, []string{"hiring"}) || contact.Count != 1 {
 		t.Fatalf("contact: %+v", contact)
 	}
 	last := contact.Fields[len(contact.Fields)-1]
@@ -367,7 +367,7 @@ func TestRefreshRecomputesClockedFields(t *testing.T) {
 	s, c := openCRM(t)
 	id := mustCreate(t, s, person, "deal", map[string]any{"name": "N"})[0].ID()
 	diffs := make(chan Diff, 4)
-	if err := s.Subscribe(person, SubSpec{ID: "one", Type: "deal", Record: id}, func(d Diff) { diffs <- d }); err != nil {
+	if _, err := s.Subscribe(person, SubSpec{ID: "one", Type: "deal", Record: id}, func(d Diff) { diffs <- d }); err != nil {
 		t.Fatal(err)
 	}
 	c.advance(3 * 24 * time.Hour)

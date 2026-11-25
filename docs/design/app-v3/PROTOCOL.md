@@ -318,19 +318,33 @@ keeps the value in a private file the agent's commands read (the model's own
 ## data methods
 
 The person's data for fluid apps: one store of records per person, every
-type any app made (`internal/apps/data`). Every call may carry `app` (checked
-against that app's record capabilities; none is the person in the Data place)
-and `draft` (a Builder draft's sample file). A row is a flat object: `id`, the
-field values by name, `type`, `created_at`, `updated_at`, and `_meta`
-(`{ai, masked, frozen, writable}`). A capability refusal is `not_allowed` with
-`detail.need` (`records.contact.rw`); a refused value is `bad_params` with
-`detail.field`; a frozen record is `frozen`; a repeated unique value is
-`duplicate`; an undo of a batch whose records changed since is `stale`.
-Queries are QueryField tokens; values are always bound, never spliced.
-Hello carries `data` when the engine serves these.
+type any app made, and the space's work tables (`internal/apps/data`). Every
+call may carry `app` (checked against that app's record capabilities; none is
+the person in the Data place) and `draft` (a Builder draft's sample file).
+Types and fields have stable ids (`data.types` answers them); a type belongs
+to the person, and `created_by_app` is provenance only. A row is a flat
+object: `id`, the field values by name, `type`, `created_at`, `updated_at`,
+`_rev` (its revision), and `_meta` (`{ai, by, masked, frozen, writable,
+reverses, reversed_by}`; `by` names the kind of writer — `person`, `ai`,
+`flow`, `import` — that last set each field). A capability refusal is
+`not_allowed` with `detail.need` (`records.contact.rw`); a refused value is
+`bad_params` with `detail.field`; a frozen record is `frozen`; a repeated
+unique value is `duplicate`; an undo of a batch whose records changed since,
+or a `rev` the record has moved past, is `stale`; a raw write to a
+lifecycle's state field, or a transition that cannot fire, is `lifecycle`; a
+change, delete or undo of a ledger entry is `ledger`. A value the person set
+holds against an AI write until the person resets it (`data.update` with
+`reset`); the write answers what it left alone in `held`. Queries are
+QueryField tokens (`company.industry:SaaS` reaches one link away) or the IR's
+structured `where`; values are always bound, never spliced. Hello carries
+`data` when the engine serves these.
 
 | method | params | result |
 |---|---|---|
+| `data.activity` | `in.DataRecordParams` | `DataItemsResult` |
+| `data.aggregate` | `in.DataAggregateParams` | `DataAggregateResult` |
+| `data.comments.create` | `in.DataCommentParams` | `DataItemResult` |
+| `data.comments.list` | `in.DataCommentListParams` | `DataItemsResult` |
 | `data.count` | `in.DataCountParams` | `DataCountResult` |
 | `data.create` | `in.DataCreateParams` | `DataWriteResult` |
 | `data.delete` | `in.DataDeleteParams` | `DataWriteResult` |
@@ -338,18 +352,44 @@ Hello carries `data` when the engine serves these.
 | `data.history` | `in.DataRecordParams` | `DataHistoryResult` |
 | `data.import_csv` | `in.DataImportParams` | `DataImportResult` |
 | `data.query` | `in.DataQueryParams` | `DataQueryResult` |
-| `data.subscribe` | `in.DataSubscribeParams` | `Empty` |
+| `data.reverse` | `in.DataReverseParams` | `DataWriteResult` |
+| `data.signoffs.create` | `in.DataSignParams` | `DataItemResult` |
+| `data.signoffs.list` | `in.DataRecordParams` | `DataItemsResult` |
+| `data.subscribe` | `in.DataSubscribeParams` | `DataSubscribeResult` |
+| `data.timers.cancel` | `in.DataIDParams` | `Empty` |
+| `data.timers.create` | `in.DataTimerCreateParams` | `DataItemResult` |
+| `data.timers.list` | `in.DataTimerListParams` | `DataItemsResult` |
+| `data.transition` | `in.DataTransitionParams` | `DataWriteResult` |
+| `data.transitions` | `in.DataRecordParams` | `DataTransitionsResult` |
 | `data.types` | `in.DataScope` | `DataTypesResult` |
 | `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
 | `data.unsubscribe` | `{sub}` | `Empty` |
 | `data.update` | `in.DataUpdateParams` | `DataWriteResult` |
+| `data.work.create` | `in.DataWorkCreateParams` | `DataItemResult` |
+| `data.work.list` | `in.DataWorkListParams` | `DataItemsResult` |
+| `data.work.update` | `in.DataWorkUpdateParams` | `DataItemResult` |
 
-`data.subscribe` starts a live query (`query`) or a one-record watch (`id`)
-under the caller's `sub`; after every committed write the engine sends
-`data.changed` `{sub, upserts, removes, total}` with the rows of the change
-that match now and the ids that matched before and no longer do — row
-diffs, never pages. Subscriptions end with `data.unsubscribe` or the
-connection.
+`data.subscribe` starts a live query (`query`), a one-record watch (`id`), or
+a watch on a work table (`table`: `work_items`, `timers`, `signoffs`,
+`comments`, all of it or one record's with `type` and `id`) under the
+caller's `sub`, and answers the `cursor` the store stands at. After every
+committed write the engine sends `data.changed` `{sub, upserts, removes,
+total, cursor}` with the rows of the change that match now and the ids that
+matched before and no longer do — row diffs, never pages. A client that
+reconnects subscribes again with `cursor` (the last one it saw) and is sent
+one diff of everything since, or `data.reset` `{sub, cursor}` when that
+cannot be told as a diff, after which it refetches. Subscriptions end with
+`data.unsubscribe` or the connection.
+
+A type with a lifecycle (declared under `process.lifecycles` or on the
+type) moves its state only by `data.transition` `{type, id, transition, rev,
+reason}` (or `{record: {type, id}, transition, expected_rev}`), which checks the record's state, the guard
+(CEL, with `signed()` and `open_work()`), the kind of writer and the
+revision, records the move in history with its reason, and hands the
+transition's effects to the engine's outbox. `data.transitions` lists the
+moves a record may take now. A ledger type's entries are never changed or
+deleted; `data.reverse` books the reversing entry. Only the person signs
+(`data.signoffs.create`), against the record's current version.
 
 ## competence methods
 
@@ -2246,6 +2286,7 @@ and the reply is empty.
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
 | `data.changed` | `DataChanged` |
+| `data.reset` | `DataReset` |
 | `compaction.ended` | `CompactionEnded` |
 | `credentials.changed` | `Empty` |
 | `crew.changed` | `CrewChanged` |

@@ -18,8 +18,17 @@ const (
 	// CodeFrozen is a write to a record a freeze rule has made read-only.
 	CodeFrozen = "frozen"
 	// CodeStale is an undo of a batch whose records have changed since, or
-	// that was already undone.
+	// that was already undone, or a write naming a revision the record has
+	// moved past.
 	CodeStale = "stale"
+	// CodeLifecycle is a write to a field a lifecycle owns, which only a
+	// transition moves, or a transition that cannot fire: the record is not
+	// in a state it starts from, its guard does not hold, or this writer may
+	// not fire it.
+	CodeLifecycle = "lifecycle"
+	// CodeLedger is a change or deletion of a ledger entry, which is only
+	// ever reversed.
+	CodeLedger = "ledger"
 	// CodeDuplicate is a value a unique field already holds on another
 	// record.
 	CodeDuplicate = "duplicate"

@@ -78,7 +78,7 @@ func TestLargeChangesReachSubscriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := newRecorder()
-	if err := s.Subscribe(person, SubSpec{ID: "all", Type: "contact"}, rec.take); err != nil {
+	if _, err := s.Subscribe(person, SubSpec{ID: "all", Type: "contact"}, rec.take); err != nil {
 		t.Fatal(err)
 	}
 	res, err := s.ImportCSV(person, "contact", ImportOptions{Path: path})
