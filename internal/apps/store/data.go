@@ -76,6 +76,7 @@ func (s *Store) SyncData(d *data.Store) error {
 				continue
 			}
 			raw = def.App
+			m.digest = def.files.digest()
 		}
 		pending = append(pending, publication(m, raw))
 	}
@@ -123,8 +124,13 @@ func (s *Store) adoptSlug(d *data.Store, slug string) error {
 	return nil
 }
 
+type publicationMetadata struct {
+	Meta
+	Digest string `json:"digest,omitempty"`
+}
+
 func publication(m Meta, raw []byte) data.AppPublication {
-	metadata, _ := json.Marshal(m)
+	metadata, _ := json.Marshal(publicationMetadata{Meta: m, Digest: m.digest})
 	return data.AppPublication{App: m.ID, Version: m.Version, Archived: m.Archived, Deleted: m.Deleted,
 		Metadata: metadata, Definition: raw}
 }
@@ -141,10 +147,11 @@ func (s *Store) publishedMeta(id string) (Meta, bool, error) {
 	if err != nil || !ok {
 		return Meta{}, ok, err
 	}
-	var m Meta
-	if err := json.Unmarshal(p.Metadata, &m); err != nil || m.ID != id || m.Version != p.Version ||
-		m.Archived != p.Archived || m.Deleted != p.Deleted {
+	var receipt publicationMetadata
+	if err := json.Unmarshal(p.Metadata, &receipt); err != nil || receipt.ID != id || receipt.Version != p.Version ||
+		receipt.Archived != p.Archived || receipt.Deleted != p.Deleted {
 		return Meta{}, true, fmt.Errorf("%w: invalid publication pointer", ErrCorrupt)
 	}
-	return m, true, nil
+	receipt.Meta.digest = receipt.Digest
+	return receipt.Meta, true, nil
 }

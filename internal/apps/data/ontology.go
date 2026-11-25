@@ -288,6 +288,15 @@ func findIdentity(q querier, key ExternalKey) (id, typeID string, err error) {
 	return
 }
 
+// LookupIdentity reads a source key's canonical ULID without reserving one.
+func (s *Store) LookupIdentity(key ExternalKey) (string, bool, error) {
+	if !key.valid() {
+		return "", false, errorf(CodeInvalid, "a complete source key is required")
+	}
+	id, _, err := findIdentity(s.rdb, key)
+	return id, id != "", err
+}
+
 // ExternalKeys returns the crosswalk's reverse lookup for trusted source adapters.
 func (s *Store) ExternalKeys(entityID string) ([]ExternalKey, error) {
 	out := []ExternalKey{}

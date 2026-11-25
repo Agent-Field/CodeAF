@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -129,5 +131,72 @@ func TestAppDataSubscribeWireCarriesSnapshotAndInvalidationCursor(t *testing.T) 
 	}
 	if watched.Cursor <= 0 || watched.Snapshot != nil {
 		t.Fatalf("invalidate-only reply: %+v", watched)
+	}
+}
+
+func TestAppDataSubscribeWireResetHasNoRowPayload(t *testing.T) {
+	b, _ := dataBackend(t)
+	in, requests := io.Pipe()
+	replies, out := io.Pipe()
+	t.Cleanup(func() {
+		_ = requests.Close()
+		_ = replies.Close()
+	})
+	server := appwire.NewServer(out)
+	b.emit = server
+	go func() {
+		defer out.Close()
+		_ = server.Serve(t.Context(), in, appwire.Hello{Version: "test"}, b)
+	}()
+	frames := make(chan map[string]json.RawMessage, 16)
+	go func() {
+		defer close(frames)
+		scan := bufio.NewScanner(replies)
+		for scan.Scan() {
+			var frame map[string]json.RawMessage
+			if json.Unmarshal(scan.Bytes(), &frame) == nil {
+				frames <- frame
+			}
+		}
+	}()
+	next := func(match func(map[string]json.RawMessage) bool) map[string]json.RawMessage {
+		t.Helper()
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		for {
+			select {
+			case f, ok := <-frames:
+				if !ok {
+					t.Fatal("wire closed before the expected frame")
+				}
+				if match(f) {
+					return f
+				}
+			case <-deadline.C:
+				t.Fatal("wire did not send the expected frame")
+			}
+		}
+	}
+	next(func(f map[string]json.RawMessage) bool { return string(f["event"]) == `"hello"` })
+	if _, err := io.WriteString(requests, `{"id":42,"method":"data.subscribe","params":{"type":"deal","sub":"total","invalidate_only":true}}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	reply := next(func(f map[string]json.RawMessage) bool { return string(f["id"]) == "42" })
+	var receipt appwire.DataSubscribeResult
+	if err := json.Unmarshal(reply["result"], &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.DataCreate(appwire.DataCreateParams{Type: "deal", Set: map[string]any{"name": "Protected payload"}}); err != nil {
+		t.Fatal(err)
+	}
+	event := next(func(f map[string]json.RawMessage) bool { return string(f["event"]) == `"data.reset"` })
+	var reset appwire.DataReset
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(event["data"], &reset); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(event["data"], &fields); err != nil || len(fields) != 2 ||
+		reset.Sub != "total" || reset.Cursor <= receipt.Cursor {
+		t.Fatalf("unexpected reset: %s (%v)", event["data"], err)
 	}
 }

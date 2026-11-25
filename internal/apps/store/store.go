@@ -64,6 +64,7 @@ type Meta struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Archived  bool      `json:"archived"`
 	Deleted   bool      `json:"deleted,omitempty"`
+	digest    string
 }
 
 // Definition is one validated live version. Meta describes the served version

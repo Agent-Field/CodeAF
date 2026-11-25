@@ -250,6 +250,7 @@ func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
 				return Meta{}, err
 			}
 			raw = def.App
+			m.digest = def.files.digest()
 		}
 		if err := d.PublishApp(publication(m, raw), m.Version); err != nil {
 			return Meta{}, err
@@ -324,6 +325,7 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 	}
 	app := filepath.Join(s.root, next.ID)
 	if s.openData != nil {
+		next.digest = f.digest()
 		if err := s.commitPublication(m, next, f[appFile], app, tx, snapshot); err != nil {
 			return Meta{}, err
 		}

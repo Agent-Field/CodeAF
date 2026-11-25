@@ -527,10 +527,8 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 }
 
 // RegisterApp merges one app's record types, fields and capabilities into
-// the store. It is what makes an app's data exist: the app store calls it when a
-// version goes live (Keep, change, revert) and on start for every app. It is
-// safe to call again with the same file, and a field the new file no longer
-// declares is hidden, never deleted.
+// a draft or legacy catalog. Published definitions use [Store.PublishApp].
+// Re-registration hides fields dropped by the app and preserves their values.
 func (s *Store) RegisterApp(appJSON []byte) error {
 	def, err := ParseApp(appJSON)
 	if err != nil {
