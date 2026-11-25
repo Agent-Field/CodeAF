@@ -262,9 +262,11 @@ func TestACommandsUsageIsReadOutOfTheOneTable(t *testing.T) {
 
 // THE USAGE NAMES EVERY FLAG A PERSON CAN TYPE. `--debug` — the whole debug
 // record feature — and `--no-host` existed on four commands and appeared
-// nowhere in the one page a headless caller reads.
+// nowhere in the one page a headless caller reads; `--org`, the way into an
+// organization's hosted chats from a terminal, was in `chat`'s own usage error
+// and nowhere on this page, so an operator reading the page could not find it.
 func TestTheUsageNamesEveryFlagAPersonCanType(t *testing.T) {
-	for _, flagName := range []string{"--debug", "--no-host"} {
+	for _, flagName := range []string{"--debug", "--no-host", "--org"} {
 		if !strings.Contains(usageText, flagName) {
 			t.Fatalf("%s is a flag this binary takes and the usage text never mentions it", flagName)
 		}
