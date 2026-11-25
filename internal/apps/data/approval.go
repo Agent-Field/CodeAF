@@ -18,6 +18,9 @@ type approvalRule struct {
 func compileApproval(id string, def routingDeclaration, match *program) (approvalRule, error) {
 	rule := approvalRule{id: id, def: def, when: match}
 	rule.def.Statement = strings.TrimSpace(rule.def.Statement)
+	if def.Delegate != "" {
+		return rule, ruleError(id, "approval delegation requires a member directory")
+	}
 	if def.Order != "serial" && def.Order != "parallel" {
 		return rule, ruleError(id, "approvals need serial or parallel order")
 	}
@@ -115,17 +118,31 @@ func (rule *approvalRule) steps(q querier, r *record, person string) (*ApprovalR
 	return route, nil
 }
 
-func (w *writeTx) recordApprovalRoute(sc Scope, t *Type, r *record) error {
-	if len(t.rules.approvals) == 0 {
+func (w *writeTx) recordApprovalRoute(sc Scope, t *Type, before, r *record) error {
+	if len(t.rules.approvals) == 0 || r.DeletedAt != "" {
 		return nil
 	}
 	rule := t.approvalFor(r)
+	var reset bool
+	if before != nil && before.DeletedAt == "" && before.Meta.LastTransition == r.Meta.LastTransition && t.approvalFor(before) == rule {
+		if rule == nil {
+			return nil
+		}
+		err := w.tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM approval_receipts WHERE record = ? AND revision = ? AND route = ?)`,
+			before.ID, before.Rev, rule.key).Scan(&reset)
+		if err != nil || !reset {
+			return err
+		}
+	}
 	if rule == nil {
 		return w.ruleActivity(sc, t, r.ID, "No approval route matched this record.")
 	}
 	reason := fmt.Sprintf("%s: selected %s approval by %s", rule.id, rule.def.Order, strings.Join(rule.def.Roles, ", "))
 	if rule.def.When != "" {
 		reason += " because " + rule.def.When + " matched"
+	}
+	if reset {
+		reason += ". The new revision needs fresh sign-offs."
 	}
 	if rule.def.MakerCannotSign && r.madeBy(w.schema.person) {
 		reason += ". " + needsChecker

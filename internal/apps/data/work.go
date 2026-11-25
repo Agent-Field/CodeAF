@@ -57,12 +57,13 @@ const (
 // ItemChange is one work item, timer, sign-off or comment a [Change] made or
 // moved, as its table's row.
 type ItemChange struct {
-	Table  string
-	ID     string
-	Type   string
-	Record string
-	App    string
-	Row    map[string]any
+	sourceType string
+	Table      string
+	ID         string
+	Type       string
+	Record     string
+	App        string
+	Row        map[string]any
 }
 
 // itemChange starts (or joins) the change w reports for a table write.
@@ -150,20 +151,21 @@ func when(v string, now time.Time) (string, error) {
 
 // WorkItem is one thing someone is to do.
 type WorkItem struct {
-	ID        string
-	Title     string
-	Type      string
-	Record    string
-	Assignee  string
-	Due       string
-	SLAAt     string
-	Form      string
-	Status    string
-	Outcome   any
-	App       string
-	CreatedBy string
-	CreatedAt string
-	UpdatedAt string
+	sourceType string
+	ID         string
+	Title      string
+	Type       string
+	Record     string
+	Assignee   string
+	Due        string
+	SLAAt      string
+	Form       string
+	Status     string
+	Outcome    any
+	App        string
+	CreatedBy  string
+	CreatedAt  string
+	UpdatedAt  string
 }
 
 func (wi *WorkItem) Row() map[string]any {
@@ -209,7 +211,7 @@ func (s *Store) CreateWorkItem(sc Scope, in WorkItem) (*WorkItem, error) {
 // createWorkItem lets the writer commit a rule's work item with its record.
 func (w *writeTx) createWorkItem(sc Scope, t *Type, in WorkItem) (*WorkItem, error) {
 	item := WorkItem{ID: w.s.ids.next(w.now), Title: in.Title, Record: in.Record, Form: strings.TrimSpace(in.Form), Status: WorkOpen,
-		App: sc.App, CreatedBy: w.schema.actor(sc), CreatedAt: w.now.UTC().Format(stamp)}
+		App: sc.App, CreatedBy: w.schema.actor(sc), CreatedAt: w.now.UTC().Format(stamp), sourceType: in.sourceType}
 	item.UpdatedAt = item.CreatedAt
 	if t != nil {
 		item.Type = t.Name
@@ -231,13 +233,21 @@ func (w *writeTx) createWorkItem(sc Scope, t *Type, in WorkItem) (*WorkItem, err
 	if t != nil {
 		typeID = t.ID
 	}
-	if _, err := w.tx.Exec(`INSERT INTO work_items(id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, ?, ?)`,
-		item.ID, item.Title, typeID, item.Record, item.Assignee, item.Due, item.SLAAt, item.Form, item.Status, item.App, item.CreatedBy, item.CreatedAt, item.UpdatedAt); err != nil {
+	if _, err := w.tx.Exec(`INSERT INTO work_items(id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at, source_type_id)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'null', ?, ?, ?, ?, ?)`,
+		item.ID, item.Title, typeID, item.Record, item.Assignee, item.Due, item.SLAAt, item.Form, item.Status, item.App, item.CreatedBy, item.CreatedAt, item.UpdatedAt, item.sourceType); err != nil {
 		return nil, err
 	}
 	w.itemChange(sc, "work_item")
-	return &item, w.item(TableWorkItems, EventWorkItemCreated, t, item.Record, item.App, item.ID, item.Row())
+	return &item, w.workItemEvent(EventWorkItemCreated, t, &item)
+}
+
+func (w *writeTx) workItemEvent(event string, t *Type, item *WorkItem) error {
+	if err := w.item(TableWorkItems, event, t, item.Record, item.App, item.ID, item.Row()); err != nil {
+		return err
+	}
+	w.change.Items[len(w.change.Items)-1].sourceType = item.sourceType
+	return nil
 }
 
 // orMe is the person when no one is named.
@@ -280,7 +290,7 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 		if err != nil {
 			return err
 		}
-		if item == nil || !w.schema.seen(sc, item.App, typeID) {
+		if item == nil || !w.schema.seen(sc, item.App, typeID) || !w.schema.canReadSource(sc, item.sourceType) {
 			return errorf(CodeNotFound, "there is no work item %s", id)
 		}
 		if sc.App != "" && item.App != sc.App {
@@ -359,17 +369,17 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 		}
 		w.itemChange(sc, "work_item")
 		out = item
-		return w.item(TableWorkItems, EventWorkItemUpdated, w.schema.byID[typeID], item.Record, item.App, item.ID, item.Row())
+		return w.workItemEvent(EventWorkItemUpdated, w.schema.byID[typeID], item)
 	})
 	return out, err
 }
 
-const workColumns = `id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at`
+const workColumns = `id, title, type_id, record, assignee, due, sla_at, form_ref, status, outcome_json, app, created_by, created_at, updated_at, source_type_id`
 
 func scanWorkItem(sch *schema, scan func(...any) error) (*WorkItem, string, error) {
 	var wi WorkItem
 	var typeID, outcome string
-	if err := scan(&wi.ID, &wi.Title, &typeID, &wi.Record, &wi.Assignee, &wi.Due, &wi.SLAAt, &wi.Form, &wi.Status, &outcome, &wi.App, &wi.CreatedBy, &wi.CreatedAt, &wi.UpdatedAt); err != nil {
+	if err := scan(&wi.ID, &wi.Title, &typeID, &wi.Record, &wi.Assignee, &wi.Due, &wi.SLAAt, &wi.Form, &wi.Status, &outcome, &wi.App, &wi.CreatedBy, &wi.CreatedAt, &wi.UpdatedAt, &wi.sourceType); err != nil {
 		return nil, "", err
 	}
 	_ = json.Unmarshal([]byte(outcome), &wi.Outcome)
@@ -464,7 +474,7 @@ func workItemsOn(q querier, sch *schema, sc Scope, f WorkFilter, mine bool) ([]W
 		if err != nil {
 			return err
 		}
-		if sch.seen(sc, wi.App, typeID) && len(out) < ListMax {
+		if sch.seen(sc, wi.App, typeID) && sch.canReadSource(sc, wi.sourceType) && len(out) < ListMax {
 			out = append(out, *wi)
 		}
 		return nil
@@ -1038,8 +1048,12 @@ func activityOn(q querier, sch *schema, sc Scope, t *Type, id string, signoffs [
 		}
 	}
 	if err := eachRow(q, `SELECT * FROM (SELECT id, actor, by_kind, reason, at FROM rule_activity
-		WHERE type_id = ? AND record = ? ORDER BY id DESC LIMIT ?) ORDER BY id`,
-		[]any{t.ID, id, ListMax}, func(scan func(...any) error) error {
+		WHERE type_id = ? AND record = ? AND (? = '' OR source_type_id = '' OR EXISTS (
+			SELECT 1 FROM types WHERE types.id = rule_activity.source_type_id AND types.name IN (
+				SELECT value FROM json_each(?)
+			)
+		)) ORDER BY id DESC LIMIT ?) ORDER BY id`,
+		[]any{t.ID, id, sc.App, canonicalJSON(sortedKeys(sch.caps[sc.App])), ListMax}, func(scan func(...any) error) error {
 			a := Activity{Kind: ActivityRule}
 			if err := scan(&a.ID, &a.Actor, &a.ByKind, &a.Reason, &a.At); err != nil {
 				return err

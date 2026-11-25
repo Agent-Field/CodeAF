@@ -70,14 +70,7 @@ func (b bookingRule) slot(r *record) bookingSlot {
 	return slot
 }
 
-func (w *writeTx) checkBookings(t *Type, r *record, sc Scope) error {
-	if len(t.rules.bookings) == 0 {
-		return nil
-	}
-	before, err := loadRecord(w.tx, w.schema, r.ID)
-	if err != nil {
-		return err
-	}
+func (w *writeTx) checkBookings(t *Type, before, r *record, sc Scope) error {
 	for _, rule := range t.rules.bookings {
 		slot := rule.slot(r)
 		if slot == rule.slot(before) {

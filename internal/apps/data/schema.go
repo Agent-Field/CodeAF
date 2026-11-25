@@ -265,6 +265,9 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 		}
 		var def TypeDef
 		_ = json.Unmarshal([]byte(raw), &def)
+		if !slices.Contains(declared[id], defApp) || slices.Contains(uses[id], defApp) {
+			def.Rules = ruleDeclarations{}
+		}
 		t := &Type{
 			ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
 			Hidden: len(declared[id]) == 0, UsedBy: uses[id], declaredBy: declared[id], Fields: map[string]*Field{},
@@ -617,6 +620,9 @@ func registerApp(w *writeTx, def *AppDef, bindings map[string]CommonTypeKey) (*s
 			return nil, errorf(CodeInvalid, "%v", p[0])
 		}
 	}
+	if err := checkRuleDependencies(next, current); err != nil {
+		return nil, err
+	}
 	if err := checkRegistered(tx, next, current, def); err != nil {
 		return nil, err
 	}
@@ -734,7 +740,8 @@ func ensureIndexes(tx *sql.Tx, s *schema) error {
 // forgetApp removes an app's capabilities and declarations. Its types and
 // fields stay, hidden when no other app declares them, and so do their
 // values: deleting an app never touches its types or their records.
-func forgetApp(tx *sql.Tx, app string, now func() time.Time) (*schema, error) {
+func forgetApp(w *writeTx, app string) (*schema, error) {
+	tx := w.tx
 	for _, stmt := range []string{
 		`DELETE FROM app_types WHERE app = ?`,
 		`DELETE FROM app_type_bindings WHERE app = ?`,
@@ -745,8 +752,23 @@ func forgetApp(tx *sql.Tx, app string, now func() time.Time) (*schema, error) {
 			return nil, err
 		}
 	}
-	next, _, err := loadSchema(tx, now)
-	return next, err
+	next, _, err := loadSchema(tx, w.s.now)
+	if err != nil {
+		return nil, err
+	}
+	return next, checkRuleDependencies(next, w.schema)
+}
+
+// A schema change must keep the rules of other defining apps usable.
+func checkRuleDependencies(next, previous *schema) error {
+	for _, name := range sortedKeys(next.types) {
+		t := next.types[name]
+		prior := previous.byID[t.ID]
+		if t.rules.invalid != nil && prior != nil && prior.rules.invalid == nil {
+			return errorf(CodeInvalid, "%s rules would stop working: %s", t.Name, t.rules.invalid.Message)
+		}
+	}
+	return nil
 }
 
 // RenameType gives a type a new name. Its records, history and indexes are

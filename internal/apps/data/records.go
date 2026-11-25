@@ -578,22 +578,27 @@ func changedFields(before, after *record) []string {
 	return out
 }
 
-// save writes r: an insert for a new record, else an update, with its values
-// and meta by field id.
+// save enforces rules shared by all record changes before it writes the row.
+// The rule outcomes commit in the same transaction as the record.
 func (w *writeTx) save(t *Type, r *record, insert bool, sc Scope) error {
 	if t.rules.invalid != nil {
 		return t.rules.invalid
 	}
+	var before *record
 	if insert {
 		// Agent and flow writes in Personal are on behalf of the space's person.
 		r.Meta.Maker = w.schema.person
-	}
-	if r.DeletedAt == "" {
-		if err := w.recordApprovalRoute(sc, t, r); err != nil {
+	} else if len(t.rules.bookings) != 0 || len(t.rules.approvals) != 0 {
+		var err error
+		before, err = loadRecord(w.tx, w.schema, r.ID)
+		if err != nil {
 			return err
 		}
 	}
-	if err := w.checkBookings(t, r, sc); err != nil {
+	if err := w.recordApprovalRoute(sc, t, before, r); err != nil {
+		return err
+	}
+	if err := w.checkBookings(t, before, r, sc); err != nil {
 		return err
 	}
 	data, meta := canonicalJSON(t.encode(r.Data, r.unknown)), canonicalJSON(t.encodeMeta(r.Meta))

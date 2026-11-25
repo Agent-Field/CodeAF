@@ -204,6 +204,12 @@ func (c *checker) checkChannel(at string, channel Channel) {
 }
 
 func (c *checker) checkRoutingRule(at string, r RoutingRule) {
+	if r.Strategy == "skill" {
+		c.add(AppFile, at+"/strategy", CodePolicy, "Skill assignment requires a member directory.")
+	}
+	if r.Delegate != "" {
+		c.add(AppFile, at+"/delegate", CodePolicy, "Approval delegation requires a member directory.")
+	}
 	c.checkRecordAccess(AppFile, at+"/record", r.Record, "r")
 	if def, ok := c.app.Records[r.Record]; !ok || def.Uses {
 		c.add(AppFile, at+"/record", CodePolicy, "The app must define the record type a rule governs.")

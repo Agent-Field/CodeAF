@@ -13,9 +13,11 @@ import (
 )
 
 const writeRulesMigration = `
+	ALTER TABLE work_items ADD COLUMN source_type_id TEXT NOT NULL DEFAULT '';
 	CREATE TABLE rule_activity(
 		id TEXT PRIMARY KEY,
 		type_id TEXT NOT NULL,
+		source_type_id TEXT NOT NULL,
 		record TEXT NOT NULL,
 		actor TEXT NOT NULL,
 		by_kind TEXT NOT NULL,
@@ -56,7 +58,7 @@ type writeRules struct {
 	bookings     []bookingRule
 	assignments  []assignmentRule
 	approvals    []approvalRule
-	invalid      error
+	invalid      *Error
 }
 
 func (d *AppDef) readRules(raw []byte) error {
@@ -181,13 +183,27 @@ func compileRuleCondition(t *Type, rule appschema.RoutingRule, now func() time.T
 }
 
 func (w *writeTx) ruleActivity(sc Scope, t *Type, record, reason string) error {
+	return w.scopedRuleActivity(sc, t, record, reason, "")
+}
+
+// A linked owner's identity is derived from a second type. Only readers of
+// both types may see the assignment reason or work item.
+func (w *writeTx) scopedRuleActivity(sc Scope, t *Type, record, reason, sourceType string) error {
 	kind := sc.kind("")
 	if w.change != nil {
 		kind = w.change.ByKind
 	}
-	_, err := w.tx.Exec(`INSERT INTO rule_activity(id, type_id, record, actor, by_kind, reason, at) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-		w.s.ids.next(w.now), t.ID, record, w.schema.actor(sc), kind, reason, w.now.UTC().Format(stamp))
+	_, err := w.tx.Exec(`INSERT INTO rule_activity(id, type_id, source_type_id, record, actor, by_kind, reason, at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+		w.s.ids.next(w.now), t.ID, sourceType, record, w.schema.actor(sc), kind, reason, w.now.UTC().Format(stamp))
 	return err
+}
+
+func (s *schema) canReadSource(sc Scope, sourceType string) bool {
+	if sc.App == "" || sourceType == "" {
+		return true
+	}
+	t := s.byID[sourceType]
+	return t != nil && s.caps[sc.App][t.Name] != ""
 }
 
 func ruleField(t *Type, name string) *Field {

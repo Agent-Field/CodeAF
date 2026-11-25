@@ -92,7 +92,9 @@ values.
 Candidates can use `me` or `agent:<name>`. Declared `roles` resolve to
 the local person in Personal. A missing field match or linked owner leaves
 no assignment and adds the reason to record activity. The same writer
-handles app screens, automation, and agent writes.
+handles app screens, automation, and agent writes. An app needs read access
+to the linked record type to see an assignment derived from its owner.
+Skill assignment and approval delegation require a member directory.
 
 ## Who approves a record and can the creator sign?
 

@@ -306,3 +306,50 @@ func TestBookingRulesRejectTighteningOverExistingConflicts(t *testing.T) {
 	}
 	mustCreate(t, s, person, "booking", values)
 }
+
+func TestAssignmentRulesKeepLinkedOwnersWithinTheirReadGrant(t *testing.T) {
+	s := openRuleStore(t)
+	registerRules(t, s, `{
+		"id":"directory","records":{"company":{"fields":{"owner":{"type":"person"}}}},
+		"capabilities":{"records":{"company":"rw"}}
+	}`)
+	registerRules(t, s, `{
+		"id":"ops","records":{"ticket":{"fields":{"company":{"type":"ref","to":"company"}}}},
+		"capabilities":{"records":{"ticket":"rw","company":"r"}},
+		"process":{"work_items":{"triage":{"title":"Triage","subject":{"type":"ticket","id":"$record.id"},"assignee":"me","form":"triage"}}},
+		"rules":{"dispatch":{"kind":"assignment","record":"ticket","workItem":"triage","strategy":"linked-owner","field":"company","ownerField":"owner"}}
+	}`)
+	registerRules(t, s, `{"id":"intake","records":{"ticket":{"uses":true}},"capabilities":{"records":{"ticket":"rw"}}}`)
+	company := mustCreate(t, s, person, "company", map[string]any{"owner": "agent:private"})[0].ID()
+	intake := Scope{App: "intake", Agent: true}
+	id := mustCreate(t, s, intake, "ticket", map[string]any{"company": company})[0].ID()
+	readable, err := s.Process(Scope{App: "ops"}, "ticket", id)
+	if err != nil || len(readable.WorkItems) != 1 || readable.WorkItems[0].Assignee != "agent:private" || len(readable.Timeline) != 1 {
+		t.Fatalf("source granted: %+v, %v", readable, err)
+	}
+	narrow, err := s.Process(intake, "ticket", id)
+	if err != nil || len(narrow.WorkItems) != 0 || len(narrow.Timeline) != 0 {
+		t.Fatalf("source unavailable: %+v, %v", narrow, err)
+	}
+	_, err = s.ReassignWorkItem(intake, readable.WorkItems[0].ID, "me")
+	wantCode(t, err, CodeNotFound)
+	err = s.RegisterApp([]byte(`{"id":"directory","records":{"company":{"fields":{"owner":{"type":"person","masked":true}}}},"capabilities":{"records":{"company":"rw"}}}`))
+	wantCode(t, err, CodeInvalid)
+	if err := s.ForgetApp("ops"); err != nil {
+		t.Fatal(err)
+	}
+	mustCreate(t, s, intake, "ticket", map[string]any{})
+}
+
+func TestApprovalRulesParallelStepsAreReadyTogether(t *testing.T) {
+	s := openRuleStore(t)
+	registerRules(t, s, strings.Replace(approvalApp, `"order":"serial","roles":["finance","director"]`, `"order":"parallel","roles":["finance","director"]`, 1))
+	id := mustCreate(t, s, person, "expense", map[string]any{"amount": 10000, "kind": "travel"})[0].ID()
+	if _, err := s.Transition(person, "expense", id, "submit", TransitionOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Process(person, "expense", id)
+	if err != nil || len(p.Approval.Steps) != 2 || !p.Approval.Steps[0].Ready || !p.Approval.Steps[1].Ready {
+		t.Fatalf("parallel approval = %+v, %v", p, err)
+	}
+}

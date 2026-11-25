@@ -78,7 +78,7 @@ func (s *schema) compileAssignment(t *Type, id string, def routingDeclaration, w
 			return r, ruleError(id, "linked owner needs a visible person field on the linked type")
 		}
 	case "skill":
-		// Personal apps have no directory of skills to resolve this declaration.
+		return r, ruleError(id, "skill assignment requires a member directory")
 	default:
 		return r, ruleError(id, "unknown assignment strategy")
 	}
@@ -114,6 +114,10 @@ func (w *writeTx) assign(sc Scope, t *Type, r *record, transition string) error 
 		if err != nil {
 			return err
 		}
+		sourceType := ""
+		if rule.linked != nil {
+			sourceType = rule.linked.ID
+		}
 		if to != "" {
 			due, err := workDeadline(def.Work.Due, w.now)
 			if err != nil {
@@ -125,13 +129,13 @@ func (w *writeTx) assign(sc Scope, t *Type, r *record, transition string) error 
 			}
 			owner := sc
 			owner.Actor, owner.App = w.schema.actor(sc), t.DefinedBy
-			_, err = w.createWorkItem(owner, t, WorkItem{Title: strings.TrimSpace(def.Work.Title), Record: r.ID, Assignee: to, Form: def.Work.Form, Due: due, SLAAt: sla})
+			_, err = w.createWorkItem(owner, t, WorkItem{Title: strings.TrimSpace(def.Work.Title), Record: r.ID, Assignee: to, Form: def.Work.Form, Due: due, SLAAt: sla, sourceType: sourceType})
 			if err != nil {
 				return err
 			}
 			why = fmt.Sprintf("assigned %s to %s by %s", def.Work.Title, to, why)
 		}
-		if err := w.ruleActivity(sc, t, r.ID, rule.id+": "+why); err != nil {
+		if err := w.scopedRuleActivity(sc, t, r.ID, rule.id+": "+why, sourceType); err != nil {
 			return err
 		}
 	}
@@ -188,6 +192,6 @@ func (w *writeTx) assignee(t *Type, r *record, rule assignmentRule) (string, str
 	case "role":
 		return rule.candidates[0], "role", nil
 	default:
-		return "", "no assignment because skill matching needs a member directory", nil
+		return "", "", ruleError(rule.id, "unknown assignment strategy")
 	}
 }
