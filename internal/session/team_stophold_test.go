@@ -392,3 +392,34 @@ func TestTeamPersonStopOfAnIdleMemberHoldsNothing(t *testing.T) {
 		t.Fatalf("a stop of a member with nothing running was logged as work stopped: %+v", said)
 	}
 }
+
+// A MANAGER'S STOP THAT FOUND THE MEMBER IDLE DOES NOT PASS FOR A LATER ONE.
+// The member waits on a command for the first directive; the manager's stop
+// finds no turn and stops nothing, but its line stays on the log. A second
+// directive starts the member and the person stops that turn: the stop is the
+// person's, and the manager is told.
+func TestTeamAManagersEarlierStopDoesNotHideThePersonsStop(t *testing.T) {
+	streaming := make(chan struct{})
+	fixture, managerCalls, web, calls, _, _ := waitingMember(t, thinkingStep(streaming), okStep())
+	said := func(entry teams.Entry) {
+		t.Helper()
+		if err := teams.AppendTraffic(fixture.profile, fixture.teamID, entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+	said(teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Member: convKeyOf(t, fixture.web), Text: "hold on"})
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("a manager's stop of an idle member started %d more turns", got-1)
+	}
+	said(teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the footer."})
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start on the second directive")
+	}
+	web.Interrupt()
+	waitQuiet(t, web)
+	waitTeamEvents(t, fixture, teams.StoppedByPerson, 1)
+	waitManagerToldOfStop(t, managerCalls)
+}
