@@ -498,6 +498,14 @@ func TestResolveAuto(t *testing.T) {
 			wantFetch:  "firecrawl-fetch",
 		},
 		{
+			// Keenable is keyless but unlisted in keylessOrder: it answers
+			// only when pinned, and never displaces the Firecrawl default.
+			name:       "keenable answers only when pinned",
+			opts:       Options{Provider: "keenable"},
+			wantSearch: "keenable",
+			wantFetch:  "jina",
+		},
+		{
 			name:       "a pin wins over the keyed plug",
 			opts:       Options{Provider: "duckduckgo", ExaKey: "sk-test"},
 			wantSearch: "duckduckgo",
@@ -637,6 +645,7 @@ func TestStatusNamesTheNextSearchAndItsKeyState(t *testing.T) {
 		{opts: Options{FirecrawlKey: "fc"}, want: "firecrawl · with your key"},
 		{opts: Options{ExaKey: "exa"}, want: "exa · with your key"},
 		{opts: Options{Provider: "exa"}, want: "exa · key not set — searches fail"},
+		{opts: Options{Provider: "keenable"}, want: "keenable · keyless"},
 	} {
 		if got := Status(test.opts); got != test.want {
 			t.Errorf("Status(%+v) = %q, want %q", test.opts, got, test.want)
@@ -728,7 +737,7 @@ func TestBuiltInPlugsAreRegistered(t *testing.T) {
 	// Resolve total.
 	// V1 and V3: Both Firecrawl halves must be registered for the keyless
 	// search and keyed fetch ladders to exist.
-	wantSearch := map[string]bool{"exa": false, "duckduckgo": false, "firecrawl": false}
+	wantSearch := map[string]bool{"exa": false, "duckduckgo": false, "firecrawl": false, "keenable": false}
 	for _, p := range RegisteredSearch() {
 		wantSearch[p.Name()] = true
 	}
