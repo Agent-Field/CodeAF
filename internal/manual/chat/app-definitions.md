@@ -32,9 +32,11 @@ rendering, including carrying out a run in a repository.
 `apps.versions` shows each saved version, when it was made, and its request
 and summary. `apps.revert` copies a chosen working version forward as a new
 version. It keeps all earlier versions. An invalid change stays in its draft.
-If live definition files become invalid, the engine serves the latest valid
-saved version it can find. When it serves an older version, revert to that
-version before starting a new change.
+The data store records which saved version is published and commits its data
+grants with that version. If the published snapshot becomes unreadable,
+revert to a working version to publish its definition and grants together.
+Older definitions that have yet to be adopted can still open a valid saved
+version if their current copy is damaged.
 
 ## Archive or delete an app and keep its records
 
@@ -112,3 +114,13 @@ process depends on the corresponding data and run support.
 
 For kit 2, put connector operations that leave the machine in an approved
 run step. A screen can start the run and show its approval card.
+
+## Subscribe to record changes and refetch after reset
+
+`data.subscribe` returns the first page of a native list or the watched
+record in `snapshot`, with a `cursor` from the same data state. Use
+`data.changed` to apply row changes after that cursor. To resume, send the
+last cursor you applied. When the engine sends `data.reset`, clear what
+the subscription displayed and refetch under your current access. Set
+`invalidate_only` for a derived list or aggregate to receive resets with
+a cursor. Refetch that view to get its values.

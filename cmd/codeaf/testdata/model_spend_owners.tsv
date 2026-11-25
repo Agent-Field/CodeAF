@@ -17,6 +17,7 @@ cmd/codeaf/image.go:runImage:GenerateImage	exception: untraced image and media t
 cmd/codeaf/poolrecord.go:poolJudgeAsk:CompleteWithMessages	exception: pool judge
 cmd/codeaf/subharness_env.go:headlessEnv.AI:CompleteWithMessages	exception: untraced execution helpers
 internal/apps/builder/model.go:boundedModel.CompleteWithMessages:CompleteWithMessages	owner: Scoped app session (ScopedCommandTurn -> Agent turn usage ledger)
+internal/apps/runs/agent.go:CompleteAgent:CompleteWithMessages	owner: app run accounting (appRunAgent -> factoryAIAccounting -> session.RecordUsage)
 internal/exec/document.go:Toolbox.parseDocument:ParseDocument	exception: untraced execution helpers
 internal/exec/linear.go:Linear.complete:CompleteWithMessages	exception: untraced execution helpers
 internal/exec/media.go:Toolbox.generateImage:GenerateImage	exception: untraced image and media transport

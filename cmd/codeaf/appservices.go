@@ -548,6 +548,9 @@ func (b *appBackend) serviceLineResolved(svc *appServices, key string, line appS
 // answerInboxItem sends an Inbox answer once its hold is over: a service's
 // line to the supervisor, anything else through the conversation's door.
 func (b *appBackend) answerInboxItem(id, agent, ask string, answer appwire.AskAnswer) error {
+	if appRunAsk(ask) {
+		return b.answerRunApproval(agent, ask, answer.Option, answer.Text)
+	}
 	episode, ok := strings.CutPrefix(ask, "service:")
 	if !ok {
 		return b.AnswerAskWith(agent, ask, answer)

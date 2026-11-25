@@ -1,0 +1,15 @@
+run: won-handoff
+title: Hand a won deal over
+budget: { per_run: 0.20 }
+steps:
+  - id: summary
+    agent: CRM agent
+    prompt: Write a two-line handoff for {{record.name}} at {{record.company.name}}, {{record.amount}}, for the #sales channel.
+  - id: post
+    gate: { approval: send, who: $me }
+    tool: slack.post
+    args: { channel: "#sales", text: $steps.summary.output }
+  - id: settle
+    wait: { for: 1d }
+  - id: touch
+    records.update: { id: $record.id, set: { last_touch: $now } }

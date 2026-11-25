@@ -227,6 +227,7 @@ var migrations = []string{
 	CREATE INDEX comments_record ON comments(record, at);
 	CREATE INDEX comments_node ON comments(app, node, at);
 	`,
+	dataPlaneMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.
@@ -259,7 +260,9 @@ type Store struct {
 	ids idGen
 
 	subsMu sync.Mutex
-	subs   map[string]*subscription
+	subs   map[subscriptionKey]*subscription
+	// visibility orders policy publication against live projections.
+	visibility sync.RWMutex
 
 	hooksMu  sync.RWMutex
 	hooks    map[int]func(Change)
@@ -341,7 +344,7 @@ func Open(path string, opts Options) (*Store, error) {
 	s := &Store{
 		path: abs, draft: opts.Draft, now: opts.Now, wdb: wdb, rdb: rdb,
 		writes: make(chan writeOp, writeQueue), notify: make(chan *Change, dispatchQueue),
-		quit: make(chan struct{}), subs: map[string]*subscription{}, hooks: map[int]func(Change){},
+		quit: make(chan struct{}), subs: map[subscriptionKey]*subscription{}, hooks: map[int]func(Change){},
 	}
 	sch, _, err := loadSchema(wdb, s.now)
 	if err != nil {
@@ -441,7 +444,8 @@ type writeTx struct {
 	// next is the schema a registration made, swapped in after the commit.
 	next *schema
 	// cursor is the last outbox row this write made.
-	cursor int64
+	cursor      int64
+	afterCommit func()
 }
 
 // write hands fn to the writer and waits for it to commit or fail.
@@ -503,13 +507,19 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 		_ = tx.Rollback()
 		return err
 	}
+	s.visibility.Lock()
 	if err := tx.Commit(); err != nil {
+		s.visibility.Unlock()
 		return err
 	}
 	if w.next != nil {
 		s.schema.Store(w.next)
 	}
-	if w.change != nil && (len(w.change.Records) > 0 || len(w.change.Items) > 0) {
+	if w.afterCommit != nil {
+		w.afterCommit()
+	}
+	s.visibility.Unlock()
+	if w.change != nil && (len(w.change.Records) > 0 || len(w.change.Items) > 0 || w.change.invalidation != nil || w.change.resume != nil) {
 		w.change.Draft = s.draft
 		s.notify <- w.change
 	}
@@ -517,23 +527,24 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 }
 
 // RegisterApp merges one app's record types, fields and capabilities into
-// the store. It is what makes an app's data exist: the app store calls it when a
-// version goes live (Keep, change, revert) and on start for every app. It is
-// safe to call again with the same file, and a field the new file no longer
-// declares is hidden, never deleted.
+// a draft or legacy catalog. Published definitions use [Store.PublishApp].
+// Re-registration hides fields dropped by the app and preserves their values.
 func (s *Store) RegisterApp(appJSON []byte) error {
 	def, err := ParseApp(appJSON)
 	if err != nil {
 		return err
 	}
-	caps := canonicalJSON(def.Capabilities.Records)
 	return s.write(func(w *writeTx) error {
-		next, err := registerApp(w, def, caps)
+		if _, err := readPublication(w.tx, def.ID); !errors.Is(err, sql.ErrNoRows) {
+			// A published app changes its declarations only with its version.
+			return err
+		}
+		next, err := registerApp(w, def, nil)
 		if err != nil {
 			return err
 		}
 		w.next = next
-		return nil
+		return w.invalidate(EventPolicyChanged, "", "")
 	})
 }
 
@@ -541,12 +552,18 @@ func (s *Store) RegisterApp(appJSON []byte) error {
 // record and value stays (apps.delete and apps.archive keep data).
 func (s *Store) ForgetApp(app string) error {
 	return s.write(func(w *writeTx) error {
+		if _, err := readPublication(w.tx, app); !errors.Is(err, sql.ErrNoRows) {
+			if err != nil {
+				return err
+			}
+			return errorf(CodeInvalid, "remove a published app through publication")
+		}
 		next, err := forgetApp(w.tx, app, s.now)
 		if err != nil {
 			return err
 		}
 		w.next = next
-		return nil
+		return w.invalidate(EventPolicyChanged, "", "")
 	})
 }
 

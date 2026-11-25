@@ -8,19 +8,18 @@ package main
 // record; it opens the place, names the scope a call acts in, and turns the
 // store's refusals into the wire's codes.
 //
-// THE STORE KNOWS AN APP ONLY ONCE IT IS REGISTERED. The app definitions live
-// in <home>/apps/<id>/current/app.json (the app store keeps them); the first call
-// that opens the data registers every one found there, so a restart, or an
-// app kept while this process was not running, is never an app whose screens
-// are all refused. The app store and the Builder register a version again the
-// moment it goes live, through [appBackend.appData].
+// The writer owns published app grants. Startup adopts only legacy app
+// definitions that have no publication pointer in the data file.
 
 import (
+	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
 // appDataState is the backend's data place and the live queries this
@@ -29,12 +28,13 @@ type appDataState struct {
 	mu     sync.Mutex
 	place  *data.Place
 	closed bool
-	// syncMu serializes startup registration. If it fails, the next main
-	// data call can retry it.
+	// syncMu serializes adoption of legacy app definitions.
 	syncMu sync.Mutex
 	synced bool
-	// subs is each subscription's store, so it is stopped where it lives.
-	subs map[string]*data.Store
+	// The backend belongs to one authenticated wire connection.
+	owner  data.SubscriptionOwner
+	subsMu sync.Mutex
+	subs   map[string]appDataSubscription
 	// home replaces the codeaf home in a test.
 	home string
 }
@@ -62,8 +62,7 @@ func (b *appBackend) appData() (*data.Place, error) {
 	return d.place, nil
 }
 
-// dataStore is the store a call names, with every kept app registered on
-// the person's own the first time it opens.
+// dataStore opens the call's store and adopts legacy publications once.
 func (b *appBackend) dataStore(draft string) (*data.Store, error) {
 	place, err := b.appData()
 	if err != nil {
@@ -88,8 +87,18 @@ func (b *appBackend) dataStore(draft string) (*data.Store, error) {
 
 // closeData stops this connection's live queries and closes the data files.
 func (b *appBackend) closeData() {
-	if place := b.data.takePlace(); place != nil {
+	place := b.data.takePlace()
+	b.stopDataSubscriptions()
+	if place != nil {
 		_ = place.Close()
+	}
+}
+
+func (b *appBackend) stopDataSubscriptions() {
+	b.data.subsMu.Lock()
+	defer b.data.subsMu.Unlock()
+	for id := range b.data.subs {
+		b.stopDataSubscription(id)
 	}
 }
 
@@ -101,7 +110,6 @@ func (d *appDataState) takePlace() *data.Place {
 	d.closed = true
 	place := d.place
 	d.place = nil
-	d.subs = nil
 	return place
 }
 
@@ -371,59 +379,170 @@ func (b *appBackend) DataImportCSV(p appwire.DataImportParams) (*appwire.DataImp
 	return &appwire.DataImportResult{Created: &created, Batch: res.Batch, Failed: res.Failed, Problems: issues}, nil
 }
 
+// appDataSubscription orders early events after the subscription reply and
+// prevents a replaced subscription from emitting on its former connection.
+type appDataSubscription struct {
+	store *data.Store
+	gate  *appDataDelivery
+}
+
+// appDataDelivery coalesces a slow connection's pending events without
+// holding the store's policy lock while the wire waits for buffer space.
+type appDataDelivery struct {
+	ctx      context.Context
+	stop     context.CancelFunc
+	wake     chan struct{}
+	mu       sync.Mutex
+	deferred bool
+	pending  *data.Diff
+	sending  context.CancelFunc
+}
+
+func newAppDataDelivery(deferred bool) *appDataDelivery {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &appDataDelivery{ctx: ctx, stop: cancel, wake: make(chan struct{}, 1), deferred: deferred}
+}
+
+func (d *appDataDelivery) queue(diff data.Diff) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.ctx.Err() != nil {
+		return
+	}
+	// Pending deltas are only useful in order. An early or superseded
+	// delta becomes a payload-free reset at the latest observed cursor.
+	if d.deferred || d.pending != nil {
+		diff = data.Diff{Sub: diff.Sub, Cursor: diff.Cursor, Reset: true}
+	}
+	if diff.Reset && d.sending != nil {
+		d.sending()
+	}
+	d.pending = &diff
+	if !d.deferred {
+		d.signal()
+	}
+}
+
+func (d *appDataDelivery) release() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.deferred = false
+	if d.pending != nil {
+		d.signal()
+	}
+}
+
+func (d *appDataDelivery) signal() {
+	select {
+	case d.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (d *appDataDelivery) run(emit appwire.Emitter) {
+	for {
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-d.wake:
+			diff, ctx, cancel := d.take()
+			if diff == nil {
+				continue
+			}
+
+			event, body := appDataEvent(*diff)
+			if sink, ok := emit.(interface {
+				EmitContext(context.Context, string, any)
+			}); ok {
+				sink.EmitContext(ctx, event, body)
+			} else if emit != nil && ctx.Err() == nil {
+				emit.Emit(event, body)
+			}
+			cancel()
+			d.finishSend()
+		}
+	}
+}
+
+func (d *appDataDelivery) take() (*data.Diff, context.Context, context.CancelFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	diff := d.pending
+	d.pending = nil
+	if diff == nil || d.ctx.Err() != nil {
+		return nil, nil, nil
+	}
+	ctx, cancel := context.WithCancel(d.ctx)
+	d.sending = cancel
+	return diff, ctx, cancel
+}
+
+func (d *appDataDelivery) finishSend() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.sending = nil
+}
+
+func appDataEvent(d data.Diff) (string, any) {
+	if d.Reset {
+		return appwire.EventDataReset, appwire.DataReset{Sub: d.Sub, Cursor: d.Cursor}
+	}
+	return appwire.EventDataChanged, appwire.DataChanged{
+		Sub: d.Sub, Upserts: wireRows(d.Upserts), Removes: nonNilStrings(d.Removes), Total: d.Total, Cursor: d.Cursor,
+	}
+}
+
 func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) (*appwire.DataSubscribeResult, error) {
 	s, err := b.dataStore(p.Draft)
 	if err != nil {
 		return nil, err
 	}
-	// A sub id moving between stores (main to a draft) stops where it was.
-	_ = b.DataUnsubscribe(p.Sub)
-	spec := data.SubSpec{ID: p.Sub, Type: p.Type, Query: p.Query, Record: p.ID, Table: p.Table}
+	p.Sub = strings.TrimSpace(p.Sub)
+	spec := data.SubSpec{ID: p.Sub, Type: p.Type, Query: p.Query, Record: p.ID, Table: p.Table, InvalidateOnly: p.InvalidateOnly}
 	if p.Cursor != nil {
 		spec.Resume, spec.After = true, *p.Cursor
 	}
 	emit := b.emit
-	// The live query is held before it can be told anything, so an early
-	// diff is never sent for a sub this connection has already let go of.
-	b.data.holdSub(p.Sub, s)
-	cursor, err := s.Subscribe(dataScope(p.DataScope), spec, func(d data.Diff) {
-		if d.Reset {
-			emit.Emit(appwire.EventDataReset, appwire.DataReset{Sub: d.Sub, Cursor: d.Cursor})
-			return
-		}
-		emit.Emit(appwire.EventDataChanged, appwire.DataChanged{
-			Sub: d.Sub, Upserts: wireRows(d.Upserts), Removes: nonNilStrings(d.Removes), Total: d.Total, Cursor: d.Cursor,
-		})
-	})
+	if tap, ok := emit.(*appInboxTap); ok {
+		// Subscription events travel to the wire without Inbox processing.
+		emit = tap.next
+	}
+	b.data.subsMu.Lock()
+	defer b.data.subsMu.Unlock()
+	b.stopDataSubscription(p.Sub)
+	gate := newAppDataDelivery(p.DeferEvents)
+	snapshot, err := s.Watch(&b.data.owner, dataScope(p.DataScope), spec, gate.queue)
 	if err != nil {
-		_ = b.data.takeSub(p.Sub)
+		gate.stop()
 		return nil, appDataError(err)
 	}
-	return &appwire.DataSubscribeResult{Cursor: cursor}, nil
-}
-
-// holdSub keeps the store a live query lives on, to stop it there.
-func (d *appDataState) holdSub(sub string, s *data.Store) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.subs == nil {
-		d.subs = map[string]*data.Store{}
+	guard.Go("app/data-subscription", func() { gate.run(emit) })
+	if b.data.subs == nil {
+		b.data.subs = map[string]appDataSubscription{}
 	}
-	d.subs[sub] = s
+	b.data.subs[p.Sub] = appDataSubscription{store: s, gate: gate}
+	result := &appwire.DataSubscribeResult{Cursor: snapshot.Cursor}
+	if snapshot.Rows != nil {
+		result.Snapshot = &appwire.DataQueryResult{Rows: wireRows(snapshot.Rows), Next: snapshot.Next, Total: snapshot.Total}
+	}
+	if p.DeferEvents {
+		result.ReleaseEvents = gate.release
+	}
+	return result, nil
 }
 
-// takeSub forgets one live query and hands back the store it was held on.
-func (d *appDataState) takeSub(sub string) *data.Store {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	s := d.subs[sub]
-	delete(d.subs, sub)
-	return s
+// stopDataSubscription must run under the connection's subscription lock.
+func (b *appBackend) stopDataSubscription(id string) {
+	if sub, ok := b.data.subs[id]; ok {
+		sub.gate.stop()
+		sub.store.Unwatch(&b.data.owner, id)
+		delete(b.data.subs, id)
+	}
 }
 
 func (b *appBackend) DataUnsubscribe(sub string) error {
-	if s := b.data.takeSub(sub); s != nil {
-		s.Unsubscribe(sub)
-	}
+	b.data.subsMu.Lock()
+	defer b.data.subsMu.Unlock()
+	b.stopDataSubscription(strings.TrimSpace(sub))
 	return nil
 }

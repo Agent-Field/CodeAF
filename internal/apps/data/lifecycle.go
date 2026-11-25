@@ -280,7 +280,7 @@ func (w *writeTx) applyTransition(sc Scope, t *Type, tr *transition, before *rec
 	}
 	return next, w.emit(outboxRow{event: EventTransition, typeID: t.ID, record: before.ID, payload: map[string]any{
 		"type": t.Name, "id": before.ID, "transition": tr.ID, "label": label(tr), "from": from, "to": tr.To,
-		"reason": reason, "effects": effects,
+		"effects": effects,
 	}})
 }
 
