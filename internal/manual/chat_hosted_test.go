@@ -34,6 +34,7 @@ func TestHostedChatQuestionsReachTheirPage(t *testing.T) {
 		{"you were not given permission to send messages in it", []string{"you were not given permission to send messages in it", "keyboard"}},
 		{"I can watch this chat but was not given permission to steer it", []string{"Ask its owner", "keyboard"}},
 		{"Your access to this chat was removed.", []string{"Your access to this chat was removed."}},
+		{"my hosted chat says it reached its spending limit and is paused, is my openrouter account out of credit", []string{"exactly as written", "never name a model service", "$0.001"}},
 		{"who pays when a guest steers my hosted chat", []string{"approximate", "owner's spending limits"}},
 		{"can the operator open my hosted chat", []string{"only metadata", "There is no such chat."}},
 		{"can a bot start a hosted chat", []string{"a bot cannot use this yet", "recorded as made by the bot"}},

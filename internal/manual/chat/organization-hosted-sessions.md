@@ -218,6 +218,12 @@ A refused message makes no model call and costs nothing. Calls with your own key
 
 A hosted chat can make up to four model calls at once, subject to what the calls already running hold against its spending limit. A priced call holds its estimated cost, and an unpriced call holds half of the limit that was left when the chat's model connection opened (never more than what is left), so once the chat has spent anything a second unpriced call is refused while the first is running, and once half the limit is spent only one such call can run at a time. A fifth request or one that cannot fit because of what is held never reaches the model and costs nothing, and you read `This chat is already making as many requests as it may at once. Try again in a moment.`
 
+## my hosted chat says it reached its spending limit or monthly limit and is paused — is my OpenRouter account out of credit
+
+No. The two limit lines (`This chat has reached its spending limit of $5.00, so it is paused. Start a new chat to carry on.` and `You have reached your monthly limit of $20.00, so this chat is paused. The organization's operator can raise it in Settings.`) are the organization's own words, shown exactly as written. They never name a model service or say that an account cannot pay, because the limit belongs to the organization and says nothing about your own OpenRouter account or its credit. A limit finer than a cent is written with its digits (`$0.001`), never as `$0.00`.
+
+If instead the organization's provider says its own account has no credit, you read that provider's refusal as a model service's line, `<service> accepted the key but the account cannot pay — …`, and whoever pays for that key (the operator, or you with your own) is the one who tops it up.
+
 ## keep my own model key or GitHub access on the organization's server — stored sealed, only yours
 
 You can give the organization's server your own OpenRouter key and your own GitHub access (a token) for your chats. They go to `PUT /v1/hosted/keys/openrouter` and `PUT /v1/hosted/keys/github` with your sign-in and the body `{"key":"..."}`; `GET /v1/hosted/keys` lists what you stored as the provider, the last four characters and when, never the key, and `DELETE /v1/hosted/keys/<provider>` removes one. codeaf's own chat has no screen for it yet.

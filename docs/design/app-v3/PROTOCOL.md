@@ -1141,8 +1141,9 @@ every hosted chat's model calls cost to the caller's space: one spend row per ca
 `hosted:<chat id>` (`hosted:<chat id>:own` when the call used the person's own key), so
 `spent_usd` and `at_limit` above count them and a person at `limit_usd` has their hosted
 chat refused with "You have reached your monthly limit of $L, so this chat is paused. The
-organization's operator can raise it in Settings." (HTTP 402 from the model door; a chat's
-own cap, `CODEAF_HOSTED_SESSION_CAP_USD`, default 5, refuses with "This chat has reached its
+organization's operator can raise it in Settings." (HTTP 402 from the model door, whose every
+error carries `"door":"organization"` in its envelope so a client shows the sentence as written
+rather than as a payment failure; a chat's own cap, `CODEAF_HOSTED_SESSION_CAP_USD`, default 5, refuses with "This chat has reached its
 spending limit of $C, so it is paused. Start a new chat to carry on."). These are HTTP
 routes of the organization server with no engine method yet, answered only to a signed-in
 person and only about them: `GET /v1/hosted/keys` answers `{keys: [{provider, last4, at,
