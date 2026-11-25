@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 type Trigger struct {
@@ -168,7 +169,7 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 		e.addRecordReader(t.App, vars)
 		ok, conditionErr := condition(t.When, vars, scoped.changed)
 		if conditionErr != nil {
-			err = errors.Join(err, fmt.Errorf("%s trigger %s: %w", t.App, t.ID, conditionErr))
+			err = errors.Join(err, e.failTriggered(t, change.Seq, receipt, "trigger condition could not be evaluated: "+conditionErr.Error()))
 			continue
 		}
 		if ok {
@@ -187,8 +188,28 @@ func (e *Engine) startTriggered(t Trigger, seq int64, receipt string, input map[
 	}
 	c, err := e.newCheckpoint(t.App, t.Run, nil, input, false)
 	if err != nil {
+		return e.failTriggered(t, seq, receipt, "trigger run could not be prepared: "+err.Error())
+	}
+	return e.publishTriggered(seq, receipt, c)
+}
+
+// Invalid definitions and conditions leave a visible receipt instead of
+// blocking later events. Journal errors still hold the cursor for a retry.
+func (e *Engine) failTriggered(t Trigger, seq int64, receipt, reason string) error {
+	if seq == 0 {
+		return fmt.Errorf("%s trigger %s: %s", t.App, t.ID, reason)
+	}
+	now := e.cfg.Now()
+	id, err := cell.NewID(now)
+	if err != nil {
 		return err
 	}
+	return e.publishTriggered(seq, receipt, checkpoint{Run: Run{
+		App: t.App, DefinitionID: t.Run, ID: id, State: Incomplete, Error: reason, StartedAt: now, EndedAt: now,
+	}})
+}
+
+func (e *Engine) publishTriggered(seq int64, receipt string, c checkpoint) error {
 	c.UpdatedAt = e.cfg.Now()
 	raw, err := json.Marshal(c)
 	if err != nil {

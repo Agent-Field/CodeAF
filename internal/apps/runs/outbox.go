@@ -34,6 +34,9 @@ func (d Data) ConsumeOutbox(ctx context.Context, engine *Engine) error {
 	if err != nil {
 		return err
 	}
+	if raw == nil {
+		return engine.advanceOutbox(through)
+	}
 	if after == through {
 		return nil
 	}
@@ -76,7 +79,11 @@ func (d Data) ConsumeOutbox(ctx context.Context, engine *Engine) error {
 	if err := engine.RecordChanges(changes); err != nil {
 		return err
 	}
-	engine.mu.Lock()
-	defer engine.mu.Unlock()
-	return engine.saveLocked(nil, recordOutboxCursor, cursor)
+	return engine.advanceOutbox(cursor)
+}
+
+func (e *Engine) advanceOutbox(cursor int64) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.saveLocked(nil, recordOutboxCursor, cursor)
 }

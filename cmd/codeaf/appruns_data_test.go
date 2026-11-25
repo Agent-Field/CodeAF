@@ -39,7 +39,8 @@ steps:
 		},
 		Triggers: func() ([]runs.Trigger, error) {
 			return []runs.Trigger{{App: "crm", ID: "won", Run: "won", On: "record.changed", Type: "deal",
-				When: "changed('stage') && stage == 'Won'"}}, nil
+				When: "changed('stage') && stage == 'Won'"},
+				{App: "crm", ID: "broken", Run: "missing", On: "record.changed", Type: "deal"}}, nil
 		},
 		Changed: func(ev runs.ChangeEvent) {
 			if ev.State == runs.Running && ev.Step == "touch" {
@@ -56,6 +57,12 @@ steps:
 	}
 	defer func() { _ = e.Close() }()
 	ctx := t.Context()
+	if err := records.ConsumeOutbox(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := e.List("", ""); err != nil || len(list) != 0 {
+		t.Fatalf("first attach replayed historical events: %+v, %v", list, err)
+	}
 	_, err = db.Update(data.Scope{}, "deal", []string{id}, map[string]any{"stage": "Won"}, data.UpdateOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +108,10 @@ steps:
 	list, err := e.List("crm", "won")
 	if err != nil || len(list) != 1 {
 		t.Fatalf("runs after replay = %+v, %v", list, err)
+	}
+	failed, err := e.List("crm", "missing")
+	if err != nil || len(failed) != 2 || failed[0].State != runs.Incomplete {
+		t.Fatalf("failed trigger runs = %+v, %v", failed, err)
 	}
 	row, err := db.Get(data.Scope{}, "deal", id, false)
 	if err != nil || row["touched"] != true {

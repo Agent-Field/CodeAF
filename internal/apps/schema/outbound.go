@@ -16,6 +16,7 @@ func ToolApprovalKind(tool string) string {
 	return ""
 }
 
+// IsOutboundTool reports whether the operation needs an approval.
 func IsOutboundTool(tool string) bool {
 	return ToolApprovalKind(tool) != ""
 }

@@ -543,3 +543,21 @@ func TestRecordChangesLoadsTriggerDefinitionsOncePerBatch(t *testing.T) {
 		t.Fatalf("runs = %+v, scans = %d, error = %v", list, scans, err)
 	}
 }
+
+func TestManifestOutboundOperationUsesProofApproval(t *testing.T) {
+	fake := runs.NewFakeConnector(map[string]runs.Reply{"github.pr.create": {Output: "opened"}})
+	e := newEngine(t, "run: example\nsteps:\n  - id: open\n    tool: github.pr.create", runs.Config{Connector: fake})
+	r := start(t, e)
+	tick(t, e)
+	gate := state(t, e, r.ID).Approval
+	if gate == nil || gate.Kind != "proof" || len(fake.Calls()) != 0 {
+		t.Fatalf("manifest gate = %+v, calls = %+v", gate, fake.Calls())
+	}
+	if err := e.Answer(r.ID, gate.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	if len(fake.Calls()) != 1 || state(t, e, r.ID).State != runs.Done {
+		t.Fatal("proof approval did not release the step exactly once")
+	}
+}

@@ -59,6 +59,10 @@ func (b *appBackend) openAppRuns(ctx context.Context) func() {
 			}
 		}
 	}
+	// Establish the cursor before the first wire request can commit a record.
+	if err := records.ConsumeOutbox(ctx, e); err != nil {
+		fmt.Fprintln(os.Stderr, "app run outbox:", err)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	guard.Go("app/runs", func() {
