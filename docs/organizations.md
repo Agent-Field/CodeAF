@@ -137,6 +137,10 @@ You need Docker with Compose v2.24 or newer, 4 GB of free memory, and a Linux ho
 sandbox; see the sandbox note below). For real work add an OpenRouter key. For anyone who is not on the same
 machine you need an HTTPS name in front of port 8787.
 
+**On Railway instead of Docker?** Skip to "Railway" in the [operator README](../deploy/org/README.md#railway): it has the services
+and variables to set, how to get the source onto Railway, the operator link and the checks. Railway serves the HTTPS name, so
+steps 1 to 3 below are replaced by that section, and steps 4 and 5 are the same.
+
 **1. Set it up.**
 
 ```sh
@@ -178,6 +182,8 @@ alone, with no limit on what a chat's commands can reach, and it warns in every 
 ```sh
 ./operator-link.sh      # prints the operator link; it is a secret and works once
 ```
+
+(On Railway the link is in the `codeaf` service's log; `deploy/org/railway/operator-link.sh` prints it.)
 
 Open that `codeaf://factory/join?operator=true...` link in the desktop app (or paste it into **Join an organization...**)
 and choose a username and password. Whoever uses it first is the operator, so keep it to yourself until you have. If it
@@ -234,8 +240,8 @@ needs an image that has `codeaf sessionhost`; the operator README says how to po
   people with the `manage` verb on the chat move it too (never into their own My space, never a bot).
 - `local_sessions` `allow` and `warn` are reported and stored; nothing in a client acts on them yet.
 - The sandbox filters outbound network by port, not by address.
-- The Railway template made from the published images does not carry the sessionhost yet; a by-hand Railway install does
-  (the operator README lists every service and variable).
+- The Railway template is made from the published images, which are not on Docker Hub yet, so the script that makes it has only
+  been dry-run. The by-hand Railway install in the operator README is the tested configuration, and it includes the sessionhost.
 - GitHub sign-in and invitation mail are optional and untested in the stack; a username and password is the default way in.
 - One replica of each service; no high availability.
 
