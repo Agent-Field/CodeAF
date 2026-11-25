@@ -423,3 +423,44 @@ func TestTeamAManagersEarlierStopDoesNotHideThePersonsStop(t *testing.T) {
 	waitTeamEvents(t, fixture, teams.StoppedByPerson, 1)
 	waitManagerToldOfStop(t, managerCalls)
 }
+
+// THE HOLD IS READ UNDER THE LOCK THE NOTE IS QUEUED UNDER. It was read first
+// and the lock taken afterwards, so a command ending in the instant of a stop
+// found no hold, waited for the stop to let go of the lock, and then queued
+// its ending as news that started the stopped conversation again. The test
+// holds the lock every stop takes, lets a command's ending arrive at it, and
+// only then lets the stop's hold land: the ending must find it.
+func TestTeamStopHoldIsReadWhereTheEndingIsQueued(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	calls := oneAnswer(1)
+	web := teamAgent(t, fixture, fixture.web, calls, func(config *Config) { config.teamWatchManual = true })
+	if roles := web.teamRoles(); len(roles) == 0 {
+		t.Fatal("the member has no seat in its team")
+	}
+	web.mu.Lock()
+	arrived := make(chan struct{})
+	queued := make(chan struct{})
+	go func() {
+		close(arrived)
+		web.enqueueJobNote("job 8 exited 0")
+		close(queued)
+	}()
+	<-arrived
+	// Long enough for the ending to reach the lock it has to wait at.
+	time.Sleep(100 * time.Millisecond)
+	web.team.stopHold.held.Store(true)
+	web.mu.Unlock()
+	<-queued
+	quietFor()
+	if got := calls.requests(); got != 0 {
+		t.Fatalf("a command ending at the instant of a stop started %d turns", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), "job 8 exited 0") || strings.Count(string(journal), teamStopHeldRule) != 1 {
+		t.Fatalf("the ending was not kept as one record that says why it started no turn:\n%s", journal)
+	}
+}

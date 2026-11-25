@@ -13,6 +13,10 @@ package session
 // said why; and each caller wrote its own line, so `woke` was written for a
 // turn that had been running all along.
 //
+// A hold that stands on the conversation itself, a stop until a turn next
+// begins, is the same table's second half ([wakeStanding]): it binds the news
+// that arrives through the session's own queue, and is read there.
+//
 // SO ONE FUNCTION DECIDES AND ONE WRITES. A caller says what is asking for the
 // turn (a [wakeCause]); [Agent.decideWake] answers start, queue, hold or
 // nothing (a [wakeDecision]) from one table of which rule binds which cause;
@@ -44,6 +48,10 @@ const (
 	// wakeStart is a fresh member's own start: the brief its manager started
 	// it with (team_wake.go).
 	wakeStart
+	// wakeCommand is a background command ending ([Agent.enqueueJobNote]).
+	wakeCommand
+	// wakeWatch is a watch firing ([Agent.enqueueWatchNote]).
+	wakeWatch
 )
 
 // wakeVerdict is what becomes of the turn that was asked for.
@@ -75,6 +83,9 @@ const (
 	heldByLoop
 	// heldByGate is one of the engine's own gates ([Agent.wakeRefusalLocked]).
 	heldByGate
+	// heldByStop is a stop of this conversation's turn, standing until a turn
+	// next begins (team_stophold.go).
+	heldByStop
 	// heldByStandby is a membership made with no work to start on.
 	heldByStandby
 	// heldByAutoWakeOff is a team whose traffic starts no turn.
@@ -128,6 +139,30 @@ func init() {
 		wakeReplies:   {wakeLoopRule, wakeLimitRule, wakeCapRule},
 		wakeStart:     {wakeStandbyRule, wakePauseRule, wakeAutoWakeOffRule, wakeCapRule},
 	}
+}
+
+// wakeStanding is which of a conversation's standing holds bind which cause.
+// A standing hold is the agent's own state, read under a.mu where the news is
+// queued, and what it holds is kept in the conversation as a record that
+// starts no turn: the record is its line, and the traffic is told nothing.
+//
+// Only a command's ending and a watch's firing are held by a stop. The
+// person's own words, a manager's next hand-off and a task landing still start
+// a turn, which ends that hold (team_stophold.go).
+var wakeStanding = map[wakeKind]struct{ stop bool }{
+	wakeCommand: {stop: true},
+	wakeWatch:   {stop: true},
+}
+
+// standingHoldLocked is the standing hold that keeps news of this kind from
+// starting a turn, with the sentence its record is given as why; the zero
+// decision when none does. The caller holds a.mu.
+func (a *Agent) standingHoldLocked(kind wakeKind) wakeDecision {
+	binds := wakeStanding[kind]
+	if binds.stop && a.team.stopHold.held.Load() {
+		return wakeDecision{verdict: wakeHolds, by: heldByStop, why: teamStopHeldRule}
+	}
+	return wakeDecision{}
 }
 
 // decideTeamWake asks the team's rules for this cause, and answers the first

@@ -1446,6 +1446,10 @@ func (a *Agent) attachReplayLocked() (entries []DisplayEntry, events <-chan Even
 // Everything the person types is one of these. A text-only message has no
 // references and journals exactly as it always did.
 type userMessage struct {
+	// cause is what kind of news a session's note carries, for the notes whose
+	// wake a standing hold may keep as a record instead (team_wakedecide.go's
+	// [wakeStanding]). Zero is a note no such hold binds.
+	cause wakeKind
 	// factoryWork marks a runtime manager turn, never the person's chat.
 	factoryWork bool
 	// runner marks words the factory's runner wrote ([runnerNote]): the turn
@@ -4238,19 +4242,16 @@ func (a *Agent) enqueueSettleSteering(text string, ceiling int) {
 // as [jobRegistry.settleExit] composed it. The whole log remains available
 // through `jobs output` for anything past the tail.
 func (a *Agent) enqueueJobNote(text string) {
-	if a.teamStopHeldNote(text) {
-		return
-	}
-	a.enqueueNote(jobNote(text))
+	note := jobNote(text)
+	note.cause = wakeCommand
+	a.enqueueNote(note)
 }
 
 // enqueueJobNoteUnowed carries the registry's unowed process ending to the
 // same queue, retaining the one fact the idle wake scheduler needs.
 func (a *Agent) enqueueJobNoteUnowed(text string) {
-	if a.teamStopHeldNote(text) {
-		return
-	}
 	note := jobNote(text)
+	note.cause = wakeCommand
 	note.deferJobWake = true
 	a.enqueueNote(note)
 }
@@ -4301,10 +4302,8 @@ func (a *Agent) quietNoteLocked(text string) {
 // news does not carry one.
 func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 	if fired {
-		if a.teamStopHeldNote(text) {
-			return
-		}
 		note := wakeNote(text)
+		note.cause = wakeWatch
 		note.otherResults = true
 		note.attention = true
 		a.enqueueNote(note)
@@ -4430,6 +4429,18 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 	defer a.mu.Unlock()
 	if a.closed || (note.closeKey != "" && a.running) {
 		return false
+	}
+	if held := a.standingHoldLocked(note.cause); held.verdict == wakeHolds {
+		// A STANDING HOLD KEEPS THE NEWS AS A RECORD AND STARTS NO TURN
+		// (team_stophold.go), and it is asked HERE, under the lock the note
+		// would be queued under. It was asked before the lock was taken, and a
+		// command that ended in the instant of a stop found no hold, waited
+		// for the stop to let the lock go and queued its ending as a wake. A
+		// worker parked on the command is released in the same step, as the
+		// waking note's own append releases it below.
+		a.quietNoteLocked(text + "\n" + held.why)
+		a.releaseTaskWaitLocked()
+		return true
 	}
 	a.steering = append(a.steering, note)
 	if note.steered || note.ending {

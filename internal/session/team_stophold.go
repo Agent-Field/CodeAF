@@ -13,7 +13,10 @@ package session
 //
 // So in a team, from a stop of a running turn until a turn next begins, the
 // ending of a background command and a watch's firing are kept as a record and
-// start no turn. The stop is the person's own or a manager's team_stop, whoever
+// start no turn. The hold is one row of the table that decides every wake
+// ([wakeStanding]) and is read where the ending would be queued, under the
+// lock a stop takes ([Agent.enqueueNote]), so no ending slips between a stop
+// and its hold. The stop is the person's own or a manager's team_stop, whoever
 // performs the latter: an interface, through the person's door (teamevent.go),
 // or the member's own session, through the manager's ([Agent.interruptTeamTurn]).
 // The command itself is left running, as an interrupt always leaves it. Only
@@ -41,7 +44,6 @@ package session
 // turn carried the work, was the person's own, or there was no turn at all.
 
 import (
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -201,19 +203,4 @@ func (r *jobRegistry) awaited() bool {
 		}
 	}
 	return false
-}
-
-// teamStopHeldNote keeps one piece of background news as a record when the
-// hold stands, and reports whether it did. A worker parked on the command is
-// released in the locked step that records it, as the waking note's own append
-// releases it ([Agent.enqueueNote]).
-func (a *Agent) teamStopHeldNote(text string) bool {
-	if !a.team.stopHold.held.Load() {
-		return false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.quietNoteLocked(strings.TrimSpace(text) + "\n" + teamStopHeldRule)
-	a.releaseTaskWaitLocked()
-	return true
 }
