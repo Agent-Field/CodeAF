@@ -130,15 +130,21 @@ func (b *appBackend) appRunIntakeParts(call runs.AgentCall) ([]ai.ContentPart, e
 	if err != nil {
 		return nil, err
 	}
-	parts := make([]ai.ContentPart, 0, len(files))
+	const maxParts = 8
+	parts := make([]ai.ContentPart, 0, min(len(files), maxParts))
 	for _, file := range files {
 		mime := http.DetectContentType(file.Bytes)
-		switch {
-		case mime == "application/pdf":
+		if mime != "application/pdf" && !strings.HasPrefix(mime, "image/") {
+			continue
+		}
+		if len(parts) == maxParts {
+			return nil, fmt.Errorf("this run can read at most %d PDF or image attachments", maxParts)
+		}
+		if mime == "application/pdf" {
 			parts = append(parts, ai.ContentPart{Type: "file", InputFile: &ai.InputFileData{
 				FileData: "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(file.Bytes),
 			}})
-		case strings.HasPrefix(mime, "image/"):
+		} else {
 			parts = append(parts, ai.ContentPart{Type: "image_url", ImageURL: &ai.ImageURLData{
 				URL: "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(file.Bytes),
 			}})

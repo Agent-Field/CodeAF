@@ -37,6 +37,7 @@ const IntakeBytesMax = 4 << 20
 
 type IntakeDelivery struct {
 	App, Channel, Key, Type, Run string
+	Fingerprint                  string
 	Version                      int
 	Set                          map[string]any
 	CSV                          []byte
@@ -83,15 +84,18 @@ func (s *Store) Deliver(in IntakeDelivery) (IntakeReceipt, error) {
 	if size > IntakeBytesMax {
 		return receipt, errorf(CodeInvalid, "the delivery exceeds %d bytes", IntakeBytesMax)
 	}
-	payload, err := json.Marshal(struct {
-		Set   map[string]any
-		CSV   []byte
-		Files []IntakeFile
-	}{in.Set, in.CSV, in.Files})
-	if err != nil {
-		return receipt, errorf(CodeInvalid, "the delivery is not valid JSON")
+	if in.Fingerprint == "" {
+		payload, err := json.Marshal(struct {
+			Set   map[string]any
+			CSV   []byte
+			Files []IntakeFile
+		}{in.Set, in.CSV, in.Files})
+		if err != nil {
+			return receipt, errorf(CodeInvalid, "the delivery is not valid JSON")
+		}
+		in.Fingerprint = fmt.Sprintf("%x", sha256.Sum256(payload))
 	}
-	digest := fmt.Sprintf("%x", sha256.Sum256(payload))
+	var err error
 	var header []string
 	var lines [][]string
 	if in.CSV != nil {
@@ -105,6 +109,10 @@ func (s *Store) Deliver(in IntakeDelivery) (IntakeReceipt, error) {
 		sourceEvent: in.Key, intake: &IntakeTrigger{Channel: in.Channel, Run: in.Run, Type: in.Type}}
 	err = s.write(func(w *writeTx) error {
 		receipt = IntakeReceipt{Rows: []string{}}
+		if existing, found, err := readIntakeReceipt(w.tx, in); found || err != nil {
+			receipt = existing
+			return err
+		}
 		if in.Version != 0 {
 			p, err := readPublication(w.tx, in.App)
 			switch {
@@ -118,19 +126,6 @@ func (s *Store) Deliver(in IntakeDelivery) (IntakeReceipt, error) {
 		}
 		t, err := w.schema.allow(sc, in.Type, true)
 		if err != nil {
-			return err
-		}
-		var original, saved string
-		err = w.tx.QueryRow(`SELECT digest, receipt FROM intake_deliveries WHERE app = ? AND channel = ? AND key = ?`,
-			in.App, in.Channel, in.Key).Scan(&original, &saved)
-		switch {
-		case err == nil:
-			if digest != original {
-				return errorf(CodeDuplicate, "that dedupe key was already used for a different delivery")
-			}
-			receipt.Replayed = true
-			return json.Unmarshal([]byte(saved), &receipt)
-		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
 		op := OpCreate
@@ -165,10 +160,35 @@ func (s *Store) Deliver(in IntakeDelivery) (IntakeReceipt, error) {
 		}
 		receipt.Created = len(receipt.Rows)
 		_, err = w.tx.Exec(`INSERT INTO intake_deliveries VALUES(?, ?, ?, ?, ?)`,
-			in.App, in.Channel, in.Key, digest, canonicalJSON(receipt))
+			in.App, in.Channel, in.Key, in.Fingerprint, canonicalJSON(receipt))
 		return err
 	})
 	return receipt, err
+}
+
+// IntakeReplay lets a trusted adapter recover a prior delivery before applying
+// today's mapping. Deliver repeats the lookup under the writer lock.
+func (s *Store) IntakeReplay(in IntakeDelivery) (IntakeReceipt, bool, error) {
+	return readIntakeReceipt(s.rdb, in)
+}
+
+func readIntakeReceipt(db querier, in IntakeDelivery) (IntakeReceipt, bool, error) {
+	var original, saved string
+	var receipt IntakeReceipt
+	err := db.QueryRow(`SELECT digest, receipt FROM intake_deliveries WHERE app = ? AND channel = ? AND key = ?`,
+		in.App, in.Channel, in.Key).Scan(&original, &saved)
+	if errors.Is(err, sql.ErrNoRows) {
+		return receipt, false, nil
+	}
+	if err != nil {
+		return receipt, false, err
+	}
+	if in.Fingerprint != original {
+		return receipt, false, errorf(CodeDuplicate, "that dedupe key was already used for a different delivery")
+	}
+	err = json.Unmarshal([]byte(saved), &receipt)
+	receipt.Replayed = true
+	return receipt, true, err
 }
 
 func (w *writeTx) deliverRecord(t *Type, sc Scope, in IntakeDelivery, receipt *IntakeReceipt) error {

@@ -388,7 +388,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 				remaining = budget - c.Cost
 			}
 			call := AgentCall{Call: a.Call, Prompt: a.Prompt, Steps: c.Outputs, Remaining: remaining}
-			if c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
+			if !c.IntakeAI && c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
 				call.IntakeType, call.IntakeRecord = c.TriggerReceipt.IntakeType, c.TriggerReceipt.Record
 			}
 			reply, err = e.cfg.Agent(ctx, call)

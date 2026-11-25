@@ -120,61 +120,17 @@ func (s Service) deliver(def Definition, ch schema.Channel, p Post) (data.Intake
 	}
 	in := data.IntakeDelivery{App: p.App, Channel: p.Channel, Version: def.Version,
 		Key: strings.TrimSpace(p.Key), Type: ch.Record, Run: ch.Run, Set: map[string]any{}}
-	switch ch.Kind {
-	case "form-link":
-		if len(p.Content) != 0 || p.Name != "" || in.Key == "" {
-			return empty, BadInput("submit form values with a dedupe key")
-		}
-		form := def.Manifest.Process.Forms[ch.Form]
-		in.Set, in.Form = p.Values, &form
-		if ch.WorkItem != "" {
-			work := def.Manifest.Process.WorkItems[ch.WorkItem]
-			in.Work = &data.WorkItem{Title: work.Title, Assignee: work.Assignee, Form: work.Form, Due: work.Due, SLAAt: work.SLA}
-		}
-	case "email-in", "file-drop":
-		if len(p.Values) != 0 || len(p.Content) == 0 || !fileName(p.Name) {
-			return empty, BadInput("send a file name and its contents")
-		}
-		if in.Key == "" {
-			digest := sha256.New()
-			if ch.Kind == "file-drop" {
-				fmt.Fprintln(digest, p.Name)
-			}
-			digest.Write(p.Content)
-			in.Key = fmt.Sprintf("file:%x", digest.Sum(nil))
-		}
-		if ch.Kind == "email-in" {
-			if !strings.EqualFold(filepath.Ext(p.Name), ".eml") {
-				return empty, BadInput("drop an .eml email file")
-			}
-			message, files, err := parseEmail(p.Content, ch.Mapping["attachments"] != "")
-			if err != nil {
-				return empty, err
-			}
-			for from, to := range ch.Mapping {
-				if from != "attachments" {
-					in.Set[to] = message[from]
-				}
-			}
-			in.FileField, in.Files = ch.Mapping["attachments"], files
-		} else if err := mapFile(&in, ch, p); err != nil {
-			return empty, err
-		}
-	case "webhook-in", "connector-event":
-		if p.Values == nil || len(p.Content) != 0 || p.Name != "" || in.Key == "" {
-			return empty, BadInput("send a JSON object with a dedupe key")
-		}
-		for from, to := range ch.Mapping {
-			if value, ok := p.Values[from]; ok {
-				in.Set[to] = value
-			}
-		}
-		if len(in.Set) == 0 {
-			return empty, BadInput("the event has no mapped fields")
-		}
+	if err := prepareDelivery(&in, ch, p); err != nil {
+		return empty, err
 	}
 	db, err := s.Store()
 	if err != nil {
+		return empty, err
+	}
+	if prior, found, err := db.IntakeReplay(in); found || err != nil {
+		return prior, err
+	}
+	if err := mapDelivery(&in, def, ch, p); err != nil {
 		return empty, err
 	}
 	if in.Run != "" && s.StartRuns != nil {
@@ -183,6 +139,75 @@ func (s Service) deliver(def Definition, ch schema.Channel, p Post) (data.Intake
 		}
 	}
 	return db.Deliver(in)
+}
+
+// Fingerprint the original delivery so an edited mapping still replays its receipt.
+func prepareDelivery(in *data.IntakeDelivery, ch schema.Channel, p Post) error {
+	digest := sha256.New()
+	fmt.Fprintln(digest, ch.Kind)
+	switch ch.Kind {
+	case "email-in", "file-drop":
+		if len(p.Values) != 0 || len(p.Content) == 0 || !fileName(p.Name) {
+			return BadInput("send a file name and its contents")
+		}
+		if ch.Kind == "file-drop" {
+			fmt.Fprintln(digest, p.Name)
+		}
+		digest.Write(p.Content)
+		if in.Key == "" {
+			in.Key = fmt.Sprintf("file:%x", digest.Sum(nil))
+		}
+	case "form-link", "webhook-in", "connector-event":
+		if len(p.Content) != 0 || p.Name != "" || in.Key == "" || p.Values == nil {
+			return BadInput("send values with a dedupe key")
+		}
+		if err := json.NewEncoder(digest).Encode(p.Values); err != nil {
+			return BadInput("send valid JSON values")
+		}
+	}
+	if len(in.Key) > 256 {
+		return BadInput("the dedupe key must be at most 256 bytes")
+	}
+	in.Fingerprint = fmt.Sprintf("%x", digest.Sum(nil))
+	return nil
+}
+
+func mapDelivery(in *data.IntakeDelivery, def Definition, ch schema.Channel, p Post) error {
+	switch ch.Kind {
+	case "form-link":
+		form := def.Manifest.Process.Forms[ch.Form]
+		in.Set, in.Form = p.Values, &form
+		if ch.WorkItem != "" {
+			work := def.Manifest.Process.WorkItems[ch.WorkItem]
+			in.Work = &data.WorkItem{Title: work.Title, Assignee: work.Assignee, Form: work.Form, Due: work.Due, SLAAt: work.SLA}
+		}
+	case "email-in":
+		if !strings.EqualFold(filepath.Ext(p.Name), ".eml") {
+			return BadInput("drop an .eml email file")
+		}
+		message, files, err := parseEmail(p.Content, ch.Mapping["attachments"] != "")
+		if err != nil {
+			return err
+		}
+		for from, to := range ch.Mapping {
+			if from != "attachments" {
+				in.Set[to] = message[from]
+			}
+		}
+		in.FileField, in.Files = ch.Mapping["attachments"], files
+	case "file-drop":
+		return mapFile(in, ch, p)
+	case "webhook-in", "connector-event":
+		for from, to := range ch.Mapping {
+			if value, ok := p.Values[from]; ok {
+				in.Set[to] = value
+			}
+		}
+		if len(in.Set) == 0 {
+			return BadInput("the event has no mapped fields")
+		}
+	}
+	return nil
 }
 
 func fileName(name string) bool {

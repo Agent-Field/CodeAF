@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/intake"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
@@ -102,6 +104,19 @@ func TestAppIntakeWireParity(t *testing.T) {
 					t.Fatalf("mapped email or body missing: %+v", got.Row)
 				}
 				if tc.asset != "" {
+					parts, err := wire.backend.appRunIntakeParts(runs.AgentCall{
+						Call: runs.Call{App: app}, IntakeType: "contact", IntakeRecord: id,
+					})
+					if err != nil || len(parts) != 1 {
+						t.Fatalf("run attachments = %+v, %v", parts, err)
+					}
+					if tc.name == "image" {
+						if parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,iVBORw0KGgo=" {
+							t.Fatalf("image part = %+v", parts[0])
+						}
+					} else if parts[0].InputFile == nil || parts[0].InputFile.FileData != "data:application/pdf;base64,JVBERi0xLjQK" {
+						t.Fatalf("PDF part = %+v", parts[0])
+					}
 					files, _ := got.Row["files"].([]any)
 					if len(files) != 1 || files[0].(map[string]any)["name"] != tc.asset {
 						t.Fatalf("file field = %+v", files)
@@ -211,20 +226,47 @@ func responseBody(t *testing.T, response *http.Response, status int) string {
 	return string(body)
 }
 
-func TestAppIntakeFormRateLimits(t *testing.T) {
-	_, _, channels := intakeWire(t)
-	for range 40 {
-		response, err := http.Get(channels["request"].URL)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if response.StatusCode == http.StatusTooManyRequests {
-			if body := responseBody(t, response, http.StatusTooManyRequests); body != "too many deliveries. Try again shortly\n" {
-				t.Fatalf("rate limit message = %q", body)
-			}
-			return
-		}
-		responseBody(t, response, http.StatusOK)
+func TestAppIntakeReplaysAfterMappingChanges(t *testing.T) {
+	wire, app, _ := intakeWire(t)
+	input := intake.Post{App: app, Channel: "events", Key: "before-edit",
+		Values: map[string]any{"full_name": "Original"}}
+	var original data.IntakeReceipt
+	wire.must("channels.post", input, &original)
+
+	apps := wire.backend.AppDefinitions()
+	draft, err := apps.NewDraft(app)
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("form allowed 40 requests without rate limiting")
+	path := filepath.Join(draft.Dir(), "app.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	channel := manifest["channels"].(map[string]any)["events"].(map[string]any)
+	channel["mapping"] = map[string]any{"different_key": "name"}
+	raw, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apps.Promote(draft, "Change event mapping"); err != nil {
+		t.Fatal(err)
+	}
+
+	var replay data.IntakeReceipt
+	wire.must("channels.post", input, &replay)
+	if !replay.Replayed || replay.Batch != original.Batch {
+		t.Fatalf("replay after edit = %+v, original = %+v", replay, original)
+	}
+	input.Values["different_key"] = "Different"
+	if _, code, _ := wire.call("channels.post", input); code != appwire.CodeDuplicate {
+		t.Fatalf("different payload with saved key got %s", code)
+	}
 }

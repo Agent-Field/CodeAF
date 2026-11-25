@@ -12,7 +12,8 @@ type before saving. A rejected submission returns a plain message, such as
 Call `channels.list` for the link while the desktop engine is open. The link
 opens on the machine running the engine and permits submissions to that
 form. Share it with someone using the same machine. It expires when the app
-version changes or the engine restarts. A rate-limited request says
+version changes or the engine restarts. The local server allows 20 requests every 10 seconds, including page loads.
+A rate-limited request says
 `too many deliveries. Try again shortly`. Personal has no hosted public
 form URL, and pairing does not forward the local link.
 
@@ -44,8 +45,9 @@ Optional `accept` restricts MIME types, such as `text/csv`,
 `application/pdf` or `image/*`. Each delivery accepts up to 4 MiB.
 
 To extract text into a field, declare `run` on the channel. The run gets
-`$record` and `$input.channel`. Its `agent` step can read the uploaded PDF
-or image when the run's model accepts that format. A following
+`$record` and `$input.channel`. Its first `agent` step can read the uploaded PDF
+or image when the run's model accepts that format, up to eight attachments.
+A following
 `records.update` step can set a field to `$steps.extract.output` (where
 `extract` is the agent step's ID). Those updates carry AI provenance.
 
@@ -78,7 +80,7 @@ Send form field names or the connector's original keys in `values`.
 For an email or file, send its basename in `name` and base64 in
 `content`. A form or event needs a `dedupe_key`. For files, the engine
 can derive it from the content, plus the filename for file drops.
-Reusing a key for the same mapped delivery returns the original receipt
+Reusing a key for the same delivery returns the original receipt
 with `replayed: true`. Each new record's history identifies the channel
 and uses import provenance. A declared `run` is queued once per new
 record, including each accepted CSV row.

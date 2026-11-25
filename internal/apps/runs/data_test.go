@@ -207,7 +207,7 @@ steps:
 		t.Fatal(err)
 	}
 	in := data.IntakeDelivery{App: "crm", Channel: "drop", Run: "extract", Type: "contact",
-		Key: "dropped-1", Set: map[string]any{"name": "new contact"}}
+		Key: "dropped-1", CSV: []byte("name\nNew contact\nAnother contact\n")}
 	made, err := db.Deliver(in)
 	if err != nil {
 		t.Fatal(err)
@@ -229,13 +229,21 @@ steps:
 		t.Fatal(err)
 	}
 	tick(t, e)
-	if len(calls) != 1 || calls[0].IntakeType != "contact" || calls[0].IntakeRecord != made.Rows[0] ||
-		calls[0].Prompt != "Summarize the attachment from drop" {
-		t.Fatalf("agent calls = %+v", calls)
+	if len(calls) != 2 || made.Created != 2 {
+		t.Fatalf("agent calls = %+v, delivery = %+v", calls, made)
 	}
-	history, err := db.History(data.Scope{}, "contact", made.Rows[0])
-	if err != nil || len(history) != 2 || history[0].ByKind != data.ByAI ||
-		history[0].After["summary"] != "Parsed from the attachment" || history[1].Cause != "channel:drop" {
-		t.Fatalf("history = %+v, %v", history, err)
+	seen := map[string]int{}
+	for _, call := range calls {
+		if call.IntakeType != "contact" || call.Prompt != "Summarize the attachment from drop" {
+			t.Fatalf("agent call = %+v", call)
+		}
+		seen[call.IntakeRecord]++
+	}
+	for _, id := range made.Rows {
+		history, err := db.History(data.Scope{}, "contact", id)
+		if err != nil || seen[id] != 1 || len(history) != 2 || history[0].ByKind != data.ByAI ||
+			history[0].After["summary"] != "Parsed from the attachment" || history[1].Cause != "channel:drop" {
+			t.Fatalf("record %s: calls %d, history %+v, %v", id, seen[id], history, err)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
@@ -53,6 +54,7 @@ type FolderPoller struct {
 type seenFile struct {
 	info    fs.FileInfo
 	version int
+	retryAt time.Time
 }
 
 func (p *FolderPoller) Poll(ctx context.Context) error {
@@ -69,6 +71,7 @@ func (p *FolderPoller) Poll(ctx context.Context) error {
 		return err
 	}
 	next := map[string]seenFile{}
+	now := time.Now()
 	for _, entry := range apps {
 		if !entry.IsDir() || !safeApp(entry.Name()) {
 			continue
@@ -109,8 +112,9 @@ func (p *FolderPoller) Poll(ctx context.Context) error {
 					err = errors.Join(err, readErr)
 					continue
 				}
-				if sameFile(info, p.seen[name].info) && p.seen[name].version == def.Version {
-					next[name] = p.seen[name]
+				previous := p.seen[name]
+				if sameFile(info, previous.info) && previous.version == def.Version && (previous.retryAt.IsZero() || now.Before(previous.retryAt)) {
+					next[name] = previous
 					continue
 				}
 				raw, readErr := readFile(root, name, info, data.IntakeBytesMax)
@@ -123,11 +127,17 @@ func (p *FolderPoller) Poll(ctx context.Context) error {
 						}
 					}
 				}
+				entry := seenFile{info: info, version: def.Version}
 				if readErr != nil {
 					err = errors.Join(err, fmt.Errorf("intake file %s: %w", name, readErr))
-					continue
+					e, refused := data.AsError(readErr)
+					if !refused || e.Code == data.CodeStale || e.Code == data.CodeClosed {
+						continue
+					}
+					// Input refusals can recover after a record or the file changes.
+					entry.retryAt = now.Add(time.Minute)
 				}
-				next[name] = seenFile{info: info, version: def.Version}
+				next[name] = entry
 			}
 		}
 	}
