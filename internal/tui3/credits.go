@@ -219,7 +219,11 @@ func (a *app) creditRefusalEnded(err error) bool {
 		return true
 	}
 	if refusal, ok := provider.RefusalFrom(err); ok && refusal.AccountCannotPay() {
-		return true
+		// THE ORGANIZATION'S OWN LIMIT SAYS NOTHING ABOUT THE PERSON'S OPENROUTER
+		// BALANCE, so it must not send a read of it (provider/orgdoor.go). It is
+		// the same fact the turn's sentence already stopped blaming the account for.
+		_, orgLimit := refusal.OrgLimitWords()
+		return !orgLimit
 	}
 	// THE READ DECIDES WHETHER THE KEY EXPIRED. The engine sends the session's
 	// unauthorized sentence without its typed refusal, so that shared sentence
