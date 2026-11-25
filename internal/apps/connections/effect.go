@@ -14,7 +14,7 @@ import (
 // transport, key and credential are unavailable to screens and wire callers.
 type Effect struct {
 	service Service
-	config  Config
+	config  registration
 	read    Read
 	write   Write
 	key     any
@@ -40,7 +40,7 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 		return nil, errors.New("the connection has no such declared write")
 	}
 	read := c.Reads[write.Read]
-	store, _, typ, err := s.bind(c, read, true)
+	store, binding, typ, err := s.bind(c.Config, read, true)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 		(read.Version != "" && (version == "" || len(version) > 1024)) || (read.Version == "" && version != "") {
 		return nil, errors.New("a source write needs a canonical id, any declared version, and fields to set")
 	}
-	key, err := effectKey(store, c, read, id)
+	key, err := effectKey(store, c, read, binding, id)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 	return &Effect{service: s, config: c, read: read, write: write, key: key, version: version, values: values}, nil
 }
 
-func effectKey(store *data.Store, c Config, read Read, id string) (any, error) {
+func effectKey(store *data.Store, c registration, read Read, binding data.TypeBinding, id string) (any, error) {
 	namespace := externalKey(c, read, "")
 	keys, err := store.ExternalKeys(id)
 	if err != nil {
@@ -88,6 +88,10 @@ func effectKey(store *data.Store, c Config, read Read, id string) (any, error) {
 	for _, candidate := range keys {
 		if candidate.Binding != namespace.Binding || candidate.Object != namespace.Object || candidate.Generation != namespace.Generation {
 			continue
+		}
+		linked, found, err := store.LookupBoundIdentity(binding, candidate)
+		if err != nil || !found || linked != id {
+			return nil, ErrConflict
 		}
 		raw, err := base64.RawURLEncoding.DecodeString(candidate.Key)
 		if err != nil || len(raw) == 0 || key != nil || decodeJSON(raw, &key) != nil {
@@ -135,7 +139,7 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 	if err != nil || len(encoded) > maxBytes {
 		return Receipt{}, ErrRejected
 	}
-	raw, err := request(ctx, c, secret, "POST", e.write.Path, nil, encoded, idempotencyKey)
+	raw, err := request(ctx, c.Config, secret, "POST", e.write.Path, nil, encoded, idempotencyKey)
 	if errors.Is(err, ErrTooLarge) {
 		return receipt, ErrUncertain
 	}

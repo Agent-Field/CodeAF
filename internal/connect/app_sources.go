@@ -14,8 +14,10 @@ type AppSourceStore struct {
 
 const appSourcePrefix = "app-source/"
 
+func appSourceCredential(id string) string { return appSourcePrefix + id + "/credential" }
+
 func (s AppSourceStore) Register(id string, definition json.RawMessage, key string) error {
-	ref := appSourcePrefix + id + "/credential"
+	ref := appSourceCredential(id)
 	entry := appSourcePrefix + id
 	exists := false
 	err := newStore(s.Profile).replace(entry, func(entries map[string]stored) {
@@ -54,7 +56,7 @@ func (s AppSourceStore) Credential(id string) (string, error) {
 	entries, err := newStore(s.Profile).load()
 	if err == nil {
 		ref := entries[appSourcePrefix+id].SecretRef
-		if ref == appSourcePrefix+id+"/credential" {
+		if ref == appSourceCredential(id) {
 			if entry, ok := entries[ref]; ok && entry.Auth == AuthKey && entry.Key != "" {
 				return entry.Key, nil
 			}

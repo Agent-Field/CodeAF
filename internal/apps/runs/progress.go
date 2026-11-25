@@ -76,8 +76,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "") {
 			// A crash between delivery and its receipt cannot distinguish an
 			// effected write from one never attempted. Never send it twice.
-			if path, ok := strings.CutPrefix(step.Tool, schema.SourceToolPrefix); ok {
-				connection, _, _ := strings.Cut(path, ".")
+			if connection, _, ok := schema.ParseSourceTool(step.Tool); ok {
 				c.Effects = append(c.Effects, EffectReceipt{Step: step.ID, Tool: step.Tool,
 					Key: c.Action.Key, Connection: connection, Outcome: "unknown"})
 			}

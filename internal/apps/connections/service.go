@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
@@ -78,6 +79,13 @@ type Page struct {
 	HasMore bool       `json:"has_more,omitempty"`
 }
 
+// The profile alias is selected by callers. The immutable registration ID
+// names the identity namespace even when a second profile uses the same alias.
+type registration struct {
+	Config
+	Binding string `json:"binding"`
+}
+
 func (s Service) vault() connect.AppSourceStore {
 	return connect.AppSourceStore{Profile: s.Profile}
 }
@@ -99,7 +107,11 @@ func (s Service) Register(c Config, credential string) error {
 		}
 		_ = db.Close()
 	}
-	definition, err := json.Marshal(c)
+	binding, err := cell.NewID(time.Now())
+	if err != nil {
+		return err
+	}
+	definition, err := json.Marshal(registration{Config: c, Binding: binding})
 	if err != nil {
 		return err
 	}
@@ -113,8 +125,8 @@ func (s Service) List(app string) ([]Summary, error) {
 	}
 	out := []Summary{}
 	for _, id := range slices.Sorted(maps.Keys(definitions)) {
-		var c Config
-		if json.Unmarshal(definitions[id], &c) != nil || c.App != app || app == "" || c.ID != id {
+		var c registration
+		if json.Unmarshal(definitions[id], &c) != nil || c.App != app || app == "" || c.ID != id || !cell.ValidID(c.Binding) {
 			continue
 		}
 		out = append(out, Summary{ID: id, Kind: c.Kind, Reads: slices.Sorted(maps.Keys(c.Reads)), Writes: slices.Sorted(maps.Keys(c.Writes))})
@@ -122,14 +134,14 @@ func (s Service) List(app string) ([]Summary, error) {
 	return out, nil
 }
 
-func (s Service) scoped(app, id string) (Config, error) {
-	var c Config
+func (s Service) scoped(app, id string) (registration, error) {
+	var c registration
 	definitions, err := s.vault().Definitions()
 	if err != nil {
 		return c, err
 	}
-	if app == "" || json.Unmarshal(definitions[id], &c) != nil || c.ID != id || c.App != app {
-		return Config{}, errors.New("there is no such connection for this app")
+	if app == "" || json.Unmarshal(definitions[id], &c) != nil || c.ID != id || c.App != app || !cell.ValidID(c.Binding) {
+		return registration{}, errors.New("there is no such connection for this app")
 	}
 	return c, c.validate()
 }
@@ -146,7 +158,7 @@ func (s Service) Test(ctx context.Context, app, id string) error {
 	ctx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 	if c.Kind == HTTP {
-		_, err := request(ctx, c, secret, "GET", c.TestPath, nil, nil, "")
+		_, err := request(ctx, c.Config, secret, "GET", c.TestPath, nil, nil, "")
 		return err
 	}
 	db, err := database(c.Kind, secret)
@@ -175,7 +187,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	if q.Limit == 0 {
 		q.Limit = defaultRows
 	}
-	store, binding, typ, err := s.bind(c, read, false)
+	store, binding, typ, err := s.bind(c.Config, read, false)
 	if err != nil {
 		return Page{}, err
 	}
@@ -205,7 +217,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	var rows []map[string]any
 	switch c.Kind {
 	case HTTP:
-		rows, err = httpRows(ctx, c, secret, read, args)
+		rows, err = httpRows(ctx, c.Config, secret, read, args)
 	default:
 		rows, err = sqlRows(ctx, c.Kind, secret, read, args, q.Limit+1)
 	}
@@ -261,7 +273,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 		// TODO(O1): resolve reviewed cross-source matches. A stable source key
 		// alone reserves a distinct identity and never guesses from a name.
-		id, found, err := store.LookupIdentity(externalKey(c, read, key))
+		id, found, err := store.LookupBoundIdentity(binding, externalKey(c, read, key))
 		if err == nil && !found {
 			id, err = store.LinkIdentity(binding.Common, externalKey(c, read, key), "")
 		}
@@ -316,13 +328,13 @@ func encodeSourceKey(value any) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(encoded), nil
 }
 
-func externalKey(c Config, read Read, key string) data.ExternalKey {
+func externalKey(c registration, read Read, key string) data.ExternalKey {
 	object := read.Table
 	if c.Kind == HTTP {
 		object = read.Path + "#" + read.Rows
 	}
 	return data.ExternalKey{
-		Binding: c.ID, Object: fmt.Sprintf("%x", sha256.Sum256([]byte(object+"#"+read.Key))),
+		Binding: c.Binding, Object: fmt.Sprintf("%x", sha256.Sum256([]byte(object+"#"+read.Key))),
 		Generation: 1, Key: key,
 	}
 }

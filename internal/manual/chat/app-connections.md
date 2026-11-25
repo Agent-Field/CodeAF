@@ -8,6 +8,8 @@ app and attach its type to a common type, for example
 The profile operator registers each connection for one app. Put its declaration in a local JSON file and pass the
 database connection string on standard input to `codeaf app connections register connection.json`. The profile's
 credential store keeps the connection string. Keep it out of the declaration, app files, command arguments and chat.
+Registration fixes the connection name, endpoint and credential in this version. A replacement needs a new name and
+gets a new source identity namespace.
 
 A Postgres declaration for CRM contacts can look like this:
 

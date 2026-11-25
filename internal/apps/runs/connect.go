@@ -107,8 +107,8 @@ func (c ConnectedTools) check(ctx context.Context, call Call) (connectedOperatio
 }
 
 func (c ConnectedTools) Check(ctx context.Context, call Call) (bool, error) {
-	if strings.HasPrefix(call.Name, schema.SourceToolPrefix) {
-		_, err := c.sourceEffect(call)
+	if id, write, ok := schema.ParseSourceTool(call.Name); ok {
+		_, err := c.sourceEffect(call, id, write)
 		return true, err
 	}
 	_, _, ask, err := c.check(ctx, call)
@@ -116,11 +116,11 @@ func (c ConnectedTools) Check(ctx context.Context, call Call) (bool, error) {
 }
 
 func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
-	if strings.HasPrefix(call.Name, schema.SourceToolPrefix) {
+	if id, write, ok := schema.ParseSourceTool(call.Name); ok {
 		if !call.approved || call.Key == "" {
 			return Reply{}, errors.New("approval is required before writing to a source")
 		}
-		effect, err := c.sourceEffect(call)
+		effect, err := c.sourceEffect(call, id, write)
 		if err != nil {
 			return Reply{}, err
 		}
@@ -209,7 +209,7 @@ func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 	return connectorResult(output, err, op.outbound)
 }
 
-func (c ConnectedTools) sourceEffect(call Call) (*connections.Effect, error) {
+func (c ConnectedTools) sourceEffect(call Call, id, write string) (*connections.Effect, error) {
 	app, err := c.Apps(call.App)
 	if err != nil {
 		return nil, err
@@ -217,7 +217,6 @@ func (c ConnectedTools) sourceEffect(call Call) (*connections.Effect, error) {
 	if call.As != "me" || !slices.Contains(app.Capabilities.Tools, call.Name) {
 		return nil, errors.New("the app has no grant for this source write")
 	}
-	id, write, _ := strings.Cut(strings.TrimPrefix(call.Name, schema.SourceToolPrefix), ".")
 	return c.Sources.PrepareEffect(call.App, id, write, call.Args)
 }
 
