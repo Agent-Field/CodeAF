@@ -555,6 +555,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = authRequest(h.withClient(r))
 	worker := workerPath(r.URL.Path)
 	w.Header().Set("Cache-Control", "no-store")
+	// A page from another site cannot open a WebSocket here, whatever it
+	// carries: asked before anything reads a credential (upgrade_origin.go).
+	if h.crossSiteUpgrade(r) {
+		h.fail(w, http.StatusForbidden, crossSiteUpgradeWords)
+		return
+	}
 	// A hosted chat's model call proves itself with the bearer minted for it
 	// and has no sign-in, so it is answered before the sign-in below. False
 	// unless hosted chats are turned on, which leaves every path as it was.

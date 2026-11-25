@@ -495,6 +495,10 @@ func TestC10_ClientCannotSupplyIdentityHeaders(t *testing.T) {
 	for k, v := range hostile {
 		header.Set(k, v)
 	}
+	// A page this server serves sends this server's own origin, and that must
+	// still not reach the chats' host. A page from another site is refused
+	// before the host is asked (upgrade_origin_test.go).
+	header.Set("Origin", srv.URL)
 	before = rg.host.count()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

@@ -78,7 +78,7 @@ func guestDial(t *testing.T, srv *httptest.Server, secret, chat string) *websock
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	conn, _, err := websocket.Dial(ctx, wireURL(srv, chat), &websocket.DialOptions{
-		HTTPHeader: http.Header{"Authorization": {"Bearer " + secret}, "Origin": {"https://another.example"}},
+		HTTPHeader: http.Header{"Authorization": {"Bearer " + secret}, "Origin": {srv.URL}},
 	})
 	if err != nil {
 		t.Fatal(err)
