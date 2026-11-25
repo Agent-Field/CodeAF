@@ -112,6 +112,16 @@ type live struct {
 	// runs at a time, a cut one's calls carrying over to the stream that
 	// adopts its turn.
 	started map[string]startedStep
+	// weight is how much the newest of Claude Code's calls read: its input,
+	// cached or not. It lives on the session and not on one stream because ONE
+	// TURN OF CLAUDE CODE SPANS MANY OF CODEAF'S REQUESTS: each call to a codeaf
+	// tool ends a stream, and the stream that carries the result may see no
+	// call of its own (an API error comes back as the result alone). That
+	// stream then reported the result's input — every call of the turn added
+	// up — and on 2026-11-25 a seven-step turn of a ~58k conversation read as
+	// 409k, so the next message was refused before sending as too long for a
+	// 200k window. Only the turn's stream reads or writes it, as with started.
+	weight int
 }
 
 // tools is the served list.
@@ -451,9 +461,6 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 	defer beat.Stop()
 	started := time.Now()
 	running, held := "", ""
-	// weight is how much the newest call of the turn read: its input,
-	// cached or not.
-	weight := 0
 	// settled fires a while after a result in a turn that took a correction;
 	// until then that result waits in last, because the correction may yet
 	// start a turn of its own whose result is the real answer.
@@ -477,8 +484,8 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 		// compact a three-line conversation as though it filled the window. So
 		// the input reported is what the turn's LAST call read, which is the
 		// conversation's actual weight.
-		if weight > 0 {
-			in = weight
+		if l.weight > 0 {
+			in = l.weight
 		}
 		finish(strings.TrimSpace(r.Result), map[string]any{"prompt_tokens": in, "completion_tokens": r.Usage.OutputTokens, "total_tokens": in + r.Usage.OutputTokens})
 	}
@@ -539,7 +546,7 @@ func (l *live) stream(ctx context.Context, w *io.PipeWriter, events <-chan claud
 			switch ev.Type {
 			case "assistant":
 				if read := callContext(ev.Raw); read > 0 {
-					weight = read
+					l.weight = read
 				}
 				for _, b := range contentBlocks(ev.Raw) {
 					switch b.Type {
