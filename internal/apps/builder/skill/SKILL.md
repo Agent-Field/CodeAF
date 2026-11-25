@@ -2,7 +2,7 @@
 name: workaf-apps
 description: Make or change a personal app using the app command. Use for plans, types, fields, screen recipes, markup, automations, and edits pinned to a screen.
 ---
-<!-- workaf-apps v2 -->
+<!-- workaf-apps v3 -->
 
 # Make and edit a personal app
 
@@ -14,8 +14,10 @@ only. The engine assigns the app scope.
 Inside the app session, use the command executor with one `codeaf app`
 command and its JSON arguments.
 
-1. Read `app context` for the request, app, type shapes, and Check report.
-   `app kit` and `app reference` provide the current vocabulary and examples.
+1. Read `app context` for the draft, existing type names, and Check findings.
+   Query an existing type with `app context {"type":"contact"}`.
+   Ask for a view or part with `codeaf app parts --for add-view/board`.
+   Use `app reference {"schema":"plan-1.json"}` to read one file format.
 2. Use `app plan` to save the outline, `app add-type` and `app add-field` for
    records, and `app recipe` or `app markup` to compile screens.
 3. Read `app mark` for pinned feedback. Use `app claim` before editing its

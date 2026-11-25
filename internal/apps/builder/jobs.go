@@ -397,6 +397,11 @@ func (s *Jobs) State(id string) (State, error) {
 	return j.State, nil
 }
 
+// PlanFailure carries the persisted, person-facing explanation of a failed plan.
+type PlanFailure struct{ Message string }
+
+func (e *PlanFailure) Error() string { return e.Message }
+
 func (s *Jobs) Plan(ctx context.Context, p PlanRequest) (PlanResult, error) {
 	newApp := p.Draft == "" && strings.TrimSpace(p.Ask) != "" && p.Request == ""
 	replan := p.Draft != "" && p.Ask == "" && strings.TrimSpace(p.Request) != ""
@@ -425,8 +430,12 @@ func (s *Jobs) Plan(ctx context.Context, p PlanRequest) (PlanResult, error) {
 	if err != nil {
 		return PlanResult{}, err
 	}
-	if len(state.Plan) == 0 {
-		return PlanResult{}, fmt.Errorf("could not make a plan: %s", state.Problem)
+	if state.State == Failed || len(state.Plan) == 0 {
+		message := state.Problem
+		if message == "" {
+			message = "I couldn't make the plan because the app outline is missing."
+		}
+		return PlanResult{}, &PlanFailure{Message: message}
 	}
 	return PlanResult{Draft: state.Draft, Plan: state.Plan, Needs: state.Needs, Offers: state.Offers}, nil
 }

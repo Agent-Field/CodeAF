@@ -11,8 +11,8 @@ import (
 //go:embed testdata/crm testdata/hiring
 var builderExamples embed.FS
 
-// BuilderReference renders the schemas and worked examples in file order so
-// every call can reuse the same system-message prefix.
+// BuilderReference renders the schemas and worked examples in file order for
+// people reading the complete reference.
 func BuilderReference() string {
 	var out strings.Builder
 	for _, source := range []embed.FS{schemaFiles, builderExamples} {
@@ -30,4 +30,9 @@ func BuilderReference() string {
 		})
 	}
 	return out.String()
+}
+
+// BuilderExampleFile reads one file from a shipped, synthetic worked example.
+func BuilderExampleFile(example, file string) ([]byte, error) {
+	return builderExamples.ReadFile("testdata/" + example + "/" + file)
 }

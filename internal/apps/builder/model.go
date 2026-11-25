@@ -1,12 +1,17 @@
 package builder
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"regexp"
+	"slices"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
@@ -24,42 +29,54 @@ through the available command executor. It executes a single app command
 directly. Run one command at a time so each sees the changes before it.
 The engine supplies your scope from this session.
 
-Start with codeaf app context. It returns the phase, your working app,
-shape-only type catalog, marks and any Check report. Read the served kit and
-schemas for the active vocabulary. The examples are references for how the
-files fit together. Submit your own app with the commands below.
+Start with codeaf app context. It gives your phase, manifest, plan, other
+definition names and the last Check findings. Inspect an existing type with
+context {"type":"contact"}. Read an individual definition
+with context {"file":"screens/deals.json"}. Use codeaf app parts --for
+add-view/board for that view's descriptor or --for PartName for markup.
+The examples below cover normal planning, types, and views. Consult
+reference for a schema or synthetic worked-example file only when needed.
+Use {"schema":"run-2.json"} or {"example":"crm","file":"runs/follow-up.yaml"}.
+The other synthetic example is hiring.
 
-plan {"name":"CRM","plan":{...}} writes the outline and starts the manifest.
-add-type {"name":"deal","definition":{...}} declares a record type.
-add-field {"type":"deal","name":"stage","definition":{...}} declares a field.
-configure {"capabilities":{...},"agent":{...},"triggers":[...]} updates app settings.
-recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage"}
-compiles a collection view. The served catalog describes its recipe kinds
-and options. For a composed screen, use markup {"screen":"deals","title":"Deals",
-"markup":"<...>"} with the catalog parts as elements. Use label, id, prop-name,
-bind-name and on-event attributes. The compiler assigns missing node ids.
-set-run {"id":"follow-up","text":"..."} writes one automation.
-set-agent {"text":"..."} supplies the app agent's instructions.
-set-sample {"text":"..."} supplies fictional rows for preview and tests.
-claim {"screen":"deals","node":"..."} shows where you are working.
+plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
+writes the outline and starts the manifest. Each plan line has id and line.
+add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
+declares a type with its fields in one command. Add fields to existing
+types with add-field {"type":"deal","name":"stage","definition":{...}}.
+A linked field uses {"type":"ref","to":"company"}. New types start read-only.
+For an app where the person tracks records, grant read and write to every
+tracked type. For a CRM, use
+configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}}}
+before writing screens. Keep other capabilities when editing an existing
+app. Make title fields unique when records are identified by name.
+recipe {"kind":"add-view","id":"deals","record":"deal","as":"board","by":"stage","fields":["name","stage","value"]}
+compiles a collection. For ordinary collections use as "table" or "list"
+and fields, for example companies and contacts in a CRM. The recipe id is
+the screen id. If asked, use add-form or add-detail for a separate screen.
+Use add-chart with group and aggregate
+(e.g. "sum:amount") for grouped totals. For composed screens, use markup
+{"screen":"deals","title":"Deals","markup":"<...>"} with the kit parts as
+elements and label, id, prop-name, bind-name and on-event attributes.
+set-run {"id":"follow-up","text":"..."} writes a run if requested.
+set-agent {"text":"..."} writes instructions if requested.
+set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
+writes the preview rows. Copy that 26-character id and change only its last
+two digits for each row. Continue the sequence across ALL types. Each id
+must be unique in the whole sample. Use the exact ids in reference fields.
 
-For planning, create the plan and its record types. For writing, compile the
-screens, write the named automations and sample rows, and run the checks.
+Save three to six synthetic records per type and put one row in each
+run's sample trigger or filter. Use existing recipe defaults for styling.
 Use singular type ids such as deal, company, contact and candidate. Use
-an existing type only when it appears in accepted reuse. Keep screen and node
-ids stable. If the request names a node, keep the rest of the screen intact.
-Give every main list usable search and a way to edit its records.
-
-Use three to six synthetic records per relevant type. Link references to the
-sample ids and include a row matching each run's filter or record trigger.
-The Data place imports CSV. Create fields that can be mapped from the CSV and
-never add a file or CSV automation. End with a short sentence about the change.
-The person chooses when to Apply.`
-
-var reference = schema.BuilderReference()
+the person's existing type only when it appears under using. Before they
+accept, declare a matching shape so they can see the reuse offer.
+Keep existing screen and node ids. For marked edits, use claim with screen
+and node and preserve the rest of that screen. The Data place imports CSV.
+Provide fields that map to the CSV headers. Finish with what the person can
+try. The person chooses when to Apply.`
 
 func systemPrompt() string {
-	return skill + "\n\n" + instructions + "\n\nAPP KIT\n" + string(schema.KitJSON()) + "\n" + reference
+	return skill + "\n\n" + instructions
 }
 
 var definitionPath = regexp.MustCompile(`^(app\.json|plan\.json|sample\.json|agent\.md|screens/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.json|runs/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.ya?ml)$`)
@@ -100,14 +117,114 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 }
 
 type modelInput struct {
-	Marks      []Mark            `json:"marks"`
-	Stage      string            `json:"stage"`
-	Request    string            `json:"request"`
-	Target     *Target           `json:"target,omitempty"`
-	Types      any               `json:"existing_types,omitempty"`
-	Using      []string          `json:"using,omitempty"`
-	Definition map[string]string `json:"definition"`
-	Report     *schema.Report    `json:"report,omitempty"`
+	Marks      []Mark
+	Stage      string
+	Request    string
+	Target     *Target
+	Types      []modelType
+	Using      []string
+	Definition map[string]string
+	Report     *schema.Report
+}
+
+const contextFilePage = 6 << 10
+
+var schemaName = regexp.MustCompile(`^[a-z0-9-]+\.json$`)
+
+func (in modelInput) context(files map[string]string, args json.RawMessage) (string, error) {
+	var opts struct {
+		File   string
+		Offset int
+		Type   string
+	}
+	if json.Unmarshal(args, &opts) != nil {
+		return "", errors.New("choose a definition file or existing type by name")
+	}
+	if opts.Type != "" {
+		for _, typ := range in.Types {
+			if typ.Name == opts.Type {
+				raw, err := json.Marshal(typ)
+				return string(raw), err
+			}
+		}
+		return "", errors.New("that existing type is unavailable")
+	}
+	if opts.File != "" {
+		body, found := files[opts.File]
+		if !found || !definitionPath.MatchString(opts.File) {
+			return "", errors.New("that app definition file is unavailable")
+		}
+		if opts.Offset < 0 || opts.Offset > len(body) || (opts.Offset < len(body) && !utf8.RuneStart(body[opts.Offset])) {
+			return "", errors.New("use the next offset from the previous page")
+		}
+		end := min(len(body), opts.Offset+contextFilePage)
+		for end < len(body) && !utf8.RuneStart(body[end]) {
+			end--
+		}
+		var next int
+		if end < len(body) {
+			next = end
+		}
+		raw, err := json.Marshal(struct {
+			Text string `json:"text"`
+			Next int    `json:"next_offset,omitempty"`
+		}{body[opts.Offset:end], next})
+		return string(raw), err
+	}
+	preview := func(name string) json.RawMessage {
+		raw := json.RawMessage(files[name])
+		if len(raw) > contextFilePage || !json.Valid(raw) {
+			return nil
+		}
+		return raw
+	}
+	typeNames := make([]string, 0, len(in.Types))
+	for _, typ := range in.Types {
+		typeNames = append(typeNames, typ.Name)
+	}
+	raw, err := json.Marshal(struct {
+		Stage    string          `json:"stage"`
+		Manifest json.RawMessage `json:"manifest,omitempty"`
+		Plan     json.RawMessage `json:"plan,omitempty"`
+		Files    []string        `json:"files,omitempty"`
+		Types    []string        `json:"existing_types,omitempty"`
+		Using    []string        `json:"using,omitempty"`
+		Report   *modelReport    `json:"report,omitempty"`
+	}{
+		in.Stage, preview(schema.AppFile), preview(schema.PlanFile), slices.Sorted(maps.Keys(files)),
+		typeNames, in.Using, briefReport(in.Report),
+	})
+	return string(raw), err
+}
+
+type modelReport struct {
+	Problems []schema.Problem `json:"problems"`
+	Total    int              `json:"total"`
+}
+
+func briefReport(report *schema.Report) *modelReport {
+	if report == nil {
+		return nil
+	}
+	// The desk gets the full report. The model can fix the first group and
+	// run Check again to surface the next group.
+	count := min(len(report.Problems), 8)
+	problems := make([]schema.Problem, count)
+	for i, p := range report.Problems[:count] {
+		p.Message = briefText(p.Message, 400)
+		problems[i] = p
+	}
+	return &modelReport{Problems: problems, Total: len(report.Problems)}
+}
+
+func briefText(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	for !utf8.RuneStart(text[limit]) {
+		limit--
+	}
+	return strings.TrimSpace(text[:limit]) + "…"
 }
 
 // The model edits only this map. Paths, file contents, and the agent file
@@ -123,29 +240,66 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	files := maps.Clone(in.Definition)
 	var mu sync.Mutex
 	var compilerErr error
-	execute := func(ctx context.Context, command string) (string, error) {
+	seen := map[string]bool{}
+	execute := func(ctx context.Context, command string) (result string, err error) {
 		verb, args, err := appcmd.Parse(command)
 		if err != nil {
 			return "", err
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		defer func() {
+			if err != nil || len(result) < 512 {
+				return
+			}
+			// The scoped turn still contains the earlier reply.
+			if seen[result] {
+				result = "Same result as the earlier reply in this step."
+				return
+			}
+			seen[result] = true
+		}()
 		if in.Stage == Planning && (verb == "recipe" || verb == "markup" || verb == "look") {
 			return "", errors.New("This turn is for the plan. Save the outline and record types, then finish the turn so the person can review it.")
 		}
 		switch verb {
 		case "context":
-			view := in
-			view.Definition = files
-			out, err := json.Marshal(view)
+			return in.context(files, args)
+		case "parts", "kit":
+			var options struct{ For string }
+			if err := json.Unmarshal(args, &options); err != nil {
+				return "", errors.New("select one intent with parts --for")
+			}
+			out, err := Parts(options.For)
 			return string(out), err
-		case "kit":
-			return string(schema.KitJSON()), nil
 		case "reference":
-			return reference, nil
+			var options struct{ Schema, Example, File string }
+			if err := json.Unmarshal(args, &options); err != nil {
+				return "", errors.New("choose one file format or worked example file")
+			}
+			if (options.Example == "crm" || options.Example == "hiring") && definitionPath.MatchString(options.File) {
+				raw, err := schema.BuilderExampleFile(options.Example, options.File)
+				if err != nil {
+					return "", errors.New("that worked example file is unavailable")
+				}
+				return string(raw), nil
+			}
+			if !schemaName.MatchString(options.Schema) {
+				return "", errors.New("choose one file format with reference {\"schema\":\"plan-1.json\"}")
+			}
+			raw, err := schema.SchemaJSON(options.Schema)
+			if err != nil {
+				return "", errors.New("that file schema is unavailable")
+			}
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, raw); err != nil {
+				return "", err
+			}
+			return compact.String(), nil
 		case "check":
 			report := schema.Validate(definition(files), types)
-			return report.String(), nil
+			out, err := json.Marshal(briefReport(&report))
+			return string(out), err
 		case "look":
 			if look == nil {
 				return "", errors.New("desk_unavailable: open the desktop renderer")
@@ -182,7 +336,7 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 				if errors.Is(err, errCompilerUnavailable) {
 					compilerErr = err
 				}
-				return "", err
+				return "", errors.New(briefText(err.Error(), 1600))
 			}
 			if err := progress(next); err != nil {
 				return "", err
@@ -192,10 +346,25 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		}
 	}
 	prompt := systemPrompt() + "\n\nCURRENT PHASE: " + in.Stage + "\n"
-	if in.Stage == Planning {
-		prompt += "This turn ends with a reviewable plan and type shapes. Do not compile screens in this turn."
+	switch in.Stage {
+	case Planning:
+		prompt += "Write the plan and type shapes. End after those commands succeed."
+	case "repair":
+		prompt += `Fix the issues in context.report first. Add missing planned screens
+with their exact ids, and remove extras with remove-screen {"id":"extra"}.
+Keep everything unaffected. Run check and finish.`
+	default:
+		prompt += `Complete the planned screens and samples before making refinements.
+Set record permissions and compile one recipe for each missing plan screen,
+using its exact screen id. Keep existing screens unless asked to edit them.
+Use markup only for a composition the request needs and recipes cannot do.
+Then write the sample rows, run check once, and finish with a short summary.`
 	}
-	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), &boundedModel{model: model}, execute)
+	bounded := &boundedModel{model: model}
+	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)
+	if bounded.exhausted() {
+		err = errModelSteps
+	}
 	return files, reply, errors.Join(err, compilerErr)
 }
 
@@ -212,13 +381,23 @@ type boundedModel struct {
 	calls int
 }
 
+const modelStepLimit = 20
+
+var errModelSteps = fmt.Errorf("the Builder reached its %d-call limit before completing this step", modelStepLimit)
+
+func (b *boundedModel) exhausted() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.calls > modelStepLimit
+}
+
 func (b *boundedModel) CompleteWithMessages(ctx context.Context, messages []ai.Message, opts ...ai.Option) (*ai.Response, error) {
 	b.mu.Lock()
 	b.calls++
 	steps := b.calls
 	b.mu.Unlock()
-	if steps > 20 {
-		return nil, errors.New("the app model ran out of steps")
+	if steps > modelStepLimit {
+		return nil, errModelSteps
 	}
 	return b.model.CompleteWithMessages(ctx, messages, append(opts, ai.WithMaxTokens(12000))...)
 }

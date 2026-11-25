@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
@@ -114,6 +115,9 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 			edit.Path = "agent.md"
 		case "set_sample":
 			edit.Path = schema.SampleFile
+			if _, err := check.Sample(definition(map[string]string{edit.Path: args.Text})); err != nil {
+				return nil, err
+			}
 		}
 	case "remove_run", "remove_screen":
 		var args struct{ ID string }

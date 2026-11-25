@@ -56,7 +56,15 @@ separate conversation that receives the request and any marked screen
 element. Its commands can read app definitions and type shapes, and can add
 types, fields, and screens. The app's records are separate.
 
+`codeaf app parts` lists names from the active kit. For a specific view or
+markup part, use `codeaf app parts --for add-view/board` or
+`codeaf app parts --for RecordList`. In an app session, `app context` shows
+the outline, manifest and file names. Ask for an individual definition
+with `app context {"file":"screens/deals.json"}`.
+
 `app look` uses the open desktop to draw the selected screen on example
 records. If the desktop cannot draw it, the command replies with
 `desk_unavailable`. Design changes stay in the editing tab until you
 choose **Apply**.
+
+If a build stops, reopen it to see the reason in the build progress.

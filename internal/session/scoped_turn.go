@@ -55,7 +55,7 @@ func ScopedCommandTurn(ctx context.Context, workspace, model, system, request st
 func (a *Agent) scopedCommandTool() bare.Tool {
 	return bare.Tool{
 		Name:        "bash",
-		Description: "Run the one command allowed in this session. Pass it verbatim, without shell operators, pipes, or flags.",
+		Description: "Run the one command allowed in this session. Pass it verbatim, using only its defined arguments and no shell operators or pipes.",
 		Schema:      json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"],"additionalProperties":false}`),
 		Execute: func(ctx context.Context, raw json.RawMessage) (string, bool, error) {
 			var args struct{ Command string }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/session"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -13,6 +12,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 func (s *Jobs) start(j *job) {
@@ -152,8 +154,12 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[st
 			return s.opts.Look(ctx, j.Draft, screen)
 		}
 	}
+	request := t.Request
+	if request == "" {
+		request = j.LastRequest
+	}
 	files, reply, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
-		Stage: stage, Request: t.Request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
+		Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Using: j.Accepted, Definition: j.Working.Files, Report: t.Report,
 	}, types, s.author, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
@@ -244,8 +250,21 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 	}
 	if err != nil {
 		j.State.State = Failed
-		j.Problem = "I couldn't finish this step. Try again or tell me what you'd like to change."
-		return s.finish(j, Event{Line: j.Problem})
+		reason := strings.Join(strings.Fields(string(trace.Scrub([]byte(err.Error())))), " ")
+		reason = briefText(reason, 1800)
+		action := "finish building the app"
+		if t.Stage == Planning {
+			action = "make the plan"
+		}
+		var api *provider.APIError
+		if errors.As(err, &api) && api.Overflow {
+			j.Problem = "I couldn't " + action + " because the app instructions and conversation were too long for the model."
+		} else {
+			j.Problem = "I couldn't " + action + " because " + strings.TrimRight(reason, ".") + "."
+		}
+		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
+			{Code: "build_failed", Message: reason},
+		}}})
 	}
 	if checking {
 		ok := report.OK()
@@ -265,7 +284,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking bool, catalog Catalog, rep
 		})
 		if t.Round == maxRounds || unavailable || pendingReuse || t.CheckOnly {
 			j.State.State = NeedsYou
-			j.Problem = "Some screens or automations still don't work. Tell me what you want to simplify or change."
+			j.Problem = "Check found an issue. " + report.Problems[0].Message
 			if pendingReuse {
 				j.Problem = "Choose whether this app should use your existing records."
 			}

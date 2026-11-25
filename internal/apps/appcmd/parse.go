@@ -10,8 +10,9 @@ import (
 
 const Prefix = "codeaf app "
 
-// Parse accepts one verb and an optional JSON object. Scope is supplied by
-// the caller's session, so arguments never select a shell or a working directory.
+// Parse accepts one verb and an optional JSON object or a parts intent.
+// The caller's session provides scope, so arguments never select a shell
+// or a working directory.
 func Parse(command string) (string, json.RawMessage, error) {
 	rest, ok := strings.CutPrefix(strings.TrimSpace(command), Prefix)
 	if !ok {
@@ -22,6 +23,10 @@ func Parse(command string) (string, json.RawMessage, error) {
 		return "", nil, errors.New("invalid app command verb")
 	}
 	raw = strings.TrimSpace(raw)
+	if verb == "parts" && strings.HasPrefix(raw, "--for ") {
+		args, err := PartsArgs(strings.TrimSpace(strings.TrimPrefix(raw, "--for ")))
+		return verb, args, err
+	}
 	if raw == "" {
 		raw = "{}"
 	}
@@ -49,4 +54,17 @@ func Parse(command string) (string, json.RawMessage, error) {
 		}
 	}
 	return strings.ReplaceAll(verb, "-", "_"), json.RawMessage(raw), nil
+}
+
+// PartsArgs translates the literal flag shared by the CLI and scoped command.
+func PartsArgs(intent string) (json.RawMessage, error) {
+	if !ValidIntent(intent) || intent == "" {
+		return nil, errors.New("use codeaf app parts --for followed by an intent")
+	}
+	return json.Marshal(map[string]string{"for": intent})
+}
+
+// ValidIntent reports whether an intent is a literal catalog selector.
+func ValidIntent(intent string) bool {
+	return len(intent) <= 96 && strings.Trim(intent, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_/") == ""
 }

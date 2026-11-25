@@ -57,6 +57,11 @@ func scriptedApp(t *testing.T, home string) builder.Options {
 				if len(tools) != 1 || tools[0].Function.Name != "bash" {
 					return ai.Message{}, fmt.Errorf("unexpected command slot: %+v", tools)
 				}
+				for _, message := range messages {
+					if message.Role == "system" && len(message.Content) > 0 && len(message.Content[0].Text) > 8<<10 {
+						t.Error("the scoped system prompt must fit without the full kit, manual or worked examples")
+					}
+				}
 				last := messages[len(messages)-1]
 				if !sentContext {
 					sentContext = true
@@ -285,5 +290,65 @@ func waitState(t *testing.T, jobs *builder.Jobs, draft, state string) builder.St
 		case <-ctx.Done():
 			t.Fatalf("waiting for %s, got %+v", state, got)
 		}
+	}
+}
+
+func TestPlanPersistsAndReportsTheModelFailure(t *testing.T) {
+	home := t.TempDir()
+	opts := scriptedApp(t, home)
+	opts.Model = func() (builder.Completer, error) {
+		return script(func(context.Context, []ai.Message, []ai.ToolDefinition) (ai.Message, error) {
+			return ai.Message{}, errors.New("model could not fit the conversation in its context window; sk-or-v1-fakekeyexample")
+		}), nil
+	}
+	jobs, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
+	if err == nil || !strings.Contains(err.Error(), "context window") || strings.Contains(err.Error(), "fakekeyexample") {
+		t.Errorf("plan error = %v", err)
+	}
+	summaries, err := jobs.List()
+	if err != nil || len(summaries) != 1 {
+		t.Fatalf("jobs = %+v, %v", summaries, err)
+	}
+	jobs.Close()
+	reopened, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	state, err := reopened.State(summaries[0].Draft)
+	if err != nil || state.State != builder.Failed || !strings.Contains(state.Problem, "context window") ||
+		strings.Contains(state.Problem, "fakekeyexample") || !slices.ContainsFunc(state.Progress, func(event builder.Event) bool {
+		return strings.Contains(event.Line, "context window")
+	}) {
+		t.Fatalf("persisted state = %+v, %v", state, err)
+	}
+}
+
+func TestPlanNamesTheCallLimitWhenTheTurnKeepsWorking(t *testing.T) {
+	opts := scriptedApp(t, t.TempDir())
+	opts.Model = func() (builder.Completer, error) {
+		step := 0
+		return script(func(context.Context, []ai.Message, []ai.ToolDefinition) (ai.Message, error) {
+			step++
+			update := fmt.Sprintf("Outline revision %d", step)
+			call := command("plan", map[string]any{"name": "CRM", "plan": map[string]string{"ask": update}})
+			call.ID = fmt.Sprintf("step-%d", step)
+			message := toolCalls(call)
+			message.Content = []ai.ContentPart{{Type: "text", Text: update}}
+			return message, nil
+		}), nil
+	}
+	jobs, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	_, err = jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
+	if err == nil || !strings.Contains(err.Error(), "20-call limit") {
+		t.Fatalf("plan error = %v", err)
 	}
 }

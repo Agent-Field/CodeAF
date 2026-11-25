@@ -2,6 +2,7 @@ package appwire
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"time"
@@ -75,6 +76,15 @@ func init() {
 		ref := builder.Reference()
 		return &ref, nil
 	})
+	methods["apps.parts"] = typed(func(_ Engine, p struct {
+		For string `json:"for,omitempty"`
+	}) (*json.RawMessage, error) {
+		ref, err := builder.Parts(p.For)
+		if err != nil {
+			return nil, Errorf(CodeBadParams, "%s", err)
+		}
+		return &ref, nil
+	})
 	methods["apps.plan"] = buildCall(func(b *builder.Jobs, p builder.PlanRequest) (*builder.PlanResult, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 295*time.Second)
 		defer cancel()
@@ -139,6 +149,10 @@ func buildError(err error) error {
 	var wire *Error
 	if errors.As(err, &wire) {
 		return wire
+	}
+	var plan *builder.PlanFailure
+	if errors.As(err, &plan) {
+		return Errorf(CodeEngine, "%s", plan.Message)
 	}
 	switch {
 	case err == nil:

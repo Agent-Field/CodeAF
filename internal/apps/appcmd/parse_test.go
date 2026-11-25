@@ -24,3 +24,15 @@ func TestScopedCommandsRefuseShellSyntaxAndScopeOverrides(t *testing.T) {
 		t.Fatalf("scoped field command returned %q, %s, %v", verb, raw, err)
 	}
 }
+
+func TestPartsAcceptsOnlyALiteralIntentFlag(t *testing.T) {
+	verb, args, err := appcmd.Parse("codeaf app parts --for add-view/board")
+	if err != nil || verb != "parts" || string(args) != `{"for":"add-view/board"}` {
+		t.Fatalf("parts returned %q, %s, %v", verb, args, err)
+	}
+	for _, bad := range []string{"board;ls", "../board", "board --draft other", "$(ls)", "board|ls"} {
+		if _, _, err := appcmd.Parse("codeaf app parts --for " + bad); err == nil {
+			t.Errorf("accepted %q as a parts intent", bad)
+		}
+	}
+}

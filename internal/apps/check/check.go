@@ -5,8 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // RunProblem carries a step failure from an executor using generated samples
@@ -14,6 +18,11 @@ import (
 type RunProblem struct{ Detail string }
 
 func (p *RunProblem) Error() string { return p.Detail }
+
+// SampleProblem describes a rejected synthetic value without exposing store internals.
+type SampleProblem struct{ Detail string }
+
+func (p *SampleProblem) Error() string { return p.Detail }
 
 // Pipeline validates the same files the kit and the store will open, then
 // exercises their behavior in isolated sample storage.
@@ -33,7 +42,11 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 		return report
 	}
 	rows, err := Sample(def)
-	if err != nil || len(rows) == 0 {
+	if err != nil {
+		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", err.Error()))
+		return report
+	}
+	if len(rows) == 0 {
 		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", "Add example records for the app's lists and required fields."))
 		return report
 	}
@@ -42,10 +55,12 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 		return report
 	}
 	if err := p.Seed(draft, def.Files[schema.AppFile], rows); err != nil {
-		// Seeding only consumes generated records. A backend error can
-		// still carry an engine path or catalog details, so report the
-		// issue without including its internal error text in model input.
-		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_seed", "The example rows could not be loaded. Check required fields, IDs, references, values and types against app.json."))
+		message := "The example data store couldn't load the sample records."
+		var refused *SampleProblem
+		if errors.As(err, &refused) {
+			message = "The example rows could not be loaded. " + refused.Detail
+		}
+		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_seed", message))
 		return report
 	}
 	for i, file := range def.RunFiles() {
@@ -96,7 +111,21 @@ func Sample(def schema.Definition) (map[string][]map[string]any, error) {
 	}
 	var sample schema.Sample
 	if err := json.Unmarshal(raw, &sample); err != nil {
-		return nil, err
+		return nil, errors.New("The example records need a valid sample.json object.")
+	}
+	// The sample store shares its record ID space across all types.
+	used := map[string]string{}
+	for _, typ := range slices.Sorted(maps.Keys(sample.Records)) {
+		for i, row := range sample.Records[typ] {
+			id, _ := row["id"].(string)
+			if !cell.ValidID(id) {
+				return nil, fmt.Errorf("Example %s row %d needs a 26-character ULID for its id, such as 00000000000000000000000001.", typ, i+1)
+			}
+			if previous, ok := used[id]; ok {
+				return nil, fmt.Errorf("Example %s row %d reuses id %s from %s. Use a unique id across all types.", typ, i+1, id, previous)
+			}
+			used[id] = typ
+		}
 	}
 	return sample.Records, nil
 }

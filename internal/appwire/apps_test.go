@@ -16,6 +16,23 @@ type definitionEngine struct {
 
 func (e definitionEngine) AppDefinitions() *store.Store { return e.apps }
 
+func TestAppPartsReturnsOneDescriptorFromTheServedKit(t *testing.T) {
+	fake := &fakeEngine{}
+	w := startWireOver(t, definitionEngine{fake, store.NewAt(t.TempDir(), nil)}, fake)
+	w.next()
+	w.send(`{"id":1,"method":"apps.kit","params":{}}`)
+	kit := w.next()["result"].(map[string]any)
+	w.send(`{"id":2,"method":"apps.parts","params":{"for":"Button"}}`)
+	reply := w.next()
+	if reply["error"] != nil {
+		t.Fatalf("parts: %v", reply["error"])
+	}
+	found := reply["result"].(map[string]any)
+	if found["kit"] != kit["kit"] || found["parts"] != nil || found["part"].(map[string]any)["name"] != "Button" {
+		t.Fatalf("expected one descriptor from the served kit, got %v", found)
+	}
+}
+
 func TestAppsMethodsServeDefinitions(t *testing.T) {
 	fake := &fakeEngine{}
 	apps := store.NewAt(t.TempDir(), nil)

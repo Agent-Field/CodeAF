@@ -20,14 +20,15 @@ func (b *appBackend) appBuildCatalog(exclude string) (builder.Catalog, error) {
 		return builder.Catalog{}, err
 	}
 	catalog := builder.Catalog{Types: schema.TypeSet{}, Counts: map[string]int{}}
+	shapes := main.TypeSet()
 	for _, typ := range types {
-		if typ.Hidden || typ.OwnerApp == exclude {
+		shape, ok := shapes[typ.Name]
+		if !ok || typ.Hidden || (exclude != "" && shape.Owner == exclude) {
 			continue
 		}
-		shape := schema.ExistingType{Owner: typ.OwnerApp, Fields: map[string]schema.Field{}}
 		for _, field := range typ.Fields {
-			if !field.Hidden && field.App != exclude {
-				shape.Fields[field.Name] = field.FieldDef
+			if exclude != "" && field.App == exclude {
+				delete(shape.Fields, field.Name)
 			}
 		}
 		catalog.Types[typ.Name] = shape
@@ -46,7 +47,11 @@ func (b *appBackend) seedBuildSample(draft string, app []byte, rows map[string][
 	if err != nil {
 		return err
 	}
-	return place.SeedSample(draft, app, rows)
+	err = place.SeedSample(draft, app, rows)
+	if refused, ok := data.AsError(err); ok {
+		return &check.SampleProblem{Detail: refused.Message}
+	}
+	return err
 }
 
 func (b *appBackend) seedBuildPreview(scope string, def schema.Definition, real bool) error {

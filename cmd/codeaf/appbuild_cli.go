@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -89,7 +90,8 @@ func runAppCommand(args []string) error {
 	params := json.RawMessage("{}")
 	switch {
 	case verb == "help":
-		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|reference|list|get|screen|versions|mark|presence> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|reference|list|get|screen|versions|mark|presence> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
 		return nil
 	case verb == "kit" && len(args) == 1:
 		_, err := fmt.Fprintln(os.Stdout, string(schema.KitJSON()))
@@ -97,6 +99,12 @@ func runAppCommand(args []string) error {
 	case verb == "reference" && len(args) == 1:
 		_, err := fmt.Fprintln(os.Stdout, builder.Reference())
 		return err
+	case verb == "parts" && len(args) == 3 && args[1] == "--for":
+		var err error
+		params, err = appcmd.PartsArgs(args[2])
+		if err != nil {
+			return err
+		}
 	case verb == "look" && len(args) == 3:
 		params, _ = json.Marshal(map[string]string{"app": args[1], "screen": args[2]})
 	case len(args) > 2:

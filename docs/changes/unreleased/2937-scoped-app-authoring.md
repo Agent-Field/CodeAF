@@ -11,3 +11,7 @@ The app command opens a scoped editing turn that works on definitions. The
 desktop can draw screens on synthetic records and return layout findings.
 Check exercises automations with fake connectors. Apply publishes the
 checked version when the person is ready.
+
+The Builder reads one relevant kit descriptor at a time and keeps definition
+and Check replies compact. Failed jobs record what stopped the app and show
+the reason in build progress.
