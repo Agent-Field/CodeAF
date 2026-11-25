@@ -10,3 +10,6 @@ invalidates:
 The same change makes two cmd/codeaf test fixtures deterministic: the removed-computer quit now takes the removal
 sentence a window would have shown before it checks that the quit itself prints nothing, and the real-engine read test
 takes its home from `EngineDir`.
+Two more tests no longer return while a restarted file arrival is still writing: the live-transfer cut-after-open test
+and the app take test wait for the arrival to be complete before they end, which stops the temporary-directory
+cleanup from failing with "directory not empty" on the full suite.
