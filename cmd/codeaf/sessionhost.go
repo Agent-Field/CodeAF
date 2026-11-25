@@ -68,6 +68,11 @@ func runSessionhost(args []string) error {
 		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
+		if report.OK {
+			// The port fence cannot stop a chat reaching a cloud metadata address,
+			// so the operator is told when this machine answers on one.
+			sessionhost.WarnIfMetadataReachable(ctx, os.Stderr)
+		}
 		return sessionhost.ListenAndServe(ctx, cfg, report)
 	case "probe":
 		report := sessionhost.Probe(cfg)
