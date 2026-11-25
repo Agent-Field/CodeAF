@@ -1,6 +1,6 @@
 ---
 kind: added
-title: An app's files have JSON Schemas, a kit v0 catalog and a validator that says what is wrong in plain words
+title: App files get JSON Schemas, a kit v0 catalog and a validator that says what is wrong
 pr: 2932
 surface: [engine]
 invalidates:
