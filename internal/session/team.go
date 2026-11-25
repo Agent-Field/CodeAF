@@ -1596,7 +1596,8 @@ const teamRoleWithdrawn = "You are no longer the manager or a member of any team
 // teamManagerLaws is how a manager works, stated once in the role. The verbs'
 // own descriptions carry how each is called.
 const teamManagerLaws = "Seven laws:\n" +
-	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Use team_add for an existing conversation and team_remove to release a membership without stopping work. Asked what is happening, answer from the team.\n" +
+	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Use team_add for an existing conversation and team_remove to release a membership without stopping work. Asked what is happening, answer from the team. " +
+	"A task (propose_task) is not a member: use one only for work no member is here for, or when the person asks for a task, and never to get round a member that did not start. When a member did not start, team_send's answer says why: tell the person that.\n" +
 	"2. The person outranks you: what they say in a member's own conversation stands over your directive, and a conflict goes to them.\n" +
 	"3. You cannot answer a member's permission prompt; tell the person it is waiting.\n" +
 	"4. You direct only the members who report to you, one level down: a team under yours is its manager's to run, so you direct that manager, never its members. A member team_status marks `reports to` another team is shared: read it and send it notes, never a directive or a stop.\n" +

@@ -95,8 +95,13 @@ func TestWorkerOnHomeIsToldWhereOutputGoesAndToReportIt(t *testing.T) {
 	project := filepath.Join(home, "project")
 	plain := composeBrief(briefWhole, "read the docs", "summarise", "", "", "", AdmissionContext{}, taskOrigin{},
 		taskCopyFor(taskTree{dir: dir, ground: project, mode: TaskModeReference}))
-	if strings.Contains(plain, "yours to read") {
-		t.Fatalf("a reference on a project changed its brief:\n%s", plain)
+	// A reference on a project is told the same: its folder is not the project
+	// either, and a worker told nothing built there and reported the project
+	// changed (task_reference_test.go).
+	for _, want := range []string{project + " is yours to read", "Everything you make goes in " + dir, "never say the work is in " + project} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("a reference on a project lacks %q:\n%s", want, plain)
+		}
 	}
 }
 

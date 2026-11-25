@@ -108,6 +108,22 @@ something the evidence did not — though nothing ever overrides a path you name
 The check runs where the work stood, cut from the same ground; the card and the `/history`
 row carry the ground and how the task stood on it.
 
+## A task built my project somewhere else — it only read my repository, nothing changed in my folder, where is what the task made
+
+A task whose whole contract names no file to make or change is treated as reading its
+repository: it gets an empty folder of its own and the repository is left alone. Naming a
+project in words is not naming a file, so a brief such as "build the app in the MacStats
+repo" reads this way.
+
+Such a task says so three times. Its receipt reads `It reads <folder> and writes only in a
+folder of its own, so nothing in <folder> changes`, and says to stop it and propose it again
+naming the files under that folder it makes or changes. Its worker is told the folder is to
+read, not to change, and never to report the work as being there. Its landing ends `it
+changed nothing in <folder>: what it made is in <its own folder>`.
+
+To have the work done in the repository, name a file under it in the brief, in what to
+produce or in the done-when, as a path such as `Sources/App/main.swift`, or say "work here".
+
 ## Does a task touch my working copy? — where does my task work, what the card calls the task's directory
 
 **A quick task is the exception, and not a small one.** It has no checkout and no branch

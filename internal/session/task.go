@@ -1233,12 +1233,28 @@ func taskStandSentence(stand taskStand) string {
 	switch {
 	case stand.dir == "":
 		return ""
+	case stand.mode == TaskModeReference && !HoldsHomeFolder(stand.dir):
+		// A REFERENCE IS SAID AS ONE, in the same breath as the start. "It
+		// works in <ground>" was true of where the task looks and false of
+		// where its work goes, and the proposer told the person the work was
+		// in the ground (task_brief.go's [copyOnto] has the run).
+		return taskReadsSentence(stand.dir)
 	case stand.rung == taskGroundBrief:
 		return "It works in " + stand.dir + ", the one folder its brief names the work in."
 	case stand.rung == taskGroundSaid && !stand.kept:
 		return "It works in " + stand.dir + ", the folder this proposal gave as its ground."
 	}
 	return ""
+}
+
+// taskReadsSentence is what a proposer reads when its task only reads the
+// ground: where the work will be, that the ground does not change, and what to
+// do when that is not what was meant. The home folder has its own sentence
+// ([homeTaskRedirect]).
+func taskReadsSentence(dir string) string {
+	dir = cleanFolder(dir)
+	return "It reads " + dir + " and writes only in a folder of its own, so nothing in " + dir + " changes: this proposal named no file to make or change there. " +
+		"If the work is meant to change " + dir + ", stop this task and propose it again naming the files under " + dir + " it makes or changes."
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one

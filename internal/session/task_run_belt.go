@@ -2328,6 +2328,29 @@ func (a *Agent) releaseBeltRun(run *beltRun) {
 // branch the conversation's note names is the ground's, and a merge that would
 // not go in answers with the sentence that names the kept branch and the files.
 func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
+	landing := a.landBeltRunHome(ctx, engine, run)
+	// A RUN THAT ONLY READ ITS GROUND SAYS WHERE ITS WORK IS. It has no branch
+	// and nothing to merge, so its landing had no line at all, and the
+	// conversation was handed the worker's own account of the work with nothing
+	// saying the ground was untouched (task_brief.go's [copyOnto] has the run).
+	if line := referenceLandingLine(run.tree); line != "" {
+		landing.Line = line
+	}
+	return landing
+}
+
+// referenceLandingLine is the landing of a tree that only read its ground:
+// where what it made is, and that the ground did not change. Empty for every
+// other tree.
+func referenceLandingLine(tree taskTree) string {
+	if tree.mode != TaskModeReference || tree.workspaceSet != nil || tree.dir == "" || tree.ground == "" ||
+		canonicalPath(cleanFolder(tree.dir)) == canonicalPath(cleanFolder(tree.ground)) {
+		return ""
+	}
+	return "it changed nothing in " + cleanFolder(tree.ground) + ": what it made is in " + cleanFolder(tree.dir)
+}
+
+func (a *Agent) landBeltRunHome(ctx context.Context, engine RunEngine, run *beltRun) RunLanding {
 	if run.tree.workspaceSet != nil {
 		return a.landWorkspaceSet(ctx, engine, run)
 	}
@@ -2378,6 +2401,10 @@ func (a *Agent) bringBeltRunHome(run *beltRun, landing RunLanding) RunLanding {
 		landing.Branch = branch
 	}
 	home := withReport("its work is in "+run.ground+" on "+landing.Branch, said)
+	if line := referenceLandingLine(run.tree); line != "" {
+		// A run that only read its ground left nothing in it to point at.
+		home = line
+	}
 	if _, err := run.store.AddNote(run.root, run.root, home); err != nil {
 		if g := a.graph(); g != nil {
 			g.planNote("the run's homecoming note failed: " + err.Error())

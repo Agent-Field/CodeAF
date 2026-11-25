@@ -417,6 +417,11 @@ on one waits for you.
 | `team_link` | records a file, pull request, issue or job the crew made as the crew's work, so the desktop app lists it with the crew (see **Link what the crew made**) | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
+A manager hands work to members. It is told a task (`propose_task`) is not a member: a task
+is for work no member is there for, or for when you ask for one, and never a way round a
+member that did not start. When a member did not start, `team_send` says why, and the
+manager is to tell you that.
+
 ## Link what the crew made — team_link, add a file or pull request to the crew
 
 A manager records what its crew produced with `team_link`: `ref` is a file path (relative to
