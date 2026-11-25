@@ -1,5 +1,5 @@
 // Package store keeps app definitions and their history under the engine home.
-// Personal records belong to a different store and have no path through here.
+// Personal records stay in their data store. Publication updates its grants.
 package store
 
 import (
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -36,8 +37,9 @@ type TypeCatalog func(appID string) (schema.TypeSet, error)
 // Store is a handle to one engine home's definitions. Handles and processes
 // sharing that home take the same filesystem lock.
 type Store struct {
-	root  string
-	types TypeCatalog
+	root     string
+	types    TypeCatalog
+	openData func() (*data.Store, error)
 }
 
 // New opens the engine home's app store. Saved versions carry the type

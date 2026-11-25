@@ -343,6 +343,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 |---|---|---|
 | `data.activity` | `in.DataRecordParams` | `DataItemsResult` |
 | `data.aggregate` | `in.DataAggregateParams` | `DataAggregateResult` |
+| `data.checklist_set` | `in.ChecklistSetParams` | `DataProcessResult` |
 | `data.comments.create` | `in.DataCommentParams` | `DataItemResult` |
 | `data.comments.list` | `in.DataCommentListParams` | `DataItemsResult` |
 | `data.count` | `in.DataCountParams` | `DataCountResult` |
@@ -351,6 +352,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.get` | `in.DataRecordParams` | `DataRowResult` |
 | `data.history` | `in.DataRecordParams` | `DataHistoryResult` |
 | `data.import_csv` | `in.DataImportParams` | `DataImportResult` |
+| `data.process` | `in.ProcessParams` | `DataProcessResult` |
 | `data.query` | `in.DataQueryParams` | `DataQueryResult` |
 | `data.reverse` | `in.DataReverseParams` | `DataWriteResult` |
 | `data.signoffs.create` | `in.DataSignParams` | `DataItemResult` |
@@ -360,6 +362,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.timers.create` | `in.DataTimerCreateParams` | `DataItemResult` |
 | `data.timers.list` | `in.DataTimerListParams` | `DataItemsResult` |
 | `data.transition` | `in.DataTransitionParams` | `DataWriteResult` |
+| `data.transition_batch` | `in.TransitionBatchParams` | `DataWriteResult` |
 | `data.transitions` | `in.DataRecordParams` | `DataTransitionsResult` |
 | `data.types` | `in.DataScope` | `DataTypesResult` |
 | `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
@@ -368,6 +371,10 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.work.create` | `in.DataWorkCreateParams` | `DataItemResult` |
 | `data.work.list` | `in.DataWorkListParams` | `DataItemsResult` |
 | `data.work.update` | `in.DataWorkUpdateParams` | `DataItemResult` |
+| `work_items.claim` | `in.DataIDParams` | `DataItemResult` |
+| `work_items.complete` | `in.WorkCompleteParams` | `DataItemResult` |
+| `work_items.list` | `in.DataScope` | `DataItemsResult` |
+| `work_items.reassign` | `in.WorkReassignParams` | `DataItemResult` |
 
 `data.subscribe` starts a live query (`query`), a one-record watch (`id`), or
 a watch on a work table (`table`: `work_items`, `timers`, `signoffs`,
@@ -390,6 +397,31 @@ transition's effects to the engine's outbox. `data.transitions` lists the
 moves a record may take now. A ledger type's entries are never changed or
 deleted; `data.reverse` books the reversing entry. Only the person signs
 (`data.signoffs.create`), against the record's current version.
+
+`data.process` takes `{app?, draft?, record: {type, id}}` and returns the
+current revision and state, candidate transitions with guard and actor
+results and a display reason when blocked, checklist progress, open work
+items, timers, sign-offs with their current-version status, and a timeline.
+The process returns `checklists` and a `checklist` shorthand for the first
+declared checklist. The single-transition result also includes `row`.
+`data.checklist_set` adds `{checklist, step, done, expected_rev, evidence?}`
+and returns the updated snapshot. Note and record-reference evidence are
+accepted. File evidence requires the app blob store. `checklist_done("id")` tests the named
+checklist and `checklist_done()` tests all declared checklists. Both are
+false when the requested checklist does not exist.
+
+`data.transition_batch` takes `{app?, draft?, transition, records:
+[{record: {type, id}, expected_rev}], reason?, unfreeze?}`. Every selected
+record is distinct and its type must declare the move. Each revision, actor and guard
+must pass. The returned `batch` and `rows` name one committed change, with
+no undo receipt for lifecycle moves. Revisions may also be decimal strings.
+
+`work_items.list` defaults to the person's open assignments and those of
+their agents. `work_items.claim` claims an unassigned item, `work_items.complete`
+saves `values` and closes the item, and `work_items.reassign` sets `assignee`
+(an empty string releases it). Each mutation takes `id` and returns the
+updated `item`. A committed work-item change emits `work_items.changed`. The kit 2 Action
+registry declares these calls under their wire method names.
 
 ## competence methods
 
@@ -2285,6 +2317,7 @@ and the reply is empty.
 | `chat.removed` | `ChatRemoved` |
 | `pair.changed` | `PairResult` |
 | `collection.changed` | `CollectionChanged` |
+| `work_items.changed` | `WorkItemsChanged` |
 | `data.changed` | `DataChanged` |
 | `data.reset` | `DataReset` |
 | `compaction.ended` | `CompactionEnded` |

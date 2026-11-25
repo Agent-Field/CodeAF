@@ -250,6 +250,7 @@ type (
 	DataWriteResult struct {
 		Batch   string    `json:"batch"`
 		Rows    []DataRow `json:"rows"`
+		Row     DataRow   `json:"row,omitempty"`
 		Removes []string  `json:"removes,omitempty"`
 		// Held is the values the write left alone because the person set
 		// them (an AI write below a person's value).

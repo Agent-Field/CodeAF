@@ -21,10 +21,10 @@ type (
 		Record *DataRecordRef `json:"record,omitempty"`
 		// Rev is the revision the caller saw (the row's _rev; expected_rev
 		// is the same); a record that moved since is refused as stale.
-		Rev         int64  `json:"rev,omitempty"`
-		ExpectedRev int64  `json:"expected_rev,omitempty"`
-		Reason      string `json:"reason,omitempty"`
-		Unfreeze    string `json:"unfreeze,omitempty"`
+		Rev         int64            `json:"rev,omitempty"`
+		ExpectedRev ExpectedRevision `json:"expected_rev,omitempty"`
+		Reason      string           `json:"reason,omitempty"`
+		Unfreeze    string           `json:"unfreeze,omitempty"`
 	}
 	DataReverseParams struct {
 		DataScope
@@ -172,10 +172,10 @@ var processMethods = map[string]method{
 			p.Type, p.ID, p.Record = r.Type, r.ID, nil
 		}
 		if p.ExpectedRev != 0 {
-			if p.Rev != 0 && p.Rev != p.ExpectedRev {
+			if p.Rev != 0 && p.Rev != int64(p.ExpectedRev) {
 				return nil, Errorf(CodeBadParams, "rev and expected_rev differ")
 			}
-			p.Rev, p.ExpectedRev = p.ExpectedRev, 0
+			p.Rev, p.ExpectedRev = int64(p.ExpectedRev), 0
 		}
 		if err := needRecord(p.Type, p.ID); err != nil {
 			return nil, err

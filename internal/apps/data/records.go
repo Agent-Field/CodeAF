@@ -27,6 +27,7 @@ const (
 	OpImport     = "import"
 	OpRefresh    = "refresh"
 	OpTransition = "transition"
+	OpChecklist  = "checklist"
 	OpReverse    = "reverse"
 	OpSeed       = "seed"
 )
@@ -76,7 +77,7 @@ type Change struct {
 	ByKind  string
 	Cause   string
 	Op      string
-	Type    string
+	Type    string // Empty for a batch containing several types.
 	At      time.Time
 	Records []RecordChange
 	Items   []ItemChange
@@ -92,6 +93,7 @@ type Change struct {
 
 // RecordChange is one record of a [Change], and the fields that changed.
 type RecordChange struct {
+	Type    string
 	ID      string
 	Before  Row
 	After   Row
@@ -132,9 +134,10 @@ type record struct {
 // recordMeta is what a record keeps beside its values: who last set or
 // cleared each field, and a ledger entry's links.
 type recordMeta struct {
-	By         map[string]string `json:"by,omitempty"`
-	Reverses   string            `json:"reverses,omitempty"`
-	ReversedBy string            `json:"reversed_by,omitempty"`
+	Checklists map[string]map[string]checkReceipt `json:"checklists,omitempty"`
+	By         map[string]string                  `json:"by,omitempty"`
+	Reverses   string                             `json:"reverses,omitempty"`
+	ReversedBy string                             `json:"reversed_by,omitempty"`
 }
 
 // state is a record as a history row keeps it.
@@ -445,11 +448,15 @@ func (w *writeTx) newBatch(sc Scope, op string, t *Type) (string, error) {
 	id := w.s.ids.next(w.now)
 	kind := sc.kind(op)
 	actor := w.schema.actor(sc)
+	typ, typeID := "", ""
+	if t != nil {
+		typ, typeID = t.Name, t.ID
+	}
 	if _, err := w.tx.Exec(`INSERT INTO batches(batch, app, actor, by_kind, cause, op, type_id, at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, sc.App, actor, kind, sc.Cause, op, t.ID, w.now.UTC().Format(stamp)); err != nil {
+		id, sc.App, actor, kind, sc.Cause, op, typeID, w.now.UTC().Format(stamp)); err != nil {
 		return "", err
 	}
-	w.change = &Change{Batch: id, App: sc.App, Actor: actor, ByKind: kind, Cause: sc.Cause, Op: op, Type: t.Name, At: w.now}
+	w.change = &Change{Batch: id, App: sc.App, Actor: actor, ByKind: kind, Cause: sc.Cause, Op: op, Type: typ, At: w.now}
 	return id, nil
 }
 
@@ -489,7 +496,7 @@ func (w *writeTx) note(t *Type, before, after *record) error {
 	if after != nil {
 		id = after.ID
 	}
-	rc := RecordChange{ID: id, Before: whole(t, before), After: whole(t, after), Changed: changedFields(before, after)}
+	rc := RecordChange{Type: t.Name, ID: id, Before: whole(t, before), After: whole(t, after), Changed: changedFields(before, after)}
 	if after != nil && after.DeletedAt != "" {
 		rc.After = nil
 	}
@@ -1167,9 +1174,9 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 	var undo string
 	err := s.write(func(w *writeTx) error {
 		rows, removes, undo = nil, nil, ""
-		var typeID, byKind string
+		var typeID, byKind, op string
 		var undone sql.NullString
-		err := w.tx.QueryRow(`SELECT type_id, undone_by, by_kind FROM batches WHERE batch = ?`, batch).Scan(&typeID, &undone, &byKind)
+		err := w.tx.QueryRow(`SELECT type_id, undone_by, by_kind, op FROM batches WHERE batch = ?`, batch).Scan(&typeID, &undone, &byKind, &op)
 		if errors.Is(err, sql.ErrNoRows) {
 			return errorf(CodeNotFound, "there is no batch %s", batch)
 		}
@@ -1178,6 +1185,9 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 		}
 		if undone.Valid {
 			return errorf(CodeStale, "that change was already undone")
+		}
+		if op == OpTransition && typeID == "" {
+			return errorf(CodeLifecycle, "undoing this would move lifecycle states; fire a transition back instead")
 		}
 		known := w.schema.byID[typeID]
 		if known == nil {
