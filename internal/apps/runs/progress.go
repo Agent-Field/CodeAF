@@ -102,8 +102,8 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			}
 			return e.ask(c, step.Gate.Approval, who)
 		}
-		if outbound && c.Approved != "send" {
-			return e.ask(c, "send", c.Action.As)
+		if outbound && c.Approved != outboundGate(step.Tool) {
+			return e.ask(c, outboundGate(step.Tool), c.Action.As)
 		}
 		switch {
 		case step.Wait != nil:
@@ -387,7 +387,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			err = errors.New("connectors are unavailable")
 		} else {
 			call := a.Call
-			call.approved = c.Approved == "send"
+			call.approved = a.Outbound && c.Approved == outboundGate(a.Name)
 			reply, err = e.cfg.Connector.Call(ctx, call)
 		}
 	}
@@ -490,4 +490,11 @@ func (e *Engine) stop(c *checkpoint, state, reason string) error {
 		c.Step = ""
 	}
 	return e.save(c, "", nil)
+}
+
+func outboundGate(tool string) string {
+	if kind := schema.ToolApprovalKind(tool); kind != "" {
+		return kind
+	}
+	return "send"
 }

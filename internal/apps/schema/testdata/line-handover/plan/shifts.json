@@ -1,0 +1,12 @@
+{
+  "scale": "hour",
+  "items": [
+    {
+      "id": "shift-b",
+      "label": "Shift B",
+      "start": "2026-11-25T14:00:00Z",
+      "end": "2026-11-25T22:00:00Z",
+      "record": "line/01KAT0000A00000000000000001"
+    }
+  ]
+}

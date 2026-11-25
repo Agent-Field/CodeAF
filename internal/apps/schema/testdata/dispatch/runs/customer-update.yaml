@@ -1,0 +1,8 @@
+run: customer-update
+params:
+  phone: {type: phone}
+steps:
+  - id: send
+    gate: {approval: send, who: me}
+    tool: sms.send
+    args: {to: $params.phone, body: "Your delivery is due at 3 pm."}

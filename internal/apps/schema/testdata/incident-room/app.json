@@ -1,0 +1,52 @@
+{
+  "id": "incident-room",
+  "name": "Incident room",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Incident room agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "incident": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "opened_at": {
+          "type": "datetime"
+        },
+        "status": {
+          "type": "enum",
+          "values": [
+            "investigating",
+            "resolved"
+          ]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "incident": "rw"
+    },
+    "connectors": {
+      "metrics": {
+        "can": [
+          "sample.received",
+          "latest"
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "latency",
+      "on": "connector",
+      "connector": "metrics",
+      "event": "sample.received",
+      "run": "monitor"
+    }
+  ]
+}

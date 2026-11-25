@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/records-2.json",
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "id"
+      ]
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "from": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        "to": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "from",
+        "to"
+      ]
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ]
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "type",
+            "id"
+          ]
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "direction": {
+          "enum": [
+            "out",
+            "in",
+            "both"
+          ]
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      },
+      "required": [
+        "from",
+        "direction",
+        "depth"
+      ]
+    },
+    "reveal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "field",
+        "reason"
+      ]
+    },
+    "signoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "person": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "person"
+            ]
+          }
+        },
+        "makerCannotSign": {
+          "type": "boolean"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "record",
+        "roles",
+        "statement"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "makerCannotSign"
+            ],
+            "properties": {
+              "makerCannotSign": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "roles": {
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "checklist": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "enum": [
+                  "none",
+                  "note",
+                  "file",
+                  "record"
+                ]
+              },
+              "role": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "evidence"
+            ]
+          }
+        },
+        "signoff": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        }
+      },
+      "required": [
+        "record",
+        "steps"
+      ]
+    },
+    "timer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ]
+        },
+        "amber": {
+          "type": "string",
+          "minLength": 1
+        },
+        "red": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "field",
+        "direction"
+      ]
+    },
+    "blind": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "until": {
+          "const": "submitted"
+        },
+        "per": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+        }
+      },
+      "required": [
+        "until",
+        "per"
+      ]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+run: monitor
+steps:
+  - id: read
+    tool: metrics.latest
+  - id: sample
+    stream.append: {series: latency, value: $steps.read.output}

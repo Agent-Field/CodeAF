@@ -1,0 +1,12 @@
+{
+  "scale": "hour",
+  "items": [
+    {
+      "id": "start",
+      "label": "Latency alert",
+      "start": "2026-11-25T10:00:00Z",
+      "end": "2026-11-25T10:05:00Z",
+      "record": "incident/01KAT0000A00000000000000001"
+    }
+  ]
+}

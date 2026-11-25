@@ -1,0 +1,85 @@
+{
+  "screen": "campaigns",
+  "title": "Campaigns",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Campaign queue",
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "campaign",
+          "view": "campaign-list"
+        },
+        "id": "campaign-list"
+      },
+      {
+        "part": "Media",
+        "label": "Launch cut",
+        "props": {
+          "chapters": [
+            {
+              "at": 0,
+              "label": "Intro"
+            },
+            {
+              "at": 20,
+              "label": "Offer"
+            }
+          ]
+        },
+        "bind": {
+          "file": "$selection.campaign-list.id",
+          "type": "campaign",
+          "field": "cut"
+        },
+        "id": "media"
+      },
+      {
+        "part": "Compare",
+        "label": "Compare ad variants",
+        "props": {
+          "a": "slides/left.json",
+          "b": "slides/right.json",
+          "mode": "side-by-side"
+        },
+        "id": "compare"
+      },
+      {
+        "part": "Canvas",
+        "label": "Ad layout",
+        "props": {
+          "frame": "board"
+        },
+        "bind": {
+          "content-part": "slides/right.json"
+        },
+        "id": "canvas"
+      },
+      {
+        "part": "ApprovalCard",
+        "label": "Approve spend",
+        "props": {
+          "kind": "spend"
+        },
+        "bind": {
+          "record": "$selection.campaign-list.id",
+          "type": "campaign"
+        },
+        "id": "approvalcard"
+      }
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "campaign-list": {
+      "type": "campaign"
+    }
+  }
+}

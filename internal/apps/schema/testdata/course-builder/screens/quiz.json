@@ -1,0 +1,20 @@
+{
+  "screen": "quiz",
+  "title": "Setup quiz",
+  "body": {
+    "part": "Form",
+    "label": "Answer the quiz",
+    "props": {
+      "type": "attempt",
+      "fields": [
+        "name",
+        "format"
+      ],
+      "answerKey": {
+        "format": "json"
+      },
+      "scoring": "exact"
+    },
+    "id": "form"
+  }
+}

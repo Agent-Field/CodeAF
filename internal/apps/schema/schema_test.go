@@ -32,7 +32,7 @@ func TestKitCatalogIsTheSpecPartList(t *testing.T) {
 		if p.Bindings == nil || p.Events == nil {
 			t.Errorf("%s: bindings and events must be lists, even empty ones", p.Name)
 		}
-		if _, ok := schemas().props[p.Name]; !ok {
+		if _, ok := schemas().props[0][p.key()]; !ok {
 			t.Errorf("%s: props schema did not compile", p.Name)
 		}
 	}
@@ -146,7 +146,7 @@ func TestBrokenDefinitionsSayWhatIsWrong(t *testing.T) {
 		file string
 	}{
 		{"not json", func(t *testing.T, f map[string][]byte) { f[AppFile] = []byte("{") }, CodeParse, AppFile},
-		{"wrong kit version", jsonEdit(AppFile, func(v map[string]any) { v["kit"] = 2 }), CodeSchema, AppFile},
+		{"wrong kit version", jsonEdit(AppFile, func(v map[string]any) { v["kit"] = 9 }), CodeSchema, AppFile},
 		{"enum without values", jsonEdit(AppFile, func(v map[string]any) {
 			delete(at(v, "records", "deal", "fields", "stage"), "values")
 		}), CodeSchema, AppFile},
@@ -373,7 +373,7 @@ func TestBrokenAppDoesNotCascade(t *testing.T) {
 	for k, v := range crm.Files {
 		files[k] = v
 	}
-	files[AppFile] = []byte(strings.Replace(string(crm.Files[AppFile]), `"kit": 0`, `"kit": 2`, 1))
+	files[AppFile] = []byte(strings.Replace(string(crm.Files[AppFile]), `"kit": 0`, `"kit": 9`, 1))
 	r := Validate(Definition{Files: files}, nil)
 	for _, p := range r.Problems {
 		if p.File != AppFile {
@@ -381,7 +381,7 @@ func TestBrokenAppDoesNotCascade(t *testing.T) {
 		}
 	}
 	if len(r.Problems) == 0 {
-		t.Fatal("kit 2 should be refused")
+		t.Fatal("kit 9 should be refused")
 	}
 }
 

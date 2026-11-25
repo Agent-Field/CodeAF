@@ -1,0 +1,53 @@
+{
+  "screen": "map",
+  "title": "Dispatch map",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "label": "Delivery queue",
+        "props": {
+          "columns": [
+            "title",
+            "eta"
+          ],
+          "select": "one"
+        },
+        "bind": {
+          "records": "delivery",
+          "view": "delivery-list"
+        },
+        "id": "delivery-list"
+      },
+      {
+        "part": "Map",
+        "label": "Vehicle positions",
+        "props": {
+          "live": true
+        },
+        "bind": {
+          "content-part": "places/routes.json"
+        },
+        "id": "map"
+      },
+      {
+        "part": "ApprovalCard",
+        "label": "Customer update",
+        "props": {
+          "kind": "send"
+        },
+        "bind": {
+          "run": "customer-update"
+        },
+        "id": "approvalcard"
+      }
+    ],
+    "id": "stack"
+  },
+  "views": {
+    "delivery-list": {
+      "type": "delivery"
+    }
+  }
+}

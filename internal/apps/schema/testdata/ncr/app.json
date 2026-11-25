@@ -1,0 +1,75 @@
+{
+  "id": "ncr",
+  "name": "Nonconformance review",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Nonconformance review agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "ncr": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "drawing": {
+          "type": "file"
+        },
+        "maker": {
+          "type": "person"
+        },
+        "reviewer": {
+          "type": "person"
+        }
+      }
+    },
+    "drawing": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "rev": {
+          "type": "text"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "ncr": "rw",
+      "drawing": "rw"
+    }
+  },
+  "policies": [
+    {
+      "id": "review",
+      "kind": "signoff",
+      "config": {
+        "record": "ncr",
+        "makerCannotSign": true,
+        "roles": [
+          {
+            "id": "maker",
+            "label": "Maker",
+            "person": "$record.maker"
+          },
+          {
+            "id": "checker",
+            "label": "Independent reviewer",
+            "person": "$record.reviewer"
+          }
+        ],
+        "statement": "I have reviewed the attached evidence."
+      }
+    }
+  ],
+  "relations": {
+    "affects": {
+      "from": "ncr",
+      "to": "drawing"
+    }
+  }
+}

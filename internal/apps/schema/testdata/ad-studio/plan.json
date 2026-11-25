@@ -1,0 +1,18 @@
+{
+  "ask": "Compare ad variants, review a video cut and approve campaign spend.",
+  "data": [
+    {
+      "id": "campaign",
+      "line": "Title and cut, amount"
+    }
+  ],
+  "screens": [
+    {
+      "id": "campaigns",
+      "line": "Campaigns"
+    }
+  ],
+  "agent": {
+    "line": "Compare the two variations and make a recommendation before requesting approval for spend."
+  }
+}

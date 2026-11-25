@@ -1,0 +1,16 @@
+{
+  "records": {
+    "campaign": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "Fall launch",
+        "cut": {
+          "blob": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "name": "fall-cut.mp4",
+          "mime": "video/mp4"
+        },
+        "amount": 3500
+      }
+    ]
+  }
+}

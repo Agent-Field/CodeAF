@@ -1,0 +1,15 @@
+{
+  "screen": "shifts",
+  "title": "Shifts",
+  "body": {
+    "part": "Timeline",
+    "label": "Shift plan",
+    "props": {
+      "view": "shifts"
+    },
+    "bind": {
+      "content-part": "plan/shifts.json"
+    },
+    "id": "timeline"
+  }
+}

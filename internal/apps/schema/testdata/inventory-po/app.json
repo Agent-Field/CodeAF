@@ -1,0 +1,50 @@
+{
+  "id": "inventory-po",
+  "name": "Inventory and POs",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Inventory and POs agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "sku": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "code": {
+          "type": "barcode"
+        },
+        "on_hand": {
+          "type": "number"
+        },
+        "reorder_at": {
+          "type": "number"
+        }
+      }
+    },
+    "purchase": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "sku": {
+          "type": "ref",
+          "to": "sku"
+        },
+        "qty": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "sku": "rw",
+      "purchase": "rw"
+    }
+  }
+}

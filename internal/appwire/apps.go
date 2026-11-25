@@ -15,6 +15,9 @@ type AppDefinitions interface {
 }
 
 type (
+	appKitParams struct {
+		Kit *int `json:"kit,omitempty"`
+	}
 	appParams struct {
 		App string `json:"app"`
 	}
@@ -75,11 +78,18 @@ var appMethods = map[string]method{
 		_, err := s.Delete(p.App)
 		return done(err)
 	}),
-	"apps.kit": typed(func(e Engine, _ Empty) (*json.RawMessage, error) {
+	"apps.kit": typed(func(e Engine, p appKitParams) (*json.RawMessage, error) {
 		if _, ok := e.(AppDefinitions); !ok {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not serve app definitions")
 		}
-		raw := json.RawMessage(schema.KitJSON())
+		version := 2
+		if p.Kit != nil {
+			version = *p.Kit
+		}
+		raw := json.RawMessage(schema.KitJSONFor(version))
+		if raw == nil {
+			return nil, Errorf(CodeBadParams, "unknown app kit version %d", version)
+		}
 		return &raw, nil
 	}),
 }

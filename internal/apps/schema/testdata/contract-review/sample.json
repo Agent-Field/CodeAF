@@ -1,0 +1,16 @@
+{
+  "records": {
+    "contract": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "Northwind services agreement",
+        "counterparty": "Northwind",
+        "draft": {
+          "blob": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "name": "agreement.pdf",
+          "mime": "application/pdf"
+        }
+      }
+    ]
+  }
+}

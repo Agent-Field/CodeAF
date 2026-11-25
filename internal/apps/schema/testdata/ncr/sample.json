@@ -1,0 +1,47 @@
+{
+  "records": {
+    "ncr": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "NCR-031 · Bracket hole",
+        "drawing": {
+          "blob": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "name": "B-114-rev-C.pdf",
+          "mime": "application/pdf",
+          "revisionOf": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "pins": [
+            {
+              "id": "hole",
+              "page": 1,
+              "x": 0.32,
+              "y": 0.28,
+              "note": "Over tolerance by 0.2 mm"
+            }
+          ]
+        },
+        "maker": "raj",
+        "reviewer": "me"
+      }
+    ],
+    "drawing": [
+      {
+        "id": "01KAT0000A00000000000000002",
+        "title": "B-114 bracket",
+        "rev": "C"
+      }
+    ]
+  },
+  "links": [
+    {
+      "kind": "affects",
+      "from": {
+        "type": "ncr",
+        "id": "01KAT0000A00000000000000001"
+      },
+      "to": {
+        "type": "drawing",
+        "id": "01KAT0000A00000000000000002"
+      }
+    }
+  ]
+}

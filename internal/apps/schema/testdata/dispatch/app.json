@@ -1,0 +1,44 @@
+{
+  "id": "dispatch",
+  "name": "Dispatch",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Dispatch agent",
+    "file": "agent.md"
+  },
+  "records": {
+    "delivery": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "position": {
+          "type": "geo"
+        },
+        "eta": {
+          "type": "datetime"
+        },
+        "customer": {
+          "type": "phone"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "delivery": "rw"
+    },
+    "connectors": {
+      "sms": {
+        "can": [
+          "send"
+        ],
+        "approve": [
+          "send"
+        ]
+      }
+    }
+  }
+}

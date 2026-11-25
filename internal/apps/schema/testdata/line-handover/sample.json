@@ -1,0 +1,13 @@
+{
+  "records": {
+    "line": [
+      {
+        "id": "01KAT0000A00000000000000001",
+        "title": "Line 2",
+        "minutes": 17,
+        "shift": "2026-11-25",
+        "stage": "held"
+      }
+    ]
+  }
+}
