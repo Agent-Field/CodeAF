@@ -264,10 +264,11 @@ type teamSeat struct {
 	// thread.go). Memory only: a conversation reopened answers nothing until
 	// the manager next speaks to it, which reads as a thread of its own.
 	answering map[string]string
-	// handed is, per team, when this conversation was first handed work by
-	// that team's manager (a directive, or the brief it was started on) since
-	// its last turn ended. A turn's ending takes it ([Agent.teamHandedTake]):
-	// it is what makes a stop of that turn the stop of handed-out work.
+	// handed is, per team, when this conversation was first handed the work
+	// it is on by that team's manager (a directive, or the brief it was
+	// started on). It lasts as long as the work does, across the turns a
+	// command it waits on separates ([Agent.teamHandedCarried]), and is what
+	// makes the person's stop the stop of handed-out work.
 	handed map[string]time.Time
 	// stopHold is the person's stop of this conversation's turn while it sat
 	// in a team, kept until a turn next begins (team_stophold.go).
