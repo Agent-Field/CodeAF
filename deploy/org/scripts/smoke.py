@@ -1204,8 +1204,8 @@ GUEST_NEEDS_STEER = 'You can watch this chat, but you were not given permission 
 ACCESS_REMOVED = 'Your access to this chat was removed.'
 BOT_REFUSED = 'a bot cannot use this yet'
 HEARTBEAT = float(os.environ.get('SMOKE_HOSTED_HEARTBEAT_S', '1'))
-LIST_SHARED_KEYS = {'id', 'owner', 'role', 'access', 'state', 'created', 'last_active'}
-LIST_OPERATOR_KEYS = {'id', 'owner', 'access', 'state', 'created', 'last_active'}
+LIST_SHARED_KEYS = {'id', 'owner', 'role', 'access', 'state', 'created', 'last_active', 'verbs'}
+LIST_OPERATOR_KEYS = {'id', 'owner', 'access', 'state', 'created', 'last_active', 'verbs'}
 
 
 class Wire:
@@ -1495,8 +1495,9 @@ def hosted_p2():
     code, listed = http('GET', ORG + '/v1/hosted/sessions', noor)
     rows = [r for r in (listed or {}).get('shared', []) if r.get('id') == chat_p] if isinstance(listed, dict) else []
     check('P2-2 Noor now lists it under shared, never under his own chats', len(rows) == 1 and chat_p not in p2_ids(listed, 'sessions'), short(listed, 300))
-    check('P2-2 a shared row carries only the id, owner, role, how, state and times (no model access, no warning)',
-          len(rows) == 1 and set(rows[0]) == LIST_SHARED_KEYS and rows[0].get('role') == 'view' and rows[0].get('access') == 'shared' and rows[0].get('owner') == 'kai', rows)
+    check('P2-2 a shared row carries only the id, owner, role, how, state, times and the verbs the caller holds (no model access, no warning)',
+          len(rows) == 1 and set(rows[0]) == LIST_SHARED_KEYS and rows[0].get('role') == 'view' and rows[0].get('access') == 'shared' and rows[0].get('owner') == 'kai'
+          and rows[0].get('verbs') == ['view'], rows)
     check('P2-2 the list says what the organization\'s policy is for chats on a computer', isinstance(listed, dict) and (listed.get('hosting') or {}).get('local_sessions') == 'refuse', short((listed or {}).get('hosting'), 80))
     code, other = http('GET', ORG + '/v1/hosted/sessions', operator)
     check('P2-1 the operator still has none of it', code == 200 and chat_p not in p2_ids(other, 'sessions') + p2_ids(other, 'shared'), short(other, 200))
@@ -1656,7 +1657,8 @@ def hosted_p2():
     visible = (made or {}).get('id', '') if isinstance(made, dict) else ''
     code, listed = http('GET', ORG + '/v1/hosted/sessions', operator)
     seen_rows = [r for r in (listed or {}).get('shared', []) if r.get('id') == visible] if isinstance(listed, dict) else []
-    check('P2-2 the operator lists that chat as metadata only (id, owner, how, state, times)', len(seen_rows) == 1 and set(seen_rows[0]) == LIST_OPERATOR_KEYS and seen_rows[0].get('access') == 'operator', short(seen_rows or listed, 300))
+    check('P2-2 the operator lists that chat as metadata only (id, owner, how, state, times, and no verbs)', len(seen_rows) == 1 and set(seen_rows[0]) == LIST_OPERATOR_KEYS and seen_rows[0].get('access') == 'operator'
+          and seen_rows[0].get('verbs') == [], short(seen_rows or listed, 300))
     wire = wire_answer(operator, visible)
     check('P2-4 and the operator still cannot attach to it, or read it, from that role', wire[0] == 404 and NO_SUCH_CHAT in wire[1], wire)
     code, back = p2_restore_policy(operator, original)
