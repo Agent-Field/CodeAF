@@ -83,8 +83,11 @@ const teamPausedWhy = "the person paused it; it starts on this when they resume 
 const teamPauseHeldRule = "This arrived while the person had this conversation paused, so it started no turn. It is a record of what happened."
 
 // teamPauseResumedRule opens the turn Resume starts on what a pause kept: the
-// work a pause cut, the news it held, or both ([Agent.teamPauseOwedWake]).
-const teamPauseResumedRule = "The person paused this conversation and has now resumed it, which started this turn. Carry on with the work you were on; anything above that arrived while it was paused is a record of what happened meanwhile."
+// work a pause cut, the news it held, or both ([Agent.teamPauseOwedWake]). It
+// says the cut step did not finish: told only to carry on, a model read the
+// ended command as a failure to report and stopped there (seen in the built app,
+// twice), which is not what the person resuming it asked for.
+const teamPauseResumedRule = "The person paused this conversation and has now resumed it, which started this turn. Carry on with the work you were on. The pause cut off whatever was in progress (a command it ended did not finish), so do that step again and then finish the work; anything above that arrived while it was paused is a record of what happened meanwhile."
 
 // teamPauseHold is one conversation's pause, for the wakes that are decided
 // under the agent's lock and may read neither the teams file nor the seat's

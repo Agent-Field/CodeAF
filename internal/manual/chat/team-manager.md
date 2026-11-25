@@ -695,8 +695,10 @@ other message.
 
 With no directive waiting, Resume starts one turn when the pause ended a turn, whatever
 started it, or held a record. That turn opens with "The person paused this conversation
-and has now resumed it, which started this turn. Carry on with the work you were on; anything
-above that arrived while it was paused is a record of what happened meanwhile." A member
+and has now resumed it, which started this turn. Carry on with the work you were on. The pause
+cut off whatever was in progress (a command it ended did not finish), so do that step again and
+then finish the work; anything above that arrived while it was paused is a record of what
+happened meanwhile." A member
 paused while it waited on a command for that work starts again when the command ends, or at
 Resume if it ended meanwhile. The crew's hourly wake limit and daily cap hold that turn as
 they hold a directive, and it starts once they allow. That turn is kept in memory only: if
