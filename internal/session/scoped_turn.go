@@ -16,11 +16,11 @@ func ScopedCommandTurn(ctx context.Context, workspace, model, system, request st
 	if strings.TrimSpace(system) == "" || execute == nil {
 		return "", errors.New("a scoped turn needs a prompt and a command executor")
 	}
-	a, err := newAgent(Config{
+	a, err := New(Config{
 		Workspace: workspace, Model: model, System: system, Errand: true,
 		OneModel: true, PromptProfile: "full", DeterministicNames: true,
-		scopedCommand: execute,
-	}, client)
+		scopedCommand: execute, completer: client, droppings: Place{Dir: workspace},
+	})
 	if err != nil {
 		return "", err
 	}
