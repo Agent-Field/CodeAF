@@ -537,7 +537,7 @@ func commandWords() []string {
 // programs this build carries are joined to it where it is read
 // ([commandWords]).
 var knownCommands = []string{
-	"chat", "resume", "pair", "serve", "devbox", "devices", "cluster", "do", "plan", "revise", "run", "exec",
+	"chat", "resume", "pair", "serve", "devbox", "devices", "cluster", "org", "task", "do", "plan", "revise", "run", "exec",
 	"show", "models", "pool", "notebook", "collections", "competence", "services", "patch",
 	"doc", "web", "image",
 	"doctor",

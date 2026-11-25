@@ -365,6 +365,14 @@ func run() error {
 	case "attach":
 		// Which factory this machine's windows talk to (factory_attach.go).
 		return runAttach(os.Args[2:])
+	case "org":
+		// The terminal's door into an organization: sign in, sign out
+		// (door_org.go).
+		return runOrg(os.Args[2:])
+	case "task":
+		// Start a task in a workstream and follow it on one line, answering its
+		// quick Asks here (door_task.go).
+		return runTask(os.Args[2:])
 	case "detach":
 		return runDetach(os.Args[2:])
 	case "do":
@@ -646,6 +654,13 @@ Housekeeping — changes state on disk or on the network
   codeaf factory [serve|add|name|steps|convert|token|revoke|revoke-sessions]
   codeaf attach <url> | codeaf detach | codeaf runner join <link>
       a team factory: host it (` + factoryDefaultListen + `), use it, or run its jobs here
+  codeaf org login <url> [--user name] | codeaf org logout [<url>]
+      sign in or out of your organization here; bare codeaf org says where
+  codeaf task "<what to do>" [--workstream name] [--afi|--me] [--org url]
+              [--request text] [--no-follow]
+      start a task in a workstream, owned by you, and follow it on one line
+  codeaf task follow <task-id> [--org url]
+      follow it again; quick questions are answered here, decisions in WorkAF
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
