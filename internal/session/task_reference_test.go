@@ -8,6 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 )
 
 // A TASK THAT ONLY READS ITS GROUND SAYS SO AT ALL THREE ENDS: the proposer's
@@ -155,8 +159,8 @@ func TestAReferenceRunLandsWithItsLineAndNoEngineLanding(t *testing.T) {
 	if len(rows) != 1 || !strings.Contains(rows[0].Report, line) {
 		t.Errorf("the settled row does not carry the landing line %q: %+v", line, rows)
 	}
-	if notes := strings.Join(beltRunNotes(t, sessionDir, "41"), "\n"); !strings.Contains(notes, line) || strings.Contains(notes, "its work is in") {
-		t.Errorf("the run's page does not say the landing line alone:\n%s", notes)
+	if notes := strings.Join(beltRunNotes(t, sessionDir, "41"), "\n"); strings.Count(notes, line) != 1 || strings.Contains(notes, "its work is in") {
+		t.Errorf("the run's page does not say the landing line alone, once:\n%s", notes)
 	}
 	if logDir := agent.logDirectory(); logDir == "" {
 		t.Error("the conversation has no log directory to read plan notes from")
@@ -214,4 +218,117 @@ func TestAReferenceThatJoinsAWritingRunIsNotToldItOnlyReads(t *testing.T) {
 		t.Errorf("the worker of a task that joined a writing run is told it only reads:\n%s", task.Description)
 	}
 	endBeltRun(t, agent, double)
+}
+
+// A TASK THAT JOINS A RUN THAT ONLY READS IS TOLD SO AS THE RUN'S DOING. Its
+// own proposal named a file by full path, so the starting task's reason ("named
+// no file") is false of it, and its remedy ("propose it again") joins the same
+// run: the receipt says what is true and the one thing that changes it.
+func TestAWritingTaskThatJoinsAReferenceRunIsToldTheRunOnlyReads(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	double := newBeltRunDouble("the parser reads tokens")
+	registerBeltRunEngine(t, double)
+	sessionDir := t.TempDir()
+	ground := newTestRepo(t)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the parser reads tokens"}, func(config *Config) {
+		config.Workspace = ground
+		config.Place = Place{Dir: sessionDir}
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	if err := agent.startKnownTaskRun(context.Background(), 41, "explain the parser", "brief", nil, taskStand{dir: ground, mode: TaskModeReference, rung: taskGroundSaid}, ""); err != nil {
+		t.Fatalf("start the reference run: %v", err)
+	}
+	<-double.entered
+	file := filepath.Join(canonicalPath(ground), "parser_notes.go")
+	args, _ := json.Marshal(taskArguments{
+		Title: "Write the parser notes", Summary: "the proposed work", Brief: "write " + file,
+		Deliverable: "the file " + file, Acceptance: file + " is there", Ground: ground,
+	})
+	proposal, ok := agent.stageTask(context.Background(), args).(*stagedProposal)
+	if !ok || proposal.stand.mode != TaskModeWorktree {
+		t.Fatalf("the proposal did not stage as work in its ground: %+v", proposal)
+	}
+	agent.ResolveTask(proposal.id, TaskAnswer{Approved: true})
+	answer, failed, err := proposal.Commit(context.Background())
+	if err != nil || failed {
+		t.Fatalf("propose_task: failed=%v err=%v answer=%q", failed, err, answer)
+	}
+	dir := canonicalPath(ground)
+	for _, want := range []string{
+		"It joined the work already underway, which only reads " + dir,
+		"nothing in " + dir + " changes while it is part of that run",
+		"To change " + dir + ", propose the work once that run has ended.",
+	} {
+		if !strings.Contains(answer, want) {
+			t.Errorf("the receipt of a task that joined a run that only reads lacks %q:\n%s", want, answer)
+		}
+	}
+	for _, untrue := range []string{"named no file", "propose it again", "It works in", "shares its copy"} {
+		if strings.Contains(answer, untrue) {
+			t.Errorf("the receipt of a task that joined a run that only reads says %q:\n%s", untrue, answer)
+		}
+	}
+	endBeltRun(t, agent, double)
+}
+
+// A RERUN OF A REFERENCE RUN IS STILL A REFERENCE. The read-only note names the
+// ground by full path, and a rerun reads the crew's kept brief again as a
+// contract: kept with the note, the rerun stood as a writing task on the
+// repository, cut a branch and merged, under words calling it read-only.
+func TestARerunOfAReferenceRunIsStillAReference(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	first := newBeltRunDouble("the parser reads tokens")
+	registerBeltRunEngine(t, first)
+	ground := canonicalPath(newTestRepo(t))
+	sessionDir := t.TempDir()
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "the parser reads tokens"}, func(c *Config) {
+		// The conversation stands in a plain folder and is about the repository.
+		c.Workspace = t.TempDir()
+		c.Place = Place{Dir: sessionDir}
+		c.SessionFile = filepath.Join(sessionDir, placeTranscript)
+		c.AskConsent = false
+		c.ProfileDir = t.TempDir()
+		c.RouteCrew = func(config.CrewAsk) (crewroute.Decision, error) { return flashDecision(), nil }
+	})
+	agent.refer(PlaceRef{Path: ground, Arrival: PlaceSaid, Referred: time.Now()})
+	liveStand := func() taskStand {
+		agent.beltMu.Lock()
+		defer agent.beltMu.Unlock()
+		if agent.beltRun == nil {
+			return taskStand{}
+		}
+		return agent.beltRun.stand
+	}
+
+	id, _, _, err := agent.StartTask(context.Background(), "say how the parser reads its input", false)
+	if err != nil {
+		t.Fatalf("start the reference run: %v", err)
+	}
+	<-first.entered
+	if stand := liveStand(); stand.dir != ground || stand.mode != TaskModeReference {
+		t.Fatalf("the run does not only read %s: %+v", ground, stand)
+	}
+	first.mu.Lock()
+	given := first.spec.Brief
+	first.mu.Unlock()
+	if !strings.Contains(given, ground+" is yours to read, not to change") {
+		t.Errorf("the run's workers are not told their ground is read-only:\n%s", given)
+	}
+	crew := agent.crews.get(id)
+	if crew == nil || strings.Contains(crew.brief, "yours to read") || strings.Contains(crew.brief, ground) {
+		t.Fatalf("the brief a rerun reads again carries the read-only note: %+v", crew)
+	}
+	endBeltRun(t, agent, first)
+
+	second := newBeltRunDouble("the parser reads tokens")
+	registerBeltRunEngine(t, second)
+	if _, err := agent.rerunWithRouting(context.Background(), TaskNotice{ID: id, Title: crew.title, State: TaskDone}, crew, TaskRoutingAction{Kind: TaskRoutingBest}); err != nil {
+		t.Fatalf("rerun the reference run: %v", err)
+	}
+	<-second.entered
+	if stand := liveStand(); stand.dir != ground || stand.mode != TaskModeReference {
+		t.Errorf("the rerun of a run that only read %s stands as %+v", ground, stand)
+	}
+	endBeltRun(t, agent, second)
 }

@@ -713,10 +713,6 @@ func (a *Agent) startOrJoinTaskRunVia(ctx context.Context, id uint64, title, bri
 		a.publishJoinedRunRows(g, live)
 		return preparedTaskMode(a.config.Place, live.ground, live.stand.mode), true, nil
 	}
-	// THE READ-ONLY NOTE IS A RUN'S OWN, added once no live run took the work:
-	// a hand-off that joined was told what is true of the run it joined
-	// ([Agent.joinOrWait]).
-	brief = withTaskReadsNote(a.config.Place, brief, stand)
 
 	// ADMISSION IS CHECKED BEFORE A FOLDER OR COPY IS TOUCHED. A held run seeds
 	// only its plan store so stopping it cannot leave a repository claim behind;
@@ -740,7 +736,15 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 	if err != nil {
 		return false, err
 	}
-	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
+	// THE READ-ONLY NOTE IS IN WHAT THE WORKERS ARE GIVEN AND NEVER IN THE
+	// CONTRACT. The crew above keeps the brief it was routed on, and a rerun
+	// reads that brief again as a contract (taskcrew.go, taskrouting.go): the
+	// note names the ground by full path, so a rerun that found it there stood
+	// as a writing task on the folder its own words called read-only. It is a
+	// run's own, added once no live run took the work: a hand-off that joined
+	// was told what is true of the run it joined ([Agent.joinOrWait]).
+	given := withTaskReadsNote(a.config.Place, brief, stand)
+	plan, store, err := a.openBeltRunStore(g, path, storeID, title, given, false)
 	if err != nil {
 		folder.abandon()
 		return false, err
@@ -807,7 +811,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 		Crew:     run.crewDecision(), CrewState: a.initialCrewRecord(run),
 		Model: run.crewWorker(),
 	})
-	spec := a.beltRunSpec(run, brief)
+	spec := a.beltRunSpec(run, given)
 	a.holdProgramCeilings(run, spec)
 	go a.driveBeltRun(runCtx, engine, run, spec)
 	return false, nil
@@ -825,7 +829,10 @@ func (a *Agent) startDeferredBeltRun(ctx context.Context, engine RunEngine, g *T
 			return false, err
 		}
 	}
-	plan, store, err := a.openBeltRunStore(g, path, storeID, title, brief, false)
+	// The workers' words, and never the crew's kept brief
+	// ([Agent.startAdmittedBeltRun] has why).
+	given := withTaskReadsNote(a.config.Place, brief, stand)
+	plan, store, err := a.openBeltRunStore(g, path, storeID, title, given, false)
 	if err != nil {
 		return false, err
 	}
@@ -848,7 +855,7 @@ func (a *Agent) startDeferredBeltRun(ctx context.Context, engine RunEngine, g *T
 		machineHeld = map[string]bool{planStoreID(storeID): true}
 	}
 	run := &beltRun{
-		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: brief,
+		plan: plan, store: store, root: store.RootID(), row: id, title: title, brief: given,
 		stand: stand, ground: canonicalPath(stand.dir), pending: true, admission: admission,
 		machineHeld: machineHeld,
 		cut:         cut, born: born, over: make(chan struct{}),
@@ -864,7 +871,7 @@ func (a *Agent) startDeferredBeltRun(ctx context.Context, engine RunEngine, g *T
 		ID: id, Title: title, State: TaskQueued, Program: programName(via), Remote: cloneTaskRemote(run.remote), Computer: run.taskComputerName(),
 		PlanTask: planStoreID(storeID), Crew: run.crewDecision(), CrewState: a.initialCrewRecord(run),
 		Model: run.crewWorker(), Waiting: waiting,
-		PendingRun: &PendingRunRecord{WorkspaceSet: stand.workspaceSet, Brief: brief, Ground: stand.dir, Mode: stand.mode, Asked: asked},
+		PendingRun: &PendingRunRecord{WorkspaceSet: stand.workspaceSet, Brief: given, Ground: stand.dir, Mode: stand.mode, Asked: asked},
 	})
 	go a.driveBeltRun(runCtx, engine, run, RunSpec{})
 	return false, nil
@@ -2366,16 +2373,16 @@ func (a *Agent) landBeltRun(ctx context.Context, engine RunEngine, run *beltRun)
 // filed for every such run, and the conversation was handed the worker's own
 // account of the work with nothing saying the ground was untouched
 // (task_brief.go's [copyOnto] has the run). There is no branch to merge and no
-// copy to give back: the homecoming is the one line, on the run's page and in
-// the landing alike.
+// copy to give back: the homecoming is the one line. It is not written twice:
+// the landing carries it and the run's one outcome note is where its page
+// reads it ([beltRunOutcomeNote]), as a merge that did not go in is read
+// ([Agent.bringBeltRunHome]).
+//
+// A RUN THAT FAILED IS GIVEN THE SAME LINE, and it is as true of it: the ground
+// was not its to change, and whatever it made before it ended is in its folder.
 func (a *Agent) landReferenceRun(run *beltRun, line string) RunLanding {
 	if !a.beginBeltHomecoming(run) {
 		return RunLanding{}
-	}
-	if _, err := run.store.AddNote(run.root, run.root, line); err != nil {
-		if g := a.graph(); g != nil {
-			g.planNote("the run's homecoming note failed: " + err.Error())
-		}
 	}
 	return RunLanding{Line: line}
 }

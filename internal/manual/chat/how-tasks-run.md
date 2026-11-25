@@ -116,13 +116,19 @@ project in words is not naming a file, so a brief such as "build the app in the 
 repo" reads this way. So does a relative path such as `Sources/App/main.swift` when
 neither the file nor the folder that would hold it is there yet.
 
-Such a task says so three times. Its receipt reads `It reads <folder> and writes only in a
-folder of its own, so nothing in <folder> changes`, and says to stop it and propose it again
-naming the files it makes or changes by their full path under that folder. Its worker is
-told the folder is to read, not to change, and never to report the work as being there. A
-task run as a run ends its landing `it changed nothing in <folder>: what it made is in <its
-own folder>`; the older single-task road lands without that line. A task that joins a run
-already underway is told what is true of that run instead, since it shares the run's copy.
+Such a task says so wherever there is somebody to tell. One the conversation's model
+proposes says it in its receipt: `It reads <folder> and writes only in a folder of its own,
+so nothing in <folder> changes`, and to stop it and propose it again naming the files it
+makes or changes by their full path under that folder. A task you type with `/task` has no
+such receipt. Every such task tells its worker the folder is to read, not to change, and
+never to report the work as being there. A task run as a run ends its landing `it changed
+nothing in <folder>: what it made is in <its own folder>`; the older single-task road lands
+without that line.
+
+A proposed task that joins a run already underway shares that run's copy, so it is told
+what is true of that run instead. Joining one that only reads the folder, its receipt says
+`nothing in <folder> changes while it is part of that run`, whatever files it named, and to
+propose the work once that run has ended.
 
 To have the work done in the repository, name a file under it by full path in the brief, in
 what to produce or in the done-when, such as `~/MacStats/Sources/App/main.swift`.

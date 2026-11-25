@@ -1147,19 +1147,26 @@ func (a *Agent) handoffAnswer(p *stagedProposal, spec taskSpec, elsewhere string
 		return refusal.Error(), true, true
 	}
 	if err == nil {
-		said := p.stand
+		said, shares := p.stand, "It joined the work already underway and shares its copy."
 		if joined {
 			// A TASK THAT JOINED A RUN IS SAID AS THAT RUN STANDS. It shares the
 			// run's copy, so a receipt read off its own stand told a reference
 			// that joined a worktree that nothing in the ground would change.
 			said.mode = stand.mode
+			// AND A RUN THAT ONLY READS IS SAID AS THE RUN'S DOING, never the
+			// proposal's: the starting task's sentence told a proposal that had
+			// named its files by full path that it named none, and to propose
+			// again, which joins the same run.
+			if reads := taskJoinedReadsSentence(said); reads != "" {
+				said, shares = taskStand{}, reads
+			}
 		}
 		receipt := taskReceipt(p.id, spec, TaskRunning, said, elsewhere)
 		switch {
 		case via != nil:
 			receipt = delegateStartedReceipt(p.id, spec.title, strings.Join(asked, ", "), delegateReceipt(canonicalPath(stand.dir), *via, a.runRowCopy(p.id)), elsewhere)
 		case joined:
-			receipt = withReport(receipt, "It joined the work already underway and shares its copy.")
+			receipt = withReport(receipt, shares)
 		}
 		return receipt, false, true
 	}
@@ -1290,6 +1297,22 @@ func taskReadsSentence(dir string) string {
 	dir = cleanFolder(dir)
 	return "It reads " + dir + " and writes only in a folder of its own, so nothing in " + dir + " changes: this proposal named no file there by full path. " +
 		"If the work is meant to change " + dir + ", stop this task and propose it again naming the files it makes or changes by their full path under " + dir + "."
+}
+
+// taskJoinedReadsSentence is what a proposer reads when its task joined a run
+// already underway that only reads the ground, and nothing for any other
+// stand. What the proposal named does not decide it and proposing again
+// changes nothing while that run lives, so it says neither
+// ([taskReadsSentence]) and names the one thing that does: the run's ending.
+// The home folder is only ever read and keeps its own sentence
+// ([homeTaskRedirect]).
+func taskJoinedReadsSentence(stand taskStand) string {
+	if stand.mode != TaskModeReference || stand.dir == "" || HoldsHomeFolder(stand.dir) {
+		return ""
+	}
+	dir := cleanFolder(stand.dir)
+	return "It joined the work already underway, which only reads " + dir + " and writes in a folder of its own, so nothing in " + dir + " changes while it is part of that run. " +
+		"To change " + dir + ", propose the work once that run has ended."
 }
 
 // taskHandoffWakeSentence is what EVERY handoff receipt ends with, and it is one
