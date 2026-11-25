@@ -121,3 +121,43 @@ func TestOrgPolicyStoredWithoutChatRulesReadsAsOwnerOnlyMove(t *testing.T) {
 		}
 	}
 }
+
+// Contract: who approves a tool call and who starts a chat that is not running keep today's behaviour until the
+// organization says otherwise. A policy stored before the settings existed reads as owner approves and anyone who can see
+// the chat starts it; one that sets them reads as set; and a stored word that is not one of the allowed words is not
+// trusted, so the defaults apply.
+func TestOrgPolicyStoredWithoutApprovalAndWakeRulesReadsAsToday(t *testing.T) {
+	const roles = `"roles":[{"name":"view","verbs":["view"]},{"name":"comment","verbs":["view","comment"]},` +
+		`{"name":"edit","verbs":["view","comment","edit","run","steer","answer"]},` +
+		`{"name":"full","verbs":["view","comment","edit","run","steer","answer","share","manage"]}],` +
+		`"owner_role":"full","org_role":"view","defaults":{"chat":{"visibility":"private"}},"sharing":{"who":"share_verb"},` +
+		`"operator":{"role":"view","may_govern":true},"agents":{"may_create":true,"default_scope":"full"}`
+	st, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SavePolicy(acl.DefaultPolicy(), 0); err != nil {
+		t.Fatal(err)
+	}
+	db, err := st.wsDB(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, tc := range []struct{ name, doc, wantApproval, wantWake string }{
+		{"stored before the settings existed", `{` + roles + `,"chats":{"move_by":"manage"}}`, acl.ApprovalsByOwner, acl.WakeByView},
+		{"set", `{` + roles + `,"chats":{"approvals_by":"answer","wake_by":"run"}}`, acl.ApprovalsByAnswer, acl.WakeByRun},
+		{"wake set to owner", `{` + roles + `,"chats":{"wake_by":"owner"}}`, acl.ApprovalsByOwner, acl.WakeByOwner},
+		{"set to words nobody defined", `{` + roles + `,"chats":{"approvals_by":"anyone","wake_by":"anyone"}}`, acl.ApprovalsByOwner, acl.WakeByView},
+	} {
+		if _, err := db.Exec(`UPDATE org_policy SET doc = ?, rev = ?`, tc.doc, 20+i); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.OrgPolicy()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got.Rev != 20+i || got.Chats.ApprovalsByFor() != tc.wantApproval || got.Chats.WakeByFor() != tc.wantWake {
+			t.Errorf("%s: revision %d, approvals %q, wake %q, want %q and %q", tc.name, got.Rev, got.Chats.ApprovalsByFor(), got.Chats.WakeByFor(), tc.wantApproval, tc.wantWake)
+		}
+	}
+}
