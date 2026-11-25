@@ -10,8 +10,8 @@ package session
 //
 // SO THE ANSWER WAITS FOR THE EVIDENCE, BRIEFLY. A wake writes a line to the
 // team's traffic that answers the directive by its id (team_wakewatch.go), a
-// refused wake writes why, and a paused member is known from the teams file
-// before anything is asked. The send looks at the traffic for a few seconds
+// refused wake writes why, a paused member is known from the teams file before
+// anything is asked, and a member in a turn is known from its own journal. The send looks at the traffic for a few seconds
 // and says, per member, one of: started, in a turn already, did not start and
 // why, or no sign of a start yet. The last is said as plainly as the rest: a
 // manager told "no sign yet" checks before it reports.
@@ -121,9 +121,20 @@ func (a *Agent) teamSendOutcome(ctx context.Context, profile string, team teams.
 	}
 	for _, member := range ready {
 		if _, still := waiting[member.Key]; still {
-			if _, said := refused[member.Handle]; !said {
-				unseen = append(unseen, "@"+member.Handle)
+			if _, said := refused[member.Handle]; said {
+				continue
 			}
+			// A MEMBER WHOSE TURN BEGAN DURING THE WAIT WROTE NO LINE. It was
+			// idle when the send first looked and in a turn by the time its
+			// watch reached the directive, and a turn already running is not
+			// said to have been woken (team_wakedecide.go). Its journal is read
+			// once more, so the answer is that it is in a turn, not that it has
+			// shown no sign of starting.
+			if state, _, ok := a.team.journals.stateOf(member.File, time.Now()); ok && state.State == teams.StateRunning {
+				busy = append(busy, "@"+member.Handle)
+				continue
+			}
+			unseen = append(unseen, "@"+member.Handle)
 		}
 	}
 	var said []string

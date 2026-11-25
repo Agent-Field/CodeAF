@@ -148,6 +148,10 @@ type teamWatch struct {
 	held   bool
 	// capSaid is the last cap hold the Traffic was told of.
 	capSaid string
+	// asked is, per team, the manager's entry that last asked for this member's
+	// turn. A wake refused before anything is handed over answers it by this,
+	// because the boundary that would have named it has not been read.
+	asked map[string]string
 	// pausedHeld is the teams whose traffic asked for this member's turn while
 	// the person had it paused (team_pause.go). The lines stay undelivered on
 	// the log, and the turn they asked for starts when the pause is lifted,
@@ -234,6 +238,7 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 			// Its own start still owes this member its first turn.
 			if a.teamOwnStartWakes(role, entry) || teamWakes(role, entry) || teamPacketWakes(profile, role, entry) {
 				waking = append(waking, entry)
+				a.teamAskedLocked(role, entry)
 			}
 		}
 		// A PAUSED MEMBER IS NOT WOKEN, and what would have woken it is not
@@ -535,27 +540,90 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 
 // teamWakeMember starts a member's turn on the directives it was sent, when
 // the one decision says it may (team_wakedecide.go).
+//
+// THE DECISION COMES BEFORE THE READ. Handing the directive over moves this
+// conversation's cursor past it, and a wake refused after that had consumed
+// what it then did not start a turn on: a job refusing automatic work, or a
+// seat that may not work, kept nothing of it and no later turn was handed it.
+// So nothing is read until the team's rules and the engine's gates have both
+// said a turn may start. A wake that is held leaves the directive on the log,
+// where the next turn's own boundary finds it.
 func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) {
 	cause := wakeCause{kind: wakeDirective, roles: roles}
-	if d := a.decideTeamWake(profile, &cause, now); d.verdict != wakeStarts {
-		a.sayWake(profile, cause, d, now)
+	if d := a.decideWake(profile, &cause, now); d.verdict != wakeStarts {
+		a.teamWakeDeclined(profile, cause, d, now)
 		return
 	}
 	news := a.teamBoundary()
 	if news == "" {
 		// A boundary that ran in the moment between the look and here has
-		// handed the directive over already; there is nothing left to wake on.
+		// handed the directive over already; there is nothing left to wake on,
+		// and nothing to say: the turn that read it was not started by it.
 		return
 	}
 	d := a.wakeWith(teamWakeMemberLead + "\n\n" + news)
-	if d.verdict != wakeHolds {
+	if d.verdict == wakeStarts {
 		a.teamWakeCount(now)
 	}
 	a.sayWake(profile, cause, d, now)
 }
 
+// teamWakeDeclined is a wake that starts no turn, decided before anything was
+// read. A hold is said. A turn already in flight is not: it reads its own
+// traffic at its next step, so the watch only forgets that it looked.
+func (a *Agent) teamWakeDeclined(profile string, cause wakeCause, d wakeDecision, now time.Time) {
+	if d.verdict == wakeQueues {
+		a.teamWatchLookAgain(cause.roles)
+		return
+	}
+	a.sayWake(profile, cause, d, now)
+}
+
+// teamWatchLookAgain forgets how far the watch has looked into roles' logs, so
+// its next idle look starts again from what has been delivered.
+//
+// A TURN IN FLIGHT MAY HAVE NO STEP LEFT. The wake that finds a turn running
+// leaves the lines for that turn's next boundary, and a turn whose last request
+// has already gone out has none: the lines would wait, unread, for a turn
+// nothing was going to start, because the watch had already looked past them.
+// Looking again costs one read when the turn ends, and finds nothing where the
+// turn did read them, since the look never starts behind the delivery
+// ([Agent.teamWatchReadLocked]).
+func (a *Agent) teamWatchLookAgain(roles []teamRole) {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	for _, role := range roles {
+		delete(a.team.watch.cursors, role.id)
+		delete(a.team.watch.trafficAt, role.id)
+	}
+}
+
+// teamAskedLocked remembers entry as what last asked for this member's turn in
+// role's team, when it is its manager's. The caller holds a.team.mu.
+func (a *Agent) teamAskedLocked(role teamRole, entry teams.Entry) {
+	if role.manager || entry.From != teams.FromManager {
+		return
+	}
+	if a.team.watch.asked == nil {
+		a.team.watch.asked = map[string]string{}
+	}
+	a.team.watch.asked[role.id] = entry.ID
+}
+
+// teamAsked is the entry a wake refused in team id answers: what the watch
+// last saw ask for the turn, or what this conversation was last handed.
+func (a *Agent) teamAsked(id string) string {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	if asked := a.team.watch.asked[id]; asked != "" {
+		return asked
+	}
+	return a.teamAnsweringLocked(id)
+}
+
 // teamWakeManager starts a manager's turn on the batch its members' replies
-// made, or, past the loop bound, asks the person instead.
+// made, or, past the loop bound, asks the person instead. It decides before it
+// reads, as a member's wake does ([Agent.teamWakeMember]).
 func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[string][]teams.Entry, now time.Time) {
 	byID := map[string]teamRole{}
 	for _, role := range roles {
@@ -567,8 +635,8 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 		role.id = id
 		cause.roles = append(cause.roles, role)
 	}
-	if d := a.decideTeamWake(profile, &cause, now); d.verdict != wakeStarts {
-		a.sayWake(profile, cause, d, now)
+	if d := a.decideWake(profile, &cause, now); d.verdict != wakeStarts {
+		a.teamWakeDeclined(profile, cause, d, now)
 		return
 	}
 	news := a.teamBoundary()
@@ -587,7 +655,7 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 	}
 	d := a.wakeWith(teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\n" +
 		strings.Join(groups, "\n\n"))
-	if d.verdict != wakeHolds {
+	if d.verdict == wakeStarts {
 		a.teamWakeCount(now)
 		a.team.mu.Lock()
 		a.team.watch.rounds++
@@ -607,10 +675,15 @@ func (a *Agent) teamWakeWith(text string) (bool, string) {
 // wakeWith queues text as the session's note and starts a turn on it, under
 // one hold of the agent's lock so the decision is the wake's own.
 //
-// A SEAT THAT MAY NOT WORK AND A JOB THAT REFUSES AUTOMATIC WORK KEEP NOTHING,
-// as they keep nothing of any other note ([Agent.enqueueNote],
-// [Agent.wakeAnsweringLocked]); nor does a closed session, whose queue nothing
-// drains. Every other gate leaves the note queued for the next turn.
+// ITS CALLER HAS ALREADY DECIDED, AND THIS DECIDES AGAIN. The text is what a
+// boundary just handed over, read after [Agent.decideWake] said a turn could
+// start, and the agent's lock was let go in between: a turn may have begun, or
+// a gate closed. So the answer here is the one that counts, and what it does
+// with text that can no longer start a turn is what every other note gets. A
+// turn that began takes it at its next step. A seat that may not work and a
+// job that refuses automatic work keep nothing ([Agent.enqueueNote],
+// [Agent.wakeAnsweringLocked]), nor does a closed session, whose queue nothing
+// drains. Every other gate leaves it queued for the next turn.
 func (a *Agent) wakeWith(text string) wakeDecision {
 	note := userMessage{message: textMessage("user", strings.TrimSpace(text)), wake: true, authored: true}
 	a.mu.Lock()

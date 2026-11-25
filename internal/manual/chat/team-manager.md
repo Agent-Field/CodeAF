@@ -655,6 +655,11 @@ by its team with nothing from you stops being woken and asks you instead, as a w
 the traffic. It is woken again after you next say something to it.
 The ten wakes count ten replies when each member turn replies and then finishes.
 
+A member already in a turn when a directive reaches it was not woken and gets no `woke` line:
+it reads the directive at its next step. A wake the member's own limits refuse says why once
+(`could not wake @web: its spending limit is reached; it reads this at its next turn`) and
+leaves the directive unread in the traffic for that turn.
+
 ## Pausing a crew member — pause, resume, why a directive did not start, held
 
 You can pause a member of a crew in the desktop app: **Pause** on its row in the Members tab

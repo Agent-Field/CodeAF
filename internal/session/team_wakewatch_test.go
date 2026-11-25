@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -728,4 +729,98 @@ func (c *armedRounds) CompleteWithMessages(ctx context.Context, messages []ai.Me
 		return textResponse(checkpointNothingLeft), nil
 	}
 	return c.run(ctx, round)
+}
+
+// A REFUSED WAKE LEAVES THE DIRECTIVE WHERE IT WAS. The wake used to hand the
+// directive over first and ask the engine's gates afterwards, and a job that
+// refuses automatic work, or a seat that may not work, kept nothing of it: the
+// traffic said the member could not be woken, the cursor had moved past the
+// directive, and no later turn was ever handed it. The decision is made before
+// anything is read, so the turn the person next opens still finds it.
+func TestTeamWakeARefusedWakeLeavesTheDirectiveUnread(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	completer := oneAnswer(1)
+	var refusing atomic.Bool
+	refusing.Store(true)
+	web := teamAgent(t, fixture, fixture.web, completer, func(config *Config) {
+		config.FactoryWorkRefusal = func() string {
+			if refusing.Load() {
+				return "this job was stopped"
+			}
+			return ""
+		}
+	})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	said := waitEvent(t, fixture, "could not wake @web")
+	if !strings.HasSuffix(said.Text, ": this job was stopped") || said.Answers == "" {
+		t.Errorf("the refusal's line is %+v, want the gate's own reason, answering the directive", said)
+	}
+	quietFor()
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("a refused wake started %d turns", got)
+	}
+	if got := trafficEvents(t, fixture, "could not wake @web"); len(got) != 1 {
+		t.Errorf("the refusal was said %d times, want once", len(got))
+	}
+	refusing.Store(false)
+	submitAndWait(t, web, "what is waiting for you?")
+	if asked := userTextIn(completer.request(0)); strings.Count(asked, "Fix the header.") != 1 {
+		t.Fatalf("the directive a refused wake had read was not there for the next turn:\n%s", asked)
+	}
+}
+
+// A TURN ALREADY RUNNING WAS NOT WOKEN, AND THE TRAFFIC DOES NOT SAY IT WAS.
+// The look found the member idle, a turn began before the wake reached it, and
+// the wake wrote `woke @web` for a turn the directive had not started; the
+// manager's send then answered that the member had started on it. The turn in
+// flight reads the directive at its next step. When it has no step left, the
+// watch finds the directive again once the turn has ended, and that wake is
+// the one the traffic records.
+func TestTeamWakeATurnAlreadyRunningIsNotSaidToHaveWoken(t *testing.T) {
+	fixture := newWakingTeamFixture(t)
+	release := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return textResponse("done"), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("fixed"), nil },
+	}}
+	web := teamAgent(t, fixture, fixture.web, completer, func(config *Config) { config.teamWatchManual = true })
+	events := mustSubmit(t, web, "work on the footer")
+	waitRequests(t, completer, 1)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	// The look that found it idle has read the log and moved on, as a tick does
+	// before it hands the wake over.
+	var roles []teamRole
+	web.team.mu.Lock()
+	for _, role := range web.teamRolesLocked(fixture.profile) {
+		if !role.manager {
+			roles = append(roles, role)
+			web.teamWatchReadLocked(fixture.profile, role)
+		}
+	}
+	web.team.mu.Unlock()
+	web.teamWakeMember(fixture.profile, roles, time.Now())
+	if woke := trafficEvents(t, fixture, "woke @web"); len(woke) != 0 {
+		t.Fatalf("a turn that was already running is said to have been woken: %+v", woke)
+	}
+	close(release)
+	collect(t, events)
+	waitQuiet(t, web)
+	if !web.teamWatchTick(fixture.profile, time.Now()) {
+		t.Fatal("the member stopped watching its team")
+	}
+	waitRequests(t, completer, 2)
+	if asked := userTextIn(completer.request(1)); strings.Count(asked, "Fix the header.") != 1 {
+		t.Fatalf("the directive was not handed over once after the turn that was running:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	if woke := trafficEvents(t, fixture, "woke @web"); len(woke) != 1 {
+		t.Fatalf("the wake that did start a turn was logged %d times, want once", len(woke))
+	}
 }

@@ -129,6 +129,19 @@ func (a *Agent) decideTeamWake(profile string, c *wakeCause, now time.Time) wake
 	return wakeDecision{verdict: wakeStarts}
 }
 
+// decideWake is the whole decision, made before anything is read or moved: the
+// team's rules for this cause, then the engine's gates as they stand. A start
+// answered here is a start still to be made, under a later hold of a.mu
+// ([Agent.wakeWith]), which asks the gates again.
+func (a *Agent) decideWake(profile string, c *wakeCause, now time.Time) wakeDecision {
+	if d := a.decideTeamWake(profile, c, now); d.verdict != wakeStarts {
+		return d
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.decideWakeLocked()
+}
+
 // decideWakeLocked is the engine's half of the decision: a start, a turn in
 // flight to queue behind, or the gate that refuses and why. The caller holds
 // a.mu, and a start decided here is true until that hold is let go.
@@ -186,7 +199,8 @@ func wakeLoopRule(a *Agent, _ string, _ *wakeCause, _ time.Time) wakeDecision {
 // sayWake writes what became of a wake to the traffic of each team that asked
 // for it, and is the only place a wake's line is written. Most decisions have
 // a line and some have none: a pause is said by the send that met it
-// (team_sendoutcome.go), and a loop already tripped has been said.
+// (team_sendoutcome.go), a loop already tripped has been said, and a turn that
+// was already running was not woken.
 //
 // THE WORDS ARE READ BACK BY MACHINES. `team_send` answers its manager from
 // these lines ([Agent.teamSendOutcome]), the rail and the digest parse `woke `,
@@ -234,7 +248,13 @@ func (a *Agent) wakeLine(c wakeCause, role teamRole, d wakeDecision) (teams.Entr
 	}
 	entry := teams.Entry{Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: role.key, State: teams.StateIdle}
 	switch {
-	case d.verdict == wakeStarts || d.verdict == wakeQueues:
+	case d.verdict == wakeQueues:
+		// A TURN ALREADY RUNNING WAS NOT WOKEN. `woke` was written for it, and a
+		// manager's send read that back as the member having started on its
+		// directive. The turn takes the lines at its next step and the traffic
+		// says nothing: the send reads a running member off its journal.
+		return teams.Entry{}, false
+	case d.verdict == wakeStarts:
 		entry.State = teams.StateRunning
 		if role.manager {
 			// Under the first waker's name, with the others who replied.
@@ -252,7 +272,7 @@ func (a *Agent) wakeLine(c wakeCause, role teamRole, d wakeDecision) (teams.Entr
 	case d.by == heldByGate && d.why != "":
 		entry.Text = teamCouldNotPrefix + who + ": " + d.why
 		if !role.manager {
-			entry.Answers = a.teamAnswering(role.id)
+			entry.Answers = a.teamAsked(role.id)
 		}
 	case d.by == heldByLoop && d.why != "":
 		// The manager asks the room: the rail draws it in the needs-you colour
