@@ -685,11 +685,14 @@ waited starts the member's turn within a second or two, including after codeaf w
 between. With the team's auto-wake off, a resumed member reads it at its next turn like any
 other message.
 
-Your own words are not held: typing into a paused member's conversation starts its turn, and
-that turn reads what was waiting, so Resume starts nothing more on it. Nothing else starts a
-paused member: a background command ending, a watch firing or a task landing is written into
-its conversation as a record, and its next turn reads it. A pause made by an earlier version
-of the app is carried onto the team's record the first time the updated app opens.
+A command ending, a watch firing, a task landing and news at its last turn's end start no
+turn either: each is written into the conversation as a record. Resume starts one turn that
+reads them (with a waiting directive), unless a stop since holds them.
+
+Not held: your own words (that turn reads what was waiting, so Resume starts nothing more),
+your answer to its question, a decision you hand it, and codeaf continuing a reply it was
+closed in the middle of. An earlier app's pause moves onto the team's record when the
+updated app first opens.
 
 ## A new crew's members wait on standby — why nobody started after Make the crew
 

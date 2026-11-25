@@ -134,6 +134,12 @@ type teamWatch struct {
 	stopCursors map[string]string
 	stopAt      map[string]fileStamp
 	stopTurn    uint64
+	// stopLook and stopLookAt are how far an IDLE member has looked for its
+	// manager's stop in a team whose auto-wake is off ([Agent.teamStopLookLocked]).
+	// They are kept apart from the watch's cursors, so the wake reads on from
+	// where it was once the person turns auto-wake on.
+	stopLook   map[string]string
+	stopLookAt map[string]fileStamp
 	// pending is what has arrived for a manager since the first line that asks
 	// for a wake, per team, and due is when the batch is handed over.
 	pending map[string][]teams.Entry
@@ -237,7 +243,16 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 		if !role.wakes && (role.manager || !a.teamWaitsOnNews()) {
 			continue
 		}
-		arrived := a.teamWatchReadLocked(profile, role)
+		// THE STOP IS LOOKED FOR WITH A CURSOR OF ITS OWN while wake is off.
+		// The watch's cursor is where a wake reads from once the person turns
+		// auto-wake on, and a look for a stop that moved it carried it past a
+		// directive sent meanwhile, which then woke nobody.
+		var arrived []teams.Entry
+		if role.wakes {
+			arrived = a.teamWatchReadLocked(profile, role)
+		} else {
+			arrived = a.teamStopLookLocked(profile, role)
+		}
 		var waking []teams.Entry
 		for _, entry := range arrived {
 			// A MANAGER'S STOP THAT FINDS NO TURN STILL HOLDS what the member
@@ -295,6 +310,9 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 	if len(batch) > 0 {
 		a.teamWakeManager(profile, roles, batch, now)
 	}
+	// Last, so a directive that waited is what a resumed member starts on, and
+	// news its pause kept is read in that same turn.
+	a.teamPauseOwedWake()
 	return true
 }
 
@@ -443,8 +461,25 @@ func (a *Agent) teamWatchReadLocked(profile string, role teamRole) []teams.Entry
 	if w.cursors == nil {
 		w.cursors, w.trafficAt = map[string]string{}, map[string]fileStamp{}
 	}
+	return a.teamLookLocked(profile, role, w.cursors, w.trafficAt)
+}
+
+// teamStopLookLocked is [Agent.teamWatchReadLocked] for the look a team whose
+// auto-wake is off is given, for its manager's stop only, with a cursor of its
+// own. The caller holds a.team.mu.
+func (a *Agent) teamStopLookLocked(profile string, role teamRole) []teams.Entry {
+	w := &a.team.watch
+	if w.stopLook == nil {
+		w.stopLook, w.stopLookAt = map[string]string{}, map[string]fileStamp{}
+	}
+	return a.teamLookLocked(profile, role, w.stopLook, w.stopLookAt)
+}
+
+// teamLookLocked reads one team's log on from cursors, never behind the
+// delivery, and moves cursors on. The caller holds a.team.mu.
+func (a *Agent) teamLookLocked(profile string, role teamRole, cursors map[string]string, trafficAt map[string]fileStamp) []teams.Entry {
 	a.readTeamCursorsLocked()
-	cursor, known := w.cursors[role.id]
+	cursor, known := cursors[role.id]
 	if delivered, ok := a.team.cursors[role.id]; ok && (!known || delivered > cursor) {
 		cursor, known = delivered, true
 	}
@@ -452,22 +487,22 @@ func (a *Agent) teamWatchReadLocked(profile string, role teamRole) []teams.Entry
 		cursor = a.firstTeamCursor(profile, role)
 	}
 	stamp := stampOf(teams.TrafficPath(profile, role.id))
-	if known && stamp == w.trafficAt[role.id] && cursor == w.cursors[role.id] {
+	if known && stamp == trafficAt[role.id] && cursor == cursors[role.id] {
 		return nil
 	}
 	entries, err := teams.ReadTraffic(profile, role.id, cursor, teamPageLimit)
 	if err != nil {
-		w.cursors[role.id] = cursor
+		cursors[role.id] = cursor
 		return nil
 	}
 	for _, entry := range entries {
 		cursor = entry.ID
 	}
-	w.cursors[role.id] = cursor
+	cursors[role.id] = cursor
 	if len(entries) < teamPageLimit {
-		w.trafficAt[role.id] = stamp
+		trafficAt[role.id] = stamp
 	} else {
-		w.trafficAt[role.id] = fileStamp{}
+		trafficAt[role.id] = fileStamp{}
 	}
 	return entries
 }

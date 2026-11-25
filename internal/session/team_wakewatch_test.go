@@ -824,3 +824,68 @@ func TestTeamWakeATurnAlreadyRunningIsNotSaidToHaveWoken(t *testing.T) {
 		t.Fatalf("the wake that did start a turn was logged %d times, want once", len(woke))
 	}
 }
+
+// A LOOK FOR A STOP DOES NOT CARRY THE WAKE PAST A DIRECTIVE. With the team's
+// auto-wake off, a member waiting on a command reads its team's log for its
+// manager's stop. That look moved the watch's own cursor, so a directive sent
+// meanwhile was behind it when the person turned auto-wake on, and woke
+// nobody. The look has a cursor of its own, and the directive wakes the member.
+func TestTeamAutoWakeTurnedOnWakesOnADirectiveTheStopLookPassed(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newTeamFixture(t, true)
+	var web *Agent
+	started := make(chan *job, 1)
+	calls := &scriptedCompleter{steps: []step{waitedStep(func() *Agent { return web }, started), okStep()}}
+	web = teamAgent(t, fixture, fixture.web, calls, nil)
+	collect(t, mustSubmit(t, web, "start the build and wait for it"))
+	waitQuiet(t, web)
+	<-started
+
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("a directive woke the member %d times with the team's auto-wake off", got-1)
+	}
+	err := teams.Update(fixture.profile, func(file *teams.File) error {
+		for i := range file.Teams {
+			if file.Teams[i].ID == fixture.teamID {
+				on := true
+				file.Teams[i].Settings.Wake = &on
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRequests(t, calls, 2)
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, "Fix the header.") {
+		t.Fatalf("the member woke with auto-wake on was not handed the directive:\n%s", asked)
+	}
+}
+
+// EVERY WAKE A GATE REFUSES IS SAID. A manager's refused wake answers no entry,
+// so saying it once per entry wrote one line for its first refused batch of
+// replies and nothing for every later one.
+func TestTeamWakeEachRefusedManagerWakeIsSaid(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	completer := oneAnswer(1)
+	teamAgent(t, fixture, fixture.manager, completer, func(config *Config) {
+		config.FactoryWorkRefusal = func() string { return "this job was stopped" }
+	})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToManager, Text: "The header is fixed."})
+	waitEvent(t, fixture, "could not wake ◆")
+	quietFor()
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToManager, Text: "And the footer."})
+	deadline := time.Now().Add(5 * time.Second)
+	for len(trafficEvents(t, fixture, "could not wake ◆")) < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := trafficEvents(t, fixture, "could not wake ◆"); len(got) != 2 {
+		t.Fatalf("two refused wakes were said %d times, want once each", len(got))
+	}
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("a refused manager was started %d times", got)
+	}
+}

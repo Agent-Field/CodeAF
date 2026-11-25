@@ -29,6 +29,8 @@ func (a *Agent) deferJobWakeLocked() {
 	window := &jobWakeWindow{}
 	a.jobWake = window
 	window.stop = after(jobWakeDelay, func() {
+		// The pause this clock's turn may be held by is read now, off the lock.
+		a.teamPauseFreshSeated()
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		// A TURN OR CLOSE MAY HAVE WON THE LOCK FIRST. Even a callback already

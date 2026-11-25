@@ -638,3 +638,71 @@ func TestTeamManagerStopOfAWaitingMemberHoldsWithAutoWakeOff(t *testing.T) {
 		t.Fatalf("the command's ending was not kept as a record:\n%s", journal)
 	}
 }
+
+// A STOP KEEPS A TASK GRAPH'S RESULT QUIET TOO. The result of a task the
+// conversation divided reaches it through the mailbox, and carried no cause:
+// it started the stopped member, which took the stopped work up again. It is
+// kept as its task's receipt with the stop's sentence, and the person's next
+// message reads it.
+func TestTeamStopKeepsATaskGraphResultFromStartingATurn(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	manager := teamAgent(t, fixture, fixture.manager, oneAnswer(8), nil)
+	streaming := make(chan struct{})
+	calls := &scriptedCompleter{steps: []step{thinkingStep(streaming), okStep(), okStep()}}
+	web := teamAgent(t, fixture, fixture.web, calls, nil)
+	sendDirective(t, manager, "web")
+	select {
+	case <-streaming:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the member did not start on the directive")
+	}
+	web.Interrupt()
+	waitQuiet(t, web)
+
+	graphResult(web, 12, "task 12 finished: Preserved result.")
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the stopped member was asked %d times, want only the turn the person stopped", got)
+	}
+	heldGraphResult(t, web, fixture.web, 12, "Preserved result.", teamStopHeldRule)
+
+	collect(t, mustSubmit(t, web, "what came back?"))
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, "Preserved result.") || !strings.Contains(asked, teamStopHeldRule) {
+		t.Fatalf("the person's next turn did not read the result and why it was held:\n%s", asked)
+	}
+}
+
+// WHAT A STOP HOLDS IS NOT OWED A TURN, unlike what a pause holds. The person
+// stopped a member that waited on a command, paused it and resumed it, and the
+// command ended in between: Resume starts no turn on the stop's record.
+func TestTeamResumeDoesNotTakeUpWhatAStopHeld(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	var web *Agent
+	started := make(chan *job, 1)
+	calls := &scriptedCompleter{steps: []step{waitedStep(func() *Agent { return web }, started), okStep()}}
+	web = teamAgent(t, fixture, fixture.web, calls, nil)
+	collect(t, mustSubmit(t, web, "start the build and wait for it"))
+	waitQuiet(t, web)
+	<-started
+	web.Interrupt()
+	if !web.team.stopHold.held.Load() {
+		t.Fatal("the stop of a member waiting on a command began no hold")
+	}
+
+	setPaused(t, fixture, fixture.web, true)
+	web.enqueueJobNote("job 8 exited 0")
+	setPaused(t, fixture, fixture.web, false)
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the stopped member was asked %d times, want only the person's turn", got)
+	}
+	journal, err := os.ReadFile(fixture.web)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), "job 8 exited 0") || !strings.Contains(string(journal), teamStopHeldRule) {
+		t.Fatalf("the command's ending was not kept as the stop's record:\n%s", journal)
+	}
+}

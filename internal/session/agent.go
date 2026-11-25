@@ -1450,6 +1450,11 @@ type userMessage struct {
 	// wake a standing hold may keep as a record instead (team_wakedecide.go's
 	// [wakeStanding]). Zero is a note no such hold binds.
 	cause wakeKind
+	// heldReceipt is the record its sender keeps in place of this note when a
+	// standing hold keeps it from starting a turn, given the sentence that says
+	// why. It is called once the queue's lock is let go, having been decided
+	// under it ([Agent.enqueueNote]). Nil keeps the note itself as the record.
+	heldReceipt func(why string)
 	// factoryWork marks a runtime manager turn, never the person's chat.
 	factoryWork bool
 	// runner marks words the factory's runner wrote ([runnerNote]): the turn
@@ -2109,6 +2114,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	a.stopJobWakeLocked()
 	a.running = true
 	a.teamStopHoldOver()
+	a.teamPauseOwedOver()
 	a.takeHeldNotesLocked()
 	a.factoryAutomaticTurn = user.factoryWork || user.wake && !user.answersPerson && !user.answer
 	a.runnerTurn = user.runner
@@ -2286,6 +2292,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// A process the person declined to keep running ends with the turn
 			// that started it (keep_running.go).
 			a.endTurnJobs(seq)
+			// The pause the turn's end may hold news by is read now, off the
+			// lock ([Agent.turnEndHeldLocked]).
+			a.teamPauseFreshSeated()
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING. [Agent.Abandon] has already done
 			// every act below — drained the queues, cleared running, closed the
@@ -4266,11 +4275,33 @@ func (a *Agent) enqueueJobNoteQuiet(text string) {
 
 // quietNoteLocked is [Agent.enqueueJobNoteQuiet] for a caller holding a.mu.
 func (a *Agent) quietNoteLocked(text string) {
-	text = strings.TrimSpace(text)
-	if text == "" || a.closed {
+	a.keepNoteLocked(userMessage{message: textMessage("user", strings.TrimSpace(text)), batch: true, authored: true})
+}
+
+// heldNoteLocked keeps a note a standing hold kept from starting a turn as the
+// record it becomes, its text followed by why. The caller holds a.mu.
+//
+// IT KEEPS WHAT MAKES IT THE SAME NEWS. A task's result keeps its task's
+// identity and that it is a completion, so it is drawn and read as that task's
+// receipt, and every note keeps what settles its durable delivery, so a landing
+// held as a record is written down as announced when the record holds it.
+func (a *Agent) heldNoteLocked(note userMessage, text, why string) {
+	record := userMessage{
+		message: textMessage("user", strings.TrimSpace(text+"\n"+why)), batch: true, authored: true,
+		replyTags: note.replyTags, delivered: note.delivered,
+	}
+	if note.cause == wakeLanding {
+		record.completionOnly = note.completionOnly
+	}
+	a.keepNoteLocked(record)
+}
+
+// keepNoteLocked records a note that starts no turn: now in an idle open
+// conversation, and at the next turn's boundary otherwise. The caller holds a.mu.
+func (a *Agent) keepNoteLocked(note userMessage) {
+	if strings.TrimSpace(note.text()) == "" || a.closed {
 		return
 	}
-	note := userMessage{message: textMessage("user", text), batch: true, authored: true}
 	if a.running || !a.opened {
 		a.ambient = append(a.ambient, note)
 		return
@@ -4430,10 +4461,21 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		// the person's word in a file another process writes (team_pause.go).
 		a.teamPauseFresh()
 	}
+	taken, receipt, why := a.enqueueNoteLocked(note, text)
+	if receipt != nil {
+		receipt(why)
+	}
+	return taken
+}
+
+// enqueueNoteLocked is [Agent.enqueueNote] under the agent's lock, which it
+// takes and lets go. A note a standing hold keeps whose sender records its own
+// receipt answers that receipt, to be called once the lock is let go.
+func (a *Agent) enqueueNoteLocked(note userMessage, text string) (taken bool, receipt func(string), why string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed || (note.closeKey != "" && a.running) {
-		return false
+		return false, nil, ""
 	}
 	if held := a.standingHoldLocked(note.cause); held.verdict == wakeHolds {
 		// A STANDING HOLD KEEPS THE NEWS AS A RECORD AND STARTS NO TURN
@@ -4443,9 +4485,17 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 		// for the stop to let the lock go and queued its ending as a wake. A
 		// worker parked on the command is released in the same step, as the
 		// waking note's own append releases it below.
-		a.quietNoteLocked(text + "\n" + held.why)
+		//
+		// A SENDER THAT KEEPS ITS OWN RECEIPT WRITES IT once the lock is let
+		// go, because composing it takes this lock: a background task's landing
+		// ([Agent.admitBeltLanding]). Decided here, it is a record whenever it is
+		// written, and no stop can land between the decision and a wake.
 		a.releaseTaskWaitLocked()
-		return true
+		if note.heldReceipt != nil {
+			return true, note.heldReceipt, held.why
+		}
+		a.heldNoteLocked(note, text, held.why)
+		return true, nil, ""
 	}
 	a.steering = append(a.steering, note)
 	if note.steered || note.ending {
@@ -4474,7 +4524,7 @@ func (a *Agent) enqueueNote(note userMessage) bool {
 			a.wakeAnsweringLocked(false, "", note.answer)
 		}
 	}
-	return true
+	return true, nil, ""
 }
 
 // holdSettledLocked keeps the acknowledgements this message earned until they

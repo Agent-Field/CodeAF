@@ -450,6 +450,7 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 	}
 	a.running = true
 	a.teamStopHoldOver()
+	a.teamPauseOwedOver()
 	a.runnerTurn = false
 	hub := a.newReplayHubLocked()
 	a.hub = hub
@@ -482,6 +483,9 @@ func (a *Agent) startVisionTurnLocked(ctx context.Context, kept userMessage, liv
 		defer cancel(nil)
 		defer hub.close()
 		defer func() {
+			// The pause the turn's end may hold news by is read now, off the
+			// lock ([Agent.turnEndHeldLocked]).
+			a.teamPauseFreshSeated()
 			a.mu.Lock()
 			// A DISOWNED TURN CLEANS UP NOTHING, by the same law and for the same
 			// reason as an ordinary turn's cleanup (agent.go's startTurnLocked):

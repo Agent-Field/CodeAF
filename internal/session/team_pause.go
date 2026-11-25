@@ -34,8 +34,9 @@ package session
 // ([wakeStanding]): what arrived is kept in the conversation as a record that
 // starts no turn, with [teamPauseHeldRule] saying why, exactly as a stop keeps
 // a command's ending (team_stophold.go). The next turn reads it: the person's
-// own words, or the turn Resume starts on a directive that waited. The
-// interface's stop stays as it was, for a wake this file does not decide.
+// own words, or the turn Resume starts, which it starts on a directive that
+// waited or on the news alone ([Agent.teamPauseOwedWake]). The interface's
+// stop stays as it was, for a wake this file does not decide.
 //
 // A PAUSE IS THE PERSON'S WORD ABOUT THE CONVERSATION, so it holds in every
 // team the conversation is a member of ([teams.File.PausedAnywhere]), not only
@@ -78,6 +79,48 @@ type teamPauseHold struct {
 	// teams, as of the last time its roles were read. Read without a lock or a
 	// disk.
 	paused atomic.Bool
+	// owed is set when the pause kept news from starting a turn (a command's
+	// ending, a watch's firing, a task landing, what a turn's end recorded),
+	// and cleared when a turn next begins, which reads it. Resume starts that
+	// turn ([Agent.teamPauseOwedWake]).
+	owed atomic.Bool
+}
+
+// teamPauseFreshSeated is [Agent.teamPauseFresh] for a conversation that has a
+// role in a team, and nothing for one that has none: it is asked where every
+// turn ends and every command's wake clock fires, and only a member can be
+// paused. It must not be called under a.mu.
+func (a *Agent) teamPauseFreshSeated() {
+	if a.team.stopHold.seated.Load() {
+		a.teamPauseFresh()
+	}
+}
+
+// teamPauseOwedOver forgets that a pause owes a turn: one has begun, and it
+// reads what the pause kept.
+func (a *Agent) teamPauseOwedOver() { a.team.pauseHold.owed.Store(false) }
+
+// teamPauseOwedWake starts the turn a lifted pause owes the news it held.
+//
+// A PAUSE IS TEMPORARY. What the pause kept from starting a turn is in the
+// conversation as a record, or still queued, and the person resuming the
+// member is their word that it goes on: a member paused while it waited on a
+// command used to stay idle after Resume with the command's ending unread,
+// unless a directive had also waited. A stop is different: what its hold
+// keeps starts nothing even later ([teamStopHeldRule]), so a stop since the
+// pause leaves the records where they are. The traffic is told nothing: this
+// turn is the member's own news, not its team's.
+func (a *Agent) teamPauseOwedWake() {
+	hold := &a.team.pauseHold
+	if !hold.owed.Load() {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.running || hold.paused.Load() || !hold.owed.Swap(false) || a.team.stopHold.held.Load() {
+		return
+	}
+	a.wakeLocked()
 }
 
 // pausedRoles reports whether any of roles is paused. A pause holds the

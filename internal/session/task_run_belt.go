@@ -2494,7 +2494,9 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 // TEAM WHOSE TURN WAS STOPPED, until a turn next begins. The result is kept as
 // the quiet record a late stop of the task keeps, with the sentence that says
 // why it started no turn, and the next turn reads it (team_pause.go,
-// team_stophold.go).
+// team_stophold.go). The hold is decided under the lock the landing would be
+// queued under ([Agent.enqueueNote]), so a stop that lands in the same instant
+// either holds it or comes after its turn began.
 func (a *Agent) admitBeltLanding(run *beltRun, summary RunSummary, line string, landing RunLanding, note userMessage) {
 	run.deliveryMu.Lock()
 	if a.beltRunQuiet(run) {
@@ -2502,11 +2504,10 @@ func (a *Agent) admitBeltLanding(run *beltRun, summary RunSummary, line string, 
 		a.recordQuietBeltLanding(run, summary, line, landing)
 		return
 	}
-	if held := a.standingHold(wakeLanding); held.verdict == wakeHolds {
-		run.deliveryMu.Unlock()
-		a.recordQuietBeltLanding(run, summary, line+"\n"+held.why, landing)
-		return
-	}
+	// The receipt is written under deliveryMu, which is the order page Stop
+	// takes its locks in (stoprun.go): deliveryMu, then beltMu and a.mu.
+	note.cause = wakeLanding
+	note.heldReceipt = func(why string) { a.recordQuietBeltLanding(run, summary, line+"\n"+why, landing) }
 	a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
 	run.deliveryMu.Unlock()
 }

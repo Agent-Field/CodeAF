@@ -225,3 +225,19 @@ func TestPauseAcrossTeams(t *testing.T) {
 		t.Fatal("a conversation made a manager is still paused")
 	}
 }
+
+// A crew's manager seated in the root team, the one that holds every crew, is
+// not paused there: it manages its crew, and the engine's wake rules take a
+// manager to be never paused.
+func TestPauseRefusesACrewManagerInTheRootTeam(t *testing.T) {
+	file := &File{Teams: []Team{
+		{ID: "all", Name: "All teams", Root: true, Manager: "g", Members: []Member{{Key: "g", Handle: "global"}, {Key: "lead", Handle: "lead"}}},
+		{ID: "crew", Name: "dock", Parent: "all", Manager: "lead", Members: []Member{{Key: "lead", Handle: "lead"}, {Key: "a", Handle: "dev"}}},
+	}}
+	if err := file.SetPaused("all", "lead", true); err == nil || !strings.Contains(err.Error(), "manages dock") {
+		t.Fatalf("pausing a crew's manager in the root team answered %v", err)
+	}
+	if _, paused := file.PausedAnywhere("lead"); paused {
+		t.Fatal("a refused pause left the crew's manager paused")
+	}
+}

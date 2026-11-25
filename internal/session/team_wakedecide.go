@@ -55,7 +55,9 @@ const (
 	wakeCommand
 	// wakeWatch is a watch firing ([Agent.enqueueWatchNote]).
 	wakeWatch
-	// wakeLanding is a background task landing ([Agent.admitBeltLanding]).
+	// wakeLanding is a task landing: a background task's result
+	// ([Agent.admitBeltLanding]) or a task graph's result delivered to the
+	// conversation ([Agent.postTaskMessage]).
 	wakeLanding
 	// wakeAnswer is news a turn's end recorded with no request left to read it,
 	// which is owed one more turn ([Agent.turnEndHeldLocked]).
@@ -160,9 +162,13 @@ func init() {
 // (team_stophold.go). News a turn's end recorded is not held by it: a stopped
 // turn starts none, and a turn that completed began after the hold was over.
 //
-// A PAUSE HOLDS EVERY TURN NOBODY TYPED, these four and the team's traffic
-// ([wakePauseRule]): the person paused the conversation, not one of the ways
-// it starts. Their own words are no row here, because they are never held.
+// A PAUSE HOLDS THESE FOUR AND THE TEAM'S TRAFFIC ([wakePauseRule]): the
+// person paused the conversation, not one of the ways it starts. Unlike a
+// stop's, what it holds is owed a turn, which Resume starts
+// ([Agent.teamPauseOwedWake]). The person's own words (a line they typed, a
+// question's answer, a decision they hand over) are no row here, because they
+// are never held, and nor are a task worker's relays, since a worker is in no
+// team.
 var wakeStanding = map[wakeKind]struct{ stop, pause bool }{
 	wakeCommand: {stop: true, pause: true},
 	wakeWatch:   {stop: true, pause: true},
@@ -186,18 +192,14 @@ func (a *Agent) standingHoldLocked(kind wakeKind) wakeDecision {
 		return wakeDecision{verdict: wakeHolds, by: heldByStop, why: teamStopHeldRule}
 	}
 	if binds.pause && !a.running && a.team.pauseHold.paused.Load() {
+		// AND THE TURN IT WOULD HAVE STARTED IS OWED. A pause is the person's
+		// word that the member waits, not that the news is spent: Resume starts
+		// the turn that reads it ([Agent.teamPauseOwedWake]). Every caller acts
+		// on the hold it is answered, so it is marked here, once.
+		a.team.pauseHold.owed.Store(true)
 		return wakeDecision{verdict: wakeHolds, by: heldByPause, why: teamPauseHeldRule}
 	}
 	return wakeDecision{}
-}
-
-// standingHold is [Agent.standingHoldLocked] for a caller that holds no lock
-// and records the news itself, with the pause read afresh first.
-func (a *Agent) standingHold(kind wakeKind) wakeDecision {
-	a.teamPauseFresh()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.standingHoldLocked(kind)
 }
 
 // turnEndHeldLocked reports whether a standing hold keeps the turn that would
@@ -361,7 +363,7 @@ func (a *Agent) sayWake(profile string, c wakeCause, d wakeDecision, now time.Ti
 	}
 	for _, role := range c.roles {
 		entry, ok := a.wakeLine(c, role, d)
-		if !ok || (wakeSaidPerEntry(d) && teamSaidAlready(profile, role.id, entry)) {
+		if !ok || (wakeSaidPerEntry(c, d) && teamSaidAlready(profile, role.id, entry)) {
 			continue
 		}
 		a.teamSay(profile, role.id, entry)
@@ -372,8 +374,13 @@ func (a *Agent) sayWake(profile string, c wakeCause, d wakeDecision, now time.Ti
 // it answers, by looking at the log. A member's first turn is looked at by two
 // watches (team_wake.go, team_wakewatch.go) and a fresh conversation is fresh
 // every time it is opened, so these holds would otherwise be said again.
-func wakeSaidPerEntry(d wakeDecision) bool {
-	return d.by == heldByStandby || d.by == heldByPause || d.by == heldByGate
+//
+// ONLY A FIRST TURN'S GATE IS SAID ONCE. A refusal by one of the engine's own
+// gates is said for every wake it refuses: a manager's line answers no entry,
+// so looked up on the log, a second batch of replies refused for the same
+// reason wrote nothing where it had always written its own line.
+func wakeSaidPerEntry(c wakeCause, d wakeDecision) bool {
+	return d.by == heldByStandby || d.by == heldByPause || d.by == heldByGate && c.kind == wakeStart
 }
 
 // wakeSayOnce reports whether this decision's line is still to be said. A cap

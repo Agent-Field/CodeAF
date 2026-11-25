@@ -759,3 +759,99 @@ func TestTeamHeldDirectiveThePersonsTurnReadStartsNothingOnResume(t *testing.T) 
 		t.Fatalf("the resumed member made %d model calls, want only the person's turn: a note wakes nobody", got)
 	}
 }
+
+// graphResult delivers a task graph's result to agent: a node with no parent,
+// whose one reader is the conversation itself.
+func graphResult(agent *Agent, id uint64, text string) {
+	node := &TaskNode{graph: newTaskGraph(), id: id, spec: taskSpec{title: "Parser", request: "repair the parser"}}
+	agent.deliverTaskNote(node, node.attemptNow(), node.resultTag(), text, "")
+}
+
+// heldGraphResult checks that a task graph's result was kept in agent's
+// conversation as one record of its task, followed by why, starting no turn.
+func heldGraphResult(t *testing.T, agent *Agent, journalPath string, id uint64, want, why string) {
+	t.Helper()
+	agent.mu.Lock()
+	woke := agent.running || len(agent.steering) != 0
+	agent.mu.Unlock()
+	if woke {
+		t.Fatal("a task graph's result started a turn, or waits on the queue for one")
+	}
+	held := false
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, want) {
+			held = entry.RoutineCompletion && len(entry.CompletionTasks) == 1 && entry.CompletionTasks[0].ID == id
+		}
+	}
+	if !held {
+		t.Fatalf("the held result lost its task's identity: %+v", agent.Transcript())
+	}
+	journal, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(journal), want) || strings.Count(string(journal), why) != 1 {
+		t.Fatalf("the result was not kept as one record that says why it started no turn:\n%s", journal)
+	}
+}
+
+// A TASK GRAPH'S RESULT DOES NOT START A PAUSED MEMBER EITHER. A belt task's
+// landing was held and a task the conversation divided, whose result reaches
+// it through the mailbox, was not: it carried no cause, and the paused member
+// was started on it. It is kept as its task's receipt with the pause's
+// sentence, and the person's next turn reads it.
+func TestTeamPausedMemberKeepsATaskGraphResultAsARecord(t *testing.T) {
+	fixture := newWakingTeamFixture(t)
+	setPaused(t, fixture, fixture.web, true)
+	calls := oneAnswer(1)
+	web := teamAgent(t, fixture, fixture.web, calls, func(config *Config) { config.teamWatchManual = true })
+	graphResult(web, 12, "task 12 finished: Preserved result.")
+	quietFor()
+	if got := calls.requests(); got != 0 {
+		t.Fatalf("a task graph's result started the paused member %d times", got)
+	}
+	heldGraphResult(t, web, fixture.web, 12, "Preserved result.", teamPauseHeldRule)
+
+	collect(t, mustSubmit(t, web, "what came back?"))
+	if asked := userTextIn(calls.request(0)); !strings.Contains(asked, "Preserved result.") || !strings.Contains(asked, teamPauseHeldRule) {
+		t.Fatalf("the person's next turn did not read the result and why it was held:\n%s", asked)
+	}
+}
+
+// A PAUSE IS TEMPORARY: RESUME STARTS THE TURN WHAT IT HELD IS OWED. The member
+// waited on a command, the person paused it, and the command ended: no turn,
+// the ending kept as a record. Resume used to start nothing unless a directive
+// had also waited, and the ending stayed unread. It now starts one turn, which
+// reads the record.
+func TestTeamResumeStartsATurnOnNewsThePauseHeld(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	var web *Agent
+	started := make(chan *job, 1)
+	calls := &scriptedCompleter{steps: []step{waitedStep(func() *Agent { return web }, started), okStep(), okStep()}}
+	web = teamAgent(t, fixture, fixture.web, calls, nil)
+	clock := &jobWakeClock{}
+	web.jobWakeAfter = clock.after
+	collect(t, mustSubmit(t, web, "start the build and wait for it"))
+	waitQuiet(t, web)
+
+	setPaused(t, fixture, fixture.web, true)
+	web.jobs.settleExit(<-started, 0)
+	clock.advance(jobWakeDelay)
+	web.enqueueJobNote("job 8 exited 0")
+	quietFor()
+	if got := calls.requests(); got != 1 {
+		t.Fatalf("the paused member was asked %d times, want only the person's turn", got)
+	}
+
+	setPaused(t, fixture, fixture.web, false)
+	waitRequests(t, calls, 2)
+	if asked := userTextIn(calls.request(1)); !strings.Contains(asked, "job 8 exited 0") || !strings.Contains(asked, teamPauseHeldRule) {
+		t.Fatalf("the turn Resume started did not read what the pause held:\n%s", asked)
+	}
+	waitQuiet(t, web)
+	quietFor()
+	if got := calls.requests(); got != 2 {
+		t.Fatalf("Resume started %d turns, want one", got-1)
+	}
+}
