@@ -66,7 +66,7 @@ var celReserved = map[string]bool{
 	"duration": true, "timestamp": true,
 }
 
-// FieldDef is one field as an app declares it: lane A's definition type, so
+// FieldDef is one field as an app declares it: internal/appschema's definition type, so
 // the validator and the store read one shape.
 type FieldDef = appschema.Field
 

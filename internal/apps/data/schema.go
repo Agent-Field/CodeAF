@@ -134,7 +134,7 @@ func (s *schema) allow(sc Scope, typ string, write bool) (*Type, error) {
 // loadSchema reads the whole schema from q and compiles it. A field whose
 // expression no longer compiles (which registration prevents) is kept with no
 // program, so a broken expression empties one field instead of the store.
-func loadSchema(q querier, now func() time.Time) (*schema, []error, error) {
+func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, error) {
 	s := &schema{types: map[string]*Type{}, caps: map[string]map[string]string{}}
 	rows, err := q.Query(`SELECT app, def_json FROM apps`)
 	if err != nil {
@@ -236,9 +236,11 @@ func loadSchema(q querier, now func() time.Time) (*schema, []error, error) {
 	}
 	rows.Close()
 
-	var problems []error
+	problems := map[string][]error{}
 	for _, name := range sortedKeys(s.types) {
-		problems = append(problems, s.types[name].compile(now)...)
+		if p := s.types[name].compile(now); len(p) > 0 {
+			problems[name] = p
+		}
 	}
 	return s, problems, nil
 }
@@ -265,12 +267,19 @@ func (t *Type) compile(now func() time.Time) []error {
 		// A COMPUTED FIELD THAT READS A MASKED ONE IS MASKED TOO, or it is
 		// the masked value with the mask taken off: "computed": "ssn" would
 		// show, sort and search what the mask hides.
+		leaks := false
 		if !f.Masked {
 			for ref := range identifiers(f.Computed) {
 				if src := t.Fields[ref]; src != nil && src.Masked {
 					problems = append(problems, fieldErr(name, "%s.%s reads %s, which is masked; mark %s masked too", t.Name, name, ref, name))
+					leaks = true
 				}
 			}
+		}
+		if leaks {
+			// Left empty rather than computed: a stored definition that
+			// leaks (a field masked after the copy was declared) never runs.
+			continue
 		}
 		f.computed = p
 		t.computedOrder = append(t.computedOrder, name)
@@ -373,11 +382,16 @@ func registerApp(tx *sql.Tx, current *schema, def *AppDef, capsJSON string, now 
 	if err != nil {
 		return nil, err
 	}
-	if len(problems) > 0 {
-		if e, ok := AsError(problems[0]); ok {
-			return nil, e
+	// Only the types this app declares can refuse it: a problem another
+	// app's fields have (a copy of a field since masked) is that app's to
+	// fix, and must not block every other app's registration.
+	for _, name := range def.typeOrder {
+		if p := problems[name]; len(p) > 0 {
+			if e, ok := AsError(p[0]); ok {
+				return nil, e
+			}
+			return nil, errorf(CodeInvalid, "%v", p[0])
 		}
-		return nil, errorf(CodeInvalid, "%v", problems[0])
 	}
 	return next, checkRegistered(tx, next, def)
 }
@@ -522,7 +536,7 @@ func parseSpan(s string) (time.Duration, error) {
 }
 
 // TypeSet is every visible type the store holds, with its owner and its
-// visible fields: what lane A's validator checks a new or changed app
+// visible fields: what internal/appschema's validator checks a new or changed app
 // against (its `uses` types, its refs into the person's data).
 func (s *Store) TypeSet() appschema.TypeSet {
 	out := appschema.TypeSet{}

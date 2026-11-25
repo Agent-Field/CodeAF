@@ -378,7 +378,7 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 }
 
 // RegisterApp merges one app's record types, fields and capabilities into
-// the store. It is what makes an app's data exist: lane C calls it when a
+// the store. It is what makes an app's data exist: the app store calls it when a
 // version goes live (Keep, change, revert) and on start for every app. It is
 // safe to call again with the same file, and a field the new file no longer
 // declares is hidden, never deleted.

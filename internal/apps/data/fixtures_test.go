@@ -8,9 +8,9 @@ import (
 	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
-// LANE A'S OWN APPS LIVE ON THIS STORE: the CRM registers, its sample.json
+// THE APP SCHEMA'S OWN APPS LIVE ON THIS STORE: the CRM registers, its sample.json
 // seeds a draft whole (refs between sample rows resolve), Hiring uses the
-// CRM's contacts, and the TypeSet the store answers is one lane A's
+// CRM's contacts, and the TypeSet the store answers is one internal/appschema's
 // validator accepts Hiring against.
 func TestLaneAFixtures(t *testing.T) {
 	read := func(name string) []byte { return fixture(t, filepath.Join("lane-a", name)) }

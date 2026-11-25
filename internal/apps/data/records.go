@@ -975,6 +975,15 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 			// Undo) is allowed: before it, the record was not frozen. A record
 			// that was already frozen before the batch, or one the batch
 			// created and is frozen now, stays as it is.
+			if current.DeletedAt != "" && st.before != nil {
+				prior := &record{ID: current.ID, Type: typ, Data: st.before.Data, Meta: st.before.Meta}
+				if prior.Data == nil {
+					prior.Data = map[string]any{}
+				}
+				if frozen, _ := w.s.frozen(t, prior); frozen {
+					return &Error{Code: CodeFrozen, Message: fmt.Sprintf("a %s this change deleted was frozen; undoing would bring back a frozen record", t.Name)}
+				}
+			}
 			if frozen, _ := w.s.frozen(t, current); frozen {
 				wasFrozen := st.before == nil
 				if st.before != nil {

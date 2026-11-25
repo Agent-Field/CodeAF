@@ -1,6 +1,6 @@
 package main
 
-// ── codeaf app: THE PERSON'S DATA (fluid apps, SPEC §6, lane B) ─────────────
+// ── codeaf app: THE PERSON'S DATA (fluid apps) ──────────────────────────────
 //
 // The data.* methods are this file's translation of the wire into
 // internal/apps/data, which holds every rule: capabilities, validation,
@@ -9,10 +9,10 @@ package main
 // store's refusals into the wire's codes.
 //
 // THE STORE KNOWS AN APP ONLY ONCE IT IS REGISTERED. The app definitions live
-// in <home>/apps/<id>/current/app.json (lane C keeps them); the first call
+// in <home>/apps/<id>/current/app.json (the app store keeps them); the first call
 // that opens the data registers every one found there, so a restart, or an
 // app kept while this process was not running, is never an app whose screens
-// are all refused. Lane C and the Builder register a version again the
+// are all refused. The app store and the Builder register a version again the
 // moment it goes live, through [appBackend.appData].
 
 import (
@@ -112,16 +112,21 @@ func (b *appBackend) syncAppDefinitions(s *data.Store) {
 
 // closeData stops this connection's live queries and closes the data files.
 func (b *appBackend) closeData() {
-	d := &b.data
+	if place := b.data.takePlace(); place != nil {
+		_ = place.Close()
+	}
+}
+
+// takePlace marks the state closed and hands back the place to close, which
+// is closed outside the lock: closing waits on hooks that may take it.
+func (d *appDataState) takePlace() *data.Place {
 	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.closed = true
 	place := d.place
 	d.place = nil
 	d.subs = nil
-	d.mu.Unlock()
-	if place != nil {
-		_ = place.Close()
-	}
+	return place
 }
 
 // dataScope is who a wire call acts as: its app, or the person.
@@ -341,12 +346,17 @@ func (b *appBackend) DataSubscribe(p appwire.DataSubscribeParams) error {
 	return nil
 }
 
+// takeSub forgets one live query and hands back the store it was held on.
+func (d *appDataState) takeSub(sub string) *data.Store {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	s := d.subs[sub]
+	delete(d.subs, sub)
+	return s
+}
+
 func (b *appBackend) DataUnsubscribe(sub string) error {
-	b.data.mu.Lock()
-	s := b.data.subs[sub]
-	delete(b.data.subs, sub)
-	b.data.mu.Unlock()
-	if s != nil {
+	if s := b.data.takeSub(sub); s != nil {
 		s.Unsubscribe(sub)
 	}
 	return nil
