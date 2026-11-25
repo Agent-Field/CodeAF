@@ -4,128 +4,66 @@ package runs
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"maps"
 	"math"
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
-type Definition struct {
-	Schema string               `json:"$schema,omitempty" yaml:"$schema"`
-	Run    string               `json:"run" yaml:"run"`
-	Title  string               `json:"title" yaml:"title"`
-	Budget Budget               `json:"budget" yaml:"budget"`
-	Params map[string]Parameter `json:"params" yaml:"params"`
-	Steps  []Step               `json:"steps" yaml:"steps"`
-}
+type Definition = schema.Run
+type Parameter = schema.RunParam
+type Step = schema.Step
 
-type Budget struct {
-	PerRun float64 `json:"per_run" yaml:"per_run"`
-}
-
-type Parameter struct {
-	Type    string `json:"type" yaml:"type"`
-	To      string `json:"to" yaml:"to"`
-	Default any    `json:"default" yaml:"default"`
-}
-
-type Step struct {
-	Title     string         `json:"title,omitempty" yaml:"title"`
-	Repo      string         `json:"repo,omitempty" yaml:"repo"`
-	Branch    string         `json:"branch,omitempty" yaml:"branch"`
-	ID        string         `json:"id" yaml:"id"`
-	Create    *RecordWrite   `json:"records.create,omitempty" yaml:"records.create"`
-	Update    *RecordWrite   `json:"records.update,omitempty" yaml:"records.update"`
-	Agent     string         `json:"agent,omitempty" yaml:"agent"`
-	Prompt    string         `json:"prompt,omitempty" yaml:"prompt"`
-	Tool      string         `json:"tool,omitempty" yaml:"tool"`
-	As        string         `json:"as,omitempty" yaml:"as"`
-	Args      map[string]any `json:"args,omitempty" yaml:"args"`
-	Gate      *Gate          `json:"gate,omitempty" yaml:"gate"`
-	Wait      *Wait          `json:"wait,omitempty" yaml:"wait"`
-	Loop      *Loop          `json:"loop,omitempty" yaml:"loop"`
-	Steps     []Step         `json:"steps,omitempty" yaml:"steps"`
-	If        string         `json:"if,omitempty" yaml:"if"`
-	Retry     Retry          `json:"retry,omitempty" yaml:"retry"`
-	OnError   string         `json:"on_error,omitempty" yaml:"on_error"`
-	Workspace string         `json:"workspace,omitempty" yaml:"workspace"`
-	Shell     any            `json:"shell,omitempty" yaml:"shell"`
-}
-
-type RecordWrite struct {
-	Type string         `json:"type" yaml:"type"`
-	ID   any            `json:"id,omitempty" yaml:"id"`
-	IDs  any            `json:"ids,omitempty" yaml:"ids"`
-	Set  map[string]any `json:"set" yaml:"set"`
-}
-
-type Wait struct {
-	For string `json:"for" yaml:"for"`
-}
-
-type Gate struct {
-	Approval string `json:"approval" yaml:"approval"`
-	Who      string `json:"who" yaml:"who"`
-}
-
-type Loop struct {
-	Over  any    `json:"over,omitempty" yaml:"over"`
-	As    string `json:"as,omitempty" yaml:"as"`
-	Until string `json:"until,omitempty" yaml:"until"`
-	Max   int    `json:"max" yaml:"max"`
-}
-
-type Retry struct {
-	Max     int    `json:"max" yaml:"max"`
-	Backoff string `json:"backoff" yaml:"backoff"`
-}
-
-// Parse checks execution invariants as well as YAML shape, since callers may
-// execute sample definitions before they reach the app store.
+// Parse applies the app's run file shape and checks execution invariants,
+// since Check and Preview can execute sample definitions before Keep.
 func Parse(contents []byte) (Definition, error) {
-	var def Definition
-	dec := yaml.NewDecoder(bytes.NewReader(contents))
-	dec.KnownFields(true)
-	if err := dec.Decode(&def); err != nil {
+	raw, err := schema.RunJSON(contents)
+	if err != nil {
 		return Definition{}, err
 	}
-	var extra any
-	if err := dec.Decode(&extra); err != io.EOF {
-		return Definition{}, errors.New("a run file must contain one YAML document")
+	var document struct {
+		schema.Run
+		Schema string `json:"$schema,omitempty"`
 	}
-	return def, def.validate()
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	dec.UseNumber()
+	if err := dec.Decode(&document); err != nil {
+		return Definition{}, err
+	}
+	return document.Run, validate(document.Run)
 }
 
-func (d Definition) validate() error {
-	if !validID(d.Run) || len(d.Steps) == 0 || d.Budget.PerRun < 0 ||
-		math.IsInf(d.Budget.PerRun, 0) || math.IsNaN(d.Budget.PerRun) {
+func validate(d Definition) error {
+	if !validID(d.Run) || len(d.Steps) == 0 || (d.Budget != nil && !validCost(d.Budget.PerRun)) {
 		return errors.New("a run needs an id, steps and a valid per-run budget")
 	}
-	return validateSteps(d.Steps, make(map[string]bool))
+	return validateSteps(d.Steps, make(map[string]bool), make(map[string]bool))
 }
 
 func validID(id string) bool {
 	return id != "" && strings.Trim(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
 }
 
-func validateSteps(steps []Step, seen map[string]bool) error {
-	siblings := make(map[string]bool, len(steps))
+func validateSteps(steps []Step, seen, enclosing map[string]bool) error {
+	targets := maps.Clone(enclosing)
 	for _, s := range steps {
-		siblings[s.ID] = true
+		targets[s.ID] = true
 	}
 	for _, s := range steps {
 		if !validID(s.ID) || seen[s.ID] {
 			return fmt.Errorf("invalid or duplicate step id %q", s.ID)
 		}
 		seen[s.ID] = true
-		if err := s.validate(siblings); err != nil {
+		if err := validateStep(s, targets); err != nil {
 			return fmt.Errorf("step %s: %w", s.ID, err)
 		}
-		if err := validateSteps(s.Steps, seen); err != nil {
+		if err := validateSteps(s.Steps, seen, targets); err != nil {
 			return err
 		}
 	}
@@ -134,12 +72,12 @@ func validateSteps(steps []Step, seen map[string]bool) error {
 
 const maxRetries = 5
 
-func (s Step) validate(siblings map[string]bool) error {
-	if s.Shell != nil || s.Workspace != "" || s.Repo != "" || s.Branch != "" {
+func validateStep(s Step, targets map[string]bool) error {
+	if s.Shell != "" || s.Workspace != "" || s.Repo != "" || s.Branch != "" {
 		return errors.New("shell and workspace steps are unavailable in app runs")
 	}
 	kinds := 0
-	for _, present := range []bool{s.Create != nil, s.Update != nil, s.Agent != "", s.Tool != "", s.Wait != nil, s.Loop != nil} {
+	for _, present := range []bool{s.RecordsCreate != nil, s.RecordsUpdate != nil, s.Agent != "", s.Tool != "", s.Wait != nil, s.Loop != nil} {
 		if present {
 			kinds++
 		}
@@ -155,32 +93,37 @@ func (s Step) validate(siblings map[string]bool) error {
 		}
 	}
 	if s.Loop != nil {
-		if s.Loop.Max < 1 || len(s.Steps) == 0 || (s.Loop.Over == nil) == (s.Loop.Until == "") {
+		if s.Loop.Max < 1 || len(s.Steps) == 0 || (s.Loop.Over == "") == (s.Loop.Until == "") {
 			return errors.New("a loop needs steps, a positive max and exactly one of over or until")
 		}
-		if s.Loop.Over != nil && (!validID(s.Loop.As) || reservedVariable(s.Loop.As)) {
+		if s.Loop.Over != "" && (!validID(s.Loop.As) || reservedVariable(s.Loop.As)) {
 			return errors.New("a for-each loop needs an as variable")
 		}
 	}
 	if s.Wait != nil {
+		if s.Wait.Until != "" || s.Wait.Thread != "" || s.Wait.Timeout != "" || s.OnTimeout != "" {
+			return errors.New("app runs wait for a duration")
+		}
 		if _, err := duration(s.Wait.For); err != nil {
 			return err
 		}
 	}
-	if s.Retry.Max < 0 || s.Retry.Max > maxRetries {
-		return fmt.Errorf("retry max must be between 0 and %d", maxRetries)
-	}
-	if s.Retry.Backoff != "" {
-		if _, err := duration(s.Retry.Backoff); err != nil {
-			return err
+	if s.Retry != nil {
+		if s.Retry.Max < 1 || s.Retry.Max > maxRetries {
+			return fmt.Errorf("retry max must be between 1 and %d", maxRetries)
+		}
+		if s.Retry.Backoff != "" {
+			if _, err := duration(s.Retry.Backoff); err != nil {
+				return err
+			}
 		}
 	}
 	switch s.OnError {
 	case "", "stop", "continue":
 	default:
 		id, ok := strings.CutPrefix(s.OnError, "goto ")
-		if !ok || !siblings[id] || id == s.ID {
-			return errors.New("on_error must be stop, continue or goto another step in this list")
+		if !ok || !targets[id] || id == s.ID {
+			return errors.New("on_error must be stop, continue or goto a step in this or an enclosing list")
 		}
 	}
 	return nil

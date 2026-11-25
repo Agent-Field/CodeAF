@@ -7,6 +7,8 @@ import (
 	"maps"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 type action struct {
@@ -28,7 +30,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 		if c.Declined != "" {
 			return e.stop(c, Incomplete, c.Declined)
 		}
-		if c.Approval != nil || (c.State == Waiting && e.cfg.Now().Before(c.WakeAt)) {
+		if c.Approval != nil || (!c.WakeAt.IsZero() && e.cfg.Now().Before(c.WakeAt)) {
 			return nil
 		}
 		steps, vars := c.scope(e.cfg.Now())
@@ -62,22 +64,31 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			}
 			act, err := prepare(c, step, vars)
 			if err != nil {
-				return e.stop(c, Incomplete, err.Error())
+				if err := e.stepFailed(c, step, err); err != nil || c.State != Running {
+					return err
+				}
+				continue
 			}
 			c.Action = &act
 		}
 		outbound := c.Action.Outbound
-		if step.Tool != "" && e.cfg.CheckTool != nil {
-			needsGate, err := e.cfg.CheckTool(c.Action.Call)
-			if err != nil {
-				return e.stop(c, Incomplete, err.Error())
-			}
-			outbound = outbound || needsGate
-		}
-		if c.Prepared && (step.Create != nil || step.Update != nil || outbound || step.Agent != "") {
+		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "") {
 			// A crash between delivery and its receipt cannot distinguish an
 			// effected write from one never attempted. Never send it twice.
 			return e.stop(c, Incomplete, "step stopped before its result was saved")
+		}
+		if step.Tool != "" && e.cfg.CheckTool != nil {
+			needsGate, err := e.cfg.CheckTool(ctx, c.Action.Call)
+			if err != nil {
+				if err := e.stepFailed(c, step, err); err != nil || c.State != Running {
+					return err
+				}
+				continue
+			}
+			outbound = outbound || needsGate
+			if c.Prepared && outbound {
+				return e.stop(c, Incomplete, "step stopped before its result was saved")
+			}
 		}
 		c.Action.Outbound = outbound
 		if step.Gate != nil && c.Approved == "" {
@@ -98,7 +109,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 		case step.Wait != nil:
 			if c.WakeAt.IsZero() {
 				d, _ := duration(step.Wait.For)
-				c.WakeAt, c.State = e.cfg.Now().Add(d), Waiting
+				c.WakeAt = e.cfg.Now().Add(d)
 				return e.save(c, "", nil)
 			}
 			if err := e.advance(c, "", nil); err != nil {
@@ -106,7 +117,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			}
 		case step.Loop != nil:
 			f := frame{}
-			if step.Loop.Over != nil {
+			if step.Loop.Over != "" {
 				items, err := resolve(step.Loop.Over, vars)
 				if err != nil {
 					return e.stop(c, Incomplete, err.Error())
@@ -129,7 +140,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if c.State != Running {
 				return nil
 			}
-		case step.Create != nil || step.Update != nil || step.Tool != "" || step.Agent != "":
+		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "":
 			if err := e.execute(ctx, c, step); err != nil {
 				return err
 			}
@@ -163,7 +174,7 @@ func (c *checkpoint) scope(now time.Time) ([]Step, map[string]any) {
 }
 
 func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
-	a := action{Call: Call{App: c.App, Run: c.Run.Run, ID: c.ID, Step: step.ID,
+	a := action{Call: Call{App: c.App, Run: c.DefinitionID, ID: c.ID, Step: step.ID,
 		Key: fmt.Sprintf("%s-%d", c.ID, c.Visit), Name: step.Tool, As: "me"}, Outbound: Outbound(step.Tool)}
 	if step.As != "" {
 		as, err := resolve(step.As, vars)
@@ -181,15 +192,15 @@ func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 		}
 		a.Args = args.(map[string]any)
 	}
-	w := step.Create
-	if step.Update != nil {
-		w = step.Update
+	w := step.RecordsCreate
+	if step.RecordsUpdate != nil {
+		w = step.RecordsUpdate
 		a.Name = "records.update"
 	} else if w != nil {
 		a.Name = "records.create"
 	}
 	if w != nil {
-		err := prepareRecord(&a, w, vars)
+		err := prepareRecord(&a, w, vars, c.Definition.Params)
 		return a, err
 	}
 	if step.Agent != "" {
@@ -200,37 +211,47 @@ func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 		}
 		a.Prompt, _ = prompt.(string)
 		if a.Prompt == "" {
-			return a, errors.New("an agent step needs a prompt")
+			a.Prompt = "Continue with this run step."
 		}
 	}
 	return a, nil
 }
 
-func prepareRecord(a *action, w *RecordWrite, vars map[string]any) error {
+func prepareRecord(a *action, w *schema.RecordsWrite, vars map[string]any, params map[string]Parameter) error {
 	a.RecordType = w.Type
-	if a.RecordType == "" {
-		// A single loop row identifies its type by its own metadata.
-		if ref, ok := w.ID.(string); ok {
-			name, _, _ := strings.Cut(strings.TrimPrefix(ref, "$"), ".")
-			if row, ok := vars[name].(map[string]any); ok {
-				a.RecordType, _ = row["type"].(string)
-			}
-		}
-	}
-	if a.RecordType == "" {
-		return errors.New("record write needs a type")
-	}
 	values, err := resolve(w.Set, vars)
 	if err != nil {
 		return err
 	}
 	a.Args = values.(map[string]any)
-	if a.Name != "records.update" {
-		return nil
+	if a.Name == "records.update" {
+		if err := prepareIDs(a, w, vars, params); err != nil {
+			return err
+		}
 	}
-	target := w.IDs
-	if w.ID != nil {
+	if a.RecordType == "" {
+		return errors.New("record write needs a type")
+	}
+	return nil
+}
+
+func prepareIDs(a *action, w *schema.RecordsWrite, vars map[string]any, params map[string]Parameter) error {
+	var target any = w.IDs
+	binding := w.IDs
+	if w.ID != "" {
 		target = []any{w.ID}
+		binding = w.ID
+		if rowRef, ok := strings.CutSuffix(w.ID, ".id"); ok && a.RecordType == "" {
+			if value, err := resolve(rowRef, vars); err == nil {
+				if row, ok := value.(map[string]any); ok {
+					a.RecordType, _ = row["type"].(string)
+				}
+			}
+		}
+	}
+	if paramRef, ok := strings.CutPrefix(binding, "$params."); ok && a.RecordType == "" {
+		param, _, _ := strings.Cut(paramRef, ".")
+		a.RecordType = params[param].To
 	}
 	resolved, err := resolve(target, vars)
 	if err != nil {
@@ -241,6 +262,12 @@ func prepareRecord(a *action, w *RecordWrite, vars map[string]any) error {
 		return errors.New("record update needs ids")
 	}
 	for _, item := range list {
+		if row, ok := item.(map[string]any); ok {
+			if a.RecordType == "" {
+				a.RecordType, _ = row["type"].(string)
+			}
+			item = row["id"]
+		}
 		id, ok := item.(string)
 		if !ok || id == "" {
 			return errors.New("record ids must be strings")
@@ -254,7 +281,7 @@ func (e *Engine) ask(c *checkpoint, kind, who string) error {
 	if who != "" && who != "me" {
 		return e.stop(c, Incomplete, "personal app approvals go to me")
 	}
-	c.State = Waiting
+	c.State = YourCall
 	c.Approval = c.approval(kind)
 	c.Approval.Tool, c.Approval.Args = c.Action.Name, c.Action.Args
 	return e.publishApproval(c)
@@ -284,7 +311,7 @@ func (e *Engine) enterRound(c *checkpoint) error {
 	}
 	parent := steps[c.Frames[i-1].Index]
 	frame := c.Frames[i]
-	if parent.Loop.Over != nil && frame.Round == len(frame.Items) {
+	if parent.Loop.Over != "" && frame.Round == len(frame.Items) {
 		c.Frames = c.Frames[:i]
 		return e.advance(c, "", nil)
 	}
@@ -310,6 +337,9 @@ func (e *Engine) enterRound(c *checkpoint) error {
 }
 
 func (c *checkpoint) budget() float64 {
+	if c.Definition.Budget == nil {
+		return c.RaisedBudget
+	}
 	return max(c.RaisedBudget, c.Definition.Budget.PerRun)
 }
 
@@ -336,7 +366,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	var reply Reply
 	var err error
 	switch {
-	case step.Create != nil || step.Update != nil:
+	case step.RecordsCreate != nil || step.RecordsUpdate != nil:
 		if e.cfg.Records == nil {
 			err = errors.New("record writes are unavailable")
 		} else {
@@ -369,13 +399,17 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	if err == nil {
 		return e.advance(c, "", reply.Output)
 	}
+	return e.stepFailed(c, step, err)
+}
+
+func (e *Engine) stepFailed(c *checkpoint, step Step, err error) error {
 	if errors.Is(err, ErrBudget) {
 		return e.askBudget(c)
 	}
 	if errors.Is(err, ErrOutcomeUnknown) {
 		return e.stop(c, Incomplete, err.Error())
 	}
-	if c.Attempt < step.Retry.Max {
+	if step.Retry != nil && c.Attempt < step.Retry.Max {
 		const ceiling = 10 * time.Minute
 		backoff := time.Second
 		if step.Retry.Backoff != "" {
@@ -386,7 +420,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			backoff = min(backoff*2, ceiling)
 		}
 		c.Attempt++
-		c.Prepared, c.State, c.WakeAt = false, Waiting, e.cfg.Now().Add(backoff)
+		c.Prepared, c.State, c.WakeAt = false, Running, e.cfg.Now().Add(backoff)
 		return e.save(c, "", nil)
 	}
 	if step.OnError == "continue" {
@@ -408,28 +442,43 @@ func (c *checkpoint) reset() {
 func (e *Engine) advance(c *checkpoint, target string, output any) error {
 	steps, _ := c.scope(e.cfg.Now())
 	f := &c.Frames[len(c.Frames)-1]
+	stepID := steps[f.Index].ID
+	delete(c.Outputs, stepID)
 	if output != nil {
 		values := map[string]any{"output": output}
 		if object, ok := output.(map[string]any); ok {
 			maps.Copy(values, object)
 			values["output"] = output
 		}
-		c.Outputs[steps[f.Index].ID] = values
+		c.Outputs[stepID] = values
 	}
 	f.Index++
-	if target != "" {
-		for index, s := range steps {
-			if s.ID == target {
-				f.Index = index
-				break
-			}
-		}
-	}
 	c.reset()
+	if target != "" {
+		return e.jump(c, target)
+	}
 	if f.Index < len(steps) {
 		c.Step = steps[f.Index].ID
 	}
 	return e.save(c, "", nil)
+}
+
+func (e *Engine) jump(c *checkpoint, target string) error {
+	steps := c.Definition.Steps
+	for depth, frame := range c.Frames {
+		for index, step := range steps {
+			if step.ID == target {
+				c.Frames = c.Frames[:depth+1]
+				c.Frames[depth].Index = index
+				c.Step = target
+				return e.save(c, "", nil)
+			}
+		}
+		if frame.Index < len(steps) {
+			steps = steps[frame.Index].Steps
+		}
+	}
+	return e.stop(c, Incomplete, "error handling step is outside this run path")
 }
 
 func (e *Engine) stop(c *checkpoint, state, reason string) error {

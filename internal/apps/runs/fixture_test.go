@@ -93,3 +93,16 @@ func TestCRMWonTriggerDraftsThenWaitsForSlackApproval(t *testing.T) {
 		t.Fatal("Slack was called before approval")
 	}
 }
+
+func TestRunDefinitionRefusesShellAndRepositoryWorkspace(t *testing.T) {
+	for _, step := range []string{
+		"shell: pwd",
+		"workspace: repo\n    agent: Example",
+		"wait: {for: gmail.reply, thread: thread, timeout: 1h}",
+	} {
+		_, err := runs.Parse([]byte("run: example\nsteps:\n  - id: rejected\n    " + step))
+		if err == nil {
+			t.Errorf("accepted unsupported step %q", step)
+		}
+	}
+}

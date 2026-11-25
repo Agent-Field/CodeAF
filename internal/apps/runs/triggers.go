@@ -10,13 +10,14 @@ import (
 )
 
 type Trigger struct {
-	App  string `json:"-"`
-	ID   string `json:"id"`
-	On   string `json:"on"`
-	Run  string `json:"run"`
-	Cron string `json:"cron"`
-	Type string `json:"type"`
-	When string `json:"when"`
+	Since time.Time `json:"-"`
+	App   string    `json:"-"`
+	ID    string    `json:"id"`
+	On    string    `json:"on"`
+	Run   string    `json:"run"`
+	Cron  string    `json:"cron"`
+	Type  string    `json:"type"`
+	When  string    `json:"when"`
 }
 
 type Change struct {
@@ -78,9 +79,20 @@ func (e *Engine) fire(t Trigger, now time.Time) error {
 	}
 	clock := scheduleClock{Cron: t.Cron, Run: t.Run, Next: next}
 	if fresh {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		return e.saveLocked(nil, key, clock)
+		prev.Next = time.Time{}
+		// A saved definition can survive a quit before its first clock
+		// scan. Its save time establishes the first scheduled slot.
+		if !t.Since.IsZero() && t.Since.Before(now) {
+			prev.Next, err = schedule.Next(t.Since)
+			if err != nil {
+				return err
+			}
+		}
+		if prev.Next.IsZero() || now.Before(prev.Next) {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			return e.saveLocked(nil, key, clock)
+		}
 	}
 	// Jump directly to the next future slot. Creation of the one catch-up
 	// run and consumption of all missed slots commit together.
@@ -118,7 +130,11 @@ func (e *Engine) RecordChanged(change Change) error {
 		record["id"], record["type"] = change.ID, change.Type
 		input := map[string]any{"record": record, "before": scoped.Before, "after": scoped.After}
 		vars := maps.Clone(record)
-		delete(vars, "type") // The reserved CEL name is still available through record.type.
+		for field := range scoped.Before {
+			if _, present := vars[field]; !present {
+				vars[field] = nil
+			}
+		}
 		vars["record"], vars["input"], vars["me"] = record, input, "me"
 		vars["now"] = e.cfg.Now().UTC().Format(time.RFC3339Nano)
 		e.addRecordReader(t.App, vars)

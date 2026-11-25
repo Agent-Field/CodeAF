@@ -9,57 +9,51 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"gopkg.in/yaml.v3"
 )
 
-type App struct {
-	ID    string `json:"id"`
-	Agent struct {
-		File  string `json:"file"`
-		Model string `json:"model"`
-	} `json:"agent"`
-	Capabilities struct {
-		Records    map[string]string `json:"records"`
-		Connectors map[string]struct {
-			Can      []string `json:"can"`
-			Approve  []string `json:"approve"`
-			Channels []string `json:"channels"`
-		} `json:"connectors"`
-		Tools []string `json:"tools"`
-	} `json:"capabilities"`
-	Triggers []Trigger `json:"triggers"`
-	Budget   Budget    `json:"budget"`
-}
+type App = schema.App
 
 // Files loads live runs from the app directory layout. Check and Preview can
 // instead supply their own definition loader and use a scratch journal.
 type Files string
 
-func (f Files) open(app string) (*os.Root, error) {
+type appMeta struct {
+	Archived  bool      `json:"archived"`
+	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (f Files) open(app string) (*os.Root, appMeta, error) {
+	var meta appMeta
 	if !validID(app) || strings.HasPrefix(app, "_") {
-		return nil, ErrNotFound
+		return nil, meta, ErrNotFound
 	}
 	root, err := os.OpenRoot(string(f))
 	if err != nil {
-		return nil, err
+		return nil, meta, err
 	}
 	defer root.Close()
 	appRoot, err := root.OpenRoot(app)
 	if err != nil {
-		return nil, err
+		return nil, meta, err
 	}
 	defer appRoot.Close()
 	encoded, err := appRoot.ReadFile("meta.json")
 	if err != nil {
-		return nil, err
+		return nil, meta, err
 	}
-	var meta struct{ Archived bool }
 	if err := json.Unmarshal(encoded, &meta); err != nil {
-		return nil, err
+		return nil, meta, err
 	}
 	if meta.Archived {
-		return nil, ErrNotFound
+		return nil, meta, ErrNotFound
 	}
-	return appRoot.OpenRoot("current")
+	current, err := appRoot.OpenRoot("current")
+	return current, meta, err
 }
 
 func readApp(root *os.Root, id string) (App, error) {
@@ -78,7 +72,7 @@ func readApp(root *os.Root, id string) (App, error) {
 }
 
 func (f Files) App(id string) (App, error) {
-	root, err := f.open(id)
+	root, _, err := f.open(id)
 	if err != nil {
 		return App{}, err
 	}
@@ -90,7 +84,7 @@ func (f Files) Load(app, run string) (Definition, error) {
 	if !validID(run) {
 		return Definition{}, ErrNotFound
 	}
-	root, err := f.open(app)
+	root, _, err := f.open(app)
 	if err != nil {
 		return Definition{}, err
 	}
@@ -100,6 +94,9 @@ func (f Files) Load(app, run string) (Definition, error) {
 		return Definition{}, err
 	}
 	raw, err := root.ReadFile(filepath.Join("runs", run+".yaml"))
+	if errors.Is(err, fs.ErrNotExist) {
+		raw, err = root.ReadFile(filepath.Join("runs", run+".yml"))
+	}
 	if err != nil {
 		return Definition{}, err
 	}
@@ -107,14 +104,17 @@ func (f Files) Load(app, run string) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
-	if cap := manifest.Budget.PerRun; cap > 0 && (definition.Budget.PerRun == 0 || cap < definition.Budget.PerRun) {
-		definition.Budget.PerRun = cap
+	if manifest.Budget != nil && manifest.Budget.PerRun > 0 {
+		cap := manifest.Budget.PerRun
+		if definition.Budget == nil || definition.Budget.PerRun == 0 || cap < definition.Budget.PerRun {
+			definition.Budget = &schema.RunBudget{PerRun: cap}
+		}
 	}
 	return definition, nil
 }
 
 func (f Files) AgentPrompt(id string) (string, string, error) {
-	root, err := f.open(id)
+	root, _, err := f.open(id)
 	if err != nil {
 		return "", "", err
 	}
@@ -123,11 +123,35 @@ func (f Files) AgentPrompt(id string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	if app.Agent.File != "agent.md" {
+	if app.Agent == nil || app.Agent.File != "agent.md" {
 		return "", "", errors.New("the app has no agent.md")
 	}
 	prompt, err := root.ReadFile("agent.md")
-	return string(prompt), app.Agent.Model, err
+	if err != nil {
+		return "", "", err
+	}
+	model := app.Agent.Model
+	body := strings.ReplaceAll(string(prompt), "\r\n", "\n")
+	if front, ok := strings.CutPrefix(body, "---\n"); ok {
+		metadata, rest, found := strings.Cut(front, "\n---\n")
+		if !found {
+			return "", "", errors.New("agent.md front matter needs a closing delimiter")
+		}
+		var header struct {
+			Model string `yaml:"model"`
+		}
+		if err := yaml.Unmarshal([]byte(metadata), &header); err != nil {
+			return "", "", err
+		}
+		if model == "" {
+			model = header.Model
+		}
+		body = rest
+	}
+	if body = strings.TrimSpace(body); body == "" {
+		return "", "", errors.New("agent.md needs instructions")
+	}
+	return body, model, nil
 }
 
 func (f Files) Triggers() ([]Trigger, error) {
@@ -143,7 +167,7 @@ func (f Files) Triggers() ([]Trigger, error) {
 		if !entry.IsDir() || strings.HasPrefix(entry.Name(), "_") {
 			continue
 		}
-		app, loadErr := f.App(entry.Name())
+		app, since, loadErr := f.triggerApp(entry.Name())
 		switch {
 		case errors.Is(loadErr, fs.ErrNotExist), errors.Is(loadErr, ErrNotFound):
 			continue
@@ -152,14 +176,29 @@ func (f Files) Triggers() ([]Trigger, error) {
 			continue
 		}
 		for _, trigger := range app.Triggers {
-			trigger.App = app.ID
-			triggers = append(triggers, trigger)
+			triggers = append(triggers, Trigger{
+				App: app.ID, ID: trigger.ID, On: trigger.On, Run: trigger.Run, Cron: trigger.Cron,
+				Type: trigger.Type, When: trigger.When, Since: since,
+			})
 		}
 	}
 	return triggers, err
 }
 
-func (a App) allowsTool(service, op string, aliases ...string) (allowed, ask bool) {
+func (f Files) triggerApp(id string) (App, time.Time, error) {
+	root, meta, err := f.open(id)
+	if err != nil {
+		return App{}, time.Time{}, err
+	}
+	defer root.Close()
+	app, err := readApp(root, id)
+	if meta.UpdatedAt.IsZero() {
+		meta.UpdatedAt = meta.CreatedAt
+	}
+	return app, meta.UpdatedAt, err
+}
+
+func allowsTool(a App, service, op string, aliases ...string) (allowed, ask bool) {
 	connector, present := a.Capabilities.Connectors[service]
 	if present {
 		for _, verb := range append(aliases, op) {

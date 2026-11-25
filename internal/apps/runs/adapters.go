@@ -106,9 +106,10 @@ func copyCall(call Call) Call {
 // A connector adapter may also classify verbs using its trusted catalog.
 func Outbound(name string) bool {
 	for part := range strings.FieldsFuncSeq(strings.ToLower(name), func(r rune) bool { return strings.ContainsRune(".:_-/", r) }) {
-		switch part {
-		case "send", "post", "pay", "payment", "charge", "publish", "transfer", "refund":
-			return true
+		for _, verb := range []string{"send", "post", "pay", "charge", "publish", "transfer", "refund"} {
+			if strings.HasPrefix(part, verb) {
+				return true
+			}
 		}
 	}
 	return false

@@ -1973,8 +1973,9 @@ $0.10 goes out as `0.1`.
 
 `run` names the saved definition and `id` names an individual execution.
 `Run` includes `{app, run, id, state, step, started_at, updated_at}` and can
-include `{caught_up, cost, approval, wake_at, ended_at, error}`. Use
-`runs.changed` to refresh a displayed run. Draft starts are refused until a
+include `{caught_up, cost, approval, wake_at, ended_at, error}`. A timer or
+retry carries `state: "running"` and `wake_at`. A pending approval carries
+`state: "your_call"` and `approval`. Use `runs.changed` to refresh a displayed run. Draft starts are refused until a
 preview engine can supply its sample store and connector fakes.
 
 ## search methods

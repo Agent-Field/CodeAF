@@ -46,7 +46,7 @@ steps:
 	if err := e.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := e.Get(run.ID); err != nil || got.State != runs.Waiting || got.Step != "pause" {
+	if got, err := e.Get(run.ID); err != nil || got.State != runs.Running || got.WakeAt.IsZero() || got.Step != "pause" {
 		t.Fatalf("before restart = %+v, %v", got, err)
 	}
 	if err := e.Close(); err != nil {
@@ -187,9 +187,11 @@ func TestLoopIncludesOnlyAllowedRounds(t *testing.T) {
 	fake := runs.NewFakeConnector(map[string]runs.Reply{"demo.read": {Output: "read"}})
 	e := newEngine(t, `
 run: example
+params:
+  items: {type: list, default: [a,b,c]}
 steps:
   - id: each
-    loop: {over: [a,b,c], as: item, max: 2}
+    loop: {over: $params.items, as: item, max: 2}
     steps:
       - id: read
         tool: demo.read
@@ -415,7 +417,7 @@ func TestDispatchDoesNotHoldOtherRunsBehindAgent(t *testing.T) {
 			return runs.Reply{}, ctx.Err()
 		},
 		Ask: func(r runs.Run) {
-			if r.Run == "normal" {
+			if r.DefinitionID == "normal" {
 				close(done)
 			}
 		},
@@ -475,5 +477,46 @@ steps:
 	tick(t, e)
 	if got := state(t, e, r.ID); got.State != runs.Done || len(fake.Calls()) != 1 {
 		t.Fatalf("run = %+v, calls = %+v", got, fake.Calls())
+	}
+}
+
+func TestScheduleCatchesUpWhenSavedBeforeFirstScan(t *testing.T) {
+	now := time.Date(2026, 11, 25, 14, 22, 0, 0, time.UTC)
+	e := newEngine(t, "run: example\nsteps:\n  - id: wait\n    wait: {for: 1h}", runs.Config{
+		Now: func() time.Time { return now },
+		Triggers: func() ([]runs.Trigger, error) {
+			return []runs.Trigger{{App: "app", ID: "hourly", On: "schedule", Cron: "0 * * * *",
+				Run: "example", Since: now.Add(-4 * time.Hour)}}, nil
+		},
+	})
+	tick(t, e)
+	tick(t, e)
+	list, err := e.List("app", "example")
+	if err != nil || len(list) != 1 || !list[0].CaughtUp {
+		t.Fatalf("catch-up list = %+v, %v", list, err)
+	}
+}
+
+func TestOnErrorJumpsFromLoopToEnclosingStep(t *testing.T) {
+	fake := runs.NewFakeConnector(map[string]runs.Reply{"demo.recover": {Output: "recovered"}})
+	e := newEngine(t, `
+run: example
+steps:
+  - id: loop
+    loop: {max: 2, until: "false"}
+    steps:
+      - id: fail
+        tool: demo.missing
+        on_error: goto recover
+  - id: skip
+    tool: demo.skip
+  - id: recover
+    tool: demo.recover
+`, runs.Config{Connector: fake})
+	r := start(t, e)
+	tick(t, e)
+	calls := fake.Calls()
+	if state(t, e, r.ID).State != runs.Done || len(calls) != 2 || calls[1].Step != "recover" {
+		t.Fatalf("run did not reach recovery: %+v", calls)
 	}
 }

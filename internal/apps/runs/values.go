@@ -118,6 +118,14 @@ func (e *Engine) addRecordReader(app string, vars map[string]any) {
 	}
 }
 
+func celVariable(name string) bool {
+	switch name {
+	case "bool", "bytes", "double", "duration", "int", "list", "map", "null_type", "string", "timestamp", "type", "uint":
+		return false // These remain available through a qualified record field.
+	}
+	return reference.MatchString("$"+name) && !strings.Contains(name, ".")
+}
+
 func evaluate(expr string, vars map[string]any, changed func(string) bool) (any, error) {
 	now, _ := time.Parse(time.RFC3339Nano, fmt.Sprint(vars["now"]))
 	opts := []cel.EnvOption{
@@ -146,7 +154,7 @@ func evaluate(expr string, vars map[string]any, changed func(string) bool) (any,
 			}))),
 	}
 	for name := range vars {
-		if reference.MatchString("$"+name) && !strings.Contains(name, ".") {
+		if celVariable(name) {
 			opts = append(opts, cel.Variable(name, cel.DynType))
 		}
 	}

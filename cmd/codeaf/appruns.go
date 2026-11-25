@@ -188,7 +188,7 @@ func (b *appBackend) openRunApproval(r runs.Run) {
 	}
 	b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: appwire.Ask{
 		ID: id, Agent: appRunAskAgent, Kind: "approval", Subkind: kind,
-		Title: title, Detail: detail, Path: []string{r.App, r.Run, r.Step}, Blocking: &blocking,
+		Title: title, Detail: detail, Path: []string{r.App, r.DefinitionID, r.Step}, Blocking: &blocking,
 		Irreversible: gate.Kind == "send",
 		Options:      options,
 	}})

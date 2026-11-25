@@ -22,7 +22,6 @@ import (
 
 const (
 	Running    = "running"
-	Waiting    = "waiting"
 	YourCall   = "your_call"
 	Done       = "done"
 	Incomplete = "incomplete"
@@ -32,19 +31,19 @@ var ErrNotFound = errors.New("run not found")
 var ErrBudget = errors.New("per-run budget reached")
 
 type Run struct {
-	App       string    `json:"app"`
-	Run       string    `json:"run"`
-	ID        string    `json:"id"`
-	State     string    `json:"state"`
-	Step      string    `json:"step"`
-	CaughtUp  bool      `json:"caught_up,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	Cost      float64   `json:"cost,omitempty"`
-	Approval  *Approval `json:"approval,omitempty"`
-	WakeAt    time.Time `json:"wake_at,omitzero"`
-	EndedAt   time.Time `json:"ended_at,omitzero"`
-	StartedAt time.Time `json:"started_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	App          string    `json:"app"`
+	DefinitionID string    `json:"run"`
+	ID           string    `json:"id"`
+	State        string    `json:"state"`
+	Step         string    `json:"step"`
+	CaughtUp     bool      `json:"caught_up,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	Cost         float64   `json:"cost,omitempty"`
+	Approval     *Approval `json:"approval,omitempty"`
+	WakeAt       time.Time `json:"wake_at,omitzero"`
+	EndedAt      time.Time `json:"ended_at,omitzero"`
+	StartedAt    time.Time `json:"started_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type ChangeEvent struct {
@@ -68,7 +67,7 @@ type Config struct {
 	Connector     Connector
 	// CheckTool authorizes a tool against the current app capabilities on
 	// each visit. It can require a send gate based on trusted tool metadata.
-	CheckTool func(Call) (outbound bool, err error)
+	CheckTool func(context.Context, Call) (outbound bool, err error)
 	// Callbacks run after the checkpoint commits. They may read run state.
 	Changed func(ChangeEvent)
 	Ask     func(Run)
@@ -235,7 +234,7 @@ func (e *Engine) List(app, run string) ([]Run, error) {
 		if err != nil {
 			return nil, err
 		}
-		if (app == "" || r.App == app) && (run == "" || r.Run == run) {
+		if (app == "" || r.App == app) && (run == "" || r.DefinitionID == run) {
 			result = append(result, r)
 		}
 	}
@@ -258,7 +257,7 @@ func (e *Engine) start(app, run string, params, input map[string]any, caughtUp b
 	if def.Run != run {
 		return Run{}, fmt.Errorf("run file %s declares %s", run, def.Run)
 	}
-	if err := def.validate(); err != nil {
+	if err := validate(def); err != nil {
 		return Run{}, err
 	}
 	now := e.cfg.Now()
@@ -284,7 +283,7 @@ func (e *Engine) start(app, run string, params, input map[string]any, caughtUp b
 		}
 	}
 	c := checkpoint{
-		Run:        Run{App: app, Run: run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
+		Run:        Run{App: app, DefinitionID: run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
 		Definition: def, Params: p, Input: input, Outputs: make(map[string]any), Frames: []frame{{}},
 		Visit: 1,
 	}
@@ -336,7 +335,7 @@ func (e *Engine) saveLocked(c *checkpoint, clockKey string, clock any) error {
 
 func (e *Engine) track(r Run) {
 	switch r.State {
-	case Running, Waiting, YourCall:
+	case Running, YourCall:
 		e.active[r.ID] = r
 	default:
 		delete(e.active, r.ID)
@@ -356,7 +355,7 @@ func (e *Engine) activeRuns() []Run {
 
 func (e *Engine) changed(r Run) {
 	if e.cfg.Changed != nil {
-		e.cfg.Changed(ChangeEvent{r.App, r.Run, r.ID, r.State, r.Step})
+		e.cfg.Changed(ChangeEvent{App: r.App, Run: r.DefinitionID, ID: r.ID, State: r.State, Step: r.Step})
 	}
 }
 
@@ -460,7 +459,7 @@ func (e *Engine) ready(ctx context.Context) ([]Run, error) {
 }
 
 func (r Run) ready(now time.Time) bool {
-	return r.State == Running || r.State == Waiting && !r.WakeAt.IsZero() && !now.Before(r.WakeAt)
+	return r.State == Running && (r.WakeAt.IsZero() || !now.Before(r.WakeAt))
 }
 
 func (e *Engine) claim(id string) bool {

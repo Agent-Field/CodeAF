@@ -14,7 +14,7 @@ type runWireEngine struct {
 
 func (e *runWireEngine) StartRun(app, run string, params map[string]any) (runs.Run, error) {
 	e.calls++
-	return runs.Run{App: app, Run: run, ID: "started"}, nil
+	return runs.Run{App: app, DefinitionID: run, ID: "started"}, nil
 }
 
 func TestAppRunsWireRefusesDraftBeforeStartingLiveRun(t *testing.T) {

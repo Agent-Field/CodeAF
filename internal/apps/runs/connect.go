@@ -48,7 +48,7 @@ func operation(name string) (connectedOperation, error) {
 	return op, nil
 }
 
-func (c ConnectedTools) check(call Call) (connectedOperation, *connect.Manager, bool, error) {
+func (c ConnectedTools) check(ctx context.Context, call Call) (connectedOperation, *connect.Manager, bool, error) {
 	op, err := operation(call.Name)
 	if err != nil {
 		return op, nil, false, err
@@ -57,7 +57,7 @@ func (c ConnectedTools) check(call Call) (connectedOperation, *connect.Manager, 
 	if err != nil {
 		return op, nil, false, err
 	}
-	allowed, ask := app.allowsTool(op.service, op.verb, op.alias)
+	allowed, ask := allowsTool(app, op.service, op.verb, op.alias)
 	allowed = allowed || slices.Contains(app.Capabilities.Tools, call.Name)
 	if !allowed || call.As != "me" {
 		return op, nil, false, fmt.Errorf("app %s cannot use %s", call.App, call.Name)
@@ -80,8 +80,21 @@ func (c ConnectedTools) check(call Call) (connectedOperation, *connect.Manager, 
 		capability = manager.ToolCapability(service, op.service+"_"+op.verb)
 	} else {
 		service = op.service
-		// Unknown MCP side effects require approval for every call.
-		capability = connect.MCPToolCapability(connect.MCPTool{Name: op.verb})
+		tools, err := manager.MCPTools(ctx, service)
+		if err != nil {
+			return op, nil, false, err
+		}
+		at := slices.IndexFunc(tools, func(tool connect.MCPTool) bool { return tool.Name == op.verb })
+		if at == -1 {
+			return op, nil, false, fmt.Errorf("%s does not offer %s", service, op.verb)
+		}
+		tool := tools[at]
+		// Known outbound verbs still ask even if the server called them reads.
+		if Outbound(call.Name) {
+			tool.ReadOnly = false
+		}
+		op.outbound = !tool.ReadOnly
+		capability = connect.MCPToolCapability(tool)
 	}
 	state := manager.CapabilityState(service, capability)
 	if state == connect.StateOff {
@@ -90,13 +103,13 @@ func (c ConnectedTools) check(call Call) (connectedOperation, *connect.Manager, 
 	return op, manager, ask || op.outbound || state == connect.StateAsk, nil
 }
 
-func (c ConnectedTools) Check(call Call) (bool, error) {
-	_, _, ask, err := c.check(call)
+func (c ConnectedTools) Check(ctx context.Context, call Call) (bool, error) {
+	_, _, ask, err := c.check(ctx, call)
 	return ask, err
 }
 
 func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
-	op, manager, ask, err := c.check(call)
+	op, manager, ask, err := c.check(ctx, call)
 	if err != nil {
 		return Reply{}, err
 	}
@@ -109,7 +122,7 @@ func (c ConnectedTools) Call(ctx context.Context, call Call) (Reply, error) {
 			return Reply{}, err
 		}
 		output, err := manager.MCPCall(ctx, op.service, op.verb, args)
-		return connectorResult(output, err, true)
+		return connectorResult(output, err, op.outbound)
 	}
 	client, err := manager.Client(ctx, op.native)
 	if err != nil {
