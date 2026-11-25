@@ -533,22 +533,12 @@ func teamWakes(role teamRole, entry teams.Entry) bool {
 
 // ── the two wakes ───────────────────────────────────────────────────────────
 
-// teamWakeMember starts a member's turn on the directives it was sent.
+// teamWakeMember starts a member's turn on the directives it was sent, when
+// the one decision says it may (team_wakedecide.go).
 func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) {
-	if reason := a.teamWakeLimited(now); reason != "" {
-		a.teamWakeLimitSay(profile, roles, reason, now)
-		return
-	}
-	if reason := a.teamCapHold(profile, roles); reason != "" {
-		a.teamCapSay(profile, roles, reason)
-		return
-	}
-	// THE PAUSE IS READ AGAIN, FRESH, BEFORE ANYTHING IS HANDED OVER. The look
-	// that chose these roles read the teams file through a memo up to a tick
-	// old ([sharedTeamsStamp]), so a directive sent in the second after the
-	// person pressed Pause reached here as if nothing held it, and the turn it
-	// started consumed the directive the pause was meant to keep.
-	if roles = a.teamPausedSince(profile, roles); len(roles) == 0 {
+	cause := wakeCause{kind: wakeDirective, roles: roles}
+	if d := a.decideTeamWake(profile, &cause, now); d.verdict != wakeStarts {
+		a.sayWake(profile, cause, d, now)
 		return
 	}
 	news := a.teamBoundary()
@@ -557,30 +547,11 @@ func (a *Agent) teamWakeMember(profile string, roles []teamRole, now time.Time) 
 		// handed the directive over already; there is nothing left to wake on.
 		return
 	}
-	text := teamWakeMemberLead + "\n\n" + news
-	woke, reason := a.teamWakeWith(text)
-	if woke {
+	d := a.wakeWith(teamWakeMemberLead + "\n\n" + news)
+	if d.verdict != wakeHolds {
 		a.teamWakeCount(now)
 	}
-	for _, role := range roles {
-		// The wake answers the directive that caused it, the one the
-		// boundary above just handed over, so a reader draws the member as
-		// working on that thread rather than as a line of its own.
-		answers := a.teamAnswering(role.id)
-		if woke {
-			a.teamSay(profile, role.id, teams.Entry{
-				Kind: teams.KindEvent, From: teams.FromManager, To: role.handle, Member: role.key,
-				State: teams.StateRunning, Text: teamWokePrefix + "@" + role.handle, Answers: answers,
-			})
-			continue
-		}
-		if reason != "" {
-			a.teamSay(profile, role.id, teams.Entry{
-				Kind: teams.KindEvent, From: teams.FromSystem, To: role.handle, Member: role.key,
-				State: teams.StateIdle, Text: teamCouldNotPrefix + "@" + role.handle + ": " + reason, Answers: answers,
-			})
-		}
-	}
+	a.sayWake(profile, cause, d, now)
 }
 
 // teamWakeManager starts a manager's turn on the batch its members' replies
@@ -590,23 +561,14 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 	for _, role := range roles {
 		byID[role.id] = role
 	}
-	if a.teamLoopHeld(profile, byID, batch) {
-		return
-	}
-	if reason := a.teamWakeLimited(now); reason != "" {
-		var said []teamRole
-		for id := range batch {
-			said = append(said, byID[id])
-		}
-		a.teamWakeLimitSay(profile, said, reason, now)
-		return
-	}
-	var batchRoles []teamRole
+	cause := wakeCause{kind: wakeReplies, batch: batch}
 	for id := range batch {
-		batchRoles = append(batchRoles, byID[id])
+		role := byID[id]
+		role.id = id
+		cause.roles = append(cause.roles, role)
 	}
-	if reason := a.teamCapHold(profile, batchRoles); reason != "" {
-		a.teamCapSay(profile, batchRoles, reason)
+	if d := a.decideTeamWake(profile, &cause, now); d.verdict != wakeStarts {
+		a.sayWake(profile, cause, d, now)
 		return
 	}
 	news := a.teamBoundary()
@@ -623,67 +585,46 @@ func (a *Agent) teamWakeManager(profile string, roles []teamRole, batch map[stri
 	if len(groups) == 0 {
 		return
 	}
-	text := teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\n" +
-		strings.Join(groups, "\n\n")
-	woke, reason := a.teamWakeWith(text)
-	if woke {
+	d := a.wakeWith(teamWakeManagerLead + "\n\n" + teamWakeDeliveryRule + "\n\n" +
+		strings.Join(groups, "\n\n"))
+	if d.verdict != wakeHolds {
 		a.teamWakeCount(now)
 		a.team.mu.Lock()
 		a.team.watch.rounds++
 		a.team.mu.Unlock()
 	}
-	for id, entries := range batch {
-		role := byID[id]
-		if woke {
-			a.teamSay(profile, id, teams.Entry{
-				Kind: teams.KindEvent, From: teamWakers(entries)[0], To: teams.ToManager, Member: role.key,
-				State: teams.StateRunning, Text: teamWokeManagerText(entries),
-			})
-			continue
-		}
-		if reason != "" {
-			a.teamSay(profile, id, teams.Entry{
-				Kind: teams.KindEvent, From: teams.FromSystem, To: teams.ToManager, Member: role.key,
-				State: teams.StateIdle, Text: teamCouldNotPrefix + "◆: " + reason,
-			})
-		}
-	}
+	a.sayWake(profile, cause, d, now)
 }
 
-// teamWakeWith queues text as the session's note and starts a turn on it,
-// under one hold of the agent's lock so the answer is the wake's own. It
-// reports whether a turn was started (or one was already running, which takes
-// the note at its next boundary), and why not when neither.
+// teamWakeWith is [Agent.wakeWith] as a yes or no: whether a turn was started
+// (or one was already running, which takes the note at its next boundary), and
+// why not when neither.
 func (a *Agent) teamWakeWith(text string) (bool, string) {
-	if why := a.automaticFactoryRefusal(); why != "" {
-		return false, why
-	}
-	if err := a.CheckWork(); err != nil {
-		return false, err.Error()
-	}
+	d := a.wakeWith(text)
+	return d.verdict != wakeHolds, d.why
+}
+
+// wakeWith queues text as the session's note and starts a turn on it, under
+// one hold of the agent's lock so the decision is the wake's own.
+//
+// A SEAT THAT MAY NOT WORK AND A JOB THAT REFUSES AUTOMATIC WORK KEEP NOTHING,
+// as they keep nothing of any other note ([Agent.enqueueNote],
+// [Agent.wakeAnsweringLocked]); nor does a closed session, whose queue nothing
+// drains. Every other gate leaves the note queued for the next turn.
+func (a *Agent) wakeWith(text string) wakeDecision {
 	note := userMessage{message: textMessage("user", strings.TrimSpace(text)), wake: true, authored: true}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.closed {
-		return false, "its conversation has closed"
+	d := a.decideWakeLocked()
+	switch d.gate {
+	case wakeGateFactory, wakeGateSeat, wakeGateClosed:
+		return d
 	}
 	a.steering = append(a.steering, note)
-	if a.running {
-		return true, ""
+	if d.verdict == wakeStarts {
+		a.wakeLocked()
 	}
-	if a.wakeLocked() {
-		return true, ""
-	}
-	switch {
-	case a.workStopped:
-		return false, "its work was stopped; it reads this at its next turn"
-	case wallIsUp(a.steward()):
-		return false, "its time limit has passed; it reads this at its next turn"
-	}
-	if err := a.railBlockLocked(); err != nil {
-		return false, "its spending limit is reached; it reads this at its next turn"
-	}
-	return false, "it cannot start a turn on its own here; it reads this at its next turn"
+	return d
 }
 
 // ── the bounds ──────────────────────────────────────────────────────────────
@@ -714,60 +655,15 @@ func (a *Agent) teamWakeCount(now time.Time) {
 	a.team.watch.woken = append(a.team.watch.woken, now)
 }
 
-// teamCapSay tells the Traffic a wake was held at the cap, once per
-// conversation and reason: every held wake says the same thing, and the cap
-// packet is what asks the person.
-func (a *Agent) teamCapSay(profile string, roles []teamRole, reason string) {
-	a.team.mu.Lock()
-	say := a.team.watch.capSaid != reason
-	a.team.watch.capSaid = reason
-	a.team.mu.Unlock()
-	if !say {
-		return
-	}
-	for _, role := range roles {
-		who, to := "◆", teams.ToManager
-		if !role.manager {
-			who, to = "@"+role.handle, role.handle
-		}
-		a.teamSay(profile, role.id, teams.Entry{
-			Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: role.key,
-			State: teams.StateIdle, Text: teamHeldPrefix + who + ": " + reason,
-		})
-	}
-}
-
-// teamWakeLimitSay tells the Traffic the limit was reached, once an hour.
-func (a *Agent) teamWakeLimitSay(profile string, roles []teamRole, reason string, now time.Time) {
-	a.team.mu.Lock()
-	say := a.team.watch.limitSaid.IsZero() || now.Sub(a.team.watch.limitSaid) >= time.Hour
-	if say {
-		a.team.watch.limitSaid = now
-	}
-	a.team.mu.Unlock()
-	if !say {
-		return
-	}
-	for _, role := range roles {
-		who, to := "◆", teams.ToManager
-		if !role.manager {
-			who, to = "@"+role.handle, role.handle
-		}
-		a.teamSay(profile, role.id, teams.Entry{
-			Kind: teams.KindEvent, From: teams.FromSystem, To: to, Member: role.key,
-			State: teams.StateIdle, Text: teamCouldNotPrefix + who + ": " + reason,
-		})
-	}
-}
-
-// teamLoopHeld is the loop breaker, and true when the manager is not to be
-// woken. A turn the person started since the last team wake resets it.
+// teamLoopHeld is the loop breaker: held says the manager is not to be woken,
+// and trip that this is the wake that tripped it. A turn the person started
+// since the last team wake resets it.
 //
-// ON THE TRIP IT ASKS THE PERSON: an asking event from the manager in each
-// team's Traffic, which the rail draws in the needs-you colour and a digest
-// reads as the manager waiting, and a note queued (not waking) in the
-// manager's own conversation, so its next turn knows why nothing woke it.
-func (a *Agent) teamLoopHeld(profile string, byID map[string]teamRole, batch map[string][]teams.Entry) bool {
+// ON THE TRIP THE PERSON IS ASKED: an asking event from the manager in each
+// team's Traffic ([wakeLoopRule], said by [Agent.sayWake]), and a note queued
+// (not waking) in the manager's own conversation, so its next turn knows why
+// nothing woke it.
+func (a *Agent) teamLoopHeld() (held, trip bool) {
 	heard := a.team.person.n.Load()
 	a.team.mu.Lock()
 	w := &a.team.watch
@@ -776,26 +672,17 @@ func (a *Agent) teamLoopHeld(profile string, byID map[string]teamRole, batch map
 	}
 	if w.rounds < teamLoopRounds {
 		a.team.mu.Unlock()
-		return false
+		return false, false
 	}
-	trip := !w.held
+	trip = !w.held
 	w.held = true
 	a.team.mu.Unlock()
-	if !trip {
-		return true
+	if trip {
+		a.enqueueNote(userMessage{message: textMessage("user", fmt.Sprintf(
+			"codeaf stopped waking you on your team's replies: they woke you %d times with no word from the person. "+
+				"Their lines are still delivered at your next turn. Tell the person where the work stands and ask whether to go on.", teamLoopRounds))})
 	}
-	said := fmt.Sprintf("asks: the team has woken me %d times with no word from you, so I have stopped being woken by it until you say something", teamLoopRounds)
-	for id := range batch {
-		role := byID[id]
-		a.teamSay(profile, id, teams.Entry{
-			Kind: teams.KindEvent, From: teams.FromManager, To: teams.ToRoom, Member: role.key,
-			State: teams.StateAsking, Text: said,
-		})
-	}
-	a.enqueueNote(userMessage{message: textMessage("user", fmt.Sprintf(
-		"codeaf stopped waking you on your team's replies: they woke you %d times with no word from the person. "+
-			"Their lines are still delivered at your next turn. Tell the person where the work stands and ask whether to go on.", teamLoopRounds))})
-	return true
+	return true, trip
 }
 
 // ── what is said ────────────────────────────────────────────────────────────

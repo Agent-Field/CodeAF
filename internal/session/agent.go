@@ -4785,7 +4785,12 @@ func (a *Agent) wakeLocked() bool { return a.wakeAnsweringLocked(false, "", fals
 // whether what it just drained was a line THE PERSON TYPED: the woken turn's
 // opening then says so ([userMessage.answersPerson]).
 func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, answer bool) bool {
-	if why := a.automaticFactoryRefusal(); !answersPerson && !answer && why != "" {
+	switch gate, _ := a.wakeRefusalLocked(answersPerson, answer); gate {
+	case wakeGateOpen:
+	case wakeGateFactory:
+		// Automatic work a stopped job refuses is not kept for the person's
+		// next question to carry: they may still ask its manager something
+		// without granting it the work (factory_person_stop.go).
 		kept := a.steering[:0]
 		for _, note := range a.steering {
 			if !note.wake {
@@ -4794,23 +4799,7 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, a
 		}
 		a.steering = kept
 		return false
-	}
-	if !answer {
-		if err := a.CheckWork(); err != nil {
-			return false
-		}
-	}
-	// A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
-	// on the Steward's own clock rather than a stopped flag: a stopped flag is a
-	// different decision in [Steward.Decide], while the wall's budget ending is
-	// the one stop allowed to win over work still moving. [wallIsUp] reads the
-	// Steward's own wall and clock without asking its spend closure while this
-	// function holds a.mu.
-	wallGone := wallIsUp(a.steward())
-	if a.stageSettled || a.running || a.closed || a.workStopped || wallGone || (a.config.InTask && !a.config.roomThread) || !a.opened {
-		return false
-	}
-	if err := a.railBlockLocked(); err != nil {
+	default:
 		return false
 	}
 
@@ -4859,6 +4848,87 @@ func (a *Agent) wakeAnsweringLocked(answersPerson bool, answersMessage string, a
 	}
 	a.startTurnLocked(ctx, userMessage{wake: true, answersPerson: answersPerson, answersMessage: answersMessage, answer: answer}, sink, watchers...)
 	return true
+}
+
+// wakeGate is which of the engine's own gates refuses a turn nobody typed.
+type wakeGate int
+
+const (
+	// wakeGateOpen is no gate refusing: the turn may start.
+	wakeGateOpen wakeGate = iota
+	// wakeGateFactory is a factory job refusing automatic work.
+	wakeGateFactory
+	// wakeGateSeat is a seat that may not work now ([Agent.CheckWork]).
+	wakeGateSeat
+	// wakeGateClosed is a closed session, whose queue nothing drains again.
+	wakeGateClosed
+	// wakeGateRunning is a turn in flight: the news is steering, not a second
+	// turn.
+	wakeGateRunning
+	// wakeGateStopped is work the person stopped.
+	wakeGateStopped
+	// wakeGateWall is a time limit that has passed.
+	wakeGateWall
+	// wakeGateElsewhere is a conversation whose turns are somebody else's to
+	// start: a task node's runner, a settled stage, one not open yet.
+	wakeGateElsewhere
+	// wakeGateRail is the spending limit.
+	wakeGateRail
+)
+
+// wakeRefusalLocked is the gate a turn nobody typed stops at, and why in the
+// words a team's traffic gives its manager; [wakeGateOpen] and "" when it may
+// start. A turn in flight has no reason: it is not a refusal, the news rides
+// that turn. The caller holds a.mu.
+//
+// THE GATE AND ITS REASON ARE ONE PIECE OF CODE. They were two: the wake
+// refused in one condition, and the team's wake then worked out afterwards
+// which part of it must have refused, in an order of its own
+// (team_wakewatch.go's ladder). A gate added to one was not added to the
+// other, and the traffic named a reason the gate had not used. Now the wake
+// asks here and the traffic says what this answered.
+//
+// ── WHAT REFUSES ──
+//
+//   - a factory job refusing automatic work, unless the turn answers the
+//     person or a question (factory_person_stop.go).
+//   - a seat that may not work now, unless the turn answers a question.
+//   - the session is closed: nothing drains after Close.
+//   - a turn is already running.
+//   - the person stopped the work.
+//   - A WALL THAT HAS PASSED BUYS NO TURN NOBODY ASKED FOR. This is arithmetic
+//     on the Steward's own clock rather than a stopped flag: a stopped flag is
+//     a different decision in [Steward.Decide], while the wall's budget ending
+//     is the one stop allowed to win over work still moving. [wallIsUp] reads
+//     the Steward's own wall and clock without asking its spend closure while
+//     this function holds a.mu.
+//   - the turns are somebody else's to start ([Agent.wakeLocked] says whose).
+//   - the spend rail, asked last because it is the one gate that reads.
+func (a *Agent) wakeRefusalLocked(answersPerson, answer bool) (wakeGate, string) {
+	if why := a.automaticFactoryRefusal(); !answersPerson && !answer && why != "" {
+		return wakeGateFactory, why
+	}
+	if !answer {
+		if err := a.CheckWork(); err != nil {
+			return wakeGateSeat, err.Error()
+		}
+	}
+	switch {
+	case a.closed:
+		return wakeGateClosed, "its conversation has closed"
+	case a.running:
+		return wakeGateRunning, ""
+	case a.workStopped:
+		return wakeGateStopped, "its work was stopped; it reads this at its next turn"
+	case wallIsUp(a.steward()):
+		return wakeGateWall, "its time limit has passed; it reads this at its next turn"
+	case a.stageSettled || (a.config.InTask && !a.config.roomThread) || !a.opened:
+		return wakeGateElsewhere, "it cannot start a turn on its own here; it reads this at its next turn"
+	}
+	if err := a.railBlockLocked(); err != nil {
+		return wakeGateRail, "its spending limit is reached; it reads this at its next turn"
+	}
+	return wakeGateOpen, ""
 }
 
 // wokenTurnContext is what a turn nobody submitted starts under: the plain
