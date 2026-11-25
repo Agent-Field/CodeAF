@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
@@ -219,5 +220,28 @@ func TestAnIdleBudgetSchedulesNothing(t *testing.T) {
 	budgetPath := filepath.Join(homeDir, "v3", "remote", "budget.json")
 	if _, err := os.Stat(budgetPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("idle budget created %q before any charge or Close (err=%v)", budgetPath, err)
+	}
+}
+
+// C2: the day's byte count is remote control's own file in a home. It must
+// never make that home count as having local work, so a computer that watched
+// or was watched, and was then left alone, can still join another set of
+// computers, and a home that was only started still looks unused.
+func TestTheByteCountNeverMakesAHomeLookUsed(t *testing.T) {
+	homeDir := shortTempDir(t)
+	if _, err := identity.EnsureSolo(homeDir); err != nil {
+		t.Fatal(err)
+	}
+	b := OpenBudget(homeDir, NewFakeClock(time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)), 1<<20)
+	b.Charge(1024)
+	b.Close()
+	if _, err := os.Stat(filepath.Join(homeDir, "v3", "remote", "budget.json")); err != nil {
+		t.Fatalf("the byte count was not written, so this proves nothing: %v", err)
+	}
+	if ok, err := identity.Pristine(homeDir); err != nil || !ok {
+		t.Fatalf("the byte count made a home that was only started look used: pristine=%v err=%v", ok, err)
+	}
+	if ok, err := identity.Joinable(homeDir); err != nil || !ok {
+		t.Fatalf("the byte count blocked a join: joinable=%v err=%v", ok, err)
 	}
 }
