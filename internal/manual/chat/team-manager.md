@@ -359,6 +359,11 @@ a stop of a running turn (yours, or the manager's `team_stop`) until a turn next
 ending of a background command, or a watch firing, is written into the conversation as a
 record and starts no turn. This holds for a member and for the manager.
 
+A member often starts a long command, ends its turn and waits to be told how it ended. It
+reads idle, and a stop still reaches it: **Stop** on a crew's row stops such a member too,
+the command's ending starts no turn, and its manager is told the work it handed out was
+stopped, as for a stopped turn.
+
 The conversation starts again when somebody means it to: your own message to it, or the
 manager's next hand-off. That turn reads the record, which says it arrived after the stop
 and is no reason to take the stopped work up again.

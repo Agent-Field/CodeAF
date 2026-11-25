@@ -80,6 +80,8 @@ type teamEvent struct {
 	// that team's manager had handed out ([Agent.teamStoppedByPerson]): there
 	// the text is [teams.StoppedByPerson] and the manager is woken.
 	byPerson map[string]bool
+	// only writes the event in the byPerson teams and no other.
+	only bool
 }
 
 // eventfulRoles reports whether roles make this conversation one whose events
@@ -101,13 +103,24 @@ func (a *Agent) teamEventOwed(origin turnOrigin, state, text string) {
 // teamEventOwedFor is [Agent.teamEventOwed] for a stopped turn, with the teams
 // in which the stop is the person's stop of handed-out work.
 func (a *Agent) teamEventOwedFor(origin turnOrigin, state, text string, byPerson map[string]bool) {
+	a.teamEventQueued(teamEvent{state: state, text: text, origin: origin, byPerson: byPerson})
+}
+
+// teamEventOwedOnly is [Agent.teamEventOwedFor] written in those teams alone:
+// a stop that found no turn running ended nothing in the others.
+func (a *Agent) teamEventOwedOnly(origin turnOrigin, state, text string, byPerson map[string]bool) {
+	a.teamEventQueued(teamEvent{state: state, text: text, origin: origin, byPerson: byPerson, only: true})
+}
+
+func (a *Agent) teamEventQueued(event teamEvent) {
 	if !a.team.events.member.Load() || a.config.teamProfile() == "" {
 		return
 	}
+	event.text, event.at = cutRunesTeam(oneLineTeam(event.text), teamEventText), time.Now()
 	lane := &a.team.events
 	lane.mu.Lock()
 	defer lane.mu.Unlock()
-	lane.queue = append(lane.queue, teamEvent{state: state, text: cutRunesTeam(oneLineTeam(text), teamEventText), at: time.Now(), origin: origin, byPerson: byPerson})
+	lane.queue = append(lane.queue, event)
 	if lane.done == nil {
 		done := make(chan struct{})
 		lane.done = done
@@ -144,6 +157,9 @@ func (a *Agent) writeTeamEvent(event teamEvent) {
 	}
 	for _, role := range a.teamRoles() {
 		if !role.managed || role.manager || role.handle == "" {
+			continue
+		}
+		if event.only && !event.byPerson[role.id] {
 			continue
 		}
 		text := event.text
@@ -226,6 +242,7 @@ func (a *Agent) teamTurnEnded(ctx context.Context, hub *eventHub) {
 		a.teamEventOwedFor(origin, teams.StateIdle, "stopped", a.teamStoppedByPerson(door, handed))
 		return
 	}
+	a.teamStopHoldFinished(handed, origin)
 	a.teamEventOwed(origin, teams.StateFinished, "finished")
 }
 
