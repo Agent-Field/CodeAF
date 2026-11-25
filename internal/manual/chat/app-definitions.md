@@ -99,6 +99,7 @@ checkpoint and choose **Apply**. The standalone `app look` command returns
 If a build stops, reopen it to see the reason in the build progress. If
 the saved app changed during editing, discard the stale draft to start
 from the latest version.
+
 ## How app commands describe a screen and the work it does
 
 App authoring can compile an intent for a list, board, table, calendar, form,

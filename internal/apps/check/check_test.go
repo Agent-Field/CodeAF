@@ -2,6 +2,7 @@ package check_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -60,5 +61,24 @@ func TestCheckMeasuresDeskLookInBothThemesAtBothWidths(t *testing.T) {
 	}
 	if !slices.Contains(report.Codes(), "screen_layout") || !strings.Contains(report.String(), "light at 800 px") {
 		t.Fatalf("Check must fail the measured problem: %v", report)
+	}
+}
+
+func TestUnresponsiveDeskStopsCheckAfterTheFirstCaptureError(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	report := (check.Pipeline{
+		Seed:   func(string, []byte, map[string][]map[string]any) error { return nil },
+		DryRun: func(context.Context, string, string, schema.Definition) error { return nil },
+		Look: func(context.Context, string, string, check.LookViewport) ([]string, error) {
+			calls++
+			return nil, errors.New("renderer timed out")
+		},
+	}).Run(t.Context(), "draft", def, nil)
+	if calls != 1 || report.OK() || len(report.Problems) != 1 || report.Problems[0].Code != "desk_render_unavailable" {
+		t.Fatalf("connected renderer got %d requests with report %+v", calls, report)
 	}
 }

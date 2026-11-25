@@ -212,6 +212,16 @@ func (s *Store) liveMeta(id string) (Meta, error) {
 	return m, err
 }
 
+// Prepare creates the publication lock before the Builder creates drafts.
+func (s *Store) Prepare() error {
+	unlock, err := s.lock(true, true)
+	if err != nil {
+		return err
+	}
+	unlock()
+	return nil
+}
+
 // List leaves out deleted apps and isolates corrupt metadata to its own app.
 func (s *Store) List() ([]Summary, error) {
 	out := []Summary{}

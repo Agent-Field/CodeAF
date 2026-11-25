@@ -109,7 +109,9 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 					return report
 				}
 				if err != nil {
-					problems = append(problems, "The desktop could not draw this screen.")
+					report.Problems = append(report.Problems, problem(file, "desk_render_unavailable",
+						fmt.Sprintf("The desktop could not draw %s in %s at %d px. Try Check again.", schema.FileID(file), theme, width)))
+					return report
 				}
 				for _, message := range problems {
 					report.Problems = append(report.Problems, problem(file, "screen_layout", fmt.Sprintf("%s at %d px: %s", theme, width, message)))

@@ -134,6 +134,7 @@ func TestAppBuilderStartupDoesNotPreventPairing(t *testing.T) {
 	for _, root := range []string{"apps", ".codeaf/apps"} {
 		t.Run(root, func(t *testing.T) {
 			home := startedHome(t, func(home string) {
+				put(t, filepath.Join(home, root, ".lock"), "")
 				put(t, filepath.Join(home, root, "_drafts", ".builder.lock"), "")
 				put(t, filepath.Join(home, ".codeaf/skills/workaf-apps/SKILL.md"), "---\nname: workaf-apps\ndescription: Make an app\n---\n<!-- workaf-apps v3 -->\n")
 			})

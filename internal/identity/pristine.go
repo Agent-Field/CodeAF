@@ -24,7 +24,7 @@ func Pristine(home string) (bool, error) {
 	return !used && err == nil, err
 }
 
-var appBuilderStartup = within(rules{"_drafts": within(rules{".builder.lock": emptyFile})})
+var appBuilderStartup = within(rules{".lock": emptyFile, "_drafts": within(rules{".builder.lock": emptyFile})})
 
 // started is the whole of what starting codeaf leaves in a home, read off a real
 // run: it is the one place that says which files are made again on demand and

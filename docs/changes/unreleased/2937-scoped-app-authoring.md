@@ -20,3 +20,7 @@ With Desk connected, Check measures layouts in both themes at two widths
 and layout findings block Apply. CLI-only builds record that Look was skipped
 and can publish after Check. Collection recipes order typed columns, provide
 empty states, and add views and summary metrics from record fields.
+
+A connected Desk capture failure asks you to retry Check. A stale Apply
+leaves the draft available to discard, and opening an unused app shelf
+still lets the desktop join another computer.

@@ -419,6 +419,20 @@ func buildWithDesk(t *testing.T, look func(context.Context, string, string, chec
 	return jobs, plan.Draft
 }
 
+func TestStartingTheBuilderLeavesAnEmptyReadableAppShelf(t *testing.T) {
+	home := t.TempDir()
+	opts := scriptedApp(t, home)
+	opts.Store = store.NewAt(home, nil)
+	jobs, err := builder.OpenJobs(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobs.Close()
+	if live, err := opts.Store.List(); err != nil || len(live) != 0 {
+		t.Fatalf("the app shelf after startup = %v, %v", live, err)
+	}
+}
+
 func TestConflictingApplyLeavesTheDraftDiscardableAfterRestart(t *testing.T) {
 	home := t.TempDir()
 	opts := scriptedApp(t, home)

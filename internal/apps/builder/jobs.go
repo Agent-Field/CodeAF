@@ -195,6 +195,9 @@ func OpenJobs(opts Options) (*Jobs, error) {
 	if opts.Home == "" || opts.Model == nil {
 		return nil, store.ErrBadInput
 	}
+	if err := opts.Store.Prepare(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Jobs{
 		opts: opts, author: authoring{compiler: opts.Compiler, validateTypes: opts.ValidateTypes}, root: filepath.Join(opts.Home, "apps", "_drafts"), ctx: ctx, cancel: cancel,
