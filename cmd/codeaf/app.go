@@ -49,6 +49,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"github.com/Agent-Field/codeaf/internal/clipboard"
@@ -242,6 +243,7 @@ func runApp(args []string) error {
 		defer keepAutomationsWindow("app")()
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
+	backend.stopAppRuns = backend.openAppRuns(ctx)
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
 	backend.startCloseWatch()
@@ -591,13 +593,16 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 
 // appBackend is the [appwire.Engine] over this process's conversations.
 type appBackend struct {
-	clientTools    appClientTools
-	libraryWatch   sync.Once
-	libraryInboxMu sync.Mutex
-	pluginPauses   map[string]appPluginPause
-	pluginOllama   appPluginOllama
-	pluginAuth     map[string]*appPluginAttempt
-	chats          appChats
+	appRuns          atomic.Pointer[runs.Engine]
+	startAppRunsOnce func()
+	stopAppRuns      func()
+	clientTools      appClientTools
+	libraryWatch     sync.Once
+	libraryInboxMu   sync.Mutex
+	pluginPauses     map[string]appPluginPause
+	pluginOllama     appPluginOllama
+	pluginAuth       map[string]*appPluginAttempt
+	chats            appChats
 	// credentials is what a door gave this launch to keep, waiting for the
 	// app to take it (appkept_credentials.go).
 	credentials appKeptCredentials
@@ -4993,6 +4998,9 @@ func (b *appBackend) Close() error {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
+	if b.stopAppRuns != nil {
+		b.stopAppRuns()
+	}
 	b.closeData()
 	lap("references")
 	// Kept-running processes stay up through a quit; services.stop_all is
