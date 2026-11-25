@@ -69,7 +69,14 @@ func (c *checker) checkGalleryRun(file, recordType string) {
 		}
 	}
 	steps, _ := run["steps"].([]any)
-	walk(steps, "/steps", nil, false)
+	bindings := make(map[string]string, len(params))
+	for name, value := range params {
+		param, _ := value.(map[string]any)
+		if typ := asString(param["to"]); typ != "" {
+			bindings["params."+name] = typ
+		}
+	}
+	walk(steps, "/steps", bindings, false)
 }
 
 func (c *checker) wantStep(ctx actionCtx, at string, step map[string]any, inRepo bool) {

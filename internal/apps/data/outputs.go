@@ -24,6 +24,7 @@ const outputMigration = `
 		actor_kind TEXT NOT NULL,
 		at TEXT NOT NULL,
 		sources TEXT NOT NULL,
+		matched INTEGER NOT NULL,
 		run TEXT NOT NULL,
 		step TEXT NOT NULL,
 		run_key TEXT,
@@ -48,6 +49,7 @@ type Output struct {
 	ActorKind  string         `json:"actor_kind"`
 	At         string         `json:"at"`
 	Sources    []OutputSource `json:"sources,omitempty"`
+	Matched    int            `json:"matched"`
 	Run        string         `json:"run,omitempty"`
 	Step       string         `json:"step,omitempty"`
 }
@@ -57,7 +59,7 @@ type OutputSource struct {
 	Rev int64  `json:"rev"`
 }
 
-const outputFields = `id, app, source_type, action, version, name, mime, blob, inbox, actor, actor_kind, at, sources, run, step`
+const outputFields = `id, app, source_type, action, version, name, mime, blob, inbox, actor, actor_kind, at, sources, matched, run, step`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -65,7 +67,7 @@ func scanOutput(row rowScanner) (Output, error) {
 	var o Output
 	var sources string
 	err := row.Scan(&o.ID, &o.App, &o.SourceType, &o.Action, &o.Version, &o.Name, &o.MIME, &o.Blob, &o.Inbox,
-		&o.Actor, &o.ActorKind, &o.At, &sources, &o.Run, &o.Step)
+		&o.Actor, &o.ActorKind, &o.At, &sources, &o.Matched, &o.Run, &o.Step)
 	if err == nil {
 		err = json.Unmarshal([]byte(sources), &o.Sources)
 	}
@@ -119,9 +121,9 @@ func (s *Store) SaveOutput(sc Scope, o Output, key string, content []byte) (Outp
 		if _, err := w.tx.Exec("INSERT OR IGNORE INTO output_blobs VALUES(?, ?)", o.Blob, content); err != nil {
 			return err
 		}
-		_, err = w.tx.Exec(`INSERT INTO app_outputs VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		_, err = w.tx.Exec("INSERT INTO app_outputs("+outputFields+", run_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			o.ID, o.App, o.SourceType, o.Action, o.Version, o.Name, o.MIME, o.Blob, o.Inbox, o.Actor,
-			o.ActorKind, o.At, canonicalJSON(o.Sources), o.Run, o.Step, runKey)
+			o.ActorKind, o.At, canonicalJSON(o.Sources), o.Matched, o.Run, o.Step, runKey)
 		return err
 	})
 	return o, err
@@ -165,9 +167,16 @@ func (s *Store) Outputs(sc Scope, run, before string, inbox bool) (OutputPage, e
 		return OutputPage{}, errorf(CodeInvalid, "an app is required to list outputs")
 	}
 	const pageSize = 100
+	sch := s.schema.Load()
+	types := make([]string, 0, len(sch.caps[sc.App]))
+	for name, access := range sch.caps[sc.App] {
+		if t := sch.types[name]; t != nil && access != "" {
+			types = append(types, t.ID)
+		}
+	}
 	rows, err := s.rdb.Query("SELECT "+outputFields+` FROM app_outputs
-		WHERE app=? AND (?='' OR run=?) AND (?='' OR id<?) AND (?=0 OR inbox=1)
-		ORDER BY id DESC LIMIT ?`, sc.App, run, run, before, before, inbox, pageSize+1)
+		WHERE app=? AND source_type IN (SELECT value FROM json_each(?)) AND (?='' OR run=?) AND (?='' OR id<?) AND (?=0 OR inbox=1)
+		ORDER BY id DESC LIMIT ?`, sc.App, canonicalJSON(types), run, run, before, before, inbox, pageSize+1)
 	if err != nil {
 		return OutputPage{}, err
 	}
@@ -183,8 +192,8 @@ func (s *Store) Outputs(sc Scope, run, before string, inbox bool) (OutputPage, e
 		if err != nil {
 			return OutputPage{}, err
 		}
-		last = o.ID
 		if err := s.allowOutput(sc, o); err == nil {
+			last = o.ID
 			page.Items = append(page.Items, o)
 		}
 	}

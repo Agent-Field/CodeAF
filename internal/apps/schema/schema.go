@@ -196,7 +196,7 @@ func compileAll() compiled {
 		"screen-1.json": ScreenSchemaURL,
 		"run-1.json":    RunSchemaURL,
 	}
-	for _, name := range []string{"app-2.json", "screen-2.json", "run-2.json", "file-1.json", "records-2.json", "process-2.json", "enterprise-2.json", "sample-2.json", "part-2.json", "slides-1.json", "timeline-1.json", "graph-1.json", "places-1.json", "formulas-1.json", "run-binding-2.json"} {
+	for _, name := range []string{"app-2.json", "screen-2.json", "run-2.json", "file-1.json", "records-2.json", "process-2.json", "enterprise-2.json", "output-template-2.json", "sample-2.json", "part-2.json", "slides-1.json", "timeline-1.json", "graph-1.json", "places-1.json", "formulas-1.json", "run-binding-2.json"} {
 		urls[name] = schemaURL(name)
 	}
 	for name, url := range urls {

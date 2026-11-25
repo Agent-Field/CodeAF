@@ -84,10 +84,26 @@ func (c *checker) checkOutput(at string, t OutputTemplate) {
 			query.Window = &window
 		}
 		c.checkQuery(AppFile, at+"/query", query)
-		for _, name := range append(append([]string{}, q.Select...), q.Group...) {
-			names[name] = fields[name].Type != "" && !fields[name].Masked
-			if systemFields[name] {
+		if len(q.Aggregate) == 0 {
+			if len(q.Select) == 0 {
+				for name, field := range fields {
+					names[name] = !field.Masked
+				}
+			}
+			for _, name := range q.Select {
+				names[name] = fields[name].Type != "" && !fields[name].Masked
+			}
+			for name := range systemFields {
 				names[name] = true
+			}
+		} else {
+			for _, name := range q.Group {
+				names[name] = fields[name].Type != "" && !fields[name].Masked
+			}
+		}
+		for i, p := range q.Filter {
+			if p.Value == nil && p.Op != "has" {
+				c.add(AppFile, fmt.Sprintf("%s/query/filter/%d/value", at, i), CodeRegistryEntry, "This filter needs a value.")
 			}
 		}
 		for _, a := range q.Aggregate {
@@ -97,7 +113,9 @@ func (c *checker) checkOutput(at string, t OutputTemplate) {
 		for name, field := range fields {
 			names[name] = !field.Masked
 		}
-		names["id"], names["created_at"], names["updated_at"] = true, true, true
+		for name := range systemFields {
+			names[name] = true
+		}
 	}
 	check := func(path, text string) {
 		_, err := MergeOutput(text, func(name string) (string, error) {
@@ -123,9 +141,19 @@ func (c *checker) checkRender(ctx actionCtx, at string, body map[string]any) {
 		c.add(ctx.file, at+"/output", CodeActionVerb, "There is no output named %q.", id)
 		return
 	}
-	hasRecord := asString(body["record"]) != ""
+	record := asString(body["record"])
+	hasRecord := record != ""
 	if hasRecord != (t.Record != "") {
 		c.add(ctx.file, at+"/record", CodeActionVerb, "Match the record input to the declared output source.")
+	}
+	if hasRecord && t.Record != "" {
+		typ := ctx.resolveType("", record)
+		if typ == "" && strings.HasPrefix(record, "$") {
+			typ = ctx.locals[strings.TrimSuffix(strings.TrimPrefix(record, "$"), ".id")]
+		}
+		if typ != "" && c.queryTypeName(typ) != c.queryTypeName(t.Record) {
+			c.add(ctx.file, at+"/record", CodeActionVerb, "This output takes a %s record, but the binding names a %s record.", t.Record, typ)
+		}
 	}
 	if inbox, _ := body["inbox"].(bool); inbox && t.Query == nil {
 		c.add(ctx.file, at+"/inbox", CodeActionVerb, "An inbox digest needs a declared query.")

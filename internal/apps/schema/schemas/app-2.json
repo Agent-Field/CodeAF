@@ -403,9 +403,7 @@
       "propertyNames": {
         "$ref": "#/$defs/name"
       },
-      "additionalProperties": {
-        "type": "object"
-      }
+      "additionalProperties": { "$ref": "https://codeaf.dev/schema/output-template-2.json" }
     }
   },
   "$defs": {

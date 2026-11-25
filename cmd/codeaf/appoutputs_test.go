@@ -66,7 +66,7 @@ func TestAppOutputActionParity(t *testing.T) {
 	digest := waitForOutputRun(t, w, id, started.ID)
 	var inbox data.OutputPage
 	w.must("apps.outputs", appwire.AppOutputListParams{App: id, Inbox: true}, &inbox)
-	if len(inbox.Items) != 1 || inbox.Items[0].Action != "weekly-digest" || inbox.Items[0].Run != digest.ID {
+	if len(inbox.Items) != 1 || inbox.Items[0].Action != "weekly-digest" || inbox.Items[0].Run != digest.ID || inbox.Items[0].Matched != 1 {
 		t.Fatalf("digest inbox = %+v", inbox)
 	}
 	w.must("apps.output_file", appwire.AppOutputFileParams{App: id, ID: inbox.Items[0].ID}, &file)

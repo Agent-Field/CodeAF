@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeaf.dev/schema/output-template-2.json",
+  "title": "App output template",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
+    "format": {
+      "enum": [
+        "pdf",
+        "docx",
+        "pptx",
+        "csv"
+      ]
+    },
+    "record": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+    },
+    "query": {
+      "allOf": [
+        {
+          "$ref": "https://codeaf.dev/schema/screen-2.json#/$defs/query"
+        },
+        {
+          "properties": {
+            "relate": false,
+            "args": false,
+            "window": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "order_by": {
+                  "type": "array",
+                  "maxItems": 1,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^-?[a-zA-Z_][a-zA-Z0-9_-]*$"
+                  }
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 500
+                }
+              },
+              "required": []
+            },
+            "filter": {
+              "items": {
+                "properties": {
+                  "op": {
+                    "enum": [
+                      "eq",
+                      "ne",
+                      "lt",
+                      "lte",
+                      "gt",
+                      "gte",
+                      "has"
+                    ]
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "dependentRequired": {
+            "group": [
+              "aggregate"
+            ]
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "aggregate"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "aggregate": {
+                    "minItems": 1,
+                    "maxItems": 16
+                  },
+                  "group": {
+                    "maxItems": 2
+                  },
+                  "window": false,
+                  "select": false
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192
+    },
+    "columns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ]
+      }
+    }
+  },
+  "required": [
+    "label",
+    "format"
+  ],
+  "oneOf": [
+    {
+      "required": [
+        "record"
+      ]
+    },
+    {
+      "required": [
+        "query"
+      ]
+    }
+  ],
+  "if": {
+    "properties": {
+      "format": {
+        "const": "csv"
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "columns"
+    ],
+    "properties": {
+      "body": false
+    }
+  },
+  "else": {
+    "required": [
+      "body"
+    ],
+    "properties": {
+      "columns": false
+    }
+  }
+}

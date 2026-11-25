@@ -36,7 +36,7 @@ func Invoke(ctx context.Context, store *data.Store, app schema.App, call Invocat
 	if err != nil {
 		return data.Output{}, err
 	}
-	rows, err := readRows(store, scope, t, action.Record)
+	rows, matched, err := readRows(store, scope, t, action.Record)
 	if err != nil {
 		return data.Output{}, err
 	}
@@ -53,7 +53,7 @@ func Invoke(ctx context.Context, store *data.Store, app schema.App, call Invocat
 	file := data.Output{
 		App: app.ID, Action: action.Output, SourceType: source.ID, Version: app.Version,
 		Name: action.Output + "." + t.Format, MIME: mediaTypes[t.Format], Inbox: action.Inbox,
-		Run: call.Run, Step: call.Step,
+		Run: call.Run, Step: call.Step, Matched: matched,
 	}
 	for _, row := range rows {
 		id, _ := row["id"].(string)
@@ -71,19 +71,26 @@ var mediaTypes = map[string]string{
 	"pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 
-func readRows(store *data.Store, scope data.Scope, t schema.OutputTemplate, record string) ([]map[string]any, error) {
+func readRows(store *data.Store, scope data.Scope, t schema.OutputTemplate, record string) ([]map[string]any, int, error) {
 	q := t.Query
 	if q == nil {
 		row, err := store.Get(scope, t.Record, record, false)
-		return []map[string]any{row}, err
+		return []map[string]any{row}, 1, err
 	}
 	ir := &data.QueryIR{Type: q.Type, Select: q.Select, Group: q.Group}
 	for _, p := range q.Filter {
 		op, ok := filterOps[p.Op]
 		if !ok {
-			return nil, fmt.Errorf("unsupported output query operator %q", p.Op)
+			return nil, 0, fmt.Errorf("unsupported output query operator %q", p.Op)
 		}
-		ir.Where = append(ir.Where, data.Cond{Field: p.Field, Op: op, Value: fmt.Sprint(p.Value), Neg: p.Op == "ne"})
+		cond := data.Cond{Field: p.Field, Op: op, Neg: p.Op == "ne"}
+		if p.Op != "has" {
+			if p.Value == nil {
+				return nil, 0, fmt.Errorf("output query filter on %s needs a value", p.Field)
+			}
+			cond.Value = fmt.Sprint(p.Value)
+		}
+		ir.Where = append(ir.Where, cond)
 	}
 	for _, a := range q.Aggregate {
 		ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: a.Op, Field: a.Field, As: a.As})
@@ -91,7 +98,7 @@ func readRows(store *data.Store, scope data.Scope, t schema.OutputTemplate, reco
 	if len(ir.Aggregate) > 0 {
 		result, err := store.Aggregate(scope, ir)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		rows := make([]map[string]any, 0, len(result.Groups))
 		for _, group := range result.Groups {
@@ -100,7 +107,7 @@ func readRows(store *data.Store, scope data.Scope, t schema.OutputTemplate, reco
 			}
 			rows = append(rows, group.Values)
 		}
-		return rows, nil
+		return rows, result.Total, nil
 	}
 	limit := schema.OutputRowsMax
 	if q.Window != nil {
@@ -113,16 +120,16 @@ func readRows(store *data.Store, scope data.Scope, t schema.OutputTemplate, reco
 	}
 	page, err := store.QueryRows(scope, ir, "", limit)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if page.Next != "" && (q.Window == nil || q.Window.Limit == 0) {
-		return nil, &data.Error{Code: data.CodeInvalid, Message: fmt.Sprintf("the output query matched more than %d records; declare a limit or summarize it", limit)}
+		return nil, 0, &data.Error{Code: data.CodeInvalid, Message: fmt.Sprintf("the output query matched more than %d records; declare a limit or summarize it", limit)}
 	}
 	rows := make([]map[string]any, 0, len(page.Rows))
 	for _, row := range page.Rows {
 		rows = append(rows, row)
 	}
-	return rows, nil
+	return rows, page.Total, nil
 }
 
 var filterOps = map[string]string{"eq": "=", "ne": "=", "lt": "<", "lte": "<=", "gt": ">", "gte": ">=", "has": "has"}
