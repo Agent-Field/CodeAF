@@ -4007,6 +4007,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can a teammate send messages in my chat while I am using it", "organization-hosted-sessions"},
 		{"what is the sandbox around a hosted chat", "organization-hosted-sessions"},
 		{"can I add my own API key to the organization's chats", "organization-hosted-sessions"},
+		// The Compose walk as a stranger: a person with no desktop app, and an operator with no domain.
+		{"how do I join an organization from the terminal without the desktop app", "organization-hosted-sessions"},
+		{"where do I get the sign-in token for codeaf chat --org", "organization-hosted-sessions"},
+		{"how do I sign in again to my organization from the command line", "organization-hosted-sessions"},
+		{"can I try an organization on one machine without a domain name", "organization-start"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

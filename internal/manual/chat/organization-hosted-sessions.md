@@ -26,9 +26,18 @@ codeaf chat --org https://your-organization --session hs_0123456789abcdef0123456
 
 With no `--session`, it opens the chat you used most recently, or makes your first one if you have none. `--session` takes the name of a chat, which looks like `hs_` followed by 24 letters and digits. `--once` sends one message and prints the reply, as it does elsewhere. Another window on the same command opens another view of the same chat.
 
-You sign in first. Set `CODEAF_ORG_TOKEN`, or run `codeaf attach <url> --token <token>` once for that server. Without either you read: `Sign in to <host> first: set CODEAF_ORG_TOKEN, or run codeaf attach <url> --token <token>.` The address must be `https://`; a plain `http://` address is accepted only for the computer you are on, because a sign-in must not cross a network in the clear.
+You sign in first. Set `CODEAF_ORG_TOKEN`, or run `codeaf attach <url> --token <token>` once for that server. The token is the `access_token` that joining or signing in answers with: see *join or sign in to an organization from a terminal*. Without either you read: `Sign in to <host> first: set CODEAF_ORG_TOKEN, or run codeaf attach <url> --token <token>.` The address must be `https://`; a plain `http://` address is accepted only for the computer you are on, because a sign-in must not cross a network in the clear.
 
 The chat's folder is chosen on the server, so `--org` cannot take `--no-compact`, `--yolo`, `--max-hours`, `--max-cost`, `--one-model` or `--no-host`, nor be combined with `--host` or `--at`. It says which one cannot travel and why.
+
+## join or sign in to an organization from a terminal — where the sign-in token for `codeaf chat --org` comes from, with no desktop app
+
+The token `--org` wants (`CODEAF_ORG_TOKEN`, or `codeaf attach <url> --token <token>`) is the `access_token` the organization's server answers with when you join or sign in. The desktop app asks for it for you; from a terminal you ask yourself, with `curl`, at the organization's `https://` address (`ORG` below):
+
+- **Join with an invite link** (from the operator; one person, seven days): `curl -sS $ORG/v1/factory-access -H 'Content-Type: application/json' -d '{"verb":"sign_up","link":"<the invite link>","username":"you","password":"<12 or more characters>","name":"Your Name"}'`. The answer says `"state":"joined"` and holds `"access_token"`.
+- **Sign in again**: `curl -sS $ORG/v1/auth/password -H 'Content-Type: application/json' -d '{"username":"you","password":"..."}'` answers with a new `access_token`.
+
+A refusal comes back as `200` with `"state":"ready"` and a `message`, such as `A password cannot contain your username.`; a link already used says `"state":"used_up"`. A password is taken only over `https://` (or from the server's own machine, which a Docker setup does not count as its own). The token ends after 30 days without use, and after 90 days at most; keep it like a password. `docs/organizations.md`, "From a terminal", has the operator's side: claiming the organization and making an invite link.
 
 ## is my code on the organization's server when I use --org — what stays on your computer and what does not
 
@@ -42,7 +51,7 @@ The organization's operator keeps the machine and its disk. See *what can the op
 
 A hosted chat is private to the person who made it, unless the organization's policy makes chats of this kind start otherwise (the policy's default for `session`). A private chat is left out of every other person's list and out of the organization's live updates: nobody else is told it exists, who owns it or what state it is in, and that includes the operator unless the policy says the operator sees private things (see *can the operator open my hosted chat*). Someone else who asks for it, to open it, list it, stop it or delete it, gets the same answer as for a chat that was never made, `There is no such chat.`
 
-You can share a chat with a person, a team or the whole organization the way you share anything else (`POST /v1/resources/session/<chat>/grants` with who and a role; see *Sharing*). Once you do, it shows up in that person's `shared` list. Taking the access away takes it off their list again, and cuts them off if they are watching it at that moment: see *what can someone I shared my hosted chat with do*.
+You can share a chat with a person, a team or the whole organization the way you share anything else (`POST /v1/resources/session/<chat>/grants` with who and a role, such as `{"subject":{"kind":"person","id":"<their username>"},"role":"view"}`; see *Sharing*). Once you do, it shows up in that person's `shared` list. Taking the access away takes it off their list again, and cuts them off if they are watching it at that moment: see *what can someone I shared my hosted chat with do*.
 
 A chat made by a bot belongs to the person who made the bot, is private like any other, and is shown to nobody else until that person shares it.
 
