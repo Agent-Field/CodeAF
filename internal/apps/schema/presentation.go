@@ -119,6 +119,9 @@ func (c *checker) addPresentations() error {
 		}
 		fields, _ := c.typeFields(name)
 		p := c.recordPresentation(record, fields, recordFieldOrder(records[name], fields))
+		if p.Title == "" && len(p.Meta) == 0 && p.Trailing == "" && p.State == "" && p.Avatar == "" && p.Money == "" && p.Link == "" {
+			continue
+		}
 		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(records[name], &raw); err != nil {
 			return err
