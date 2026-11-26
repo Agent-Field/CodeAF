@@ -101,6 +101,11 @@ empty bound columns, lists that have records but no visible fields, contrast
 problems and competing primary actions must be fixed before a step can be kept. If the connected renderer times out,
 try Check again.
 
+Check also names missing screen controls. Each declared command and each
+manual action in the plan's `actions` needs a screen control. A data line with
+`create: true` needs a create button or form. These findings go back to the
+Builder for repair, including when Desk is closed.
+
 With the CLI alone, Check still validates the app. The Check result and
 change card show `look: skipped (desk not running)`. You can keep the
 checkpoint and choose **Apply**. The standalone `app look` command returns

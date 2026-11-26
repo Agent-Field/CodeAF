@@ -337,6 +337,7 @@ type Plan struct {
 	Ask        string     `json:"ask"`
 	Data       []PlanLine `json:"data"`
 	Automation []PlanLine `json:"automation,omitempty"`
+	Actions    []PlanLine `json:"actions,omitempty"`
 	Screens    []PlanLine `json:"screens"`
 	Agent      *PlanAgent `json:"agent,omitempty"`
 	Needs      string     `json:"needs,omitempty"`
@@ -344,9 +345,10 @@ type Plan struct {
 
 // PlanLine is one editable line of the plan card, naming the id it describes.
 type PlanLine struct {
-	ID   string `json:"id"`
-	Line string `json:"line"`
-	Uses bool   `json:"uses,omitempty"`
+	ID     string `json:"id"`
+	Line   string `json:"line"`
+	Uses   bool   `json:"uses,omitempty"`
+	Create bool   `json:"create,omitempty"`
 }
 
 // PlanAgent is the plan card's agent line.
