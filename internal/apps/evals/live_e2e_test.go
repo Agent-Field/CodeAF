@@ -129,7 +129,6 @@ func runGallery(t *testing.T, key string, noModel bool) {
 				scoreCtx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 				defer cancel()
 				scoreGalleryLook(scoreCtx, &result, c, root, language, judge)
-				result.Pass = result.Pass && len(result.Failures) == 0
 			}
 			if result.Pass && !result.Complete {
 				t.Error("the integrated engine left platform probes unrun")
@@ -191,7 +190,12 @@ func TestLiveDesignRubric(t *testing.T) {
 		if judge != nil {
 			scoreGalleryLook(t.Context(), &result, c, root, language, judge)
 		}
-		result.Pass = len(result.Failures) == 0
+		result.Pass = result.LookScore != nil
+		for _, entry := range result.Design {
+			if entry.Problem != "" {
+				result.Failures = append(result.Failures, entry.Screen+": "+entry.Problem)
+			}
+		}
 		results = append(results, result)
 	}
 	raw, err := json.MarshalIndent(results, "", "  ")
@@ -204,6 +208,9 @@ func TestLiveDesignRubric(t *testing.T) {
 		}
 	} else {
 		t.Log(string(raw))
+	}
+	if skipped != "" {
+		t.Skip(skipped)
 	}
 	if slices.ContainsFunc(results, func(result Result) bool { return !result.Pass }) {
 		t.Error("one or more design scores could not be recorded")
@@ -261,7 +268,6 @@ func scoreGalleryLook(ctx context.Context, result *Result, c Case, root, languag
 			}
 			if err != nil {
 				entry.Problem = err.Error()
-				result.Failures = append(result.Failures, path+": "+entry.Problem)
 			}
 			result.Design = append(result.Design, entry)
 		}

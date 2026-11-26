@@ -18,7 +18,14 @@ type Depth struct {
 	SampleRows      int `json:"sample_rows"`
 }
 
-const maxStaticDepth = 4
+var staticDepthCriteria = [...]func(Depth) bool{
+	func(d Depth) bool { return d.AISteps >= 2 },
+	func(d Depth) bool { return d.Triggers > 0 },
+	func(d Depth) bool { return d.GatedWritebacks > 0 },
+	func(d Depth) bool { return d.SampleRows >= 30 },
+}
+
+const maxStaticDepth = len(staticDepthCriteria)
 
 func measureDepth(files map[string]string) Depth {
 	var depth Depth
@@ -47,8 +54,8 @@ func measureDepth(files map[string]string) Depth {
 			depth.SampleRows += len(rows)
 		}
 	}
-	for _, met := range []bool{depth.AISteps >= 2, depth.Triggers > 0, depth.GatedWritebacks > 0, depth.SampleRows >= 15} {
-		if met {
+	for _, criterion := range staticDepthCriteria {
+		if criterion(depth) {
 			depth.Score++
 		}
 	}
@@ -57,7 +64,7 @@ func measureDepth(files map[string]string) Depth {
 
 func (d *Depth) countSteps(steps []schema.Step) {
 	for _, step := range steps {
-		if step.AI != nil && step.AI.Prompt != "" && len(step.AI.Output) != 0 || step.Agent != "" && step.Prompt != "" {
+		if (step.AI != nil && step.AI.Prompt != "" && len(step.AI.Output) != 0) || (step.Agent != "" && step.Prompt != "") {
 			d.AISteps++
 		}
 		if step.Tool != "" && step.Gate != nil && step.Gate.Approval != "" {

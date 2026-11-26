@@ -450,6 +450,10 @@ func WriteReport(report, table io.Writer, results []Result) error {
 		}
 		if r.LookScore != nil {
 			look = fmt.Sprintf("%.2f/5", *r.LookScore)
+		} else if r.LookSkipped != "" {
+			look = "skipped"
+		} else if len(r.Design) > 0 {
+			look = "incomplete"
 		}
 		if r.Depth != nil {
 			depth = fmt.Sprintf("%d/%d", r.Depth.Score, maxStaticDepth)
