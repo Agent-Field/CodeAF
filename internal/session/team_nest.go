@@ -265,8 +265,14 @@ func (a *Agent) teamStartSubTeam(ctx context.Context, team teams.Team, role team
 	case pool != "":
 		money = fmt.Sprintf("It has no cap of its own and spends from %q's pool.", pool)
 	}
+	reports := "reports to you"
+	if team.Root {
+		// The new manager's ending does not wake the global manager, its first
+		// turn on the brief included ([teamEventWakesManagerOf]).
+		reports = "reports to you with team_post: its turn finishing on your brief does not start yours, and team_status says where it stands"
+	}
 	said := fmt.Sprintf("Made the team %q under %q and asked for its manager @%s (%s). The conversations view opens @%s in %q's folder as a member of %q; it is handed your brief marked as yours, "+
-		"makes itself the manager of %q, and reports to you. %s", name, team.Name, handle, teams.ThreadNumber(startID), handle, team.Name, team.Name, name, money)
+		"makes itself the manager of %q, and %s. %s", name, team.Name, handle, teams.ThreadNumber(startID), handle, team.Name, team.Name, name, reports, money)
 	if len(moved) > 0 {
 		said += " Moved in: " + strings.Join(moved, ", ") + "; they are its manager's to direct now, not yours."
 	}

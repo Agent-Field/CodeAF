@@ -124,6 +124,12 @@ type teamRole struct {
 	// manager is the global manager, and its other members are the top-level
 	// teams' managers.
 	root bool
+	// top says this seat in the root is a top-level team's manager's now
+	// ([teams.File.TopManagers]). The root can hold others, a manager that
+	// stopped being one or a conversation the person put there, and only a
+	// manager is told it sits there because it manages a team
+	// ([teamMemberRole]).
+	top bool
 	// dissolvable says this conversation manages the team and the team has
 	// never held anyone but it ([teams.File.Dissolvable]), which is when its
 	// manager is given team_dissolve (team_dissolve.go).
@@ -152,6 +158,15 @@ type teamRole struct {
 	derived  bool
 	joinedAt time.Time
 	startID  string
+	// paused says the person paused this membership ([teams.Member.Paused]):
+	// team traffic starts no turn here until they resume it (team_pause.go).
+	paused bool
+	// standby says this membership was made without work to start on
+	// ([teams.Member.Standby]): its start line is its role's description and
+	// starts no turn.
+	standby bool
+	// roleName is what this member is in the team for ([teams.Member.Role]).
+	roleName string
 }
 
 // fileStamp is what a stat says about a file, and the whole of how this file
@@ -249,6 +264,18 @@ type teamSeat struct {
 	// thread.go). Memory only: a conversation reopened answers nothing until
 	// the manager next speaks to it, which reads as a thread of its own.
 	answering map[string]string
+	// handed is, per team, when this conversation was first handed the work
+	// it is on by that team's manager (a directive, or the brief it was
+	// started on). It lasts as long as the work does, across the turns a
+	// command it waits on separates ([Agent.teamHandedCarried]), and is what
+	// makes the person's stop the stop of handed-out work.
+	handed map[string]time.Time
+	// stopHold is the person's stop of this conversation's turn while it sat
+	// in a team, kept until a turn next begins (team_stophold.go).
+	stopHold teamStopHold
+	// pauseHold is the person's pause of this conversation, as the wakes
+	// decided under the agent's lock read it (team_pause.go).
+	pauseHold teamPauseHold
 }
 
 // teamAnsweringLocked is the id this conversation's replies in team id answer
@@ -361,6 +388,8 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	if !now.present {
 		a.team.teamsAt, a.team.roles, a.team.file = now, nil, nil
 		a.team.events.member.Store(false)
+		a.team.stopHold.seated.Store(false)
+		a.team.pauseHold.paused.Store(false)
 		return nil
 	}
 	file, err := teamView(profile, keys)
@@ -374,6 +403,8 @@ func (a *Agent) teamRolesLocked(profile string) []teamRole {
 	a.team.roles = rolesFor(file, keys, a.team.defaults)
 	a.team.file = file
 	a.team.events.member.Store(eventfulRoles(a.team.roles))
+	a.team.stopHold.seated.Store(len(a.team.roles) > 0)
+	a.team.pauseHold.paused.Store(pausedRoles(a.team.roles))
 	return a.team.roles
 }
 
@@ -435,12 +466,16 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			boss:        boss,
 			bossName:    bossName,
 			root:        team.Root,
+			top:         team.Root && topManager(file, member.Key),
 			key:         member.Key,
 			wakes:       effective.Wake,
 			questionsUp: effective.QuestionsUp,
 			derived:     member.HandleDerived(),
 			joinedAt:    member.JoinedAt,
 			startID:     member.StartID,
+			paused:      member.Paused && team.Manager != member.Key,
+			standby:     member.Standby,
+			roleName:    strings.TrimSpace(member.Role),
 		}
 		role.dissolvable = role.manager && file.Dissolvable(team.ID)
 		if hasHome {
@@ -456,6 +491,18 @@ func rolesFor(file *teams.File, keys []string, d teams.Defaults) []teamRole {
 			}
 		}
 		roles = append(roles, role)
+	}
+	// A PAUSE HOLDS THE CONVERSATION IN EVERY TEAM. The person paused the
+	// member, not one of its memberships, and an interface that finds the
+	// member paused ends a turn another team's traffic started; so no team's
+	// traffic starts one. A team this conversation manages is not held.
+	for _, role := range roles {
+		if role.paused {
+			for i := range roles {
+				roles[i].paused = !roles[i].manager
+			}
+			break
+		}
 	}
 	return roles
 }
@@ -487,7 +534,12 @@ func memberOf(team teams.Team, keys []string) (teams.Member, bool) {
 // costs; but a verb that cannot work must be absent, not broken (CLAUDE.md),
 // and a demotion is rare enough that paying once for it is cheap. A role
 // gained again appends its verbs at the tail as before.
-func (a *Agent) teamBoundary() string {
+func (a *Agent) teamBoundary() string { return a.teamBoundaryFor(false) }
+
+// teamBoundaryFor is [Agent.teamBoundary] for a turn that is running. person
+// says the person's own words opened it, which is the one turn that reads what
+// a paused membership is holding (team_pause.go).
+func (a *Agent) teamBoundaryFor(person bool) string {
 	a.clientToolsBoundary()
 	profile := a.config.teamProfile()
 	if profile == "" {
@@ -497,7 +549,7 @@ func (a *Agent) teamBoundary() string {
 	lead := a.factoryLead()
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
-	news := a.teamNewsLocked(profile, roles)
+	news := a.teamNewsLocked(profile, roles, person)
 	claims := a.team.claims
 	a.team.claims = nil
 	if len(claims) > 0 {
@@ -689,8 +741,9 @@ func (a *Agent) teamRetiredNotice(name string) (string, bool) {
 }
 
 // teamNewsLocked reads each team's Traffic past this conversation's cursor and
-// composes what is addressed to it. The caller holds a.team.mu.
-func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
+// composes what is addressed to it. person says the person's own words opened
+// the turn this is read for. The caller holds a.team.mu.
+func (a *Agent) teamNewsLocked(profile string, roles []teamRole, person bool) string {
 	if len(roles) == 0 {
 		return ""
 	}
@@ -709,6 +762,13 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 	save := false
 	var groups []string
 	for _, role := range roles {
+		// A PAUSED MEMBERSHIP'S TRAFFIC WAITS FOR THE RESUME, whatever started
+		// this turn. A sub-task landing or a command ending is not the person
+		// lifting the pause, and a directive handed over here was gone when
+		// they did. Only a turn the person opened reads it (team_pause.go).
+		if role.paused && !role.manager && !person {
+			continue
+		}
 		path := teams.TrafficPath(profile, role.id)
 		stamp := stampOf(path)
 		cursor, known := a.team.cursors[role.id]
@@ -735,6 +795,11 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 			}
 			if line := a.teamEntryLineLocked(profile, role, entry); line != "" {
 				lines = append(lines, line)
+				if role.standby && entry.Kind == teams.KindStart && !role.manager {
+					// Its start line is handed over: standby is over.
+					a.teamStandbyOver(profile, role)
+				}
+				a.teamHandedLocked(role, entry)
 				// WHAT THE MANAGER LAST SAID TO IT IS WHAT IT ANSWERS, until the
 				// manager says something else: its next reply to the manager, and
 				// the events its turn raises, name it.
@@ -751,6 +816,8 @@ func (a *Agent) teamNewsLocked(profile string, roles []teamRole) string {
 		// behind it, so the stamp is left unmatched and the next boundary reads on.
 		if len(entries) < teamPageLimit {
 			a.team.trafficAt[role.id] = stamp
+			// And nothing a pause held is still owed a turn: this one has it.
+			delete(a.team.watch.pausedHeld, role.id)
 		}
 		if len(lines) > 0 {
 			groups = append(groups, teamNewsGroup(role, lines))
@@ -785,9 +852,24 @@ func (a *Agent) teamOwnStart(role teamRole, entry teams.Entry) bool {
 // cursor for. A fresh conversation skips the team's earlier history except
 // its own start, whose brief is handed over as the manager's words.
 func (a *Agent) firstTeamCursor(profile string, role teamRole) string {
+	// A MEMBER ON STANDBY HAS NOT BEEN HANDED ITS START LINE, however long ago
+	// it was written and however many times its conversation has been opened
+	// since: it takes no turn until its manager's first directive, so no
+	// boundary has saved a cursor for it. It starts just before that line, and
+	// reads it and everything sent to it since.
+	if role.standby && !role.manager && role.startID != "" {
+		return teamCursorBefore(role.startID)
+	}
 	tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
 	if err != nil {
 		return teamLogStart
+	}
+	// AND A MEMBER WITH DIRECTIVES HELD BY A PAUSE STARTS BEFORE THE OLDEST OF
+	// THEM. A paused member is left closed, so nothing of its own wrote down
+	// where it was; the sender's "held" line is the record that a directive is
+	// owed to it, and with no cursor saved none of them was ever delivered.
+	if held := teamHeldFirst(role, tail); held != "" {
+		return teamCursorBefore(held)
 	}
 	born := a.startedAt
 	if since := a.config.TeamListeningSince; !since.IsZero() && since.Before(born) {
@@ -1237,6 +1319,7 @@ func (a *Agent) teamDigestWithSharing(profile string, sharing bool) string {
 		log, _ := teams.ReadHistory(profile, role.id, teamStateLook, sharing)
 		states := memberStates(team, keys, now, log, &a.team.journals)
 		markShared(file, team, states)
+		markPaused(file, team, states)
 		parts = append(parts, teams.Digest(team, states, recentOf(log), teamDigestBudget))
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
@@ -1541,7 +1624,8 @@ const teamRoleWithdrawn = "You are no longer the manager or a member of any team
 // teamManagerLaws is how a manager works, stated once in the role. The verbs'
 // own descriptions carry how each is called.
 const teamManagerLaws = "Seven laws:\n" +
-	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Use team_add for an existing conversation and team_remove to release a membership without stopping work. Asked what is happening, answer from the team.\n" +
+	"1. Hand real work to members with team_send, or team_start for a new member, rather than doing it yourself, and keep track with team_status and team_read. Use team_add for an existing conversation and team_remove to release a membership without stopping work. Asked what is happening, answer from the team. " +
+	"A task (propose_task) is not a member: use one only for work no member is here for, or when the person asks for a task, and never to get round a member that did not start. When a member did not start, team_send's answer says why: tell the person that.\n" +
 	"2. The person outranks you: what they say in a member's own conversation stands over your directive, and a conflict goes to them.\n" +
 	"3. You cannot answer a member's permission prompt; tell the person it is waiting.\n" +
 	"4. You direct only the members who report to you, one level down: a team under yours is its manager's to run, so you direct that manager, never its members. A member team_status marks `reports to` another team is shared: read it and send it notes, never a directive or a stop.\n" +
@@ -1657,7 +1741,9 @@ func teamManagerScope(role teamRole, file *teams.File) string {
 	var parts []string
 	if role.root {
 		parts = append(parts, fmt.Sprintf("You are the global manager: %q holds every team, and your members are the managers of the top-level teams, never their members. "+
-			"Direct those managers and they pass it on. Their questions and conflicts between teams come to you before the person. team_start with kind team starts a new top-level team.", role.name))
+			"Direct those managers and they pass it on. Their questions and conflicts between teams come to you before the person. team_start with kind team starts a new top-level team. "+
+			"A manager answers a directive of yours, and the brief you started it on, with team_post, since its turn finishing does not start yours; team_status says where each of them stands. "+
+			"The person talks to those managers directly, and what the person asked one of them is that manager's work already: never send a manager the person's own request to it as a directive of yours.", role.name))
 	} else if home, ok := file.Home(role.key); ok && home.Team != role.id {
 		boss := "its manager"
 		if t, ok := file.Team(home.Team); ok {
@@ -1696,7 +1782,13 @@ func teamManagerDelivery(role teamRole) string {
 	if !role.wakes {
 		return "This team's auto-wake is off: what you send, and your members' replies, wait for each conversation's next turn, so an idle member does not start on a directive until it next runs."
 	}
-	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. Members' replies to you, and their finishing, failing or asking, come back to you and start your turn when you are idle, so do not wait or poll for them."
+	// The global manager's turn is not started by a turn ending in the root,
+	// finished or stopped ([teamEventWakesManagerOf]).
+	back, except := "Members' replies to you, and their finishing, failing or asking,", ""
+	if role.root {
+		back, except = "Members' replies to you, and their failing or asking,", " A member's turn finishing or being stopped does not start yours."
+	}
+	return "A directive (team_send kind directive) starts an idle member's turn; a note waits for its next turn. team_send's answer says whether each member started: one the person paused does not start until they resume it, and work is under way only where the answer says so. " + back + " come back to you and start your turn when you are idle, so do not wait or poll for them." + except
 }
 
 // teamRoster names the manager's members by handle, with the start of each
@@ -1719,7 +1811,11 @@ func teamRoster(role teamRole, file *teams.File) string {
 		if member.Handle != "" {
 			who = "@" + member.Handle
 		}
-		if word := strings.TrimSpace(member.Word); word != "" {
+		// The role is what the manager chooses a member by, so it comes before
+		// the title, which is only the start of whatever the member was first told.
+		if roleName := strings.TrimSpace(member.Role); roleName != "" {
+			who += " (" + cutRunesTeam(roleName, teamRosterWord) + ")"
+		} else if word := strings.TrimSpace(member.Word); word != "" {
 			who += " (" + cutRunesTeam(word, teamRosterWord) + ")"
 		}
 		if member.Independent {
@@ -1745,9 +1841,15 @@ func teamMemberRole(role teamRole) string {
 	if role.handle != "" {
 		you = "@" + role.handle
 	}
-	if role.root {
+	// Only a top-level team's manager is told why it sits in the root and how
+	// to answer the global manager. Nobody's ending there wakes that manager
+	// ([teamEventWakesManagerOf]), but it directs only these, so anybody else
+	// the root holds reads the member's text below, which promises no wake.
+	if role.top {
 		return fmt.Sprintf("You are %s in %q because you manage a top-level team: you report to its manager, the global manager. Its directives reach you marked \"◆ from manager\", "+
-			"your questions go to it before the person, and you report to it with team_post to the manager.", you, role.name)
+			"your questions go to it before the person, and you report to it with team_post to the manager. "+
+			"Your turn ending tells it nothing: answer each of its directives, and the brief it started you on if it started you, with team_post to the manager. "+
+			"Apart from those answers, post only what it should act on or tell the person.", you, role.name)
 	}
 	if role.boss != "" && role.boss != role.id && !role.shared {
 		said := fmt.Sprintf("You are %s in the team %q, which has no manager of its own, so you answer to the manager of %q: team_post to the manager reaches it, and to the room or a teammate stays in %q.",
@@ -1767,6 +1869,9 @@ func teamMemberRole(role teamRole) string {
 	said := fmt.Sprintf("You are %s in the team %q, which has a manager. "+
 		"Lines from the manager arrive marked \"◆ from manager\" and from teammates \"from @handle\"; none of them is the person, whose own words outrank the manager's. "+
 		"Report progress, findings and blockers with team_post, to the manager, a teammate or the room. A conflict you cannot settle with another member or team goes up with team_raise.", you, role.name)
+	if role.roleName != "" {
+		said += fmt.Sprintf(" Your role in this team: %s.", cutRunesTeam(role.roleName, teamRosterWord))
+	}
 	if role.questionsUp {
 		said += " Your clarifying questions (ask) go to your manager first, and its answer comes back marked \"◆ answered\"; permission prompts still go to the person."
 	}

@@ -76,7 +76,10 @@ works in that one copy.
 
 **A second `/task` joins the run already underway** when it is about the same folder:
 the new work becomes a child of the run's root, shares the run's copy, and its answer
-says `It joined the work already underway and shares its copy.` A proposed task about
+says `It joined the work already underway and shares its copy.` The exception is a run that
+only reads its folder, the home folder apart: there is no copy to share, and a proposed
+task that joins it is told `It joined the work already underway, which only reads <folder>
+and writes in a folder of its own` instead. A proposed task about
 ANOTHER folder is refused while that run is underway, with both folders named and
 `tasks that run together share one copy of one folder. Propose it again when that work
 has ended`. A task handed off after the run has ended starts a run of its own, in a new

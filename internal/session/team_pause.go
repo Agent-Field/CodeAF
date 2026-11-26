@@ -1,0 +1,473 @@
+package session
+
+// ── A PAUSED MEMBER IS HELD BEFORE ITS TURN STARTS ──────────────────────────
+//
+// The person can pause a member of a team ([teams.Member.Paused]). Until this
+// file the pause lived in one interface's own file and the engine knew nothing
+// of it: a directive opened the member, started its turn and logged "woke",
+// and the interface then stopped the turn it found running. The manager was
+// told the member had started, the directive was consumed, and resuming the
+// member replayed nothing. The measured case was a manager that handed the
+// same work to a paused member twice and reported it under way both times.
+//
+// SO THE PAUSE IS READ WHERE THE WAKE IS DECIDED. Team traffic starts no turn
+// for a paused membership: the watch remembers that something asked for one,
+// leaves the lines undelivered, and starts the turn on the first look that
+// finds the pause lifted. A conversation that is not open is not opened for
+// traffic it would only hold ([TeamOpenPending]), and `team_send` does not ask
+// for it to be opened. Something else may still open it (a question's answer,
+// a wake the retry queue kept); it is then open and held, which costs nothing.
+//
+// AND WHERE THE TRAFFIC IS DELIVERED. A turn that is not the person's own reads
+// none of a paused member's teams' lines and moves no cursor
+// ([Agent.teamNewsLocked]): its first request used to carry the held directive,
+// and the resume then had nothing to start on. A turn that does deliver them,
+// the person's own, ends the hold, so the resume starts no second turn on
+// lines already read.
+//
+// AND NOTHING ELSE STARTS A TURN EITHER. The pause was decided for traffic and
+// for nothing else: a background command ending, a watch firing, a task landing
+// and news recorded as a turn ended each started the paused member's turn, and
+// only an interface that happened to hold the member ended it again
+// (cmd/codeaf's appwakes.go), after it had begun and where no interface held
+// it, not at all. The engine decides those too now, by the cause of the news
+// ([wakeStanding]): what arrived is kept in the conversation as a record that
+// starts no turn, with [teamPauseHeldRule] saying why, exactly as a stop keeps
+// a command's ending (team_stophold.go). The next turn reads it: the person's
+// own words, or the turn Resume starts, which it starts on a directive that
+// waited or on the news alone ([Agent.teamPauseOwedWake]). The interface's
+// stop stays as it was, for a wake this file does not decide.
+//
+// A PAUSE IS THE PERSON'S WORD ABOUT THE CONVERSATION, so it holds in every
+// team the conversation is a member of ([teams.File.PausedAnywhere]), not only
+// the one it was pressed in: an interface that finds the member paused ends a
+// turn it did not start, whichever team's traffic began it.
+//
+// THE SENDER SAYS SO, ONCE, AT THE SEND. `team_send` reads the same record and
+// answers that the member is paused, and writes the one traffic line that says
+// the directive is held ([teamHeldPausedText]). The paused member writes
+// nothing for a directive, so the log carries one account whether or not
+// anything has it open. A start has no send behind it: a member paused before
+// its first turn writes that line itself, once ([Agent.teamWakeStart]).
+//
+// A PAUSE IS TEMPORARY AND A STOP IS FINAL. The interface ends a paused
+// member's running turn through the pause's own door ([StopByPause]), not the
+// person's Stop: through that door the pause began the stop hold, so what
+// arrived next was kept as stopped work, the manager was told the person had
+// stopped what it handed out, and Resume started nothing. The pause's door
+// begins no hold and tells no manager anything; a turn it cuts keeps its work,
+// whatever opened it, and Resume starts one turn that carries on with it
+// ([Agent.teamPauseCutLocked]). A stop of the paused member still ends the
+// work, and withdraws that turn and the directives the pause held
+// ([Agent.teamStopHoldLocked]).
+//
+// THE PERSON'S OWN WORDS ARE NOT HELD, as with the daily cap (team_cap.go): a
+// person typing into a paused member's conversation starts its turn, and that
+// turn reads what was waiting.
+
+import (
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/teams"
+)
+
+// teamPausedWhy is why a paused member did not start, in the words the manager
+// and the traffic are both given.
+const teamPausedWhy = "the person paused it; it starts on this when they resume it"
+
+// teamPauseHeldRule is said with news that started no turn because the person
+// had the conversation paused.
+const teamPauseHeldRule = "This arrived while the person had this conversation paused, so it started no turn. It is a record of what happened."
+
+// teamPauseResumedRule opens the turn Resume starts on what a pause kept: the
+// work a pause cut, the news it held, or both ([Agent.teamPauseOwedWake]). It
+// says the cut step did not finish: told only to carry on, a model read the
+// ended command as a failure to report and stopped there (seen in the built app,
+// twice), which is not what the person resuming it asked for.
+const teamPauseResumedRule = "The person paused this conversation and has now resumed it, which started this turn. Carry on with the work you were on. The pause cut off whatever was in progress (a command it ended did not finish), so do that step again and then finish the work; anything above that arrived while it was paused is a record of what happened meanwhile."
+
+// teamPauseHold is one conversation's pause, for the wakes that are decided
+// under the agent's lock and may read neither the teams file nor the seat's
+// lock there.
+type teamPauseHold struct {
+	// paused is whether the person has this conversation paused in any of its
+	// teams, as of the last time its roles were read. Read without a lock or a
+	// disk.
+	paused atomic.Bool
+	// owed is set when the pause cut a turn ([Agent.teamPauseCutLocked]) or
+	// kept news from starting one (a command's ending, a watch's firing, a
+	// task landing, what a turn's end recorded), and cleared when a turn next
+	// begins, which reads it. Resume starts that turn ([Agent.teamPauseOwedWake]). It lives in
+	// this process alone: a restart while paused loses it, and the records stay
+	// in the conversation for the next turn.
+	owed atomic.Bool
+	// stopped is set when a stop's hold begins ([Agent.teamStopHoldLocked]),
+	// and the watch's next idle look forgets the directives the pause held
+	// ([teamWatch].pausedHeld): the stop ended that work, so Resume does not
+	// start a turn on it. A directive the pause holds after the stop is a new
+	// hand-off and still starts the member at Resume.
+	stopped atomic.Bool
+}
+
+// teamPauseFreshSeated is [Agent.teamPauseFresh] for a conversation that has a
+// role in a team, and nothing for one that has none: it is asked where every
+// turn ends and every command's wake clock fires, and only a member can be
+// paused. It must not be called under a.mu.
+func (a *Agent) teamPauseFreshSeated() {
+	if a.team.stopHold.seated.Load() {
+		a.teamPauseFresh()
+	}
+}
+
+// teamPauseOwedOver forgets that a pause owes a turn: one has begun, and it
+// reads what the pause kept.
+func (a *Agent) teamPauseOwedOver() { a.team.pauseHold.owed.Store(false) }
+
+// teamPauseCutLocked reports whether the turn ending was cut by the person's
+// Pause ([StopByPause]), and marks it owed when it was. It is asked where the
+// turn ends, under a.mu, before a follow-up the person queued may start.
+//
+// THE CUT TURN IS OWED WHATEVER OPENED IT, the person's own words, a manager's
+// handed work or a directive the pause had held: Resume carries on with the
+// work it was on, and reads whatever the cut turn's end drained into the
+// conversation (a command's ending, a task's result that arrived while it
+// wound down). Only a turn on handed work used to be owed, so the rest stayed
+// unread after Resume. A follow-up the person queued is their own words, which
+// are never held: it starts its turn here, which reads all of it and so clears
+// what this marked ([Agent.startTurnLocked]).
+func (a *Agent) teamPauseCutLocked(door StopDoor, stopped bool) bool {
+	if !stopped || door != StopByPause {
+		return false
+	}
+	a.team.pauseHold.owed.Store(true)
+	return true
+}
+
+// teamPauseCut keeps the work a manager handed this conversation when the
+// person's Pause cut its turn: the work is not ended, the turn Resume starts
+// carries on with it ([Agent.teamPauseCutLocked]), and a stop of the paused
+// member is the stop of that work ([Agent.teamStopHoldLocked]).
+func (a *Agent) teamPauseCut(origin turnOrigin) {
+	a.team.mu.Lock()
+	handed := len(a.team.handed) > 0
+	a.team.mu.Unlock()
+	if !handed {
+		return
+	}
+	hold := &a.team.stopHold
+	hold.mu.Lock()
+	hold.origin = origin
+	hold.mu.Unlock()
+}
+
+// teamPauseOwedWake starts the turn a lifted pause owes the news it held.
+//
+// A PAUSE IS TEMPORARY. What the pause kept from starting a turn is in the
+// conversation as a record, or still queued, and the person resuming the
+// member is their word that it goes on: a member paused while it waited on a
+// command used to stay idle after Resume with the command's ending unread,
+// unless a directive had also waited. A stop is different: what its hold
+// keeps starts nothing even later ([teamStopHeldRule]), so a stop since the
+// pause leaves the records where they are. The traffic is told nothing when
+// the turn starts: this turn is the member's own news, not its team's.
+//
+// THE TEAM'S BOUNDS STILL BIND IT. Its boundary hands over a directive the
+// pause held, so the hour's limit and the cap that just held that directive's
+// wake hold this turn too, and their line is the one the directive's wake
+// wrote, said once ([Agent.wakeSayOnce]): a turn started past them delivered
+// the directive the traffic had just said could not wake the member. And owed
+// is cleared only by the turn beginning ([Agent.startTurnLocked]), so a bound
+// or a gate that refuses now leaves it for a later look.
+func (a *Agent) teamPauseOwedWake(profile string, roles []teamRole, now time.Time) {
+	hold := &a.team.pauseHold
+	if !hold.owed.Load() || hold.paused.Load() || a.team.stopHold.held.Load() {
+		return
+	}
+	var members []teamRole
+	for _, role := range roles {
+		if role.managed && !role.manager && role.handle != "" {
+			members = append(members, role)
+		}
+	}
+	cause := wakeCause{kind: wakeDirective, roles: members}
+	for _, rule := range []wakeRule{wakeLimitRule, wakeCapRule} {
+		if d := rule(a, profile, &cause, now); d.by != heldByNothing {
+			a.sayWake(profile, cause, d, now)
+			return
+		}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.running || hold.paused.Load() || !hold.owed.Load() || a.team.stopHold.held.Load() {
+		return
+	}
+	if gate, _ := a.wakeRefusalLocked(false, false); gate != wakeGateOpen {
+		return
+	}
+	// THE TURN IS TOLD WHY IT BEGAN, in one sentence ahead of anything the
+	// pause kept: a turn the pause cut ended mid-work with no word of why, and
+	// without this one it reads its own unfinished reply and nothing after it.
+	a.steering = append(a.steering, userMessage{message: textMessage("user", teamPauseResumedRule), wake: true, authored: true})
+	a.wakeLocked()
+}
+
+// pausedRoles reports whether any of roles is paused. A pause holds the
+// conversation in every team it is a member of ([rolesFor]), so one is all.
+func pausedRoles(roles []teamRole) bool {
+	for _, role := range roles {
+		if role.paused {
+			return true
+		}
+	}
+	return false
+}
+
+// teamPauseFresh reads this conversation's roles again when the teams store has
+// moved, so the pause a wake is about to be decided on is the one on the
+// record now and not the one the last boundary read. It costs one look at the
+// store's stamp for each piece of news a pause could hold, and nothing for a
+// conversation that can be in no team. It takes the seat's lock and must not
+// be called under a.mu.
+func (a *Agent) teamPauseFresh() { a.teamRoles() }
+
+// teamHeldPausedText is the traffic line for a directive a paused member was
+// sent: "held @mac-dev: the person paused it; …".
+func teamHeldPausedText(handle string) string {
+	return teamHeldPrefix + "@" + handle + ": " + teamPausedWhy
+}
+
+// teamPauseHoldLocked reports whether role is paused, and remembers that its
+// traffic asked for a turn when asked is true. The caller holds a.team.mu.
+func (a *Agent) teamPauseHoldLocked(role teamRole, asked bool) bool {
+	if !role.paused || role.manager {
+		return false
+	}
+	if asked {
+		w := &a.team.watch
+		if w.pausedHeld == nil {
+			w.pausedHeld = map[string]bool{}
+		}
+		w.pausedHeld[role.id] = true
+		// THE HOLD OUTLIVES THIS PROCESS. A member that never took a turn in
+		// this team has no cursor written down, and one opened later would
+		// start reading after the line it is held on. So the place it would
+		// have started from is written now, once.
+		a.readTeamCursorsLocked()
+		if _, known := a.team.cursors[role.id]; !known {
+			a.team.cursors[role.id] = a.firstTeamCursor(a.config.teamProfile(), role)
+			a.saveTeamCursorsLocked()
+		}
+	}
+	return true
+}
+
+// teamPauseReleasedLocked reports whether role owes a turn that was held while
+// it was paused, and forgets the hold. The caller holds a.team.mu.
+func (a *Agent) teamPauseReleasedLocked(role teamRole) bool {
+	w := &a.team.watch
+	if role.paused || !w.pausedHeld[role.id] {
+		return false
+	}
+	delete(w.pausedHeld, role.id)
+	return true
+}
+
+// teamStandbyText is the traffic line a member opened on standby writes, once:
+// "opened @mac-dev on standby; …".
+func teamStandbyText(handle string) string {
+	return "opened @" + handle + " on standby; it starts on its manager's first directive"
+}
+
+// teamAutoWakeOffText is the traffic line a member started into a team whose
+// auto-wake is off writes: it is open, and nothing started its turn.
+func teamAutoWakeOffText(handle string) string {
+	return "opened @" + handle + "; this team's auto-wake is off, so no turn was started. It reads the brief when it next runs."
+}
+
+// teamSaidAlready reports whether team's recent traffic already carries this
+// line about this member, answering the same entry. A conversation with
+// nothing in it yet is fresh every time it is opened, and both watches may
+// meet the same hold, so a hold is said once for what it holds. A log that
+// cannot be read is not written to either.
+func teamSaidAlready(profile, team string, line teams.Entry) bool {
+	tail, err := teams.ReadTraffic(profile, team, "", teamFirstLook)
+	if err != nil {
+		return true
+	}
+	for _, entry := range tail {
+		if entry.Kind == teams.KindEvent && entry.Member == line.Member && entry.Text == line.Text && entry.Answers == line.Answers {
+			return true
+		}
+	}
+	return false
+}
+
+// teamStandbyOver clears a member's standby once its start line is handed to
+// it ([teams.Member.Standby]), off the boundary's lock. A write that fails
+// leaves the record saying standby a little longer; the line was delivered.
+func (a *Agent) teamStandbyOver(profile string, role teamRole) {
+	id, key := role.id, role.key
+	guard.Go("team standby over", func() {
+		_ = teams.UpdateOpen(profile, func(file *teams.File) error { return file.SetStandby(id, key, false) })
+	})
+}
+
+// markPaused marks each member of team the person paused in another of its
+// teams ([teams.MemberState].Paused), so this team's manager reads why its
+// directive does not start.
+func markPaused(file *teams.File, team teams.Team, states map[string]teams.MemberState) {
+	if file == nil {
+		return
+	}
+	for _, member := range team.Members {
+		if member.Key == team.Manager || member.Paused {
+			continue
+		}
+		if _, paused := file.PausedAnywhere(member.Key); paused {
+			state := states[member.Key]
+			state.Paused = true
+			states[member.Key] = state
+		}
+	}
+}
+
+// teamAt is members as their handles, "@web, @api".
+func teamAt(members []teams.Member) string {
+	var out []string
+	for _, member := range members {
+		out = append(out, "@"+member.Handle)
+	}
+	return strings.Join(out, ", ")
+}
+
+// teamStoppedByPersonLine is what a manager is told, after the member's
+// handle, when the person stopped a turn the manager's traffic had started.
+const teamStoppedByPersonLine = "'s turn on what you handed it was " + teams.StoppedByPerson + " before it finished, so that work is not done. The person chose to stop it: tell them where it stands, and do not hand it out again unless they ask."
+
+// teamPausedSplit reads the teams file afresh and divides roles into those
+// still not paused and those that now are, remembering a hold for each of the
+// latter. A role this conversation no longer has is in neither.
+func (a *Agent) teamPausedSplit(profile string, roles []teamRole) (kept, paused []teamRole) {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	fresh := map[string]teamRole{}
+	for _, role := range a.teamRolesLocked(profile) {
+		fresh[role.id] = role
+	}
+	for _, role := range roles {
+		now, still := fresh[role.id]
+		if !still {
+			continue
+		}
+		if a.teamPauseHoldLocked(now, true) {
+			paused = append(paused, now)
+			continue
+		}
+		kept = append(kept, now)
+	}
+	return kept, paused
+}
+
+// teamHandedLocked notes that role's manager handed this conversation work:
+// a directive, or the brief a started member begins on. A standby member's
+// start line is its role, not work. The caller holds a.team.mu.
+func (a *Agent) teamHandedLocked(role teamRole, entry teams.Entry) {
+	if role.manager || entry.From != teams.FromManager {
+		return
+	}
+	if entry.Kind != teams.KindDirective && (entry.Kind != teams.KindStart || role.standby) {
+		return
+	}
+	if a.team.handed == nil {
+		a.team.handed = map[string]time.Time{}
+	}
+	// THE TIME IS THE LATEST HAND-OFF'S. A manager's stop on the log since
+	// this time is read as the stop of the turn being stopped
+	// ([Agent.teamStoppedByPerson]). Kept at the first hand-off while work
+	// carried from turn to turn, it let a manager's stop that had found the
+	// member idle, and so stopped nothing, pass for the stop of a turn a later
+	// directive started, and the person's stop of that turn told nobody.
+	a.team.handed[role.id] = time.Now()
+}
+
+// teamHandedTake is the teams whose handed-out work this conversation is on,
+// with when it was handed, taken: the work ends here, stopped or finished with
+// nothing left to wait for ([Agent.teamHandedCarried]).
+func (a *Agent) teamHandedTake() map[string]time.Time {
+	a.team.mu.Lock()
+	defer a.team.mu.Unlock()
+	handed := a.team.handed
+	a.team.handed = nil
+	return handed
+}
+
+// teamStoppedByPerson is the teams in which a stopped turn's ending is said as
+// the person's ([teams.StoppedByPerson]), which wakes that team's manager: the
+// person stopped work the manager had handed out, and nothing else tells the
+// manager it ended without a report.
+//
+// THREE THINGS MUST HOLD, PER TEAM. The cancel came through the person's door;
+// the app's own stops (quitting, a paused member's stray wake) name another.
+// The conversation was on that manager's work, whoever opened the turn: a
+// directive read at a step of a turn the person had started is as undone by
+// their stop as one that woke the member, and so is work that waits on a
+// command while the person's own turn is stopped. A turn with no handed work
+// alive is theirs alone. And no manager's stop is on that team's log since the work
+// was handed over: an interface holding the member performs the manager's
+// `team_stop` through the same door as the person's stop key (the app, the
+// terminal, a remote window), usually before the member's own session reads
+// the line, so the door alone would call the manager's stop the person's.
+func (a *Agent) teamStoppedByPerson(door StopDoor, handed map[string]time.Time) map[string]bool {
+	profile := a.config.teamProfile()
+	if door != StopByPerson || profile == "" || len(handed) == 0 {
+		return nil
+	}
+	var by map[string]bool
+	for _, role := range a.teamRoles() {
+		since, was := handed[role.id]
+		if !was || !role.managed || role.manager || role.shared || role.handle == "" {
+			continue
+		}
+		tail, err := teams.ReadTraffic(profile, role.id, "", teamFirstLook)
+		if err != nil {
+			continue
+		}
+		managers := false
+		for _, entry := range tail {
+			if teamManagerStops(role, entry) && !entry.At.Before(since) {
+				managers = true
+			}
+		}
+		if !managers {
+			if by == nil {
+				by = map[string]bool{}
+			}
+			by[role.id] = true
+		}
+	}
+	return by
+}
+
+// teamHeldFirst is the oldest directive in tail that was held for role because
+// the person had paused it ([teamHeldPausedText]), "" when there is none.
+func teamHeldFirst(role teamRole, tail []teams.Entry) string {
+	if role.manager || role.handle == "" {
+		return ""
+	}
+	first := ""
+	for _, entry := range tail {
+		if entry.Kind != teams.KindEvent || entry.From != teams.FromSystem || entry.Member != role.key || entry.Answers == "" {
+			continue
+		}
+		if !strings.HasPrefix(entry.Text, teamHeldPrefix) || !strings.HasSuffix(entry.Text, teamPausedWhy) {
+			continue
+		}
+		if first == "" || entry.Answers < first {
+			first = entry.Answers
+		}
+	}
+	return first
+}

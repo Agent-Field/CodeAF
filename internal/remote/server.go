@@ -138,6 +138,13 @@ type boundedStopper interface {
 	InterruptWithin(grace time.Duration)
 }
 
+// doorBoundedStopper is a [boundedStopper] whose bounded stop names its door:
+// the person's Pause ([session.StopByPause]) is bounded as their Stop is.
+// Machinery's stops are never bounded, whatever a surface sends.
+type doorBoundedStopper interface {
+	InterruptWithinFor(door session.StopDoor, grace time.Duration)
+}
+
 // Engine is one opened conversation and the doors that replace it. The door
 // that builds it (cmd/codeaf) owns config resolution, session-file resolution
 // and the locked-file fallback; this package owns nothing about how an agent is
@@ -3280,7 +3287,14 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		if door := session.StopDoor(strings.TrimSpace(args.Door)); door != "" && door != session.StopByPerson {
+		door := session.StopDoor(strings.TrimSpace(args.Door))
+		// THE PERSON'S PAUSE CARRIES THE SAME BOUND: it is their act from the
+		// same surface, through a door of its own ([doorBoundedStopper]).
+		if bounded, ok := agent.(doorBoundedStopper); ok && door == session.StopByPause && args.Within > 0 {
+			bounded.InterruptWithinFor(door, time.Duration(args.Within)*time.Millisecond)
+			return nil, nil
+		}
+		if door != "" && door != session.StopByPerson {
 			agent.InterruptFor(door)
 			return nil, nil
 		}

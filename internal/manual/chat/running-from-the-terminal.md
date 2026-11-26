@@ -519,9 +519,10 @@ Closing a crew does not stop its conversations.
 
 A few things exist only in the app and the terminal never shows them: a crew's
 goal and end date, linked jobs, issues and pull requests, roles (instructions
-and a model sent to a member as a message), a member's own budget, pausing a
-member (its own turns are stopped until you resume it), and an agent's
-proposal to bring in helpers.
+and a model sent to a member as a message), a member's own budget, the Pause
+and Resume controls for a member, and an agent's proposal to bring in helpers.
+A pause itself is the team's record: the terminal's manager is told a paused
+member did not start, and `team_status` shows it paused.
 
 ## Idle desktop chats, recovery checks and crew traffic
 
@@ -2182,6 +2183,8 @@ generation asks for reasoning to be off, or the lowest level the provider suppor
 Your chat's reasoning setting stays the same. The default
 is the smallest useful crew, usually one to three helpers. Separate teams are
 proposed only for separate streams of work that each need multiple people.
+Each helper's brief describes what it is responsible for, and an accepted crew
+joins on standby with nobody started.
 
 The final **Bring in helpers** ask still offers **Make the crew**, **Edit**, and
 **Keep it one agent**. If the stream stops after at least one helper, the ask

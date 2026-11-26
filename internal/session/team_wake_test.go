@@ -244,3 +244,96 @@ func TestAFreshMemberWakesWithItsProjectsMemory(t *testing.T) {
 		t.Fatalf("the fresh member's first request did not carry its project's memory:\n%s", system)
 	}
 }
+
+// freshMember makes an empty conversation beside the fixture's own, which a
+// test then starts into the team under handle.
+func freshMember(t *testing.T, fixture teamFixture, handle string) string {
+	t.Helper()
+	dir := filepath.Join(filepath.Dir(filepath.Dir(fixture.parser)), handle)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(dir, placeTranscript)
+	if err := os.WriteFile(transcript, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return transcript
+}
+
+// A FIRST TURN HELD AT THE CAP SAYS SO, AND ITS BRIEF WAITS ON THE LOG. The
+// fresh member's own watch read the brief off the log, found the cap, queued
+// the brief with no wake and wrote nothing: the manager that had just started
+// a helper saw no sign of it. It now writes the line the traffic watch writes
+// for the same hold, once, and the brief is handed over by the first turn
+// something else starts.
+func TestAStartedMemberHeldAtTheCapSaysSoAndKeepsItsBrief(t *testing.T) {
+	fixture := newWakingTeamFixture(t)
+	five := 5.0
+	if err := teams.Update(fixture.profile, func(f *teams.File) error {
+		return f.SetSettings(fixture.teamID, func(s *teams.Settings) { s.CapUSDDay = &five })
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stubCapSpend(t, &capSpend{usd: 6, stamp: "s1"})
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "Rewrite the lexer."})
+	transcript := freshMember(t, fixture, "lexer")
+	completer := oneAnswer(1)
+	// Only the fresh member's own watch looks, so the line is this wake's.
+	lexer := teamAgent(t, fixture, transcript, completer, func(config *Config) { config.teamWatchManual = true })
+	if err := teams.Update(fixture.profile, func(file *teams.File) error {
+		return file.AddMember(fixture.teamID, teams.Member{Key: convKeyOf(t, transcript), File: transcript, Handle: "lexer"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	held := waitEvent(t, fixture, "held @lexer: harbor reached its $5 cap today")
+	if held.From != teams.FromSystem || held.To != "lexer" || held.State != teams.StateIdle {
+		t.Errorf("the cap's line is %+v, want from system to the member, idle", held)
+	}
+	time.Sleep(3 * teamWakeEvery)
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("a member at its team's cap took %d turns on its brief", got)
+	}
+	if got := trafficEvents(t, fixture, "held @lexer"); len(got) != 1 {
+		t.Errorf("the cap hold was said %d times, want once", len(got))
+	}
+	collect(t, mustSubmit(t, lexer, "go"))
+	if first := userTextIn(completer.request(0)); !briefIn(first, "Rewrite the lexer.") {
+		t.Fatalf("the brief a held first turn left on the log was not handed over:\n%s", first)
+	}
+}
+
+// A MEMBER THE PERSON PAUSED BEFORE ITS FIRST TURN SAYS IT IS HELD. A directive
+// to a paused member is said by the send that met the pause; a start has no
+// send behind it, and the member held its first turn without a word. It writes
+// the same line now, once, answering its start, and Resume starts the turn on
+// the brief that waited.
+func TestAStartedMemberThePersonPausedSaysItIsHeldAndStartsOnResume(t *testing.T) {
+	fastTeamWake(t)
+	fixture := newWakingTeamFixture(t)
+	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindStart, From: teams.FromManager, To: "lexer", Text: "Rewrite the lexer."})
+	transcript := freshMember(t, fixture, "lexer")
+	completer := oneAnswer(1)
+	teamAgent(t, fixture, transcript, completer, nil)
+	if err := teams.Update(fixture.profile, func(file *teams.File) error {
+		return file.AddMember(fixture.teamID, teams.Member{Key: convKeyOf(t, transcript), File: transcript, Handle: "lexer", Paused: true})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	held := waitEvent(t, fixture, teamHeldPausedText("lexer"))
+	starts := trafficOf(t, fixture, teams.KindStart)
+	if len(starts) != 1 || held.From != teams.FromSystem || held.Answers != starts[0].ID {
+		t.Errorf("the hold's line is %+v, want from system, answering the start %+v", held, starts)
+	}
+	time.Sleep(3 * teamWakeEvery)
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("a member paused before its first turn took %d turns", got)
+	}
+	if got := trafficEvents(t, fixture, teamHeldPausedText("lexer")); len(got) != 1 {
+		t.Errorf("the hold was said %d times, want once", len(got))
+	}
+	setPaused(t, fixture, transcript, false)
+	waitRequests(t, completer, 1)
+	if first := userTextIn(completer.request(0)); !briefIn(first, "Rewrite the lexer.") {
+		t.Fatalf("the resumed member's first turn did not carry its brief:\n%s", first)
+	}
+}
