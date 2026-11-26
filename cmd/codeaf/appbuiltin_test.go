@@ -111,6 +111,18 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 	if !strings.Contains(string(read), "The figures agree.") {
 		t.Fatalf("agent view did not return the kept edit: %s", read)
 	}
+	call("agent_grant", appwire.AppAgentGrant{App: docs, Agent: docs, Group: "actions", ID: "render/share", Allowed: true})
+	shared := call("invoke", map[string]any{"app": docs, "params": map[string]any{
+		"action": "render/share", "args": map[string]any{"record": id},
+	}})
+	if err := json.Unmarshal(shared, &output); err != nil || output.ID == "" {
+		t.Fatalf("share action receipt = %s, error = %v", shared, err)
+	}
+	wire.must("apps.output_file", map[string]string{"app": docs, "id": output.ID}, &file)
+	if string(file.Content) != "Agent draft\n\nThe figures agree." || file.File.Actor != "agent:"+docs || file.File.ActorKind != "ai" ||
+		len(file.File.Sources) != 1 || file.File.Sources[0].ID != id {
+		t.Fatalf("share output from wrong record: %+v", file.File)
+	}
 
 	var fork builder.Proposal
 	wire.must("apps.fork", map[string]string{"app": docs}, &fork)
@@ -247,7 +259,7 @@ func TestBuiltinEditorExportsUseTheKeptRecord(t *testing.T) {
 				wire.must("apps.render", params, &receipt)
 				var file appwire.AppOutputFileResult
 				wire.must("apps.output_file", map[string]string{"app": app.ID, "id": receipt.ID}, &file)
-				want := map[string]string{"pdf": "%PDF", "pptx": "PK", "csv": "Item,Amount\nMaterials,25\n"}
+				want := map[string]string{"pdf": "%PDF", "pptx": "PK", "csv": "Item,Amount\nMaterials,25\n", "txt": "Proof\n\nFirst line\nSecond line"}
 				if !strings.HasPrefix(string(file.Content), want[template.Format]) ||
 					len(file.File.Sources) != 1 || file.File.Sources[0].ID != row.Rows[0]["id"] {
 					t.Fatalf("%s exported the wrong source or format: %+v", name, file.File)

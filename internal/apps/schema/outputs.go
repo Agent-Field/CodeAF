@@ -162,4 +162,7 @@ func (c *checker) checkRender(ctx actionCtx, at string, body map[string]any) {
 	if inbox, _ := body["inbox"].(bool); inbox && t.Query == nil {
 		c.add(ctx.file, at+"/inbox", CodeActionVerb, "An inbox digest needs a declared query.")
 	}
+	if clip, _ := body["clipboard"].(bool); clip && t.Format != "txt" && t.Format != "csv" {
+		c.add(ctx.file, at+"/clipboard", CodeActionVerb, "Copy to the clipboard requires a text or CSV output.")
+	}
 }

@@ -69,3 +69,10 @@ func TestWorksheetCSVComputesFormulasAndEscapesTheirText(t *testing.T) {
 		t.Fatalf("CSV = %q, want %q", got, want)
 	}
 }
+func TestTextOutputRendersTheCurrentDocument(t *testing.T) {
+	content, err := Render(schema.OutputTemplate{Label: "Copy text", Format: "txt", Body: "{{title}}\n\n{{body}}"},
+		[]map[string]any{{"title": "Review", "body": "Ready to share."}})
+	if err != nil || string(content) != "Review\n\nReady to share." {
+		t.Fatalf("text output = %q, %v", content, err)
+	}
+}

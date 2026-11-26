@@ -98,6 +98,8 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 	}
 	var err error
 	switch t.Format {
+	case "txt":
+		buf.WriteString(strings.Join(lines, "\n\n"))
 	case "pdf":
 		err = writePDF(&buf, t.Label, lines)
 	case "docx":

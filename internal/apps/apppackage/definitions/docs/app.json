@@ -93,6 +93,12 @@
     }
   ],
   "outputs": {
+    "share": {
+      "label": "Copy text",
+      "format": "txt",
+      "record": "docs_document",
+      "body": "{{title}}\n\n{{body}}"
+    },
     "pdf": {
       "label": "Export PDF",
       "format": "pdf",

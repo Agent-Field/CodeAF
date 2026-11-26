@@ -101,6 +101,12 @@
     }
   ],
   "outputs": {
+    "share": {
+      "label": "Copy text",
+      "format": "txt",
+      "record": "slides_slide",
+      "body": "{{title}}\n\n{{body}}"
+    },
     "pptx": {
       "label": "Export PPTX",
       "format": "pptx",

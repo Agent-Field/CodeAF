@@ -101,6 +101,12 @@
     }
   ],
   "outputs": {
+    "share": {
+      "label": "Copy text",
+      "format": "txt",
+      "record": "canvas_board",
+      "body": "{{title}}\n\n{{body}}"
+    },
     "pdf": {
       "label": "Export PDF",
       "format": "pdf",

@@ -47,6 +47,25 @@
           },
           {
             "part": "Button",
+            "id": "share",
+            "label": "Copy CSV",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "render": {
+                    "output": "share",
+                    "record": "$params.id",
+                    "clipboard": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "part": "Button",
             "id": "details-button",
             "label": "Details",
             "props": {

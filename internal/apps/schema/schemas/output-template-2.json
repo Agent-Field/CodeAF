@@ -12,6 +12,7 @@
     },
     "format": {
       "enum": [
+        "txt",
         "pdf",
         "docx",
         "pptx",

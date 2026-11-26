@@ -93,6 +93,12 @@
     }
   ],
   "outputs": {
+    "share": {
+      "label": "Copy CSV",
+      "format": "csv",
+      "record": "sheets_worksheet",
+      "table": "body"
+    },
     "csv": {
       "label": "Export CSV",
       "format": "csv",

@@ -3339,3 +3339,7 @@ A receipt carries `id`, `app`, `action`, `version`, `name`, `mime`, `blob`,
 also carry `sources:[{id,rev}]` when rows were rendered. Run receipts add `run`
 and `step`. An inbox delivery has `inbox:true`. Refresh the receipt list on
 `apps.output_added` for the displayed app.
+
+The `txt` format returns the merged body as UTF-8 plain text. A screen can
+add `clipboard: true` to a `render` Action for `txt` or `csv`. Desk copies the
+same scoped file that `apps.output_file` returns.
