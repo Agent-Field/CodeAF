@@ -170,7 +170,7 @@ func (s Service) cutover(ctx context.Context, req CutoverRequest, confirmation s
 	if err != nil {
 		return empty, err
 	}
-	return r.store.Cutover(r.binding, req.Type, req.To, req.SourceQuiesced, snapshot, confirmation, func(records []data.ResidencyReplay) (data.ResidencySnapshot, error) {
+	return r.store.Cutover(ctx, r.binding, req.Type, req.To, req.SourceQuiesced, snapshot, confirmation, func(records []data.ResidencyReplay) (data.ResidencySnapshot, error) {
 		if len(records) == 0 {
 			return snapshot, nil
 		}
@@ -216,14 +216,29 @@ func (s Service) openSnapshot(ctx context.Context, r residencyRoute, fence bool)
 	if err != nil {
 		return nil, nil, err
 	}
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: !fence, Isolation: sql.LevelRepeatableRead})
+	conn, err := db.Conn(ctx)
 	if err != nil {
 		db.Close()
 		return nil, nil, ErrUnavailable
 	}
+	txCtx, cancel := ctx, func() {}
+	if fence {
+		// Keep the table fence beyond the query deadline while SQLite
+		// checks cancellation and commits or rolls back its transaction.
+		txCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 2*deadline)
+	}
+	tx, err := conn.BeginTx(txCtx, &sql.TxOptions{ReadOnly: !fence, Isolation: sql.LevelRepeatableRead})
 	closeSource := func() {
-		_ = tx.Rollback()
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+		cancel()
+		_ = conn.Close()
 		_ = db.Close()
+	}
+	if err != nil {
+		closeSource()
+		return nil, nil, ErrUnavailable
 	}
 	if fence {
 		if _, err := tx.ExecContext(ctx, "LOCK TABLE "+Postgres.table(r.read.Table)+" IN SHARE ROW EXCLUSIVE MODE"); err != nil {

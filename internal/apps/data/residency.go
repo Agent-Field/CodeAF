@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -154,10 +155,13 @@ func (s *Store) DeclareResidencies(bindings map[string]ResidencyBinding, registe
 // Cutover checks and, with a matching confirmation, commits the same plan.
 // A source transaction fences the snapshot and performs conditional reverse
 // replay while the local writer serializes record edits and epoch changes.
-func (s *Store) Cutover(binding ResidencyBinding, alias string, to ResidencyMode, quiesced bool, snapshot ResidencySnapshot,
+func (s *Store) Cutover(ctx context.Context, binding ResidencyBinding, alias string, to ResidencyMode, quiesced bool, snapshot ResidencySnapshot,
 	confirmation string, replay func([]ResidencyReplay) (ResidencySnapshot, error)) (ResidencyPlan, error) {
 	var plan ResidencyPlan
 	err := s.write(func(w *writeTx) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		t, err := w.schema.allow(Scope{App: binding.App}, alias, true)
 		if err != nil {
 			return err
