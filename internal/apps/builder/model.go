@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -180,6 +181,7 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 }
 
 type modelInput struct {
+	SourceOperations   map[string][]string
 	Headless           bool
 	Editing            bool
 	Marks              []Mark
@@ -355,6 +357,18 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		}
 	}
 	triggers, tools := schema.AutomationCatalog()
+	triggers = slices.DeleteFunc(triggers, func(kind string) bool { return kind == "timer" })
+	for connector, names := range tools {
+		executable := slices.DeleteFunc(names, func(name string) bool {
+			return !runs.NativeConnectorTool(connector + "." + name)
+		})
+		if len(executable) == 0 {
+			delete(tools, connector)
+		} else {
+			tools[connector] = executable
+		}
+	}
+	maps.Copy(tools, in.SourceOperations)
 	raw, err := json.Marshal(struct {
 		Triggers       []string            `json:"trigger_kinds"`
 		Connectors     map[string][]string `json:"connector_operations"`

@@ -39,9 +39,9 @@ func (b *appBackend) CheckDraftRun(ctx context.Context, draft, run string, def s
 	now := time.Now().UTC()
 	triggers := []runs.Trigger{}
 	for _, trigger := range app.Triggers {
-		if trigger.Run == run && trigger.On == "record.changed" {
+		if trigger.Run == run && (trigger.On == "record.changed" || trigger.On == "record.before") {
 			triggers = append(triggers, runs.Trigger{
-				App: app.ID, ID: trigger.ID, On: trigger.On, Run: run, Type: trigger.Type, When: trigger.When,
+				App: app.ID, ID: trigger.ID, On: trigger.On, Run: run, Type: trigger.Type, When: trigger.When, At: trigger.At, Lead: trigger.Lead,
 			})
 		}
 	}
@@ -53,6 +53,12 @@ func (b *appBackend) CheckDraftRun(ctx context.Context, draft, run string, def s
 
 	seenTypes := map[string]bool{}
 	for _, trigger := range triggers {
+		if trigger.On == "record.before" {
+			if err := checkBeforeRecords(ctx, engine, sample, trigger, &now); err != nil {
+				return err
+			}
+			continue
+		}
 		if seenTypes[trigger.Type] {
 			continue
 		}
@@ -76,7 +82,7 @@ func (b *appBackend) CheckDraftRun(ctx context.Context, draft, run string, def s
 		return err
 	}
 	if len(triggers) > 0 && len(started) == 0 {
-		return &check.RunProblem{Detail: "Include an example record that matches the automation's record change trigger."}
+		return &check.RunProblem{Detail: "Include an example record that matches the automation's record trigger."}
 	}
 	if len(started) == 0 {
 		definition, err := scratchRun(def, run)
@@ -95,6 +101,34 @@ func (b *appBackend) CheckDraftRun(ctx context.Context, draft, run string, def s
 	}
 	for _, entry := range started {
 		if err := tryScratchRun(ctx, engine, entry.ID, &now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkBeforeRecords uses the sample's dates instead of waiting for real time.
+func checkBeforeRecords(ctx context.Context, engine *runs.Engine, sample *data.Store, trigger runs.Trigger, now *time.Time) error {
+	lead, err := time.ParseDuration(trigger.Lead)
+	if err != nil {
+		return err
+	}
+	page, err := sample.Query(data.Scope{App: trigger.App, Agent: true}, trigger.Type, "", "", 50)
+	if err != nil {
+		return err
+	}
+	for _, row := range page.Rows {
+		value, _ := row[trigger.At].(string)
+		at, err := time.Parse(time.RFC3339Nano, value)
+		if err != nil {
+			continue
+		}
+		*now = at.Add(-lead)
+		if err := engine.Tick(ctx); err != nil {
+			return err
+		}
+		started, err := engine.List(trigger.App, trigger.Run)
+		if err != nil || len(started) > 0 {
 			return err
 		}
 	}
@@ -144,7 +178,12 @@ func (b *appBackend) openScratchRuns(root, draft string, app schema.App, def sch
 			replies[tool] = runs.Reply{Output: receipt.Response, Effect: &runs.EffectReceipt{
 				Tool: tool, Connection: connection, Version: receipt.Version, Outcome: "committed",
 			}}
+			continue
 		}
+		// Check uses a sample reply for writes declared outside the built-in sources.
+		replies[tool] = runs.Reply{Output: map[string]any{
+			"id": "sample-item", "thread": "sample-thread", "text": "Example connector response.",
+		}}
 	}
 	owner := ""
 	if b.appOwnerDisplayName() != "" {

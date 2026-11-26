@@ -79,3 +79,13 @@ handling without saving that response. Tools require a declaration on the
 step. An `ai` step uses its declared JSON output schema and also gets one
 repair attempt. Keep the approval on the save step to see the exact note
 before it is written.
+
+## Run a meeting brief before a calendar event
+
+Use a kit 2 `record.before` trigger with a readable record type, `at`
+naming that type's datetime field and a positive `lead` such as `30m`.
+Set `when` to a condition like `external == true` to limit it to external
+meetings. The app checks upcoming records while the engine is open.
+It starts one run per record and start time in the lead window. The run
+sees the selected record through `$record`. Check uses the app's example
+records to try the trigger without waiting for their real dates.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 )
@@ -39,8 +40,22 @@ func (c *checker) checkGalleryTrigger(i int, at string) {
 	if c.validateEntry(AppFile, at, CodeTriggerShape, "trigger/"+trigger.On, value) {
 		ctx := actionCtx{file: AppFile}
 		c.checkRules(ctx, at, c.kit.Registries.Triggers[trigger.On].Rules, value, false)
+		if trigger.On == "record.before" {
+			fields, _ := c.typeFields(trigger.Type)
+			field := fields[trigger.At]
+			if field.Type != "datetime" {
+				c.add(AppFile, at+"/at", CodeTriggerShape, "A before-record trigger needs the name of a datetime field.")
+			}
+			if lead, err := time.ParseDuration(trigger.Lead); err != nil || lead <= 0 {
+				c.add(AppFile, at+"/lead", CodeTriggerShape, "A before-record trigger needs a positive lead time such as 30m.")
+			}
+		}
 	}
-	c.checkExpression(AppFile, at+"/when", trigger.When)
+	if trigger.On == "record.before" {
+		c.checkRecordExpression(AppFile, at+"/when", trigger.Type, trigger.When)
+	} else {
+		c.checkExpression(AppFile, at+"/when", trigger.When)
+	}
 }
 
 func (c *checker) checkGalleryAction(ctx actionCtx, at string, act Action) {
@@ -304,6 +319,14 @@ func approvalKind(op OperationManifest) string {
 }
 
 func (c *checker) checkOperation(file, at, tool string, args map[string]any, gate string, screen bool) {
+	if _, _, ok := ParseSourceTool(tool); ok {
+		c.checkTool(file, at, tool, screen)
+		if !screen && gate != "send" {
+			c.add(file, at, CodeSendGateMissing, "A source write needs a send approval.")
+		}
+		return
+	}
+
 	if id, ok := extensions.ToolID(tool); ok {
 		raw := c.def.Files["custom/"+id+".step"]
 		if len(raw) == 0 || screen || !contains(c.app.Capabilities.Tools, tool) {

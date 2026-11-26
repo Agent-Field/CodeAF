@@ -185,6 +185,7 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
 		OwnerNameAvailable: s.opts.OwnerNameAvailable,
 		Reuse:              reuse,
+		SourceOperations:   catalog.SourceOperations,
 	}, types, s.author, func(files map[string]string) schema.Report {
 		if report := j.checkReuse(files, catalog, types, !headless); !report.OK() {
 			return report

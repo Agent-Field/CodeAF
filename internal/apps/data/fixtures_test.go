@@ -95,3 +95,37 @@ func TestDraftExamplesLinkBothWays(t *testing.T) {
 		}
 	}
 }
+
+func TestMeetingRevisionExamplesSeedSharedCyclicReferences(t *testing.T) {
+	p := NewPlace(t.TempDir(), Options{NoRefresh: true})
+	defer p.Close()
+	main, err := p.Main()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const fixturePath = "meeting-revision/"
+	if err := main.RegisterApp(fixture(t, fixturePath+"owner.json")); err != nil {
+		t.Fatal(err)
+	}
+	var sample appschema.Sample
+	if err := json.Unmarshal(fixture(t, fixturePath+"sample.json"), &sample); err != nil {
+		t.Fatal(err)
+	}
+	app := fixture(t, fixturePath+"app.json")
+	if err := p.SeedSample("meeting-draft", app, sample.Records); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := p.Store("meeting-draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, err := appschema.ParseApp(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := Scope{App: def.ID}
+	transcript, err := draft.Get(scope, "transcript", "00000000000000000000000019", false)
+	if err != nil || transcript["meeting"] != "00000000000000000000000013" {
+		t.Fatalf("transcript did not retain its shared meeting: %v (%v)", transcript, err)
+	}
+}

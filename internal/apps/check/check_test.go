@@ -234,7 +234,7 @@ func TestCheckNamesRegisteredTriggerAndConnectorOperations(t *testing.T) {
 	  "capabilities":{"records":{"case":"r"},"connectors":{"calendar":{"can":["events.create"]}}},
 	  "triggers":[{"id":"unexpected","on":"records.created","run":"review"}]}`)
 	report := check.Definition(def, nil)
-	for _, want := range []string{"Registered calendar operations: free_busy.", "Use connector, record.changed, schedule, timer."} {
+	for _, want := range []string{"Registered calendar operations: create, free_busy, list.", "Use connector, record.before, record.changed, schedule, timer."} {
 		if !strings.Contains(report.String(), want) {
 			t.Fatalf("expected %q in %v", want, report)
 		}

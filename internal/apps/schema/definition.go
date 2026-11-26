@@ -295,11 +295,13 @@ type Connector struct {
 	Channels []string `json:"channels,omitempty"`
 }
 
-// Trigger starts a run on a schedule or when a record changes.
+// Trigger starts a run based on a schedule, record, or source event.
 type Trigger struct {
 	ID        string         `json:"id"`
 	On        string         `json:"on"`
 	Cron      string         `json:"cron,omitempty"`
+	At        string         `json:"at,omitempty"`
+	Lead      string         `json:"lead,omitempty"`
 	Type      string         `json:"type,omitempty"`
 	When      string         `json:"when,omitempty"`
 	Connector string         `json:"connector,omitempty"`

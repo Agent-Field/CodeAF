@@ -81,7 +81,7 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		text := string(args.Plan)
 		edit = DefinitionEdit{Path: schema.PlanFile, Text: &text}
 	case "add_type", "add_field", "configure":
-		manifest, err := changeManifest(files[schema.AppFile], verb, raw)
+		manifest, err := changeManifest(files[schema.AppFile], verb, raw, types)
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +225,7 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 
 var appSettings = []string{"name", "icon", "agent", "capabilities", "triggers", "commands", "budget", "outputs"}
 
-func changeManifest(text, verb string, raw json.RawMessage) (string, error) {
+func changeManifest(text, verb string, raw json.RawMessage, types schema.TypeSet) (string, error) {
 	var manifest map[string]json.RawMessage
 	if json.Unmarshal([]byte(text), &manifest) != nil || manifest == nil {
 		return "", errors.New("plan the app before adding its definitions")
@@ -241,14 +241,14 @@ func changeManifest(text, verb string, raw json.RawMessage) (string, error) {
 			}
 			manifest[key] = value
 		}
-	} else if err := editType(manifest, verb, raw); err != nil {
+	} else if err := editType(manifest, verb, raw, types); err != nil {
 		return "", err
 	}
 	out, err := json.MarshalIndent(manifest, "", "  ")
 	return string(out), err
 }
 
-func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMessage) error {
+func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMessage, types schema.TypeSet) error {
 	var args struct {
 		Type       string          `json:"type,omitempty"`
 		Name       string          `json:"name"`
@@ -264,6 +264,26 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 		return errors.New("the app has no record definitions")
 	}
 	if verb == "add_type" {
+		if previous := records[args.Name]; len(previous) != 0 {
+			var before, revised map[string]json.RawMessage
+			if err := json.Unmarshal(previous, &before); err != nil {
+				return err
+			}
+			if err := json.Unmarshal(args.Definition, &revised); err != nil {
+				return err
+			}
+			// A field revision keeps the type's existing identity and reuse
+			// choice unless the author explicitly supplies a replacement.
+			for _, key := range []string{"common", "uses", "portable_reuse"} {
+				if value, ok := before[key]; ok && revised[key] == nil {
+					revised[key] = value
+				}
+			}
+			if revised["common"] == nil && string(revised["uses"]) == "true" && types[args.Name].Common != "" {
+				revised["common"], _ = json.Marshal(types[args.Name].Common)
+			}
+			args.Definition, _ = json.Marshal(revised)
+		}
 		records[args.Name] = args.Definition
 		if err := declareRecordAccess(manifest, args.Name, args.Access); err != nil {
 			return err

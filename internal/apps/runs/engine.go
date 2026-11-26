@@ -386,6 +386,11 @@ func (e *Engine) buildCheckpoint(app string, def Definition, params, input map[s
 			switch value := linked.(type) {
 			case nil:
 				p[name] = []any{}
+			case string:
+				p[name] = []any{}
+				if value != "" {
+					p[name] = []any{value}
+				}
 			case []any:
 				p[name] = value
 			case []string:
