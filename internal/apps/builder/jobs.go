@@ -42,32 +42,35 @@ type Options struct {
 	CanLook func() bool
 	Look    func(context.Context, string, string) ([]string, error)
 
-	Home         string
-	Store        *store.Store
-	Model        func() (Completer, error)
-	Catalog      func(app string) (Catalog, error)
-	Check        func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
-	CheckPackage func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
-	SeedPreview  func(scope string, def schema.Definition, real bool) error
-	ClosePreview func(scope string)
-	Changed      func(Event)
-	Notify       func(Summary)
-	Proposed     func(Proposal)
+	Home  string
+	Store *store.Store
+	Model func() (Completer, error)
+	// OwnerNameAvailable lets drafts bind the owner without showing the builder the name.
+	OwnerNameAvailable bool
+	Catalog            func(app string) (Catalog, error)
+	Check              func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
+	CheckPackage       func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
+	SeedPreview        func(scope string, def schema.Definition, real bool) error
+	ClosePreview       func(scope string)
+	Changed            func(Event)
+	Notify             func(Summary)
+	Proposed           func(Proposal)
 }
 
 // Proposal identifies a requested change after its work is durable.
 type Proposal struct {
-	App          string       `json:"app"`
-	Draft        string       `json:"draft"`
-	ID           string       `json:"proposal_id"`
-	Screen       string       `json:"screen"`
-	Kind         string       `json:"kind"`
-	Source       string       `json:"source"`
-	BaseVersion  int          `json:"base_version"`
-	Checkpoint   string       `json:"checkpoint"`
-	Target       *Target      `json:"target,omitempty"`
-	SummaryLines []string     `json:"summary_lines"`
-	Package      *PackageCard `json:"package,omitempty"`
+	App          string         `json:"app"`
+	Draft        string         `json:"draft"`
+	ID           string         `json:"proposal_id"`
+	Screen       string         `json:"screen"`
+	Kind         string         `json:"kind"`
+	Source       string         `json:"source"`
+	BaseVersion  int            `json:"base_version"`
+	Checkpoint   string         `json:"checkpoint"`
+	Target       *Target        `json:"target,omitempty"`
+	SummaryLines []string       `json:"summary_lines"`
+	Display      *DisplayChange `json:"display,omitempty"`
+	Package      *PackageCard   `json:"package,omitempty"`
 }
 
 type proposalIntent struct {
@@ -134,6 +137,8 @@ type Event struct {
 	Line   string         `json:"line"`
 	OK     *bool          `json:"ok,omitempty"`
 	Report *schema.Report `json:"report,omitempty"`
+	Detail string         `json:"detail,omitempty"`
+	Calls  *BuildCalls    `json:"calls,omitempty"`
 }
 
 type Offer struct {
@@ -183,16 +188,18 @@ type PlanResult struct {
 }
 
 type turn struct {
-	DeskReuse bool `json:",omitempty"`
-	CheckOnly bool
-	ID        string
-	Stage     string
-	Request   string
-	Proposal  string
-	Target    *Target
-	Round     int
-	Report    *schema.Report
-	Reply     string
+	DeskReuse        bool `json:",omitempty"`
+	CheckOnly        bool
+	ID               string
+	Stage            string
+	Request          string
+	Proposal         string
+	Target           *Target
+	Round            int
+	Continuations    int              `json:",omitempty"`
+	PreviousFindings []schema.Problem `json:",omitempty"`
+	Report           *schema.Report
+	Reply            string
 }
 
 type snapshot struct {

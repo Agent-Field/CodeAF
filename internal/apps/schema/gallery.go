@@ -225,6 +225,10 @@ func (c *checker) checkGalleryPart(ctx actionCtx, n *Node, p Part, at, typ strin
 			}
 		case "records":
 			projection = c.checkViewBinding(ctx, at+"/bind", b)
+			if n.Part == "Chart" && n.Props["kind"] == "metric" &&
+				(len(projection.Aggregate) != 1 || len(projection.Group) != 0 || projection.Window != nil || projection.Relate != nil) {
+				c.add(ctx.file, at+"/bind/view", "metric_view", "Bind this metric to a view with one aggregate, no grouping and no window.")
+			}
 		}
 	}
 	if typ == "" && p.Capabilities != "" {
@@ -367,8 +371,8 @@ func (c *checker) checkReference(ctx actionCtx, at, check, value string) {
 			c.add(ctx.file, at, CodeRunUnknown, "There is no run named %q.", value)
 		}
 	case "screen", "open":
-		if !c.screens[value] && !(check == "open" && c.knownType(value) && c.canRead(value)) {
-			c.add(ctx.file, at, CodeOpenUnknown, "There is no accessible screen or record type named %q.", value)
+		if !c.screens[value] && !(check == "open" && (ctx.sheets[value] || c.knownType(value) && c.canRead(value))) {
+			c.add(ctx.file, at, CodeOpenUnknown, "There is no accessible screen, sheet or record type named %q.", value)
 		}
 	case "command":
 		if _, ok := c.commands[value]; !ok {

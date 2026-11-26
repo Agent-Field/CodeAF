@@ -39,6 +39,9 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			return nil
 		}
 		steps, vars := c.scope(e.cfg.Now())
+		if e.cfg.OwnerName != "" {
+			vars["owner"] = map[string]any{"name": e.cfg.OwnerName}
+		}
 		e.addRecordReader(c.App, vars)
 		current := &c.Frames[len(c.Frames)-1]
 		if current.Index == len(steps) {

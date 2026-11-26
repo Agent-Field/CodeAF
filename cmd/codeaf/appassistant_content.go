@@ -211,12 +211,24 @@ func declaredViewIR(view schema.QueryIR, arguments map[string]json.RawMessage) (
 			}
 		}
 		op := filter.Op
-		neg := op == "!="
+		neg := op == "!=" || op == "ne"
 		switch op {
-		case "=", "==", "!=":
+		case "=", "==", "!=", "eq", "ne":
 			op = ":"
+		case "lt":
+			op = "<"
+		case "lte":
+			op = "<="
+		case "gt":
+			op = ">"
+		case "gte":
+			op = ">="
 		}
-		ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op, Value: fmt.Sprint(value), Neg: neg, Literal: true})
+		if op == "has" {
+			ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op})
+		} else {
+			ir.Where = append(ir.Where, data.Cond{Field: filter.Field, Op: op, Value: fmt.Sprint(value), Neg: neg, Literal: true})
+		}
 	}
 	for _, agg := range view.Aggregate {
 		ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: agg.Op, Field: agg.Field, As: agg.As})

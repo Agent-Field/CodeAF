@@ -106,3 +106,47 @@ func TestRunDefinitionRefusesShellAndRepositoryWorkspace(t *testing.T) {
 		}
 	}
 }
+
+func TestDraftBindsTheContactAndOwnerBeforeAskingForApproval(t *testing.T) {
+	const flow = `run: follow-up
+params:
+  deal: {type: ref, to: deal}
+steps:
+  - id: draft
+    agent: CRM
+    prompt: "Hi {{params.deal.contact.name}}, following up on {{params.deal.name}}. From {{owner.name}}."
+  - id: save
+    gate: {approval: proof, who: $me}
+    records.create: {type: note, set: {body: "$steps.draft.output"}}
+`
+	var written bool
+	e := newEngine(t, flow, runs.Config{
+		OwnerName: "Morgan Example",
+		Agent: func(_ context.Context, c runs.AgentCall) (runs.Reply, error) {
+			return runs.Reply{Output: c.Prompt}, nil
+		},
+		Records: func(_ context.Context, _ runs.RecordCall) (runs.Reply, error) {
+			written = true
+			return runs.Reply{}, nil
+		},
+	})
+	r, err := e.Start("crm", "follow-up", map[string]any{"deal": map[string]any{
+		"type": "deal", "id": "d1", "name": "Acme renew", "contact": map[string]any{"name": "Ada Example"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	waiting := state(t, e, r.ID)
+	const note = "Hi Ada Example, following up on Acme renew. From Morgan Example."
+	if written || waiting.Approval == nil || waiting.Approval.Args["body"] != note {
+		t.Fatalf("before approving: written %v, approval %+v", written, waiting.Approval)
+	}
+	if err := e.Answer(r.ID, waiting.Approval.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	if !written || state(t, e, r.ID).State != runs.Done {
+		t.Fatal("the approved note was not saved")
+	}
+}

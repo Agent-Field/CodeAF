@@ -180,7 +180,7 @@ func TestBuildChecksThreeRoundsAndRestoresEarlierScreen(t *testing.T) {
 	opts.Check = func(_ context.Context, _ string, def schema.Definition, types schema.TypeSet) schema.Report {
 		checked++
 		if checked < 3 {
-			return schema.Report{Problems: []schema.Problem{{Code: "try_again", Message: "Try again."}}}
+			return schema.Report{Problems: []schema.Problem{{Code: "try_again", Path: fmt.Sprint(checked), Message: "Try again."}}}
 		}
 		return schema.Validate(def, types)
 	}
@@ -361,9 +361,9 @@ func TestPlanKeepsTheOutlineWhenTheModelRunsOutOfCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer jobs.Close()
-	_, err = jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
-	if err == nil || !strings.Contains(err.Error(), "continue") {
-		t.Fatalf("expected a continuation message, got %v", err)
+	plan, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Make a CRM."})
+	if err != nil || plan.Draft == "" {
+		t.Fatalf("the written plan should be reviewable after the call limit: %v", err)
 	}
 	summaries, err := jobs.List()
 	if err != nil || len(summaries) != 1 {
@@ -381,7 +381,8 @@ func TestHeadlessApplyPublishesAndRecordsSkippedLook(t *testing.T) {
 	})
 	state := waitState(t, jobs, draft, builder.Ready)
 	const notice = "look: skipped (desk not running)"
-	if len(state.Checkpoints) != 2 || !strings.Contains(state.Checkpoints[1].Summary, notice) {
+	if len(state.Checkpoints) != 2 || strings.Contains(state.Checkpoints[1].Summary, notice) ||
+		!slices.ContainsFunc(state.Progress, func(event builder.Event) bool { return strings.Contains(event.Line, notice) }) {
 		t.Fatalf("the change card must show the skipped Look: %+v", state.Checkpoints)
 	}
 	if !slices.ContainsFunc(state.Progress, func(event builder.Event) bool {
@@ -499,7 +500,7 @@ func TestAssistantProposalReportsCheckedScopeBeforeApply(t *testing.T) {
 							called = true
 							return toolCalls(edits...), nil
 						}
-						return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "Added a renewal date."}}}, nil
+						return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: `On the deals screen, RecordList node-1da4741631e4b070bc85 now has {"views":["table"],"board_by":""}. I ran app check and app look.`}}}, nil
 					}), nil
 				},
 			})
@@ -516,12 +517,22 @@ func TestAssistantProposalReportsCheckedScopeBeforeApply(t *testing.T) {
 				if card.App != live.ID || card.Draft != id || card.ID != "proposal-1" || card.Screen != tc.screen {
 					t.Fatalf("proposal = %+v", card)
 				}
+				assertHumanBuilderCopy(t, strings.Join(card.SummaryLines, " "))
+
 			case <-time.After(5 * time.Second):
 				t.Fatal("no proposal after check")
 			}
 			state, err := jobs.State(id)
 			if err != nil || state.State != builder.Ready || state.Published {
 				t.Fatalf("draft = %+v, error = %v", state, err)
+			}
+			assertHumanBuilderCopy(t, state.Transcript[len(state.Transcript)-1].Text)
+			assertHumanBuilderCopy(t, state.Checkpoints[len(state.Checkpoints)-1].Summary)
+			if !slices.ContainsFunc(state.Progress, func(event builder.Event) bool {
+				raw, _ := json.Marshal(event)
+				return strings.Contains(string(raw), "node-1da4741631e4b070bc85")
+			}) {
+				t.Fatal("the technical reply should be available in Build activity")
 			}
 			kept, err := store.Get(live.ID)
 			if err != nil || kept.Meta.Version != live.Version {
@@ -596,8 +607,22 @@ func TestBuildContinuesFromSavedWorkAfterTheCallLimit(t *testing.T) {
 	attempt := 0
 	opts.Model = func() (builder.Completer, error) {
 		attempt++
-		if attempt != 2 {
+		if attempt == 1 {
 			return original()
+		}
+		if attempt > 2 {
+			next, err := original()
+			if err != nil {
+				return nil, err
+			}
+			model := next.(script)
+			return script(func(ctx context.Context, messages []ai.Message, tools []ai.ToolDefinition) (ai.Message, error) {
+				message, err := model(ctx, messages, tools)
+				if len(message.ToolCalls) == 1 && strings.Contains(message.ToolCalls[0].Function.Arguments, "codeaf app plan ") {
+					return toolCalls(command("context", nil)), err
+				}
+				return message, err
+			}), nil
 		}
 		step := 0
 		return script(func(context.Context, []ai.Message, []ai.ToolDefinition) (ai.Message, error) {
@@ -623,30 +648,92 @@ func TestBuildContinuesFromSavedWorkAfterTheCallLimit(t *testing.T) {
 	if err := jobs.Build(plan.Draft); err != nil {
 		t.Fatal(err)
 	}
-	stopped := waitState(t, jobs, plan.Draft, builder.Failed)
-	if !strings.HasPrefix(stopped.Name, "Working title ") || !strings.Contains(stopped.Problem, "Build again to continue") {
-		t.Fatalf("paused draft = %q, %q", stopped.Name, stopped.Problem)
+	state := waitState(t, jobs, plan.Draft, builder.Ready)
+	if !strings.HasPrefix(state.Name, "Working title ") {
+		t.Fatalf("automatic continuation lost the working title: %q", state.Name)
 	}
-	if _, err := jobs.Apply(plan.Draft); err == nil {
-		t.Fatal("an incomplete build was applied")
+	if meta, err := jobs.Apply(plan.Draft); err != nil || meta.Name != state.Name {
+		t.Fatalf("resumed Apply = %+v, %v", meta, err)
 	}
+}
 
-	jobs.Close()
-	jobs, err = builder.OpenJobs(opts)
+func TestPlanRecoversFromAnInvalidToolReply(t *testing.T) {
+	opts := scriptedApp(t, t.TempDir())
+	opts.Model = func() (builder.Completer, error) {
+		first := true
+		corrections := 0
+		return script(func(_ context.Context, messages []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
+			prompt, _ := json.Marshal(messages)
+			if strings.Contains(string(prompt), "The previous plan failed:") {
+				corrections++
+				if corrections > 1 || !strings.Contains(string(prompt), "plan object") {
+					return ai.Message{}, errors.New("expected one correction with the plan parse error")
+				}
+				return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: `{"name":"Reading","plan":{"ask":"Track books","data":[{"id":"book","line":"Books"}],"screens":[{"id":"books","line":"Reading list"}]}}`}}}, nil
+			}
+			if first {
+				first = false
+				return toolCalls(command("plan", map[string]any{"name": "Reading", "plan": []string{"broken"}})), nil
+			}
+			return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I cannot save the plan."}}}, nil
+		}), nil
+	}
+	jobs, err := builder.OpenJobs(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(jobs.Close)
-	restored, err := jobs.State(plan.Draft)
-	if err != nil || restored.Name != stopped.Name {
-		t.Fatalf("reopened draft = %q, %v", restored.Name, err)
+	defer jobs.Close()
+	plan, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Track my reading."})
+	if err != nil || !strings.Contains(string(plan.Plan), "Reading list") {
+		t.Fatalf("recovered plan = %s, %v", plan.Plan, err)
 	}
-	if err := jobs.Build(plan.Draft); err != nil {
-		t.Fatal(err)
+}
+
+func TestPlanRecoversWhenTheProviderTimesOut(t *testing.T) {
+	for _, saved := range []bool{false, true} {
+		t.Run(fmt.Sprint(saved), func(t *testing.T) {
+			opts := scriptedApp(t, t.TempDir())
+			const outline = `{"name":"Reading","plan":{"ask":"Track books","data":[{"id":"book","line":"Books"}],"screens":[{"id":"books","line":"Reading list"}]}}`
+			calls := 0
+			opts.Model = func() (builder.Completer, error) {
+				return script(func(ctx context.Context, messages []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
+					if _, ok := ctx.Deadline(); !ok {
+						return ai.Message{}, errors.New("the plan pass must have a deadline")
+					}
+					calls++
+					if saved && calls == 1 {
+						var args map[string]any
+						if err := json.Unmarshal([]byte(outline), &args); err != nil {
+							return ai.Message{}, err
+						}
+						return toolCalls(command("plan", args)), nil
+					}
+					prompt, _ := json.Marshal(messages)
+					if strings.Contains(string(prompt), "The previous plan failed:") {
+						return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: outline}}}, nil
+					}
+					return ai.Message{}, context.DeadlineExceeded
+				}), nil
+			}
+			jobs, err := builder.OpenJobs(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer jobs.Close()
+			got, err := jobs.Plan(t.Context(), builder.PlanRequest{Ask: "Track my reading."})
+			if err != nil || !strings.Contains(string(got.Plan), "Reading list") || calls != 2 {
+				t.Fatalf("plan = %s, calls = %d, err = %v", got.Plan, calls, err)
+			}
+		})
 	}
-	waitState(t, jobs, plan.Draft, builder.Ready)
-	if meta, err := jobs.Apply(plan.Draft); err != nil || meta.Name != stopped.Name {
-		t.Fatalf("resumed Apply = %+v, %v", meta, err)
+}
+
+func assertHumanBuilderCopy(t *testing.T, text string) {
+	t.Helper()
+	for _, internal := range []string{"node-", "RecordList", "board_by", `"views"`, "app check", "app look", "the deals screen"} {
+		if strings.Contains(text, internal) {
+			t.Errorf("person-facing builder copy contains %q: %q", internal, text)
+		}
 	}
 }
 

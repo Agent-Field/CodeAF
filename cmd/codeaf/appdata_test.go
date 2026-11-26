@@ -318,3 +318,56 @@ func TestAppRecordPolicyOnWireAndCLI(t *testing.T) {
 		}
 	}
 }
+
+func TestAppDataAggregateUsesDeclaredView(t *testing.T) {
+	t.Setenv("CODEAF_HOME", resolvedTempDir(t))
+	b := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { b.Close() })
+	draft, err := b.AppDefinitions().NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen := `{"screen":"jobs","title":"Jobs","views":{"pending":{"type":"job","filter":[{"field":"state","op":"eq","value":"Pending"}],
+		"aggregate":[{"op":"count","as":"result"}]}},
+		"body":{"part":"Chart","id":"figure","label":"Pending","props":{"kind":"metric"},"bind":{"records":"job","view":"pending"}}}`
+	for name, raw := range map[string]string{
+		"app.json":          `{"id":"jobs","name":"Jobs","kit":2,"version":1,"records":{"job":{"title":"name","fields":{"name":{"type":"text"},"state":{"type":"enum","values":["Pending","Done"]}}}},"capabilities":{"records":{"job":"rw"}}}`,
+		"plan.json":         `{"ask":"Track jobs","data":[{"id":"job","line":"Jobs"}],"screens":[{"id":"jobs","line":"Jobs"}]}`,
+		"screens/jobs.json": screen,
+	} {
+		file := filepath.Join(draft.Dir(), name)
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte(raw), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	meta, err := b.AppDefinitions().Promote(draft, "Keep Jobs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := appwire.DataScope{App: meta.ID}
+	for name, state := range map[string]string{"First": "Pending", "Second": "Done", "Third": "Done"} {
+		if _, err := b.DataCreate(appwire.DataCreateParams{DataScope: scope, Type: "job", Set: map[string]any{"name": name, "state": state}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wire := newActionWire(t, b)
+	params := appwire.DataAggregateParams{DataScope: scope, View: &appwire.DataAggregateView{Screen: "jobs", ID: "pending"}}
+	var got appwire.DataAggregateResult
+	raw, failure := wire.call("data.aggregate", params)
+	if failure != nil {
+		t.Fatal(failure)
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Groups) != 1 || got.Groups[0].Values["result"] != float64(1) {
+		t.Fatalf("pending jobs = %+v", got)
+	}
+	params.Query = "state:Done"
+	if _, err := wire.call("data.aggregate", params); err == nil {
+		t.Fatal("a client replaced the declared filter")
+	}
+}
