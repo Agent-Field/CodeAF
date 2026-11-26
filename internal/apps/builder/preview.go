@@ -336,7 +336,7 @@ func (s *Jobs) Discard(id string) error {
 	j.Checkpoints = j.Checkpoints[:j.KeptCheckpoints]
 	j.Transcript = j.Transcript[:j.KeptMessages]
 	j.Marks = j.Marks[:j.KeptMarks]
-	j.describe(Catalog{})
+	s.describeKept(j)
 	if err := s.save(j, Event{}); err != nil {
 		return err
 	}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
@@ -17,20 +19,32 @@ func (b *appBackend) appBuildCatalog(exclude string) (builder.Catalog, error) {
 	if err != nil {
 		return builder.Catalog{}, err
 	}
-	catalog := builder.Catalog{Types: schema.TypeSet{}, Counts: map[string]int{}}
-	shapes := main.TypeSet()
+	catalog := builder.Catalog{
+		Types: main.TypeSetFor(exclude), Counts: map[string]int{},
+		TypeLabels: map[string]string{}, AppNames: map[string]string{}, Origins: map[string]string{},
+	}
 	for _, typ := range types {
-		shape, ok := shapes[typ.Name]
-		if !ok || typ.Hidden || (exclude != "" && shape.Owner == exclude) {
+		shape, ok := catalog.Types[typ.Name]
+		if !ok {
 			continue
 		}
-		for _, field := range typ.Fields {
-			if exclude != "" && field.App == exclude {
-				delete(shape.Fields, field.Name)
-			}
-		}
-		catalog.Types[typ.Name] = shape
 		catalog.Counts[typ.Name] = typ.Count
+		catalog.TypeLabels[typ.Name] = typ.Label
+		catalog.Origins[typ.Name] = typ.CreatedByApp
+		source := shape.Owner
+		if source == "" {
+			source = typ.CreatedByApp
+		}
+		if _, read := catalog.AppNames[source]; read || source == "" {
+			continue
+		}
+		published, _, err := main.Publication(source)
+		if err != nil {
+			return builder.Catalog{}, err
+		}
+		var meta struct{ Name string }
+		_ = json.Unmarshal(published.Metadata, &meta)
+		catalog.AppNames[source] = meta.Name
 	}
 	return catalog, nil
 }

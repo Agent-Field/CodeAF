@@ -154,6 +154,7 @@ type FreezeRule = appschema.Freeze
 // TypeDef is one record type as an app declares it. Uses says the app uses a
 // type another app owns; its Fields are then the fields it adds.
 type TypeDef struct {
+	Common     CommonTypeKey       `json:"common,omitempty"`
 	Uses       bool                `json:"uses,omitempty"`
 	Title      string              `json:"title,omitempty"`
 	Label      string              `json:"label,omitempty"`
@@ -311,6 +312,9 @@ func (d *AppDef) check() error {
 		t := d.Records[name]
 		if !identShape.MatchString(name) {
 			return errorf(CodeInvalid, "%q is not a record type name: use lower-case letters, digits and _", name)
+		}
+		if t.Common != "" && !appschema.HasCommonType(string(t.Common)) {
+			return errorf(CodeInvalid, "the kit has no common type %q", t.Common)
 		}
 		if t.Title != "" {
 			if f, ok := t.Fields[t.Title]; !t.Uses && (!ok || f.Type == "") {

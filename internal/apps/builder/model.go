@@ -71,7 +71,19 @@ run's sample trigger or filter. Use existing recipe defaults for styling.
 Use singular type ids such as deal, company, contact and candidate. Use
 the person's existing type only when it appears under using. Before they
 accept, declare a matching shape so they can see the reuse offer.
-After they accept, declare add-type {"name":"contact","definition":{"uses":true}}.
+Use codeaf app common-types to find stable keys. The library's role labels
+describe fields. Copy type and relevant fields only, omit role in app.json,
+and point refs at the draft's local type names. Leave out optional fields and
+relations the app does not need, especially circular references in examples.
+Declare "common":"person" on contacts and "common":"organization" on
+companies. Inspect context's common_bindings before proposing shared records.
+After acceptance, use the same common key and set "uses":true with "fields":{}.
+For an older unbound type, set "uses":true under its exact existing name.
+Keep candidate records distinct when a hiring app only links to contacts.
+For a shared type this app's Actions create or edit, use this shape:
+add-type {"name":"contact","access":"rw","definition":{"uses":true,"common":"person","fields":{}}}
+Access goes beside definition. Use "access":"r" for lookup-only records.
+In sample rows, use only the existing type's fields returned by context.
 If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
 Fill the visible fields in your examples so Check can measure bound columns.
 Keep existing screen and node ids. For marked edits, use claim with screen
@@ -183,20 +195,25 @@ func (in modelInput) context(files map[string]string, args json.RawMessage) (str
 		return raw
 	}
 	typeNames := make([]string, 0, len(in.Types))
+	commonBindings := map[string]string{}
 	for _, typ := range in.Types {
 		typeNames = append(typeNames, typ.Name)
+		if typ.Common != "" {
+			commonBindings[typ.Name] = typ.Common
+		}
 	}
 	raw, err := json.Marshal(struct {
-		Stage    string          `json:"stage"`
-		Manifest json.RawMessage `json:"manifest,omitempty"`
-		Plan     json.RawMessage `json:"plan,omitempty"`
-		Files    []string        `json:"files,omitempty"`
-		Types    []string        `json:"existing_types,omitempty"`
-		Using    []string        `json:"using,omitempty"`
-		Report   *modelReport    `json:"report,omitempty"`
+		Stage          string            `json:"stage"`
+		Manifest       json.RawMessage   `json:"manifest,omitempty"`
+		Plan           json.RawMessage   `json:"plan,omitempty"`
+		Files          []string          `json:"files,omitempty"`
+		Types          []string          `json:"existing_types,omitempty"`
+		CommonBindings map[string]string `json:"common_bindings,omitempty"`
+		Using          []string          `json:"using,omitempty"`
+		Report         *modelReport      `json:"report,omitempty"`
 	}{
 		in.Stage, preview(schema.AppFile), preview(schema.PlanFile), slices.Sorted(maps.Keys(files)),
-		typeNames, in.Using, briefReport(in.Report),
+		typeNames, commonBindings, in.Using, briefReport(in.Report),
 	})
 	return string(raw), err
 }
@@ -269,6 +286,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		switch verb {
 		case "context":
 			return in.context(files, args)
+		case "common_types":
+			raw, err := json.Marshal(schema.CommonTypes())
+			return string(raw), err
 		case "parts", "kit":
 			var options struct{ For string }
 			if err := json.Unmarshal(args, &options); err != nil {
@@ -352,7 +372,7 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	prompt := systemPrompt() + "\n\nCURRENT PHASE: " + in.Stage + "\n"
 	switch in.Stage {
 	case Planning:
-		prompt += "Write the plan and type shapes. End after those commands succeed."
+		prompt += "Write the plan and type shapes. End after those commands succeed. Check runs after the screens and samples exist."
 	case "repair":
 		prompt += `Fix the issues in context.report first. Add missing planned screens
 with their exact ids, and remove extras with remove-screen {"id":"extra"}.
@@ -364,7 +384,9 @@ Keep everything unaffected. Run check and finish.`
 Set record permissions and compile one recipe for each missing plan screen,
 using its exact screen id. Keep existing screens unless asked to edit them.
 Use markup only for a composition the request needs and recipes cannot do.
-Then write the sample rows, run check once, and finish with a short summary.`
+Write the sample rows and run check once. When check reports no problems,
+finish immediately with a short summary. The engine tries sample data and
+Desk Look after this turn.`
 	}
 	bounded := &boundedModel{model: model}
 	reply, err := session.ScopedCommandTurn(ctx, workspace, builderModelID(model), prompt, string(raw), bounded, execute)

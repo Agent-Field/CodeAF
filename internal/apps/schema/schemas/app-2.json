@@ -422,6 +422,9 @@
         "label": {
           "type": "string"
         },
+        "common": {
+          "$ref": "#/$defs/name"
+        },
         "uses": {
           "type": "boolean"
         },
