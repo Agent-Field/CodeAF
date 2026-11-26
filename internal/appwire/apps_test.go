@@ -87,8 +87,8 @@ func TestAppsMethodsServeDefinitions(t *testing.T) {
 	if got := call("apps.revert", fmt.Sprintf(`{"app":%q,"n":1}`, meta.ID))["meta"].(map[string]any); got["version"] != float64(2) {
 		t.Fatalf("revert = %v", got)
 	}
-	if got := call("apps.kit", "{}"); got["kit"] != float64(2) || len(got["parts"].([]any)) != 64 {
-		t.Fatalf("kit = %v", got)
+	if got := call("apps.kit", "{}"); got["kit"] != float64(2) || len(got["parts"].([]any)) != 63 {
+		t.Fatalf("kit version = %v, parts = %d, want kit 2 with 63 parts", got["kit"], len(got["parts"].([]any)))
 	}
 	if got := call("apps.kit", `{"kit":0}`); got["kit"] != float64(0) || len(got["parts"].([]any)) != 20 {
 		t.Fatalf("legacy kit = %v", got)
@@ -106,5 +106,39 @@ func TestAppsMethodsServeDefinitions(t *testing.T) {
 	w.send(`{"id":3,"method":"apps.screen","params":{"app":"../other","screen":"../secret"}}`)
 	if got := w.next()["error"].(map[string]any)["code"]; got != CodeBadParams {
 		t.Fatalf("invalid path = %v", got)
+	}
+}
+
+func TestAppsContentReadServesPublishedPlanFiles(t *testing.T) {
+	fake := &fakeEngine{}
+	apps := store.NewAt(t.TempDir(), nil)
+	draft, err := apps.NewDraft("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.CopyFS(draft.Dir(), os.DirFS("../apps/schema/testdata/line-handover")); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := apps.Promote(draft, "Keep the shift plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := startWireOver(t, definitionEngine{fake, apps}, fake)
+	w.next()
+	call := func(ref string) map[string]any {
+		w.send(fmt.Sprintf(`{"id":1,"method":"apps.content.read","params":{"app":%q,"ref":%q}}`, meta.ID, ref))
+		return w.next()
+	}
+	raw, err := os.ReadFile("../apps/schema/testdata/line-handover/plan/shifts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := call("plan/shifts.json"); got["error"] != nil || got["result"].(map[string]any)["text"] != string(raw) {
+		t.Fatalf("read plan: %v", got)
+	}
+	for _, ref := range []string{"app.json", "plan/../agent.md", "plan/missing.json"} {
+		if got := call(ref); got["error"].(map[string]any)["code"] != CodeNotFound {
+			t.Fatalf("read %q: %v", ref, got)
+		}
 	}
 }

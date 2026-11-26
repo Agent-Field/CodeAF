@@ -1,0 +1,133 @@
+{
+  "screen": "inbox",
+  "title": "Inbox",
+  "body": {
+    "part": "Row",
+    "id": "workspace",
+    "props": {
+      "workspace": "queue",
+      "gap": 2,
+      "align": "stretch"
+    },
+    "children": [
+      {
+        "part": "RecordList",
+        "id": "work",
+        "label": "Open tickets",
+        "props": {
+          "columns": [
+            "subject",
+            "customer",
+            "company",
+            "received_at",
+            "status"
+          ],
+          "select": "one",
+          "meter": "status"
+        },
+        "bind": {
+          "records": "ticket",
+          "view": "work"
+        }
+      },
+      {
+        "part": "Panel",
+        "id": "detail",
+        "props": {
+          "title": "Conversation"
+        },
+        "bind": {
+          "selection": "work"
+        },
+        "children": [
+          {
+            "part": "Text",
+            "id": "select-hint",
+            "props": {
+              "text": "Choose a ticket to read the conversation and reply.",
+              "tone": "muted"
+            },
+            "when": "$selection.work.count == 0"
+          },
+          {
+            "part": "RecordPage",
+            "id": "record",
+            "label": "Selected record",
+            "props": {
+              "fields": [
+                "customer",
+                "company",
+                "status"
+              ]
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "ticket"
+            },
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "Timer",
+            "props": {
+              "field": "reply_by",
+              "direction": "down",
+              "amber": "PT30M",
+              "red": "PT0S"
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "ticket"
+            },
+            "id": "timer",
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "Thread",
+            "label": "Email thread",
+            "props": {
+              "messages": "body",
+              "compose": true
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "ticket"
+            },
+            "id": "thread",
+            "on": {
+              "reply": [
+                {
+                  "runs.start": "reply",
+                  "params": {
+                    "thread": "$record.external_id",
+                    "body": "$input.text"
+                  }
+                }
+              ]
+            },
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "Text",
+            "id": "macros",
+            "props": {
+              "text": "Macros \u00b7 Known issue \u00b7 Refund policy \u00b7 Reset 2FA",
+              "role": "meta",
+              "tone": "muted"
+            },
+            "when": "$selection.work.count == 1"
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "work": {
+      "type": "ticket",
+      "window": {
+        "order_by": [
+          "received_at"
+        ]
+      }
+    }
+  }
+}

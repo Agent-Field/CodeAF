@@ -1,0 +1,25 @@
+{
+  "automation": [
+    {
+      "id": "duplicate",
+      "line": "Duplicate a document."
+    }
+  ],
+  "ask": "Open Docs and work with document records.",
+  "data": [
+    {
+      "id": "docs_document",
+      "line": "Each document is a versioned record."
+    }
+  ],
+  "screens": [
+    {
+      "id": "library",
+      "line": "Browse and create document records."
+    },
+    {
+      "id": "open",
+      "line": "Open a document, edit it and export it."
+    }
+  ]
+}

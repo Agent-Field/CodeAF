@@ -31,6 +31,7 @@ type CompiledChange struct {
 }
 
 type authoring struct {
+	keepsSeparate func(string, string) bool
 	compiler      Compiler
 	validateTypes func([]byte) error
 	store         *store.Store
@@ -81,7 +82,7 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		text := string(args.Plan)
 		edit = DefinitionEdit{Path: schema.PlanFile, Text: &text}
 	case "add_type", "add_field", "configure":
-		manifest, err := changeManifest(files[schema.AppFile], verb, raw, types)
+		manifest, err := a.changeManifest(files[schema.AppFile], verb, raw, types)
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +226,7 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 
 var appSettings = []string{"name", "icon", "agent", "capabilities", "triggers", "commands", "budget", "outputs"}
 
-func changeManifest(text, verb string, raw json.RawMessage, types schema.TypeSet) (string, error) {
+func (a authoring) changeManifest(text, verb string, raw json.RawMessage, types schema.TypeSet) (string, error) {
 	var manifest map[string]json.RawMessage
 	if json.Unmarshal([]byte(text), &manifest) != nil || manifest == nil {
 		return "", errors.New("plan the app before adding its definitions")
@@ -241,14 +242,14 @@ func changeManifest(text, verb string, raw json.RawMessage, types schema.TypeSet
 			}
 			manifest[key] = value
 		}
-	} else if err := editType(manifest, verb, raw, types); err != nil {
+	} else if err := a.editType(manifest, verb, raw, types); err != nil {
 		return "", err
 	}
 	out, err := json.MarshalIndent(manifest, "", "  ")
 	return string(out), err
 }
 
-func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMessage, types schema.TypeSet) error {
+func (a authoring) editType(manifest map[string]json.RawMessage, verb string, raw json.RawMessage, types schema.TypeSet) error {
 	var args struct {
 		Type       string          `json:"type,omitempty"`
 		Name       string          `json:"name"`
@@ -272,15 +273,19 @@ func editType(manifest map[string]json.RawMessage, verb string, raw json.RawMess
 			if err := json.Unmarshal(args.Definition, &revised); err != nil {
 				return err
 			}
-			// A field revision keeps the type's existing identity and reuse
-			// choice unless the author explicitly supplies a replacement.
-			for _, key := range []string{"common", "uses", "portable_reuse", "package_private"} {
-				if value, ok := before[key]; ok && revised[key] == nil {
-					revised[key] = value
+			var common string
+			_ = json.Unmarshal(before["common"], &common)
+			// An ordinary field revision keeps the binding. An explicit choice
+			// to separate records takes precedence over the previous definition.
+			if a.keepsSeparate == nil || !a.keepsSeparate(args.Name, common) {
+				for _, key := range []string{"common", "uses", "portable_reuse"} {
+					if value, ok := before[key]; ok && revised[key] == nil {
+						revised[key] = value
+					}
 				}
-			}
-			if revised["common"] == nil && string(revised["uses"]) == "true" && types[args.Name].Common != "" {
-				revised["common"], _ = json.Marshal(types[args.Name].Common)
+				if revised["common"] == nil && string(revised["uses"]) == "true" && types[args.Name].Common != "" {
+					revised["common"], _ = json.Marshal(types[args.Name].Common)
+				}
 			}
 			args.Definition, _ = json.Marshal(revised)
 		}

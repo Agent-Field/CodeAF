@@ -1,0 +1,36 @@
+{
+  "screen": "offers",
+  "title": "Offer letter",
+  "body": {
+    "part": "Text",
+    "label": "Offer letter",
+    "props": {
+      "mergeFields": true
+    },
+    "bind": {
+      "content-part": "docs/offer.md"
+    },
+    "id": "text"
+  },
+  "nav": {
+    "part": "SectionTabs",
+    "id": "navigation",
+    "label": "Work views",
+    "props": {
+      "items": [
+        {
+          "screen": "candidates",
+          "label": "Pipeline"
+        },
+        {
+          "screen": "interviews",
+          "label": "Interviews"
+        },
+        {
+          "screen": "offers",
+          "label": "Offers"
+        }
+      ]
+    }
+  }
+}

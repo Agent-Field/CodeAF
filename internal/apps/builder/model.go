@@ -70,22 +70,13 @@ with kit elements and label, id, prop-name, bind-name and on-event attributes.
 Use extensions only when no built-in fits. Read reference {"schema":"custom-extensions"} and state why.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
-Run prompts cannot fetch a URL. Pass content from a source, a previous step,
-or an intake attachment. Treat a URL as a citation, never as document text.
 Use action-verb ids. Record commands pass a ref parameter by id, with no default.
-For scheduled loops, a refs parameter takes a query string as its default,
-for example {type: refs, to: post, default: "status:Open"}. A record-change
-trigger can use default: $input.record.links for a matching ref or refs field.
-Read the resulting IDs with $params.post.id.
 Use plan.agent.actions for the exact Action IDs the assistant promises.
 Agent steps return only the requested text at $steps.<id>.output. For loops
 and approvals, use the supplied run example as a syntax reference.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
-Use only connector operations and trigger names listed in the context.
-If the requested connector is unavailable, say what source is missing and
-use a supported input or a clearly labeled local draft if the request allows it.
 Configure schedules, commands and agent. Write instructions with set-agent.
 Use the supplied screen_controls guide for commands, Add buttons and approvals.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
@@ -112,6 +103,12 @@ In sample rows, use only the existing type's fields returned by context.
 Fill visible sample fields. Claim marked nodes and preserve existing ids.
 Your data already imports CSV into editable record types. For CSV import,
 match field ids to the headers and use the built-in import, with no run.`
+
+const automationGuide = `Use the listed connector operations and trigger kinds. If a source is missing,
+say so and use a supported input or labeled local draft if allowed. Run prompts cannot fetch
+URLs. Pass the document text from a source, previous step or intake attachment.
+A refs parameter can default to a query such as "status:Open" or take the
+trigger's matching link via default: $input.record.links. Read IDs with $params.post.id.`
 
 const extensionReference = `Use a built-in part whenever it can meet the request. If none can, say why,
 check kit-parts for a reusable part, and only then use set-custom-part with
@@ -370,6 +367,7 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 	}
 	maps.Copy(tools, in.SourceOperations)
 	raw, err := json.Marshal(struct {
+		Automation     string              `json:"automation_guide"`
 		Triggers       []string            `json:"trigger_kinds"`
 		Connectors     map[string][]string `json:"connector_operations"`
 		RecordPolicy   string              `json:"record_policy"`
@@ -384,7 +382,7 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 		Using          []string            `json:"using,omitempty"`
 		Report         *modelReport        `json:"report,omitempty"`
 	}{
-		triggers, tools, recordPolicyGuide, screenControlsGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
+		automationGuide, triggers, tools, recordPolicyGuide, screenControlsGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
 		unchanged, typeNames, commonBindings, in.Using, briefReport(in.Report),
 	})
 	return string(raw), err
