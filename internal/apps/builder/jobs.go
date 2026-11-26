@@ -599,12 +599,15 @@ func (s *Jobs) Say(id, text string, target *Target) error {
 	return nil
 }
 
+// A node is an element address. Only the screen names a file.
+var markNodeID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
 func validTarget(target *Target) bool {
 	if target == nil {
 		return true
 	}
 	if !definitionPath.MatchString("screens/"+target.Screen+".json") || len(target.Path) > 128 ||
-		(target.Node != "" && !definitionPath.MatchString("screens/"+target.Node+".json")) {
+		(target.Node != "" && !markNodeID.MatchString(target.Node)) {
 		return false
 	}
 	for _, step := range target.Path {

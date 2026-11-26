@@ -693,6 +693,10 @@ func (b *appBackend) restateBatch(live *appLive, q session.Question) {
 // them, one call of a batch or all of them, putting it aside for later, or
 // handing the choice back to the agent's own suggestion.
 func (b *appBackend) AnswerAskWith(agent, id string, answer appwire.AskAnswer) error {
+	// The Desk opens run approval cards from Inbox without an agent conversation.
+	if agent == appRunAskAgent && appRunAsk(id) {
+		return b.answerRunApproval(agent, id, answer.Option, answer.Text)
+	}
 	b.resetCloseResumes(agent)
 	if handled, err := b.answerOrderAsk(id, answer.Option); handled {
 		return err

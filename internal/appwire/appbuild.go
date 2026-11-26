@@ -29,10 +29,27 @@ type draftParams struct {
 	Draft string `json:"draft"`
 }
 
+type appTargetInput struct {
+	builder.Target
+	NodeID string `json:"node_id,omitempty"`
+}
+
+func (in *appTargetInput) target() *builder.Target {
+	if in == nil {
+		return nil
+	}
+	target := in.Target
+	// Normalize the Desk request without changing older requests or the saved mark format.
+	if in.NodeID != "" {
+		target.Node = in.NodeID
+	}
+	return &target
+}
+
 type appSayParams struct {
 	Draft  string          `json:"draft"`
 	Text   string          `json:"text"`
-	Target *builder.Target `json:"target,omitempty"`
+	Target *appTargetInput `json:"target,omitempty"`
 }
 
 type appChangeParams struct {
@@ -60,7 +77,7 @@ func init() {
 		if p.Target == nil {
 			return nil, Errorf(CodeBadParams, "Choose the element to mark.")
 		}
-		return done(b.Mark(p.Draft, p.Text, *p.Target))
+		return done(b.Mark(p.Draft, p.Text, *p.Target.target()))
 	})
 	methods["apps.presence"] = buildCall(func(b *builder.Jobs, p draftParams) (*builder.Presence, error) {
 		state, err := b.State(p.Draft)
@@ -95,7 +112,7 @@ func init() {
 		return &p, b.Build(p.Draft)
 	})
 	methods["apps.say"] = buildCall(func(b *builder.Jobs, p appSayParams) (*Empty, error) {
-		return done(b.Say(p.Draft, p.Text, p.Target))
+		return done(b.Say(p.Draft, p.Text, p.Target.target()))
 	})
 	methods["apps.build_state"] = buildCall(func(b *builder.Jobs, p draftParams) (*builder.State, error) {
 		res, err := b.State(p.Draft)
