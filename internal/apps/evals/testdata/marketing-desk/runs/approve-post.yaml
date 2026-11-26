@@ -1,0 +1,9 @@
+run: approve-post
+title: Approve posting this reply
+params:
+  mention: {type: ref, to: mention}
+steps:
+  - id: approve
+    title: Approve posting this reply
+    args: {destination: fixture-marketing, text: $params.mention.reply}
+    gate: {approval: send, who: me}

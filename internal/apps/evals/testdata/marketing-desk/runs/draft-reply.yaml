@@ -1,0 +1,18 @@
+run: draft-reply
+title: Draft a reply
+budget: {per_run: 0.09}
+params:
+  mention: {type: ref, to: mention}
+steps:
+  - id: draft
+    ai:
+      harness: codeaf
+      prompt: "Write a short, friendly response to this marketing mention without promising a ship date. Mention text: {{params.mention.text}}"
+      example: {reply: Thanks for asking.}
+      propose: $params.mention
+      output:
+        type: object
+        additionalProperties: false
+        required: [reply]
+        properties:
+          reply: {type: string, minLength: 1}

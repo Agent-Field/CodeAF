@@ -45,6 +45,9 @@ func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *sessi
 // runAppCLICommand binds an explicit app chosen by the local CLI caller. The
 // content decoder and execution path are the same ones used by the assistant.
 func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json.RawMessage) (any, error) {
+	if verb == "_mcp" {
+		return b.CallAppMCP(ctx, raw)
+	}
 	switch verb {
 	case "agent_ask":
 		var p appwire.AppAgentAsk
