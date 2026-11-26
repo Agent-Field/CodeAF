@@ -152,16 +152,17 @@ type FreezeRule = appschema.Freeze
 // TypeDef is one record type as an app declares it. Uses says the app uses a
 // type another app owns; its Fields are then the fields it adds.
 type TypeDef struct {
-	Common     CommonTypeKey       `json:"common,omitempty"`
-	Uses       bool                `json:"uses,omitempty"`
-	Title      string              `json:"title,omitempty"`
-	Label      string              `json:"label,omitempty"`
-	Fields     map[string]FieldDef `json:"fields,omitempty"`
-	Constants  map[string]any      `json:"constants,omitempty"`
-	Freeze     []FreezeRule        `json:"freeze,omitempty"`
-	Lifecycle  *LifecycleDef       `json:"lifecycle,omitempty"`
-	Checklists []checklistDef      `json:"checklists,omitempty"`
-	Rules      ruleDeclarations    `json:"write_rules,omitzero"`
+	Policy     *appschema.RecordPolicy `json:"policy,omitempty"`
+	Common     CommonTypeKey           `json:"common,omitempty"`
+	Uses       bool                    `json:"uses,omitempty"`
+	Title      string                  `json:"title,omitempty"`
+	Label      string                  `json:"label,omitempty"`
+	Fields     map[string]FieldDef     `json:"fields,omitempty"`
+	Constants  map[string]any          `json:"constants,omitempty"`
+	Freeze     []FreezeRule            `json:"freeze,omitempty"`
+	Lifecycle  *LifecycleDef           `json:"lifecycle,omitempty"`
+	Checklists []checklistDef          `json:"checklists,omitempty"`
+	Rules      ruleDeclarations        `json:"write_rules,omitzero"`
 	// Ledger makes records append-only: never changed or deleted, only
 	// reversed by a new entry.
 	Ledger LedgerOption `json:"ledger"`
@@ -319,7 +320,13 @@ func (d *AppDef) check() error {
 				return errorf(CodeInvalid, "%s's title %q is not one of its fields", name, t.Title)
 			}
 		}
+		if t.Uses && t.Policy != nil {
+			return errorf(CodeInvalid, "%s inherits its record policy from the app that defines it", name)
+		}
 		for _, fname := range t.order {
+			if t.Fields[fname].Class.Rank() > appschema.ClassRestricted.Rank() {
+				return fieldErr(fname, "unknown data class")
+			}
 			if err := checkField(name, fname, t.Fields[fname]); err != nil {
 				return err
 			}

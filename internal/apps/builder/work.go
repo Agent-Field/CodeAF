@@ -585,6 +585,9 @@ func (s *Jobs) classify(j *job, active turn, id, text string) {
 			return
 		}
 		instruction := "Classify whether the new request directly contradicts or cancels the work in progress. Additions and small refinements can wait. Reply REDIRECT or QUEUE only."
+		ctx = context.WithValue(ctx, classSourceKey{}, func() ([]schema.DataClass, error) {
+			return definitionClasses(j.Working.Files, nil)
+		})
 		modelID := builderModelID(model)
 		response, err := session.ScopedCommandTurn(ctx, filepath.Join(s.root, draft), modelID, instruction, string(input), model,
 			func(context.Context, string) (string, error) {

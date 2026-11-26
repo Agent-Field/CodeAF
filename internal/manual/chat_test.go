@@ -33,6 +33,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"hide salaries", "app-data-policy"},
+		{"only see my accounts", "app-data-policy"},
+		{"don't send customer data to AI", "app-data-policy"},
+		{"use my own source credential", "app-connections"},
 		{"share contacts between apps", "app-common-types"},
 		{"same customers in two apps", "app-common-types"},
 		{"duplicate contacts", "app-common-types"},

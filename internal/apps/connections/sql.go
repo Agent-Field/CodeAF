@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -67,7 +68,7 @@ func (k Kind) placeholder(n int) string {
 	return "?"
 }
 
-func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map[string]any, limit int) ([]map[string]any, error) {
+func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map[string]any, limit int, policyColumn, subject string) ([]map[string]any, error) {
 	db, err := database(kind, secret)
 	if err != nil {
 		return nil, err
@@ -75,7 +76,7 @@ func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map
 	defer db.Close()
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, sourceDatabaseError(err)
 	}
 	defer tx.Rollback()
 
@@ -102,6 +103,16 @@ func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map
 		args = append(args, sqlValue(match[name]))
 		predicates = append(predicates, kind.quote(name)+" = "+kind.placeholder(len(args)))
 	}
+	if policyColumn != "" {
+		args = append(args, subject)
+		column := kind.quote(policyColumn)
+		if kind == MySQL {
+			column = "BINARY " + column
+		} else {
+			column = "CAST(" + column + " AS TEXT) COLLATE \"C\""
+		}
+		predicates = append(predicates, column+" = "+kind.placeholder(len(args)))
+	}
 	if len(predicates) != 0 {
 		query += " WHERE " + strings.Join(predicates, " AND ")
 	}
@@ -112,7 +123,7 @@ func sqlRows(ctx context.Context, kind Kind, secret string, read Read, match map
 	query += kind.quote(read.Key) + " LIMIT " + strconv.Itoa(limit)
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, sourceDatabaseError(err)
 	}
 	defer rows.Close()
 	var out []map[string]any
@@ -204,4 +215,14 @@ func sqlWrite(ctx context.Context, kind Kind, secret string, read Read, key, ver
 		return "", ErrUncertain
 	}
 	return strconv.FormatInt(rev+1, 10), nil
+}
+
+func sourceDatabaseError(err error) error {
+	var pg *pgconn.PgError
+	var my *mysql.MySQLError
+	if errors.As(err, &pg) && (pg.Code == "42501" || strings.HasPrefix(pg.Code, "28")) ||
+		errors.As(err, &my) && (my.Number == 1044 || my.Number == 1045 || my.Number == 1142 || my.Number == 1143) {
+		return ErrSourcePermission
+	}
+	return ErrUnavailable
 }

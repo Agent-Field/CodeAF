@@ -3,9 +3,11 @@ package appwire
 import "encoding/json"
 
 // RunAppCommand uses the desktop method's decoder and implementation. This
-// door deliberately has no access to data.*, connectors, or conversations.
+// door is for local commands and only exposes explicitly listed methods.
 func RunAppCommand(engine Engine, verb string, params json.RawMessage) (any, error) {
 	switch verb {
+	case "data_query", "data_aggregate", "data_types":
+		return methods["data."+verb[len("data_"):]].call(engine, params)
 	case "new", "plan", "build", "check", "say", "build_state", "checkpoints",
 		"restore_checkpoint", "preview", "look", "discard", "change", "kit",
 		"reference", "parts", "common_types", "bind_common_type",

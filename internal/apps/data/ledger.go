@@ -30,7 +30,7 @@ func (s *Store) Reverse(sc Scope, typ, id, reason string) (*WriteResult, error) 
 		if !t.Ledger {
 			return &Error{Code: CodeLedger, Message: fmt.Sprintf("%s records are not a ledger; change or delete them instead", t.Name)}
 		}
-		orig, err := w.live(t, id)
+		orig, err := w.liveFor(sc, t, id)
 		if err != nil {
 			return err
 		}

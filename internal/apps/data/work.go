@@ -96,7 +96,7 @@ func (w *writeTx) subject(sc Scope, typ, id string, write bool) (*Type, *record,
 	if !validID(id) {
 		return nil, nil, errorf(CodeInvalid, "%q is not a record id", id)
 	}
-	r, err := w.live(t, id)
+	r, err := w.liveFor(sc, t, id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -476,8 +476,8 @@ func workActor(sch *schema, sc Scope) string {
 }
 
 func workItemsOn(q querier, sch *schema, sc Scope, f WorkFilter, mine bool) ([]WorkItem, error) {
-	where := []string{"1"}
-	var args []any
+	predicate, args := sch.tablePolicy(sc, "work_items")
+	where := []string{predicate}
 	if mine {
 		where = append(where, "(assignee = ? OR substr(assignee, 1, ?) = ?)")
 		args = append(args, sch.person, len(AgentAssigneePrefix), AgentAssigneePrefix)
@@ -658,8 +658,8 @@ func (s *Store) Timers(sc Scope, record string, pending bool) ([]Timer, error) {
 }
 
 func timersOn(q querier, sch *schema, sc Scope, record string, pending bool) ([]Timer, error) {
-	where := []string{"1"}
-	var args []any
+	predicate, args := sch.tablePolicy(sc, "timers")
+	where := []string{predicate}
 	if record != "" {
 		where, args = append(where, "record = ?"), append(args, record)
 	}
@@ -841,6 +841,9 @@ func (s *Store) Signoffs(sc Scope, typ, id string) ([]Signoff, error) {
 	if r != nil && r.Type != t.Name {
 		r = nil
 	}
+	if t.HasRowPolicy() && (r == nil || !s.LiveRowAllowed(sc, t, r.Data)) {
+		return []Signoff{}, nil
+	}
 	return signoffsOn(s.rdb, t, id, r)
 }
 
@@ -967,7 +970,8 @@ func commentsOn(q querier, sch *schema, sc Scope, typ, record, app, node string)
 		if err != nil {
 			return nil, err
 		}
-		stmt, args = `record = ? AND type_id = ?`, []any{record, t.ID}
+		predicate, params := sch.tablePolicy(sc, "comments")
+		stmt, args = `record = ? AND type_id = ? AND `+predicate, append([]any{record, t.ID}, params...)
 	case node != "":
 		if sc.App != "" {
 			app = sc.App
@@ -1044,6 +1048,15 @@ func (s *Store) RecordActivity(sc Scope, typ, id string) ([]Activity, error) {
 	}
 	if !validID(id) {
 		return nil, errorf(CodeInvalid, "%q is not a record id", id)
+	}
+	if t.HasRowPolicy() {
+		r, err := loadRecord(s.rdb, sch, id)
+		if err != nil {
+			return nil, err
+		}
+		if r == nil || r.Type != t.Name || !s.LiveRowAllowed(sc, t, r.Data) {
+			return []Activity{}, nil
+		}
 	}
 	signoffs, err := s.Signoffs(sc, typ, id)
 	if err != nil {

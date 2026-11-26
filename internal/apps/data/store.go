@@ -361,6 +361,7 @@ func Open(path string, opts Options) (*Store, error) {
 		_ = rdb.Close()
 		return fail(err)
 	}
+	sch.policyAudit = s.auditPolicy
 	s.schema.Store(sch)
 	s.done.Add(2)
 	go s.writer()
@@ -523,6 +524,7 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 		return err
 	}
 	if w.next != nil {
+		w.next.policyAudit = s.auditPolicy
 		s.schema.Store(w.next)
 	}
 	if w.afterCommit != nil {
@@ -609,6 +611,16 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 				continue
 			}
 		}
+		if t.HasRowPolicy() {
+			query := compiled{t: t, sch: sch, alias: "r"}
+			query.applyPolicy(sc)
+			where, args := query.filter()
+			var count int
+			if err := s.rdb.QueryRow(`SELECT count(*) FROM records r WHERE `+where, args...).Scan(&count); err != nil {
+				return nil, err
+			}
+			counts[t.ID] = count
+		}
 		info := TypeInfo{
 			ID: t.ID, Name: t.Name, Common: t.Common, Title: t.titleField(), Label: t.Label, CreatedByApp: t.CreatedByApp, DefinedBy: t.DefinedBy,
 			UsedBy: append([]string(nil), t.UsedBy...), Hidden: t.Hidden, Count: counts[t.ID], Ledger: t.Ledger,
@@ -622,7 +634,7 @@ func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
 			if f.Hidden && sc.App != "" {
 				continue
 			}
-			info.Fields = append(info.Fields, FieldInfo{ID: f.ID, Name: name, FieldDef: f.FieldDef, App: f.App, Hidden: f.Hidden})
+			info.Fields = append(info.Fields, FieldInfo{ID: f.ID, Name: name, FieldDef: f.FieldDef, App: f.App, Hidden: f.Hidden, Visibility: t.FieldPolicy(f)})
 		}
 		out = append(out, info)
 	}

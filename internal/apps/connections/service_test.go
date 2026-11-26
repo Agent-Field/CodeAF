@@ -164,3 +164,48 @@ func TestHTTPReadRejectsAnOversizedResult(t *testing.T) {
 		t.Fatalf("oversized response: %+v %v", page, err)
 	}
 }
+
+func TestPersonCredentialNeverFallsBackToShared(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Header.Get("Authorization") {
+		case "Bearer first-secret":
+			_, _ = w.Write([]byte(`[{"key":"1","name":"First"}]`))
+		case "Bearer second-secret":
+			_, _ = w.Write([]byte(`[{"key":"2","name":"Second"}]`))
+		default:
+			http.Error(w, "private vendor details", http.StatusForbidden)
+		}
+	}))
+	t.Cleanup(server.Close)
+	svc, _ := crm(t)
+	person := "first"
+	svc.Person = func(context.Context) data.PersonPrincipal { return data.PersonPrincipal{ID: person} }
+	cfg := connections.Config{ID: "directory", Kind: connections.HTTP, App: "crm", Origin: server.URL,
+		CredentialMode: connections.CredentialPerson, TestPath: "/contacts",
+		Reads: map[string]connections.Read{"contacts": {Type: "contact", Key: "key", Path: "/contacts", Fields: map[string]string{"name": "name"}}},
+	}
+	if err := svc.Register(cfg, "first-secret"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.Read(context.Background(), contactsQuery())
+	if err != nil || len(first.Rows) != 1 || first.Rows[0]["name"] != "First" {
+		t.Fatalf("first read: %+v, %v", first, err)
+	}
+	person = "second"
+	if _, err := svc.Read(context.Background(), contactsQuery()); !errors.Is(err, connections.ErrPersonCredential) {
+		t.Fatalf("read without own credential: %v", err)
+	}
+	if err := svc.SetPersonCredential(context.Background(), "crm", "directory", "second-secret"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Read(context.Background(), contactsQuery())
+	if err != nil || len(second.Rows) != 1 || second.Rows[0]["name"] != "Second" {
+		t.Fatalf("second read: %+v, %v", second, err)
+	}
+	if err := svc.SetPersonCredential(context.Background(), "crm", "directory", "revoked-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Read(context.Background(), contactsQuery()); !errors.Is(err, connections.ErrSourcePermission) || strings.Contains(err.Error(), "vendor") {
+		t.Fatalf("revoked read: %v", err)
+	}
+}

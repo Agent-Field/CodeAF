@@ -189,7 +189,9 @@ func (sel *selection) project(s *Store, sch *schema, sc Scope, rows []Row) error
 					if err != nil {
 						return err
 					}
-					related[r.ID] = s.row(target, r, sc, false)
+					if target.rowAllowed(sc, sch.person, r.Data) {
+						related[r.ID] = s.row(target, r, sc, false)
+					}
 					return nil
 				})
 			if err != nil {
@@ -394,7 +396,8 @@ func (c *compiled) groupColumn(sc Scope, name string) (string, *Field, error) {
 	if g == nil {
 		return "", nil, fieldErr(name, "%s records have no field %q", target.Name, tail)
 	}
-	if g.Masked && sc.App != "" {
+	if g.Masked && sc.App != "" || target.FieldPolicy(g) != "" || target.rowRule != nil || c.sch.withheldRef(g) {
+		c.sch.notePolicy(sc, target, "query_field_refused")
 		return "", nil, fieldErr(name, "%s is hidden until revealed, so it cannot be used to group by", name)
 	}
 	return "(SELECT " + jsonPath("x.data_json", g.ID) + " FROM records x WHERE x.id = " + c.col(f) + " AND x.deleted_at IS NULL)", g, nil

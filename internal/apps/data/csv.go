@@ -122,7 +122,7 @@ func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResu
 				continue
 			}
 			res.Created++
-			if len(res.Rows) < importPreviewRows {
+			if len(res.Rows) < importPreviewRows && w.s.LiveRowAllowed(sc, t, r.Data) {
 				res.Rows = append(res.Rows, w.s.row(t, r, sc, false))
 			}
 		}

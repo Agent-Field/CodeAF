@@ -299,7 +299,16 @@ func (s *Store) deliver(c *Change) {
 			reset = reset || typeMatch && (inv.binding == "" || sub.bindings[inv.binding])
 		}
 		touched := sub.spec.Table == "" && len(ids[sub.typeID]) > 0 || sub.spec.Table != "" && len(c.Items) > 0
-		if reset || sub.spec.InvalidateOnly && touched {
+		t := sch.byID[sub.typeID]
+		if sub.spec.Table != "" && sch.hasRowPolicies {
+			// A row change can revoke access to previously held work items.
+			for typeID := range ids {
+				source := sch.byID[typeID]
+				reset = reset || source != nil && source.HasRowPolicy()
+			}
+			reset = reset || touched
+		}
+		if reset || touched && (sub.spec.InvalidateOnly || t != nil && t.rowRule != nil) {
 			// A refetch covers everything committed up to this cursor.
 			cursor, err := s.Cursor()
 			if err == nil {
@@ -337,7 +346,8 @@ func (s *Store) resume(op *resumeOp) {
 		s.reset(sub, cursor)
 		return
 	}
-	if op.after > cursor || op.after < s.trimmed() {
+	t := s.schema.Load().byID[sub.typeID]
+	if t != nil && t.rowRule != nil || op.after > cursor || op.after < s.trimmed() {
 		s.reset(sub, cursor)
 		return
 	}

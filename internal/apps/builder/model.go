@@ -44,6 +44,13 @@ types with add-field {"type":"deal","name":"stage","definition":{...}}.
 A linked field uses {"type":"ref","to":"company"}. New types start read-only.
 For an app where the person tracks records, grant read and write to every
 tracked type. For a CRM, use
+To hide a field, include policy.fields in its owning type, for example
+{"fields":{"salary":"hide","tax_id":"mask"}}. To show a person's own rows,
+include policy.row {"field":"owner","attribute":"id"}. Keep the existing
+field definitions when editing the type with add-type. For any new or changed
+field, suggest a class of public, internal, confidential, restricted, or pii
+according to its intended data and any classification the person asked for.
+
 configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}}}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
@@ -286,6 +293,18 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	files := maps.Clone(in.Definition)
 	var mu sync.Mutex
 	var compilerErr error
+	var observedClasses []schema.DataClass
+	ctx = context.WithValue(ctx, classSourceKey{}, func() ([]schema.DataClass, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		classes, err := definitionClasses(files, types)
+		for _, class := range classes {
+			if !slices.Contains(observedClasses, class) {
+				observedClasses = append(observedClasses, class)
+			}
+		}
+		return slices.Clone(observedClasses), err
+	})
 	seen := map[string]bool{}
 	reads := map[contextRequest]string{}
 	execute := func(ctx context.Context, command string) (result string, err error) {

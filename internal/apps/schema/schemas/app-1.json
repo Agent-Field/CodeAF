@@ -123,6 +123,25 @@
         "title": { "type": "string" },
         "label": { "type": "string" },
         "uses": { "type": "boolean" },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "row": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "attribute"],
+              "properties": {
+                "field": {"type": "string"},
+                "attribute": {"type": "string"}
+              }
+            },
+            "fields": {
+              "type": "object",
+              "additionalProperties": {"enum": ["hide", "mask"]}
+            }
+          }
+        },
         "fields": {
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/name" },
@@ -158,6 +177,7 @@
         "unique": { "type": "boolean" },
         "default": {},
         "index": { "type": "boolean" },
+        "class": {"enum": ["public", "internal", "confidential", "restricted", "pii"]},
         "masked": { "type": "boolean" },
         "computed": { "type": "string", "minLength": 1 },
         "ai": { "type": "string", "minLength": 1 },
