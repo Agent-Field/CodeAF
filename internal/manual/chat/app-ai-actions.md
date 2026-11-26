@@ -55,8 +55,6 @@ when it reads a missing step or tries to read a field from plain agent text.
 An approval applies to that displayed effect only. A stopped or uncertain
 delivery stays incomplete. A connection must be available to
 deliver an approved connector step.
-An approved standalone gate shows as done in the run's steps after the
-run moves on.
 
 ## Connect my agent via MCP
 

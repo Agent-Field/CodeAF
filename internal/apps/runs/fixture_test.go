@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 )
@@ -166,5 +167,39 @@ func TestStandaloneApprovalStaysDoneAfterTheRunFinishes(t *testing.T) {
 	done := state(t, e, r.ID)
 	if done.State != runs.Done || done.Steps[0].State != runs.Done {
 		t.Fatalf("approved run: state %q, step %q", done.State, done.Steps[0].State)
+	}
+}
+
+func TestStandaloneApprovalStartsPlannedInTheNextRound(t *testing.T) {
+	const definition = `run: example
+steps:
+  - id: each
+    loop: {over: $params.items, as: item, max: 2}
+    steps:
+      - id: pause
+        wait: {for: 1h}
+      - id: approve
+        gate: {approval: proof}
+`
+	now := time.Now()
+	e := newEngine(t, definition, runs.Config{Now: func() time.Time { return now }})
+	r, err := e.Start("app", "example", map[string]any{"items": []any{"first", "second"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	now = now.Add(time.Hour)
+	tick(t, e)
+	waiting := state(t, e, r.ID)
+	if waiting.Approval == nil {
+		t.Fatalf("first round did not ask for approval: %+v", waiting)
+	}
+	if err := e.Answer(r.ID, waiting.Approval.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	next := state(t, e, r.ID)
+	if next.Step != "pause" || next.Steps[0].Steps[1].State != "planned" {
+		t.Fatalf("second round: current step %q, approval %q", next.Step, next.Steps[0].Steps[1].State)
 	}
 }
