@@ -426,6 +426,19 @@
         "title": {
           "type": "string"
         },
+        "present": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {"$ref": "#/$defs/name"},
+            "meta": {"type": "array", "items": {"$ref": "#/$defs/name"}, "uniqueItems": true},
+            "trailing": {"$ref": "#/$defs/name"},
+            "state": {"$ref": "#/$defs/name"},
+            "avatar": {"$ref": "#/$defs/name"},
+            "money": {"$ref": "#/$defs/name"},
+            "link": {"$ref": "#/$defs/name"}
+          }
+        },
         "label": {
           "type": "string"
         },

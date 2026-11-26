@@ -417,6 +417,23 @@ func (c *checker) checkApp() {
 				c.add(AppFile, at+"/title", CodeFieldUnknown, "The title of %s is %q, but %s has no such field.", name, t.Title, name)
 			}
 		}
+		if p := t.Present; p != nil {
+			check := func(slot, field string) {
+				if field == "" {
+					return
+				}
+				if _, ok := fields[field]; !ok {
+					c.add(AppFile, at+"/present/"+slot, CodeFieldUnknown, "%s has no field %q to show here.", name, field)
+				}
+			}
+			for _, slot := range [][2]string{{"title", p.Title}, {"trailing", p.Trailing}, {"state", p.State},
+				{"avatar", p.Avatar}, {"money", p.Money}, {"link", p.Link}} {
+				check(slot[0], slot[1])
+			}
+			for i, field := range p.Meta {
+				check(fmt.Sprintf("meta/%d", i), field)
+			}
+		}
 		for _, fname := range sortedKeys(t.Fields) {
 			f := t.Fields[fname]
 			fat := at + "/fields/" + fname

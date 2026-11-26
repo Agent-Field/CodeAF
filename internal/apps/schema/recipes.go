@@ -59,7 +59,9 @@ func CompileRecipe(def Definition, existing TypeSet, r Recipe) (RecipeResult, er
 	var screen *Screen
 	switch r.Kind {
 	case "add-screen":
-		screen, err = c.compileArchetype(r)
+		if err = c.addPresentations(); err == nil {
+			screen, err = c.compileArchetype(r)
+		}
 	case "add-view", "add-detail", "add-chart", "add-queue":
 		screen, err = c.compileViewRecipe(r)
 	case "add-form":
