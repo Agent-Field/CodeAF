@@ -29,9 +29,10 @@
       "type": "boolean"
     },
     "bindings": {
-      "const": [
-        "records"
-      ]
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["records", "record"] }
     },
     "events": {
       "type": "array",

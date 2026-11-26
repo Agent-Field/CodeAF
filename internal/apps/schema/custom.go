@@ -150,7 +150,7 @@ func compilePartElement(x xml.StartElement, p Part) (PartElement, error) {
 }
 
 func (c *checker) checkCustomPart(ctx actionCtx, n *Node, program PartProgram, at, typ string, query QueryIR) {
-	if query.Type != "" {
+	if typ != "" {
 		fields, _ := c.typeFields(typ)
 		for _, name := range program.Manifest.Inputs {
 			if !systemFields[name] {

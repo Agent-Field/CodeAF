@@ -110,7 +110,7 @@ source draws one group per queried record with up to 12 <title/>, <text/>,
 <display/>, <dot-cells/> or <button/> elements. Dot-cells draws Unicode Braille as round raised and flat dot positions. Each takes text="literal" or field="a
 manifest input". A button also takes event="a declared event". No scripts or
 custom styles. Bind it with <Part part="custom/name" bind-records="record"
-bind-view="query" label="Name" .../>. Map each on-event to one registered
+bind-view="query" label="Name" .../> or bind-record with bind-type for one record. Map each on-event to one registered
 Action and limit the view to 24 records. Import a Kit entry by exact version
 with use-kit-part {"id":"name","version":1} and bind it the same way.
 When built-in automation steps do not express a calculation, say why and use

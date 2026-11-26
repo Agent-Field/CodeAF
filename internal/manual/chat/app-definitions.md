@@ -218,7 +218,7 @@ In a kit 2 editing session, use a built-in part if it meets the request.
 When it cannot, tell the person which requirement is missing.
 `codeaf app set-custom-part` takes an ID, a manifest and restricted markup
 source. The manifest names the missing requirement, field inputs, button
-events, themes and sizes. Bind it to a declared query and map each event to
+events, themes and sizes. Bind it to a declared query or one record and map each event to
 one registered Action. Labels, text, display values, Braille dot cells and
 buttons draw from the query's policy-filtered rows. The markup accepts up to 12 direct elements,
 240 bytes per label and 8 KiB of source. The query must return at most 24
