@@ -181,20 +181,13 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("older stamp did not reach its capture")
 	}
-	// Bank a late charge while A is between capture and write. The channel
-	// handoff above guarantees A has released a.mu, so banking can proceed.
+	// Banking the late charge queues its own stamp while A is between capture
+	// and write. The channel handoff above guarantees that A has released a.mu.
 	agent.bank(bankedCall{
 		used:  Usage{Input: 4, Output: 1, CostUSD: .125, Calls: 1},
 		model: "test/model", generationID: "late-concurrent", late: true, ledger: true,
 	})
-	lateStarted, lateDone := make(chan struct{}), make(chan struct{})
-	go func() {
-		close(lateStarted)
-		agent.stampSpend()
-		close(lateDone)
-	}()
-	t.Cleanup(func() { letGo(); waitMetaPatch(t, lateDone) })
-	waitMetaPatch(t, lateStarted)
+	t.Cleanup(func() { letGo(); agent.spendStamp().settle() })
 	if got := captures.Load(); got != 1 {
 		t.Fatalf("second stamp captured before the first wrote: %d captures", got)
 	}
@@ -213,7 +206,7 @@ func TestConcurrentTurnAndLateSpendStampsKeepTheLatestMeter(t *testing.T) {
 		t.Fatal("newer stamp did not capture after releasing the older stamp")
 	}
 	waitMetaPatch(t, done)
-	waitMetaPatch(t, lateDone)
+	agent.spendStamp().settle()
 	meta := stampedMeta(t, agent, dir)
 	mu.Lock()
 	defer mu.Unlock()
