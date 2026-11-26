@@ -97,7 +97,7 @@ func (s *Jobs) StartPackage(ctx context.Context, archive apppackage.Archive) (id
 			_ = os.RemoveAll(filepath.Join(s.root, j.Draft))
 		}
 	}()
-	files, _, err := archive.Bind(catalog.Types, j.Draft, false)
+	files, _, err := archive.Bind(catalog.Types, j.Draft, true)
 	if err != nil {
 		return "", err
 	}
@@ -190,7 +190,7 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 	if target == "" {
 		target = j.Draft
 	}
-	upstream, bindings, err := archive.Bind(catalog.Types, target, fork != nil && fork.App != "")
+	upstream, bindings, err := archive.Bind(catalog.Types, target, fork != nil)
 	if err != nil {
 		return Proposal{}, err
 	}

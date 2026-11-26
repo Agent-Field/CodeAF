@@ -133,12 +133,6 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		wire.must("apps.discard", map[string]string{"draft": start.Draft}, &struct{}{})
 
 		wire.mustFail("apps.install", map[string]string{"path": catalogPath, "expected_hash": "sha256:old"}, appwire.CodeConflict)
-		var forkCard builder.Proposal
-		wire.must("apps.fork", map[string]string{"path": catalogPath}, &forkCard)
-		if forkCard.Source != "package_fork" || forkCard.Checkpoint == "" {
-			t.Fatalf("catalog fork did not stage a checked copy: %+v", forkCard)
-		}
-		wire.must("apps.discard", map[string]string{"draft": forkCard.Draft}, &struct{}{})
 
 		var install builder.Proposal
 		wire.must("apps.install", map[string]string{"path": v1}, &install)
@@ -176,6 +170,13 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 			t.Fatalf("installed CRM did not reuse the existing person: %+v", records)
 		}
 		wire.mustFail("data.create", appwire.DataCreateParams{DataScope: p.DataScope, Type: p.Type, Set: map[string]any{"name": "Extra"}}, appwire.CodeNotAllowed)
+
+		var forkCard builder.Proposal
+		wire.must("apps.fork", map[string]string{"path": catalogPath}, &forkCard)
+		if forkCard.Source != "package_fork" || forkCard.Checkpoint == "" || forkCard.Package.Bindings["contact"].Type != "people" {
+			t.Fatalf("catalog fork did not stage a checked copy: %+v", forkCard)
+		}
+		wire.must("apps.discard", map[string]string{"draft": forkCard.Draft}, &struct{}{})
 
 		local := applied.Meta
 		def, err := defs.Get(app)
