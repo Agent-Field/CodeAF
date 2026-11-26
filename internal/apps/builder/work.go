@@ -157,13 +157,6 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog) (map[st
 	request := t.Request
 	if request == "" {
 		request = j.LastRequest
-		if j.App == "" {
-			// The outline and accepted reuse arrive through context. The request
-			// still needs the original wording, including details the outline omits.
-			if first := slices.IndexFunc(j.Transcript, func(m Message) bool { return m.Role == "user" }); first >= 0 {
-				request = j.Transcript[first].Text
-			}
-		}
 	}
 	files, reply, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
