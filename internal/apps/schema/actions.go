@@ -86,14 +86,15 @@ func registerRun(run Run, id, label, record string) RegisteredAction {
 	maps.Copy(args, run.Params)
 	if record == "" {
 		// A single record input supplies the action's record type.
+		count := 0
 		for _, parameter := range run.Params {
 			if parameter.Type == "ref" {
-				if record != "" {
-					record = ""
-					break
-				}
 				record = parameter.To
+				count++
 			}
+		}
+		if count != 1 {
+			record = ""
 		}
 	}
 	return RegisteredAction{ID: id, Label: label, Record: record, Args: args, Run: &run, Fixed: map[string]any{}}

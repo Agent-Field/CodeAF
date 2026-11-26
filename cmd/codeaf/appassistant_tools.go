@@ -101,9 +101,9 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 		if verb != appwire.AppContentPropose && p.Request != "" {
 			return nil, appwire.Errorf(appwire.CodeBadParams, "Request text is only for an app proposal.")
 		}
-		load := b.appAssistantDefinition
-		if verb == appwire.AppContentShow {
-			load = b.appContentDefinition
+		load := b.appContentDefinition
+		if verb == appwire.AppContentPropose {
+			load = b.appAssistantDefinition
 		}
 		_, def, err := load(p.App)
 		if err != nil {

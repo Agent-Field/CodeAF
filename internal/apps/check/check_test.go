@@ -140,3 +140,15 @@ func TestCheckRequiresTheAssistantActionsItClaims(t *testing.T) {
 		t.Fatalf("Check failed the registered Mark Won Action: %v", report)
 	}
 }
+
+func TestCheckRequiresOneGrantableActionForAMultiEffectCommand(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := def.Files[schema.AppFile]
+	def.Files[schema.AppFile] = bytes.Replace(app, []byte(`"set": { "stage": "Won" } } }`), []byte(`"set": { "stage": "Won" } } }, { "runs.start": "follow-up" }`), 1)
+	if report := check.Definition(def, nil); !slices.Contains(report.Codes(), "command_action_missing") {
+		t.Fatalf("Check accepted a multi-effect Mark Won command without a grantable Action: %v", report)
+	}
+}

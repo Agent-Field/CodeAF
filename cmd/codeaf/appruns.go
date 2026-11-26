@@ -350,7 +350,7 @@ data. App edits are unavailable in this run.`
 			reply, callErr := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt, attachments...)
 			err = callErr
 			result.Cost = recorded(reply)
-			if reply != nil && reply.HasToolCalls() {
+			if (err == nil || errors.Is(err, runs.ErrAgentOutput)) && reply != nil && reply.HasToolCalls() {
 				err = runs.ErrAgentOutput
 			} else if err == nil && call.AI == nil {
 				var body map[string]json.RawMessage

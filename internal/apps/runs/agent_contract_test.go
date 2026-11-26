@@ -73,3 +73,26 @@ steps:
 		})
 	}
 }
+
+func TestRunKeepsTheSummaryOfAnExplicitRenderStep(t *testing.T) {
+	const definition = `run: example
+steps:
+  - id: document
+    agent: CRM assistant
+    prompt: Generate the declared document.
+    tools: [render]
+`
+	calls := 0
+	e := newEngine(t, definition, runs.Config{Agent: func(_ context.Context, call runs.AgentCall) (runs.Reply, error) {
+		calls++
+		if len(call.Tools) != 1 || call.Tools[0] != "render" {
+			t.Fatalf("render tool declaration is missing: %+v", call)
+		}
+		return runs.Reply{Output: "Here’s the draft document I saved."}, nil
+	}})
+	run := start(t, e)
+	tick(t, e)
+	if got := state(t, e, run.ID); calls != 1 || got.State != runs.Done {
+		t.Fatalf("render step reached %+v after %d calls", got, calls)
+	}
+}

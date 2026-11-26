@@ -35,6 +35,7 @@ steps:
 		name, output, state string
 	}{
 		{"valid", `{"reply":"Yes, you can import CSV."}`, runs.Done},
+		{"ordinary analysis", `{"reply":"Analysis: review the contract"}`, runs.Done},
 		{"invalid", `{"reply":42}`, runs.Incomplete},
 		{"extra", `{"reply":"Yes."} Thanks!`, runs.Incomplete},
 		{"simulated call", `{"reply":"start_run({})\nI started the follow-up run."}`, runs.Incomplete},

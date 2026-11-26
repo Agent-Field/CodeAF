@@ -25,7 +25,9 @@ When using another agent, put its principal ID in `agent`. Its grants are
 separate. Grant the assistant a Deals view as well so it can find a deal by
 name. Check reports any Action ID promised in `plan.agent.actions` that
 the app does not declare. A run that uses an unavailable model or harness
-is omitted from the live Action and grant lists until it can run.
+is omitted from the live Action and grant lists until it can run. If Check
+asks you to make a record command grantable, put its multiple effects into
+one run with typed parameters and bind the command to that run.
 
 ## Add a field, column, screen or automation from the app assistant
 

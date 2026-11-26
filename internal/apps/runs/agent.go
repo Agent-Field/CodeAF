@@ -45,8 +45,8 @@ func (call AgentCall) ModelPrompt() string {
 // ErrAgentOutput tells the run it can re-ask without repeating an effect.
 var ErrAgentOutput = errors.New("the model answer did not match the step's output contract")
 
-var simulatedCall = regexp.MustCompile(`(?im)(?:^|\s)(?:search_deals|start_run|[a-z][a-z0-9]*_[a-z0-9_]+)\s*\(\s*(?:[{"']|\))|<\/?(?:[^<>\s]*[|｜])?(?:tool[_ ▁-]?calls?|function(?:[_ ▁]call)?|final_answer)\b|"tool_calls"\s*:|"role"\s*:\s*"(?:tool|assistant)"|(?:^|\n)\s*(?:tool (?:call|result)|assistant|analysis|final answer)\s*:|codeaf app (?:show|query|invoke|render)\s*\{`)
-var draftNarration = regexp.MustCompile(`(?im)^\s*(?:here(?:['’]s| is) (?:the|a|your|my) (?:draft|message|follow[- ]up|email|response)|(?:draft|follow[- ]up|message|email)(?: for [^:\n]{1,100})?:|I (?:have )?(?:called|searched|looked up|found the (?:deal|record)|started the (?:follow[- ]up|run)|saved the (?:draft|note)))`)
+var simulatedCall = regexp.MustCompile(`(?im)(?:^|\s)(?:search_deals|start_run|[a-z][a-z0-9]*_[a-z0-9_]+)\s*\(\s*(?:[{"']|\))|<\/?(?:[^<>\s]*[|｜])?(?:tool[_ ▁-]?calls?|function(?:[_ ▁]call)?|final_answer)\b|"tool_calls"\s*:|"role"\s*:\s*"(?:tool|assistant)"|(?:^|\n)\s*(?:tool (?:call|result)|final answer)\s*:|codeaf app (?:show|query|invoke|render)\s*\{`)
+var draftNarration = regexp.MustCompile(`(?im)^\s*(?:here(?:['’]s| is) (?:the|a|your|my) (?:draft|message|follow[- ]up|email|response)|I (?:have )?(?:called|searched|looked up|found the (?:deal|record)|started the (?:follow[- ]up|run)|saved the (?:draft|note)))`)
 
 func agentStepOutput(call AgentCall, output any) (any, error) {
 	if call.AI != nil {
@@ -54,7 +54,7 @@ func agentStepOutput(call AgentCall, output any) (any, error) {
 		if err != nil {
 			return nil, ErrAgentOutput
 		}
-		if text, ok := value.(string); (ok && strings.TrimSpace(text) == "") || narratesAgentWork(value) {
+		if text, ok := value.(string); (ok && invalidAgentText(text)) || hasSimulatedCall(value) {
 			return nil, ErrAgentOutput
 		}
 		return value, nil
@@ -67,21 +67,21 @@ func agentStepOutput(call AgentCall, output any) (any, error) {
 }
 
 func invalidAgentText(text string) bool {
-	return strings.TrimSpace(text) == "" || narratesAgentWork(text)
+	return strings.TrimSpace(text) == "" || simulatedCall.MatchString(text) || draftNarration.MatchString(text)
 }
 
-func narratesAgentWork(value any) bool {
+func hasSimulatedCall(value any) bool {
 	switch value := value.(type) {
 	case string:
-		return simulatedCall.MatchString(value) || draftNarration.MatchString(value)
+		return simulatedCall.MatchString(value)
 	case map[string]any:
 		for _, item := range value {
-			if narratesAgentWork(item) {
+			if hasSimulatedCall(item) {
 				return true
 			}
 		}
 	case []any:
-		return slices.ContainsFunc(value, narratesAgentWork)
+		return slices.ContainsFunc(value, hasSimulatedCall)
 	}
 	return false
 }
@@ -97,7 +97,9 @@ func (e *Engine) completeStep(ctx context.Context, c *checkpoint, step Step, a *
 	}
 	call.Remaining = max(0, budget-c.Cost)
 	reply, err := e.cfg.Agent(ctx, call)
-	if interactive {
+	// A rendering step produces its document through the effect broker.
+	// Its closing words are a receipt summary and cannot replay the effect.
+	if interactive || slices.Contains(call.Tools, "render") {
 		return reply, err
 	}
 	if err == nil {
@@ -113,11 +115,8 @@ func (e *Engine) completeStep(ctx context.Context, c *checkpoint, step Step, a *
 		// External harnesses may cache their answer by request ID.
 		call.Key += "/repair"
 	}
+	c.Cost += reply.Cost
 	repaired, err := e.cfg.Agent(ctx, call)
-	if !validCost(repaired.Cost) {
-		return repaired, err
-	}
-	repaired.Cost += reply.Cost
 	if err == nil {
 		repaired.Output, err = agentStepOutput(call, repaired.Output)
 	}
