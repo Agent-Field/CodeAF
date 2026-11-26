@@ -72,10 +72,11 @@ Use add-chart with group and aggregate
 elements and label, id, prop-name, bind-name and on-event attributes.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
-Use action-verb ids such as launch-research or draft-thread. Use params for
-inputs, agent and prompt for model steps, and records.create for saved results.
-Use the configured agent name and omit lifecycle-owned fields from record
-writes. Put a send gate on the outbound tool step with the exact text in its args.
+Use action-verb ids. Declare inputs in params and store ref ids as $params.post.id.
+Agent steps return text at $steps.<id>.output. For lists and approvals, copy
+reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
+Use exact earlier step ids in args. Put send gates on outbound tools, or use
+a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Configure schedules, commands and agent. Write instructions with set-agent.
 Put the controls on the screen where the person works. Use a Button with
@@ -371,7 +372,7 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			if err := json.Unmarshal(args, &options); err != nil {
 				return "", errors.New("choose one file format or worked example file")
 			}
-			if (options.Example == "crm" || options.Example == "hiring") && definitionPath.MatchString(options.File) {
+			if (options.Example == "crm" || options.Example == "hiring" || options.Example == "draft-review") && definitionPath.MatchString(options.File) {
 				raw, err := schema.BuilderExampleFile(options.Example, options.File)
 				if err != nil {
 					return "", errors.New("that worked example file is unavailable")
