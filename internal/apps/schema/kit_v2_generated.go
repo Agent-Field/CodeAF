@@ -7,4 +7,4 @@ import _ "embed"
 //go:embed manifests/kit-v2.json
 var kitV2 []byte
 
-const kitV2SourceDigest = "2e22cfd1006bceae48ad2fd0019183a47bde970d99debe5b1812866f483842e8"
+const kitV2SourceDigest = "c85a9545c2cea5912bd9daffd12e3f05852097bf349f73a5c0f0d0bc75acbd9b"

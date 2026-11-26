@@ -712,6 +712,9 @@
           "title": {
             "type": "string"
           },
+          "placement": {
+            "enum": ["side"]
+          },
           "primary": {
             "type": "string"
           }

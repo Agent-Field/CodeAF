@@ -269,6 +269,10 @@ each Button an ID, a label and one or more `on.click` Actions. Leave its
 `items` list empty when using children. A Menu with an `items` list
 continues to emit `on.pick` with the selected ID.
 
+Put a Sheet with `props.placement: "side"` beside an editor or other record
+surface in a Row. An `open` Action targeting its ID opens a side panel and
+leaves the editor available. Ordinary Sheets open over the screen.
+
 Set `agent.dock` to `"closed"` in app.json to keep the agent panel folded
 when the app opens. The agent button in the header opens it.
 

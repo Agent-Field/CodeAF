@@ -110,57 +110,64 @@
         ]
       },
       {
-        "part": "custom/slide-body",
-        "id": "body",
-        "label": "Slide",
-        "bind": {
-          "record": "$params.id",
-          "type": "slides_slide"
-        },
-        "on": {
-          "edit": [
-            {
-              "records.update": {
-                "type": "slides_slide",
-                "id": "$record.id",
-                "set": {
-                  "body": "$input.value",
-                  "deck": "$input.deck"
-                }
-              }
-            }
-          ]
-        }
-      },
-      {
-        "part": "Sheet",
-        "id": "details-sheet",
-        "label": "Details",
+        "part": "Row",
+        "id": "editor-workspace",
         "children": [
           {
-            "part": "RecordPage",
-            "id": "details",
-            "label": "Slide details",
+            "part": "custom/slide-body",
+            "id": "body",
+            "label": "Slide",
             "bind": {
               "record": "$params.id",
               "type": "slides_slide"
             },
-            "props": {
-              "fields": [
-                "title"
-              ],
-              "history": true,
-              "actions": [
-                "rename",
-                "duplicate",
-                "delete"
+            "on": {
+              "edit": [
+                {
+                  "records.update": {
+                    "type": "slides_slide",
+                    "id": "$record.id",
+                    "set": {
+                      "body": "$input.value",
+                      "deck": "$input.deck"
+                    }
+                  }
+                }
               ]
             }
+          },
+          {
+            "part": "Sheet",
+            "id": "details-sheet",
+            "label": "Details",
+            "children": [
+              {
+                "part": "RecordPage",
+                "id": "details",
+                "label": "Presentation details",
+                "bind": {
+                  "record": "$params.id",
+                  "type": "slides_slide"
+                },
+                "props": {
+                  "fields": [
+                    "title"
+                  ],
+                  "history": true,
+                  "actions": [
+                    "rename",
+                    "duplicate",
+                    "delete"
+                  ]
+                }
+              }
+            ],
+            "props": {
+              "title": "Details",
+              "placement": "side"
+            }
           }
-        ],
-        "props": {
-          "title": "Details"
-        }
+        ]
       }
     ]
   },

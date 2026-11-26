@@ -92,59 +92,66 @@
         ]
       },
       {
-        "part": "custom/board-body",
-        "id": "body",
-        "label": "Board",
-        "bind": {
-          "record": "$params.id",
-          "type": "canvas_board"
-        },
-        "on": {
-          "edit": [
-            {
-              "records.update": {
-                "type": "canvas_board",
-                "id": "$record.id",
-                "set": {
-                  "body": "$input.value",
-                  "x": "$input.x",
-                  "y": "$input.y",
-                  "objects": "$input.objects"
-                }
-              }
-            }
-          ]
-        }
-      },
-      {
-        "part": "Sheet",
-        "id": "details-sheet",
-        "label": "Details",
+        "part": "Row",
+        "id": "editor-workspace",
         "children": [
           {
-            "part": "RecordPage",
-            "id": "details",
-            "label": "Board details",
+            "part": "custom/board-body",
+            "id": "body",
+            "label": "Board",
             "bind": {
               "record": "$params.id",
               "type": "canvas_board"
             },
-            "props": {
-              "fields": [
-                "title"
-              ],
-              "history": true,
-              "actions": [
-                "rename",
-                "duplicate",
-                "delete"
+            "on": {
+              "edit": [
+                {
+                  "records.update": {
+                    "type": "canvas_board",
+                    "id": "$record.id",
+                    "set": {
+                      "body": "$input.value",
+                      "x": "$input.x",
+                      "y": "$input.y",
+                      "objects": "$input.objects"
+                    }
+                  }
+                }
               ]
             }
+          },
+          {
+            "part": "Sheet",
+            "id": "details-sheet",
+            "label": "Details",
+            "children": [
+              {
+                "part": "RecordPage",
+                "id": "details",
+                "label": "Board details",
+                "bind": {
+                  "record": "$params.id",
+                  "type": "canvas_board"
+                },
+                "props": {
+                  "fields": [
+                    "title"
+                  ],
+                  "history": true,
+                  "actions": [
+                    "rename",
+                    "duplicate",
+                    "delete"
+                  ]
+                }
+              }
+            ],
+            "props": {
+              "title": "Details",
+              "placement": "side"
+            }
           }
-        ],
-        "props": {
-          "title": "Details"
-        }
+        ]
       }
     ]
   },

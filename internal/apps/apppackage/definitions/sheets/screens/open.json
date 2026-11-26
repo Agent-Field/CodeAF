@@ -92,57 +92,64 @@
         ]
       },
       {
-        "part": "custom/worksheet-body",
-        "id": "body",
-        "label": "Worksheet",
-        "bind": {
-          "record": "$params.id",
-          "type": "sheets_worksheet"
-        },
-        "on": {
-          "edit": [
-            {
-              "records.update": {
-                "type": "sheets_worksheet",
-                "id": "$record.id",
-                "set": {
-                  "body": "$input.value",
-                  "column_formats": "$input.column_formats"
-                }
-              }
-            }
-          ]
-        }
-      },
-      {
-        "part": "Sheet",
-        "id": "details-sheet",
-        "label": "Details",
+        "part": "Row",
+        "id": "editor-workspace",
         "children": [
           {
-            "part": "RecordPage",
-            "id": "details",
-            "label": "Worksheet details",
+            "part": "custom/worksheet-body",
+            "id": "body",
+            "label": "Worksheet",
             "bind": {
               "record": "$params.id",
               "type": "sheets_worksheet"
             },
-            "props": {
-              "fields": [
-                "title"
-              ],
-              "history": true,
-              "actions": [
-                "rename",
-                "duplicate",
-                "delete"
+            "on": {
+              "edit": [
+                {
+                  "records.update": {
+                    "type": "sheets_worksheet",
+                    "id": "$record.id",
+                    "set": {
+                      "body": "$input.value",
+                      "column_formats": "$input.column_formats"
+                    }
+                  }
+                }
               ]
             }
+          },
+          {
+            "part": "Sheet",
+            "id": "details-sheet",
+            "label": "Details",
+            "children": [
+              {
+                "part": "RecordPage",
+                "id": "details",
+                "label": "Worksheet details",
+                "bind": {
+                  "record": "$params.id",
+                  "type": "sheets_worksheet"
+                },
+                "props": {
+                  "fields": [
+                    "title"
+                  ],
+                  "history": true,
+                  "actions": [
+                    "rename",
+                    "duplicate",
+                    "delete"
+                  ]
+                }
+              }
+            ],
+            "props": {
+              "title": "Details",
+              "placement": "side"
+            }
           }
-        ],
-        "props": {
-          "title": "Details"
-        }
+        ]
       }
     ]
   },
