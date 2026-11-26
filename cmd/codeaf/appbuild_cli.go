@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
@@ -90,7 +91,7 @@ func runAppCommand(args []string) error {
 	params := json.RawMessage("{}")
 	switch {
 	case verb == "help":
-		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add|agent_duty_remove> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|common-types|bind-common-type|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add|agent_duty_remove> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
 		return nil
 	case verb == "kit" && len(args) == 1:
@@ -99,6 +100,12 @@ func runAppCommand(args []string) error {
 	case verb == "reference" && len(args) == 1:
 		_, err := fmt.Fprintln(os.Stdout, builder.Reference())
 		return err
+	case (verb == "common_types" || verb == "parts") && len(args) == 1:
+		reply, err := appwire.RunAppCommand(nil, verb, params)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(reply)
 	case verb == "parts" && len(args) == 3 && args[1] == "--for":
 		var err error
 		params, err = appcmd.PartsArgs(args[2])
@@ -141,6 +148,9 @@ func runAppCommand(args []string) error {
 	}
 	response, err := (&http.Client{Transport: transport}).Do(request)
 	if err != nil {
+		if verb == "bind_common_type" && (errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)) {
+			return runAppCommonBind(params)
+		}
 		return errors.New("open the desktop app for this profile to use app commands")
 	}
 	defer response.Body.Close()

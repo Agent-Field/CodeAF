@@ -44,11 +44,12 @@ func Parts(intent string) (json.RawMessage, error) {
 	}
 	if intent == "" || intent == "add-view" {
 		view := struct {
-			Kit    int      `json:"kit"`
-			Views  []string `json:"views,omitempty"`
-			Fields []string `json:"field_types,omitempty"`
-			Parts  []string `json:"parts"`
-		}{Kit: kit.Kit, Views: slices.Sorted(maps.Keys(kit.Registries.Views)), Fields: slices.Sorted(maps.Keys(kit.Registries.Fields))}
+			Kit         int                      `json:"kit"`
+			CommonTypes schema.CommonTypeLibrary `json:"common_types"`
+			Views       []string                 `json:"views,omitempty"`
+			Fields      []string                 `json:"field_types,omitempty"`
+			Parts       []string                 `json:"parts"`
+		}{Kit: kit.Kit, CommonTypes: schema.CommonTypes(), Views: slices.Sorted(maps.Keys(kit.Registries.Views)), Fields: slices.Sorted(maps.Keys(kit.Registries.Fields))}
 		for _, part := range kit.Parts {
 			view.Parts = append(view.Parts, part.Name)
 		}
