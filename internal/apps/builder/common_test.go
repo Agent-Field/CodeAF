@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,7 +22,10 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 	options := builder.Options{
 		Changed: func(e builder.Event) {
 			if e.Line == "Plan ready to review." {
-				review <- struct{}{}
+				select {
+				case review <- struct{}{}:
+				default:
+				}
 			}
 		},
 		Home:    t.TempDir(),
@@ -180,9 +184,26 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 							return toolCalls(command("markup", map[string]string{"screen": "contacts"})), nil
 						case 3:
 							return toolCalls(command("add-type", map[string]any{"name": "customer", "definition": map[string]any{"uses": !planning, "common": "person", "fields": map[string]any{}}})), nil
+						case 4:
+							if !planning {
+								return toolCalls(command("check", nil)), nil
+							}
+							fallthrough
 						default:
 							if planning {
 								return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I outlined Contacts."}}}, nil
+							}
+							last := messages[len(messages)-1]
+							want := []string{`"status":"definition_only"`}
+							if desk && test.existing {
+								want = []string{`"status":"needs_you"`, "choose_reuse"}
+							} else if !test.existing {
+								want = append(want, schema.CodeUsesUnknown)
+							}
+							for _, text := range want {
+								if !strings.Contains(last.Content[0].Text, text) {
+									t.Errorf("the Builder's preliminary report did not contain %s", text)
+								}
 							}
 							deskReady.Store(false)
 							return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "Contacts are ready."}}}, nil

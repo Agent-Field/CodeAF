@@ -76,7 +76,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
 			if !headless {
-				report = j.checkReuse(catalog, existing)
+				report = j.checkReuse(j.Working.Files, catalog, existing)
 			}
 			if report.OK() {
 				if s.opts.Check != nil {
@@ -182,7 +182,14 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
 		OwnerNameAvailable: s.opts.OwnerNameAvailable,
-	}, types, s.author, func(files map[string]string) error {
+	}, types, s.author, func(files map[string]string) schema.Report {
+		if !headless {
+			if report := j.checkReuse(files, catalog, types); !report.OK() {
+				return report
+			}
+		}
+		return check.Definition(definition(files), types)
+	}, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
 		return s.claim(ctx, j.Draft, t.ID, target)
@@ -530,8 +537,8 @@ func onlyOptionalFields(before, after string) bool {
 	return reflect.DeepEqual(kept, draft)
 }
 
-func (j *job) checkReuse(catalog Catalog, existing schema.TypeSet) schema.Report {
-	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
+func (j *job) checkReuse(files map[string]string, catalog Catalog, existing schema.TypeSet) schema.Report {
+	app, _ := schema.ParseApp([]byte(files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
