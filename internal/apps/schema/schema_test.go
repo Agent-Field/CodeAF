@@ -609,7 +609,7 @@ func TestRunCheckExplainsARefsDefaultWrittenAsAQueryObject(t *testing.T) {
 		`default: {query: {type: deal}}`, 1))
 	report := Validate(def, nil)
 	for _, problem := range report.Problems {
-		if problem.File == file && problem.Path == "/params/deals/default" &&
+		if problem.File == file && problem.Path == "/params/deals/default" && problem.Code == CodeDefaultNotValue &&
 			strings.Contains(problem.Message, "query string") {
 			return
 		}

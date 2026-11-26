@@ -24,7 +24,7 @@ const (
 	CodeFieldUnknown      = "field_unknown"       // a title, column, set or sample names a field the type lacks
 	CodeFieldNotEnum      = "field_not_enum"      // a board, meter or Move asks for an enum and gets something else
 	CodeFieldNotAI        = "field_not_ai"        // ai.sort fills a field that is not an AI field
-	CodeDefaultNotValue   = "default_not_value"   // an enum default is not one of its values
+	CodeDefaultNotValue   = "default_not_value"   // a default is not a value the field or parameter accepts
 	CodeCapabilityUnknown = "capability_unknown"  // capabilities name a type the app neither owns nor uses
 	CodeNotAllowed        = "not_allowed"         // something reads or writes beyond the app's capabilities
 	CodeRunUnknown        = "run_unknown"         // a trigger, command or action names a run that has no file
@@ -989,7 +989,7 @@ func (c *checker) checkRun(file string, r Run) {
 		case string, []any:
 		default:
 			at := "/params/" + pointerToken.Replace(name) + "/default"
-			c.add(file, at, CodeSchema, "Use a record query string or a list of record IDs as the default for %q.", name)
+			c.add(file, at, CodeDefaultNotValue, "Use a record query string or a list of record IDs as the default for %q.", name)
 		}
 	}
 	if r.Budget != nil && c.app.Budget != nil {
