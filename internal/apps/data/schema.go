@@ -175,6 +175,7 @@ type Scope struct {
 	intake      *IntakeTrigger
 	sync        bool
 	sourceEvent string
+	sourceKey   ExternalKey
 }
 
 // kind is the writer kind a write of op by sc is recorded as.
