@@ -218,8 +218,8 @@ func (r *refReader) project(typ *data.Type, row map[string]any, depth int) (map[
 	}
 	for _, name := range typ.Order {
 		field := typ.Fields[name]
-		value, found := row[name]
-		if !found || field.Hidden || field.Masked {
+		value := row[name]
+		if field.Hidden || field.Masked {
 			continue
 		}
 		fields[name] = value

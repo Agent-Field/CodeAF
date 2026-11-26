@@ -9,7 +9,9 @@ parameter such as `mention` and set `propose: $params.mention` to stage the
 step's object output as a proposed change. This run has one step. The output
 schema names the fields the proposal may change. Check uses the example.
 Live runs use the connected model. A template can read a declared record
-parameter as `params.mention.text` or `mention.text`.
+parameter as `params.mention.text` or `mention.text`. A prompt with one
+clear record subject can also use `text`. An unset optional field
+renders empty.
 
 Use `agents.launch` to run the declared Action on one to 50 records or on a
 query that selects them. The engine divides the run budget across that

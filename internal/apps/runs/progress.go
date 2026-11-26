@@ -47,7 +47,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if err := e.enterRound(c); err != nil {
 				return err
 			}
-			if c.State != Running {
+			if c.State != Running && c.State != Finishing {
 				return nil
 			}
 			continue
@@ -154,7 +154,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if err := e.enterRound(c); err != nil {
 				return err
 			}
-			if c.State != Running {
+			if c.State != Running && c.State != Finishing {
 				return nil
 			}
 		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "" || step.AI != nil:
@@ -197,6 +197,35 @@ func (c *checkpoint) scope(now time.Time) ([]Step, map[string]any) {
 	return steps, vars
 }
 
+// A prompt can name the fields of its one clear subject directly. Existing
+// run variables keep precedence and projected records omit masked fields.
+func (c *checkpoint) promptVariables(vars map[string]any) map[string]any {
+	record, _ := vars["record"].(map[string]any)
+	if record == nil {
+		var ref string
+		for name, param := range c.Definition.Params {
+			if param.Type != "ref" {
+				continue
+			}
+			if ref != "" {
+				return vars
+			}
+			ref = name
+		}
+		record, _ = c.Params[ref].(map[string]any)
+	}
+	if record == nil {
+		return vars
+	}
+	result := maps.Clone(vars)
+	for key, value := range record {
+		if _, declared := result[key]; !declared {
+			result[key] = value
+		}
+	}
+	return result
+}
+
 func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 	a := action{Call: Call{App: c.App, Run: c.DefinitionID, ID: c.ID, Step: step.ID,
 		Key: fmt.Sprintf("%s-%d", c.ID, c.Visit), Name: step.Tool, As: "me"}, Outbound: schema.IsOutboundTool(step.Tool)}
@@ -233,7 +262,7 @@ func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 		if step.AI != nil {
 			a.Name, template = "ai", step.AI.Prompt
 		}
-		prompt, err := resolve(template, vars)
+		prompt, err := resolve(template, c.promptVariables(vars))
 		if err != nil {
 			return a, err
 		}

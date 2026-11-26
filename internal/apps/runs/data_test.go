@@ -226,3 +226,44 @@ func TestAgentActionKeepsItsAuthorAndGrantAcrossRestart(t *testing.T) {
 		t.Fatalf("revoked run = %#v, %v", got, err)
 	}
 }
+
+func TestAgentPromptRendersAnUnsetDeclaredSubjectField(t *testing.T) {
+	db, err := data.Open(filepath.Join(t.TempDir(), "data.db"), data.Options{NoRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.RegisterApp([]byte(`{"id":"marketing","records":{"post":{"fields":{"text":{"type":"text"},"topic":{"type":"text"},"secret":{"type":"text","masked":true}}}},"capabilities":{"records":{"post":"rw"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	created, err := db.Create(data.Scope{}, "post", []map[string]any{{"text": "Launch news", "secret": "hidden"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const workflow = `
+run: example
+params: {post: {type: ref, to: post}}
+steps:
+  - id: reply
+    agent: writer
+    prompt: "Draft a reply to {{text}}. Topic: {{topic}}{{post.topic}}"
+`
+	adapter := runs.Data{Store: func() (*data.Store, error) { return db, nil }}
+	e := newEngine(t, workflow, runs.Config{
+		ResolveParams: adapter.ResolveParams,
+		Agent: func(_ context.Context, call runs.AgentCall) (runs.Reply, error) {
+			if call.Prompt != "Draft a reply to Launch news. Topic: " {
+				t.Fatalf("prompt = %q", call.Prompt)
+			}
+			return runs.Reply{Output: "Reply"}, nil
+		},
+	})
+	run, err := e.Start("marketing", "example", map[string]any{"post": created.Rows[0].ID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	if got := state(t, e, run.ID); got.State != runs.Done {
+		t.Fatalf("run ended at %s with %s", got.State, got.Error)
+	}
+}
