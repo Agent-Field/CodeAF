@@ -33,4 +33,4 @@ when the app has write access and the record's rules permit the change.
 
 ## Approve, decline or raise the budget for an app run
 
-The Inbox shows “Approval needed: send” before a run sends mail, posts a message or makes another outbound connection call. Approve to let that step proceed or decline to end the run. When a run reaches its spending limit, the Inbox shows “Per-run budget reached”. Raise the limit in dollars to continue or choose Stop.
+The Inbox shows “Approval needed: send” before a run sends mail, posts a message or makes another outbound connection call. Open its Inbox row to see the run’s steps, the proposed effect, and the records it applies to. Choose **Approve** to let that step proceed or **Reject** to end the run. A pending approval returns to the Inbox after the engine and Desk restart. When a run reaches its spending limit, the Inbox shows “Per-run budget reached”. Raise the limit in dollars to continue or choose Stop.

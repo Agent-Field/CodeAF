@@ -110,6 +110,9 @@ func withInboxDismissFeature(hello Hello, e Engine) Hello {
 	return hello
 }
 
+// AppRunInboxPrefix keeps the run destination out of the conversation namespace.
+const AppRunInboxPrefix = "app-run:"
+
 func init() {
 	for name, m := range inboxMethods {
 		methods[name] = m
@@ -214,6 +217,9 @@ var inboxMethods = map[string]method{
 		if draft, ok := strings.CutPrefix(agent, AppDraftInboxPrefix); ok {
 			return &AgentTaskResult{AppDraft: draft}, nil
 		}
+		if run, ok := strings.CutPrefix(agent, AppRunInboxPrefix); ok {
+			return &AgentTaskResult{AppRun: run}, nil
+		}
 		return &AgentTaskResult{Agent: agent, Task: task}, nil
 	}),
 }
@@ -226,6 +232,7 @@ type (
 	}
 	AgentTaskResult struct {
 		AppDraft string `json:"app_draft,omitempty"`
+		AppRun   string `json:"app_run,omitempty"`
 		Agent    string `json:"agent"`
 		Task     string `json:"task,omitempty"`
 	}

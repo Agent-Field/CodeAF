@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -85,4 +86,67 @@ func testAppRunApproval(t *testing.T, deskCard bool) {
 		}
 	}
 	t.Fatal("run approval did not publish its Inbox receipt")
+}
+
+func TestAppRunApprovalReopensFromItsJournal(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, time.November, 26, 14, 0, 0, 0, time.UTC)
+	open := func() (*appBackend, *runs.Engine) {
+		b := newAppBackend(newAppRecorder(), nil)
+		e, err := runs.Open(runs.Config{
+			Root: root, Ask: b.openRunApproval, Now: func() time.Time { return now },
+			Load: func(_, _ string) (runs.Definition, error) {
+				return runs.Parse([]byte("run: follow-up\ntitle: Follow up\nsteps:\n  - id: save\n    gate: {approval: proof}\n    records.create: {type: note, set: {body: Call Acme}}"))
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.appRuns.Store(e)
+		b.restoreRunApprovals(e)
+		return b, e
+	}
+	b, engine := open()
+	r, err := b.StartRun("app", "follow-up", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.Tick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	items, _, err := b.ListInbox(appwire.InboxWaiting, "")
+	if err != nil || len(items) != 1 {
+		t.Fatalf("inbox before restart = %v, %v", items, err)
+	}
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	now = now.Add(time.Hour)
+	b, engine = open()
+	defer engine.Close()
+	wire := wireOver(t, b)
+	var page appwire.ItemsCountsResult
+	wire.must("inbox.list", map[string]string{"list": "waiting"}, &page)
+	if len(page.Items) != 1 || page.Items[0].ID != items[0].ID || !page.Items[0].At.Equal(items[0].At) {
+		t.Fatalf("restored inbox = %+v, want original card %+v", page, items[0])
+	}
+	var target struct {
+		AppRun string `json:"app_run"`
+	}
+	wire.must("inbox.open", map[string]string{"id": items[0].ID}, &target)
+	if target.AppRun != r.ID {
+		t.Fatalf("inbox.open = %+v, want run %s", target, r.ID)
+	}
+	var detail struct {
+		Steps    []struct{ ID, Kind, State string }
+		Approval struct {
+			RecordType string `json:"record_type"`
+			Args       map[string]any
+		}
+	}
+	wire.must("runs.get", map[string]string{"id": r.ID}, &detail)
+	if len(detail.Steps) != 1 || detail.Steps[0].ID != "save" || detail.Steps[0].Kind != "records_create" || detail.Steps[0].State != runs.YourCall || detail.Approval.RecordType != "note" || detail.Approval.Args["body"] != "Call Acme" {
+		t.Fatalf("run detail = %+v", detail)
+	}
 }

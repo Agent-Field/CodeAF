@@ -41,6 +41,15 @@ type Pipeline struct {
 	DryRun func(ctx context.Context, draft, run string, def schema.Definition) error
 }
 
+// Definition checks the authored files and the controls a person can use.
+func Definition(def schema.Definition, types schema.TypeSet) schema.Report {
+	report := schema.Validate(def, types)
+	if report.OK() {
+		report.Problems = append(report.Problems, missingControls(def, types)...)
+	}
+	return report
+}
+
 func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, types schema.TypeSet) schema.Report {
 	return p.run(ctx, draft, def, types, true)
 }
@@ -52,12 +61,8 @@ func (p Pipeline) RunPackage(ctx context.Context, draft string, def schema.Defin
 }
 
 func (p Pipeline) run(ctx context.Context, draft string, def schema.Definition, types schema.TypeSet, requireSamples bool) schema.Report {
-	report := schema.Validate(def, types)
+	report := Definition(def, types)
 	if !report.OK() {
-		return report
-	}
-	if len(def.ScreenFiles()) == 0 {
-		report.Problems = append(report.Problems, problem(schema.ScreensDir, "screen_required", "Add a screen so the app can be tried."))
 		return report
 	}
 	rows, err := Sample(def)
