@@ -203,7 +203,11 @@ func stampAppID(files map[string]string, j *job) error {
 	if id == "" {
 		id = j.Draft
 	}
-	app["id"], _ = json.Marshal(id)
+	encoded, _ := json.Marshal(id)
+	if string(app["id"]) == string(encoded) {
+		return nil
+	}
+	app["id"] = encoded
 	raw, err := json.MarshalIndent(app, "", "  ")
 	if err == nil {
 		files[schema.AppFile] = string(raw)
