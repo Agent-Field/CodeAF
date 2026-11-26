@@ -49,11 +49,17 @@ func TestCaseOracleDoesNotTrustTheBuilder(t *testing.T) {
 type fakeApp struct {
 	prompt string
 	reply  string
+	rounds int
 }
 
 func (f *fakeApp) Build(_ context.Context, prompt string, noModel bool, _ func(BuildState) error) (BuildState, error) {
 	f.prompt = prompt
-	return BuildState{App: "app-id", Rounds: 2, Checked: true}, nil
+	state := BuildState{App: "app-id", Rounds: 2, Checked: true}
+	if f.rounds > 0 {
+		state.Rounds = f.rounds
+	}
+
+	return state, nil
 }
 
 func (f *fakeApp) Call(_ context.Context, _ string, _ any) (json.RawMessage, error) {
@@ -132,4 +138,45 @@ func TestLoadRejectsAmbiguousAssertion(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "exactly one assertion") {
 		t.Fatalf("got %v for an ambiguous assertion", err)
 	}
+}
+
+func TestHiringRequiresAContactReuseOffer(t *testing.T) {
+	cases, err := Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if c.Name != "hiring-reuses-contacts" {
+			continue
+		}
+		if problems := checkReply(json.RawMessage(`{"offers":[]}`), c.Plan); len(problems) == 0 {
+			t.Fatal("the hiring oracle accepted a plan without a contact reuse offer")
+		}
+		if problems := checkReply(json.RawMessage(`{"offers":[{"type":"contact","count":1}]}`), c.Plan); len(problems) != 0 {
+			t.Fatalf("the hiring oracle rejected its contact offer: %v", problems)
+		}
+		return
+	}
+	t.Fatal("the named hiring eval is missing")
+}
+
+func TestFinanceMustFinishWithinItsRoundBudget(t *testing.T) {
+	cases, err := Builtin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		if c.Name != "personal-finance-csv" {
+			continue
+		}
+		if c.MaxRounds != 2 {
+			t.Fatalf("finance Check budget is %d rounds, want 2", c.MaxRounds)
+		}
+		got := Run(t.Context(), &fakeApp{rounds: c.MaxRounds + 1}, c)
+		if !strings.Contains(strings.Join(got.Failures, " "), "exceeded budget") {
+			t.Fatalf("the finance oracle accepted too many Check rounds: %+v", got)
+		}
+		return
+	}
+	t.Fatal("the named finance eval is missing")
 }

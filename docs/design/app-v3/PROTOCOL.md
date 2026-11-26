@@ -3166,3 +3166,34 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.kit` | `{kit?}` | The embedded kit catalog object, including its version and parts. Kit 2 includes `common_types`. |
 | `apps.common_types` | `{}` | `{version,types}`. Each portable key maps to the type's label, terms, and typed fields with their roles and reference targets. |
 | `apps.bind_common_type` | `{common,type}` | `{common,type,type_id}`. The existing type is selected by name or ID. Binding keeps the existing type and record IDs. |
+
+### App building and Desk Look
+
+| method | params | result |
+|---|---|---|
+| `apps.new` | `{name?}` | `{draft}` for an empty draft. |
+| `apps.plan` | `{ask}` or `{draft,request}` | `{draft,plan,needs,offers}`. |
+| `apps.build` | `{draft}` | Starts a durable build and returns `{draft}`. |
+| `apps.change` | `{app,request?,target?}` | `{draft}`. |
+| `apps.say` | `{draft,text,target?}` | Queues feedback. |
+| `apps.build_state` | `{draft}` | Build state, progress, transcript and checkpoints. |
+| `apps.check` | `{draft}` | Checks the current snapshot and returns its build state. |
+| `apps.checkpoints` | `{draft}` | `{checkpoints}`. |
+| `apps.restore_checkpoint` | `{draft,id}` | Restores a saved checkpoint as a new step. |
+| `apps.preview` | `{draft,checkpoint?,data?}` | `{app,sample,screens,scope}`. |
+| `apps.apply`, `apps.keep` | `{draft}` | Publishes the passing snapshot and returns `{meta}`. |
+| `apps.discard` | `{draft}` | Discards pending editing work. |
+| `apps.parts` | `{for?}` | A kit index or the descriptor for an intent or part. |
+| `apps.reference` | `{}` | Worked definitions and schemas. |
+| `apps.mark` | `{draft,text,target}` | Pins feedback and queues the request. |
+| `apps.presence` | `{draft}` | The current claim. |
+| `apps.look` | `{app?,draft?,screen,checkpoint?,theme?,viewport?}` | `{png_path,problems}`, or `desk_unavailable`. |
+| `apps.look_ready` | `{ready}` | Announces a Desk renderer. |
+| `apps.look_result` | `{id,png?,problems?,problem?}` | Completes a Look request. |
+
+Events include `apps.build` and `apps.look_requested`. The latter carries `{id,scope,app,screen,theme?,viewport?,fixture}`. The issued scope
+pins the definition and synthetic fixture. With Desk connected, Check requests
+Dark and Light at widths 800 and 1120. Each Desk problem fails the current
+Check round. When the renderer is absent, the report carries
+`look: "skipped (desk not running)"`, and the checkpoint summary shows the
+same notice. A structurally valid app can be applied.

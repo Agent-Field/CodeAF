@@ -130,6 +130,25 @@ func TestQAStartupBookkeepingDoesNotPreventPairing(t *testing.T) {
 	}
 }
 
+func TestAppBuilderStartupDoesNotPreventPairing(t *testing.T) {
+	for _, root := range []string{"apps", ".codeaf/apps"} {
+		t.Run(root, func(t *testing.T) {
+			home := startedHome(t, func(home string) {
+				put(t, filepath.Join(home, root, ".lock"), "")
+				put(t, filepath.Join(home, root, "_drafts", ".builder.lock"), "")
+				put(t, filepath.Join(home, ".codeaf/skills/workaf-apps/SKILL.md"), "---\nname: workaf-apps\ndescription: Make an app\n---\n<!-- workaf-apps v3 -->\n")
+			})
+			if ok, err := Pristine(home); err != nil || !ok {
+				t.Fatalf("builder startup prevented pairing: %v", err)
+			}
+			put(t, filepath.Join(home, root, "_drafts", "draft", "build.json"), "{}")
+			if ok, _ := Pristine(home); ok {
+				t.Fatal("pairing accepted a home with app work")
+			}
+		})
+	}
+}
+
 func TestQAStartupFoldersStillProtectLocalWork(t *testing.T) {
 	cases := []struct {
 		name, path, body string
@@ -141,6 +160,7 @@ func TestQAStartupFoldersStillProtectLocalWork(t *testing.T) {
 		{"local service", "services/service.json", "person's work"},
 		{"local settings file", ".codeaf/settings.json", "person's work"},
 		{"custom skill with bundled name", ".codeaf/skills/workaf-canvas/SKILL.md", "---\nname: workaf-canvas\n---\n# My skill\n<!-- workaf-canvas v17 -->\n"},
+		{"custom app authoring skill", ".codeaf/skills/workaf-apps/SKILL.md", "---\nname: workaf-apps\n---\n# My skill"},
 		{"additional skill file", ".codeaf/skills/workaf-canvas/reference.md", "person's work"},
 		{"factory job", "v3/factory/work/job.txt", "person's work"},
 		{"credential", "crew-credentials.json", "person's credential"},

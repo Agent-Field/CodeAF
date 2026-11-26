@@ -4137,8 +4137,10 @@
           "desktop": "view.table"
         },
         "recipe": {
-          "part": "Table",
-          "props": {},
+          "part": "RecordList",
+          "props": {
+            "views": ["list"]
+          },
           "fields": "columns"
         }
       },

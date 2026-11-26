@@ -176,6 +176,21 @@ func (c *checker) compileViewRecipe(r Recipe) (*Screen, error) {
 	}
 	switch r.Kind {
 	case "add-view":
+		if r.As == "" {
+			r.As = "list"
+		}
+		if life, ok := c.lifecycle(r.Record); ok && r.As == "board" && r.By == "" {
+			r.By = life.Field
+		}
+		if r.As == "calendar" && r.By == "" {
+			fields, _ := c.typeFields(r.Record)
+			for _, name := range sortedKeys(fields) {
+				if fields[name].Type == "date" || fields[name].Type == "datetime" {
+					r.By = name
+					break
+				}
+			}
+		}
 		entry, ok := c.kit.Registries.Views[r.As]
 		if !ok || entry.Recipe == nil {
 			return nil, fmt.Errorf("there is no collection recipe for %q", r.As)
@@ -202,11 +217,7 @@ func (c *checker) compileViewRecipe(r Recipe) (*Screen, error) {
 				q.Window = &QueryWindow{OrderBy: []string{r.By}}
 			}
 		}
-		if desc.Fields != "" && len(r.Fields) == 0 && n.Props[desc.Fields] == nil {
-			if t, ok := c.app.Records[r.Record]; ok && t.Title != "" {
-				n.Props[desc.Fields] = []string{t.Title}
-			}
-		}
+		c.designCollection(s, n, &q, r)
 	case "add-detail":
 		n.Part = "RecordPage"
 		fieldProps("fields")
@@ -232,7 +243,15 @@ func (c *checker) compileViewRecipe(r Recipe) (*Screen, error) {
 		q.Group = []string{r.Group}
 		q.Aggregate = []QueryAggregate{{Op: op, Field: field, As: "result"}}
 		n.Part = "Chart"
-		n.Props = map[string]any{"kind": "bar", "x": r.Group, "y": "result"}
+		n.Props = map[string]any{"kind": "bar", "x": r.Group}
+		if op == "sum" || op == "avg" || op == "count" {
+			n.Props["metric"] = op
+			if field != "" {
+				n.Props["y"] = field
+			}
+		} else {
+			n.Props["y"] = "result"
+		}
 	case "add-queue":
 		n.Part = "TriageQueue"
 		fieldProps("columns")

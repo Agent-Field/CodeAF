@@ -141,7 +141,7 @@ func seedCRM(t *testing.T, scratch string) string {
 }
 
 // The captured inputs come from the Desk's synthetic Look requests for each
-// named recipe. The judge never sees a build prompt or a live app record.
+// named recipe. The judge sees the gallery brief and synthetic pixels.
 func TestLiveDesignRubric(t *testing.T) {
 	key := evalKey()
 	if key == "" {
@@ -183,7 +183,7 @@ func TestLiveDesignRubric(t *testing.T) {
 				data, err := fs.ReadFile(os.DirFS(root), path)
 				if err == nil {
 					var score Score
-					score, err = ScoreLook(t.Context(), frontierJudge{client}, string(language), look, viewport.pixels, data)
+					score, err = ScoreLook(t.Context(), frontierJudge{client}, string(language)+"\n\nGallery brief: "+c.Prompt, look, viewport.pixels, data)
 					if err == nil {
 						entry.Score = &score
 					}
@@ -202,7 +202,13 @@ func TestLiveDesignRubric(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(string(raw))
+	if dest := os.Getenv("CODEAF_APP_EVAL_DESIGN_REPORT"); dest != "" {
+		if err := os.WriteFile(dest, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		t.Log(string(raw))
+	}
 	if slices.ContainsFunc(results, func(result Result) bool { return !result.Pass }) {
 		t.Error("one or more design scores could not be recorded")
 	}

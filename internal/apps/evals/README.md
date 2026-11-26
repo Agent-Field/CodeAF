@@ -42,3 +42,8 @@ model-backed tests skip if the profile has no key.
 The `support-shares-crm-identity` case checks the CRM and Support in the same
 space. It accepts existing Contacts and Companies from Support's plan,
 then reads the original type and record IDs through Support.
+
+The rubric includes each case's gallery brief. Set
+`CODEAF_APP_EVAL_DESIGN_REPORT=/tmp/app-design.json` to save per-recipe
+scores and capture errors. Process-only builds report
+`look: skipped (desk not running)` during Check and can publish.
