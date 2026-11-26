@@ -159,11 +159,14 @@ func TestCheckRejectsAnAssistantWithoutInstructions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	def.Files["agent.md"] = []byte(" \n\t")
-	report := check.Definition(def, nil)
-	if len(report.Problems) != 1 || report.Problems[0].File != "agent.md" ||
-		report.Problems[0].Code != "agent_instructions_missing" {
-		t.Fatalf("Check should ask for assistant instructions: %+v", report.Problems)
+	for _, body := range []string{" \n\t", "---\nname: CRM agent\n---\n", "---\r\nmodel: example/model\r\n---\r\n  "} {
+		def.Files["agent.md"] = []byte(body)
+		report := check.Definition(def, nil)
+		if !slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
+			return p.File == "agent.md" && p.Code == "agent_instructions_missing"
+		}) {
+			t.Errorf("Check should ask for assistant instructions for %q: %+v", body, report.Problems)
+		}
 	}
 }
 
