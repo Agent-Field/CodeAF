@@ -316,10 +316,10 @@ func (c *compiled) relate(head, tail string, cond Cond, sc Scope, now time.Time)
 	}
 	sub := "SELECT x.id FROM records x WHERE " + inner.base() + " AND " + strings.Join(inner.where, " AND ")
 	if f.Type == TypeRef {
-		c.add(c.col(f)+" IN ("+sub+")", cond.Neg, inner.args...)
+		c.add(identityRefSQL(target, c.col(f))+" IN ("+sub+")", cond.Neg, inner.args...)
 		return nil
 	}
-	c.add("EXISTS (SELECT 1 FROM "+c.eachOf(f)+" j WHERE j.value IN ("+sub+"))", cond.Neg, inner.args...)
+	c.add("EXISTS (SELECT 1 FROM "+c.eachOf(f)+" j WHERE "+identityRefSQL(target, "j.value")+" IN ("+sub+"))", cond.Neg, inner.args...)
 	return nil
 }
 
@@ -605,7 +605,8 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 	}
 	pattern := wildcard(v)
 	if f.Type == TypeRef {
-		cond := col + " = ?"
+		col = identityRefSQL(target, col)
+		cond := col + " = " + identityRefSQL(target, "?")
 		args = append(args, v)
 		if byTitle != "" {
 			cond += " OR " + col + " IN (" + byTitle + ")"
@@ -613,10 +614,11 @@ func (c *compiled) refMatch(f *Field, col, v string) (string, []any, error) {
 		}
 		return cond, args, nil
 	}
-	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE j.value = ?"
+	value := identityRefSQL(target, "j.value")
+	each := "SELECT 1 FROM " + c.eachOf(f) + " j WHERE " + value + " = " + identityRefSQL(target, "?")
 	args = append(args, v)
 	if byTitle != "" {
-		each += " OR j.value IN (" + byTitle + ")"
+		each += " OR " + value + " IN (" + byTitle + ")"
 		args = append(args, target.ID, pattern)
 	}
 	return "EXISTS (" + each + ")", args, nil

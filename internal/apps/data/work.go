@@ -298,6 +298,19 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 				return err
 			}
 		}
+		if item.Form == identityReviewForm {
+			var identity bool
+			if err := w.tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM identity_matches WHERE id = ?)`, id).Scan(&identity); err != nil {
+				return err
+			}
+			if identity && action == "complete" {
+				out, err = w.completeIdentityWorkItem(sc, item, p.Outcome)
+				return err
+			}
+			if identity {
+				return errorf(CodeNotAllowed, "choose merge or keep separate on this identity review")
+			}
+		}
 		if action != "" {
 			if item.Status != WorkOpen {
 				return errorf(CodeStale, "this work item is %s", item.Status)
@@ -474,7 +487,8 @@ func workItemsOn(q querier, sch *schema, sc Scope, f WorkFilter, mine bool) ([]W
 		if err != nil {
 			return err
 		}
-		if sch.seen(sc, wi.App, typeID) && sch.canReadSource(sc, wi.sourceType) && len(out) < ListMax {
+		if !(wi.Form == identityReviewForm && allowIdentity(sc, false) != nil) &&
+			sch.seen(sc, wi.App, typeID) && sch.canReadSource(sc, wi.sourceType) && len(out) < ListMax {
 			out = append(out, *wi)
 		}
 		return nil

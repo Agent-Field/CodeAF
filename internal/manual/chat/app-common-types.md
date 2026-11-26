@@ -31,3 +31,33 @@ example `"common":"person"`. Use `"uses":true` when adopting an already bound
 type into a new draft. The draft can keep its own type alias. For declared Actions that create or
 edit the shared records, give that alias `"rw"` in `capabilities.records`.
 The builder can set this with `"access":"rw"` on `add-type`.
+
+## Duplicate contacts, same customer in two systems, or merge records
+
+Open the desktop engine for your profile. To look for duplicates of one
+published Person or Organization record, run
+`codeaf app match-scan '{"type":"contact","id":"<record ID>"}'`.
+Then run `codeaf app match-candidates`. Each result gives the two record IDs,
+their revisions and the signals that prompted review. The same review also
+appears in My Work. Compare the records before choosing a result.
+
+- Use `codeaf app match-accept '{"id":"<review ID>","survivor":"<record ID>"}'`
+  to join the two records and keep the selected ID as the survivor.
+- Use `codeaf app match-reject '{"id":"<review ID>"}'` to keep records
+  separate. The decision is remembered on later scans.
+- If you already know two records should join, use
+  `codeaf app match-merge` with `canonical`, `alias`, `canonical_revision` and
+  `alias_revision`.
+
+An old ID still opens the survivor and existing links keep working. A value
+or clear entered by a person takes precedence. If both people-entered
+values differ, the survivor's value wins, and the other value remains in
+the other record's history. To restore the two records, use
+`codeaf app match-unmerge '{"id":"<merge ID>","revision":<current survivor revision>}'`.
+Split newer merges on the same survivor first.
+
+When a source is configured to copy values into this space, a strong,
+unambiguous match may join automatically. Shared email addresses,
+ambiguous matches and person-entered conflicts go to review. Organization
+domains match organizations, and a similar name alone does not join
+records. Live connections keep their existing source visibility.

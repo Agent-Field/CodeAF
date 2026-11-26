@@ -19,7 +19,12 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 	if reveal && sc.Agent {
 		return nil, &Error{Code: CodeNotAllowed, Need: "reveal", Message: "an agent cannot reveal a masked value"}
 	}
-	r, err := loadRecord(s.rdb, sch, id)
+	r, err := scanRecord(sch, s.rdb.QueryRow(`WITH RECURSIVE chain(member) AS (
+		VALUES(?) UNION ALL SELECT canonical FROM identity_aliases JOIN chain ON alias = member
+	) SELECT `+recordColumns+` FROM records WHERE id IN chain AND deleted_at IS NULL`, id).Scan)
+	if err == sql.ErrNoRows {
+		err = nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +44,7 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 			err := s.write(func(w *writeTx) error {
 				for _, field := range shown {
 					if _, err := w.tx.Exec(`INSERT INTO reveals(type_id, record, field_id, app, actor, at) VALUES(?, ?, ?, ?, ?, ?)`,
-						t.ID, id, t.Fields[field].ID, sc.App, w.schema.actor(sc), w.now.UTC().Format(stamp)); err != nil {
+						t.ID, r.ID, t.Fields[field].ID, sc.App, w.schema.actor(sc), w.now.UTC().Format(stamp)); err != nil {
 						return err
 					}
 				}

@@ -25,6 +25,7 @@ type SourceObservation struct {
 	Revision         string
 	ExpectedRevision *string
 	Epochs           TypeEpochs
+	mappingVersion   int64
 	ACLRef           string
 	ACLEpoch         int64
 	CauseChain       []string
@@ -39,13 +40,14 @@ type SourceObservation struct {
 // StoredSourceClaim is the latest observation of one stable field ID.
 type StoredSourceClaim struct {
 	SourceFieldClaim
-	Revision   string
-	Epochs     TypeEpochs
-	ACLRef     string
-	ACLEpoch   int64
-	ObservedAt time.Time
-	ByKind     string
-	CauseChain []string
+	Revision       string
+	Epochs         TypeEpochs
+	MappingVersion int64 `json:",omitempty"`
+	ACLRef         string
+	ACLEpoch       int64
+	ObservedAt     time.Time
+	ByKind         string
+	CauseChain     []string
 }
 
 // SourceState is the current source proof and its field contributions.
@@ -102,64 +104,85 @@ func (s *Store) SourceState(key ExternalKey) (*SourceState, error) {
 // ObserveSource records claims, dedupe and invalidation in the writer. An
 // explicitly native contribution also goes through the canonical write rules.
 func (s *Store) ObserveSource(o SourceObservation) (string, error) {
-	if !o.Key.valid() || o.Event == "" || len(o.Event) > 200 || o.Revision == "" || len(o.Revision) > 1024 || o.ACLEpoch < 0 {
-		return "", errorf(CodeInvalid, "an observation needs a source key, event and revision")
-	}
-	if o.NativeValues && (o.ACLRef != "" || o.ACLEpoch != 0) {
-		return "", errorf(CodeNotAllowed, "an ACL-bound observation cannot supply native values")
+	if err := o.validate(); err != nil {
+		return "", err
 	}
 	var id string
 	err := s.write(func(w *writeTx) error {
-		var typeID string
 		var err error
-		id, typeID, err = findIdentity(w.tx, o.Key)
-		if err != nil {
-			return err
-		}
-		if id == "" {
-			return errorf(CodeNotFound, "the source key has no canonical identity")
-		}
-		t := w.schema.byID[typeID]
-		res, err := w.tx.Exec(`INSERT OR IGNORE INTO source_events VALUES(?, ?, ?, ?, ?)`, append(o.Key.args(), o.Event)...)
-		if err != nil {
-			return err
-		}
-		n, err := res.RowsAffected()
-		if err != nil || n == 0 {
-			return err
-		}
-		epochs, err := readEpochs(w.tx, typeID)
-		if err != nil {
-			return err
-		}
-		if epochs != o.Epochs {
-			return errorf(CodeStale, "the source observation uses old type epochs")
-		}
-		policyChanged, values, err := w.saveObservation(t, o)
-		if err != nil {
-			return err
-		}
-		sc := Scope{Actor: "engine", sync: true, CauseChain: o.CauseChain, sourceEvent: o.Event}
-		if o.NativeValues && len(values) > 0 {
-			if err := w.projectSource(t, sc, id, values); err != nil {
-				return err
-			}
-		}
-		if w.change == nil {
-			w.change = &Change{At: w.now, ByKind: BySync, CauseChain: o.CauseChain, SourceEvent: o.Event}
-		}
-		if policyChanged {
-			return w.invalidate(EventPolicyChanged, t.ID, o.Key.Binding)
-		}
-		if w.cursor == 0 {
-			return w.invalidate(EventFreshnessChanged, t.ID, o.Key.Binding)
-		}
-		return nil
+		id, _, err = w.observeSource(o)
+		return err
 	})
 	if err != nil {
 		return "", err
 	}
 	return id, nil
+}
+
+func (o SourceObservation) validate() error {
+	if !o.Key.valid() || o.Event == "" || len(o.Event) > 200 || o.Revision == "" || len(o.Revision) > 1024 || o.ACLEpoch < 0 {
+		return errorf(CodeInvalid, "an observation needs a source key, event and revision")
+	}
+	if o.NativeValues && (o.ACLRef != "" || o.ACLEpoch != 0) {
+		return errorf(CodeNotAllowed, "an ACL-bound observation cannot supply native values")
+	}
+	return nil
+}
+
+func (w *writeTx) observeSource(o SourceObservation) (string, bool, error) {
+	var typeID string
+	origin, typeID, err := findIdentityOrigin(w.tx, o.Key)
+	if err != nil {
+		return "", false, err
+	}
+	if origin == "" {
+		return "", false, errorf(CodeNotFound, "the source key has no canonical identity")
+	}
+	id, err := identityRoot(w.tx, origin)
+	if err != nil {
+		return "", false, err
+	}
+	t := w.schema.byID[typeID]
+	res, err := w.tx.Exec(`INSERT OR IGNORE INTO source_events VALUES(?, ?, ?, ?, ?)`, append(o.Key.args(), o.Event)...)
+	if err != nil {
+		return "", false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return id, false, err
+	}
+	epochs, err := readEpochs(w.tx, typeID)
+	if err != nil {
+		return "", false, err
+	}
+	if epochs != o.Epochs {
+		return "", false, errorf(CodeStale, "the source observation uses old type epochs")
+	}
+	policyChanged, values, err := w.saveObservation(t, o)
+	if err != nil {
+		return "", false, err
+	}
+	sc := Scope{Actor: "engine", sync: true, CauseChain: o.CauseChain, sourceEvent: o.Event, sourceKey: o.Key}
+	if o.NativeValues && len(values) > 0 {
+		if origin != id {
+			if err := w.refreshIdentityAlias(t, sc, origin, values); err != nil {
+				return "", false, err
+			}
+		}
+		if err := w.projectSource(t, sc, id, values); err != nil {
+			return "", false, err
+		}
+	}
+	if w.change == nil {
+		w.change = &Change{At: w.now, ByKind: BySync, CauseChain: o.CauseChain, SourceEvent: o.Event}
+	}
+	if policyChanged {
+		return id, true, w.invalidate(EventPolicyChanged, t.ID, o.Key.Binding)
+	}
+	if w.cursor == 0 {
+		return id, true, w.invalidate(EventFreshnessChanged, t.ID, o.Key.Binding)
+	}
+	return id, true, nil
 }
 
 func (w *writeTx) saveObservation(t *Type, o SourceObservation) (bool, map[string]any, error) {
@@ -184,6 +207,9 @@ func (w *writeTx) saveObservation(t *Type, o SourceObservation) (bool, map[strin
 	for _, name := range sortedKeys(o.Claims) {
 		claim := o.Claims[name]
 		f := t.field(name)
+		if f == nil {
+			f = t.byID[name]
+		}
 		if f == nil || claim.Path == "" || len(claim.Path) > 1024 {
 			return false, nil, fieldErr(name, "a source claim needs a known field and source path")
 		}
@@ -191,7 +217,7 @@ func (w *writeTx) saveObservation(t *Type, o SourceObservation) (bool, map[strin
 			return false, nil, fieldErr(name, "a source observation names the same field twice")
 		}
 		values[f.Name] = claim.Value
-		stored := StoredSourceClaim{SourceFieldClaim: claim, Revision: o.Revision, Epochs: o.Epochs,
+		stored := StoredSourceClaim{SourceFieldClaim: claim, Revision: o.Revision, Epochs: o.Epochs, MappingVersion: o.mappingVersion,
 			ACLRef: o.ACLRef, ACLEpoch: o.ACLEpoch, ObservedAt: w.now.UTC(), ByKind: BySync, CauseChain: o.CauseChain}
 		raw, err := json.Marshal(stored)
 		if err != nil {
