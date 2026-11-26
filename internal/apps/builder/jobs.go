@@ -158,6 +158,7 @@ type PlanResult struct {
 }
 
 type turn struct {
+	DeskReuse bool `json:",omitempty"`
 	CheckOnly bool
 	ID        string
 	Stage     string
@@ -704,7 +705,7 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 				offer, _ := catalog.Types.OfferCommonType(name, typ)
 				source = offer.Existing
 			}
-			if catalog.reuseSource(source) != "" {
+			if (headless || typ.Common != "") && catalog.reuseSource(source) != "" {
 				j.Needs = append(j.Needs, "Uses "+catalog.reuseText(source))
 			}
 		}

@@ -87,10 +87,10 @@ Use codeaf app common-types to find stable keys. The library's role labels
 describe fields. Copy type and relevant fields only, omit role in app.json,
 and point refs at the draft's local type names. Leave out optional fields and
 relations the app does not need, especially circular references in examples.
-Declare "common":"person" on contacts and "common":"organization" on
-companies. Inspect context's common_bindings before proposing shared records.
-After acceptance, use the same common key and set "uses":true with "fields":{}.
-For an older unbound type, set "uses":true under its exact existing name.
+Use common person and organization for new contacts and companies.
+For existing records, copy the common key from context.common_bindings.
+If it lists no key for that type, omit common and keep its exact name.
+Reuse uses {"uses":true,"fields":{}}. Apply still confirms headless proposals.
 Keep candidate records distinct when a hiring app only links to contacts.
 For a shared type this app's Actions create or edit, use this shape:
 add-type {"name":"contact","access":"rw","definition":{"uses":true,"common":"person","fields":{}}}
@@ -98,8 +98,8 @@ Access goes beside definition. Use "access":"r" for lookup-only records.
 In sample rows, use only the existing type's fields returned by context.
 If showing spending totals, use an add-chart recipe with aggregate "sum:amount".
 Fill the visible fields in your examples so Check can measure bound columns.
-Keep screen and node ids. Claim marked nodes before editing. Map CSV headers
-to fields. Say what to try. The person chooses when to Apply.`
+Keep screen and node ids. Claim marked nodes and preserve the rest of that
+screen. Map CSV headers to fields. Say what to try. The person chooses when to Apply.`
 
 func systemPrompt() string {
 	return skill + "\n\n" + instructions

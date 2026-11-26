@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -82,18 +83,20 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 }
 
 func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
-	home := t.TempDir()
-	definitions := store.NewAt(home, func(string) (schema.TypeSet, error) {
-		return schema.TypeSet{"contact": {Owner: "crm", Common: "person", Fields: map[string]schema.Field{"name": {Type: "text"}}}}, nil
-	})
 	for _, desk := range []bool{false, true} {
 		name := "headless"
 		if desk {
 			name = "desk"
 		}
 		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			definitions := store.NewAt(home, func(string) (schema.TypeSet, error) {
+				return schema.TypeSet{"contact": {Owner: "crm", Common: "person", Fields: map[string]schema.Field{"name": {Type: "text"}}}}, nil
+			})
+			var deskReady atomic.Bool
+			deskReady.Store(desk)
 			opts := builder.Options{
-				Home: home, Store: definitions, CanLook: func() bool { return desk },
+				Home: home, Store: definitions, CanLook: deskReady.Load,
 				Catalog: func(app string) (builder.Catalog, error) {
 					return builder.Catalog{
 						Types:    schema.TypeSet{"contact": {Owner: "crm", Common: "person", Fields: map[string]schema.Field{"name": {Type: "text"}}}},
@@ -131,6 +134,9 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 						case 3:
 							return toolCalls(command("add-type", map[string]any{"name": "customer", "definition": map[string]any{"uses": !planning, "common": "person", "fields": map[string]any{}}})), nil
 						default:
+							if !planning {
+								deskReady.Store(false)
+							}
 							return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "Contacts are ready."}}}, nil
 						}
 					}), nil
@@ -168,6 +174,14 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 			}
 			if _, err := jobs.Apply(plan.Draft); err != nil {
 				t.Fatal(err)
+			}
+			live, err := definitions.Get(plan.Draft)
+			if err != nil {
+				t.Fatal(err)
+			}
+			app, err := schema.ParseApp(live.App)
+			if err != nil || !app.Records["customer"].Uses {
+				t.Fatalf("applied reuse = %+v, %v", app.Records["customer"], err)
 			}
 		})
 	}

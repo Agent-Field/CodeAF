@@ -50,6 +50,11 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			return err == nil
 		}
 		t := j.Queue[0]
+		// Keep a Desk choice pending if its renderer disconnects during this turn.
+		if !t.DeskReuse && s.opts.CanLook != nil && s.opts.CanLook() {
+			t.DeskReuse = true
+			j.Queue[0].DeskReuse = true
+		}
 		checking := t.Round > 0 && t.Report == nil
 		event := startEvent(t, checking)
 		j.State.State = event.Stage
@@ -59,7 +64,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			return false
 		}
 
-		headless := s.opts.CanLook == nil || !s.opts.CanLook()
+		headless := !t.DeskReuse
 		catalog, err := s.catalog(j.App)
 		var report schema.Report
 		var files map[string]string
@@ -153,7 +158,7 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 	}
 	types := externalTypes(catalog.Types, j.App, j.Draft)
 	var look func(context.Context, string) ([]string, error)
-	if s.opts.Look != nil && !headless {
+	if s.opts.Look != nil && s.opts.CanLook != nil && s.opts.CanLook() {
 		look = func(ctx context.Context, screen string) ([]string, error) {
 			return s.opts.Look(ctx, j.Draft, screen)
 		}
