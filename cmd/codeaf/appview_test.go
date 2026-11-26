@@ -20,7 +20,7 @@ func TestAppDeclaredViewUsesPolicy(t *testing.T) {
 		"app.json":  `{"id":"labels","name":"Label proof","version":1,"kit":2,"records":{"label":{"fields":{"name":{"type":"text"},"rank":{"type":"number"},"notes":{"type":"text","masked":true}}}},"capabilities":{"records":{"label":"rw"}}}`,
 		"plan.json": `{"ask":"Label proof","data":[{"id":"label","line":"Labels"}],"screens":[{"id":"proof","line":"Proof"}]}`,
 		"screens/proof.json": `{"screen":"proof","title":"Label proof","views":{"labels":{"type":"label","select":["name","notes"]},
-			"ranked":{"type":"label","args":{"minimum":"number"},
+			"ranked":{"type":"label","group":["name"],"args":{"minimum":"number"},
 				"filter":[{"field":"rank","op":"gte","value":"$args.minimum"},{"field":"name","op":"ne","value":"Archived"}],
 				"window":{"order_by":["rank"],"limit":2}}},
 			"body":{"id":"proof","label":"Label proof","part":"custom/proof","bind":{"records":"label","view":"labels"}}}`,

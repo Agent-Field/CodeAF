@@ -8,10 +8,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
+const appViewMaxPage = 500
+
 // DataViewQuery resolves the declaration before querying the same scoped data
 // store as built-in record parts. The response already reflects field policy.
 func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQueryResult, error) {
-	if p.App == "" || p.Screen == "" || p.View == "" || p.Limit < 0 || p.Limit > 500 {
+	if p.App == "" || p.Screen == "" || p.View == "" || p.Limit < 0 || p.Limit > appViewMaxPage {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "Choose an app, screen, view and valid page size.")
 	}
 	var raw []byte
@@ -36,13 +38,16 @@ func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQuery
 		return nil, appwire.Errorf(appwire.CodeNotFound, "The screen is unavailable.")
 	}
 	view, ok := screen.Views[p.View]
-	if !ok || !appAssistantViewSupported(view) || len(view.Group) != 0 || len(view.Aggregate) != 0 {
+	if !ok || !appAssistantViewSupported(view) || len(view.Aggregate) != 0 {
 		return nil, appwire.Errorf(appwire.CodeBadParams, "Choose a supported view that returns individual records.")
 	}
 	ir, err := declaredViewIR(view, p.Args)
 	if err != nil {
 		return nil, err
 	}
+	// A row view carries the grouping keys so the surface can put individual
+	// records in sections or lanes. Aggregate views use the metric door.
+	ir.Group = nil
 	if p.Query != "" {
 		lens, err := queryIR(view.Type, p.Query, nil)
 		if err != nil {
@@ -65,7 +70,7 @@ func (b *appBackend) DataViewQuery(p appwire.DataViewParams) (*appwire.DataQuery
 			}
 			after = cursor
 		}
-		if remaining <= 500 && (limit == 0 || limit > remaining) {
+		if remaining <= appViewMaxPage && (limit == 0 || limit > remaining) {
 			limit = remaining
 		}
 	}
