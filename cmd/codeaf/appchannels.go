@@ -217,6 +217,9 @@ func intakePDFParts(ctx context.Context, file data.IntakeFile, record string, vi
 		if err := ctx.Err(); err != nil {
 			return nil, 0, err
 		}
+		if scanned {
+			return nil, 0, fmt.Errorf("PDF attachment %q has no text layer and its pages could not be rendered: %w", file.Name, imageErr)
+		}
 	}
 	if scanned {
 		return nil, 0, fmt.Errorf("PDF attachment %q has no text layer. Use a text PDF, or an image-capable model and Poppler for up to %d scanned pages", file.Name, maxIntakePages)
@@ -232,7 +235,13 @@ func renderIntakePDFPages(ctx context.Context, path string, pages int) ([]ai.Con
 	// is used. Neither the original name nor PDF content can become an argument.
 	cmd := exec.CommandContext(renderCtx, "pdftoppm", "-png", "-scale-to", "1400", "-f", "1", "-l", strconv.Itoa(pages), path, prefix)
 	if err := cmd.Run(); err != nil {
-		return nil, err
+		if errors.Is(err, exec.ErrNotFound) {
+			return nil, errors.New("install Poppler to read scanned PDF pages")
+		}
+		if errors.Is(renderCtx.Err(), context.DeadlineExceeded) {
+			return nil, errors.New("rendering PDF pages timed out")
+		}
+		return nil, errors.New("Poppler could not render the PDF pages")
 	}
 	outputs, err := filepath.Glob(prefix + "-*.png")
 	if err != nil || len(outputs) != pages {

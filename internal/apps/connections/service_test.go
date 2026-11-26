@@ -235,6 +235,20 @@ func TestPublicHTTPReadUsesDeclaredIdentityAndNestedColumns(t *testing.T) {
 			Path: "/submissions/CIK{cik}.json", Rows: "filings.recent", Columnar: true, Match: map[string]string{"company": "cik"},
 		}},
 	}
+	for _, rejected := range []struct {
+		name string
+		edit func(*connections.Config)
+	}{
+		{"queued write", func(c *connections.Config) { c.Writes = map[string]connections.Write{"edit": {Read: "recent"}} }},
+		{"absent User-Agent", func(c *connections.Config) { c.UserAgent = "" }},
+		{"database", func(c *connections.Config) { c.Kind = connections.Postgres }},
+	} {
+		candidate := cfg
+		rejected.edit(&candidate)
+		if err := svc.Register(candidate, ""); err == nil {
+			t.Fatalf("public connection accepted %s", rejected.name)
+		}
+	}
 	withEmail := cfg
 	withEmail.UserAgent = "owner@example.test"
 	if err := svc.Register(withEmail, ""); err == nil {

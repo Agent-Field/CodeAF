@@ -643,6 +643,9 @@ func (s Service) SetPersonCredential(ctx context.Context, app, id, credential st
 	if c.Kind == Microsoft365 {
 		return errors.New("Microsoft 365 uses browser sign-in")
 	}
+	if c.CredentialMode == CredentialPublic {
+		return errors.New("this public connection takes no credential")
+	}
 	if c.CredentialMode != CredentialPerson {
 		return errors.New("this connection uses a shared credential")
 	}
