@@ -511,15 +511,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		if e.cfg.Agent == nil {
 			err = errors.New("the app agent is unavailable")
 		} else {
-			remaining := 0.0
-			if budget > 0 {
-				remaining = budget - c.Cost
-			}
-			call := AgentCall{Call: a.Call, Prompt: a.Prompt, AI: step.AI, Steps: c.Outputs, Remaining: remaining}
-			if step.Agent != "" && !c.IntakeAI && c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
-				call.IntakeType, call.IntakeRecord = c.TriggerReceipt.IntakeType, c.TriggerReceipt.Record
-			}
-			reply, err = e.cfg.Agent(ctx, call)
+			reply, err = e.completeStep(ctx, c, step, a, budget)
 		}
 	default:
 		if _, local := extensions.ToolID(step.Tool); local {
@@ -549,11 +541,8 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	} else {
 		return e.stop(c, Incomplete, "step returned an invalid cost")
 	}
-	if step.AI != nil && budget > 0 && c.Cost > budget {
+	if (step.AI != nil || step.Agent != "") && budget > 0 && c.Cost > budget {
 		return e.stop(c, Incomplete, ErrBudget.Error())
-	}
-	if err == nil && step.AI != nil {
-		reply.Output, err = typedAIOutput(step.AI.Output, reply.Output)
 	}
 	if err == nil && step.AI != nil && step.ID == aiFieldStep && strings.HasPrefix(c.DefinitionID, aiFieldPrefix) {
 		reply.Output, err = e.fillAIFields(ctx, c, reply.Output)
@@ -582,7 +571,7 @@ func (e *Engine) stepFailed(c *checkpoint, step Step, err error) error {
 	if errors.Is(err, ErrOutcomeUnknown) {
 		return e.stop(c, Incomplete, err.Error())
 	}
-	if step.Retry != nil && c.Attempt < step.Retry.Max {
+	if !errors.Is(err, ErrAgentOutput) && step.Retry != nil && c.Attempt < step.Retry.Max {
 		const ceiling = 10 * time.Minute
 		backoff := time.Second
 		if step.Retry.Backoff != "" {

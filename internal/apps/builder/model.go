@@ -67,7 +67,8 @@ set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Record commands pass a ref parameter by id, with no default.
 Use refs with a query default for scheduled loops. Read ids with $params.post.id.
-Agent steps return text at $steps.<id>.output. For lists and approvals, copy
+Use plan.agent.actions for the exact Action IDs the assistant promises.
+Agent steps return only the requested text at $steps.<id>.output. For lists and approvals, copy
 reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
@@ -204,6 +205,13 @@ so record views can show them with the current record. For an app-wide
 action without a record parameter, use a Button with on-click='[{"runs.start":"review"}]'. A local save requiring approval puts gate: {approval: proof}
 on the records.create or records.update step itself so the Inbox shows the
 actual proposed write. Set a run title and step titles in plain language.
+For an assistant that changes records, give it a declared screen view to
+find the target. Use one typed ref parameter in the run, such as deal, and
+write only the selected row ($params.deal.id). A record-writing run is
+grantable by run ID, or by the command ID when a command launches it.
+Use a run for multi-step record commands. For a CRM Follow up button,
+draft a ready-to-send message addressed to the linked contact. Save it as
+a separate note linked to the deal, with approval on the save and no sending.
 For a follow-up draft written on the person's behalf, address the bound
 contact and sign with the available owner name. Write the greeting and
 signature into the draft using {{params.deal.contact.name}} and {{owner.name}},

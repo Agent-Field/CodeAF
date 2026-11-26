@@ -100,6 +100,9 @@ func validateSteps(steps []Step, seen, enclosing map[string]bool, budget *schema
 const maxRetries = 5
 
 func validateStep(s Step, targets map[string]bool, budget *schema.RunBudget) error {
+	if len(s.AgentTools) > 0 && (s.Agent == "" || len(s.AgentTools) != 1 || s.AgentTools[0] != "render") {
+		return errors.New("only an agent step can declare the render tool")
+	}
 	if s.Shell != "" || s.Workspace != "" || s.Repo != "" || s.Branch != "" {
 		return errors.New("shell and workspace steps are unavailable in app runs")
 	}

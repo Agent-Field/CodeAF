@@ -136,3 +136,32 @@ func TestCheckRejectsAnUnboundDraftPlaceholder(t *testing.T) {
 		t.Fatalf("Check accepted a draft placeholder: %v", report)
 	}
 }
+
+func TestCheckRequiresTheAssistantActionsItClaims(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := def.Files[schema.PlanFile]
+	def.Files[schema.PlanFile] = bytes.Replace(plan, []byte(`"agent": { "line":`), []byte(`"agent": { "actions": ["mark-won", "reopen-deal"], "line":`), 1)
+	report := check.Definition(def, nil)
+	if !slices.Contains(report.Codes(), "agent_action_missing") || !strings.Contains(report.String(), "reopen-deal") {
+		t.Fatalf("Check accepted an assistant promising a missing Action: %v", report)
+	}
+	def.Files[schema.PlanFile] = bytes.Replace(def.Files[schema.PlanFile], []byte(`, "reopen-deal"`), nil, 1)
+	if report := check.Definition(def, nil); !report.OK() {
+		t.Fatalf("Check failed the registered Mark Won Action: %v", report)
+	}
+}
+
+func TestCheckRequiresOneGrantableActionForAMultiEffectCommand(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := def.Files[schema.AppFile]
+	def.Files[schema.AppFile] = bytes.Replace(app, []byte(`"set": { "stage": "Won" } } }`), []byte(`"set": { "stage": "Won" } } }, { "runs.start": "follow-up" }`), 1)
+	if report := check.Definition(def, nil); !slices.Contains(report.Codes(), "command_action_missing") {
+		t.Fatalf("Check accepted a multi-effect Mark Won command without a grantable Action: %v", report)
+	}
+}

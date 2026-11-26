@@ -66,6 +66,9 @@ type RecordCall struct {
 type AgentCall struct {
 	Call
 	Prompt                   string
+	Context                  map[string]any
+	Tools                    []string
+	UseAgentInstructions     bool
 	AI                       *schema.AIStep
 	Steps                    map[string]any
 	Remaining                float64

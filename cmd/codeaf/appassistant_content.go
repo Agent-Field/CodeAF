@@ -49,16 +49,7 @@ func (b *appBackend) RunAppContent(ctx context.Context, p appwire.AppContentScop
 		}
 		harnesses := b.appAIHarnesses(runs.Files(home.Join("apps")))
 		actions = slices.DeleteFunc(actions, func(a appAssistantAction) bool {
-			i := slices.IndexFunc(app.Commands, func(cmd schema.Command) bool { return cmd.ID == a.ID })
-			if i < 0 || app.Commands[i].Run == "" {
-				return false
-			}
-			raw, ok := def.Run(app.Commands[i].Run)
-			if !ok {
-				return true
-			}
-			flow, err := schema.ParseRun(raw)
-			return err != nil || !appAIRunAvailable(harnesses, flow.Steps)
+			return a.Run != nil && !appAIRunAvailable(harnesses, a.Run.Steps)
 		})
 		result := map[string]any{"views": views, "actions": actions}
 		tools := map[string]any{}
@@ -120,74 +111,19 @@ func (b *appBackend) RunAppContent(ctx context.Context, p appwire.AppContentScop
 	return nil, appwire.Errorf(appwire.CodeBadParams, "Unknown app command.")
 }
 
-type appAssistantAction struct {
-	ID       string                     `json:"id"`
-	Label    string                     `json:"label"`
-	Record   string                     `json:"record_type,omitempty"`
-	Args     map[string]schema.RunParam `json:"args"`
-	Revision bool                       `json:"requires_expected_rev,omitempty"`
-}
+type appAssistantAction = schema.RegisteredAction
 
 func appAssistantActions(app schema.App, def store.Definition) ([]appAssistantAction, error) {
-	actions := make([]appAssistantAction, 0, len(app.Commands))
-	recordAction := func(id, label, typ string) appAssistantAction {
-		return appAssistantAction{ID: id, Label: label, Record: typ, Revision: true,
-			Args: map[string]schema.RunParam{"record": {Type: "ref", To: typ}}}
-	}
-	for _, cmd := range app.Commands {
-		if raw, ok := def.Run(cmd.Run); ok && cmd.Run != "" {
-			flow, err := schema.ParseRun(raw)
-			if err != nil {
-				return nil, err
-			}
-			for name, fixed := range cmd.Params {
-				if !appAssistantInput(fixed) {
-					delete(flow.Params, name)
-				}
-			}
-			actions = append(actions, appAssistantAction{ID: cmd.ID, Label: cmd.Label, Record: cmd.For, Args: flow.Params})
-		} else if _, ok := appAssistantRecordUpdate(cmd); ok {
-			actions = append(actions, recordAction(cmd.ID, cmd.Label, cmd.For))
+	flows := make(map[string]schema.Run, len(def.Runs))
+	for _, id := range def.Runs {
+		raw, _ := def.Run(id)
+		flow, err := schema.ParseRun(raw)
+		if err != nil {
+			return nil, err
 		}
+		flows[id] = flow
 	}
-	for _, id := range slices.Sorted(maps.Keys(app.Outputs)) {
-		t := app.Outputs[id]
-		args := map[string]schema.RunParam{}
-		if t.Record != "" {
-			args["record"] = schema.RunParam{Type: "ref", To: t.Record}
-		}
-		actions = append(actions, appAssistantAction{ID: "render/" + id, Label: t.Label, Record: t.Record, Args: args})
-	}
-	for _, typ := range slices.Sorted(maps.Keys(app.Records)) {
-		if record := app.Records[typ]; record.Lifecycle != nil {
-			for _, tr := range record.Lifecycle.Transitions {
-				actions = append(actions, recordAction("transition/"+typ+"/"+tr.ID, tr.Label, typ))
-			}
-		}
-	}
-	return actions, nil
-}
-
-func appAssistantInput(value any) bool {
-	text, ok := value.(string)
-	return ok && (strings.HasPrefix(text, "$selection.") || strings.HasPrefix(text, "$input."))
-}
-
-func appAssistantRecordUpdate(command schema.Command) (map[string]any, bool) {
-	if command.For == "" || len(command.Do) != 1 {
-		return nil, false
-	}
-	update, ok := command.Do[0]["records.update"].(map[string]any)
-	set, valid := update["set"].(map[string]any)
-	if !ok || !valid || update["ids"] != "$selection.ids" {
-		return nil, false
-	}
-	for _, value := range set {
-		if text, ok := value.(string); ok && strings.HasPrefix(text, "$") {
-			return nil, false
-		}
-	}
-	return set, true
+	return schema.ActionRegistry(app, flows), nil
 }
 
 func declaredViewIR(view schema.QueryIR, arguments map[string]json.RawMessage) (data.QueryIR, error) {
@@ -338,11 +274,15 @@ func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app 
 		result, err := db.TransitionBatch(sc, transition, []data.TransitionRecord{{RecordRef: data.RecordRef{Type: typ, ID: recordID}, Rev: int64(*intent.ExpectedRev)}}, data.TransitionOptions{})
 		return marshalAppContent(result, appDataError(err))
 	}
-	at := slices.IndexFunc(app.Commands, func(c schema.Command) bool { return c.ID == intent.Action })
+	actions, err := appAssistantActions(app, def)
+	if err != nil {
+		return nil, err
+	}
+	at := slices.IndexFunc(actions, func(a appAssistantAction) bool { return a.ID == intent.Action })
 	if at < 0 {
 		return nil, appwire.Errorf(appwire.CodeNotFound, "That action is not declared in this app.")
 	}
-	command := app.Commands[at]
+	action := actions[at]
 	args := map[string]any{}
 	for key, raw := range intent.Args {
 		var value any
@@ -351,28 +291,22 @@ func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app 
 		}
 		args[key] = value
 	}
-	if raw, ok := def.Run(command.Run); ok && command.Run != "" {
-		flow, err := schema.ParseRun(raw)
-		if err != nil {
-			return nil, err
+	for name, value := range args {
+		parameter, declared := action.Args[name]
+		if !declared || !appRunArgument(parameter.Type, value) {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "Invalid action argument %q.", name)
 		}
-		for name, value := range args {
-			parameter, declared := flow.Params[name]
-			if !declared || !appRunArgument(parameter.Type, value) {
-				return nil, appwire.Errorf(appwire.CodeBadParams, "Invalid automation argument %q.", name)
-			}
+	}
+	for name, parameter := range action.Args {
+		if _, ok := args[name]; !ok && parameter.Default == nil {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "Supply action argument %q.", name)
 		}
-		for name := range args {
-			if fixed, ok := command.Params[name]; ok && !appAssistantInput(fixed) {
-				return nil, appwire.Errorf(appwire.CodeBadParams, "The app declares a fixed value for %q.", name)
-			}
+	}
+	if action.Run != nil {
+		for name, value := range action.Fixed {
+			args[name] = value
 		}
-		for name, value := range command.Params {
-			if text, ok := value.(string); !ok || !strings.HasPrefix(text, "$") {
-				args[name] = value
-			}
-		}
-		if command.Run == appAgentAskRun || strings.HasPrefix(command.Run, appAgentDutyPrefix) {
+		if runs.AgentConversation(action.Run.Run) {
 			return nil, appwire.Errorf(appwire.CodeForbidden, "Use the app agent entry point.")
 		}
 		if b.startAppRunsOnce != nil {
@@ -382,18 +316,36 @@ func (b *appBackend) invokeAppAssistant(ctx context.Context, sc data.Scope, app 
 		if engine == nil {
 			return nil, appwire.Errorf(appwire.CodeEngine, "App actions are unavailable.")
 		}
-		return marshalAppContent(engine.StartAgentAction(sc.App, command.Run, args, runs.AgentActionOrigin{Principal: sc.Principal, Action: intent.Action, Version: def.Meta.Version, Cause: sc.Cause}))
+		return marshalAppContent(engine.StartAgentAction(sc.App, action.Run.Run, args, runs.AgentActionOrigin{Principal: sc.Principal, Action: intent.Action, Version: def.Meta.Version, Cause: sc.Cause}))
 	}
-	if set, ok := appAssistantRecordUpdate(command); ok {
-		id, _ := args["record"].(string)
-		if len(args) != 1 || id == "" || intent.ExpectedRev == nil || *intent.ExpectedRev == 0 || *intent.ExpectedRev > 1<<63-1 {
-			return nil, appwire.Errorf(appwire.CodeBadParams, "This action takes args.record with one record ID and expected_rev with that row's _rev.")
+	if action.Write != "" {
+		var id string
+		var revision int64
+		if action.Revision {
+			id, _ = args["record"].(string)
+			if id == "" || intent.ExpectedRev == nil || *intent.ExpectedRev == 0 || *intent.ExpectedRev > 1<<63-1 {
+				return nil, appwire.Errorf(appwire.CodeBadParams, "This action needs one record ID and its displayed revision.")
+			}
+			revision = int64(*intent.ExpectedRev)
 		}
 		db, err := b.dataStore("")
 		if err != nil {
 			return nil, err
 		}
-		result, err := db.Update(sc, command.For, []string{id}, set, data.UpdateOptions{Rev: int64(*intent.ExpectedRev)})
+		set := make(map[string]any, len(action.Set))
+		maps.Copy(set, action.Set)
+		for field, input := range action.Inputs {
+			set[field] = args[input]
+		}
+		var result *data.WriteResult
+		switch action.Write {
+		case "records.create":
+			result, err = db.Create(sc, action.Record, []map[string]any{set})
+		case "records.update":
+			result, err = db.Update(sc, action.Record, []string{id}, set, data.UpdateOptions{Rev: revision})
+		case "records.delete":
+			result, err = db.Delete(sc, action.Record, []string{id}, data.UpdateOptions{Rev: revision})
+		}
 		return marshalAppContent(result, appDataError(err))
 	}
 	return nil, appwire.Errorf(appwire.CodeBadParams, "This action needs a supported app process or automation.")
