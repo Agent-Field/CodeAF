@@ -23,10 +23,7 @@ func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
-	scope := data.Scope{App: call.App, Flow: true, Actor: "run:" + call.ID, Cause: call.Step, CauseChain: call.causeChain}
-	if call.aiRevision > 0 {
-		scope.AI = true
-	}
+	scope := data.Scope{App: call.App, Flow: true, AI: call.ai || call.aiRevision > 0, Actor: "run:" + call.ID, Cause: call.Step, CauseChain: call.causeChain}
 	if call.agentOrigin != nil {
 		scope.Principal, scope.Flow = call.agentOrigin.Principal, false
 		scope.Action = call.agentOrigin.Action

@@ -7240,7 +7240,7 @@
       "form-link": {
         "id": "form-link",
         "version": 1,
-        "doc": "Collects a submission with a declared form.",
+        "doc": "Collects a local web form submission and can create a work item.",
         "example": {
           "kind": "form-link",
           "record": "ticket",
@@ -7259,12 +7259,16 @@
       "email-in": {
         "id": "email-in",
         "version": 1,
-        "doc": "Routes inbound email threads to records.",
+        "doc": "Turns .eml files dropped on this machine into records.",
         "example": {
           "kind": "email-in",
           "record": "ticket",
-          "connector": "gmail",
-          "event": "thread.received"
+          "mapping": {
+            "subject": "title",
+            "from": "sender",
+            "body": "description",
+            "attachments": "files"
+          }
         },
         "schema": {
           "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/email-in"
@@ -7279,11 +7283,14 @@
       "webhook-in": {
         "id": "webhook-in",
         "version": 1,
-        "doc": "Declares a webhook intake for a run.",
+        "doc": "Accepts a local webhook with a shared secret.",
         "example": {
           "kind": "webhook-in",
           "record": "ticket",
-          "run": "ingest"
+          "secret": "support",
+          "mapping": {
+            "summary": "title"
+          }
         },
         "schema": {
           "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/webhook-in"
@@ -7298,11 +7305,12 @@
       "file-drop": {
         "id": "file-drop",
         "version": 1,
-        "doc": "Collects a file through a declared form.",
+        "doc": "Imports CSV or attaches a dropped PDF or image.",
         "example": {
           "kind": "file-drop",
           "record": "ticket",
-          "form": "request",
+          "fileField": "files",
+          "nameField": "title",
           "accept": [
             "application/pdf"
           ]
@@ -7320,12 +7328,14 @@
       "connector-event": {
         "id": "connector-event",
         "version": 1,
-        "doc": "Receives a registered connector event.",
+        "doc": "Maps a local connector webhook into a record.",
         "example": {
           "kind": "connector-event",
           "record": "job",
-          "connector": "github",
-          "event": "issues.labelled"
+          "secret": "connector",
+          "mapping": {
+            "summary": "title"
+          }
         },
         "schema": {
           "$ref": "https://codeaf.dev/schema/enterprise-2.json#/$defs/connector-event"

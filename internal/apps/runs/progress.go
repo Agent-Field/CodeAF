@@ -453,7 +453,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		if e.cfg.Records == nil {
 			err = errors.New("record writes are unavailable")
 		} else {
-			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args, agentOrigin: c.AgentOrigin}
+			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args, agentOrigin: c.AgentOrigin, ai: c.IntakeAI}
 			if c.TriggerReceipt != nil {
 				causes := c.TriggerReceipt.CauseChain
 				start := max(0, len(causes)-(maxRunCauseChain-1))
@@ -469,7 +469,11 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			if budget > 0 {
 				remaining = budget - c.Cost
 			}
-			reply, err = e.cfg.Agent(ctx, AgentCall{Call: a.Call, Prompt: a.Prompt, AI: step.AI, Steps: c.Outputs, Remaining: remaining})
+			call := AgentCall{Call: a.Call, Prompt: a.Prompt, AI: step.AI, Steps: c.Outputs, Remaining: remaining}
+			if step.Agent != "" && !c.IntakeAI && c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
+				call.IntakeType, call.IntakeRecord = c.TriggerReceipt.IntakeType, c.TriggerReceipt.Record
+			}
+			reply, err = e.cfg.Agent(ctx, call)
 		}
 	default:
 		if e.cfg.Connector == nil {
@@ -509,6 +513,9 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		}
 	}
 	if err == nil {
+		if step.Agent != "" && c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
+			c.IntakeAI = true
+		}
 		return e.advance(c, "", reply.Output)
 	}
 	return e.stepFailed(c, step, err)

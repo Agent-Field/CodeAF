@@ -58,14 +58,16 @@ type RecordCall struct {
 	causeChain  []string
 	agentOrigin *AgentActionOrigin
 	aiRevision  int64
+	ai          bool
 }
 
 type AgentCall struct {
 	Call
-	Prompt    string
-	AI        *schema.AIStep
-	Steps     map[string]any
-	Remaining float64
+	Prompt                   string
+	AI                       *schema.AIStep
+	Steps                    map[string]any
+	Remaining                float64
+	IntakeType, IntakeRecord string
 }
 
 type Approval struct {

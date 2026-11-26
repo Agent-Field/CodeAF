@@ -2,6 +2,7 @@ package runs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -72,10 +73,20 @@ func (d Data) ConsumeOutbox(ctx context.Context, engine *Engine) error {
 			}
 			fallthrough
 		case data.EventRecordCreated, data.EventRecordUpdated, data.EventRecordDeleted:
-			changes = append(changes, Change{
+			change := Change{
 				Seq: event.Seq, Type: event.Type, TypeID: event.TypeID, ID: event.Record, Batch: event.Batch,
 				OutboxVersion: event.Version, CauseChain: event.CauseChain, SourceEvent: event.SourceEvent, Cause: event.Cause,
-			})
+			}
+			if event.Event == data.EventRecordCreated && event.SourceEvent != "" {
+				var route data.IntakeTrigger
+				if err := json.Unmarshal(event.Payload, &route); err != nil {
+					return fmt.Errorf("record event %d: %w", event.Seq, err)
+				}
+				if route.Channel != "" {
+					change.Intake = &IntakeChange{App: event.App, Channel: route.Channel, Run: route.Run, RecordType: route.Type}
+				}
+			}
+			changes = append(changes, change)
 		}
 	}
 	if err := engine.RecordChanges(changes); err != nil {

@@ -129,6 +129,7 @@ type AgentActionOrigin struct {
 type checkpoint struct {
 	Run
 	TriggerReceipt *triggerReceipt    `json:"trigger_receipt,omitempty"`
+	IntakeAI       bool               `json:"intake_ai,omitempty"`
 	Definition     Definition         `json:"definition"`
 	Params         map[string]any     `json:"params"`
 	Input          map[string]any     `json:"input,omitempty"`

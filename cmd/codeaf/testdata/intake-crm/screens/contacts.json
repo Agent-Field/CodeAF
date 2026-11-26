@@ -1,0 +1,5 @@
+{
+  "screen": "contacts",
+  "title": "Contacts",
+  "body": {"id": "contacts", "part": "Stack"}
+}

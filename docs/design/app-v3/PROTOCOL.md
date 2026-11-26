@@ -2083,6 +2083,28 @@ $0.10 goes out as `0.1`.
 | `rules.list` | `{}` | `RulesResult` |
 | `rules.remove` | `in.crewID` | `Empty` |
 
+## channels methods
+
+| method | params | result |
+|---|---|---|
+| `channels.list` | `{app}` | `{channels: [Channel]}` |
+| `channels.post` | `{app, channel, dedupe_key?, values?, name?, content?}` | `{batch, rows: [id], created, failed?, problems?, work_item?, replayed?}` |
+
+`Channel` includes `{id, kind, record, active, run?, form?, url?, folder?}`.
+The app ID names a kept app. A URL resolves on the engine's machine, and a
+folder is a path on that same machine. The authenticated wire does not
+require the shared secret needed by the HTTP webhook.
+
+Send declared form fields or the connector's original JSON object in
+`values`. Email and file deliveries use their basename in `name` and
+base64 bytes in `content`. Keep each upload at or below 4 MiB. Form and
+JSON deliveries require a `dedupe_key`. The engine derives a key for
+files when omitted. An accepted key returns its original receipt with
+`replayed: true` on a matching delivery, including after edits to the
+field mapping. A different delivery using that key receives `duplicate`.
+CSV import can accept some rows and report others in `problems`, each
+with `{line, field?, message}`.
+
 ## runs methods
 
 | method | params | result |
