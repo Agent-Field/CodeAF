@@ -1,0 +1,55 @@
+{
+  "id": "gallery-hiring",
+  "name": "Hiring",
+  "icon": "person",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Hiring assistant",
+    "file": "agent.md"
+  },
+  "records": {
+    "candidate": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "stage": {
+          "type": "enum",
+          "label": "Stage",
+          "values": [
+            "Applied",
+            "Screen",
+            "Onsite",
+            "Offer"
+          ]
+        },
+        "score": {
+          "type": "number",
+          "label": "Interview score"
+        },
+        "interview": {
+          "type": "datetime"
+        },
+        "role": {
+          "type": "text",
+          "label": "Role"
+        },
+        "source": {
+          "type": "text",
+          "label": "Source"
+        },
+        "feedback": {
+          "type": "longtext",
+          "label": "Scorecards"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "candidate": "rw"
+    }
+  }
+}

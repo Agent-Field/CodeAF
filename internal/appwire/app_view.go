@@ -3,12 +3,13 @@ package appwire
 import "encoding/json"
 
 // DataViewParams addresses a declared screen query. A caller sends the typed
-// arguments rather than a new filter, projection, or record type.
+// arguments and an optional lens that can narrow the declared records.
 type DataViewParams struct {
 	DataScope
 	Screen string                     `json:"screen"`
 	View   string                     `json:"view"`
 	Args   map[string]json.RawMessage `json:"args,omitempty"`
+	Query  string                     `json:"query,omitempty"`
 	Cursor string                     `json:"cursor,omitempty"`
 	Limit  int                        `json:"limit,omitempty"`
 }
