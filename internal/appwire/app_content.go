@@ -45,6 +45,7 @@ type AppContentCommand struct {
 	Query   AppViewQuery
 	Action  AppActionIntent
 	Request string
+	Cause   string
 }
 
 // AppContentDoor is the content side of the engine's app command dispatcher.
@@ -65,7 +66,7 @@ func RunScopedAppCommand(ctx context.Context, door AppContentDoor, scope AppCont
 	if door == nil || scope.App == "" || scope.Profile == "" || scope.Conversation == "" || scope.Actor == "" || scope.Version < 1 {
 		return nil, Errorf(CodeEngine, "App commands are unavailable for this conversation.")
 	}
-	command := AppContentCommand{Verb: verb}
+	command := AppContentCommand{Verb: verb, Cause: cause}
 	notify := func(AppChangeProposed) {}
 	switch verb {
 	case AppContentShow:

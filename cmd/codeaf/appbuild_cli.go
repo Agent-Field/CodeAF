@@ -66,7 +66,7 @@ func (b *appBackend) serveAppCommands() (func(), error) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		value, err := appwire.RunAppCommand(b, command.Verb, command.Params)
+		value, err := b.runAppCLICommand(r.Context(), command.Verb, command.Params)
 		var reply appCommandReply
 		if err == nil {
 			reply.Result, err = json.Marshal(value)
@@ -90,7 +90,7 @@ func runAppCommand(args []string) error {
 	params := json.RawMessage("{}")
 	switch {
 	case verb == "help":
-		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|reference|list|get|screen|versions|mark|presence> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
 		return nil
 	case verb == "kit" && len(args) == 1:

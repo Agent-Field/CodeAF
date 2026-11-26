@@ -221,6 +221,17 @@ func (e *Engine) Get(id string) (Run, error) {
 	return c.Run, err
 }
 
+// AgentProjection reads the question's address and the answer committed by the agent step.
+func (e *Engine) AgentProjection(id string) (map[string]any, string, error) {
+	c, err := e.read(id)
+	if err != nil {
+		return nil, "", err
+	}
+	step, _ := c.Outputs["answer"].(map[string]any)
+	answer, _ := step["output"].(string)
+	return c.Params, answer, nil
+}
+
 func (e *Engine) List(app, run string) ([]Run, error) {
 	e.mu.Lock()
 	entries := make([]json.RawMessage, 0, len(e.checkpoints))
