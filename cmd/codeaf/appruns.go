@@ -409,7 +409,7 @@ func appAISystem(step *schema.AIStep) string {
 
 func appRunAsk(ask string) bool { return strings.HasPrefix(ask, appRunAskPrefix) }
 
-func runIDForApproval(ask string) string {
+func approvalRunID(ask string) string {
 	id, _, _ := strings.Cut(strings.TrimPrefix(ask, appRunAskPrefix), "-")
 	return id
 }
@@ -461,7 +461,7 @@ func (b *appBackend) checkRunAnswer(agent, ask, option, text string) error {
 		return appwire.Errorf(appwire.CodeNotFound, "run approval not found")
 	}
 	approval := strings.TrimPrefix(ask, appRunAskPrefix)
-	runID := runIDForApproval(ask)
+	runID := approvalRunID(ask)
 	r, err := b.appRuns.Load().Get(runID)
 	if err != nil || r.Approval == nil || r.Approval.ID != approval {
 		return appwire.Errorf(appwire.CodeNotFound, "run approval not found")
@@ -497,7 +497,7 @@ func (b *appBackend) answerRunApproval(agent, ask, option, text string) error {
 		return err
 	}
 	approval := strings.TrimPrefix(ask, appRunAskPrefix)
-	runID := runIDForApproval(ask)
+	runID := approvalRunID(ask)
 	var err error
 	if option == appwire.OptionRaise {
 		dollars, _ := strconv.ParseFloat(strings.TrimSpace(text), 64)

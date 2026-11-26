@@ -613,7 +613,7 @@ func (b *appBackend) OpenInbox(id string) (string, string, error) {
 		return "", "", appwire.Errorf(appwire.CodeNotFound, "there is no Inbox item %s", id)
 	}
 	if agent, ask, ok := appInboxSplit(id); ok && agent == appRunAskAgent && appRunAsk(ask) {
-		return appwire.AppRunInboxPrefix + runIDForApproval(ask), "", nil
+		return appwire.AppRunInboxPrefix + approvalRunID(ask), "", nil
 	}
 	return where.Agent, where.Task, nil
 }
