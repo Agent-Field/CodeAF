@@ -163,6 +163,8 @@ func (s *schema) typeNamed(name string) *Type {
 // filled, a flow forwarding what a model said); Flow says a run or rule is
 // writing on its own grant. Cause names what led to the write (a run step,
 // a transition, a timer), kept on every history row.
+// A Principal supplies the history actor and needs the named Action grant
+// in the app's write transaction.
 type Scope struct {
 	App        string
 	Actor      string

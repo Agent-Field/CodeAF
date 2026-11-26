@@ -36,7 +36,7 @@ func (s *Store) SetAgentGrant(app string, agent AgentPrincipal, group, id string
 	}
 	return s.write(func(w *writeTx) error {
 		if allowed {
-			_, err := w.tx.Exec(`INSERT INTO agent_grants VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, app, agent.ID, group, id)
+			_, err := w.tx.Exec(`INSERT INTO agent_grants (app, agent, grant_group, grant_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, app, agent.ID, group, id)
 			return err
 		}
 		_, err := w.tx.Exec(`DELETE FROM agent_grants WHERE app=? AND agent=? AND grant_group=? AND grant_id=?`, app, agent.ID, group, id)

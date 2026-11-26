@@ -2,6 +2,8 @@
 
 ## Ask about app records, start an automation, or draft a message
 
+Open the assistant from an active app.
+
 The assistant's `app` tool uses the same app command as `codeaf app`. It can
 list the app's declared views and actions, query a view with its named inputs,
 and invoke a granted action. The agent starts with no read or action grants.

@@ -2326,6 +2326,8 @@ and the reply is empty.
 | event | data |
 |---|---|
 | `agent.changed` | `AgentChanged` |
+| `agents.changed` | `{app,kind}`, invalidating the app's `runs`, `grants` or `duties` projection. |
+| `apps.change_proposed` | `{app,draft,summary_lines,screen,kind?,proposal_id?}` for a durable app assistant proposal. |
 | `ask.closed` | `AskClosed` |
 | `ask.opened` | `AskOpened` |
 | `chat.changed` | `ChatChanged` |
@@ -3166,6 +3168,21 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.kit` | `{kit?}` | The embedded kit catalog object, including its version and parts. Kit 2 includes `common_types`. |
 | `apps.common_types` | `{}` | `{version,types}`. Each portable key maps to the type's label, terms, and typed fields with their roles and reference targets. |
 | `apps.bind_common_type` | `{common,type}` | `{common,type,type_id}`. The existing type is selected by name or ID. Binding keeps the existing type and record IDs. |
+
+### Personal app assistant
+
+| method | params | result |
+|---|---|---|
+| `apps.agent_open` | `{app}` | `{conversation}`, the app's scoped conversation ID. |
+| `agents.ask` | `{app,screen,record?:{type,id},text}` | `{id}` for the new app agent run. |
+| `agents.query` | `{app,kind,screen?,record?}` | Rows for `runs`, `grants` or `duties`. Runs can be scoped to a screen or an exact record. |
+| `agents.grant` | `{app,agent,group,id,allowed}` | `{}`. The built-in agent ID is the app ID. Groups are `actions` and `data`. |
+| `agents.duty_add` | `{app,screen,record?:{type,id},text,cron}` | `{id}` for a standing duty with a five-field cron schedule. |
+| `agents.duty_remove` | `{app,id}` | `{}`. Stops future occurrences of that duty. |
+
+An app agent reads declared, granted views by `screen/view` ID. A small change
+proposal gives the changed screen and a draft to preview. A big proposal
+opens the same draft in the builder. Apply publishes the checked draft.
 
 ### App building and Desk Look
 

@@ -24,6 +24,10 @@ func TestAgentPrincipalRequiresOwnGrantAtTheWriter(t *testing.T) {
 	wantCode(t, update(Scope{App: "crm", Agent: true}), CodeNotAllowed)
 	wantCode(t, update(Scope{App: "crm", Actor: "agent:sales-assistant"}), CodeNotAllowed)
 	wantCode(t, update(scope), CodeNotAllowed)
+	if err := store.SetAgentGrant("crm", agent, "data", action, true); err != nil {
+		t.Fatal(err)
+	}
+	wantCode(t, update(scope), CodeNotAllowed)
 	if err := store.SetAgentGrant("crm", agent, "actions", action, true); err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +36,9 @@ func TestAgentPrincipalRequiresOwnGrantAtTheWriter(t *testing.T) {
 	wantCode(t, update(other), CodeNotAllowed)
 	other = scope
 	other.Action = "another-action"
+	wantCode(t, update(other), CodeNotAllowed)
+	other = scope
+	other.App = "another-app"
 	wantCode(t, update(other), CodeNotAllowed)
 	if err := update(scope); err != nil {
 		t.Fatal(err)
@@ -53,4 +60,14 @@ func TestAgentPrincipalRequiresOwnGrantAtTheWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCode(t, update(scope), CodeNotAllowed)
+	if _, err := store.Update(person, "deal", []string{row.ID()}, map[string]any{"last_touch": "2026-01-06T00:00:00Z"}, UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	contact := mustCreate(t, store, person, "contact", map[string]any{"name": "Ava", "phone": "+15550100"})[0]
+	visible, err := store.Get(scope, "contact", contact.ID(), false)
+	if err != nil || visible["phone"] != masked {
+		t.Fatalf("masked row = %v, error = %v", visible, err)
+	}
+	_, err = store.Get(scope, "contact", contact.ID(), true)
+	wantCode(t, err, CodeNotAllowed)
 }
