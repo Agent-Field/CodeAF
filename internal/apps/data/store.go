@@ -235,6 +235,7 @@ var migrations = []string{
 	intakeMigration,
 	aiReviewMigration,
 	outputMigration,
+	runWriteMigration,
 	residencyMigration,
 }
 

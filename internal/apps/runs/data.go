@@ -26,6 +26,9 @@ func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
 		return Reply{}, err
 	}
 	scope := data.Scope{App: call.App, Flow: true, AI: call.ai || call.aiRevision > 0, Actor: "run:" + call.ID, Cause: call.Step, CauseChain: call.causeChain}
+	if call.localWriteReceipt {
+		scope.RunWriteKey = call.Key
+	}
 	if call.agentOrigin != nil {
 		scope.Principal, scope.Flow = call.agentOrigin.Principal, false
 		scope.Action = call.agentOrigin.Action

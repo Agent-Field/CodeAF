@@ -926,18 +926,9 @@ func (s *Store) Create(sc Scope, typ string, sets []map[string]any) (*WriteResul
 }
 
 func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (*WriteResult, error) {
-	sc, flushAudit := s.WithPolicyAudit(sc)
-	defer flushAudit()
-	var made []*record
-	var t *Type
-	var batch string
-	err := s.writeAs(sc, func(w *writeTx) error {
-		made = nil
+	return s.writeRecordBatch(sc, typ, op, func(w *writeTx, sc Scope, t *Type, result *recordBatch) error {
 		var err error
-		if t, err = w.schema.allow(sc, typ, true); err != nil {
-			return err
-		}
-		if batch, err = w.newBatch(sc, op, t); err != nil {
+		if result.batch, err = w.newBatch(sc, op, t); err != nil {
 			return err
 		}
 		for _, set := range sets {
@@ -945,20 +936,10 @@ func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (
 			if err != nil {
 				return err
 			}
-			made = append(made, r)
+			result.rows = append(result.rows, r)
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	out := &WriteResult{Batch: batch, Rows: make([]Row, 0, len(made)), Held: []Held{}}
-	for _, r := range made {
-		if s.LiveRowAllowed(sc, t, r.Data) {
-			out.Rows = append(out.Rows, s.row(t, r, sc, false))
-		}
-	}
-	return out, nil
 }
 
 // createOne makes one record inside w.
@@ -1074,8 +1055,6 @@ type UpdateOptions struct {
 // Update writes set into every record named, in one batch. A record that
 // would not change is left alone and writes no history.
 func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, opts UpdateOptions) (*WriteResult, error) {
-	sc, flushAudit := s.WithPolicyAudit(sc)
-	defer flushAudit()
 	ids, err := cleanIDs(ids)
 	if err != nil {
 		return nil, err
@@ -1089,16 +1068,7 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 	if len(opts.Reset) > 0 && sc.below() {
 		return nil, &Error{Code: CodeNotAllowed, Need: "reset", Message: "only the person hands a value back to AI"}
 	}
-	var t *Type
-	var rows []*record
-	var held []Held
-	var batch string
-	err = s.writeAs(sc, func(w *writeTx) error {
-		rows, held, batch = nil, nil, ""
-		var err error
-		if t, err = w.schema.allow(sc, typ, true); err != nil {
-			return err
-		}
+	return s.writeRecordBatch(sc, typ, OpUpdate, func(w *writeTx, sc Scope, t *Type, result *recordBatch) error {
 		if t.Ledger {
 			return &Error{Code: CodeLedger, Message: fmt.Sprintf("%s entries are never changed; reverse the entry instead", t.Name)}
 		}
@@ -1130,26 +1100,15 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 				return err
 			}
 			for _, field := range fields {
-				held = append(held, Held{ID: id, Field: field})
+				result.held = append(result.held, Held{ID: id, Field: field})
 			}
-			rows = append(rows, after)
+			result.rows = append(result.rows, after)
 		}
 		if w.change != nil {
-			batch = w.change.Batch
-
+			result.batch = w.change.Batch
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	out := &WriteResult{Batch: batch, Rows: make([]Row, 0, len(rows)), Held: append([]Held{}, held...)}
-	for _, r := range rows {
-		if s.LiveRowAllowed(sc, t, r.Data) {
-			out.Rows = append(out.Rows, s.row(t, r, sc, false))
-		}
-	}
-	return out, nil
 }
 
 // updateRecord keeps both single edits and reviewed batches on the same

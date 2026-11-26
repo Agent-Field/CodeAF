@@ -182,6 +182,10 @@ type Scope struct {
 	Flow       bool
 	Cause      string
 	CauseChain []string
+	// RunWriteKey identifies one materialized app run step. The writer
+	// commits its result with the records and outbox so a restart can
+	// recover it. Only the run engine supplies this key.
+	RunWriteKey string
 
 	intake            *IntakeTrigger
 	policyMaintenance bool

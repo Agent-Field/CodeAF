@@ -15,11 +15,12 @@ import (
 
 type action struct {
 	Call
-	Render     *schema.RenderAction `json:"render,omitempty"`
-	RecordType string               `json:"record_type,omitempty"`
-	IDs        []string             `json:"ids,omitempty"`
-	Prompt     string               `json:"prompt,omitempty"`
-	Outbound   bool                 `json:"outbound,omitempty"`
+	Render            *schema.RenderAction `json:"render,omitempty"`
+	RecordType        string               `json:"record_type,omitempty"`
+	IDs               []string             `json:"ids,omitempty"`
+	Prompt            string               `json:"prompt,omitempty"`
+	Outbound          bool                 `json:"outbound,omitempty"`
+	LocalWriteReceipt bool                 `json:"local_write_receipt,omitempty"`
 }
 
 const maxTransitions = 10_000
@@ -87,9 +88,10 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 				return e.stop(c, Incomplete, err.Error())
 			}
 		}
-		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "" || step.AI != nil) {
-			// A crash between delivery and its receipt cannot distinguish an
-			// effected write from one never attempted. Never send it twice.
+		recordWrite := step.RecordsCreate != nil || step.RecordsUpdate != nil
+		if c.Prepared && (outbound || step.Agent != "" || step.AI != nil || recordWrite && !c.Action.LocalWriteReceipt) {
+			// Only a local write prepared with durable receipts can distinguish
+			// a commit from a crash before dispatch.
 			if connection, _, ok := schema.ParseSourceTool(step.Tool); ok {
 				c.Effects = append(c.Effects, EffectReceipt{Step: step.ID, Tool: step.Tool,
 					Key: c.Action.Key, Connection: connection, Outcome: "unknown"})
@@ -461,15 +463,18 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	if (step.Tool != "" || step.Agent != "" || step.AI != nil) && budget > 0 && c.Cost >= budget {
 		return e.askBudget(c)
 	}
-	c.Prepared, c.State, c.Error = true, Running, ""
-	c.WakeAt = time.Time{}
-	if err := e.save(c, "", nil); err != nil {
-		return err
+	a := c.Action
+	if !c.Prepared || !a.LocalWriteReceipt {
+		c.Prepared, c.State, c.Error = true, Running, ""
+		c.WakeAt = time.Time{}
+		a.LocalWriteReceipt = step.RecordsCreate != nil || step.RecordsUpdate != nil
+		if err := e.save(c, "", nil); err != nil {
+			return err
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	a := c.Action
 	if a.Outbound && c.AppVersion != 0 && e.cfg.AppVersion != nil {
 		current, err := e.cfg.AppVersion(c.App)
 		if err != nil || current != c.AppVersion {
@@ -489,7 +494,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		if e.cfg.Records == nil {
 			err = errors.New("record writes are unavailable")
 		} else {
-			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args, agentOrigin: c.AgentOrigin, ai: c.IntakeAI}
+			call := RecordCall{Call: a.Call, Type: a.RecordType, IDs: a.IDs, Set: a.Args, agentOrigin: c.AgentOrigin, ai: c.IntakeAI, localWriteReceipt: a.LocalWriteReceipt}
 			if c.TriggerReceipt != nil {
 				causes := c.TriggerReceipt.CauseChain
 				start := max(0, len(causes)-(maxRunCauseChain-1))
