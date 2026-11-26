@@ -115,7 +115,7 @@ func TestSharedSourceKeyCannotCrossAppTypes(t *testing.T) {
 	if page, err := svc.Read(context.Background(), query); err == nil {
 		t.Errorf("company read reused a contact identity: %+v", page)
 	}
-	if _, err := svc.PrepareEffect("crm", "directory", "company", map[string]any{
+	if _, err := svc.PrepareEffect(t.Context(), "crm", "directory", "company", map[string]any{
 		"id": person.Rows[0].ID(), "set": map[string]any{"name": "Wrong type"},
 	}); err == nil {
 		t.Error("company effect accepted a contact identity")

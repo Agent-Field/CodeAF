@@ -110,6 +110,7 @@ type Engine struct {
 	// The clock serializes schedule scanning. Each runnable instance also
 	// claims a worker before it can make any effects.
 	clock       sync.Mutex
+	sourceClock sync.Mutex
 	outbox      sync.Mutex
 	mu          sync.Mutex
 	checkpoints map[string]json.RawMessage
@@ -621,7 +622,7 @@ func (e *Engine) ready(ctx context.Context) ([]Run, error) {
 	if err := e.lifetime.Err(); err != nil {
 		return nil, err
 	}
-	err := e.schedules(ctx)
+	err := e.schedules()
 	list := e.activeRuns()
 	return slices.DeleteFunc(list, func(r Run) bool { return !r.ready(e.cfg.Now()) }), err
 }

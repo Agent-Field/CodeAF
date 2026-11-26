@@ -53,7 +53,7 @@ func (f microsoftTestTransport) RoundTrip(r *http.Request) (*http.Response, erro
 func TestMicrosoftSignInPKCEAndRefreshArePersisted(t *testing.T) {
 	onFreePort(t)
 	const id = "12345678-1234-1234-1234-123456789abc"
-	var challenge string
+	var challenge atomic.Value
 	var refreshes atomic.Int32
 	transport := microsoftTestTransport(func(req *http.Request) (*http.Response, error) {
 		raw := ""
@@ -65,7 +65,7 @@ func TestMicrosoftSignInPKCEAndRefreshArePersisted(t *testing.T) {
 			switch req.PostForm.Get("grant_type") {
 			case "authorization_code":
 				if req.PostForm.Get("client_id") != id || req.PostForm.Get("client_secret") != "" ||
-					oauth2.S256ChallengeFromVerifier(req.PostForm.Get("code_verifier")) != challenge {
+					oauth2.S256ChallengeFromVerifier(req.PostForm.Get("code_verifier")) != challenge.Load() {
 					t.Error("code exchange did not prove the public client and PKCE verifier")
 				}
 				raw = `{"access_token":"old","refresh_token":"renew-one","token_type":"Bearer","expires_in":1,"scope":"User.Read User.ReadBasic.All Mail.ReadWrite Calendars.ReadWrite Files.Read.All"}`
@@ -110,8 +110,8 @@ func TestMicrosoftSignInPKCEAndRefreshArePersisted(t *testing.T) {
 		t.Fatal(err)
 	}
 	params := authorize.Query()
-	challenge = params.Get("code_challenge")
-	if challenge == "" || params.Get("code_challenge_method") != "S256" {
+	challenge.Store(params.Get("code_challenge"))
+	if params.Get("code_challenge") == "" || params.Get("code_challenge_method") != "S256" {
 		t.Fatal("Microsoft authorize request omitted PKCE")
 	}
 	callback := loopback(t, params.Get("redirect_uri"))

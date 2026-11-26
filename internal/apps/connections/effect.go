@@ -34,7 +34,7 @@ type Receipt struct {
 
 // PrepareEffect resolves the write declaration, current grants and canonical
 // row identity before the broker asks for approval. Callers pass no source key.
-func (s Service) PrepareEffect(app, connection, operation string, args map[string]any) (*Effect, error) {
+func (s Service) PrepareEffect(ctx context.Context, app, connection, operation string, args map[string]any) (*Effect, error) {
 	c, err := s.scoped(app, connection)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 		return nil, errors.New("this source write cannot enforce the record row policy")
 	}
 	if c.Kind == Microsoft365 {
-		return s.prepareGraphEffect(c, read, write, operation, args, store, binding, typ)
+		return s.prepareGraphEffect(ctx, c, read, write, operation, args, store, binding, typ)
 	}
 	id, _ := args["id"].(string)
 	set, _ := args["set"].(map[string]any)

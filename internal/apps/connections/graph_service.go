@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
 func (s Service) graph(ctx context.Context, c registration) (graphSource, string, error) {
@@ -27,7 +28,7 @@ func (s Service) graph(ctx context.Context, c registration) (graphSource, string
 	if err != nil {
 		return graphSource{}, "", ErrPersonCredential
 	}
-	client, err := manager.Client(ctx, "microsoft-365")
+	client, err := manager.Client(ctx, connect.Microsoft365)
 	if err != nil {
 		return graphSource{}, "", ErrPersonCredential
 	}

@@ -1,7 +1,7 @@
 run: draft
 title: Create Outlook draft
 params:
-  to: {type: email}
+  to: {type: text}
   subject: {type: text}
   body: {type: text}
 steps:

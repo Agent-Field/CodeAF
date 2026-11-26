@@ -15,6 +15,7 @@ import (
 const Microsoft365 = "microsoft-365"
 const MicrosoftGraph = "https://graph.microsoft.com/v1.0"
 const MicrosoftTranscripts = "OnlineMeetingTranscript.Read.All"
+const microsoftOnlineMeetings = "OnlineMeetings.Read"
 
 var ErrMicrosoftRegistration = errors.New("Microsoft 365 needs an application ID and either common or a directory tenant ID")
 
@@ -41,7 +42,7 @@ func microsoftRegistration(c ClientCredential) (microsoft, error) {
 func (p microsoft) Service() Service {
 	scopes := []string{"User.Read", "User.ReadBasic.All", "Mail.ReadWrite", "Calendars.ReadWrite", "Files.Read.All"}
 	if p.transcripts {
-		scopes = append(scopes, "OnlineMeetings.Read", MicrosoftTranscripts)
+		scopes = append(scopes, microsoftOnlineMeetings, MicrosoftTranscripts)
 	}
 	return Service{ID: Microsoft365, Name: "Microsoft 365", Category: categoryProductivity,
 		Blurb: "Connect Outlook, Calendar, and files to apps.", Auth: AuthBrowser, Scopes: scopes}
@@ -121,7 +122,7 @@ func (m *Manager) MicrosoftGrant() (string, bool, error) {
 	if !ok {
 		return "", false, errors.New("Connect your Microsoft 365 account before using this source.")
 	}
-	return entry.GrantID, entry.covers([]string{MicrosoftTranscripts, "OnlineMeetings.Read"}), nil
+	return entry.GrantID, entry.covers([]string{MicrosoftTranscripts, microsoftOnlineMeetings}), nil
 }
 
 // MicrosoftRequestError uses the same refusal wording for token refresh.

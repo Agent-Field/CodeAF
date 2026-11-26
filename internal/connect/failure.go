@@ -12,9 +12,9 @@ const hiddenSignInFailure = "the sign-in came back wrong and nothing was connect
 // surface cross this package, so there is exactly one place that decides which
 // browser failure words may leave it. A SENTENCE NOBODY HERE WROTE IS NOT SHOWN.
 func SignInFailureReason(err error) string {
-	var microsoft entraFailure
-	if errors.As(err, &microsoft) {
-		return microsoft.Error()
+	var refusal entraFailure
+	if errors.As(err, &refusal) {
+		return refusal.Error()
 	}
 	if err == nil {
 		return hiddenSignInFailure

@@ -104,8 +104,10 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 		}
 		// Source approvals need the local authority stamp even when the
 		// declared gate is shown before the connector is checked.
-		if connector, ok := e.cfg.Connector.(interface{ SourceFence(Call) (string, error) }); ok && outbound {
-			fence, err := connector.SourceFence(c.Action.Call)
+		if connector, ok := e.cfg.Connector.(interface {
+			SourceFence(context.Context, Call) (string, error)
+		}); ok && outbound {
+			fence, err := connector.SourceFence(ctx, c.Action.Call)
 			switch {
 			case err != nil:
 				return e.stop(c, Incomplete, err.Error())

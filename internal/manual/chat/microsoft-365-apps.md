@@ -22,7 +22,7 @@ uses the profile's browser grant. It takes no token on standard input. Add decla
 
 | Graph object (`table`) | Common type | Source selection |
 | --- | --- | --- |
-| `outlook` | Message (`message`) | Outlook Inbox metadata |
+| `outlook` | Message (`message`) | Outlook Inbox metadata, optionally since an absolute RFC 3339 `graph_start` |
 | `calendar` | Meeting (`event`) | Absolute RFC 3339 `graph_start` and `graph_end`, or declared `from` and `to` arguments |
 | `drive` | Document (`document`) | Your OneDrive or an explicitly selected SharePoint/OneDrive drive ID in `graph_drive` |
 | `person` | Person (`person`) | Exact email or UPN in a declared `email` argument |

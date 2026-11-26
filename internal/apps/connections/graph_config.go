@@ -3,6 +3,7 @@ package connections
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
@@ -45,8 +46,17 @@ func (c Config) validateGraphRead(r Read) error {
 		return errors.New("graph_drive needs a reviewed OneDrive or SharePoint drive ID")
 	}
 	if r.GraphStart != "" || r.GraphEnd != "" {
-		if _, _, err := graphWindow(r, nil); err != nil || r.Table != "calendar" {
-			return errors.New("graph_start and graph_end need an absolute calendar window")
+		switch r.Table {
+		case "outlook":
+			if _, err := time.Parse(time.RFC3339Nano, r.GraphStart); err != nil || r.GraphEnd != "" {
+				return errors.New("an Outlook graph_start needs an absolute received date")
+			}
+		case "calendar":
+			if _, _, err := graphWindow(r, nil); err != nil {
+				return errors.New("graph_start and graph_end need an absolute calendar window")
+			}
+		default:
+			return errors.New("Graph date options are for Outlook or Calendar")
 		}
 	}
 	if r.Table == "transcripts" {

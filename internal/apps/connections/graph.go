@@ -202,11 +202,20 @@ func (g graphSource) rows(ctx context.Context, read Read, cursor, key string, ar
 	}
 	prefer := ", odata.maxpagesize=" + strconv.Itoa(limit)
 	path, query := "", url.Values{}
+	var mailSince time.Time
 	switch read.Table {
 	case "outlook":
 		path = outlookPath
 		query.Set("$select", graphMailFields)
 		query.Set("$top", strconv.Itoa(limit))
+		if read.GraphStart != "" {
+			var err error
+			mailSince, err = time.Parse(time.RFC3339Nano, read.GraphStart)
+			if err != nil {
+				return graphPage{}, ErrRejected
+			}
+			query.Set("$filter", "receivedDateTime ge "+mailSince.UTC().Format(time.RFC3339Nano))
+		}
 	case "calendar":
 		path = "/me/calendarView/delta"
 		start, end, err := graphWindow(read, args)
@@ -237,6 +246,11 @@ func (g graphSource) rows(ctx context.Context, read Read, cursor, key string, ar
 	switch read.Table {
 	case "outlook":
 		return graphList(ctx, g, address, prefer, true, func(item graphMessage) (graphEntry, map[string]any) {
+			if !mailSince.IsZero() && item.Removed == nil {
+				if at, err := time.Parse(time.RFC3339Nano, item.ReceivedDateTime); err != nil || at.Before(mailSince) {
+					return item.graphEntry, nil
+				}
+			}
 			return item.graphEntry, item.row()
 		})
 	case "calendar":

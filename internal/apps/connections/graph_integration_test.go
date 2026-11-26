@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
@@ -191,12 +192,24 @@ steps:
 	if err != nil {
 		t.Fatal(err)
 	}
+	actions := map[string]runs.Definition{"draft": draft}
+	for _, id := range []string{"create-event", "update-event"} {
+		raw, err := os.ReadFile("testdata/daily-brief/runs/" + id + ".yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		def, err := schema.ParseRun(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actions[id] = def
+	}
 	tool := runs.ConnectedTools{Sources: svc, Apps: func(string) (runs.App, error) { return app, nil }}
 	cfg := runs.Config{Root: t.TempDir(), Now: func() time.Time { return now }, SourceTriggers: svc.PollGraphTrigger,
 		Triggers: func() ([]runs.Trigger, error) { return triggers, nil },
 		Load: func(_, id string) (runs.Definition, error) {
-			if id == "draft" {
-				return draft, nil
+			if def, ok := actions[id]; ok {
+				return def, nil
 			}
 			return brief, nil
 		},
@@ -206,6 +219,9 @@ steps:
 		t.Fatal(err)
 	}
 	for i := range 4 {
+		if err := engine.PollSources(ctx); err != nil {
+			t.Fatal(err)
+		}
 		if err := engine.Tick(ctx); err != nil {
 			t.Fatalf("tick %d: %v", i, err)
 		}
@@ -221,6 +237,9 @@ steps:
 	defer engine.Close()
 	now = time.Date(2026, 11, 26, 11, 2, 0, 0, time.UTC)
 	for range 2 {
+		if err := engine.PollSources(ctx); err != nil {
+			t.Fatal(err)
+		}
 		if err := engine.Tick(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -231,27 +250,42 @@ steps:
 		t.Fatalf("expected one run per source trigger, including after restart, got %d %v", len(list), err)
 	}
 
-	run, err := engine.Start(briefApp, "draft", nil)
-	if err != nil {
-		t.Fatal(err)
+	calendar, err := svc.Read(ctx, graphQuery("calendar"))
+	if err != nil || len(calendar.Rows) != 1 {
+		t.Fatalf("calendar: %+v %v", calendar, err)
 	}
-	if err := engine.Tick(ctx); err != nil {
-		t.Fatal(err)
-	}
-	pending, err := engine.Get(run.ID)
-	if err != nil || pending.State != runs.YourCall || pending.Approval == nil || len(pending.Effects) != 0 {
-		t.Fatalf("draft before approval: %+v %v", pending, err)
-	}
-	if err := engine.Answer(run.ID, pending.Approval.ID, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := engine.Tick(ctx); err != nil {
-		t.Fatal(err)
-	}
-	finished, err := engine.Get(run.ID)
-	if err != nil || finished.State != runs.Done || len(finished.Effects) != 1 ||
-		finished.Effects[0].Outcome != "committed" || finished.Effects[0].Version != `W/"draft-1"` {
-		t.Fatalf("draft receipt: %+v %v", finished, err)
+	for _, test := range []struct {
+		run, version string
+		params       map[string]any
+	}{
+		{"draft", `W/"draft-1"`, nil},
+		{"create-event", `W/"event-created"`, map[string]any{"title": "Daily launch review", "start": "2026-11-26T12:30:00Z", "end": "2026-11-26T13:00:00Z"}},
+		{"update-event", `W/"event-version-2"`, map[string]any{"id": calendar.Rows[0].ID(), "version": calendar.Rows[0]["_source_version"], "title": "Daily launch review moved"}},
+	} {
+		t.Run(test.run, func(t *testing.T) {
+			run, err := engine.Start(briefApp, test.run, test.params)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := engine.Tick(ctx); err != nil {
+				t.Fatal(err)
+			}
+			pending, err := engine.Get(run.ID)
+			if err != nil || pending.State != runs.YourCall || pending.Approval == nil || len(pending.Effects) != 0 {
+				t.Fatalf("before approval: %+v %v", pending, err)
+			}
+			if err := engine.Answer(run.ID, pending.Approval.ID, true); err != nil {
+				t.Fatal(err)
+			}
+			if err := engine.Tick(ctx); err != nil {
+				t.Fatal(err)
+			}
+			finished, err := engine.Get(run.ID)
+			if err != nil || finished.State != runs.Done || len(finished.Effects) != 1 ||
+				finished.Effects[0].Outcome != "committed" || finished.Effects[0].Version != test.version {
+				t.Fatalf("Graph effect receipt: %+v %v", finished, err)
+			}
+		})
 	}
 }
 
@@ -272,7 +306,7 @@ func TestGraphBriefPackage(t *testing.T) {
 	for name, raw := range files {
 		definition.Files[name] = []byte(raw)
 	}
-	if report := schema.Validate(definition, nil); !report.OK() {
+	if report := check.Definition(definition, nil); !report.OK() {
 		t.Fatal(report.String())
 	}
 	pkg, err := apppackage.Pack(files, nil, apppackage.PackOptions{Publisher: "Daily brief fixture"})

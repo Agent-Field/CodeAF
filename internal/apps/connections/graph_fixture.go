@@ -2,6 +2,7 @@ package connections
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"io"
 	"net/http"
@@ -15,6 +16,25 @@ type graphFake struct{}
 
 func graphFixtureClient() *http.Client { return &http.Client{Transport: graphFake{}} }
 
+// GraphFixtureWrite gives Check the same committed effect shape as the
+// recorded Graph mutation. It never resolves a profile or sends a request.
+func GraphFixtureWrite(operation string) (Receipt, bool) {
+	g := graphSource{client: graphFixtureClient()}
+	var id, version string
+	switch operation {
+	case graphDraftAction, graphEventCreateAction:
+	case graphEventUpdateAction:
+		id, version = "AAMkEvent1", `W/"event-version-1"`
+	default:
+		return Receipt{}, false
+	}
+	entry, err := g.apply(context.Background(), operation, id, version, []byte("{}"), "preview")
+	if err != nil {
+		return Receipt{}, false
+	}
+	return Receipt{Version: entry.ETag, Response: map[string]any{"id": "01K4X0KX000000000000000001"}}, true
+}
+
 func (graphFake) RoundTrip(req *http.Request) (*http.Response, error) {
 	path := strings.TrimPrefix(req.URL.Path, "/v1.0")
 	query := req.URL.Query()
@@ -23,7 +43,7 @@ func (graphFake) RoundTrip(req *http.Request) (*http.Response, error) {
 	case req.Method == http.MethodPost && path == "/me/messages":
 		status, file = http.StatusCreated, "draft-response.json"
 	case req.Method == http.MethodPost && path == eventPath:
-		status, file = http.StatusCreated, "event-response.json"
+		status, file = http.StatusCreated, "event-create-response.json"
 	case req.Method == http.MethodPatch && path == eventPath+"/AAMkEvent1":
 		file = "event-response.json"
 	case req.Method != http.MethodGet:

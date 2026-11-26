@@ -21,12 +21,11 @@ type graphEffect struct {
 	body      []byte
 }
 
-func (s Service) prepareGraphEffect(c registration, read Read, write Write, operation string, args map[string]any,
+func (s Service) prepareGraphEffect(ctx context.Context, c registration, read Read, write Write, operation string, args map[string]any,
 	store *data.Store, binding data.TypeBinding, typ *data.Type) (*Effect, error) {
 	if binding.Common != graphCommon(read.Table) {
 		return nil, ErrRejected
 	}
-	ctx := context.Background()
 	grant, _, err := s.graphGrant(ctx, c)
 	if err != nil {
 		return nil, err

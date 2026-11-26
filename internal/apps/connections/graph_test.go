@@ -144,3 +144,67 @@ func TestGraphPermissionFilteringAndTeamsTenantDenial(t *testing.T) {
 		t.Fatalf("tenant ACL: %+v %v", page, err)
 	}
 }
+
+func TestGraphCalendarWritesUseTransactionIDAndCompareAndSet(t *testing.T) {
+	var transaction string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1.0/me/events":
+			current, _ := body["transactionId"].(string)
+			if current == "" || transaction != "" && transaction != current {
+				t.Errorf("same broker key changed the Graph transaction ID: %q then %q", transaction, current)
+			}
+			transaction = current
+			if body["subject"] != "Daily launch review" || !reflect.DeepEqual(body["start"],
+				map[string]any{"dateTime": "2026-11-26T12:30:00", "timeZone": "UTC"}) {
+				t.Errorf("unexpected Graph event create payload: %v", body)
+			}
+			w.WriteHeader(http.StatusCreated)
+			graphFixture(t, w, "event-create-response.json")
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1.0/me/events/AAMkEvent1":
+			if !reflect.DeepEqual(body, map[string]any{"subject": "Daily launch review moved"}) {
+				t.Errorf("patch replaced unrelated event fields: %v", body)
+			}
+			if r.Header.Get("If-Match") != `W/"event-version-1"` {
+				w.WriteHeader(http.StatusPreconditionFailed)
+				return
+			}
+			graphFixture(t, w, "event-response.json")
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	g := graphSource{client: server.Client(), origin: server.URL}
+	ctx := context.Background()
+	create, err := graphPayload(graphEventCreateAction, map[string]any{
+		"title": "Daily launch review", "start": "2026-11-26T07:30:00-05:00", "end": "2026-11-26T08:00:00-05:00",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		entry, err := g.apply(ctx, graphEventCreateAction, "", "", create, "stable-broker-key")
+		if err != nil || entry.ID != "AAMkEvent2" {
+			t.Fatalf("event create: %+v %v", entry, err)
+		}
+	}
+	update, err := graphPayload(graphEventUpdateAction, map[string]any{"title": "Daily launch review moved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.apply(ctx, graphEventUpdateAction, "AAMkEvent1", `W/"stale"`, update, "update-key"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale write: %v", err)
+	}
+	entry, err := g.apply(ctx, graphEventUpdateAction, "AAMkEvent1", `W/"event-version-1"`, update, "update-key")
+	if err != nil || entry.ETag != `W/"event-version-2"` {
+		t.Fatalf("event update: %+v %v", entry, err)
+	}
+}

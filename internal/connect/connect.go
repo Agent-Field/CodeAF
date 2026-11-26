@@ -285,7 +285,8 @@ func NewManager(profileDir string, creds map[string]ClientCredential) (*Manager,
 		if err != nil {
 			return nil, err
 		}
-		m.creds[Microsoft365] = ClientCredential{ID: p.app, Public: true}
+		c.ID, c.Secret, c.Public = p.app, "", true
+		m.creds[Microsoft365] = c
 		m.plugs = append(m.plugs, p)
 		sortPlugs(m.plugs)
 	}

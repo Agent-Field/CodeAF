@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/connections"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 type sourceTriggerClock struct {
@@ -17,6 +18,29 @@ type sourceTriggerClock struct {
 	Cursor     string    `json:"cursor,omitempty"`
 	Since      time.Time `json:"since"`
 	Next       time.Time `json:"next"`
+}
+
+// PollSources runs independently of the schedule clock and ready workers so
+// a slow provider cannot prevent the engine from running queued work.
+func (e *Engine) PollSources(ctx context.Context) error {
+	if e.cfg.SourceTriggers == nil || e.cfg.Triggers == nil {
+		return nil
+	}
+	e.sourceClock.Lock()
+	defer e.sourceClock.Unlock()
+	all, err := e.cfg.Triggers()
+	now := e.cfg.Now()
+	for _, t := range all {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if t.On == "connector" && schema.GraphSourceTrigger(t.Connector, t.Event) {
+			if pollErr := e.pollSource(ctx, t, now); pollErr != nil {
+				err = errors.Join(err, fmt.Errorf("%s source trigger %s: %w", t.App, t.ID, pollErr))
+			}
+		}
+	}
+	return err
 }
 
 func (e *Engine) pollSource(ctx context.Context, t Trigger, now time.Time) error {
