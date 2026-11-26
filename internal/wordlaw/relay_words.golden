@@ -46,6 +46,7 @@ server	cmd/codeaf-release/service.go	"relay-url takes --channel <stable|rc|stagi
 server	cmd/codeaf-release/service.go	"service takes only --url <relay>"
 server	cmd/codeaf-release/service.go	"the relay at %s must be updated before this build ships; it does not promise %s"
 server	cmd/codeaf-release/service.go	"the relay at %s promises everything this build needs\n"
+server	cmd/codeaf/app_chatread.go	"The relay can't be reached, so this chat can't be read right now."
 server	cmd/codeaf/app_notes.go	"This computer can't reach your relay right now, so the message didn't go. Send it again once it's back."
 server	cmd/codeaf/app_notes.go	"This relay can't carry a message to another computer yet. Move the chat here to write to it."
 server	cmd/codeaf/chatv3.go	"--host reaches a machine over ssh and --at reaches one through the relay: name one or the other, not both"

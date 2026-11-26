@@ -79,7 +79,7 @@ func (b *appBackend) ReadChat(p appwire.ChatReadParams) (appwire.ChatReadResult,
 	case errors.Is(err, cellsync.ErrBadCursor):
 		return appwire.ChatReadResult{}, appwire.Errorf(appwire.CodeBadParams, "before is not a cursor this engine wrote")
 	case errors.Is(err, directory.ErrUnreachable) || errors.Is(err, wireauth.ErrUnavailable) || errors.Is(err, context.DeadlineExceeded):
-		return appwire.ChatReadResult{}, appwire.Errorf(appwire.CodeUnreachable, "The sync service can't be reached, so this chat can't be read right now.")
+		return appwire.ChatReadResult{}, appwire.Errorf(appwire.CodeUnreachable, "The relay can't be reached, so this chat can't be read right now.")
 	case err != nil:
 		return appwire.ChatReadResult{}, appEngineError(err)
 	}
