@@ -175,3 +175,28 @@ func TestPackMakesReusedTypesInstallableInEitherOrder(t *testing.T) {
 		})
 	}
 }
+
+func TestPackRebindsReferencesFromTheSourceTypeName(t *testing.T) {
+	types := schema.TypeSet{
+		"contacts":      {ID: "1", Common: "person", Fields: map[string]schema.Field{"company": {Type: "ref", To: "organizations"}}},
+		"organizations": {ID: "2", Common: "organization", Fields: map[string]schema.Field{"name": {Type: "text"}}},
+	}
+	raw, err := apppackage.Pack(map[string]string{schema.AppFile: `{"id":"crm","name":"CRM","version":1,"kit":2,
+		"records":{"person":{"common":"person","uses":true,"fields":{}},"company":{"common":"organization","uses":true,"fields":{}}},
+		"capabilities":{"records":{"person":"rw","company":"rw"}}}`}, types, apppackage.PackOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := apppackage.Read(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _, err := archive.Bind(nil, "crm", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	if err != nil || len(app.Records) != 2 || app.Records["person"].Fields["company"].To != "company" {
+		t.Fatalf("reference did not follow the package alias: %+v (%v)", app.Records, err)
+	}
+}

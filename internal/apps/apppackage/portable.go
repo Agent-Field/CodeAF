@@ -21,6 +21,10 @@ func withPortableRecords(raw []byte, app schema.App, existing schema.TypeSet) ([
 		return nil, err
 	}
 
+	if records == nil {
+		return nil, fmt.Errorf("app.json /records: the package needs a record declarations object")
+	}
+
 	queue := slices.Sorted(maps.Keys(records))
 	// Start from the app's own alias choices. Writer field shapes may point
 	// to a common type by its old name in the exporting space.
