@@ -2,20 +2,14 @@ package appwire
 
 import (
 	"reflect"
+
+	"github.com/Agent-Field/codeaf/internal/apps/builder"
 )
 
 const EventAppChangeProposed = "apps.change_proposed"
 
-// AppChangeProposed identifies a durable edit that belongs to this app's
-// assistant. The desk reopens the job by draft ID.
-type AppChangeProposed struct {
-	App          string   `json:"app"`
-	Draft        string   `json:"draft"`
-	SummaryLines []string `json:"summary_lines"`
-	Screen       string   `json:"screen"`
-	Kind         string   `json:"kind,omitempty"`
-	ProposalID   string   `json:"proposal_id,omitempty"`
-}
+// AppChangeProposed carries the persisted card in the live event.
+type AppChangeProposed = builder.Proposal
 
 type appAssistantOpener interface {
 	OpenAppAssistant(app string) (string, error)

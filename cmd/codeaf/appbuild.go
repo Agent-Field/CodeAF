@@ -39,7 +39,7 @@ func (b *appBackend) AppBuilds() (*builder.Jobs, error) {
 	pipeline := check.Pipeline{Seed: b.seedBuildSample, DryRun: b.CheckDraftRun, Look: b.checkAppLook}
 	jobs, err := builder.OpenJobs(builder.Options{
 		Home: home.Dir(), Store: b.AppDefinitions(), Model: b.appBuilderModel,
-		Check: pipeline.Run, Changed: b.appBuildChanged, Notify: b.appBuildNotice,
+		Check: pipeline.Run, CheckPackage: pipeline.RunPackage, Changed: b.appBuildChanged, Notify: b.appBuildNotice,
 		Proposed: b.appAssistantProposed,
 		Catalog:  b.appBuildCatalog, SeedPreview: b.seedBuildPreview,
 		ClosePreview: b.closeBuildPreview,
@@ -63,14 +63,7 @@ func (b *appBackend) appAssistantProposed(proposal builder.Proposal) {
 		return
 	default:
 	}
-	kind, summary := "big", "Open the builder to review the change."
-	if proposal.Screen != "" {
-		kind, summary = "small", proposal.Summary
-	}
-	b.emit.Emit(appwire.EventAppChangeProposed, appwire.AppChangeProposed{
-		App: proposal.App, Draft: proposal.Draft, Kind: kind, Screen: proposal.Screen,
-		SummaryLines: []string{summary}, ProposalID: proposal.ID,
-	})
+	b.emit.Emit(appwire.EventAppChangeProposed, proposal)
 }
 
 func (b *appBackend) closeAppBuilds() {

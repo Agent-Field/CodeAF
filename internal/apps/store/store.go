@@ -64,6 +64,7 @@ type Meta struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Archived  bool      `json:"archived"`
 	Deleted   bool      `json:"deleted,omitempty"`
+	Lineage   *Lineage  `json:"lineage,omitempty"`
 	digest    string
 }
 
@@ -143,7 +144,8 @@ type versionReceipt struct {
 	Version
 	Types schema.TypeSet `json:"types,omitempty"`
 	// A revert restores the original manifest bytes under a new publication number.
-	ManifestVersion int `json:"manifest_version,omitempty"`
+	ManifestVersion int               `json:"manifest_version,omitempty"`
+	PackageBase     map[string]string `json:"package_base,omitempty"`
 }
 
 // lock keeps a reader from seeing a partial publication and a writer from

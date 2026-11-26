@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -100,6 +101,8 @@ func runAppCommand(args []string) error {
 		fmt.Fprintln(os.Stdout, "codeaf app <match-candidates|match-scan|match-accept|match-reject|match-merge|match-unmerge> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app <data-query|data-aggregate|data-types> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app model-policy FILE.json")
+		fmt.Fprintln(os.Stdout, "codeaf app pack <app> [file] | install <file> | fork <app> | update <app> <file> | lineage <app>")
+		fmt.Fprintln(os.Stdout, "codeaf app <apply|resolve-package> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app mcp --app <app> --agent <agent>")
 		return nil
 	case verb == "kit" && len(args) == 1:
@@ -122,6 +125,12 @@ func runAppCommand(args []string) error {
 		}
 	case verb == "look" && len(args) == 3:
 		params, _ = json.Marshal(map[string]string{"app": args[1], "screen": args[2]})
+	case packagePositionals(verb, args[1:]):
+		var err error
+		params, err = appPackageArguments(verb, args[1:])
+		if err != nil {
+			return err
+		}
 	case len(args) > 2:
 		return errors.New("usage: codeaf app <verb> [JSON|-]")
 	case len(args) == 2 && args[1] == "-":
@@ -185,4 +194,44 @@ func requestAppCommand(ctx context.Context, verb string, params json.RawMessage)
 		return nil, reply.Error
 	}
 	return reply.Result, nil
+}
+
+func packagePositionals(verb string, args []string) bool {
+	switch verb {
+	case "pack", "install", "fork", "update", "lineage":
+		return len(args) > 0 && args[0] != "-" && !strings.HasPrefix(strings.TrimSpace(args[0]), "{")
+	default:
+		return false
+	}
+}
+
+func appPackageArguments(verb string, args []string) (json.RawMessage, error) {
+	values := map[string]string{}
+	var path string
+	switch {
+	case verb == "pack" && (len(args) == 1 || len(args) == 2):
+		if strings.ContainsAny(args[0], `/\`) {
+			return nil, errors.New("choose a saved app ID to pack")
+		}
+		values["app"], path = args[0], args[0]+".codeaf-app"
+		if len(args) == 2 {
+			path = args[1]
+		}
+	case verb == "install" && len(args) == 1:
+		path = args[0]
+	case verb == "update" && len(args) == 2:
+		values["app"], path = args[0], args[1]
+	case (verb == "fork" || verb == "lineage") && len(args) == 1:
+		values["app"] = args[0]
+	default:
+		return nil, errors.New("see codeaf app help for package arguments")
+	}
+	if path != "" {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return nil, err
+		}
+		values["path"] = absolute
+	}
+	return json.Marshal(values)
 }
