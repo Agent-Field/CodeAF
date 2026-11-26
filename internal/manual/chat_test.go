@@ -3959,6 +3959,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the sync service see my chat title or folder name when I move a chat without sync storage", "relay-what-it-stores-and-sees"},
 		{"why can't I message a chat on another computer while sync storage is off", "desktop-sync"},
 		{"Sync storage is off for this account, so a message can't wait for another computer", "desktop-sync"},
+		// The organization's own relay (organization-relay.md): the team stack runs
+		// one, `codeaf pair --org` looks it up, and a relay named outright still wins.
+		{"does my organization run its own relay", "organization-relay"},
+		{"what is a self-hosted team relay", "organization-relay"},
+		{"how do I pair my computers through my company's relay", "organization-relay"},
+		{"what does codeaf pair --org do", "organization-relay"},
+		{"pair --org says my organization does not run a relay for my computers", "organization-relay"},
+		{"how do I make my team's hosted stack run a relay for everyone in it", "organization-relay"},
+		{"what is CODEAF_ORG_RELAY_URL", "organization-relay"},
+		{"does my organization's relay keep my chats", "organization-relay"},
+		{"can a stranger use my team's relay", "organization-relay"},
+		{"can I still use my own relay if my organization has one", "organization-relay"},
 		// Remote control (internal/manual/chat/remote-control.md): working in a chat
 		// another of the person's computers is running, without moving it.
 		{"how do I see my chat from my other computer", "remote-control"},
