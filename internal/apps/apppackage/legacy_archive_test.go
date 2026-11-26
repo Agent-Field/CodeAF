@@ -29,7 +29,7 @@ func TestFormatOneManifestSuppliesSharedFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, catalog := range []schema.TypeSet{nil, {"people": {ID: "1", Common: "person", Owner: "directory", Fields: map[string]schema.Field{}}}} {
-		files, bindings, err := archive.Bind(catalog, "crm", false)
+		files, bindings, err := archive.Bind(catalog, "crm", "")
 		if err != nil {
 			t.Fatal(err)
 		}

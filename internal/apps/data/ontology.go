@@ -3,8 +3,9 @@ package data
 import (
 	"database/sql"
 	"errors"
-	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 	"strings"
+
+	appschema "github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 // Data-plane migration also removes redundant values from old outbox rows.

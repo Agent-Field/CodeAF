@@ -633,10 +633,11 @@ func jsonable(v any) (any, error) {
 // ExistingType is a record type the person already has, owned by some app. The
 // validator resolves `uses` types and cross-app refs against these.
 type ExistingType struct {
-	Common string `json:",omitempty"`
-	ID     string
-	Owner  string
-	Fields map[string]Field
+	HasRules bool   `json:",omitempty"`
+	Common   string `json:",omitempty"`
+	ID       string
+	Owner    string
+	Fields   map[string]Field
 }
 
 // TypeSet is every record type the person already has, by type name.

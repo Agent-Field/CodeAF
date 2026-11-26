@@ -66,7 +66,7 @@ func (s *Jobs) Pack(app string, options apppackage.PackOptions) ([]byte, error) 
 // profile's types or records. Exporting from a populated profile can hide
 // dependencies that would otherwise fail the first time someone installs it.
 func checkPackageInEmptyProfile(archive apppackage.Archive) error {
-	files, _, err := archive.Bind(nil, "", false)
+	files, _, err := archive.Bind(nil, "", "")
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,11 @@ func (s *Jobs) stagePackage(ctx context.Context, app string, archive apppackage.
 	if target == "" {
 		target = j.Draft
 	}
-	upstream, bindings, err := archive.Bind(catalog.Types, target, fork != nil)
+	var forkFrom string
+	if fork != nil {
+		forkFrom = fork.App
+	}
+	upstream, bindings, err := archive.Bind(catalog.Types, target, forkFrom)
 	if err != nil {
 		return Proposal{}, err
 	}

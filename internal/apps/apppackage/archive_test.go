@@ -142,7 +142,7 @@ func TestPackMakesReusedTypesInstallableInEitherOrder(t *testing.T) {
 			for _, app := range []string{first, second} {
 				// An installed app can be exported again, including when
 				// its original pack created the dependency locally.
-				local, _, err := archives[app].Bind(nil, app, false)
+				local, _, err := archives[app].Bind(nil, app, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -154,7 +154,7 @@ func TestPackMakesReusedTypesInstallableInEitherOrder(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				files, _, err := repacked.Bind(store.TypeSet(), app, false)
+				files, _, err := repacked.Bind(store.TypeSet(), app, "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -191,7 +191,7 @@ func TestPackRebindsReferencesFromTheSourceTypeName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, _, err := archive.Bind(nil, "crm", false)
+	files, _, err := archive.Bind(nil, "crm", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,18 +214,22 @@ func TestPackageReusesAnIdenticalSameNameType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []schema.Field{{Type: "text", Required: true}, {Type: "longtext", Required: true}} {
-		local := schema.TypeSet{"note": {ID: "1", Owner: "other", Fields: map[string]schema.Field{"title": field}}}
-		files, bindings, err := archive.Bind(local, "desk", false)
+	for _, tc := range []struct {
+		field      string
+		rules      bool
+		wantShared bool
+	}{{"text", false, true}, {"longtext", false, false}, {"text", true, false}} {
+		local := schema.TypeSet{"note": {ID: "1", Owner: "other", HasRules: tc.rules, Fields: map[string]schema.Field{"title": {Type: tc.field, Required: true}}}}
+		files, bindings, err := archive.Bind(local, "desk", "")
 		if err != nil {
 			t.Fatal(err)
 		}
 		app, err := schema.ParseApp([]byte(files[schema.AppFile]))
-		shared := field.Type == "text"
-		if err != nil || app.Records["note"].Uses != shared || (bindings["note"].Type != "") != shared {
-			t.Fatalf("note binding for %s: %+v, %+v (%v)", field.Type, app.Records["note"], bindings, err)
+		if err != nil || app.Records["note"].Uses != tc.wantShared || (bindings["note"].Type != "") != tc.wantShared {
+			t.Fatalf("note binding for %+v: %+v, %+v (%v)", tc, app.Records["note"], bindings, err)
 		}
 	}
+
 }
 
 func TestPackageKeepsDifferentSameNameTypesAndTheirLinksPrivate(t *testing.T) {
@@ -248,7 +252,7 @@ func TestPackageKeepsDifferentSameNameTypesAndTheirLinksPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, _, err := archive.Bind(db.TypeSet(), "second", false)
+	files, _, err := archive.Bind(db.TypeSet(), "second", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,4 +274,35 @@ func TestPackageKeepsDifferentSameNameTypesAndTheirLinksPrivate(t *testing.T) {
 	if _, err := db.Create(right, "task", []map[string]any{{"note": other.Rows[0].ID()}}); err == nil {
 		t.Fatal("task linked to another app's private note")
 	}
+	types, err := db.Types(right)
+	if err != nil || len(types) != 2 {
+		t.Fatalf("app listing exposed another app's type: %v, %v", types, err)
+	}
+	for _, typ := range types {
+		if typ.Name != "task" && (typ.Name != "note" || typ.Label != "note" || typ.Count != 1) {
+			t.Fatalf("app listing did not use its own note binding: %+v", typ)
+		}
+	}
+
+	repacked, err := apppackage.Pack(files, db.TypeSet(), apppackage.PackOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := apppackage.Read(bytes.NewReader(repacked))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fork, _, err := exported.Bind(db.TypeSet(), "third", "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.RegisterApp([]byte(fork[schema.AppFile])); err != nil {
+		t.Fatal(err)
+	}
+	forkNote, err := db.Type(data.Scope{App: "third"}, "note")
+	note, _ := db.Type(right, "note")
+	if err != nil || forkNote.ID == note.ID {
+		t.Fatalf("fork shared the original app's private notes: %+v (%v)", forkNote, err)
+	}
+
 }

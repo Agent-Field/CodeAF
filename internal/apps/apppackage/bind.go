@@ -21,7 +21,7 @@ func (e *Findings) Error() string { return e.Report.String() }
 
 // Bind uses the same common-type catalog as the Builder. Keeping the
 // original app alias means its screens, runs and record grants travel intact.
-func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[string]string, map[string]Binding, error) {
+func (a Archive) Bind(existing schema.TypeSet, appID, forkFrom string) (map[string]string, map[string]Binding, error) {
 	var app map[string]json.RawMessage
 	if err := json.Unmarshal(a.Files[schema.AppFile], &app); err != nil {
 		return nil, nil, err
@@ -32,6 +32,7 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 	}
 	bindings := map[string]Binding{}
 	targets := map[string]schema.ExistingType{}
+	forkPrivate := a.privateForkTypes(existing, forkFrom)
 	var report schema.Report
 	for _, alias := range slices.Sorted(maps.Keys(a.Manifest.Entities)) {
 		entity := a.Manifest.Entities[alias]
@@ -46,12 +47,16 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 			record["package_private"] = json.RawMessage("true")
 			continue
 		}
+		if forkPrivate[alias] {
+			record["package_private"] = json.RawMessage("true")
+			continue
+		}
 		if entity.Common != "" {
 			if offer, ok := existing.OfferCommonType(alias, schema.RecordType{Common: entity.Common}); ok {
 				name = offer.Existing
 			}
 		} else if target, ok := existing[alias]; ok {
-			if entity.Uses || fork || samePrivateShape(record, target) {
+			if entity.Uses || forkFrom != "" || samePrivateShape(record, target) {
 				name = alias
 			} else if appID != "" && target.Owner != appID {
 				record["package_private"] = json.RawMessage("true")
@@ -124,10 +129,40 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 	return files, bindings, nil
 }
 
+// A fork needs new copies of types that would otherwise keep their links
+// pointing into the originating app's private records.
+func (a Archive) privateForkTypes(existing schema.TypeSet, source string) map[string]bool {
+	private := map[string]bool{}
+	if source == "" {
+		return private
+	}
+	for alias := range a.Manifest.Entities {
+		if existing[schema.PrivateRecordName(source, alias)].Owner == source {
+			private[alias] = true
+		}
+	}
+	for changed := len(private) != 0; changed; {
+		changed = false
+		for alias, entity := range a.Manifest.Entities {
+			if private[alias] || entity.Uses || entity.Common != "" {
+				continue
+			}
+			for _, field := range entity.Fields {
+				if private[field.To] {
+					private[alias], changed = true, true
+					break
+				}
+			}
+		}
+	}
+	return private
+}
+
 // A matching name alone does not make two private record types interchangeable.
 func samePrivateShape(raw map[string]json.RawMessage, target schema.ExistingType) bool {
-	if target.Common != "" || raw["policy"] != nil || raw["lifecycle"] != nil ||
-		raw["ledger"] != nil || raw["freeze"] != nil || raw["constants"] != nil {
+	if target.Common != "" || target.HasRules || raw["policy"] != nil || raw["lifecycle"] != nil ||
+		raw["ledger"] != nil || raw["freeze"] != nil || raw["constants"] != nil ||
+		raw["checklists"] != nil || raw["write_rules"] != nil {
 		return false
 	}
 	var fields map[string]schema.Field

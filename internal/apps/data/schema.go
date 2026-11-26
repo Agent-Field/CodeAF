@@ -50,21 +50,22 @@ type Field struct {
 // rules, lifecycle) it has now. Hidden is a type no app declares any more;
 // its records are kept and the Data place still shows them.
 type Type struct {
-	policy       *appschema.RecordPolicy
-	rowRule      *rowPolicy
-	fieldRules   map[string]string
-	Common       CommonTypeKey
-	rules        writeRules
-	ID           string
-	Name         string
-	CreatedByApp string
-	DefinedBy    string
-	Title        string
-	Label        string
-	CreatedAt    string
-	Hidden       bool
-	UsedBy       []string
-	Fields       map[string]*Field
+	packagePrivate bool
+	policy         *appschema.RecordPolicy
+	rowRule        *rowPolicy
+	fieldRules     map[string]string
+	Common         CommonTypeKey
+	rules          writeRules
+	ID             string
+	Name           string
+	CreatedByApp   string
+	DefinedBy      string
+	Title          string
+	Label          string
+	CreatedAt      string
+	Hidden         bool
+	UsedBy         []string
+	Fields         map[string]*Field
 	// Order is every field, visible and hidden, in the order the apps
 	// declared them: the defining app's first.
 	Order     []string
@@ -297,7 +298,7 @@ func loadSchema(q querier, now func() time.Time) (*schema, map[string][]error, e
 			def.Rules = ruleDeclarations{}
 		}
 		t := &Type{
-			policy: def.Policy, ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
+			packagePrivate: def.PackagePrivate, policy: def.Policy, ID: id, Name: name, CreatedByApp: created, DefinedBy: defApp, Title: def.Title, Label: def.Label, CreatedAt: at,
 			Hidden: len(declared[id]) == 0, UsedBy: uses[id], declaredBy: declared[id], Fields: map[string]*Field{},
 			rules: writeRules{declarations: def.Rules}, Constants: def.Constants, checklists: def.Checklists, Ledger: def.Ledger.On, LedgerReversal: def.Ledger.Reversal, byID: map[string]*Field{}, aliases: map[string]string{},
 		}
@@ -1022,7 +1023,10 @@ func (s *Store) TypeSetFor(app string) appschema.TypeSet {
 		if !slices.Contains(t.declarers(), owner) {
 			owner = ""
 		}
-		out[name] = appschema.ExistingType{ID: t.ID, Owner: owner, Common: string(t.Common), Fields: fields}
+		hasRules := t.policy != nil || t.Lifecycle != nil || t.Ledger || len(t.Constants) != 0 ||
+			len(t.Freeze) != 0 || len(t.checklists) != 0 || len(t.rules.declarations.Routing) != 0 ||
+			len(t.rules.declarations.Bookings) != 0 || len(t.rules.approvals) != 0
+		out[name] = appschema.ExistingType{ID: t.ID, Owner: owner, Common: string(t.Common), Fields: fields, HasRules: hasRules}
 	}
 	return out
 }
