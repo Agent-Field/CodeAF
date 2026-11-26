@@ -73,11 +73,6 @@ Use the configured agent name and omit lifecycle-owned fields from record
 writes. Put a send gate on the outbound tool step with the exact text in its args.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
 Configure schedules, commands and agent. Write instructions with set-agent.
-For a document, give the Action a name and visible merge fields, for example
-configure {"outputs":{"deal-pdf":{"label":"Make deal PDF","format":"pdf","record":"deal","body":"Deal: {{name}}"}}}.
-Bind render to that output and the selected record ID. For an inbox digest,
-declare a query in the output, then use a scheduled run with
-render: {output: weekly-pipeline, inbox: true}.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
 writes the preview rows. Copy that 26-character id and change only its last
 two digits for each row. Continue the sequence across ALL types. Each id
