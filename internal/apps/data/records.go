@@ -698,7 +698,8 @@ func (w *writeTx) save(t *Type, r *record, insert bool, sc Scope) error {
 func applySet(r *record, set map[string]any, sc Scope, op string) (held []string) {
 	kind := sc.kind(op)
 	for _, name := range sortedKeys(set) {
-		if sc.below() || sc.sync {
+		ai := sc.aiFields[name]
+		if sc.below() || sc.sync || ai {
 			if by := r.Meta.By[name]; by == ByPerson || by == ByImport {
 				held = append(held, name)
 				continue
@@ -710,6 +711,9 @@ func applySet(r *record, set map[string]any, sc Scope, op string) (held []string
 			r.Data[name] = v
 		}
 		r.Meta.By[name] = kind
+		if ai {
+			r.Meta.By[name] = ByAI
+		}
 		delete(r.Meta.Sources, name)
 		if sc.sourceKey != (ExternalKey{}) {
 			if r.Meta.Sources == nil {
