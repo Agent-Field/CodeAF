@@ -226,8 +226,18 @@ func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, reque
 		return nil, err
 	}
 	if len(ir.Aggregate) != 0 {
-		result, err := s.Aggregate(sc, &ir)
-		return marshalAppContent(result, appDataError(err))
+		planned, source, _, err := b.planAppQuery(appwire.DataScope{App: sc.App}, &ir)
+		if err != nil {
+			return nil, err
+		}
+		result, err := s.Aggregate(sc, planned)
+		if err != nil {
+			return nil, appDataError(err)
+		}
+		return json.Marshal(struct {
+			*data.AggResult
+			Source data.QuerySource `json:"source"`
+		}{result, source})
 	}
 	limit := 0
 	if view.Window != nil {
@@ -236,11 +246,11 @@ func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, reque
 			ir.Sort = view.Window.OrderBy[0]
 		}
 	}
-	result, err := s.QueryRows(sc, &ir, request.Cursor, limit)
+	result, source, err := b.appQueryRows(s, appwire.DataScope{App: sc.App}, sc, &ir, request.Cursor, limit)
 	if err != nil {
 		return nil, appDataError(err)
 	}
-	return json.Marshal(map[string]any{"rows": result.Rows, "next": result.Next, "total": result.Total})
+	return json.Marshal(map[string]any{"rows": result.Rows, "next": result.Next, "total": result.Total, "source": source})
 }
 
 func appAssistantViewSupported(view schema.QueryIR) bool {

@@ -15,6 +15,9 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkLocalRead(t, nil); err != nil {
+		return nil, err
+	}
 	if !validID(id) {
 		return nil, errorf(CodeInvalid, "%q is not a record id", id)
 	}
@@ -89,6 +92,9 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkLocalRead(t, nil); err != nil {
 		return nil, err
 	}
 	if !validID(id) {

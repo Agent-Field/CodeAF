@@ -5,10 +5,12 @@ import (
 	"strings"
 )
 
-// RunAppCommand uses the desktop method's decoder and implementation. This
-// door deliberately has no access to data.*, connectors, or conversations.
+// RunAppCommand shares the desktop decoder and implementation for owner
+// commands. Direct record and connector calls use their own scoped doors.
 func RunAppCommand(engine Engine, verb string, params json.RawMessage) (any, error) {
 	switch verb {
+	case "residency.show", "residency.preview", "residency.cutover":
+		return methods[verb].call(engine, params)
 	case "agent_launch", "agent_review", "agent_approval", "agent_stop", "agent_steer":
 		return methods["agents."+strings.TrimPrefix(verb, "agent_")].call(engine, params)
 	case "new", "plan", "build", "check", "say", "build_state", "checkpoints",

@@ -237,6 +237,18 @@ func (sub *subscription) authorized(sch *schema) bool {
 	return true
 }
 
+// HasSourceWatch avoids journaling periodic invalidations without a listener.
+func (s *Store) HasSourceWatch(typeID, binding string) bool {
+	s.subsMu.Lock()
+	defer s.subsMu.Unlock()
+	for _, sub := range s.subs {
+		if sub.bindings[binding] && (sub.typeID == typeID || sub.related[typeID]) {
+			return true
+		}
+	}
+	return false
+}
+
 // Unsubscribe stops a compatibility subscription.
 func (s *Store) Unsubscribe(id string) { s.Unwatch(nil, id) }
 
@@ -306,7 +318,9 @@ func (s *Store) deliver(c *Change) {
 		if inv := c.invalidation; inv != nil {
 			typeMatch := inv.typeID == "" || sub.typeID == inv.typeID || sub.related[inv.typeID] ||
 				sub.spec.Table != "" && sub.typeID == ""
-			reset = reset || typeMatch && (inv.binding == "" || sub.bindings[inv.binding])
+				// A primary-type watcher opened before a binding existed still
+			// needs its reset. Related inputs use their declared bindings.
+			reset = reset || typeMatch && (inv.binding == "" || sub.typeID == inv.typeID || sub.bindings[inv.binding])
 		}
 		touched := sub.spec.Table == "" && len(ids[sub.typeID]) > 0 || sub.spec.Table != "" && len(c.Items) > 0
 		t := sch.byID[sub.typeID]
