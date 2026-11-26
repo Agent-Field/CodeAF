@@ -65,8 +65,9 @@ Critic usage when the capture directory is supplied. Use
 `CODEAF_APPS_CRITIC_MODEL` to select a judge, or leave it unset to use the same
 model as the live Builder. An unsupported or unknown vision capability is
 reported as skipped without substituting a model.
-The judge records scores and visible evidence alongside the recipe, theme and
-width. Missing captures and invalid scores fail the rubric run. Both
+The report records the Critic model and visible evidence alongside the recipe,
+theme and width. When Look captures are supplied, a missing or invalid score
+fails the eval while the report preserves the behavioral result. Both
 model-backed tests skip if the profile has no key.
 
 The `support-shares-crm-identity` case checks the CRM and Support in the same

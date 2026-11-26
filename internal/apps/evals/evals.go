@@ -95,6 +95,7 @@ type Result struct {
 	Adversarial []ProbeResult  `json:"adversarial,omitempty"`
 	Depth       *Depth         `json:"static_depth,omitempty"`
 	Design      []DesignResult `json:"design,omitempty"`
+	LookModel   string         `json:"look_model,omitempty"`
 	LookScore   *float64       `json:"look_score,omitempty"`
 	LookUsage   *Usage         `json:"look_usage,omitempty"`
 	LookSkipped string         `json:"look_skipped,omitempty"`
