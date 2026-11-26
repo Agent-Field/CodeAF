@@ -30,6 +30,8 @@ fi
   echo "access_token: \"$token\""
   [ -n "$domain" ] && echo "domain: $domain"
   [ -n "${CODEAF_GITHUB_CLIENT_ID:-}" ] && echo "github_client_id: ${CODEAF_GITHUB_CLIENT_ID}"
+  # The relay this organization runs for its members' computers (the `relay` service): told to everyone who is signed in.
+  [ -n "${CODEAF_ORG_RELAY_URL:-}" ] && echo "relay_url: \"${CODEAF_ORG_RELAY_URL}\""
   if [ -n "${CODEAF_TRUSTED_PROXIES:-}" ]; then
     echo "trusted_proxies:"
     echo "$CODEAF_TRUSTED_PROXIES" | tr ',' '\n' | while read -r p; do
