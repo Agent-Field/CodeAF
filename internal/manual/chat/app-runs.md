@@ -8,6 +8,16 @@ A desktop app can start a run from a screen or command using its saved run defin
 
 Runs advance while codeaf is running. Completed steps, approval requests and wait deadlines are saved. When you reopen codeaf, a schedule with missed slots starts one run marked “caught up”, then returns to its regular schedule. A send interrupted before its result was saved is shown as incomplete so the same message cannot be sent twice.
 
+## Recover a run after a restart interrupted a local record write
+
+When codeaf restarts, a run can finish a prepared local record create or update.
+The data store saves the step's receipt with the write. If the write already
+landed, the run uses that receipt and continues without writing again. If the
+write had yet to land, the run applies the prepared inputs under the app's
+current record permissions. Older interrupted writes prepared without a
+receipt key stay incomplete. An outbound call with an uncertain result also
+stays incomplete.
+
 ## Start an app run when a record changes
 
 Apps can start a run when a record is created, updated or deleted and its
