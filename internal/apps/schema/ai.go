@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
@@ -67,6 +68,16 @@ func AIFieldOutput(field Field) map[string]any {
 		return map[string]any{"type": "boolean"}
 	default:
 		return nil
+	}
+}
+
+// Document retrieval is an effect. Run completions only get declared
+// inputs, so an explicit instruction to fetch a location cannot work.
+var promptFetchesDocument = regexp.MustCompile(`(?im)(?:^|[.!?]\s+|\band\s+)(?:please\s+)?(?:read|fetch|download|open|retrieve|browse|visit|load)\b[^.!?\n]{0,120}(?:https?://|\{\{[^}\n]*(?:url|link)\s*\}\})`)
+
+func (c *checker) checkPromptSource(file, at, prompt string) {
+	if promptFetchesDocument.MatchString(strings.TrimSpace(prompt)) {
+		c.add(file, at, "run_source_unavailable", "This step cannot fetch a URL. Read the document through a source first, then give the step the retrieved text or an intake attachment.")
 	}
 }
 

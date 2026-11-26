@@ -23,6 +23,12 @@ current record permissions. Older interrupted writes prepared without a
 receipt key stay incomplete. An outbound call with an uncertain result also
 stays incomplete.
 
+## Update a record created earlier in a run
+
+To update records written by a step named `save`, set the update's `ids` to
+`$steps.save.output.rows.id`. This takes the saved IDs directly from that
+step, including when both steps run together.
+
 ## Start an app run when a record changes
 
 Apps can start a run when a record is created, updated or deleted and its
@@ -32,6 +38,11 @@ saved queue. Each matching trigger creates one run for the change, including
 when codeaf restarts before it finishes reading the queue. The first time the
 queue is connected, it starts with new changes. A trigger with an invalid
 condition or run definition appears as incomplete.
+
+A `refs` parameter can use `default: $input.record.links` to take records
+from the triggering record's `links` field. The field must link to that
+parameter's record type. A manual start can supply its own list of IDs.
+A query string is also a valid default.
 
 A declared record write runs as a flow. It can replace a value the person set
 when the app has write access and the record's rules permit the change.
@@ -48,6 +59,12 @@ Use the actual field names in the app. `{{owner.name}}` uses the local
 account's display name when available. Check flags markers such as
 `[Name]` left in run templates or example replies. Bind the missing value
 or remove the placeholder before applying the app.
+
+## Read a document in an app run
+
+A run model works from the content supplied with its step. Pass document
+text from a record or a previous source step. A link can be kept as a source
+citation. Check flags prompts that tell a step to retrieve the link itself.
 
 ## Draft a follow-up message or another text artifact in a run
 

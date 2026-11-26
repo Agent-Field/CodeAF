@@ -14,8 +14,8 @@ func TestGalleryKitCatalog(t *testing.T) {
 	if err := json.Unmarshal(KitJSON(), &kit); err != nil {
 		t.Fatal(err)
 	}
-	if kit.Kit != 2 || len(kit.Parts) != 64 {
-		t.Fatalf("catalog has kit %d and %d parts, want kit 2 and 64 parts", kit.Kit, len(kit.Parts))
+	if kit.Kit != 2 || len(kit.Parts) != 63 {
+		t.Fatalf("catalog has kit %d and %d parts, want kit 2 and 63 parts", kit.Kit, len(kit.Parts))
 	}
 }
 

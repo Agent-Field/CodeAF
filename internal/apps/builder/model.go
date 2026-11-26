@@ -69,15 +69,22 @@ with kit elements and label, id, prop-name, bind-name and on-event attributes.
 Use extensions only when no built-in fits. Read reference {"schema":"custom-extensions"} and state why.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
+Run prompts cannot fetch a URL. Pass content from a source, a previous step,
+or an intake attachment. Treat a URL as a citation, never as document text.
 Use action-verb ids. Record commands pass a ref parameter by id, with no default.
 For scheduled loops, a refs parameter takes a query string as its default,
-for example {type: refs, to: post, default: "status:Open"}. Read ids with $params.post.id.
+for example {type: refs, to: post, default: "status:Open"}. A record-change
+trigger can use default: $input.record.links for a matching ref or refs field.
+Read the resulting IDs with $params.post.id.
 Use plan.agent.actions for the exact Action IDs the assistant promises.
 Agent steps return only the requested text at $steps.<id>.output. For loops
 and approvals, use the supplied run example as a syntax reference.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
+Use only connector operations and trigger names listed in the context.
+If the requested connector is unavailable, say what source is missing and
+use a supported input or a clearly labeled local draft if the request allows it.
 Configure schedules, commands and agent. Write instructions with set-agent.
 Use the supplied screen_controls guide for commands, Add buttons and approvals.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
@@ -85,13 +92,14 @@ writes the preview rows. Copy that 26-character id and change only its last
 two digits for each row. Continue the sequence across ALL types. Each id
 must be unique in the whole sample. Use the exact ids in reference fields.
 
-Save three to six synthetic records per type and put one row in each
-run's sample trigger or filter. Use existing recipe defaults for styling.
+Save three to six synthetic records per type unless the request calls for
+more. A full example needs at least 30 total. Put one row in each run's
+sample trigger or filter. Use existing recipe defaults for styling.
 Use singular type ids such as deal, company, contact and candidate. Use
 the person's existing type only when it appears under using. Before they
 accept, declare a matching shape so they can see the reuse offer.
 Find common keys with codeaf app common-types. Copy only needed fields without
-role labels. Point refs at local type names and omit unused or circular relations.
+role labels. Point refs at local type names and seed both ends of any linked examples.
 For existing records, copy the common key from context.common_bindings.
 If it lists no key for that type, omit common and keep its exact name.
 Reuse uses {"uses":true,"fields":{}}. Apply still confirms headless proposals.
@@ -346,20 +354,23 @@ func (in modelInput) context(files map[string]string, reads map[contextRequest]s
 			commonBindings[typ.Name] = typ.Common
 		}
 	}
+	triggers, tools := schema.AutomationCatalog()
 	raw, err := json.Marshal(struct {
-		RecordPolicy   string            `json:"record_policy"`
-		ScreenControls string            `json:"screen_controls"`
-		Stage          string            `json:"stage"`
-		Manifest       json.RawMessage   `json:"manifest,omitempty"`
-		Plan           json.RawMessage   `json:"plan,omitempty"`
-		Files          []string          `json:"files,omitempty"`
-		Unchanged      []string          `json:"unchanged,omitempty"`
-		Types          []string          `json:"existing_types,omitempty"`
-		CommonBindings map[string]string `json:"common_bindings,omitempty"`
-		Using          []string          `json:"using,omitempty"`
-		Report         *modelReport      `json:"report,omitempty"`
+		Triggers       []string            `json:"trigger_kinds"`
+		Connectors     map[string][]string `json:"connector_operations"`
+		RecordPolicy   string              `json:"record_policy"`
+		ScreenControls string              `json:"screen_controls"`
+		Stage          string              `json:"stage"`
+		Manifest       json.RawMessage     `json:"manifest,omitempty"`
+		Plan           json.RawMessage     `json:"plan,omitempty"`
+		Files          []string            `json:"files,omitempty"`
+		Unchanged      []string            `json:"unchanged,omitempty"`
+		Types          []string            `json:"existing_types,omitempty"`
+		CommonBindings map[string]string   `json:"common_bindings,omitempty"`
+		Using          []string            `json:"using,omitempty"`
+		Report         *modelReport        `json:"report,omitempty"`
 	}{
-		recordPolicyGuide, screenControlsGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
+		triggers, tools, recordPolicyGuide, screenControlsGuide, in.Stage, manifest, plan, slices.Sorted(maps.Keys(files)),
 		unchanged, typeNames, commonBindings, in.Using, briefReport(in.Report),
 	})
 	return string(raw), err

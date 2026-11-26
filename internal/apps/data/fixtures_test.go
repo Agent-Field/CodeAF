@@ -64,3 +64,34 @@ func TestLaneAFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDraftExamplesLinkBothWays(t *testing.T) {
+	const company = "00000000000000000000000001"
+	const contact = "00000000000000000000000002"
+	app := []byte(`{"id":"crm","name":"CRM","version":1,"kit":0,"records":{
+		"company":{"title":"name","fields":{"name":{"type":"text"},"lead":{"type":"ref","to":"contact","required":true}}},
+		"contact":{"title":"name","fields":{"name":{"type":"text"},"company":{"type":"ref","to":"company","required":true}}}
+	},"capabilities":{"records":{"company":"rw","contact":"rw"}}}`)
+	p := NewPlace(t.TempDir(), Options{NoRefresh: true})
+	defer p.Close()
+	examples := map[string][]map[string]any{
+		"company": {{"id": company, "name": "Northwind", "lead": "Alex"}},
+		"contact": {{"id": contact, "name": "Alex", "company": company}},
+	}
+	if err := p.SeedSample("crm-draft", app, examples); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := p.Store("crm-draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []struct{ typ, id, field, ref string }{
+		{"company", company, "lead", contact},
+		{"contact", contact, "company", company},
+	} {
+		row, err := draft.Get(Scope{App: "crm"}, want.typ, want.id, false)
+		if err != nil || row[want.field] != want.ref {
+			t.Fatalf("%s: got %v, want %s (%v)", want.typ, row, want.ref, err)
+		}
+	}
+}

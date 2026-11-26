@@ -446,6 +446,20 @@ type RunParam struct {
 	Default any    `json:"default,omitempty"`
 }
 
+// TriggerRefsField recognizes a list parameter supplied by the scoped
+// record that started its run. Other strings remain literal queries.
+func TriggerRefsField(param RunParam) string {
+	if param.Type != "refs" {
+		return ""
+	}
+	text, _ := param.Default.(string)
+	field, _ := strings.CutPrefix(text, "$input.record.")
+	if !fileIDPattern.MatchString(field) {
+		return ""
+	}
+	return field
+}
+
 // Step is one step of a run. Its kind is whichever of Agent, Tool, RecordsUpdate,
 // RecordsCreate, Wait, Loop or Gate it sets; a Gate may also sit on a Tool step,
 // where it holds the tool until the person approves.

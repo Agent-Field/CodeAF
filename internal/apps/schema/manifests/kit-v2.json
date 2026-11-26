@@ -3029,54 +3029,6 @@
       ]
     },
     {
-      "name": "CommandButton",
-      "version": 1,
-      "tier": "data",
-      "summary": "Runs a command with typed parameters and optional confirmation.",
-      "example": {
-        "command": "review"
-      },
-      "props": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "command": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
-          },
-          "params": {
-            "type": "object"
-          },
-          "confirm": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "command"
-        ]
-      },
-      "children": "none",
-      "interactive": true,
-      "bindings": [
-        "record",
-        "selection",
-        "params"
-      ],
-      "events": [
-        "click"
-      ],
-      "renderers": {
-        "desktop": "data.CommandButton"
-      },
-      "rules": [
-        {
-          "check": "command",
-          "path": "command"
-        }
-      ]
-    },
-    {
       "name": "TriageQueue",
       "version": 1,
       "tier": "data",

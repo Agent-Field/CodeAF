@@ -165,3 +165,106 @@ func TestCheckRequiresOneGrantableActionForAMultiEffectCommand(t *testing.T) {
 		t.Fatalf("Check accepted a multi-effect Mark Won command without a grantable Action: %v", report)
 	}
 }
+
+func TestCheckReportsExampleDepthWithoutBlockingAPersonalApp(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pipeline := check.Pipeline{
+		Seed:   func(string, []byte, map[string][]map[string]any) error { return nil },
+		DryRun: func(context.Context, string, string, schema.Definition) error { return nil },
+	}
+	report := pipeline.Run(t.Context(), "draft", def, nil)
+	if !report.OK() || report.Depth == nil || report.Depth.Screens != 3 || report.Depth.Records == 0 {
+		t.Fatalf("Check report = %+v", report)
+	}
+	if report.Depth.Passed() || len(report.Depth.Warnings) == 0 {
+		t.Fatalf("thin example must have a warning: %+v", report.Depth)
+	}
+}
+
+func TestCheckRequiresARecordPageToHaveARecord(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct{ bind, message string }{
+		{"", "Bind this RecordPage to a record"},
+		{`,"bind":{"record":"deal","type":"deal"}`, "A RecordPage needs a record ID"},
+	} {
+		def.Files["screens/broken.json"] = []byte(`{"screen":"broken","title":"Detail","body":{"part":"RecordPage","label":"Detail","props":{"fields":["name"]}` + test.bind + `}}`)
+		report := check.Definition(def, nil)
+		if report.OK() || !strings.Contains(report.String(), test.message) {
+			t.Fatalf("Check accepted a detail page with no record: %v", report)
+		}
+	}
+
+}
+
+func TestCheckRejectsACompletionThatTriesToReadAURL(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def.Files["runs/read-policy.yaml"] = []byte(`run: read-policy
+budget: {per_run: 0.10}
+params:
+  source_url: {type: text}
+steps:
+  - id: draft
+    ai:
+      prompt: Read the policy document at {{params.source_url}} and draft a lesson.
+      output: {type: string}
+      example: Example lesson
+`)
+	report := check.Definition(def, nil)
+	if !slices.Contains(report.Codes(), "run_source_unavailable") {
+		t.Fatalf("Check accepted a model step that asks to fetch a URL: %v", report)
+	}
+}
+
+func TestCheckNamesRegisteredTriggerAndConnectorOperations(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/ncr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def.Files[schema.AppFile] = []byte(`{"id":"ncr","name":"NC Review","version":1,"kit":2,
+	  "records":{"case":{"fields":{"title":{"type":"text"}}}},
+	  "capabilities":{"records":{"case":"r"},"connectors":{"calendar":{"can":["events.create"]}}},
+	  "triggers":[{"id":"unexpected","on":"records.created","run":"review"}]}`)
+	report := check.Definition(def, nil)
+	for _, want := range []string{"Registered calendar operations: free_busy.", "Use connector, record.changed, schedule, timer."} {
+		if !strings.Contains(report.String(), want) {
+			t.Fatalf("expected %q in %v", want, report)
+		}
+	}
+}
+
+func TestExampleDepthCountsAnApprovedDraftAndRelatedRecords(t *testing.T) {
+	def := schema.Definition{Files: map[string][]byte{
+		schema.AppFile: []byte(`{"id":"crm","name":"CRM","kit":2,"records":{
+			"deal":{"fields":{"company":{"type":"ref","to":"company"}}},
+			"company":{"fields":{"name":{"type":"text"}}}
+		},"triggers":[{"id":"weekly","on":"schedule","run":"save"}]}`),
+		"screens/queue.json":    []byte(`{"body":{"part":"RecordList","bind":{"records":"deal"}},"views":{"open":{"type":"deal"}}}`),
+		"screens/detail.json":   []byte(`{"body":{"part":"RecordPage","bind":{"record":"$params.id","type":"deal"},"props":{"fields":["company"]}}}`),
+		"screens/overview.json": []byte(`{"body":{"part":"Chart","bind":{"records":"deal"}}}`),
+		"runs/save.yaml": []byte(`run: save
+steps:
+  - id: save
+    gate: {approval: proof}
+    records.create: {type: deal, set: {company: example}}
+`),
+	}}
+	rows := map[string][]map[string]any{
+		"company": {{"id": "00000000000000000000000001", "name": "Northwind"}},
+	}
+	for range 29 {
+		rows["deal"] = append(rows["deal"], map[string]any{"company": "00000000000000000000000001"})
+	}
+	report := check.ExampleDepth(def, nil, rows)
+	if !report.Passed() || report.Records != 30 || report.RelatedRecordPages != 1 || report.WriteBackActions != 1 {
+		t.Fatalf("depth report: %+v", report)
+	}
+}

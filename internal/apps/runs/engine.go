@@ -370,8 +370,30 @@ func (e *Engine) buildCheckpoint(app string, def Definition, params, input map[s
 	// move a checkpoint to a different step after a restart.
 	p := make(map[string]any, len(def.Params)+len(params))
 	for name, param := range def.Params {
-		if param.Default != nil {
-			p[name] = param.Default
+		if _, supplied := params[name]; param.Default == nil || supplied {
+			continue
+		}
+		p[name] = param.Default
+		if field := schema.TriggerRefsField(schema.RunParam(param)); field != "" {
+			record, _ := input["record"].(map[string]any)
+			linked, ok := record[field]
+			if !ok {
+				return checkpoint{}, fmt.Errorf("parameter %s needs the triggering record's %s links or a supplied list of record IDs", name, field)
+			}
+			switch value := linked.(type) {
+			case nil:
+				p[name] = []any{}
+			case []any:
+				p[name] = value
+			case []string:
+				ids := make([]any, len(value))
+				for i, id := range value {
+					ids[i] = id
+				}
+				p[name] = ids
+			default:
+				p[name] = []any{value}
+			}
 		}
 	}
 	for key, value := range params {

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
@@ -106,6 +107,17 @@ func Pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]by
 			if _, local := rec.Fields[name]; !local {
 				a.Manifest.Entities[alias].Fields[name] = fieldShape(field)
 			}
+		}
+	}
+	if strings.EqualFold(p.Publisher, "codeaf examples") {
+		def := schema.Definition{Files: a.Files}
+		rows, err := check.Sample(def)
+		if err != nil {
+			return nil, err
+		}
+		depth := check.ExampleDepth(def, existing, rows)
+		if !depth.Passed() {
+			return nil, &Findings{Report: schema.Report{Depth: &depth, Problems: depth.Warnings}}
 		}
 	}
 	a.Manifest.Hash = a.digest()

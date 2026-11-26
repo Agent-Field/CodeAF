@@ -9,8 +9,31 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 )
 
+// AutomationCatalog lists the exact effect and trigger names accepted by
+// the Kit. Builder context and Check diagnostics use the same registry.
+func AutomationCatalog() (triggers []string, tools map[string][]string) {
+	registry := schemas().kits[2].Registries
+	tools = make(map[string][]string, len(registry.Tools))
+	for name, tool := range registry.Tools {
+		tools[name] = sortedKeys(tool.Operations)
+	}
+	return sortedKeys(registry.Triggers), tools
+}
+
+func (c *checker) validConnectorNames(name string) string {
+	tools := c.kit.Registries.Tools
+	if tool, exists := tools[name]; exists {
+		return fmt.Sprintf("Registered %s operations: %s.", name, strings.Join(sortedKeys(tool.Operations), ", "))
+	}
+	return "Registered connectors: " + strings.Join(sortedKeys(tools), ", ") + "."
+}
+
 func (c *checker) checkGalleryTrigger(i int, at string) {
 	trigger := c.app.Triggers[i]
+	if _, ok := c.kit.Registries.Triggers[trigger.On]; !ok {
+		c.add(AppFile, at+"/on", CodeTriggerShape, "%q is not a registered trigger. Use %s.", trigger.On, strings.Join(sortedKeys(c.kit.Registries.Triggers), ", "))
+		return
+	}
 	all, _ := object(c.def.Files[AppFile])["triggers"].([]any)
 	value, _ := all[i].(map[string]any)
 	if c.validateEntry(AppFile, at, CodeTriggerShape, "trigger/"+trigger.On, value) {
@@ -264,7 +287,7 @@ func (c *checker) checkConnectorDeclaration(name, verb string, connector Connect
 	at := "/capabilities/connectors/" + name
 	op, ok := c.kit.Registries.Tools[name].Operations[verb]
 	if !ok {
-		c.add(AppFile, at, CodeToolNotAllowed, "%s.%s is not a registered operation.", name, verb)
+		c.add(AppFile, at, CodeToolNotAllowed, "%s.%s is not a registered operation. %s", name, verb, c.validConnectorNames(name))
 	} else if approvalKind(op) != "" && !contains(connector.Approve, verb) {
 		c.add(AppFile, at, CodeSendGateMissing, "%s.%s needs an approval.", name, verb)
 	}
@@ -301,7 +324,11 @@ func (c *checker) checkOperation(file, at, tool string, args map[string]any, gat
 	con, verb, _ := strings.Cut(tool, ".")
 	op, exists := c.kit.Registries.Tools[con].Operations[verb]
 	need := c.app.Capabilities.Connectors[con]
-	if !exists || op.Outbound == "event" || !contains(need.Can, verb) && !contains(c.app.Capabilities.Tools, tool) {
+	if !exists {
+		c.add(file, at, CodeToolNotAllowed, "%q is not a registered operation. %s", tool, c.validConnectorNames(con))
+		return
+	}
+	if op.Outbound == "event" || !contains(need.Can, verb) && !contains(c.app.Capabilities.Tools, tool) {
 		c.add(file, at, CodeToolNotAllowed, "This app cannot call %q.", tool)
 		return
 	}

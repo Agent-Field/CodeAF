@@ -290,70 +290,99 @@ func shapesOf(sch *schema, used []string) shapeApp {
 	return app
 }
 
-// seed creates sample rows as the person, the types a row points to first.
+// seedRow reserves a record's identity before any example references are
+// resolved. It stays in memory so normal checks never see a partial record.
+type seedRow struct {
+	typ   *Type
+	set   map[string]any
+	title string
+}
+
+// seed validates and writes the whole sample in one transaction. The first
+// pass reserves identities and titles so the second can follow links in
+// either direction, even when both ends are required.
 func (s *Store) seed(rows map[string][]map[string]any) error {
-	sch := s.schema.Load()
-	for _, typ := range seedOrder(sch, rows) {
-		list := rows[typ]
-		if len(list) == 0 {
-			continue
-		}
-		err := s.write(func(w *writeTx) error {
+	return s.write(func(w *writeTx) error {
+		w.seed = make(map[string]seedRow)
+		order := seedOrder(w.schema, rows)
+		ids := make(map[string][]string)
+		for _, typ := range order {
+			if len(rows[typ]) == 0 {
+				continue
+			}
 			t, err := w.schema.allow(Scope{}, typ, true)
 			if err != nil {
 				return err
 			}
-			if _, err := w.newBatch(Scope{Actor: "sample"}, OpSeed, t); err != nil {
-				return err
-			}
-			for _, set := range list {
-				set = copyMap(set)
+			for _, set := range rows[typ] {
 				id, _ := set["id"].(string)
-				delete(set, "id")
-				if err := w.resolveTitles(t, set); err != nil {
-					return err
-				}
-				if id != "" && !validID(id) {
+				switch {
+				case id == "":
+					id = s.ids.next(w.now)
+				case !validID(id):
 					return errorf(CodeInvalid, "sample %s id %q is not a ULID", typ, id)
 				}
-				if _, err := w.createOneAs(t, Scope{Actor: "sample"}, set, OpSeed, id); err != nil {
+				if _, exists := w.seed[id]; exists {
+					return errorf(CodeDuplicate, "more than one example record uses id %s", id)
+				}
+				set = copyMap(set)
+				delete(set, "id")
+				title, _ := set[t.titleField()].(string)
+				w.seed[id] = seedRow{typ: t, set: set, title: title}
+				ids[typ] = append(ids[typ], id)
+			}
+		}
+		scope := Scope{Actor: "sample"}
+		for _, typ := range order {
+			if len(ids[typ]) == 0 {
+				continue
+			}
+			t := w.seed[ids[typ][0]].typ
+			if w.change != nil {
+				w.completedChanges = append(w.completedChanges, w.change)
+			}
+			if _, err := w.newBatch(scope, OpSeed, t); err != nil {
+				return err
+			}
+			for _, id := range ids[typ] {
+				row := w.seed[id]
+				if err := w.resolveTitles(t, row.set); err != nil {
 					return err
 				}
+				if _, err := w.createOneAs(t, scope, row.set, OpSeed, id); err != nil {
+					return err
+				}
+				delete(w.seed, id)
 			}
-			return nil
-		})
-		if err != nil {
-			return err
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
-// seedOrder is the sample's types, each after the types it points to.
+// seedOrder writes reference targets first where possible, so titles
+// computed by the store remain available to later examples.
 func seedOrder(sch *schema, rows map[string][]map[string]any) []string {
 	var out []string
-	done := map[string]bool{}
-	var visit func(string, int)
-	visit = func(name string, depth int) {
-		if done[name] || depth > 32 {
+	seen := map[string]bool{}
+	var visit func(string)
+	visit = func(name string) {
+		if seen[name] {
 			return
 		}
+		seen[name] = true
 		if t := sch.types[name]; t != nil {
 			for _, fname := range t.Order {
 				if f := t.field(fname); f != nil && (f.Type == TypeRef || f.Type == TypeRefs) && f.To != name {
 					if _, ok := rows[f.To]; ok {
-						visit(f.To, depth+1)
+						visit(f.To)
 					}
 				}
 			}
 		}
-		if !done[name] {
-			done[name] = true
-			out = append(out, name)
-		}
+		out = append(out, name)
 	}
 	for _, name := range sortedKeys(rows) {
-		visit(name, 0)
+		visit(name)
 	}
 	return out
 }

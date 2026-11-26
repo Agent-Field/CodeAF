@@ -286,6 +286,21 @@ Promote a kept function with `codeaf app promote-step '{"app":"APP","id":"NAME"}
 `codeaf app kit-steps` lists the versions. In an editing session,
 `codeaf app use-kit-step` imports the exact version and retains its lineage.
 
+## Check example records, detail pages and app depth
+
+Example records can refer to one another in either direction. Include
+the matching record IDs or titles in the example data, even when each
+record requires a reference to the other. Bind each RecordPage to a
+selected record or a record ID supplied to the screen. Use a record
+command or a Button that starts a run for command controls.
+
+Check reports the example app's screen, related record, chart, sample
+record, saved view, trigger and approved write-back counts. Personal apps
+can keep working with depth warnings. A package whose publisher is
+`codeaf examples` needs three structured screens, a detail with an
+example relationship, a bound chart, 30 example records, a saved view,
+a trigger and an approval-gated write-back Action.
+
 ## Pack an app, export a template to the Kit
 
 With the desk engine open, run `codeaf app pack <app> [file]`. Use the saved app

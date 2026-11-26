@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // Problem codes. They are stable: the Builder's Check matches on them and tests
@@ -80,11 +82,25 @@ type Problem struct {
 	Message string `json:"message"`
 }
 
-// Report is the outcome of Validate. An empty report means the files may be
-// loaded and run.
+// DepthReport records the minimum structural checks for a publishable example.
+type DepthReport struct {
+	Screens            int       `json:"screens"`
+	RelatedRecordPages int       `json:"related_record_pages"`
+	Charts             int       `json:"charts"`
+	Records            int       `json:"records"`
+	SavedViews         int       `json:"saved_views"`
+	Triggers           int       `json:"triggers"`
+	WriteBackActions   int       `json:"write_back_actions"`
+	Warnings           []Problem `json:"warnings,omitempty"`
+}
+
+func (d DepthReport) Passed() bool { return len(d.Warnings) == 0 }
+
+// Report is the outcome of Validate. A report with no problems allows the files to load and run.
 type Report struct {
-	Problems []Problem `json:"problems"`
-	Look     string    `json:"look,omitempty"`
+	Depth    *DepthReport `json:"depth,omitempty"`
+	Problems []Problem    `json:"problems"`
+	Look     string       `json:"look,omitempty"`
 }
 
 // OK reports whether nothing is wrong.
@@ -833,6 +849,18 @@ func (c *checker) walkNode(ctx actionCtx, n *Node, at, rowType string) {
 		return
 	}
 	part, propsSchema := c.findPart(n)
+	if n.Part == "RecordPage" {
+		switch {
+		case n.Bind == nil || n.Bind.Record == "":
+			c.add(ctx.file, at+"/bind", CodeBindNotAccepted, "Bind this RecordPage to a record, such as the selected row or a record ID passed to the screen.")
+		case !strings.HasPrefix(n.Bind.Record, "$") && !cell.ValidID(n.Bind.Record):
+			c.add(ctx.file, at+"/bind/record", CodeBindNotAccepted, "A RecordPage needs a record ID, not the record type or title. Bind it to the selected row or a record ID passed to the screen.")
+		}
+	}
+	if n.Part == "CommandButton" {
+		c.add(ctx.file, at+"/part", CodePartUnknown, "Desk does not draw CommandButton. Use a record command or a Button that starts the run.")
+		return
+	}
 	if propsSchema == nil {
 		c.add(ctx.file, at+"/part", CodePartUnknown, "%q is not registered for this screen. First-party parts: %s.", n.Part, strings.Join(c.kit.Names(), ", "))
 		return
@@ -1003,6 +1031,18 @@ func (c *checker) checkRun(file string, r Run) {
 		}
 	}
 
+	for _, name := range sortedKeys(r.Params) {
+		param := r.Params[name]
+		if field := TriggerRefsField(param); field != "" {
+			fields, _ := c.typeFields(recordType)
+			from := fields[field]
+			if (from.Type != "ref" && from.Type != "refs") || from.To != param.To || from.Masked {
+				path := "/params/" + pointerToken.Replace(name) + "/default"
+				c.add(file, path, CodeDefaultNotValue, "Use a readable link to %s on the record that triggers this run, a query string or a list of record IDs.", param.To)
+			}
+		}
+	}
+
 	stepIDs := map[string]bool{}
 	textOutputs := map[string]bool{}
 	var collect func(steps []Step, at string)
@@ -1014,6 +1054,12 @@ func (c *checker) checkRun(file string, r Run) {
 			}
 			stepIDs[s.ID] = true
 			textOutputs[s.ID] = s.Agent != ""
+			switch {
+			case s.AI != nil:
+				c.checkPromptSource(file, sat+"/ai/prompt", s.AI.Prompt)
+			case s.Agent != "":
+				c.checkPromptSource(file, sat+"/prompt", s.Prompt)
+			}
 			if len(s.AgentTools) > 0 && (s.Agent == "" || c.kit.Kit != 2 || len(c.app.Outputs) == 0) {
 				c.add(file, sat+"/tools", CodeNotAllowed, "The render tool needs an agent step and declared outputs in a kit 2 app.")
 			}
