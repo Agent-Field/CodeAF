@@ -1,0 +1,22 @@
+{
+  "id": "platform-stimulus",
+  "name": "Platform stimulus",
+  "version": 1,
+  "kit": 2,
+  "records": {
+    "probe": {
+      "title": "name",
+      "fields": {
+        "name": {"type": "text", "required": true},
+        "stage": {"type": "enum", "values": ["Open", "Closed"]}
+      },
+      "lifecycle": {
+        "field": "stage",
+        "initial": "Open",
+        "transitions": [{"id": "close", "label": "Close", "from": ["Open"], "to": "Closed", "guard": "signed()"}]
+      }
+    }
+  },
+  "policies": [{"id": "checks", "kind": "checklist", "config": {"record": "probe", "steps": [{"id": "review", "label": "Review", "evidence": "note"}]}}],
+  "capabilities": {"records": {"probe": "rw"}}
+}

@@ -1,0 +1,5 @@
+{
+  "ask": "Review a release before closing it.",
+  "data": [{"id": "probe", "line": "Release name and stage"}],
+  "screens": [{"id": "releases", "line": "Release reviews"}]
+}

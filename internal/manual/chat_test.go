@@ -33,6 +33,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"how do I auto assign work items", "app-definitions"},
+		{"who approves a record", "app-definitions"},
+		{"how do I prevent double booking", "app-definitions"},
 		{"how do I give you my API key safely", "giving-a-password-or-token"},
 		{"can Claude Code make a canvas", "claude-code-provider"},
 		{"does Claude Code see my codeaf skills", "claude-code-provider"},

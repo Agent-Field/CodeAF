@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -99,13 +98,20 @@ func runGallery(t *testing.T, key string, noModel bool) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result := Run(ctx, engine, c, map[string]any{"csv": csv})
+			adapter := &galleryProcess{appProcess: engine}
+			if !noModel {
+				adapter.model, err = newProbeModel(key)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			result := Run(ctx, adapter, c, map[string]any{"csv": csv})
+			if result.Pass && !result.Complete {
+				t.Error("the integrated engine left platform probes unrun")
+			}
 			results = append(results, result)
 			for _, failure := range result.Failures {
 				t.Error(failure)
-			}
-			if result.Pass && !result.Complete {
-				t.Log("some platform stimuli were unavailable; see the report")
 			}
 		})
 	}
@@ -125,23 +131,15 @@ func runGallery(t *testing.T, key string, noModel bool) {
 
 func seedCRM(t *testing.T, scratch string) string {
 	t.Helper()
-	s := store.NewAt(scratch, nil)
-	draft, err := s.NewDraft("")
+	app, err := seedApp(scratch, "testdata/crm")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.CopyFS(draft.Dir(), os.DirFS("testdata/crm")); err != nil {
-		t.Fatal(err)
-	}
-	meta, err := s.Promote(draft, "Platform CRM fixture")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return meta.ID
+	return app
 }
 
 // The captured inputs come from the Desk's synthetic Look requests for each
-// named recipe. The judge never sees a build prompt or a live app record.
+// named recipe. The judge sees the gallery brief and synthetic pixels.
 func TestLiveDesignRubric(t *testing.T) {
 	key := evalKey()
 	if key == "" {
@@ -183,7 +181,7 @@ func TestLiveDesignRubric(t *testing.T) {
 				data, err := fs.ReadFile(os.DirFS(root), path)
 				if err == nil {
 					var score Score
-					score, err = ScoreLook(t.Context(), frontierJudge{client}, string(language), look, viewport.pixels, data)
+					score, err = ScoreLook(t.Context(), frontierJudge{client}, string(language)+"\n\nGallery brief: "+c.Prompt, look, viewport.pixels, data)
 					if err == nil {
 						entry.Score = &score
 					}
@@ -202,7 +200,13 @@ func TestLiveDesignRubric(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(string(raw))
+	if dest := os.Getenv("CODEAF_APP_EVAL_DESIGN_REPORT"); dest != "" {
+		if err := os.WriteFile(dest, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		t.Log(string(raw))
+	}
 	if slices.ContainsFunc(results, func(result Result) bool { return !result.Pass }) {
 		t.Error("one or more design scores could not be recorded")
 	}
