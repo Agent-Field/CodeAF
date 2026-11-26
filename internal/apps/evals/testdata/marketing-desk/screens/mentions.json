@@ -1,0 +1,12 @@
+{
+  "screen": "mentions",
+  "title": "Mentions",
+  "body": {
+    "part": "RecordList",
+    "id": "mention-list",
+    "label": "Mentions",
+    "props": {"columns": ["text", "reply"], "select": "many"},
+    "bind": {"records": "mention", "view": "mentions"}
+  },
+  "views": {"mentions": {"type": "mention"}}
+}

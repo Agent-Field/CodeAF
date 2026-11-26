@@ -77,8 +77,8 @@ decides which combinations are accepted.
 | `agents.set_models` | `{fallback, id, main}` | `agentResult` |
 | `agents.set_scope` | `{id, scope}` | `AgentScope` |
 | `agents.since` | `{after, id}` | `Since` |
-| `agents.steer` | `in.sayTo` | `Empty` |
-| `agents.stop` | `in.IDParams` | `Empty` |
+| `agents.steer` | `in.sayTo` or `{app, run, text}` | `Empty` |
+| `agents.stop` | `in.IDParams` or `{app, run}` | `Empty` |
 | `agents.suggest_reply` | `in.ReplySuggestionParams` | `ReplySuggestion` |
 
 `agents.stop` is a bounded stop. It interrupts the running turn and answers at
@@ -2109,6 +2109,9 @@ with `{line, field?, message}`.
 
 | method | params | result |
 |---|---|---|
+| `agents.launch` | `{app, action, screen?, records?, query?, params?, client_id?}` | `{queue}` |
+| `agents.review` | `{app, queue, decision, ids:[{id, expected_rev}]}` | `Empty` |
+| `agents.approval` | `{app, run, effect:{id, account, operation, destination, payload, payload_hash, app_version, expires_at}, answer}` | `Empty` |
 | `runs.start` | `{app, run, params?, draft?}` | `{id}` |
 | `runs.list` | `{app?, run?}` | `{runs: [Run]}` |
 | `runs.get` | `{app?, id}` | `Run` with `effects:[{step,tool,key,connection,outcome,version?}]` when an approved source write has a receipt. |

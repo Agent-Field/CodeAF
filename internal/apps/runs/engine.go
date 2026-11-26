@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -24,12 +25,15 @@ import (
 
 const (
 	Running    = "running"
+	Finishing  = "finishing"
 	YourCall   = "your_call"
 	Done       = "done"
 	Incomplete = "incomplete"
 )
 
 var ErrNotFound = errors.New("run not found")
+var ErrStopped = errors.New("the run was stopped")
+var ErrAIUnavailable = errors.New("this app AI capability is unavailable")
 var ErrBudget = errors.New("per-run budget reached")
 
 type Run struct {
@@ -41,6 +45,16 @@ type Run struct {
 	CaughtUp     bool            `json:"caught_up,omitempty"`
 	Error        string          `json:"error,omitempty"`
 	Cost         float64         `json:"cost,omitempty"`
+	Proposal     *Proposal       `json:"proposal,omitempty"`
+	Subject      *Subject        `json:"subject,omitempty"`
+	Screen       string          `json:"screen,omitempty"`
+	CanSteer     bool            `json:"can_steer,omitempty"`
+	FirstStep    string          `json:"first_step,omitempty"`
+	Principal    string          `json:"principal,omitempty"`
+	Harness      string          `json:"harness,omitempty"`
+	AppVersion   int             `json:"app_version,omitempty"`
+	Title        string          `json:"title,omitempty"`
+	Queue        string          `json:"review_queue,omitempty"`
 	Effects      []EffectReceipt `json:"effects,omitempty"`
 	Approval     *Approval       `json:"approval,omitempty"`
 	WakeAt       time.Time       `json:"wake_at,omitzero"`
@@ -55,6 +69,8 @@ type ChangeEvent struct {
 	ID    string `json:"id"`
 	State string `json:"state"`
 	Step  string `json:"step"`
+	Agent bool   `json:"agent,omitempty"`
+	Queue string `json:"review_queue,omitempty"`
 }
 
 type Config struct {
@@ -68,6 +84,8 @@ type Config struct {
 	Records       func(context.Context, RecordCall) (Reply, error)
 	Render        func(context.Context, Call, schema.RenderAction) (Reply, error)
 	Agent         func(context.Context, AgentCall) (Reply, error)
+	CheckAI       func(*schema.AIStep) error
+	AppVersion    func(string) (int, error)
 	Connector     Connector
 	// CheckTool authorizes a tool against the current app capabilities on
 	// each visit. It can require a send gate based on trusted tool metadata.
@@ -90,6 +108,7 @@ type Engine struct {
 	checkpoints map[string]json.RawMessage
 	active      map[string]Run
 	busy        map[string]bool
+	workCancels map[string]context.CancelFunc
 	workers     sync.WaitGroup
 	openedAt    time.Time
 	closing     bool
@@ -110,7 +129,6 @@ type AgentActionOrigin struct {
 
 type checkpoint struct {
 	Run
-	AgentOrigin    *AgentActionOrigin `json:"agent_origin,omitempty"`
 	TriggerReceipt *triggerReceipt    `json:"trigger_receipt,omitempty"`
 	IntakeAI       bool               `json:"intake_ai,omitempty"`
 	Definition     Definition         `json:"definition"`
@@ -126,6 +144,9 @@ type checkpoint struct {
 	Declined       string             `json:"declined,omitempty"`
 	RaisedBudget   float64            `json:"raised_budget,omitempty"`
 	ApprovalSeq    int                `json:"approval_seq"`
+	Steering       []string           `json:"steering,omitempty"`
+	Stopped        bool               `json:"stopped,omitempty"`
+	AgentOrigin    *AgentActionOrigin `json:"agent_origin,omitempty"`
 }
 
 type frame struct {
@@ -170,7 +191,7 @@ func Open(cfg Config) (*Engine, error) {
 	lifetime, cancel := context.WithCancel(context.Background())
 	e := &Engine{
 		cfg: cfg, journal: journal, lock: lock, checkpoints: entries,
-		active: make(map[string]Run), busy: make(map[string]bool),
+		active: make(map[string]Run), busy: make(map[string]bool), workCancels: make(map[string]context.CancelFunc),
 		lifetime: lifetime, cancel: cancel, openedAt: cfg.Now(),
 	}
 	for key, raw := range entries {
@@ -242,8 +263,18 @@ func (e *Engine) AgentProjection(id string) (map[string]any, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	step, _ := c.Outputs["answer"].(map[string]any)
-	answer, _ := step["output"].(string)
+	step, _ := c.Outputs[c.FirstStep].(map[string]any)
+	if step == nil {
+		step, _ = c.Outputs["answer"].(map[string]any)
+	}
+	answer, text := step["output"].(string)
+	if !text && step["output"] != nil {
+		raw, err := json.Marshal(step["output"])
+		if err != nil {
+			return nil, "", err
+		}
+		answer = string(raw)
+	}
 	return c.Params, answer, nil
 }
 
@@ -286,7 +317,7 @@ func (e *Engine) StartAgentAction(app, run string, params map[string]any, origin
 	if err != nil {
 		return Run{}, err
 	}
-	c.AgentOrigin = &origin
+	c.AgentOrigin, c.Principal = &origin, origin.Principal.ID
 	err = e.save(&c, "", nil)
 	return c.Run, err
 }
@@ -314,6 +345,13 @@ func (e *Engine) newCheckpoint(app, run string, params, input map[string]any, ca
 	if err := validate(def); err != nil {
 		return checkpoint{}, err
 	}
+	if err := e.checkAI(def.Steps); err != nil {
+		return checkpoint{}, err
+	}
+	return e.buildCheckpoint(app, def, params, input, caughtUp)
+}
+
+func (e *Engine) buildCheckpoint(app string, def Definition, params, input map[string]any, caughtUp bool) (checkpoint, error) {
 	now := e.cfg.Now()
 	id, err := cell.NewID(now)
 	if err != nil {
@@ -337,11 +375,68 @@ func (e *Engine) newCheckpoint(app, run string, params, input map[string]any, ca
 		}
 	}
 	c := checkpoint{
-		Run:        Run{App: app, DefinitionID: run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
+		Run:        Run{App: app, DefinitionID: def.Run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
 		Definition: def, Params: p, Input: input, Outputs: make(map[string]any), Frames: []frame{{}},
 		Visit: 1,
 	}
+	if e.cfg.AppVersion != nil {
+		c.AppVersion, err = e.cfg.AppVersion(app)
+		if err != nil {
+			return checkpoint{}, err
+		}
+	}
+	c.bindAgentSubject()
+
 	return c, nil
+}
+
+// bindAgentSubject records the target before the worker runs, so presence and
+// record panels can show work while the first step is waiting.
+func (c *checkpoint) bindAgentSubject() {
+	def := c.Definition
+	step := firstAgentStep(def.Steps)
+	if step == nil {
+		return
+	}
+	c.Harness, c.Title, c.FirstStep, c.CanSteer = HarnessCodeaf, def.Title, step.ID, true
+	if step.AI != nil {
+		c.Harness = harnessID(step.AI)
+	}
+	switch {
+	case step.AI != nil && step.AI.Propose != "":
+		c.bindSubject(c.Params[strings.TrimPrefix(step.AI.Propose, "$params.")])
+	case def.Run == "_agent_ask" || strings.HasPrefix(def.Run, "_agent_duty_"):
+		c.Screen, _ = c.Params["screen"].(string)
+		c.bindSubject(map[string]any{"id": c.Params["record"], "type": c.Params["type"]})
+	default:
+		for _, key := range slices.Sorted(maps.Keys(def.Params)) {
+			if def.Params[key].Type == "ref" {
+				c.bindSubject(c.Params[key])
+				break
+			}
+		}
+	}
+}
+
+func firstAgentStep(steps []Step) *Step {
+	for _, step := range steps {
+		if step.AI != nil || step.Agent != "" {
+			return &step
+		}
+		if found := firstAgentStep(step.Steps); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func (c *checkpoint) bindSubject(value any) {
+	row, _ := value.(map[string]any)
+	id, _ := row["id"].(string)
+	typ, _ := row["type"].(string)
+	if id != "" && typ != "" {
+		c.Subject = &Subject{Type: typ, ID: id}
+	}
 }
 
 func (e *Engine) save(c *checkpoint, clockKey string, clock any) error {
@@ -357,6 +452,15 @@ func (e *Engine) save(c *checkpoint, clockKey string, clock any) error {
 func (e *Engine) saveLocked(c *checkpoint, clockKey string, clock any) error {
 	entries := make(map[string]json.RawMessage, 2)
 	if c != nil {
+		if previous := e.checkpoints[runPrefix+c.ID]; previous != nil && !c.Stopped {
+			stopped, err := decode[struct{ Stopped bool }](previous)
+			if err != nil {
+				return err
+			}
+			if stopped.Stopped {
+				return ErrStopped
+			}
+		}
 		c.UpdatedAt = e.cfg.Now()
 		raw, err := json.Marshal(c)
 		if err != nil {
@@ -388,7 +492,7 @@ func (e *Engine) saveLocked(c *checkpoint, clockKey string, clock any) error {
 
 func (e *Engine) track(r Run) {
 	switch r.State {
-	case Running, YourCall:
+	case Running, Finishing, YourCall:
 		e.active[r.ID] = r
 	default:
 		delete(e.active, r.ID)
@@ -408,7 +512,7 @@ func (e *Engine) activeRuns() []Run {
 
 func (e *Engine) changed(r Run) {
 	if e.cfg.Changed != nil {
-		e.cfg.Changed(ChangeEvent{App: r.App, Run: r.DefinitionID, ID: r.ID, State: r.State, Step: r.Step})
+		e.cfg.Changed(ChangeEvent{App: r.App, Run: r.DefinitionID, ID: r.ID, State: r.State, Step: r.Step, Agent: r.Harness != "", Queue: r.Queue})
 	}
 }
 
@@ -512,7 +616,7 @@ func (e *Engine) ready(ctx context.Context) ([]Run, error) {
 }
 
 func (r Run) ready(now time.Time) bool {
-	return r.State == Running && (r.WakeAt.IsZero() || !now.Before(r.WakeAt))
+	return (r.State == Running || r.State == Finishing) && (r.WakeAt.IsZero() || !now.Before(r.WakeAt))
 }
 
 func (e *Engine) claim(id string) bool {
@@ -530,6 +634,7 @@ func (e *Engine) work(ctx context.Context, id string) error {
 	defer func() {
 		e.mu.Lock()
 		delete(e.busy, id)
+		delete(e.workCancels, id)
 		e.mu.Unlock()
 		e.workers.Done()
 	}()
@@ -537,11 +642,18 @@ func (e *Engine) work(ctx context.Context, id string) error {
 	stop := context.AfterFunc(e.lifetime, cancel)
 	defer cancel()
 	defer stop()
+	e.mu.Lock()
+	e.workCancels[id] = cancel
+	e.mu.Unlock()
 	c, err := e.read(id)
 	if err != nil || !c.Run.ready(e.cfg.Now()) {
 		return err
 	}
-	return e.progress(ctx, &c)
+	err = e.progress(ctx, &c)
+	if errors.Is(err, ErrStopped) || errors.Is(err, context.Canceled) && ctx.Err() != nil {
+		return nil
+	}
+	return err
 }
 
 func validCost(cost float64) bool {

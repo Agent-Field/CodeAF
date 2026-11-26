@@ -245,22 +245,23 @@ type RecordType struct {
 
 // Field is one field of a record type and its rules.
 type Field struct {
-	ID       string     `json:"id,omitempty"`
-	Sequence *Sequence  `json:"sequence,omitempty"`
-	Type     string     `json:"type"`
-	Timer    *TimerRule `json:"timer,omitempty"`
-	Blind    *BlindRule `json:"blind,omitempty"`
-	Label    string     `json:"label,omitempty"`
-	Required bool       `json:"required,omitempty"`
-	Unique   bool       `json:"unique,omitempty"`
-	Default  any        `json:"default,omitempty"`
-	Index    bool       `json:"index,omitempty"`
-	Masked   bool       `json:"masked,omitempty"`
-	Computed string     `json:"computed,omitempty"`
-	AI       string     `json:"ai,omitempty"`
-	Values   []string   `json:"values,omitempty"`
-	To       string     `json:"to,omitempty"`
-	Currency string     `json:"currency,omitempty"`
+	ID         string     `json:"id,omitempty"`
+	Sequence   *Sequence  `json:"sequence,omitempty"`
+	Type       string     `json:"type"`
+	Timer      *TimerRule `json:"timer,omitempty"`
+	Blind      *BlindRule `json:"blind,omitempty"`
+	Label      string     `json:"label,omitempty"`
+	Required   bool       `json:"required,omitempty"`
+	Unique     bool       `json:"unique,omitempty"`
+	Default    any        `json:"default,omitempty"`
+	Index      bool       `json:"index,omitempty"`
+	Masked     bool       `json:"masked,omitempty"`
+	Computed   string     `json:"computed,omitempty"`
+	AI         string     `json:"ai,omitempty"`
+	AIOnChange bool       `json:"ai_on_change,omitempty"`
+	Values     []string   `json:"values,omitempty"`
+	To         string     `json:"to,omitempty"`
+	Currency   string     `json:"currency,omitempty"`
 }
 
 // Freeze is one freeze rule: a condition, or a period that locks after a delay.
@@ -423,6 +424,7 @@ type Step struct {
 	If            string         `json:"if,omitempty"`
 	OnError       string         `json:"on_error,omitempty"`
 	Retry         *Retry         `json:"retry,omitempty"`
+	AI            *AIStep        `json:"ai,omitempty"`
 	Agent         string         `json:"agent,omitempty"`
 	Prompt        string         `json:"prompt,omitempty"`
 	Tool          string         `json:"tool,omitempty"`
@@ -439,6 +441,16 @@ type Step struct {
 	Workspace     string         `json:"workspace,omitempty"`
 	Repo          string         `json:"repo,omitempty"`
 	Branch        string         `json:"branch,omitempty"`
+}
+
+// AIStep asks one model or harness for typed data.
+type AIStep struct {
+	Prompt  string         `json:"prompt"`
+	Tier    string         `json:"tier,omitempty"`
+	Harness string         `json:"harness,omitempty"`
+	Output  map[string]any `json:"output"`
+	Propose string         `json:"propose,omitempty"`
+	Example any            `json:"example,omitempty"`
 }
 
 // Retry repeats a failed step.

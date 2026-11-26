@@ -22,6 +22,8 @@ func (c *checker) checkGalleryAction(ctx actionCtx, at string, act Action) {
 }
 
 func (c *checker) checkGalleryRun(file, recordType string) {
+	def, _ := ParseRun(c.def.Files[file])
+	c.checkGalleryAI(file, def, def.Steps, "/steps")
 	raw, _ := RunJSON(c.def.Files[file])
 	run := object(raw)
 	params, _ := run["params"].(map[string]any)
@@ -77,6 +79,16 @@ func (c *checker) checkGalleryRun(file, recordType string) {
 		}
 	}
 	walk(steps, "/steps", bindings, false)
+}
+
+func (c *checker) checkGalleryAI(file string, run Run, steps []Step, at string) {
+	for i, step := range steps {
+		path := fmt.Sprintf("%s/%d", at, i)
+		if step.AI != nil {
+			c.checkAIStep(file, path, run, step.AI)
+		}
+		c.checkGalleryAI(file, run, step.Steps, path+"/steps")
+	}
 }
 
 func (c *checker) wantStep(ctx actionCtx, at string, step map[string]any, inRepo bool) {

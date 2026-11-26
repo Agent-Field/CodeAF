@@ -43,14 +43,38 @@ func validate(d Definition) error {
 	if !validID(d.Run) || len(d.Steps) == 0 || (d.Budget != nil && !validCost(d.Budget.PerRun)) {
 		return errors.New("a run needs an id, steps and a valid per-run budget")
 	}
-	return validateSteps(d.Steps, make(map[string]bool), make(map[string]bool))
+	for _, step := range d.Steps {
+		if step.AI != nil {
+			if err := d.CheckAIProposal(step.AI); err != nil {
+				return err
+			}
+		}
+	}
+	if len(d.Steps) != 1 || d.Steps[0].AI == nil {
+		if err := forbidNestedProposals(d.Steps); err != nil {
+			return err
+		}
+	}
+	return validateSteps(d.Steps, make(map[string]bool), make(map[string]bool), d.Budget)
+}
+
+func forbidNestedProposals(steps []Step) error {
+	for _, step := range steps {
+		if step.AI != nil && step.AI.Propose != "" {
+			return errors.New("a proposed change must be the only step in its run")
+		}
+		if err := forbidNestedProposals(step.Steps); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validID(id string) bool {
 	return id != "" && strings.Trim(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
 }
 
-func validateSteps(steps []Step, seen, enclosing map[string]bool) error {
+func validateSteps(steps []Step, seen, enclosing map[string]bool, budget *schema.RunBudget) error {
 	targets := maps.Clone(enclosing)
 	for _, s := range steps {
 		targets[s.ID] = true
@@ -60,10 +84,10 @@ func validateSteps(steps []Step, seen, enclosing map[string]bool) error {
 			return fmt.Errorf("invalid or duplicate step id %q", s.ID)
 		}
 		seen[s.ID] = true
-		if err := validateStep(s, targets); err != nil {
+		if err := validateStep(s, targets, budget); err != nil {
 			return fmt.Errorf("step %s: %w", s.ID, err)
 		}
-		if err := validateSteps(s.Steps, seen, targets); err != nil {
+		if err := validateSteps(s.Steps, seen, targets, budget); err != nil {
 			return err
 		}
 	}
@@ -72,12 +96,12 @@ func validateSteps(steps []Step, seen, enclosing map[string]bool) error {
 
 const maxRetries = 5
 
-func validateStep(s Step, targets map[string]bool) error {
+func validateStep(s Step, targets map[string]bool, budget *schema.RunBudget) error {
 	if s.Shell != "" || s.Workspace != "" || s.Repo != "" || s.Branch != "" {
 		return errors.New("shell and workspace steps are unavailable in app runs")
 	}
 	kinds := 0
-	for _, present := range []bool{s.RecordsCreate != nil, s.RecordsUpdate != nil, s.Render != nil, s.Agent != "", s.Tool != "", s.Wait != nil, s.Loop != nil} {
+	for _, present := range []bool{s.RecordsCreate != nil, s.RecordsUpdate != nil, s.Render != nil, s.Agent != "", s.AI != nil, s.Tool != "", s.Wait != nil, s.Loop != nil} {
 		if present {
 			kinds++
 		}
@@ -91,6 +115,14 @@ func validateStep(s Step, targets map[string]bool) error {
 	}
 	if s.Render != nil && !validID(s.Render.Output) {
 		return errors.New("a render step needs a declared output id")
+	}
+	if s.AI != nil {
+		if budget == nil || budget.PerRun <= 0 || strings.TrimSpace(s.AI.Prompt) == "" {
+			return errors.New("an AI step needs a prompt and a positive per-run budget")
+		}
+		if _, err := schema.CompileAIOutput(s.AI.Output); err != nil {
+			return fmt.Errorf("invalid AI output schema: %w", err)
+		}
 	}
 	if s.Gate != nil {
 		switch s.Gate.Approval {

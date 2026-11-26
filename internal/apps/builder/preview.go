@@ -72,6 +72,25 @@ func (s *Jobs) Preview(p PreviewRequest) (Preview, error) {
 			return known.result(id)
 		}
 	}
+	return s.openPreview(current)
+}
+
+// PreviewKept draws a saved definition using a temporary sample scope.
+func (s *Jobs) PreviewKept(def store.Definition) (Preview, func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.openPreview(previewScope{files: def.Files()})
+	if err != nil {
+		return Preview{}, nil, err
+	}
+	return p, func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.removeScope(p.Scope)
+	}, nil
+}
+
+func (s *Jobs) openPreview(current previewScope) (Preview, error) {
 	id, err := cell.NewID(time.Now())
 	if err != nil {
 		return Preview{}, err

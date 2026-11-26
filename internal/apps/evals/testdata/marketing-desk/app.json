@@ -1,0 +1,20 @@
+{
+  "id": "marketing-desk",
+  "name": "Marketing desk",
+  "version": 1,
+  "kit": 2,
+  "records": {
+    "mention": {
+      "title": "text",
+      "fields": {
+        "text": {"type": "text", "required": true},
+        "reply": {"type": "longtext", "ai": "Draft a reply in the person's voice."}
+      }
+    }
+  },
+  "commands": [
+    {"id": "draft-reply", "label": "Draft a reply", "for": "mention", "run": "draft-reply"}
+  ],
+  "capabilities": {"records": {"mention": "rw"}, "ai": ["sort"]},
+  "budget": {"per_run": 0.09}
+}

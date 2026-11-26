@@ -1,0 +1,6 @@
+{
+  "ask": "Draft replies to marketing mentions and review the changes before applying.",
+  "data": [{"id": "mention", "line": "Mention and proposed reply"}],
+  "automation": [{"id": "draft-reply", "line": "Draft one reply for each selected mention"}, {"id": "approve-post", "line": "Ask before posting an exact reply"}],
+  "screens": [{"id": "mentions", "line": "Mentions to reply to"}]
+}
