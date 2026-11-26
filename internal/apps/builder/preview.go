@@ -79,9 +79,22 @@ func (s *Jobs) Preview(p PreviewRequest) (Preview, error) {
 
 // PreviewKept draws a saved definition using a temporary sample scope.
 func (s *Jobs) PreviewKept(def store.Definition) (Preview, func(), error) {
+	return s.previewDefinition(def.Files())
+}
+
+// PreviewPackage draws the exported definition in an isolated sample scope.
+func (s *Jobs) PreviewPackage(def schema.Definition) (Preview, func(), error) {
+	files := make(map[string]string, len(def.Files))
+	for name, content := range def.Files {
+		files[name] = string(content)
+	}
+	return s.previewDefinition(files)
+}
+
+func (s *Jobs) previewDefinition(files map[string]string) (Preview, func(), error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p, err := s.openPreview(previewScope{files: def.Files()})
+	p, err := s.openPreview(previewScope{files: files})
 	if err != nil {
 		return Preview{}, nil, err
 	}

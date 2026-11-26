@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
 	"github.com/Agent-Field/codeaf/internal/apps/check"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -175,4 +176,31 @@ func saveAppLook(scope string, viewport *appwire.AppLookViewport, capture appwir
 		problems = []string{}
 	}
 	return appwire.AppLookPage{PNGPath: filepath.Join(dir, file), Problems: problems}, nil
+}
+
+// AppPackageThumbnail draws the exact exported definition against its sample data.
+func (b *appBackend) AppPackageThumbnail(archive apppackage.Archive) []byte {
+	if !b.builds.look.ready.Load() {
+		return nil
+	}
+	jobs, err := b.AppBuilds()
+	if err != nil {
+		return nil
+	}
+	p, close, err := jobs.PreviewPackage(schema.Definition{Files: archive.Files})
+	if err != nil {
+		return nil
+	}
+	defer close()
+	capture, err := b.drawAppPreview(context.Background(), p, appwire.AppLookParams{
+		Screen: p.Screens[0], Theme: "dark", Viewport: &appwire.AppLookViewport{Width: 720, Height: 405},
+	})
+	if err != nil || capture.Problem != "" {
+		return nil
+	}
+	image, err := base64.StdEncoding.DecodeString(capture.PNG)
+	if err != nil {
+		return nil
+	}
+	return image
 }

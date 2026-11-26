@@ -1,11 +1,13 @@
 package appwire
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/apppackage"
@@ -20,12 +22,14 @@ type packParams struct {
 }
 
 type packageParams struct {
-	Path string `json:"path"`
+	Path    string `json:"path,omitempty"`
+	Builtin string `json:"builtin,omitempty"`
+	Hash    string `json:"expected_hash,omitempty"`
 }
 
 type updatePackageParams struct {
-	App  string `json:"app"`
-	Path string `json:"path"`
+	App string `json:"app"`
+	packageParams
 }
 
 type resolvePackageParams struct {
@@ -39,18 +43,27 @@ type packResult struct {
 	Manifest apppackage.Manifest `json:"manifest"`
 }
 
+type packageThumbnailer interface {
+	AppPackageThumbnail(apppackage.Archive) []byte
+}
+
 type lineageResult struct {
 	Lineage *store.Lineage `json:"lineage,omitempty"`
 }
 
 func init() {
-	methods["apps.pack"] = buildCall(func(b *builder.Jobs, p packParams) (*packResult, error) {
-		if !filepath.IsAbs(p.Path) {
+	methods["apps.pack"] = typed(func(e Engine, p packParams) (*packResult, error) {
+		b, err := openBuilds(e)
+		if err != nil {
+			return nil, err
+		}
+		toKit := p.Path == ""
+		if p.Path != "" && !filepath.IsAbs(p.Path) {
 			return nil, Errorf(CodeBadParams, "Choose an absolute path for the exported app package.")
 		}
 		raw, err := b.Pack(p.App, p.PackOptions)
 		if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrBadInput) {
-			return nil, err
+			return nil, buildError(err)
 		}
 		if err != nil {
 			return nil, Errorf(CodeBadParams, "%s", err)
@@ -59,17 +72,33 @@ func init() {
 		if err := json.Unmarshal(raw, &result); err != nil {
 			return nil, err
 		}
+		if p.Path == "" {
+			if err := os.MkdirAll(kitPackagesDir(), 0700); err != nil {
+				return nil, err
+			}
+			p.Path = filepath.Join(kitPackagesDir(), strings.TrimPrefix(result.Manifest.Hash, "sha256:")+packageSuffix)
+			if existing, err := readPackage(p.Path); err == nil && existing.Manifest.Hash == result.Manifest.Hash {
+				addPackageThumbnail(e, p.Path, existing)
+				result.Path = p.Path
+				return &result, nil
+			}
+		}
 		if err := writePackage(p.Path, raw); err != nil {
 			if errors.Is(err, os.ErrExist) {
 				return nil, Errorf(CodeConflict, "A file already exists at the package path. Choose a new filename.")
 			}
 			return nil, Errorf(CodeBadParams, "The app package could not be written to the selected path.")
 		}
+		if toKit {
+			if a, err := apppackage.Read(bytes.NewReader(raw)); err == nil {
+				addPackageThumbnail(e, p.Path, a)
+			}
+		}
 		result.Path = p.Path
 		return &result, nil
 	})
 	methods["apps.install"] = buildCall(func(b *builder.Jobs, p packageParams) (*builder.Proposal, error) {
-		a, err := readPackage(p.Path)
+		a, err := selectedPackage(p)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +108,7 @@ func init() {
 		return &card, packageError(err)
 	})
 	methods["apps.update"] = buildCall(func(b *builder.Jobs, p updatePackageParams) (*builder.Proposal, error) {
-		a, err := readPackage(p.Path)
+		a, err := selectedPackage(p.packageParams)
 		if err != nil {
 			return nil, err
 		}
@@ -88,9 +117,30 @@ func init() {
 		card, err := b.Update(ctx, p.App, a)
 		return &card, packageError(err)
 	})
-	methods["apps.fork"] = buildCall(func(b *builder.Jobs, p appParams) (*builder.Proposal, error) {
+	methods["apps.start_package"] = buildCall(func(b *builder.Jobs, p packageParams) (*draftParams, error) {
+		a, err := selectedPackage(p)
+		if err != nil {
+			return nil, err
+		}
 		ctx, cancel := packageContext()
 		defer cancel()
+		id, err := b.StartPackage(ctx, a)
+		return &draftParams{Draft: id}, packageError(err)
+	})
+	methods["apps.fork"] = buildCall(func(b *builder.Jobs, p updatePackageParams) (*builder.Proposal, error) {
+		ctx, cancel := packageContext()
+		defer cancel()
+		if p.App == "" {
+			a, err := selectedPackage(p.packageParams)
+			if err != nil {
+				return nil, err
+			}
+			card, err := b.ForkPackage(ctx, a)
+			return &card, packageError(err)
+		}
+		if p.Path != "" || p.Builtin != "" {
+			return nil, Errorf(CodeBadParams, "Choose either an installed app or an app package to fork.")
+		}
 		card, err := b.Fork(ctx, p.App)
 		return &card, packageError(err)
 	})
@@ -119,6 +169,51 @@ func packageError(err error) error {
 		return Errorf(CodeBadParams, "%s", err)
 	}
 	return err
+}
+
+// A thumbnail is optional for a headless export. It only uses sample data from the saved archive.
+func addPackageThumbnail(e Engine, path string, a apppackage.Archive) {
+	look, ok := e.(packageThumbnailer)
+	if !ok {
+		return
+	}
+	path += ".png"
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	picture := look.AppPackageThumbnail(a)
+	if len(picture) <= maxPreviewBytes && validPreview(picture) {
+		_ = writePackage(path, picture)
+	}
+}
+
+func selectedPackage(p packageParams) (apppackage.Archive, error) {
+	var a apppackage.Archive
+	var err error
+	if p.Builtin == "" {
+		a, err = readPackage(p.Path)
+	} else {
+		if p.Path != "" || filepath.Base(p.Builtin) != p.Builtin || !strings.HasSuffix(p.Builtin, packageSuffix) {
+			return a, Errorf(CodeBadParams, "Choose one app package.")
+		}
+		catalog, fsErr := apppackage.CatalogFiles()
+		if fsErr != nil {
+			return a, fsErr
+		}
+		f, openErr := catalog.Open(p.Builtin)
+		if openErr != nil {
+			return a, Errorf(CodeBadParams, "This first-party app package isn't available.")
+		}
+		defer f.Close()
+		a, err = apppackage.Read(f)
+		if err != nil {
+			err = Errorf(CodeBadParams, "%s", err)
+		}
+	}
+	if err == nil && p.Hash != "" && a.Manifest.Hash != p.Hash {
+		return apppackage.Archive{}, Errorf(CodeConflict, "This package changed. Refresh Browse and try again.")
+	}
+	return a, err
 }
 
 func readPackage(path string) (apppackage.Archive, error) {

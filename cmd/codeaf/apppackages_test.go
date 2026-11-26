@@ -87,6 +87,59 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		}, &added)
 		ada := added.Rows[0]["id"]
 
+		kit := home.Join("kit", "apps")
+		if err := os.MkdirAll(kit, 0700); err != nil {
+			t.Fatal(err)
+		}
+		catalogPath := filepath.Join(kit, "crm.codeaf-app")
+		putPackage := func(from string) {
+			t.Helper()
+			raw, err := os.ReadFile(from)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(catalogPath, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		putPackage(v1)
+		if err := os.WriteFile(catalogPath+".txt", []byte("Track deals and contacts\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		var browse struct {
+			Packages []struct {
+				apppackage.Source
+				Path string
+				Job  string
+			}
+		}
+		wire.must("apps.browse", map[string]string{}, &browse)
+		found := false
+		for _, p := range browse.Packages {
+			if p.Path == catalogPath && p.Job == "Track deals and contacts" && p.Version == "1.0.0" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("CRM missing from Browse: %+v", browse)
+		}
+		var start struct{ Draft string }
+		wire.must("apps.start_package", map[string]string{"path": catalogPath}, &start)
+		var seeded builder.State
+		wire.must("apps.build_state", map[string]string{"draft": start.Draft}, &seeded)
+		if seeded.State != builder.Ready || seeded.Proposal != nil || len(seeded.Screens) != 1 || seeded.Screens[0] != "main" {
+			t.Fatalf("the package did not open as an editable preview: %+v", seeded)
+		}
+		wire.must("apps.discard", map[string]string{"draft": start.Draft}, &struct{}{})
+
+		wire.mustFail("apps.install", map[string]string{"path": catalogPath, "expected_hash": "sha256:old"}, appwire.CodeConflict)
+		var forkCard builder.Proposal
+		wire.must("apps.fork", map[string]string{"path": catalogPath}, &forkCard)
+		if forkCard.Source != "package_fork" || forkCard.Checkpoint == "" {
+			t.Fatalf("catalog fork did not stage a checked copy: %+v", forkCard)
+		}
+		wire.must("apps.discard", map[string]string{"draft": forkCard.Draft}, &struct{}{})
+
 		var install builder.Proposal
 		wire.must("apps.install", map[string]string{"path": v1}, &install)
 		if install.Source != "package_install" || install.Checkpoint == "" || install.Package.Bindings["contact"].Type != "people" ||
@@ -104,6 +157,15 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		var applied struct{ Meta store.Meta }
 		wire.must("apps.apply", map[string]string{"draft": install.Draft}, &applied)
 		app := applied.Meta.ID
+		wire.must("apps.browse", map[string]string{"app": app}, &browse)
+		if len(browse.Packages) != 0 {
+			t.Fatalf("accepted release was offered again: %+v", browse)
+		}
+		putPackage(v2)
+		wire.must("apps.browse", map[string]string{"app": app}, &browse)
+		if len(browse.Packages) != 1 || browse.Packages[0].Version != "2.0.0" {
+			t.Fatalf("newer release missing: %+v", browse)
+		}
 		if source := applied.Meta.Lineage.Source; source.Version != "1.0.0" || source.Hash != install.Package.Manifest.Hash {
 			t.Fatalf("installed lineage: %+v", source)
 		}
