@@ -38,3 +38,8 @@ captures made with synthetic data. Save each PNG under
 The judge records scores and visible evidence alongside the recipe, theme and
 width. Missing captures and invalid scores fail the rubric run. Both
 model-backed tests skip if the profile has no key.
+
+The rubric includes each case's gallery brief. Set
+`CODEAF_APP_EVAL_DESIGN_REPORT=/tmp/app-design.json` to save per-recipe
+scores and capture errors. Process-only builds report
+`look: skipped (desk not running)` during Check and can publish.
