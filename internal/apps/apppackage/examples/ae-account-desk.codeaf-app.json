@@ -1,7 +1,7 @@
 {
   "role": "sales",
   "featured": true,
-  "screen": "desk",
+  "screen": "deals",
   "job": "Walk into every account meeting with the deal in view.",
   "before": "Open the CRM, inbox and calendar to piece together a meeting brief.",
   "after": "Review one brief with the deal, meeting and next steps together.",

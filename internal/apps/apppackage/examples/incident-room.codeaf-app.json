@@ -1,6 +1,6 @@
 {
   "role": "engineering",
-  "screen": "incident-room",
+  "screen": "actions",
   "job": "Turn incident alerts and deploys into a shared timeline.",
   "sources": [],
   "ready_minutes": 2

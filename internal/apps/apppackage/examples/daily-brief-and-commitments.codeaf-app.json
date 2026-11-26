@@ -1,6 +1,6 @@
 {
   "role": "everyone",
-  "screen": "brief",
+  "screen": "commitments",
   "job": "See the meetings, messages and promises that need you today.",
   "sources": [
     "gmail",
