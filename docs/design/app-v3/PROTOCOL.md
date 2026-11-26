@@ -396,6 +396,7 @@ structured `where`; values are always bound, never spliced. Hello carries
 | `data.undo` | `in.DataUndoParams` | `DataWriteResult` |
 | `data.unsubscribe` | `{sub}` | `Empty` |
 | `data.update` | `in.DataUpdateParams` | `DataWriteResult` |
+| `data.view.query` | `{app?,draft?,screen,view,args?,cursor?,limit?}` | `DataQueryResult` from the screen's declared query. The data policy and field masks apply to the returned rows. |
 | `data.work.create` | `in.DataWorkCreateParams` | `DataItemResult` |
 | `data.work.list` | `in.DataWorkListParams` | `DataItemsResult` |
 | `data.work.update` | `in.DataWorkUpdateParams` | `DataItemResult` |
@@ -3225,6 +3226,10 @@ The app ID accepted by these methods is the ULID from `meta.id` or
 | `apps.archive` | `{app}` | `{meta}` marked archived. The app and its history are still accessible. |
 | `apps.delete` | `{app}` | `{}`. The app is marked deleted. Saved definitions and the person's data stay on disk. |
 | `apps.kit` | `{kit?}` | The embedded kit catalog object, including its version and parts. Kit 2 includes `common_types`. |
+| `apps.kit_parts` | `{}` | The person's promoted custom part revisions, with version and source lineage. |
+| `apps.promote_part` | `{app,id}` | The saved custom part's immutable Kit revision, with version and source lineage. |
+| `apps.kit_steps` | `{}` | The person's promoted custom step revisions, with types, version, and source lineage. |
+| `apps.promote_step` | `{app,id}` | The saved custom step's immutable Kit revision, with types, version, and source lineage. |
 | `apps.common_types` | `{}` | `{version,types}`. Each portable key maps to the type's label, terms, and typed fields with their roles and reference targets. |
 | `apps.bind_common_type` | `{common,type}` | `{common,type,type_id}`. The existing type is selected by name or ID. Binding keeps the existing type and record IDs. |
 | `apps.match_scan` | `{type,id,fields?}` | `{}`. Compare a published Person or Organization record with other records and queue reviews. |
@@ -3307,14 +3312,16 @@ opens the same draft in the builder. Apply publishes the checked draft.
 | `apps.reference` | `{}` | Worked definitions and schemas. |
 | `apps.mark` | `{draft,text,target}` | Pins feedback and queues the request. |
 | `apps.presence` | `{draft}` | The current claim. |
-| `apps.look` | `{app?,draft?,screen,checkpoint?,theme?,viewport?}` | `{png_path,problems}`, or `desk_unavailable`. |
+| `apps.look` | `{app?,draft?,screen,checkpoint?,theme?,viewport?}` | `{png_path?,problems}`, or `desk_unavailable`. |
 | `apps.look_ready` | `{ready}` | Announces a Desk renderer. |
 | `apps.look_result` | `{id,png?,problems?,problem?}` | Completes a Look request. |
 
 Events include `apps.build` and `apps.look_requested`. The latter carries `{id,scope,app,screen,theme?,viewport?,fixture}`. The issued scope
 pins the definition and synthetic fixture. With Desk connected, Check requests
-Dark and Light at widths 800 and 1120. Each Desk problem fails the current
-Check round. When the renderer is absent, the report carries
+Dark and Light at widths 800 and 1120, and includes Black for screens with
+custom parts. A custom part that misses its render deadline yields a finding
+naming the part. That Look response omits `png_path`. Each Desk problem fails
+the current Check round. When the renderer is absent, the report carries
 `look: "skipped (desk not running)"`, and the checkpoint summary shows the
 same notice. A structurally valid app can be applied.
 
