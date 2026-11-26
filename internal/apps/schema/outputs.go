@@ -14,6 +14,7 @@ type OutputTemplate struct {
 	Query   *QueryIR       `json:"query,omitempty"`
 	Body    string         `json:"body,omitempty"`
 	Columns []OutputColumn `json:"columns,omitempty"`
+	Table   string         `json:"table,omitempty"`
 }
 
 type OutputColumn struct {
@@ -128,6 +129,9 @@ func (c *checker) checkOutput(at string, t OutputTemplate) {
 			c.add(AppFile, path, CodeFieldUnknown, "%s.", err)
 		}
 	}
+	if t.Table != "" && (!names[t.Table] || fields[t.Table].Type != "longtext") {
+		c.add(AppFile, at+"/table", CodeFieldUnknown, "A worksheet output needs a visible longtext field.")
+	}
 	check(at+"/body", t.Body)
 	for i, column := range t.Columns {
 		check(fmt.Sprintf("%s/columns/%d/value", at, i), column.Value)
@@ -157,5 +161,8 @@ func (c *checker) checkRender(ctx actionCtx, at string, body map[string]any) {
 	}
 	if inbox, _ := body["inbox"].(bool); inbox && t.Query == nil {
 		c.add(ctx.file, at+"/inbox", CodeActionVerb, "An inbox digest needs a declared query.")
+	}
+	if clip, _ := body["clipboard"].(bool); clip && t.Format != "txt" && t.Format != "csv" {
+		c.add(ctx.file, at+"/clipboard", CodeActionVerb, "Copy to the clipboard requires a text or CSV output.")
 	}
 }

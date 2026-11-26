@@ -1,0 +1,37 @@
+{
+  "name": "custom/board-body",
+  "version": 1,
+  "summary": "Displays the body of a board record.",
+  "reason": "The frame uses the shared canvas viewer for text placement, editing and presentation.",
+  "example": {},
+  "props": {
+    "type": "object",
+    "additionalProperties": false
+  },
+  "children": "none",
+  "interactive": true,
+  "bindings": [
+    "record"
+  ],
+  "events": [
+    "edit"
+  ],
+  "binding_required": true,
+  "capabilities": "r",
+  "source": "custom/board-body.tsx",
+  "sizes": [
+    800,
+    1120
+  ],
+  "themes": [
+    "dark",
+    "black",
+    "light"
+  ],
+  "inputs": [
+    "body",
+    "title",
+    "x",
+    "y"
+  ]
+}

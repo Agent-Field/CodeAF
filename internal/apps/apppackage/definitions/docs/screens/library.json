@@ -1,0 +1,67 @@
+{
+  "screen": "library",
+  "title": "Docs library",
+  "views": {
+    "listed": {
+      "type": "docs_document"
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "id": "library",
+    "children": [
+      {
+        "part": "Row",
+        "id": "library-actions",
+        "children": [
+          {
+            "part": "Button",
+            "id": "new",
+            "label": "New document",
+            "props": {
+              "kind": "primary"
+            },
+            "on": {
+              "click": [
+                {
+                  "records.create": {
+                    "type": "docs_document",
+                    "set": {
+                      "title": "$input.title"
+                    }
+                  },
+                  "ask": {
+                    "title": "text"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "part": "RecordList",
+        "id": "records",
+        "label": "Docs",
+        "bind": {
+          "records": "docs_document",
+          "view": "listed"
+        },
+        "props": {
+          "columns": [
+            "title"
+          ],
+          "empty": "Create a document to get started."
+        },
+        "on": {
+          "open": [
+            {
+              "open": "open",
+              "id": "$row.id"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/apps/worksheet"
 )
 
 const (
@@ -53,6 +54,13 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	if t.Format == "csv" {
+		if t.Table != "" {
+			if len(rows) != 1 {
+				return nil, errors.New("choose a worksheet to export")
+			}
+			table, _ := rows[0][t.Table].(string)
+			return renderWorksheet(table)
+		}
 		if len(t.Columns) == 0 {
 			return nil, errors.New("CSV output needs columns")
 		}
@@ -90,6 +98,8 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 	}
 	var err error
 	switch t.Format {
+	case "txt":
+		buf.WriteString(strings.Join(lines, "\n\n"))
 	case "pdf":
 		err = writePDF(&buf, t.Label, lines)
 	case "docx":
@@ -100,6 +110,40 @@ func Render(t schema.OutputTemplate, rows []map[string]any) ([]byte, error) {
 		err = fmt.Errorf("unknown output format %q", t.Format)
 	}
 	return checkedFile(&buf, err)
+}
+
+// A worksheet uses tab-separated cells internally. Export requires the
+// same spreadsheet escaping as merge fields and preserves quoted cells.
+func renderWorksheet(table string) ([]byte, error) {
+	sheet, err := worksheet.Open(table)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	rows, _ := sheet.Size()
+	for n := range rows {
+		row := sheet.RawRow(n)
+		for i, value := range row {
+			if strings.HasPrefix(value, "=") {
+				cell := sheet.Cell(n, i)
+				switch {
+				case cell.Error != "":
+					value = "#ERROR"
+				case cell.Value == nil:
+					value = ""
+				default:
+					value = fmt.Sprint(cell.Value)
+				}
+			}
+			row[i] = csvCell(value)
+		}
+		if err := w.Write(row); err != nil {
+			return nil, err
+		}
+	}
+	w.Flush()
+	return checkedFile(&buf, w.Error())
 }
 
 func checkedFile(buf *bytes.Buffer, err error) ([]byte, error) {

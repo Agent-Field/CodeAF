@@ -1,0 +1,115 @@
+{
+  "id": "01KAVYH000C0DEAF0000000001",
+  "name": "Docs",
+  "version": 1,
+  "kit": 2,
+  "agent": {"name": "Docs agent", "file": "agent.md"},
+  "records": {
+    "docs_document": {
+      "label": "Document",
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text",
+          "required": true
+        },
+        "body": {
+          "type": "longtext",
+          "default": "",
+          "label": "Contents"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "docs_document": "rw"
+    }
+  },
+  "commands": [
+    {
+      "id": "new",
+      "label": "New document",
+      "do": [
+        {
+          "records.create": {
+            "type": "docs_document",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edit-body",
+      "label": "Edit contents",
+      "do": [
+        {
+          "records.update": {
+            "type": "docs_document",
+            "id": "$record.id",
+            "set": {
+              "body": "$input.body"
+            }
+          },
+          "ask": {
+            "body": "longtext"
+          }
+        }
+      ],
+      "for": "docs_document"
+    },
+    {
+      "id": "rename",
+      "label": "Rename",
+      "do": [
+        {
+          "records.update": {
+            "type": "docs_document",
+            "id": "$record.id",
+            "set": {
+              "title": "$input.title"
+            }
+          },
+          "ask": {
+            "title": "text"
+          }
+        }
+      ],
+      "for": "docs_document"
+    },
+    {
+      "id": "duplicate",
+      "label": "Duplicate",
+      "for": "docs_document",
+      "run": "duplicate",
+      "params": {
+        "source": "$record.id"
+      }
+    }
+  ],
+  "outputs": {
+    "share": {
+      "label": "Copy text",
+      "format": "txt",
+      "record": "docs_document",
+      "body": "{{title}}\n\n{{body}}"
+    },
+    "pdf": {
+      "label": "Export PDF",
+      "format": "pdf",
+      "record": "docs_document",
+      "body": "{{title}}\n\n{{body}}"
+    },
+    "docx": {
+      "label": "Export DOCX",
+      "format": "docx",
+      "record": "docs_document",
+      "body": "{{title}}\n\n{{body}}"
+    }
+  }
+}

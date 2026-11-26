@@ -1,0 +1,22 @@
+{
+  "run": "duplicate",
+  "title": "Duplicate document",
+  "params": {
+    "source": {
+      "type": "ref",
+      "to": "docs_document"
+    }
+  },
+  "steps": [
+    {
+      "id": "copy",
+      "records.create": {
+        "type": "docs_document",
+        "set": {
+          "title": "{{params.source.title}} copy",
+          "body": "$params.source.body"
+        }
+      }
+    }
+  ]
+}

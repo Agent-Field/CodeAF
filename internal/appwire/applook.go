@@ -18,6 +18,7 @@ type AppLookParams struct {
 	App        string           `json:"app,omitempty"`
 	Draft      string           `json:"draft,omitempty"`
 	Screen     string           `json:"screen"`
+	Params     map[string]any   `json:"params,omitempty"`
 }
 
 type AppLookRequest struct {
@@ -29,6 +30,7 @@ type AppLookRequest struct {
 	Scope      string           `json:"scope"`
 	App        string           `json:"app"`
 	Screen     string           `json:"screen"`
+	Params     map[string]any   `json:"params,omitempty"`
 }
 
 type AppLookPage struct {
