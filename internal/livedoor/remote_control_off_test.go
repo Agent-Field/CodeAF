@@ -143,7 +143,7 @@ func TestRemoteControlOffEndsAnOpenViewWithItsOwnReasonAndTheLinkDoesNotRedial(t
 }
 
 // C5: and turning it back on is taken by the next open.
-func TestTheFirstOpenAfterRemoteControlIsBackOnDialsAgain(t *testing.T) {
+func TestTheFirstOpeningAfterRemoteControlIsBackOnDialsAgain(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fc := NewFakeClock(time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC))
