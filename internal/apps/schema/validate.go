@@ -545,6 +545,7 @@ type actionCtx struct {
 	rowType       string
 	selectionType string            // what a bare $selection.ids means (commands)
 	lists         map[string]string // RecordList id → type, on a screen
+	sheets        map[string]bool
 }
 
 var verbs = []string{"open", "records.update", "records.create", "records.delete", "runs.start", "approve", "tools.call", "ai.sort", "toast"}
@@ -749,7 +750,7 @@ func (c *checker) checkScreen(file string, s Screen) {
 	for _, p := range s.Params {
 		declared[p] = true
 	}
-	ctx := actionCtx{file: file, lists: map[string]string{}, views: s.Views}
+	ctx := actionCtx{file: file, lists: map[string]string{}, sheets: map[string]bool{}, views: s.Views}
 	if c.kit.Kit == 2 {
 		for _, id := range sortedKeys(s.Views) {
 			c.checkQuery(file, "/views/"+id, s.Views[id])
@@ -771,6 +772,9 @@ func (c *checker) checkScreen(file string, s Screen) {
 				c.add(file, at+"/id", CodeDuplicateID, "Two parts on this screen are called %q.", n.ID)
 			}
 			ids[n.ID] = true
+			if n.Part == "Sheet" {
+				ctx.sheets[n.ID] = true
+			}
 			if part.Selection && n.Bind != nil && n.Bind.Records != "" {
 				ctx.lists[n.ID] = n.Bind.Records
 			}

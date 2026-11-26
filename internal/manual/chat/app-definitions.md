@@ -62,6 +62,9 @@ the same findings after a repair, the draft stops and shows the issue.
 An Inbox item opens
 the app when it's ready to try or needs your input.
 
+A collection recipe adds an **Add** control when the plan asks to create
+that type and the app can write it. The form collects the record’s fields.
+
 Try the screens with made-up records before choosing **Apply**. If the plan
 offers to use an existing type, ask to use it to share those records.
 The model that makes the app sees type names, fields and counts. It has
@@ -96,7 +99,9 @@ types, fields, and screens. The app's records are separate.
 markup part, use `codeaf app parts --for add-view/board` or
 `codeaf app parts --for RecordList`. In an app session, `app context` shows
 the outline, manifest and file names. Ask for an individual definition
-with `app context {"file":"screens/deals.json"}`. An unchanged file page
+with `app context {"file":"screens/deals.json"}`. Fetch several files or
+types together with `app context {"select":[{"file":"screens/deals.json"},{"type":"contact"}]}`.
+Choose up to six in one request. An unchanged file page
 can be reused from its earlier reply. In the scoped app session,
 `app parts {"select":["add-view/board","RecordList"]}` fetches several
 descriptors in one command. Use one `for` selector or a `select` list of up

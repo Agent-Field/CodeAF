@@ -308,3 +308,30 @@ func TestCollectionRecipeDesignFromTheRecordShape(t *testing.T) {
 		}
 	})
 }
+
+func TestCollectionRecipeAddsAFormForPlannedCreation(t *testing.T) {
+	def := load(t, "testdata/incident-room")
+	jsonEdit(PlanFile, func(plan map[string]any) {
+		for _, line := range plan["data"].([]any) {
+			record := line.(map[string]any)
+			if record["id"] == "incident" {
+				record["create"] = true
+			}
+		}
+	})(t, def.Files)
+	result, err := CompileRecipe(def, nil, Recipe{Kind: "add-view", ID: "active-incidents", Record: "incident", As: "board", By: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	screen, err := ParseScreen(result.Screen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := findRecipePart(screen.Body, "Form")
+	button := findRecipePart(screen.Body, "Button")
+	sheet := findRecipePart(screen.Body, "Sheet")
+	if form == nil || form.Props["type"] != "incident" || sheet == nil || button == nil ||
+		len(button.On["click"]) != 1 || button.On["click"][0]["open"] != sheet.ID {
+		t.Fatalf("the recipe must open a creation form for incident: %s", result.Screen)
+	}
+}

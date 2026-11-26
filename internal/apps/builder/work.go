@@ -277,7 +277,10 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		j.describeDraft(catalog, headless, t.Stage == Planning)
 		j.Presence = nil
 		const maxContinuations = 2
-		if t.Stage != Planning && check.Definition(definition(files), externalTypes(catalog.Types, id, j.App)).OK() {
+		if t.Stage != Planning {
+			report = check.Definition(definition(files), externalTypes(catalog.Types, id, j.App))
+		}
+		if t.Stage != Planning && report.OK() {
 			// The last allowed call can finish the draft even if the model
 			// never had a chance to say so. Run the full sample and Desk checks.
 			j.Queue[0].Round++
@@ -287,7 +290,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		}
 		if t.Stage != Planning && advanced && t.Continuations < maxContinuations {
 			j.Queue[0].Continuations++
-			return s.save(j, Event{Stage: Writing, Round: t.Round + 1, Line: "Progress saved. Continuing the build."})
+			j.Queue[0].Report = &report
+			return s.save(j, Event{Stage: Writing, Round: t.Round + 1, Line: "Progress saved. Continuing the build.", Report: &report})
 		}
 		j.State.State = Failed
 		j.Problem = "I reached the build limit. Your draft is saved."

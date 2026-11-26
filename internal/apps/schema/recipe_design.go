@@ -110,7 +110,23 @@ func (c *checker) designCollection(s *Screen, n *Node, q *QueryIR, r Recipe) {
 		}
 		metric(state, value, "count", "", []QueryPredicate{{Field: state, Op: "eq", Value: value}})
 	}
-	if len(tiles) > 0 {
-		s.Body = &Node{ID: nodeID("recipe/" + s.Screen + "/layout"), Part: "Stack", Children: append(tiles, n)}
+	children := append(tiles, n)
+	plan, _ := ParsePlan(c.def.Files[PlanFile])
+	creates := slices.ContainsFunc(plan.Data, func(line PlanLine) bool { return line.ID == r.Record && line.Create })
+	if creates && c.app.Capabilities.Records[r.Record] == "rw" {
+		// The plan already asks for a create control. Use the normal record
+		// form so the builder does not have to hand-author its required fields.
+		base := "recipe/" + s.Screen + "/create"
+		sheet := nodeID(base + "/sheet")
+		add := "Add " + strings.ToLower(label)
+		children = append(children,
+			&Node{ID: nodeID(base + "/button"), Part: "Button", Label: add, Props: map[string]any{"kind": "primary"},
+				On: map[string][]Action{"click": {{"open": sheet}}}},
+			&Node{ID: sheet, Part: "Sheet", Label: add, Props: map[string]any{"title": add},
+				Children: []*Node{{ID: nodeID(base + "/form"), Part: "Form", Label: add, Props: map[string]any{"type": r.Record}}}},
+		)
+	}
+	if len(children) > 1 {
+		s.Body = &Node{ID: nodeID("recipe/" + s.Screen + "/layout"), Part: "Stack", Children: children}
 	}
 }

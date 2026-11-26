@@ -30,7 +30,9 @@ at a time in the scoped executor. Finish when the requested edits are saved.
 
 The request includes the current manifest, plan, file names and Check findings.
 Use that context and existing_shapes directly. If a shape is missing, use context {"type":"contact"} and a file
-with context {"file":"screens/deals.json"}. Reuse replies for unchanged files.
+with context {"file":"screens/deals.json"}. Fetch several files or types
+with context {"select":[{"file":"screens/deals.json"},{"type":"contact"}]}.
+Reuse replies for unchanged files.
 Fetch needed kit descriptors together with parts {"select":["add-view/board","RecordList"]}.
 Use the supplied parts and the examples below first. If needed, use reference {"schema":"app-2.json"}
 for types and settings, process-2.json for lifecycle, and run-2.json or
@@ -179,27 +181,67 @@ actual proposed write. Set a run title and step titles in plain language.
 In drafts use {{params.deal.contact.name}} and {{owner.name}} if these values
 are needed. Use the actual declared relation and title field ids. Don't leave
 bracketed placeholders in draft prompts, template values or example replies.
-Use a Button labelled "Add <record>" with on-click to open a Sheet
-containing a RecordForm, or use a Button with an asked records.create
+A collection recipe adds the creation control for a planned type with
+"create":true and write access. For a screen composed by hand, use a Button
+labelled "Add <record>" with on-click to open a Sheet
+containing a Form, or use a Button with an asked records.create
 action. Supply every required field with no default through the form, or
 through records.create.set and ask, for example name: $input.name with
-ask: {name: text}. A bare collection recipe does not add a create button. A Check
-finding for a missing control means implement the control in this round.`
+ask: {name: text}. A Check finding for a missing control means add it in
+this round. Record creation needs no run file unless the request calls for
+an automation.`
 
 const contextFilePage = 6 << 10
 
 var schemaName = regexp.MustCompile(`^[a-z0-9-]+\.json$`)
 
 type contextRequest struct {
-	File   string
-	Offset int
-	Type   string
+	File   string `json:"file,omitempty"`
+	Offset int    `json:"offset,omitempty"`
+	Type   string `json:"type,omitempty"`
 }
 
+const maxContextSelectors = 6
+
 func (in modelInput) context(files map[string]string, reads map[contextRequest]string, args json.RawMessage) (string, error) {
-	var opts contextRequest
-	if json.Unmarshal(args, &opts) != nil {
+	var request struct {
+		contextRequest
+		Select []contextRequest
+	}
+	if json.Unmarshal(args, &request) != nil {
 		return "", errors.New("choose a definition file or existing type by name")
+	}
+	opts := request.contextRequest
+	if request.Select != nil {
+		if opts != (contextRequest{}) || len(request.Select) == 0 || len(request.Select) > maxContextSelectors {
+			return "", fmt.Errorf("choose one file or type, or between 1 and %d context selectors", maxContextSelectors)
+		}
+		type item struct {
+			contextRequest
+			Result  json.RawMessage `json:"result,omitempty"`
+			Problem string          `json:"problem,omitempty"`
+		}
+		items := make([]item, 0, len(request.Select))
+		for _, selector := range request.Select {
+			result := item{contextRequest: selector}
+			if (selector.File == "") == (selector.Type == "") {
+				result.Problem = "choose one definition file or existing type"
+			} else {
+				raw, _ := json.Marshal(selector)
+				text, err := in.context(files, reads, raw)
+				switch {
+				case err != nil:
+					result.Problem = err.Error()
+				case json.Valid([]byte(text)):
+					result.Result = json.RawMessage(text)
+				default:
+					result.Result, _ = json.Marshal(text)
+				}
+			}
+			items = append(items, result)
+		}
+		raw, err := json.Marshal(map[string][]item{"items": items})
+		return string(raw), err
 	}
 	if opts.Type != "" {
 		for _, typ := range in.Types {
@@ -324,7 +366,7 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 	}
 	var catalog string
 	if in.Stage != Planning {
-		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "RecordForm", "RecordPage", "Button", "Sheet"})
+		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "Form", "RecordPage", "Button", "Sheet"})
 		if err != nil {
 			return nil, "", BuildCalls{}, err
 		}
