@@ -81,3 +81,23 @@ func TestPackExportsCRMCommandsRunsAndApprovalRequests(t *testing.T) {
 		t.Fatalf("CRM package inventory: %+v", pkg.Manifest)
 	}
 }
+
+func TestPackageUpdatesFollowSemVerPrecedence(t *testing.T) {
+	source := func(version string) apppackage.Source {
+		return apppackage.Source{ID: "crm", Publisher: "example", Version: version}
+	}
+	for _, tc := range []struct {
+		update, previous string
+		newer            bool
+	}{
+		{"1.0.0-rc.10", "1.0.0-rc.2", true},
+		{"1.0.0", "1.0.0-rc.10", true},
+		{"1.0.0+second", "1.0.0+first", false},
+		{"1.0.0-rc.01", "0.9.0", false},
+		{"1.0.0-1", "1.0.0-alpha", false},
+	} {
+		if got := apppackage.Newer(source(tc.update), source(tc.previous)); got != tc.newer {
+			t.Errorf("Newer(%q, %q) = %v, want %v", tc.update, tc.previous, got, tc.newer)
+		}
+	}
+}

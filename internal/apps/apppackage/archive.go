@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
-	"golang.org/x/mod/semver"
 )
 
 const maxArchive = 16 << 20
@@ -165,13 +164,14 @@ func (a Archive) digest() string {
 }
 
 func Newer(upstream, base Source) bool {
-	return upstream.ID == base.ID && upstream.Publisher == base.Publisher &&
-		semver.Compare("v"+upstream.Version, "v"+base.Version) > 0
+	a, validA := parseVersion(upstream.Version)
+	b, validB := parseVersion(base.Version)
+	return upstream.ID == base.ID && upstream.Publisher == base.Publisher && validA && validB && a.compare(b) > 0
 }
 
 func describe(files map[string][]byte, publisher, version string) (Manifest, error) {
-	v := "v" + version
-	if !semver.IsValid(v) || semver.Canonical(v) != strings.SplitN(v, "+", 2)[0] ||
+	_, validVersion := parseVersion(version)
+	if !validVersion ||
 		strings.TrimSpace(publisher) != publisher || publisher == "" || len(publisher) > 200 {
 		return Manifest{}, fmt.Errorf("the package needs a publisher and a SemVer version such as 1.0.0")
 	}
