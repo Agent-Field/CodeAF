@@ -34,6 +34,17 @@ func (b *appBackend) appAgentAllowed(app, group, id string) bool {
 	return allowed
 }
 
+func (b *appBackend) checkAppAgentAction(app string, origin runs.AgentActionOrigin) error {
+	_, def, err := b.appAssistantDefinition(app)
+	if err != nil {
+		return err
+	}
+	if def.Meta.Version != origin.Version || !b.appAgentAllowed(app, "actions", origin.Action) {
+		return appwire.Errorf(appwire.CodeForbidden, "The app or its agent grant changed.")
+	}
+	return nil
+}
+
 func (b *appBackend) GrantAppAgent(p appwire.AppAgentGrant) error {
 	if _, _, err := b.appAssistantDefinition(p.App); err != nil {
 		return err

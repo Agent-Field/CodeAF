@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/appwire"
@@ -202,7 +203,17 @@ func (b *appBackend) invokeAppAssistant(sc data.Scope, app schema.App, def store
 				args[name] = value
 			}
 		}
-		return marshalAppContent(b.StartRun(sc.App, command.Run, args))
+		if command.Run == appAgentAskRun || strings.HasPrefix(command.Run, appAgentDutyPrefix) {
+			return nil, appwire.Errorf(appwire.CodeForbidden, "Use the app agent entry point.")
+		}
+		if b.startAppRunsOnce != nil {
+			b.startAppRunsOnce()
+		}
+		engine := b.appRuns.Load()
+		if engine == nil {
+			return nil, appwire.Errorf(appwire.CodeEngine, "App actions are unavailable.")
+		}
+		return marshalAppContent(engine.StartAgentAction(sc.App, command.Run, args, runs.AgentActionOrigin{Action: intent.Action, Version: def.Meta.Version, Cause: sc.Cause}))
 	}
 	if len(command.Do) == 1 && command.For != "" {
 		update, ok := command.Do[0]["records.update"].(map[string]any)

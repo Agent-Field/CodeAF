@@ -103,7 +103,7 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager}
 	e, err := runs.Open(runs.Config{
 		Root: home.Join("apps", "_runs"), Load: func(app, id string) (runs.Definition, error) { return b.loadAppAgentRun(files, app, id) }, Triggers: func() ([]runs.Trigger, error) { return b.appAgentTriggers(files) },
-		Connector: tools, CheckTool: tools.Check, Agent: b.appRunAgent(files),
+		Connector: tools, CheckTool: tools.Check, CheckAgentAction: b.checkAppAgentAction, Agent: b.appRunAgent(files),
 		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
 		Changed: func(event runs.ChangeEvent) {
 			b.emit.Emit(appwire.EventRunsChanged, event)
