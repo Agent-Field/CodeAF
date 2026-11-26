@@ -142,7 +142,7 @@ func (s *Store) Promote(d Draft, request string) (Meta, error) {
 	if err != nil {
 		return Meta{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	meta, err := s.publish(m, f, request, requestSummary(request), nil, false)
+	meta, err := s.publish(m, f, request, requestSummary(request), nil, false, nil)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -156,6 +156,10 @@ func (s *Store) Promote(d Draft, request string) (Meta, error) {
 // holds. The job keeps its directory and uses the resulting version as its
 // next base. Callers use the draft ID as the prospective ID of a new app.
 func (s *Store) PublishBuild(id, app string, base int, def schema.Definition, request string) (Meta, error) {
+	return s.publishBuild(id, app, base, def, request, nil)
+}
+
+func (s *Store) publishBuild(id, app string, base int, def schema.Definition, request string, pkg *PackagePublication) (Meta, error) {
 	if !cell.ValidID(id) || (app != "" && !cell.ValidID(app)) {
 		return Meta{}, ErrBadInput
 	}
@@ -174,7 +178,7 @@ func (s *Store) PublishBuild(id, app string, base int, def schema.Definition, re
 			return Meta{}, ErrConflict
 		}
 	}
-	return s.publish(m, files(def.Files), request, requestSummary(request), nil, false)
+	return s.publish(m, files(def.Files), request, requestSummary(request), nil, false, pkg)
 }
 
 // updatedAt keeps metadata ordered even if the machine clock moves backwards.
@@ -218,7 +222,7 @@ func (s *Store) Revert(id string, n int) (Meta, error) {
 		return Meta{}, err
 	}
 	msg := fmt.Sprintf("Revert to version %d", n)
-	return s.publish(m, d.files, msg, msg, d.types, true)
+	return s.publish(m, d.files, msg, msg, d.types, true, nil)
 }
 
 // Archive keeps the definition available for inspection and marks its shelf
@@ -292,7 +296,7 @@ func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
 	return m, nil
 }
 
-func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet, restore bool) (Meta, error) {
+func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet, restore bool, pkg *PackagePublication) (Meta, error) {
 	if m.Version == math.MaxInt {
 		return Meta{}, ErrCorrupt
 	}
@@ -338,6 +342,14 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 		return Meta{}, err
 	}
 	receipt := versionReceipt{Version: Version{n, next.UpdatedAt, request, summary}, Types: existing}
+	if pkg != nil {
+		lineage := pkg.Lineage
+		if lineage.Source != nil {
+			lineage.PackageBaseVersion = n
+			receipt.PackageBase = pkg.Baseline
+		}
+		next.Lineage = &lineage
+	}
 	if restore {
 		receipt.ManifestVersion = a.Version
 	}
