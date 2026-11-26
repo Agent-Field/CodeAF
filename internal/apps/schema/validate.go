@@ -1184,6 +1184,19 @@ func (c *checker) checkPlan(p Plan) {
 	check("data", p.Data, types, "record type")
 	check("automation", p.Automation, c.runs, "run")
 	check("screens", p.Screens, c.screens, "screen")
+	for i, capability := range p.Builtins {
+		if capability.Record == "" || capability.Kind == "approval" {
+			continue
+		}
+		at := fmt.Sprintf("/builtins/%d/record", i)
+		if !types[capability.Record] {
+			c.add(PlanFile, at, CodePlanUnknownID, "The plan's %s needs a declared record type.", capability.Kind)
+		} else if capability.Kind == "lifecycle" {
+			if _, ok := c.lifecycle(capability.Record); !ok {
+				c.add(PlanFile, at, CodePlanUnknownID, "Give %s a lifecycle with a state field and its planned transitions.", capability.Record)
+			}
+		}
+	}
 }
 
 // ---------- sample.json ----------

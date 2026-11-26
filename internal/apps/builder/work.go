@@ -178,10 +178,15 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 			}
 		}
 	}
+	reuse, err := s.pinReuse(j, t, types, using)
+	if err != nil {
+		return nil, "", BuildCalls{}, err
+	}
 	files, reply, calls, err := modelTurn(ctx, model, filepath.Join(s.root, j.Draft), modelInput{
 		Editing: j.App != "", Stage: stage, Request: request, Target: t.Target, Marks: j.Marks, Types: safeTypes(types, catalog.Counts),
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
 		OwnerNameAvailable: s.opts.OwnerNameAvailable,
+		Reuse:              reuse,
 	}, types, s.author, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
@@ -542,7 +547,7 @@ func (j *job) checkReuse(catalog Catalog) schema.Report {
 	return report
 }
 
-func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catalog) []Offer {
+func reuseOffers(app schema.App, plan schema.Plan, liveID string, accepted []string, catalog Catalog) []Offer {
 	offers := []Offer{}
 	proposedCommon := map[string]schema.CommonTypeOffer{}
 	libraryOffers := map[string]bool{}
@@ -565,12 +570,28 @@ func reuseOffers(app schema.App, liveID string, accepted []string, catalog Catal
 			continue
 		}
 		offer := Offer{Type: name, Count: catalog.Counts[name], App: source, Common: existing.Common, Line: "Use " + catalog.reuseText(name)}
+		if slices.ContainsFunc(plan.Data, func(line schema.PlanLine) bool {
+			return line.ID == name && line.Uses
+		}) {
+			offers = append(offers, offer)
+			continue
+		}
 		for proposed, shape := range app.Records {
-			if shape.Common != "" && shape.Common != existing.Common {
+			if shape.Common != "" && shape.Common != existing.Common && (proposed != name || existing.Common != "") {
 				continue
 			}
 			if proposedCommon[proposed].Existing == name || reusable(proposed, name, shape.Fields, existing.Fields) {
 				offers = append(offers, offer)
+				break
+			}
+			for _, field := range shape.Fields {
+				if (field.Type == "ref" || field.Type == "refs") && field.To == name &&
+					slices.ContainsFunc(plan.Data, func(line schema.PlanLine) bool { return line.ID == name }) {
+					offers = append(offers, offer)
+					break
+				}
+			}
+			if len(offers) > 0 && offers[len(offers)-1].Type == name {
 				break
 			}
 		}

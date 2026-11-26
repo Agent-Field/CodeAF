@@ -338,9 +338,17 @@ type Plan struct {
 	Automation []PlanLine      `json:"automation,omitempty"`
 	Extensions []PlanExtension `json:"extensions,omitempty"`
 	Actions    []PlanLine      `json:"actions,omitempty"`
+	Builtins   []PlanBuiltin   `json:"builtins,omitempty"`
 	Screens    []PlanLine      `json:"screens"`
 	Agent      *PlanAgent      `json:"agent,omitempty"`
 	Needs      string          `json:"needs,omitempty"`
+}
+
+// PlanBuiltin names a capability implemented by the engine or the Desk.
+type PlanBuiltin struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Record string `json:"record,omitempty"`
 }
 
 // PlanExtension names an extension the Builder needs to author and why.

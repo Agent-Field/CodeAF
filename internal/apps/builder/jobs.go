@@ -227,6 +227,7 @@ type job struct {
 	KeptMarks       int
 	LastRequest     string
 	Accepted        []string
+	Reuse           map[string]reuseBinding `json:",omitempty"`
 }
 
 // OpenJobs resumes work waiting from an earlier engine process.
@@ -792,7 +793,8 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 	if app.Budget != nil && app.Budget.Month > 0 {
 		j.Needs = append(j.Needs, fmt.Sprintf("Monthly limit · $%.2f", app.Budget.Month))
 	}
-	j.Offers = reuseOffers(app, j.App, j.Accepted, catalog)
+	plan, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	j.Offers = reuseOffers(app, plan, j.App, j.Accepted, catalog)
 	if headless && planning {
 		// Put reuse of actual records before empty types and library suggestions.
 		slices.SortStableFunc(j.Offers, func(a, b Offer) int {
@@ -810,6 +812,7 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 func (j *job) acceptKeptUses() {
 	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
 	j.Accepted = []string{}
+	j.Reuse = nil
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		if record := app.Records[name]; record.Uses {
 			if record.Common != "" {

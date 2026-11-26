@@ -64,6 +64,9 @@ the app when it's ready to try or needs your input.
 
 A collection recipe adds an **Add** control when the plan asks to create
 that type and the app can write it. The form collects the record’s fields.
+The plan uses the built-in CSV import and record lifecycle for those
+operations. A run reserved in the plan keeps its ID through writing and Check.
+Choosing to reuse existing records keeps that source through repairs.
 
 A run drafting a note can use the bound contact and the name from
 `apps.owner_name` in the profile's `config.json`. Restart the engine after

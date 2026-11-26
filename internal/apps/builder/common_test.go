@@ -28,25 +28,18 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 		},
 		Model: func() (builder.Completer, error) {
 			step := 0
-			var keep bool
-			return script(func(_ context.Context, messages []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
+			return script(func(_ context.Context, _ []ai.Message, _ []ai.ToolDefinition) (ai.Message, error) {
 				step++
 				switch step {
 				case 1:
 					return toolCalls(command("context", nil)), nil
 				case 2:
-					var state struct{ Using []string }
-					last := messages[len(messages)-1]
-					if last.Role == "tool" && len(last.Content) > 0 {
-						_ = json.Unmarshal([]byte(last.Content[0].Text), &state)
-					}
-					keep = slices.Contains(state.Using, "contact")
 					return toolCalls(command("plan", map[string]any{"name": "Support", "plan": map[string]any{"ask": "Track customers"}})), nil
 				case 3:
 					return toolCalls(command("add-type", map[string]any{
 						"name":       "customer",
 						"access":     "rw",
-						"definition": map[string]any{"uses": keep, "common": "person", "fields": map[string]any{}},
+						"definition": map[string]any{"uses": false, "common": "person", "fields": map[string]any{}},
 					})), nil
 				default:
 					return ai.Message{Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: "I planned Support."}}}, nil

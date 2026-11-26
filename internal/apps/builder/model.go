@@ -151,6 +151,7 @@ type modelInput struct {
 	Report             *schema.Report
 	Continued          bool
 	OwnerNameAvailable bool
+	Reuse              map[string]reuseBinding
 }
 
 const recordPolicyGuide = `To hide a field, include policy.fields in its owning type, for example
@@ -362,6 +363,15 @@ func briefText(text string, limit int) string {
 // The model edits only this map. Paths, file contents, and the agent file
 // referenced by app.json never become filesystem read or write arguments.
 func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
+	in.Definition = maps.Clone(in.Definition)
+	plan, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile]))
+	work := plannedWork(in.Request, plan, in.Stage == Planning)
+	if err := work.apply(in.Definition); err != nil {
+		return nil, "", BuildCalls{}, err
+	}
+	if err := restoreReuse(in.Definition, in.Reuse, types); err != nil {
+		return nil, "", BuildCalls{}, err
+	}
 	initial, err := in.context(in.Definition, map[contextRequest]string{}, json.RawMessage(`{}`))
 	if err != nil {
 		return nil, "", BuildCalls{}, err
@@ -501,6 +511,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			raw, err := json.Marshal(claim)
 			return string(raw), err
 		default:
+			if err := work.checkEdit(verb, args, files); err != nil {
+				return "", err
+			}
 			next, err := author.edit(ctx, verb, files, types, args)
 			if err != nil {
 				if verb == "plan" {
@@ -509,6 +522,12 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 				if errors.Is(err, errCompilerUnavailable) {
 					compilerErr = err
 				}
+				return "", err
+			}
+			if err := restoreReuse(next, in.Reuse, types); err != nil {
+				return "", err
+			}
+			if err := work.apply(next); err != nil {
 				return "", err
 			}
 			if err := progress(next); err != nil {
