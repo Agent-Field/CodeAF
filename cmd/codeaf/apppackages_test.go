@@ -182,14 +182,13 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		}
 	})
 
-	t.Run("reject missing required mapped field", func(t *testing.T) {
+	t.Run("reject incompatible mapped field", func(t *testing.T) {
 		t.Setenv(home.EnvVar, filepath.Join(root, "incompatible"))
 		backend := newFakeBackend(newAppRecorder(), nil)
 		t.Cleanup(func() { backend.Close() })
 		wire := wireOver(t, backend)
 		people := strings.ReplaceAll(packageApp, "contact", "people")
-		people = strings.ReplaceAll(people, `"name":{"type":"text"`, `"full_name":{"type":"text"`)
-		people = strings.Replace(people, `"title":"name"`, `"title":"full_name"`, 1)
+		people = strings.Replace(people, `"name":{"type":"text"`, `"name":{"type":"longtext"`, 1)
 		stagePackageFixture(t, backend.AppDefinitions(), "", 0, map[string]string{schema.AppFile: people, "screens/main.json": packageScreen})
 		message := wire.mustFail("apps.install", map[string]string{"path": v1}, appwire.CodeBadParams)
 		if !strings.Contains(message, "/records/contact/fields/name") || !strings.Contains(message, "people") {
@@ -220,5 +219,24 @@ func TestAppPackageCheckRefusesUnusableExamples(t *testing.T) {
 	msg, _ := json.Marshal(params)
 	if _, err := appwire.RunAppCommand(backend, "install", msg); err == nil || !strings.Contains(err.Error(), "example") {
 		t.Fatalf("CLI Check result: %v", err)
+	}
+}
+
+func TestAppPackRefusesExamplesThatFailInAnEmptyProfile(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	backend := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { backend.Close() })
+	wire := wireOver(t, backend)
+	meta := stagePackageFixture(t, backend.AppDefinitions(), "", 0, map[string]string{
+		schema.AppFile: packageApp, "screens/main.json": packageScreen,
+		schema.SampleFile: `{"records":{"contact":[{"id":"00000000000000000000000001"}]}}`,
+	})
+	dest := filepath.Join(t.TempDir(), "uninstallable.codeaf-app")
+	message := wire.mustFail("apps.pack", map[string]string{"app": meta.ID, "path": dest}, appwire.CodeBadParams)
+	if !strings.Contains(message, "name is required") {
+		t.Fatalf("expected the missing required field in the Pack finding: %s", message)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("Pack created an unusable file: %v", err)
 	}
 }

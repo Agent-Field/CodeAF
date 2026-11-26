@@ -74,7 +74,7 @@ func (s *Store) InstallBuiltins() error {
 		} else if !errors.Is(err, ErrNotFound) && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		baseline, _, err := archive.Bind(nil, source.ID, false)
+		baseline, _, err := archive.Bind(nil, source.ID, "")
 		if err != nil {
 			return err
 		}

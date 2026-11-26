@@ -291,8 +291,9 @@ Promote a kept function with `codeaf app promote-step '{"app":"APP","id":"NAME"}
 With the desk engine open, run `codeaf app pack <app> [file]`. Use the saved app
 ID from `codeaf app list`. The default filename is `<app>.codeaf-app` in the
 current directory. An existing file is preserved. The archive holds the
-definition, common record types and fields, actions, automations and requested
-permissions. The same inputs yield the same hash. It carries no live records
+definition, the field shapes of shared record types, actions, automations and
+requested permissions. Pack checks that the definition and examples can load in
+an empty profile. The same inputs yield the same hash. It carries no live records
 or personal grants. Example rows from the definition are included by default.
 For a named publisher or version, use
 `codeaf app pack '{"app":"<app>","path":"/absolute/crm.codeaf-app","publisher":"Example","version":"1.0.0","sample":false}'`.
@@ -303,8 +304,12 @@ version followed by `.0.0`. App templates belong with other templates in the Kit
 
 `codeaf app install <file>` opens a card with the publisher's requested access
 and proposed record bindings. An alias like `contact` can bind to your existing
-People when the package declares that common type. A required field with no compatible destination
-stops the install and names the field. Example rows stay in Check and preview.
+People when the package declares that common type. On Apply, a missing
+common type is created from the packaged fields. A matching common type
+is shared and can gain fields from the package. A same-name local type
+with identical fields can also be shared. Same-name types with different
+fields stay private to their respective apps. A field incompatible with
+an explicitly shared type stops the install and names the field. Example rows stay in Check and preview.
 Inspect the card, then run `codeaf app apply '{"draft":"<draft>"}'` to publish.
 Use `codeaf app discard '{"draft":"<draft>"}'` to dismiss it. The live app gets
 the requested grants shown on the card when you Apply.

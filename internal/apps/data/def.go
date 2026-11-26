@@ -154,17 +154,18 @@ type FreezeRule = appschema.Freeze
 // TypeDef is one record type as an app declares it. Uses says the app uses a
 // type another app owns; its Fields are then the fields it adds.
 type TypeDef struct {
-	Policy     *appschema.RecordPolicy `json:"policy,omitempty"`
-	Common     CommonTypeKey           `json:"common,omitempty"`
-	Uses       bool                    `json:"uses,omitempty"`
-	Title      string                  `json:"title,omitempty"`
-	Label      string                  `json:"label,omitempty"`
-	Fields     map[string]FieldDef     `json:"fields,omitempty"`
-	Constants  map[string]any          `json:"constants,omitempty"`
-	Freeze     []FreezeRule            `json:"freeze,omitempty"`
-	Lifecycle  *LifecycleDef           `json:"lifecycle,omitempty"`
-	Checklists []checklistDef          `json:"checklists,omitempty"`
-	Rules      ruleDeclarations        `json:"write_rules,omitzero"`
+	PackagePrivate bool                    `json:"package_private,omitempty"`
+	Policy         *appschema.RecordPolicy `json:"policy,omitempty"`
+	Common         CommonTypeKey           `json:"common,omitempty"`
+	Uses           bool                    `json:"uses,omitempty"`
+	Title          string                  `json:"title,omitempty"`
+	Label          string                  `json:"label,omitempty"`
+	Fields         map[string]FieldDef     `json:"fields,omitempty"`
+	Constants      map[string]any          `json:"constants,omitempty"`
+	Freeze         []FreezeRule            `json:"freeze,omitempty"`
+	Lifecycle      *LifecycleDef           `json:"lifecycle,omitempty"`
+	Checklists     []checklistDef          `json:"checklists,omitempty"`
+	Rules          ruleDeclarations        `json:"write_rules,omitzero"`
 	// Ledger makes records append-only: never changed or deleted, only
 	// reversed by a new entry.
 	Ledger LedgerOption `json:"ledger"`
@@ -313,6 +314,9 @@ func (d *AppDef) check() error {
 		t := d.Records[name]
 		if !identShape.MatchString(name) {
 			return errorf(CodeInvalid, "%q is not a record type name: use lower-case letters, digits and _", name)
+		}
+		if t.PackagePrivate && (t.Uses || t.Common != "") {
+			return errorf(CodeInvalid, "%s is private to this app and cannot use a shared type", name)
 		}
 		if t.Common != "" && !appschema.HasCommonType(string(t.Common)) {
 			return errorf(CodeInvalid, "the kit has no common type %q", t.Common)
