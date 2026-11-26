@@ -3239,6 +3239,35 @@ object containing the same evidence as `apps.match_candidates`.
 `work_items.complete` takes `values:{decision:"merge"|"keep separate",survivor?}`
 for these items.
 
+### Kit app packages
+
+Package paths are absolute paths on the engine's machine. The owner can use
+a file from the Kit or export a kept app as a template.
+
+| method | params | result |
+|---|---|---|
+| `apps.pack` | `{app,path,publisher?,version?,sample?}` | `{path,manifest}`. A format 1 archive contains the definition files, entity shapes, action and automation inventory, requested permissions, budget, and SHA-256 content hash. Publisher defaults to `local`, version to the live version followed by `.0.0`. An existing file at the export path is preserved. |
+| `apps.install` | `{path}` | A proposal with `source:"package_install"`, the common-type bindings, and the requested permissions. Apply publishes the copy. |
+| `apps.fork` | `{app}` | A proposal with `source:"package_fork"`. Apply gives the independent definition a new app ID and records `forked_from`. |
+| `apps.update` | `{app,path}` | A proposal with `source:"package_update"`. The file must have the same source ID and publisher and a newer SemVer. The merge uses the last accepted upstream definition and the current local definition. |
+| `apps.resolve_package` | `{draft,proposal_id,choices}` | The same card after Check. Each choice maps a conflict ID to `local` or `upstream`. Supply every choice in one request. |
+| `apps.lineage` | `{app}` | `{lineage?}` with `source` (publisher, app ID, name, version and hash) or `forked_from` (app ID, live version and optional source). |
+
+Package proposals are emitted on `apps.change_proposed` and persist in
+`apps.build_state.proposal` and `apps.list.builds[].proposal`. The
+`package` object carries `manifest`, `bindings`, `permissions`, optional
+`budget`, `changed_files`, `conflicts`, and `choices`. A conflict contains
+`id`, `file`, `path`, and its `base`, `local`, and `upstream` values. An
+omitted value indicates a deletion or absence. An unresolved card has an empty
+`checkpoint`. Apply uses `apps.apply {draft}` and discard uses
+`apps.discard {draft}`. Mapping and Check findings use `bad_params` with
+the validator report in `detail`.
+
+Example rows are used for Check and preview. The app reads the person's
+existing common types through its original aliases after Apply. Record types
+the fork shares remain in the space and the two app definitions have separate
+version histories. The manifest's publisher is a label supplied during export.
+
 ### Personal app assistant
 
 | method | params | result |

@@ -407,11 +407,13 @@ func (s *Jobs) finish(j *job, event Event) error {
 		return err
 	}
 	if finished.Proposal != "" && s.opts.Proposed != nil {
-		p := Proposal{App: j.App, Draft: j.Draft, ID: finished.Proposal}
+		p := Proposal{App: j.App, Draft: j.Draft, ID: finished.Proposal, Kind: "big", Source: "assistant", BaseVersion: j.Base, SummaryLines: []string{"Open the builder to review the change."}}
 		if finished.Small && j.State.State == Ready && len(j.Queue) == 0 && j.Working.Passed {
 			p.Screen = s.proposalScreen(j)
 			if p.Screen != "" && len(j.Checkpoints) != 0 {
-				p.Summary = j.Checkpoints[len(j.Checkpoints)-1].Summary
+				p.Kind = "small"
+				p.Checkpoint = j.Checkpoints[len(j.Checkpoints)-1].ID
+				p.SummaryLines = []string{j.Checkpoints[len(j.Checkpoints)-1].Summary}
 			}
 		}
 		s.opts.Proposed(p)

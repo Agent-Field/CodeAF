@@ -42,6 +42,16 @@ type Pipeline struct {
 }
 
 func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, types schema.TypeSet) schema.Report {
+	return p.run(ctx, draft, def, types, true)
+}
+
+// RunPackage checks the packaged definition even when the publisher omitted its examples.
+func (p Pipeline) RunPackage(ctx context.Context, draft string, def schema.Definition, types schema.TypeSet) schema.Report {
+	_, samples := def.Files[schema.SampleFile]
+	return p.run(ctx, draft, def, types, samples)
+}
+
+func (p Pipeline) run(ctx context.Context, draft string, def schema.Definition, types schema.TypeSet, requireSamples bool) schema.Report {
 	report := schema.Validate(def, types)
 	if !report.OK() {
 		return report
@@ -61,7 +71,7 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 		}
 		return report
 	}
-	if len(rows) == 0 {
+	if requireSamples && len(rows) == 0 {
 		report.Problems = append(report.Problems, problem(schema.SampleFile, "sample_invalid", "Add example records for the app's lists and required fields."))
 		return report
 	}
