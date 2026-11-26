@@ -13,6 +13,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory/agentfield"
 )
 
@@ -65,7 +66,7 @@ func runCodexAppAI(ctx context.Context, call runs.AgentCall) (runs.Reply, error)
 	return runs.Reply{Output: string(raw)}, nil
 }
 
-// Codex app runs use the subscription that the availability probe verified.
+// The CLI uses its signed-in subscription for both the probe and the run.
 func codexAppEnv() []string {
 	return append(os.Environ(), "OPENAI_API_KEY=", "OPENAI_BASE_URL=", "CODEX_API_KEY=")
 }
@@ -80,7 +81,7 @@ func (b *appBackend) checkAgentFieldAppAI(*schema.AIStep) error {
 }
 
 func (b *appBackend) appAIReasoner(ctx context.Context) (*agentfield.Client, string, string, error) {
-	target := strings.TrimSpace(os.Getenv("CODEAF_APP_AGENTFIELD_REASONER"))
+	target := strings.TrimSpace(env.Get("CODEAF_APP_AGENTFIELD_REASONER"))
 	node, operation, ok := strings.Cut(target, ".")
 	if !ok || node == "" || operation == "" || strings.ContainsAny(target, "/ \r\n") {
 		return nil, "", "", runs.ErrAIUnavailable
