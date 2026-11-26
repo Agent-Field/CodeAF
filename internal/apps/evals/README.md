@@ -75,7 +75,11 @@ then reads the original type and record IDs through Support.
 
 The rubric includes each case's gallery brief. Set
 `CODEAF_APP_EVAL_DESIGN_REPORT=/tmp/app-design.json` to save per-recipe
-scores and capture errors. Process-only builds report
+scores and capture errors. To compare against an executable gallery's native
+image, set `CODEAF_APP_EVAL_GOLDENS` to a directory with one PNG at
+`<recipe>.png` for each selected recipe, for example `add-view/board.png`.
+If a reference directory is supplied, a missing reference leaves the score
+incomplete. Process-only builds report
 `look: skipped (desk not running)` during Check and can publish.
 
 ## Builder baseline
