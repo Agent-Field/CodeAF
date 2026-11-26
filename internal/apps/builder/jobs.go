@@ -3,6 +3,7 @@
 package builder
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -164,6 +165,7 @@ type PlanResult struct {
 }
 
 type turn struct {
+	DeskReuse bool `json:",omitempty"`
 	CheckOnly bool
 	ID        string
 	Stage     string
@@ -695,6 +697,10 @@ func (s *Jobs) catalog(app string) (Catalog, error) {
 
 // describe derives the card from app.json after every committed model turn.
 func (j *job) describe(catalog Catalog) {
+	j.describeDraft(catalog, false, false)
+}
+
+func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 	files := j.Working.Files
 	j.Plan = nil
 	if raw := json.RawMessage(files[schema.PlanFile]); json.Valid(raw) {
@@ -711,10 +717,15 @@ func (j *job) describe(catalog Catalog) {
 	}
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		typ := app.Records[name]
-		if typ.Uses && j.reuseAccepted(name, typ, catalog) {
+		if typ.Uses && (headless || j.reuseAccepted(name, typ, catalog)) {
 			j.Using = append(j.Using, name)
-			if offer, ok := catalog.Types.OfferCommonType(name, typ); typ.Common != "" && ok && offer.Existing != "" {
-				j.Needs = append(j.Needs, "Uses "+catalog.reuseText(offer.Existing))
+			source := name
+			if typ.Common != "" {
+				offer, _ := catalog.Types.OfferCommonType(name, typ)
+				source = offer.Existing
+			}
+			if (headless || typ.Common != "") && catalog.reuseSource(source) != "" {
+				j.Needs = append(j.Needs, "Uses "+catalog.reuseText(source))
 			}
 		}
 		access := app.Capabilities.Records[name]
@@ -744,6 +755,18 @@ func (j *job) describe(catalog Catalog) {
 		j.Needs = append(j.Needs, fmt.Sprintf("Monthly limit · $%.2f", app.Budget.Month))
 	}
 	j.Offers = reuseOffers(app, j.App, j.Accepted, catalog)
+	if headless && planning {
+		// Put reuse of actual records before empty types and library suggestions.
+		slices.SortStableFunc(j.Offers, func(a, b Offer) int {
+			return cmp.Compare(b.Count, a.Count)
+		})
+		for _, offer := range j.Offers {
+			line := "Uses " + catalog.reuseText(offer.Type)
+			if offer.App != "" && !slices.Contains(j.Needs, line) {
+				j.Needs = append(j.Needs, line)
+			}
+		}
+	}
 }
 
 func (j *job) acceptKeptUses() {
