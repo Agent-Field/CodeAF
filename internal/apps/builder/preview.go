@@ -222,6 +222,9 @@ func (s *Jobs) Restore(id, checkpoint string) error {
 	j.Presence = nil
 	j.Progress, j.Queue, j.Paused, j.PendingProposal = []Event{}, nil, nil, nil
 	j.describe(catalog)
+	if len(j.Screens) == 0 {
+		j.State.State = Planning
+	}
 	if err := j.checkpoint("I brought back this earlier version of the app."); err != nil {
 		return err
 	}

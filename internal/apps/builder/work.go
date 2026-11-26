@@ -76,7 +76,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
 			if !headless {
-				report = j.checkReuse(catalog)
+				report = j.checkReuse(j.Working.Files, catalog, existing)
 			}
 			if report.OK() {
 				if s.opts.Check != nil {
@@ -187,7 +187,14 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report, Continued: t.Continuations > 0,
 		OwnerNameAvailable: s.opts.OwnerNameAvailable,
 		Reuse:              reuse,
-	}, types, s.author, func(files map[string]string) error {
+	}, types, s.author, func(files map[string]string) schema.Report {
+		if !headless {
+			if report := j.checkReuse(files, catalog, types); !report.OK() {
+				return report
+			}
+		}
+		return check.Definition(definition(files), types)
+	}, func(files map[string]string) error {
 		return s.showWork(ctx, j, t, files)
 	}, look, func(ctx context.Context, target Target) error {
 		return s.claim(ctx, j.Draft, t.ID, target)
@@ -353,7 +360,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		}
 		j.Working.Passed, j.Working.CheckComplete = false, false
 		j.Working.Look = report.Look
-		pendingReuse := slices.ContainsFunc(report.Problems, func(p schema.Problem) bool { return p.Code == "choose_reuse" })
+		reuseQuestion := slices.IndexFunc(report.Problems, func(p schema.Problem) bool { return p.Code == "choose_reuse" })
+		pendingReuse := reuseQuestion >= 0
 		unavailable := slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
 			return strings.HasSuffix(p.Code, "_unavailable")
 		})
@@ -361,7 +369,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 			j.State.State = NeedsYou
 			j.Problem = "Check found an issue. " + report.Problems[0].Message
 			if pendingReuse {
-				j.Problem = "Choose whether this app should use your existing records."
+				j.Problem = report.Problems[reuseQuestion].Message
+				event.OK = nil
 			}
 			if unavailable {
 				for _, issue := range report.Problems {
@@ -394,7 +403,7 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		if err := j.checkpoint("Here is the plan for " + displayName(j.Name, "your app") + "."); err != nil {
 			return err
 		}
-		j.State.State = Ready
+		j.State.State = Planning
 		return s.finish(j, Event{Stage: Planning, Line: "Plan ready to review."})
 	}
 	j.Queue[0].Round++
@@ -533,14 +542,22 @@ func onlyOptionalFields(before, after string) bool {
 	return reflect.DeepEqual(kept, draft)
 }
 
-func (j *job) checkReuse(catalog Catalog) schema.Report {
-	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
+func (j *job) checkReuse(files map[string]string, catalog Catalog, existing schema.TypeSet) schema.Report {
+	app, _ := schema.ParseApp([]byte(files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
+			// An unbound common type needs repair. There are no records to share.
+			if _, ok := existing.ForRecord(name, typ); !ok {
+				continue
+			}
+			source := name
+			if offer, ok := catalog.Types.OfferCommonType(name, typ); ok && offer.Existing != "" {
+				source = offer.Existing
+			}
 			report.Problems = append(report.Problems, schema.Problem{
 				File: schema.AppFile, Path: "/records/" + name, Code: "choose_reuse",
-				Message: "The person needs to confirm sharing their " + name + " records.",
+				Message: "Use " + catalog.reuseText(source) + "?",
 			})
 		}
 	}
@@ -608,7 +625,11 @@ func reuseOffers(app schema.App, plan schema.Plan, liveID string, accepted []str
 	if len(libraryOffers) > 0 {
 		library := schema.CommonTypes()
 		for _, key := range slices.Sorted(maps.Keys(libraryOffers)) {
-			offers = append(offers, Offer{Type: key, Common: key, Line: "Start with " + library.Types[key].Label})
+			line := "Start with " + library.Types[key].Label
+			if key == "person" {
+				line = "Start a People list"
+			}
+			offers = append(offers, Offer{Type: key, Common: key, Line: line})
 		}
 	}
 	return offers
