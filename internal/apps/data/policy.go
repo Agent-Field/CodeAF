@@ -14,8 +14,7 @@ import (
 // PersonPrincipal is supplied by the authenticated engine door. The local
 // profile defaults to the data store's person. An agent acts for this person.
 type PersonPrincipal struct {
-	ID         string
-	Attributes map[string]string
+	ID string
 }
 
 func (sc Scope) attribute(person, name string) string {
@@ -25,7 +24,7 @@ func (sc Scope) attribute(person, name string) string {
 		}
 		return person
 	}
-	return sc.Person.Attributes[name]
+	return ""
 }
 
 // Record checks compile against stable field IDs and deny visibility when the
@@ -73,8 +72,8 @@ func (t *Type) FieldPolicy(f *Field) string {
 	return ""
 }
 
-// A ref to a row-protected type is withheld until the reader enters that
-// type through its own authorized view. Raw IDs would disclose membership.
+// Ref values need a scoped lookup before projection when their target
+// type carries a row policy. Unchecked IDs would disclose membership.
 func (sch *schema) withheldRef(f *Field) bool {
 	if f.Type != TypeRef && f.Type != TypeRefs {
 		return false
@@ -100,9 +99,9 @@ func (t *Type) declarePolicy(p *appschema.RecordPolicy) []error {
 	if p.Row != nil {
 		f := t.field(p.Row.Field)
 		t.rowRule = &rowPolicy{attribute: p.Row.Attribute}
-		if f == nil || f.Type != TypeText && f.Type != TypePerson && f.Type != TypeEmail && f.Type != TypeEnum ||
-			f.Computed != "" || !identShape.MatchString(p.Row.Attribute) {
-			problems = append(problems, fieldErr(p.Row.Field, "a row policy needs a stored text, person, email or enum field and a principal attribute"))
+		if f == nil || f.Type != TypeText && f.Type != TypePerson && f.Type != TypeEnum ||
+			f.Computed != "" || p.Row.Attribute != "id" {
+			problems = append(problems, fieldErr(p.Row.Field, "a row policy needs a stored text, person or enum field and the id attribute"))
 		} else {
 			t.rowRule.field = f
 		}
@@ -112,7 +111,27 @@ func (t *Type) declarePolicy(p *appschema.RecordPolicy) []error {
 
 // AuditPolicy appends only identifiers and the decision, never row values,
 // principal attributes, model prompts or source messages.
-func (s *Store) AuditPolicy(app, typeID, decision string) (err error) {
+func (s *Store) AuditPolicy(app, typeID, decision string) error {
+	return s.writePolicyAudit(policyDecision{app, typeID, decision}, 1)
+}
+
+type policyDecision struct{ app, typ, decision string }
+
+// WithPolicyAudit coalesces repeated decisions within one read or delivery.
+func (s *Store) WithPolicyAudit(sc Scope) (Scope, func()) {
+	if sc.policyLog != nil {
+		return sc, func() {}
+	}
+	sc.policyLog = make(map[policyDecision]int)
+	return sc, func() {
+		for key, count := range sc.policyLog {
+			_ = s.writePolicyAudit(key, count)
+		}
+	}
+}
+
+func (s *Store) writePolicyAudit(key policyDecision, count int) (err error) {
+	app, typeID, decision := key.app, key.typ, key.decision
 	defer func() {
 		if err != nil {
 			log.Printf("app policy app=%q type=%q decision=%q", app, typeID, decision)
@@ -123,7 +142,8 @@ func (s *Store) AuditPolicy(app, typeID, decision string) (err error) {
 		App      string `json:"app,omitempty"`
 		Type     string `json:"type_id,omitempty"`
 		Decision string `json:"decision"`
-	}{s.now().UTC().Format(stamp), app, typeID, decision}
+		Count    int    `json:"count"`
+	}{s.now().UTC().Format(stamp), app, typeID, decision, count}
 	f, err := os.OpenFile(filepath.Join(filepath.Dir(s.path), "policy.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
@@ -146,7 +166,12 @@ func (c *compiled) protectedField(sc Scope, f *Field) bool {
 	return true
 }
 
-func (s *Store) auditPolicy(sc Scope, t *Type, decision string) {
+// AuditRecordPolicy records a decision for a native or mapped type.
+func (s *Store) AuditRecordPolicy(sc Scope, t *Type, decision string) {
+	if sc.policyLog != nil {
+		sc.policyLog[policyDecision{sc.App, t.ID, decision}]++
+		return
+	}
 	_ = s.AuditPolicy(sc.App, t.ID, decision)
 }
 
@@ -156,7 +181,7 @@ func (s *Store) LiveRowAllowed(sc Scope, t *Type, values map[string]any) bool {
 	if t.rowAllowed(sc, s.Person(), values) {
 		return true
 	}
-	s.auditPolicy(sc, t, "row_refused")
+	s.AuditRecordPolicy(sc, t, "row_refused")
 	return false
 }
 
@@ -224,4 +249,35 @@ func (sch *schema) tablePolicy(sc Scope, table string) (string, []any) {
 		args = append(args, parameters...)
 	}
 	return strings.Join(clauses, " AND "), args
+}
+
+func (s *Store) projectReference(sch *schema, sc Scope, f *Field, value any) (any, bool) {
+	if !sch.withheldRef(f) || value == nil {
+		return value, true
+	}
+	target, err := sch.allow(sc, f.To, false)
+	if err != nil {
+		return nil, false
+	}
+	q := compiled{t: target, sch: sch, alias: "r"}
+	q.applyPolicy(sc)
+	where, args := q.filter()
+	query := `SELECT js.value FROM json_each(?) js JOIN records r ON r.id = ` + identityRefSQL(target, "js.value") + ` WHERE ` + where + ` ORDER BY js.key`
+	args = append([]any{canonicalJSON(value)}, args...)
+	var visible []any
+	err = eachRow(s.rdb, query, args, func(scan func(...any) error) error {
+		var id string
+		if err := scan(&id); err != nil {
+			return err
+		}
+		visible = append(visible, id)
+		return nil
+	})
+	if err != nil || len(visible) == 0 {
+		return nil, false
+	}
+	if f.Type == TypeRef {
+		return visible[0], true
+	}
+	return visible, true
 }

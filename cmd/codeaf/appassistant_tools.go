@@ -46,6 +46,12 @@ func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *sessi
 // content decoder and execution path are the same ones used by the assistant.
 func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json.RawMessage) (any, error) {
 	switch verb {
+	case "data_query":
+		return decodeAppDataCommand(raw, b.DataQuery)
+	case "data_aggregate":
+		return decodeAppDataCommand(raw, b.DataAggregate)
+	case "data_types":
+		return decodeAppDataCommand(raw, b.DataTypes)
 	case "agent_ask":
 		var p appwire.AppAgentAsk
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -101,4 +107,12 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 	default:
 		return appwire.RunAppCommand(b, verb, raw)
 	}
+}
+
+func decodeAppDataCommand[P, R any](raw json.RawMessage, run func(P) (*R, error)) (any, error) {
+	var p P
+	if err := decodeAppConnectionJSON(bytes.NewReader(raw), &p); err != nil {
+		return nil, appwire.Errorf(appwire.CodeBadParams, "The data command needs a JSON object with known fields.")
+	}
+	return run(p)
 }

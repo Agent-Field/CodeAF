@@ -24,9 +24,18 @@ import (
 )
 
 func TestAppPolicyAtProviderSend(t *testing.T) {
-	calls := 0
+	var calls, redirected atomic.Int32
+	var redirect atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
+		if r.URL.Path == "/unapproved" {
+			redirected.Add(1)
+		}
+		calls.Add(1)
+		if redirect.Load() && r.URL.Path != "/unapproved" {
+			w.Header().Set("Location", "/unapproved")
+			w.WriteHeader(http.StatusTemporaryRedirect)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"model":"test/model","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
 	}))
@@ -60,8 +69,8 @@ func TestAppPolicyAtProviderSend(t *testing.T) {
 			if err := path.call(); !errors.Is(err, errAppModelRestricted) {
 				t.Fatalf("refusal: %v", err)
 			}
-			if calls != 0 {
-				t.Fatalf("unapproved model received %d calls", calls)
+			if got := calls.Load(); got != 0 {
+				t.Fatalf("unapproved model received %d calls", got)
 			}
 		})
 	}
@@ -69,8 +78,12 @@ func TestAppPolicyAtProviderSend(t *testing.T) {
 	if err := writeAppModelPolicy(filepath.Join(profile, appModelPolicyFile), raw); err != nil {
 		t.Fatal(err)
 	}
-	if err := paths[0].call(); err != nil || calls != 1 {
-		t.Fatalf("approved run calls=%d: %v", calls, err)
+	if err := paths[0].call(); err != nil || calls.Load() != 1 {
+		t.Fatalf("approved run calls=%d: %v", calls.Load(), err)
+	}
+	redirect.Store(true)
+	if err := paths[0].call(); err == nil || redirected.Load() != 0 {
+		t.Fatalf("an approved model redirected to an unapproved path: %v", err)
 	}
 }
 

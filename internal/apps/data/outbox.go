@@ -217,6 +217,8 @@ func (s *Store) InvalidatePolicy(typeID string) error {
 // RecordEventValues resolves an outbox receipt through current type grants.
 // Record values stay in history; masked and hidden fields never reach a run.
 func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (before, after Row, err error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	s.visibility.RLock()
 	defer s.visibility.RUnlock()
 	t, err := s.schema.Load().allow(sc, typeID, false)
@@ -261,9 +263,9 @@ func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (befor
 			if f := t.Fields[name]; f != nil && !f.Hidden && !f.Masked {
 				switch t.FieldPolicy(f) {
 				case "hide":
-					s.auditPolicy(sc, t, "field_hidden")
+					s.AuditRecordPolicy(sc, t, "field_hidden")
 				case "mask":
-					s.auditPolicy(sc, t, "field_masked")
+					s.AuditRecordPolicy(sc, t, "field_masked")
 					out[name] = masked
 				default:
 					if !s.schema.Load().withheldRef(f) {

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -103,5 +105,85 @@ func TestPolicyRevocationClearsCachedRowsBeforeDelivery(t *testing.T) {
 	audit, err := os.ReadFile(filepath.Join(filepath.Dir(s.path), "policy.jsonl"))
 	if err != nil || !bytes.Contains(audit, []byte("row_refused")) || bytes.Contains(audit, []byte("Private")) || bytes.Contains(audit, []byte("first")) {
 		t.Fatalf("policy log contains the wrong data: %s, %v", audit, err)
+	}
+}
+
+func TestRowPolicyProjectsOnlyAuthorizedLinks(t *testing.T) {
+	s, _ := openCRM(t)
+	if err := s.RegisterApp([]byte(policyApp)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RegisterApp([]byte(`{"id":"links","records":{
+		"account":{"uses":true},
+		"project":{"fields":{"name":{"type":"text"},"accounts":{"type":"refs","to":"account"}}}
+	},"capabilities":{"records":{"account":"r","project":"rw"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	first := Scope{Person: PersonPrincipal{ID: "first"}}
+	second := Scope{Person: PersonPrincipal{ID: "second"}}
+	visible := mustCreate(t, s, first, "account", map[string]any{"name": "Mine", "owner": "first"})[0].ID()
+	hidden := mustCreate(t, s, second, "account", map[string]any{"name": "Theirs", "owner": "second"})[0].ID()
+	_ = mustCreate(t, s, first, "project", map[string]any{"name": "Project", "accounts": []any{visible, hidden}})
+	first.App = "links"
+	result, err := s.QueryRows(first, &QueryIR{Type: "project", Select: []string{"accounts", "accounts.name"}}, "", 1)
+	if err != nil || len(result.Rows) != 1 {
+		t.Fatalf("query: %+v, %v", result, err)
+	}
+	raw := canonicalJSON(result.Rows[0])
+	if !strings.Contains(raw, visible) || !strings.Contains(raw, "Mine") || strings.Contains(raw, hidden) || strings.Contains(raw, "Theirs") {
+		t.Fatalf("related projection %s", raw)
+	}
+}
+
+func TestRecordWatchClearsOnPolicyInvalidation(t *testing.T) {
+	s, _ := openCRM(t)
+	if err := s.RegisterApp([]byte(policyApp)); err != nil {
+		t.Fatal(err)
+	}
+	sc := Scope{App: "policy", Person: PersonPrincipal{ID: "first"}}
+	row := mustCreate(t, s, sc, "account", map[string]any{"name": "Mine", "owner": "first"})[0]
+	var allowed atomic.Bool
+	allowed.Store(true)
+	updates := make(chan Diff, 8)
+	_, err := s.Watch(&SubscriptionOwner{}, sc, SubSpec{ID: "record", Type: "account", Record: row.ID(), Authorize: allowed.Load}, func(diff Diff) { updates <- diff })
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed.Store(false)
+	typ, err := s.Type(sc, "account")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InvalidatePolicy(typ.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(sc, "account", []string{row.ID()}, map[string]any{"name": "After revocation"}, UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case diff := <-updates:
+		if !diff.Reset || len(diff.Upserts) != 0 || len(diff.Removes) != 0 {
+			t.Fatalf("revoked record watch delivered %+v", diff)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("record watch did not receive a reset")
+	}
+}
+
+func TestGrantedAgentCannotCreateOutsideLaunchersRowPolicy(t *testing.T) {
+	s, _ := openCRM(t)
+	if err := s.RegisterApp([]byte(policyApp)); err != nil {
+		t.Fatal(err)
+	}
+	agent := AgentPrincipal{ID: "app-agent"}
+	if err := s.SetAgentGrant("policy", agent, "actions", "create-account", true); err != nil {
+		t.Fatal(err)
+	}
+	sc := Scope{App: "policy", Person: PersonPrincipal{ID: "launcher"}, Principal: agent, Action: "create-account"}
+	_, err := s.Create(sc, "account", []map[string]any{{"name": "Wrong account", "owner": "other-person"}})
+	wantCode(t, err, CodeNotAllowed)
+	rows := mustCreate(t, s, sc, "account", map[string]any{"name": "My account", "owner": "launcher"})
+	if len(rows) != 1 || rows[0]["name"] != "My account" {
+		t.Fatalf("scoped create: %+v", rows)
 	}
 }

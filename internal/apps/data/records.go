@@ -346,20 +346,32 @@ func loadRecord(q querier, sch *schema, id string) (*record, error) {
 // row is r as a scope sees it. A masked value reads as "••••" unless
 // revealed, and never for an agent; a hidden field is left out for an app.
 func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
+	return s.rowWithSchema(s.schema.Load(), t, r, sc, reveal)
+}
+
+func (s *Store) rowWithSchema(sch *schema, t *Type, r *record, sc Scope, reveal bool) Row {
 	out := Row{"id": r.ID, "type": r.Type, "created_at": r.CreatedAt, "updated_at": r.UpdatedAt, "_rev": r.Rev}
 	meta := RowMeta{Reverses: r.Meta.Reverses, ReversedBy: r.Meta.ReversedBy}
-	sch := s.schema.Load()
 	for _, name := range t.Order {
 		f := t.Fields[name]
 		mode := t.FieldPolicy(f)
-		if mode == "hide" || sch.withheldRef(f) {
+		if mode == "hide" {
 			if _, ok := r.Data[name]; ok {
-				s.auditPolicy(sc, t, "field_hidden")
+				s.AuditRecordPolicy(sc, t, "field_hidden")
 			}
 			continue
 		}
 		if f.Hidden && sc.App != "" {
 			continue
+		}
+		v, hasValue := r.Data[name]
+		if hasValue && mode == "" && (!f.Masked || reveal && !sc.isAgent()) {
+			var allowed bool
+			v, allowed = s.projectReference(sch, sc, f, v)
+			if !allowed {
+				s.AuditRecordPolicy(sc, t, "field_hidden")
+				continue
+			}
 		}
 		if by, ok := r.Meta.By[name]; ok {
 			if meta.By == nil {
@@ -367,8 +379,7 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 			}
 			meta.By[name] = by
 		}
-		v, ok := r.Data[name]
-		if !ok {
+		if !hasValue {
 			continue
 		}
 		if f.AI != "" && r.Meta.By[name] != BySync {
@@ -379,7 +390,7 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 		}
 		if mode == "mask" || f.Masked && (!reveal || sc.isAgent()) {
 			if mode == "mask" {
-				s.auditPolicy(sc, t, "field_masked")
+				s.AuditRecordPolicy(sc, t, "field_masked")
 			}
 			out[name] = masked
 			meta.Masked = append(meta.Masked, name)
@@ -911,6 +922,8 @@ func (s *Store) Create(sc Scope, typ string, sets []map[string]any) (*WriteResul
 }
 
 func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (*WriteResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	var made []*record
 	var t *Type
 	var batch string
@@ -1057,6 +1070,8 @@ type UpdateOptions struct {
 // Update writes set into every record named, in one batch. A record that
 // would not change is left alone and writes no history.
 func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, opts UpdateOptions) (*WriteResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	ids, err := cleanIDs(ids)
 	if err != nil {
 		return nil, err
@@ -1280,6 +1295,8 @@ func cleanIDs(ids []string) ([]string, error) {
 // away the later change. A ledger's batches are never undone; an entry is
 // reversed instead.
 func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	batch = strings.TrimSpace(batch)
 	if !validID(batch) {
 		return nil, errorf(CodeInvalid, "%q is not a batch", batch)

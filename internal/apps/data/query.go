@@ -413,7 +413,7 @@ func (c *compiled) words(text string, neg bool, sc Scope) error {
 	title := c.t.titleField()
 	for _, name := range c.t.Order {
 		f := c.t.field(name)
-		if f == nil || f.Masked || c.t.FieldPolicy(f) != "" {
+		if f == nil || f.Masked || c.t.FieldPolicy(f) != "" || c.sch.withheldRef(f) {
 			continue
 		}
 		if name == title || f.Type == TypeText || f.Type == TypeLongtext || f.Type == TypeEmail {
@@ -723,6 +723,8 @@ type Page struct {
 
 // Query answers one page of the records of typ matching query.
 func (s *Store) Query(sc Scope, typ, query, after string, limit int) (*Page, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {
@@ -778,6 +780,8 @@ type Group struct {
 // counts a StateMeter draws. An enum's groups come in its declared order,
 // zeros included, so the meter does not reshuffle as counts move.
 func (s *Store) Count(sc Scope, typ, query, group string) ([]Group, int, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {

@@ -211,6 +211,8 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	sc, flushAudit := store.WithPolicyAudit(sc)
+	defer flushAudit()
 	fields := map[string]*data.Field{}
 	for name := range read.Fields {
 		f, err := typ.LiveField(name, false)
@@ -218,10 +220,15 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			return Page{}, err
 		}
 		if (f.Masked || typ.FieldPolicy(f) != "") && read.OrderBy != "" && read.OrderBy == read.Fields[name] {
-			_ = store.AuditPolicy(q.App, typ.ID, "source_sort_refused")
+			store.AuditRecordPolicy(sc, typ, "source_sort_refused")
 			return Page{}, errors.New("a read cannot sort on a masked field")
 		}
 		fields[name] = f
+	}
+	ownerField, subject, rowPolicy := typ.LiveRowPredicate(sc, store.Person())
+	if rowPolicy && (read.Fields[ownerField] == "" || subject == "") {
+		store.AuditRecordPolicy(sc, typ, "source_read_refused")
+		return Page{}, &data.Error{Code: data.CodeNotAllowed, Message: "this source read needs a mapped owner field"}
 	}
 	args, err := matchArgs(q.Args, read, fields, typ)
 	if err != nil {
@@ -229,36 +236,33 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	}
 	secret, err := s.credential(c, sc.Person)
 	if err != nil {
+		store.AuditRecordPolicy(sc, typ, "source_read_refused")
 		return Page{}, err
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 	observed := time.Now().UTC()
-	ownerField, subject, rowPolicy := typ.LiveRowPredicate(sc, store.Person())
 	var rows []map[string]any
 	switch c.Kind {
 	case HTTP:
 		rows, err = httpRows(ctx, c.Config, secret, read, args)
 	default:
 		if rowPolicy {
-			_ = store.AuditPolicy(q.App, typ.ID, "rows_filtered")
-			if read.Fields[ownerField] == "" || subject == "" {
-				break
-			}
+			store.AuditRecordPolicy(sc, typ, "rows_filtered")
 		}
 		rows, err = sqlRows(ctx, c.Kind, secret, read, args, q.Limit+1, read.Fields[ownerField], subject)
 	}
 	if err != nil {
 		if errors.Is(err, ErrSourcePermission) {
-			_ = store.AuditPolicy(q.App, typ.ID, "source_read_refused")
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
 		}
 		return Page{}, err
 	}
 	if c.CredentialMode == CredentialPerson {
 		current, err := s.credential(c, sc.Person)
 		if err != nil || current != secret {
-			_ = store.AuditPolicy(q.App, typ.ID, "source_read_refused")
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
 			return Page{}, ErrSourcePermission
 		}
 	}
@@ -313,12 +317,12 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			}
 			mode := typ.FieldPolicy(field)
 			if mode == "hide" {
-				_ = store.AuditPolicy(q.App, typ.ID, "field_hidden")
+				store.AuditRecordPolicy(sc, typ, "field_hidden")
 				continue
 			}
 			if value != nil && (mode == "mask" || field.Masked) {
 				if mode == "mask" {
-					_ = store.AuditPolicy(q.App, typ.ID, "field_masked")
+					store.AuditRecordPolicy(sc, typ, "field_masked")
 				}
 				row[name] = data.MaskValue
 				meta.Masked = append(meta.Masked, name)

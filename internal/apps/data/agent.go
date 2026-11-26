@@ -35,15 +35,16 @@ func (s *Store) SetAgentGrant(app string, agent AgentPrincipal, group, id string
 		return errorf(CodeInvalid, "an agent grant needs an app, agent and declared scope")
 	}
 	return s.write(func(w *writeTx) error {
+		statement := `DELETE FROM agent_grants WHERE app=? AND agent=? AND grant_group=? AND grant_id=?`
 		if allowed {
-			_, err := w.tx.Exec(`INSERT INTO agent_grants (app, agent, grant_group, grant_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, app, agent.ID, group, id)
-			if err != nil {
-				return err
-			}
-			return w.invalidate(EventPolicyChanged, "", "")
+			statement = `INSERT INTO agent_grants (app, agent, grant_group, grant_id) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`
 		}
-		_, err := w.tx.Exec(`DELETE FROM agent_grants WHERE app=? AND agent=? AND grant_group=? AND grant_id=?`, app, agent.ID, group, id)
+		result, err := w.tx.Exec(statement, app, agent.ID, group, id)
 		if err != nil {
+			return err
+		}
+		changed, err := result.RowsAffected()
+		if err != nil || changed == 0 {
 			return err
 		}
 		return w.invalidate(EventPolicyChanged, "", "")

@@ -8,6 +8,8 @@ import (
 // reveal line per masked value shown (who, record, field, when); an agent
 // may not reveal.
 func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {
@@ -82,6 +84,8 @@ type Entry struct {
 // History answers a record's history, newest first, at most [HistoryMax]
 // entries. A deleted record still has its history.
 func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {
@@ -95,7 +99,7 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 		if err != nil {
 			return nil, err
 		}
-		if current == nil || !s.LiveRowAllowed(sc, t, current.Data) {
+		if current == nil || current.Type != t.Name || !s.LiveRowAllowed(sc, t, current.Data) {
 			return nil, errorf(CodeNotFound, "there is no %s record %s", t.Name, id)
 		}
 	}
@@ -160,11 +164,11 @@ func (s *Store) historyValues(t *Type, r *record, sc Scope) map[string]any {
 		}
 		mode := t.FieldPolicy(f)
 		if mode == "hide" || s.schema.Load().withheldRef(f) {
-			s.auditPolicy(sc, t, "field_hidden")
+			s.AuditRecordPolicy(sc, t, "field_hidden")
 			continue
 		}
 		if mode == "mask" {
-			s.auditPolicy(sc, t, "field_masked")
+			s.AuditRecordPolicy(sc, t, "field_masked")
 		}
 		if f.Masked || mode == "mask" {
 			v = masked

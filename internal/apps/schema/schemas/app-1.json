@@ -133,7 +133,7 @@
               "required": ["field", "attribute"],
               "properties": {
                 "field": {"type": "string"},
-                "attribute": {"type": "string"}
+                "attribute": {"const": "id"}
               }
             },
             "fields": {

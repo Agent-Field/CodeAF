@@ -86,6 +86,8 @@ const (
 // only those fields (and its own id, type, _rev and _meta), a related one
 // under its dotted name.
 func (s *Store) QueryRows(sc Scope, ir *QueryIR, after string, limit int) (*Page, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, ir.Type, false)
 	if err != nil {
@@ -182,6 +184,7 @@ func (sel *selection) project(s *Store, sch *schema, sc Scope, rows []Row) error
 			}
 		}
 		related := map[string]Row{}
+		var records []*record
 		if len(ids) > 0 {
 			err := eachRow(s.rdb, `SELECT `+recordColumns+` FROM records WHERE type_id = ? AND deleted_at IS NULL AND id IN (SELECT value FROM json_each(?))`,
 				[]any{target.ID, canonicalJSON(ids)}, func(scan func(...any) error) error {
@@ -190,13 +193,16 @@ func (sel *selection) project(s *Store, sch *schema, sc Scope, rows []Row) error
 						return err
 					}
 					if target.rowAllowed(sc, sch.person, r.Data) {
-						related[r.ID] = s.row(target, r, sc, false)
+						records = append(records, r)
 					}
 					return nil
 				})
 			if err != nil {
 				return err
 			}
+		}
+		for _, record := range records {
+			related[record.ID] = s.rowWithSchema(sch, target, record, sc, false)
 		}
 		for _, row := range rows {
 			for _, name := range sel.related[link] {
@@ -257,6 +263,8 @@ type AggResult struct {
 // group, computed by SQLite. Groups come in order (an enum in its declared
 // order, values with none last), at most [GroupsMax].
 func (s *Store) Aggregate(sc Scope, ir *QueryIR) (*AggResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, ir.Type, false)
 	if err != nil {
@@ -499,6 +507,7 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 	defer rows.Close()
 	page := &Page{Rows: []Row{}, Total: total}
 	var last *record
+	var projected []*record
 	var lastKey any
 	for rows.Next() {
 		var k any
@@ -506,13 +515,27 @@ func (s *Store) page(sch *schema, t *Type, sc Scope, c *compiled, after string, 
 		if err != nil {
 			return nil, err
 		}
-		if len(page.Rows) == limit {
+		if len(page.Rows)+len(projected) == limit {
 			cur := cursor{Sort: c.sort.signature(), ID: last.ID, Key: normalizeKey(lastKey), Null: lastKey == nil}
 			page.Next = cur.encode()
 			break
 		}
-		page.Rows = append(page.Rows, s.row(t, r, sc, false))
+		if sch.hasRowPolicies {
+			// Close the scan before projecting links that need their own scoped reads.
+			projected = append(projected, r)
+		} else {
+			page.Rows = append(page.Rows, s.rowWithSchema(sch, t, r, sc, false))
+		}
 		last, lastKey = r, k
 	}
-	return page, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for _, r := range projected {
+		page.Rows = append(page.Rows, s.rowWithSchema(sch, t, r, sc, false))
+	}
+	return page, nil
 }

@@ -39,14 +39,11 @@ func definitionClasses(files map[string]string, inherited schema.TypeSet) ([]sch
 	for name, typ := range app.Records {
 		add(typ.Fields)
 		if typ.Uses {
-			add(inherited[name].Fields)
-			if typ.Common != "" {
-				for _, t := range inherited {
-					if t.Common == typ.Common {
-						add(t.Fields)
-					}
-				}
+			t, found := inherited.ForRecord(name, typ)
+			if !found {
+				return nil, errors.New("the Builder could not check an inherited record type's model policy")
 			}
+			add(t.Fields)
 		}
 	}
 	return classes, nil

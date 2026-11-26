@@ -29,7 +29,7 @@ clears and refetches its records when access changes.
 
 Classify a field as `restricted` or `pii` to require an approved model.
 The run, Builder and app agent stop with
-“This app has restricted or PII fields. Choose a model and endpoint approved for its data class.”
+“This app has restricted or PII fields. Choose an approved model for this data.”
 when a class in scope lacks approval. App queries still use the same masks
 for approved models.
 
@@ -38,5 +38,5 @@ The local profile owner can install approvals with
 completion URLs per class, for example
 `{"restricted":[{"model":"provider/model","endpoint":"https://example.com/v1/chat/completions"}]}`.
 Install an empty object to remove approvals. A fallback model or a different
-endpoint needs its own approval. Policy decisions go to the app data log
+endpoint needs its own approval. Refusals and masks go to the app data log
 `policy.jsonl` with decision names and identifiers.

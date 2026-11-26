@@ -362,7 +362,7 @@ func Open(path string, opts Options) (*Store, error) {
 		_ = rdb.Close()
 		return fail(err)
 	}
-	sch.policyAudit = s.auditPolicy
+	sch.policyAudit = s.AuditRecordPolicy
 	s.schema.Store(sch)
 	s.done.Add(2)
 	go s.writer()
@@ -525,7 +525,7 @@ func (s *Store) run(fn func(w *writeTx) error) (err error) {
 		return err
 	}
 	if w.next != nil {
-		w.next.policyAudit = s.auditPolicy
+		w.next.policyAudit = s.AuditRecordPolicy
 		s.schema.Store(w.next)
 	}
 	if w.afterCommit != nil {
@@ -589,9 +589,23 @@ func (s *Store) HasApp(app string) bool {
 // Types lists every type with its owner, users, fields and live count. An
 // app sees only the types its capabilities name, and no hidden field.
 func (s *Store) Types(sc Scope) ([]TypeInfo, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	counts := map[string]int{}
-	rows, err := s.rdb.Query(`SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL GROUP BY type_id`)
+	stmt := "SELECT type_id, count(*) FROM records WHERE deleted_at IS NULL"
+	var args []any
+	if sch.hasRowPolicies {
+		var protected []string
+		for _, t := range sch.byID {
+			if t.HasRowPolicy() {
+				protected = append(protected, t.ID)
+			}
+		}
+		stmt += " AND type_id NOT IN (SELECT value FROM json_each(?))"
+		args = append(args, canonicalJSON(protected))
+	}
+	rows, err := s.rdb.Query(stmt+" GROUP BY type_id", args...)
 	if err != nil {
 		return nil, err
 	}

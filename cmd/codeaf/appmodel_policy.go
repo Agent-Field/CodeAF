@@ -19,7 +19,7 @@ import (
 const appModelPolicyFile = "app-model-policy.json"
 const appModelPolicyMax = 64 << 10
 
-var errAppModelRestricted = errors.New("This app has restricted or PII fields. Choose a model and endpoint approved for its data class.")
+var errAppModelRestricted = errors.New("This app has restricted or PII fields. Choose an approved model for this data.")
 
 type appModelPolicy struct {
 	profile string

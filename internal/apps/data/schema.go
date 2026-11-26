@@ -171,6 +171,7 @@ func (s *schema) typeNamed(name string) *Type {
 // A Principal supplies the history actor and needs the named Action grant
 // in the app's write transaction.
 type Scope struct {
+	policyLog  map[policyDecision]int
 	Person     PersonPrincipal
 	App        string
 	Actor      string
