@@ -16,10 +16,11 @@ An outgoing action waits for you to review and approve its exact payload.
 ## Add a field, column, screen or automation from the app assistant
 
 Ask for the change in your own words. The assistant uses the `propose_change`
-app command to hand just those words to a fresh editing session. A checked
-change to one screen can be previewed and applied from the card. For larger
-changes, use Open in builder to see the draft. The published app changes
-when you press Apply.
+app command to hand just those words to a fresh editing session when it has
+the Propose changes grant. A checked change appears on a **Proposed change**
+card that stays available after restarting. The card previews a change to
+one screen in place. Open **Edit app** to see all affected screens. Choose
+**Apply** to publish a new version or **Discard** to keep the current one.
 
 ## Ask the agent or schedule an app duty
 

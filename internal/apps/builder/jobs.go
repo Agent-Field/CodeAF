@@ -56,7 +56,21 @@ type Options struct {
 
 // Proposal identifies a requested change after its work is durable.
 type Proposal struct {
-	App, Draft, ID, Screen, Summary string
+	App          string   `json:"app"`
+	Draft        string   `json:"draft"`
+	ID           string   `json:"proposal_id"`
+	Screen       string   `json:"screen"`
+	Kind         string   `json:"kind"`
+	Source       string   `json:"source"`
+	BaseVersion  int      `json:"base_version"`
+	Checkpoint   string   `json:"checkpoint"`
+	Target       *Target  `json:"target,omitempty"`
+	SummaryLines []string `json:"summary_lines"`
+}
+
+type proposalIntent struct {
+	ID     string
+	Target *Target
 }
 
 // Catalog carries shape and counts only. The model adapter projects the
@@ -85,10 +99,11 @@ type Jobs struct {
 }
 
 type Summary struct {
-	Draft string `json:"draft"`
-	App   string `json:"app,omitempty"`
-	Name  string `json:"name"`
-	State string `json:"state"`
+	Draft    string    `json:"draft"`
+	App      string    `json:"app,omitempty"`
+	Name     string    `json:"name"`
+	State    string    `json:"state"`
+	Proposal *Proposal `json:"proposal,omitempty"`
 }
 
 type State struct {
@@ -171,7 +186,6 @@ type turn struct {
 	Stage     string
 	Request   string
 	Proposal  string
-	Small     bool
 	Target    *Target
 	Round     int
 	Report    *schema.Report
@@ -187,6 +201,7 @@ type snapshot struct {
 
 type job struct {
 	State
+	PendingProposal *proposalIntent `json:",omitempty"`
 	WritingFiles    map[string]string
 	Working         snapshot
 	Saved           map[string]snapshot
@@ -653,7 +668,11 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal s
 	if s.ctx.Err() != nil {
 		return "", s.ctx.Err()
 	}
-	if j.Publishing {
+	if j.Publishing || j.Proposal != nil {
+		return "", store.ErrConflict
+	}
+	wantsProposal := proposal != "" || (j.App != "" && target != nil)
+	if wantsProposal && j.PendingProposal != nil {
 		return "", store.ErrConflict
 	}
 	id, err := cell.NewID(time.Now())
@@ -675,8 +694,13 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal s
 		j.State.State = stage
 		j.Problem = ""
 	}
-	small := proposal != "" && !j.Dirty && len(j.Queue) == 0
-	next := turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal, Small: small}
+	if wantsProposal && proposal == "" {
+		proposal = id
+	}
+	if proposal != "" {
+		j.PendingProposal = &proposalIntent{ID: proposal, Target: target}
+	}
+	next := turn{ID: id, Stage: stage, Request: request, Target: target, Proposal: proposal}
 	if stage == Writing && request == "" && j.Paused != nil {
 		next = *j.Paused
 		next.ID = id

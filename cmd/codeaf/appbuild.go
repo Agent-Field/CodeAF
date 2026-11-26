@@ -63,14 +63,7 @@ func (b *appBackend) appAssistantProposed(proposal builder.Proposal) {
 		return
 	default:
 	}
-	kind, summary := "big", "Open the builder to review the change."
-	if proposal.Screen != "" {
-		kind, summary = "small", proposal.Summary
-	}
-	b.emit.Emit(appwire.EventAppChangeProposed, appwire.AppChangeProposed{
-		App: proposal.App, Draft: proposal.Draft, Kind: kind, Screen: proposal.Screen,
-		SummaryLines: []string{summary}, ProposalID: proposal.ID,
-	})
+	b.emit.Emit(appwire.EventAppChangeProposed, proposal)
 }
 
 func (b *appBackend) closeAppBuilds() {
@@ -129,6 +122,9 @@ func (b *appBackend) appBuildChanged(event builder.Event) {
 
 func (b *appBackend) appBuildNotice(item builder.Summary) {
 	title, detail := item.Name+" is ready to try", "Open the app to try it and keep it."
+	if item.Proposal != nil {
+		title, detail = "Review the change to "+item.Name, "Open the app to apply or discard the proposed change."
+	}
 	if item.State == builder.NeedsYou {
 		title, detail = item.Name+" needs you", "Open the app to choose what to change."
 	}

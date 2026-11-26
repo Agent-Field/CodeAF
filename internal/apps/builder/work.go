@@ -403,18 +403,20 @@ func (s *Jobs) finish(j *job, event Event) error {
 		j.State.State = j.Queue[0].Stage
 		j.Problem = ""
 	}
+	// An older queued assistant edit may only carry the proposal ID on its turn.
+	if j.PendingProposal == nil && finished.Proposal != "" {
+		j.PendingProposal = &proposalIntent{ID: finished.Proposal, Target: finished.Target}
+	}
+	var proposed *Proposal
+	if j.PendingProposal != nil && len(j.Queue) == 0 && j.State.State == Ready && j.Working.CheckComplete {
+		proposed = s.checkedProposal(j, *j.PendingProposal)
+		j.Proposal, j.PendingProposal = proposed, nil
+	}
 	if err := s.save(j, event); err != nil {
 		return err
 	}
-	if finished.Proposal != "" && s.opts.Proposed != nil {
-		p := Proposal{App: j.App, Draft: j.Draft, ID: finished.Proposal}
-		if finished.Small && j.State.State == Ready && len(j.Queue) == 0 && j.Working.Passed {
-			p.Screen = s.proposalScreen(j)
-			if p.Screen != "" && len(j.Checkpoints) != 0 {
-				p.Summary = j.Checkpoints[len(j.Checkpoints)-1].Summary
-			}
-		}
-		s.opts.Proposed(p)
+	if proposed != nil && s.opts.Proposed != nil {
+		s.opts.Proposed(*proposed)
 	}
 	if len(j.Queue) == 0 && s.opts.Notify != nil && ((j.State.State == Ready && j.Working.Passed) || j.State.State == NeedsYou) {
 		s.opts.Notify(j.Summary)
