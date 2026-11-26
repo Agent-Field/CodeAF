@@ -168,6 +168,7 @@
       params: {app: $app, run: draft-thread, params: {post: $post}}
       capture: {run: /id}
     - method: runs.get
+      await: 90s
       params: {app: $app, id: $run}
       expect:
         - {path: /state, equals: your_call}

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -28,6 +29,7 @@ const (
 )
 
 var ErrNotFound = errors.New("run not found")
+var ErrAIUnavailable = errors.New("this app AI capability is unavailable")
 var ErrBudget = errors.New("per-run budget reached")
 
 type Run struct {
@@ -39,6 +41,12 @@ type Run struct {
 	CaughtUp     bool      `json:"caught_up,omitempty"`
 	Error        string    `json:"error,omitempty"`
 	Cost         float64   `json:"cost,omitempty"`
+	Proposal     *Proposal `json:"proposal,omitempty"`
+	Subject      *Subject  `json:"subject,omitempty"`
+	Screen       string    `json:"screen,omitempty"`
+	Harness      string    `json:"harness,omitempty"`
+	Title        string    `json:"title,omitempty"`
+	Queue        string    `json:"review_queue,omitempty"`
 	Approval     *Approval `json:"approval,omitempty"`
 	WakeAt       time.Time `json:"wake_at,omitzero"`
 	EndedAt      time.Time `json:"ended_at,omitzero"`
@@ -64,6 +72,7 @@ type Config struct {
 	Triggers      func() ([]Trigger, error)
 	Records       func(context.Context, RecordCall) (Reply, error)
 	Agent         func(context.Context, AgentCall) (Reply, error)
+	CheckAI       func(*schema.AIStep) error
 	Connector     Connector
 	// CheckTool authorizes a tool against the current app capabilities on
 	// each visit. It can require a send gate based on trusted tool metadata.
@@ -271,6 +280,9 @@ func (e *Engine) newCheckpoint(app, run string, params, input map[string]any, ca
 	if err := validate(def); err != nil {
 		return checkpoint{}, err
 	}
+	if err := e.checkAI(def.Steps); err != nil {
+		return checkpoint{}, err
+	}
 	now := e.cfg.Now()
 	id, err := cell.NewID(now)
 	if err != nil {
@@ -297,6 +309,18 @@ func (e *Engine) newCheckpoint(app, run string, params, input map[string]any, ca
 		Run:        Run{App: app, DefinitionID: run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
 		Definition: def, Params: p, Input: input, Outputs: make(map[string]any), Frames: []frame{{}},
 		Visit: 1,
+	}
+	if len(def.Steps) == 1 && def.Steps[0].AI != nil && def.Steps[0].AI.Propose != "" {
+		ai := def.Steps[0].AI
+		c.Harness, c.Title = ai.Harness, def.Title
+		if c.Harness == "" {
+			c.Harness = "codeaf"
+		}
+		if row, ok := p[strings.TrimPrefix(ai.Propose, "$params.")].(map[string]any); ok {
+			id, _ := row["id"].(string)
+			kind, _ := row["type"].(string)
+			c.Subject = &Subject{Type: kind, ID: id}
+		}
 	}
 	return c, nil
 }

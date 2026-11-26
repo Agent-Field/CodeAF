@@ -230,6 +230,7 @@ var migrations = []string{
 	dataPlaneMigration,
 	writeRulesMigration,
 	ruleSourceGrantMigration,
+	aiReviewMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.

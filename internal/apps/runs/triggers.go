@@ -12,14 +12,15 @@ import (
 )
 
 type Trigger struct {
-	Since time.Time `json:"-"`
-	App   string    `json:"-"`
-	ID    string    `json:"id"`
-	On    string    `json:"on"`
-	Run   string    `json:"run"`
-	Cron  string    `json:"cron"`
-	Type  string    `json:"type"`
-	When  string    `json:"when"`
+	Since     time.Time `json:"-"`
+	App       string    `json:"-"`
+	ID        string    `json:"id"`
+	On        string    `json:"on"`
+	Run       string    `json:"run"`
+	Cron      string    `json:"cron"`
+	Type      string    `json:"type"`
+	When      string    `json:"when"`
+	fieldFill bool
 }
 
 type Change struct {
@@ -33,6 +34,7 @@ type Change struct {
 	SourceEvent   string
 	Before        map[string]any
 	After         map[string]any
+	Cause         string
 }
 
 // Keep a bound on stored provenance when runs trigger other runs.
@@ -179,6 +181,9 @@ func (e *Engine) recordChanged(change Change, all []Trigger) error {
 				continue
 			}
 		}
+		if t.fieldFill && (scoped.After == nil || change.Cause == aiFieldStep || scoped.After["_rev"] == nil) {
+			continue
+		}
 		record := maps.Clone(scoped.After)
 		if record == nil {
 			record = make(map[string]any)
@@ -214,6 +219,9 @@ func (e *Engine) startTriggered(t Trigger, receipt triggerReceipt, input map[str
 		return err
 	}
 	c, err := e.newCheckpoint(t.App, t.Run, nil, input, false)
+	if errors.Is(err, ErrAIUnavailable) && t.fieldFill {
+		return nil
+	}
 	if err != nil {
 		return e.failTriggered(t, receipt, "trigger run could not be prepared: "+err.Error())
 	}

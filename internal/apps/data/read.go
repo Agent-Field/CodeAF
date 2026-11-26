@@ -116,7 +116,7 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 // recordFromState reads a history row's state as a record.
 func recordFromState(t *Type, id, raw string) *record {
 	st := t.decodeState(raw)
-	r := &record{ID: id, Type: t.Name, Data: st.Data, Meta: st.Meta, CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt}
+	r := &record{ID: id, Type: t.Name, Rev: st.Rev, Data: st.Data, Meta: st.Meta, CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt}
 	if st.Deleted {
 		r.DeletedAt = "deleted"
 	}

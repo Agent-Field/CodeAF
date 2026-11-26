@@ -93,6 +93,9 @@ func (f Files) Load(app, run string) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	if typ, ok := strings.CutPrefix(run, aiFieldPrefix); ok {
+		return aiFieldRun(manifest, typ)
+	}
 	raw, err := root.ReadFile(filepath.Join("runs", run+".yaml"))
 	if errors.Is(err, fs.ErrNotExist) {
 		raw, err = root.ReadFile(filepath.Join("runs", run+".yml"))
@@ -174,6 +177,12 @@ func (f Files) Triggers() ([]Trigger, error) {
 		case loadErr != nil:
 			err = errors.Join(err, fmt.Errorf("app %s: %w", entry.Name(), loadErr))
 			continue
+		}
+		for typ := range app.Records {
+			if _, err := aiFieldRun(app, typ); err == nil {
+				id := aiFieldPrefix + typ
+				triggers = append(triggers, Trigger{App: app.ID, ID: id, Run: id, Type: typ, On: "record.changed", Since: since, fieldFill: true})
+			}
 		}
 		for _, trigger := range app.Triggers {
 			triggers = append(triggers, Trigger{

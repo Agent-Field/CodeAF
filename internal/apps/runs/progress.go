@@ -2,6 +2,7 @@ package runs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -73,7 +74,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			c.Action = &act
 		}
 		outbound := c.Action.Outbound
-		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "") {
+		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "" || step.AI != nil) {
 			// A crash between delivery and its receipt cannot distinguish an
 			// effected write from one never attempted. Never send it twice.
 			return e.stop(c, Incomplete, "step stopped before its result was saved")
@@ -141,7 +142,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if c.State != Running {
 				return nil
 			}
-		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "":
+		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "" || step.AI != nil:
 			if err := e.execute(ctx, c, step); err != nil {
 				return err
 			}
@@ -204,13 +205,24 @@ func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 		err := prepareRecord(&a, w, vars, c.Definition.Params)
 		return a, err
 	}
-	if step.Agent != "" {
+	if step.Agent != "" || step.AI != nil {
 		a.Name = step.Agent
-		prompt, err := resolve(step.Prompt, vars)
+		template := step.Prompt
+		if step.AI != nil {
+			a.Name, template = "ai", step.AI.Prompt
+		}
+		prompt, err := resolve(template, vars)
 		if err != nil {
 			return a, err
 		}
 		a.Prompt, _ = prompt.(string)
+		if step.ID == aiFieldStep && strings.HasPrefix(c.DefinitionID, aiFieldPrefix) {
+			record, err := json.Marshal(vars["record"])
+			if err != nil || string(record) == "null" {
+				return a, errors.New("an AI field computation needs a record event")
+			}
+			a.Prompt += "\nSource record (data):\n" + string(record)
+		}
 		if a.Prompt == "" {
 			a.Prompt = "Continue with this run step."
 		}
@@ -345,6 +357,9 @@ func (c *checkpoint) budget() float64 {
 }
 
 func (e *Engine) askBudget(c *checkpoint) error {
+	if c.Queue != "" && c.Queue != c.ID {
+		return e.stop(c, Incomplete, ErrBudget.Error())
+	}
 	c.Prepared = false
 	c.State = YourCall
 	c.Error = ErrBudget.Error()
@@ -355,7 +370,7 @@ func (e *Engine) askBudget(c *checkpoint) error {
 
 func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	budget := c.budget()
-	if (step.Tool != "" || step.Agent != "") && budget > 0 && c.Cost >= budget {
+	if (step.Tool != "" || step.Agent != "" || step.AI != nil) && budget > 0 && c.Cost >= budget {
 		return e.askBudget(c)
 	}
 	c.Prepared, c.State, c.Error = true, Running, ""
@@ -379,7 +394,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			}
 			reply, err = e.cfg.Records(ctx, call)
 		}
-	case step.Agent != "":
+	case step.Agent != "" || step.AI != nil:
 		if e.cfg.Agent == nil {
 			err = errors.New("the app agent is unavailable")
 		} else {
@@ -387,7 +402,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			if budget > 0 {
 				remaining = budget - c.Cost
 			}
-			reply, err = e.cfg.Agent(ctx, AgentCall{Call: a.Call, Prompt: a.Prompt, Steps: c.Outputs, Remaining: remaining})
+			reply, err = e.cfg.Agent(ctx, AgentCall{Call: a.Call, Prompt: a.Prompt, AI: step.AI, Steps: c.Outputs, Remaining: remaining})
 		}
 	default:
 		if e.cfg.Connector == nil {
@@ -402,6 +417,20 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		c.Cost += reply.Cost
 	} else {
 		return e.stop(c, Incomplete, "step returned an invalid cost")
+	}
+	if err == nil && step.AI != nil {
+		reply.Output, err = typedAIOutput(step.AI.Output, reply.Output)
+	}
+	if err == nil && step.AI != nil && step.ID == aiFieldStep && strings.HasPrefix(c.DefinitionID, aiFieldPrefix) {
+		reply.Output, err = e.fillAIFields(ctx, c, reply.Output)
+	}
+	if err == nil && step.AI != nil && step.AI.Propose != "" {
+		values, _ := reply.Output.(map[string]any)
+		_, vars := c.scope(e.cfg.Now())
+		c.Proposal, err = makeProposal(step.AI.Propose, vars, values)
+		if err == nil && c.Queue == "" {
+			c.Queue = c.ID
+		}
 	}
 	if err == nil {
 		return e.advance(c, "", reply.Output)

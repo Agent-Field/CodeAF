@@ -49,6 +49,18 @@
             "backoff": { "type": "string" }
           }
         },
+        "ai": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prompt", "output"],
+          "properties": {
+            "prompt": { "type": "string", "minLength": 1 },
+            "tier": { "enum": ["fast", "balanced", "strong"] },
+            "harness": { "enum": ["codeaf", "claude_code", "codex", "agentfield"] },
+            "propose": { "type": "string", "pattern": "^\\$params\\.[a-z][a-z0-9_]*$" },
+            "output": { "type": "object", "minProperties": 1 }
+          }
+        },
         "agent": { "type": "string" },
         "prompt": { "type": "string" },
         "tool": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_]*)+$" },

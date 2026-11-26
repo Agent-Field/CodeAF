@@ -24,12 +24,15 @@ func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
 		return Reply{}, err
 	}
 	scope := data.Scope{App: call.App, Flow: true, Actor: "run:" + call.ID, Cause: call.Step, CauseChain: call.causeChain}
+	if call.aiRevision > 0 {
+		scope.AI, scope.Flow = true, false
+	}
 	var result *data.WriteResult
 	switch call.Name {
 	case "records.create":
 		result, err = store.Create(scope, call.Type, []map[string]any{call.Set})
 	case "records.update":
-		result, err = store.Update(scope, call.Type, call.IDs, call.Set, data.UpdateOptions{})
+		result, err = store.Update(scope, call.Type, call.IDs, call.Set, data.UpdateOptions{Rev: call.aiRevision})
 	default:
 		err = errors.New("unknown run record action")
 	}
@@ -203,7 +206,7 @@ func (r *refReader) get(typ string, value any, depth int) (map[string]any, error
 
 func (r *refReader) project(typ *data.Type, row map[string]any, depth int) (map[string]any, error) {
 	fields := map[string]any{"id": row["id"], "type": typ.Name}
-	for _, name := range []string{"created_at", "updated_at"} {
+	for _, name := range []string{"created_at", "updated_at", "_rev"} {
 		if value, ok := row[name]; ok {
 			fields[name] = value
 		}
