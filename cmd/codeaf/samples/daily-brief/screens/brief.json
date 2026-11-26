@@ -1,0 +1,23 @@
+{
+  "screen": "brief",
+  "title": "Daily brief",
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordList",
+        "id": "messages",
+        "label": "Messages",
+        "bind": {"records": "message", "query": "sort:-received"},
+        "props": {"views": ["list"], "columns": ["subject", "sender", "snippet", "received"], "select": "one"}
+      },
+      {
+        "part": "RecordList",
+        "id": "meetings",
+        "label": "Meetings",
+        "bind": {"records": "meeting", "query": "sort:starts"},
+        "props": {"views": ["list"], "columns": ["title", "starts", "ends", "attendees"], "select": "one"}
+      }
+    ]
+  }
+}

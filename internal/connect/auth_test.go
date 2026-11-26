@@ -595,3 +595,48 @@ func TestCancelDuringAccountLookupReturnsWithoutSaving(t *testing.T) {
 		t.Error("cancelled attempt saved credentials")
 	}
 }
+
+func TestGoogleWorkspaceAdminRefusal(t *testing.T) {
+	onFreePort(t)
+	fakeService(t, http.NewServeMux())
+	manager, _ := testManager(t)
+	for code, want := range map[string]string{
+		"admin_policy_enforced": "Your organization blocked this app.",
+		"org_internal":          "This OAuth client is restricted to its organization.",
+	} {
+		t.Run(code, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			flow, err := manager.BeginWorkspaceAuth(ctx, "gmail", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer flow.Cancel()
+			client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			get, err := client.Get(loopback(t, flow.URL()).String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			get.Body.Close()
+			authorization, err := url.Parse(get.Header.Get("Location"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			query := authorization.Query()
+			if grant := query.Get("scope"); grant != "openid https://www.googleapis.com/auth/gmail.readonly" {
+				t.Fatalf("Gmail read scope = %s", grant)
+			}
+			callback := loopback(t, query.Get("redirect_uri"))
+			callback.RawQuery = url.Values{"state": {query.Get("state")}, "error": {code}, "error_description": {"private vendor detail"}}.Encode()
+			response, err := client.Get(callback.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			_, err = flow.Wait(ctx)
+			if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "private vendor detail") {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}

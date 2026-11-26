@@ -41,6 +41,11 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s is not connected", service.Name)
 	}
+	return m.client(ctx, plug, entry)
+}
+
+func (m *Manager) client(ctx context.Context, plug Plug, entry stored) (*http.Client, error) {
+	service := plug.Service()
 	// A key-connected service has nothing to renew and no client credential
 	// behind it: the key the person pasted goes on every request and that is
 	// the whole of it (key.go).
@@ -106,10 +111,10 @@ type persisting struct {
 	base  oauth2.TokenSource
 	store *store
 	id    string
-
-	mu    sync.Mutex
-	last  *oauth2.Token
 	grant string
+
+	mu   sync.Mutex
+	last *oauth2.Token
 }
 
 // Token renews if it must, and writes the result down if anything changed.

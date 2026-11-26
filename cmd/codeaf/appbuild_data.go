@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
@@ -54,6 +55,10 @@ func (b *appBackend) seedBuildSample(draft string, app []byte, rows map[string][
 	if err != nil {
 		return err
 	}
+	rows, err = b.googleBuildSamples(app, rows)
+	if err != nil {
+		return err
+	}
 	err = place.SeedSample(draft, app, rows)
 	if refused, ok := data.AsError(err); ok {
 		return &check.SampleProblem{Detail: refused.Message}
@@ -76,6 +81,10 @@ func (b *appBackend) seedBuildPreview(scope string, def schema.Definition, real 
 	if err != nil {
 		return err
 	}
+	rows, err = b.googleBuildSamples(app, rows)
+	if err != nil {
+		return err
+	}
 	return place.SeedSample(scope, app, rows)
 }
 
@@ -90,4 +99,35 @@ func (b *appBackend) closeBuildPreview(scope string) {
 func validateAppBuilderTypes(raw []byte) error {
 	_, err := data.ParseApp(raw)
 	return err
+}
+
+func (b *appBackend) googleBuildSamples(raw []byte, rows map[string][]map[string]any) (map[string][]map[string]any, error) {
+	app, err := schema.ParseApp(raw)
+	if err != nil {
+		return nil, err
+	}
+	fixtures, err := b.appConnections().GoogleSampleRows(context.Background(), app.ID)
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = make(map[string][]map[string]any)
+	}
+	for typ, fixture := range fixtures {
+		definition, ok := app.Records[typ]
+		if !ok || len(rows[typ]) != 0 {
+			continue
+		}
+		for _, row := range fixture {
+			for field := range row {
+				if _, ok := definition.Fields[field]; !ok {
+					delete(row, field)
+				}
+			}
+			if len(row) != 0 {
+				rows[typ] = append(rows[typ], row)
+			}
+		}
+	}
+	return rows, nil
 }

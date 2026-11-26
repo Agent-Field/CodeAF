@@ -5,10 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -39,7 +43,51 @@ func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *sessi
 			return string(result), err != nil, err
 		},
 	}}
+	if tool, ok := b.appGoogleContentTool(principal); ok {
+		scope.Tools = append(scope.Tools, tool)
+	}
 	return scope
+}
+
+// This tool belongs to the app's own codeaf conversation. The app scope's
+// model authorizer checks the destination before every request that can carry
+// its results. Outside harnesses have no tool entry for message bodies.
+func (b *appBackend) appGoogleContentTool(principal appwire.AppContentScope) (bare.Tool, bool) {
+	if principal.Principal.ID != principal.App {
+		return bare.Tool{}, false
+	}
+	app, err := runs.Files(home.Join("apps")).App(principal.App)
+	if err != nil || !slices.Contains(app.Capabilities.Tools, "google_content") {
+		return bare.Tool{}, false
+	}
+	sources := b.appConnections()
+	list, err := sources.List(principal.App)
+	if err != nil || !slices.ContainsFunc(list, func(s connections.Summary) bool { return s.Kind == connections.Google }) {
+		return bare.Tool{}, false
+	}
+	return bare.Tool{
+		Name:        "google_content",
+		Description: "Read one selected Google message body or export one Google Doc as text. Use its app connection, read name and canonical record id.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{"connection":{"type":"string"},"read":{"type":"string"},"id":{"type":"string"}},"required":["connection","read","id"],"additionalProperties":false}`),
+		Execute: func(ctx context.Context, raw json.RawMessage) (string, bool, error) {
+			var p struct {
+				Connection string `json:"connection"`
+				Read       string `json:"read"`
+				ID         string `json:"id"`
+			}
+			if err := decodeAppConnectionJSON(bytes.NewReader(raw), &p); err != nil {
+				return "", true, err
+			}
+			content, err := sources.ReadGoogleContent(ctx, connections.Query{
+				App: principal.App, Connection: p.Connection, Read: p.Read,
+			}, p.ID, connections.GoogleOwnModel)
+			if err != nil {
+				return "", true, err
+			}
+			session.MarkAppContent(ctx)
+			return content.Text, false, nil
+		},
+	}, true
 }
 
 // runAppCLICommand binds an explicit app chosen by the local CLI caller. The
