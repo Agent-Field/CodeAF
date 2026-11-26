@@ -61,6 +61,21 @@
                 }
               ]
             }
+          },
+          {
+            "part": "Button",
+            "id": "details-button",
+            "label": "Details",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "details-sheet"
+                }
+              ]
+            }
           }
         ]
       },
@@ -89,21 +104,31 @@
         }
       },
       {
-        "part": "RecordPage",
-        "id": "details",
-        "label": "Slide details",
-        "bind": {
-          "record": "$params.id",
-          "type": "slides_slide"
-        },
+        "part": "Sheet",
+        "id": "details-sheet",
+        "label": "Details",
+        "children": [
+          {
+            "part": "RecordPage",
+            "id": "details",
+            "label": "Slide details",
+            "bind": {
+              "record": "$params.id",
+              "type": "slides_slide"
+            },
+            "props": {
+              "fields": [
+                "title"
+              ],
+              "history": true,
+              "actions": [
+                "rename"
+              ]
+            }
+          }
+        ],
         "props": {
-          "fields": [
-            "title"
-          ],
-          "history": true,
-          "actions": [
-            "rename"
-          ]
+          "title": "Details"
         }
       }
     ]

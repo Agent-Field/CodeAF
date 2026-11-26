@@ -206,13 +206,24 @@ func TestBuiltinEditorExportsUseTheKeptRecord(t *testing.T) {
 			}
 			body := "First line\nSecond line"
 			if archive.Manifest.Name == "Sheets" {
-				body = "Item\tAmount\nMaterials\t25"
+				body = "Item\tAmount\nMaterials\t=5*5"
 			}
 			var row appwire.DataWriteResult
 			wire.must("data.create", appwire.DataCreateParams{
 				DataScope: appwire.DataScope{App: app.ID}, Type: typ,
 				Set: map[string]any{"title": "Proof", "body": body},
 			}, &row)
+			if archive.Manifest.Name == "Sheets" {
+				var window appwire.WorksheetPage
+				wire.must("apps.worksheet_window", map[string]any{
+					"app": app.ID, "id": row.Rows[0]["id"], "type": typ, "field": "body",
+					"row": 1, "column": 1, "rows": 1, "columns": 1,
+				}, &window)
+				cell := window.Rows[0].Cells[0]
+				if cell.Value != float64(25) || cell.Formula != "=5*5" || window.Revision != "1" {
+					t.Fatalf("worksheet cell = %+v, revision %s", cell, window.Revision)
+				}
+			}
 			for name, template := range app.Outputs {
 				params := map[string]any{"app": app.ID, "output": name}
 				if template.Record != "" {

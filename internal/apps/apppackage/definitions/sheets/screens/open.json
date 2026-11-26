@@ -44,6 +44,21 @@
                 }
               ]
             }
+          },
+          {
+            "part": "Button",
+            "id": "details-button",
+            "label": "Details",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "details-sheet"
+                }
+              ]
+            }
           }
         ]
       },
@@ -70,21 +85,31 @@
         }
       },
       {
-        "part": "RecordPage",
-        "id": "details",
-        "label": "Worksheet details",
-        "bind": {
-          "record": "$params.id",
-          "type": "sheets_worksheet"
-        },
+        "part": "Sheet",
+        "id": "details-sheet",
+        "label": "Details",
+        "children": [
+          {
+            "part": "RecordPage",
+            "id": "details",
+            "label": "Worksheet details",
+            "bind": {
+              "record": "$params.id",
+              "type": "sheets_worksheet"
+            },
+            "props": {
+              "fields": [
+                "title"
+              ],
+              "history": true,
+              "actions": [
+                "rename"
+              ]
+            }
+          }
+        ],
         "props": {
-          "fields": [
-            "title"
-          ],
-          "history": true,
-          "actions": [
-            "rename"
-          ]
+          "title": "Details"
         }
       }
     ]

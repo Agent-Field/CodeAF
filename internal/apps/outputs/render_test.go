@@ -57,14 +57,14 @@ func TestPDFTextAndPagination(t *testing.T) {
 	}
 }
 
-func TestWorksheetCSVPreservesQuotedCellsAndEscapesFormulas(t *testing.T) {
+func TestWorksheetCSVComputesFormulasAndEscapesTheirText(t *testing.T) {
 	template := schema.OutputTemplate{Format: "csv", Record: "worksheet", Table: "body"}
 	rows := []map[string]any{{"body": "Name\tTotal\n\"Northwind, Inc.\"\t=1+2\n\"Line one\nLine two\"\t3"}}
 	got, err := Render(template, rows)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Name,Total\n\"Northwind, Inc.\",'=1+2\n\"Line one\nLine two\",3\n"
+	want := "Name,Total\n\"Northwind, Inc.\",3\n\"Line one\nLine two\",3\n"
 	if string(got) != want {
 		t.Fatalf("CSV = %q, want %q", got, want)
 	}

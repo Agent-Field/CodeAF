@@ -44,6 +44,21 @@
                 }
               ]
             }
+          },
+          {
+            "part": "Button",
+            "id": "details-button",
+            "label": "Details",
+            "props": {
+              "kind": "secondary"
+            },
+            "on": {
+              "click": [
+                {
+                  "open": "details-sheet"
+                }
+              ]
+            }
           }
         ]
       },
@@ -72,21 +87,31 @@
         }
       },
       {
-        "part": "RecordPage",
-        "id": "details",
-        "label": "Board details",
-        "bind": {
-          "record": "$params.id",
-          "type": "canvas_board"
-        },
+        "part": "Sheet",
+        "id": "details-sheet",
+        "label": "Details",
+        "children": [
+          {
+            "part": "RecordPage",
+            "id": "details",
+            "label": "Board details",
+            "bind": {
+              "record": "$params.id",
+              "type": "canvas_board"
+            },
+            "props": {
+              "fields": [
+                "title"
+              ],
+              "history": true,
+              "actions": [
+                "rename"
+              ]
+            }
+          }
+        ],
         "props": {
-          "fields": [
-            "title"
-          ],
-          "history": true,
-          "actions": [
-            "rename"
-          ]
+          "title": "Details"
         }
       }
     ]

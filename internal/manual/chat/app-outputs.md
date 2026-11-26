@@ -23,7 +23,7 @@ The interactive app assistant lists outputs as `render/<output-id>` in
 
 Ask the builder to “export to Excel” using a CSV output. Choose columns with a label and a merge expression, for example `{label: "Company", value: "{{name}}"}`. Each row of the declared query becomes a CSV row. Excel and other spreadsheet apps can open the file. Cells that look like spreadsheet formulas are prefixed with an apostrophe for safe import. Use the same `render` Action to save the CSV and `apps.output_file` to get it. Record queries take up to 500 rows per output. Set a query limit or use an aggregate when the list is longer.
 
-A worksheet CSV may instead bind a record and name the visible longtext field in `table`. The engine parses that field as tab-separated cells and quotes it as CSV. Formula text is escaped for spreadsheet readers.
+A worksheet CSV may instead bind a record and name the visible longtext field in `table`. The engine parses that field as tab-separated cells and quotes it as CSV. The engine evaluates its supported formulas, writes an error marker for invalid cells and escapes spreadsheet-like text.
 
 ## Weekly email summary, scheduled digest, or pipeline report
 
