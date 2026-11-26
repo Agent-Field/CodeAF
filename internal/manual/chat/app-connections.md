@@ -44,9 +44,15 @@ table needs a unique stable key and an integer version that every writer advance
 
 The engine offers the same operations as `connections.list`, `connections.test` and `connections.read`.
 Results carry the connection name, read name and the time of the live observation. Records use canonical IDs.
-Only the identity crosswalk stays in the local data store. Known source outages return a refusal.
-Reads have a five-second deadline, a one MiB payload budget and at most 500 rows. The CLI returns up to 100 rows
-and sets `has_more` if more matched. Narrow a larger result with a declared argument.
+Ordinary database and HTTP reads retain the identity crosswalk in the local data store.
+Known source outages return a refusal. These reads have a five-second deadline, a one MiB payload
+budget and at most 500 rows. The CLI returns up to 100 rows and sets
+`has_more` if more matched. Narrow a larger result with a declared argument.
+
+For Gmail, Calendar, or Drive sources and their separate sign-ins, see
+[Google Workspace in Personal apps](google-workspace-apps.md). A Google read
+can declare a bounded window, and a Gmail binding can keep an expiring
+metadata index.
 
 ## Call an API from my app
 

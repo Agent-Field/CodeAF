@@ -23,7 +23,7 @@ type sourceTriggerClock struct {
 // PollSources runs independently of the schedule clock and ready workers so
 // a slow provider cannot prevent the engine from running queued work.
 func (e *Engine) PollSources(ctx context.Context) error {
-	if e.cfg.SourceTriggers == nil || e.cfg.Triggers == nil {
+	if (e.cfg.SourceTriggers == nil && e.cfg.GooglePoll == nil) || e.cfg.Triggers == nil {
 		return nil
 	}
 	e.sourceClock.Lock()
@@ -34,10 +34,18 @@ func (e *Engine) PollSources(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if t.On == "connector" && schema.GraphSourceTrigger(t.Connector, t.Event) {
-			if pollErr := e.pollSource(ctx, t, now); pollErr != nil {
-				err = errors.Join(err, fmt.Errorf("%s source trigger %s: %w", t.App, t.ID, pollErr))
-			}
+		if t.On != "connector" {
+			continue
+		}
+		var pollErr error
+		switch {
+		case e.cfg.GooglePoll != nil && schema.GoogleEvent(t.Connector, t.Event):
+			pollErr = e.fireGoogle(ctx, t, now)
+		case e.cfg.SourceTriggers != nil && schema.GraphSourceTrigger(t.Connector, t.Event):
+			pollErr = e.pollSource(ctx, t, now)
+		}
+		if pollErr != nil {
+			err = errors.Join(err, fmt.Errorf("%s source trigger %s: %w", t.App, t.ID, pollErr))
 		}
 	}
 	return err

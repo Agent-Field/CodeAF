@@ -1,0 +1,20 @@
+{
+  "id": "m1",
+  "threadId": "t1",
+  "historyId": "19",
+  "internalDate": "1764151200000",
+  "labelIds": ["INBOX", "UNREAD"],
+  "snippet": "Agenda for Thursday",
+  "payload": {
+    "mimeType": "multipart/mixed",
+    "headers": [
+      {"name": "From", "value": "Ari <ari@example.com>"},
+      {"name": "To", "value": "Jo <jo@example.com>"},
+      {"name": "Subject", "value": "Planning"}
+    ],
+    "parts": [
+      {"partId": "0", "mimeType": "text/plain", "body": {"size": 16}},
+      {"partId": "1", "mimeType": "application/pdf", "filename": "agenda.pdf", "body": {"attachmentId": "a1", "size": 430}}
+    ]
+  }
+}
