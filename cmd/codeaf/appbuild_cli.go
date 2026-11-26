@@ -90,7 +90,7 @@ func runAppCommand(args []string) error {
 	params := json.RawMessage("{}")
 	switch {
 	case verb == "help":
-		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add|agent_duty_remove> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
 		return nil
 	case verb == "kit" && len(args) == 1:

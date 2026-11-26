@@ -19,15 +19,20 @@ import (
 
 func installAppAssistantCRM(t *testing.T) store.Meta {
 	t.Helper()
+	return installAppAssistantFixture(t, "../../internal/apps/store/testdata/crm")
+}
+
+func installAppAssistantFixture(t *testing.T, fixture string) store.Meta {
+	t.Helper()
 	definitions := store.New()
 	draft, err := definitions.NewDraft("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.CopyFS(draft.Dir(), os.DirFS("../../internal/apps/store/testdata/crm")); err != nil {
+	if err := os.CopyFS(draft.Dir(), os.DirFS(fixture)); err != nil {
 		t.Fatal(err)
 	}
-	meta, err := definitions.Promote(draft, "Keep the CRM")
+	meta, err := definitions.Promote(draft, "Keep the app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +131,52 @@ func TestAppAssistantAskRunsThroughEngineWithExactRecordAddress(t *testing.T) {
 	if len(prompts) != 2 || prompts[1].Run != duty.ID || prompts[1].Prompt != "Check the pipeline" {
 		t.Fatalf("standing duty calls = %#v", prompts)
 	}
+	var listed []struct{ ID, Cron string }
+	wire.must("agents.query", appwire.AppAgentQuery{App: meta.ID, Kind: "duties"}, &listed)
+	if len(listed) != 1 || listed[0].ID != duty.ID || listed[0].Cron != "1 * * * *" {
+		t.Fatalf("listed duties = %#v", listed)
+	}
+	wire.must("agents.duty_remove", appwire.AppAgentDutyRef{App: meta.ID, ID: duty.ID}, nil)
+	now = now.Add(time.Hour)
+	if err := engine.Tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(prompts) != 2 {
+		t.Fatalf("removed duty ran again: %#v", prompts)
+	}
+}
+
+func TestAppAssistantReadsDeclaredViewOnlyWithGrant(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	meta := installAppAssistantFixture(t, "../../internal/apps/schema/testdata/support-inbox")
+	b := newAppBackend(newAppRecorder(), refuseAppOpen)
+	t.Cleanup(func() { _ = b.Close() })
+	db, err := b.dataStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Create(data.Scope{}, "ticket", []map[string]any{{"subject": "Northwind support"}}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]any{"app": meta.ID, "params": map[string]string{"view": "inbox/ticket-list"}})
+	var refusal *appwire.Error
+	if _, err := b.runAppCLICommand(t.Context(), "query", raw); !errors.As(err, &refusal) || refusal.Code != appwire.CodeForbidden {
+		t.Fatalf("ungranted query = %v", err)
+	}
+	if err := b.GrantAppAgent(appwire.AppAgentGrant{App: meta.ID, Agent: meta.ID, Group: "data", ID: "inbox/ticket-list", Allowed: true}); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := b.runAppCLICommand(t.Context(), "query", raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result struct{ Rows []map[string]any }
+	if err := json.Unmarshal(reply.(json.RawMessage), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0]["subject"] != "Northwind support" || result.Rows[0]["_rev"] != float64(1) {
+		t.Fatalf("declared view = %+v", result)
+	}
 }
 
 func TestAppAssistantCLIAndToolBothEnforceActionGrant(t *testing.T) {
@@ -198,6 +249,13 @@ func TestAppAssistantWritesWithProvenanceAndLeavesPersonValues(t *testing.T) {
 		}
 		if i == 0 && (len(history) != 2 || history[0].ByKind != data.ByAI || history[0].Actor != "agent:"+meta.ID || history[0].Cause != "mark-won-ask") {
 			t.Fatalf("history = %#v", history)
+		}
+		if i == 0 {
+			var displayed appwire.DataHistoryResult
+			wireOver(t, b).must("data.history", map[string]string{"type": "deal", "id": id}, &displayed)
+			if len(displayed.History) != 2 || displayed.History[0].Actor != meta.Name+" agent" || displayed.History[0].ByKind != data.ByAI {
+				t.Fatalf("displayed history = %#v", displayed)
+			}
 		}
 		if i == 1 && len(history) != 1 {
 			t.Fatalf("pinned record history = %#v", history)

@@ -308,9 +308,22 @@ func (b *appBackend) DataHistory(p appwire.DataRecordParams) (*appwire.DataHisto
 		return nil, appDataError(err)
 	}
 	out := &appwire.DataHistoryResult{History: []appwire.DataHistoryEntry{}}
+	agentLabels := map[string]string{}
 	for _, e := range entries {
+		actor := e.Actor
+		if e.ByKind == data.ByAI && e.App != "" && actor == data.AgentAssigneePrefix+e.App {
+			label, loaded := agentLabels[e.App]
+			if !loaded {
+				label = actor
+				if def, err := b.AppDefinitions().Get(e.App); err == nil {
+					label = def.Meta.Name + " agent"
+				}
+				agentLabels[e.App] = label
+			}
+			actor = label
+		}
 		out.History = append(out.History, appwire.DataHistoryEntry{
-			Seq: e.Seq, Batch: e.Batch, Op: e.Op, App: e.App, Actor: e.Actor, ByKind: e.ByKind, Cause: e.Cause, Note: e.Note, At: e.At,
+			Seq: e.Seq, Batch: e.Batch, Op: e.Op, App: e.App, Actor: actor, ByKind: e.ByKind, Cause: e.Cause, Note: e.Note, At: e.At,
 			Undone: e.Undone, Before: e.Before, After: e.After, Changed: nonNilStrings(e.Changed),
 		})
 	}

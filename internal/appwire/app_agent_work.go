@@ -35,6 +35,11 @@ type AppAgentDuty struct {
 	Cron string `json:"cron"`
 }
 
+type AppAgentDutyRef struct {
+	App string `json:"app"`
+	ID  string `json:"id"`
+}
+
 type AppAgentChanged struct {
 	App  string `json:"app"`
 	Kind string `json:"kind"`
@@ -47,6 +52,7 @@ type appAgentWork interface {
 	GrantAppAgent(AppAgentGrant) error
 	QueryAppAgent(AppAgentQuery) (any, error)
 	AddAppAgentDuty(AppAgentDuty) (string, error)
+	RemoveAppAgentDuty(AppAgentDutyRef) error
 }
 
 func init() {
@@ -81,5 +87,12 @@ func init() {
 		}
 		id, err := a.AddAppAgentDuty(p)
 		return &RunStarted{ID: id}, err
+	})
+	methods["agents.duty_remove"] = typed(func(e Engine, p AppAgentDutyRef) (*Empty, error) {
+		a, ok := e.(appAgentWork)
+		if !ok {
+			return nil, Errorf(CodeUnknownMethod, "App agents are unavailable.")
+		}
+		return done(a.RemoveAppAgentDuty(p))
 	})
 }

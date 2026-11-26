@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -30,26 +32,23 @@ func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope,
 			return nil, err
 		}
 		for id, view := range screen.Views {
-			views[screen.Screen+"/"+id] = view
+			if appAssistantViewSupported(view) {
+				views[screen.Screen+"/"+id] = view
+			}
 		}
 	}
 	sc := data.Scope{App: p.App, Agent: true, Actor: data.AgentAssigneePrefix + p.App, Cause: command.Action.Cause}
 	switch command.Verb {
 	case appwire.AppContentShow:
-		actions := append([]schema.Command(nil), app.Commands...)
-		for typ, record := range app.Records {
-			if record.Lifecycle == nil {
-				continue
-			}
-			for _, transition := range record.Lifecycle.Transitions {
-				actions = append(actions, schema.Command{ID: "transition/" + typ + "/" + transition.ID, Label: transition.Label})
-			}
-		}
-		return json.Marshal(map[string]any{"views": views, "actions": actions})
+		actions, err := appAssistantActions(app, def)
+		return marshalAppContent(map[string]any{"views": views, "actions": actions}, err)
 	case appwire.AppContentQuery:
 		declared, ok := views[command.Query.View]
-		if !ok || !b.appAgentAllowed(p.App, "data", command.Query.View) {
-			return nil, appwire.Errorf(appwire.CodeForbidden, "This agent cannot use that view.")
+		if !ok {
+			return nil, appwire.Errorf(appwire.CodeNotFound, "That view is unavailable to the app assistant.")
+		}
+		if !b.appAgentAllowed(p.App, "data", command.Query.View) {
+			return nil, appwire.Errorf(appwire.CodeForbidden, "The app agent needs a data grant for %q.", command.Query.View)
 		}
 		return b.queryAppAssistant(sc, declared, command.Query)
 	case appwire.AppContentInvoke:
@@ -71,11 +70,70 @@ func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope,
 	return nil, appwire.Errorf(appwire.CodeBadParams, "Unknown app command.")
 }
 
+type appAssistantAction struct {
+	ID       string                     `json:"id"`
+	Label    string                     `json:"label"`
+	Record   string                     `json:"record_type,omitempty"`
+	Args     map[string]schema.RunParam `json:"args"`
+	Revision bool                       `json:"requires_expected_rev,omitempty"`
+}
+
+func appAssistantActions(app schema.App, def store.Definition) ([]appAssistantAction, error) {
+	actions := make([]appAssistantAction, 0, len(app.Commands))
+	recordAction := func(id, label, typ string) appAssistantAction {
+		return appAssistantAction{ID: id, Label: label, Record: typ, Revision: true,
+			Args: map[string]schema.RunParam{"record": {Type: "ref", To: typ}}}
+	}
+	for _, cmd := range app.Commands {
+		if raw, ok := def.Run(cmd.Run); ok && cmd.Run != "" {
+			flow, err := schema.ParseRun(raw)
+			if err != nil {
+				return nil, err
+			}
+			for name, fixed := range cmd.Params {
+				if !appAssistantInput(fixed) {
+					delete(flow.Params, name)
+				}
+			}
+			actions = append(actions, appAssistantAction{ID: cmd.ID, Label: cmd.Label, Record: cmd.For, Args: flow.Params})
+		} else if _, ok := appAssistantRecordUpdate(cmd); ok {
+			actions = append(actions, recordAction(cmd.ID, cmd.Label, cmd.For))
+		}
+	}
+	for _, typ := range slices.Sorted(maps.Keys(app.Records)) {
+		if record := app.Records[typ]; record.Lifecycle != nil {
+			for _, tr := range record.Lifecycle.Transitions {
+				actions = append(actions, recordAction("transition/"+typ+"/"+tr.ID, tr.Label, typ))
+			}
+		}
+	}
+	return actions, nil
+}
+
+func appAssistantInput(value any) bool {
+	text, ok := value.(string)
+	return ok && (strings.HasPrefix(text, "$selection.") || strings.HasPrefix(text, "$input."))
+}
+
+func appAssistantRecordUpdate(command schema.Command) (map[string]any, bool) {
+	if command.For == "" || len(command.Do) != 1 {
+		return nil, false
+	}
+	update, ok := command.Do[0]["records.update"].(map[string]any)
+	set, valid := update["set"].(map[string]any)
+	if !ok || !valid || update["ids"] != "$selection.ids" {
+		return nil, false
+	}
+	for _, value := range set {
+		if text, ok := value.(string); ok && strings.HasPrefix(text, "$") {
+			return nil, false
+		}
+	}
+	return set, true
+}
+
 func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, request appwire.AppViewQuery) (json.RawMessage, error) {
 	ir := data.QueryIR{Type: view.Type, Group: view.Group, Select: view.Select}
-	if view.Relate != nil {
-		return nil, appwire.Errorf(appwire.CodeBadParams, "This view requires a trace projection.")
-	}
 	args := map[string]any{}
 	for key, raw := range request.Args {
 		var value any
@@ -116,9 +174,6 @@ func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, reque
 	limit := 0
 	if view.Window != nil {
 		limit = view.Window.Limit
-		if len(view.Window.OrderBy) > 1 {
-			return nil, appwire.Errorf(appwire.CodeBadParams, "This view needs multiple sort fields.")
-		}
 		if len(view.Window.OrderBy) == 1 {
 			ir.Sort = view.Window.OrderBy[0]
 		}
@@ -130,24 +185,37 @@ func (b *appBackend) queryAppAssistant(sc data.Scope, view schema.QueryIR, reque
 	return json.Marshal(map[string]any{"rows": result.Rows, "next": result.Next, "total": result.Total})
 }
 
-func appViewArgument(kind string, value any) bool {
+func appAssistantViewSupported(view schema.QueryIR) bool {
+	if view.Relate != nil || (view.Window != nil && len(view.Window.OrderBy) > 1) {
+		return false
+	}
+	for _, kind := range view.Args {
+		if appViewArgumentType(kind) == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func appViewArgumentType(kind string) reflect.Type {
 	switch kind {
 	case "text", "longtext", "enum", "date", "datetime", "ref", "email", "url", "phone", "person":
-		_, ok := value.(string)
-		return ok
+		return reflect.TypeFor[string]()
 	case "number", "money":
-		_, ok := value.(float64)
-		return ok
+		return reflect.TypeFor[float64]()
 	case "bool":
-		_, ok := value.(bool)
-		return ok
+		return reflect.TypeFor[bool]()
 	}
-	return false
+	return nil
+}
+
+func appViewArgument(kind string, value any) bool {
+	return value != nil && reflect.TypeOf(value) == appViewArgumentType(kind)
 }
 
 func (b *appBackend) invokeAppAssistant(sc data.Scope, app schema.App, def store.Definition, intent appwire.AppActionIntent) (json.RawMessage, error) {
 	if !b.appAgentAllowed(sc.App, "actions", intent.Action) {
-		return nil, appwire.Errorf(appwire.CodeForbidden, "This agent cannot invoke that action.")
+		return nil, appwire.Errorf(appwire.CodeForbidden, "The app agent needs an action grant for %q.", intent.Action)
 	}
 	if name, isTransition := strings.CutPrefix(intent.Action, "transition/"); isTransition {
 		typ, transition, ok := strings.Cut(name, "/")
@@ -191,12 +259,12 @@ func (b *appBackend) invokeAppAssistant(sc data.Scope, app schema.App, def store
 			}
 		}
 		for name := range args {
-			if fixed, ok := command.Params[name]; ok && !strings.HasPrefix(fmt.Sprint(fixed), "$selection.") && !strings.HasPrefix(fmt.Sprint(fixed), "$input.") {
+			if fixed, ok := command.Params[name]; ok && !appAssistantInput(fixed) {
 				return nil, appwire.Errorf(appwire.CodeBadParams, "The app declares a fixed value for %q.", name)
 			}
 		}
 		for name, value := range command.Params {
-			if !strings.HasPrefix(fmt.Sprint(value), "$") {
+			if text, ok := value.(string); !ok || !strings.HasPrefix(text, "$") {
 				args[name] = value
 			}
 		}
@@ -212,23 +280,17 @@ func (b *appBackend) invokeAppAssistant(sc data.Scope, app schema.App, def store
 		}
 		return marshalAppContent(engine.StartAgentAction(sc.App, command.Run, args, runs.AgentActionOrigin{Action: intent.Action, Version: def.Meta.Version, Cause: sc.Cause}))
 	}
-	if len(command.Do) == 1 && command.For != "" {
-		update, ok := command.Do[0]["records.update"].(map[string]any)
-		set, valid := update["set"].(map[string]any)
+	if set, ok := appAssistantRecordUpdate(command); ok {
 		id, _ := args["record"].(string)
-		if ok && valid && update["ids"] == "$selection.ids" && len(args) == 1 && id != "" && intent.ExpectedRev != nil && *intent.ExpectedRev > 0 && *intent.ExpectedRev <= 1<<63-1 {
-			for _, value := range set {
-				if strings.HasPrefix(fmt.Sprint(value), "$") {
-					return nil, appwire.Errorf(appwire.CodeBadParams, "This action needs additional inputs.")
-				}
-			}
-			db, err := b.dataStore("")
-			if err != nil {
-				return nil, err
-			}
-			result, err := db.Update(sc, command.For, []string{id}, set, data.UpdateOptions{Rev: int64(*intent.ExpectedRev)})
-			return marshalAppContent(result, appDataError(err))
+		if len(args) != 1 || id == "" || intent.ExpectedRev == nil || *intent.ExpectedRev == 0 || *intent.ExpectedRev > 1<<63-1 {
+			return nil, appwire.Errorf(appwire.CodeBadParams, "This action takes args.record with one record ID and expected_rev with that row's _rev.")
 		}
+		db, err := b.dataStore("")
+		if err != nil {
+			return nil, err
+		}
+		result, err := db.Update(sc, command.For, []string{id}, set, data.UpdateOptions{Rev: int64(*intent.ExpectedRev)})
+		return marshalAppContent(result, appDataError(err))
 	}
 	return nil, appwire.Errorf(appwire.CodeBadParams, "This action needs a supported app process or automation.")
 }

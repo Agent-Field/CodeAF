@@ -891,12 +891,17 @@ func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id stri
 	if err != nil {
 		return nil, err
 	}
+	defaultState := ""
 	if lc := t.Lifecycle; lc != nil {
-		if v, given := values[lc.Field]; given && !carry && v != nil && v != lc.initial(t) {
+		v, given := values[lc.Field]
+		if given && !carry && v != nil && v != lc.initial(t) {
 			return nil, &Error{Code: CodeLifecycle, Field: lc.Field, Message: fmt.Sprintf("a new %s starts as %s; it moves on by a transition", t.Name, lc.initial(t))}
 		}
-		if values[lc.Field] == nil {
+		if v == nil {
 			values[lc.Field] = lc.initial(t)
+		}
+		if !given {
+			defaultState = lc.Field
 		}
 	}
 	if id == "" {
@@ -919,6 +924,8 @@ func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id stri
 		r.Data[name] = v
 	}
 	applySet(r, values, sc, op)
+	// Assigning the lifecycle's initial state is a schema default.
+	delete(r.Meta.By, defaultState)
 	for _, name := range t.Order {
 		f := t.field(name)
 		if f == nil || f.Sequence == nil || r.Data[name] != nil {

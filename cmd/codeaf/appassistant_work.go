@@ -123,7 +123,28 @@ func (b *appBackend) AddAppAgentDuty(p appwire.AppAgentDuty) (string, error) {
 	if err == nil && b.startAppRunsOnce != nil {
 		b.startAppRunsOnce()
 	}
+	if err == nil {
+		b.emit.Emit(appwire.EventAppAgentChanged, appwire.AppAgentChanged{App: p.App, Kind: "duties"})
+	}
 	return id, err
+}
+
+func (b *appBackend) RemoveAppAgentDuty(p appwire.AppAgentDutyRef) error {
+	if strings.TrimSpace(p.App) == "" || !strings.HasPrefix(p.ID, appAgentDutyPrefix) {
+		return appwire.Errorf(appwire.CodeBadParams, "Choose an app and a standing duty.")
+	}
+	err := b.state.write(func(f *appStateFile) error {
+		duty, ok := f.AppAgentDuties[p.ID]
+		if !ok || duty.App != p.App {
+			return appwire.Errorf(appwire.CodeNotFound, "That standing duty could not be found.")
+		}
+		delete(f.AppAgentDuties, p.ID)
+		return nil
+	})
+	if err == nil {
+		b.emit.Emit(appwire.EventAppAgentChanged, appwire.AppAgentChanged{App: p.App, Kind: "duties"})
+	}
+	return err
 }
 
 func (b *appBackend) loadAppAgentRun(files runs.Files, app, id string) (runs.Definition, error) {
@@ -237,6 +258,20 @@ func (b *appBackend) QueryAppAgent(p appwire.AppAgentQuery) (any, error) {
 		}
 		groups["actions"] = append(groups["actions"], permission{"propose_change", "Propose changes", b.appAgentAllowed(p.App, "actions", "propose_change")})
 		return []any{map[string]any{"agent": identity, "actions": groups["actions"], "data": groups["data"]}}, nil
+	case "duties":
+		type listedDuty struct {
+			ID string `json:"id"`
+			appwire.AppAgentDuty
+		}
+		duties := []listedDuty{}
+		err := b.state.read(func(f *appStateFile) {
+			for _, id := range slices.Sorted(maps.Keys(f.AppAgentDuties)) {
+				if duty := f.AppAgentDuties[id]; duty.App == p.App {
+					duties = append(duties, listedDuty{ID: id, AppAgentDuty: duty.AppAgentDuty})
+				}
+			}
+		})
+		return duties, err
 	default:
 		return nil, appwire.Errorf(appwire.CodeBadParams, "Unknown agent projection.")
 	}

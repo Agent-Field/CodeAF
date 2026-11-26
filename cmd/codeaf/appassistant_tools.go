@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -14,7 +15,7 @@ func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *sessi
 	scope := &session.AppScope{ID: principal.App}
 	scope.Tools = []bare.Tool{{
 		Name:        "app",
-		Description: "Use codeaf app for this app. Show its declared views and actions, query a view with typed arguments, invoke a declared action, or propose an app edit the person requested.",
+		Description: "For a requested change to the app itself, call propose_change without parameters before querying records. Use show to find view IDs and action arguments. Query takes params.view and optional params.args. Invoke takes params.action and params.args. If the action requires a revision, give params.expected_rev from the record row's _rev and the record ID as params.args.record.",
 		Schema:      json.RawMessage(`{"type":"object","properties":{"verb":{"type":"string","enum":["show","query","invoke","propose_change"]},"params":{"type":"object"}},"required":["verb"],"additionalProperties":false}`),
 		Execute: func(ctx context.Context, raw json.RawMessage) (string, bool, error) {
 			var command struct {
@@ -26,10 +27,14 @@ func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *sessi
 			if err := decoder.Decode(&command); err != nil {
 				return "", true, err
 			}
-			if command.Verb != appwire.AppContentPropose {
+			if command.Verb == appwire.AppContentQuery || command.Verb == appwire.AppContentInvoke {
 				session.MarkAppContent(ctx)
 			}
 			result, err := appwire.RunScopedAppCommand(ctx, b, principal, command.Verb, command.Params, session.NewSessionID(), session.AppChangeRequest)
+			var refusal *appwire.Error
+			if errors.As(err, &refusal) {
+				return refusal.Message, true, nil
+			}
 			return string(result), err != nil, err
 		},
 	}}
@@ -66,6 +71,12 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 		}
 		id, err := b.AddAppAgentDuty(p)
 		return appwire.RunStarted{ID: id}, err
+	case "agent_duty_remove":
+		var p appwire.AppAgentDutyRef
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, err
+		}
+		return appwire.Empty{}, b.RemoveAppAgentDuty(p)
 	case appwire.AppContentShow, appwire.AppContentQuery, appwire.AppContentInvoke, appwire.AppContentPropose:
 		var p struct {
 			App     string          `json:"app"`

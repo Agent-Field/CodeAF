@@ -67,7 +67,7 @@ func (a *Agent) withAppTurn(ctx context.Context, user userMessage) context.Conte
 }
 
 // AppChangeRequest returns the person's own words for a proposal. A proposal
-// is allowed once and before any other tool, so a fetched record cannot start
+// is allowed once and before using record content, so a fetched record cannot start
 // a change job and no model-generated string becomes a builder instruction.
 func AppChangeRequest(ctx context.Context) (string, bool) {
 	turn, _ := ctx.Value(appTurnKey{}).(*appTurn)
