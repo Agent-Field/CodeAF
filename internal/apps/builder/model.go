@@ -137,7 +137,7 @@ Consult kit-steps before authoring a calculation. Import by ID and version
 with use-kit-step, then grant and call it like any other custom tool.`
 
 func systemPrompt() string {
-	return skill + "\n\n" + instructions
+	return skill + "\n\n" + instructions + "\nUse the supplied screen archetypes for work screens."
 }
 
 var definitionPath = regexp.MustCompile(`^(app\.json|plan\.json|sample\.json|agent\.md|screens/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.json|runs/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.ya?ml|custom/[a-z][a-z0-9_-]{0,47}\.(json|tsx|step))$`)
@@ -472,7 +472,8 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		Parts          json.RawMessage `json:"parts,omitempty"`
 		ExistingShapes json.RawMessage `json:"existing_shapes,omitempty"`
 		RunExample     string          `json:"run_example,omitempty"`
-	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes, runExample})
+		Archetypes     string          `json:"screen_archetypes"`
+	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes, runExample, archetypeInstructions})
 	if err != nil {
 		return nil, "", BuildCalls{}, err
 	}

@@ -55,7 +55,7 @@ func TestCheckMeasuresDeskLookInBothThemesAtBothWidths(t *testing.T) {
 		return nil, nil
 	}
 	report := pipeline.Run(t.Context(), "draft", def, nil)
-	for _, theme := range []string{"dark", "light"} {
+	for _, theme := range []string{"dark", "black", "light"} {
 		for _, width := range []int{800, 1120} {
 			if got := seen[check.LookViewport{Theme: theme, Width: width}]; got != len(def.ScreenFiles()) {
 				t.Errorf("%s at %d got %d renders", theme, width, got)

@@ -89,6 +89,12 @@ func pack(files map[string]string, existing schema.TypeSet, p PackOptions) ([]by
 	if p.Publisher == "" {
 		p.Publisher = "local"
 	}
+	if strings.EqualFold(strings.TrimSpace(p.Publisher), check.ExamplesPublisher) {
+		if findings := check.LookFindings(schema.Definition{Files: a.Files}, existing); len(findings) != 0 {
+			report := schema.Report{Problems: findings}
+			return nil, fmt.Errorf("This app needs layout changes before publishing as %s.\n%s", check.ExamplesPublisher, report)
+		}
+	}
 	if p.Version == "" {
 		p.Version = fmt.Sprintf("%d.0.0", app.Version)
 	}

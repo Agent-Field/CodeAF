@@ -86,7 +86,12 @@
             "label": "Email thread",
             "props": {
               "messages": "body",
-              "compose": true
+              "compose": true,
+              "macros": [
+                { "label": "Known issue", "text": "Thanks for letting us know. We are looking into this issue and will follow up here." },
+                { "label": "Refund policy", "text": "I can look up the refund options for your order. Please share your order number." },
+                { "label": "Reset 2FA", "text": "I can help you recover access. Please confirm which recovery option you still have." }
+              ]
             },
             "bind": {
               "record": "$selection.work.id",
@@ -107,12 +112,12 @@
             "when": "$selection.work.count == 1"
           },
           {
-            "part": "Text",
-            "id": "macros",
-            "props": {
-              "text": "Macros \u00b7 Known issue \u00b7 Refund policy \u00b7 Reset 2FA",
-              "role": "meta",
-              "tone": "muted"
+            "part": "Timeline",
+            "id": "activity",
+            "label": "Ticket activity",
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "ticket"
             },
             "when": "$selection.work.count == 1"
           }

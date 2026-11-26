@@ -351,3 +351,25 @@ func TestAppPackRefusesExamplesThatFailInAnEmptyProfile(t *testing.T) {
 		t.Fatalf("Pack created an unusable file: %v", err)
 	}
 }
+
+func TestAppPackBlocksLookFindingsForOfficialExamples(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	backend := newFakeBackend(newAppRecorder(), nil)
+	t.Cleanup(func() { backend.Close() })
+	wire := wireOver(t, backend)
+	meta := stagePackageFixture(t, backend.AppDefinitions(), "", 0, map[string]string{
+		schema.AppFile:      strings.Replace(packageApp, `"kit":0`, `"kit":2`, 1),
+		"screens/main.json": `{"screen":"main","title":"Contacts","body":{"part":"Text","id":"intro","props":{"text":"Keep your contacts current."}}}`,
+	})
+	dir := t.TempDir()
+	var local struct{ Manifest apppackage.Manifest }
+	wire.must("apps.pack", map[string]string{"app": meta.ID, "path": filepath.Join(dir, "local.codeaf-app")}, &local)
+	dest := filepath.Join(dir, "examples.codeaf-app")
+	message := wire.mustFail("apps.pack", map[string]string{"app": meta.ID, "path": dest, "publisher": "codeaf examples"}, appwire.CodeBadParams)
+	if !strings.Contains(message, "Add a visual tied to the job") {
+		t.Fatalf("expected the example export to name the missing visual: %s", message)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("Pack created an example with unresolved Look findings: %v", err)
+	}
+}

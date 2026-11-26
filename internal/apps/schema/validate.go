@@ -99,6 +99,7 @@ func (d DepthReport) Passed() bool { return len(d.Warnings) == 0 }
 type Report struct {
 	Depth    *DepthReport `json:"depth,omitempty"`
 	Problems []Problem    `json:"problems"`
+	Warnings []Problem    `json:"warnings,omitempty"`
 	Look     string       `json:"look,omitempty"`
 }
 
@@ -126,6 +127,9 @@ func (r Report) LookNote() string {
 func (r Report) String() string {
 	var b strings.Builder
 	for _, p := range r.Problems {
+		fmt.Fprintf(&b, "%s%s: %s (%s)\n", p.File, p.Path, p.Message, p.Code)
+	}
+	for _, p := range r.Warnings {
 		fmt.Fprintf(&b, "%s%s: %s (%s)\n", p.File, p.Path, p.Message, p.Code)
 	}
 	if note := r.LookNote(); note != "" {
@@ -436,6 +440,23 @@ func (c *checker) checkApp() {
 		if t.Title != "" {
 			if _, ok := fields[t.Title]; !ok {
 				c.add(AppFile, at+"/title", CodeFieldUnknown, "The title of %s is %q, but %s has no such field.", name, t.Title, name)
+			}
+		}
+		if p := t.Present; p != nil {
+			check := func(slot, field string) {
+				if field == "" {
+					return
+				}
+				if _, ok := fields[field]; !ok {
+					c.add(AppFile, at+"/present/"+slot, CodeFieldUnknown, "%s has no field %q to show here.", name, field)
+				}
+			}
+			for _, slot := range [][2]string{{"title", p.Title}, {"trailing", p.Trailing}, {"state", p.State},
+				{"avatar", p.Avatar}, {"money", p.Money}, {"link", p.Link}} {
+				check(slot[0], slot[1])
+			}
+			for i, field := range p.Meta {
+				check(fmt.Sprintf("meta/%d", i), field)
 			}
 		}
 		for _, fname := range sortedKeys(t.Fields) {

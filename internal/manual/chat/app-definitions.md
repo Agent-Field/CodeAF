@@ -121,7 +121,7 @@ to 12 selectors. The batch returns each match and lists misses in
 
 `app look` uses the open desktop to draw the selected screen on example
 records. When the desktop renderer is connected, Check draws every screen
-in Dark and Light at 800 and 1120 pixels. Clipping, overlap, truncation,
+in Dark, Black, and Light at 800 and 1120 pixels. Clipping, overlap, truncation,
 empty bound columns, lists that have records but no visible fields, contrast
 problems and competing primary actions must be fixed before a step can be kept. If the connected renderer times out,
 try Check again.
@@ -409,6 +409,45 @@ document can display its saved copy until it has a record to edit.
 `apps.content.read` serves the saved document or plan from the selected app
 or preview.
 
+## Use a screen archetype for a queue, brief, board or dashboard
+
+The Builder can use `codeaf app recipe` with
+`{"kind":"add-screen","as":"queue-detail","id":"needs-review","title":"Needs review","record":"case"}`.
+The compiler builds the screen from its job and the record fields. Choose
+`queue-detail`, `brief`, `board-detail`, `dashboard`, `record`,
+`inbox-thread`, `agenda`, or `canvas-visual`.
+
+Use `codeaf app parts --for add-screen/queue-detail` to see the corresponding
+gallery screen. Pass `slots` with the job-specific inputs, such as `state`
+for a board view or `metrics` and `visual` for a dashboard.
+
+For a dashboard, each entry in `slots.metrics` has a `label` and an `op`
+of `count`, `sum`, `avg`, `min`, or `max`. Add the `field` for an operation
+on a field. For example, `{"label":"Open cases","op":"count"}` counts
+records. A bar visual is `{"kind":"bar","title":"Cases by stage","group":"stage"}`.
+A file visual names its attachment `field`. A timeline, map, graph, or canvas
+names its `content` path. A line or area visual can name the field to plot
+with `value`.
+
+## Read the row, navigate by job, and check the look
+
+A list or board can show a title, a second line of related facts, a trailing
+state or score, a person, and a link control. Kit 2 can infer these from the
+record fields. A record type can set `present` with `title`, `meta`,
+`trailing`, `state`, `avatar`, `money`, and `link` to guide its rows.
+Default sorting stays in effect quietly. Common file kinds read as
+“Transcript”, “Text”, or “PDF”.
+
+Name sections for jobs and saved views. When the app has more than four
+sections, Desk shows an in-app rail with counts for the sections that read
+records. Use a visual suited to the work, such as a timeline for shifts.
+
+Check suggests changes for repetitive sections, bare tables, raw links,
+unlabelled numbers, empty metrics, repeated searches, crowded columns, or
+a missing visual. A personal app can be kept with these suggestions.
+Exporting as **codeaf examples** requires resolving them. Set
+`"publisher":"codeaf examples"` in the JSON arguments to `codeaf app pack`.
+
 ## Dashboard targets and limits
 
 A metric in a dashboard can show a target or limit beside the current value.
@@ -423,3 +462,9 @@ Grouped lists and timelines keep every row and show it under its group.
 If the view has a limit, the display shows up to that many matches. Changing
 the sort picks that many matches in the new order. Clearing your sort restores
 the saved order.
+
+## Reuse a reply in a conversation
+
+An inbox can offer saved replies beside the draft. Pick one to insert it into
+your draft. Edit the words before choosing **Reply**. Picking a saved reply
+keeps the message as a draft.
