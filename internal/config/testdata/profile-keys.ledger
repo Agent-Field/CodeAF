@@ -10,6 +10,7 @@
 # Adding a settings row forces a line here; removing one leaves its line
 # behind and turns the law red until the key is retired on purpose.
 api_key
+apps.owner_name
 approval.guardian
 approval.timeout_seconds
 attribution

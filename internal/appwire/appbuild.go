@@ -103,7 +103,7 @@ func init() {
 		return &ref, nil
 	})
 	methods["apps.plan"] = buildCall(func(b *builder.Jobs, p builder.PlanRequest) (*builder.PlanResult, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 295*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), builder.PlanWait)
 		defer cancel()
 		res, err := b.Plan(ctx, p)
 		return &res, err

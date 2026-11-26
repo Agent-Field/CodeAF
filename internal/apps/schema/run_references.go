@@ -18,6 +18,11 @@ var (
 
 func (c *checker) checkRunReferences(file string, raw any, ids, textOutputs map[string]bool) {
 	walkStrings(raw, "", func(path, value string) {
+		if templatePath.MatchString(path) {
+			if marker := UnboundPlaceholder(value); marker != "" {
+				c.add(file, path, "unbound_placeholder", "Replace %s with a bound value from the record or owner, or remove it from the draft.", marker)
+			}
+		}
 		missing := func(ref, id string) {
 			c.add(file, path, CodeStepRefUnknown, "%q reads step %q, which does not exist. Use a declared step ID: %s.", ref, id, strings.Join(slices.Sorted(maps.Keys(ids)), ", "))
 		}

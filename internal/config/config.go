@@ -339,6 +339,7 @@ func LoadKeyless() (Config, error) { return load(false) }
 // first run write that are not settings-registry rows. They are consumed even
 // though NewSettings(...).Rows() does not list them.
 var nonSettingProfileFields = []string{
+	keyAppOwnerName,
 	dailyAuthorityKey,
 	dailyTodayKey,
 	preferenceTimesKey,

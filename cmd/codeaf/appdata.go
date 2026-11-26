@@ -19,6 +19,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
@@ -252,13 +253,9 @@ func (b *appBackend) DataAggregate(p appwire.DataAggregateParams) (*appwire.Data
 	if err != nil {
 		return nil, err
 	}
-	ir, err := queryIR(p.Type, p.Query, p.Where)
+	ir, err := b.appAggregateIR(p)
 	if err != nil {
 		return nil, err
-	}
-	ir.Group = p.Group
-	for _, a := range p.Aggregate {
-		ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: a.Fn, Field: a.Field, As: a.As})
 	}
 	planned, source, _, err := b.planAppQuery(p.DataScope, ir)
 	if err != nil {
@@ -273,6 +270,51 @@ func (b *appBackend) DataAggregate(p appwire.DataAggregateParams) (*appwire.Data
 		out.Groups = append(out.Groups, appwire.DataAggregate{Key: g.Key, Values: g.Values})
 	}
 	return out, nil
+}
+
+// Desk sends the view address so a metric always uses its declared filter.
+func (b *appBackend) appAggregateIR(p appwire.DataAggregateParams) (*data.QueryIR, error) {
+	if p.View == nil {
+		ir, err := queryIR(p.Type, p.Query, p.Where)
+		if err != nil {
+			return nil, err
+		}
+		ir.Group = p.Group
+		for _, a := range p.Aggregate {
+			ir.Aggregate = append(ir.Aggregate, data.Agg{Fn: a.Fn, Field: a.Field, As: a.As})
+		}
+		return ir, nil
+	}
+	if p.App == "" || p.Type != "" || p.Query != "" || len(p.Where)+len(p.Group)+len(p.Aggregate) != 0 {
+		return nil, appwire.Errorf(appwire.CodeBadParams, "Choose an app and declared view for this metric.")
+	}
+	var raw []byte
+	if p.Draft != "" {
+		jobs, err := b.AppBuilds()
+		if err != nil {
+			return nil, err
+		}
+		raw, err = jobs.ViewScreen(p.App, p.Draft, p.View.Screen)
+		if err != nil {
+			return nil, appwire.Errorf(appwire.CodeNotFound, "The draft screen is unavailable for this app.")
+		}
+	} else {
+		_, def, err := b.appContentDefinition(p.App)
+		if err != nil {
+			return nil, err
+		}
+		raw, _ = def.Screen(p.View.Screen)
+	}
+	screen, err := schema.ParseScreen(raw)
+	if err != nil {
+		return nil, appwire.Errorf(appwire.CodeNotFound, "The screen is unavailable.")
+	}
+	view, ok := screen.Views[p.View.ID]
+	if !ok || len(view.Aggregate) == 0 || !appAssistantViewSupported(view) || view.Window != nil {
+		return nil, appwire.Errorf(appwire.CodeBadParams, "Choose a declared view with an aggregate.")
+	}
+	ir, err := declaredViewIR(view, p.View.Args)
+	return &ir, err
 }
 
 func (b *appBackend) DataCount(p appwire.DataCountParams) (*appwire.DataCountResult, error) {

@@ -1,9 +1,11 @@
 package appwire
 
 import (
-	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"encoding/json"
 	"reflect"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 )
 
 // FLUID APPS: THE PERSON'S DATA. Every record of every type
@@ -83,11 +85,17 @@ type (
 	// up to two fields (a link's field included).
 	DataAggregateParams struct {
 		DataScope
-		Type      string     `json:"type"`
-		Query     string     `json:"query,omitempty"`
-		Where     []DataCond `json:"where,omitempty"`
-		Group     []string   `json:"group,omitempty"`
-		Aggregate []DataAgg  `json:"aggregate"`
+		View      *DataAggregateView `json:"view,omitempty"`
+		Type      string             `json:"type,omitempty"`
+		Query     string             `json:"query,omitempty"`
+		Where     []DataCond         `json:"where,omitempty"`
+		Group     []string           `json:"group,omitempty"`
+		Aggregate []DataAgg          `json:"aggregate,omitempty"`
+	}
+	DataAggregateView struct {
+		Screen string                     `json:"screen"`
+		ID     string                     `json:"id"`
+		Args   map[string]json.RawMessage `json:"args,omitempty"`
 	}
 	DataAgg struct {
 		Fn    string `json:"fn"`
@@ -463,11 +471,13 @@ var dataMethods = map[string]method{
 		return d.DataImportCSV(p)
 	}),
 	"data.aggregate": dataMethod("data.aggregate", func(d Dataer, p DataAggregateParams) (*DataAggregateResult, error) {
-		if err := needType(p.Type); err != nil {
-			return nil, err
-		}
-		if len(p.Aggregate) == 0 {
-			return nil, Errorf(CodeBadParams, "aggregate is required")
+		if p.View == nil {
+			if err := needType(p.Type); err != nil {
+				return nil, err
+			}
+			if len(p.Aggregate) == 0 {
+				return nil, Errorf(CodeBadParams, "aggregate is required")
+			}
 		}
 		return d.DataAggregate(p)
 	}),

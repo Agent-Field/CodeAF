@@ -24,7 +24,9 @@ Rendering a custom part requires the desktop sandbox.
 Kit 2 can check Markdown, sheets, timelines, graphs, maps and slide content.
 It also checks declarations for file references, record links, reasoned reveals,
 sign-off, evidence, timers and output templates. Check matches a render Action
-to its declared output and checks the visible merge fields. Draft runs render
+to its declared output and checks the visible merge fields. A metric Chart
+uses its declared aggregate and filter. The desktop reads that value through
+`data.aggregate` with `view: {screen, id, args}`. Draft runs render
 with example records so you can test the output before applying the app.
 The data store, run engine and desktop each implement their own execution and
 rendering, including carrying out a run in a repository.
@@ -53,8 +55,20 @@ Both actions keep the person's records and the app's saved files on disk.
 Open **+ New app** in the desktop app and describe what you want to track
 and do. The plan shows data, screens, automations and what the app needs.
 Send a message to change any of it, then choose **Build**. Leave the tab
-while it works and come back to the same conversation. An Inbox item opens
+while it works and come back to the same conversation. If a writing pass
+reaches its model call limit after saving changes, the Builder can continue
+from those files automatically, up to two times per build. If Check repeats
+the same findings after a repair, the draft stops and shows the issue.
+An Inbox item opens
 the app when it's ready to try or needs your input.
+
+A collection recipe adds an **Add** control when the plan asks to create
+that type and the app can write it. The form collects the record’s fields.
+
+A run drafting a note can use the bound contact and the name from
+`apps.owner_name` in the profile's `config.json`. Restart the engine after
+editing the profile. If the setting is empty, runs use the local account's
+display name when available.
 
 Try the screens with made-up records before choosing **Apply**. If the plan
 offers to use an existing type, ask to use it to share those records.
@@ -65,12 +79,13 @@ no access to your records.
 
 Open **Edit app** and say what to change. Select an element in the preview
 to ask about that exact part. The saved mark keeps the selected node ID and
-checkpoint. After Check passes, a marked edit shows a **Proposed change**
-card with the part and a before and after summary. The same card is
-available after restarting. **Apply** publishes the checked files as the
-next version. **Discard** drops the change and returns to your saved app.
-Between proposals, use an earlier step in the conversation to preview it
-or choose **Go back to this** to put it back as a new step.
+checkpoint. The builder describes the change by its display name in the
+conversation. Open **Build activity** for tool replies and Check details.
+A checked change card shows the part and its before and after states.
+The card stays available after restarting. Choose **Apply** or **Discard** there. Use an earlier step in the conversation to
+preview it or choose **Go back to this** to put it back as a new step.
+**Apply** publishes the checked files as the next version. **Discard**
+drops the unpublished change and returns to your saved app.
 
 The engine uses `apps.plan` to make or revise the plan, `apps.build` to start
 work, `apps.change` to open editing, `apps.say` for conversation, and
@@ -89,7 +104,9 @@ types, fields, and screens. The app's records are separate.
 markup part, use `codeaf app parts --for add-view/board` or
 `codeaf app parts --for RecordList`. In an app session, `app context` shows
 the outline, manifest and file names. Ask for an individual definition
-with `app context {"file":"screens/deals.json"}`. An unchanged file page
+with `app context {"file":"screens/deals.json"}`. Fetch several files or
+types together with `app context {"select":[{"file":"screens/deals.json"},{"type":"contact"}]}`.
+Choose up to six in one request. An unchanged file page
 can be reused from its earlier reply. In the scoped app session,
 `app parts {"select":["add-view/board","RecordList"]}` fetches several
 descriptors in one command. Use one `for` selector or a `select` list of up
