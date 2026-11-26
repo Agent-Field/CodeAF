@@ -159,7 +159,7 @@ func (s *Store) transitionRecords(sc Scope, name string, records []TransitionRec
 	}
 	var rows []Row
 	var batch string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		moves := make([]move, 0, len(records))
 		var batchType *Type
 		for i, ref := range records {

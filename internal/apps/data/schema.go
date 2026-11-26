@@ -167,6 +167,8 @@ type Scope struct {
 	App        string
 	Actor      string
 	Agent      bool
+	Principal  AgentPrincipal
+	Action     string
 	AI         bool
 	Flow       bool
 	Cause      string
@@ -176,12 +178,14 @@ type Scope struct {
 	sourceEvent string
 }
 
+func (sc Scope) isAgent() bool { return sc.Agent || sc.Principal.ID != "" }
+
 // kind is the writer kind a write of op by sc is recorded as.
 func (sc Scope) kind(op string) string {
 	switch {
 	case sc.sync:
 		return BySync
-	case sc.AI || sc.Agent:
+	case sc.AI || sc.isAgent():
 		return ByAI
 	case sc.Flow:
 		return ByFlow
@@ -193,11 +197,14 @@ func (sc Scope) kind(op string) string {
 
 // below says sc's writes sit below a person's: a value a person set is
 // left as it is.
-func (sc Scope) below() bool { return sc.AI || sc.Agent }
+func (sc Scope) below() bool { return sc.AI || sc.isAgent() }
 
 // actor is who a history row names: the caller's own name for itself, an
 // app's agent, or the person's id.
 func (s *schema) actor(sc Scope) string {
+	if sc.Principal.ID != "" {
+		return AgentAssigneePrefix + sc.Principal.ID
+	}
 	if sc.Actor != "" {
 		return sc.Actor
 	}

@@ -197,7 +197,7 @@ func (s *Store) CreateWorkItem(sc Scope, in WorkItem) (*WorkItem, error) {
 		return nil, errorf(CodeInvalid, "a work item has a title of at most %d characters", titleMax)
 	}
 	var out *WorkItem
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		t, _, err := w.subject(sc, in.Type, in.Record, false)
 		if err != nil {
 			return err
@@ -285,7 +285,7 @@ func (s *Store) updateWorkItem(sc Scope, id string, p WorkPatch, action string) 
 		return nil, errorf(CodeInvalid, "%q is not a work item", id)
 	}
 	var out *WorkItem
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		item, typeID, err := loadWorkItem(w.tx, w.schema, id)
 		if err != nil {
 			return err
@@ -431,6 +431,9 @@ func (s *Store) MyWork(sc Scope) ([]WorkItem, error) {
 
 func workActor(sch *schema, sc Scope) string {
 	if sc.below() {
+		if sc.Principal.ID != "" {
+			return sch.actor(sc)
+		}
 		name := sc.Actor
 		if name == "" {
 			name = sc.App
@@ -529,7 +532,7 @@ func (s *Store) CreateTimer(sc Scope, in Timer) (*Timer, error) {
 		return nil, errorf(CodeInvalid, "a timer's payload is at most 16 KB")
 	}
 	var out *Timer
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		t, _, err := w.subject(sc, in.Type, in.Record, true)
 		if err != nil {
 			return err
@@ -572,7 +575,7 @@ func (s *Store) CancelTimer(sc Scope, id string) error {
 	if !validID(id) {
 		return errorf(CodeInvalid, "%q is not a timer", id)
 	}
-	return s.write(func(w *writeTx) error {
+	return s.writeAs(sc, func(w *writeTx) error {
 		tm, typeID, err := loadTimer(w.tx, w.schema, id)
 		if err != nil {
 			return err
@@ -735,7 +738,7 @@ func (so *Signoff) Row() map[string]any {
 // so nobody signs a version they did not see. ONLY THE PERSON SIGNS: an agent
 // or an automation is refused, and its review belongs in a comment.
 func (s *Store) Sign(sc Scope, typ, id, statement string, rev int64) (*Signoff, error) {
-	if sc.Agent || sc.AI || sc.Flow {
+	if sc.isAgent() || sc.AI || sc.Flow {
 		return nil, &Error{Code: CodeNotAllowed, Need: "sign", Message: "only the person signs; an agent's review is a comment"}
 	}
 	statement = strings.TrimSpace(statement)
@@ -743,7 +746,7 @@ func (s *Store) Sign(sc Scope, typ, id, statement string, rev int64) (*Signoff, 
 		return nil, errorf(CodeInvalid, "a sign-off states what is signed, in at most %d characters", statementMax)
 	}
 	var out *Signoff
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		t, r, err := w.subject(sc, typ, id, true)
 		if err != nil {
 			return err
@@ -873,7 +876,7 @@ func (s *Store) AddComment(sc Scope, in Comment) (*Comment, error) {
 		return nil, errorf(CodeInvalid, "a comment mentions at most %d people", mentionsMax)
 	}
 	var out *Comment
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		c := Comment{ID: w.s.ids.next(w.now), Body: in.Body, Author: w.schema.actor(sc), App: sc.App, At: w.now.UTC().Format(stamp), Mentions: []string{}}
 		var t *Type
 		if in.Record != "" {

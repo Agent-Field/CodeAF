@@ -42,7 +42,11 @@ func (s *Store) processWrite(sc Scope, typ, id string, write bool, change func(*
 		return nil, errorf(CodeInvalid, "a process names a record type and id")
 	}
 	var out *ProcessSnapshot
-	err := s.write(func(w *writeTx) error {
+	scope := Scope{}
+	if write {
+		scope = sc
+	}
+	err := s.writeAs(scope, func(w *writeTx) error {
 		t, r, err := w.subject(sc, typ, id, write)
 		if err != nil {
 			return err

@@ -16,7 +16,7 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 	if !validID(id) {
 		return nil, errorf(CodeInvalid, "%q is not a record id", id)
 	}
-	if reveal && sc.Agent {
+	if reveal && sc.isAgent() {
 		return nil, &Error{Code: CodeNotAllowed, Need: "reveal", Message: "an agent cannot reveal a masked value"}
 	}
 	r, err := loadRecord(s.rdb, sch, id)

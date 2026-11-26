@@ -336,7 +336,7 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 			}
 			meta.AI[name] = aiSource(r.Meta.By[name])
 		}
-		if f.Masked && (!reveal || sc.Agent) {
+		if f.Masked && (!reveal || sc.isAgent()) {
 			out[name] = masked
 			meta.Masked = append(meta.Masked, name)
 			continue
@@ -847,7 +847,7 @@ func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (
 	var made []*record
 	var t *Type
 	var batch string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		made = nil
 		var err error
 		if t, err = w.schema.allow(sc, typ, true); err != nil {
@@ -1005,7 +1005,7 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 	var rows []*record
 	var held []Held
 	var batch string
-	err = s.write(func(w *writeTx) error {
+	err = s.writeAs(sc, func(w *writeTx) error {
 		rows, held, batch = nil, nil, ""
 		var err error
 		if t, err = w.schema.allow(sc, typ, true); err != nil {
@@ -1092,7 +1092,7 @@ func (s *Store) Delete(sc Scope, typ string, ids []string, opts UpdateOptions) (
 		return nil, err
 	}
 	var batch string
-	err = s.write(func(w *writeTx) error {
+	err = s.writeAs(sc, func(w *writeTx) error {
 		t, err := w.schema.allow(sc, typ, true)
 		if err != nil {
 			return err
@@ -1149,7 +1149,7 @@ func (s *Store) checkFrozen(t *Type, r *record, fields []string, sc Scope, reaso
 	if !frozen {
 		return nil
 	}
-	if strings.TrimSpace(reason) != "" && !sc.Agent && !sc.AI && !sc.Flow {
+	if strings.TrimSpace(reason) != "" && !sc.isAgent() && !sc.AI && !sc.Flow {
 		return nil
 	}
 	allowed := map[string]bool{}
@@ -1217,7 +1217,7 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 	var rows []*record
 	var removes []string
 	var undo string
-	err := s.write(func(w *writeTx) error {
+	err := s.writeAs(sc, func(w *writeTx) error {
 		rows, removes, undo = nil, nil, ""
 		var typeID, byKind, op string
 		var undone sql.NullString
