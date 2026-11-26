@@ -65,13 +65,14 @@ func (s *Store) IngestMeetingCapture(in MeetingCapture) (*MeetingCaptureReceipt,
 	scope := Scope{App: meetingCaptureApp, Cause: "meeting.ended", RunWriteKey: in.ID}
 	var result MeetingCaptureReceipt
 	err := s.writeAs(scope, func(w *writeTx) error {
-		if _, ok := w.schema.caps[meetingCaptureApp]; !ok {
+		current := w.schema.appType(meetingCaptureApp, "meeting")
+		if current == nil || current.field("capture_id") == nil || current.field("calendar_event") == nil {
 			def, err := ParseApp([]byte(meetingCaptureRecords))
 			if err != nil {
 				return err
 			}
 			for alias, typ := range def.Records {
-				if w.schema.common[typ.Common] != nil {
+				if bound := w.schema.common[typ.Common]; bound != nil && bound.DefinedBy != meetingCaptureApp {
 					typ.Uses = true
 					def.Records[alias] = typ
 				}

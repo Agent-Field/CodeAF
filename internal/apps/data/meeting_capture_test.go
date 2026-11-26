@@ -1,6 +1,7 @@
 package data
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -10,6 +11,12 @@ func TestMeetingCapturePublishesTheTranscriptWithTheCompletion(t *testing.T) {
 	defer place.Close()
 	store, err := place.Main()
 	if err != nil {
+		t.Fatal(err)
+	}
+	// The first desk builds registered these common types before capture
+	// identifiers and calendar event links were projected on the rows.
+	previous := strings.NewReplacer(`"capture_id":{"type":"text"},`, "", `"calendar_event":{"type":"ref","to":"meeting"},`, "").Replace(meetingCaptureRecords)
+	if err := store.RegisterApp([]byte(previous)); err != nil {
 		t.Fatal(err)
 	}
 	in := MeetingCapture{
