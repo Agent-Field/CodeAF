@@ -76,6 +76,9 @@ elements and label, id, prop-name, bind-name and on-event attributes.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Declare inputs in params and store ref ids as $params.post.id.
+For a run started from one record, declare a ref parameter with its type and
+omit its default. The record command passes the id. A scheduled search uses a
+separate run with a refs parameter, a query default and a loop over the results.
 Agent steps return text at $steps.<id>.output. For lists and approvals, copy
 reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use

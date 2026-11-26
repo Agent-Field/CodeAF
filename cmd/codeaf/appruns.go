@@ -463,9 +463,16 @@ func (b *appBackend) openRunApproval(r runs.Run) {
 		detail = "Enter a new budget in dollars to continue."
 		options = []appwire.AskOption{{ID: appwire.OptionRaise, Label: "Raise budget"}, {ID: appwire.OptionStop, Label: "Stop"}}
 	}
+	path := []string{"App"}
+	if app, err := b.AppDefinitions().Get(r.App); err == nil && app.Meta.Name != "" {
+		path[0] = app.Meta.Name
+	}
+	if r.Title != "" {
+		path = append(path, r.Title)
+	}
 	b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: appwire.Ask{
 		ID: id, Agent: appRunAskAgent, Kind: "approval", Subkind: kind,
-		Title: title, Detail: detail, Asked: gate.AskedAt, Path: []string{r.App, r.DefinitionID, r.Step}, Blocking: &blocking,
+		Title: title, Detail: detail, Asked: gate.AskedAt, Path: path, Blocking: &blocking,
 		Irreversible: gate.Kind == "send",
 		Options:      options,
 	}})

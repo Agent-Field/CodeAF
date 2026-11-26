@@ -246,10 +246,18 @@ func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, o
 		}
 	}
 	params := map[string]string{"draft": plan.Draft}
+	planned, _ := readReply[struct{ Progress []BuildPass }](p.cli(ctx, "build_state", params))
+	var planning []BuildPass
+	for _, pass := range planned.Progress {
+		if pass.Stage == "planning" && len(pass.Calls) != 0 {
+			planning = append(planning, pass)
+		}
+	}
 	if _, err := p.cli(ctx, "build", params); err != nil {
 		return BuildState{}, err
 	}
 	state, err := p.waitCheck(ctx, params)
+	state.Passes = append(planning, slices.DeleteFunc(state.Passes, func(pass BuildPass) bool { return pass.Stage == "planning" })...)
 	if err != nil {
 		return state, err
 	}

@@ -42,6 +42,9 @@ func testAppRunApproval(t *testing.T, deskCard bool) {
 		t.Fatalf("inbox = %+v, %v", items, err)
 	}
 	item := items[0]
+	if len(item.Ask.Path) != 1 || item.Ask.Path[0] != "App" {
+		t.Fatalf("approval should name its source in plain words, got %v", item.Ask.Path)
+	}
 	if _, err := backend.AnswerInbox(item.ID, appwire.OptionAllowOnce, "", "", ""); err != nil {
 		t.Fatal(err)
 	}

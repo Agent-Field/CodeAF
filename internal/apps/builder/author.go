@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/check"
+	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
@@ -120,6 +121,20 @@ func (a authoring) edit(ctx context.Context, verb string, files map[string]strin
 		switch verb {
 		case "set_run":
 			edit.Path = "runs/" + args.ID + ".yaml"
+			run, err := schema.ParseRun([]byte(args.Text))
+			if err != nil {
+				return nil, err
+			}
+			for _, name := range slices.Sorted(maps.Keys(run.Params)) {
+				param := run.Params[name]
+				if param.Type != "ref" || param.Default == nil {
+					continue
+				}
+				id, _ := param.Default.(string)
+				if !data.ValidRecordID(id) {
+					return nil, fmt.Errorf("the %s input takes a single record. Remove its default and pass the record from the command, or use a refs input and a loop for a scheduled search", name)
+				}
+			}
 		case "set_agent":
 			edit.Path = "agent.md"
 		case "set_sample":
