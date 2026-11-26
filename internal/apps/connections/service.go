@@ -32,6 +32,7 @@ var (
 	ErrPersonCredential = errors.New("connect your own source credential to use this connection")
 	ErrSourcePermission = errors.New("the source refused access with your credential")
 	ErrUnavailable      = errors.New("the source is unavailable")
+	ErrPartialWindow    = errors.New("the source window is partial and cannot produce complete totals or relations")
 	ErrTooLarge         = errors.New("the source result exceeds the byte budget")
 	ErrConflict         = errors.New("the source record has changed or is unavailable")
 	ErrUncertain        = errors.New("the source could not confirm the write result")
@@ -43,6 +44,7 @@ var (
 // resolver and defaults to the local profile owner.
 type Service struct {
 	Microsoft func() (*connect.Manager, error)
+	Google    func() (*connect.Manager, error)
 	Profile   string
 	Store     func() (*data.Store, error)
 	Person    func(context.Context) data.PersonPrincipal
@@ -89,7 +91,8 @@ type Page struct {
 // The profile alias is selected by callers. The immutable registration ID
 // names the identity namespace even when a second profile uses the same alias.
 type registration struct {
-	graphGrant string
+	googleGrant, googleSubject string
+	graphGrant                 string
 	Config
 	Binding string `json:"binding"`
 }
@@ -169,8 +172,14 @@ func validateCredential(kind Kind, credential string) (string, error) {
 		}
 		return "", nil
 	}
-	if credential == "" || len(credential) > MaxCredentialBytes || strings.ContainsAny(credential, "\r\n") {
+	if kind != Google && credential == "" || len(credential) > MaxCredentialBytes || strings.ContainsAny(credential, "\r\n") {
 		return "", errors.New("the connection needs one credential line")
+	}
+	if kind == Google {
+		if credential != "" {
+			return "", errors.New("use codeaf app connect google for Google Workspace sign-in")
+		}
+		return "", nil
 	}
 	if kind != HTTP {
 		db, err := database(kind, credential)
@@ -218,6 +227,20 @@ func (s Service) Test(ctx context.Context, app, id string) error {
 	c, err := s.scoped(app, id)
 	if err != nil {
 		return err
+	}
+	if c.Kind == Google {
+		ctx, cancel := context.WithTimeout(ctx, deadline)
+		defer cancel()
+		for _, read := range c.Reads {
+			source, _, err := s.workspace(ctx, c, read.Table, false)
+			if err == nil {
+				_, _, err = source.rows(ctx, read.Table, nil, 1)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	if c.Kind == Microsoft365 {
 		ctx, cancel := context.WithTimeout(ctx, deadline)
@@ -306,10 +329,15 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, ErrSourcePermission
 	}
 	for name, column := range read.Fields {
-		if c.Kind == Microsoft365 && graphContentField(column) {
+		if c.Kind == Google && !slices.Contains(googleFields(read.Table, false), column) {
 			continue
 		}
-		f, err := sourceField(read, typ, name)
+		var f *data.Field
+		if c.Kind == Google {
+			f, err = googleSourceField(read, typ, name)
+		} else {
+			f, err = sourceField(read, typ, name)
+		}
 		if c.Kind == Microsoft365 && graphPersonColumn(read, column) {
 			if field := typ.Fields[name]; field != nil && !field.Hidden && !field.Masked && field.Computed == "" &&
 				(field.Type == data.TypeRefs || field.Type == data.TypeRef) {
@@ -341,8 +369,31 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, err
 	}
 	maps.Copy(args, q.filters)
-	ctx, cancel := context.WithTimeout(ctx, deadline)
+	budget := deadline
+	if c.Kind == Google && read.Table == "gmail" {
+		budget = 25 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
+	var google googleSource
+	if c.Kind == Google {
+		if typ.HasRowPolicy() {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+			return Page{}, ErrSourcePermission
+		}
+		google, c.googleGrant, err = s.workspace(ctx, c, read.Table, false)
+		c.googleSubject = google.subject
+		if err != nil {
+			return Page{}, err
+		}
+		if query, ok := args["q"]; ok {
+			if _, ok := query.(string); !ok {
+				return Page{}, ErrRejected
+			}
+		} else if read.GoogleQuery != "" {
+			args["q"] = read.GoogleQuery
+		}
+	}
 	var graph graphSource
 	if c.Kind == Microsoft365 {
 		if rowPolicy {
@@ -365,7 +416,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		args[read.Key] = key
 	}
 	var secret string
-	if c.Kind != Microsoft365 {
+	if c.Kind != Google && c.Kind != Microsoft365 {
 		secret, err = s.credential(c, sc.Person)
 		if err != nil {
 			store.AuditRecordPolicy(sc, typ, "source_read_refused")
@@ -375,7 +426,23 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	observed := time.Now().UTC()
 	var rows []map[string]any
 	var gp graphPage
+	var more bool
+	var index mailIndex
+	var indexKey, previous string
+	window := q.Limit
+	if c.Kind == Google && read.GoogleLimit > 0 {
+		window = min(window, read.GoogleLimit)
+	}
 	switch c.Kind {
+	case Google:
+		if read.Table == "gmail" && q.id == "" && read.GoogleIndex {
+			index, indexKey, previous, err = google.loadMailIndex(ctx, store, c.App, c.ID, q.Read, c.Binding+"/"+c.googleGrant)
+			if err == nil {
+				rows, more, err = google.indexedMail(ctx, &index, googleText(args, "q"), window)
+			}
+		} else {
+			rows, more, err = google.rows(ctx, read.Table, args, window)
+		}
 	case Microsoft365:
 		gp, err = s.graphRows(ctx, graph, c, read, store, sc, q, args)
 		rows = gp.rows
@@ -393,7 +460,18 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 		return Page{}, err
 	}
-	if c.Kind == Microsoft365 {
+	if c.Kind == Google && len(rows) > window {
+		rows, more = rows[:window], true
+	}
+	if c.Kind == Google {
+		if _, current, err := s.workspace(ctx, c, read.Table, false); err != nil || current != c.googleGrant {
+			return Page{}, ErrSourcePermission
+		}
+		current, err := s.scoped(c.App, c.ID)
+		if err != nil || current.Binding != c.Binding {
+			return Page{}, ErrConflict
+		}
+	} else if c.Kind == Microsoft365 {
 		if err := s.checkGraphGrant(ctx, c); err != nil {
 			store.AuditRecordPolicy(sc, typ, "source_read_refused")
 			return Page{}, err
@@ -410,9 +488,19 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	if err != nil || current != binding || currentType != typ {
 		return Page{}, errors.New("the type binding changed during the read")
 	}
+	if indexKey != "" {
+		if err := saveMailIndex(store, c.App, c.ID, indexKey, previous, index); err != nil {
+			return Page{}, err
+		}
+	}
+
 	page := Page{
-		Rows:   make([]data.Row, 0, min(len(rows), q.Limit)),
-		Source: Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
+		HasMore: more,
+		Rows:    make([]data.Row, 0, min(len(rows), q.Limit)),
+		Source:  Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
+	}
+	if c.Kind == Google && read.GoogleLimit != 0 && q.id == "" {
+		page.Source.Window = window
 	}
 	if c.Kind == Microsoft365 {
 		page.Next, page.Checkpoint = gp.next, gp.checkpoint
@@ -476,7 +564,9 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 				continue
 			}
 			var mapped any
-			if c.Kind == Microsoft365 && field.Type == data.TypeRef && read.Fields[name] == "meeting" {
+			if c.Kind == Google && (field.Type == data.TypeRef || field.Type == data.TypeRefs) {
+				mapped, err = googleReferenceValue(store, sc, c, read, field, raw, false)
+			} else if c.Kind == Microsoft365 && field.Type == data.TypeRef && read.Fields[name] == "meeting" {
 				mapped = value
 			} else if c.Kind == Microsoft365 && (field.Type == data.TypeRef || field.Type == data.TypeRefs) && graphPersonColumn(read, read.Fields[name]) {
 				mapped, err = graphReference(store, sc, field, value)
@@ -508,6 +598,7 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		row["id"] = id
 		page.Rows = append(page.Rows, row)
 	}
+	page.Source.Partial = page.HasMore
 	// TODO(R1): use the same binding when the type gains a mirror or native
 	// route. A live read persists only the crosswalk, never source values.
 	if c.Kind == Microsoft365 {
@@ -565,6 +656,9 @@ func encodeSourceKey(value any) (string, error) {
 
 func externalKey(c registration, read Read, key string) data.ExternalKey {
 	object := read.Table
+	if c.Kind == Google {
+		object += "#" + c.googleSubject
+	}
 	if c.Kind == Microsoft365 {
 		account := sha256.Sum256([]byte(c.graphGrant))
 		object += "/" + read.GraphDrive + "/" + fmt.Sprintf("%x", account)
@@ -639,6 +733,9 @@ func (s Service) SetPersonCredential(ctx context.Context, app, id, credential st
 	c, err := s.scoped(app, id)
 	if err != nil {
 		return err
+	}
+	if c.Kind == Google {
+		return errors.New("use codeaf app connect google for Google Workspace sign-in")
 	}
 	if c.Kind == Microsoft365 {
 		return errors.New("Microsoft 365 uses browser sign-in")

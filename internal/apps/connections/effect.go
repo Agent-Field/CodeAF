@@ -23,6 +23,7 @@ type Effect struct {
 	version string
 	values  map[string]any
 	fence   string
+	google  *googleEffect
 	graph   *graphEffect
 }
 
@@ -51,6 +52,9 @@ func (s Service) PrepareEffect(ctx context.Context, app, connection, operation s
 	if typ.HasRowPolicy() {
 		_ = store.AuditPolicy(app, typ.ID, "source_write_refused")
 		return nil, errors.New("this source write cannot enforce the record row policy")
+	}
+	if c.Kind == Google {
+		return s.prepareGoogleEffect(c, read, write, operation, args, store, binding, typ)
 	}
 	if c.Kind == Microsoft365 {
 		return s.prepareGraphEffect(ctx, c, read, write, operation, args, store, binding, typ)
@@ -163,6 +167,9 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 				return Receipt{}, errors.New("this source write cannot set a protected field")
 			}
 		}
+	}
+	if e.google != nil {
+		return e.applyGoogle(ctx)
 	}
 	if e.graph != nil {
 		return e.applyGraph(ctx, idempotencyKey)

@@ -3,6 +3,7 @@ package runs_test
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"testing"
 	"time"
 
@@ -559,5 +560,49 @@ func TestManifestOutboundOperationUsesProofApproval(t *testing.T) {
 	tick(t, e)
 	if len(fake.Calls()) != 1 || state(t, e, r.ID).State != runs.Done {
 		t.Fatal("proof approval did not release the step exactly once")
+	}
+}
+
+func TestGoogleTriggerCommitsItsClaimWithTheRun(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 11, 26, 16, 0, 0, 0, time.UTC)
+	cfg := runs.Config{
+		Root: t.TempDir(), Now: func() time.Time { return now },
+		Triggers: func() ([]runs.Trigger, error) {
+			return []runs.Trigger{{App: "app", ID: "prepare", Run: "example", On: "connector",
+				Connector: "calendar", Event: "event.starts", Match: map[string]any{"connection": "work", "read": "meetings", "minutes": float64(30)}}}, nil
+		},
+		GooglePoll: func(_ context.Context, trigger connections.GoogleTrigger, prev connections.GoogleCheckpoint, at time.Time) (connections.GoogleCheckpoint, []connections.GoogleEvent, error) {
+			if trigger.LeadMinutes != 30 || trigger.Read != "meetings" || !at.Equal(now) {
+				t.Fatalf("wrong source trigger: %+v at %s", trigger, at)
+			}
+			if !at.Before(time.Date(2026, 11, 26, 16, 30, 0, 0, time.UTC)) && prev.Cursor == "" {
+				t.Fatal("the previous checkpoint disappeared")
+			}
+			return connections.GoogleCheckpoint{Cursor: "calendar-token", CheckedAt: at},
+				[]connections.GoogleEvent{{Key: "meeting-1", Record: "00000000000000000000000001", Type: "meeting"}}, nil
+		},
+	}
+	const flow = "run: example\nsteps:\n  - id: prep\n    wait: {for: 1h}"
+	e := newEngine(t, flow, cfg)
+	tick(t, e)
+	list, err := e.List("app", "example")
+	if err != nil || len(list) != 0 {
+		t.Fatalf("dispatch polled Google: %+v %v", list, err)
+	}
+	if err := e.PollSources(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Close(); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Hour)
+	e = newEngine(t, flow, cfg)
+	if err := e.PollSources(ctx); err != nil {
+		t.Fatal(err)
+	}
+	list, err = e.List("app", "example")
+	if err != nil || len(list) != 1 {
+		t.Fatalf("source event should start exactly one run: %+v %v", list, err)
 	}
 }
