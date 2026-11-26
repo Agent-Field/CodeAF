@@ -118,12 +118,16 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 }
 
 func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
-	for _, desk := range []bool{false, true} {
-		name := "headless"
-		if desk {
-			name = "desk"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		desk, existing bool
+	}{
+		{name: "headless", existing: true},
+		{name: "desk", desk: true, existing: true},
+		{name: "new common type", desk: true},
+	} {
+		desk := test.desk
+		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
 			definitions := store.NewAt(home, func(string) (schema.TypeSet, error) {
 				return schema.TypeSet{"contact": {Owner: "crm", Common: "person", Fields: map[string]schema.Field{"name": {Type: "text"}}}}, nil
@@ -133,6 +137,9 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 			opts := builder.Options{
 				Home: home, Store: definitions, CanLook: deskReady.Load,
 				Catalog: func(app string) (builder.Catalog, error) {
+					if !test.existing {
+						return builder.Catalog{}, nil
+					}
 					return builder.Catalog{
 						Types:    schema.TypeSet{"contact": {Owner: "crm", Common: "person", Fields: map[string]schema.Field{"name": {Type: "text"}}}},
 						AppNames: map[string]string{"crm": "CRM"},
@@ -176,8 +183,12 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 						default:
 							if desk && !planning {
 								last := messages[len(messages)-1]
-								if !strings.Contains(last.Content[0].Text, "choose_reuse") {
-									t.Error("the Builder's check did not report the pending reuse question")
+								expected := "choose_reuse"
+								if !test.existing {
+									expected = schema.CodeUsesUnknown
+								}
+								if !strings.Contains(last.Content[0].Text, expected) {
+									t.Errorf("the Builder's preliminary report did not contain %s", expected)
 								}
 							}
 							if planning {
@@ -199,7 +210,7 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 				t.Fatal(err)
 			}
 			const proposal = "Uses your existing Contacts from CRM"
-			if slices.Contains(plan.Needs, proposal) == desk || len(plan.Offers) == 0 || plan.Offers[0].Type != "contact" {
+			if test.existing && (slices.Contains(plan.Needs, proposal) == desk || len(plan.Offers) == 0 || plan.Offers[0].Type != "contact") {
 				t.Fatalf("plan needs and offers = %v, %v", plan.Needs, plan.Offers)
 			}
 			if err := jobs.Build(plan.Draft); err != nil {
@@ -208,6 +219,13 @@ func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {
 			if desk {
 				state := waitState(t, jobs, plan.Draft, builder.NeedsYou)
 				event := state.Progress[len(state.Progress)-1]
+				if !test.existing {
+					if event.Report == nil || !slices.Contains(event.Report.Codes(), schema.CodeUsesUnknown) ||
+						slices.Contains(event.Report.Codes(), "choose_reuse") {
+						t.Fatalf("a missing reuse source should be a definition finding: %+v", event)
+					}
+					return
+				}
 				if event.OK != nil || event.Report == nil || !slices.Contains(event.Report.Codes(), "choose_reuse") {
 					t.Fatalf("expected a consent question before Check: %+v", event)
 				}

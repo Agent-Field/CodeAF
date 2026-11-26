@@ -75,7 +75,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
 			if !headless {
-				report = j.checkReuse(j.Working.Files, catalog)
+				report = j.checkReuse(j.Working.Files, catalog, existing)
 			}
 			if report.OK() {
 				if s.opts.Check != nil {
@@ -182,7 +182,7 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 		Headless: headless, Using: using, Definition: j.Working.Files, Report: t.Report,
 	}, types, s.author, func(files map[string]string) schema.Report {
 		if !headless {
-			if report := j.checkReuse(files, catalog); !report.OK() {
+			if report := j.checkReuse(files, catalog, types); !report.OK() {
 				return report
 			}
 		}
@@ -501,11 +501,15 @@ func onlyOptionalFields(before, after string) bool {
 	return reflect.DeepEqual(kept, draft)
 }
 
-func (j *job) checkReuse(files map[string]string, catalog Catalog) schema.Report {
+func (j *job) checkReuse(files map[string]string, catalog Catalog, existing schema.TypeSet) schema.Report {
 	app, _ := schema.ParseApp([]byte(files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
 		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
+			// An unbound common type needs repair. There are no records to share.
+			if _, ok := existing.ForRecord(name, typ); !ok {
+				continue
+			}
 			source := name
 			if offer, ok := catalog.Types.OfferCommonType(name, typ); ok && offer.Existing != "" {
 				source = offer.Existing

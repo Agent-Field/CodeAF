@@ -157,6 +157,18 @@ func TestPlanRestartsWithTranscriptAndCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	jobs.Close()
+	path := filepath.Join(home, "apps", "_drafts", plan.Draft, "build.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldState := strings.Replace(string(raw), `"state":"planning"`, `"state":"ready"`, 1)
+	if oldState == string(raw) {
+		t.Fatal("expected the planning state in the saved outline")
+	}
+	if err := os.WriteFile(path, []byte(oldState), 0600); err != nil {
+		t.Fatal(err)
+	}
 	jobs, err = builder.OpenJobs(options)
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +178,8 @@ func TestPlanRestartsWithTranscriptAndCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Transcript) != 2 || len(state.Checkpoints) != 1 || state.Transcript[1].Checkpoint != state.Checkpoints[0].ID || !strings.Contains(string(state.Plan), "deal") {
+	if state.State != builder.Planning || len(state.Screens) != 0 || len(state.Transcript) != 2 || len(state.Checkpoints) != 1 ||
+		state.Transcript[1].Checkpoint != state.Checkpoints[0].ID || !strings.Contains(string(state.Plan), "deal") {
 		t.Fatalf("reopened state: %+v", state)
 	}
 	if state.Published || state.App != "" {
