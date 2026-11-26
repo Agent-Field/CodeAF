@@ -93,38 +93,8 @@ func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResu
 		if err != nil {
 			return err
 		}
-		for i, cells := range lines {
-			line := i + 2 // the header is line 1
-			set := map[string]any{}
-			for col, cell := range cells {
-				if col >= len(header) {
-					break
-				}
-				field := mapping[header[col]]
-				if field == "" || strings.TrimSpace(cell) == "" {
-					continue
-				}
-				set[field] = cell
-			}
-			if len(set) == 0 {
-				continue
-			}
-			if err := w.resolveTitles(t, set); err != nil {
-				res.problem(line, err)
-				continue
-			}
-			r, err := w.savepoint(func() (*record, error) { return w.createOne(t, sc, set, OpImport) })
-			if err != nil {
-				if _, ok := AsError(err); !ok {
-					return err
-				}
-				res.problem(line, err)
-				continue
-			}
-			res.Created++
-			if len(res.Rows) < importPreviewRows && w.s.LiveRowAllowed(sc, t, r.Data) {
-				res.Rows = append(res.Rows, w.s.row(t, r, sc, false))
-			}
+		if err := w.importRows(t, sc, header, lines, res, nil); err != nil {
+			return err
 		}
 		if opts.DryRun || res.Created == 0 {
 			return errDryRun
@@ -136,6 +106,48 @@ func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResu
 		return nil, err
 	}
 	return res, nil
+}
+
+// importRows uses the same row validation for a Data import and an intake delivery.
+func (w *writeTx) importRows(t *Type, sc Scope, header []string, lines [][]string, res *ImportResult, created func(string)) error {
+	mapping := res.Mapping
+	for i, cells := range lines {
+		line := i + 2 // the header is line 1
+		set := map[string]any{}
+		for col, cell := range cells {
+			if col >= len(header) {
+				break
+			}
+			field := mapping[header[col]]
+			if field == "" || strings.TrimSpace(cell) == "" {
+				continue
+			}
+			set[field] = cell
+		}
+		if len(set) == 0 {
+			continue
+		}
+		if err := w.resolveTitles(t, set); err != nil {
+			res.problem(line, err)
+			continue
+		}
+		r, err := w.savepoint(func() (*record, error) { return w.createOne(t, sc, set, OpImport) })
+		if err != nil {
+			if _, ok := AsError(err); !ok {
+				return err
+			}
+			res.problem(line, err)
+			continue
+		}
+		res.Created++
+		if created != nil {
+			created(r.ID)
+		}
+		if len(res.Rows) < importPreviewRows && w.s.LiveRowAllowed(sc, t, r.Data) {
+			res.Rows = append(res.Rows, w.s.row(t, r, sc, false))
+		}
+	}
+	return nil
 }
 
 // problem notes one refused row.
@@ -321,6 +333,10 @@ func readCSV(path string) ([]string, [][]string, error) {
 	if err != nil {
 		return nil, nil, errorf(CodeNotFound, "the file could not be read: %v", err)
 	}
+	return parseCSV(raw)
+}
+
+func parseCSV(raw []byte) ([]string, [][]string, error) {
 	raw = bytes.TrimPrefix(raw, []byte("\xef\xbb\xbf"))
 	r := csv.NewReader(bytes.NewReader(raw))
 	r.FieldsPerRecord = -1

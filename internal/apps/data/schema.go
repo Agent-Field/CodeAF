@@ -182,6 +182,7 @@ type Scope struct {
 	Cause      string
 	CauseChain []string
 
+	intake            *IntakeTrigger
 	policyMaintenance bool
 	sync              bool
 	sourceEvent       string
@@ -201,7 +202,7 @@ func (sc Scope) kind(op string) string {
 		return ByAI
 	case sc.Flow:
 		return ByFlow
-	case op == OpImport:
+	case op == OpImport || sc.intake != nil:
 		return ByImport
 	}
 	return ByPerson

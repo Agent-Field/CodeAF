@@ -1,0 +1,110 @@
+{
+  "id": "crm",
+  "name": "CRM",
+  "icon": "people",
+  "version": 1,
+  "kit": 2,
+  "records": {
+    "contact": {
+      "title": "name",
+      "fields": {
+        "name": {
+          "type": "text",
+          "required": true
+        },
+        "email": {
+          "type": "email",
+          "index": true
+        },
+        "phone": {
+          "type": "phone",
+          "masked": true
+        },
+        "title": {
+          "type": "text"
+        },
+        "notes": {
+          "type": "longtext"
+        },
+        "files": {
+          "type": "files"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "contact": "rw"
+    }
+  },
+  "process": {
+    "forms": {
+      "request": {
+        "record": "contact",
+        "title": "Contact us",
+        "steps": [
+          {
+            "id": "details",
+            "label": "Details",
+            "fields": [
+              {
+                "field": "name"
+              },
+              {
+                "field": "email"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "work_items": {
+      "review": {
+        "title": "Review this request",
+        "subject": {
+          "type": "contact",
+          "id": "$record.id"
+        },
+        "assignee": "me",
+        "form": "request"
+      }
+    }
+  },
+  "channels": {
+    "request": {
+      "kind": "form-link",
+      "record": "contact",
+      "form": "request",
+      "workItem": "review"
+    },
+    "mail": {
+      "kind": "email-in",
+      "record": "contact",
+      "mapping": {
+        "subject": "name",
+        "from": "email",
+        "body": "notes",
+        "attachments": "files"
+      }
+    },
+    "drop": {
+      "kind": "file-drop",
+      "record": "contact",
+      "fileField": "files",
+      "nameField": "name",
+      "mapping": {
+        "Full Name": "name",
+        "Email Address": "email"
+      }
+    },
+    "events": {
+      "kind": "connector-event",
+      "record": "contact",
+      "secret": "events",
+      "mapping": {
+        "full_name": "name",
+        "email": "email"
+      }
+    }
+  }
+}

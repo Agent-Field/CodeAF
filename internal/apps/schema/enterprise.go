@@ -24,15 +24,21 @@ type TransitionRef struct {
 	Transition string `json:"transition"`
 }
 
+// Channel declares one source of new records in a published app.
 type Channel struct {
-	Kind      string   `json:"kind"`
-	Record    string   `json:"record"`
-	Audience  string   `json:"audience,omitempty"`
-	Run       string   `json:"run,omitempty"`
-	Form      string   `json:"form,omitempty"`
-	Connector string   `json:"connector,omitempty"`
-	Event     string   `json:"event,omitempty"`
-	Accept    []string `json:"accept,omitempty"`
+	Kind      string            `json:"kind"`
+	Record    string            `json:"record"`
+	Audience  string            `json:"audience,omitempty"`
+	Run       string            `json:"run,omitempty"`
+	Form      string            `json:"form,omitempty"`
+	WorkItem  string            `json:"workItem,omitempty"`
+	Connector string            `json:"connector,omitempty"`
+	Event     string            `json:"event,omitempty"`
+	Accept    []string          `json:"accept,omitempty"`
+	Mapping   map[string]string `json:"mapping,omitempty"`
+	Secret    string            `json:"secret,omitempty"`
+	FileField string            `json:"fileField,omitempty"`
+	NameField string            `json:"nameField,omitempty"`
 }
 
 type RoutingRule struct {
@@ -197,6 +203,37 @@ func (c *checker) checkChannel(at string, channel Channel) {
 		}
 	}
 	c.checkProcessRef(AppFile, at+"/form", "forms", channel.Form, channel.Record)
+	c.checkProcessRef(AppFile, at+"/workItem", "work_items", channel.WorkItem, channel.Record)
+	fields, _ := c.typeFields(channel.Record)
+	lifecycle, _ := c.lifecycle(channel.Record)
+	destinations := map[string]bool{}
+	checkField := func(path, name string, types ...string) {
+		if name == "" {
+			return
+		}
+		f, ok := fields[name]
+		if !ok || f.Computed != "" || f.Sequence != nil || name == lifecycle.Field ||
+			(!contains(types, f.Type) && len(types) != 0) ||
+			(len(types) == 0 && (f.Type == "file" || f.Type == "files")) {
+			c.add(AppFile, path, CodePolicy, "%q is not a writable field of the expected type.", name)
+		}
+		if destinations[name] {
+			c.add(AppFile, path, CodePolicy, "More than one intake value maps to %q.", name)
+		}
+		destinations[name] = true
+	}
+	for _, source := range sortedKeys(channel.Mapping) {
+		at := at + "/mapping/" + source
+		if channel.Kind == "email-in" && source == "attachments" {
+			checkField(at, channel.Mapping[source], "file", "files")
+		} else {
+			checkField(at, channel.Mapping[source])
+		}
+	}
+	// The CSV and binary paths use separate mappings.
+	destinations = map[string]bool{}
+	checkField(at+"/fileField", channel.FileField, "file", "files")
+	checkField(at+"/nameField", channel.NameField, "text", "longtext")
 	c.checkReference(actionCtx{file: AppFile}, at+"/run", "run", channel.Run)
 	if channel.Connector != "" {
 		c.checkEvent(AppFile, at+"/event", channel.Connector, channel.Event)

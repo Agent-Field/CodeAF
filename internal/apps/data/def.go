@@ -35,13 +35,15 @@ const (
 	TypeEmail    = "email"
 	TypePhone    = "phone"
 	TypeURL      = "url"
+	TypeFile     = "file"
+	TypeFiles    = "files"
 )
 
 var fieldTypes = map[string]bool{
 	TypeText: true, TypeLongtext: true, TypeNumber: true, TypeMoney: true,
 	TypeDate: true, TypeDatetime: true, TypeEnum: true, TypeEnums: true,
 	TypeBool: true, TypePerson: true, TypeRef: true, TypeRefs: true,
-	TypeEmail: true, TypePhone: true, TypeURL: true,
+	TypeEmail: true, TypePhone: true, TypeURL: true, TypeFile: true, TypeFiles: true,
 }
 
 // identShape is every type and field name. NAMES ARE SPLICED INTO SQL AS
