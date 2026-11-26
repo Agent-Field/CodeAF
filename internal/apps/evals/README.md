@@ -44,12 +44,30 @@ Run the platform probes without a provider using `TestPlatformStimulus` and
 the same binary variable. A build that cannot publish still reports its
 probes as unrun.
 
+The report includes static depth for every readable saved draft, including a
+draft that fails Check. It scores one point each for two AI steps, a trigger
+pointing to a run, a tool step with an approval gate, and at least 30 sample
+rows. The raw counts are included. These are definition counts and do not
+establish that the steps execute successfully.
+
+Set `CODEAF_APP_EVAL_SNAPSHOTS` to export each generated app's manifest,
+screens and synthetic records for a separate Desk capture pass. Each file
+`<case>/<draft>.json` contains `app` (the manifest), `screens` (screen IDs
+mapped to compiled definitions), and `records` (types mapped to sample rows).
+Use a fresh directory for each live run.
+
 For the design judge, set `CODEAF_APP_EVAL_LOOKS` to a directory of Desk
 captures made with synthetic data. Save each PNG under
-`<case>/<screen>/<dark|light>-<800|1120>.png`. Run
-`go test -tags e2e ./internal/apps/evals -run '^TestLiveDesignRubric$' -count=1 -v`.
-The judge records scores and visible evidence alongside the recipe, theme and
-width. Missing captures and invalid scores fail the rubric run. Both
+`<case>/<screen>/<dark|light>-<800|1120>.png`. `TestLiveGallery` includes the score, individual observations and separate
+Critic usage when the capture directory is supplied. Use
+`TestLiveDesignRubric` to score an existing capture set. Set
+`CODEAF_APP_EVAL_PAID_LOOKS=1` for captures from the seven paid cases alone. Set
+`CODEAF_APPS_CRITIC_MODEL` to select a judge, or leave it unset to use the same
+model as the live Builder. An unsupported or unknown vision capability is
+reported as skipped without substituting a model.
+The report records the Critic model and visible evidence alongside the recipe,
+theme and width. When Look captures are supplied, a missing or invalid score
+fails the eval while the report preserves the behavioral result. Both
 model-backed tests skip if the profile has no key.
 
 The `support-shares-crm-identity` case checks the CRM and Support in the same
@@ -58,5 +76,17 @@ then reads the original type and record IDs through Support.
 
 The rubric includes each case's gallery brief. Set
 `CODEAF_APP_EVAL_DESIGN_REPORT=/tmp/app-design.json` to save per-recipe
-scores and capture errors. Process-only builds report
+scores and capture errors. To compare against an executable gallery's native
+image, set `CODEAF_APP_EVAL_GOLDENS` to a directory with one PNG at
+`<recipe>.png` for each selected recipe, for example `add-view/board.png`.
+If a reference directory is supplied, a missing reference leaves the score
+incomplete. Process-only builds report
 `look: skipped (desk not running)` during Check and can publish.
+
+## Builder baseline
+
+At engine revision `231c3040c`, the seven paid cases passed their existing
+behavioral checks in 194 calls and $0.164137. Static depth counted 2/4 for
+Marketing desk and 0/4 for the six other cases. The sample counts ranged from
+four to nine. Vision measurements use the synthetic captures and the
+separate Critic usage recorded by the rubric test.
