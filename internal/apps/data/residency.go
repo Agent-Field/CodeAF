@@ -239,7 +239,7 @@ func (s *Store) Cutover(ctx context.Context, binding ResidencyBinding, alias str
 		if err := w.invalidate(EventMappingChanged, t.ID, binding.Key.Binding); err != nil {
 			return err
 		}
-		return nil
+		return ctx.Err()
 	})
 	return plan, err
 }
