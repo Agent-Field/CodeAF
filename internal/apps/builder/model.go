@@ -87,7 +87,9 @@ on the records.create or records.update step itself so the Inbox shows the
 actual proposed write. Set a run title and step titles in plain language.
 Use a Button labelled "Add <record>" with on-click to open a Sheet
 containing a RecordForm, or use a Button with an asked records.create
-action. A bare collection recipe does not add a create button. A Check
+action. Supply every required field with no default through the form, or
+through records.create.set and ask, for example name: $input.name with
+ask: {name: text}. A bare collection recipe does not add a create button. A Check
 finding for a missing control means implement the control in this round.
 set-sample {"text":"{\"records\":{\"deal\":[{\"id\":\"00000000000000000000000001\",\"name\":\"Example deal\",\"stage\":\"Lead\",\"value\":120}]}}"}
 writes the preview rows. Copy that 26-character id and change only its last

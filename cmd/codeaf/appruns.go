@@ -423,7 +423,7 @@ func (b *appBackend) openRunApproval(r runs.Run) {
 	}
 	blocking := true
 	kind := appwire.SubkindPermission
-	options := []appwire.AskOption{{ID: appwire.OptionAllowOnce, Label: "Approve"}, {ID: appwire.OptionDeny, Label: "Decline"}}
+	options := []appwire.AskOption{{ID: appwire.OptionAllowOnce, Label: "Approve"}, {ID: appwire.OptionDeny, Label: "Reject"}}
 	if gate.Kind == "budget" {
 		kind = appwire.SubkindBudget
 		title = "Per-run budget reached"
@@ -469,7 +469,7 @@ func (b *appBackend) checkRunAnswer(agent, ask, option, text string) error {
 		}
 	}
 	if option != appwire.OptionAllowOnce && option != appwire.OptionDeny {
-		return appwire.Errorf(appwire.CodeBadParams, "choose Approve or Decline")
+		return appwire.Errorf(appwire.CodeBadParams, "choose Approve or Reject")
 	}
 	return nil
 }

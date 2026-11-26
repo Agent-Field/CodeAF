@@ -45,7 +45,7 @@ type Pipeline struct {
 func Definition(def schema.Definition, types schema.TypeSet) schema.Report {
 	report := schema.Validate(def, types)
 	if report.OK() {
-		report.Problems = append(report.Problems, missingControls(def)...)
+		report.Problems = append(report.Problems, missingControls(def, types)...)
 	}
 	return report
 }

@@ -106,3 +106,20 @@ func TestCheckNamesMissingScreenControls(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckRejectsACreateButtonMissingRequiredInput(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def.Files[schema.PlanFile] = bytes.Replace(def.Files[schema.PlanFile], []byte(`"id": "deal"`), []byte(`"id": "deal", "create": true`), 1)
+	screen := def.Files["screens/deals.json"]
+	def.Files["screens/deals.json"] = bytes.Replace(screen, []byte(`"name": "$input.name", `), nil, 1)
+	if report := check.Definition(def, nil); !slices.Contains(report.Codes(), "create_control_missing") {
+		t.Fatalf("Check accepted a create button without the required name: %v", report)
+	}
+	def.Files["screens/deals.json"] = screen
+	if report := check.Definition(def, nil); !report.OK() {
+		t.Fatalf("Check rejected the working control: %v", report)
+	}
+}
