@@ -18,6 +18,8 @@ func (b *appBackend) appAIHarnesses(files runs.Files) runs.Harnesses {
 	return runs.Harnesses{
 		runs.HarnessCodeaf:     {Check: b.checkCodeafAI, Run: b.appRunAgent(files)},
 		runs.HarnessClaudeCode: {Check: checkClaudeAppAI, Run: runClaudeAppAI},
+		runs.HarnessCodex:      {Check: checkCodexAppAI, Run: runCodexAppAI},
+		runs.HarnessAgentField: {Check: b.checkAgentFieldAppAI, Run: b.runAgentFieldAppAI},
 	}
 }
 

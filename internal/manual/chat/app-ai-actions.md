@@ -30,9 +30,13 @@ Automatic model output carries AI provenance.
 ## Use Claude Code on these records or choose a harness
 
 Choose `codeaf` or an available harness in the Action's `ai.harness`.
-See the app's harness catalog for the adapters that can run under the
-app's limits. Claude Code needs tool-free API-key mode to be available for
-this Action. A model-backed Action is unavailable if the app cannot reach
+Use `agents.query {kind: "harnesses", app}` for the available adapters.
+Claude Code needs tool-free API-key mode. Codex uses a signed-in ChatGPT
+plan and starts in a temporary read-only workspace with execution and
+connections disabled. AgentField needs a connected local Factory and its
+owner-selected `CODEAF_APP_AGENTFIELD_REASONER` target. That reasoner
+advertises `codeaf-app-typed-output-v1`, accepts a remaining dollar budget,
+and returns typed output with its cost. A model-backed Action is unavailable if the app cannot reach
 its harness. Deterministic records, Actions and runs work without a model.
 
 ## Approve the exact text before posting
