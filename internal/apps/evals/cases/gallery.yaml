@@ -37,7 +37,10 @@
         - {path: /app/records/contact/uses, equals: true}
         - {path: /app/records/candidate, exists: true}
 - name: personal-finance-csv
-  prompt: Make a personal finance app for importing a CSV with date, description, category and amount. Show spending totals by category.
+  prompt: >-
+    Make a personal finance app where I can import a CSV into editable transaction records.
+    Use the type ID transaction and the CSV headers date, description, category and amount as
+    field IDs. Amount is money in USD. Show spending totals by category.
   max_rounds: 2
   record:
     type: transaction
@@ -51,7 +54,6 @@
       expect: [{path: /app/records/transaction/fields/amount/type, equals: money}]
     - method: data.import_csv
       params:
-        app: $app
         type: transaction
         path: $csv
         mapping: {date: date, description: description, category: category, amount: amount}

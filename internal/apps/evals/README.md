@@ -24,12 +24,25 @@ reuse offers before accepting one. A build only sees the prompt and the normal
 offer acceptance from the person.
 
 The adversarial suite checks empty results, paginated reads after 2,000
-records, and the stale-write refusal through the data wire. Event replay,
-hostile text in records and email, identity after renames, guarded undo, and
-AI writes under an agent principal have independent assertions behind
-`Stimulus`. The stock process adapter reports these as unrun and the case as
-incomplete until trusted stimulus support is connected. An engine
-that cannot publish a case still reports every unrun probe.
+records, and the stale-write refusal through the data wire. The process
+adapter also runs six platform probes:
+
+- AI precedence and field rename use the published gallery app and its
+  grants. The disposable engine releases the home while the native data
+  writer applies the AI write or rename. The reopened engine reads the result.
+- Guarded undo applies a signed transition through the process wire and checks
+  the typed undo refusal and the record state. The platform publishes a fixture
+  in its own home so the probe can run even for apps without a lifecycle.
+- Trigger replay uses a committed record event and E's durable receipt across
+  an engine reopen. Record and email instructions use E's data and connector
+  inputs and check committed rows and effect calls. The fixture connector
+  never sends real mail. Paid cases also pass the hostile text to the app
+  run's headless model door, and their reported usage includes those calls.
+  The keyless lane checks literal delivery of the same text.
+
+Run the platform probes without a provider using `TestPlatformStimulus` and
+the same binary variable. A build that cannot publish still reports its
+probes as unrun.
 
 For the design judge, set `CODEAF_APP_EVAL_LOOKS` to a directory of Desk
 captures made with synthetic data. Save each PNG under
