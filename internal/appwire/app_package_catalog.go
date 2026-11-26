@@ -58,6 +58,27 @@ func init() {
 				return &packageCatalog{Packages: []catalogPackage{}}, nil
 			}
 		}
+		installed := map[[2]string]store.Summary{}
+		if p.App == "" {
+			apps, err := s.List()
+			if err != nil {
+				return nil, err
+			}
+			for _, candidate := range apps {
+				if candidate.Status != "active" {
+					continue
+				}
+				app, err := s.Get(candidate.ID)
+				if err != nil || app.Meta.Lineage == nil || app.Meta.Lineage.Source == nil {
+					continue
+				}
+				source := app.Meta.Lineage.Source
+				key := [2]string{source.Publisher, source.ID}
+				if previous, ok := installed[key]; !ok || candidate.UpdatedAt.After(previous.UpdatedAt) {
+					installed[key] = candidate
+				}
+			}
+		}
 		personal := os.DirFS(kitPackagesDir())
 		builtin, err := apppackage.CatalogFiles("firstparty")
 		if err != nil {
@@ -104,14 +125,7 @@ func init() {
 					continue
 				}
 				entry := catalogPackage{Source: a.Manifest.Source, packageParams: p, packagePresentation: packageDisplay(catalog.files, name, a)}
-				// Bundled apps may already be published under their stable ID.
-				if source == nil && catalog.directory == "firstparty" {
-					if app, err := s.Get(entry.ID); err == nil && !app.Meta.Archived && app.Meta.Lineage != nil {
-						if installed := app.Meta.Lineage.Source; installed != nil && installed.ID == entry.ID && installed.Publisher == entry.Publisher {
-							entry.InstalledApp = app.Meta.ID
-						}
-					}
-				}
+				entry.InstalledApp = installed[key].ID
 				packages[key] = entry
 			}
 		}

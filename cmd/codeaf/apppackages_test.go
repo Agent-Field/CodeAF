@@ -109,8 +109,9 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		var browse struct {
 			Packages []struct {
 				apppackage.Source
-				Path string
-				Job  string
+				Path         string
+				Job          string
+				InstalledApp string `json:"installed_app"`
 			}
 		}
 		wire.must("apps.browse", map[string]string{}, &browse)
@@ -159,6 +160,16 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		var applied struct{ Meta store.Meta }
 		wire.must("apps.apply", map[string]string{"draft": install.Draft}, &applied)
 		app := applied.Meta.ID
+		wire.must("apps.browse", map[string]string{}, &browse)
+		found = false
+		for _, p := range browse.Packages {
+			if p.Path == catalogPath && p.InstalledApp == app {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Browse did not offer the installed copy: %+v", browse)
+		}
 		wire.must("apps.browse", map[string]string{"app": app}, &browse)
 		if len(browse.Packages) != 0 {
 			t.Fatalf("accepted release was offered again: %+v", browse)
