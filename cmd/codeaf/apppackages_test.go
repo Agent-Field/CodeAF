@@ -17,7 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
-const packageApp = `{"id":"crm","name":"CRM","version":1,"kit":0,"records":{"contact":{"title":"name","fields":{"name":{"type":"text","required":true}}}},"capabilities":{"records":{"contact":"r"}}}`
+const packageApp = `{"id":"crm","name":"CRM","version":1,"kit":0,"records":{"contact":{"title":"name","common":"person","fields":{"name":{"type":"text","required":true}}}},"capabilities":{"records":{"contact":"r"}}}`
 const packagePlan = `{"ask":"Keep a CRM","data":[{"id":"contact","line":"Contact records"}],"screens":[{"id":"main","line":"Contacts"}]}`
 const packageScreen = `{"screen":"main","title":"Contacts","body":{"part":"Stack","id":"main"}}`
 
@@ -78,7 +78,7 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		t.Cleanup(func() { backend.Close() })
 		wire := wireOver(t, backend)
 		defs := backend.AppDefinitions()
-		peopleDefinition := strings.ReplaceAll(strings.Replace(packageApp, `"title":"name"`, `"title":"name","common":"person"`, 1), "contact", "people")
+		peopleDefinition := strings.ReplaceAll(packageApp, "contact", "people")
 		peopleDefinition = strings.Replace(peopleDefinition, `"people":"r"`, `"people":"rw"`, 1)
 		people := stagePackageFixture(t, defs, "", 0, map[string]string{schema.AppFile: peopleDefinition, "screens/main.json": packageScreen})
 		var added appwire.DataWriteResult
@@ -184,7 +184,7 @@ func TestAppPackageInstallUpdateAndForkOnWire(t *testing.T) {
 		backend := newFakeBackend(newAppRecorder(), nil)
 		t.Cleanup(func() { backend.Close() })
 		wire := wireOver(t, backend)
-		people := strings.ReplaceAll(strings.Replace(packageApp, `"title":"name"`, `"title":"name","common":"person"`, 1), "contact", "people")
+		people := strings.ReplaceAll(packageApp, "contact", "people")
 		people = strings.ReplaceAll(people, `"name":{"type":"text"`, `"full_name":{"type":"text"`)
 		people = strings.Replace(people, `"title":"name"`, `"title":"full_name"`, 1)
 		stagePackageFixture(t, backend.AppDefinitions(), "", 0, map[string]string{schema.AppFile: people, "screens/main.json": packageScreen})

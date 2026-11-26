@@ -65,9 +65,16 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 		for _, name := range slices.Sorted(maps.Keys(entity.Fields)) {
 			field := entity.Fields[name]
 			have, found := target.Fields[name]
-			if (!found && field.Required) || (found && !compatible(field, have, targets, existing)) {
+			var message string
+			switch {
+			case !found && field.Required:
+				message = fmt.Sprintf("%s records need a %s field named %s to use the package's %s.%s.", bindings[alias].Type, field.Type, name, alias, name)
+			case found && !compatible(field, have, targets, existing):
+				message = fmt.Sprintf("%s.%s does not match the package's %s field %s.%s.", bindings[alias].Type, name, field.Type, alias, name)
+			}
+			if message != "" {
 				report.Problems = append(report.Problems, schema.Problem{File: schema.AppFile, Path: "/records/" + alias + "/fields/" + name,
-					Code: "package_field_unmapped", Message: fmt.Sprintf("Map %s.%s to a compatible %s field on %s records.", alias, name, field.Type, bindings[alias].Type)})
+					Code: "package_field_unmapped", Message: message})
 			}
 			if found {
 				delete(fields, name)

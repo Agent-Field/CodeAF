@@ -229,7 +229,7 @@ version followed by `.0.0`. App templates belong with other templates in the Kit
 
 `codeaf app install <file>` opens a card with the publisher's requested access
 and proposed record bindings. An alias like `contact` can bind to your existing
-People through its common type. A required field with no compatible destination
+People when the package declares that common type. A required field with no compatible destination
 stops the install and names the field. Example rows stay in Check and preview.
 Inspect the card, then run `codeaf app apply '{"draft":"<draft>"}'` to publish.
 Use `codeaf app discard '{"draft":"<draft>"}'` to dismiss it. The live app gets
@@ -239,11 +239,13 @@ the requested grants shown on the card when you Apply.
 
 `codeaf app fork <app>` opens a card for an independent copy of the definition.
 Apply gives the copy a new ID and its own version history. The apps can continue
-using the same records. `codeaf app lineage <app>` shows the installed package
+using the same records. A fork follows its own version history and receives no
+publisher updates. `codeaf app lineage <app>` shows the installed package
 and version or the app it was forked from.
 
 `codeaf app update <app> <file>` prepares a newer release from the same
-package. The change card merges independent edits and lists competing edits.
+package. The change card merges independent edits and lists competing edits. Changed
+access requests and budgets also require an explicit choice.
 For a conflict, choose `local` or `upstream` in
 `codeaf app resolve-package '{"draft":"<draft>","proposal_id":"<id>","choices":{"<conflict-id>":"local"}}'`.
 Give a choice for each conflict. Check runs on the result and Apply is still

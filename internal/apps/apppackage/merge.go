@@ -39,7 +39,7 @@ func Merge(base, local, upstream map[string]string, choices map[string]string) (
 	for _, name := range slices.Sorted(maps.Keys(names)) {
 		m.file = name
 		b, l, u := fileValue(base, name), fileValue(local, name), fileValue(upstream, name)
-		if picked, ok := unchanged(b, l, u); ok {
+		if picked, ok := unchanged(b, l, u); ok && name != schema.AppFile {
 			if raw, exists := picked.(string); exists {
 				out[name] = raw
 			}
@@ -150,13 +150,16 @@ func unchanged(base, local, upstream any) (any, bool) {
 }
 
 func (m *merger) value(at string, base, local, upstream any) any {
-	if value, ok := unchanged(base, local, upstream); ok {
-		return value
-	}
-	// A permission grant is an entire request. Mixing two edited grant
-	// objects could authorize a combination neither version requested.
-	if m.file == schema.AppFile && (at == "/capabilities" || at == "/budget") {
+	// A changed permission or budget needs a choice even when the local
+	// version still has the original grant. The person can review other
+	// upstream edits without agreeing to the new permission request.
+	if m.file == schema.AppFile && protectedRequest(at) && !reflect.DeepEqual(base, upstream) && !reflect.DeepEqual(local, upstream) {
 		return m.conflict(at, base, local, upstream)
+	}
+	if m.file != schema.AppFile || at != "" {
+		if value, ok := unchanged(base, local, upstream); ok {
+			return value
+		}
 	}
 	b, bOK := base.(map[string]any)
 	l, lOK := local.(map[string]any)
@@ -172,6 +175,15 @@ func (m *merger) value(at string, base, local, upstream any) any {
 		return merged
 	}
 	return m.conflict(at, base, local, upstream)
+}
+
+func protectedRequest(at string) bool {
+	switch at {
+	case "/capabilities", "/budget", "/roles", "/policies", "/audiences", "/channels":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *merger) object(at string, base, local, upstream map[string]any) map[string]any {

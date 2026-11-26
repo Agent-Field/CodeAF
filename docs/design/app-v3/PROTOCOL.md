@@ -3264,9 +3264,12 @@ omitted value indicates a deletion or absence. An unresolved card has an empty
 the validator report in `detail`.
 
 Example rows are used for Check and preview. The app reads the person's
-existing common types through its original aliases after Apply. Record types
+existing common types through its original aliases after Apply. Reuse
+requires an explicit common key in the source definition or a prior owner
+binding. A changed upstream grant or budget appears as an explicit choice. Record types
 the fork shares remain in the space and the two app definitions have separate
-version histories. The manifest's publisher is a label supplied during export.
+version histories. Forks record the parent as provenance and publish their
+own releases. The manifest's publisher is a label supplied during export.
 
 ### Personal app assistant
 
