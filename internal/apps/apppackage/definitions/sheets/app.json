@@ -5,7 +5,8 @@
   "kit": 2,
   "agent": {
     "name": "Sheets agent",
-    "file": "agent.md"
+    "file": "agent.md",
+    "dock": "closed"
   },
   "records": {
     "sheets_worksheet": {
@@ -101,7 +102,7 @@
     },
     {
       "id": "delete",
-      "label": "Delete…",
+      "label": "Delete\u2026",
       "for": "sheets_worksheet",
       "do": [
         {

@@ -5,7 +5,8 @@
   "kit": 2,
   "agent": {
     "name": "Slides agent",
-    "file": "agent.md"
+    "file": "agent.md",
+    "dock": "closed"
   },
   "records": {
     "slides_slide": {
@@ -109,7 +110,7 @@
     },
     {
       "id": "delete",
-      "label": "Delete…",
+      "label": "Delete\u2026",
       "for": "slides_slide",
       "do": [
         {

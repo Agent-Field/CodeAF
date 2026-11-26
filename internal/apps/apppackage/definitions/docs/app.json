@@ -5,7 +5,8 @@
   "kit": 2,
   "agent": {
     "name": "Docs agent",
-    "file": "agent.md"
+    "file": "agent.md",
+    "dock": "closed"
   },
   "records": {
     "docs_document": {
@@ -96,7 +97,7 @@
     },
     {
       "id": "delete",
-      "label": "Delete…",
+      "label": "Delete\u2026",
       "for": "docs_document",
       "do": [
         {

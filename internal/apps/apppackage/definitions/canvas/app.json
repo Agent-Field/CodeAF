@@ -5,7 +5,8 @@
   "kit": 2,
   "agent": {
     "name": "Canvas agent",
-    "file": "agent.md"
+    "file": "agent.md",
+    "dock": "closed"
   },
   "records": {
     "canvas_board": {
@@ -109,7 +110,7 @@
     },
     {
       "id": "delete",
-      "label": "Delete…",
+      "label": "Delete\u2026",
       "for": "canvas_board",
       "do": [
         {
