@@ -72,12 +72,17 @@ func (t *Type) FieldPolicy(f *Field) string {
 	return ""
 }
 
-// The local person can read their own native confidential values. Explicit
-// masks, source values, and the projections for agents retain their policy.
-func (t *Type) personalFieldPolicy(f *Field, sc Scope, person, by string) string {
+// A Personal store belongs to its registered person. Human requests without
+// a delegated subject use that identity, and an inherited row rule still
+// applies to each projected version of the record.
+func (s *Store) personalFieldPolicy(t *Type, f *Field, r *record, sc Scope, person string) string {
 	mode := t.FieldPolicy(f)
-	if mode == "mask" && f.Class == appschema.ClassConfidential && t.fieldRules[f.Name] == "" &&
-		by != BySync && !sc.isAgent() && !sc.AI && !sc.Flow && sc.attribute(person, "id") == person {
+	if mode == "mask" && f.Class == appschema.ClassConfidential && t.fieldRules[f.Name] == "" && !f.Masked &&
+		r.Meta.By[f.Name] != BySync && !sc.below() && !sc.Flow && person != "" &&
+		sc.attribute(person, "id") == person && t.rowAllowed(sc, person, r.Data) {
+		if _, present := r.Data[f.Name]; present {
+			s.AuditRecordPolicy(sc, t, "owner_field_read")
+		}
 		return ""
 	}
 	return mode

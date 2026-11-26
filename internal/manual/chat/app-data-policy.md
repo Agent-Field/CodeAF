@@ -7,8 +7,9 @@ defines the type declares `policy.fields`, for example
 `"policy":{"fields":{"salary":"hide","tax_id":"mask"}}`. Apps that reuse
 the type inherit the same policy. A hidden field is omitted. A masked field
 shows `••••`. Searches, sorts and groups cannot use masked or hidden
-fields. Sum and average can use a masked numeric field over rows the viewer
-can access. Hidden fields are unavailable to totals. Choose an accessible
+fields. In a person's view, sum and average can use a masked numeric field
+over rows that person can access. Agents and automations need an unmasked
+field for their totals. Hidden fields are unavailable to totals. Choose an accessible
 field if the app refuses a total. A record's reveal button does not bypass
 an explicit hide or mask.
 
@@ -42,7 +43,9 @@ For restricted or PII data in a Personal app, codeaf can send the request
 to the exact model and endpoint you chose in your profile. A model named
 only by an app, a fallback destination, or a connected app using restricted
 data needs explicit approval. An external AI harness cannot receive
-restricted or PII app input. Use an approved model within codeaf instead.
+restricted or PII app input. Choose a model with an exact completion URL
+in codeaf. Claude Code and Codex sign-ins do not qualify for automatic
+approval, since their transports manage the destination.
 
 The profile owner can install an explicit allowlist with
 `codeaf app model-policy FILE.json`. The file lists exact model names and

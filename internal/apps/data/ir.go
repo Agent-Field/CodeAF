@@ -460,9 +460,16 @@ func (c *compiled) aggregateField(sc Scope, a Agg) (*Field, error) {
 		c.sch.notePolicy(sc, c.t, "query_field_refused")
 		return nil, fieldErr(f.Name, "%s is hidden by the record policy. Choose a field you can access for %s.", f.Name, a.Fn)
 	}
-	if a.Fn != "sum" && a.Fn != "avg" && (mode == "mask" || f.Masked && sc.App != "") {
-		c.sch.notePolicy(sc, c.t, "query_field_refused")
-		return nil, fieldErr(f.Name, "%s is masked. Use sum or avg for a numeric field, or choose an unmasked field for %s.", f.Name, a.Fn)
+	automated := sc.below() || sc.Flow
+	if mode == "mask" || f.Masked && (sc.App != "" || automated) {
+		if automated {
+			c.sch.notePolicy(sc, c.t, "query_field_refused")
+			return nil, fieldErr(f.Name, "%s is masked for this automation. Choose an unmasked field for %s.", f.Name, a.Fn)
+		}
+		if a.Fn != "sum" && a.Fn != "avg" {
+			c.sch.notePolicy(sc, c.t, "query_field_refused")
+			return nil, fieldErr(f.Name, "%s is masked. Use sum or avg for a numeric field, or choose an unmasked field for %s.", f.Name, a.Fn)
+		}
 	}
 	return f, nil
 }

@@ -206,6 +206,11 @@ func TestPersonalAmountAndMaskedTotals(t *testing.T) {
 	if err != nil || row["amount"] != float64(100) || row["name"] != masked || row["pin"] != masked {
 		t.Errorf("the owner's data = %v, %v", row, err)
 	}
+	audit, err := os.ReadFile(filepath.Join(filepath.Dir(s.path), "policy.jsonl"))
+	if err != nil || !bytes.Contains(audit, []byte(`"decision":"owner_field_read"`)) || bytes.Contains(audit, []byte("My Name")) {
+		t.Fatalf("the owner's read needs a decision without record values: %v", err)
+	}
+
 	page, err := s.Query(viewer, "transaction", "", "", 10)
 	if err != nil || len(page.Rows) != 2 || page.Rows[0]["amount"] != masked || page.Rows[1]["amount"] != masked {
 		t.Fatalf("viewer rows: %+v, %v", page, err)
@@ -217,6 +222,18 @@ func TestPersonalAmountAndMaskedTotals(t *testing.T) {
 	if err != nil || len(agg.Groups) != 1 || agg.Groups[0].Values["sum_amount"] != float64(15.25) || agg.Groups[0].Values["avg_amount"] != float64(7.63) {
 		t.Errorf("viewer totals: %+v, %v", agg, err)
 	}
+	for _, actor := range []Scope{
+		{App: "finance", Person: viewer.Person, Principal: AgentPrincipal{ID: "assistant"}},
+		{App: "finance", Person: viewer.Person, Flow: true},
+	} {
+		for _, fn := range []string{"sum", "avg"} {
+			_, err := s.Aggregate(actor, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: fn, Field: "amount"}}})
+			if err == nil || !strings.Contains(err.Error(), "Choose an unmasked field") {
+				t.Errorf("masked %s for automated scope: %v", fn, err)
+			}
+		}
+	}
+
 	_, err = s.Aggregate(viewer, &QueryIR{Type: "transaction", Aggregate: []Agg{{Fn: "sum", Field: "secret"}}})
 	if err == nil || !strings.Contains(err.Error(), "Choose a field you can access") {
 		t.Errorf("denied total: %v", err)
