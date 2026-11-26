@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
 )
 
@@ -38,6 +39,10 @@ var errTaskBusy = errors.New("this task is already being worked on")
 // errTaskNoRunner is the refusal when this server cannot run Afi at all: no
 // runner, or no model key from the operator.
 var errTaskNoRunner = errors.New("this organization's server cannot run Afi: it has no model key")
+
+// NoRunnerAnsweredLine is the thread's line when an answer to Afi's question
+// lands on a server that cannot run Afi: the answer is kept, the task waits.
+const NoRunnerAnsweredLine = "Answer kept · Afi carries on once this organization has a model key"
 
 // taskRunKey names one task's run.
 type taskRunKey struct{ ws, task string }
@@ -75,6 +80,14 @@ func (h *Handler) runTaskTurn(ws factory.OrgWorkstream, task factory.WorkstreamT
 // (workstream_task_queue.go) and is accepted all the same: it starts as soon
 // as a place is free.
 func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words string, resumes int, answered bool) error {
+	return h.startTaskRunTyped(ws, task, starter, words, "", resumes, answered)
+}
+
+// startTaskRunTyped is startTaskRun with typed: words a person typed for this
+// run (an answer's own words, a Keep going's note), which the run's web_fetch
+// may follow an address in (taskLeashWords). words itself is composed, partly
+// from what the model wrote, and is never trusted that way.
+func (h *Handler) startTaskRunTyped(ws factory.OrgWorkstream, task factory.WorkstreamTask, starter, words, typed string, resumes int, answered bool) error {
 	if !h.serverAgentServed() {
 		return errTaskNoRunner
 	}
@@ -100,7 +113,7 @@ func (h *Handler) startTaskRun(ws factory.OrgWorkstream, task factory.Workstream
 		return errTaskBusy
 	}
 	d.mu.Unlock()
-	return h.admitTaskRun(pendingRun{key: key, ws: ws, task: task, starter: starter, words: words, resumes: resumes, answered: answered})
+	return h.admitTaskRun(pendingRun{key: key, ws: ws, task: task, starter: starter, words: words, typed: typed, resumes: resumes, answered: answered})
 }
 
 // admitTaskRun starts run now when there is room under the limits, and
@@ -169,7 +182,7 @@ func (h *Handler) launchLocked(r pendingRun) error {
 	owner := d.ownerLocked()
 
 	door := &agentDoor{h: h, id: ws.ID, asker: starter, wrote: &taskWrites{}, runTask: task.ID, goesOn: r.answered || resumes > 0}
-	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(r.words), Now: now, About: h.orgAbout(),
+	run := AgentTurn{Workstream: ws.ID, Name: ws.Name, Turn: turn, Asker: starter, Text: strings.TrimSpace(r.words), LeashWords: taskLeashWords(task, r.typed), Now: now, About: h.orgAbout(),
 		Task: &AgentTask{ID: task.ID, Title: task.Title},
 		Key:  h.orgModelKey(), Dir: filepath.Join(h.taskRunDir(ws.ID, task.ID), "agent"), Door: h.withLibrary(door), Library: h.spacesServed(),
 		// Every line is a line of the task's Working conversation, and its
@@ -185,7 +198,7 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		// the desk's lock and publishes, and launchLocked holds that lock (a
 		// queued run starts from inside it). Steers wait in its inbox until
 		// the run reads them.
-		run.Steers = h.openTaskWork(key, turn, starter)
+		run.Steers = h.openTaskWork(key, turn, starter, r.answered)
 		var next *taskResume
 		var failed error
 		defer func() {
@@ -195,7 +208,7 @@ func (h *Handler) launchLocked(r pendingRun) error {
 			release()
 			cancel()
 			if next != nil {
-				h.resumeTaskRun(ws, next.task, next.starter, next.words)
+				h.resumeTaskRun(ws, next.task, next.starter, next.words, next.typed)
 			}
 			h.dispatchQueued()
 		}()
@@ -209,7 +222,7 @@ func (h *Handler) launchLocked(r pendingRun) error {
 		// dropped when the run ends here (before an answer that came meanwhile
 		// starts the next run, whose lease it is not), unless the server is
 		// closing, which is exactly the cut the next start must find.
-		lease := h.holdTaskLease(ctx, key, owner, starter, run.Text, now, resumes, func() float64 {
+		lease := h.holdTaskLease(ctx, key, owner, starter, run.Text, r.typed, now, resumes, func() float64 {
 			// Every beat: a workstream that has spent its budget pauses
 			// the run.
 			usd := watch.spent()
@@ -288,8 +301,8 @@ func (h *Handler) launchLocked(r pendingRun) error {
 
 // taskResume is a run to start on a task once its current one has ended.
 type taskResume struct {
-	task           factory.WorkstreamTask
-	starter, words string
+	task                  factory.WorkstreamTask
+	starter, words, typed string
 }
 
 // AN ANSWERED ASK PUTS AFI BACK TO WORK. An Afi task the server runs pauses
@@ -302,7 +315,7 @@ type taskResume struct {
 // resumeTaskRun starts Afi again on t, as starter, telling it words; when t's
 // run is still going it waits for that run to end. A task that is no longer
 // running by then (done, stopped, asked again) is left as it is.
-func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTask, starter, words string) {
+func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTask, starter, words, typed string) {
 	d := &h.agentDesk
 	key := taskRunKey{ws.ID, t.ID}
 	d.mu.Lock()
@@ -310,7 +323,7 @@ func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTa
 		if d.resume == nil {
 			d.resume = map[taskRunKey]taskResume{}
 		}
-		d.resume[key] = taskResume{task: t, starter: starter, words: words}
+		d.resume[key] = taskResume{task: t, starter: starter, words: words, typed: typed}
 		d.mu.Unlock()
 		return
 	}
@@ -322,9 +335,141 @@ func (h *Handler) resumeTaskRun(ws factory.OrgWorkstream, t factory.WorkstreamTa
 	}
 	// A server with no runner was never running Afi here (the same answer a
 	// Start gets), so only an unexpected refusal is worth a line in the log.
-	if err := h.startTaskRun(ws, cur, starter, words, 0, true); err != nil && !errors.Is(err, errTaskBusy) && !errors.Is(err, errTaskNoRunner) {
+	if err := h.startTaskRunTyped(ws, cur, starter, words, typed, 0, true); err != nil && !errors.Is(err, errTaskBusy) && !errors.Is(err, errTaskNoRunner) {
 		log.Printf("factory: workstream %s: task %s was answered but Afi could not go on: %v", ws.ID, t.ID, err)
 	}
+}
+
+// AN ANSWER KEPT WHILE NOTHING COULD RUN AFI IS CARRIED ON ONCE SOMETHING CAN
+// (review fix, 2026-11-25). The answer route parks Afi's task Up next with
+// NoRunnerAnsweredLine on a server without a model key; when the operator sets
+// one, every task parked that way is set running again and resumed with the
+// answer it was given, the same words a normal answered resume tells Afi.
+
+// taskResumedWithKeyLine is the thread's line when a parked answer is taken up.
+const taskResumedWithKeyLine = "Afi carries on with the answer, now that this organization has a model key"
+
+// resumeParkedAnswers starts Afi again on every task an answer parked while
+// this server could not run Afi. It is called once a model key is set.
+func (h *Handler) resumeParkedAnswers() {
+	st := h.config.Store
+	if st == nil || !h.serverAgentServed() {
+		return
+	}
+	wss, err := st.Workstreams()
+	if err != nil {
+		return
+	}
+	for _, ws := range wss {
+		tasks, err := st.WorkstreamTasks(ws.ID)
+		if err != nil {
+			continue
+		}
+		for _, t := range tasks {
+			if t.State != factory.TaskUpNext || t.DoneBy.Kind != factory.TaskByAfi || h.taskTurnRunning(ws.ID, t.ID) {
+				continue
+			}
+			if _, job := factory.IsJobTask(t.ID); job {
+				continue
+			}
+			events, err := st.WorkstreamTaskEvents(ws.ID, t.ID)
+			if err != nil {
+				continue
+			}
+			answered, ok := parkedAnswer(events)
+			if !ok {
+				continue
+			}
+			h.resumeParkedAnswer(ws, t, answered)
+		}
+	}
+}
+
+// parkedAnswer is the answer a task's thread says was kept while nothing could
+// run Afi: the task's last state line is NoRunnerAnsweredLine, and the answer
+// is the last one given before it.
+func parkedAnswer(events []factory.WorkstreamTaskEvent) (factory.WorkstreamTaskEvent, bool) {
+	for i := len(events) - 1; i >= 0; i-- {
+		e := events[i]
+		if e.Kind != factory.TaskEventState {
+			continue
+		}
+		if e.Text != NoRunnerAnsweredLine {
+			return factory.WorkstreamTaskEvent{}, false
+		}
+		for j := i - 1; j >= 0; j-- {
+			if events[j].Kind == factory.TaskEventAnswered {
+				return events[j], true
+			}
+		}
+		return factory.WorkstreamTaskEvent{}, false
+	}
+	return factory.WorkstreamTaskEvent{}, false
+}
+
+// resumeParkedAnswer sets seen running and starts Afi on it with the answer,
+// as whoever answered, in one write: a start Afi cannot take keeps nothing,
+// and the task stays Up next with its line.
+func (h *Handler) resumeParkedAnswer(ws factory.OrgWorkstream, seen factory.WorkstreamTask, answered factory.WorkstreamTaskEvent) {
+	starter := ""
+	if answered.By.Kind == factory.TaskByPerson {
+		starter = answered.By.ID
+	}
+	if starter == "" {
+		starter = seen.CreatedBy.ID
+		if seen.Owner.Kind == factory.TaskOwnerPerson && seen.Owner.ID != "" {
+			starter = seen.Owner.ID
+		}
+	}
+	var resumed factory.WorkstreamTask
+	err := h.config.Store.EditWorkstreamTasks(func(tw store.TaskWrite) error {
+		t, ok := keptTask(tw, ws.ID, seen.ID)
+		if !ok || t.State != factory.TaskUpNext || t.Rev != seen.Rev {
+			return errSettledElsewhere
+		}
+		stamp := h.clock().UTC().Format(time.RFC3339Nano)
+		t.State, t.StateReason = factory.TaskRunning, ""
+		t.Rev++
+		t.UpdatedAt = stamp
+		if err := keepTask(tw, t, seen.Rev); err != nil {
+			return err
+		}
+		if err := tw.Append(ws.ID, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: t.ID, At: stamp, By: afiBy,
+			Kind: factory.TaskEventState, Text: taskResumedWithKeyLine}); err != nil {
+			return err
+		}
+		resumed = t
+		words := answeredWords(t, factory.TaskAsk{Title: answered.Question}, answered.Answer, answered.By.Name)
+		return h.startTaskRunTyped(ws, t, starter, words, answered.Typed, 0, true)
+	})
+	if err != nil {
+		if !errors.Is(err, errSettledElsewhere) && !wakeRefused(err) {
+			h.stopTaskTurn(ws.ID, seen.ID)
+			log.Printf("factory: workstream %s: task %s kept an answer but Afi could not go on with it: %v", ws.ID, seen.ID, err)
+		}
+		return
+	}
+	h.publishTasks(ws, afiBy.Name, resumed)
+}
+
+// taskLeashWords are the words of a task's run that a person wrote, the only
+// words its web_fetch may follow an address in (session's tools_web_leash.go):
+// the task's title and request when a person last wrote them, and typed, what
+// a person typed for this run. Never what the model wrote: a task Afi made or
+// retitled, an Ask's title or an option's label could carry an address a page
+// told it to fetch, with the workstream's data in it.
+func taskLeashWords(t factory.WorkstreamTask, typed string) []string {
+	var out []string
+	if t.TitleBy == factory.TaskByPerson && strings.TrimSpace(t.Title) != "" {
+		out = append(out, t.Title)
+	}
+	if t.RequestBy == factory.TaskByPerson && strings.TrimSpace(t.Request) != "" {
+		out = append(out, t.Request)
+	}
+	if typed = strings.TrimSpace(typed); typed != "" {
+		out = append(out, typed)
+	}
+	return out
 }
 
 // answeredWords is what Afi is told when an answer puts it back to work.

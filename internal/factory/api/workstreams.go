@@ -144,6 +144,8 @@ type WorkstreamMember struct {
 	Members []string `json:"members,omitempty"`
 	Steward bool     `json:"steward,omitempty"`
 	AddedAt string   `json:"added_at,omitempty"`
+	// AddedBy is the handle of whoever added them, when it was kept.
+	AddedBy string `json:"added_by,omitempty"`
 	// Invited is a person who has been invited and has not joined: their id
 	// is "invite:<id>" and their name the one or the email they were invited
 	// with. Tasks can be given to them; a task they do waits until they join.

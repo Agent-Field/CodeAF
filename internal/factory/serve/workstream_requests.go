@@ -117,6 +117,9 @@ func (h *Handler) requestIntoWorkstream(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			return err
 		}
+		// A person's request carries their words; an agent's or a bot's does
+		// not, nor one whose client says Afi wrote it.
+		factory.StampWords(&made, factory.WordsAuthor(wordsKind(r), body.WordsBy))
 		if err := tw.Put(made, 0); err != nil {
 			return err
 		}

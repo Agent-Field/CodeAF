@@ -105,6 +105,10 @@ const WSAskReversibleRule = "Whether what the answer lets you do can be undone w
 	"Say true ONLY when that is honestly so: the owner may accept your recommended answer on every such Ask at once without reading each. " +
 	"Anything published, sent, posted, paid for, deleted, or against a decision is false."
 
+// WSAskWordsRule is when an answer needs the person's own words.
+const WSAskWordsRule = "True when choosing this answer means the person must give you something in their own words: details, dates, a price list, a text to paste. " +
+	"The person is then asked for the words instead of answering in one click, and the Ask is never accepted with the quick ones."
+
 // WorkstreamTaskSmallestMinutes is the least work a task may hold (OWNER-DECISIONS
 // 2026-11-17 §7): anything smaller is done in the reply or is a step of a task.
 const WorkstreamTaskSmallestMinutes = 30
@@ -197,7 +201,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			"Only the task's owner answers an Ask; put your recommendation first and mark it recommended, and set reversible honestly. " +
 			"Before calling a task done, check the result against each acceptance line and say what you checked in check, and leave handoff: what you made, what you assumed, what the next task should know. Done without a handoff is refused. " +
 			"The workstream's rule \"" + factory.AsksBeforePublishingRule + "\" binds you unless it says otherwise: before a task publishes, sends, posts or pays, make it ready and raise an ask to the owner. " +
-			"When you cannot do the task (an input is missing, or it needs something you lack, such as the web), do not set failed: raise an ask to the owner saying what you lack, with options such as \"Paste their text\", \"Do it myself\" and \"Drop it\". A failed state you set becomes that question to the owner. " +
+			"When you cannot do the task (an input is missing, or it needs something you lack, such as a sign-in only a person holds), do not set failed: raise an ask to the owner saying what you lack, with options such as \"Paste their text\" (words true), \"Do it myself\" and \"Drop it\". A failed state you set becomes that question to the owner. " +
 			"When a private request changes this shared task, set request_note to ONE line naming who asked for what (\"Priya asked to keep it under 300 words\"), never the conversation, and decision to what it now settles. " +
 			"List what you decided without asking under assumed. Calling a task done is checked against the workstream's decisions; work that goes against one is not done until its maker answers.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{` +
@@ -211,7 +215,7 @@ var workstreamWorkTools = []WorkstreamWorkTool{
 			`"handoff":{"type":"string","maxLength":` + strconv.Itoa(factory.TaskHandoffMost) + `,"description":"With done: two to four lines on what you made, what you assumed, and what the next task should know. It goes to every task that builds on this one."},` +
 			`"results":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"file":{"type":"string"},"url":{"type":"string"},"label":{"type":"string","maxLength":200}},"additionalProperties":false}},` +
 			`"ask":{"type":"object","properties":{"title":{"type":"string","minLength":1,"maxLength":200},"detail":{"type":"string","maxLength":1000},` +
-			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"},"decides":{"type":"string","maxLength":300,"description":"The decision this answer records, as one plain statement: \"The March notes go on the website\"."}},"required":["label"],"additionalProperties":false}},` +
+			`"options":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"recommended":{"type":"boolean"},"decides":{"type":"string","maxLength":300,"description":"The decision this answer records, as one plain statement: \"The March notes go on the website\"."},"words":{"type":"boolean","description":"` + WSAskWordsRule + `"}},"required":["label"],"additionalProperties":false}},` +
 			`"reversible":{"type":"boolean","description":"` + WSAskReversibleRule + `"},` +
 			`"kind":{"type":"string","maxLength":` + strconv.Itoa(factory.AskKindLongest) + `,"description":"What sort of question this is, in a few words, the same words for the same sort each time (\"docs wording\", \"release date\"). A kind the workstream lets you decide without asking is not raised: it is listed under assumed with your recommended answer."}},` +
 			`"required":["title","options"],"additionalProperties":false},` +

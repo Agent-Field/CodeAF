@@ -103,6 +103,11 @@ type WorkstreamRules struct {
 	// NotNow is each suggested exception the steward turned down, and when,
 	// so Afi does not suggest it again for [SuggestionRestFor].
 	NotNow []AskNotNow `json:"not_now,omitempty"`
+	// Said are the workstream's rules in plain words, as people wrote them
+	// (a new workstream's "Nothing ships without Priya's OK"): shown in People
+	// and rules and given to every task. They were kept as decisions, decided
+	// by whoever made the workstream (live test 2026-11-23 #14).
+	Said []string `json:"said,omitempty"`
 }
 
 // StampFactorySince sets next's [KeepsRunning.FactorySince] from before: kept
@@ -176,6 +181,10 @@ const (
 	RulesOrdersMost = 50
 	// RulesOrderIDMost is the longest order id a rule keeps.
 	RulesOrderIDMost = 128
+	// RulesSaidMost is the most rules in words a workstream keeps, and
+	// RulesSaidLongest the longest one, in characters.
+	RulesSaidMost    = 20
+	RulesSaidLongest = 400
 )
 
 // ErrNestedTooDeep is a workstream asked to sit inside one that is itself
@@ -293,6 +302,24 @@ func CleanRules(r *WorkstreamRules) error {
 	}
 	if r.FallbackAfterHours != 0 && !slices.Contains(FallbackAfterChoices, r.FallbackAfterHours) {
 		return fmt.Errorf("the wait before the fallback answers is one of %v hours", FallbackAfterChoices)
+	}
+	said := make([]string, 0, len(r.Said))
+	for _, line := range r.Said {
+		line = strings.Join(strings.Fields(line), " ")
+		if line == "" || slices.Contains(said, line) {
+			continue
+		}
+		if utf8.RuneCountInString(line) > RulesSaidLongest || !utf8.ValidString(line) {
+			return fmt.Errorf("a rule is at most %d characters", RulesSaidLongest)
+		}
+		said = append(said, line)
+	}
+	if len(said) > RulesSaidMost {
+		return fmt.Errorf("a workstream keeps at most %d rules in words", RulesSaidMost)
+	}
+	r.Said = said
+	if len(said) == 0 {
+		r.Said = nil
 	}
 	return cleanExceptions(r)
 }

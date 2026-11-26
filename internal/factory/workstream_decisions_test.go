@@ -192,3 +192,40 @@ func TestCopiesOfOneDecisionAskOnceAndAreKeptOnce(t *testing.T) {
 		t.Fatalf("another person's decision, or a rule set again, was dropped: %+v", kept)
 	}
 }
+
+// An Ask that offers an answer in the person's own words keeps the
+// reversible it was given: its plain buttons can still be undone, the words
+// answer cannot, and the words answer is never taken without the words.
+func TestAWordsAnswerIsNotUndoableAndNeverEmpty(t *testing.T) {
+	task := afiTask("tk_1", "marco")
+	words := TaskAsk{ID: "ask_more", Title: "Which dates?", Reversible: true, Decider: &PersonRef{ID: "priya", Name: "Priya"},
+		Options: []TaskAskOption{{ID: "o1", Label: "These dates", Words: true}, {ID: "o2", Label: "Any"}}}
+	// Afi raises it: an answer to a person's own question is undoable for
+	// another reason (AskFromPerson).
+	byAfi := TaskEventBy{Kind: TaskByAfi, Name: "Afi"}
+	ch, err := ApplyPatch(task, TaskPatch{AddAsk: &words}, TaskActor{Handle: "marco", Edit: true}, byAfi, nil, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Task.Asks) != 1 || !ch.Task.Asks[0].Reversible {
+		t.Fatalf("an Ask with a words answer lost the reversible it was given: %+v", ch.Task.Asks)
+	}
+	priya := TaskActor{Handle: "priya", Edit: true}
+	if _, err := AnswerTask(ch.Task, "ask_more", "o1", "  ", priya, byPriya, Standin{}, taskIDs(), taskNow); err == nil {
+		t.Fatal("a words answer was taken without words")
+	}
+	given, err := AnswerTask(ch.Task, "ask_more", "o1", "June 3 to 5", priya, byPriya, Standin{}, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatalf("a words answer with its words was refused: %v", err)
+	}
+	if len(given.Task.Undoable) != 0 {
+		t.Errorf("a words answer can be undone: %+v", given.Task.Undoable)
+	}
+	plain, err := AnswerTask(ch.Task, "ask_more", "o2", "", priya, byPriya, Standin{}, taskIDs(), taskNow)
+	if err != nil {
+		t.Fatalf("a plain answer was refused: %v", err)
+	}
+	if len(plain.Task.Undoable) != 1 || plain.Task.Undoable[0].Option != "o2" {
+		t.Errorf("a plain button answer on a reversible Ask cannot be undone: %+v", plain.Task.Undoable)
+	}
+}

@@ -555,14 +555,20 @@ func (d *agentDoor) wsTaskUpdate(ctx context.Context, args json.RawMessage) (any
 				return nil, err
 			}
 			options = append(options, factory.TaskAskOption{ID: fmt.Sprintf("o%d", i+1), Label: label, Recommended: o.Recommended,
-				Decides: cutRunes(strings.TrimSpace(o.Decides), 300)})
+				Decides: cutRunes(strings.TrimSpace(o.Decides), 300), Words: o.Words})
 		}
 		ask := factory.TaskAsk{Title: title, Detail: cutRunes(strings.TrimSpace(a.Ask.Detail), 1000), Options: options, Kind: factory.AskKind(a.Ask.Kind), Reversible: a.Ask.Reversible}
+		// AN ANSWER THAT NEEDS THE PERSON'S WORDS IS NEVER ONE CLICK (live
+		// test 2026-11-23 #37): no rule decides an Ask holding one for them,
+		// and no door treats it as quick (factory.NeedsWords). It keeps the
+		// reversible the agent gave it, so its plain answers can still be
+		// undone; the words answer itself never can (factory.AnswerTask).
+		words := factory.NeedsWords(ask)
 		// A KIND THE STEWARD LET GO IS NOT ASKED. The server decides it with
 		// the answer the agent recommended and lists it under Assumed, where
 		// Send back still overturns it (owner decisions §13).
 		decided := false
-		if ws, err := d.Workstream(ctx); err == nil {
+		if ws, err := d.Workstream(ctx); err == nil && !words {
 			if ex, ok := factory.ExceptionFor(ws.RulesOrDefault(), ask.Kind); ok {
 				asked := ask
 				asked.By = &factory.TaskEventBy{Kind: factory.TaskByAfi}
@@ -1172,6 +1178,7 @@ type agentAskOption struct {
 	Label       string `json:"label"`
 	Recommended bool   `json:"recommended"`
 	Decides     string `json:"decides"`
+	Words       bool   `json:"words"`
 }
 
 // ── decisions ──

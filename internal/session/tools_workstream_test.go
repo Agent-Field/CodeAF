@@ -32,9 +32,9 @@ func (f *fakeWorkstreamDoor) Decide(_ context.Context, text string) (string, err
 	return "proposed it", nil
 }
 
-// THE SERVER'S WORKSTREAM AGENT CARRIES ITS ONE TOOL AND NOTHING ELSE: no
-// shell, no files, no loader that could put one back. And the manual names
-// the tool, as it names every tool on every belt.
+// THE SERVER'S WORKSTREAM AGENT CARRIES ITS ONE TOOL AND NOTHING ELSE when no
+// search pair is wired: no shell, no files, no loader that could put one back.
+// And the manual names the tool, as it names every tool on every belt.
 func TestAWorkstreamAgentCarriesOnlyItsWorkstream(t *testing.T) {
 	door := &fakeWorkstreamDoor{}
 	agent := &Agent{config: Config{Workstream: door, Workspace: t.TempDir(), ProfileDir: t.TempDir(), Interactive: true}}
@@ -49,6 +49,58 @@ func TestAWorkstreamAgentCarriesOnlyItsWorkstream(t *testing.T) {
 	}
 	if !manual.Chat().Mentions(WorkstreamPagesTool) {
 		t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", WorkstreamPagesTool)
+	}
+}
+
+// THE SERVER'S WORKSTREAM AGENT CAN LOOK THINGS UP (finding #38): with a
+// search pair wired, its belt carries web_search and web_fetch beside its
+// workstream's tools, with a door that keeps tasks and files and one that does
+// not, and gains nothing that writes, runs or reads the machine. Each half
+// rides alone when only it is wired, and a page reaches the model through the
+// fetcher it was handed.
+func TestAWorkstreamAgentCarriesTheWebsReadingPair(t *testing.T) {
+	names := func(agent *Agent) []string {
+		agent.tools = agent.belt()
+		out := []string{}
+		for _, tool := range agent.offeredTools() {
+			out = append(out, tool.Name)
+		}
+		return out
+	}
+	for _, door := range []WorkstreamDoor{&fakeWorkstreamDoor{}, &workingDoor{}} {
+		fetch := &scriptedFetch{text: "Hall A seats 120. From $900 a day."}
+		agent := &Agent{config: Config{Workstream: door, Workspace: t.TempDir(), ProfileDir: t.TempDir(), Interactive: true,
+			SearchProvider: &scriptedSearch{}, SearchFetcher: fetch}}
+		got := names(agent)
+		if len(got) < 3 || got[0] != WorkstreamPagesTool || strings.Join(got[len(got)-2:], ",") != "web_search,web_fetch" {
+			t.Fatalf("door %T: the server agent's belt is %v, want workstream_pages first and web_search,web_fetch last", door, got)
+		}
+		for _, name := range got {
+			switch name {
+			case "bash", "read", "write", "edit", "grep", "find", "ls", "load_capability", "propose_task", "change_setting":
+				t.Fatalf("door %T: the server agent's belt gained %s: %v", door, name, got)
+			}
+		}
+		// The page's address is in words a person wrote, so the leashed
+		// web_fetch may read it (tools_web_leash.go).
+		agent.NoteWebLeash("Compare the halls, starting with https://venues.example/hall-a.")
+		for _, tool := range agent.tools {
+			if tool.Name != "web_fetch" {
+				continue
+			}
+			out, failed, err := tool.Execute(context.Background(), json.RawMessage(`{"url":"https://venues.example/hall-a"}`))
+			if err != nil || failed || !strings.Contains(out, "Hall A seats 120") {
+				t.Fatalf("web_fetch answered %q failed=%v err=%v", out, failed, err)
+			}
+		}
+		if strings.Join(fetch.fetched(), ",") != "https://venues.example/hall-a" {
+			t.Fatalf("the fetcher was asked for %v", fetch.fetched())
+		}
+	}
+	only := &Agent{config: Config{Workstream: &fakeWorkstreamDoor{}, Workspace: t.TempDir(), ProfileDir: t.TempDir(), Interactive: true,
+		SearchFetcher: &scriptedFetch{}}}
+	if got := names(only); strings.Join(got, ",") != WorkstreamPagesTool+",web_fetch" {
+		t.Fatalf("a fetch-only pair gave the belt %v", got)
 	}
 }
 

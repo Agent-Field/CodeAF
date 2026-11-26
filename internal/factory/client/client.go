@@ -163,18 +163,38 @@ func (c *Client) github(ctx context.Context) (factory.GitHubLink, error) {
 	return factory.GitHubLink{Login: body.Login, Via: body.Via}, err
 }
 
+// Call is one JSON request to the factory as this client's person: in is sent
+// as the body when it is not nil, a 2xx answer is decoded into out, and a
+// refusal is a [Refusal] carrying the status and the server's own sentence, so
+// a caller can tell a sign-in that ended (401) from a missing thing (404)
+// without reading words. The terminal door (cmd/codeaf door_*.go) speaks to an
+// organization's server through it.
+func (c *Client) Call(ctx context.Context, method, path string, in, out any) error {
+	code, err := c.send(ctx, method, path, in, out)
+	if err != nil && code >= 300 {
+		return refusal(err, code)
+	}
+	return err
+}
+
 func (c *Client) call(ctx context.Context, method, path string, in, out any) error {
+	_, err := c.send(ctx, method, path, in, out)
+	return err
+}
+
+// send is call with the answer's status beside it (0 when none came back).
+func (c *Client) send(ctx context.Context, method, path string, in, out any) (int, error) {
 	var body io.Reader
 	if in != nil {
 		raw, err := json.Marshal(in)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		body = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -183,20 +203,20 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	c.authorize(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return resp.StatusCode, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return sentence(raw)
+		return resp.StatusCode, sentence(raw)
 	}
 	if out == nil || len(bytes.TrimSpace(raw)) == 0 {
-		return nil
+		return resp.StatusCode, nil
 	}
-	return json.Unmarshal(raw, out)
+	return resp.StatusCode, json.Unmarshal(raw, out)
 }
 
 func (c *Client) authorize(req *http.Request) {

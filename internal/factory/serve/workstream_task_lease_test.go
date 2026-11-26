@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -59,8 +60,18 @@ func TestARunCutOffByARestartIsInterruptedThenResumesOnce(t *testing.T) {
 	if got := o.one(t, path, cut.ID); got.State != factory.TaskRunning {
 		t.Fatalf("closing changed the task: %+v", got)
 	}
-	if _, ok, _ := o.st.TaskRunOf(wsID, cut.ID); !ok {
+	kept, ok, _ := o.st.TaskRunOf(wsID, cut.ID)
+	if !ok {
 		t.Fatal("closing dropped the lease the next start must find")
+	}
+	// What a person typed for the run is kept on its lease, so the resumed
+	// run may still follow an address in it.
+	kept.Typed = "Use https://typed.example/notes"
+	if err := o.st.PutTaskRun(kept); err != nil {
+		t.Fatal(err)
+	}
+	if again, _, _ := o.st.TaskRunOf(wsID, cut.ID); again.Typed != kept.Typed {
+		t.Fatalf("the lease kept typed %q", again.Typed)
 	}
 	o.now = o.now.Add(time.Second)
 	var mu sync.Mutex
@@ -96,6 +107,9 @@ func TestARunCutOffByARestartIsInterruptedThenResumesOnce(t *testing.T) {
 		if _, ok, _ := o.st.TaskRunOf(wsID, tk.ID); ok {
 			t.Fatalf("%q's lease outlived its run", tk.Title)
 		}
+	}
+	if turn := asked["Write the release notes"]; !slices.Contains(turn.LeashWords, "Use https://typed.example/notes") {
+		t.Fatalf("the resumed run lost what the person typed: %q", turn.LeashWords)
 	}
 	if turn := asked["Write the release notes"]; turn.Asker != "abir" || !strings.Contains(turn.Text, "Carry on from where you stopped") ||
 		!strings.Contains(turn.Text, "Write the release notes\n\nShort.") || !strings.Contains(turn.Dir, "/tasks/"+cut.ID+"/") {

@@ -773,6 +773,24 @@ func (a *Agent) endpointPatience(model string) float64 {
 	return lanes.PatienceFor(service.Address, service.Source.ID)
 }
 
+// summaryPatience is the factor on one summary request's bound.
+//
+// CLAUDE CODE IS NOT A MODEL SERVER ON THE PERSON'S MACHINE. Its sentinel
+// address ends in `.local`, so under `auto` it reads as local and every bound
+// is stretched ten times ([lanes.LocalPatience]) — the allowance for a GPU box
+// prefilling a long prompt at a hundred tokens a second. A summary through it
+// is one `claude -p` to a hosted model, and the stretch made its two minutes
+// twenty: on 2026-11-25 a refused turn waited all twenty on a summary that
+// never came, while the app said "Still on it" and nothing else. The turn
+// loop waits on this call, so it gets the hosted bound. A number the person
+// wrote in `response.patience` still applies, as it does everywhere.
+func summaryPatience(address, source string) float64 {
+	if lanes.PatienceIsAuto() && strings.EqualFold(strings.TrimSpace(source), claudemodel.ID) {
+		return 1
+	}
+	return lanes.PatienceFor(address, source)
+}
+
 // completeWithNamedModel keeps the model that answered attached to the same
 // resolution that chose its account. Errand receipts need that identity when a
 // missing default-service key moved the call onto the live seat; asking the pool

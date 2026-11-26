@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/claudemodel"
 	"github.com/Agent-Field/codeaf/internal/config"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -175,5 +176,28 @@ func TestGiveUpUsesLiveSourcesWhileTheyAreReplaced(t *testing.T) {
 		if got := agent.giveUpOn(model); got != base && got != 10*base {
 			t.Fatalf("give-up = %v with either a local or a hosted source", got)
 		}
+	}
+}
+
+// CONTRACT: a summary through Claude Code waits the hosted bound, not the
+// local one. Claude Code's sentinel address ends in `.local`, and under `auto`
+// that stretched a refused turn's summary from two minutes to twenty — a turn
+// that sat on "Still on it" while the summary never came (2026-11-25). A real
+// local server keeps its stretch, and a number the person wrote still applies
+// to Claude Code as it does everywhere.
+func TestASummaryThroughClaudeCodeWaitsTheHostedBound(t *testing.T) {
+	usePatience(t, 0)
+	if got := summaryPatience(claudemodel.Address, claudemodel.ID); got != 1 {
+		t.Fatalf("Claude Code summary patience under auto = %v, want 1", got)
+	}
+	if got := lanes.Stretch(summaryCallWindow, summaryPatience(claudemodel.Address, claudemodel.ID)); got != summaryCallWindow {
+		t.Fatalf("Claude Code summary bound = %v, want %v", got, summaryCallWindow)
+	}
+	if got := summaryPatience("http://localhost:11434/v1", "ollama"); got != lanes.LocalPatience {
+		t.Fatalf("local server summary patience = %v, want %v", got, lanes.LocalPatience)
+	}
+	usePatience(t, 3)
+	if got := summaryPatience(claudemodel.Address, claudemodel.ID); got != 3 {
+		t.Fatalf("Claude Code summary patience with a written 3 = %v, want 3", got)
 	}
 }

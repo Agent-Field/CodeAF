@@ -2608,6 +2608,11 @@ type Config struct {
 	// DOOR. When it is set the belt is `workstream_pages` and nothing else:
 	// the server's agent touches no shell, file or machine.
 	Workstream WorkstreamDoor
+	// WebLeashWords, on a server workstream agent, are the words of this run
+	// a person wrote; web_fetch reads only an address in them or in this
+	// run's web_search results (tools_web_leash.go). The text submitted is
+	// composed and is never read for addresses.
+	WebLeashWords []string
 
 	// OrgSetup is an organization server's door for its setup conversation
 	// (tools_org_setup.go). NIL IS NO DOOR. When it is set the belt is
@@ -3898,6 +3903,10 @@ type Agent struct {
 	// A manager's action that only the person may ask for reads it
 	// ([Agent.turnPersonWords]), so the model cannot take one on its own.
 	personWords string
+	// webLeash is which pages a server workstream agent's web_fetch may read
+	// (tools_web_leash.go): addresses in the person's or task's words, and in
+	// this run's web_search results. It has its own lock.
+	webLeash webLeash
 	// turnSpend is what the RUNNING turn has cost so far, moved by [Agent.bank]
 	// on the same call that moves the session's meter and reset when a turn
 	// opens. It is the "last known spend" an abandoned turn is journaled with:

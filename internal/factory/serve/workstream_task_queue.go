@@ -38,6 +38,8 @@ type pendingRun struct {
 	task    factory.WorkstreamTask
 	starter string
 	words   string
+	// typed is what a person typed for this run (startTaskRunTyped).
+	typed   string
 	resumes int
 	// answered is a run an answer to the task's Ask started (D1): it goes
 	// on with what the earlier run made, after a wait in the queue too.
@@ -187,7 +189,7 @@ func (h *Handler) keepQueued(r pendingRun, owner string) {
 	at := h.clock().UTC().Format(time.RFC3339Nano)
 	guard.Go("factory workstream task queue", func() {
 		_ = st.PutTaskRun(store.TaskRun{WS: r.key.ws, Task: r.key.task, Owner: owner, Starter: r.starter,
-			Started: at, Beat: at, Resumes: r.resumes, Words: r.words, Queued: true, Answered: r.answered})
+			Started: at, Beat: at, Resumes: r.resumes, Words: r.words, Typed: r.typed, Queued: true, Answered: r.answered})
 	})
 }
 

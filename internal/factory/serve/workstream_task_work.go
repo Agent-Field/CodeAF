@@ -148,8 +148,9 @@ func (h *Handler) taskWorkForViewer(r *http.Request, e live.Event) (live.Event, 
 
 // openTaskWork marks key's run going, started by starter, and answers the
 // inbox its steers arrive in. The run reads it until it ends; closeTaskWork
-// then says it ended.
-func (h *Handler) openTaskWork(key taskRunKey, turn, starter string) <-chan string {
+// then says it ended. A run an answer started says so: the person answered
+// and Afi carries on, never a second "Started by" (live test 2026-11-23 #44).
+func (h *Handler) openTaskWork(key taskRunKey, turn, starter string, answered bool) <-chan string {
 	now := h.clock().UTC()
 	h.agentDesk.mu.Lock()
 	w := h.taskWorkOfLocked(key)
@@ -158,7 +159,11 @@ func (h *Handler) openTaskWork(key taskRunKey, turn, starter string) <-chan stri
 	state, steers := w.state, w.steers
 	h.agentDesk.mu.Unlock()
 	h.publishTaskWork(key, api.TaskWorkEvent{AgentState: &state})
-	h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryNote, By: starter, Text: "Started by " + starter, Turn: turn})
+	text := startedByPrefix + starter
+	if answered {
+		text = starter + answeredSuffix
+	}
+	h.addTaskWorkEntry(key, api.AgentEntry{Kind: api.AgentEntryNote, By: starter, Text: text, Turn: turn})
 	return steers
 }
 
@@ -198,11 +203,18 @@ func (h *Handler) closeTaskWork(key taskRunKey, turn string, why error, usd floa
 	h.publishTaskWork(key, api.TaskWorkEvent{AgentState: &state})
 }
 
-// lastStarterLocked is who started key's latest run, read from its "Started
-// by" line so it outlives a restart. The desk's lock is held.
+// The words a run's opening line says: "Started by mia", or, for a run an
+// answer started, "mia answered; Afi carries on". The desk names the person.
+const (
+	startedByPrefix = "Started by "
+	answeredSuffix  = " answered; Afi carries on"
+)
+
+// lastStarterLocked is who started key's latest run, read from its opening
+// line so it outlives a restart. The desk's lock is held.
 func lastStarterLocked(w *taskWork) string {
 	for i := len(w.entries) - 1; i >= 0; i-- {
-		if e := w.entries[i]; e.Kind == api.AgentEntryNote && e.By != "" && strings.HasPrefix(e.Text, "Started by ") {
+		if e := w.entries[i]; e.Kind == api.AgentEntryNote && e.By != "" && (strings.HasPrefix(e.Text, startedByPrefix) || strings.HasSuffix(e.Text, answeredSuffix)) {
 			return e.By
 		}
 	}
@@ -224,8 +236,10 @@ func revisionWords(t factory.WorkstreamTask, who, words string) string {
 
 // startRevision starts a revision run on the done task t, as starter, after
 // the line that asked for it.
+// words are a person's (their revise note, or the comment by a person whose
+// offer they took), so the run may follow an address in them.
 func (h *Handler) startRevision(ws factory.OrgWorkstream, t factory.WorkstreamTask, starter, words string) error {
-	return h.runTaskTurn(ws, t, starter, revisionWords(t, starter, words))
+	return h.startTaskRunTyped(ws, t, starter, revisionWords(t, starter, words), words, 0, false)
 }
 
 // requestLike is a comment that asks the doer for a change: it opens with a

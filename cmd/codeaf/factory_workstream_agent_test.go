@@ -35,13 +35,16 @@ func (d *agentTestDoor) WritePage(_ context.Context, page, title, body string) (
 func (d *agentTestDoor) Decide(context.Context, string) (string, error) { return "proposed", nil }
 
 // THE SERVER'S AGENT IS THE ENGINE'S OWN CONVERSATION, run with the
-// organization's key and the workstream's one tool. The model is asked with
-// that key and offered that tool alone; its call reaches the workstream through
-// the door; its steps and answer are reported; and what it spent is answered.
+// organization's key and the workstream's one tool, and the web's two reading
+// hands beside it (finding #38). The model is asked with that key and offered
+// those tools alone, and told it can look things up; its call reaches the
+// workstream through the door; its steps and answer are reported; and what it
+// spent is answered.
 func TestTheServerAgentIsASessionWithTheOrgKeyAndOneTool(t *testing.T) {
 	var mu sync.Mutex
 	var auth []string
 	var tools [][]string
+	var toldWeb []bool
 	calls := 0
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -69,6 +72,7 @@ func TestTheServerAgentIsASessionWithTheOrgKeyAndOneTool(t *testing.T) {
 		}
 		if len(names) > 0 {
 			tools = append(tools, names)
+			toldWeb = append(toldWeb, strings.Contains(string(raw), "You can look things up on the web") && !strings.Contains(string(raw), "use the web"))
 		}
 		mu.Unlock()
 		delta, finish := map[string]any{"content": "Made the runbook."}, "stop"
@@ -109,8 +113,11 @@ func TestTheServerAgentIsASessionWithTheOrgKeyAndOneTool(t *testing.T) {
 		}
 	}
 	for i, names := range tools {
-		if strings.Join(names, ",") != session.WorkstreamPagesTool {
+		if strings.Join(names, ",") != session.WorkstreamPagesTool+",web_search,web_fetch" {
 			t.Fatalf("call %d offered %v (all %v, door %v, steps %q)", i, names, tools, door.pages, steps)
+		}
+		if !toldWeb[i] {
+			t.Fatalf("call %d offered the web but its prompt did not say so, or still said it cannot use the web", i)
 		}
 	}
 	if strings.Join(door.pages, ";") != "Runbook:Page someone." {

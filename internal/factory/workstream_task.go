@@ -252,6 +252,21 @@ type TaskAskOption struct {
 	// notes go on the website"). Absent, the decision reads as the question
 	// and the answer chosen.
 	Decides string `json:"decides,omitempty"`
+	// Words is whether choosing this answer means the person gives
+	// something in their own words (dates, a price list, a text to paste).
+	// Such an answer is never one click: the app asks for the words, and an
+	// Ask holding one is never quick (live test 2026-11-23 #37).
+	Words bool `json:"words,omitempty"`
+}
+
+// NeedsWords is whether any of ask's answers needs the person's own words.
+func NeedsWords(ask TaskAsk) bool {
+	for _, o := range ask.Options {
+		if o.Words {
+			return true
+		}
+	}
+	return false
 }
 
 // TaskAsk is a question a task waits on. The task's own Ask (Task.Ask) is
@@ -297,7 +312,7 @@ type TaskAsk struct {
 	CoveredBy *PersonRef `json:"covered_by,omitempty"`
 }
 
-// TaskAnswered is one answer given to a reversible Ask, kept on the task so
+// TaskAnswered is one answer given to a reversible Ask or a person's Ask, kept on the task so
 // whoever gave it can undo it (TaskPatch.UndoAnswer): the Ask as it was, the
 // answer, who gave it and when, and the decision it kept.
 type TaskAnswered struct {
@@ -307,6 +322,14 @@ type TaskAnswered struct {
 	By       PersonRef `json:"by"`
 	At       string    `json:"at"`
 	Decision string    `json:"decision,omitempty"`
+}
+
+// AskFromPerson is whether a person raised a, not an agent, Afi or the
+// factory. Its answer can be undone like a reversible Ask's ([TaskAnswered]).
+// The invite chase and the can't-do Ask are not: their answers move the task
+// to someone else, which an undo does not move back.
+func AskFromPerson(a TaskAsk) bool {
+	return a.By != nil && a.By.Kind == TaskByPerson && !IsInviteChaseAsk(a) && !IsCantDoAsk(a)
 }
 
 // TaskUndoableMost is how many answers a task keeps to undo; the oldest goes
@@ -517,6 +540,14 @@ type WorkstreamTask struct {
 	UpdatedAt  string          `json:"updated_at"`
 	DoneAt     string          `json:"done_at,omitempty"`
 	AnsweredBy *PersonRef      `json:"answered_by,omitempty"`
+	// TitleBy and RequestBy are who last wrote the task's title and its
+	// request, each as the kind of writer (TaskByPerson, TaskByAfi, …), and
+	// only ever written by the server; empty on a task made before they were
+	// kept, which reads as not a person. The server agent's web_fetch may read
+	// an address in one of them only when a person wrote it (serve's
+	// taskLeashWords, session's tools_web_leash.go).
+	TitleBy   string `json:"title_by,omitempty"`
+	RequestBy string `json:"request_by,omitempty"`
 	// Undoable are the answers given to its reversible Asks, oldest first, at
 	// most TaskUndoableMost: each can be undone from the task by whoever gave
 	// it, which opens the Ask again (TaskPatch.UndoAnswer).
@@ -654,6 +685,10 @@ type WorkstreamTaskEvent struct {
 	Mentions []string `json:"mentions,omitempty"`
 	// File is, on a "made" event, the id of the document the line names.
 	File string `json:"file,omitempty"`
+	// Typed is, on an "answered" event, what the person typed with their
+	// answer (never an option's label, which the asker wrote), so a run
+	// started from the answer later may follow an address in it.
+	Typed string `json:"typed,omitempty"`
 }
 
 // TaskInvalid is a task the store will not keep, answered 422.
@@ -852,7 +887,31 @@ type TaskCreate struct {
 	State     string        `json:"state,omitempty"`
 	// Checklist is the deliverable's steps, one line each, unticked.
 	Checklist []string `json:"checklist,omitempty"`
+	// WordsBy, when a client sends it, says its title and request were not
+	// the person's own words ("afi": a desk's Afi wrote them through the
+	// person's token). It only ever lowers trust (WordsAuthor): "person", or
+	// leaving it out, changes nothing, and older clients send none.
+	WordsBy string `json:"words_by,omitempty"`
 }
+
+// WordsAuthor is who wrote words sent by a caller of kind by (TaskByPerson,
+// TaskByAfi, …) that says claimed of them (a create's or patch's WordsBy). A
+// claim only lowers trust: a person's request that says "afi" is Afi's words,
+// and nothing makes words a person's that a person's request did not carry.
+func WordsAuthor(by, claimed string) string {
+	claimed = strings.ToLower(strings.TrimSpace(claimed))
+	if by != TaskByPerson || claimed == "" || claimed == TaskByPerson {
+		return by
+	}
+	switch claimed {
+	case TaskByAfi, TaskByAgent, TaskByChat, TaskByFactory, TaskByOrder:
+		return claimed
+	}
+	return TaskByAfi
+}
+
+// StampWords records author as the writer of t's title and request.
+func StampWords(t *WorkstreamTask, author string) { t.TitleBy, t.RequestBy = author, author }
 
 // NewTask makes a task from in, checked. id is the store's; by is the caller;
 // defaultOwner is the owner of work nobody asked for directly (the workstream's
@@ -1070,8 +1129,11 @@ func cleanIDs(ids []string) []string {
 // TaskPatch is any subset of a task. Due "" clears the date; ClearGroup and
 // ClearAsk clear those. State "done" on a person task is the tick.
 type TaskPatch struct {
-	Title       *string       `json:"title,omitempty"`
-	Request     *string       `json:"request,omitempty"`
+	Title   *string `json:"title,omitempty"`
+	Request *string `json:"request,omitempty"`
+	// WordsBy is TaskCreate's WordsBy for a change of the title or request:
+	// it only ever lowers trust.
+	WordsBy     string        `json:"words_by,omitempty"`
 	Owner       *TaskOwner    `json:"owner,omitempty"`
 	WaitingOn   *[]string     `json:"waiting_on,omitempty"`
 	Due         *string       `json:"due,omitempty"`
@@ -1181,6 +1243,15 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 		}
 		if p.Request != nil {
 			t.Request = strings.TrimSpace(*p.Request)
+		}
+		// Each field keeps its own writer: a person fixing a title's typo
+		// does not make the request Afi wrote theirs.
+		author := WordsAuthor(by.Kind, p.WordsBy)
+		if p.Title != nil && t.Title != before.Title {
+			t.TitleBy = author
+		}
+		if p.Request != nil && t.Request != before.Request {
+			t.RequestBy = author
 		}
 		if p.Brief != nil {
 			brief, err := CleanBrief(p.Brief)
@@ -1428,7 +1499,7 @@ func ApplyPatch(t WorkstreamTask, p TaskPatch, a TaskActor, by TaskEventBy, all 
 	}
 	if id := strings.TrimSpace(p.UndoAnswer); id != "" {
 		// UNDO AN ANSWER (OWNER-DECISIONS 2026-11-17 §13): only a reversible
-		// Ask's answer, only by whoever gave it, and only while the task is
+		// Ask's answer (or a person's Ask's, [AskFromPerson]), only by whoever gave it, and only while the task is
 		// not done (a done task is sent back instead). The Ask opens again
 		// as it was asked, the task waits on it, and its decision is withdrawn.
 		k := slices.IndexFunc(t.Undoable, func(x TaskAnswered) bool { return x.Ask.ID == id })
@@ -1735,6 +1806,9 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 		}
 		opt = &ask.Options[k]
 		chose = opt.Label
+		if opt.Words && words == "" {
+			return TaskChange{}, taskInvalidf("%q needs your own words with it", opt.Label)
+		}
 	}
 	if chose == "" && words == "" {
 		return TaskChange{}, TaskInvalid("an answer is one of the question's answers, or words")
@@ -1779,9 +1853,15 @@ func AnswerTask(t WorkstreamTask, askID, option, words string, a TaskActor, by T
 	if kept {
 		ch.Decisions = append(ch.Decisions, d)
 	}
-	if ask.Reversible && t.State != TaskDone {
+	// An answer given in the person's own words (the option that asks for
+	// them) is not taken back by a click, even on a reversible Ask: its plain
+	// buttons stay undoable, it does not.
+	wordsAnswer := opt != nil && opt.Words
+	if (ask.Reversible && !wordsAnswer || AskFromPerson(ask)) && t.State != TaskDone {
 		// A REVERSIBLE ASK'S ANSWER CAN BE UNDONE FROM ITS TASK: kept here
 		// with the decision it made, so the undo withdraws exactly that one.
+		// So can the answer to a person's question: it lets nothing happen by
+		// itself, it only tells them, so a slip is taken back before they act.
 		keep := TaskAnswered{Ask: ask, Option: option, Answer: strings.Join(nonEmpty(chose, words), " · "), By: who, At: stamp}
 		if kept {
 			keep.Decision = d.ID
@@ -2322,8 +2402,10 @@ func HandOn(t WorkstreamTask, removed map[string]bool, to, name string, by TaskE
 // TaskRequest is a request into a workstream: what is wanted, and the work
 // it came from, when it came from a task elsewhere.
 type TaskRequest struct {
-	Title    string `json:"title"`
-	Request  string `json:"request,omitempty"`
+	Title   string `json:"title"`
+	Request string `json:"request,omitempty"`
+	// WordsBy is TaskCreate's WordsBy: it only ever lowers trust.
+	WordsBy  string `json:"words_by,omitempty"`
 	FromWS   string `json:"from_ws,omitempty"`
 	FromTask string `json:"from_task,omitempty"`
 }
@@ -2428,7 +2510,7 @@ func CantDoAsk(doer, why, id string) TaskAsk {
 		ID: CantDoAskID + id, Title: "Can you give " + firstNonEmpty(doer, "the agent") + " what it needs?",
 		Detail: cutWords(strings.TrimSpace(why), 1000),
 		Options: []TaskAskOption{
-			{ID: CantDoPaste, Label: "Paste what it needs", Recommended: true},
+			{ID: CantDoPaste, Label: "Paste what it needs", Recommended: true, Words: true},
 			{ID: CantDoPerson, Label: "Do it myself"},
 			{ID: CantDoDrop, Label: "Drop it"},
 		},

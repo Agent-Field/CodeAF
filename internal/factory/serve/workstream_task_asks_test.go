@@ -70,3 +70,34 @@ func TestAPersonAsksOneDeciderInTheWorkstreamAndTheAnswerIsADecision(t *testing.
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+task.ID, cur.Rev, map[string]any{"state": "done"}, 200, &done)
 	o.do(t, "santosh", "PATCH", path+"/tasks/"+task.ID, done.Rev, ask("abir"), 422, nil)
 }
+
+// LIVE TEST 2026-11-23 #33: a one-click answer to a person's question had no
+// Undo. It lets nothing happen by itself, so whoever answered can take it back:
+// the question opens again and the decision it made is withdrawn.
+func TestTheAnswerToAPersonsQuestionCanBeUndoneByWhoeverGaveIt(t *testing.T) {
+	o, path := taskOrg(t, "edit")
+	task := o.task(t, "santosh", path, api.TaskCreate{Title: "Pick the launch photo", DoneBy: factory.TaskDoneBy{Kind: factory.TaskByPerson, ID: "santosh", Name: "santosh"}})
+	var asked api.WorkstreamTask
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+task.ID, task.Rev, map[string]any{"add_ask": map[string]any{"title": "The beach photo?", "decider": map[string]string{"id": "abir", "name": "abir"}}}, 200, &asked)
+	a := asked.Asks[0]
+
+	var answered api.WorkstreamTask
+	o.do(t, "abir", "POST", path+"/tasks/"+task.ID+"/answer", -1, api.TaskAnswer{Ask: a.ID, Option: "yes"}, 200, &answered)
+	if len(answered.Undoable) != 1 || answered.Undoable[0].Ask.ID != a.ID {
+		t.Fatalf("the answer is not kept to undo: %+v", answered.Undoable)
+	}
+	o.do(t, "santosh", "PATCH", path+"/tasks/"+task.ID, answered.Rev, map[string]any{"undo_answer": a.ID}, 403, nil)
+
+	var undone api.WorkstreamTask
+	o.do(t, "abir", "PATCH", path+"/tasks/"+task.ID, answered.Rev, map[string]any{"undo_answer": a.ID}, 200, &undone)
+	if undone.State != factory.TaskNeeds || len(undone.Asks) != 1 || undone.Asks[0].ID != a.ID || len(undone.Undoable) != 0 {
+		t.Fatalf("after the undo: state %s, %d Asks, %d undoable", undone.State, len(undone.Asks), len(undone.Undoable))
+	}
+	var ws api.Workstream
+	o.do(t, "santosh", "GET", path, -1, nil, 200, &ws)
+	for _, d := range ws.Decisions {
+		if strings.HasPrefix(d.Text, "The beach photo?") && d.State != factory.DecisionWithdrawn {
+			t.Fatalf("the decision still stands: %+v", d)
+		}
+	}
+}

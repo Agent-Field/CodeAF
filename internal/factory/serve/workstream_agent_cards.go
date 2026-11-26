@@ -348,7 +348,9 @@ func (h *Handler) addCards(r *http.Request, ws factory.OrgWorkstream, person str
 	for _, c := range cards.Tasks {
 		in := factory.TaskCreate{Title: c.Title, Request: c.Request, Due: c.Due, Checklist: c.Checklist,
 			CameFrom: &factory.TaskCameFrom{Kind: factory.TaskByChat, ChatID: "afi", Name: "Afi"},
-			DoneBy:   factory.TaskDoneBy{Kind: factory.TaskByAfi, Name: "Afi"}}
+			DoneBy:   factory.TaskDoneBy{Kind: factory.TaskByAfi, Name: "Afi"},
+			// Afi wrote the card's words, though the person adds it.
+			WordsBy: factory.TaskByAfi}
 		if c.DoneBy == "person" {
 			who := c.Person
 			if who == "" {

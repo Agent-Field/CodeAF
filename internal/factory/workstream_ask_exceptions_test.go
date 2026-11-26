@@ -143,6 +143,27 @@ func TestCleanRulesKeepsTheNewRuleFieldsInShape(t *testing.T) {
 	}
 }
 
+// TestCleanRulesKeepsRulesInWordsTidy pins rules in words: spaces folded,
+// blanks and repeats dropped, and none left is none kept.
+func TestCleanRulesKeepsRulesInWordsTidy(t *testing.T) {
+	r := DefaultRules("santosh")
+	r.Said = []string{"  Nothing ships   without Priya's OK ", "", "Nothing ships without Priya's OK", "Keep it short"}
+	if err := CleanRules(&r); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Said) != 2 || r.Said[0] != "Nothing ships without Priya's OK" || r.Said[1] != "Keep it short" {
+		t.Fatalf("said = %q", r.Said)
+	}
+	r.Said = []string{" "}
+	if err := CleanRules(&r); err != nil || r.Said != nil {
+		t.Fatalf("blank rules kept: %q %v", r.Said, err)
+	}
+	r.Said = []string{strings.Repeat("x", RulesSaidLongest+1)}
+	if CleanRules(&r) == nil {
+		t.Fatal("an over-long rule was kept")
+	}
+}
+
 // TestTheAskRuleSettingsSayWhichTasksAskFirst pins the three settings'
 // predictions.
 func TestTheAskRuleSettingsSayWhichTasksAskFirst(t *testing.T) {

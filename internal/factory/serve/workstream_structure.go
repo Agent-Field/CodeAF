@@ -63,7 +63,7 @@ func (h *Handler) workstreamPeople(ws factory.OrgWorkstream, nameOf func(string)
 	steward := ws.StewardHandle()
 	book := h.Membership()
 	member := func(kind, id, role string) api.WorkstreamMember {
-		m := api.WorkstreamMember{Kind: kind, ID: id, Name: id, Role: role, AddedAt: ws.PeopleAdded[kind+":"+id]}
+		m := api.WorkstreamMember{Kind: kind, ID: id, Name: id, Role: role, AddedAt: ws.PeopleAdded[kind+":"+id], AddedBy: ws.PeopleAddedBy[kind+":"+id]}
 		if kind == api.MemberTeam {
 			m.Name = h.wsTeamName(id)
 			m.Members = book.Members(id)
@@ -154,14 +154,17 @@ func rulesFor(ws factory.OrgWorkstream, nameOf func(string) string) api.Workstre
 }
 
 // stampPeopleAdded writes when each person or team new to next was added.
-func stampPeopleAdded(next *factory.OrgWorkstream, before factory.OrgWorkstream, now time.Time) {
+func stampPeopleAdded(next *factory.OrgWorkstream, before factory.OrgWorkstream, now time.Time, by string) {
 	had := map[string]bool{before.Owner.Kind + ":" + before.Owner.ID: true}
 	for _, s := range before.Shares {
 		had[s.Kind+":"+s.ID] = true
 	}
-	added := map[string]string{}
+	added, addedBy := map[string]string{}, map[string]string{}
 	for k, v := range next.PeopleAdded {
 		added[k] = v
+	}
+	for k, v := range next.PeopleAddedBy {
+		addedBy[k] = v
 	}
 	keys := []string{next.Owner.Kind + ":" + next.Owner.ID}
 	for _, s := range next.Shares {
@@ -170,6 +173,11 @@ func stampPeopleAdded(next *factory.OrgWorkstream, before factory.OrgWorkstream,
 	for _, k := range keys {
 		if !had[k] {
 			added[k] = now.UTC().Format(time.RFC3339)
+			if by != "" {
+				addedBy[k] = by
+			} else {
+				delete(addedBy, k)
+			}
 		}
 	}
 	for k := range added {
@@ -177,7 +185,16 @@ func stampPeopleAdded(next *factory.OrgWorkstream, before factory.OrgWorkstream,
 			delete(added, k)
 		}
 	}
+	for k := range addedBy {
+		if !slices.Contains(keys, k) {
+			delete(addedBy, k)
+		}
+	}
 	next.PeopleAdded = added
+	next.PeopleAddedBy = addedBy
+	if len(addedBy) == 0 {
+		next.PeopleAddedBy = nil
+	}
 }
 
 // peopleOf is the handles of everyone ws reaches by name or by team now.
@@ -337,6 +354,10 @@ func keepUnsentRules(before factory.WorkstreamRules, next *factory.WorkstreamRul
 	if next.NotNow == nil {
 		next.NotNow = slices.Clone(before.NotNow)
 	}
+	// A client that never heard of rules in words sends none: it keeps them.
+	if next.Said == nil {
+		next.Said = slices.Clone(before.Said)
+	}
 	if next.AsksBefore == "" {
 		next.AsksBefore = before.AsksBefore
 	}
@@ -370,7 +391,7 @@ func sameWorkstreamRules(a, b factory.WorkstreamRules) bool {
 	return a.DefaultOwner.Kind == b.DefaultOwner.Kind && a.DefaultOwner.ID == b.DefaultOwner.ID && fa == fb &&
 		a.StartWithoutAskingUSD == b.StartWithoutAskingUSD && a.KeepsRunning.Factory == b.KeepsRunning.Factory &&
 		slices.Equal(a.KeepsRunning.Orders, b.KeepsRunning.Orders) && a.PublishesWithoutAsking == b.PublishesWithoutAsking &&
-		a.AsksBefore == b.AsksBefore && a.FallbackAfterHours == b.FallbackAfterHours &&
+		a.AsksBefore == b.AsksBefore && a.FallbackAfterHours == b.FallbackAfterHours && slices.Equal(a.Said, b.Said) &&
 		slices.EqualFunc(a.Exceptions, b.Exceptions, func(x, y factory.AskException) bool { return x.Kind == y.Kind }) &&
 		slices.EqualFunc(a.NotNow, b.NotNow, func(x, y factory.AskNotNow) bool { return x.Kind == y.Kind && x.At == y.At })
 }

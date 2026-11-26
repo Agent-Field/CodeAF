@@ -34,6 +34,28 @@ var ErrLeaseStopped = fmt.Errorf("factory worker: stopped by person: %w", ErrLea
 type Refusal struct {
 	error
 	Status int
+	// SignedOut, Forbidden and Missing are the status read once, here, as the
+	// facts a caller acts on: the credential is not, or no longer, good (401);
+	// the person may not do this (403); the thing, or the route, is not there
+	// (404). A caller reads these rather than the number.
+	SignedOut, Forbidden, Missing bool
+	// Fault is the server failing (5xx) rather than refusing: the same call
+	// may be taken when it is sent again. Every other refusal says the same
+	// thing the next time.
+	Fault bool
+	// Busy is the server asking for the call later (429 Too Many Requests,
+	// 408 Request Timeout): like a fault, it may be taken when sent again.
+	Busy bool
+}
+
+// refusal is the factory's sentence refused at status, with its facts stamped.
+func refusal(err error, status int) Refusal {
+	return Refusal{error: err, Status: status,
+		SignedOut: status == http.StatusUnauthorized,
+		Forbidden: status == http.StatusForbidden,
+		Missing:   status == http.StatusNotFound,
+		Fault:     status >= http.StatusInternalServerError,
+		Busy:      status == http.StatusTooManyRequests || status == http.StatusRequestTimeout}
 }
 
 func (r Refusal) Unwrap() error { return r.error }
@@ -307,7 +329,7 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 		return resp.StatusCode, ErrNotAttached
 	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound:
 		if resp.StatusCode == http.StatusConflict && sentence(raw).Error() == factory.WriteAccessRefusalWords {
-			return resp.StatusCode, Refusal{error: sentence(raw), Status: resp.StatusCode}
+			return resp.StatusCode, refusal(sentence(raw), resp.StatusCode)
 		}
 		if resp.Header.Get(api.LeaseWithdrawnHeader) == "1" {
 			return resp.StatusCode, ErrLeaseWithdrawn
@@ -317,7 +339,7 @@ func (w *WorkerClient) sendWith(ctx context.Context, method, path, bearer string
 		}
 		return resp.StatusCode, ErrLeaseGone
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:
-		return resp.StatusCode, Refusal{error: sentence(raw), Status: resp.StatusCode}
+		return resp.StatusCode, refusal(sentence(raw), resp.StatusCode)
 	}
 	if out == nil || len(bytes.TrimSpace(raw)) == 0 {
 		return resp.StatusCode, nil

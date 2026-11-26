@@ -33,7 +33,7 @@ func TestAChildHasItsParentsPeopleAndACopyOfItsRules(t *testing.T) {
 	var shared api.WorkstreamShared
 	o.do(t, "santosh", "PUT", path+"/shares", -1, api.WorkstreamSharesPut{Shares: &team}, 200, &shared)
 	people := shared.Workstream.People
-	if len(people) != 2 || people[0].ID != "santosh" || !people[0].Steward || people[1].Kind != "team" || people[1].Name != "Platform" || !slices.Equal(people[1].Members, []string{"abir", "santosh"}) || people[1].AddedAt == "" {
+	if len(people) != 2 || people[0].ID != "santosh" || !people[0].Steward || people[1].Kind != "team" || people[1].Name != "Platform" || !slices.Equal(people[1].Members, []string{"abir", "santosh"}) || people[1].AddedAt == "" || people[1].AddedBy != "santosh" || people[0].AddedBy != "" {
 		t.Fatalf("people = %+v", people)
 	}
 
@@ -184,5 +184,24 @@ func TestRemovingAPersonHandsTheirWorkToTheRemover(t *testing.T) {
 	// The remover takes it (screen 16), even with a fallback set.
 	if !slices.Equal(got.removed, []string{"abir"}) || got.to != "santosh" || !slices.Equal(got.ws, []string{pantry.ID, meal.ID}) {
 		t.Fatalf("removed = %+v", got)
+	}
+}
+
+// A change to the rules in words alone is a change of the rules: the "rules"
+// part is published, so every open copy rereads them.
+func TestASaidOnlyRulesChangeIsAChange(t *testing.T) {
+	before := factory.WorkstreamRules{Said: []string{"No new dependencies without asking"}}
+	same := factory.WorkstreamRules{Said: []string{"No new dependencies without asking"}}
+	if !sameWorkstreamRules(before, same) {
+		t.Fatal("the same rules in words read as a change")
+	}
+	for _, next := range [][]string{
+		{"No new dependencies without asking", "Ship on Fridays only"},
+		{"No dependencies at all"},
+		nil,
+	} {
+		if sameWorkstreamRules(before, factory.WorkstreamRules{Said: next}) {
+			t.Errorf("rules in words %q → %q read as unchanged", before.Said, next)
+		}
 	}
 }

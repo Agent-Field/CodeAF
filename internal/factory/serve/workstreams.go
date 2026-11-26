@@ -775,7 +775,7 @@ func (h *Handler) setWorkstreamOwner(w http.ResponseWriter, r *http.Request) {
 		// say it twice. A team's workstream is never private.
 		cur.Shares = withoutOwnerShare(cur.Shares, owner)
 		cur.Private = cur.Private && owner.Kind == api.OwnerPerson
-		stampPeopleAdded(&cur, before, now)
+		stampPeopleAdded(&cur, before, now, factory.NormalizeHandle(h.orgActor(r)))
 		all[cur.ID] = cur
 		return []string{cur.ID}, nil
 	})
@@ -881,7 +881,7 @@ func (h *Handler) setWorkstreamShares(w http.ResponseWriter, r *http.Request) {
 		if next.Owner != cur.Owner || next.Private != cur.Private || !slices.Equal(next.Shares, cur.Shares) {
 			befores[cur.ID] = cur
 			next.UpdatedAt = now
-			stampPeopleAdded(&next, cur, now)
+			stampPeopleAdded(&next, cur, now, factory.NormalizeHandle(h.orgActor(r)))
 			all[cur.ID] = next
 			changed = append(changed, cur.ID)
 		}

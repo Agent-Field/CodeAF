@@ -108,6 +108,11 @@ func TestAfisTasksArriveAsCardsAndAreMadeOnlyWhenAdded(t *testing.T) {
 	if draft.CreatedBy.ID != "mia" || draft.Owner.ID != "mia" || draft.DoneBy.Kind != "afi" || draft.CameFrom.Name != "Afi" {
 		t.Errorf("the draft %+v", draft)
 	}
+	// Afi wrote the cards' words, though Mia added them: they are never a
+	// leash for web_fetch (taskLeashWords).
+	if draft.TitleBy != "afi" || draft.RequestBy != "afi" || review.TitleBy != "afi" {
+		t.Errorf("an added card's words read as written by %q / %q", draft.TitleBy, draft.RequestBy)
+	}
 	// A card's steps arrive as the task's checklist.
 	if len(draft.Checklist) != 2 || draft.Checklist[0].Text != "Outline" {
 		t.Errorf("the draft's checklist %+v", draft.Checklist)

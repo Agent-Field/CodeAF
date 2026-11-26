@@ -30,7 +30,10 @@ import (
 // The pairing door adds its two forms and their descriptions, four lines more.
 // The devbox door adds its form and description, two lines more.
 // The devices permit door adds its form and description, two lines more.
-const helpLineCap = 125
+// The Workstreams terminal door adds org, task and task follow with their
+// descriptions, seven lines more. Both doors landed from the same base of 123,
+// so the cap moves by both: 123 + 2 + 7 = 132.
+const helpLineCap = 132
 
 // doorsOffThePage are the command words main.go dispatches that `codeaf --help`
 // deliberately does NOT name, so the check below does not demand a line for

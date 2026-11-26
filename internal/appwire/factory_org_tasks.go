@@ -106,6 +106,11 @@ type OrgTaskRequestParams struct {
 	Request  string `json:"request,omitempty"`
 	FromWS   string `json:"from_ws,omitempty"`
 	FromTask string `json:"from_task,omitempty"`
+	// WordsBy is "afi" when the desk's Afi wrote the title and request
+	// rather than the person: it only ever lowers trust in them (the server's
+	// factory.WordsAuthor), so the server agent's web_fetch never follows an
+	// address in them. Leaving it out, or "person", changes nothing.
+	WordsBy string `json:"words_by,omitempty"`
 }
 
 // OrgRequestable and OrgRequestSent are the server's shapes, passed through.
@@ -164,12 +169,17 @@ type OrgTaskCreateParams struct {
 	Due       string          `json:"due,omitempty"`
 	Group     json.RawMessage `json:"group,omitempty"`
 	State     string          `json:"state,omitempty"`
+	// WordsBy is OrgTaskRequestParams' WordsBy: "afi" when the desk's Afi
+	// wrote the title and request; it only ever lowers trust.
+	WordsBy string `json:"words_by,omitempty"`
 }
 
 // OrgTaskUpdateParams is a change to one task at the rev it was read at.
 // Every other field is the change itself (TaskPatch: title, request, owner,
-// waiting_on, due, group, state, state_reason, results, check, ask, move_to),
-// passed on as sent, so a null that clears reaches the server as a null.
+// waiting_on, due, group, state, state_reason, results, check, ask, move_to,
+// and words_by, "afi" when the desk's Afi wrote a new title or request, which
+// only ever lowers trust in them), passed on as sent, so a null that clears
+// reaches the server as a null.
 type OrgTaskUpdateParams struct {
 	OrgConn
 	WS    string                     `json:"ws"`
@@ -320,8 +330,11 @@ func init() {
 		if len(p.Request) > orgTaskMost {
 			return OrgRequest{}, Errorf(CodeBadParams, "request is at most 16384 bytes")
 		}
-		return OrgRequest{Method: http.MethodPost, Path: path + "/requests", Body: map[string]string{
-			"title": title, "request": p.Request, "from_ws": p.FromWS, "from_task": p.FromTask}}, nil
+		body := map[string]string{"title": title, "request": p.Request, "from_ws": p.FromWS, "from_task": p.FromTask}
+		if w := strings.TrimSpace(p.WordsBy); w != "" {
+			body["words_by"] = w
+		}
+		return OrgRequest{Method: http.MethodPost, Path: path + "/requests", Body: body}, nil
 	})
 	tasks := func(t *OrgTasks) { t.fill() }
 	methods["factory.org_workstream_tasks"] = filled(orgMethod[OrgTasksParams, OrgTasks]("factory.org_workstream_tasks", func(p OrgTasksParams) (OrgRequest, error) {
@@ -356,7 +369,8 @@ func init() {
 			Due       string          `json:"due,omitempty"`
 			Group     json.RawMessage `json:"group,omitempty"`
 			State     string          `json:"state,omitempty"`
-		}{body.Title, body.Request, body.Owner, body.DoneBy, body.CameFrom, body.WaitingOn, body.Due, body.Group, body.State}}, nil
+			WordsBy   string          `json:"words_by,omitempty"`
+		}{body.Title, body.Request, body.Owner, body.DoneBy, body.CameFrom, body.WaitingOn, body.Due, body.Group, body.State, strings.TrimSpace(body.WordsBy)}}, nil
 	})
 	methods["factory.org_workstream_task_delete"] = orgMethod[OrgTaskUpdateParams, json.RawMessage]("factory.org_workstream_task_delete", func(p OrgTaskUpdateParams) (OrgRequest, error) {
 		path, err := orgTaskPath(p.WS, p.ID)

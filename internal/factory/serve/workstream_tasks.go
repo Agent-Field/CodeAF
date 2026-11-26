@@ -345,6 +345,9 @@ func (h *Handler) createWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		// Who wrote its words: a person, or an agent through its door, or
+		// (by its own word, which only lowers trust) a desk's Afi.
+		factory.StampWords(&made, factory.WordsAuthor(wordsKind(r), body.WordsBy))
 		if made.State != factory.TaskRunning {
 			return tw.Put(made, 0)
 		}
@@ -695,6 +698,9 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	if h.taskRefused(w, err) {
 		return
 	}
+	if len(change.Events) > 0 && change.Events[0].Kind == factory.TaskEventAnswered {
+		change.Events[0].Typed = strings.TrimSpace(personTyped(r, body.Text))
+	}
 	asked, _, _ := factory.FindAsk(t, body.Ask)
 	// A run of a standing order kept here: Go starts Afi in this same write,
 	// Skip this one and Not right stop the task (workstream_orders.go).
@@ -712,6 +718,16 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if limit {
 		change.Decisions = nil
+	}
+	// AN ANSWER NEVER MARKS RUNNING WHAT NOTHING CAN RUN (test findings
+	// 2026-11-23 P0 #2). A server with no model key keeps the answer and
+	// leaves Afi's task Up next, saying why, instead of Running with no run
+	// behind it until the lease noticed minutes later.
+	if _, job := factory.IsJobTask(t.ID); !job && !wake && !limit && change.Task.DoneBy.Kind == factory.TaskByAfi &&
+		change.Task.State == factory.TaskRunning && !h.serverAgentServed() {
+		change.Task.State = factory.TaskUpNext
+		change.Events = append(change.Events, factory.WorkstreamTaskEvent{ID: h.newTaskID("te_")(), Task: t.ID, At: change.Task.UpdatedAt,
+			By: by, Kind: factory.TaskEventState, Text: NoRunnerAnsweredLine})
 	}
 	if n, job := factory.IsJobTask(t.ID); job && ownAsk && !h.answerJob(w, r, n, t, body) {
 		return
@@ -781,7 +797,7 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 			if isBotCall(r) {
 				return errBotRun
 			}
-			return h.startTaskRun(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name, body.Text), 0, true)
+			return h.startTaskRunTyped(ws, change.Task, v.Handle, keepGoingWords(change.Task, asked, by.Name, body.Text), personTyped(r, body.Text), 0, true)
 		}
 		return nil
 	})
@@ -800,9 +816,37 @@ func (h *Handler) answerWorkstreamTask(w http.ResponseWriter, r *http.Request) {
 	h.publishTasks(ws, h.orgActor(r), fresh)
 	if _, job := factory.IsJobTask(t.ID); !job && change.Task.DoneBy.Kind == factory.TaskByAfi && change.Task.State == factory.TaskRunning {
 		// The last Ask is answered: Afi goes on with the answer in hand.
-		h.resumeTaskRun(ws, change.Task, v.Handle, answeredWords(change.Task, asked, answerLine(asked, body), by.Name))
+		h.resumeTaskRun(ws, change.Task, v.Handle, answeredWords(change.Task, asked, answerLine(asked, body), by.Name), personTyped(r, body.Text))
 	}
 	h.write(w, http.StatusOK, fresh)
+}
+
+// wordsByBot is the writer kind of words a bot sent: never a person's.
+const wordsByBot = "bot"
+
+// wordsKind is who wrote words r carries, as a kind of writer: a person
+// calling with their own token, else the agent or bot calling through its
+// door. A person's client may still carry Afi's words; it says so with
+// words_by (factory.WordsAuthor), and the terminal door's codeaf task is taken
+// as the person's own.
+func wordsKind(r *http.Request) string {
+	call, ok := agentCallOf(r)
+	switch {
+	case !ok:
+		return factory.TaskByPerson
+	case call.bot != "" || call.by.Kind == "" || call.by.Kind == factory.TaskByPerson:
+		return wordsByBot
+	}
+	return call.by.Kind
+}
+
+// personTyped is text a person typed into a request, "" when the request came
+// from an agent or a bot: an agent's own call writes words the model chose.
+func personTyped(r *http.Request, text string) string {
+	if _, ok := agentCallOf(r); ok {
+		return ""
+	}
+	return text
 }
 
 // answerLine is the answer in the words the person chose: the option's label,

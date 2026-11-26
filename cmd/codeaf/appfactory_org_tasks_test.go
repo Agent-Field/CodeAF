@@ -71,6 +71,12 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 		{"factory.org_workstream_task", map[string]any{"id": "job:7"}, "GET /v1/workstreams/ws_1/tasks/job:7", "", ``},
 		{"factory.org_workstream_task_create", map[string]any{"title": " Draft notes ", "done_by": map[string]any{"kind": "afi"}},
 			"POST /v1/workstreams/ws_1/tasks", "", `{"done_by":{"kind":"afi"},"title":"Draft notes"}`},
+		// words_by, the desk's word that Afi wrote the words, reaches the
+		// server as sent (it only ever lowers trust there).
+		{"factory.org_workstream_task_create", map[string]any{"title": "Look it up", "done_by": map[string]any{"kind": "afi"}, "words_by": "afi"},
+			"POST /v1/workstreams/ws_1/tasks", "", `{"done_by":{"kind":"afi"},"title":"Look it up","words_by":"afi"}`},
+		{"factory.org_workstream_task_update", map[string]any{"id": "tk_1", "rev": 2, "request": "New words", "words_by": "afi"},
+			"PATCH /v1/workstreams/ws_1/tasks/tk_1", "2", `{"request":"New words","words_by":"afi"}`},
 		{"factory.org_workstream_task_update", map[string]any{"id": "tk_1", "rev": 2, "state": "done", "group": nil},
 			"PATCH /v1/workstreams/ws_1/tasks/tk_1", "2", `{"group":null,"state":"done"}`},
 		{"factory.org_workstream_task_update", map[string]any{"id": "job:7", "rev": 0, "owner": map[string]any{"kind": "everyone"}},
@@ -84,6 +90,8 @@ func TestOrgWorkstreamTasksForwardToTheServer(t *testing.T) {
 		{"factory.org_workstreams_requestable", nil, "GET /v1/workstreams/requestable", "", ``},
 		{"factory.org_workstream_request", map[string]any{"title": " Fix the share link ", "from_ws": "ws_2", "from_task": "tk_9"},
 			"POST /v1/workstreams/ws_1/requests", "", `{"from_task":"tk_9","from_ws":"ws_2","request":"","title":"Fix the share link"}`},
+		{"factory.org_workstream_request", map[string]any{"title": "Fix it", "words_by": "afi"},
+			"POST /v1/workstreams/ws_1/requests", "", `{"from_task":"","from_ws":"","request":"","title":"Fix it","words_by":"afi"}`},
 		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4"}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4"}`},
 		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4", "ids": []string{}}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4","ids":[]}`},
 		{"factory.org_workstream_tasks_start_all", map[string]any{"group": "grp_batch-release-2.4", "ids": []string{"tk_1"}}, "POST /v1/workstreams/ws_1/tasks/start_all", "", `{"group":"grp_batch-release-2.4","ids":["tk_1"]}`},
