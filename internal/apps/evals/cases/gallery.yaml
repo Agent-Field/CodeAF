@@ -64,10 +64,13 @@
         type: transaction
         group: [category]
         query: "category:Food"
-        aggregate: [{fn: sum, field: amount, as: amount_cents}]
-      expect: [{path: /groups/0/values/amount_cents, equals: 1525}]
+        aggregate: [{fn: sum, field: amount, as: amount}]
+      expect: [{path: /groups/0/values/amount, equals: 15.25}]
 - name: release-tracker
-  prompt: Build a release tracker for version, status and target date. Let me move a release from Planned to Shipped.
+  prompt: >-
+    Build a release tracker with editable release records, with field IDs version, status
+    and date (the target date). Start each release as Planned and use a lifecycle transition
+    with ID ship to move it to Shipped.
   max_rounds: 3
   record:
     type: release

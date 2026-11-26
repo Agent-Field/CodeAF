@@ -9,4 +9,4 @@ invalidates:
 
 The finance case names the CSV record and fields expected by its checks.
 CSV import uses the person's scope and the app reads the resulting totals
-with its declared grant.
+with its declared grant. The wire reports money in major units.
