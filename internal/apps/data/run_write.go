@@ -24,14 +24,18 @@ type recordBatch struct {
 }
 
 type runWriteResult struct {
-	Batch string
-	Rows  []runWriteRow
-	Held  []Held
+	Batch string        `json:"batch"`
+	Rows  []runWriteRow `json:"rows"`
+	Held  []Held        `json:"held,omitempty"`
 }
 
 type runWriteRow struct {
-	ID string
-	state
+	ID        string         `json:"id"`
+	Data      map[string]any `json:"data"`
+	Meta      recordMeta     `json:"meta"`
+	Rev       int64          `json:"rev"`
+	CreatedAt string         `json:"created_at"`
+	UpdatedAt string         `json:"updated_at"`
 }
 
 func (s *Store) writeRecordBatch(sc Scope, typ, op string, apply func(*writeTx, Scope, *Type, *recordBatch) error) (*WriteResult, error) {
@@ -75,10 +79,10 @@ func (s *Store) writeRecordBatch(sc Scope, typ, op string, apply func(*writeTx, 
 func (w *writeTx) saveRunWrite(sc Scope, t *Type, op string, batch recordBatch) error {
 	result := runWriteResult{Batch: batch.batch, Held: batch.held, Rows: make([]runWriteRow, 0, len(batch.rows))}
 	for _, r := range batch.rows {
-		result.Rows = append(result.Rows, runWriteRow{ID: r.ID, state: state{
-			Data: t.encode(r.Data, r.unknown), Meta: t.encodeMeta(r.Meta), Rev: r.Rev,
-			CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		}})
+		result.Rows = append(result.Rows, runWriteRow{
+			ID: r.ID, Data: t.encode(r.Data, r.unknown), Meta: t.encodeMeta(r.Meta),
+			Rev: r.Rev, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		})
 	}
 	raw, err := json.Marshal(result)
 	if err != nil {
@@ -102,7 +106,7 @@ func (w *writeTx) loadRunWrite(sc Scope, t *Type, op string, batch *recordBatch)
 		return false, err
 	}
 	if typeID != t.ID || savedOp != op {
-		return false, errors.New("the run write key already belongs to another operation")
+		return false, errors.New("the run write key already belongs to another record type or action")
 	}
 	var result runWriteResult
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {

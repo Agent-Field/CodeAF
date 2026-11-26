@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 const followUpNote = `
@@ -35,7 +37,7 @@ func TestApprovedLocalWriteRecoversExactlyOnce(t *testing.T) {
 		crashLocalWrite(t, os.Getenv("CODEAF_TEST_LOCAL_WRITE_ROOT"), window)
 		return
 	}
-	for _, window := range []string{"before-prepare", "after-prepare", "after-write", "after-update"} {
+	for _, window := range []string{"before-prepare", "after-prepare", "after-write", "after-update", "legacy-prepare"} {
 		t.Run(window, func(t *testing.T) {
 			root := t.TempDir()
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestApprovedLocalWriteRecoversExactlyOnce$")
@@ -69,6 +71,17 @@ func TestApprovedLocalWriteRecoversExactlyOnce(t *testing.T) {
 			}
 			adapter := runs.Data{Store: func() (*data.Store, error) { return db, nil }}
 			cfg := runs.Config{Root: filepath.Join(root, "runs"), Records: adapter.Write}
+			if window == "legacy-prepare" {
+				removeLocalReceiptMarker(t, cfg.Root)
+				engine := newEngine(t, followUpNote, cfg)
+				tick(t, engine)
+				assertNoteCount(t, db, 0)
+				list, err := engine.List("crm", "follow-up-note")
+				if err != nil || len(list) != 1 || list[0].State != runs.Incomplete {
+					t.Fatalf("older prepared run = %+v, %v", list, err)
+				}
+				return
+			}
 			for range 2 {
 				engine := newEngine(t, followUpNote, cfg)
 				tick(t, engine)
@@ -126,14 +139,14 @@ func crashLocalWrite(t *testing.T, root, window string) {
 	engine := newEngine(t, followUpNote, runs.Config{
 		Root: filepath.Join(root, "runs"),
 		Records: func(ctx context.Context, call runs.RecordCall) (runs.Reply, error) {
-			if window == "after-prepare" {
+			if window == "after-prepare" || window == "legacy-prepare" {
 				kill()
 			}
 			reply, err := adapter.Write(ctx, call)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if window == "after-write" && call.Step == "save" || window == "after-update" && call.Step == "mark-saved" {
+			if (window == "after-write" && call.Step == "save") || (window == "after-update" && call.Step == "mark-saved") {
 				kill()
 			}
 			return reply, nil
@@ -178,4 +191,52 @@ func assertNoteCount(t *testing.T, db *data.Store, want int) []data.Row {
 		t.Fatalf("note count = %d, want %d", len(page.Rows), want)
 	}
 	return page.Rows
+}
+
+// An older engine saved the same checkpoint without declaring a receipt.
+// Removing just that marker exercises the old on-disk format on restart.
+func removeLocalReceiptMarker(t *testing.T, root string) {
+	t.Helper()
+	journal, err := store.Open(filepath.Join(root, "runs.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	entries, err := journal.AppRunCheckpoints()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, raw := range entries {
+		if !strings.HasPrefix(key, "run/") {
+			continue
+		}
+		var checkpoint struct {
+			Prepared bool                       `json:"prepared"`
+			Action   map[string]json.RawMessage `json:"action"`
+		}
+		if err := json.Unmarshal(raw, &checkpoint); err != nil {
+			t.Fatal(err)
+		}
+		if !checkpoint.Prepared || string(checkpoint.Action["local_write_receipt"]) != "true" {
+			t.Fatalf("run did not reach the receipt-backed prepare checkpoint: %s", raw)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			t.Fatal(err)
+		}
+		delete(checkpoint.Action, "local_write_receipt")
+		fields["action"], err = json.Marshal(checkpoint.Action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		older, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := journal.RecordAppRunCheckpoints(map[string]json.RawMessage{key: older}); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	t.Fatal("no run checkpoint after the kill")
 }
