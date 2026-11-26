@@ -153,17 +153,22 @@ func (m *merger) value(at string, base, local, upstream any) any {
 	// A changed permission or budget needs a choice even when the local
 	// version still has the original grant. The person can review other
 	// upstream edits without agreeing to the new permission request.
-	if m.file == schema.AppFile && protectedRequest(at) && !reflect.DeepEqual(base, upstream) && !reflect.DeepEqual(local, upstream) {
-		return m.conflict(at, base, local, upstream)
+	protect, descend := false, false
+	if m.file == schema.AppFile {
+		protect, descend = requestPath(at)
 	}
-	if m.file != schema.AppFile || at != "" {
-		if value, ok := unchanged(base, local, upstream); ok {
-			return value
-		}
+	if protect && !reflect.DeepEqual(base, upstream) && !reflect.DeepEqual(local, upstream) {
+		return m.conflict(at, base, local, upstream)
 	}
 	b, bOK := base.(map[string]any)
 	l, lOK := local.(map[string]any)
 	u, uOK := upstream.(map[string]any)
+	if descend && bOK && lOK && uOK {
+		return m.object(at, b, l, u)
+	}
+	if value, ok := unchanged(base, local, upstream); ok {
+		return value
+	}
 	if bOK && lOK && uOK {
 		return m.object(at, b, l, u)
 	}
@@ -177,13 +182,37 @@ func (m *merger) value(at string, base, local, upstream any) any {
 	return m.conflict(at, base, local, upstream)
 }
 
-func protectedRequest(at string) bool {
+// requestPath identifies requests that need a choice and their containing
+// objects. Walk those objects even when all of their changes are upstream.
+func requestPath(at string) (protect, descend bool) {
 	switch at {
 	case "/capabilities", "/budget", "/roles", "/policies", "/audiences", "/channels":
-		return true
-	default:
-		return false
+		return true, false
+	case "", "/records":
+		return false, true
 	}
+	parts := strings.Split(at, "/")
+	if len(parts) < 3 || parts[1] != "records" {
+		return false, false
+	}
+	if len(parts) == 3 {
+		return false, true
+	}
+	if len(parts) == 4 && parts[3] == "policy" {
+		return true, false
+	}
+	if parts[3] == "fields" {
+		if len(parts) <= 5 {
+			return false, true
+		}
+		if len(parts) == 6 {
+			switch parts[5] {
+			case "class", "masked", "blind":
+				return true, false
+			}
+		}
+	}
+	return false, false
 }
 
 func (m *merger) object(at string, base, local, upstream map[string]any) map[string]any {

@@ -3266,7 +3266,8 @@ the validator report in `detail`.
 Example rows are used for Check and preview. The app reads the person's
 existing common types through its original aliases after Apply. Reuse
 requires an explicit common key in the source definition or a prior owner
-binding. A changed upstream grant or budget appears as an explicit choice. Record types
+binding. A changed upstream grant, budget, or record privacy rule appears as an
+explicit choice. Record types
 the fork shares remain in the space and the two app definitions have separate
 version histories. Forks record the parent as provenance and publish their
 own releases. The manifest's publisher is a label supplied during export.

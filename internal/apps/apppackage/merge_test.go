@@ -51,3 +51,36 @@ func TestMergeKeepsUnrelatedNodeEditsAndReportsDeletion(t *testing.T) {
 		t.Fatalf("resolved nodes: %v, %s", err, merged[key])
 	}
 }
+
+func TestMergeRequiresAChoiceBeforeRelaxingRecordPolicy(t *testing.T) {
+	base := map[string]string{"app.json": `{"records":{"contact":{"policy":{"row":"assignee == $me"},"fields":{"email":{"type":"email","class":"pii","masked":true}}}}}`}
+	upstream := map[string]string{"app.json": `{"records":{"contact":{"fields":{"email":{"type":"email","class":"public"},"website":{"type":"url"}}}}}`}
+	merged, conflicts, err := apppackage.Merge(base, base, upstream, nil)
+	if err != nil || len(conflicts) != 3 {
+		t.Fatalf("protected policy changes: %v, %+v", err, conflicts)
+	}
+	want := []string{"/records/contact/fields/email/class", "/records/contact/fields/email/masked", "/records/contact/policy"}
+	for i, conflict := range conflicts {
+		if conflict.Path != want[i] {
+			t.Fatalf("conflict %d = %s, want %s", i, conflict.Path, want[i])
+		}
+	}
+	var app struct {
+		Records map[string]struct {
+			Policy map[string]string
+			Fields map[string]struct {
+				Type   string
+				Class  string
+				Masked bool
+			}
+		}
+	}
+	if err := json.Unmarshal([]byte(merged["app.json"]), &app); err != nil {
+		t.Fatal(err)
+	}
+	contact := app.Records["contact"]
+	if contact.Fields["website"].Type != "url" || contact.Fields["email"].Class != "pii" ||
+		!contact.Fields["email"].Masked || contact.Policy["row"] != "assignee == $me" {
+		t.Fatalf("candidate lost protection or blocked an unrelated field: %s", merged["app.json"])
+	}
+}

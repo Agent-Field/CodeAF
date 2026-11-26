@@ -245,12 +245,13 @@ the requested grants shown on the card when you Apply.
 `codeaf app fork <app>` opens a card for an independent copy of the definition.
 Apply gives the copy a new ID and its own version history. The apps can continue
 using the same records. A fork follows its own version history and receives no
-publisher updates. `codeaf app lineage <app>` shows the installed package
+publisher updates. The fork can add its own fields to a shared type. Rules
+for shared fields come from the app that defines the type. `codeaf app lineage <app>` shows the installed package
 and version or the app it was forked from.
 
 `codeaf app update <app> <file>` prepares a newer release from the same
 package. The change card merges independent edits and lists competing edits. Changed
-access requests and budgets also require an explicit choice.
+access requests, record privacy rules, and budgets also require a choice.
 For a conflict, choose `local` or `upstream` in
 `codeaf app resolve-package '{"draft":"<draft>","proposal_id":"<id>","choices":{"<conflict-id>":"local"}}'`.
 Give a choice for each conflict. Check runs on the result and Apply is still
