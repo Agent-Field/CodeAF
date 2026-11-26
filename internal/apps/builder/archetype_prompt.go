@@ -20,7 +20,7 @@ for customer conversations, agenda for a schedule, and canvas-visual for work
 centered on a map, timeline, diagram, or canvas.
 
 For a Brief, lead with one useful summary. Put a ranked queue beside the
-agenda and what changed. Give short collections a compact section and a
+agenda and what changed. Use the sort slot to rank the queue by a field. Give short collections a compact section and a
 specific name. Sections describe jobs such as Needs review or Handover. Use
 one signature visual tied to the work, such as evidence, a schedule, or a
 trend with its target. Keep the rows readable in Dark, Black, and Light at

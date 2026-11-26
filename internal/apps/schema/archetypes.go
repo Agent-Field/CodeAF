@@ -16,6 +16,7 @@ type ScreenSlots struct {
 	Reply       string            `json:"reply,omitempty"`
 	ReplyParams map[string]any    `json:"reply_params,omitempty"`
 	Actions     []string          `json:"actions,omitempty"`
+	Sort        string            `json:"sort,omitempty"`
 	Filter      []QueryPredicate  `json:"filter,omitempty"`
 	Metrics     []ScreenMetric    `json:"metrics,omitempty"`
 	Visual      *ScreenVisual     `json:"visual,omitempty"`
@@ -27,14 +28,18 @@ type ScreenCollection struct {
 	Record string           `json:"record"`
 	Title  string           `json:"title"`
 	Fields []string         `json:"fields,omitempty"`
+	Sort   string           `json:"sort,omitempty"`
 	Filter []QueryPredicate `json:"filter,omitempty"`
 }
 
 type ScreenMetric struct {
-	Label string           `json:"label"`
-	Op    string           `json:"op"`
-	Field string           `json:"field,omitempty"`
-	Where []QueryPredicate `json:"where,omitempty"`
+	Format string           `json:"format,omitempty"`
+	Target *float64         `json:"target,omitempty"`
+	Limit  *float64         `json:"limit,omitempty"`
+	Label  string           `json:"label"`
+	Op     string           `json:"op"`
+	Field  string           `json:"field,omitempty"`
+	Where  []QueryPredicate `json:"where,omitempty"`
 }
 
 type ScreenVisual struct {
@@ -83,10 +88,14 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 		}
 		n := node(key, "RecordList", view.Title, props)
 		n.Bind = &Bind{Records: view.Record, View: key}
-		s.Views[key] = QueryIR{Type: view.Record, Filter: view.Filter}
+		query := QueryIR{Type: view.Record, Filter: view.Filter}
+		if view.Sort != "" {
+			query.Window = &QueryWindow{OrderBy: []string{view.Sort}}
+		}
+		s.Views[key] = query
 		return n
 	}
-	view := ScreenCollection{Record: r.Record, Title: title, Fields: r.Fields, Filter: slots.Filter}
+	view := ScreenCollection{Record: r.Record, Title: title, Fields: r.Fields, Sort: slots.Sort, Filter: slots.Filter}
 	state := slots.State
 	if state == "" {
 		if life, ok := c.lifecycle(r.Record); ok {
@@ -195,7 +204,11 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 		}
 		panel := node("detail", "Panel", "Details", map[string]any{"title": "Details"}, details...)
 		panel.Bind = &Bind{Selection: "work"}
-		pair = node("workspace", "Row", "", map[string]any{"align": "stretch"}, queue, panel)
+		workspace := "queue"
+		if mode == "board" {
+			workspace = "board"
+		}
+		pair = node("workspace", "Row", "", map[string]any{"align": "stretch", "workspace": workspace}, queue, panel)
 	}
 
 	switch r.As {
@@ -216,7 +229,9 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 			supporting = append(supporting, timeline)
 		}
 		if changed := slots.Changed; changed != nil {
-			supporting = append(supporting, collection("changed", *changed, "list", false))
+			recent := collection("changed", *changed, "list", false)
+			recent.Props["search"] = false
+			supporting = append(supporting, recent)
 		}
 		work := pair
 		if len(supporting) != 0 {
@@ -234,13 +249,23 @@ func (c *checker) compileArchetype(r Recipe) (*Screen, error) {
 				return nil, fmt.Errorf("give every dashboard metric a label")
 			}
 			key := fmt.Sprintf("metric-%d", i+1)
-			n := node(key, "Chart", metric.Label, map[string]any{"kind": "metric", "title": metric.Label})
+			props := map[string]any{"kind": "metric", "title": metric.Label}
+			if metric.Format != "" {
+				props["format"] = metric.Format
+			}
+			if metric.Target != nil {
+				props["target"] = *metric.Target
+			}
+			if metric.Limit != nil {
+				props["limit"] = *metric.Limit
+			}
+			n := node(key, "Chart", metric.Label, props)
 			n.Bind = &Bind{Records: r.Record, View: key}
 			s.Views[key] = QueryIR{Type: r.Record, Filter: metric.Where, Aggregate: []QueryAggregate{{Op: metric.Op, Field: metric.Field, As: "result"}}}
 			parts = append(parts, n)
 		}
 		view.Title = "Exceptions"
-		s.Body = stack("dashboard", append(parts, visual, collection("exceptions", view, "list", false))...)
+		s.Body = stack("dashboard", node("measures", "Row", "", map[string]any{"wrap": true}, parts...), visual, collection("exceptions", view, "list", false))
 	case "record":
 		s.Params = []string{"id"}
 		timeline := node("history", "Timeline", "History", nil)
@@ -280,7 +305,7 @@ func (c *checker) screenVisual(s *Screen, record, selected string, v ScreenVisua
 		if v.Value != "" {
 			n.Props["y"] = v.Value
 		}
-		s.Views[n.ID] = QueryIR{Type: record, Group: []string{v.Group}}
+		s.Views[n.ID] = QueryIR{Type: record}
 	case "timeline", "map", "graph", "canvas":
 		parts := map[string]string{"timeline": "Timeline", "map": "Map", "graph": "Graph", "canvas": "Canvas"}
 		n.Part = parts[v.Kind]

@@ -1,6 +1,9 @@
 package schema
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // QueryIR is the declaration a screen gives the engine. The desk addresses it
 // by view ID and sends arguments, so it cannot substitute a different query.
@@ -81,7 +84,7 @@ func (c *checker) checkQuery(file, at string, q QueryIR) {
 	}
 	if q.Window != nil {
 		for i, name := range q.Window.OrderBy {
-			field(fmt.Sprintf("%s/window/order_by/%d", at, i), name, "")
+			field(fmt.Sprintf("%s/window/order_by/%d", at, i), strings.TrimPrefix(name, "-"), "")
 		}
 	}
 	if q.Relate != nil {
