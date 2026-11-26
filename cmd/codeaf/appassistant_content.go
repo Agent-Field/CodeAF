@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope, command appwire.AppContentCommand) (json.RawMessage, error) {
@@ -41,7 +42,23 @@ func (b *appBackend) RunAppContent(_ context.Context, p appwire.AppContentScope,
 	switch command.Verb {
 	case appwire.AppContentShow:
 		actions, err := appAssistantActions(app, def)
-		return marshalAppContent(map[string]any{"views": views, "actions": actions}, err)
+		if err != nil {
+			return nil, err
+		}
+		harnesses := b.appAIHarnesses(runs.Files(home.Join("apps")))
+		actions = slices.DeleteFunc(actions, func(a appAssistantAction) bool {
+			i := slices.IndexFunc(app.Commands, func(cmd schema.Command) bool { return cmd.ID == a.ID })
+			if i < 0 || app.Commands[i].Run == "" {
+				return false
+			}
+			raw, ok := def.Run(app.Commands[i].Run)
+			if !ok {
+				return true
+			}
+			flow, err := schema.ParseRun(raw)
+			return err != nil || !appAIRunAvailable(harnesses, flow.Steps)
+		})
+		return json.Marshal(map[string]any{"views": views, "actions": actions})
 	case appwire.AppContentQuery:
 		declared, ok := views[command.Query.View]
 		if !ok {
@@ -326,4 +343,16 @@ func marshalAppContent(result any, err error) (json.RawMessage, error) {
 		return nil, err
 	}
 	return json.Marshal(result)
+}
+
+func appAIRunAvailable(harnesses runs.Harnesses, steps []schema.Step) bool {
+	for _, step := range steps {
+		if step.AI != nil && harnesses.Check(step.AI) != nil {
+			return false
+		}
+		if !appAIRunAvailable(harnesses, step.Steps) {
+			return false
+		}
+	}
+	return true
 }

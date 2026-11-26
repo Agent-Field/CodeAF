@@ -249,7 +249,7 @@ func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (befor
 		if r.DeletedAt != "" {
 			return nil
 		}
-		out := Row{"id": record, "type": t.Name}
+		out := Row{"id": record, "type": t.Name, "_rev": r.Rev}
 		if r.CreatedAt != "" {
 			out["created_at"] = r.CreatedAt
 		}

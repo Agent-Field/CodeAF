@@ -735,7 +735,16 @@ var methods = map[string]method{
 		}
 		return &TurnResult{Turn: turn}, nil
 	}),
-	"agents.stop": typed(func(e Engine, p IDParams) (*Empty, error) {
+	"agents.stop": typed(func(e Engine, p stopAgentParams) (*Empty, error) {
+		if p.App != "" || p.Run != "" {
+			if p.ID != "" || p.App == "" || p.Run == "" {
+				return nil, Errorf(CodeBadParams, "Choose one app and run to stop.")
+			}
+			if api, ok := e.(appAgentControl); ok {
+				return done(api.StopAppAI(AppAgentRunControl{App: p.App, Run: p.Run}))
+			}
+			return nil, Errorf(CodeUnknownMethod, "App agent controls are unavailable.")
+		}
 		id, err := required("id", p.ID)
 		if err != nil {
 			return nil, err

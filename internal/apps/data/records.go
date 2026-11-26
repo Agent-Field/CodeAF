@@ -152,6 +152,7 @@ type recordMeta struct {
 
 // state is a record as a history row keeps it.
 type state struct {
+	Rev       int64          `json:"rev,omitempty"`
 	Data      map[string]any `json:"data"`
 	Meta      recordMeta     `json:"meta"`
 	Deleted   bool           `json:"deleted,omitempty"`
@@ -256,7 +257,7 @@ func (t *Type) decodeMeta(m recordMeta) recordMeta {
 func (t *Type) encodeState(r *record) string {
 	return canonicalJSON(state{
 		Data: t.encode(r.Data, r.unknown), Meta: t.encodeMeta(r.Meta), Deleted: r.DeletedAt != "",
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Rev: r.Rev,
 	})
 }
 
@@ -1081,39 +1082,18 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 			if opts.Rev != 0 && before.Rev != opts.Rev {
 				return &Error{Code: CodeStale, Message: fmt.Sprintf("this %s has changed since revision %d; it is at %d", t.Name, opts.Rev, before.Rev)}
 			}
-			if err := w.s.checkFrozen(t, before, sortedKeys(values), sc, opts.Unfreeze); err != nil {
+			after, fields, err := w.updateRecord(sc, t, before, values, reset, opts.Unfreeze)
+			if err != nil {
 				return err
 			}
-			after := before.clone()
-			for _, name := range reset {
-				delete(after.Meta.By, name)
-			}
-			for _, name := range applySet(after, values, sc, OpUpdate) {
-				held = append(held, Held{ID: id, Field: name})
-			}
-			changed := changedFields(before, after)
-			compute(t, after, changed, w.schema.person)
-			if after.key(t) == before.key(t) {
-				rows = append(rows, before)
-				continue
-			}
-			if err := w.checkRecord(t, after, sortedKeys(values)); err != nil {
-				return err
-			}
-			if w.change == nil {
-				if batch, err = w.newBatch(sc, OpUpdate, t); err != nil {
-					return err
-				}
-			}
-			after.UpdatedAt = w.now.UTC().Format(stamp)
-			after.Rev++
-			if err := w.save(t, after, false, sc); err != nil {
-				return err
-			}
-			if err := w.history(t, sc, OpUpdate, unfreezeNote(opts.Unfreeze, w.s, t, before), before, after); err != nil {
-				return err
+			for _, field := range fields {
+				held = append(held, Held{ID: id, Field: field})
 			}
 			rows = append(rows, after)
+		}
+		if w.change != nil {
+			batch = w.change.Batch
+
 		}
 		return nil
 	})
@@ -1125,6 +1105,41 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 		out.Rows = append(out.Rows, s.row(t, r, sc, false))
 	}
 	return out, nil
+}
+
+// updateRecord keeps both single edits and reviewed batches on the same
+// writer checks, person-wins rules and history path.
+func (w *writeTx) updateRecord(sc Scope, t *Type, before *record, values map[string]any, reset []string, unfreeze string) (*record, []string, error) {
+	names := sortedKeys(values)
+	if err := w.s.checkFrozen(t, before, names, sc, unfreeze); err != nil {
+		return nil, nil, err
+	}
+	after := before.clone()
+	for _, name := range reset {
+		delete(after.Meta.By, name)
+	}
+	held := applySet(after, values, sc, OpUpdate)
+	compute(t, after, changedFields(before, after), w.schema.person)
+	if after.key(t) == before.key(t) {
+		return before, held, nil
+	}
+	if err := w.checkRecord(t, after, names); err != nil {
+		return nil, nil, err
+	}
+	if w.change == nil {
+		if _, err := w.newBatch(sc, OpUpdate, t); err != nil {
+			return nil, nil, err
+		}
+	}
+	after.UpdatedAt = w.now.UTC().Format(stamp)
+	after.Rev++
+	if err := w.save(t, after, false, sc); err != nil {
+		return nil, nil, err
+	}
+	if err := w.history(t, sc, OpUpdate, unfreezeNote(unfreeze, w.s, t, before), before, after); err != nil {
+		return nil, nil, err
+	}
+	return after, held, nil
 }
 
 // Delete deletes every record named, in one batch. A deleted record is kept

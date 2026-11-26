@@ -233,6 +233,7 @@ var migrations = []string{
 	identityMigration,
 	agentGrantMigration,
 	intakeMigration,
+	aiReviewMigration,
 	residencyMigration,
 }
 

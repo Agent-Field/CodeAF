@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 )
 
 // Call names one step invocation. Key is stable across retries of that same
@@ -55,12 +58,14 @@ type RecordCall struct {
 	// Trigger provenance goes only to the trusted data adapter.
 	causeChain  []string
 	agentOrigin *AgentActionOrigin
+	aiRevision  int64
 	ai          bool
 }
 
 type AgentCall struct {
 	Call
 	Prompt                   string
+	AI                       *schema.AIStep
 	Steps                    map[string]any
 	Remaining                float64
 	IntakeType, IntakeRecord string
@@ -68,6 +73,7 @@ type AgentCall struct {
 
 type Approval struct {
 	ID        string         `json:"id"`
+	AskedAt   time.Time      `json:"asked_at,omitzero"`
 	Kind      string         `json:"kind"`
 	Who       string         `json:"who"`
 	Tool      string         `json:"tool,omitempty"`

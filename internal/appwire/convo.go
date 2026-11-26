@@ -542,7 +542,17 @@ func talkTaskVerb(action string) method {
 }
 
 var talkMethods = map[string]method{
-	"agents.steer": typed(func(e Engine, p sayTo) (*Empty, error) {
+	"agents.steer": typed(func(e Engine, params steerAgentParams) (*Empty, error) {
+		p := params.sayTo
+		if params.App != "" || params.Run != "" {
+			if p.ID != "" || params.App == "" || params.Run == "" || p.Text == "" {
+				return nil, Errorf(CodeBadParams, "Choose one app and run to steer.")
+			}
+			if api, ok := e.(appAgentControl); ok {
+				return done(api.SteerAppAI(AppAgentRunControl{App: params.App, Run: params.Run, Text: p.Text}))
+			}
+			return nil, Errorf(CodeUnknownMethod, "App agent controls are unavailable.")
+		}
 		t, err := talker(e, "agents.steer")
 		if err != nil {
 			return nil, err

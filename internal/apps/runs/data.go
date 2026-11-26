@@ -25,7 +25,7 @@ func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
 	if err != nil {
 		return Reply{}, err
 	}
-	scope := data.Scope{App: call.App, Flow: true, AI: call.ai, Actor: "run:" + call.ID, Cause: call.Step, CauseChain: call.causeChain}
+	scope := data.Scope{App: call.App, Flow: true, AI: call.ai || call.aiRevision > 0, Actor: "run:" + call.ID, Cause: call.Step, CauseChain: call.causeChain}
 	if call.agentOrigin != nil {
 		scope.Principal, scope.Flow = call.agentOrigin.Principal, false
 		scope.Action = call.agentOrigin.Action
@@ -36,7 +36,7 @@ func (d Data) Write(ctx context.Context, call RecordCall) (Reply, error) {
 	case "records.create":
 		result, err = store.Create(scope, call.Type, []map[string]any{call.Set})
 	case "records.update":
-		result, err = store.Update(scope, call.Type, call.IDs, call.Set, data.UpdateOptions{})
+		result, err = store.Update(scope, call.Type, call.IDs, call.Set, data.UpdateOptions{Rev: call.aiRevision})
 	default:
 		err = errors.New("unknown run record action")
 	}
@@ -248,15 +248,15 @@ func (r *refReader) get(typ string, value any, depth int) (map[string]any, error
 
 func (r *refReader) project(typ *data.Type, row map[string]any, depth int) (map[string]any, error) {
 	fields := map[string]any{"id": row["id"], "type": typ.Name}
-	for _, name := range []string{"created_at", "updated_at", "_source_version", "_source"} {
+	for _, name := range []string{"created_at", "updated_at", "_rev", "_source_version", "_source"} {
 		if value, ok := row[name]; ok {
 			fields[name] = value
 		}
 	}
 	for _, name := range typ.Order {
 		field := typ.Fields[name]
-		value, found := row[name]
-		if !found || field.Hidden || field.Masked {
+		value := row[name]
+		if field.Hidden || field.Masked {
 			continue
 		}
 		fields[name] = value

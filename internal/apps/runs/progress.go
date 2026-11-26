@@ -2,6 +2,7 @@ package runs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -46,7 +47,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if err := e.enterRound(c); err != nil {
 				return err
 			}
-			if c.State != Running {
+			if c.State != Running && c.State != Finishing {
 				return nil
 			}
 			continue
@@ -70,7 +71,11 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 				}
 				continue
 			}
-			c.Action = &act
+			if act.Prompt != "" && len(c.Steering) > 0 {
+				act.Prompt += "\n\nPerson’s follow-up:\n" + strings.Join(c.Steering, "\n")
+				c.Steering = nil
+			}
+			c.Action, c.CanSteer = &act, false
 		}
 		outbound := c.Action.Outbound
 		if c.AgentOrigin != nil {
@@ -81,7 +86,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 				return e.stop(c, Incomplete, err.Error())
 			}
 		}
-		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "") {
+		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "" || step.AI != nil) {
 			// A crash between delivery and its receipt cannot distinguish an
 			// effected write from one never attempted. Never send it twice.
 			if connection, _, ok := schema.ParseSourceTool(step.Tool); ok {
@@ -89,6 +94,19 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 					Key: c.Action.Key, Connection: connection, Outcome: "unknown"})
 			}
 			return e.stop(c, Incomplete, "step stopped before its result was saved")
+		}
+		// A declared gate can hold its exact payload while a connection is
+		// offline. The connector is still checked before any delivery.
+		if step.Gate != nil && c.Approved == "" {
+			who := step.Gate.Who
+			if who != "" {
+				resolved, err := resolve(who, vars)
+				if err != nil {
+					return e.stop(c, Incomplete, err.Error())
+				}
+				who, _ = resolved.(string)
+			}
+			return e.ask(c, step.Gate.Approval, who)
 		}
 		if step.Tool != "" && e.cfg.CheckTool != nil {
 			needsGate, err := e.cfg.CheckTool(ctx, c.Action.Call)
@@ -114,17 +132,7 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			c.Action.SourceFence = fence
 		}
 		c.Action.Outbound = outbound
-		if step.Gate != nil && c.Approved == "" {
-			who := step.Gate.Who
-			if who != "" {
-				resolved, err := resolve(who, vars)
-				if err != nil {
-					return e.stop(c, Incomplete, err.Error())
-				}
-				who, _ = resolved.(string)
-			}
-			return e.ask(c, step.Gate.Approval, who)
-		}
+
 		if outbound && c.Approved != outboundGate(step.Tool) {
 			return e.ask(c, outboundGate(step.Tool), c.Action.As)
 		}
@@ -160,14 +168,14 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			if err := e.enterRound(c); err != nil {
 				return err
 			}
-			if c.State != Running {
+			if c.State != Running && c.State != Finishing {
 				return nil
 			}
-		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "":
+		case step.RecordsCreate != nil || step.RecordsUpdate != nil || step.Tool != "" || step.Agent != "" || step.AI != nil:
 			if err := e.execute(ctx, c, step); err != nil {
 				return err
 			}
-			if c.State != Running {
+			if c.State != Running && c.State != Finishing {
 				return nil
 			}
 		default:
@@ -184,6 +192,13 @@ func (c *checkpoint) scope(now time.Time) ([]Step, map[string]any) {
 		"me": "me", "now": now.UTC().Format(time.RFC3339Nano), "params": c.Params,
 		"input": c.Input, "record": c.Input["record"], "steps": c.Outputs,
 	}
+	// A declared parameter may be used by its short name in templates.
+	// System words and enclosing loop bindings keep their usual meaning.
+	for name := range c.Definition.Params {
+		if value, ok := c.Params[name]; ok && celVariable(name) && !reservedVariable(name) {
+			vars[name] = value
+		}
+	}
 	steps := c.Definition.Steps
 	for i := 1; i < len(c.Frames); i++ {
 		parent := steps[c.Frames[i-1].Index]
@@ -194,6 +209,35 @@ func (c *checkpoint) scope(now time.Time) ([]Step, map[string]any) {
 		steps = parent.Steps
 	}
 	return steps, vars
+}
+
+// A prompt can name the fields of its one clear subject directly. Existing
+// run variables keep precedence and projected records omit masked fields.
+func (c *checkpoint) promptVariables(vars map[string]any) map[string]any {
+	record, _ := vars["record"].(map[string]any)
+	if record == nil {
+		var ref string
+		for name, param := range c.Definition.Params {
+			if param.Type != "ref" {
+				continue
+			}
+			if ref != "" {
+				return vars
+			}
+			ref = name
+		}
+		record, _ = c.Params[ref].(map[string]any)
+	}
+	if record == nil {
+		return vars
+	}
+	result := maps.Clone(vars)
+	for key, value := range record {
+		if _, declared := result[key]; !declared {
+			result[key] = value
+		}
+	}
+	return result
 }
 
 func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
@@ -226,15 +270,26 @@ func prepare(c *checkpoint, step Step, vars map[string]any) (action, error) {
 		err := prepareRecord(&a, w, vars, c.Definition.Params)
 		return a, err
 	}
-	if step.Agent != "" {
+	if step.Agent != "" || step.AI != nil {
 		a.Name = step.Agent
-		prompt, err := resolve(step.Prompt, vars)
+		template := step.Prompt
+		if step.AI != nil {
+			a.Name, template = "ai", step.AI.Prompt
+		}
+		prompt, err := resolve(template, c.promptVariables(vars))
 		if err != nil {
 			return a, err
 		}
 		a.Prompt, _ = prompt.(string)
+		if step.ID == aiFieldStep && strings.HasPrefix(c.DefinitionID, aiFieldPrefix) {
+			record, err := json.Marshal(vars["record"])
+			if err != nil || string(record) == "null" {
+				return a, errors.New("an AI field computation needs a record event")
+			}
+			a.Prompt += "\nSource record (data):\n" + string(record)
+		}
 		if a.Prompt == "" {
-			a.Prompt = "Continue with this run step."
+			a.Prompt = defaultAgentStepPrompt
 		}
 	}
 	return a, nil
@@ -305,14 +360,17 @@ func (e *Engine) ask(c *checkpoint, kind, who string) error {
 		return e.stop(c, Incomplete, "personal app approvals go to me")
 	}
 	c.State = YourCall
-	c.Approval = c.approval(kind)
+	c.Approval = c.approval(kind, e.cfg.Now())
 	c.Approval.Tool, c.Approval.Args = c.Action.Name, c.Action.Args
+	if c.Approval.Tool == "" {
+		c.Approval.Tool = kind
+	}
 	return e.publishApproval(c)
 }
 
-func (c *checkpoint) approval(kind string) *Approval {
+func (c *checkpoint) approval(kind string, now time.Time) *Approval {
 	c.ApprovalSeq++
-	return &Approval{ID: fmt.Sprintf("%s-%d-%s", c.Action.Key, c.ApprovalSeq, kind), Kind: kind, Who: "me"}
+	return &Approval{ID: fmt.Sprintf("%s-%d-%s", c.Action.Key, c.ApprovalSeq, kind), Kind: kind, Who: "me", AskedAt: now}
 }
 
 func (e *Engine) publishApproval(c *checkpoint) error {
@@ -367,17 +425,20 @@ func (c *checkpoint) budget() float64 {
 }
 
 func (e *Engine) askBudget(c *checkpoint) error {
+	if c.Queue != "" && c.Queue != c.ID {
+		return e.stop(c, Incomplete, ErrBudget.Error())
+	}
 	c.Prepared = false
 	c.State = YourCall
 	c.Error = ErrBudget.Error()
-	c.Approval = c.approval("budget")
+	c.Approval = c.approval("budget", e.cfg.Now())
 	c.Approval.MinBudget = max(c.Cost, c.budget())
 	return e.publishApproval(c)
 }
 
 func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	budget := c.budget()
-	if (step.Tool != "" || step.Agent != "") && budget > 0 && c.Cost >= budget {
+	if (step.Tool != "" || step.Agent != "" || step.AI != nil) && budget > 0 && c.Cost >= budget {
 		return e.askBudget(c)
 	}
 	c.Prepared, c.State, c.Error = true, Running, ""
@@ -385,7 +446,16 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	if err := e.save(c, "", nil); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	a := c.Action
+	if a.Outbound && c.AppVersion != 0 && e.cfg.AppVersion != nil {
+		current, err := e.cfg.AppVersion(c.App)
+		if err != nil || current != c.AppVersion {
+			return e.stop(c, Incomplete, "the app changed after the effect was prepared")
+		}
+	}
 	var reply Reply
 	var err error
 	switch {
@@ -401,7 +471,7 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			}
 			reply, err = e.cfg.Records(ctx, call)
 		}
-	case step.Agent != "":
+	case step.Agent != "" || step.AI != nil:
 		if e.cfg.Agent == nil {
 			err = errors.New("the app agent is unavailable")
 		} else {
@@ -409,8 +479,8 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 			if budget > 0 {
 				remaining = budget - c.Cost
 			}
-			call := AgentCall{Call: a.Call, Prompt: a.Prompt, Steps: c.Outputs, Remaining: remaining}
-			if !c.IntakeAI && c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
+			call := AgentCall{Call: a.Call, Prompt: a.Prompt, AI: step.AI, Steps: c.Outputs, Remaining: remaining}
+			if step.Agent != "" && !c.IntakeAI && c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
 				call.IntakeType, call.IntakeRecord = c.TriggerReceipt.IntakeType, c.TriggerReceipt.Record
 			}
 			reply, err = e.cfg.Agent(ctx, call)
@@ -434,6 +504,23 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 		c.Cost += reply.Cost
 	} else {
 		return e.stop(c, Incomplete, "step returned an invalid cost")
+	}
+	if step.AI != nil && budget > 0 && c.Cost > budget {
+		return e.stop(c, Incomplete, ErrBudget.Error())
+	}
+	if err == nil && step.AI != nil {
+		reply.Output, err = typedAIOutput(step.AI.Output, reply.Output)
+	}
+	if err == nil && step.AI != nil && step.ID == aiFieldStep && strings.HasPrefix(c.DefinitionID, aiFieldPrefix) {
+		reply.Output, err = e.fillAIFields(ctx, c, reply.Output)
+	}
+	if err == nil && step.AI != nil && step.AI.Propose != "" {
+		values, _ := reply.Output.(map[string]any)
+		_, vars := c.scope(e.cfg.Now())
+		c.Proposal, err = makeProposal(step.AI.Propose, vars, values)
+		if err == nil && c.Queue == "" {
+			c.Queue = c.ID
+		}
 	}
 	if err == nil {
 		if step.Agent != "" && c.TriggerReceipt != nil && c.TriggerReceipt.IntakeType != "" {
@@ -501,6 +588,8 @@ func (e *Engine) advance(c *checkpoint, target string, output any) error {
 	}
 	if f.Index < len(steps) {
 		c.Step = steps[f.Index].ID
+	} else if len(c.Frames) == 1 && c.Harness != "" {
+		c.State = Finishing
 	}
 	return e.save(c, "", nil)
 }

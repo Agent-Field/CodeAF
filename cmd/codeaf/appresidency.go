@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"syscall"
 
 	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
@@ -37,11 +39,13 @@ func appResidencyCommand(b *appBackend, args []string, out io.Writer) error {
 			return err
 		}
 		if b == nil {
-			reply, err := callAppCommand(method, raw)
+			ctx, cancel := context.WithTimeout(context.Background(), appCommandWait)
+			defer cancel()
+			reply, err := requestAppCommand(ctx, method, raw)
 			if err == nil {
 				return json.NewEncoder(out).Encode(reply)
 			}
-			if !errors.Is(err, errAppCommandOffline) {
+			if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, syscall.ECONNREFUSED) {
 				return err
 			}
 			backend := &appBackend{}

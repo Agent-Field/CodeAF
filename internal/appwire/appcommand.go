@@ -1,6 +1,9 @@
 package appwire
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // RunAppCommand shares the desktop decoder and implementation for owner
 // commands. Direct record and connector calls use their own scoped doors.
@@ -8,6 +11,8 @@ func RunAppCommand(engine Engine, verb string, params json.RawMessage) (any, err
 	switch verb {
 	case "residency.show", "residency.preview", "residency.cutover":
 		return methods[verb].call(engine, params)
+	case "agent_launch", "agent_review", "agent_approval", "agent_stop", "agent_steer":
+		return methods["agents."+strings.TrimPrefix(verb, "agent_")].call(engine, params)
 	case "new", "plan", "build", "check", "say", "build_state", "checkpoints",
 		"restore_checkpoint", "preview", "look", "discard", "change", "kit",
 		"reference", "parts", "common_types", "bind_common_type",

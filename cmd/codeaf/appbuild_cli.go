@@ -90,11 +90,14 @@ func runAppCommand(args []string) error {
 	verb := strings.ReplaceAll(args[0], "-", "_")
 	params := json.RawMessage("{}")
 	switch {
+	case verb == "mcp":
+		return runAppMCP(args[1:])
 	case verb == "help":
 		fmt.Fprintln(os.Stdout, "codeaf app <new|plan|build|check|say|build_state|preview|look|discard|change|kit|parts|common-types|bind-common-type|reference|list|get|screen|versions|mark|presence|show|query|invoke|propose_change|agent_ask|agent_query|agent_grant|agent_duty_add|agent_duty_remove> [JSON|-]")
 		fmt.Fprintln(os.Stdout, "codeaf app parts --for <intent>")
 		fmt.Fprintln(os.Stdout, "codeaf app residency <show|preview|apply> APP TYPE [MODE]")
 		fmt.Fprintln(os.Stdout, "codeaf app <match-candidates|match-scan|match-accept|match-reject|match-merge|match-unmerge> [JSON|-]")
+		fmt.Fprintln(os.Stdout, "codeaf app mcp --app <app> --agent <agent>")
 		return nil
 	case verb == "kit" && len(args) == 1:
 		_, err := fmt.Fprintln(os.Stdout, string(schema.KitJSON()))
@@ -130,20 +133,23 @@ func runAppCommand(args []string) error {
 	if len(params) > appCommandLimit || !json.Valid(params) {
 		return errors.New("app command arguments must be valid JSON")
 	}
-	result, err := callAppCommand(verb, params)
-	if errors.Is(err, errAppCommandOffline) && verb == "bind_common_type" {
-		return runAppCommonBind(params)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), appCommandWait)
+	defer cancel()
+	result, err := requestAppCommand(ctx, verb, params)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
+			if verb == "bind_common_type" {
+				return runAppCommonBind(params)
+			}
+			return errors.New("open the desktop app for this profile to use app commands")
+		}
 		return err
 	}
 	_, err = fmt.Fprintln(os.Stdout, string(result))
 	return err
 }
 
-var errAppCommandOffline = errors.New("open the desktop app for this profile to use app commands")
-
-func callAppCommand(verb string, params json.RawMessage) (json.RawMessage, error) {
+func requestAppCommand(ctx context.Context, verb string, params json.RawMessage) (json.RawMessage, error) {
 	path, err := appCommandSocket()
 	if err != nil {
 		return nil, err
@@ -152,8 +158,6 @@ func callAppCommand(verb string, params json.RawMessage) (json.RawMessage, error
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), appCommandWait)
-	defer cancel()
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", path)
 	}}
@@ -164,9 +168,6 @@ func callAppCommand(verb string, params json.RawMessage) (json.RawMessage, error
 	}
 	response, err := (&http.Client{Transport: transport}).Do(request)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
-			return nil, errAppCommandOffline
-		}
 		return nil, err
 	}
 	defer response.Body.Close()
