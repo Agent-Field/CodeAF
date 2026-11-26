@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"maps"
 	"slices"
 	"strings"
@@ -12,6 +10,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -50,15 +49,46 @@ func (b *appBackend) checkAppAgentAction(app string, origin runs.AgentActionOrig
 }
 
 func (b *appBackend) GrantAppAgent(p appwire.AppAgentGrant) error {
-	if _, _, err := b.appAssistantDefinition(p.App); err != nil {
+	_, def, err := b.appContentDefinition(p.App)
+	if err != nil {
 		return err
 	}
-	if p.Agent != p.App || (p.Group != "actions" && p.Group != "data") || strings.TrimSpace(p.ID) == "" {
+	if p.Agent == "" || (p.Group != "actions" && p.Group != "data") || strings.TrimSpace(p.ID) == "" {
 		return appwire.Errorf(appwire.CodeBadParams, "Choose a grant for this app’s agent.")
 	}
 	db, err := b.dataStore("")
 	if err != nil {
 		return err
+	}
+	if p.Agent != p.App {
+		agents, err := db.MCPAgents(p.App)
+		if err != nil {
+			return appDataError(err)
+		}
+		if !slices.ContainsFunc(agents, func(a data.MCPAgent) bool { return a.ID == p.Agent }) {
+			return appwire.Errorf(appwire.CodeNotFound, "That external agent has not registered with this app.")
+		}
+	}
+	if p.Allowed {
+		rows, err := b.appAgentGrantProjection(p.App, def, appAgentIdentity{ID: p.App})
+		if err != nil {
+			return err
+		}
+		declared := false
+		for _, row := range rows {
+			if row.Agent.ID != p.Agent {
+				continue
+			}
+			options := row.Actions
+			if p.Group == "data" {
+				options = row.Data
+			}
+			declared = slices.ContainsFunc(options, func(option appAgentPermission) bool { return option.ID == p.ID })
+			break
+		}
+		if !declared {
+			return appwire.Errorf(appwire.CodeNotFound, "That grant scope is unavailable.")
+		}
 	}
 	if err := db.SetAgentGrant(p.App, data.AgentPrincipal{ID: p.Agent}, p.Group, p.ID, p.Allowed); err != nil {
 		return appDataError(err)
@@ -196,12 +226,18 @@ func (b *appBackend) appAgentTriggers(files runs.Files) ([]runs.Trigger, error) 
 
 // QueryAppAgent exposes an app's own agent work with the desk's projection.
 func (b *appBackend) QueryAppAgent(p appwire.AppAgentQuery) (any, error) {
-	_, def, err := b.appAssistantDefinition(p.App)
+	_, def, err := b.appContentDefinition(p.App)
 	if err != nil {
 		return nil, err
 	}
 	identity := appAgentIdentity{ID: p.App, Name: def.Meta.Name + " agent", Harness: "codeaf"}
 	switch p.Kind {
+	case "harnesses":
+		return b.appAIHarnesses(runs.Files(home.Join("apps"))).Available(), nil
+	case "review":
+		return b.appAIReviewQueue(p.App, p.Queue)
+	case "presence":
+		return b.appAIPresence(p.App, p.Type)
 	case "runs":
 		rows := []any{}
 		engine := b.appRuns.Load()
@@ -214,6 +250,16 @@ func (b *appBackend) QueryAppAgent(p appwire.AppAgentQuery) (any, error) {
 		}
 		for _, run := range list {
 			if run.DefinitionID != appAgentAskRun && !strings.HasPrefix(run.DefinitionID, appAgentDutyPrefix) {
+				if run.Harness != "" && appAIMatches(p, run) {
+					row := appAIRunProjection(run)
+					if row.Output == "" {
+						_, row.Output, err = engine.AgentProjection(run.ID)
+						if err != nil {
+							return nil, err
+						}
+					}
+					rows = append(rows, row)
+				}
 				continue
 			}
 			params, output, err := engine.AgentProjection(run.ID)
@@ -227,40 +273,17 @@ func (b *appBackend) QueryAppAgent(p appwire.AppAgentQuery) (any, error) {
 			if (p.Screen != "" && p.Screen != screen) || (p.Record != nil && *p.Record != record) {
 				continue
 			}
-			row := map[string]any{"id": run.ID, "screen": screen, "agent": identity, "title": "App agent", "state": run.State, "steps": []any{map[string]string{"id": "answer", "label": "Answer", "state": run.State}}, "output": output}
+			run.Screen, run.FirstStep, run.Title = screen, "answer", "App agent"
 			if record.ID != "" {
-				row["record"] = record
+				run.Subject = &runs.Subject{Type: record.Type, ID: record.ID}
 			}
+			row := appAIRunProjection(run)
+			row.Agent, row.Output = identity, output
 			rows = append(rows, row)
 		}
 		return rows, nil
 	case "grants":
-		principal := data.AgentPrincipal{ID: p.App}
-		type permission struct {
-			ID      string `json:"id"`
-			Label   string `json:"label"`
-			Allowed bool   `json:"allowed"`
-		}
-		groups := map[string][]permission{"actions": {}, "data": {}}
-		raw, err := b.RunAppContent(context.Background(), appwire.AppContentScope{App: p.App, Version: def.Meta.Version}, appwire.AppContentCommand{Verb: appwire.AppContentShow})
-		if err != nil {
-			return nil, err
-		}
-		var shown struct {
-			Views   map[string]json.RawMessage
-			Actions []struct{ ID, Label string }
-		}
-		if err := json.Unmarshal(raw, &shown); err != nil {
-			return nil, err
-		}
-		for _, id := range slices.Sorted(maps.Keys(shown.Views)) {
-			groups["data"] = append(groups["data"], permission{id, id, b.appAgentAllowed(p.App, principal, "data", id)})
-		}
-		for _, a := range shown.Actions {
-			groups["actions"] = append(groups["actions"], permission{a.ID, a.Label, b.appAgentAllowed(p.App, principal, "actions", a.ID)})
-		}
-		groups["actions"] = append(groups["actions"], permission{"propose_change", "Propose changes", b.appAgentAllowed(p.App, principal, "actions", "propose_change")})
-		return []any{map[string]any{"agent": identity, "actions": groups["actions"], "data": groups["data"]}}, nil
+		return b.appAgentGrantProjection(p.App, def, identity)
 	case "duties":
 		type listedDuty struct {
 			ID string `json:"id"`

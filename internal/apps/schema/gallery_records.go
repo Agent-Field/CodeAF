@@ -189,6 +189,9 @@ func (c *checker) checkGalleryField(typ, name string, field Field) {
 	if field.AI != "" && !entry.AIFill {
 		c.add(AppFile, at+"/ai", CodeNotAllowed, "This field type does not support AI fill.")
 	}
+	if field.AIOnChange && (field.AI == "" || AIFieldOutput(field) == nil || c.app.Budget == nil || c.app.Budget.PerRun <= 0 || !contains(c.app.Capabilities.AI, "sort")) {
+		c.add(AppFile, at+"/ai_on_change", CodeNotAllowed, "Automatic AI fill needs an optional scalar AI field, the sort capability, and a positive per-run budget.")
+	}
 	c.checkRecordExpression(AppFile, at+"/computed", typ, field.Computed)
 	if field.Blind != nil {
 		c.checkTaggedField(AppFile, at+"/blind/per", typ, field.Blind.Per, "")

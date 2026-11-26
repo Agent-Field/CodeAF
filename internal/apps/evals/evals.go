@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -47,6 +48,7 @@ type Step struct {
 	Expect  []Check           `yaml:"expect"`
 	Capture map[string]string `yaml:"capture"`
 	Error   string            `yaml:"error"`
+	Await   time.Duration     `yaml:"await"`
 }
 
 type Check struct {
@@ -128,6 +130,9 @@ func Load(in io.Reader) ([]Case, error) {
 		for _, step := range c.Steps {
 			if err := validateChecks(step.Expect); err != nil {
 				return nil, fmt.Errorf("case %q %s: %w", c.Name, step.Method, err)
+			}
+			if step.Await < 0 || step.Await > 2*time.Minute || step.Await > 0 && (step.Method != "runs.get" || len(step.Expect) == 0 || step.Error != "") {
+				return nil, fmt.Errorf("case %q has an invalid run observation window", c.Name)
 			}
 			if step.Method == "" || (step.Error != "" && (len(step.Expect) > 0 || len(step.Capture) > 0)) {
 				return nil, fmt.Errorf("case %q has an invalid step", c.Name)
@@ -241,7 +246,20 @@ func runSteps(ctx context.Context, app Adapter, steps []Step, vars map[string]an
 				return fmt.Errorf("%s: %w", step.Method, err)
 			}
 		}
+		if step.Await > 0 {
+			body, err = awaitRun(ctx, app, params, step.Await, body, checks)
+			if err != nil {
+				return fmt.Errorf("%s: %w", step.Method, err)
+			}
+		}
 		if problems := checkReply(body, checks); len(problems) > 0 {
+			if step.Await > 0 {
+				result := decode(body)
+				stoppedAt, _ := resolve(result, "/step")
+				if reason, ok := resolve(result, "/error"); ok {
+					problems = append(problems, fmt.Sprintf("step %v: %v", stoppedAt, reason))
+				}
+			}
 			return fmt.Errorf("%s: %s", step.Method, strings.Join(problems, ", "))
 		}
 		for _, key := range slices.Sorted(maps.Keys(step.Capture)) {
@@ -253,6 +271,34 @@ func runSteps(ctx context.Context, app Adapter, steps []Step, vars map[string]an
 		}
 	}
 	return nil
+}
+
+// awaitRun observes the asynchronous run without repeating the command that
+// started it. A terminal result fails immediately if the assertions differ.
+func awaitRun(ctx context.Context, app Adapter, params any, window time.Duration, body json.RawMessage, checks []Check) (json.RawMessage, error) {
+	timer := time.NewTimer(window)
+	defer timer.Stop()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for len(checkReply(body, checks)) != 0 {
+		state, _ := resolve(decode(body), "/state")
+		if state != "running" && state != "finishing" {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+			return body, nil
+		case <-ticker.C:
+			var err error
+			body, err = app.Call(ctx, "runs.get", params)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return body, nil
 }
 
 func substitute(value any, vars map[string]any) (any, error) {

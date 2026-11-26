@@ -79,15 +79,23 @@ func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) 
 	if err != nil || !slices.Contains(preview.Screens, params.Screen) {
 		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeNotFound, "That screen isn't available to preview.")
 	}
+	capture, err := b.drawAppPreview(ctx, preview, params)
+	if err != nil {
+		return appwire.AppLookPage{}, err
+	}
+	return saveAppLook(preview.Scope, params.Viewport, capture)
+}
+
+func (b *appBackend) drawAppPreview(ctx context.Context, preview builder.Preview, params appwire.AppLookParams) (appwire.AppLookCapture, error) {
 	app, err := schema.ParseApp(preview.App)
 	if err != nil {
-		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "This app could not be drawn.")
+		return appwire.AppLookCapture{}, appwire.Errorf(appwire.CodeEngine, "This app could not be drawn.")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	id, err := cell.NewID(time.Now())
 	if err != nil {
-		return appwire.AppLookPage{}, err
+		return appwire.AppLookCapture{}, err
 	}
 
 	state := &b.builds.look
@@ -96,12 +104,12 @@ func (b *appBackend) lookApp(ctx context.Context, params appwire.AppLookParams) 
 	b.emit.Emit(appwire.EventAppLookRequested, appwire.AppLookRequest{ID: id, Scope: preview.Scope, App: app.ID, Screen: params.Screen, Theme: params.Theme, Viewport: params.Viewport, Fixture: "synthetic", Checkpoint: params.Checkpoint})
 	select {
 	case capture := <-reply:
-		return saveAppLook(preview.Scope, params.Viewport, capture)
+		return capture, nil
 	case <-ctx.Done():
 		if !state.ready.Load() {
-			return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeDeskUnavailable, "The desktop renderer disconnected.")
+			return appwire.AppLookCapture{}, appwire.Errorf(appwire.CodeDeskUnavailable, "The desktop renderer disconnected.")
 		}
-		return appwire.AppLookPage{}, appwire.Errorf(appwire.CodeEngine, "The desktop didn't draw this screen in time.")
+		return appwire.AppLookCapture{}, appwire.Errorf(appwire.CodeEngine, "The desktop didn't draw this screen in time.")
 	}
 }
 
