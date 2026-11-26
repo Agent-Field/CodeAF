@@ -134,6 +134,11 @@ func TestBuiltinAppsUseThePackageAndRecordDoors(t *testing.T) {
 	if kept.Meta.Lineage.ForkedFrom.App != docs {
 		t.Fatalf("fork lost the original app: %+v", kept.Meta.Lineage)
 	}
+	var forkRow struct{ Row map[string]any }
+	wire.must("data.get", map[string]any{"app": kept.Meta.ID, "type": "docs_document", "id": id}, &forkRow)
+	if forkRow.Row["body"] != "The figures agree." {
+		t.Fatalf("fork did not retain access to the document: %+v", forkRow.Row)
+	}
 	wire.must("apps.archive", map[string]string{"app": docs}, nil)
 	if err := defs.InstallBuiltins(); err != nil {
 		t.Fatal(err)
