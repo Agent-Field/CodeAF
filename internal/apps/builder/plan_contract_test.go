@@ -149,3 +149,23 @@ func TestPersonCanRemoveANativeCapability(t *testing.T) {
 		t.Fatalf("expected only the lifecycle selection to remain: %+v", got)
 	}
 }
+
+func TestOutlineKeepsOnlySelectedBuiltinsAndNamesBoundSchedules(t *testing.T) {
+	const outline = `{"ask":"Review posts each morning","data":[{"id":"post","line":"Posts"}],
+"screens":[{"id":"posts","line":"Posts"}],"automation":[{"id":"review","line":"Review a post"}],
+"builtins":[{"id":"review","kind":"agent"},{"id":"compose","kind":"generate-text"},{"id":"schedule","kind":"approval","run":"review"}]}`
+	files := map[string]string{
+		schema.PlanFile:     outline,
+		schema.AppFile:      `{"records":{"post":{"fields":{}}},"triggers":[{"id":"each-morning","on":"schedule","run":"morning"}]}`,
+		"runs/morning.yaml": "run: morning\ntitle: Review this morning's posts\n",
+	}
+	work := plannedWork("Review posts each morning", schema.Plan{})
+	if err := work.apply(files); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if len(got.Builtins) != 0 || len(got.Automation) != 2 || got.Automation[0].ID != "review" ||
+		got.Automation[1].ID != "morning" || got.Automation[1].Line != "Review this morning's posts" {
+		t.Fatalf("compiled outline = %+v", got)
+	}
+}

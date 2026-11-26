@@ -104,6 +104,7 @@ func (w *buildPlan) apply(files map[string]string) error {
 	if err := w.compileCapabilities(&plan, files); err != nil {
 		return err
 	}
+	describeTriggeredRuns(&plan, files)
 	w.builtins = slices.Clone(plan.Builtins)
 	if reflect.DeepEqual(original, plan) {
 		return nil
@@ -151,4 +152,25 @@ func saveJSON(files map[string]string, path string, value any) error {
 		files[path] = string(raw)
 	}
 	return err
+}
+
+// A bound trigger and its run describe real planned work. The compiler can
+// add that line without asking the writer to restate the run it just saved.
+func describeTriggeredRuns(plan *schema.Plan, files map[string]string) {
+	app, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	if err != nil {
+		return
+	}
+	for _, trigger := range app.Triggers {
+		id := trigger.Run
+		if id == "" || hasPlanLine(plan.Automation, id) {
+			continue
+		}
+		for _, ext := range []string{".yaml", ".yml"} {
+			if run, err := schema.ParseRun([]byte(files["runs/"+id+ext])); err == nil && run.Run == id {
+				plan.Automation = append(plan.Automation, schema.PlanLine{ID: id, Line: displayName(run.Title, id)})
+				break
+			}
+		}
+	}
 }

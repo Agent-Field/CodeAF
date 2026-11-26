@@ -45,7 +45,7 @@ writes the outline. Use the actual type, screen and automation ids in the plan.
 Mark creatable types with "create":true and list manual actions by command or run id.
 The executor selects CSV import, lifecycle and approval for local writes.
 Keep the selected builtins on a plan edit. Supply their record or run setting
-in builtins. For lifecycle, declare the state field, initial value and planned
+in builtins. Describe other work in automation or actions. For lifecycle, declare the state field, initial value and planned
 transitions on the record with add-type. Use the planned transition ID. For
 approval in a plan with several runs, set the builtin's run to the run that
 saves the record. Use planned run IDs for all separately authored runs.

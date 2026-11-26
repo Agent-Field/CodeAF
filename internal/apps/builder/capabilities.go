@@ -35,15 +35,13 @@ func (w buildPlan) compileCapabilities(plan *schema.Plan, files map[string]strin
 	}
 	settings := plan.Builtins
 	plan.Builtins = slices.DeleteFunc(slices.Clone(w.builtins), func(b schema.PlanBuiltin) bool {
-		return slices.Contains(w.disabled, b.Kind)
+		return slices.Contains(w.disabled, b.Kind) || !slices.ContainsFunc(planCapabilities, func(cap planCapability) bool { return cap.kind == b.Kind })
 	})
-	used := make(map[string]bool, len(settings))
 	use := func(next schema.PlanBuiltin) {
 		if slices.Contains(w.disabled, next.Kind) {
 			return
 		}
 		if authored, ok := builtinSettings(next, settings); ok {
-			used[authored.ID] = true
 			if next.Line == "" {
 				next.Line = authored.Line
 			}
@@ -100,11 +98,6 @@ func (w buildPlan) compileCapabilities(plan *schema.Plan, files map[string]strin
 	// Existing selections are kept even when the writer replaces the plan.
 	for _, builtin := range slices.Clone(plan.Builtins) {
 		use(builtin)
-	}
-	for _, authored := range settings {
-		if !used[authored.ID] {
-			use(authored)
-		}
 	}
 	for _, capability := range planCapabilities {
 		if slices.Contains(w.disabled, capability.kind) {
