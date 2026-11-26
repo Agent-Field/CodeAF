@@ -45,6 +45,8 @@ func appConnectionError(err error) error {
 	switch {
 	case errors.Is(err, connections.ErrTooLarge):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err)
+	case errors.Is(err, connections.ErrConflict):
+		return appwire.Errorf(appwire.CodeConflict, "%s", err)
 	case errors.Is(err, connections.ErrSourcePermission), errors.Is(err, connections.ErrPersonCredential):
 		return appwire.Errorf(appwire.CodeNotAllowed, "%s", err)
 	case errors.Is(err, connections.ErrUnavailable):

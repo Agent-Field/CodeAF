@@ -98,6 +98,18 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 			}
 			return e.stop(c, Incomplete, "step stopped before its result was saved")
 		}
+		// Source approvals need the local authority stamp even when the
+		// declared gate is shown before the connector is checked.
+		if connector, ok := e.cfg.Connector.(interface{ SourceFence(Call) (string, error) }); ok && outbound {
+			fence, err := connector.SourceFence(c.Action.Call)
+			switch {
+			case err != nil:
+				return e.stop(c, Incomplete, err.Error())
+			case c.Approved != "" && c.Action.SourceFence != fence:
+				return e.stop(c, Incomplete, "the source authority changed after approval")
+			}
+			c.Action.SourceFence = fence
+		}
 		// A declared gate can hold its exact payload while a connection is
 		// offline. The connector is still checked before any delivery.
 		if step.Gate != nil && c.Approved == "" {
