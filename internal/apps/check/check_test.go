@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -108,24 +109,31 @@ func TestCheckNamesMissingScreenControls(t *testing.T) {
 }
 
 func TestCheckRejectsALiteralPlaceholderInARecordPage(t *testing.T) {
-	def, err := schema.Load("../schema/testdata/crm")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const file = "screens/contacts.json"
-	valid := bytes.Replace(def.Files[file], []byte(`"record": "$selection.contacts.id"`), []byte(`"type": "contact", "record": "$selection.contacts.id"`), 1)
-	for _, binding := range []string{"selection", "$selection.contacts.id", "00000000000000000000000001"} {
-		t.Run(binding, func(t *testing.T) {
-			def.Files[file] = bytes.Replace(valid, []byte("$selection.contacts.id"), []byte(binding), 1)
+	for _, example := range []struct {
+		binding string
+		valid   bool
+	}{
+		{"selection", false},
+		{"$selection.deals.id", true},
+		{"00000000000000000000000001", true},
+	} {
+		t.Run(example.binding, func(t *testing.T) {
+			def, err := schema.Load("../schema/testdata/crm")
+			if err != nil {
+				t.Fatal(err)
+			}
+			const file = "screens/deals.json"
+			binding := fmt.Sprintf(`"type": "deal", "record": %q`, example.binding)
+			def.Files[file] = bytes.Replace(def.Files[file], []byte(`"record": "$selection.deals.id"`), []byte(binding), 1)
 			report := check.Definition(def, nil)
-			if binding == "selection" {
-				if !slices.ContainsFunc(report.Problems, func(p schema.Problem) bool {
-					return p.File == file && p.Code == "record_binding_invalid" && strings.Contains(p.Message, "$selection")
-				}) {
-					t.Fatalf("Check accepted a literal placeholder: %v", report)
+			if example.valid {
+				if !report.OK() {
+					t.Fatalf("Check rejected a valid binding: %v", report)
 				}
-			} else if !report.OK() {
-				t.Fatalf("Check rejected a valid binding: %v", report)
+				return
+			}
+			if len(report.Problems) != 1 || report.Problems[0].File != file || report.Problems[0].Code != "record_binding_invalid" {
+				t.Fatalf("Check must report only the invalid record binding: %v", report)
 			}
 		})
 	}

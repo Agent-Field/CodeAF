@@ -105,8 +105,7 @@ func (c *screenControls) scan(file string, roots ...*schema.Node) {
 			record := node.Bind.Record
 			if !strings.HasPrefix(record, "$") && !strings.Contains(record, "{{") && !cell.ValidID(record) {
 				c.issues = append(c.issues, schema.Problem{File: file, Path: node.ID, Code: "record_binding_invalid",
-					Message: fmt.Sprintf("Choose the record with $selection.<list>.id, $params.id, or a saved record ID. %q is not a record ID.", record)})
-				break
+					Message: fmt.Sprintf("The literal %q is not a saved record ID. Use $selection.<list>.id or $params.id to bind the page to the record.", record)})
 			}
 			if node.Bind.Type != "" {
 				c.collections[node.Bind.Type] = true
