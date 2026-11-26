@@ -232,6 +232,7 @@ var migrations = []string{
 	ruleSourceGrantMigration,
 	identityMigration,
 	agentGrantMigration,
+	intakeMigration,
 }
 
 // querier is what reads take: the reader pool or the writer's transaction.

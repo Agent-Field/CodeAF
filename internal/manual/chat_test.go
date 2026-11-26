@@ -33,6 +33,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"how do I share a web form from my app", "app-intake"},
+		{"turn emails into tickets", "app-intake"},
+		{"drop a file to create a record in my app", "app-intake"},
 		{"share contacts between apps", "app-common-types"},
 		{"same customers in two apps", "app-common-types"},
 		{"duplicate contacts", "app-common-types"},
