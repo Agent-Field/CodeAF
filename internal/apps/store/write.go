@@ -142,7 +142,7 @@ func (s *Store) Promote(d Draft, request string) (Meta, error) {
 	if err != nil {
 		return Meta{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	meta, err := s.publish(m, f, request, requestSummary(request), nil)
+	meta, err := s.publish(m, f, request, requestSummary(request), nil, false)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -174,7 +174,7 @@ func (s *Store) PublishBuild(id, app string, base int, def schema.Definition, re
 			return Meta{}, ErrConflict
 		}
 	}
-	return s.publish(m, files(def.Files), request, requestSummary(request), nil)
+	return s.publish(m, files(def.Files), request, requestSummary(request), nil, false)
 }
 
 // updatedAt keeps metadata ordered even if the machine clock moves backwards.
@@ -218,7 +218,7 @@ func (s *Store) Revert(id string, n int) (Meta, error) {
 		return Meta{}, err
 	}
 	msg := fmt.Sprintf("Revert to version %d", n)
-	return s.publish(m, d.files, msg, msg, d.types)
+	return s.publish(m, d.files, msg, msg, d.types, true)
 }
 
 // Archive keeps the definition available for inspection and marks its shelf
@@ -292,13 +292,15 @@ func (s *Store) setArchived(id string, deleted bool) (Meta, error) {
 	return m, nil
 }
 
-func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet) (Meta, error) {
+func (s *Store) publish(m Meta, f files, request, summary string, existing schema.TypeSet, restore bool) (Meta, error) {
 	if m.Version == math.MaxInt {
 		return Meta{}, ErrCorrupt
 	}
 	n := m.Version + 1
-	if err := f.stamp(m.ID, n); err != nil {
-		return Meta{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+	if !restore {
+		if err := f.stamp(m.ID, n); err != nil {
+			return Meta{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
 	}
 	a, err := f.header()
 	if err != nil {
@@ -336,6 +338,9 @@ func (s *Store) publish(m Meta, f files, request, summary string, existing schem
 		return Meta{}, err
 	}
 	receipt := versionReceipt{Version: Version{n, next.UpdatedAt, request, summary}, Types: existing}
+	if restore {
+		receipt.ManifestVersion = a.Version
+	}
 	if err := writeJSON(filepath.Join(snapshot, versionFile), receipt); err != nil {
 		return Meta{}, err
 	}
@@ -522,7 +527,7 @@ func (s *Store) readReceipt(id string, n int) (versionReceipt, error) {
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return versionReceipt{}, fmt.Errorf("%w: %w", ErrCorrupt, err)
 	}
-	if v.N != n || v.At.IsZero() {
+	if v.N != n || v.At.IsZero() || v.ManifestVersion < 0 || v.ManifestVersion >= n {
 		return versionReceipt{}, ErrCorrupt
 	}
 	return v, nil
