@@ -1,0 +1,71 @@
+{
+  "id": "gallery-line",
+  "name": "Line 4",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "Line 4 assistant",
+    "file": "agent.md"
+  },
+  "records": {
+    "line": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "minutes": {
+          "type": "number"
+        },
+        "shift": {
+          "type": "date"
+        },
+        "stage": {
+          "type": "enum",
+          "values": [
+            "running",
+            "held"
+          ]
+        },
+        "oee": {
+          "type": "number",
+          "label": "Overall equipment effectiveness"
+        },
+        "good_parts": {
+          "type": "number",
+          "label": "Good parts"
+        },
+        "scrap": {
+          "type": "number",
+          "label": "Scrap rate"
+        },
+        "pressure": {
+          "type": "number",
+          "label": "Pressure"
+        },
+        "temp": {
+          "type": "number",
+          "label": "Temperature"
+        },
+        "reading": {
+          "type": "text",
+          "label": "Time"
+        },
+        "kind": {
+          "type": "enum",
+          "label": "Reading",
+          "values": [
+            "Shift summary",
+            "Measurement",
+            "Exception"
+          ]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "line": "rw"
+    }
+  }
+}

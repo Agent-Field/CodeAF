@@ -1,0 +1,115 @@
+{
+  "screen": "candidates",
+  "title": "Pipeline",
+  "nav": {
+    "part": "SectionTabs",
+    "id": "navigation",
+    "label": "Work views",
+    "props": {
+      "items": [
+        {
+          "screen": "candidates",
+          "label": "Pipeline"
+        },
+        {
+          "screen": "interviews",
+          "label": "Interviews"
+        },
+        {
+          "screen": "offers",
+          "label": "Offers"
+        }
+      ]
+    }
+  },
+  "body": {
+    "part": "Row",
+    "id": "workspace",
+    "props": {
+      "gap": 2,
+      "align": "stretch"
+    },
+    "children": [
+      {
+        "part": "RecordList",
+        "id": "work",
+        "label": "Hiring pipeline",
+        "props": {
+          "columns": [
+            "title",
+            "role",
+            "interview",
+            "source"
+          ],
+          "select": "one",
+          "views": [
+            "board"
+          ],
+          "board_by": "stage"
+        },
+        "bind": {
+          "records": "candidate",
+          "view": "work"
+        }
+      },
+      {
+        "part": "Panel",
+        "id": "detail",
+        "props": {
+          "title": "Candidate"
+        },
+        "bind": {
+          "selection": "work"
+        },
+        "children": [
+          {
+            "part": "Text",
+            "id": "select-hint",
+            "props": {
+              "text": "Choose a candidate to see their scorecards and next interview.",
+              "tone": "muted"
+            },
+            "when": "$selection.work.count == 0"
+          },
+          {
+            "part": "RecordPage",
+            "id": "record",
+            "label": "Selected record",
+            "props": {
+              "fields": [
+                "role",
+                "stage",
+                "source",
+                "feedback",
+                "interview"
+              ]
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "candidate"
+            },
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "Timeline",
+            "label": "Interview schedule",
+            "props": {
+              "view": "calendar",
+              "freeBusy": true
+            },
+            "bind": {
+              "content-part": "plan/interviews.json"
+            },
+            "id": "timeline",
+            "when": "$selection.work.count == 1"
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "work": {
+      "type": "candidate"
+    }
+  }
+}

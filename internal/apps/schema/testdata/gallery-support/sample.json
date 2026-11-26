@@ -1,0 +1,56 @@
+{
+  "records": {
+    "ticket": [
+      {
+        "subject": "Webhooks retried 40 times",
+        "customer": "Priya Shah",
+        "company": "Northwind",
+        "external_id": "thread-1",
+        "body": "Our webhook endpoint got the same event 40 times overnight. Is something broken on your side?",
+        "status": "Open",
+        "received_at": "2026-11-26T09:41:00Z",
+        "id": "01KAT0000A0000000000000001"
+      },
+      {
+        "subject": "SSO login loops on Safari",
+        "customer": "Dan Nguyen",
+        "company": "Globex",
+        "external_id": "thread-2",
+        "body": "After granting access, the sign-in page sends me back to our identity provider.",
+        "status": "Open",
+        "received_at": "2026-11-26T09:22:00Z",
+        "id": "01KAT0000A0000000000000002"
+      },
+      {
+        "subject": "Invoice shows wrong seats",
+        "customer": "Kim Park",
+        "company": "Initech",
+        "external_id": "thread-3",
+        "body": "Could you check why we were charged for 20 seats after removing five?",
+        "status": "Open",
+        "received_at": "2026-11-26T09:10:00Z",
+        "id": "01KAT0000A0000000000000003"
+      },
+      {
+        "subject": "Export CSV is empty",
+        "customer": "Ola Larsen",
+        "company": "Hooli",
+        "external_id": "thread-4",
+        "body": "The calendar export downloads, but only has the column headings.",
+        "status": "Pending",
+        "received_at": "2026-11-26T09:03:00Z",
+        "id": "01KAT0000A0000000000000004"
+      },
+      {
+        "subject": "How do I reset 2FA?",
+        "customer": "Bo Mensah",
+        "company": "Umbrella",
+        "external_id": "thread-5",
+        "body": "I replaced my phone and no longer have the old authenticator.",
+        "status": "Solved",
+        "received_at": "2026-11-26T09:01:00Z",
+        "id": "01KAT0000A0000000000000005"
+      }
+    ]
+  }
+}

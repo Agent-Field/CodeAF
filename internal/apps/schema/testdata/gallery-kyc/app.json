@@ -1,0 +1,129 @@
+{
+  "id": "gallery-kyc",
+  "name": "KYC review",
+  "version": 1,
+  "kit": 2,
+  "agent": {
+    "name": "KYC review assistant",
+    "file": "agent.md"
+  },
+  "records": {
+    "case": {
+      "title": "title",
+      "fields": {
+        "title": {
+          "type": "text"
+        },
+        "pan": {
+          "type": "text",
+          "masked": true
+        },
+        "identity": {
+          "type": "files"
+        },
+        "stage": {
+          "type": "enum",
+          "label": "Stage",
+          "values": [
+            "New",
+            "Maker",
+            "Checker",
+            "Customer",
+            "Done"
+          ]
+        },
+        "maker": {
+          "type": "person"
+        },
+        "reviewer": {
+          "type": "person"
+        },
+        "case_number": {
+          "type": "text",
+          "label": "Case number"
+        },
+        "review": {
+          "type": "text",
+          "label": "Review"
+        },
+        "risk": {
+          "type": "number",
+          "label": "Risk score"
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "case": "rw"
+    }
+  },
+  "policies": [
+    {
+      "id": "review",
+      "kind": "signoff",
+      "config": {
+        "record": "case",
+        "makerCannotSign": true,
+        "roles": [
+          {
+            "id": "maker",
+            "label": "Maker",
+            "person": "$record.maker"
+          },
+          {
+            "id": "checker",
+            "label": "Independent reviewer",
+            "person": "$record.reviewer"
+          }
+        ],
+        "statement": "I have reviewed the attached evidence."
+      }
+    },
+    {
+      "id": "checks",
+      "kind": "checklist",
+      "config": {
+        "record": "case",
+        "signoff": "review",
+        "steps": [
+          {
+            "id": "evidence",
+            "label": "Check identity and face match",
+            "evidence": "file",
+            "role": "maker"
+          },
+          {
+            "id": "address",
+            "label": "Address proof is less than 3 months old",
+            "evidence": "note",
+            "role": "checker"
+          },
+          {
+            "id": "sanctions",
+            "label": "Confirm sanctions screening",
+            "evidence": "note",
+            "role": "checker"
+          },
+          {
+            "id": "funds",
+            "label": "Review source of funds",
+            "evidence": "note",
+            "role": "checker"
+          }
+        ]
+      }
+    },
+    {
+      "id": "privacy",
+      "kind": "mask",
+      "config": {
+        "record": "case",
+        "fields": [
+          "pan"
+        ],
+        "reason": true
+      }
+    }
+  ]
+}

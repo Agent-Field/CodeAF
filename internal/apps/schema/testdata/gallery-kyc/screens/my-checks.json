@@ -1,0 +1,193 @@
+{
+  "screen": "my-checks",
+  "title": "My checks",
+  "nav": {
+    "part": "SectionTabs",
+    "id": "navigation",
+    "label": "Work views",
+    "props": {
+      "items": [
+        {
+          "screen": "queue",
+          "label": "Queue"
+        },
+        {
+          "screen": "my-checks",
+          "label": "My checks"
+        },
+        {
+          "screen": "done",
+          "label": "Done"
+        }
+      ]
+    }
+  },
+  "body": {
+    "part": "Row",
+    "id": "workspace",
+    "props": {
+      "gap": 2,
+      "align": "stretch"
+    },
+    "children": [
+      {
+        "part": "RecordList",
+        "id": "work",
+        "label": "Review queue",
+        "props": {
+          "columns": [
+            "title",
+            "case_number",
+            "review",
+            "maker",
+            "risk"
+          ],
+          "select": "one",
+          "meter": "stage"
+        },
+        "bind": {
+          "records": "case",
+          "view": "work"
+        }
+      },
+      {
+        "part": "Panel",
+        "id": "detail",
+        "props": {
+          "title": "Review case"
+        },
+        "bind": {
+          "selection": "work"
+        },
+        "children": [
+          {
+            "part": "Text",
+            "id": "select-hint",
+            "props": {
+              "text": "Choose a case to review its evidence.",
+              "tone": "muted"
+            },
+            "when": "$selection.work.count == 0"
+          },
+          {
+            "part": "RecordPage",
+            "id": "record",
+            "label": "Selected record",
+            "props": {
+              "fields": [
+                "case_number",
+                "review",
+                "stage",
+                "risk"
+              ]
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "case"
+            },
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "Masked",
+            "label": "Tax identifier",
+            "props": {
+              "field": "pan",
+              "reason": true,
+              "logged": true
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "case"
+            },
+            "on": {
+              "reveal": [
+                {
+                  "records.reveal": {
+                    "type": "case",
+                    "id": "$selection.work.id",
+                    "field": "pan",
+                    "reason": "$input.reason"
+                  }
+                }
+              ]
+            },
+            "id": "masked",
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "FileViewer",
+            "label": "Identity evidence",
+            "props": {
+              "regionMasking": true
+            },
+            "bind": {
+              "file": "$selection.work.id",
+              "type": "case",
+              "field": "identity"
+            },
+            "id": "fileviewer",
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "Checklist",
+            "label": "Review checklist",
+            "props": {
+              "checklist": "checks"
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "case"
+            },
+            "id": "checklist",
+            "when": "$selection.work.count == 1"
+          },
+          {
+            "part": "SignOff",
+            "label": "Review signatures",
+            "props": {
+              "chain": "review"
+            },
+            "bind": {
+              "record": "$selection.work.id",
+              "type": "case"
+            },
+            "id": "signoff",
+            "when": "$selection.work.count == 1",
+            "on": {
+              "sign": [
+                {
+                  "signoff.sign": {
+                    "policy": "review",
+                    "id": "$selection.work.id"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "views": {
+    "work": {
+      "type": "case",
+      "window": {
+        "order_by": [
+          "risk"
+        ]
+      },
+      "filter": [
+        {
+          "field": "stage",
+          "op": "eq",
+          "value": "Checker"
+        },
+        {
+          "field": "reviewer",
+          "op": "eq",
+          "value": "me"
+        }
+      ]
+    }
+  }
+}
