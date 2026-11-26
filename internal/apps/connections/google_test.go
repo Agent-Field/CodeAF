@@ -319,7 +319,7 @@ func TestGoogleReferenceProjectionResolvesLinkedPeopleAndAttachments(t *testing.
 	if err != nil || doc["title"] != "agenda.pdf" {
 		t.Fatalf("attachment %+v %v", doc, err)
 	}
-	if err := service.LinkGoogleIdentities(ctx, query); !errors.Is(err, ErrSourcePermission) {
+	if err := service.LinkGoogleIdentities(ctx, query); err == nil || !strings.Contains(err.Error(), "a fixture connection cannot reserve identities") {
 		t.Fatalf("fixture identities must not enter the live crosswalk: %v", err)
 	}
 	if _, found, err := db.LookupIdentity(googleIdentityKey("email", "ari@example.com")); err != nil || found {
@@ -335,5 +335,41 @@ func TestGoogleReferenceProjectionResolvesLinkedPeopleAndAttachments(t *testing.
 	_, info, _, err := service.PlanQuery(ctx, "brief", data.QueryIR{Type: "message", Select: []string{"attachment.title"}})
 	if err != nil || len(info.Contributors) != 1 || info.Contributors[0].Read != "docs" {
 		t.Fatalf("related Google source %+v %v", info, err)
+	}
+}
+
+func TestGooglePartialWindowListsRowsButRefusesTotals(t *testing.T) {
+	ctx := context.Background()
+	place := data.NewPlace(t.TempDir(), data.Options{NoRefresh: true})
+	defer place.Close()
+	db, err := place.Main()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const manifest = `{"id":"brief","name":"Brief","kit":0,"version":1,
+		"records":{"message":{"title":"subject","fields":{"subject":{"type":"text"}}}},
+		"capabilities":{"records":{"message":"r"}}}`
+	if err := db.PublishApp(data.AppPublication{App: "brief", Version: 1,
+		Metadata: []byte(`{"digest":"window"}`), Definition: []byte(manifest)}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.BindCommonType(data.CommonMessage, "message"); err != nil {
+		t.Fatal(err)
+	}
+	svc := Service{Profile: t.TempDir(), Store: func() (*data.Store, error) { return db, nil }}
+	if err := svc.Register(Config{ID: "work", App: "brief", Kind: Google, CredentialMode: CredentialPerson, GoogleFixture: true,
+		Reads: map[string]Read{"messages": {Type: "message", Table: "gmail", Key: "id", GoogleLimit: 1,
+			GoogleQuery: "label:planning", Fields: map[string]string{"subject": "subject"}}},
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+	ir := data.QueryIR{Type: "message"}
+	_, source, _, err := svc.PlanQuery(ctx, "brief", ir)
+	if err != nil || !source.Partial || source.Window != 1 {
+		t.Fatalf("source window = %+v, err = %v", source, err)
+	}
+	ir.Aggregate = []data.Agg{{Fn: "count"}}
+	if _, _, _, err := svc.PlanQuery(ctx, "brief", ir); !errors.Is(err, ErrPartialWindow) {
+		t.Fatalf("partial total: %v", err)
 	}
 }

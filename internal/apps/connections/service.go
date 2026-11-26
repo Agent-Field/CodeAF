@@ -31,6 +31,7 @@ var (
 	ErrPersonCredential = errors.New("connect your own source credential to use this connection")
 	ErrSourcePermission = errors.New("the source refused access with your credential")
 	ErrUnavailable      = errors.New("the source is unavailable")
+	ErrPartialWindow    = errors.New("the source window is partial and cannot produce complete totals or relations")
 	ErrTooLarge         = errors.New("the source result exceeds the byte budget")
 	ErrConflict         = errors.New("the source record has changed or is unavailable")
 	ErrUncertain        = errors.New("the source could not confirm the write result")
@@ -383,6 +384,9 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			store.AuditRecordPolicy(sc, typ, "source_read_refused")
 		}
 		return Page{}, err
+	}
+	if c.Kind == Google && len(rows) > window {
+		rows, more = rows[:window], true
 	}
 	if c.Kind == Google {
 		if _, current, err := s.workspace(ctx, c, read.Table, false); err != nil || current != c.googleGrant {

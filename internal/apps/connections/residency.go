@@ -479,7 +479,7 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 		scans = append(scans, scan)
 		source, versions = scan.Source, sourceVersions(scan.Rows)
 		if scan.Source.Partial && (len(ir.Aggregate) != 0 || len(dependencies) != 0) {
-			return ir, Source{}, nil, fmt.Errorf("%w: the source window cannot produce complete totals or relations", ErrTooLarge)
+			return ir, Source{}, nil, ErrPartialWindow
 		}
 	}
 	for _, id := range dependencies {
@@ -497,7 +497,7 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 				return ir, Source{}, nil, err
 			}
 			if scan.Source.Partial {
-				return ir, Source{}, nil, fmt.Errorf("%w: the source window cannot produce complete related records", ErrTooLarge)
+				return ir, Source{}, nil, ErrPartialWindow
 			}
 			scans = append(scans, scan)
 			relatedSource = scan.Source

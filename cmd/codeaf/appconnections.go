@@ -44,7 +44,7 @@ func appConnectionError(err error) error {
 		return nil
 	}
 	switch {
-	case errors.Is(err, connections.ErrTooLarge):
+	case errors.Is(err, connections.ErrTooLarge), errors.Is(err, connections.ErrPartialWindow):
 		return appwire.Errorf(appwire.CodeTooLarge, "%s", err)
 	case errors.Is(err, connections.ErrConflict):
 		return appwire.Errorf(appwire.CodeConflict, "%s", err)

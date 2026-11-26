@@ -48,6 +48,13 @@ func (googleFixtureTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		raw = []byte(`{"id":"c1"}`)
 	case req.Method != http.MethodGet:
 		status = http.StatusForbidden
+	case path == gmailPath+"/messages" && req.URL.Query().Get("q") == "label:planning" &&
+		req.URL.Query().Get("pageToken") == "planning-2":
+		raw = []byte(`{"messages":[{"id":"m2","threadId":"t2"}],"resultSizeEstimate":2}`)
+	case path == gmailPath+"/messages" && req.URL.Query().Get("q") == "label:planning":
+		raw = []byte(`{"messages":[{"id":"m1","threadId":"t1"}],"nextPageToken":"planning-2","resultSizeEstimate":2}`)
+	case path == gmailPath+"/messages/m2":
+		raw = []byte(`{"id":"m2","threadId":"t2","historyId":"18","labelIds":["PLANNING"],"payload":{"headers":[{"name":"Subject","value":"Quarterly planning"}]}}`)
 	case path == gmailPath+"/messages":
 		raw = []byte(`{"messages":[{"id":"m1","threadId":"t1"}],"resultSizeEstimate":1}`)
 	case path == gmailPath+"/messages/m1" && req.URL.Query().Get("fields") != "":

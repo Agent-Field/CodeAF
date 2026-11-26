@@ -60,7 +60,8 @@ operator sets `google_link_identities: true` and maps those columns to a
 Person ref or refs field. Run
 `codeaf app connections link-google-identities APP CONNECTION READ` to reserve
 keys from the scoped source. Normal reads resolve those keys and leave an
-unknown Person unset. The operation does not merge people by display name.
+unknown Person unset. A fixture binding cannot reserve identities. Connect the live account first.
+The operation does not merge people by display name.
 Gmail's `sender_domain` can map to Company, whose
 common type key is `organization`. Bind attachment metadata as Documents
 with the `attachments` read on the same Gmail connection.
@@ -73,7 +74,8 @@ Use `codeaf app connections register CONFIG.json` with `kind: "google"`,
 `id` and `fields` to your record-field mapping. `google_limit` declares
 a bounded slice of at most 100 source records. When more results exist, the
 source reports the window as partial and declines totals and joins that
-would require the missing records. Use `version` as the
+would require the missing records. The refusal says “the source window is
+partial and cannot produce complete totals or relations”. Use `version` as the
 version property when a Calendar update needs an expected version.
 
 For draft Preview and Check, the binding uses Google-shaped fixtures instead

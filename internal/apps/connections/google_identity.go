@@ -3,6 +3,7 @@ package connections
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -129,7 +130,10 @@ func (s Service) LinkGoogleIdentities(ctx context.Context, q Query) error {
 		return err
 	}
 	read, ok := c.Reads[q.Read]
-	if c.Kind != Google || c.GoogleFixture || !ok || !read.GoogleLinkIdentities {
+	if c.GoogleFixture {
+		return errors.New("a fixture connection cannot reserve identities; connect the live account first")
+	}
+	if c.Kind != Google || !ok || !read.GoogleLinkIdentities {
 		return ErrSourcePermission
 	}
 	store, _, typ, err := s.bind(c.Config, read, false)
