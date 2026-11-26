@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
@@ -147,8 +148,13 @@ func (b *appBackend) appMCPCatalog(ctx context.Context, scope appwire.AppContent
 		}
 		appendTool(action.ID, "action", action.Label, props)
 	}
+	sources, err := b.appConnections().List(scope.App)
+	if err != nil {
+		return nil, err
+	}
+	google := slices.ContainsFunc(sources, func(source connections.Summary) bool { return source.Kind == connections.Google })
 	for _, id := range slices.Sorted(maps.Keys(doc.Views)) {
-		if !allowed("data", id) {
+		if google || !allowed("data", id) {
 			continue
 		}
 		args := map[string]any{}

@@ -23,6 +23,7 @@ type Effect struct {
 	version string
 	values  map[string]any
 	fence   string
+	google  *googleEffect
 }
 
 type Receipt struct {
@@ -50,6 +51,9 @@ func (s Service) PrepareEffect(app, connection, operation string, args map[strin
 	if typ.HasRowPolicy() {
 		_ = store.AuditPolicy(app, typ.ID, "source_write_refused")
 		return nil, errors.New("this source write cannot enforce the record row policy")
+	}
+	if c.Kind == Google {
+		return s.prepareGoogleEffect(c, read, write, operation, args, store, binding, typ)
 	}
 	id, _ := args["id"].(string)
 	set, _ := args["set"].(map[string]any)
@@ -159,6 +163,9 @@ func (e *Effect) Apply(ctx context.Context, idempotencyKey string) (Receipt, err
 				return Receipt{}, errors.New("this source write cannot set a protected field")
 			}
 		}
+	}
+	if e.google != nil {
+		return e.applyGoogle(ctx)
 	}
 	secret, err := e.service.credential(c, e.service.person(ctx))
 	if err != nil {

@@ -41,6 +41,7 @@ var (
 // Service resolves profile connections. Person is an engine-owned identity
 // resolver and defaults to the local profile owner.
 type Service struct {
+	Google  func() (*connect.Manager, error)
 	Profile string
 	Store   func() (*data.Store, error)
 	Person  func(context.Context) data.PersonPrincipal
@@ -82,6 +83,7 @@ type Page struct {
 // The profile alias is selected by callers. The immutable registration ID
 // names the identity namespace even when a second profile uses the same alias.
 type registration struct {
+	googleGrant string
 	Config
 	Binding string `json:"binding"`
 }
@@ -147,8 +149,14 @@ func (s Service) Register(c Config, credential string) error {
 
 func validateCredential(kind Kind, credential string) (string, error) {
 	credential = strings.TrimSpace(credential)
-	if credential == "" || len(credential) > MaxCredentialBytes || strings.ContainsAny(credential, "\r\n") {
+	if kind != Google && credential == "" || len(credential) > MaxCredentialBytes || strings.ContainsAny(credential, "\r\n") {
 		return "", errors.New("the connection needs one credential line")
+	}
+	if kind == Google {
+		if credential != "" {
+			return "", errors.New("use codeaf app connect google for Google Workspace sign-in")
+		}
+		return "", nil
 	}
 	if kind != HTTP {
 		db, err := database(kind, credential)
@@ -192,6 +200,20 @@ func (s Service) Test(ctx context.Context, app, id string) error {
 	c, err := s.scoped(app, id)
 	if err != nil {
 		return err
+	}
+	if c.Kind == Google {
+		ctx, cancel := context.WithTimeout(ctx, deadline)
+		defer cancel()
+		for _, read := range c.Reads {
+			source, _, err := s.workspace(ctx, c, read.Table, false)
+			if err == nil {
+				_, _, err = source.rows(ctx, read.Table, nil, 1)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	secret, err := s.credential(c, s.person(ctx))
 	if err != nil {
@@ -260,8 +282,16 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 	}
 	fields := map[string]*data.Field{}
-	for name := range read.Fields {
-		f, err := sourceField(read, typ, name)
+	for name, column := range read.Fields {
+		if c.Kind == Google && !slices.Contains(googleFields(read.Table, false), column) {
+			continue
+		}
+		var f *data.Field
+		if c.Kind == Google {
+			f, err = googleSourceField(read, typ, name)
+		} else {
+			f, err = sourceField(read, typ, name)
+		}
 		if err != nil {
 			return Page{}, err
 		}
@@ -281,6 +311,22 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, err
 	}
 	maps.Copy(args, q.filters)
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	var google googleSource
+	if c.Kind == Google {
+		if typ.HasRowPolicy() {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+			return Page{}, ErrSourcePermission
+		}
+		google, c.googleGrant, err = s.workspace(ctx, c, read.Table, false)
+		if err != nil {
+			return Page{}, err
+		}
+		if _, ok := args["q"]; !ok && read.GoogleQuery != "" {
+			args["q"] = read.GoogleQuery
+		}
+	}
 	if q.id != "" {
 		key, err := effectKey(store, c, read, binding, q.id)
 		if err != nil {
@@ -288,17 +334,20 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 		args[read.Key] = key
 	}
-	secret, err := s.credential(c, sc.Person)
-	if err != nil {
-		store.AuditRecordPolicy(sc, typ, "source_read_refused")
-		return Page{}, err
+	var secret string
+	if c.Kind != Google {
+		secret, err = s.credential(c, sc.Person)
+		if err != nil {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+			return Page{}, err
+		}
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, deadline)
-	defer cancel()
 	observed := time.Now().UTC()
 	var rows []map[string]any
+	var more bool
 	switch c.Kind {
+	case Google:
+		rows, more, err = google.rows(ctx, read.Table, args, q.Limit)
 	case HTTP:
 		rows, err = httpRows(ctx, c.Config, secret, read, args)
 	default:
@@ -313,7 +362,15 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		}
 		return Page{}, err
 	}
-	if c.CredentialMode == CredentialPerson {
+	if c.Kind == Google {
+		if _, current, err := s.workspace(ctx, c, read.Table, false); err != nil || current != c.googleGrant {
+			return Page{}, ErrSourcePermission
+		}
+		current, err := s.scoped(c.App, c.ID)
+		if err != nil || current.Binding != c.Binding {
+			return Page{}, ErrConflict
+		}
+	} else if c.CredentialMode == CredentialPerson {
 		current, err := s.credential(c, sc.Person)
 		if err != nil || current != secret {
 			store.AuditRecordPolicy(sc, typ, "source_read_refused")
@@ -326,8 +383,9 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, errors.New("the type binding changed during the read")
 	}
 	page := Page{
-		Rows:   make([]data.Row, 0, min(len(rows), q.Limit)),
-		Source: Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
+		HasMore: more,
+		Rows:    make([]data.Row, 0, min(len(rows), q.Limit)),
+		Source:  Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
 	}
 	seen := map[string]bool{}
 	names := slices.Sorted(maps.Keys(fields))
@@ -382,7 +440,12 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 				meta.Masked = append(meta.Masked, name)
 				continue
 			}
-			mapped, err := mappedSourceValue(store, sc, read, field, value)
+			var mapped any
+			if c.Kind == Google && (field.Type == data.TypeRef || field.Type == data.TypeRefs) {
+				mapped, err = googleReferenceValue(store, sc, c, read, field, raw)
+			} else {
+				mapped, err = mappedSourceValue(store, sc, read, field, value)
+			}
 			if err != nil {
 				return Page{}, err
 			}
@@ -456,6 +519,9 @@ func encodeSourceKey(value any) (string, error) {
 
 func externalKey(c registration, read Read, key string) data.ExternalKey {
 	object := read.Table
+	if c.Kind == Google {
+		object += "#" + c.googleGrant
+	}
 	if c.Kind == HTTP {
 		object = read.Path + "#" + read.Rows
 	}
@@ -522,6 +588,9 @@ func (s Service) SetPersonCredential(ctx context.Context, app, id, credential st
 	c, err := s.scoped(app, id)
 	if err != nil {
 		return err
+	}
+	if c.Kind == Google {
+		return errors.New("use codeaf app connect google for Google Workspace sign-in")
 	}
 	if c.CredentialMode != CredentialPerson {
 		return errors.New("this connection uses a shared credential")

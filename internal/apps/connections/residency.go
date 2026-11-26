@@ -84,14 +84,14 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 			return route, err
 		}
 		for name, read := range cfg.Reads {
-			if read.Residency == nil || state.Binding.App != "" && state.Binding.Read != name {
+			if (read.Residency == nil && cfg.Kind != Google) || state.Binding.App != "" && state.Binding.Read != name {
 				continue
 			}
 			bound, err := store.Type(scope, read.Type)
 			if err != nil || bound.ID != typ.ID {
 				continue
 			}
-			if route.read.Residency != nil {
+			if route.name != "" {
 				return route, errors.New("this type has more than one declared residency binding")
 			}
 			route.config, route.read, route.name = cfg, read, name
@@ -102,10 +102,10 @@ func (s Service) route(app, alias string) (residencyRoute, error) {
 		state.Binding.Key != route.binding.Key || !slices.Equal(state.Binding.Writable, route.binding.Writable)) {
 		return route, ErrUnavailable
 	}
-	if route.read.Residency != nil && state.Binding.App == "" {
+	if route.name != "" && state.Binding.App == "" {
 		route.state.Mode = data.ResidencyLive
 	}
-	if route.read.Residency != nil {
+	if route.name != "" {
 		if typ.HasRowPolicy() && route.state.Mode != data.ResidencyNative {
 			return route, ErrSourcePermission
 		}
@@ -415,7 +415,7 @@ func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
 			if ctx.Err() != nil {
 				return
 			}
-			if read.Residency == nil {
+			if read.Residency == nil && cfg.Kind != Google {
 				continue
 			}
 			r, err := s.route(cfg.App, read.Type)
@@ -428,7 +428,11 @@ func (s Service) refresh(ctx context.Context, lastLive map[string]time.Time) {
 				}
 			} else if r.state.Mode == data.ResidencyLive && r.store.HasSourceWatch(r.typ.ID, r.binding.Key.Binding) {
 				key := r.typ.ID
-				if time.Since(lastLive[key]) >= time.Duration(read.Residency.FreshForSeconds)*time.Second {
+				interval := googlePollInterval
+				if read.Residency != nil {
+					interval = time.Duration(read.Residency.FreshForSeconds) * time.Second
+				}
+				if time.Since(lastLive[key]) >= interval {
 					if r.store.InvalidateSource(r.typ.ID, r.binding.Key.Binding) == nil {
 						lastLive[key] = time.Now()
 					}
@@ -469,7 +473,7 @@ func (s Service) PlanQuery(ctx context.Context, app string, ir data.QueryIR) (da
 		if err != nil {
 			return ir, Source{}, nil, err
 		}
-		if relation.read.Residency == nil {
+		if relation.name == "" {
 			continue
 		}
 		relatedSource := relation.source()
@@ -501,6 +505,9 @@ func (s Service) liveScan(ctx context.Context, r residencyRoute, typ string, fil
 // Effective text equality matches SQLite's ASCII-only case folding. Any
 // condition with additional syntax stays in the shared evaluator.
 func textFilters(r residencyRoute, ir data.QueryIR) map[string]any {
+	if r.config.Kind == Google {
+		return nil
+	}
 	out := make(map[string]any)
 	for _, cond := range ir.Where {
 		col := r.read.Fields[cond.Field]
@@ -538,7 +545,7 @@ func (s Service) GetRecord(ctx context.Context, app, alias, id string, reveal bo
 	if err != nil {
 		return nil, Source{}, err
 	}
-	if r.read.Residency == nil {
+	if r.name == "" {
 		row, err := r.store.Get(data.Scope{App: app, Person: s.person(ctx)}, alias, id, reveal)
 		return row, NativeSource(), err
 	}

@@ -2,6 +2,7 @@ package connect
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -202,7 +203,11 @@ func (m *Manager) BeginAuth(ctx context.Context, id, answer string) (*Flow, erro
 	go func() {
 		keys, err := oauth2cli.GetToken(runContext, config)
 		if err != nil {
-			err = fmt.Errorf("connect %s: %w", service.Name, err)
+			if _, googleApp := plug.(workspaceGoogle); googleApp {
+				err = googleAuthError(err)
+			} else {
+				err = fmt.Errorf("connect %s: %w", service.Name, err)
+			}
 		}
 		flow.done <- flowResult{keys: keys, err: err}
 	}()
@@ -309,11 +314,21 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 	}
 	if err == nil {
 		entry := stored{Keys: result.keys, Scopes: granted(result.keys, service.Scopes)}
-		// The identity probe may fail without failing the connection; only its label is lost.
-		if account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys)); probeErr == nil {
-			entry.Account = account
+		if googleApp, ok := f.plug.(workspaceGoogle); ok {
+			entry.GrantID = oauth2.GenerateVerifier()
+			if !entry.covers(service.Scopes) {
+				err = errors.New("Google Workspace: Approve the requested permission to use this source.")
+			} else {
+				entry.Subject, err = googleApp.identity(ctx, staticClient(ctx, result.keys))
+			}
 		}
-		err = waitContext.Err()
+		// The identity probe may fail without failing the connection; only its label is lost.
+		if err == nil {
+			if account, probeErr := f.plug.Account(ctx, staticClient(ctx, result.keys)); probeErr == nil {
+				entry.Account = account
+			}
+			err = waitContext.Err()
+		}
 		if err == nil {
 			err = ctx.Err()
 		}

@@ -19,11 +19,13 @@ const (
 	HTTP     Kind = "http"
 	Postgres Kind = "postgres"
 	MySQL    Kind = "mysql"
+	Google   Kind = "google"
 )
 
 const CredentialPerson = "person"
 
 type Config struct {
+	GoogleFixture  bool             `json:"google_fixture,omitempty"`
 	CredentialMode string           `json:"credential_mode,omitempty"`
 	ID             string           `json:"id"`
 	Kind           Kind             `json:"kind"`
@@ -37,16 +39,17 @@ type Config struct {
 // Read maps fields on a bound app type to source columns or JSON properties.
 // Match maps arguments to SQL equality predicates or HTTP query parameters.
 type Read struct {
-	Type      string            `json:"type"`
-	Table     string            `json:"table,omitempty"`
-	Path      string            `json:"path,omitempty"`
-	Rows      string            `json:"rows,omitempty"`
-	Key       string            `json:"key"`
-	Version   string            `json:"version,omitempty"`
-	Fields    map[string]string `json:"fields"`
-	Match     map[string]string `json:"match,omitempty"`
-	Residency *ResidencyConfig  `json:"residency,omitempty"`
-	OrderBy   string            `json:"order_by,omitempty"`
+	GoogleQuery string            `json:"google_query,omitempty"`
+	Type        string            `json:"type"`
+	Table       string            `json:"table,omitempty"`
+	Path        string            `json:"path,omitempty"`
+	Rows        string            `json:"rows,omitempty"`
+	Key         string            `json:"key"`
+	Version     string            `json:"version,omitempty"`
+	Fields      map[string]string `json:"fields"`
+	Match       map[string]string `json:"match,omitempty"`
+	Residency   *ResidencyConfig  `json:"residency,omitempty"`
+	OrderBy     string            `json:"order_by,omitempty"`
 }
 
 // ResidencyConfig admits a Personal fixed export to the type's existing
@@ -84,6 +87,9 @@ func (c Config) validate() error {
 	if c.CredentialMode != "" && c.CredentialMode != "shared" && c.CredentialMode != CredentialPerson {
 		return errors.New("a connection credential mode is shared or person")
 	}
+	if c.GoogleFixture && c.Kind != Google {
+		return ErrRejected
+	}
 	switch c.Kind {
 	case HTTP:
 		u, err := url.Parse(c.Origin)
@@ -97,12 +103,16 @@ func (c Config) validate() error {
 		if !fixedPath(c.TestPath) {
 			return errors.New("an HTTP connection needs a fixed GET test path")
 		}
+	case Google:
+		if c.Origin != "" || c.TestPath != "" || c.CredentialMode != CredentialPerson {
+			return errors.New("Google Workspace needs a personal connection with Google's fixed endpoints")
+		}
 	case Postgres, MySQL:
 		if c.Origin != "" || c.TestPath != "" {
 			return errors.New("put the database connection string in the credential")
 		}
 	default:
-		return errors.New("a connection kind is http, postgres or mysql")
+		return errors.New("a connection kind is http, postgres, mysql or google")
 	}
 	if len(c.Reads) == 0 || len(c.Reads) > 32 || len(c.Writes) > 32 {
 		return errors.New("a connection needs 1 to 32 reads and can have up to 32 writes")
@@ -113,7 +123,22 @@ func (c Config) validate() error {
 			len(read.Fields) == 0 || len(read.Fields) > 32 || len(read.Match) > 16 {
 			return errors.New("a read needs a name, bound record type, key and field mapping")
 		}
-		if c.Kind == HTTP {
+		if c.Kind == Google {
+			if !slices.Contains([]string{"gmail", "calendar", "drive", "transcripts"}, read.Table) ||
+				read.Path != "" || read.Key != "id" || read.Version != "" && read.Version != "version" ||
+				read.Rows != "" || read.OrderBy != "" || read.Residency != nil ||
+				len(read.GoogleQuery) > maxCell || read.GoogleQuery != "" && read.Table != "gmail" ||
+				len(read.Match) > 1 {
+				return errors.New("a Google read needs a known Workspace object and canonical field mapping")
+			}
+			for _, param := range read.Match {
+				if param != "q" || read.Table != "gmail" {
+					return errors.New("only Gmail accepts a search query")
+				}
+			}
+		} else if read.GoogleQuery != "" {
+			return ErrRejected
+		} else if c.Kind == HTTP {
 			if !fixedPath(read.Path) || read.Table != "" || read.OrderBy != "" || (read.Rows != "" && !identifier.MatchString(read.Rows)) {
 				return errors.New("an HTTP read needs a fixed path and may name a JSON rows property")
 			}
@@ -131,6 +156,10 @@ func (c Config) validate() error {
 			mapped[r.UpdatedAt], mapped[r.Tombstone] = true, true
 		}
 		for field, column := range read.Fields {
+			if c.Kind == Google && !slices.Contains(googleFields(read.Table, false), column) &&
+				!slices.Contains(googleFields(read.Table, true), column) {
+				return errors.New("the Google field is outside this mapping")
+			}
 			if !alias.MatchString(field) || field == "id" || field == "type" || !identifier.MatchString(column) || mapped[column] {
 				return errors.New("a field mapping needs a distinct column outside the source key and version")
 			}
@@ -152,7 +181,7 @@ func (c Config) validate() error {
 
 		matched := map[string]bool{}
 		for arg, target := range read.Match {
-			if !alias.MatchString(arg) || !identifier.MatchString(target) || matched[target] || (c.Kind != HTTP && read.Fields[arg] != target) {
+			if !alias.MatchString(arg) || !identifier.MatchString(target) || matched[target] || (c.Kind != HTTP && c.Kind != Google && read.Fields[arg] != target) {
 				return errors.New("a read argument must map to a distinct query parameter or its mapped SQL field")
 			}
 			matched[target] = true
@@ -166,7 +195,11 @@ func (c Config) validate() error {
 		if !alias.MatchString(name) || !ok || len(write.Fields) == 0 || len(write.Fields) > len(read.Fields) {
 			return errors.New("a write needs a name, read binding and writable fields")
 		}
-		if c.Kind == HTTP {
+		if c.Kind == Google {
+			if write.Path != "" || len(write.Response) != 0 || !googleOperation(read.Table, name) {
+				return errors.New("choose a supported Google write for this read")
+			}
+		} else if c.Kind == HTTP {
 			if !fixedPath(write.Path) || len(write.Response) > 16 {
 				return errors.New("an HTTP write needs a fixed POST path and at most 16 response fields")
 			}
@@ -181,6 +214,9 @@ func (c Config) validate() error {
 		seen := map[string]bool{}
 		for _, field := range write.Fields {
 			column := read.Fields[field]
+			if c.Kind == Google && !slices.Contains(googleFields(read.Table, true), column) {
+				return errors.New("the Google operation cannot set that field")
+			}
 			if column == "" || column == read.Key || column == read.Version || seen[column] {
 				return errors.New("a write must name distinct mapped fields outside the source key and version")
 			}

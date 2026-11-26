@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/apps/connections"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -68,13 +69,24 @@ func (b *appBackend) appModelAuthorizer(app string) func(context.Context, provid
 			if err != nil {
 				return nil, err
 			}
-			return s.ModelDataClasses(app), nil
+			classes := s.ModelDataClasses(app)
+			sources, err := b.appConnections().List(app)
+			if err != nil {
+				return nil, err
+			}
+			if slices.ContainsFunc(sources, func(source connections.Summary) bool { return source.Kind == connections.Google }) &&
+				!slices.Contains(classes, schema.ClassPII) {
+				classes = append(classes, schema.ClassPII)
+			}
+			return classes, nil
 		},
 		personal: func(destination provider.ModelDestination) bool {
 			// A connected app can carry source data in its prior step results.
 			// Keep approvals explicit whenever that provenance is possible.
 			sources, err := b.appConnections().List(app)
-			return err == nil && len(sources) == 0 && personalProfileModel(b.localProfile(), destination)
+			return err == nil && !slices.ContainsFunc(sources, func(source connections.Summary) bool {
+				return source.Kind != connections.Google
+			}) && personalProfileModel(b.localProfile(), destination)
 		},
 		audit: func(decision string) error {
 			s, err := b.dataStore("")

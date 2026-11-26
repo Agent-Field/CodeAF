@@ -16,6 +16,7 @@ import (
 func (b *appBackend) appConnections() connections.Service {
 	return connections.Service{
 		Profile: b.crewProfile(),
+		Google:  b.pluginManager,
 		Store:   func() (*data.Store, error) { return b.dataStore("") },
 	}
 }
@@ -56,7 +57,7 @@ func appConnectionError(err error) error {
 }
 
 func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Writer) error {
-	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON"
+	const usage = "usage: codeaf app connections list APP | test APP CONNECTION | read APP CONNECTION READ [JSON_ARGS] | content APP CONNECTION READ ID | register CONFIG.json | credential APP CONNECTION | bind APP TYPE COMMON | daily-brief [--fixture] | google-binding APP CONNECTION live|fixture"
 	if len(args) == 0 {
 		return errors.New(usage)
 	}
@@ -67,6 +68,14 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 		return json.NewEncoder(out).Encode(value)
 	}
 	switch args[0] {
+	case "daily-brief":
+		if len(args) == 1 || len(args) == 2 && args[1] == "--fixture" {
+			return installDailyBrief(b, len(args) == 2, out)
+		}
+	case "google-binding":
+		if len(args) == 4 && (args[3] == "fixture" || args[3] == "live") {
+			return b.appConnections().SetGoogleFixture(args[1], args[2], args[3] == "fixture")
+		}
 	case "list":
 		if len(args) == 2 {
 			return encode(b.ListAppConnections(appwire.ConnectionScope{App: args[1]}))
@@ -85,6 +94,11 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 			}
 			return encode(b.ReadAppConnection(query))
 		}
+	case "content":
+		if len(args) == 5 {
+			query := connections.Query{App: args[1], Connection: args[2], Read: args[3]}
+			return encode(b.appConnections().ReadGoogleContent(context.Background(), query, args[4], connections.GooglePerson))
+		}
 	case "register":
 		if len(args) == 2 {
 			file, err := os.Open(args[1])
@@ -96,9 +110,12 @@ func appConnectionsCommand(b *appBackend, args []string, in io.Reader, out io.Wr
 			if err := decodeAppConnectionJSON(io.LimitReader(file, 128<<10), &cfg); err != nil {
 				return errors.New("the connection declaration must be a JSON object with known fields")
 			}
-			credential, err := readAppSourceCredential(in)
-			if err != nil {
-				return err
+			credential := ""
+			if cfg.Kind != connections.Google {
+				credential, err = readAppSourceCredential(in)
+				if err != nil {
+					return err
+				}
 			}
 			return b.appConnections().Register(cfg, credential)
 		}

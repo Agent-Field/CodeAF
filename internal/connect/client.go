@@ -40,6 +40,11 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s is not connected", service.Name)
 	}
+	return m.client(ctx, plug, entry)
+}
+
+func (m *Manager) client(ctx context.Context, plug Plug, entry stored) (*http.Client, error) {
+	service := plug.Service()
 	// A key-connected service has nothing to renew and no client credential
 	// behind it: the key the person pasted goes on every request and that is
 	// the whole of it (key.go).
@@ -62,6 +67,7 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 		store: m.store,
 		id:    service.ID,
 		last:  entry.Keys,
+		grant: entry.GrantID,
 	}
 	client := oauth2.NewClient(ctx, bearerSource{base: source})
 	client.Timeout = clientTimeout
@@ -104,6 +110,7 @@ type persisting struct {
 	base  oauth2.TokenSource
 	store *store
 	id    string
+	grant string
 
 	mu   sync.Mutex
 	last *oauth2.Token
@@ -134,12 +141,15 @@ func (p *persisting) Token() (*oauth2.Token, error) {
 	if sameKeys(p.last, fresh) {
 		return fresh, nil
 	}
-	entry, _, err := p.store.get(p.id)
-	if err != nil {
-		return fresh, nil
-	}
-	entry.Keys = fresh
-	if err := p.store.put(p.id, entry); err != nil {
+	saved := false
+	if err := p.store.replace(p.id, func(entries map[string]stored) {
+		entry, ok := entries[p.id]
+		if !ok || entry.GrantID != p.grant || !sameKeys(entry.Keys, p.last) {
+			return
+		}
+		entry.Keys = fresh
+		entries[p.id], saved = entry, true
+	}); err != nil || !saved {
 		return fresh, nil
 	}
 	p.last = fresh
