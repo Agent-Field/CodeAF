@@ -189,6 +189,11 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 				return nil
 			}
 		default:
+			// A standalone approval has no output to show that it completed.
+			if c.CompletedGates == nil {
+				c.CompletedGates = make(map[string]bool)
+			}
+			c.CompletedGates[step.ID] = true
 			if err := e.advance(c, "", nil); err != nil {
 				return err
 			}

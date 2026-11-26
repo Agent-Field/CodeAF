@@ -150,3 +150,21 @@ steps:
 		t.Fatal("the approved note was not saved")
 	}
 }
+
+func TestStandaloneApprovalStaysDoneAfterTheRunFinishes(t *testing.T) {
+	e := newEngine(t, "run: example\nsteps:\n  - id: approve\n    gate: {approval: proof}\n", runs.Config{})
+	r := start(t, e)
+	tick(t, e)
+	waiting := state(t, e, r.ID)
+	if waiting.Approval == nil || waiting.Steps[0].State != runs.YourCall {
+		t.Fatalf("waiting for approval: %+v", waiting)
+	}
+	if err := e.Answer(r.ID, waiting.Approval.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	tick(t, e)
+	done := state(t, e, r.ID)
+	if done.State != runs.Done || done.Steps[0].State != runs.Done {
+		t.Fatalf("approved run: state %q, step %q", done.State, done.Steps[0].State)
+	}
+}

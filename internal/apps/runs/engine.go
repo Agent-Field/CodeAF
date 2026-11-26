@@ -140,6 +140,7 @@ type checkpoint struct {
 	Params         map[string]any     `json:"params"`
 	Input          map[string]any     `json:"input,omitempty"`
 	Outputs        map[string]any     `json:"outputs"`
+	CompletedGates map[string]bool    `json:"completed_gates,omitempty"`
 	Frames         []frame            `json:"frames"`
 	Visit          int                `json:"visit"`
 	Attempt        int                `json:"attempt"`
