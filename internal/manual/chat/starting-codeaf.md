@@ -839,13 +839,13 @@ reaches a conversation when you next open it or switch models;
 `OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
 the provider refused the key; doctor helps find the source to replace.
 
-## Chats on another computer and hosted sync storage
+## Chats on another computer and hosted relay storage
 
-Pairing and live `--at` access work while hosted sync storage is off. Hosted storage is off by default while its privacy terms are being finished, so chats are not stored on the sync service until approval; they still move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). After pairing, request access in Settings → Devices → sync storage → enter. The panel shows the public request code and link as well as opening a browser. Sync starts by itself after a background reading sees approval; `/status` refreshes it without holding up the chat. A self-hosted `codeaf relay --store <directory>` needs no request.
+Pairing and live `--at` access work while hosted relay storage is off. Hosted storage is off by default while its privacy terms are being finished, so chats are not stored on the relay until approval; they still move by blind pass-through between your paired computers while both are running codeaf (*Blind pass-through*). After pairing, request access in Settings → Devices → relay storage → enter. The panel shows the public request code and link as well as opening a browser. Sync starts by itself after a background reading sees approval; `/status` refreshes it without holding up the chat. A self-hosted `codeaf relay --store <directory>` needs no request.
 
-## Sync storage is off — a notice in an open chat
+## Relay storage is off — a notice in an open chat
 
-A paired account with storage off sees one of two notices once when a chat first tries to sync. While blind pass-through carries your chats it says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)`, because the chats are not stuck and only what needs the sync service's storage waits. When blind pass-through is off or unavailable (see *Turn off blind pass-through*), it says `sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. If access is withdrawn after syncing starts, the chat shows it once again. This appears in the window showing the chat, including an already-open window. Your chats keep saving on this computer.
+A paired account with storage off sees one of two notices once when a chat first tries to sync. While blind pass-through carries your chats it says `chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for relay storage (request access in Settings under Devices)`, because the chats are not stuck and only what needs the relay's storage waits. When blind pass-through is off or unavailable (see *Turn off blind pass-through*), it says `relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices`. If access is withdrawn after syncing starts, the chat shows it once again. This appears in the window showing the chat, including an already-open window. Your chats keep saving on this computer.
 
 ## Starting after an upgrade — standing orders and rules from an earlier version
 

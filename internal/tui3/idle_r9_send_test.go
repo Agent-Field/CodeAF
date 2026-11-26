@@ -108,7 +108,7 @@ func TestIdleOpen_R9_EnterMatrix(t *testing.T) {
 					t.Fatalf("reopen lost exact observed expectation: %+v", taker.seen)
 				}
 				arrived, ok := a.agent.(*switchAgent)
-				if len(old.sent) != 0 || !ok || len(arrived.sent) != 1 || arrived.sent[0] != words || !a.input.empty() || a.at(pageHome) || strings.Contains(homeText(a), continueAsk) {
+				if len(old.sent) != 0 || !ok || len(arrived.sent) != 1 || arrived.sent[0] != words || !a.input.empty() || a.at(pageHome) || strings.Contains(homeText(a), moveAsk) {
 					t.Fatalf("first Enter did not reopen and send without a card: old=%v new=%T box=%q notes=%v", old.sent, a.agent, a.input.String(), noteTexts(a))
 				}
 				if source.reads != 1 {
@@ -160,7 +160,7 @@ func TestIdleOpen_R9_RelayOutcomes(t *testing.T) {
 						t.Fatalf("refusal spent words: sent=%v box=%q error=%v", agent.sent, a.input.String(), err)
 					}
 					if service == "answering" {
-						if !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) || taker.seen != nil {
+						if !a.at(pageHome) || !strings.Contains(homeText(a), moveAsk) || taker.seen != nil {
 							t.Fatalf("other holder needs consent: %s", homeText(a))
 						}
 						drive(t, a, key("esc"))
@@ -176,7 +176,7 @@ func TestIdleOpen_R9_RelayOutcomes(t *testing.T) {
 					source.err = nil
 					if other {
 						drive(t, a, key("enter"))
-						if !strings.Contains(homeText(a), continueAsk) || len(agent.sent) != 0 {
+						if !strings.Contains(homeText(a), moveAsk) || len(agent.sent) != 0 {
 							t.Fatal("recovery bypassed consent")
 						}
 						return
@@ -210,7 +210,7 @@ func TestIdleOpen_R9_FreeHigherOwnFenceNeedsConsent(t *testing.T) {
 			})
 			a.input.setText("keep this choice mine")
 			drive(t, a, key("enter"))
-			if agent.checks != 0 || taker.seen != nil || len(agent.sent) != 0 || a.input.String() != "keep this choice mine" || !strings.Contains(homeText(a), continueAsk) {
+			if agent.checks != 0 || taker.seen != nil || len(agent.sent) != 0 || a.input.String() != "keep this choice mine" || !strings.Contains(homeText(a), moveAsk) {
 				t.Fatalf("higher fence skipped consent: checks=%d take=%+v sent=%v box=%q", agent.checks, taker.seen, agent.sent, a.input.String())
 			}
 		})
@@ -303,7 +303,7 @@ func TestIdleOpen_R9_RetiredReceiptProbeKeepsWordsOnFailure(t *testing.T) {
 			if err != nil || string(before) != string(after) || len(old.sent) != 0 || taker.seen != nil || a.input.String() != words || source.reads != 1 || source.within <= 0 || source.within > idleSendProbeTimeout {
 				t.Fatalf("failed receipt probe spent the gesture: sent=%v take=%+v box=%q probes=%d budget=%v error=%v", old.sent, taker.seen, a.input.String(), source.reads, source.within, err)
 			}
-			if notes := strings.Join(noteTexts(a), "\n"); strings.Count(notes, chatlist.TakeBackUnreachable) != 1 || strings.Contains(homeText(a), continueAsk) {
+			if notes := strings.Join(noteTexts(a), "\n"); strings.Count(notes, chatlist.TakeBackUnreachable) != 1 || strings.Contains(homeText(a), moveAsk) {
 				t.Fatalf("failed receipt probe needs one honest line and no card: %s", notes)
 			}
 			source.err = nil
@@ -350,7 +350,7 @@ func TestIdleOpen_P9X1_BashCommandRunsOwnershipCheckAndKeepsWords(t *testing.T) 
 		}
 	})
 
-	t.Run("held elsewhere raises Continue here and keeps bash line in box", func(t *testing.T) {
+	t.Run("held elsewhere raises Move here and keeps bash line in box", func(t *testing.T) {
 		a, old, source := r8OwnLiveWindow(t, false)
 		bash := &p9xBashAgent{r9SendAgent: &r9SendAgent{r8SendAgent: old}}
 		a.agent = bash
@@ -361,8 +361,8 @@ func TestIdleOpen_P9X1_BashCommandRunsOwnershipCheckAndKeepsWords(t *testing.T) 
 		const cmdLine = "!sleep 400"
 		a.input.setText(cmdLine)
 		drive(t, a, key("enter"))
-		if len(bash.bashSent) != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) || a.input.String() != cmdLine {
-			t.Fatalf("displaced bash did not offer Continue here: bashSent=%v home=%v box=%q", bash.bashSent, a.at(pageHome), a.input.String())
+		if len(bash.bashSent) != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), moveAsk) || a.input.String() != cmdLine {
+			t.Fatalf("displaced bash did not offer Move here: bashSent=%v home=%v box=%q", bash.bashSent, a.at(pageHome), a.input.String())
 		}
 	})
 

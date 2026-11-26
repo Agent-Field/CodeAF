@@ -257,8 +257,8 @@ func TestContinueThreeRemoteChatsInOneWindowShowsContinuingAndFullHistory(t *tes
 		if a.homeTaking != rc.id {
 			t.Fatalf("%s: homeTaking = %q immediately after confirm, want %q", rc.id, a.homeTaking, rc.id)
 		}
-		if text := homeText(a); !strings.Contains(text, continuing) {
-			t.Fatalf("%s: Home did not show %q while take ran:\n%s", rc.id, continuing, text)
+		if text := homeText(a); !strings.Contains(text, movingHere) {
+			t.Fatalf("%s: Home did not show %q while take ran:\n%s", rc.id, movingHere, text)
 		}
 
 		drain(t, a, takeCmd)
@@ -345,7 +345,7 @@ func TestHomeTakingClearedOnEveryEndingAndBusyPressExplainsOnCard(t *testing.T) 
 		// Press enter on another row while the first take is still running.
 		standOn(t, a, "0000000000000204")
 		card := strings.Join(cardRows(a), "\n")
-		if !strings.Contains(card, continueAlreadyRunning) {
+		if !strings.Contains(card, moveAlreadyRunning) {
 			t.Fatalf("busy press did not explain on the card:\n%s\nfull Home:\n%s", card, homeText(a))
 		}
 
@@ -390,7 +390,7 @@ func TestHomeTakingClearedOnEveryEndingAndBusyPressExplainsOnCard(t *testing.T) 
 		}
 		// The card itself must remain open with the failure reason and retry.
 		card := strings.Join(cardRows(a), "\n")
-		if !strings.Contains(card, continueFails) || !strings.Contains(card, continueRetry) {
+		if !strings.Contains(card, moveFails) || !strings.Contains(card, moveRetry) {
 			t.Fatalf("failure not shown on card with retry:\n%s", card)
 		}
 
@@ -401,7 +401,7 @@ func TestHomeTakingClearedOnEveryEndingAndBusyPressExplainsOnCard(t *testing.T) 
 		if a.homeTaking != "" {
 			t.Fatalf("chat-page failed take left homeTaking=%q", a.homeTaking)
 		}
-		if notes := strings.Join(noteTexts(a), "\n"); !strings.Contains(notes, continueFails) {
+		if notes := strings.Join(noteTexts(a), "\n"); !strings.Contains(notes, moveFails) {
 			t.Fatalf("chat-page failed take missing from chat notes: %q", notes)
 		}
 	})
@@ -454,8 +454,8 @@ func TestBusyStoreNamedWithHolderAndOffersRetry(t *testing.T) {
 	}
 	exeBase := filepath.Base(os.Args[0])
 	for _, want := range []string{
-		"could not continue this chat here because the engine store is busy (held by " + exeBase + ", pid ",
-		continueRetry,
+		"could not move this chat here because the engine store is busy (held by " + exeBase + ", pid ",
+		moveRetry,
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("busy store card missing %q:\n%s", want, card)
@@ -473,7 +473,7 @@ func TestBusyStoreNamedWithHolderAndOffersRetry(t *testing.T) {
 	}
 }
 
-// Contract 3: Under `--host`, `continue here` is not offered and a chat the
+// Contract 3: Under `--host`, `move here` is not offered and a chat the
 // remote host already holds never shows as held elsewhere or duplicated.
 func TestHostedSurfaceNeverOffersContinueOrShowsHeldElsewhere(t *testing.T) {
 	lab := newHomeLab(t)
@@ -509,7 +509,7 @@ func TestHostedSurfaceNeverOffersContinueOrShowsHeldElsewhere(t *testing.T) {
 	}
 
 	screen := homeText(a)
-	if strings.Contains(screen, "held on host-b") || strings.Contains(screen, chatlist.OfferContinue) || strings.Contains(screen, "Other Remote") {
+	if strings.Contains(screen, "held on host-b") || strings.Contains(screen, chatlist.OfferMove) || strings.Contains(screen, "Other Remote") {
 		t.Fatalf("hosted Home showed held-elsewhere or continue offer:\n%s", screen)
 	}
 	if got := countHomeRowsForID(a, heldCell); got != 1 {

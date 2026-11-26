@@ -15,9 +15,11 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -738,3 +740,508 @@ func TestTheWindowIsSpelledTheWayASentenceWantsIt(t *testing.T) {
 		}
 	}
 }
+
+// TestTheFirstRetryAfterADropWaitsAJitteredSecond verifies V22 on a road that
+// is dialled through a relay ([Roaming.SpreadReturns]): the first retry after a
+// dropped link waits 1 s + U[0, 5 s) and each later doubled wait up to the 15 s
+// cap is scaled by U[0.75, 1.25), while a drop followed by an immediate success
+// still redials once. A road that is not dialled through a relay keeps its old
+// schedule, which TestAnSshRoamingClientKeepsItsOldFirstRetryAndSchedule pins.
+func TestTheFirstRetryAfterADropWaitsAJitteredSecond(t *testing.T) {
+	wasRand := retryRand
+	wasSleep := redialSleep
+	t.Cleanup(func() {
+		retryRand = wasRand
+		redialSleep = wasSleep
+	})
+
+	recordSchedule := func(t *testing.T, failuresBeforeSuccess int) ([]time.Duration, int) {
+		t.Helper()
+		var mu sync.Mutex
+		var waits []time.Duration
+		redialSleep = func(stop <-chan struct{}, d time.Duration) bool {
+			select {
+			case <-stop:
+				return false
+			default:
+				mu.Lock()
+				waits = append(waits, d)
+				mu.Unlock()
+				return true
+			}
+		}
+
+		dials := 0
+		var firstSurface io.ReadWriteCloser
+		dialer := func() (io.ReadWriteCloser, error) {
+			mu.Lock()
+			attempt := dials
+			dials++
+			mu.Unlock()
+			if attempt > 0 && attempt <= failuresBeforeSuccess {
+				return nil, errors.New("no route to host")
+			}
+			ours, theirs := net.Pipe()
+			engine := &scripted{
+				t:    t,
+				conn: theirs,
+				said: Welcome{Version: Version, SessionFile: "/j.jsonl", Persistent: true},
+			}
+			guard.Go("remote/test-redial-jitter", func() { engine.serve(nil) })
+			if attempt == 0 {
+				firstSurface = ours
+			}
+			return ours, nil
+		}
+
+		client, err := Roam("devbox", Hello{Workspace: "app"}, Roaming{Dial: dialer, Window: RoamWindow, SpreadReturns: true})
+		if err != nil {
+			t.Fatalf("roam: %v", err)
+		}
+		defer func() { _ = client.Close() }()
+
+		_ = firstSurface.Close()
+		wantDials := 2 + failuresBeforeSuccess
+		waitFor(t, "the redial schedule to finish", func() bool {
+			mu.Lock()
+			got := dials
+			mu.Unlock()
+			return got == wantDials && client.LinkNote() == ""
+		})
+		if err := client.Err(); err != nil {
+			t.Fatalf("client failed after redial: %v", err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]time.Duration(nil), waits...), dials
+	}
+
+	// Low extreme: U = 0 gives exactly 1 s on the first retry, then 0.75 of
+	// each doubled wait (2 s, 4 s, 8 s, and 15 s at the cap).
+	retryRand = func() float64 { return 0 }
+	lowWaits, _ := recordSchedule(t, 5)
+	wantLow := []time.Duration{
+		time.Second,
+		1500 * time.Millisecond,
+		3 * time.Second,
+		6 * time.Second,
+		11250 * time.Millisecond,
+		11250 * time.Millisecond,
+	}
+	if len(lowWaits) != len(wantLow) {
+		t.Fatalf("low-extreme schedule length = %d, want %d (%v)", len(lowWaits), len(wantLow), lowWaits)
+	}
+	for i, want := range wantLow {
+		if lowWaits[i] != want {
+			t.Fatalf("low-extreme wait %d = %v, want %v", i+1, lowWaits[i], want)
+		}
+	}
+
+	// High extreme: U just under 1 gives just under 6 s on the first retry,
+	// then just under 1.25 of each doubled wait.
+	retryRand = func() float64 { return 0.9999999 }
+	highWaits, _ := recordSchedule(t, 5)
+	highCeilings := []time.Duration{
+		6 * time.Second,
+		2500 * time.Millisecond,
+		5 * time.Second,
+		10 * time.Second,
+		18750 * time.Millisecond,
+		18750 * time.Millisecond,
+	}
+	if len(highWaits) != len(highCeilings) {
+		t.Fatalf("high-extreme schedule length = %d, want %d (%v)", len(highWaits), len(highCeilings), highWaits)
+	}
+	for i, ceiling := range highCeilings {
+		if highWaits[i] >= ceiling || highWaits[i] < ceiling-time.Millisecond {
+			t.Fatalf("high-extreme wait %d = %v, want just under %v", i+1, highWaits[i], ceiling)
+		}
+	}
+
+	// Default source: ten samples all fall in [1 s, 6 s) on the first retry and
+	// within [0.75, 1.25) of each doubled wait thereafter, and are not all equal.
+	retryRand = nil
+	bands := []struct {
+		low, high time.Duration
+	}{
+		{time.Second, 6 * time.Second},
+		{1500 * time.Millisecond, 2500 * time.Millisecond},
+		{3 * time.Second, 5 * time.Second},
+		{6 * time.Second, 10 * time.Second},
+		{11250 * time.Millisecond, 18750 * time.Millisecond},
+		{11250 * time.Millisecond, 18750 * time.Millisecond},
+	}
+	firstSeen := map[time.Duration]bool{}
+	secondSeen := map[time.Duration]bool{}
+	for sample := 0; sample < 10; sample++ {
+		waits, _ := recordSchedule(t, 5)
+		if len(waits) != len(bands) {
+			t.Fatalf("sample %d recorded %d waits, want %d", sample, len(waits), len(bands))
+		}
+		for i, band := range bands {
+			if waits[i] < band.low || waits[i] >= band.high {
+				t.Fatalf("sample %d wait %d = %v, outside [%v, %v)", sample, i+1, waits[i], band.low, band.high)
+			}
+		}
+		firstSeen[waits[0]] = true
+		secondSeen[waits[1]] = true
+	}
+	if len(firstSeen) < 2 {
+		t.Fatalf("ten default-source first waits were all identical: %v", firstSeen)
+	}
+	if len(secondSeen) < 2 {
+		t.Fatalf("ten default-source second waits were all identical: %v", secondSeen)
+	}
+
+	// A drop followed by an immediate success still redials once.
+	waits, dials := recordSchedule(t, 0)
+	if dials != 2 || len(waits) != 1 {
+		t.Fatalf("immediate recovery made %d dials with %d waits (%v), want 2 dials and 1 wait", dials, len(waits), waits)
+	}
+	if waits[0] < time.Second || waits[0] >= 6*time.Second {
+		t.Fatalf("immediate recovery wait = %v, outside [1s, 6s)", waits[0])
+	}
+}
+
+// ── planned redials and the roads that spread their returns (phase 2, lane C) ─
+
+// endedOnPurpose is the error livedoor's channel returns when the viewer closed
+// it for a road swap. It lives here because this package cannot import livedoor
+// and the contract between them is only the PlannedRedial method.
+type endedOnPurpose struct{}
+
+func (endedOnPurpose) Error() string       { return "road-change" }
+func (endedOnPurpose) PlannedRedial() bool { return true }
+
+// swappable is a pipe that can be ended two ways: dropped, as a network does,
+// or closed on purpose by the viewer for a road swap.
+type swappable struct {
+	io.ReadWriteCloser
+	planned atomic.Bool
+	// said is what the far end ended the link with, when it ended it by saying
+	// something: the error [swappable.endWith] stored.
+	said atomic.Pointer[error]
+}
+
+func (s *swappable) Read(p []byte) (int, error) {
+	n, err := s.ReadWriteCloser.Read(p)
+	if err != nil {
+		if said := s.said.Load(); said != nil {
+			return n, *said
+		}
+		if s.planned.Load() {
+			return n, endedOnPurpose{}
+		}
+	}
+	return n, err
+}
+
+// endWith closes the link the way a far end that ANSWERED does: the reader gets
+// the error the far end's own words are carried by, not a bare end of file.
+func (s *swappable) endWith(err error) {
+	s.said.Store(&err)
+	_ = s.ReadWriteCloser.Close()
+}
+
+func (s *swappable) endOnPurpose() {
+	s.planned.Store(true)
+	_ = s.ReadWriteCloser.Close()
+}
+
+// timeline records, in order, every pause the redial loop asked for and every
+// dial it made, so a test reads the schedule instead of sleeping through it.
+type timeline struct {
+	mu     sync.Mutex
+	events []string
+	pauses []time.Duration
+}
+
+func (tl *timeline) add(kind string, d time.Duration) {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	tl.events = append(tl.events, kind)
+	if kind == "pause" {
+		tl.pauses = append(tl.pauses, d)
+	}
+}
+
+func (tl *timeline) snapshot() ([]string, []time.Duration) {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	return append([]string(nil), tl.events...), append([]time.Duration(nil), tl.pauses...)
+}
+
+// redialRig is a roaming client whose first link can be ended on purpose or
+// dropped, whose next `failures` dials fail, and whose pauses are recorded and
+// not slept.
+func redialRig(t *testing.T, roaming Roaming, failures int) (*Client, *swappable, *timeline) {
+	t.Helper()
+	was := redialSleep
+	t.Cleanup(func() { redialSleep = was })
+	tl := &timeline{}
+	redialSleep = func(stop <-chan struct{}, d time.Duration) bool {
+		select {
+		case <-stop:
+			return false
+		default:
+		}
+		tl.add("pause", d)
+		return true
+	}
+	var mu sync.Mutex
+	dials := 0
+	first := &swappable{}
+	roaming.Dial = func() (io.ReadWriteCloser, error) {
+		mu.Lock()
+		attempt := dials
+		dials++
+		mu.Unlock()
+		if attempt > 0 {
+			tl.add("dial", 0)
+		}
+		if attempt > 0 && attempt <= failures {
+			return nil, errors.New("no route to host")
+		}
+		ours, theirs := net.Pipe()
+		engine := &scripted{t: t, conn: theirs, said: Welcome{Version: Version, SessionFile: "/j.jsonl", Persistent: true}}
+		guard.Go("remote/test-planned-redial", func() { engine.serve(nil) })
+		if attempt == 0 {
+			first.ReadWriteCloser = ours
+			return first, nil
+		}
+		return ours, nil
+	}
+	roaming.Window = RoamWindow
+	client, err := Roam("devbox", Hello{Workspace: "app"}, roaming)
+	if err != nil {
+		t.Fatalf("roam: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	waitFor(t, "the first link", func() bool { return first.ReadWriteCloser != nil })
+	return client, first, tl
+}
+
+func settled(t *testing.T, client *Client, tl *timeline, dials int) {
+	t.Helper()
+	waitFor(t, "the redial to finish", func() bool {
+		events, _ := tl.snapshot()
+		n := 0
+		for _, e := range events {
+			if e == "dial" {
+				n++
+			}
+		}
+		return n == dials && client.LinkNote() == "" && !client.isReconnecting()
+	})
+	if err := client.Err(); err != nil {
+		t.Fatalf("the client failed after the redial: %v", err)
+	}
+}
+
+func (c *Client) isReconnecting() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reconnecting
+}
+
+// TestAPlannedRedialSkipsTheFirstJitterAndLaterOnesKeepIt verifies V31 (and G1 of
+// SPEC-P2): a link closed on purpose for a road swap is redialled at once, with no
+// first pause on any road, and the attempts after it keep the schedule the road
+// has: spread on a relay-dialled road, the plain doubling on one that is not.
+func TestAPlannedRedialSkipsTheFirstJitterAndLaterOnesKeepIt(t *testing.T) {
+	wasRand := retryRand
+	t.Cleanup(func() { retryRand = wasRand })
+	retryRand = func() float64 { return 0 }
+
+	t.Run("relay road, planned", func(t *testing.T) {
+		client, first, tl := redialRig(t, Roaming{SpreadReturns: true}, 2)
+		first.endOnPurpose()
+		settled(t, client, tl, 3)
+		events, pauses := tl.snapshot()
+		if len(events) == 0 || events[0] != "dial" {
+			t.Fatalf("a planned redial paused before its first attempt: %v", events)
+		}
+		// U = 0 scales each later wait by exactly 0.75: 2 s and 4 s doubled from the base.
+		want := []time.Duration{1500 * time.Millisecond, 3 * time.Second}
+		if len(pauses) != len(want) || pauses[0] != want[0] || pauses[1] != want[1] {
+			t.Fatalf("later attempts keep the spread schedule: pauses %v, want %v", pauses, want)
+		}
+	})
+	t.Run("plain road, planned", func(t *testing.T) {
+		client, first, tl := redialRig(t, Roaming{}, 2)
+		first.endOnPurpose()
+		settled(t, client, tl, 3)
+		events, pauses := tl.snapshot()
+		if len(events) == 0 || events[0] != "dial" {
+			t.Fatalf("a planned redial paused before its first attempt: %v", events)
+		}
+		want := []time.Duration{2 * time.Second, 4 * time.Second}
+		if len(pauses) != len(want) || pauses[0] != want[0] || pauses[1] != want[1] {
+			t.Fatalf("later attempts keep the plain schedule: pauses %v, want %v", pauses, want)
+		}
+	})
+	t.Run("a dropped link is not planned", func(t *testing.T) {
+		client, first, tl := redialRig(t, Roaming{SpreadReturns: true}, 0)
+		_ = first.ReadWriteCloser.Close()
+		settled(t, client, tl, 1)
+		events, pauses := tl.snapshot()
+		if len(events) < 2 || events[0] != "pause" || len(pauses) != 1 || pauses[0] != time.Second {
+			t.Fatalf("an unplanned drop waits before its first attempt: events %v pauses %v", events, pauses)
+		}
+	})
+}
+
+// TestAnSshRoamingClientKeepsItsOldFirstRetryAndSchedule pins the default (fixes
+// keep defaults): a road that does not set SpreadReturns, which is every ssh
+// `--host` client, local socket and engine pipe, keeps the first pause and the
+// doubling it had before the relay's returns were spread, whatever the random
+// source says.
+func TestAnSshRoamingClientKeepsItsOldFirstRetryAndSchedule(t *testing.T) {
+	wasRand := retryRand
+	t.Cleanup(func() { retryRand = wasRand })
+	retryRand = func() float64 { return 0.5 } // would be 3.5 s and 1.0 x if it were used at all
+
+	client, first, tl := redialRig(t, Roaming{}, 5)
+	_ = first.ReadWriteCloser.Close()
+	settled(t, client, tl, 6)
+	_, pauses := tl.snapshot()
+	want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 15 * time.Second, 15 * time.Second}
+	if len(pauses) != len(want) {
+		t.Fatalf("pauses %v, want %v", pauses, want)
+	}
+	for i := range want {
+		if pauses[i] != want[i] {
+			t.Fatalf("pause %d = %v, want %v (all: %v)", i+1, pauses[i], want[i], pauses)
+		}
+	}
+}
+
+// heldRedial is a roaming client whose first link has just been closed on
+// purpose and whose next dial blocks until the returned release is called.
+func heldRedial(t *testing.T, noteAfter time.Duration) (*Client, func()) {
+	t.Helper()
+	was := plannedNoteAfter
+	plannedNoteAfter = noteAfter
+	t.Cleanup(func() { plannedNoteAfter = was })
+
+	hold := make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(hold) }) }
+	t.Cleanup(release)
+
+	var mu sync.Mutex
+	dials := 0
+	first := &swappable{}
+	dial := func() (io.ReadWriteCloser, error) {
+		mu.Lock()
+		attempt := dials
+		dials++
+		mu.Unlock()
+		if attempt > 0 {
+			<-hold
+		}
+		ours, theirs := net.Pipe()
+		engine := &scripted{t: t, conn: theirs, said: Welcome{Version: Version, SessionFile: "/j.jsonl", Persistent: true}}
+		guard.Go("remote/test-planned-note", func() { engine.serve(nil) })
+		if attempt == 0 {
+			first.ReadWriteCloser = ours
+			return first, nil
+		}
+		return ours, nil
+	}
+	client, err := Roam("devbox", Hello{Workspace: "app"}, Roaming{Dial: dial, Window: time.Minute})
+	if err != nil {
+		t.Fatalf("roam: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	first.endOnPurpose()
+	waitFor(t, "the redial to be under way", func() bool { return client.isReconnecting() })
+	return client, release
+}
+
+// TestAPlannedRedialSaysNothingUntilItTakesLongerThanAMoment verifies the
+// delayed `reconnecting` note of G1: a swap that has not yet taken a moment
+// shows the person nothing, though a call made in the gap is still refused
+// (nothing may be written between the new pipe and its welcome), and one that
+// takes longer says it in the words an unplanned drop uses.
+func TestAPlannedRedialSaysNothingUntilItTakesLongerThanAMoment(t *testing.T) {
+	t.Run("within a moment", func(t *testing.T) {
+		client, release := heldRedial(t, time.Minute)
+		if note := client.LinkNote(); note != "" {
+			t.Fatalf("a swap said %q before it had taken a moment", note)
+		}
+		if _, err := client.HeldQuestions(); err == nil {
+			t.Fatalf("a call made in the gap was not refused")
+		}
+		release()
+		waitFor(t, "the link to come back", func() bool { return !client.isReconnecting() })
+		if note := client.LinkNote(); note != "" {
+			t.Fatalf("a link that came back says %q", note)
+		}
+	})
+	t.Run("longer than a moment", func(t *testing.T) {
+		client, release := heldRedial(t, 20*time.Millisecond)
+		waitFor(t, "the note once the swap outlasts a moment", func() bool { return client.LinkNote() != "" })
+		if note := client.LinkNote(); !strings.HasPrefix(note, "reconnecting to devbox") {
+			t.Fatalf("the note reads %q", note)
+		}
+		release()
+		waitFor(t, "the link to come back", func() bool { return !client.isReconnecting() && client.LinkNote() == "" })
+	})
+}
+
+// farEndSaid is the error livedoor's channel returns when the host ended a view
+// on purpose and said why (`remote-control-off`). It lives here for the reason
+// [endedOnPurpose] does: the contract between the two packages is only the
+// EndsView and Reason methods.
+type farEndSaid struct{ reason string }
+
+func (e farEndSaid) Error() string  { return "livedoor: channel reset: " + e.reason }
+func (e farEndSaid) EndsView() bool { return true }
+func (e farEndSaid) Reason() string { return e.reason }
+
+// TestAViewTheFarEndEndedOnPurposeIsNotRedialled is the viewer half of the
+// contract for turning remote control off on the computer being watched: a link
+// that ended because the far end said so ends the client at once, with the far
+// end's one sentence, and neither pauses nor dials nor says `reconnecting`. A
+// link that merely DROPPED still redials (the tests above), which is the default
+// this change keeps.
+func TestAViewTheFarEndEndedOnPurposeIsNotRedialled(t *testing.T) {
+	client, first, tl := redialRig(t, Roaming{SpreadReturns: true}, 0)
+	first.endWith(farEndSaid{reason: "remote-control-off"})
+
+	waitFor(t, "the client to end", func() bool { return client.Err() != nil })
+	if got, want := client.Err().Error(), "devbox turned remote control off."; got != want {
+		t.Fatalf("the ended view says %q, want exactly %q", got, want)
+	}
+	if note := client.LinkNote(); note != "" {
+		t.Fatalf("nothing is reconnecting, so the note is empty, not %q", note)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if events, _ := tl.snapshot(); len(events) != 0 {
+		t.Fatalf("the client paused or dialled after the far end ended the view: %v", events)
+	}
+}
+
+// A far end that ended the view with a reason that is NOT the final one is still
+// redialled, and a reason the viewer has no sentence for does not end it either:
+// the set that ends a view for good is closed.
+func TestAViewEndedWithAnyOtherReasonIsStillRedialled(t *testing.T) {
+	for _, reason := range []string{"permit-changed", "lagging", "host-closing", "a-reason-from-a-newer-build"} {
+		t.Run(reason, func(t *testing.T) {
+			client, first, tl := redialRig(t, Roaming{SpreadReturns: true}, 0)
+			first.endWith(notFinal{reason: reason})
+			settled(t, client, tl, 1)
+			if events, _ := tl.snapshot(); len(events) == 0 {
+				t.Fatalf("a %q end was not redialled", reason)
+			}
+		})
+	}
+}
+
+// notFinal is a reason-bearing channel error that does not end the view for good.
+type notFinal struct{ reason string }
+
+func (e notFinal) Error() string  { return "livedoor: channel reset: " + e.reason }
+func (e notFinal) EndsView() bool { return false }
+func (e notFinal) Reason() string { return e.reason }

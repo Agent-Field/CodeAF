@@ -707,6 +707,8 @@ func (a *app) homeSheetOpen() tea.Cmd {
 		// would raise the sheet a person is standing in. The session half of it
 		// is one function below, and it is the one the door needs.
 		return a.homeOpenRow(line.row, line.dir)
+	case homeMachineRow:
+		return a.homeMachineEnter(line)
 	}
 	return nil
 }

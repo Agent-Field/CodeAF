@@ -244,7 +244,7 @@ func runHostedQuitContract(t *testing.T, relayDown bool) {
 			t.Fatal(err)
 		}
 		line, err := io.ReadAll(out)
-		if err != nil || !strings.Contains(string(line), "saved here; it reaches your other devices when the sync service at ") || strings.Contains(string(line), transcript) || strings.Contains(string(line), "could not save") {
+		if err != nil || !strings.Contains(string(line), "saved here; it reaches your other devices when the relay at ") || strings.Contains(string(line), transcript) || strings.Contains(string(line), "could not save") {
 			t.Fatalf("offline quit report=%q err=%v", line, err)
 		}
 		return

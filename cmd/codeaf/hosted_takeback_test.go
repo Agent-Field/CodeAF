@@ -278,7 +278,7 @@ func TestHostedDisplacedWindowAsksBeforeSending(t *testing.T) {
 	if _, err := io.WriteString(typed, "Add 1 to your last answer. Just the number.\r"); err != nil {
 		t.Fatal(err)
 	}
-	h.wait("continue card", func() bool { return strings.Contains(screen.String(), "Continue this chat here?") })
+	h.wait("continue card", func() bool { return strings.Contains(screen.String(), "Move this chat here?") })
 	if h.modelCalls.Load() != 0 {
 		t.Fatalf("displaced Enter made %d model calls", h.modelCalls.Load())
 	}
@@ -338,7 +338,7 @@ func TestHostedTakeBackReachesAcquireWithoutSharedUploadsOrReleaseDelay(t *testi
 	if _, err := io.WriteString(typed, "take back this chat\r"); err != nil {
 		t.Fatal(err)
 	}
-	h.wait("take-back card", func() bool { return strings.Contains(screen.String(), "Continue this chat here?") })
+	h.wait("take-back card", func() bool { return strings.Contains(screen.String(), "Move this chat here?") })
 	h.mu.Lock()
 	h.requests = nil
 	h.acquires, h.resumes = nil, nil
@@ -562,7 +562,7 @@ func TestKilledComputerTakesBackFromHomeAndLocalCard(t *testing.T) {
 				// The question and its continue chord must be visible in the same offer.
 				h.wait("Home continuation offer", func() bool {
 					text := screen.String()
-					return strings.Contains(text, "Continue other computer's latest chat here?") && (strings.Contains(text, "alt+c") || strings.Contains(text, "opt+c"))
+					return strings.Contains(text, "Move other computer's latest chat here?") && (strings.Contains(text, "alt+c") || strings.Contains(text, "opt+c"))
 				})
 				if _, err := io.WriteString(typed, "\x1bc"); err != nil {
 					t.Fatal(err)
@@ -572,7 +572,7 @@ func TestKilledComputerTakesBackFromHomeAndLocalCard(t *testing.T) {
 					t.Fatal(err)
 				}
 				h.wait("card naming the current holder", func() bool {
-					return strings.Contains(screen.String(), "Continue this chat here?") && strings.Contains(screen.String(), "other computer")
+					return strings.Contains(screen.String(), "Move this chat here?") && strings.Contains(screen.String(), "other computer")
 				})
 				if _, err := io.WriteString(typed, "1\r"); err != nil {
 					t.Fatal(err)

@@ -4822,7 +4822,7 @@ a chain ends after ten requests rather than waiting forever.
 
 ## Do my crew settings follow me to my other computer?
 
-Shared settings wait for hosted sync storage approval (Settings → Devices → sync storage). A self-hosted sync service with `--store` needs no request.
+Shared settings wait for hosted relay storage approval (Settings → Devices → relay storage). A self-hosted relay with `--store` needs no request.
 
 After pairing, crew seat model pins, allowed-model choices, the crew daily cap,
 per-task cap and free-route choice follow synced preferences within a few seconds,

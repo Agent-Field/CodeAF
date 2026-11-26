@@ -865,6 +865,9 @@ func v3SeatPending(place session.Place, say func(string), drives *driveBook) (ex
 		watch.Retire()
 	}
 	watch.OnTail = func() { sealTail(seat, drive) }
+	if drive != nil && err == nil {
+		drive.setFirstSave(func() { executor.Settle(context.Background(), seat) })
+	}
 	// A fresh seat has no foreground turn in flight. Background tasks may be
 	// the first input; their journal writes need a tail seal even before chat.
 	// Window attachment reuses the engine's seat rather than constructing one.

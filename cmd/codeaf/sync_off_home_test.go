@@ -487,7 +487,7 @@ func TestSyncOffHomeKeepsEveryChatOpensAndWrites(t *testing.T) {
 				t.Fatalf("ReadHome() after writing returned %d chats, want 4: %+v", len(afterRows), afterRows)
 			}
 			if got := relayRequests.Load(); got != 0 {
-				t.Fatalf("sync off contacted the sync service %d times, want 0", got)
+				t.Fatalf("sync off contacted the relay %d times, want 0", got)
 			}
 		})
 	}

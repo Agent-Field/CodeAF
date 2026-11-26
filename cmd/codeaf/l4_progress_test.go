@@ -25,7 +25,7 @@ func TestL4CommandProgress(t *testing.T) {
 			<-out.wrote
 		}
 		stop()
-		if terminal && out.String() != "asking the sync service at 127.0.0.1:8901…\n" {
+		if terminal && out.String() != "asking the relay at 127.0.0.1:8901…\n" {
 			t.Fatal(out.String())
 		}
 		if !terminal && out.Len() != 0 {

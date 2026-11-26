@@ -11,7 +11,7 @@
 //	codeaf-release next --channel dev|staging --sha <commit> --date YYYYMMDD
 //	codeaf-release kind <tag>
 //	codeaf-release prune --channel dev|staging
-//	codeaf-release service [--url <sync service>]
+//	codeaf-release service [--url <relay>]
 package main
 
 import (
@@ -95,8 +95,8 @@ func usage(w io.Writer) {
       Print stable, rc, dev, staging, or other.
   prune --channel dev|staging
       Read <tag><tab><RFC3339 createdAt> lines and print expired tags.
-  service [--url <sync service>] | relay-url --channel stable|rc|staging|dev
-      Check a live sync service's capabilities, or print a channel's hosted URL.
+  service [--url <relay>] | relay-url --channel stable|rc|staging|dev
+      Check a live relay's capabilities, or print a channel's hosted URL.
   promotion-plan|promotion-decision|promotion-recheck|promotion-release|promotion-published|promotion-jobs|promotion-push-error|promotion-message
       Plan, check, and report the staging promotion. See docs/rules/promotion.md.
 `)

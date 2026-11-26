@@ -661,7 +661,7 @@ one line on a failed row is the whole of what it says.
 
 ## Are my memories shared across computers? Does /remember work on my other computer — hand edited memories follow my paired computers, memory missing on the new laptop
 
-Shared memories wait for hosted sync storage approval (Settings → Devices → sync storage). A self-hosted sync service with `--store` needs no request. A chat's own memory history moves with the chat.
+Shared memories wait for hosted relay storage approval (Settings → Devices → relay storage). A self-hosted relay with `--store` needs no request. A chat's own memory history moves with the chat.
 
 Person and project memory follow your paired computers through the encrypted vault within one sync round, including hand-edited lines in the Memory place and lines written by older chats. No chat needs to be continued first. Concurrent edits of different lines both survive; for the same line the later edit wins, including forgetting a line. The service receives ciphertext only.
 
@@ -669,7 +669,7 @@ Machine-scoped memories describe one computer and stay there. An unpaired home s
 
 ## Memory in older local conversations and new moving chats
 
-On the hosted sync service, the memory that syncs through the encrypted vault waits for sync storage approval (Settings → Devices → sync storage); a chat's own memory history moves with the chat.
+On the hosted relay, the memory that syncs through the encrypted vault waits for relay storage approval (Settings → Devices → relay storage); a chat's own memory history moves with the chat.
 
 Memories use the local store on each computer. After pairing, an older conversation gets an independent movable copy with its earlier memory history sealed into `.cell/memories.jsonl`; the original is untouched. Person and project memory also sync independently through the encrypted vault.
 

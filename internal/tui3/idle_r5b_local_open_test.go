@@ -73,7 +73,7 @@ func TestIdleOpen_R5b_LocalOpenWithUnreachableSyncOpensLocal(t *testing.T) {
 			}
 			source.read = func(ctx context.Context) ([]chatlist.Row, uint64, error) {
 				if mode != "timeout" {
-					return nil, 0, errors.New("fixture sync service unreachable")
+					return nil, 0, errors.New("fixture relay unreachable")
 				}
 				deadline, ok := ctx.Deadline()
 				if !ok || time.Until(deadline) > 2500*time.Millisecond {
@@ -137,7 +137,7 @@ func TestIdleOpen_R5b_LocalOpenUsesDisplayWhenItAnswers(t *testing.T) {
 					t.Fatalf("free row did not open directly: opens=%d file=%q", taker.opens, a.file)
 				}
 			case "held elsewhere":
-				if taker.opens != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), continueAsk) {
+				if taker.opens != 0 || !a.at(pageHome) || !strings.Contains(homeText(a), moveAsk) {
 					t.Fatal("live hold did not keep the existing choice")
 				}
 			default:

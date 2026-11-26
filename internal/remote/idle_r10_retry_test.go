@@ -8,7 +8,7 @@ import (
 )
 
 func TestIdleRelease_R10_RemoteKeepsRetryableOwnershipRefusal(t *testing.T) {
-	want := &executor.WorkRefusal{Line: "couldn't confirm taking this chat back from the sync service; try again", Retryable: true}
+	want := &executor.WorkRefusal{Line: "couldn't confirm taking this chat back from the relay; try again", Retryable: true}
 	far := &viewerAdmissionAgent{fakeAgent: &fakeAgent{}, refusal: want}
 	loop, err := Loopback(Hello{Version: Version}, Options{Boot: func(Hello) (*Engine, error) { return &Engine{Agent: far}, nil }})
 	if err != nil {

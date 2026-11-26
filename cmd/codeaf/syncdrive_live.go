@@ -45,6 +45,11 @@ type liveDrive struct {
 	turnStop       context.CancelFunc
 	parked         bool // Startup awaits a journal owner.
 	storageWaiting bool
+	// storageChecked is when a touched chat last read local truth to see
+	// whether the storage it waits for has opened, and storageOpen is that
+	// read (nil is [storageOpenAt]); see [liveDrive.storageReopened].
+	storageChecked time.Time
+	storageOpen    func(home string) bool
 	waiting        bool // local setup or a retryable failure still permits another attempt
 	ready          chan struct{}
 	attempted      bool
@@ -59,6 +64,10 @@ type liveDrive struct {
 	changes     chan struct{}
 	idleCheck   func() bool
 	surfaceIdle func() bool
+	// firstSave seals the chat now, through the recorder that seals everything
+	// else. It is set by the seat once there is one, and it is how a chat that
+	// has never been sealed gets the head an early record stands on.
+	firstSave func()
 }
 
 // newLiveDrive starts the drive side behind the first paint. Local startup
@@ -105,6 +114,7 @@ func (l *liveDrive) afterFunc(d time.Duration, fn func()) func() bool {
 // The identity is one file read and the relay is asked only once it exists, so a
 // chat that never pairs costs nothing per call.
 func (l *liveDrive) try() {
+	l.storageReopened()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.parked || l.closed.Load() || l.storageWaiting || l.drive != nil || l.ready != nil || (l.attempted && !l.waiting) || (l.waiting && !syncsetup.MayTalk(home.Dir())) {
@@ -125,6 +135,63 @@ func (l *liveDrive) try() {
 	l.retryAt = time.Time{}
 	l.ready = make(chan struct{})
 	l.launch(l.ready)
+}
+
+// storageRecheckEvery is the most often a touched chat that waits for storage
+// looks at local files to see whether it has opened. Two seconds is below what
+// a person notices after pairing and far above what a chat's touches cost.
+const storageRecheckEvery = 2 * time.Second
+
+// storageOpenAt answers from local files alone, with no request, the question
+// the drive's own startup asks: may this computer's chats be shared now, through
+// the account's storage or live. It is [syncsetup.Sync.ChatStorageOff] turned
+// round, for a caller that has only the home.
+func storageOpenAt(home string) bool {
+	return syncsetup.StorageForHome(home) == "on" || syncsetup.LiveTransferForHome(home)
+}
+
+// storageReopened wakes a chat that waits for closed storage as soon as it is
+// touched after the storage has opened. THE WAIT HAS ONE OTHER WAKE-UP: a
+// timer shared by the whole process that looks once a minute (syncsetup.
+// StoragePollEvery), plus a call from this process's own pairing. A computer
+// paired by ANOTHER process (a terminal, a second window's engine) therefore
+// left a chat that was already open unshared for up to a minute. The chat is
+// touched at every message, tool gate and save, so asking then costs nothing
+// while nothing waits and at most one small local read every two seconds while
+// something does, and adds no timer. A chat held back for any other reason (the
+// relay refusing, no other computer yet) never reaches this read, and a chat
+// whose storage is still closed stays exactly as it was.
+func (l *liveDrive) storageReopened() {
+	open, due := l.storageRecheck()
+	if !due {
+		return
+	}
+	// The read and the wake happen outside the lock: waking clears the wait and
+	// may start the drive, which takes it again.
+	if open(home.Dir()) {
+		l.storageOpened()
+	}
+}
+
+// storageRecheck says whether a touch should look at local files now, and
+// through which read, and starts the two seconds again when it should. A chat
+// that is not waiting for storage, or that looked less than two seconds ago, is
+// not due.
+func (l *liveDrive) storageRecheck() (open func(home string) bool, due bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.storageWaiting || l.closed.Load() {
+		return nil, false
+	}
+	now := l.nowTime()
+	if !l.storageChecked.IsZero() && now.Sub(l.storageChecked) < storageRecheckEvery {
+		return nil, false
+	}
+	l.storageChecked = now
+	if l.storageOpen != nil {
+		return l.storageOpen, true
+	}
+	return storageOpenAt, true
 }
 
 // begin spends the reserved startup exactly once after the journal opens.
@@ -224,6 +291,7 @@ func (l *liveDrive) install(d *syncsetup.Drive, err error, ready chan struct{}) 
 		l.told = nil
 		l.refusedSince = time.Time{}
 		d.Working(l.working)
+		l.askFirstSave(d)
 		d.SetIdleCheck(l.idleReady)
 		d.CatchUp()
 		l.retryWait = 0
@@ -365,7 +433,31 @@ func (l *liveDrive) Working(on bool) {
 	l.working = on
 	if l.drive != nil {
 		l.drive.Working(on)
+		if on {
+			l.askFirstSave(l.drive)
+		}
 	}
+}
+
+// setFirstSave gives the drive the seat's way of sealing the chat now.
+func (l *liveDrive) setFirstSave(save func()) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.firstSave = save
+}
+
+// askFirstSave has the chat sealed when its first spoken turn has just started
+// and there is no head for the early record to stand on ([syncsetup.Drive.
+// EarlyHeadOwed]). A chat opened with /new has none, so without this the row
+// waited for the turn to end. The seal runs off the turn's goroutine and
+// reaches the drive through the ordinary store, which notes it and creates the
+// record. The caller holds mu; nothing here waits for the seal.
+func (l *liveDrive) askFirstSave(d *syncsetup.Drive) {
+	if l.firstSave == nil || !d.EarlyHeadOwed() {
+		return
+	}
+	save := l.firstSave
+	guard.Go("first save of a new chat", save)
 }
 
 // TurnEnded keeps the shared working flag until all work the reply left behind

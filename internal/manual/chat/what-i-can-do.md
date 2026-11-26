@@ -18,7 +18,8 @@ not a hard word limit; the wording and length can vary with the model and the ta
 
 ## Is this only for programming — is codeaf only for code, or for any kind of work?
 
-Not only programming. Nothing else on this page is about code in particular:
+Not only programming. codeaf is not only a programming tool or only for writing software, and
+nothing else on this page is about code in particular:
 files, shell commands, the web, pictures, audio and video, your connected
 accounts, your own settings. A folder of contracts, a pile of recordings to
 transcribe and a repository are the same material to codeaf — whatever is in the

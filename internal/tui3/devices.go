@@ -36,20 +36,38 @@ import (
 )
 
 const (
-	devicesNameKey    = "n rename"
-	devicesGoneKey    = "r remove"
-	devicesMoveKey    = "↑↓ choose"
-	devicesCloseKey   = "esc close"
-	devicesNameKeys   = "enter save · ctrl+u clear · esc cancel"
-	devicesNameAsk    = "name this device: "
-	devicesNameOwn    = "a device renames itself — choose this device's row, or open /devices on the one you mean."
-	devicesLoading    = "looking up your devices…"
-	devicesRemoveKeys = "y removes  ·  any other key keeps it"
-	devicesRemoveAsk  = "remove %s? it must pair again to come back  ·  " + devicesRemoveKeys
-	devicesRevoked    = "%s was removed — it can no longer reach your chats."
-	devicesSelf       = "this device"
-	devicesOwnRow     = "this device cannot remove itself — choose another row."
+	devicesNameKey        = "n rename"
+	devicesGoneKey        = "r remove"
+	devicesWatchKey       = "w watch"
+	devicesTypeKey        = "t type"
+	devicesMoveKey        = "↑↓ choose"
+	devicesCloseKey       = "esc close"
+	devicesNameKeys       = "enter save · ctrl+u clear · esc cancel"
+	devicesNameAsk        = "name this device: "
+	devicesNameOwn        = "a device renames itself — choose this device's row, or open /devices on the one you mean."
+	devicesLoading        = "looking up your devices…"
+	devicesRemoveKeys     = "y removes  ·  any other key keeps it"
+	devicesRemoveAsk      = "remove %s? it must pair again to come back  ·  " + devicesRemoveKeys
+	devicesRevoked        = "%s was removed — it can no longer reach your chats."
+	devicesSelf           = "this device"
+	devicesOwnRow         = "this device cannot remove itself — choose another row."
+	devicesAccessBoth     = "watch and type"
+	devicesAccessWatch    = "watch only"
+	devicesAccessNone     = "not shared"
+	devicesTypeKeys       = "y turns it on, any other key keeps it off"
+	devicesTypeAsk        = "let %s type into chats on this computer? " + devicesTypeKeys
+	devicesWatchOnWord    = "%s can watch chats on this computer."
+	devicesWatchOffWord   = "%s can no longer watch chats on this computer."
+	devicesTypeOnWord     = "%s can type into chats on this computer."
+	devicesTypeOffWord    = "%s can watch, not type."
+	devicesPermitNoSetter = "this build cannot change that"
 )
+
+func devicesTypeAskFor(name string) string  { return fmt.Sprintf(devicesTypeAsk, name) }
+func devicesWatchOnFor(name string) string  { return fmt.Sprintf(devicesWatchOnWord, name) }
+func devicesWatchOffFor(name string) string { return fmt.Sprintf(devicesWatchOffWord, name) }
+func devicesTypeOnFor(name string) string   { return fmt.Sprintf(devicesTypeOnWord, name) }
+func devicesTypeOffFor(name string) string  { return fmt.Sprintf(devicesTypeOffWord, name) }
 
 // deviceCard is the list's state. Online comes from the feed when the card opens.
 type deviceCard struct {
@@ -68,6 +86,8 @@ type deviceCard struct {
 	naming *string
 	// removing freezes the chosen device across asynchronous roster refreshes.
 	removing *DeviceRow
+	// allowingType freezes the chosen device while confirming permission to type.
+	allowingType *DeviceRow
 	// notShared reads this computer's chats not shared yet; nil draws nothing.
 	notShared func() (NotShared, bool)
 	// read is the newest directory version the rows were read at, so a change another computer
@@ -251,14 +271,35 @@ func (c *deviceCard) mark(id string) {
 	}
 }
 
+func (c *deviceCard) confirming() bool {
+	return c.removing != nil || c.allowingType != nil
+}
+
 func (c *deviceCard) hint() string {
 	if c.removing != nil {
 		return devicesRemoveKeys
+	}
+	if c.allowingType != nil {
+		return devicesTypeKeys
 	}
 	if c.naming != nil {
 		return devicesNameKeys
 	}
 	return c.keys()
+}
+
+// rowActionKeys returns the action keys offered for one device row: removal on
+// another computer that is not yet removed, plus watch and type switches when
+// that row carries permit information.
+func (c *deviceCard) rowActionKeys(row DeviceRow) []string {
+	if row.Self || row.Revoked {
+		return nil
+	}
+	out := []string{devicesGoneKey}
+	if row.Permit != nil {
+		out = append(out, devicesWatchKey, devicesTypeKey)
+	}
+	return out
 }
 
 // keys names only what the row under the cursor can do: `r` is absent on this
@@ -273,8 +314,8 @@ func (c *deviceCard) keys() string {
 		out = append(out, devicesMoveKey)
 	}
 	out = append(out, devicesNameKey)
-	if row, ok := c.pick(); ok && !row.Self && !row.Revoked {
-		out = append(out, devicesGoneKey)
+	if row, ok := c.pick(); ok {
+		out = append(out, c.rowActionKeys(row)...)
 	}
 	return strings.Join(append(out, devicesCloseKey), " · ")
 }
@@ -450,18 +491,43 @@ func (d DeviceRow) dot(pal palette) string {
 	return pal.glyph(tokens.GQueued)
 }
 
+func (d DeviceRow) canEditPermit() bool {
+	return !d.Self && !d.Revoked && d.Permit != nil
+}
+
+func (d DeviceRow) permitWord() string {
+	if !d.canEditPermit() {
+		return ""
+	}
+	switch {
+	case d.Permit.Watch && d.Permit.Drive:
+		return devicesAccessBoth
+	case d.Permit.Watch:
+		return devicesAccessWatch
+	default:
+		return devicesAccessNone
+	}
+}
+
 func (d DeviceRow) tails(now time.Time) []string {
 	switch {
 	case d.Revoked:
 		return []string{"removed"}
 	case d.Self:
 		return []string{devicesSelf}
-	case d.Online:
-		return nil
-	case d.LastSeen.IsZero():
-		return []string{"offline"}
 	}
-	return []string{seenTail(d.LastSeen, now)}
+	var out []string
+	switch {
+	case d.Online:
+	case d.LastSeen.IsZero():
+		out = append(out, "offline")
+	default:
+		out = append(out, seenTail(d.LastSeen, now))
+	}
+	if word := d.permitWord(); word != "" {
+		out = append(out, word)
+	}
+	return out
 }
 
 // seenTail is when an away device was last seen, in words that read whole:
@@ -487,6 +553,16 @@ func (c *deviceCard) key(a *app, name string) (tea.Cmd, bool) {
 		}
 		return nil, false
 	}
+	if c.allowingType != nil {
+		row := *c.allowingType
+		c.allowingType, c.line = nil, ""
+		c.keepCursorOn(row.ID, true)
+		if name == "y" {
+			a.setDevicePermit(c, row, boolPtr(true), boolPtr(true), DevicePermit{Watch: true, Drive: true}, devicesTypeOnFor(c.shownName(row)))
+		}
+		a.syncSheetDeviceCard(c, false)
+		return nil, false
+	}
 	move, isMove := cursorMoves[name]
 	switch {
 	case name == "esc":
@@ -500,8 +576,75 @@ func (c *deviceCard) key(a *app, name string) (tea.Cmd, bool) {
 		c.startNaming()
 	case name == "r":
 		return a.revoke(c), false
+	case name == "w":
+		a.toggleDeviceWatch(c)
+	case name == "t":
+		a.toggleDeviceType(c)
 	}
 	return nil, false
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func (a *app) permitSetter() PermitSetter {
+	setter, _ := a.approvals.(PermitSetter)
+	return setter
+}
+
+func (a *app) toggleDeviceWatch(c *deviceCard) {
+	row, ok := c.pick()
+	if !ok || !row.canEditPermit() {
+		return
+	}
+	name := c.shownName(row)
+	if row.Permit.Watch {
+		a.setDevicePermit(c, row, boolPtr(false), boolPtr(false), DevicePermit{Watch: false, Drive: false}, devicesWatchOffFor(name))
+		return
+	}
+	a.setDevicePermit(c, row, boolPtr(true), nil, DevicePermit{Watch: true, Drive: row.Permit.Drive}, devicesWatchOnFor(name))
+}
+
+func (a *app) toggleDeviceType(c *deviceCard) {
+	row, ok := c.pick()
+	if !ok || !row.canEditPermit() {
+		return
+	}
+	name := c.shownName(row)
+	if row.Permit.Drive {
+		a.setDevicePermit(c, row, nil, boolPtr(false), DevicePermit{Watch: true, Drive: false}, devicesTypeOffFor(name))
+		return
+	}
+	if a.permitSetter() == nil {
+		c.line = devicesPermitNoSetter
+		a.syncSheetDeviceCard(c, false)
+		return
+	}
+	c.allowingType = &row
+	c.line = devicesTypeAskFor(name)
+	a.syncSheetDeviceCard(c, false)
+}
+
+func (a *app) setDevicePermit(c *deviceCard, row DeviceRow, watch, drive *bool, next DevicePermit, said string) {
+	setter := a.permitSetter()
+	if setter == nil {
+		c.line = devicesPermitNoSetter
+		a.syncSheetDeviceCard(c, false)
+		return
+	}
+	if err := setter.SetPermit(row.ID, watch, drive); err != nil {
+		c.line = err.Error()
+		a.syncSheetDeviceCard(c, false)
+		return
+	}
+	for i := range c.rowsOf {
+		if c.rowsOf[i].ID == row.ID {
+			permit := next
+			c.rowsOf[i].Permit = &permit
+			break
+		}
+	}
+	c.line = said
+	a.syncSheetDeviceCard(c, false)
 }
 
 var cursorMoves = map[string]int{"up": -1, "k": -1, "down": 1, "j": 1}

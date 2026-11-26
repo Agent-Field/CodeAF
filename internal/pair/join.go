@@ -103,6 +103,9 @@ func Join(ctx context.Context, route Mailbox, j Joining, typed string, ui JoinUI
 		// The other device can only confirm after this home has kept the grant.
 		// If the confirmation is lost, this home still holds the approved grant.
 		_ = intro.took()
+		if !joined.Already {
+			stampJoin(grant.Identity.ID())
+		}
 	}
 	return joined, err
 }

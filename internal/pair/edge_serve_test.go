@@ -295,7 +295,7 @@ func TestServeSaysOnceThatItLostSyncAndComesBack(t *testing.T) {
 	server.Start()
 	t.Cleanup(server.Close)
 	screen := &screenLog{}
-	host := &Host{Service: server.URL, Device: aDevice(t), Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")), Desk: &Desk{}, Say: screen.say}
+	host := &Host{Service: server.URL, Device: aDevice(t), Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")), Desk: &Desk{}, Say: screen.say, sleep: retriesQuickly}
 	ctx, stop := context.WithCancel(context.Background())
 	ended := make(chan struct{})
 	go func() { _ = host.Run(ctx); close(ended) }()
@@ -304,7 +304,7 @@ func TestServeSaysOnceThatItLostSyncAndComesBack(t *testing.T) {
 
 	down.Store(true)
 	wire.cut()
-	time.Sleep(4 * time.Second) // the first retries come at one and two seconds
+	time.Sleep(4 * time.Second) // several retries come, a second apart at most
 	down.Store(false)
 	waitForCondition(t, "the machine to register again", func() bool {
 		return len(door.Ledgers()) == 1
@@ -364,7 +364,7 @@ func TestServeWaitsOutItsOwnStaleName(t *testing.T) {
 	t.Cleanup(server.Close)
 	screen := &screenLog{}
 	device := aDevice(t)
-	host := &Host{Service: server.URL, Device: device, Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")), Desk: &Desk{}, Say: screen.say}
+	host := &Host{Service: server.URL, Device: device, Devices: BookAt(filepath.Join(t.TempDir(), "devices.json")), Desk: &Desk{}, Say: screen.say, sleep: retriesQuickly}
 	ctx, stop := context.WithCancel(context.Background())
 	ended := make(chan struct{})
 	var runErr error
@@ -611,7 +611,10 @@ func TestDroppedRegistrationBacksOffAndPrintsBannerOnce(t *testing.T) {
 			awaitStep(t, connected, fmt.Sprintf("reconnect %d", i+1))
 		}
 
-		wantWaits := []time.Duration{
+		// V22: the first wait after a drop is one second plus a draw from the
+		// next five, and every later wait is the doubling schedule (2 s, 4 s ...
+		// capped at a minute) scaled by 0.75 to 1.25, so no two computers keep step.
+		schedule := []time.Duration{
 			1 * time.Second,
 			2 * time.Second,
 			4 * time.Second,
@@ -623,9 +626,9 @@ func TestDroppedRegistrationBacksOffAndPrintsBannerOnce(t *testing.T) {
 			time.Minute,
 			time.Minute,
 		}
-		for i, want := range wantWaits {
-			if waits[i] != want {
-				t.Fatalf("backoff %d was %v, want %v (all: %v)", i+1, waits[i], want, waits)
+		for i, step := range schedule {
+			if !inBackoffBand(waits[i], step, i == 0) {
+				t.Fatalf("backoff %d was %v, want %s (all: %v)", i+1, waits[i], bandWords(step, i == 0), waits)
 			}
 		}
 		if got := len(codes(screen.all())); got != 1 {
@@ -647,8 +650,8 @@ func TestDroppedRegistrationBacksOffAndPrintsBannerOnce(t *testing.T) {
 		// resets the backoff to 1s.
 		advance(steadyAfter + time.Second)
 		wire.cut()
-		if reset := awaitStep(t, slept, "backoff after steady registration"); reset != time.Second {
-			t.Fatalf("backoff after holding >= %v was %v, want 1s", steadyAfter, reset)
+		if reset := awaitStep(t, slept, "backoff after steady registration"); !inBackoffBand(reset, time.Second, true) {
+			t.Fatalf("backoff after holding >= %v was %v, want %s", steadyAfter, reset, bandWords(time.Second, true))
 		}
 	})
 
@@ -690,13 +693,42 @@ func TestDroppedRegistrationBacksOffAndPrintsBannerOnce(t *testing.T) {
 				t.Fatalf("raw package sentinel leaked to screen: %q", line)
 			}
 		}
-		want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
-		for i := range want {
-			if waits[i] != want[i] {
-				t.Fatalf("429 backoff %d was %v, want %v (all: %v)", i+1, waits[i], want[i], waits)
+		schedule := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+		for i, step := range schedule {
+			if !inBackoffBand(waits[i], step, i == 0) {
+				t.Fatalf("429 backoff %d was %v, want %s (all: %v)", i+1, waits[i], bandWords(step, i == 0), waits)
 			}
 		}
 	})
+}
+
+// inBackoffBand says whether a wait is one the spread schedule can produce at
+// this step: the first wait after a drop is in [1 s, 6 s), and every later one is
+// the step scaled into [0.75, 1.25) of itself.
+func inBackoffBand(got, step time.Duration, first bool) bool {
+	if first {
+		return got >= time.Second && got < 6*time.Second
+	}
+	return got >= step*3/4 && got < step*5/4
+}
+
+func bandWords(step time.Duration, first bool) string {
+	if first {
+		return "a first wait in [1s, 6s)"
+	}
+	return fmt.Sprintf("a wait in [%v, %v)", step*3/4, step*5/4)
+}
+
+// retriesQuickly stands in for the retry wait in a test that watches a real relay
+// come and go. The schedule is spread over several seconds on purpose, which is
+// right for a fleet and slow for one test, so the wait is capped at a second.
+func retriesQuickly(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(min(d, time.Second)):
+		return nil
+	}
 }
 
 func waitForCondition(t *testing.T, what string, ok func() bool) {

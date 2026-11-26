@@ -36,8 +36,8 @@ func appPairCodeLines(code string) []string {
 	return []string{"Pairing shares your chats with another computer.", fmt.Sprintf("On your other computer, choose Pair a computer, then Enter a code from the other computer, and type %s (dashes optional). This code lasts %d minutes.", code, int(pair.CodeValidFor/time.Minute))}
 }
 func appPairApproveTitle(name string) string { return fmt.Sprintf("Pair with %s?", name) }
-func appPairWords(words string) string {
-	return "Pair only if your other computer shows the same three words: " + words + "."
+func appPairWords(label, words string) string {
+	return "Pair only if your other computer shows the same three words: " + words + ". " + pair.PairedControlLine(label)
 }
 func appPairWaiting(words string) string {
 	return "Waiting for approval on your other computer. It should show: " + words + "."
@@ -58,8 +58,8 @@ func appPairJoinedLine(j pair.Joined) string {
 func appPairInviteLines(check string, expires time.Duration) []string {
 	return []string{"Open this pairing link on a computer you already use.", "Compare the check number on both computers: " + check + ".", fmt.Sprintf("Waiting for approval. This link lasts %d minutes.", int(expires/time.Minute))}
 }
-func appPairCheck(check string) string {
-	return "Pair only if your other computer shows the same check number: " + check + "."
+func appPairCheck(label, check string) string {
+	return "Pair only if your other computer shows the same check number: " + check + ". " + pair.PairedControlLine(label)
 }
 
 // appPairError is a failed pairing as the app shows it: one sentence, and the

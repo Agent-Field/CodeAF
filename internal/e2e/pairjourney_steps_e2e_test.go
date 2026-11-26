@@ -161,7 +161,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 			a.lit("/home")
 			a.keys("Enter")
 			a.keys("M-m")
-			_, ok := waitPlain(a, 8*time.Second, "Continue this chat here?")
+			_, ok := waitPlain(a, 8*time.Second, say(t, "moveAsk"))
 			j.require(ok, "alt+m offered no continuation for the online holder")
 			j.see(a)
 			return
@@ -187,17 +187,17 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 	})
 
 	moved := false
-	j.step("6a A: Continue here on B's chat", false, func() {
+	j.step("6a A: Move here on B's chat", false, func() {
 		if !online {
 			a.keys("M-c")
 		} else {
-			screen, ok := waitPlain(a, 8*time.Second, "Continue this chat here?")
+			screen, ok := waitPlain(a, 8*time.Second, say(t, "moveAsk"))
 			if !j.require(ok, "no takeover question for B's running chat") {
 				j.see(a)
 				return
 			}
 			j.see(a)
-			j.check(strings.Contains(screen, "continue here"), "the question does not offer 'continue here'")
+			j.check(strings.Contains(screen, "move here"), "the question does not offer 'move here'")
 			a.keys("1")
 			a.keys("Enter")
 		}
@@ -208,7 +208,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string, online 
 			return
 		}
 		if !online {
-			j.check(!strings.Contains(after, "Continue this chat here?"), "one-key arrival from an asleep computer asked for another key")
+			j.check(!strings.Contains(after, say(t, "moveAsk")), "one-key arrival from an asleep computer asked for another key")
 		}
 		j.check(regexp.MustCompile(`Moved from \S+ in [0-9.]+m?s`).MatchString(after), "the banner does not say how long the move took")
 		j.see(a)

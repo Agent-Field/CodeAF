@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 // L4-M9a: another release channel's hosted service is hosted too, never "your own",
 // and an unknown address names nothing.
 func TestL4EveryChannelsServiceIsHosted(t *testing.T) {
-	if got := ServiceLine("https://fabric-staging.example.test"); got != "sync service: fabric-staging.example.test (hosted)" {
+	if got := ServiceLine("https://fabric-staging.example.test"); got != "relay: fabric-staging.example.test (hosted)" {
 		t.Fatal(got)
 	}
 	if Hosted("") || Hosted("http://127.0.0.1:8901") {
@@ -38,11 +38,11 @@ func TestL4ServiceFailures(t *testing.T) {
 		cause         error
 		address, want string
 	}{
-		{&url.Error{Op: "Get", URL: "http://127.0.0.1:8901/private", Err: syscall.ECONNREFUSED}, "http://127.0.0.1:8901", "nothing is answering at http://127.0.0.1:8901 — if that is your own sync service, start it there with codeaf relay"},
+		{&url.Error{Op: "Get", URL: "http://127.0.0.1:8901/private", Err: syscall.ECONNREFUSED}, "http://127.0.0.1:8901", "nothing is answering at http://127.0.0.1:8901 — if that is your own relay, start it there with codeaf relay"},
 		{&net.DNSError{Err: "no such host", Name: "mine"}, HostedURL, "cannot reach codeaf.agentfield.ai — check this computer's internet connection"},
-		{context.DeadlineExceeded, "http://127.0.0.1:8901", "the sync service at http://127.0.0.1:8901 did not answer in time — try again"},
-		{wireauth.ErrUnavailable, "http://127.0.0.1:8901", "the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute"},
-		{directory.ErrUnreachable, "http://127.0.0.1:8901", "the sync service at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute"},
+		{context.DeadlineExceeded, "http://127.0.0.1:8901", "the relay at http://127.0.0.1:8901 did not answer in time — try again"},
+		{wireauth.ErrUnavailable, "http://127.0.0.1:8901", "the relay at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute"},
+		{directory.ErrUnreachable, "http://127.0.0.1:8901", "the relay at 127.0.0.1:8901 is up but cannot agree on changes right now; it usually recovers within a minute"},
 	} {
 		got := Explain(tc.cause, tc.address)
 		if got.Error() != tc.want || !errors.Is(got, tc.cause) {
@@ -53,10 +53,10 @@ func TestL4ServiceFailures(t *testing.T) {
 
 // L4-M9a: terminal and future chat lists use one exported service label.
 func TestL4ServiceLine(t *testing.T) {
-	if got := ServiceLine(HostedURL); got != "sync service: codeaf.agentfield.ai (hosted)" {
+	if got := ServiceLine(HostedURL); got != "relay: codeaf.agentfield.ai (hosted)" {
 		t.Fatal(got)
 	}
-	if got := ServiceLine("http://127.0.0.1:8901"); got != "sync service: 127.0.0.1:8901 (your own)" {
+	if got := ServiceLine("http://127.0.0.1:8901"); got != "relay: 127.0.0.1:8901 (your own)" {
 		t.Fatal(got)
 	}
 }

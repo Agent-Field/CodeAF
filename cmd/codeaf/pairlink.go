@@ -197,7 +197,7 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 	asking, err := who.Look(ctx, ref)
 	if errors.Is(err, pair.ErrLinkDecided) && approvedHere(who, ref.Code, "") == requestApprovedHere {
 		// An approval whose reply was lost: the device is in, so this computer is shared.
-		if err := identity.EndSolo(d.joining(false).Home); err != nil {
+		if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
 			return err
 		}
 		d.recordOwnDeviceOrSay(ctx, route)
@@ -208,6 +208,7 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return err
 	}
 	d.term.say(pair.WantsToJoinLine(asking.Name, asking.Platform))
+	d.term.say(pair.PairedControlLine(asking.Name))
 	if !d.term.approveLink(ctx, pair.CheckQuestion(asking.Check)) {
 		return d.decline(ctx, who, asking)
 	}
@@ -220,7 +221,7 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 			return err
 		}
 	}
-	if err := identity.EndSolo(d.joining(false).Home); err != nil {
+	if err := pair.EndSoloAt(d.joining(false).Home, pair.Permits()); err != nil {
 		return err
 	}
 	d.recordOwnDeviceOrSay(ctx, route)

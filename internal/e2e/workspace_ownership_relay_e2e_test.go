@@ -151,7 +151,7 @@ func TestWorkspaceOwnershipTaskIdentitySurvivesPublicRelayTake(t *testing.T) {
 	// Select its actual remote activity row, not an elided project-sidebar path.
 	b.waitFor(60*time.Second, "untitled", "running on")
 	b.keys("M-m")
-	b.waitFor(20*time.Second, "Continue this chat here?")
+	b.waitFor(20*time.Second, say(t, "moveAsk"))
 	takeBegan := time.Now()
 	b.keys("1", "Enter")
 	b.waitFor(90*time.Second, "Moved from")
@@ -217,7 +217,7 @@ func TestWorkspaceOwnershipTaskIdentitySurvivesPublicRelayTake(t *testing.T) {
 	a.keys("Space", "Space")
 	a.waitFor(30*time.Second, "untitled", "running on")
 	a.keys("M-m")
-	a.waitFor(20*time.Second, "Continue this chat here?")
+	a.waitFor(20*time.Second, say(t, "moveAsk"))
 	takeBegan = time.Now()
 	a.keys("1", "Enter")
 	a.waitFor(90*time.Second, "Moved from")

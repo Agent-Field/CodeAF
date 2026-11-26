@@ -34,8 +34,8 @@ func TestIdleOpen_C6_C7_C10_TerminalEnterUsesTheFreeDoorOnly(t *testing.T) {
 			}
 			command := a.homeMachineEnter(homeLine{remote: &row})
 			if automatic {
-				if strings.Contains(homeText(a), continueAsk) {
-					t.Fatal("C6 free open raised Continue here")
+				if strings.Contains(homeText(a), moveAsk) {
+					t.Fatal("C6 free open raised Move here")
 				}
 				if command == nil {
 					t.Fatal("C6 free open did not start")
@@ -46,7 +46,7 @@ func TestIdleOpen_C6_C7_C10_TerminalEnterUsesTheFreeDoorOnly(t *testing.T) {
 				if taker.opens != 1 || len(taker.cells) != 0 || taker.seen == nil || taker.seen.Fence != 7 || taker.seen.Device != "A" {
 					t.Fatalf("C6 wrong open door: %+v", taker)
 				}
-			} else if taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), continueAsk) {
+			} else if taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), moveAsk) {
 				t.Fatal("C7/C10 held chat no longer waits for the person's choice")
 			}
 		})
@@ -58,8 +58,8 @@ func TestIdleOpen_DefaultOff_ReleasedRowRequiresContinueHereAndLocalRowOpensLoca
 	a, _ := heldLab(t, &flipping{status: chatlist.Idle}, taker)
 	row := chatlist.Row{Cell: heldCell, Title: "saved chat", Device: "tower", DeviceID: "A", Fence: 7, Head: "saved", Status: chatlist.Idle, Released: true, AutoOpen: true}
 	command := a.homeMachineEnter(homeLine{remote: &row})
-	if command != nil || taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), continueAsk) {
-		t.Fatalf("default-off released remote row must require Continue here: opens=%d cells=%v home=%s", taker.opens, taker.cells, homeText(a))
+	if command != nil || taker.opens != 0 || len(taker.cells) != 0 || !strings.Contains(homeText(a), moveAsk) {
+		t.Fatalf("default-off released remote row must require Move here: opens=%d cells=%v home=%s", taker.opens, taker.cells, homeText(a))
 	}
 
 	source := &r5bHomeSource{read: func(context.Context) ([]chatlist.Row, uint64, error) {

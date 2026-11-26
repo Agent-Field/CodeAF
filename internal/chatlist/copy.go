@@ -14,7 +14,7 @@ import (
 // chats move by blind pass-through (internal/syncsetup/livetransfer.go): what is
 // true there is that chats are not stuck, and that what still needs the relay's
 // storage waits.
-const RelayStorageOffLive = "chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for sync storage (request access in Settings under Devices)"
+const RelayStorageOffLive = "chats move between your computers by blind pass-through while both run codeaf; keys, memories, teams and preferences wait for relay storage (request access in Settings under Devices)"
 
 // LiveCarriesChats answers whether blind pass-through is carrying this computer's
 // chats now. The program that owns the home sets it at startup; nothing that
@@ -75,21 +75,24 @@ func StorageOffChanged() (string, bool) {
 // from here so a respelling happens once.
 const (
 	// Available describes a free lease while work admission acquires a new fence.
-	Available     = "This chat is available to continue here."
-	OfferContinue = "continue here"
-	// MoveHere is the verb for a chat another device is running right now, and
-	// ContinueVerb for one it let go of; the devices row offers them by name.
+	Available = "This chat is available to move here."
+	// OfferMove is the yes answer on the takeover card, the same words in the
+	// card's own lower case.
+	OfferMove = "move here"
+	// MoveHere is THE verb for carrying a chat from another computer to this one,
+	// wherever a person meets it: the devices row, the Home card's buttons, the
+	// resume offer. A chat another computer is running and one it let go of used to
+	// be offered two different verbs; one act has one word now.
 	MoveHere        = "Move here"
-	ContinueVerb    = "Continue here"
-	LostRace        = "another device continued this chat first"
+	LostRace        = "another device moved this chat first"
 	PickedUpAgain   = "%s picked this chat up again"
 	NoIdentity      = "this machine has no identity yet: codeaf identity import"
-	RelayStorageOff = "sync storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
-	SyncOff         = "sync is off: set CODEAF_SYNC_URL to your sync service's address"
-	Unreachable     = "the sync service is not answering"
+	RelayStorageOff = "relay storage is off for this account, so chats stay on this computer; request access in Settings under Devices"
+	SyncOff         = "sync is off: set CODEAF_SYNC_URL to your relay's address"
+	Unreachable     = "the relay is not answering"
 	// TakeBackUnreachable explains why a released writer keeps a send unsent.
 	TakeBackUnreachable = Unreachable + ", so this chat cannot be taken back yet; your words are still in the box"
-	ReadTimedOut        = "the sync service did not answer in time"
+	ReadTimedOut        = "the relay did not answer in time"
 	SyncPaused          = syncwords.UnknownOutage
 	SyncRestored        = "this chat is syncing again"
 	ClockOff            = "this computer's clock is off by more than 5 minutes"
@@ -119,7 +122,7 @@ const (
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	keptTurns      = "kept %s from %s as a separate chat"
-	supersededLine = "%s continued this chat. This copy is read-only and may be behind"
+	supersededLine = "%s moved this chat. This copy is read-only and may be behind"
 	copiesCame     = "working copies of tasks came along: %s"
 	copyCame       = "the working copy of a task came along: %s"
 	setupAsk       = "Set this machine up like %s had it?"
@@ -224,6 +227,12 @@ func nameList(names []string) string {
 // StatusLine is what a list row says beside the title. Idle and Here say
 // nothing (the emptiness law), so their line is empty.
 func StatusLine(r Row) string {
+	return StatusLineAt(r, time.Now())
+}
+
+// StatusLineAt formats a list row's status at a caller-supplied clock so an
+// offline holder's last-seen word uses the surface's own calendar day.
+func StatusLineAt(r Row, now time.Time) string {
 	switch r.Status {
 	case Running:
 		if r.Working {
@@ -231,7 +240,11 @@ func StatusLine(r Row) string {
 		}
 		return fmt.Sprintf(heldOn, r.Device)
 	case Off:
-		return fmt.Sprintf(deviceOff, r.Device)
+		line := fmt.Sprintf(deviceOff, r.Device)
+		if seen := LiveSeenAt(r.HolderSeen, now); seen != "" {
+			line += " · last seen " + seen
+		}
+		return line
 	case Branch:
 		return fmt.Sprintf(branchLine, turns(r.OrphanTurns), r.Device)
 	}

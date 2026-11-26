@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/dirwatch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/identity"
+	"github.com/Agent-Field/codeaf/internal/livedoor"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/reqsign"
 	"github.com/Agent-Field/codeaf/internal/rotate"
@@ -111,6 +112,8 @@ type Sync struct {
 	Interval   time.Duration // flush interval
 
 	stateCredentialRefresh uint64 // guarded by stateMu across vault rounds
+	liveBudgetOnce         sync.Once
+	liveBudget             *livedoor.Budget
 }
 
 // Open builds the clients for the relay Resolve names. It answers ok = false

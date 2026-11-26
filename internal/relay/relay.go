@@ -68,6 +68,31 @@ const (
 	HeaderKey = "Aforge-Key" // legacy-name: persisted on the wire.
 )
 
+// HeaderDoor carries the class of a dial: what the surface asking for the machine
+// means to do with the stream. It is a request header for the reason the
+// registration's are, an operator's logs and limiters all read headers, and it
+// is the one thing a dialer volunteers about itself. A relay that has never
+// heard of it ignores it, and a dial that does not send it is an UNCLASSIFIED
+// dial, which is every dial from a build older than the class.
+const HeaderDoor = "Codeaf-Door"
+
+// The classes a dial may claim in [HeaderDoor]. THE CLASS IS A CLAIM AND NOT AN
+// AUTHENTICATION: a dialer can say "move" when it is not, which is why it only
+// ever decides how the machine's streams are shared and never who may speak on
+// one. Who may speak is settled above this package, by the handshake the host
+// runs against a pinned key. A value that is neither of these is read as no
+// class at all, so a later class does not turn an older relay's answer into a
+// refusal.
+const (
+	// DoorLive is a surface watching or driving a chat as it happens, one
+	// stream per viewing computer, held open for as long as the view is.
+	DoorLive = "live"
+	// DoorMove is a surface that has to be able to reach the machine whenever
+	// anything else is attached: moving a chat to another computer must not be
+	// refused because viewers filled the machine's streams.
+	DoorMove = "move"
+)
+
 // The tuning, all in one place so that a relay operator changes a number here
 // and every sentence in this package that quotes it changes with it. ONE SOURCE
 // OF TRUTH: nothing below re-states a limit as a literal, and the hosted Worker
@@ -87,6 +112,27 @@ const (
 	// opinion about how many surfaces a session will have, and this is only
 	// the number the pipe will carry.
 	MaxStreams = 16
+
+	// LiveStreams is how many of those streams a [DoorLive] dial may leave
+	// attached (LIVE_STREAMS in relay/hosted/src/engine/carrier.js). It is
+	// compared with the machine's TOTAL stream count, whoever holds the
+	// others, so live dials can never push the total past it and the last
+	// MaxStreams-LiveStreams slots are always free for a [DoorMove] dial. A
+	// dial that claims no class is held to MaxStreams exactly as before: the
+	// reservation costs an older client nothing.
+	LiveStreams = 14
+
+	// BreakerRate and BreakerWindow are the ceiling on how fast one LIVE stream
+	// may send, in either direction (BREAKER_BYTES_PER_SECOND and
+	// BREAKER_WINDOW_MS in relay/hosted/src/engine/carrier.js): more than
+	// BreakerRate sustained across BreakerWindow ends the stream. It is four
+	// times the pace a correct host holds a live view to, so it never meets a
+	// correct host, and it is an ABUSE control and nothing finer: the relay
+	// cannot read what it carries, so it cannot batch or slow it, and cutting is
+	// all it can do. It is counted when a message arrives and never from a
+	// timer, which is what keeps an idle live view free on the hosted relay.
+	BreakerRate   = 4 << 20
+	BreakerWindow = 5 * time.Second
 
 	// PingEvery is how often the relay pokes an idle carrier, and IdleAfter is
 	// how long it will wait for any byte before it decides the machine is gone.

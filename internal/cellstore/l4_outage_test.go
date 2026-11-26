@@ -18,7 +18,7 @@ func TestL4SyncOutageNeedsNetworkRecovery(t *testing.T) {
 	var w SealWatch
 	cause := &url.Error{Op: "Put", URL: "http://127.0.0.1:8901/v1/dir/devices/private", Err: syscall.ECONNREFUSED}
 	w.Report(cause)
-	want := "the sync service at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back"
+	want := "the relay at 127.0.0.1:8901 is not answering; this chat keeps working here and catches up when it is back"
 	if got := w.Take(); got != want {
 		t.Fatal(got)
 	}

@@ -19,7 +19,7 @@ func followProgressBrief(j Job) string {
 	if !factory.IsCIRepairStage(j.Stage) {
 		return ""
 	}
-	return "\nKeep the person informed in brief ordinary assistant messages (one or two sentences): what specific CI failure, review finding or conflict you are investigating; what you found and are changing; when you begin verification; and any meaningful change of approach during a long investigation. Write for the person, not an internal monologue. Give an update as work advances, roughly once a minute during lengthy work; do not repeat unchanged status or narrate tools. These messages are relayed to the job conversation. Distinguish a planned fix, edits in progress, checks actually run, and their observed results. Do not claim the PR was pushed, CI passed remotely or the PR is ready: the service reports those confirmed outcomes. Continue working after updates and finish through stage_result as usual.\n"
+	return "\nKeep the person informed in brief ordinary assistant messages (one or two sentences): what specific CI failure, review finding or conflict you are investigating; what you found and are changing; when you begin verification; and any meaningful change of approach during a long investigation. Write for the person, not an internal monologue. Give an update as work advances, roughly once a minute during lengthy work; do not repeat unchanged status or narrate tools. These messages are passed on to the job conversation. Distinguish a planned fix, edits in progress, checks actually run, and their observed results. Do not claim the PR was pushed, CI passed remotely or the PR is ready: the service reports those confirmed outcomes. Continue working after updates and finish through stage_result as usual.\n"
 }
 
 func followProgressStart(j Job) string {

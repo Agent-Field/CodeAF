@@ -253,6 +253,7 @@ func (a *app) front() Conversation {
 		TaskRoom:         a.farRoomRecord,
 		TaskIndex:        a.farTasks,
 		Link:             &link,
+		Live:             a.liveView,
 	}
 }
 
@@ -400,6 +401,7 @@ func (a *app) clearConversation() {
 	// transcript being put down. [app.replay] rebuilds both on the way back —
 	// clearing them here is what makes that the design rather than luck.
 	a.replayFrom, a.replayFloor = 0, 0
+	a.transcriptBase, a.olderMore = 0, false
 	a.earlier, a.earlierFloor, a.earlierFrom, a.earlierSeam = nil, 0, 0, false
 	a.transcript = nil
 	a.historyGen++
@@ -671,7 +673,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	// armed are parked on the previous one's channels and discard themselves by
 	// generation (watching.go's [followingMsg]).
 	cmds := []tea.Cmd{a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(), a.watchRuns(), a.watchQuestions(), a.loadTasks(),
-		a.askHeld(), a.watchDriving(), a.watchFollowing(),
+		a.askHeld(), a.watchDriving(), a.watchFollowing(), a.armLive(),
 		// The program rows are the engine's, so they follow the conversation (delegate.go).
 		a.installDelegates()}
 

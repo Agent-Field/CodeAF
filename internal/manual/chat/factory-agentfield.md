@@ -434,7 +434,7 @@ list, over these fields.
 
 A step that ran the codeaf harness has a chat like any step this factory runs:
 open it from the job's rail and it shows the same entries — words, thinking,
-tool cards, diffs — streamed as the node works, because the node relays the
+tool cards, diffs — streamed as the node works, because the node passes on the
 run's own conversation record line by line and the factory keeps it as an
 ordinary conversation on this machine. The factory is the record: the control
 plane holds a line only until the factory has kept it, and a factory that was

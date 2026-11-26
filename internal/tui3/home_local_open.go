@@ -74,7 +74,7 @@ func (a *app) homeLocalOpenReady(msg homeLocalOpenMsg) tea.Cmd {
 			continue
 		}
 		if row.AutoOpen || heldElsewhere(row) && msg.line.row.Transcript != a.file && !a.holding(msg.line.row.Transcript) {
-			return tea.Batch(recorded, a.homeMachineEnter(homeLine{remote: &row}))
+			return tea.Batch(recorded, a.homeMachineMove(homeLine{remote: &row}))
 		}
 		break
 	}

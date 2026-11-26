@@ -183,7 +183,7 @@ func idleRealTerminal(t *testing.T, settings bool) {
 	if raw, e := os.ReadFile(ignored); e != nil || string(raw) != "local-install" {
 		t.Fatalf("D1 install=%q err=%v", raw, e)
 	}
-	for _, line := range []string{"Moved here", "Set this machine up like", "Continue this chat here?", "submit failed: This chat is available to continue here."} {
+	for _, line := range []string{"Moved here", "Set this machine up like", "Move this chat here?", "submit failed: This chat is available to move here."} {
 		if strings.Contains(screen.String(), line) {
 			t.Fatalf("D1 showed %q", line)
 		}

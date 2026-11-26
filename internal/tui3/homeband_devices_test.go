@@ -97,12 +97,12 @@ func TestOnlineDeviceOffersMoveHereForARunningChat(t *testing.T) {
 		t.Fatalf("no takeover card for tower's chat: %+v", ask.question)
 	}
 	if ask.pick != continueYesAt {
-		t.Fatalf("Move here left the cursor on %d, not on `continue here`", ask.pick)
+		t.Fatalf("Move here left the cursor on %d, not on `move here`", ask.pick)
 	}
-	if got := chatlist.VerbFor(a.machineRead.rows[0]); got != "Move here" {
+	if got := chatlist.VerbFrom(a.machineRead.rows[0]); !strings.HasPrefix(got, "Move here") {
 		t.Fatalf("a running chat offers %q", got)
 	}
-	if got := chatlist.VerbFor(a.machineRead.rows[1]); got != "Continue here" {
+	if got := chatlist.VerbFrom(a.machineRead.rows[1]); !strings.HasPrefix(got, "Move here") {
 		t.Fatalf("a chat that went off offers %q", got)
 	}
 }
@@ -119,7 +119,7 @@ func TestSeveralOnlineDevicesAskWhichAndThenOfferTheCard(t *testing.T) {
 	for _, o := range ask.question.Options {
 		labels = append(labels, o.Label)
 	}
-	if want := "Move here from tower|Continue here from desk|leave it there"; strings.Join(labels, "|") != want {
+	if want := "Move here from tower|Move here from desk|leave it there"; strings.Join(labels, "|") != want {
 		t.Fatalf("picker options %q", labels)
 	}
 	ask.local(session.Answer{Key: "2", Picked: []string{"2"}})

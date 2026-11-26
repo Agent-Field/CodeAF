@@ -15,8 +15,8 @@ package tui3
 //
 // ONE CHORD OFFERS THE WORK. It picks the newest chat an online device holds
 // and raises the takeover card home already has ([app.homeMachineEnter]): the
-// verb is Move here for a chat that device is running and Continue here for one
-// it let go of ([chatlist.VerbFor]). With several devices in reach the chord
+// verb is Move here, whether that device is running the chat or let it go
+// ([chatlist.MoveHere]). With several devices in reach the chord
 // asks which first.
 
 import (
@@ -39,9 +39,9 @@ type Roster interface {
 const (
 	// deviceKey is the chord that brings a device's work here.
 	deviceKey      = "alt+m"
-	deviceBring    = deviceKey + " bring work here"
+	deviceBring    = deviceKey + " move here"
 	deviceArriving = "chats are still arriving from your other computer; this opens when they are ready"
-	deviceNothing  = "no other device that is online has a chat to bring here"
+	deviceNothing  = "no other device that is online has a chat to move here"
 	devicePickAsk  = "Which device?"
 	devicePickLeav = "leave it there"
 	deviceGap      = "  "
@@ -60,12 +60,21 @@ type deviceRoster struct {
 	devices      []chatlist.Device
 	asking       bool
 	bringPending bool
+	// Asked counts the reads started, so an answer can say which ask it is.
+	asked uint64
+	// Enter is an Enter on a chat held elsewhere that is waiting for a roster
+	// read begun after it, and EnterAfter is the first ask that counts. See
+	// [app.homeMachineEnter] for why Enter waits.
+	enter      *homeLine
+	enterAfter uint64
 }
 
-// rosterMsg is one answer from the [Roster].
+// rosterMsg is one answer from the [Roster], carrying the count of the ask it
+// answers.
 type rosterMsg struct {
 	devices []chatlist.Device
 	err     error
+	seq     uint64
 }
 
 // askRoster lists the devices, off the update loop. One ask is out at a time.
@@ -78,11 +87,13 @@ func (a *app) askRoster() tea.Cmd {
 		return nil
 	}
 	a.devRow.asking = true
+	a.devRow.asked++
+	seq := a.devRow.asked
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), fleetAskTimeout)
 		defer cancel()
 		devices, err := src.Roster(ctx)
-		return rosterMsg{devices: devices, err: err}
+		return rosterMsg{devices: devices, err: err, seq: seq}
 	}
 }
 
@@ -94,10 +105,83 @@ func (a *app) tookRoster(msg rosterMsg) tea.Cmd {
 			a.devRow.version++
 		}
 		a.devRow.devices = msg.devices
+		a.machineRead.rows = a.withHolderSeen(a.machineRead.rows)
 		a.considerResume()
+		a.rebuildMachines()
 		a.touch()
 	}
-	return a.finishBring()
+	return tea.Batch(a.finishBring(), a.finishEnter(msg))
+}
+
+// rosterCanAdmit says a chat's holder is unknown only because the roster has not
+// said so yet: everything else that makes a held chat open live is true, a
+// roster can be asked, and the holder is not in the one last read. Such a chat
+// waits for a fresh read instead of being refused.
+func (a *app) rosterCanAdmit(row chatlist.Row) bool {
+	if _, ok := a.fleet.(Roster); !ok || !a.liveOffered() || a.hosted() {
+		return false
+	}
+	if a.machineRead.computerRemoved || row.HolderRemoved || !heldElsewhere(row) {
+		return false
+	}
+	for _, d := range a.devRow.devices {
+		if (row.DeviceID != "" && d.ID == row.DeviceID) || (row.DeviceID == "" && row.Device != "" && d.Name == row.Device) {
+			return false
+		}
+	}
+	return true
+}
+
+// waitForRoster holds an Enter on a held chat until a roster read that began
+// after the Enter has landed, and starts that read. A second Enter while one
+// waits changes nothing. It answers false when no read can be asked.
+func (a *app) waitForRoster(line homeLine) (tea.Cmd, bool) {
+	if a.devRow.enter != nil {
+		return nil, true
+	}
+	a.devRow.enterAfter = a.devRow.asked + 1
+	if !a.devRow.asking {
+		ask := a.askRoster()
+		if ask == nil {
+			return nil, false
+		}
+		a.devRow.enter = &line
+		return ask, true
+	}
+	a.devRow.enter = &line
+	return nil, true
+}
+
+// finishEnter settles the Enter that waited for the roster. An answer to a read
+// begun before the Enter asks again, because it may predate the holder; the
+// first answer that begun after it decides: live when the holder is a computer
+// of the roster, the Move card when it is not or the roster cannot be read.
+func (a *app) finishEnter(msg rosterMsg) tea.Cmd {
+	line := a.devRow.enter
+	if line == nil || line.remote == nil {
+		a.devRow.enter = nil
+		return nil
+	}
+	if msg.seq < a.devRow.enterAfter {
+		if ask := a.askRoster(); ask != nil {
+			return ask
+		}
+	}
+	a.devRow.enter = nil
+	if !a.at(pageHome) || a.hosted() {
+		return nil
+	}
+	row := *line.remote
+	for _, fresh := range a.machineRead.rows {
+		if fresh.Cell == row.Cell {
+			row = fresh
+			break
+		}
+	}
+	if a.liveEligible(row) {
+		return a.homeOpenLiveLater(*line, row)
+	}
+	return a.homeMachineMove(*line)
 }
 
 // presence is who the feed says is online, and whether it can say at all.
@@ -199,7 +283,7 @@ func (a *app) bringWork() tea.Cmd {
 		a.home.say(deviceNothing, "")
 		return nil
 	case 1:
-		return a.homeMachineEnter(machineEntry(picks[0]))
+		return a.homeMachineMove(machineEntry(picks[0]))
 	}
 	a.raiseMachineAsk(picks[0], a.devicePickShown(picks))
 	return nil
@@ -229,7 +313,7 @@ func (a *app) devicePickShown(picks []chatlist.Row) questionShown {
 		local: func(answer session.Answer) tea.Cmd {
 			for i, row := range picks {
 				if answer.FirstKey() == string(rune('1'+i)) {
-					return a.homeMachineEnter(machineEntry(row))
+					return a.homeMachineMove(machineEntry(row))
 				}
 			}
 			return nil

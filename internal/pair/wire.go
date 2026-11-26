@@ -21,6 +21,21 @@ import (
 const (
 	intentPair    byte = 'P'
 	intentConnect byte = 'C'
+
+	// IntentFiles is the first byte a files-door or task-door connection writes,
+	// matching the original connect byte so older builds and newer builds speak
+	// the same wire without negotiation.
+	IntentFiles byte = intentConnect
+	// IntentLive is the first byte a live-view stream writes on the files-door
+	// registration so the host can separate live views from file transfers before
+	// starting Noise.
+	IntentLive byte = 'L'
+	// IntentDirect is the first byte a viewer writes on a peer-to-peer data
+	// channel, where the files door's own prologue map selects the direct road's
+	// prologue. It is a different byte from IntentLive on purpose: a stream
+	// made for the relay can never complete against the direct road, and the
+	// host decides the road from this byte, never from anything the viewer says.
+	IntentDirect byte = 'D'
 )
 
 // maxRecord is a Noise message's own ceiling, and therefore this framing's.
@@ -30,19 +45,22 @@ const maxRecord = 65535
 // AEAD tag.
 const maxPlain = maxRecord - 16
 
+// writeRecord sends one length-prefixed record in ONE write.
+//
+// THE PREFIX AND THE BODY GO TOGETHER because the stream underneath may be
+// message-oriented: a relay carrier bills a message per write and a peer-to-peer
+// data channel sends one message per write, so the old two writes doubled the
+// message count of every record on both. The bytes on the wire are exactly the
+// ones the two writes produced, so a build that still writes two reads this
+// one and the other way round.
 func writeRecord(w io.Writer, body []byte) error {
 	if len(body) > maxRecord {
 		return fmt.Errorf("pair: a %d-byte record is over the %d-byte limit", len(body), maxRecord)
 	}
-	var prefix [2]byte
-	binary.BigEndian.PutUint16(prefix[:], uint16(len(body)))
-	if _, err := w.Write(prefix[:]); err != nil {
-		return err
-	}
-	if len(body) == 0 {
-		return nil
-	}
-	_, err := w.Write(body)
+	record := make([]byte, 2+len(body))
+	binary.BigEndian.PutUint16(record, uint16(len(body)))
+	copy(record[2:], body)
+	_, err := w.Write(record)
 	return err
 }
 

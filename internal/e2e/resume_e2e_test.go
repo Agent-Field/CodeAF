@@ -64,7 +64,7 @@ func TestResumeBriefAfterTakeover(t *testing.T) {
 	b.keys("Up")
 	t.Logf("after up:\n%s", b.capture())
 	b.keys("Enter")
-	b.waitFor(30*time.Second, "Continue this chat here?")
+	b.waitFor(30*time.Second, say(t, "moveAsk"))
 	// Answer by the option's own key, then enter. Under home the up arrow is home's and
 	// disarms the row, so walking the pointer would close the card.
 	b.keys("1", "Enter")

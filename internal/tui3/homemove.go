@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
@@ -56,7 +57,7 @@ func moveSaid(p MoveProgress) string {
 	case p.Step == "opening":
 		return "opening it here…"
 	case p.Done <= 0:
-		return continuing
+		return movingHere
 	case p.Total > 0:
 		return fmt.Sprintf("copying to this computer: %s…", movedBytes(p.Done, p.Total))
 	}
@@ -198,8 +199,12 @@ func (a *app) followMove(msg homeMoveTickMsg) tea.Cmd {
 		return nil
 	}
 	if a.homeTaking != "" {
-		if p, ok := reporter.MoveProgress(a.homeTaking); ok && a.at(pageHome) && (a.home.msg == "" || a.home.msg == a.homeMoveLine() || a.home.msg == continuing || a.home.msg == "opening conversation…") {
-			a.homeMoveSaid = moveSaid(p)
+		if p, ok := reporter.MoveProgress(a.homeTaking); ok && a.at(pageHome) && (a.home.msg == "" || a.home.msg == a.homeMoveLine() || a.home.msg == movingHere || a.home.msg == chatlist.LiveMoving || a.home.msg == "opening conversation…") {
+			said := moveSaid(p)
+			if a.liveMoveFrom != "" && said == movingHere {
+				said = chatlist.LiveMoving
+			}
+			a.homeMoveSaid = said
 			a.home.say(a.homeMoveSaid, "")
 			a.touch()
 		}
@@ -219,12 +224,15 @@ func (a *app) followMove(msg homeMoveTickMsg) tea.Cmd {
 
 // initialMoveLine is the first line home shows when a continue begins.
 func (a *app) initialMoveLine() string {
+	if a.liveMoveFrom != "" {
+		return chatlist.LiveMoving
+	}
 	if !syncsetup.MoveFilesFirst() {
 		if _, ok := a.taker.(moveReporter); ok {
 			return "opening conversation…"
 		}
 	}
-	return continuing
+	return movingHere
 }
 
 // homeMoveLine is the line home shows for the running continue.

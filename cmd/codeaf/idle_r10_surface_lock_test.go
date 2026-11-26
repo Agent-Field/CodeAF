@@ -12,7 +12,7 @@ import (
 )
 
 func TestIdleRelease_R10_RetryableRefusalIsNotHeldElsewhere(t *testing.T) {
-	err := appEngineError(&executor.WorkRefusal{Line: "couldn't confirm taking this chat back from the sync service; try again", Retryable: true})
+	err := appEngineError(&executor.WorkRefusal{Line: "couldn't confirm taking this chat back from the relay; try again", Retryable: true})
 	var wire *appwire.Error
 	if !errors.As(err, &wire) || wire.Code != appwire.CodeUnreachable || wire.Detail != nil {
 		t.Fatalf("uncertain take-back offered a move: %+v", err)

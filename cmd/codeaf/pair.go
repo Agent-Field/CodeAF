@@ -160,7 +160,7 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 		fmt.Fprintln(usageOut, reason)
 	}
 	flags := commandFlags("pair")
-	via := flags.String("via", "", "the sync service to pair through; empty is the one this device already uses")
+	via := flags.String("via", "", "the relay to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")
 	code := flags.Bool("code", false, "show a code such as "+pair.ExampleChatCode+" that shares this device's chats, instead of asking to join")
 	replace := flags.Bool("replace", false, "when typing a code, replace this device's own chats with the shared ones")

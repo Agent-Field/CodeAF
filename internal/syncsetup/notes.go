@@ -31,7 +31,7 @@ import (
 var (
 	// ErrNotesUnsupported is a relay that does not keep a device record's
 	// outbox, so a message could not reach the other computer.
-	ErrNotesUnsupported = errors.New("this sync service cannot carry a message to another computer yet")
+	ErrNotesUnsupported = errors.New("this relay cannot carry a message to another computer yet")
 	// ErrOutboxFull is MaxNotes messages already waiting to be taken. The
 	// outbox is this device's, across every chat and computer, not one chat's.
 	ErrOutboxFull = errors.New("too many messages sent from this computer are not delivered yet")
@@ -40,7 +40,7 @@ var (
 	ErrNoteEmpty = errors.New("the message is empty")
 	ErrNoteLong  = errors.New("the message is too long to send to another computer")
 	// ErrNoOwnRecord is a device whose own record the relay does not list yet.
-	ErrNoOwnRecord = errors.New("this computer is not listed by the sync service yet")
+	ErrNoOwnRecord = errors.New("this computer is not listed by the relay yet")
 )
 
 // Mail is what one listing says about messages between computers, from this

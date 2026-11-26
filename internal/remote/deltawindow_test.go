@@ -803,3 +803,96 @@ func TestDeltaWindowStreamsAreIndependent(t *testing.T) {
 	}
 	deltaClose(t, l, firstID, firstSeq)
 }
+
+// TestTokenFramesAreFoldedAtTheEngineWindowOnlyWhenRemoteControlIsOn verifies
+// V20: when remote control is off the engine's delta window stays zero and
+// every token delta travels in its own frame; when remote control is on the
+// engine uses the 33 ms default delta window, folding token deltas that arrive
+// within the window into one event, one sequence number and one replay ring
+// entry so Resume replays the folded run exactly.
+func TestTokenFramesAreFoldedAtTheEngineWindowOnlyWhenRemoteControlIsOn(t *testing.T) {
+	if got := deltaWindowFor(false); got != 0 {
+		t.Fatalf("deltaWindowFor(false) = %v, want 0", got)
+	}
+	if got := DeltaWindowFor(false); got != 0 {
+		t.Fatalf("DeltaWindowFor(false) = %v, want 0", got)
+	}
+	if got := deltaWindowFor(true); got != DefaultDeltaWindow {
+		t.Fatalf("deltaWindowFor(true) = %v, want %v", got, DefaultDeltaWindow)
+	}
+	if got := DeltaWindowFor(true); got != DefaultDeltaWindow {
+		t.Fatalf("DeltaWindowFor(true) = %v, want %v", got, DefaultDeltaWindow)
+	}
+
+	chunks := []string{"hel", "lo", " ", "world"}
+
+	// With remote control OFF the engine window is zero: each token delta is
+	// framed on its own with its own sequence number.
+	{
+		agent, _, l, id, stream := deltaSession(t, DeltaWindowFor(false))
+		for _, chunk := range chunks {
+			stream <- session.Event{Kind: session.EventTextDelta, Text: chunk}
+		}
+		agent.finish(stream)
+		var seq uint64
+		for _, want := range chunks {
+			ev := deltaEvent(t, l, id, &seq)
+			if ev.Kind != session.EventTextDelta || ev.Text != want {
+				t.Fatalf("off window seq %d = %+v, want text %q", seq, ev, want)
+			}
+		}
+		if seq != uint64(len(chunks)) {
+			t.Fatalf("off window sent %d events, want %d", seq, len(chunks))
+		}
+		deltaClose(t, l, id, seq)
+	}
+
+	// With remote control ON the engine window is 33 ms: the leading token delta
+	// goes out immediately as seq 1, and token deltas arriving within the 33 ms
+	// window are folded into a single event at seq 2 and a single ring entry
+	// that Resume replays verbatim.
+	{
+		agent, sess, first, id, stream := deltaSession(t, DeltaWindowFor(true))
+		for _, chunk := range chunks {
+			stream <- session.Event{Kind: session.EventTextDelta, Text: chunk}
+		}
+		var seq uint64
+		if ev := deltaEvent(t, first, id, &seq); ev.Kind != session.EventTextDelta || ev.Text != "hel" || seq != 1 {
+			t.Fatalf("on window leading event = %+v at seq %d, want \"hel\" at seq 1", ev, seq)
+		}
+		if ev := deltaEvent(t, first, id, &seq); ev.Kind != session.EventTextDelta || ev.Text != "lo world" || seq != 2 {
+			t.Fatalf("on window folded event = %+v at seq %d, want \"lo world\" at seq 2", ev, seq)
+		}
+
+		resumedAfterFirst := dialSession(t, sess)
+		resumedAfterFirst.hello(Hello{
+			Version: Version,
+			Watch:   true,
+			Resume:  []StreamCursor{{Stream: id, Seq: 1}},
+		})
+		resumedFromZero := dialSession(t, sess)
+		resumedFromZero.hello(Hello{
+			Version: Version,
+			Watch:   true,
+			Resume:  []StreamCursor{{Stream: id, Seq: 0}},
+		})
+
+		agent.finish(stream)
+		deltaClose(t, first, id, seq)
+
+		resumeSeq := uint64(1)
+		if ev := deltaEvent(t, resumedAfterFirst, id, &resumeSeq); ev.Kind != session.EventTextDelta || ev.Text != "lo world" || resumeSeq != 2 {
+			t.Fatalf("resume after seq 1 replayed %+v at seq %d, want folded \"lo world\" at seq 2", ev, resumeSeq)
+		}
+		deltaClose(t, resumedAfterFirst, id, resumeSeq)
+
+		fullSeq := uint64(0)
+		if ev := deltaEvent(t, resumedFromZero, id, &fullSeq); ev.Kind != session.EventTextDelta || ev.Text != "hel" || fullSeq != 1 {
+			t.Fatalf("resume from 0 first event = %+v at seq %d, want \"hel\" at seq 1", ev, fullSeq)
+		}
+		if ev := deltaEvent(t, resumedFromZero, id, &fullSeq); ev.Kind != session.EventTextDelta || ev.Text != "lo world" || fullSeq != 2 {
+			t.Fatalf("resume from 0 second event = %+v at seq %d, want \"lo world\" at seq 2", ev, fullSeq)
+		}
+		deltaClose(t, resumedFromZero, id, fullSeq)
+	}
+}

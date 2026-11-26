@@ -2014,6 +2014,12 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if strings.TrimSpace(answer.Key) == "" {
 		answer.Key = answer.FirstKey()
 	}
+	if err := a.refuseRemoteAnswer(answer); err != nil {
+		return err
+	}
+	// Clear the transport stamp once the remote gate has passed so no
+	// persisted record or rendered message carries wire metadata.
+	answer.Remote = false
 	// A REVISION IS THE OTHER THING AN ANSWER CAN BE, and it takes its own road
 	// for one reason: every lane below is a resolver handing an answer to
 	// somebody WAITING for it, and a question that has been settled has nobody

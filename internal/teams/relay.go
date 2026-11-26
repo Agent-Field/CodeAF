@@ -127,5 +127,5 @@ func DeliveryRefusal(member Member, computer string) string {
 	if who == "" {
 		who = "This chat"
 	}
-	return who + " is on " + computer + "; the message would not reach it, so continue the chat here first."
+	return who + " is on " + computer + "; the message would not reach it, so move the chat here first."
 }

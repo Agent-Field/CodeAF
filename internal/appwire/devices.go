@@ -6,6 +6,10 @@ import (
 
 const (
 	FeatureDevicesManage = "devices.manage"
+	// FeatureDevicesPermit says devices carry permit and devices.permit exists:
+	// what each paired computer may do in chats HERE, edited in this computer's
+	// own book. Absent unless remote control is on.
+	FeatureDevicesPermit = "devices.permit"
 	EventDevicesChanged  = "devices.changed"
 	DevicesQuiet         = "quiet"
 	DevicesOn            = "on"
@@ -23,6 +27,17 @@ type Device struct {
 	LastSeen   time.Time `json:"last_seen,omitzero"`
 	Online     *bool     `json:"online,omitempty"`
 	RemoveLine string    `json:"remove_line,omitempty"`
+	// Permit is what this paired computer may do in chats on THIS one. Absent on
+	// this computer's own row, on a removed one, and from an engine without the
+	// feature.
+	Permit *DevicePermit `json:"permit,omitempty"`
+}
+
+// DevicePermit is the two switches kept for each paired computer: whether it
+// may watch chats here, and whether it may type into them.
+type DevicePermit struct {
+	Watch bool `json:"watch"`
+	Drive bool `json:"drive"`
 }
 
 type Devices struct {
@@ -42,6 +57,20 @@ type DeviceRenameParams struct {
 
 type DeviceListParams struct{}
 
+// DevicePermitParams is devices.permit. Only the switches named change; one
+// that is left out keeps what it was.
+type DevicePermitParams struct {
+	ID    string `json:"id"`
+	Watch *bool  `json:"watch,omitempty"`
+	Drive *bool  `json:"drive,omitempty"`
+}
+
+// DevicePermitResult is the row as it stands after the change.
+type DevicePermitResult struct {
+	Device *Device `json:"device,omitempty"`
+	Line   string  `json:"line,omitempty"`
+}
+
 type DeviceRemoveParams struct {
 	ID string `json:"id"`
 }
@@ -54,6 +83,11 @@ func (p *DeviceListParams) UnmarshalJSON(raw []byte) error {
 func (p *DeviceRenameParams) UnmarshalJSON(raw []byte) error {
 	type plain DeviceRenameParams
 	return decodeStrict("devices.rename", raw, (*plain)(p))
+}
+
+func (p *DevicePermitParams) UnmarshalJSON(raw []byte) error {
+	type plain DevicePermitParams
+	return decodeStrict("devices.permit", raw, (*plain)(p))
 }
 
 func (p *DeviceRemoveParams) UnmarshalJSON(raw []byte) error {
@@ -77,9 +111,22 @@ type DeviceManager interface {
 	RemoveDevice(string) (DeviceRemoveResult, error)
 }
 
+// DevicePermitter edits what a paired computer may do in this computer's chats.
+type DevicePermitter interface {
+	PermitDevice(DevicePermitParams) (DevicePermitResult, error)
+}
+
+// DevicePermitOffer is an engine's answer to whether permits are on now.
+type DevicePermitOffer interface{ DevicePermitsOffered() bool }
+
 func withDevicesFeatures(hello Hello, e Engine) Hello {
 	if _, ok := e.(DeviceManager); ok {
-		return withFeature(hello, FeatureDevicesManage)
+		hello = withFeature(hello, FeatureDevicesManage)
+	}
+	if _, ok := e.(DevicePermitter); ok {
+		if offer, asked := e.(DevicePermitOffer); asked && offer.DevicePermitsOffered() {
+			hello = withFeature(hello, FeatureDevicesPermit)
+		}
 	}
 	return hello
 }
@@ -100,6 +147,20 @@ func init() {
 			return nil, Errorf(CodeUnknownMethod, "this engine does not manage computers")
 		}
 		got, err := door.RenameDevice(p.Name)
+		return &got, err
+	})
+	methods["devices.permit"] = typed(func(e Engine, p DevicePermitParams) (*DevicePermitResult, error) {
+		door, ok := e.(DevicePermitter)
+		if offer, asked := e.(DevicePermitOffer); !ok || !asked || !offer.DevicePermitsOffered() {
+			return nil, Errorf(CodeUnknownMethod, "this engine does not set what other computers may do here")
+		}
+		if _, err := required("id", p.ID); err != nil {
+			return nil, err
+		}
+		if p.Watch == nil && p.Drive == nil {
+			return nil, Errorf(CodeBadParams, "name the switch to change: watch, drive or both")
+		}
+		got, err := door.PermitDevice(p)
 		return &got, err
 	})
 	methods["devices.remove"] = typed(func(e Engine, p DeviceRemoveParams) (*DeviceRemoveResult, error) {

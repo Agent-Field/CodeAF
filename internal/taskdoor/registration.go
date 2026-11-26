@@ -34,6 +34,18 @@ func (r *registrationLoop) now() time.Time {
 	}
 	return time.Now()
 }
+
+// spread is how long to actually wait at a point in a back-off schedule: the
+// first wait after a drop is [relay.FirstRetry] and every later one is the
+// schedule's wait scaled by [relay.Jitter], so a relay restart does not bring
+// every machine back in the same instant.
+func spread(schedule time.Duration, first bool) time.Duration {
+	if first {
+		return relay.FirstRetry()
+	}
+	return relay.Jitter(schedule)
+}
+
 func (r *registrationLoop) wait(ctx context.Context, d time.Duration) error {
 	if r.Wait != nil {
 		return r.Wait(ctx, d)
@@ -54,7 +66,10 @@ func (r *registrationLoop) Run(ctx context.Context) error {
 	if r.Key == nil || r.Hold == nil {
 		return errors.New("pair: a registration needs a key and a stream handler")
 	}
+	// wait is the back-off schedule, doubled after each wait and capped at a
+	// minute. It is never slept as it stands: see [spread].
 	wait := time.Second
+	first := true
 	announced := false
 	// told and throttled are each said once per spell, not once per retry.
 	// told is set when the person has been told sync was lost and not yet
@@ -125,13 +140,15 @@ func (r *registrationLoop) Run(ctx context.Context) error {
 			// backing off instead of hammering the relay every second.
 			if r.now().Sub(since) >= time.Minute {
 				wait = time.Second
+				first = true
 				throttled = false
 			}
 		}
 
-		if err := r.wait(ctx, wait); err != nil {
+		if err := r.wait(ctx, spread(wait, first)); err != nil {
 			return nil
 		}
+		first = false
 		if wait *= 2; wait > time.Minute {
 			wait = time.Minute
 		}

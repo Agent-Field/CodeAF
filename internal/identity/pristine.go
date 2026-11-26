@@ -72,6 +72,22 @@ var startupRules = rules{
 		}),
 		"history.jsonl": onlyCommands, "models*.json": pickerCache, "lanes.json": never, "lanes.json.lock": never,
 		"lanes.log": never, "lanes": never, // provider facts fetched from the model catalogue, fetched again on demand
+		// REMOTE CONTROL'S BOOKKEEPING IS NEVER LOCAL WORK. Watching and typing into
+		// a chat from another computer leaves these behind on whichever computer
+		// ran it, and none of them is something the person made: the permit book
+		// belongs to an identity the join replaces (a book written for another
+		// identity is read as the safe default and rewritten), the day's byte
+		// count starts again at zero each day, the live door's sockets and pid
+		// files are swept when their process is gone, and the view copy is a read-
+		// only picture of ANOTHER computer's chat. A home that counted any of them
+		// as use would look used the moment a computer was paired and then left
+		// alone, and could not join another set of computers without --replace.
+		// Anything else in v3/remote (the device key, say) is still use.
+		"remote": within(rules{
+			"permits.json": never, "permits.json.new": never,
+			"budget.json": never, ".budget-*.tmp": never,
+		}),
+		"live": never, "viewed": never,
 		"draft-*.json": untypedDraft, "hosts": never, "standing": never,
 		"stores": within(rules{
 			"sweep.stamp": never,

@@ -98,7 +98,7 @@ func TestARunawaySentenceIsStillBoundedAndSaysItWasCut(t *testing.T) {
 	if !regexp.MustCompile(`(this|sentence|never|ends|and)` + glyphMore).MatchString(text) {
 		t.Errorf("a sentence cut at the bound carries no sign of it on its last row:\n%s", text)
 	}
-	if !strings.Contains(text, continueStay) {
+	if !strings.Contains(text, moveStay) {
 		t.Errorf("the answers were pushed off the card by the sentence:\n%s", text)
 	}
 }

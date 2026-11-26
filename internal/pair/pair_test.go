@@ -535,7 +535,7 @@ func TestEveryWayThisFailsSaysWhichWayItFailed(t *testing.T) {
 		if err == nil {
 			t.Fatal("--at opened with no relay set up")
 		}
-		if !strings.Contains(err.Error(), "no sync service is set up on this machine") {
+		if !strings.Contains(err.Error(), "no relay is set up on this machine") {
 			t.Fatalf("with no relay, --at said %q", err)
 		}
 		if !strings.Contains(err.Error(), "--host over ssh") {
@@ -560,7 +560,7 @@ func TestEveryWayThisFailsSaysWhichWayItFailed(t *testing.T) {
 		_, address := liveRelay(t)
 		t.Setenv(RelayEnv, address)
 		_, err := asking.Open(context.Background())
-		if err == nil || !strings.Contains(err.Error(), "is not connected to the sync service right now") {
+		if err == nil || !strings.Contains(err.Error(), "is not connected to the relay right now") {
 			t.Fatalf("with nothing registered, --at said %v", err)
 		}
 		if !strings.Contains(err.Error(), "codeaf serve") {

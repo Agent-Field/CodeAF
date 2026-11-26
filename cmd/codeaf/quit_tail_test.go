@@ -543,7 +543,7 @@ func TestL4HostedTakeBackNeverBranchesBookkeepingOnlyTurns(t *testing.T) {
 func assertBookkeepingTakeBack(t *testing.T, h *hostedTailChat, g *tailPublishGate) {
 	t.Helper()
 	output := h.quitAfter(g, 0)
-	if !strings.Contains(output, "saved here; it reaches your other devices when the sync service at ") || strings.Contains(output, "could not save") {
+	if !strings.Contains(output, "saved here; it reaches your other devices when the relay at ") || strings.Contains(output, "could not save") {
 		raw, _ := os.ReadFile(session.Place{Dir: h.c.Root}.Transcript())
 		t.Fatalf("offline fixture did not retain local work: %q\n%s", output, raw)
 	}
@@ -596,7 +596,7 @@ func TestL4HostedLocalSaveRetriesUploadOnNextStartWhileStillHolding(t *testing.T
 		return err == nil && strings.Contains(string(raw), `"title":"a saved conversation title"`)
 	})
 	output := h.quitAfter(g, 0)
-	if !strings.Contains(output, "saved here; it reaches your other devices when the sync service at ") || strings.Contains(output, "could not save") {
+	if !strings.Contains(output, "saved here; it reaches your other devices when the relay at ") || strings.Contains(output, "could not save") {
 		t.Errorf("an upload-only failure lost its local-save receipt: %q", output)
 	}
 	if _, fence, err := h.a.SendLease(h.c.ID); err != nil || fence == 0 {

@@ -3,12 +3,13 @@ package chatlist
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/directory"
 )
 
-// The words of the devices row. The two verbs it offers, MoveHere and
-// ContinueVerb, are in copy.go with the other contract sentences.
+// The words of the devices row. The verb it offers, MoveHere, is in copy.go with
+// the other contract sentences.
 const (
 	thisMac    = "This Mac"
 	thisDevice = "This computer"
@@ -22,6 +23,8 @@ type Device struct {
 	ID, Name string
 	// Self marks the device the row is drawn on.
 	Self bool
+	// LastSeen is when the directory last heard from this device, or zero when unknown.
+	LastSeen time.Time
 }
 
 // Devices lists the devices that are not revoked, this one first and the rest by
@@ -30,7 +33,11 @@ func Devices(l directory.Listing, self string, open Opener) []Device {
 	var out []Device
 	for id, d := range l.Devices {
 		if !d.Revoked {
-			out = append(out, Device{ID: id, Name: ownName(id == self, d, open, id, l), Self: id == self})
+			var seen time.Time
+			if d.LastSeen > 0 {
+				seen = time.UnixMilli(d.LastSeen)
+			}
+			out = append(out, Device{ID: id, Name: ownName(id == self, d, open, id, l), Self: id == self, LastSeen: seen})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return deviceBefore(out[i], out[j]) })
@@ -67,13 +74,7 @@ func (d Device) Mark(online bool, mark string) string {
 	return mark + " " + d.Name + " " + offlineTag
 }
 
-// VerbFor is the verb the devices row offers for a chat on another device.
-func VerbFor(r Row) string {
-	if r.Status == Running {
-		return MoveHere
-	}
-	return ContinueVerb
-}
-
-// VerbFrom is the verb with the device it brings the chat from.
-func VerbFrom(r Row) string { return fmt.Sprintf(verbFrom, VerbFor(r), r.Device) }
+// VerbFrom is the verb with the device it brings the chat from. The verb is
+// [MoveHere] for every chat on another device, whether that device is running it
+// or let it go.
+func VerbFrom(r Row) string { return fmt.Sprintf(verbFrom, MoveHere, r.Device) }
