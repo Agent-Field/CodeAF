@@ -9,7 +9,7 @@ import (
 
 // The outlined data row belongs to the choice while reuse is pending. Keep
 // the authored plan complete for the writer, Check and the saved definition.
-func (j *job) projectOutline(app schema.App, plan schema.Plan) {
+func (j *job) projectOutline(app schema.App, plan schema.Plan, catalog Catalog) {
 	for i := range plan.Data {
 		line := &plan.Data[i]
 		if hasBuilderDetail(line.Line) {
@@ -20,7 +20,7 @@ func (j *job) projectOutline(app schema.App, plan schema.Plan) {
 	var offers []Offer
 	for _, offer := range j.Offers {
 		row := outlineRecord(offer, app, plan.Data)
-		if row != nil && slices.Contains(j.Using, row.ID) {
+		if row != nil && slices.Contains(j.Using, row.ID) && j.reuseAccepted(row.ID, app.Records[row.ID], catalog) {
 			continue
 		}
 		if row != nil {
@@ -47,14 +47,9 @@ func (j *job) projectOutline(app schema.App, plan schema.Plan) {
 	}
 	j.Offers = offers
 	rowsOwnedByOffers := map[string]bool{}
-	for i := range offers {
-		offer := &offers[i]
+	for _, offer := range offers {
 		if offer.Outline != nil {
 			rowsOwnedByOffers[offer.Outline.ID] = true
-			if offer.App == "" && !hasBuilderDetail(offer.Outline.Line) {
-				// Keep the original description with a new-list suggestion.
-				offer.Line = offer.Outline.Line + " · " + offer.Line
-			}
 		}
 	}
 	seen := map[string]bool{}

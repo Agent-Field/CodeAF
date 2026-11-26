@@ -75,9 +75,7 @@ func (s *Jobs) work(ctx context.Context, id string) bool {
 		if err == nil && checking {
 			existing := externalTypes(catalog.Types, id, j.App)
 			def := definition(j.Working.Files)
-			if !headless {
-				report = j.checkReuse(j.Working.Files, catalog, existing)
-			}
+			report = j.checkReuse(j.Working.Files, catalog, existing, !headless)
 			if report.OK() {
 				if s.opts.Check != nil {
 					report = s.opts.Check(ctx, id, def, existing)
@@ -188,10 +186,8 @@ func (s *Jobs) ask(ctx context.Context, j *job, t turn, catalog Catalog, headles
 		OwnerNameAvailable: s.opts.OwnerNameAvailable,
 		Reuse:              reuse,
 	}, types, s.author, func(files map[string]string) schema.Report {
-		if !headless {
-			if report := j.checkReuse(files, catalog, types); !report.OK() {
-				return report
-			}
+		if report := j.checkReuse(files, catalog, types, !headless); !report.OK() {
+			return report
 		}
 		return check.Definition(definition(files), types)
 	}, func(files map[string]string) error {
@@ -312,9 +308,8 @@ func (s *Jobs) commitTurn(id string, t turn, checking, headless bool, catalog Ca
 		}
 		j.State.State = Failed
 		j.Problem = "I reached the build limit. Your draft is saved."
-		return s.finish(j, Event{Line: j.Problem, Report: &schema.Report{Problems: []schema.Problem{
-			{Code: "build_failed", Message: j.Problem},
-		}}})
+		report.Problems = append(report.Problems, schema.Problem{Code: "build_failed", Message: j.Problem})
+		return s.finish(j, Event{Line: j.Problem, Report: &report})
 	}
 
 	if errors.Is(err, errCompilerUnavailable) {
@@ -533,11 +528,19 @@ func onlyOptionalFields(before, after string) bool {
 	return reflect.DeepEqual(kept, draft)
 }
 
-func (j *job) checkReuse(files map[string]string, catalog Catalog, existing schema.TypeSet) schema.Report {
+func (j *job) checkReuse(files map[string]string, catalog Catalog, existing schema.TypeSet, needsConsent bool) schema.Report {
 	app, _ := schema.ParseApp([]byte(files[schema.AppFile]))
 	var report schema.Report
 	for _, name := range slices.Sorted(maps.Keys(app.Records)) {
-		if typ := app.Records[name]; typ.Uses && !j.reuseAccepted(name, typ, catalog) {
+		typ := app.Records[name]
+		if typ.Uses && j.keepsSeparate(name, typ.Common) {
+			report.Problems = append(report.Problems, schema.Problem{
+				File: schema.AppFile, Path: "/records/" + name, Code: "separate_reuse",
+				Message: "Keep " + displayName(typ.Label, name) + " separate as requested.",
+			})
+			continue
+		}
+		if needsConsent && typ.Uses && !j.reuseAccepted(name, typ, catalog) {
 			// An unbound common type needs repair. There are no records to share.
 			if _, ok := existing.ForRecord(name, typ); !ok {
 				continue

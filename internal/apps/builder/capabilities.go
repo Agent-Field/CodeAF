@@ -24,7 +24,7 @@ var planCapabilities = []planCapability{
 
 var lifecycleMove = regexp.MustCompile(`(?i)\b(?:move|mark|transition|change|advance)\b[^.!?;]{0,60}\b(?:to|into)\b`)
 var transitionID = regexp.MustCompile("(?i)\\b(?:lifecycle |state |stage )?transition\\s+(?:with\\s+)?id\\s*:?\\s*(" + runWord + ")")
-var independentWork = regexp.MustCompile(`(?i)\b(?:connector|scheduled?|daily|hourly|notify|email|send|publish|draft|summari[sz]e|review)\b`)
+var independentWork = regexp.MustCompile(`(?i)\b(?:connector|scheduled?|daily|hourly|notify|email|send|draft|summari[sz]e|review)\b`)
 
 // Native record capabilities run through the data API. Approval configures an
 // existing run. Preserving the plan line gives the author its original settings.
@@ -75,8 +75,9 @@ func (w buildPlan) compileCapabilities(plan *schema.Plan, files map[string]strin
 				continue
 			}
 			matches := capability.match.MatchString(words)
-			if capability.kind == schema.BuiltinLifecycle && capability.match.MatchString(ask) && lifecycleMove.MatchString(words) {
-				matches = true
+			if capability.kind == schema.BuiltinLifecycle && capability.match.MatchString(ask) {
+				requested := plannedTransition(capability.kind, "", ask)
+				matches = matches || lifecycleMove.MatchString(words) || requested != "" && requested == line.ID
 			}
 			matches = matches || slices.ContainsFunc(settings, func(b schema.PlanBuiltin) bool {
 				return b.ID == line.ID && b.Kind == capability.kind
@@ -141,10 +142,8 @@ func (w buildPlan) compileCapabilities(plan *schema.Plan, files map[string]strin
 			if builtin.Record == "" && len(plan.Data) == 1 {
 				builtin.Record = plan.Data[0].ID
 			}
-			if builtin.Kind == schema.BuiltinLifecycle {
-				if err := compileLifecycle(ask, *builtin, files); err != nil {
-					return err
-				}
+			if err := compileRecordCapability(ask, *builtin, files); err != nil {
+				return err
 			}
 		case schema.BuiltinApproval:
 			if builtin.Run == "" && len(plan.Automation) == 1 {
@@ -238,8 +237,8 @@ func removeRunFiles(files map[string]string, id string) {
 	delete(files, "runs/"+id+".yml")
 }
 
-func compileLifecycle(ask string, builtin schema.PlanBuiltin, files map[string]string) error {
-	if builtin.Record == "" || builtin.Transition == "" {
+func compileRecordCapability(ask string, builtin schema.PlanBuiltin, files map[string]string) error {
+	if builtin.Record == "" {
 		return nil
 	}
 	var app map[string]json.RawMessage
@@ -247,59 +246,88 @@ func compileLifecycle(ask string, builtin schema.PlanBuiltin, files map[string]s
 	var record schema.RecordType
 	if json.Unmarshal([]byte(files[schema.AppFile]), &app) != nil ||
 		json.Unmarshal(app["records"], &records) != nil ||
-		json.Unmarshal(records[builtin.Record], &record) != nil || record.Uses {
+		json.Unmarshal(records[builtin.Record], &record) != nil {
 		return nil
 	}
-
-	// Preserve the writer's lifecycle settings. A single authored transition
-	// for this capability already supplies its source, destination and effects.
-	lifecycle := record.Lifecycle
-	if lifecycle != nil {
-		for _, transition := range lifecycle.Transitions {
-			if transition.ID == builtin.Transition {
-				return nil
-			}
-		}
-		if len(lifecycle.Transitions) == 1 {
-			lifecycle.Transitions[0].ID = builtin.Transition
-		} else {
-			return nil
-		}
-	} else {
+	changed := false
+	if builtin.Kind == schema.BuiltinLifecycle && builtin.Transition != "" && !record.Uses {
 		var process schema.Process
-		if json.Unmarshal(app["process"], &process) == nil && process.Lifecycles[builtin.Record].Field != "" {
-			return nil
+		if json.Unmarshal(app["process"], &process) != nil || process.Lifecycles[builtin.Record].Field == "" {
+			changed = compileLifecycle(ask, builtin, &record)
 		}
-		lifecycle = lifecycleFromRequest(record, builtin, ask)
-		if lifecycle == nil {
-			return nil
+	}
+	if changed {
+		var err error
+		records[builtin.Record], err = json.Marshal(record)
+		if err != nil {
+			return err
 		}
-		record.Lifecycle = lifecycle
+		app["records"], err = json.Marshal(records)
+		if err != nil {
+			return err
+		}
 	}
-	var err error
-	records[builtin.Record], err = json.Marshal(record)
-	if err != nil {
-		return err
+	manifest, err := schema.ParseApp([]byte(files[schema.AppFile]))
+	if err == nil && manifest.Capabilities.Records[builtin.Record] != "rw" {
+		if err := declareRecordAccess(app, builtin.Record, "rw"); err != nil {
+			return err
+		}
+		changed = true
 	}
-	app["records"], err = json.Marshal(records)
-	if err != nil {
-		return err
+	if changed {
+		return saveJSON(files, schema.AppFile, app)
 	}
-	if err := declareRecordAccess(app, builtin.Record, "rw"); err != nil {
-		return err
+	return nil
+}
+
+// Preserve the author's lifecycle while assigning the requested transition
+// address. The person's explicit source and destination can fill a missing
+// setting even when the writer has already declared other transitions.
+func compileLifecycle(ask string, builtin schema.PlanBuiltin, record *schema.RecordType) bool {
+	example := lifecycleFromRequest(*record, builtin, ask)
+	if record.Lifecycle == nil {
+		record.Lifecycle = example
+		return example != nil
 	}
-	return saveJSON(files, schema.AppFile, app)
+	transitions := record.Lifecycle.Transitions
+	if slices.ContainsFunc(transitions, func(tr schema.RecordTransition) bool { return tr.ID == builtin.Transition }) {
+		return false
+	}
+	if example != nil {
+		requested := example.Transitions[0]
+		index := slices.IndexFunc(transitions, func(tr schema.RecordTransition) bool {
+			return tr.To == requested.To && slices.Equal(tr.From, requested.From)
+		})
+		if index >= 0 {
+			transitions[index].ID = builtin.Transition
+		} else {
+			record.Lifecycle.Transitions = append(transitions, requested)
+		}
+		return true
+	}
+	if len(transitions) == 1 {
+		transitions[0].ID = builtin.Transition
+		return true
+	}
+	return false
 }
 
 // A request with an explicit transition ID and states is already enough to
 // construct a native lifecycle once the author supplies the record fields.
 func lifecycleFromRequest(record schema.RecordType, builtin schema.PlanBuiltin, ask string) *schema.RecordLifecycle {
-	for _, field := range []string{"status", "state", "stage"} {
+	fields := []string{"status", "state", "stage"}
+	if record.Lifecycle != nil {
+		fields = []string{record.Lifecycle.Field}
+	}
+	for _, field := range fields {
 		shape := record.Fields[field]
 		if shape.Type != "enum" {
 			continue
 		}
 		initial, _ := shape.Default.(string)
+		if record.Lifecycle != nil && record.Lifecycle.Initial != "" {
+			initial = record.Lifecycle.Initial
+		}
 		var to string
 		for _, value := range shape.Values {
 			token := regexp.QuoteMeta(value)

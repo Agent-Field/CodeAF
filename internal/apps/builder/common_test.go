@@ -60,6 +60,12 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 					keep = slices.Contains(state.Using, "contact")
 					writing = state.Stage == builder.Writing
 					if writing {
+						if !keep {
+							return toolCalls(command("add-type", map[string]any{
+								"name": "customer", "access": "rw",
+								"definition": map[string]any{"fields": map[string]any{"name": map[string]string{"type": "text"}}},
+							})), nil
+						}
 						return toolCalls(command("markup", map[string]string{"screen": "contacts"})), nil
 					}
 					return toolCalls(command("plan", map[string]any{"name": "Support", "plan": json.RawMessage(`{"ask":"Track customers","data":[{"id":"customer","line":"Customer details"}],"screens":[{"id":"contacts","line":"Contact list"}]}`)})), nil
@@ -121,6 +127,14 @@ func TestBuildPlanOffersCommonTypesAndExistingCRMContacts(t *testing.T) {
 	if !slices.Equal(state.Screens, []string{"contacts"}) || !slices.Contains(state.Using, "customer") {
 		t.Fatalf("built screens or binding missing: %+v", state)
 	}
+	if err := jobs.Say(plan.Draft, "Keep a separate customer type for this app", nil); err != nil {
+		t.Fatal(err)
+	}
+	state = waitState(t, jobs, plan.Draft, builder.Ready)
+	if len(state.Using) != 0 || slices.ContainsFunc(state.Offers, func(offer builder.Offer) bool { return offer.App == "crm" }) {
+		t.Fatalf("the person withdrew reuse but the card still offers it: %+v", state)
+	}
+
 }
 
 func TestHeadlessReuseIsProposedUntilApply(t *testing.T) {

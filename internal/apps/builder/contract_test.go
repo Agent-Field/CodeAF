@@ -49,7 +49,7 @@ func TestBuildUsesNativeImportAndLifecycle(t *testing.T) {
 	home := t.TempDir()
 	definitions := store.NewAt(home, nil)
 	const ask = "Import CSV into items. Start each item as Pending and use a lifecycle transition with ID publish to move it to Done."
-	const outline = `{"ask":"Track items","data":[{"id":"item","line":"Items"}],"screens":[{"id":"items","line":"Items"}],"automation":[{"id":"csv-loader","line":"Import CSV into items"},{"id":"publish-item","line":"Move items to Done through a lifecycle transition"}]}`
+	const outline = `{"ask":"Track items","data":[{"id":"item","line":"Items"}],"screens":[{"id":"items","line":"Items"}],"automation":[{"id":"csv-loader","line":"Import CSV into items"},{"id":"publish","line":"Publish the item"}]}`
 	jobs, err := builder.OpenJobs(builder.Options{
 		Home: home, Store: definitions,
 		Compiler: fixtureCompiler{schema.Definition{Files: map[string][]byte{

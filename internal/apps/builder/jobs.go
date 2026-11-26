@@ -228,6 +228,7 @@ type job struct {
 	KeptMarks       int
 	LastRequest     string
 	Accepted        []string
+	Separate        []string                `json:",omitempty"`
 	Reuse           map[string]reuseBinding `json:",omitempty"`
 }
 
@@ -819,8 +820,11 @@ func (j *job) describeDraft(catalog Catalog, headless, planning bool) {
 	}
 	plan, _ := schema.ParsePlan([]byte(files[schema.PlanFile]))
 	j.Offers = reuseOffers(app, plan, j.App, j.Accepted, catalog)
+	j.Offers = slices.DeleteFunc(j.Offers, func(offer Offer) bool {
+		return offer.App != "" && j.keepsSeparate(offer.Type, offer.Common)
+	})
 	if plan.Ask != "" {
-		j.projectOutline(app, plan)
+		j.projectOutline(app, plan, catalog)
 	}
 	if headless && planning {
 		// Put reuse of actual records before empty types and library suggestions.
@@ -853,8 +857,15 @@ func (j *job) acceptKeptUses() {
 // The plan card sends the chosen type in the person's own words. Treat only
 // a positive choice for an offered type as consent to share it.
 func (j *job) applyReuseChoice(request string) {
-	const prefix = "use my existing "
-	text, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(request)), prefix)
+	request = strings.ToLower(strings.TrimSpace(request))
+	if words, ok := strings.CutPrefix(request, "keep a separate "); ok {
+		name, _, _ := strings.Cut(words, " ")
+		if validTypeWord(name) {
+			j.releaseReuse(name)
+		}
+		return
+	}
+	text, ok := strings.CutPrefix(request, "use my existing ")
 	if !ok {
 		return
 	}
@@ -871,6 +882,10 @@ func (j *job) applyReuseChoice(request string) {
 			j.acceptReuse(offer.Type)
 			return
 		}
+	}
+	if slices.Contains(j.Separate, name) {
+		j.Separate = slices.DeleteFunc(j.Separate, func(id string) bool { return id == name })
+		j.acceptReuse(name)
 	}
 }
 

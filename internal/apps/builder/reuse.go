@@ -19,6 +19,41 @@ type reuseBinding struct {
 	Line   schema.PlanLine
 }
 
+func (j *job) keepsSeparate(name, common string) bool {
+	return slices.Contains(j.Separate, name) || (common != "" && slices.Contains(j.Separate, "common:"+common))
+}
+
+// A person may withdraw an accepted use. The writer cannot make this choice.
+func (j *job) releaseReuse(name string) {
+	app, _ := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
+	related := []string{name}
+	common := app.Records[name].Common
+	for local, pin := range j.Reuse {
+		if local == name || pin.Type == name {
+			related = append(related, local, pin.Type)
+			common = pin.Common
+			delete(j.Reuse, local)
+		}
+	}
+	for _, offer := range j.Offers {
+		if offer.App != "" && offer.Type == name {
+			common = offer.Common
+			if offer.Outline != nil {
+				related = append(related, offer.Outline.ID)
+			}
+		}
+	}
+	if common != "" {
+		related = append(related, "common:"+common)
+	}
+	j.Accepted = slices.DeleteFunc(j.Accepted, func(id string) bool { return slices.Contains(related, id) })
+	for _, id := range related {
+		if !slices.Contains(j.Separate, id) {
+			j.Separate = append(j.Separate, id)
+		}
+	}
+}
+
 // Pin a choice before running the writer so a restart or repair sees the same source.
 func (s *Jobs) pinReuse(j *job, t turn, types schema.TypeSet, using []string) (map[string]reuseBinding, error) {
 	app, err := schema.ParseApp([]byte(j.Working.Files[schema.AppFile]))
@@ -40,7 +75,7 @@ func (s *Jobs) pinReuse(j *job, t turn, types schema.TypeSet, using []string) (m
 			}
 		}
 		existing, ok := types[source]
-		if !ok || existing.Owner == "" {
+		if !ok || existing.Owner == "" || j.keepsSeparate(source, existing.Common) {
 			continue
 		}
 		local := reuseLocal(source, existing, app, plan)
@@ -74,6 +109,11 @@ func (s *Jobs) pinReuse(j *job, t turn, types schema.TypeSet, using []string) (m
 	}
 	if len(current.Queue) == 0 || current.Queue[0].ID != t.ID {
 		return nil, context.Canceled
+	}
+	for local, pin := range next {
+		if current.keepsSeparate(local, pin.Common) || current.keepsSeparate(pin.Type, pin.Common) {
+			delete(next, local)
+		}
 	}
 	current.Reuse = next
 	return next, s.save(current, Event{})
