@@ -31,6 +31,10 @@ func TestMeetingCapturePublishesTheTranscriptWithTheCompletion(t *testing.T) {
 	if err != nil || meeting["capture_status"] != "ended" || meeting["transcript"] != first.Transcript {
 		t.Fatalf("completion lacks its transcript link: %#v (%v)", meeting, err)
 	}
+	meta := meeting["_meta"].(RowMeta)
+	if meta.By["person_notes"] != ByPerson || meta.By["capture_summary"] != ByAI {
+		t.Fatalf("person and AI fields have the wrong provenance: %+v", meta.By)
+	}
 	document, err := store.Get(Scope{}, "document", first.Transcript, false)
 	if err != nil || document.ID() != first.Transcript {
 		t.Fatalf("completion points to an unreadable document: %#v (%v)", document, err)
