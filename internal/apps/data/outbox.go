@@ -217,11 +217,22 @@ func (s *Store) InvalidatePolicy(typeID string) error {
 // RecordEventValues resolves an outbox receipt through current type grants.
 // Record values stay in history; masked and hidden fields never reach a run.
 func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (before, after Row, err error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	s.visibility.RLock()
 	defer s.visibility.RUnlock()
 	t, err := s.schema.Load().allow(sc, typeID, false)
 	if err != nil {
 		return nil, nil, err
+	}
+	if t.rowRule != nil {
+		current, err := loadRecord(s.rdb, s.schema.Load(), record)
+		if err != nil {
+			return nil, nil, err
+		}
+		if current == nil || !s.LiveRowAllowed(sc, t, current.Data) {
+			return nil, nil, errorf(CodeNotFound, "the event has no record history")
+		}
 	}
 	var rawBefore, rawAfter sql.NullString
 	err = s.rdb.QueryRow(`SELECT before_json, after_json FROM history
@@ -238,7 +249,7 @@ func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (befor
 			return nil
 		}
 		r := recordFromState(t, record, raw.String)
-		if r.DeletedAt != "" {
+		if r.DeletedAt != "" || !s.LiveRowAllowed(sc, t, r.Data) {
 			return nil
 		}
 		out := Row{"id": record, "type": t.Name, "_rev": r.Rev}
@@ -250,7 +261,17 @@ func (s *Store) RecordEventValues(sc Scope, typeID, record, batch string) (befor
 		}
 		for name, value := range r.Data {
 			if f := t.Fields[name]; f != nil && !f.Hidden && !f.Masked {
-				out[name] = value
+				switch t.FieldPolicy(f) {
+				case "hide":
+					s.AuditRecordPolicy(sc, t, "field_hidden")
+				case "mask":
+					s.AuditRecordPolicy(sc, t, "field_masked")
+					out[name] = masked
+				default:
+					if !s.schema.Load().withheldRef(f) {
+						out[name] = value
+					}
+				}
 			}
 		}
 		return out

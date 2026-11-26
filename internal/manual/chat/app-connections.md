@@ -8,8 +8,7 @@ app and attach its type to a common type, for example
 The profile operator registers each connection for one app. Put its declaration in a local JSON file and pass the
 database connection string on standard input to `codeaf app connections register connection.json`. The profile's
 credential store keeps the connection string. Keep it out of the declaration, app files, command arguments and chat.
-Registration fixes the connection name, endpoint and credential in this version. A replacement needs a new name and
-gets a new source identity namespace.
+Registration fixes the connection name and endpoint. Replacing a shared credential requires a new registration and a new source identity namespace. A personal credential can be replaced for the same connection.
 
 A Postgres declaration for CRM contacts can look like this:
 
@@ -71,3 +70,20 @@ Its arguments are the canonical row `id`, `version` from `_source_version` when 
 `set` with the allowed app fields. The broker asks before dispatch and saves an effect receipt in
 `runs.get` under `effects`. A stale version reports a conflict. If a write's outcome is unknown,
 the broker leaves the run incomplete so it can be checked at the source before anyone sends it again.
+
+
+## Use my own source credential or run the connection as me
+
+Put `"credential_mode":"person"` in the connection declaration and pass
+your credential on standard input when registering it. To connect or replace
+your credential later, pass it on standard input to
+`codeaf app connections credential APP CONNECTION`. A personal connection
+uses your own source account for reads, tests and approved sends. Source
+permissions determine which records can reach the app, and the app's record
+policy can narrow those results further.
+
+If the source rejects the request, the app says “the source refused access
+with your credential”. Attach or renew the source credential for the local
+profile if its access has expired. A live row-policy type can be read through
+a mapped owner field. Write-back for that type requires source support for
+checking the same row policy during the update.

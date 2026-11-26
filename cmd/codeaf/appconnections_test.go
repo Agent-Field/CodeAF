@@ -36,7 +36,7 @@ func TestAppConnectionsCLIAndWireUseTheSameDeclaredRead(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	declaration := connections.Config{
-		ID: "directory", Kind: connections.HTTP, App: "crm", Origin: server.URL, TestPath: "/check",
+		ID: "directory", Kind: connections.HTTP, App: "crm", Origin: server.URL, TestPath: "/check", CredentialMode: connections.CredentialPerson,
 		Reads: map[string]connections.Read{"contacts": {
 			Type: "contact", Path: "/contacts", Key: "pk",
 			Fields: map[string]string{"name": "full_name"}, Match: map[string]string{"name": "q"},
@@ -92,5 +92,12 @@ func TestAppConnectionsCLIAndWireUseTheSameDeclaredRead(t *testing.T) {
 		if bytes.Contains(got, []byte("fixture-private-token")) || bytes.Contains(want, []byte("fixture-private-token")) {
 			t.Fatal("a connection result exposed the profile credential")
 		}
+	}
+	if err := appConnectionsCommand(backend, []string{"credential", "crm", "directory"}, strings.NewReader("revoked-token"), &cli); err != nil {
+		t.Fatal(err)
+	}
+	_, refusal := wire.call("connections.test", map[string]any{"app": "crm", "connection": "directory"})
+	if refusal == nil || refusal.Code != "not_allowed" || refusal.Message != "the source refused access with your credential" {
+		t.Fatalf("wire source refusal = %+v", refusal)
 	}
 }

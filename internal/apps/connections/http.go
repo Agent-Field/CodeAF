@@ -63,6 +63,9 @@ func request(ctx context.Context, c Config, token, method, path string, query ur
 			}
 			return nil, ErrUncertain
 		}
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, ErrSourcePermission
+		}
 		return nil, ErrUnavailable
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))

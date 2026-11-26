@@ -66,6 +66,8 @@ var errDryRun = errors.New("dry run")
 // be a way to read any file on the machine into records it can see. So a call
 // with an app is refused before the path is so much as looked at.
 func (s *Store) ImportCSV(sc Scope, typ string, opts ImportOptions) (*ImportResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	if sc.App != "" || sc.isAgent() {
 		return nil, &Error{Code: CodeNotAllowed, Need: "import", Message: "importing a file is done in the Data place, not by an app"}
 	}
@@ -143,7 +145,7 @@ func (w *writeTx) importRows(t *Type, sc Scope, header []string, lines [][]strin
 		if created != nil {
 			created(r.ID)
 		}
-		if len(res.Rows) < importPreviewRows {
+		if len(res.Rows) < importPreviewRows && w.s.LiveRowAllowed(sc, t, r.Data) {
 			res.Rows = append(res.Rows, w.s.row(t, r, sc, false))
 		}
 	}

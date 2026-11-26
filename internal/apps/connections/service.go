@@ -28,26 +28,30 @@ const (
 )
 
 var (
-	ErrUnavailable = errors.New("the source is unavailable")
-	ErrTooLarge    = errors.New("the source result exceeds the byte budget")
-	ErrConflict    = errors.New("the source record has changed or is unavailable")
-	ErrUncertain   = errors.New("the source could not confirm the write result")
-	ErrRejected    = errors.New("the source refused the write")
-	ErrInvalidRows = errors.New("the source rows do not match the declared mapping")
+	ErrPersonCredential = errors.New("connect your own source credential to use this connection")
+	ErrSourcePermission = errors.New("the source refused access with your credential")
+	ErrUnavailable      = errors.New("the source is unavailable")
+	ErrTooLarge         = errors.New("the source result exceeds the byte budget")
+	ErrConflict         = errors.New("the source record has changed or is unavailable")
+	ErrUncertain        = errors.New("the source could not confirm the write result")
+	ErrRejected         = errors.New("the source refused the write")
+	ErrInvalidRows      = errors.New("the source rows do not match the declared mapping")
 )
 
-// Service resolves only Personal profile connections. TODO(Pol1): bind
-// delegated credentials and inherited source policies before enabling org access.
+// Service resolves profile connections. Person is an engine-owned identity
+// resolver and defaults to the local profile owner.
 type Service struct {
 	Profile string
 	Store   func() (*data.Store, error)
+	Person  func(context.Context) data.PersonPrincipal
 }
 
 type Summary struct {
-	ID     string   `json:"id"`
-	Kind   Kind     `json:"kind"`
-	Reads  []string `json:"reads"`
-	Writes []string `json:"writes"`
+	CredentialMode string   `json:"credential_mode,omitempty"`
+	ID             string   `json:"id"`
+	Kind           Kind     `json:"kind"`
+	Reads          []string `json:"reads"`
+	Writes         []string `json:"writes"`
 }
 
 type Query struct {
@@ -96,16 +100,16 @@ func (s Service) Register(c Config, credential string) error {
 	if err := c.validate(); err != nil {
 		return err
 	}
-	credential = strings.TrimSpace(credential)
-	if credential == "" || len(credential) > MaxCredentialBytes || strings.ContainsAny(credential, "\r\n") {
-		return errors.New("the connection needs one credential line")
+	credential, err := validateCredential(c.Kind, credential)
+	if err != nil {
+		return err
 	}
-	if c.Kind != HTTP {
-		db, err := database(c.Kind, credential)
-		if err != nil {
-			return err
+	person := ""
+	if c.CredentialMode == CredentialPerson {
+		person = s.person(context.Background()).ID
+		if person == "" {
+			return ErrPersonCredential
 		}
-		_ = db.Close()
 	}
 	binding, err := cell.NewID(time.Now())
 	if err != nil {
@@ -115,7 +119,22 @@ func (s Service) Register(c Config, credential string) error {
 	if err != nil {
 		return err
 	}
-	return s.vault().Register(c.ID, definition, credential)
+	return s.vault().Register(c.ID, definition, credential, person)
+}
+
+func validateCredential(kind Kind, credential string) (string, error) {
+	credential = strings.TrimSpace(credential)
+	if credential == "" || len(credential) > MaxCredentialBytes || strings.ContainsAny(credential, "\r\n") {
+		return "", errors.New("the connection needs one credential line")
+	}
+	if kind != HTTP {
+		db, err := database(kind, credential)
+		if err != nil {
+			return "", err
+		}
+		_ = db.Close()
+	}
+	return credential, nil
 }
 
 func (s Service) List(app string) ([]Summary, error) {
@@ -129,7 +148,7 @@ func (s Service) List(app string) ([]Summary, error) {
 		if json.Unmarshal(definitions[id], &c) != nil || c.App != app || app == "" || c.ID != id || !cell.ValidID(c.Binding) {
 			continue
 		}
-		out = append(out, Summary{ID: id, Kind: c.Kind, Reads: slices.Sorted(maps.Keys(c.Reads)), Writes: slices.Sorted(maps.Keys(c.Writes))})
+		out = append(out, Summary{ID: id, Kind: c.Kind, CredentialMode: c.CredentialMode, Reads: slices.Sorted(maps.Keys(c.Reads)), Writes: slices.Sorted(maps.Keys(c.Writes))})
 	}
 	return out, nil
 }
@@ -151,7 +170,7 @@ func (s Service) Test(ctx context.Context, app, id string) error {
 	if err != nil {
 		return err
 	}
-	secret, err := s.vault().Credential(c.ID)
+	secret, err := s.credential(c, s.person(ctx))
 	if err != nil {
 		return err
 	}
@@ -166,8 +185,8 @@ func (s Service) Test(ctx context.Context, app, id string) error {
 		return err
 	}
 	defer db.Close()
-	if db.PingContext(ctx) != nil {
-		return ErrUnavailable
+	if err := db.PingContext(ctx); err != nil {
+		return sourceDatabaseError(err)
 	}
 	return nil
 }
@@ -187,27 +206,37 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	if q.Limit == 0 {
 		q.Limit = defaultRows
 	}
+	sc := data.Scope{App: q.App, Person: s.person(ctx)}
 	store, binding, typ, err := s.bind(c.Config, read, false)
 	if err != nil {
 		return Page{}, err
 	}
+	sc, flushAudit := store.WithPolicyAudit(sc)
+	defer flushAudit()
 	fields := map[string]*data.Field{}
 	for name := range read.Fields {
 		f, err := typ.LiveField(name, false)
 		if err != nil {
 			return Page{}, err
 		}
-		if f.Masked && read.OrderBy != "" && read.OrderBy == read.Fields[name] {
+		if (f.Masked || typ.FieldPolicy(f) != "") && read.OrderBy != "" && read.OrderBy == read.Fields[name] {
+			store.AuditRecordPolicy(sc, typ, "source_sort_refused")
 			return Page{}, errors.New("a read cannot sort on a masked field")
 		}
 		fields[name] = f
 	}
-	args, err := matchArgs(q.Args, read, fields)
+	ownerField, subject, rowPolicy := typ.LiveRowPredicate(sc, store.Person())
+	if rowPolicy && (read.Fields[ownerField] == "" || subject == "") {
+		store.AuditRecordPolicy(sc, typ, "source_read_refused")
+		return Page{}, &data.Error{Code: data.CodeNotAllowed, Message: "this source read needs a mapped owner field"}
+	}
+	args, err := matchArgs(q.Args, read, fields, typ)
 	if err != nil {
 		return Page{}, err
 	}
-	secret, err := s.vault().Credential(c.ID)
+	secret, err := s.credential(c, sc.Person)
 	if err != nil {
+		store.AuditRecordPolicy(sc, typ, "source_read_refused")
 		return Page{}, err
 	}
 
@@ -219,10 +248,23 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 	case HTTP:
 		rows, err = httpRows(ctx, c.Config, secret, read, args)
 	default:
-		rows, err = sqlRows(ctx, c.Kind, secret, read, args, q.Limit+1)
+		if rowPolicy {
+			store.AuditRecordPolicy(sc, typ, "rows_filtered")
+		}
+		rows, err = sqlRows(ctx, c.Kind, secret, read, args, q.Limit+1, read.Fields[ownerField], subject)
 	}
 	if err != nil {
+		if errors.Is(err, ErrSourcePermission) {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+		}
 		return Page{}, err
+	}
+	if c.CredentialMode == CredentialPerson {
+		current, err := s.credential(c, sc.Person)
+		if err != nil || current != secret {
+			store.AuditRecordPolicy(sc, typ, "source_read_refused")
+			return Page{}, ErrSourcePermission
+		}
 	}
 	// Recheck the binding before projecting any result from a remote call.
 	current, currentType, err := store.LiveBinding(data.Scope{App: q.App}, read.Type, false)
@@ -230,14 +272,28 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 		return Page{}, errors.New("the type binding changed during the read")
 	}
 	page := Page{
-		Rows:    make([]data.Row, 0, min(len(rows), q.Limit)),
-		Source:  Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
-		HasMore: len(rows) > q.Limit,
+		Rows:   make([]data.Row, 0, min(len(rows), q.Limit)),
+		Source: Source{Connection: c.ID, Read: q.Read, Residency: "live", Freshness: "live", ObservedAt: observed},
 	}
 	seen := map[string]bool{}
-	for _, raw := range rows[:min(len(rows), q.Limit)] {
+	names := slices.Sorted(maps.Keys(fields))
+	for _, raw := range rows {
 		if err := ctx.Err(); err != nil {
 			return Page{}, ErrUnavailable
+		}
+		if rowPolicy {
+			owner := fields[ownerField]
+			var value any
+			if owner != nil && !containsCredential(raw[read.Fields[ownerField]], secret) {
+				value, _ = owner.LiveReadValue(raw[read.Fields[ownerField]])
+			}
+			if !store.LiveRowAllowed(sc, typ, map[string]any{ownerField: value}) {
+				continue
+			}
+		}
+		if len(page.Rows) == q.Limit {
+			page.HasMore = true
+			break
 		}
 		key, err := encodeSourceKey(raw[read.Key])
 		if err != nil || seen[key] || c.Kind == HTTP && containsCredential(raw[read.Key], secret) {
@@ -253,26 +309,35 @@ func (s Service) Read(ctx context.Context, q Query) (Page, error) {
 			row["_source_version"] = version
 		}
 		var meta data.RowMeta
-		for _, name := range slices.Sorted(maps.Keys(fields)) {
+		for _, name := range names {
 			field := fields[name]
 			value, exists := raw[read.Fields[name]]
 			if !exists || !boundedScalar(value) || c.Kind == HTTP && containsCredential(value, secret) {
 				return Page{}, ErrInvalidRows
 			}
-			mapped, err := field.LiveValue(value, false)
+			mode := typ.FieldPolicy(field)
+			if mode == "hide" {
+				store.AuditRecordPolicy(sc, typ, "field_hidden")
+				continue
+			}
+			if value != nil && (mode == "mask" || field.Masked) {
+				if mode == "mask" {
+					store.AuditRecordPolicy(sc, typ, "field_masked")
+				}
+				row[name] = data.MaskValue
+				meta.Masked = append(meta.Masked, name)
+				continue
+			}
+			mapped, err := field.LiveReadValue(value)
 			if err != nil {
 				return Page{}, err
-			}
-			if field.Masked && mapped != nil {
-				meta.Masked = append(meta.Masked, name)
 			}
 			row[name] = mapped
 		}
 		if len(meta.Masked) > 0 {
 			row["_meta"] = meta
 		}
-		// TODO(O1): resolve reviewed cross-source matches. A stable source key
-		// alone reserves a distinct identity and never guesses from a name.
+		// The stable source key uses any existing reviewed crosswalk entry.
 		id, found, err := store.LookupBoundIdentity(binding, externalKey(c, read, key))
 		if err == nil && !found {
 			id, err = store.LinkIdentity(binding.Common, externalKey(c, read, key), "")
@@ -339,14 +404,14 @@ func externalKey(c registration, read Read, key string) data.ExternalKey {
 	}
 }
 
-func matchArgs(input map[string]any, read Read, fields map[string]*data.Field) (map[string]any, error) {
+func matchArgs(input map[string]any, read Read, fields map[string]*data.Field, typ *data.Type) (map[string]any, error) {
 	out := make(map[string]any, len(input))
 	for name, value := range input {
 		target, ok := read.Match[name]
 		if !ok {
 			return nil, errors.New("this read does not declare that argument")
 		}
-		if field := fields[name]; field != nil && field.Masked {
+		if field := fields[name]; field != nil && (field.Masked || typ.FieldPolicy(field) != "") {
 			return nil, errors.New("a read cannot match on a masked field")
 		}
 		if !boundedScalar(value) || value == nil {
@@ -368,4 +433,45 @@ func boundedScalar(value any) bool {
 	default:
 		return false
 	}
+}
+
+func (s Service) person(ctx context.Context) data.PersonPrincipal {
+	if s.Person != nil {
+		return s.Person(ctx)
+	}
+	if s.Store != nil {
+		if store, err := s.Store(); err == nil {
+			return data.PersonPrincipal{ID: store.Person()}
+		}
+	}
+	return data.PersonPrincipal{}
+}
+
+func (s Service) credential(c registration, person data.PersonPrincipal) (string, error) {
+	if c.CredentialMode != CredentialPerson {
+		return s.vault().Credential(c.ID)
+	}
+	if key, ok := s.vault().PersonCredential(c.ID, person.ID); ok {
+		return key, nil
+	}
+	return "", ErrPersonCredential
+}
+
+func (s Service) SetPersonCredential(ctx context.Context, app, id, credential string) error {
+	c, err := s.scoped(app, id)
+	if err != nil {
+		return err
+	}
+	if c.CredentialMode != CredentialPerson {
+		return errors.New("this connection uses a shared credential")
+	}
+	key, err := validateCredential(c.Kind, credential)
+	if err != nil {
+		return err
+	}
+	person := s.person(ctx)
+	if person.ID == "" {
+		return ErrPersonCredential
+	}
+	return s.vault().SetPersonCredential(c.ID, person.ID, key)
 }

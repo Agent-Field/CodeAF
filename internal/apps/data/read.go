@@ -8,6 +8,8 @@ import (
 // reveal line per masked value shown (who, record, field, when); an agent
 // may not reveal.
 func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {
@@ -30,10 +32,13 @@ func (s *Store) Get(sc Scope, typ, id string, reveal bool) (Row, error) {
 	if r == nil || r.Type != t.Name || r.DeletedAt != "" {
 		return nil, errorf(CodeNotFound, "there is no %s record %s", t.Name, id)
 	}
+	if !s.LiveRowAllowed(sc, t, r.Data) {
+		return nil, errorf(CodeNotFound, "there is no %s record %s", t.Name, id)
+	}
 	if reveal {
 		var shown []string
 		for _, name := range t.Order {
-			if f := t.Fields[name]; f.Masked && (!f.Hidden || sc.App == "") {
+			if f := t.Fields[name]; f.Masked && t.FieldPolicy(f) == "" && !sch.withheldRef(f) && (!f.Hidden || sc.App == "") {
 				if _, ok := r.Data[name]; ok {
 					shown = append(shown, name)
 				}
@@ -79,6 +84,8 @@ type Entry struct {
 // History answers a record's history, newest first, at most [HistoryMax]
 // entries. A deleted record still has its history.
 func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	sch := s.schema.Load()
 	t, err := sch.allow(sc, typ, false)
 	if err != nil {
@@ -86,6 +93,15 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 	}
 	if !validID(id) {
 		return nil, errorf(CodeInvalid, "%q is not a record id", id)
+	}
+	if t.rowRule != nil {
+		current, err := loadRecord(s.rdb, sch, id)
+		if err != nil {
+			return nil, err
+		}
+		if current == nil || current.Type != t.Name || !s.LiveRowAllowed(sc, t, current.Data) {
+			return nil, errorf(CodeNotFound, "there is no %s record %s", t.Name, id)
+		}
 	}
 	rows, err := s.rdb.Query(`
 		SELECT h.seq, h.batch, h.op, h.app, h.actor, h.by_kind, h.cause, h.note, h.at, h.before_json, h.after_json, b.undone_by IS NOT NULL
@@ -111,7 +127,14 @@ func (s *Store) History(sc Scope, typ, id string) ([]Entry, error) {
 			a = recordFromState(t, id, after.String)
 			e.After = s.historyValues(t, a, sc)
 		}
-		e.Changed = changedFields(b, a)
+		if t.rowRule != nil && (b != nil && !s.LiveRowAllowed(sc, t, b.Data) || a != nil && !s.LiveRowAllowed(sc, t, a.Data)) {
+			continue
+		}
+		for _, name := range changedFields(b, a) {
+			if f := t.Fields[name]; f != nil && t.FieldPolicy(f) == "" && !sch.withheldRef(f) {
+				e.Changed = append(e.Changed, name)
+			}
+		}
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -139,7 +162,15 @@ func (s *Store) historyValues(t *Type, r *record, sc Scope) map[string]any {
 		if f == nil || f.Hidden && sc.App != "" {
 			continue
 		}
-		if f.Masked {
+		mode := t.FieldPolicy(f)
+		if mode == "hide" || s.schema.Load().withheldRef(f) {
+			s.AuditRecordPolicy(sc, t, "field_hidden")
+			continue
+		}
+		if mode == "mask" {
+			s.AuditRecordPolicy(sc, t, "field_masked")
+		}
+		if f.Masked || mode == "mask" {
 			v = masked
 		}
 		out[k] = v
@@ -206,7 +237,7 @@ func (s *Store) Refresh() error {
 					// updated_at stays: the clock is not an edit, and a formula
 					// reading it would otherwise never settle.
 					next.Rev++
-					if err := w.save(t, next, false, Scope{Flow: true}); err != nil {
+					if err := w.save(t, next, false, Scope{Flow: true, policyMaintenance: true}); err != nil {
 						return err
 					}
 					if w.change == nil {

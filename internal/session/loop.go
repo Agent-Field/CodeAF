@@ -3178,6 +3178,10 @@ func transportWordsFor(verdict taxonomy.Verdict, keySource string) string {
 // resolved by [Agent.failureServiceWord], from the same source set that built
 // the client, so a payment refusal names the connection the person chose.
 func terminalFailureWords(err error, service string) (string, bool) {
+	var appPolicy *provider.ModelDestinationDenied
+	if errors.As(err, &appPolicy) {
+		return appPolicy.Error(), true
+	}
 	if said, ok := providerhttp.BoundaryMessage(err); ok {
 		return said, true
 	}

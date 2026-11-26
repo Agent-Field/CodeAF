@@ -192,7 +192,7 @@ func (b *appBackend) DataTypes(p appwire.DataScope) (*appwire.DataTypesResult, e
 		for _, f := range t.Fields {
 			wf := appwire.DataField{
 				ID: f.ID, Name: f.Name, Type: f.Type, App: f.App, Hidden: f.Hidden, Label: f.Label,
-				Required: f.Required, Unique: f.Unique, Masked: f.Masked, Values: f.Values, To: f.To,
+				Class: string(f.Class), Visibility: f.Visibility, Required: f.Required, Unique: f.Unique, Masked: f.Masked || f.Visibility == "mask", Values: f.Values, To: f.To,
 				Currency: f.Currency, Computed: f.Computed != "", AI: f.AI != "",
 			}
 			if sq := f.Sequence; sq != nil {

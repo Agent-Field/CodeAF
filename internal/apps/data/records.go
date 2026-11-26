@@ -347,12 +347,32 @@ func loadRecord(q querier, sch *schema, id string) (*record, error) {
 // row is r as a scope sees it. A masked value reads as "••••" unless
 // revealed, and never for an agent; a hidden field is left out for an app.
 func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
+	return s.rowWithSchema(s.schema.Load(), t, r, sc, reveal)
+}
+
+func (s *Store) rowWithSchema(sch *schema, t *Type, r *record, sc Scope, reveal bool) Row {
 	out := Row{"id": r.ID, "type": r.Type, "created_at": r.CreatedAt, "updated_at": r.UpdatedAt, "_rev": r.Rev}
 	meta := RowMeta{Reverses: r.Meta.Reverses, ReversedBy: r.Meta.ReversedBy}
 	for _, name := range t.Order {
 		f := t.Fields[name]
+		mode := t.FieldPolicy(f)
+		if mode == "hide" {
+			if _, ok := r.Data[name]; ok {
+				s.AuditRecordPolicy(sc, t, "field_hidden")
+			}
+			continue
+		}
 		if f.Hidden && sc.App != "" {
 			continue
+		}
+		v, hasValue := r.Data[name]
+		if hasValue && mode == "" && (!f.Masked || reveal && !sc.isAgent()) {
+			var allowed bool
+			v, allowed = s.projectReference(sch, sc, f, v)
+			if !allowed {
+				s.AuditRecordPolicy(sc, t, "field_hidden")
+				continue
+			}
 		}
 		if by, ok := r.Meta.By[name]; ok {
 			if meta.By == nil {
@@ -360,8 +380,7 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 			}
 			meta.By[name] = by
 		}
-		v, ok := r.Data[name]
-		if !ok {
+		if !hasValue {
 			continue
 		}
 		if f.AI != "" && r.Meta.By[name] != BySync {
@@ -370,7 +389,10 @@ func (s *Store) row(t *Type, r *record, sc Scope, reveal bool) Row {
 			}
 			meta.AI[name] = aiSource(r.Meta.By[name])
 		}
-		if f.Masked && (!reveal || sc.isAgent()) {
+		if mode == "mask" || f.Masked && (!reveal || sc.isAgent()) {
+			if mode == "mask" {
+				s.AuditRecordPolicy(sc, t, "field_masked")
+			}
 			out[name] = masked
 			meta.Masked = append(meta.Masked, name)
 			continue
@@ -620,10 +642,25 @@ func (w *writeTx) save(t *Type, r *record, insert bool, sc Scope) error {
 		return t.rules.invalid
 	}
 	var before *record
+	if t.HasRowPolicy() && !sc.sync && !sc.policyMaintenance {
+		if !insert {
+			var err error
+			before, err = loadRecord(w.tx, w.schema, r.ID)
+			if err != nil {
+				return err
+			}
+			if before != nil && !w.s.LiveRowAllowed(sc, t, before.Data) {
+				return errorf(CodeNotFound, "there is no %s record %s", t.Name, r.ID)
+			}
+		}
+		if (sc.below() || sc.Flow) && !w.s.LiveRowAllowed(sc, t, r.Data) {
+			return errorf(CodeNotAllowed, "the record does not match the person's row policy")
+		}
+	}
 	if insert {
 		// Agent and flow writes in Personal are on behalf of the space's person.
 		r.Meta.Maker = w.schema.person
-	} else if len(t.rules.bookings) != 0 || len(t.rules.approvals) != 0 {
+	} else if before == nil && (len(t.rules.bookings) != 0 || len(t.rules.approvals) != 0) {
 		var err error
 		before, err = loadRecord(w.tx, w.schema, r.ID)
 		if err != nil {
@@ -886,6 +923,8 @@ func (s *Store) Create(sc Scope, typ string, sets []map[string]any) (*WriteResul
 }
 
 func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (*WriteResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	var made []*record
 	var t *Type
 	var batch string
@@ -912,7 +951,9 @@ func (s *Store) create(sc Scope, typ string, sets []map[string]any, op string) (
 	}
 	out := &WriteResult{Batch: batch, Rows: make([]Row, 0, len(made)), Held: []Held{}}
 	for _, r := range made {
-		out.Rows = append(out.Rows, s.row(t, r, sc, false))
+		if s.LiveRowAllowed(sc, t, r.Data) {
+			out.Rows = append(out.Rows, s.row(t, r, sc, false))
+		}
 	}
 	return out, nil
 }
@@ -1030,6 +1071,8 @@ type UpdateOptions struct {
 // Update writes set into every record named, in one batch. A record that
 // would not change is left alone and writes no history.
 func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, opts UpdateOptions) (*WriteResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	ids, err := cleanIDs(ids)
 	if err != nil {
 		return nil, err
@@ -1072,7 +1115,7 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 			return errorf(CodeInvalid, "nothing to set")
 		}
 		for _, id := range ids {
-			before, err := w.live(t, id)
+			before, err := w.liveFor(sc, t, id)
 			if err != nil {
 				return err
 			}
@@ -1099,7 +1142,9 @@ func (s *Store) Update(sc Scope, typ string, ids []string, set map[string]any, o
 	}
 	out := &WriteResult{Batch: batch, Rows: make([]Row, 0, len(rows)), Held: append([]Held{}, held...)}
 	for _, r := range rows {
-		out.Rows = append(out.Rows, s.row(t, r, sc, false))
+		if s.LiveRowAllowed(sc, t, r.Data) {
+			out.Rows = append(out.Rows, s.row(t, r, sc, false))
+		}
 	}
 	return out, nil
 }
@@ -1160,7 +1205,7 @@ func (s *Store) Delete(sc Scope, typ string, ids []string, opts UpdateOptions) (
 			return err
 		}
 		for _, id := range ids {
-			before, err := w.live(t, id)
+			before, err := w.liveFor(sc, t, id)
 			if err != nil {
 				return err
 			}
@@ -1265,6 +1310,8 @@ func cleanIDs(ids []string) ([]string, error) {
 // away the later change. A ledger's batches are never undone; an entry is
 // reversed instead.
 func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
+	sc, flushAudit := s.WithPolicyAudit(sc)
+	defer flushAudit()
 	batch = strings.TrimSpace(batch)
 	if !validID(batch) {
 		return nil, errorf(CodeInvalid, "%q is not a batch", batch)
@@ -1428,7 +1475,9 @@ func (s *Store) Undo(sc Scope, batch string) (*WriteResult, error) {
 	}
 	out := &WriteResult{Batch: undo, Rows: make([]Row, 0, len(rows)), Removes: append([]string{}, removes...), Held: []Held{}}
 	for _, r := range rows {
-		out.Rows = append(out.Rows, s.row(t, r, sc, false))
+		if s.LiveRowAllowed(sc, t, r.Data) {
+			out.Rows = append(out.Rows, s.row(t, r, sc, false))
+		}
 	}
 	return out, nil
 }

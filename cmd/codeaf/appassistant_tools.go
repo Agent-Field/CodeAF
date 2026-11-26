@@ -13,7 +13,7 @@ import (
 )
 
 func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *session.AppScope {
-	scope := &session.AppScope{ID: principal.App}
+	scope := &session.AppScope{ID: principal.App, AuthorizeModel: b.appModelAuthorizer(principal.App, false)}
 	scope.Tools = []bare.Tool{{
 		Name:        "app",
 		Description: "For a requested change to the app itself, call propose_change without parameters before querying records. Use show to find view IDs and action arguments. Query takes params.view and optional params.args. Invoke takes params.action and params.args. If the action requires a revision, give params.expected_rev from the record row's _rev and the record ID as params.args.record.",
@@ -49,6 +49,12 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 		return b.CallAppMCP(ctx, raw)
 	}
 	switch verb {
+	case "data_query":
+		return decodeAppDataCommand(raw, b.DataQuery)
+	case "data_aggregate":
+		return decodeAppDataCommand(raw, b.DataAggregate)
+	case "data_types":
+		return decodeAppDataCommand(raw, b.DataTypes)
 	case "agent_ask":
 		var p appwire.AppAgentAsk
 		if err := json.Unmarshal(raw, &p); err != nil {
@@ -104,4 +110,12 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 	default:
 		return appwire.RunAppCommand(b, verb, raw)
 	}
+}
+
+func decodeAppDataCommand[P, R any](raw json.RawMessage, run func(P) (*R, error)) (any, error) {
+	var p P
+	if err := decodeAppConnectionJSON(bytes.NewReader(raw), &p); err != nil {
+		return nil, appwire.Errorf(appwire.CodeBadParams, "The data command needs a JSON object with known fields.")
+	}
+	return run(p)
 }
