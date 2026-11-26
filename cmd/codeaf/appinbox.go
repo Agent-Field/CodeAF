@@ -178,7 +178,11 @@ func (b *appBackend) inboxOpen(ask appwire.Ask) appwire.InboxItem {
 		}
 	})
 	if !known {
-		item = appwire.InboxItem{ID: id, Ask: ask, Where: b.inboxWhere(ask), At: b.now(), List: appwire.InboxWaiting}
+		at := ask.Asked
+		if at.IsZero() {
+			at = b.now()
+		}
+		item = appwire.InboxItem{ID: id, Ask: ask, Where: b.inboxWhere(ask), At: at, List: appwire.InboxWaiting}
 		if ask.Later {
 			item.List = appwire.InboxLater
 		}
@@ -607,6 +611,9 @@ func (b *appBackend) OpenInbox(id string) (string, string, error) {
 	})
 	if !found {
 		return "", "", appwire.Errorf(appwire.CodeNotFound, "there is no Inbox item %s", id)
+	}
+	if agent, ask, ok := appInboxSplit(id); ok && agent == appRunAskAgent && appRunAsk(ask) {
+		return appwire.AppRunInboxPrefix + runIDForApproval(ask), "", nil
 	}
 	return where.Agent, where.Task, nil
 }

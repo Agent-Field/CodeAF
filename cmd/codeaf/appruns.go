@@ -133,19 +133,12 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 		fmt.Fprintln(os.Stderr, "app runs:", err)
 		return func() {}
 	}
-	past, err := e.List("", "")
-	if err == nil {
-		for _, run := range past {
-			if run.Approval != nil {
-				b.openRunApproval(run)
-			}
-		}
-	}
 	// Establish the cursor before the first wire request can commit a record.
 	if err := records.ConsumeOutbox(ctx, e); err != nil {
 		fmt.Fprintln(os.Stderr, "app run outbox:", err)
 	}
 	b.appRuns.Store(e)
+	b.restoreRunApprovals(e)
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	guard.Go("app/runs", func() {
@@ -221,6 +214,20 @@ func (b *appBackend) GetRun(app, id string) (runs.Run, error) {
 	if err == nil && app != "" && app != r.App {
 		err = runs.ErrNotFound
 		r = runs.Run{}
+	}
+	if err == nil && r.Approval != nil && len(r.Approval.Records) > 0 {
+		if store, err := b.dataStore(""); err == nil {
+			scope := data.Scope{App: r.App, Agent: true}
+			for i, record := range r.Approval.Records {
+				typ, err := store.Type(scope, record.Type)
+				if err != nil || typ.Title == "" {
+					continue
+				}
+				if row, err := store.Get(scope, record.Type, record.ID, false); err == nil {
+					r.Approval.Records[i].Label, _ = row[typ.Title].(string)
+				}
+			}
+		}
 	}
 	return r, appRunError(err)
 }
@@ -387,6 +394,24 @@ func appAISystem(step *schema.AIStep) string {
 
 func appRunAsk(ask string) bool { return strings.HasPrefix(ask, appRunAskPrefix) }
 
+func runIDForApproval(ask string) string {
+	id, _, _ := strings.Cut(strings.TrimPrefix(ask, appRunAskPrefix), "-")
+	return id
+}
+
+// Restore Inbox cards from the same checkpoints that still hold their effects.
+func (b *appBackend) restoreRunApprovals(engine *runs.Engine) {
+	past, err := engine.List("", "")
+	if err != nil {
+		return
+	}
+	for _, run := range past {
+		if run.Approval != nil {
+			b.openRunApproval(run)
+		}
+	}
+}
+
 func (b *appBackend) openRunApproval(r runs.Run) {
 	gate := r.Approval
 	id := appRunAskPrefix + gate.ID
@@ -407,7 +432,7 @@ func (b *appBackend) openRunApproval(r runs.Run) {
 	}
 	b.emit.Emit(appwire.EventAskOpened, appwire.AskOpened{Ask: appwire.Ask{
 		ID: id, Agent: appRunAskAgent, Kind: "approval", Subkind: kind,
-		Title: title, Detail: detail, Path: []string{r.App, r.DefinitionID, r.Step}, Blocking: &blocking,
+		Title: title, Detail: detail, Asked: gate.AskedAt, Path: []string{r.App, r.DefinitionID, r.Step}, Blocking: &blocking,
 		Irreversible: gate.Kind == "send",
 		Options:      options,
 	}})
@@ -418,7 +443,7 @@ func (b *appBackend) checkRunAnswer(agent, ask, option, text string) error {
 		return appwire.Errorf(appwire.CodeNotFound, "run approval not found")
 	}
 	approval := strings.TrimPrefix(ask, appRunAskPrefix)
-	runID, _, _ := strings.Cut(approval, "-")
+	runID := runIDForApproval(ask)
 	r, err := b.appRuns.Load().Get(runID)
 	if err != nil || r.Approval == nil || r.Approval.ID != approval {
 		return appwire.Errorf(appwire.CodeNotFound, "run approval not found")
@@ -454,7 +479,7 @@ func (b *appBackend) answerRunApproval(agent, ask, option, text string) error {
 		return err
 	}
 	approval := strings.TrimPrefix(ask, appRunAskPrefix)
-	runID, _, _ := strings.Cut(approval, "-")
+	runID := runIDForApproval(ask)
 	var err error
 	if option == appwire.OptionRaise {
 		dollars, _ := strconv.ParseFloat(strings.TrimSpace(text), 64)

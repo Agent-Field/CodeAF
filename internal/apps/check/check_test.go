@@ -1,6 +1,7 @@
 package check_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"slices"
@@ -81,5 +82,27 @@ func TestUnresponsiveDeskStopsCheckAfterTheFirstCaptureError(t *testing.T) {
 	}).Run(t.Context(), "draft", def, nil)
 	if calls != 1 || report.OK() || len(report.Problems) != 1 || report.Problems[0].Code != "desk_render_unavailable" {
 		t.Fatalf("connected renderer got %d requests with report %+v", calls, report)
+	}
+}
+
+func TestCheckNamesMissingScreenControls(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/crm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	def.Files[schema.PlanFile] = bytes.Replace(def.Files[schema.PlanFile], []byte(`"id": "deal"`), []byte(`"id": "deal", "create": true`), 1)
+	def.Files[schema.PlanFile] = bytes.Replace(def.Files[schema.PlanFile], []byte(`"screens":`), []byte(`"actions":[{"id":"won-handoff","line":"Post handoff"}], "screens":`), 1)
+	// Leave both commands declared and both runs scheduled, but remove the
+	// Deals controls that expose those commands and create a deal.
+	def.Files["screens/deals.json"] = []byte(`{"screen":"deals","title":"Deals","body":{"part":"RecordList","id":"deals","label":"Deals","bind":{"records":"deal"},"props":{"columns":["name"]}}}`)
+	pipeline := check.Pipeline{
+		Seed:   func(string, []byte, map[string][]map[string]any) error { return nil },
+		DryRun: func(context.Context, string, string, schema.Definition) error { return nil },
+	}
+	report := pipeline.Run(t.Context(), "draft", def, nil)
+	for _, label := range []string{"Draft follow-up", "Mark won", "Add deal", "Post handoff"} {
+		if !strings.Contains(report.String(), label) {
+			t.Errorf("Check didn't name %q: %v", label, report)
+		}
 	}
 }

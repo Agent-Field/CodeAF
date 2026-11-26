@@ -42,6 +42,7 @@ type Run struct {
 	ID           string          `json:"id"`
 	State        string          `json:"state"`
 	Step         string          `json:"step"`
+	Steps        []StepDetail    `json:"steps,omitempty"`
 	CaughtUp     bool            `json:"caught_up,omitempty"`
 	Error        string          `json:"error,omitempty"`
 	Cost         float64         `json:"cost,omitempty"`
@@ -253,6 +254,9 @@ func (e *Engine) read(id string) (checkpoint, error) {
 
 func (e *Engine) Get(id string) (Run, error) {
 	c, err := e.read(id)
+	if err == nil {
+		c.projectDetails()
+	}
 	return c.Run, err
 }
 
