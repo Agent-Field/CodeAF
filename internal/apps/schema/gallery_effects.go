@@ -284,6 +284,9 @@ func (c *checker) checkRecordWrite(ctx actionCtx, at string, body map[string]any
 }
 
 func (c *checker) checkConnectorDeclaration(name, verb string, connector Connector) {
+	if GraphSourceTrigger(name, verb) {
+		return
+	}
 	at := "/capabilities/connectors/" + name
 	op, ok := c.kit.Registries.Tools[name].Operations[verb]
 	if !ok {

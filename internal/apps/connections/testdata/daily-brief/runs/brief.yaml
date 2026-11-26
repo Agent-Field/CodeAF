@@ -1,0 +1,6 @@
+run: brief
+title: Note a Daily brief item
+steps:
+  - id: ready
+    title: Source item ready
+    wait: {for: 1s}

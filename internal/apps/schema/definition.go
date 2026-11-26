@@ -297,14 +297,15 @@ type Connector struct {
 
 // Trigger starts a run on a schedule or when a record changes.
 type Trigger struct {
-	ID        string `json:"id"`
-	On        string `json:"on"`
-	Cron      string `json:"cron,omitempty"`
-	Type      string `json:"type,omitempty"`
-	When      string `json:"when,omitempty"`
-	Connector string `json:"connector,omitempty"`
-	Event     string `json:"event,omitempty"`
-	Run       string `json:"run"`
+	ID        string         `json:"id"`
+	On        string         `json:"on"`
+	Cron      string         `json:"cron,omitempty"`
+	Type      string         `json:"type,omitempty"`
+	When      string         `json:"when,omitempty"`
+	Connector string         `json:"connector,omitempty"`
+	Event     string         `json:"event,omitempty"`
+	Match     map[string]any `json:"match,omitempty"`
+	Run       string         `json:"run"`
 }
 
 // Command is a ⌘K verb on a record type: it starts a run or does a list of actions.
