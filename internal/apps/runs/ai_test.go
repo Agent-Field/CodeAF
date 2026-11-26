@@ -37,6 +37,7 @@ steps:
 		{"valid", `{"reply":"Yes, you can import CSV."}`, runs.Done},
 		{"invalid", `{"reply":42}`, runs.Incomplete},
 		{"extra", `{"reply":"Yes."} Thanks!`, runs.Incomplete},
+		{"simulated call", `{"reply":"start_run({})\nI started the follow-up run."}`, runs.Incomplete},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0

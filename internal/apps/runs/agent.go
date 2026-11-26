@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -44,8 +45,8 @@ func (call AgentCall) ModelPrompt() string {
 // ErrAgentOutput tells the run it can re-ask without repeating an effect.
 var ErrAgentOutput = errors.New("the model answer did not match the step's output contract")
 
-var simulatedCall = regexp.MustCompile(`(?im)(?:^|\s)(?:search_deals|start_run|[a-z][a-z0-9]*_[a-z0-9_]+)\s*\(\s*(?:[{"']|\))|<\/?(?:[^<>\s]*[|｜])?(?:tool[_ ▁-]?calls?|function(?:[_ ▁]call)?|final_answer)\b|"tool_calls"\s*:|(?:^|\n)\s*(?:tool (?:call|result)|assistant|analysis|final answer)\s*:|codeaf app (?:show|query|invoke|render)\s*\{`)
-var draftNarration = regexp.MustCompile(`(?im)^\s*(?:here(?:'s| is) (?:the|a|your|my) (?:draft|message|follow[- ]up|email|response)|(?:draft|follow[- ]up|message|email)(?: for [^:\n]{1,100})?:|I (?:have )?(?:called|searched|looked up|found the (?:deal|record)|started the (?:follow[- ]up|run)|saved the (?:draft|note)))`)
+var simulatedCall = regexp.MustCompile(`(?im)(?:^|\s)(?:search_deals|start_run|[a-z][a-z0-9]*_[a-z0-9_]+)\s*\(\s*(?:[{"']|\))|<\/?(?:[^<>\s]*[|｜])?(?:tool[_ ▁-]?calls?|function(?:[_ ▁]call)?|final_answer)\b|"tool_calls"\s*:|"role"\s*:\s*"(?:tool|assistant)"|(?:^|\n)\s*(?:tool (?:call|result)|assistant|analysis|final answer)\s*:|codeaf app (?:show|query|invoke|render)\s*\{`)
+var draftNarration = regexp.MustCompile(`(?im)^\s*(?:here(?:['’]s| is) (?:the|a|your|my) (?:draft|message|follow[- ]up|email|response)|(?:draft|follow[- ]up|message|email)(?: for [^:\n]{1,100})?:|I (?:have )?(?:called|searched|looked up|found the (?:deal|record)|started the (?:follow[- ]up|run)|saved the (?:draft|note)))`)
 
 func agentStepOutput(call AgentCall, output any) (any, error) {
 	if call.AI != nil {
@@ -53,7 +54,7 @@ func agentStepOutput(call AgentCall, output any) (any, error) {
 		if err != nil {
 			return nil, ErrAgentOutput
 		}
-		if text, ok := value.(string); ok && invalidAgentText(text) {
+		if text, ok := value.(string); (ok && strings.TrimSpace(text) == "") || narratesAgentWork(value) {
 			return nil, ErrAgentOutput
 		}
 		return value, nil
@@ -66,7 +67,23 @@ func agentStepOutput(call AgentCall, output any) (any, error) {
 }
 
 func invalidAgentText(text string) bool {
-	return strings.TrimSpace(text) == "" || simulatedCall.MatchString(text) || draftNarration.MatchString(text)
+	return strings.TrimSpace(text) == "" || narratesAgentWork(text)
+}
+
+func narratesAgentWork(value any) bool {
+	switch value := value.(type) {
+	case string:
+		return simulatedCall.MatchString(value) || draftNarration.MatchString(value)
+	case map[string]any:
+		for _, item := range value {
+			if narratesAgentWork(item) {
+				return true
+			}
+		}
+	case []any:
+		return slices.ContainsFunc(value, narratesAgentWork)
+	}
+	return false
 }
 
 func (e *Engine) completeStep(ctx context.Context, c *checkpoint, step Step, a *action, budget float64) (Reply, error) {

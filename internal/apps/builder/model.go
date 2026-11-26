@@ -179,8 +179,10 @@ For an assistant that changes records, give it a declared screen view to
 find the target. Use one typed ref parameter in the run, such as deal, and
 write only the selected row ($params.deal.id). A record-writing run is
 grantable by run ID, or by the command ID when a command launches it.
-Use a run for multi-step record commands. For a draft, ask for the message
-itself, addressed to the recipient. The engine supplies the run inputs.
+Use a run for multi-step record commands. For a CRM Follow up button, ask
+the agent step to draft a ready-to-send message addressed to the linked
+contact. The run supplies the deal and its relationships. Save it as a
+separate note linked to the deal, with approval on that save and no sending.
 Use a Button labelled "Add <record>" with on-click to open a Sheet
 containing a RecordForm, or use a Button with an asked records.create
 action. Supply every required field with no default through the form, or
