@@ -1,0 +1,66 @@
+{
+  "records": {
+    "candidate": [
+      {
+        "title": "Priya Raman",
+        "role": "Backend engineer",
+        "stage": "Screen",
+        "source": "Referral from Jamie",
+        "score": 4,
+        "interview": "2026-11-26T14:00:00Z",
+        "feedback": "Jamie · Strong yes\nRaj · Yes",
+        "id": "01KAT0000A0000000000000001"
+      },
+      {
+        "title": "Omar Haddad",
+        "role": "Backend engineer",
+        "stage": "Screen",
+        "source": "Direct application",
+        "score": 3,
+        "interview": "2026-11-25T11:00:00Z",
+        "feedback": "Phone screen Wednesday",
+        "id": "01KAT0000A0000000000000002"
+      },
+      {
+        "title": "Lena Novak",
+        "role": "Backend engineer",
+        "stage": "Onsite",
+        "source": "Referral from Mona",
+        "score": 4,
+        "interview": "2026-11-26T16:00:00Z",
+        "feedback": "Three of four scorecards submitted",
+        "id": "01KAT0000A0000000000000003"
+      },
+      {
+        "title": "Sam Park",
+        "role": "Backend engineer",
+        "stage": "Onsite",
+        "source": "Direct application",
+        "score": 4,
+        "interview": "2026-11-27T10:00:00Z",
+        "feedback": "System design Friday",
+        "id": "01KAT0000A0000000000000004"
+      },
+      {
+        "title": "Kofi Mensah",
+        "role": "Backend engineer",
+        "stage": "Offer",
+        "source": "Referral from Saumya",
+        "score": 5,
+        "interview": "2026-11-25T17:00:00Z",
+        "feedback": "One of two approvals received",
+        "id": "01KAT0000A0000000000000005"
+      },
+      {
+        "title": "Elena García",
+        "role": "Backend engineer",
+        "stage": "Applied",
+        "source": "Direct application",
+        "score": 3,
+        "interview": "2026-11-26T09:00:00Z",
+        "feedback": "Résumé review due",
+        "id": "01KAT0000A0000000000000006"
+      }
+    ]
+  }
+}

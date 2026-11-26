@@ -1109,6 +1109,9 @@
               "stretch"
             ]
           },
+          "workspace": {
+            "enum": ["queue", "board"]
+          },
           "wrap": {
             "type": "boolean"
           }
@@ -2475,6 +2478,15 @@
           },
           "title": {
             "type": "string"
+          },
+          "format": {
+            "enum": ["number", "money", "percent"]
+          },
+          "target": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
           },
           "x": {
             "type": "string"

@@ -345,3 +345,30 @@ For a conflict, choose `local` or `upstream` in
 Give a choice for each conflict. Check runs on the result and Apply is still
 required. A clean update also waits for Apply. The card can be reopened after
 an engine restart with `codeaf app build_state '{"draft":"<draft>"}'`.
+
+## Work a queue beside its record or shape the app
+
+A screen can keep a queue or board beside the selected record. Choose a row
+to see its details without leaving the queue. A queue row shows its title,
+the related facts on a second line, and a status or figure at the right.
+Choose **Shape** in the app header to open its Builder.
+
+A plan timeline on a checked screen reads the app's saved plan. A definition
+document can display its saved copy until it has a record to edit.
+`apps.content.read` serves the saved document or plan from the selected app
+or preview.
+
+## Dashboard targets and limits
+
+A metric in a dashboard can show a target or limit beside the current value.
+Use a number in the same units as the value. A percentage uses fractions in
+the data, so an 85% target is 0.85. A metric above its limit says so. A zero
+or unavailable metric keeps its figure and comparison quiet.
+
+## Filter and sort a saved view
+
+A saved view keeps its declared filters when you search or add a filter.
+Grouped lists and timelines keep every row and show it under its group.
+If the view has a limit, the display shows up to that many matches. Changing
+the sort picks that many matches in the new order. Clearing your sort restores
+the saved order.

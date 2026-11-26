@@ -1,0 +1,110 @@
+{
+  "records": {
+    "line": [
+      {
+        "title": "Shift A",
+        "kind": "Shift summary",
+        "stage": "running",
+        "minutes": 22,
+        "oee": 0.81,
+        "good_parts": 1240,
+        "scrap": 0.016,
+        "id": "01KAT0000A0000000000000001"
+      },
+      {
+        "title": "Measurement at 06:00",
+        "kind": "Measurement",
+        "reading": "06:00",
+        "pressure": 172,
+        "temp": 54,
+        "id": "01KAT0000A0000000000000002"
+      },
+      {
+        "title": "Measurement at 07:00",
+        "kind": "Measurement",
+        "reading": "07:00",
+        "pressure": 176,
+        "temp": 55,
+        "id": "01KAT0000A0000000000000003"
+      },
+      {
+        "title": "Measurement at 08:00",
+        "kind": "Measurement",
+        "reading": "08:00",
+        "pressure": 168,
+        "temp": 57,
+        "id": "01KAT0000A0000000000000004"
+      },
+      {
+        "title": "Measurement at 09:00",
+        "kind": "Measurement",
+        "reading": "09:00",
+        "pressure": 177,
+        "temp": 56,
+        "id": "01KAT0000A0000000000000005"
+      },
+      {
+        "title": "Measurement at 10:00",
+        "kind": "Measurement",
+        "reading": "10:00",
+        "pressure": 185,
+        "temp": 56,
+        "id": "01KAT0000A0000000000000006"
+      },
+      {
+        "title": "Measurement at 11:00",
+        "kind": "Measurement",
+        "reading": "11:00",
+        "pressure": 174,
+        "temp": 58,
+        "id": "01KAT0000A0000000000000007"
+      },
+      {
+        "title": "Measurement at 12:00",
+        "kind": "Measurement",
+        "reading": "12:00",
+        "pressure": 168,
+        "temp": 59,
+        "id": "01KAT0000A0000000000000008"
+      },
+      {
+        "title": "Measurement at 12:30",
+        "kind": "Measurement",
+        "reading": "12:30",
+        "pressure": 190,
+        "temp": 64,
+        "id": "01KAT0000A0000000000000009"
+      },
+      {
+        "title": "Measurement at 13:00",
+        "kind": "Measurement",
+        "reading": "13:00",
+        "pressure": 182,
+        "temp": 65,
+        "id": "01KAT0000A0000000000000010"
+      },
+      {
+        "title": "Measurement at 13:40",
+        "kind": "Measurement",
+        "reading": "13:40",
+        "pressure": 192,
+        "temp": 66,
+        "id": "01KAT0000A0000000000000011"
+      },
+      {
+        "title": "Die change",
+        "kind": "Exception",
+        "reading": "11:40",
+        "minutes": 18,
+        "id": "01KAT0000A0000000000000012"
+      },
+      {
+        "title": "Trim temperature",
+        "kind": "Exception",
+        "reading": "12:30",
+        "temp": 66,
+        "id": "01KAT0000A0000000000000013"
+      }
+    ]
+  }
+}
