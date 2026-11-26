@@ -387,6 +387,12 @@ func (c *checker) checkApp() {
 		t := a.Records[name]
 		at := "/records/" + name
 		ex, exists := c.existing.ForRecord(name, t)
+		if t.PackagePrivate {
+			if t.Uses || t.Common != "" {
+				c.add(AppFile, at+"/package_private", CodeUsesUnknown, "This package type belongs to the app and cannot also use a shared type.")
+			}
+			ex, exists = c.existing[PrivateRecordName(a.ID, name)]
+		}
 		if t.Common != "" {
 			switch {
 			case !HasCommonType(t.Common):

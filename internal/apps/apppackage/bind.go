@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -20,7 +21,7 @@ func (e *Findings) Error() string { return e.Report.String() }
 
 // Bind uses the same common-type catalog as the Builder. Keeping the
 // original app alias means its screens, runs and record grants travel intact.
-func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[string]string, map[string]Binding, error) {
+func (a Archive) Bind(existing schema.TypeSet, appID, forkFrom string) (map[string]string, map[string]Binding, error) {
 	var app map[string]json.RawMessage
 	if err := json.Unmarshal(a.Files[schema.AppFile], &app); err != nil {
 		return nil, nil, err
@@ -31,57 +32,78 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 	}
 	bindings := map[string]Binding{}
 	targets := map[string]schema.ExistingType{}
+	forkPrivate := a.privateForkTypes(existing, forkFrom)
 	var report schema.Report
 	for _, alias := range slices.Sorted(maps.Keys(a.Manifest.Entities)) {
 		entity := a.Manifest.Entities[alias]
 		if entity.Common != "" {
 			records[alias]["common"], _ = json.Marshal(entity.Common)
 		}
-		if offer, ok := existing.OfferCommonType(alias, schema.RecordType{Common: entity.Common}); entity.Common != "" && ok && offer.Existing != "" {
-			targets[alias] = existing[offer.Existing]
-			if appID == "" || targets[alias].Owner != appID || entity.Uses {
-				bindings[alias] = Binding{Common: offer.Key, Type: offer.Existing}
+		record := records[alias]
+		delete(record, "package_private")
+		var name string
+		private := existing[schema.PrivateRecordName(appID, alias)]
+		if appID != "" && private.Owner == appID {
+			record["package_private"] = json.RawMessage("true")
+			continue
+		}
+		if forkPrivate[alias] {
+			record["package_private"] = json.RawMessage("true")
+			continue
+		}
+		if entity.Common != "" {
+			if offer, ok := existing.OfferCommonType(alias, schema.RecordType{Common: entity.Common}); ok {
+				name = offer.Existing
 			}
-		} else if entity.Common == "" && (entity.Uses || fork) {
-			if target, ok := existing[alias]; ok {
-				targets[alias] = target
-				bindings[alias] = Binding{Type: alias}
+		} else if target, ok := existing[alias]; ok {
+			if entity.Uses || forkFrom != "" || samePrivateShape(record, target) {
+				name = alias
+			} else if appID != "" && target.Owner != appID {
+				record["package_private"] = json.RawMessage("true")
 			}
 		}
-		if entity.Uses && bindings[alias].Type == "" {
-			report.Problems = append(report.Problems, schema.Problem{File: schema.AppFile, Path: "/records/" + alias,
-				Code: "package_type_unmapped", Message: fmt.Sprintf("Map the package's %s records to an existing type (%s).", alias, entity.Common)})
+		if name != "" {
+			targets[alias] = existing[name]
+			if appID == "" || targets[alias].Owner != appID {
+				bindings[alias] = Binding{Common: entity.Common, Type: name}
+			}
 		}
 	}
-	for _, alias := range slices.Sorted(maps.Keys(bindings)) {
+	for _, alias := range slices.Sorted(maps.Keys(a.Manifest.Entities)) {
 		entity := a.Manifest.Entities[alias]
-		target := targets[alias]
 		record := records[alias]
-		record["uses"] = json.RawMessage("true")
-		var fields map[string]json.RawMessage
+		binding, reuse := bindings[alias]
+		if !reuse && !entity.Uses {
+			continue
+		}
+		if reuse {
+			record["uses"] = json.RawMessage("true")
+		} else {
+			delete(record, "uses")
+			// A fallback is owned in this profile, but it remains a
+			// shared dependency if the person exports this app again.
+			record["portable_reuse"] = json.RawMessage("true")
+		}
+		fields := map[string]json.RawMessage{}
 		if err := json.Unmarshal(record["fields"], &fields); err != nil {
 			return nil, nil, err
 		}
-		for _, name := range slices.Sorted(maps.Keys(entity.Fields)) {
-			field := entity.Fields[name]
-			have, found := target.Fields[name]
-			var message string
-			switch {
-			case !found && field.Required:
-				message = fmt.Sprintf("%s records need a %s field named %s to use the package's %s.%s.", bindings[alias].Type, field.Type, name, alias, name)
-			case found && !compatible(field, have, targets, existing):
-				message = fmt.Sprintf("%s.%s does not match the package's %s field %s.%s.", bindings[alias].Type, name, field.Type, alias, name)
-			}
-			if message != "" {
-				report.Problems = append(report.Problems, schema.Problem{File: schema.AppFile, Path: "/records/" + alias + "/fields/" + name,
-					Code: "package_field_unmapped", Message: message})
-			}
-			if found {
-				delete(fields, name)
-			}
-		}
 		if fields == nil {
 			fields = map[string]json.RawMessage{}
+		}
+		for _, name := range slices.Sorted(maps.Keys(entity.Fields)) {
+			field := entity.Fields[name]
+			have, found := targets[alias].Fields[name]
+			if reuse && found {
+				if !compatible(field, have, targets, existing) {
+					report.Problems = append(report.Problems, schema.Problem{File: schema.AppFile, Path: "/records/" + alias + "/fields/" + name,
+						Code: "package_field_unmapped", Message: fmt.Sprintf("%s.%s does not match the package's %s field %s.%s.", binding.Type, name, field.Type, alias, name)})
+				}
+				delete(fields, name)
+			} else if _, declared := fields[name]; !declared {
+				// Older archives carry reused fields only in the manifest.
+				fields[name], _ = json.Marshal(schema.Field{Type: field.Type, Required: field.Required, To: field.To, Currency: field.Currency, Values: field.Values})
+			}
 		}
 		record["fields"], _ = json.Marshal(fields)
 	}
@@ -105,6 +127,56 @@ func (a Archive) Bind(existing schema.TypeSet, appID string, fork bool) (map[str
 	}
 	files[schema.AppFile] = string(raw) + "\n"
 	return files, bindings, nil
+}
+
+// A fork needs new copies of types that would otherwise keep their links
+// pointing into the originating app's private records.
+func (a Archive) privateForkTypes(existing schema.TypeSet, source string) map[string]bool {
+	private := map[string]bool{}
+	if source == "" {
+		return private
+	}
+	for alias := range a.Manifest.Entities {
+		if existing[schema.PrivateRecordName(source, alias)].Owner == source {
+			private[alias] = true
+		}
+	}
+	for changed := len(private) != 0; changed; {
+		changed = false
+		for alias, entity := range a.Manifest.Entities {
+			if private[alias] || entity.Uses || entity.Common != "" {
+				continue
+			}
+			for _, field := range entity.Fields {
+				if private[field.To] {
+					private[alias], changed = true, true
+					break
+				}
+			}
+		}
+	}
+	return private
+}
+
+// A matching name alone does not make two private record types interchangeable.
+func samePrivateShape(raw map[string]json.RawMessage, target schema.ExistingType) bool {
+	if target.Common != "" || target.HasRules || raw["policy"] != nil || raw["lifecycle"] != nil ||
+		raw["ledger"] != nil || raw["freeze"] != nil || raw["constants"] != nil ||
+		raw["checklists"] != nil || raw["write_rules"] != nil {
+		return false
+	}
+	var fields map[string]schema.Field
+	if json.Unmarshal(raw["fields"], &fields) != nil || len(fields) == 0 || len(fields) != len(target.Fields) {
+		return false
+	}
+	for name, want := range fields {
+		have, ok := target.Fields[name]
+		want.ID, have.ID = "", ""
+		if !ok || !reflect.DeepEqual(want, have) {
+			return false
+		}
+	}
+	return true
 }
 
 func compatible(need Field, have schema.Field, targets map[string]schema.ExistingType, existing schema.TypeSet) bool {
