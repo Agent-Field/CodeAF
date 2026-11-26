@@ -64,7 +64,8 @@ elements and label, id, prop-name, bind-name and on-event attributes.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Declare inputs in params and store ref ids as $params.post.id.
-Agent steps return text at $steps.<id>.output. For lists and approvals, copy
+Use plan.agent.actions for exact Action IDs the assistant promises.
+Agent steps return only the requested text at $steps.<id>.output. For lists and approvals, copy
 reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
@@ -174,6 +175,12 @@ button, set the list id and selection mode and show the button when a row
 is selected. A local save requiring approval puts gate: {approval: proof}
 on the records.create or records.update step itself so the Inbox shows the
 actual proposed write. Set a run title and step titles in plain language.
+For an assistant that changes records, give it a declared screen view to
+find the target. Use one typed ref parameter in the run, such as deal, and
+write only the selected row ($params.deal.id). A record-writing run is
+grantable by run ID, or by the command ID when a command launches it.
+Use a run for multi-step record commands. For a draft, ask for the message
+itself, addressed to the recipient. The engine supplies the run inputs.
 Use a Button labelled "Add <record>" with on-click to open a Sheet
 containing a RecordForm, or use a Button with an asked records.create
 action. Supply every required field with no default through the form, or

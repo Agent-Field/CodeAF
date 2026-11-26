@@ -989,6 +989,9 @@ func (c *checker) checkRun(file string, r Run) {
 			}
 			stepIDs[s.ID] = true
 			textOutputs[s.ID] = s.Agent != ""
+			if len(s.AgentTools) > 0 && (s.Agent == "" || c.kit.Kit != 2 || len(c.app.Outputs) == 0) {
+				c.add(file, sat+"/tools", CodeNotAllowed, "The render tool needs an agent step and declared outputs in a kit 2 app.")
+			}
 			collect(s.Steps, sat+"/steps")
 		}
 	}

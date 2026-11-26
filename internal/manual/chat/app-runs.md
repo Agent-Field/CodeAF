@@ -34,3 +34,16 @@ when the app has write access and the record's rules permit the change.
 ## Approve, decline or raise the budget for an app run
 
 The Inbox shows “Approval needed: send” before a run sends mail, posts a message or makes another outbound connection call. Open its Inbox row to see the run’s steps, the proposed effect, and the records it applies to. Choose **Approve** to let that step proceed or **Reject** to end the run. A pending approval returns to the Inbox after the engine and Desk restart. When a run reaches its spending limit, the Inbox shows “Per-run budget reached”. Raise the limit in dollars to continue or choose Stop.
+
+
+## Draft a follow-up message or another text artifact in a run
+
+A run's `agent` step receives its declared inputs, including the selected
+record and readable relationships. Write a step prompt for the artifact you
+want. The text alone is available at `$steps.<id>.output`. The engine checks
+the response and asks once more if it receives tool-call syntax or narration.
+If the second response still fails the contract, the run follows its error
+handling without saving that response. Tools require a declaration on the
+step. An `ai` step uses its declared JSON output schema and also gets one
+repair attempt. Keep the approval on the save step to see the exact note
+before it is written.
