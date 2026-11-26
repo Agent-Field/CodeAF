@@ -47,6 +47,7 @@ type Options struct {
 	Model        func() (Completer, error)
 	Catalog      func(app string) (Catalog, error)
 	Check        func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
+	CheckPackage func(context.Context, string, schema.Definition, schema.TypeSet) schema.Report
 	SeedPreview  func(scope string, def schema.Definition, real bool) error
 	ClosePreview func(scope string)
 	Changed      func(Event)
@@ -56,16 +57,17 @@ type Options struct {
 
 // Proposal identifies a requested change after its work is durable.
 type Proposal struct {
-	App          string   `json:"app"`
-	Draft        string   `json:"draft"`
-	ID           string   `json:"proposal_id"`
-	Screen       string   `json:"screen"`
-	Kind         string   `json:"kind"`
-	Source       string   `json:"source"`
-	BaseVersion  int      `json:"base_version"`
-	Checkpoint   string   `json:"checkpoint"`
-	Target       *Target  `json:"target,omitempty"`
-	SummaryLines []string `json:"summary_lines"`
+	App          string       `json:"app"`
+	Draft        string       `json:"draft"`
+	ID           string       `json:"proposal_id"`
+	Screen       string       `json:"screen"`
+	Kind         string       `json:"kind"`
+	Source       string       `json:"source"`
+	BaseVersion  int          `json:"base_version"`
+	Checkpoint   string       `json:"checkpoint"`
+	Target       *Target      `json:"target,omitempty"`
+	SummaryLines []string     `json:"summary_lines"`
+	Package      *PackageCard `json:"package,omitempty"`
 }
 
 type proposalIntent struct {
@@ -86,16 +88,17 @@ type Catalog struct {
 type Jobs struct {
 	author authoring
 
-	opts    Options
-	root    string
-	ctx     context.Context
-	cancel  context.CancelFunc
-	mu      sync.Mutex
-	workers map[string]context.CancelFunc
-	scopes  map[string]previewScope
-	changes chan struct{}
-	wg      sync.WaitGroup
-	lease   *os.File
+	opts      Options
+	root      string
+	ctx       context.Context
+	cancel    context.CancelFunc
+	mu        sync.Mutex
+	packageMu sync.Mutex
+	workers   map[string]context.CancelFunc
+	scopes    map[string]previewScope
+	changes   chan struct{}
+	wg        sync.WaitGroup
+	lease     *os.File
 }
 
 type Summary struct {
@@ -202,6 +205,7 @@ type snapshot struct {
 type job struct {
 	State
 	PendingProposal *proposalIntent `json:",omitempty"`
+	Package         *packageEdit    `json:",omitempty"`
 	WritingFiles    map[string]string
 	Working         snapshot
 	Saved           map[string]snapshot
@@ -668,7 +672,7 @@ func (s *Jobs) enqueue(j *job, stage, request string, target *Target, proposal s
 	if s.ctx.Err() != nil {
 		return "", s.ctx.Err()
 	}
-	if j.Publishing || j.Proposal != nil {
+	if j.Publishing || j.Proposal != nil || j.Package != nil {
 		return "", store.ErrConflict
 	}
 	wantsProposal := proposal != "" || (j.App != "" && target != nil)

@@ -37,7 +37,7 @@ func (s *Jobs) Check(ctx context.Context, draft string) (State, error) {
 		s.mu.Unlock()
 		return State{}, err
 	}
-	if len(j.Queue) != 0 || j.Publishing || j.Proposal != nil || s.ctx.Err() != nil {
+	if len(j.Queue) != 0 || j.Publishing || j.Proposal != nil || j.Package != nil || s.ctx.Err() != nil {
 		s.mu.Unlock()
 		return State{}, store.ErrConflict
 	}

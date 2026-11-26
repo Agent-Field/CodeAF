@@ -122,6 +122,7 @@
       "properties": {
         "title": { "type": "string" },
         "label": { "type": "string" },
+        "common": { "type": "string" },
         "uses": { "type": "boolean" },
         "policy": {
           "type": "object",

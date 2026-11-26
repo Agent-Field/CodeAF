@@ -39,7 +39,7 @@ func (b *appBackend) AppBuilds() (*builder.Jobs, error) {
 	pipeline := check.Pipeline{Seed: b.seedBuildSample, DryRun: b.CheckDraftRun, Look: b.checkAppLook}
 	jobs, err := builder.OpenJobs(builder.Options{
 		Home: home.Dir(), Store: b.AppDefinitions(), Model: b.appBuilderModel,
-		Check: pipeline.Run, Changed: b.appBuildChanged, Notify: b.appBuildNotice,
+		Check: pipeline.Run, CheckPackage: pipeline.RunPackage, Changed: b.appBuildChanged, Notify: b.appBuildNotice,
 		Proposed: b.appAssistantProposed,
 		Catalog:  b.appBuildCatalog, SeedPreview: b.seedBuildPreview,
 		ClosePreview: b.closeBuildPreview,
