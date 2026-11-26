@@ -1,0 +1,39 @@
+run: draft-thread
+title: Draft three thread replies for review
+budget:
+  per_run: 0.10
+params:
+  post:
+    type: ref
+    to: post
+steps:
+  - id: draft
+    agent: Marketing agent
+    prompt: >-
+      Draft exactly three short thread replies to post {{post}}, each under
+      40 words, in a plain and friendly voice.
+    output:
+      replies:
+        type: array
+        items:
+          type: string
+  - id: save
+    loop:
+      over: $steps.draft.replies
+      as: reply
+      max: 3
+    steps:
+      - id: create
+        records.create:
+          type: draft
+          set:
+            text: "{{reply}}"
+            post: "{{post}}"
+  - id: approve
+    title: Review the three drafted replies
+    gate:
+      approval: send
+      who: $me
+    args:
+      post: "{{post}}"
+      replies: $steps.draft.replies
