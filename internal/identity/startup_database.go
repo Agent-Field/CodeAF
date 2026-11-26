@@ -84,6 +84,9 @@ func addStartupIndexes(out map[string]string, bases ...string) {
 
 func graphStartupTables() map[string]string {
 	out := startupTables("events", "nodes", "edges", "messages", "commands", "sessions", "agent_questions", "usage", "usage_turns", "transcript", "surprises", "task_budgets", "role_bindings", "self_receipts", "self_inquiry_lines", "services", "facts", "question_practices", "scope_aliases", "retrospective_watermark", "resident_watermarks", "meta_parameters")
+	// The shared schema creates this empty table when opening the graph.
+	// A saved receipt is local run state and must still count as work.
+	out["app_run_receipts"] = "1"
 	for name, predicate := range workRows {
 		out[name] = predicate
 	}
