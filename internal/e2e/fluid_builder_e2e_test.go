@@ -72,7 +72,7 @@ func TestFluidAppScopedPlanLive(t *testing.T) {
 	}
 	var state builder.State
 	fluidCall(t, engine, "apps.build_state", map[string]string{"draft": plan.Draft}, &state)
-	if state.State != builder.Ready || state.Published || len(state.Checkpoints) != 1 || len(state.Needs) == 0 {
+	if state.State != builder.Planning || len(state.Screens) != 0 || state.Published || len(state.Checkpoints) != 1 || len(state.Needs) == 0 {
 		t.Fatalf("scoped planning didn't leave a reviewable unpublished plan: %+v", state)
 	}
 	t.Logf("Scoped plan with %d needs and %d checkpoint(s)", len(state.Needs), len(state.Checkpoints))

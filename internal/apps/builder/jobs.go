@@ -347,6 +347,13 @@ func (s *Jobs) load(id string) (*job, error) {
 	if err := json.Unmarshal(raw, &j); err != nil || j.Draft != id {
 		return nil, store.ErrCorrupt
 	}
+	// Older builds used Ready for plans with no screens.
+	if j.State.State == Ready && len(j.Screens) == 0 {
+		j.Screens = screens(j.Working.Files)
+		if len(j.Screens) == 0 {
+			j.State.State = Planning
+		}
+	}
 	return &j, nil
 }
 
@@ -395,7 +402,7 @@ func writeJob(dir string, j *job) error {
 func newJob(id, app, name string) *job {
 	return &job{
 		State: State{
-			Summary: Summary{Draft: id, App: app, Name: name, State: Ready},
+			Summary: Summary{Draft: id, App: app, Name: name, State: Planning},
 			Needs:   []string{}, Offers: []Offer{}, Using: []string{}, Transcript: []Message{},
 			Checkpoints: []Checkpoint{}, Marks: []Mark{}, Screens: []string{}, Progress: []Event{},
 		},
@@ -421,6 +428,7 @@ func (s *Jobs) create(app string) (*job, error) {
 		j.Working = snapshot{Files: live.Files(), Passed: true}
 		j.acceptKeptUses()
 		s.describeKept(j)
+		j.State.State = Ready
 	}
 	return j, nil
 }
