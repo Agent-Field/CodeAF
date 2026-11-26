@@ -84,6 +84,7 @@ type Config struct {
 	// Records applies local writes. The live and sample engines use Data.Write,
 	// which commits a receipt for each declared write's stable Call.Key.
 	Records    func(context.Context, RecordCall) (Reply, error)
+	Render     func(context.Context, Call, schema.RenderAction) (Reply, error)
 	Agent      func(context.Context, AgentCall) (Reply, error)
 	CheckAI    func(*schema.AIStep) error
 	AppVersion func(string) (int, error)
