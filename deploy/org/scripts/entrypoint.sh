@@ -2,6 +2,7 @@
 # The codeaf image's entrypoint. The first argument picks the role:
 #   server   the organization server, `codeaf factory serve`, in team mode
 #   runner   the factory runner that connects the organization's work to AgentField
+#   relay    the organization's relay, `codeaf relay`: where its members' computers pair, see each other and open each other's chats
 #   sessionhost  the machine hosted chats run on (stays root: see below)
 #   <other>  run that command as given (a shell, `codeaf --help`)
 set -eu
@@ -20,5 +21,6 @@ ORG_UID=10001 ORG_HOME=/home/codeaf ORG_DIRS="/data" . /opt/org/drop-root.sh
 case "$role" in
   server) exec /opt/org/serve.sh "$@" ;;
   runner) exec python3 /opt/org/runner.py "$@" ;;
+  relay) exec /opt/org/relay.sh "$@" ;;
   *) exec "$role" "$@" ;;
 esac

@@ -74,6 +74,8 @@ jobs:
         run: deploy/org/operator_link_test.sh
       - name: Compose profiles turn on the services they should
         run: deploy/org/compose_profiles_test.sh
+      - name: The relay role starts the relay the way its settings say
+        run: deploy/org/relay_script_test.sh
       - name: Planted fake secrets must fail the gate
         run: deploy/org/gate/selftest.sh
       - name: Planted files must not enter the build context

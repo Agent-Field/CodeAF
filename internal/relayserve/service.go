@@ -53,6 +53,10 @@ type Config struct {
 	// After is the timers presence runs on; nil is the wall clock's. A relay a
 	// test drives on a fake clock hands timers that move with it.
 	After directory.After
+
+	// StorageOff keeps the directory and refuses every chat upload, the way the hosted relay does for an account it has not
+	// approved to store chats (blobstore.StorageOff). It changes nothing without a Store.
+	StorageOff bool
 }
 
 // Service is a built relay: one handler and the files it holds open.
@@ -144,7 +148,11 @@ func New(cfg Config) *Service {
 	mux.Handle("/v1/dir/", dirs)
 	mux.Handle("/v1/identity/", dirs)
 	mux.Handle(directory.LinkPath+"/", logged(cfg.Logf, directory.LinkHandler(links, peerOf(cfg))))
-	mux.Handle("/v1/store/", logged(cfg.Logf, blobstore.HandlerAt(now, auth, svc.ns.blobs)))
+	blobs := blobstore.HandlerAt(now, auth, svc.ns.blobs)
+	if cfg.StorageOff {
+		blobs = blobstore.StorageOff(blobs)
+	}
+	mux.Handle("/v1/store/", logged(cfg.Logf, blobs))
 	svc.stop = make(chan struct{})
 	svc.swept.Add(1)
 	go svc.sweepLoop(sweepInterval(cfg.SweepEvery), cfg.Logf)

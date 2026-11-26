@@ -322,7 +322,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// A drop deletes the job's local branch and folder on this machine,
 		// and the conversations and crew kept on this machine, never anything
 		// on GitHub, so the team server does it too.
-		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Hosted: hosted, HSTSSubdomains: host.HSTSIncludeSubdomains, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+		Folders: newFactoryJobFolders(st), DeleteChats: factoryDeleteJobChats(config.ProfileDir(), st), Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Hosted: hosted, HSTSSubdomains: host.HSTSIncludeSubdomains, Name: host.Name, GitHubClientID: host.GitHubClientID, RelayURL: host.RelayURL, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll, GitHubLimit: host.githubLimit.resets,
 		Scout: factoryScoutLook(st, config.Load), Read: factoryClickRead(st, config.Load),
 		// The organization's workstream agents, when the operator runs them

@@ -17,6 +17,7 @@ The separate `relay` binary accepts the same flags.
 |---|---|
 | `--listen` | Listen address; default `:8787`. |
 | `--store <dir>` | Persistent coordination and encrypted chunks. Without it, only the blind transport and pairing mailbox run; chat sync needs storage. |
+| `--storage on\|off` | Default `on`. `off` keeps the device list under `--store` but no chat content: `GET /v1/store/stats` answers `"storage": "off"`, so computers keep their chats where they are and stop asking, and an upload is refused with `403 storage_off`. It is what the hosted relay does for an account that has not asked for storage, and what an organization's relay does when the organization already keeps its chats (see below). |
 | `--quiet` | Suppress arrival, departure and request logs. |
 | `--status=false` | Disable `GET /status`. |
 | `--trust-proxy` | use the first `X-Forwarded-For` address for registration, dial and pairing limits; absent or blank falls back to the socket peer. only behind a proxy that sets it. |
@@ -32,6 +33,15 @@ network or a proxy that checks callers: any valid signature can create an identi
 Logs contain a short identity id, route pattern, status and byte counts, never a body.
 The native relay serves at the root of its host; give it a host of its own, or have
 your proxy preserve the client's signed request path.
+
+## A relay for an organization
+
+An organization that hosts its chats (`deploy/org`, see [organizations](organizations.md)) runs its own relay in the same stack, as the
+`relay` service, with `--store` on a volume and `--storage off`: members' computers pair, see each other, Move chats and open each
+other's chats live through it, and the organization's server, not a second copy on the relay, keeps the hosted chats. The organization
+server's `relay_url` setting names it, `codeaf pair --org https://org.example.com` looks it up and pairs through it, and
+`codeaf pair --via` with any relay's address still works with no organization involved. The operator's walkthrough is "The
+organization's relay" in [`deploy/org/README.md`](../deploy/org/README.md#the-organizations-relay).
 
 ## Three anchors, joined computers and leadership
 

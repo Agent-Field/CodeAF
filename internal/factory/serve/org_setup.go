@@ -93,7 +93,7 @@ func (h *Handler) loadOrgName() {
 
 // orgProfile is the organization's own words as the wire says them.
 func (h *Handler) orgProfile() (api.OrgProfile, error) {
-	out := api.OrgProfile{Name: h.factoryNow().Name}
+	out := api.OrgProfile{Name: h.factoryNow().Name, Relay: h.config.RelayURL}
 	if h.config.Store == nil {
 		return out, nil
 	}

@@ -2,7 +2,7 @@
 # Makes a DRAFT Railway template of the org stack from the PUBLISHED IMAGES (README.md "Published images").
 #
 #     ./make-template.sh                 dry run: prints every Railway call it would make, changes nothing (the default)
-#     ./make-template.sh --apply         makes a fresh source project, adds the six services from their images, and turns
+#     ./make-template.sh --apply         makes a fresh source project, adds the seven services from their images, and turns
 #                                        the project into an UNPUBLISHED template draft in your workspace
 #
 #     ORG_REGISTRY=agentfield ORG_TAG=dev    which images (the same two variables as images.env); a 12-character commit id
@@ -206,6 +206,28 @@ rail environment edit --service-config sessionhost deploy.limitOverride.containe
 hosted_url='http://${{sessionhost.RAILWAY_PRIVATE_DOMAIN}}:8790'
 check_var CODEAF_HOSTED_URL "$hosted_url"
 rail variable set "CODEAF_HOSTED_URL=$hosted_url" --service codeaf --skip-deploys
+
+# --- relay: the organization's own relay, `codeaf relay` in the same image. Members' computers pair through it, see each other
+# and open each other's chats live, so none of that needs the public relay. It needs a public domain of its own on its own port
+# (its requests are signed with their path, so it cannot sit under the organization server's address), and Railway's edge in front
+# of it, which is why it trusts X-Forwarded-For. Chat storage is off: the hosted chats are already kept by `codeaf`. It keeps the
+# device list, in its volume. /p/health is the page the relay serves for any pairing code, so it answers 200 and says nothing about
+# who is connected; GET /status stays off for the same reason (the relay is open to the internet).
+service relay "$CODEAF_IMAGE" \
+  CODEAF_ROLE=relay \
+  PORT=8788 \
+  CODEAF_RELAY_STORAGE=off \
+  CODEAF_RELAY_STATUS=off \
+  CODEAF_RELAY_TRUST_PROXY=on
+volume_add relay /data
+rail environment edit --service-config relay deploy.healthcheckPath /p/health --message "relay health check"
+rail domain --service relay --port 8788 --json
+
+# The address the organization server tells its people to pair through. Railway can resolve this reference once the relay has its
+# domain, and it is only an address, never a secret.
+relay_url='https://${{relay.RAILWAY_PUBLIC_DOMAIN}}'
+check_var CODEAF_ORG_RELAY_URL "$relay_url"
+rail variable set "CODEAF_ORG_RELAY_URL=$relay_url" --service codeaf --skip-deploys
 
 # --- runner: the factory runner, the same image in its runner role. --------------------------------------------------------------------
 service runner "$CODEAF_IMAGE" \

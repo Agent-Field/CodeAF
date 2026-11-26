@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +28,9 @@ type factoryHostConfig struct {
 	Repos          []string `yaml:"repos"`
 	GitHubClientID string   `yaml:"github_client_id,omitempty"`
 	Team           []string `yaml:"team,omitempty"`
+	// RelayURL is the address of the relay the organization runs for its members' computers, with its scheme
+	// (https://relay.example.com). The server tells it to every signed-in person (GET /v1/org) and uses it for nothing else.
+	RelayURL string `yaml:"relay_url,omitempty"`
 	// TLS is auto, files or off; empty is auto off loopback and off on it
 	// ([resolveFactoryTLS] decides once the listen address is final).
 	TLS      string `yaml:"tls,omitempty"`
@@ -67,6 +72,9 @@ func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 	}
 	if cfg.GitHubClientID != "" {
 		doc["github_client_id"] = cfg.GitHubClientID
+	}
+	if cfg.RelayURL != "" {
+		doc["relay_url"] = cfg.RelayURL
 	}
 	if len(cfg.Team) > 0 {
 		doc["team"] = cfg.Team
@@ -190,7 +198,26 @@ func readFactoryHostConfig(path string) (factoryHostConfig, error) {
 	if err := checkFactoryTLSConfig(cfg); err != nil {
 		return cfg, fmt.Errorf("factory config %s: %w", path, err)
 	}
+	if cfg.RelayURL, err = checkFactoryRelayURL(cfg.RelayURL); err != nil {
+		return cfg, fmt.Errorf("factory config %s: %w", path, err)
+	}
 	return cfg, nil
+}
+
+// checkFactoryRelayURL is the relay address an organization advertises: an http or https address with a host, no sign-in in it,
+// and nothing after the path. It is handed to every member, so an address with a password in it is refused rather than passed on.
+// Empty is no relay, and the trailing slash is dropped because clients join paths themselves.
+func checkFactoryRelayURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		// The address is not repeated: one with a password in it must not reach a log.
+		return "", errors.New("relay_url must be a web address such as https://relay.example.com, with no sign-in or query in it")
+	}
+	return strings.TrimRight(u.String(), "/"), nil
 }
 
 // factoryHandleOK is a GitHub login after NormalizeHandle: letters, digits

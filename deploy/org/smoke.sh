@@ -6,13 +6,21 @@
 #   3. the operator link claims the organization; a second person joins by invite;
 #   4. a factory job reaches SWE-AF through AgentField, with strict run-owner proofs on; its plan
 #      question reaches the owner, and the answer resumes the run;
-#   5. a restart of every service, then: still registered, still holding the runs and the people.
+#   5. the organization's own relay (the `relay` service): it answers, the organization tells its people where it is, two throwaway
+#      computers pair through it with `codeaf pair --org` and see each other, and it keeps no chat content;
+#   6. a restart of every service, then: still registered, still holding the runs and the people, and the two computers still
+#      see each other through the relay.
 # Afterwards the stack keeps running against the stub. `docker compose up -d` puts your own keys back.
 #
 #     ./smoke.sh
 #
 # COMPOSE='docker compose -p other' picks another project; SMOKE_ENV='--env-file x' adds an env file;
 # SMOKE_BUILD=--no-build uses the images that are already there (the default builds what changed).
+#
+# SMOKE_RELAY_LIVE=1 adds what needs a terminal, so it runs on THIS machine and not in a container: the Go test
+# internal/e2e/org_relay_e2e_test.go points two throwaway computers at the stack's relay (published on the host by
+# CODEAF_RELAY_BIND and CODEAF_RELAY_PORT), pairs them through it, opens a chat the first is running on the second, types into it
+# and checks the relay stored none of it. It needs Go, tmux and a built bin/codeaf (`make build` at the repository root).
 #
 # SMOKE_HOSTED_ONLY=1 runs only the hosted-chats part, on the three services it needs (codeaf, sessionhost,
 # modelstub): no AgentField, no nodes, no runner. It implies SMOKE_HOSTED=1.
@@ -61,6 +69,22 @@ link=$(COMPOSE="$DC" ./operator-link.sh)   # a secret: it is passed on, never pr
 
 [ "$FULL" = 1 ] && run runner '' control
 run codeaf '-e ORG_URL=http://127.0.0.1:8787' org --operator-link "$link"
+if [ "$FULL" = 1 ]; then
+  echo "== the organization's relay"
+  run codeaf '-e ORG_URL=http://127.0.0.1:8787' relay
+  # What only the relay's own volume can show: it said it leaves chats out, it kept the two computers' device list, and it holds no
+  # chat content at all.
+  if $DC logs relay 2>&1 | grep -q 'chat storage off'; then echo 'PASS  the relay started with chat storage off'; else echo 'FAIL  the relay did not start with chat storage off' >&2; bad=1; fi
+  if $DC exec -T relay sh -c 'ls /data/relay/directory 2>/dev/null | grep -q "\.db$"'; then echo 'PASS  the relay keeps its device list on its volume'; else echo 'FAIL  the relay has no device list on its volume' >&2; bad=1; fi
+  held=$($DC exec -T relay sh -c 'find /data/relay/blobs -type f 2>/dev/null | wc -l' | tr -d '[:space:]')
+  if [ "$held" = 0 ]; then echo 'PASS  the relay holds no chat content'; else echo "FAIL  the relay holds $held file(s) of chat content" >&2; bad=1; fi
+  if [ "${SMOKE_RELAY_LIVE:-0}" = 1 ]; then
+    echo '== two computers pair through the relay and open a chat live (Go test, on this machine)'
+    relay_at=$($DC port relay 8788 | head -n 1 | sed 's/^0\.0\.0\.0:/127.0.0.1:/')
+    if [ -z "$relay_at" ]; then echo 'FAIL  the relay has no published port to reach from this machine' >&2; bad=1
+    elif ! (cd ../.. && CODEAF_E2E_ORG_RELAY="http://$relay_at" go test -tags e2e -count=1 -run TestOrgRelayE2E -timeout 20m -v ./internal/e2e/); then bad=1; fi
+  fi
+fi
 if [ "$HOSTED" = 1 ]; then
   echo '== hosted chats'
   run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-prepare
@@ -106,6 +130,7 @@ $DC restart $SERVICES
 $DC up -d --wait --wait-timeout 600 $SERVICES
 [ "$FULL" = 1 ] && run runner '' after
 run codeaf '-e ORG_URL=http://127.0.0.1:8787' after-org
+[ "$FULL" = 1 ] && run codeaf '-e ORG_URL=http://127.0.0.1:8787' relay-after
 if [ "$HOSTED" = 1 ]; then
   $DC exec -T sessionhost python3 $SMOKE hosted-leftovers || bad=1
   run codeaf '-e ORG_URL=http://127.0.0.1:8787' hosted-after
