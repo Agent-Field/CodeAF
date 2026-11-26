@@ -181,7 +181,7 @@ func (s *Jobs) Restore(id, checkpoint string) error {
 	if err != nil {
 		return err
 	}
-	if j.Publishing || j.Package != nil {
+	if j.Publishing || j.Proposal != nil || j.Package != nil {
 		return store.ErrConflict
 	}
 	snap, ok := j.Saved[checkpoint]
@@ -195,7 +195,7 @@ func (s *Jobs) Restore(id, checkpoint string) error {
 	j.Working, j.State.State, j.Problem, j.Dirty = snap, Ready, "", true
 	j.WritingFiles = nil
 	j.Presence = nil
-	j.Progress, j.Queue, j.Paused = []Event{}, nil, nil
+	j.Progress, j.Queue, j.Paused, j.PendingProposal = []Event{}, nil, nil, nil
 	j.describe(catalog)
 	if err := j.checkpoint("I brought back this earlier version of the app."); err != nil {
 		return err
@@ -217,7 +217,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 	if err != nil {
 		return store.Meta{}, err
 	}
-	if len(j.Queue) != 0 || (j.Package != nil && !j.Working.CheckComplete) {
+	if len(j.Queue) != 0 || j.PendingProposal != nil || (j.Package != nil && !j.Working.CheckComplete) {
 		return store.Meta{}, fmt.Errorf("%w: finish checking before keeping the app", store.ErrConflict)
 	}
 	if !j.Dirty && j.App != "" {
@@ -284,7 +284,7 @@ func (s *Jobs) Apply(id string) (store.Meta, error) {
 
 	j.App, j.Base, j.Name = live.Meta.ID, live.Meta.Version, live.Meta.Name
 	j.Dirty, j.Publishing, j.Editable = false, false, true
-	j.Proposal, j.Package = nil, nil
+	j.Proposal, j.PendingProposal, j.Package = nil, nil, nil
 	j.Working = snapshot{Files: live.Files(), Passed: true}
 	j.acceptKeptUses()
 	j.KeptMessages, j.KeptCheckpoints, j.KeptMarks = len(j.Transcript), len(j.Checkpoints), len(j.Marks)
@@ -357,7 +357,7 @@ func (s *Jobs) Discard(id string) error {
 	j.Working = snapshot{Files: live.Files(), Passed: true}
 	j.acceptKeptUses()
 	j.Queue, j.Paused, j.Dirty, j.Problem, j.State.State = nil, nil, false, "", Ready
-	j.Proposal, j.Package = nil, nil
+	j.Proposal, j.PendingProposal, j.Package = nil, nil, nil
 	j.WritingFiles = nil
 	j.Presence = nil
 	j.Progress = []Event{}

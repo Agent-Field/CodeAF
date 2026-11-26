@@ -400,7 +400,7 @@ func (a *Agent) readRouteJudge(ctx context.Context, user userMessage, usedTools 
 	// THE GATES ARE THE START'S GATES, in the order they are cheapest to fail.
 	// Work started in a session nobody is watching is a model call spent on a
 	// surprise nobody will see, and a node has no surface at all.
-	if !a.config.AskConsent || a.config.InTask {
+	if !a.config.AskConsent || a.config.InTask || a.config.AppScope != nil {
 		return judgeRuling{}
 	}
 	// WHAT THE JUDGE IS SHOWN AS THE ASK, and this is the one gate the goal owner
@@ -660,7 +660,7 @@ type judgeRace struct {
 // NOTHING UNDER HERE HAS AN EFFECT. What comes back is a [judgeRuling], and the
 // turn is what spends it ([Agent.applyRouteJudge]).
 func (a *Agent) judgeAhead(ctx context.Context, user userMessage, usedTools bool, answer string) *judgeRace {
-	if usedTools || !a.config.AskConsent || a.config.InTask {
+	if usedTools || !a.config.AskConsent || a.config.InTask || a.config.AppScope != nil {
 		return nil
 	}
 	return &judgeRace{reading: readBeside(ctx, func(judgeCtx context.Context) judgeRuling {
@@ -933,7 +933,7 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 	// itself, a message too short to be worth a model call, and a start too
 	// recent to follow with another. Each of them is a race that is never run at
 	// all, which is this feature costing those turns nothing whatever.
-	if !a.config.AskConsent || a.config.InTask {
+	if !a.config.AskConsent || a.config.InTask || a.config.AppScope != nil {
 		return nil
 	}
 	if user.empty() || user.wake || user.authored {
@@ -1169,7 +1169,7 @@ func (a *Agent) launchRouteTaskTold(hub *eventHub, verdict routeVerdict, title s
 	// already return above on a one-command ask; a reserved id for work that
 	// must not start would be the floor leaking a node number into a conversation
 	// that is answering inline.
-	if trivialAsk(a.taskRequest()) {
+	if a.config.AppScope != nil || trivialAsk(a.taskRequest()) {
 		return "", 0
 	}
 	graph := a.graph()
