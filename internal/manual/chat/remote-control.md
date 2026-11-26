@@ -10,9 +10,9 @@ Three things have to be true. The two computers are paired. Both are running cod
 
 With remote control on, a chat shows on your other computers' Home as soon as its first turn **starts**, marked `working on <name>`, and `enter` opens it live. Without remote control it appears when that first turn ends, as it always did. A chat nobody has typed in appears nowhere, so an opened and abandoned chat leaves no untitled row. Only the row travels this early: which computer runs the chat and that it is working, with no title, no folder and no words. To make that row the chat is saved once as it stands when the turn starts, which is your first message and no reply. With relay storage off that saved copy stays on the computer running the chat.
 
-With relay storage off, which is the default, the row never carries the chat's title, so on another computer's terminal Home it reads `untitled` while the first turn runs and after it ends, and after every later turn. The relay is kept from holding the name of a chat, so the title is not sent. The terminal fills it in from a copy of the chat that computer already holds, and a chat that was started on another computer has none there. WorkAF asks the computer running the chat for the title directly (see *Why a chat shows as untitled on my other computer*). With relay storage approved, or a self-hosted relay with `--store`, the row gets its title and its latest state when the turn ends, like any chat.
+With relay storage off, which is the default, the row never carries the chat's title, so on another computer's terminal Home it reads `untitled` while the first turn runs and after it ends, and after every later turn. The server in between is never given the name of a chat, so the title is not sent. The terminal fills it in from a copy of the chat that computer already holds, and a chat that was started on another computer has none there. WorkAF asks the computer running the chat for the title directly (see *Why a chat shows as untitled on my other computer*). With that storage approved, or a self-hosted server run with `--store`, the row gets its title and its latest state when the turn ends, like any chat.
 
-If the computer running it stops during that first turn, the row stays as `untitled` until the chat is opened again there. Opening it from another computer asks first. What it can bring is the chat as last saved, at most your first message and no reply, and only with relay storage on: with it off, nothing comes while that computer is off.
+If the computer running it stops during that first turn, the row stays as `untitled` until the chat is opened again there. Opening it from another computer asks first. What it can bring is the chat as last saved, at most your first message and no reply, and only with that storage on: with it off, nothing comes while that computer is off.
 
 ## Open it live or move it here — Move here versus remote control, which one does enter do
 
@@ -62,7 +62,7 @@ tower can watch your chats here but cannot type yet.
 
 A live view starts through the server in between, so the chat appears at once. About half a second later the two computers try to connect straight to each other. If that works, the view moves to the direct road and `/status` has a `road` row that says `live · direct`. If it does not, the view stays where it was and says `live · relay`. Both are normal, and neither prints a banner. Two computers on one network connect directly.
 
-Moving between the roads loses nothing. Words you typed are sent once, a turn that is running keeps going, and the keyboard stays with the computer that had it. A direct connection that stops working hands the view back to the server in between within 5 seconds when the relay is reachable, again with no notice.
+Moving between the roads loses nothing. Words you typed are sent once, a turn that is running keeps going, and the keyboard stays with the computer that had it. A direct connection that stops working hands the view back to the server in between within 5 seconds when the server in between is reachable, again with no notice.
 
 Traffic on the direct road does not count toward the daily allowance on *Disconnected after ten minutes idle*, and that allowance never stops a view that is already direct. A view you leave idle for 10 minutes lets go of both roads.
 
@@ -100,7 +100,7 @@ It is read-only. If you press `enter` on words you typed it sends nothing: `not 
 
 ## Does remote control need relay storage — works with relay storage off, can the relay read what I type
 
-No. Remote control works with relay storage off, while both computers are running codeaf. The relay passes encrypted bytes between them that it cannot read, or, when the two can reach each other, they connect directly and none of it passes through the server in between. It keeps no copy of your chat text. What it can see while you work is how much encrypted traffic there is, when, and which of your computers are connected; the word *relay* here is the server, as everywhere else in codeaf.
+No. Remote control works with relay storage off, while both computers are running codeaf. The server in between passes encrypted bytes between them that it cannot read, or, when the two can reach each other, they connect directly and none of it passes through the server in between. It keeps no copy of your chat text. What it can see while you work is how much encrypted traffic there is, when, and which of your computers are connected; the word *relay* on this page always means that server, as everywhere else in codeaf.
 
 What does need relay storage is a message for a computer that is **offline**: the desktop app can leave a waiting message for it, and the terminal cannot send anything to an offline computer at all. When the other computer is online, live typing needs no storage.
 
