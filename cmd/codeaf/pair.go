@@ -59,7 +59,7 @@ func newPairDoor(in io.Reader, out io.Writer) pairDoor {
 		ownRecord: func(ctx context.Context, route pair.Mailbox) error { return ownDeviceRecord(ctx, home.Dir(), route) }}
 }
 
-const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-token> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code"
+const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-token> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code | codeaf pair --org <address> [--code]"
 
 // approveUsage is what `codeaf pair approve` with nothing after it is told.
 const approveUsage = "usage: codeaf pair approve <link-or-token> \u2014 the link or token the new device shows; for a numeric pairing code use codeaf pair <code>"
@@ -162,11 +162,22 @@ func (d pairDoor) run(ctx context.Context, args []string) error {
 	flags := commandFlags("pair")
 	via := flags.String("via", "", "the relay to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")
+	org := flags.String("org", "", "pair through the relay your organization runs: its server address, such as https://org.example.com")
 	code := flags.Bool("code", false, "show a code such as "+pair.ExampleChatCode+" that shares this device's chats, instead of asking to join")
 	replace := flags.Bool("replace", false, "when typing a code, replace this device's own chats with the shared ones")
 	name := flags.String("name", "", "what your devices call this one; empty keeps its current name, which starts as the host name")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
+	}
+	if strings.TrimSpace(*org) != "" {
+		if strings.TrimSpace(*via) != "" {
+			return wrongCall("--org and --via each name the relay to pair through: use one of them")
+		}
+		relay, err := orgPairRelay(ctx, *org, d.term.say)
+		if err != nil {
+			return err
+		}
+		*via = relay
 	}
 	if err := d.naming(ctx, *name, flags.Args(), *code); err != nil {
 		return err
