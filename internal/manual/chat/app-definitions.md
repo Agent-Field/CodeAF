@@ -65,10 +65,12 @@ no access to your records.
 
 Open **Edit app** and say what to change. Select an element in the preview
 to ask about that exact part. The saved mark keeps the selected node ID and
-checkpoint. Use an earlier step in the conversation to
-preview it or choose **Go back to this** to put it back as a new step.
-**Apply** publishes the checked files as the next version. **Discard**
-drops the unpublished change and returns to your saved app.
+checkpoint. After Check passes, a marked edit shows a **Proposed change**
+card with the part and a before and after summary. The same card is
+available after restarting. **Apply** publishes the checked files as the
+next version. **Discard** drops the change and returns to your saved app.
+Between proposals, use an earlier step in the conversation to preview it
+or choose **Go back to this** to put it back as a new step.
 
 The engine uses `apps.plan` to make or revise the plan, `apps.build` to start
 work, `apps.change` to open editing, `apps.say` for conversation, and

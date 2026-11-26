@@ -122,6 +122,9 @@ func (b *appBackend) appBuildChanged(event builder.Event) {
 
 func (b *appBackend) appBuildNotice(item builder.Summary) {
 	title, detail := item.Name+" is ready to try", "Open the app to try it and keep it."
+	if item.Proposal != nil {
+		title, detail = "Review the change to "+item.Name, "Open the app to apply or discard the proposed change."
+	}
 	if item.State == builder.NeedsYou {
 		title, detail = item.Name+" needs you", "Open the app to choose what to change."
 	}
