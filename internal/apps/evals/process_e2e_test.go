@@ -19,18 +19,21 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/trace"
 )
 
 type appProcess struct {
-	binary  string
-	home    string
-	env     []string
-	cmd     *exec.Cmd
-	in      io.WriteCloser
-	out     <-chan wireReply
-	id      int
-	onOffer bool
+	binary    string
+	home      string
+	env       []string
+	cmd       *exec.Cmd
+	in        io.WriteCloser
+	out       <-chan wireReply
+	id        int
+	onOffer   bool
+	snapshots string
 }
 
 type wireReply struct {
@@ -221,15 +224,39 @@ func (p *appProcess) Build(ctx context.Context, prompt string, _ bool, onPlan fu
 	return p.build(ctx, prompt, reuse, onPlan)
 }
 
-func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, onPlan func(BuildState) error) (BuildState, error) {
+func (p *appProcess) build(ctx context.Context, prompt string, reuse []string, onPlan func(BuildState) error) (result BuildState, err error) {
 	body, err := p.cli(ctx, "plan", map[string]string{"ask": prompt})
 	plan, err := readReply[draftReply](body, err)
 	if err != nil {
 		return BuildState{}, err
 	}
-	if plan.Draft == "" {
+	if !cell.ValidID(plan.Draft) {
 		return BuildState{}, errors.New("app plan did not return a draft")
 	}
+	// The draft journal keeps both completed and timed-out work for inspection.
+	defer func() {
+		var saved struct {
+			Working      struct{ Files map[string]string }
+			WritingFiles map[string]string
+		}
+		raw, readErr := os.ReadFile(filepath.Join(p.home, "apps", "_drafts", plan.Draft, "build.json"))
+		if readErr != nil || json.Unmarshal(raw, &saved) != nil {
+			return
+		}
+		files := saved.Working.Files
+		if saved.WritingFiles != nil {
+			files = saved.WritingFiles
+		}
+		if files[schema.AppFile] != "" {
+			depth := measureDepth(files)
+			result.Depth = &depth
+			if p.snapshots != "" {
+				if snapshotErr := writeGallerySnapshot(p.snapshots, plan.Draft, files); snapshotErr != nil {
+					err = errors.Join(err, fmt.Errorf("save gallery render input: %w", snapshotErr))
+				}
+			}
+		}
+	}()
 	if err := onPlan(BuildState{Plan: body}); err != nil {
 		return BuildState{}, err
 	}
@@ -337,5 +364,54 @@ func (p *appProcess) Usage(ctx context.Context) (Usage, error) {
 		"to":          time.Now().AddDate(0, 0, 1).Format(time.DateOnly),
 		"destination": filepath.Join(p.home, "eval-usage.csv"),
 	}))
-	return result.Totals, err
+	if err == nil {
+		return result.Totals, nil
+	}
+	// A deadline can stop the engine before the export. Count the durable
+	// receipts that survived so expensive failed builds remain measurable.
+	ledger := filepath.Join(p.home, "v3", session.UsageLedgerName)
+	totals, _, ledgerErr := session.EachUsageCall(ledger, session.UsageQuery{}, func(session.UsageCall) error { return nil })
+	if ledgerErr != nil {
+		return Usage{}, errors.Join(err, ledgerErr)
+	}
+	usage := Usage{Calls: totals.Requests, TokensIn: totals.Input, TokensOut: totals.Output, Unpriced: totals.Unpriced}
+	if totals.Priced() {
+		usage.Cost = &totals.USD
+	}
+	return usage, nil
+}
+
+// Snapshot only the definition and synthetic records needed by Desk's renderer.
+// Keep each build separate when one gallery case opens a second app.
+func writeGallerySnapshot(root, draft string, files map[string]string) error {
+	fixture := struct {
+		App     json.RawMessage             `json:"app"`
+		Screens map[string]json.RawMessage  `json:"screens"`
+		Records map[string][]map[string]any `json:"records"`
+	}{
+		App: json.RawMessage(files[schema.AppFile]), Screens: map[string]json.RawMessage{},
+	}
+	var sample schema.Sample
+	if sampleFile := files[schema.SampleFile]; sampleFile != "" {
+		if err := json.Unmarshal([]byte(sampleFile), &sample); err != nil {
+			return err
+		}
+	}
+	fixture.Records = sample.Records
+	if fixture.Records == nil {
+		fixture.Records = map[string][]map[string]any{}
+	}
+	for path, text := range files {
+		if strings.HasPrefix(path, "screens/") && strings.HasSuffix(path, ".json") {
+			fixture.Screens[schema.FileID(path)] = json.RawMessage(text)
+		}
+	}
+	raw, err := json.Marshal(fixture)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(root, draft+".json"), raw, 0o600)
 }

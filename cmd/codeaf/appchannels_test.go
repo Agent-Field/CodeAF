@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -13,7 +14,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/intake"
+	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
+	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 )
 
@@ -104,18 +107,15 @@ func TestAppIntakeWireParity(t *testing.T) {
 					t.Fatalf("mapped email or body missing: %+v", got.Row)
 				}
 				if tc.asset != "" {
-					parts, err := wire.backend.appRunIntakeParts(runs.AgentCall{
+					parts, err := wire.backend.appRunIntakeParts(t.Context(), runs.AgentCall{
 						Call: runs.Call{App: app}, IntakeType: "contact", IntakeRecord: id,
-					})
-					if err != nil || len(parts) != 1 {
-						t.Fatalf("run attachments = %+v, %v", parts, err)
-					}
+					}, func() bool { return false })
 					if tc.name == "image" {
-						if parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,iVBORw0KGgo=" {
-							t.Fatalf("image part = %+v", parts[0])
+						if err != nil || len(parts) != 1 || parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,iVBORw0KGgo=" {
+							t.Fatalf("image parts = %+v, %v", parts, err)
 						}
-					} else if parts[0].InputFile == nil || parts[0].InputFile.FileData != "data:application/pdf;base64,JVBERi0xLjQK" {
-						t.Fatalf("PDF part = %+v", parts[0])
+					} else if err == nil || !strings.Contains(err.Error(), "could not read PDF attachment") {
+						t.Fatalf("malformed PDF = %+v, %v", parts, err)
 					}
 					files, _ := got.Row["files"].([]any)
 					if len(files) != 1 || files[0].(map[string]any)["name"] != tc.asset {
@@ -268,5 +268,28 @@ func TestAppIntakeReplaysAfterMappingChanges(t *testing.T) {
 	input.Values["different_key"] = "Different"
 	if _, code, _ := wire.call("channels.post", input); code != appwire.CodeDuplicate {
 		t.Fatalf("different payload with saved key got %s", code)
+	}
+}
+
+func TestIntakePDFProvidesTextAndImagesToRun(t *testing.T) {
+	wire, app, _ := intakeWire(t)
+	raw, err := outputs.Render(schema.OutputTemplate{Label: "Invoice", Format: "pdf", Body: "Amount due: 42"}, []map[string]any{{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt data.IntakeReceipt
+	wire.must("channels.post", intake.Post{App: app, Channel: "drop", Name: "invoice.pdf", Content: raw}, &receipt)
+	call := runs.AgentCall{Call: runs.Call{App: app}, IntakeType: "contact", IntakeRecord: receipt.Rows[0]}
+	parts, err := wire.backend.appRunIntakeParts(t.Context(), call, func() bool { return false })
+	if err != nil || len(parts) != 1 || parts[0].Type != "text" || !strings.Contains(parts[0].Text, "Amount due: 42") {
+		t.Fatalf("text-only model parts = %+v, %v", parts, err)
+	}
+	if _, err := exec.LookPath("pdftoppm"); err != nil {
+		t.Skip("Poppler is unavailable")
+	}
+	parts, err = wire.backend.appRunIntakeParts(t.Context(), call, func() bool { return true })
+	if err != nil || len(parts) != 2 || parts[1].ImageURL == nil ||
+		!strings.HasPrefix(parts[1].ImageURL.URL, "data:image/png;base64,") {
+		t.Fatalf("image-capable model parts = %+v, %v", parts, err)
 	}
 }
