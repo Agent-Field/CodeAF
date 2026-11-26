@@ -232,6 +232,7 @@ var migrations = []string{
 	ruleSourceGrantMigration,
 	identityMigration,
 	agentGrantMigration,
+	intakeMigration,
 	residencyMigration,
 }
 

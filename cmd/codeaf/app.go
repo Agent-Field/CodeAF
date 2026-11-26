@@ -270,6 +270,7 @@ func runApp(args []string) error {
 	}
 	guard.Go("app/orders", func() { backend.watchOrders(backend.sweepStop) })
 	backend.stopAppRuns = backend.openAppRuns(ctx)
+	backend.openAppIntake(ctx)
 	guard.Go("app/residency", func() { backend.watchAppResidency(ctx) })
 	// And what the last quit stopped in the middle of a reply carries on.
 	guard.Go("app/resume-after-quit", backend.resumeAfterQuit)
@@ -623,6 +624,7 @@ func appConnOf(client *remote.Client, release func(), assembled bool) *appConn {
 type appBackend struct {
 	appAssistantMu   sync.Mutex
 	builds           appBuildState
+	intake           appIntakeState
 	appRuns          atomic.Pointer[runs.Engine]
 	startAppRunsOnce func()
 	stopAppRuns      func()
@@ -5029,6 +5031,7 @@ func (b *appBackend) Close() error {
 		b.reapBlank(a)
 	}
 	b.closeCollections()
+	b.closeAppIntake()
 	if b.stopAppRuns != nil {
 		b.stopAppRuns()
 	}

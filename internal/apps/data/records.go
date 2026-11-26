@@ -80,6 +80,7 @@ type Change struct {
 	Cause       string
 	CauseChain  []string
 	SourceEvent string
+	intake      *IntakeTrigger
 	Op          string
 	Type        string // Empty for a batch containing several types.
 	At          time.Time
@@ -500,7 +501,7 @@ func (w *writeTx) newBatch(sc Scope, op string, t *Type) (string, error) {
 		id, sc.App, actor, kind, sc.Cause, op, typeID, w.now.UTC().Format(stamp)); err != nil {
 		return "", err
 	}
-	w.change = &Change{Batch: id, App: sc.App, Actor: actor, ByKind: kind, Cause: sc.Cause, CauseChain: sc.CauseChain, SourceEvent: sc.sourceEvent, Op: op, Type: typ, At: w.now}
+	w.change = &Change{Batch: id, App: sc.App, Actor: actor, ByKind: kind, Cause: sc.Cause, CauseChain: sc.CauseChain, SourceEvent: sc.sourceEvent, intake: sc.intake, Op: op, Type: typ, At: w.now}
 	return id, nil
 }
 
@@ -565,10 +566,11 @@ func (w *writeTx) note(t *Type, before, after *record) error {
 	case rc.After == nil:
 		event = EventRecordDeleted
 	}
-	return w.emit(outboxRow{
-		event: event, typeID: t.ID, record: id,
-		payload: map[string]string{"op": w.change.Op},
-	})
+	payload := map[string]string{"op": w.change.Op}
+	if event == EventRecordCreated && w.change.intake != nil {
+		payload["channel"], payload["run"], payload["record_type"] = w.change.intake.Channel, w.change.intake.Run, w.change.intake.Type
+	}
+	return w.emit(outboxRow{event: event, typeID: t.ID, record: id, payload: payload})
 }
 
 // nonNil is a list that encodes as [] when empty.
@@ -927,8 +929,8 @@ func (w *writeTx) createOne(t *Type, sc Scope, set map[string]any, op string) (*
 // record's state and number as they already are; a create may name only the
 // state a lifecycle starts in.
 func (w *writeTx) createOneAs(t *Type, sc Scope, set map[string]any, op, id string) (*record, error) {
-	carry := op == OpImport || op == OpSeed
-	opt := prepared{lenient: carry, state: true, numbers: carry}
+	carry := op == OpSeed || (op == OpImport && sc.intake == nil)
+	opt := prepared{lenient: op == OpImport || op == OpSeed, state: sc.intake == nil, numbers: carry}
 	values, err := w.prepareSet(t, set, opt)
 	if err != nil {
 		return nil, err

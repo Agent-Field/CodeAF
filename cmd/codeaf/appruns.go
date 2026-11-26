@@ -281,7 +281,11 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			})
 			return runs.Reply{Output: answer, Cost: recorded(nil)}, err
 		}
-		reply, err := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt)
+		attachments, err := b.appRunIntakeParts(call)
+		if err != nil {
+			return runs.Reply{}, err
+		}
+		reply, err := runs.CompleteAgent(ctx, spend.Wrap(model, client), system, prompt, attachments...)
 		result := runs.Reply{Cost: recorded(reply)}
 		if reply != nil {
 			result.Output = reply.Text()
