@@ -47,7 +47,8 @@ func missingControls(def schema.Definition, types schema.TypeSet) []schema.Probl
 			fmt.Sprintf("Add a control for %q (command %s) on a screen.", command.Label, command.ID)))
 	}
 	for _, action := range plan.Actions {
-		if !exposed[action.ID] && !controls.runs[action.ID] {
+		native := slices.ContainsFunc(plan.Builtins, func(b schema.PlanBuiltin) bool { return b.ID == action.ID })
+		if !native && !exposed[action.ID] && !controls.runs[action.ID] {
 			issues = append(issues, problem(schema.PlanFile, "action_control_missing",
 				fmt.Sprintf("Add a control for %q (action %s) on a screen.", action.Line, action.ID)))
 		}

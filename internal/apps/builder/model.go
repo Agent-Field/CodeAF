@@ -43,8 +43,12 @@ Read reference {"schema":"app-2.json"} for app settings, process-2.json for life
 
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
 writes the outline. Use the actual type, screen and automation ids in the plan.
-Mark creatable types with "create":true and list manual actions by command or run id.
-Declare custom parts in "extensions":[{"id":"dot-cells","reason":"Show both raised and flat dots"}].
+Use "create":true for types with an Add form. Name other actions by command or run ID.
+The executor selects CSV import, lifecycle and local approval. Keep its builtins.
+Set the built-in record or run as needed. Declare lifecycle states and planned
+transition IDs with add-type. For approval, name the run that saves the record.
+Use the exact planned run IDs.
+Declare custom parts in "extensions":[{"id":"dot-cells","reason":"Show raised and flat dots"}].
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
 types with add-field {"type":"deal","name":"stage","definition":{...}}.
@@ -66,10 +70,11 @@ Use extensions only when no built-in fits. Read reference {"schema":"custom-exte
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Record commands pass a ref parameter by id, with no default.
-Use refs with a query default for scheduled loops. Read ids with $params.post.id.
+For scheduled loops, a refs parameter takes a query string as its default,
+for example {type: refs, to: post, default: "status:Open"}. Read ids with $params.post.id.
 Use plan.agent.actions for the exact Action IDs the assistant promises.
-Agent steps return only the requested text at $steps.<id>.output. For lists and approvals, copy
-reference {"example":"draft-review","file":"runs/draft-thread.yaml"}.
+Agent steps return only the requested text at $steps.<id>.output. For loops
+and approvals, use the supplied run example as a syntax reference.
 Use exact earlier step ids in args. Put send gates on outbound tools, or use
 a standalone gate for review alone. Omit lifecycle-owned fields from writes.
 Set an app-wide spending ceiling with configure {"budget":{"per_run":0.10}}.
@@ -179,6 +184,7 @@ type modelInput struct {
 	Report             *schema.Report
 	Continued          bool
 	OwnerNameAvailable bool
+	Reuse              map[string]reuseBinding
 }
 
 const recordPolicyGuide = `To hide a field, include policy.fields in its owning type, for example
@@ -374,6 +380,8 @@ func briefReport(report *schema.Report) *modelReport {
 		switch {
 		case p.File == schema.SampleFile && p.Code != "sample_unavailable":
 			p.Message = "Check the example file at this location. Use synthetic records and valid sample links."
+		case p.Code == "run_failed" && strings.HasSuffix(p.Message, "a refs parameter needs record ids or a record query"):
+			p.Message = "Give the refs parameter a query string or a list of record IDs. For a scheduled run, put the query string in the parameter's default."
 		case p.Code == "run_failed":
 			p.Message = "The automation could not finish on the example data. Check the reported run and step."
 		default:
@@ -397,6 +405,15 @@ func briefText(text string, limit int) string {
 // The model edits only this map. Paths, file contents, and the agent file
 // referenced by app.json never become filesystem read or write arguments.
 func modelTurn(ctx context.Context, model Completer, workspace string, in modelInput, types schema.TypeSet, author authoring, preflight func(map[string]string) schema.Report, progress func(map[string]string) error, look func(context.Context, string) ([]string, error), claim func(context.Context, Target) error, presence func() (*Presence, error)) (map[string]string, string, BuildCalls, error) {
+	in.Definition = maps.Clone(in.Definition)
+	plan, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile]))
+	work := plannedWork(in.Request, plan)
+	if err := restoreReuse(in.Definition, in.Reuse, types); err != nil {
+		return nil, "", BuildCalls{}, err
+	}
+	if err := work.apply(in.Definition); err != nil {
+		return nil, "", BuildCalls{}, err
+	}
 	initial, err := in.context(in.Definition, map[contextRequest]string{}, json.RawMessage(`{}`))
 	if err != nil {
 		return nil, "", BuildCalls{}, err
@@ -411,7 +428,15 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		typeShapes = nil
 	}
 	var catalog string
+	var runExample string
 	if in.Stage != Planning {
+		if planned, _ := schema.ParsePlan([]byte(in.Definition[schema.PlanFile])); len(planned.Automation) > 0 {
+			example, err := schema.BuilderExampleFile("draft-review", "runs/draft-thread.yaml")
+			if err != nil {
+				return nil, "", BuildCalls{}, err
+			}
+			runExample = string(example)
+		}
 		catalog, err = batchParts([]string{"add-view/board", "add-view/table", "add-view/list", "add-chart", "Form", "RecordPage", "Button", "Sheet"})
 		if err != nil {
 			return nil, "", BuildCalls{}, err
@@ -423,7 +448,8 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 		Context        json.RawMessage `json:"context"`
 		Parts          json.RawMessage `json:"parts,omitempty"`
 		ExistingShapes json.RawMessage `json:"existing_shapes,omitempty"`
-	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes})
+		RunExample     string          `json:"run_example,omitempty"`
+	}{in.Request, in.Target, json.RawMessage(initial), json.RawMessage(catalog), typeShapes, runExample})
 	if err != nil {
 		return nil, "", BuildCalls{}, err
 	}
@@ -569,6 +595,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			raw, err := json.Marshal(claim)
 			return string(raw), err
 		default:
+			if err := work.checkEdit(verb, args, files); err != nil {
+				return "", err
+			}
 			next, err := author.edit(ctx, verb, files, types, args)
 			if err != nil {
 				if verb == "plan" {
@@ -579,12 +608,28 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 				}
 				return "", err
 			}
+			if err := restoreReuse(next, in.Reuse, types); err != nil {
+				return "", err
+			}
+			nextWork := work
+			nextWork.builtins = slices.Clone(work.builtins)
+			if err := nextWork.apply(next); err != nil {
+				return "", err
+			}
 			if err := progress(next); err != nil {
 				return "", err
 			}
-			files = next
+			files, work = next, nextWork
 			if verb == "plan" {
 				planSaved = true
+				compiled, _ := schema.ParsePlan([]byte(next[schema.PlanFile]))
+				if len(compiled.Builtins) > 0 {
+					settings, err := json.Marshal(compiled.Builtins)
+					if err != nil {
+						return "", err
+					}
+					return "Saved the plan. Selected built-ins and settings: " + string(settings), nil
+				}
 			}
 			return "Saved the definition change.", nil
 		}
@@ -616,7 +661,7 @@ Use markup only for a composition the request needs and recipes cannot do.
 Write the sample rows and finish with a short summary. The engine runs Check,
 tries the sample data and asks Desk to draw the screens after this turn.`
 	}
-	prompt += "\nThe check command returns preliminary definition findings or a reuse question (needs_you). Only the engine's Check after this turn can confirm the result. Leave reuse decisions to the person."
+	prompt += "\nThe check command only preflights the definition and reuse choice. The engine checks after this turn. Let the person choose reuse."
 	if in.Continued {
 		prompt += "\nThe previous turn saved progress. Read the supplied context and continue the unfinished work. Keep completed files."
 	}
