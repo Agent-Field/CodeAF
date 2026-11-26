@@ -41,6 +41,9 @@ planned run id. Reuse those ids in the compiled definitions.
 add-type {"name":"deal","definition":{"title":"name","fields":{"name":{"type":"text","required":true},"stage":{"type":"enum","values":["Lead","Won"]},"value":{"type":"money","currency":"USD"}}}}
 declares a type with its fields in one command. Add fields to existing
 types with add-field {"type":"deal","name":"stage","definition":{...}}.
+For a new common contact, use add-type {"name":"contact","definition":{"common":"person","title":"name","fields":{"name":{"type":"text"}}}}.
+For a new common company, put "common":"organization" in the same place.
+Keep the common key on later edits so other apps can reuse the same records.
 A linked field uses {"type":"ref","to":"company"}. New types start read-only.
 For an app where the person tracks records, grant read and write to every
 tracked type. For a CRM, use
@@ -439,6 +442,8 @@ plan, screens and samples when the request leaves them alone. Then run check onc
 			break
 		}
 		prompt += `Complete the planned screens and samples before making refinements.
+Keep the planned type definitions and common keys. Only edit a type when
+the request needs a change or you are binding a shared type from using.
 Set record permissions and compile one recipe for each missing plan screen,
 using its exact screen id. Implement each planned run and its requested
 entry point before Check. Keep existing screens unless asked to edit them.
