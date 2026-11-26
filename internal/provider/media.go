@@ -220,6 +220,10 @@ func NewMediaClient(config Config) (*MediaClient, error) {
 		client = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout, CheckRedirect: providerhttp.CheckRedirect}
 	}
 	client = providerhttp.Clone(client)
+	if config.AuthorizeDestination != nil {
+		// A redirect can change the destination after the policy check.
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	return &MediaClient{
 		config: config, http: client, videoNow: time.Now, videoWait: waitContext,
 		connection:       &Client{http: client, wait: waitContext},
@@ -508,6 +512,13 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 			// client speaks to is a router media endpoint, and an attribution header
 			// is inert anywhere it is not read.
 			ApplyAttribution(request.Header)
+		}
+		if authorize := c.config.AuthorizeDestination; authenticated && authorize != nil {
+			if err := authorize(ctx, modelDestination(model, request.URL)); err != nil {
+				refused := &ModelDestinationDenied{Cause: err}
+				finishMediaCall(ctx, 0, refused, nil)
+				return nil, refused
+			}
 		}
 		response, err := providerhttp.Do(c.http, request)
 		if err != nil {
