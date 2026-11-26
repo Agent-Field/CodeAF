@@ -109,7 +109,17 @@ func scratchRun(def schema.Definition, id string) (runs.Definition, error) {
 		if err != nil {
 			return runs.Definition{}, &check.RunProblem{Detail: fmt.Sprintf("The run %s could not start: %v", id, err)}
 		}
-		return run, nil
+		app, err := schema.ParseApp(def.Files[schema.AppFile])
+		if err != nil {
+			return runs.Definition{}, err
+		}
+		err = runs.AttachCustomTools(&run, app, func(path string) ([]byte, error) {
+			if raw, ok := def.Files[path]; ok {
+				return raw, nil
+			}
+			return nil, fs.ErrNotExist
+		})
+		return run, err
 	}
 	return runs.Definition{}, fs.ErrNotExist
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -205,6 +206,11 @@ func Validate(def Definition, existing TypeSet) Report {
 	c.checkPaths()
 	if c.appOK && version == 2 {
 		c.loadCustomParts()
+		for _, file := range c.def.under("custom/", ".step") {
+			if _, err := extensions.Parse(c.def.Files[file]); err != nil {
+				c.add(file, "", CodeManifest, "%v", err)
+			}
+		}
 		c.indexSample()
 	}
 	if c.appOK {

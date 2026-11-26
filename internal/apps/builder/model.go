@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/apps/appcmd"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
+	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -24,7 +25,7 @@ type Completer interface {
 }
 
 const instructions = `You make personal apps. Use one codeaf app COMMAND {JSON}
-at a time in the scoped executor. Report progress during long tool sequences.
+at a time in the scoped executor. Report progress.
 
 Start with codeaf app context for the manifest, plan, file names and Check
 findings. Get an external shape with context {"type":"contact"} and a file
@@ -48,12 +49,10 @@ configure {"capabilities":{"records":{"deal":"rw","company":"rw","contact":"rw"}
 before writing screens. Each configure setting replaces its whole value.
 Include the existing records when adding other capabilities to an app. Make title fields unique when records are identified by name.
 A new record should be creatable with its title and the essential input
-the person supplied. Keep the person's field names as ids: a book's title
-is title, a person's name is name, and an imported post's text is text.
-Use the corresponding field as the record title. Give a required status
+the person supplied. Use the corresponding field as the record title. Give a required status
 an initial value, for example
 {"type":"enum","values":["To read","Reading","Finished"],"required":true,"default":"To read"}.
-Leave other fields optional unless the request requires a value at creation.
+Other fields are optional unless required at creation.
 Use a plain enum for status unless the request needs guarded transitions.
 Guarded transitions use a matching enum field and this definition: "lifecycle":{"field":"status","initial":"Planned",
 "transitions":[{"id":"ship","from":["Planned"],"to":"Shipped"}]}.
@@ -65,6 +64,7 @@ Use add-chart with group and aggregate
 (e.g. "sum:amount") for grouped totals. For composed screens, use markup
 {"screen":"deals","title":"Deals","markup":"<...>"} with the kit parts as
 elements and label, id, prop-name, bind-name and on-event attributes.
+Use extensions only when no built-in fits. Read reference {"schema":"custom-extensions"} and state why.
 set-run {"id":"follow-up","text":"..."} writes a run YAML file. Give each
 requested automation its own runnable file, including manual actions.
 Use action-verb ids. Declare inputs in params and store ref ids as $params.post.id.
@@ -102,11 +102,37 @@ Fill the visible fields in your examples so Check can measure bound columns.
 Keep screen and node ids. Claim marked nodes and preserve the rest of that
 screen. Map CSV headers to fields. Say what to try. The person chooses when to Apply.`
 
+const extensionReference = `Use a built-in part whenever it can meet the request. If none can, say why,
+check kit-parts for a reusable part, and only then use set-custom-part with
+{"id":"name","manifest":{...},"source":"<part>...</part>"}. Get its manifest
+format with reference {"schema":"part-2.json"} and include the reason. The
+source draws one group per queried record with up to 12 <title/>, <text/>,
+<display/>, <dot-cells/> or <button/> elements. Dot-cells draws Unicode Braille as round raised and flat dot positions. Each takes text="literal" or field="a
+manifest input". A button also takes event="a declared event". No scripts or
+custom styles. Bind it with <Part part="custom/name" bind-records="record"
+bind-view="query" label="Name" .../>. Map each on-event to one registered
+Action and limit the view to 24 records. Import a Kit entry by exact version
+with use-kit-part {"id":"name","version":1} and bind it the same way.
+When built-in automation steps do not express a calculation, say why and use
+set-custom-step {"id":"name","definition":{"version":1,"summary":"...",
+"reason":"...","inputs":[{"name":"from","type":"date"}],"output":"integer",
+"effects":[],"timeout_ms":100,"memory_pages":1,"source":"(module ...)"}}
+with WebAssembly text. Export run with i64 arguments in input order, and one
+i64 result. Integer and bool are direct scalars. A date or timestamp is a UTC
+day number since 1970-01-01. A dates list takes two i64 arguments (offset and
+length), and the guest exports memory. The host writes consecutive
+little-endian i64 day numbers at the offset. The module has no imports,
+tables or start function. Grant "custom.name" in capabilities.tools and call
+it with a tool: custom.name run step plus args matching the input names. Its
+result is $steps.<id>.output. Check exercises it on example parameters.
+Consult kit-steps before authoring a calculation. Import by ID and version
+with use-kit-step, then grant and call it like any other custom tool.`
+
 func systemPrompt() string {
 	return skill + "\n\n" + instructions
 }
 
-var definitionPath = regexp.MustCompile(`^(app\.json|plan\.json|sample\.json|agent\.md|screens/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.json|runs/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.ya?ml)$`)
+var definitionPath = regexp.MustCompile(`^(app\.json|plan\.json|sample\.json|agent\.md|screens/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.json|runs/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.ya?ml|custom/[a-z][a-z0-9_-]{0,47}\.(json|tsx|step))$`)
 
 type DefinitionEdit struct {
 	Path string  `json:"path"`
@@ -122,7 +148,7 @@ func applyEdits(files map[string]string, edits []DefinitionEdit) (map[string]str
 	next := maps.Clone(files)
 	for _, edit := range edits {
 		if !definitionPath.MatchString(edit.Path) {
-			return nil, errors.New("only app.json, plan.json, agent.md, sample.json, screens/<id>.json or runs/<id>.yaml can be edited")
+			return nil, errors.New("only app definition files can be edited")
 		}
 		if edit.Text == nil {
 			delete(next, edit.Path)
@@ -327,7 +353,7 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			}
 			seen[result] = true
 		}()
-		if in.Stage == Planning && (verb == "recipe" || verb == "markup" || verb == "look") {
+		if in.Stage == Planning && (verb == "recipe" || verb == "markup" || verb == "look" || verb == "set_custom_part" || verb == "set_custom_step" || verb == "use_kit_part" || verb == "use_kit_step") {
 			return "", errors.New("This turn is for the plan. Save the outline and record types, then finish the turn so the person can review it.")
 		}
 		switch verb {
@@ -335,6 +361,29 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 			return in.context(files, reads, args)
 		case "common_types":
 			raw, err := json.Marshal(schema.CommonTypes())
+			return string(raw), err
+		case "kit_steps":
+			if author.store == nil {
+				return "[]", nil
+			}
+			steps, err := author.store.KitSteps()
+			if err != nil {
+				return "", err
+			}
+			if steps == nil {
+				steps = []store.KitStep{}
+			}
+			raw, err := json.Marshal(steps)
+			return string(raw), err
+		case "kit_parts":
+			if author.store == nil {
+				return "[]", nil
+			}
+			parts, err := author.store.KitParts()
+			if err != nil {
+				return "", err
+			}
+			raw, err := json.Marshal(parts)
 			return string(raw), err
 		case "parts", "kit":
 			var options struct {
@@ -360,6 +409,9 @@ func modelTurn(ctx context.Context, model Completer, workspace string, in modelI
 					return "", errors.New("that worked example file is unavailable")
 				}
 				return string(raw), nil
+			}
+			if options.Schema == "custom-extensions" {
+				return extensionReference, nil
 			}
 			if !schemaName.MatchString(options.Schema) {
 				return "", errors.New("choose one file format with reference {\"schema\":\"plan-1.json\"}")

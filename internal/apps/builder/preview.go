@@ -131,9 +131,15 @@ func (p previewScope) result(id string) (Preview, error) {
 
 // Screen reads the exact definition used to create an isolated preview scope.
 func (s *Jobs) Screen(draft, screen string) (json.RawMessage, error) {
+	raw, _, err := s.ScreenWithParts(draft, screen)
+	return raw, err
+}
+
+// ScreenWithParts reads the screen and its compiled parts from one snapshot.
+func (s *Jobs) ScreenWithParts(draft, screen string) (json.RawMessage, map[string]schema.PartProgram, error) {
 	path := "screens/" + screen + ".json"
 	if !definitionPath.MatchString(path) {
-		return nil, store.ErrBadInput
+		return nil, nil, store.ErrBadInput
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -141,7 +147,7 @@ func (s *Jobs) Screen(draft, screen string) (json.RawMessage, error) {
 	if !ok {
 		j, err := s.load(draft)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		scope.files = j.Working.Files
 		if j.WritingFiles != nil {
@@ -150,9 +156,10 @@ func (s *Jobs) Screen(draft, screen string) (json.RawMessage, error) {
 	}
 	raw := json.RawMessage(scope.files[path])
 	if !json.Valid(raw) {
-		return nil, store.ErrNotFound
+		return nil, nil, store.ErrNotFound
 	}
-	return raw, nil
+	parts, err := schema.ScreenParts(definition(scope.files), raw)
+	return raw, parts, err
 }
 
 func (s *Jobs) removeScope(id string) {

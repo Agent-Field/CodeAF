@@ -107,7 +107,12 @@ func (p Pipeline) Run(ctx context.Context, draft string, def schema.Definition, 
 		return report
 	}
 	for _, file := range def.ScreenFiles() {
-		for _, theme := range []string{"dark", "light"} {
+		themes := []string{"dark", "light"}
+		parts, _ := schema.ScreenParts(def, def.Files[file])
+		if len(parts) != 0 {
+			themes = []string{"dark", "black", "light"}
+		}
+		for _, theme := range themes {
 			for _, width := range []int{800, 1120} {
 				problems, err := p.Look(ctx, draft, schema.FileID(file), LookViewport{theme, width})
 				if errors.Is(err, ErrDeskUnavailable) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
+	"github.com/Agent-Field/codeaf/internal/apps/extensions"
 	"github.com/Agent-Field/codeaf/internal/apps/outputs"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
@@ -59,7 +60,38 @@ func (b *appBackend) RunAppContent(ctx context.Context, p appwire.AppContentScop
 			flow, err := schema.ParseRun(raw)
 			return err != nil || !appAIRunAvailable(harnesses, flow.Steps)
 		})
-		return json.Marshal(map[string]any{"views": views, "actions": actions})
+		result := map[string]any{"views": views, "actions": actions}
+		tools := map[string]any{}
+		for _, name := range app.Capabilities.Tools {
+			if id, ok := extensions.ToolID(name); ok && b.appAgentAllowed(p.App, p.Principal, "actions", name) {
+				var defn extensions.Step
+				if raw, ok := def.CustomStep(id); ok && json.Unmarshal(raw, &defn) == nil {
+					tools[name] = map[string]any{"summary": defn.Summary, "inputs": defn.Inputs, "output": defn.Output}
+				}
+			}
+		}
+		if len(tools) != 0 {
+			result["custom_tools"] = tools
+		}
+		return json.Marshal(result)
+	case appwire.AppContentTool:
+		id, valid := extensions.ToolID(command.Tool.Tool)
+		if !valid || !slices.Contains(app.Capabilities.Tools, command.Tool.Tool) || !b.appAgentAllowed(p.App, p.Principal, "actions", command.Tool.Tool) {
+			return nil, appwire.Errorf(appwire.CodeForbidden, "That custom tool is unavailable to this app agent.")
+		}
+		raw, ok := def.CustomStep(id)
+		if !ok {
+			return nil, appwire.Errorf(appwire.CodeNotFound, "The custom tool is missing from this app.")
+		}
+		step, err := extensions.Parse(raw)
+		if err != nil {
+			return nil, err
+		}
+		out, err := step.Run(ctx, command.Tool.Args)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{"output": out})
 	case appwire.AppContentQuery:
 		declared, ok := views[command.Query.View]
 		if !ok {

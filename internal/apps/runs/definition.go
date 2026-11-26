@@ -36,6 +36,9 @@ func Parse(contents []byte) (Definition, error) {
 	if err := dec.Decode(&document); err != nil {
 		return Definition{}, err
 	}
+	if document.CustomTools != nil {
+		return Definition{}, errors.New("custom tools belong in app extension files")
+	}
 	return document.Run, validate(document.Run)
 }
 

@@ -216,7 +216,7 @@ func OpenJobs(opts Options) (*Jobs, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Jobs{
-		opts: opts, author: authoring{compiler: opts.Compiler, validateTypes: opts.ValidateTypes}, root: filepath.Join(opts.Home, "apps", "_drafts"), ctx: ctx, cancel: cancel,
+		opts: opts, author: authoring{compiler: opts.Compiler, validateTypes: opts.ValidateTypes, store: opts.Store}, root: filepath.Join(opts.Home, "apps", "_drafts"), ctx: ctx, cancel: cancel,
 		workers: map[string]context.CancelFunc{}, scopes: map[string]previewScope{}, changes: make(chan struct{}),
 	}
 	if err := os.MkdirAll(s.root, 0o700); err != nil {

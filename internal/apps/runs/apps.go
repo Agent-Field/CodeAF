@@ -122,7 +122,8 @@ func (f Files) Load(app, run string) (Definition, error) {
 			definition.Budget = &schema.RunBudget{PerRun: cap}
 		}
 	}
-	return definition, nil
+	err = AttachCustomTools(&definition, manifest, root.ReadFile)
+	return definition, err
 }
 
 const defaultAgentStepPrompt = "Continue with this run step."

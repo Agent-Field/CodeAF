@@ -14,6 +14,7 @@ const (
 	AppContentQuery   = "query"
 	AppContentInvoke  = "invoke"
 	AppContentPropose = "propose_change"
+	AppContentTool    = "custom_tool"
 )
 
 // AppContentScope is resolved from the app conversation on the server. The
@@ -42,10 +43,16 @@ type AppActionIntent struct {
 
 // AppContentCommand carries one typed content operation into the shared app
 // command implementation. Request belongs only to a fresh proposal.
+type AppCustomToolCall struct {
+	Tool string         `json:"tool"`
+	Args map[string]any `json:"args"`
+}
+
 type AppContentCommand struct {
 	Verb    string
 	Query   AppViewQuery
 	Action  AppActionIntent
+	Tool    AppCustomToolCall
 	Request string
 	Cause   string
 }
@@ -92,6 +99,13 @@ func RunScopedAppCommand(ctx context.Context, door AppContentDoor, scope AppCont
 			return nil, Errorf(CodeEngine, "The app action has no source.")
 		}
 		command.Action.ByKind, command.Action.Cause = "ai", cause
+	case AppContentTool:
+		if err := decodeAppContent(params, &command.Tool); err != nil {
+			return nil, err
+		}
+		if _, err := required("tool", command.Tool.Tool); err != nil {
+			return nil, err
+		}
 	case AppContentPropose:
 		if err := decodeAppContent(params, &Empty{}); err != nil {
 			return nil, err

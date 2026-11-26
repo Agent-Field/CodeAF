@@ -37,7 +37,7 @@ func DefinitionGroups(kit int) map[string][]string {
 		for _, entry := range schemas().kits[2].Registries.Content {
 			groups[entry.Directory] = append(groups[entry.Directory], entry.Extension)
 		}
-		groups["custom"] = []string{".json", ".tsx"}
+		groups["custom"] = []string{".json", ".tsx", ".step"}
 	}
 	return groups
 }
@@ -56,7 +56,7 @@ func fileInGroup(file string) (string, string, bool) {
 func (c *checker) validGalleryPath(file string) bool {
 	key, _ := c.contentEntry(file)
 	dir, ext, ok := fileInGroup(file)
-	return key != "" || ok && dir == "custom" && (ext == ".json" || ext == ".tsx")
+	return key != "" || ok && dir == "custom" && (ext == ".json" || ext == ".tsx" || ext == ".step")
 }
 
 func bindingKind(b *Bind) string {
@@ -85,8 +85,9 @@ func bindingKind(b *Bind) string {
 }
 
 type customPart struct {
-	part  Part
-	props *jsonschema.Schema
+	part    Part
+	props   *jsonschema.Schema
+	program PartProgram
 }
 
 func (c *checker) findPart(n *Node) (Part, *jsonschema.Schema) {
@@ -146,7 +147,19 @@ func (c *checker) loadCustomParts() {
 		}
 		p.Tier = "custom"
 		p.Renderers = map[string]string{"desktop": "sandbox.iframe"}
-		c.custom[p.Name] = customPart{p, props}
+		if p.Origin != nil {
+			digest, err := PartDigest(raw, c.def.Files[p.Source])
+			if err != nil || digest != p.Origin.Digest {
+				c.add(file, "/origin", CodeManifest, "This part differs from the version imported from your Kit.")
+				continue
+			}
+		}
+		program, err := compilePart(p, c.def.Files[p.Source])
+		if err != nil {
+			c.add(file, "/source", CodeManifest, "%v", err)
+			continue
+		}
+		c.custom[p.Name] = customPart{p, props, program}
 	}
 	for _, file := range c.def.under("custom/", ".tsx") {
 		if _, ok := c.def.Files[strings.TrimSuffix(file, ".tsx")+".json"]; !ok {
@@ -222,6 +235,9 @@ func (c *checker) checkGalleryPart(ctx actionCtx, n *Node, p Part, at, typ strin
 	}
 	if typ != "" && p.Capabilities != "" {
 		c.checkRecordAccess(ctx.file, at, typ, p.Capabilities)
+	}
+	if custom, ok := c.custom[n.Part]; ok {
+		c.checkCustomPart(ctx, n, custom.program, at, typ, projection)
 	}
 	props := n.Props
 	for _, rule := range p.Rules {

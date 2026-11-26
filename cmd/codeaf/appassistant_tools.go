@@ -16,8 +16,8 @@ func (b *appBackend) appAssistantTools(principal appwire.AppContentScope) *sessi
 	scope := &session.AppScope{ID: principal.App, AuthorizeModel: b.appModelAuthorizer(principal.App, false)}
 	scope.Tools = []bare.Tool{{
 		Name:        "app",
-		Description: "For a requested change to the app itself, call propose_change without parameters before querying records. Use show to find view IDs and action arguments. Query takes params.view and optional params.args. Invoke takes params.action and params.args. If the action requires a revision, give params.expected_rev from the record row's _rev and the record ID as params.args.record.",
-		Schema:      json.RawMessage(`{"type":"object","properties":{"verb":{"type":"string","enum":["show","query","invoke","propose_change"]},"params":{"type":"object"}},"required":["verb"],"additionalProperties":false}`),
+		Description: "For a requested change to the app itself, call propose_change without parameters before querying records. Use show to find view IDs and action arguments. Query takes params.view and optional params.args. Invoke takes params.action and params.args. For a custom tool listed by show, call custom_tool with params.tool and params.args. If the action requires a revision, give params.expected_rev from the record row's _rev and the record ID as params.args.record.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{"verb":{"type":"string","enum":["show","query","invoke","custom_tool","propose_change"]},"params":{"type":"object"}},"required":["verb"],"additionalProperties":false}`),
 		Execute: func(ctx context.Context, raw json.RawMessage) (string, bool, error) {
 			var command struct {
 				Verb   string          `json:"verb"`
@@ -87,7 +87,7 @@ func (b *appBackend) runAppCLICommand(ctx context.Context, verb string, raw json
 			return nil, err
 		}
 		return appwire.Empty{}, b.RemoveAppAgentDuty(p)
-	case appwire.AppContentShow, appwire.AppContentQuery, appwire.AppContentInvoke, appwire.AppContentPropose:
+	case appwire.AppContentShow, appwire.AppContentQuery, appwire.AppContentInvoke, appwire.AppContentTool, appwire.AppContentPropose:
 		var p struct {
 			App     string          `json:"app"`
 			Params  json.RawMessage `json:"params"`

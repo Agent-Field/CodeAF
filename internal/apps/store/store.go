@@ -98,6 +98,17 @@ func (d Definition) Screen(id string) (json.RawMessage, bool) {
 	return screen, ok
 }
 
+// ScreenParts compiles custom parts from the same snapshot as the screen.
+func (d Definition) ScreenParts(screen []byte) (map[string]schema.PartProgram, error) {
+	return schema.ScreenParts(schema.Definition{Files: d.files}, screen)
+}
+
+// CustomStep returns the manifest and source from this app version.
+func (d Definition) CustomStep(id string) ([]byte, bool) {
+	raw, ok := d.files["custom/"+id+".step"]
+	return raw, ok
+}
+
 // Run returns YAML from the same version as App and Plan.
 func (d Definition) Run(id string) ([]byte, bool) {
 	run, ok := d.files["runs/"+id+".yaml"]
