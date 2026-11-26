@@ -55,19 +55,25 @@ func (b *appBackend) intakeService() intake.Service {
 }
 
 func (b *appBackend) ListChannels(app string) ([]intake.Channel, error) {
+	local, err := b.localIntake()
+	if err != nil {
+		return nil, appDataError(err)
+	}
+	list, err := local.List(app)
+	return list, appDataError(err)
+}
+
+func (b *appBackend) localIntake() (*intake.Local, error) {
 	state := &b.intake
 	state.mu.Lock()
+	defer state.mu.Unlock()
 	if state.closed {
-		state.mu.Unlock()
-		return nil, appDataError(&data.Error{Code: data.CodeClosed, Message: "codeaf is shutting down"})
+		return nil, &data.Error{Code: data.CodeClosed, Message: "codeaf is shutting down"}
 	}
 	if state.local == nil {
 		state.local = intake.NewLocal(b.intakeService())
 	}
-	local := state.local
-	state.mu.Unlock()
-	list, err := local.List(app)
-	return list, appDataError(err)
+	return state.local, nil
 }
 
 func (b *appBackend) PostChannel(post intake.Post) (data.IntakeReceipt, error) {
@@ -103,17 +109,20 @@ func (b *appBackend) openAppIntake(ctx context.Context) {
 }
 
 func (b *appBackend) closeAppIntake() {
-	state := &b.intake
-	state.mu.Lock()
-	state.closed = true
-	local, stop := state.local, state.stop
-	state.mu.Unlock()
+	local, stop := b.intake.take()
 	if stop != nil {
 		stop()
 	}
 	if local != nil {
 		_ = local.Close()
 	}
+}
+
+func (state *appIntakeState) take() (*intake.Local, func()) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.closed = true
+	return state.local, state.stop
 }
 
 // appRunIntakeParts attaches file bytes only for a declared channel run on
