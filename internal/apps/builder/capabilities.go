@@ -153,6 +153,31 @@ func (w buildPlan) compileCapabilities(plan *schema.Plan, files map[string]strin
 	return nil
 }
 
+var ordinaryCreation = regexp.MustCompile(`(?i)^\s*(?:add|create)\s+`)
+var guardedCreation = regexp.MustCompile(`(?i)\b(?:approv\w*|confirm\w*|verify|validate)\b`)
+
+// A plain create action belongs to the record form. Keep explicitly
+// requested runs and work that has its own effect or approval.
+func (w buildPlan) selectRecordForms(plan *schema.Plan, files map[string]string) {
+	selectForm := func(line schema.PlanLine) bool {
+		if hasPlanLine(w.runs, line.ID) || !ordinaryCreation.MatchString(line.Line) ||
+			independentWork.MatchString(line.Line) || guardedCreation.MatchString(line.Line) {
+			return false
+		}
+		for i := range plan.Data {
+			record := &plan.Data[i]
+			if line.ID == "add-"+record.ID || line.ID == "create-"+record.ID {
+				record.Create = true
+				removeRunFiles(files, line.ID)
+				return true
+			}
+		}
+		return false
+	}
+	plan.Automation = slices.DeleteFunc(plan.Automation, selectForm)
+	plan.Actions = slices.DeleteFunc(plan.Actions, selectForm)
+}
+
 func removedCapabilities(request string) []string {
 	var removed []string
 	for _, capability := range planCapabilities {

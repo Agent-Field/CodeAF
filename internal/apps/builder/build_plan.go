@@ -80,6 +80,7 @@ func (w *buildPlan) apply(files map[string]string) error {
 		return nil
 	}
 	plan := original
+	plan.Data = slices.Clone(plan.Data)
 	plan.Automation = slices.Clone(plan.Automation)
 	plan.Actions = slices.Clone(plan.Actions)
 	plan.Builtins = slices.Clone(plan.Builtins)
@@ -101,6 +102,7 @@ func (w *buildPlan) apply(files map[string]string) error {
 			plan.Actions = slices.DeleteFunc(plan.Actions, func(line schema.PlanLine) bool { return line.ID == b.ID })
 		}
 	}
+	w.selectRecordForms(&plan, files)
 	if err := w.compileCapabilities(&plan, files); err != nil {
 		return err
 	}

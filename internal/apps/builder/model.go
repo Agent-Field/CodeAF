@@ -42,7 +42,8 @@ Read reference {"schema":"app-2.json"} for app settings, process-2.json for life
 
 plan {"name":"CRM","plan":{"ask":"Track deals","data":[{"id":"deal","line":"Track deal stage"}],"screens":[{"id":"deals","line":"Deals by stage"}]}}
 writes the outline. Use the actual type, screen and automation ids in the plan.
-Mark creatable types with "create":true and list manual actions by command or run id.
+Mark creatable types with "create":true and use an Add form for ordinary
+record creation, including shared types. List other actions by command or run id.
 The executor selects CSV import, lifecycle and approval for local writes.
 Keep the selected builtins on a plan edit. Supply their record or run setting
 in builtins. Describe other work in automation or actions. For lifecycle, declare the state field, initial value and planned

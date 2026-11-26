@@ -169,3 +169,25 @@ func TestOutlineKeepsOnlySelectedBuiltinsAndNamesBoundSchedules(t *testing.T) {
 		t.Fatalf("compiled outline = %+v", got)
 	}
 }
+
+func TestOrdinaryCreationUsesTheRecordFormAndPreservesRequestedRuns(t *testing.T) {
+	const outline = `{"ask":"Add and edit shared contacts","data":[{"id":"contact","line":"Contacts","uses":true}],
+"screens":[{"id":"contacts","line":"Contacts"}],
+"automation":[{"id":"add-contact","line":"Add a shared contact"},{"id":"create-contact","line":"Create a contact"}],
+"actions":[{"id":"add-contact","line":"Add a shared contact"}]}`
+	files := map[string]string{
+		schema.PlanFile:            outline,
+		"runs/add-contact.yaml":    "run: add-contact",
+		"runs/create-contact.yaml": "run: create-contact",
+	}
+	work := plannedWork("Add and edit shared contacts. Use run ID create-contact.", schema.Plan{})
+	if err := work.apply(files); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := schema.ParsePlan([]byte(files[schema.PlanFile]))
+	if err != nil || !plan.Data[0].Create || !plan.Data[0].Uses || len(plan.Actions) != 0 ||
+		len(plan.Automation) != 1 || plan.Automation[0].ID != "create-contact" ||
+		files["runs/add-contact.yaml"] != "" || files["runs/create-contact.yaml"] == "" {
+		t.Fatalf("compiled plan = %+v, %v", plan, err)
+	}
+}
