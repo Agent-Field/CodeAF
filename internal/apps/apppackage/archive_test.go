@@ -101,3 +101,21 @@ func TestPackageUpdatesFollowSemVerPrecedence(t *testing.T) {
 		}
 	}
 }
+
+func TestOfficialExamplePublisherRequiresSignatureVisual(t *testing.T) {
+	def, err := schema.Load("../schema/testdata/gallery-support")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := make(map[string]string, len(def.Files))
+	for path, content := range def.Files {
+		files[path] = string(content)
+	}
+	if _, err := apppackage.Pack(files, nil, apppackage.PackOptions{}); err != nil {
+		t.Fatalf("personal export should allow Look suggestions: %v", err)
+	}
+	if _, err := apppackage.Pack(files, nil, apppackage.PackOptions{Publisher: "codeaf examples"}); err == nil ||
+		!strings.Contains(err.Error(), "Add a visual tied to the job") {
+		t.Fatalf("example export must block missing signature visuals: %v", err)
+	}
+}
