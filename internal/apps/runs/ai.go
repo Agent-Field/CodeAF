@@ -96,6 +96,26 @@ func (e *Engine) StartFanout(app, run, screen string, params map[string]any, sub
 	if len(subjects) == 0 || len(subjects) > 50 {
 		return "", errors.New("choose between 1 and 50 records")
 	}
+	if !validID(app) || !validID(run) {
+		return "", errors.New("valid app and run ids are required")
+	}
+	def, err := e.cfg.Load(app, run)
+	if err != nil {
+		return "", err
+	}
+	if def.Run != run || len(def.Steps) != 1 || def.Steps[0].AI == nil || def.Steps[0].AI.Propose == "" {
+		return "", errors.New("fan-out needs an action that proposes a change")
+	}
+	if err := validate(def); err != nil {
+		return "", err
+	}
+	if err := e.checkAI(def.Steps); err != nil {
+		return "", err
+	}
+	param := strings.TrimPrefix(def.Steps[0].AI.Propose, "$params.")
+	budget := *def.Budget
+	budget.PerRun /= float64(len(subjects))
+	def.Budget = &budget
 	queue, err := cell.NewID(e.cfg.Now())
 	if err != nil {
 		return "", err
@@ -112,24 +132,15 @@ func (e *Engine) StartFanout(app, run, screen string, params map[string]any, sub
 		if input == nil {
 			input = map[string]any{}
 		}
-		// Resolve the subject parameter through the normal run adapter.
-		def, err := e.cfg.Load(app, run)
-		if err != nil {
-			return "", err
-		}
-		if len(def.Steps) != 1 || def.Steps[0].AI == nil || def.Steps[0].AI.Propose == "" {
-			return "", errors.New("fan-out needs an action that proposes a change")
-		}
-		param := strings.TrimPrefix(def.Steps[0].AI.Propose, "$params.")
 		input[param] = subject
-		c, err := e.newCheckpoint(app, run, input, nil, false)
+		c, err := e.buildCheckpoint(app, def, input, nil, false)
 		if err != nil {
 			return "", err
+		}
+		if c.Subject == nil || c.Subject.ID != subject {
+			return "", errors.New("a fan-out record could not be resolved")
 		}
 		c.Queue, c.Screen = queue, screen
-		budget := *c.Definition.Budget
-		budget.PerRun /= float64(len(subjects))
-		c.Definition.Budget = &budget
 		c.UpdatedAt = e.cfg.Now()
 		raw, err := json.Marshal(c)
 		if err != nil {

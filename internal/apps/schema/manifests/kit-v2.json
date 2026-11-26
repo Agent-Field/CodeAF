@@ -5405,6 +5405,80 @@
       }
     },
     "step_kinds": {
+      "ai": {
+        "id": "ai",
+        "version": 1,
+        "doc": "Calls a model with a declared prompt and JSON output schema. Set propose to a declared ref parameter for a one-step action that stages the result for Apply. The run needs a positive per-run budget. Supply an example response for Check to use without a model.",
+        "example": {
+          "ai": {
+            "prompt": "Draft a reply to {{params.mention.text}}",
+            "example": {"reply": "Thanks for asking."},
+            "propose": "$params.mention",
+            "output": {
+              "type": "object",
+              "properties": {
+                "reply": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reply"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ai": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "prompt",
+                "output"
+              ],
+              "properties": {
+                "prompt": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tier": {
+                  "enum": [
+                    "fast",
+                    "balanced",
+                    "strong"
+                  ]
+                },
+                "harness": {
+                  "enum": [
+                    "codeaf",
+                    "claude_code",
+                    "codex",
+                    "agentfield"
+                  ]
+                },
+                "example": {},
+                "propose": {
+                  "type": "string",
+                  "pattern": "^\\$params\\.[a-z][a-z0-9_]*$"
+                },
+                "output": {
+                  "type": "object",
+                  "minProperties": 1
+                }
+              }
+            }
+          },
+          "required": [
+            "ai"
+          ]
+        },
+        "rules": [],
+        "modifiers": [],
+        "auxiliary": false
+      },
       "agent": {
         "id": "agent",
         "version": 1,
@@ -5577,7 +5651,7 @@
       "gate": {
         "id": "gate",
         "version": 1,
-        "doc": "Waits for an approval and can guard another step.",
+        "doc": "Waits for an approval and can guard another step. A standalone approval can carry exact words and a destination in args.",
         "example": {
           "gate": {
             "approval": "plan"
@@ -5587,6 +5661,7 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "args": {"type": "object"},
             "gate": {
               "type": "object",
               "additionalProperties": false,
@@ -5612,7 +5687,7 @@
             "gate"
           ]
         },
-        "modifiers": [],
+        "modifiers": ["args"],
         "auxiliary": true
       },
       "wait": {

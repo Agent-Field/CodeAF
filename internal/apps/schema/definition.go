@@ -447,6 +447,7 @@ type AIStep struct {
 	Harness string         `json:"harness,omitempty"`
 	Output  map[string]any `json:"output"`
 	Propose string         `json:"propose,omitempty"`
+	Example any            `json:"example,omitempty"`
 }
 
 // Retry repeats a failed step.

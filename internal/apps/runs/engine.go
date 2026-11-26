@@ -29,6 +29,7 @@ const (
 )
 
 var ErrNotFound = errors.New("run not found")
+var ErrStopped = errors.New("the run was stopped")
 var ErrAIUnavailable = errors.New("this app AI capability is unavailable")
 var ErrBudget = errors.New("per-run budget reached")
 
@@ -44,7 +45,10 @@ type Run struct {
 	Proposal     *Proposal `json:"proposal,omitempty"`
 	Subject      *Subject  `json:"subject,omitempty"`
 	Screen       string    `json:"screen,omitempty"`
+	CanSteer     bool      `json:"can_steer,omitempty"`
+	FirstStep    string    `json:"first_step,omitempty"`
 	Harness      string    `json:"harness,omitempty"`
+	AppVersion   int       `json:"app_version,omitempty"`
 	Title        string    `json:"title,omitempty"`
 	Queue        string    `json:"review_queue,omitempty"`
 	Approval     *Approval `json:"approval,omitempty"`
@@ -73,6 +77,7 @@ type Config struct {
 	Records       func(context.Context, RecordCall) (Reply, error)
 	Agent         func(context.Context, AgentCall) (Reply, error)
 	CheckAI       func(*schema.AIStep) error
+	AppVersion    func(string) (int, error)
 	Connector     Connector
 	// CheckTool authorizes a tool against the current app capabilities on
 	// each visit. It can require a send gate based on trusted tool metadata.
@@ -94,6 +99,7 @@ type Engine struct {
 	checkpoints map[string]json.RawMessage
 	active      map[string]Run
 	busy        map[string]bool
+	workCancels map[string]context.CancelFunc
 	workers     sync.WaitGroup
 	openedAt    time.Time
 	closing     bool
@@ -120,6 +126,8 @@ type checkpoint struct {
 	Declined       string          `json:"declined,omitempty"`
 	RaisedBudget   float64         `json:"raised_budget,omitempty"`
 	ApprovalSeq    int             `json:"approval_seq"`
+	Steering       []string        `json:"steering,omitempty"`
+	Stopped        bool            `json:"stopped,omitempty"`
 }
 
 type frame struct {
@@ -164,7 +172,7 @@ func Open(cfg Config) (*Engine, error) {
 	lifetime, cancel := context.WithCancel(context.Background())
 	e := &Engine{
 		cfg: cfg, journal: journal, lock: lock, checkpoints: entries,
-		active: make(map[string]Run), busy: make(map[string]bool),
+		active: make(map[string]Run), busy: make(map[string]bool), workCancels: make(map[string]context.CancelFunc),
 		lifetime: lifetime, cancel: cancel, openedAt: cfg.Now(),
 	}
 	for key, raw := range entries {
@@ -283,6 +291,10 @@ func (e *Engine) newCheckpoint(app, run string, params, input map[string]any, ca
 	if err := e.checkAI(def.Steps); err != nil {
 		return checkpoint{}, err
 	}
+	return e.buildCheckpoint(app, def, params, input, caughtUp)
+}
+
+func (e *Engine) buildCheckpoint(app string, def Definition, params, input map[string]any, caughtUp bool) (checkpoint, error) {
 	now := e.cfg.Now()
 	id, err := cell.NewID(now)
 	if err != nil {
@@ -306,13 +318,19 @@ func (e *Engine) newCheckpoint(app, run string, params, input map[string]any, ca
 		}
 	}
 	c := checkpoint{
-		Run:        Run{App: app, DefinitionID: run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
+		Run:        Run{App: app, DefinitionID: def.Run, ID: id, State: Running, Step: def.Steps[0].ID, CaughtUp: caughtUp, StartedAt: now},
 		Definition: def, Params: p, Input: input, Outputs: make(map[string]any), Frames: []frame{{}},
 		Visit: 1,
 	}
+	if e.cfg.AppVersion != nil {
+		c.AppVersion, err = e.cfg.AppVersion(app)
+		if err != nil {
+			return checkpoint{}, err
+		}
+	}
 	if len(def.Steps) == 1 && def.Steps[0].AI != nil && def.Steps[0].AI.Propose != "" {
 		ai := def.Steps[0].AI
-		c.Harness, c.Title = ai.Harness, def.Title
+		c.Harness, c.Title, c.FirstStep, c.CanSteer = ai.Harness, def.Title, def.Steps[0].ID, true
 		if c.Harness == "" {
 			c.Harness = "codeaf"
 		}
@@ -338,6 +356,15 @@ func (e *Engine) save(c *checkpoint, clockKey string, clock any) error {
 func (e *Engine) saveLocked(c *checkpoint, clockKey string, clock any) error {
 	entries := make(map[string]json.RawMessage, 2)
 	if c != nil {
+		if previous := e.checkpoints[runPrefix+c.ID]; previous != nil && !c.Stopped {
+			stopped, err := decode[struct{ Stopped bool }](previous)
+			if err != nil {
+				return err
+			}
+			if stopped.Stopped {
+				return ErrStopped
+			}
+		}
 		c.UpdatedAt = e.cfg.Now()
 		raw, err := json.Marshal(c)
 		if err != nil {
@@ -511,6 +538,7 @@ func (e *Engine) work(ctx context.Context, id string) error {
 	defer func() {
 		e.mu.Lock()
 		delete(e.busy, id)
+		delete(e.workCancels, id)
 		e.mu.Unlock()
 		e.workers.Done()
 	}()
@@ -518,11 +546,18 @@ func (e *Engine) work(ctx context.Context, id string) error {
 	stop := context.AfterFunc(e.lifetime, cancel)
 	defer cancel()
 	defer stop()
+	e.mu.Lock()
+	e.workCancels[id] = cancel
+	e.mu.Unlock()
 	c, err := e.read(id)
 	if err != nil || !c.Run.ready(e.cfg.Now()) {
 		return err
 	}
-	return e.progress(ctx, &c)
+	err = e.progress(ctx, &c)
+	if errors.Is(err, ErrStopped) || errors.Is(err, context.Canceled) && ctx.Err() != nil {
+		return nil
+	}
+	return err
 }
 
 func validCost(cost float64) bool {

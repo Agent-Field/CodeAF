@@ -68,3 +68,22 @@ func AIFieldOutput(field Field) map[string]any {
 		return nil
 	}
 }
+
+func (c *checker) checkAIStep(file, at string, run Run, step *AIStep) {
+	if run.Budget == nil || run.Budget.PerRun <= 0 {
+		c.add(file, at+"/ai", CodeNotAllowed, "An AI step needs a positive per-run budget.")
+	}
+	if err := run.CheckAIProposal(step); err != nil {
+		c.add(file, at+"/ai/propose", CodeStepKind, "%v", err)
+	}
+	shape, err := CompileAIOutput(step.Output)
+	if err != nil {
+		c.add(file, at+"/ai/output", CodeStepKind, "The AI output schema is invalid: %v", err)
+		return
+	}
+	if step.Example != nil {
+		if err := shape.Validate(step.Example); err != nil {
+			c.add(file, at+"/ai/example", CodeStepKind, "The AI example does not match its output schema.")
+		}
+	}
+}

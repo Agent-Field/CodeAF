@@ -143,7 +143,16 @@
       params: {app: $app, type: item, id: $item}
       expect: [{path: /row/quantity, equals: 2}]
 - name: marketing-desk
-  prompt: Make my marketing desk. Import posts and mentions, use AI for topic and sentiment, launch a research agent from a post, and fan out three thread drafts for review. Ask for my exact-text approval before posting. Each morning surface posts worth replying to. Keep AI spend under ten cents for a run.
+  prompt: >-
+    Make my marketing desk. Import posts and mentions, use AI for topic and sentiment,
+    launch a research agent from a post, and draft three thread replies for review.
+    Use post and draft as the type keys, text as the post field, posts as the screen,
+    and launch-research and draft-thread as the run IDs. Both runs take a post ref
+    parameter named post. Include sample posts with text so Check can exercise both runs.
+    For draft-thread, create exactly three local draft rows before waiting at a standalone
+    send approval. Put the drafted text in the approval step's args so I can read the
+    exact text before approving. This local run ends at approval without a connector.
+    Each morning surface posts worth replying to. Keep AI spend under ten cents for a run.
   max_rounds: 3
   record:
     type: post

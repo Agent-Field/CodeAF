@@ -111,11 +111,11 @@ func (w *writeTx) prepareReview(sc Scope, t *Type, queue, decision string, effec
 	if err != nil {
 		return reviewedEffect{}, err
 	}
-	if decision == "accept_safe" && !safeAIReview(t, before, effect.Set) {
-		return reviewedEffect{}, nil
-	}
 	if effect.Revision != before.Rev {
 		return reviewedEffect{}, errorf(CodeStale, "a proposed record changed after the model read it")
+	}
+	if decision == "accept_safe" && (!safeAIReview(t, before, effect.Set) || w.s.checkFrozen(t, before, sortedKeys(effect.Set), sc, "") != nil) {
+		return reviewedEffect{}, nil
 	}
 	if decision == "reject" {
 		return reviewedEffect{id: effect.ID, before: before}, nil
@@ -141,4 +141,24 @@ func safeAIReview(t *Type, row *record, set map[string]any) bool {
 		}
 	}
 	return true
+}
+
+// AIReviewSafe reports the writer's conservative eligibility for automatic
+// acceptance. ReviewAI checks it again inside the transaction.
+func (s *Store) AIReviewSafe(sc Scope, typ string, effect AIEffect) (bool, error) {
+	s.visibility.RLock()
+	defer s.visibility.RUnlock()
+	sch := s.schema.Load()
+	t, err := sch.allow(sc, typ, true)
+	if err != nil {
+		return false, err
+	}
+	r, err := loadRecord(s.rdb, sch, effect.Record)
+	if err != nil {
+		return false, err
+	}
+	if r == nil || r.Type != t.Name || r.DeletedAt != "" || r.Rev != effect.Revision || t.Ledger {
+		return false, nil
+	}
+	return safeAIReview(t, r, effect.Set) && s.checkFrozen(t, r, sortedKeys(effect.Set), sc, "") == nil, nil
 }

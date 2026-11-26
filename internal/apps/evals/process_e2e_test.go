@@ -43,7 +43,7 @@ func launch(ctx context.Context, binary, scratch, key, model string) (*appProces
 	// the engine's own dispatcher, which still starts and joins normally.
 	env := []string{"HOME=" + scratch, "CODEAF_HOME=" + scratch, "PATH=" + os.Getenv("PATH"), "CODEAF_NO_AUTOMATIONS=1"}
 	if key != "" {
-		env = append(env, "OPENROUTER_API_KEY="+key, "CODEAF_APPS_BUILDER_MODEL="+model)
+		env = append(env, "OPENROUTER_API_KEY="+key, "CODEAF_APPS_BUILDER_MODEL="+model, "CODEAF_MODEL="+model)
 	}
 	return launchWithEnv(ctx, binary, scratch, env)
 }

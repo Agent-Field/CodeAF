@@ -1003,15 +1003,7 @@ func (c *checker) checkSteps(file string, r Run, steps []Step, at, recordType st
 		var kinds []string
 		if s.AI != nil {
 			kinds = append(kinds, "ai")
-			if r.Budget == nil || r.Budget.PerRun <= 0 {
-				c.add(file, sat+"/ai", CodeNotAllowed, "An AI step needs a positive per-run budget.")
-			}
-			if err := r.CheckAIProposal(s.AI); err != nil {
-				c.add(file, sat+"/ai/propose", CodeStepKind, "%v", err)
-			}
-			if _, err := CompileAIOutput(s.AI.Output); err != nil {
-				c.add(file, sat+"/ai/output", CodeStepKind, "The AI output schema is invalid: %v", err)
-			}
+			c.checkAIStep(file, sat, r, s.AI)
 		}
 		if s.Agent != "" {
 			kinds = append(kinds, "agent")

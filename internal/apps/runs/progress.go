@@ -71,7 +71,11 @@ func (e *Engine) progress(ctx context.Context, c *checkpoint) error {
 				}
 				continue
 			}
-			c.Action = &act
+			if act.Prompt != "" && len(c.Steering) > 0 {
+				act.Prompt += "\n\nPerson’s follow-up:\n" + strings.Join(c.Steering, "\n")
+				c.Steering = nil
+			}
+			c.Action, c.CanSteer = &act, false
 		}
 		outbound := c.Action.Outbound
 		if c.Prepared && (step.RecordsCreate != nil || step.RecordsUpdate != nil || outbound || step.Agent != "" || step.AI != nil) {
@@ -297,6 +301,9 @@ func (e *Engine) ask(c *checkpoint, kind, who string) error {
 	c.State = YourCall
 	c.Approval = c.approval(kind)
 	c.Approval.Tool, c.Approval.Args = c.Action.Name, c.Action.Args
+	if c.Approval.Tool == "" {
+		c.Approval.Tool = kind
+	}
 	return e.publishApproval(c)
 }
 
@@ -378,7 +385,16 @@ func (e *Engine) execute(ctx context.Context, c *checkpoint, step Step) error {
 	if err := e.save(c, "", nil); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	a := c.Action
+	if a.Outbound && c.AppVersion != 0 && e.cfg.AppVersion != nil {
+		current, err := e.cfg.AppVersion(c.App)
+		if err != nil || current != c.AppVersion {
+			return e.stop(c, Incomplete, "the app changed after the effect was prepared")
+		}
+	}
 	var reply Reply
 	var err error
 	switch {

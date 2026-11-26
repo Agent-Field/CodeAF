@@ -1,10 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/data"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
@@ -35,7 +39,7 @@ func (b *appBackend) LaunchAppAI(p appwire.AppAILaunch) (string, error) {
 		return "", appwire.Errorf(appwire.CodeBadParams, "That action does not draft a proposal.")
 	}
 	ai := def.Steps[0].AI
-	if err := b.checkAppAI(ai); err != nil {
+	if err := b.appAIHarnesses(files).Check(ai); err != nil {
 		return "", appRunError(err)
 	}
 	param := strings.TrimPrefix(ai.Propose, "$params.")
@@ -128,4 +132,77 @@ func appAIUnavailableError(err error) error {
 		return appwire.Errorf(appwire.CodeNotFound, "That AI action is unavailable.")
 	}
 	return err
+}
+
+func (b *appBackend) SteerAppAI(p appwire.AppAgentRunControl) error {
+	if engine := b.appRuns.Load(); engine != nil {
+		return appRunError(engine.SteerAgent(p.App, p.Run, p.Text))
+	}
+	return appRunError(runs.ErrNotFound)
+}
+
+func (b *appBackend) StopAppAI(p appwire.AppAgentRunControl) error {
+	if engine := b.appRuns.Load(); engine != nil {
+		r, _ := engine.Get(p.Run)
+		err := engine.StopAgent(p.App, p.Run)
+		if err == nil && r.Approval != nil {
+			b.closeRunInbox(appRunAskAgent, appRunAskPrefix+r.Approval.ID, appwire.OptionStop)
+		}
+		return appRunError(err)
+	}
+	return appRunError(runs.ErrNotFound)
+}
+
+func (b *appBackend) AnswerAppAI(p appwire.AppAgentEffectAnswer) error {
+	if p.Answer != "yes" && p.Answer != "no" {
+		return appwire.Errorf(appwire.CodeBadParams, "Choose yes or no.")
+	}
+	if p.App == "" {
+		return appwire.Errorf(appwire.CodeBadParams, "Choose an app.")
+	}
+	r, err := b.GetRun(p.App, p.Run)
+	if err != nil {
+		return err
+	}
+	effect := appAIPendingEffect(r)
+	if effect == nil || *effect != p.Effect {
+		return appwire.Errorf(appwire.CodeConflict, "The pending effect changed.")
+	}
+	expires, _ := time.Parse(time.RFC3339Nano, effect.ExpiresAt)
+	if !b.now().Before(expires) {
+		return appwire.Errorf(appwire.CodeConflict, "The pending effect expired.")
+	}
+	version, err := (runs.Files(home.Join("apps"))).Version(p.App)
+	if err != nil || strconv.Itoa(version) != effect.AppVersion {
+		return appwire.Errorf(appwire.CodeConflict, "The app changed since this approval was requested.")
+	}
+	option := appwire.OptionDeny
+	if p.Answer == "yes" {
+		option = appwire.OptionAllowOnce
+	}
+	return b.answerRunApproval(appRunAskAgent, appRunAskPrefix+effect.ID, option, "")
+}
+
+func appAIPendingEffect(r runs.Run) *appwire.AppAgentPendingEffect {
+	a := r.Approval
+	if a == nil || r.AppVersion == 0 || a.Kind == "budget" {
+		return nil
+	}
+	payload, err := json.Marshal(a.Args)
+	if err != nil {
+		return nil
+	}
+	digest := sha256.Sum256(payload)
+	destination := ""
+	for _, key := range []string{"destination", "to", "channel", "recipient"} {
+		if v, ok := a.Args[key].(string); ok && v != "" {
+			destination = v
+			break
+		}
+	}
+	return &appwire.AppAgentPendingEffect{
+		ID: a.ID, Account: a.Who, Operation: a.Tool, Destination: destination, Payload: string(payload),
+		PayloadHash: hex.EncodeToString(digest[:]), AppVersion: strconv.Itoa(r.AppVersion),
+		ExpiresAt: r.UpdatedAt.Add(30 * time.Minute).UTC().Format(time.RFC3339Nano),
+	}
 }

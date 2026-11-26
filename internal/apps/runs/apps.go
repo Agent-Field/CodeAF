@@ -22,6 +22,7 @@ type App = schema.App
 type Files string
 
 type appMeta struct {
+	Version   int       `json:"version"`
 	Archived  bool      `json:"archived"`
 	UpdatedAt time.Time `json:"updated_at"`
 	CreatedAt time.Time `json:"created_at"`
@@ -78,6 +79,14 @@ func (f Files) App(id string) (App, error) {
 	}
 	defer root.Close()
 	return readApp(root, id)
+}
+
+func (f Files) Version(id string) (int, error) {
+	root, meta, err := f.open(id)
+	if err != nil {
+		return 0, err
+	}
+	return meta.Version, root.Close()
 }
 
 func (f Files) Load(app, run string) (Definition, error) {

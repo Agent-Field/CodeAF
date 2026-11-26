@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/schema"
 	"github.com/Agent-Field/codeaf/internal/appwire"
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -101,10 +102,18 @@ func (b *appBackend) startAppRuns(ctx context.Context) func() {
 	}
 	records := runs.Data{Store: func() (*data.Store, error) { return b.dataStore("") }}
 	tools := runs.ConnectedTools{Apps: files.App, Manager: b.pluginManager}
+	harnesses := b.appAIHarnesses(files)
+	ordinary := harnesses[runs.HarnessCodeaf].Run
+	agent := func(ctx context.Context, call runs.AgentCall) (runs.Reply, error) {
+		if call.AI == nil {
+			return ordinary(ctx, call)
+		}
+		return harnesses.Run(ctx, call)
+	}
 	e, err := runs.Open(runs.Config{
 		Root: home.Join("apps", "_runs"), Load: files.Load, Triggers: files.Triggers,
-		Connector: tools, CheckTool: tools.Check, Agent: b.appRunAgent(files),
-		CheckAI: b.checkAppAI,
+		Connector: tools, CheckTool: tools.Check, Agent: agent,
+		CheckAI: harnesses.Check, AppVersion: files.Version,
 		Records: records.Write, ResolveParams: records.ResolveParams, RecordInput: records.RecordInput, ReadRecords: records.ReadRecords,
 		Changed: func(event runs.ChangeEvent) { b.emit.Emit(appwire.EventRunsChanged, event) },
 		Ask:     b.openRunApproval,
@@ -210,16 +219,10 @@ func appRunError(err error) error {
 }
 
 func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.AgentCall) (runs.Reply, error) {
-	paidTurn := make(chan struct{}, 1)
+	// Every worker holds its estimate against the same ledger day before
+	// dispatch, while its run retains its own per-call budget.
+	day := session.CrewSpendGuard(b.crewProfile(), crewroute.Decision{}, true).Day
 	return func(ctx context.Context, call runs.AgentCall) (runs.Reply, error) {
-		// Serialize the spend estimate and its receipt for app runs so two
-		// simultaneous model steps cannot both spend the same daily balance.
-		select {
-		case paidTurn <- struct{}{}:
-			defer func() { <-paidTurn }()
-		case <-ctx.Done():
-			return runs.Reply{}, ctx.Err()
-		}
 		settings, err := config.Load()
 		if err != nil {
 			return runs.Reply{}, err
@@ -242,6 +245,7 @@ func (b *appBackend) appRunAgent(files runs.Files) func(context.Context, runs.Ag
 			return runs.Reply{}, err
 		}
 		spend := &session.SpendGuard{
+			Day:      day,
 			Price:    config.CrewCallPriceAt(b.crewProfile()),
 			DayLimit: config.CrewDailyLimit(b.crewProfile()),
 			TaskCap:  call.Remaining, TaskAction: "per-run budget reached",
@@ -282,10 +286,7 @@ func (b *appBackend) appAIModel(step *schema.AIStep) string {
 	}
 }
 
-func (b *appBackend) checkAppAI(step *schema.AIStep) error {
-	if step.Harness != "" && step.Harness != "codeaf" {
-		return runs.ErrAIUnavailable
-	}
+func (b *appBackend) checkCodeafAI(step *schema.AIStep) error {
 	settings, err := config.Load()
 	if err != nil {
 		return err
@@ -340,6 +341,12 @@ func (b *appBackend) checkRunAnswer(agent, ask, option, text string) error {
 	r, err := b.appRuns.Load().Get(runID)
 	if err != nil || r.Approval == nil || r.Approval.ID != approval {
 		return appwire.Errorf(appwire.CodeNotFound, "run approval not found")
+	}
+	if r.AppVersion != 0 {
+		version, err := (runs.Files(home.Join("apps"))).Version(r.App)
+		if err != nil || version != r.AppVersion {
+			return appwire.Errorf(appwire.CodeConflict, "The app changed since this approval was requested.")
+		}
 	}
 	if r.Approval.Kind == "budget" {
 		switch option {

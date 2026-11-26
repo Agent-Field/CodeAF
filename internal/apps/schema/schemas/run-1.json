@@ -57,6 +57,7 @@
             "prompt": { "type": "string", "minLength": 1 },
             "tier": { "enum": ["fast", "balanced", "strong"] },
             "harness": { "enum": ["codeaf", "claude_code", "codex", "agentfield"] },
+            "example": {},
             "propose": { "type": "string", "pattern": "^\\$params\\.[a-z][a-z0-9_]*$" },
             "output": { "type": "object", "minProperties": 1 }
           }

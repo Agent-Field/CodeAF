@@ -46,3 +46,54 @@ func init() {
 		return nil, Errorf(CodeUnknownMethod, "App AI review is unavailable.")
 	})
 }
+
+type stopAgentParams struct {
+	IDParams
+	App string `json:"app,omitempty"`
+	Run string `json:"run,omitempty"`
+}
+
+type steerAgentParams struct {
+	sayTo
+	App string `json:"app,omitempty"`
+	Run string `json:"run,omitempty"`
+}
+
+type AppAgentRunControl struct {
+	App  string `json:"app"`
+	Run  string `json:"run"`
+	Text string `json:"text,omitempty"`
+}
+
+type AppAgentPendingEffect struct {
+	ID          string `json:"id"`
+	Account     string `json:"account"`
+	Operation   string `json:"operation"`
+	Destination string `json:"destination"`
+	Payload     string `json:"payload"`
+	PayloadHash string `json:"payload_hash"`
+	AppVersion  string `json:"app_version"`
+	ExpiresAt   string `json:"expires_at"`
+}
+
+type AppAgentEffectAnswer struct {
+	App    string                `json:"app"`
+	Run    string                `json:"run"`
+	Effect AppAgentPendingEffect `json:"effect"`
+	Answer string                `json:"answer"`
+}
+
+type appAgentControl interface {
+	SteerAppAI(AppAgentRunControl) error
+	StopAppAI(AppAgentRunControl) error
+	AnswerAppAI(AppAgentEffectAnswer) error
+}
+
+func init() {
+	methods["agents.approval"] = typed(func(e Engine, p AppAgentEffectAnswer) (*Empty, error) {
+		if api, ok := e.(appAgentControl); ok {
+			return done(api.AnswerAppAI(p))
+		}
+		return nil, Errorf(CodeUnknownMethod, "App agent approvals are unavailable.")
+	})
+}
