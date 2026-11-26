@@ -179,6 +179,13 @@ func TestBuiltinPublisherUpdatePreservesTheLocalVersionUntilApply(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	var fork builder.Proposal
+	wire.must("apps.fork", map[string]string{"app": local.ID}, &fork)
+	wire.must("apps.apply", map[string]string{"draft": fork.Draft}, &kept)
+	if kept.Meta.ID == local.ID || kept.Meta.Lineage.Source.Version != "1.0.0" || kept.Meta.Lineage.ForkedFrom.App != local.ID {
+		t.Fatalf("fork lost the local copy or its publisher baseline: %+v", kept.Meta)
+	}
+	local = kept.Meta
 
 	var update builder.Proposal
 	wire.must("apps.update", map[string]string{"app": local.ID, "package": install.Package.Manifest.ID}, &update)
