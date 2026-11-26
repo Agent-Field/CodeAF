@@ -15,9 +15,10 @@ an explicit hide or mask.
 A field's `class` can be `public`, `internal`, `confidential`,
 `restricted` or `pii`. The Builder can suggest a class or set the one you
 ask for. Confidential, restricted and PII fields are masked for other
-viewers and app agents. The owner can see their own local values, such as
-transaction amounts, unless the type declares an explicit mask or hide.
-Values from connected sources use the source's rules.
+viewers and app agents. The owner can see their own local confidential
+values, such as transaction amounts, unless the type declares an explicit
+mask or hide. Restricted and PII record values stay masked. Values from
+connected sources use the source's rules.
 
 ## Only see my accounts or rows assigned to me
 

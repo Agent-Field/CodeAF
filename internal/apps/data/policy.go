@@ -72,11 +72,11 @@ func (t *Type) FieldPolicy(f *Field) string {
 	return ""
 }
 
-// The local person can read their own native classified values. Explicit
+// The local person can read their own native confidential values. Explicit
 // masks, source values, and the projections for agents retain their policy.
 func (t *Type) personalFieldPolicy(f *Field, sc Scope, person, by string) string {
 	mode := t.FieldPolicy(f)
-	if mode == "mask" && t.fieldRules[f.Name] == "" &&
+	if mode == "mask" && f.Class == appschema.ClassConfidential && t.fieldRules[f.Name] == "" &&
 		by != BySync && !sc.isAgent() && !sc.AI && !sc.Flow && sc.attribute(person, "id") == person {
 		return ""
 	}

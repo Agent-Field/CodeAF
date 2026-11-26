@@ -203,7 +203,7 @@ func TestPersonalAmountAndMaskedTotals(t *testing.T) {
 		mustCreate(t, s, viewer, "transaction", map[string]any{"owner": "viewer", "amount": amount, "secret": 90})
 	}
 	row, err := s.Get(owner, "transaction", rows[0].ID(), false)
-	if err != nil || row["amount"] != float64(100) || row["name"] != "My Name" || row["pin"] != masked {
+	if err != nil || row["amount"] != float64(100) || row["name"] != masked || row["pin"] != masked {
 		t.Errorf("the owner's data = %v, %v", row, err)
 	}
 	page, err := s.Query(viewer, "transaction", "", "", 10)
